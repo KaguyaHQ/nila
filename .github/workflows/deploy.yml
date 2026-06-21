@@ -1,8 +1,8 @@
 name: Deploy nila
 
+# Manual-only until the CA engine is ready for prod. Re-enable `push: [main]`
+# when there's a real slice worth deploying to nilahq.com.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 # Only one prod deploy at a time; a newer push cancels an in-flight one so two
