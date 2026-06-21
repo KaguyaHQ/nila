@@ -1,0 +1,27 @@
+# Keep the build context small and avoid leaking local state into the image.
+_build/
+deps/
+.elixir_ls/
+*.ez
+
+# Generated assets — rebuilt inside the image by `mix assets.deploy`
+priv/static/assets/
+priv/static/cache_manifest.json
+
+# Dev/test/uploads
+priv/static/uploads/
+tmp/
+.env
+.env.*
+!.env.example
+
+# VCS / editor / OS
+.git/
+.github/
+.vscode/
+.DS_Store
+erl_crash.dump
+
+# Docs and local-only ops (deployed separately, not needed in the image)
+docs/
+hetzner/

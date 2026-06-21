@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Attach an interactive iex shell to the running Nila production node.
+#
+# Requires the `nila-prod` Host alias in ~/.ssh/config (see hetzner/README.md).
+set -euo pipefail
+exec ssh -t nila-prod 'cd /home/deploy/nila && docker compose exec nila /app/bin/nila remote'

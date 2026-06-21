@@ -1,0 +1,341 @@
+<Layouts.flash_group flash={@flash} />
+
+<div class="bg-base-100 text-base-content">
+  <%!-- ── HEADER ─────────────────────────────────────────────────────────── --%>
+  <header class="fixed inset-x-0 top-3 z-40 px-4 sm:top-4 sm:px-6">
+    <div class="mx-auto flex w-fit items-center gap-8 rounded-full border border-base-300/60 bg-base-100/85 py-2 pl-5 pr-2 shadow-moon-lg backdrop-blur">
+      <a href="/" class="flex items-center">
+        <.logo class="h-6 w-auto text-base-content" />
+      </a>
+      <div class="flex items-center gap-1.5">
+        <.link
+          navigate={~p"/users/log_in"}
+          class="hidden h-9 items-center px-3 text-small font-medium text-base-content/70 transition hover:text-base-content sm:inline-flex"
+        >
+          Log in
+        </.link>
+        <.link
+          navigate={~p"/today"}
+          class="inline-flex h-9 items-center gap-1.5 rounded-full bg-base-content px-4 text-small font-medium text-base-100 shadow-moon transition hover:opacity-90"
+        >
+          Open the app <.icon name="hero-arrow-right" class="size-3.5" />
+        </.link>
+      </div>
+    </div>
+  </header>
+
+  <%!-- ── HERO ───────────────────────────────────────────────────────────── --%>
+  <section class="moonlight-night relative overflow-hidden text-base-100">
+    <div class="mx-auto flex max-w-3xl flex-col items-center px-4 pt-40 pb-28 text-center sm:px-6 sm:pt-48 sm:pb-36 lg:pt-56 lg:pb-44">
+      <div class="moon-rise inline-flex items-center gap-2 rounded-full border border-base-100/15 bg-base-100/5 px-3 py-1 text-eyebrow font-semibold uppercase text-base-100/70 backdrop-blur">
+        <span
+          class="size-1.5 rounded-full bg-accent shadow-[0_0_10px_2px] shadow-accent/60"
+          aria-hidden="true"
+        ></span>
+        For India's 15M GST-registered businesses
+      </div>
+
+      <h1 class="moon-rise mt-8 font-display text-hero font-normal text-base-100 [animation-delay:80ms]">
+        An <span class="italic text-accent">AI agent</span>
+        that runs your <span class="whitespace-nowrap">back office.</span>
+      </h1>
+
+      <p class="moon-rise mt-8 max-w-xl text-lead font-light text-base-100/65 [animation-delay:160ms]">
+        Nila runs the back office — invoicing, approvals, GST, collections — and
+        after six months knows your pricing, clients, and patterns better than
+        you do.
+      </p>
+
+      <div class="moon-rise mt-10 [animation-delay:240ms]">
+        <.link
+          navigate={~p"/today"}
+          class="group inline-flex h-11 items-center gap-2 rounded-md bg-base-100 px-6 text-small font-medium text-base-content shadow-[0_0_30px_-4px] shadow-base-100/40 transition hover:shadow-[0_0_44px_-2px] hover:shadow-base-100/55"
+        >
+          Open the app
+          <.icon
+            name="hero-arrow-right"
+            class="size-4 transition group-hover:translate-x-0.5"
+          />
+        </.link>
+      </div>
+
+      <%!-- Living proof, recessed into the night: the work moving on its own,
+           not a product screenshot. One quiet line, low contrast — a glance at
+           something already happening, not a UI being presented. --%>
+      <div class="moon-rise mt-20 w-full max-w-xl [animation-delay:340ms]">
+        <p class="text-label font-medium uppercase text-base-100/35">
+          Happening right now
+        </p>
+        <dl class="mt-5 divide-y divide-base-100/10 border-y border-base-100/10">
+          <div class="flex items-baseline gap-4 py-3.5 text-left">
+            <dt class="flex min-w-0 flex-1 items-center gap-2.5 text-small text-base-100/65">
+              <span class="size-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true"></span>
+              <span class="truncate">Philips approval chased — 9 days, 0 nudges from you</span>
+            </dt>
+            <dd class="font-display text-body tabular-nums text-base-100/80">₹4,82,150</dd>
+          </div>
+          <div class="flex items-baseline gap-4 py-3.5 text-left">
+            <dt class="flex min-w-0 flex-1 items-center gap-2.5 text-small text-base-100/65">
+              <span class="size-1.5 shrink-0 rounded-full bg-base-100/30" aria-hidden="true"></span>
+              <span class="truncate">Siemens PO extracted, waiting on a human</span>
+            </dt>
+            <dd class="font-display text-body tabular-nums text-base-100/80">₹2,18,000</dd>
+          </div>
+          <div class="flex items-baseline gap-4 py-3.5 text-left">
+            <dt class="flex min-w-0 flex-1 items-center gap-2.5 text-small text-base-100/45">
+              <span class="size-1.5 shrink-0 rounded-full bg-success/70" aria-hidden="true"></span>
+              <span class="truncate line-through decoration-base-100/20">
+                Elekta cleared via NEFT
+              </span>
+            </dt>
+            <dd class="font-display text-body tabular-nums text-base-100/45">₹1,07,000</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ── RUNS: documents in, records out, no one in the middle ──────────── --%>
+  <section id="runs" class="mx-auto max-w-6xl px-4 py-24 sm:px-6 sm:py-32">
+    <div class="max-w-2xl">
+      <h2 class="font-display text-h2 font-normal">
+        Documents in. Records out.
+        <span class="italic text-base-content/50">No one in the middle.</span>
+      </h2>
+      <p class="mt-5 text-lead font-light text-base-content/65">
+        A WhatsApp photo, a PDF, an email forward — whatever arrives, the agent
+        reads it, classifies it, and files a clean GST record. A person steps in
+        only when something genuinely needs a second look.
+      </p>
+    </div>
+
+    <div class="mt-14 grid items-stretch gap-4 lg:grid-cols-[1fr_auto_1fr] lg:gap-0">
+      <%!-- raw input, muted --%>
+      <div class="rounded-box border border-base-300/70 bg-base-200/40 p-5 sm:p-6">
+        <p class="text-label font-semibold uppercase text-base-content/45">
+          What arrives
+        </p>
+        <ul class="mt-3 divide-y divide-base-300/50">
+          <%= for {icon, name, meta} <- [
+            {"hero-document-text", "service_report.pdf", "Philips · CT scanner · 3 pages"},
+            {"hero-camera", "field_photo.jpg", "WhatsApp · sign-off page"},
+            {"hero-envelope", "PO copy · fwd: approval", "Email · Apollo Chennai"}
+          ] do %>
+            <li class="flex items-center gap-3 py-3 first:pt-2">
+              <.icon name={icon} class="size-4 shrink-0 text-base-content/40" />
+              <div class="min-w-0">
+                <p class="truncate text-small font-medium">{name}</p>
+                <p class="truncate text-micro text-base-content/50">{meta}</p>
+              </div>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+
+      <%!-- the agent, between the two --%>
+      <div class="flex flex-col items-center justify-center gap-2 lg:px-7">
+        <span class="grid size-10 place-items-center rounded-full bg-base-content text-base-100 shadow-moon">
+          <.icon name="hero-sparkles" class="size-4" />
+        </span>
+        <.icon name="hero-arrow-down" class="size-4 text-base-content/40 lg:hidden" />
+        <.icon name="hero-arrow-right" class="hidden size-4 text-base-content/40 lg:block" />
+      </div>
+
+      <%!-- clean record, elevated: the payoff --%>
+      <div class="rounded-box border border-base-300 bg-base-100 p-5 shadow-moon-lg sm:p-6">
+        <p class="text-label font-semibold uppercase text-moon">
+          What Nila files
+        </p>
+        <div class="mt-4">
+          <p class="text-small font-semibold tracking-tight tabular-nums">
+            INV-2026-0421
+          </p>
+          <p class="mt-0.5 text-micro text-base-content/50">
+            Apollo Chennai · CT scanner service
+          </p>
+          <p class="mt-3 font-display text-h3 font-normal leading-none tabular-nums">
+            ₹4,82,150<span class="text-base-content/40">.00</span>
+          </p>
+        </div>
+        <dl class="mt-5 space-y-2.5 border-t border-base-300/40 pt-4">
+          <%= for {label, value} <- [
+            {"Tax", "CGST 9% + SGST 9%"},
+            {"PO match", "PO-7741"},
+            {"Approver", "Arun K · Philips South"}
+          ] do %>
+            <div class="flex items-center justify-between gap-3 text-fine">
+              <dt class="text-base-content/50">{label}</dt>
+              <dd class="font-medium tabular-nums">{value}</dd>
+            </div>
+          <% end %>
+        </dl>
+        <p class="mt-4 flex items-center gap-1.5 text-micro font-medium text-success">
+          <.icon name="hero-check-circle" class="size-3.5" /> All fields verified
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ── LEARNS: the moat — night band, the thing Zoho can't copy ───────── --%>
+  <section class="moonlight-night relative overflow-hidden border-y border-base-100/5 text-base-100">
+    <div class="mx-auto max-w-6xl px-4 py-24 sm:px-6 sm:py-32">
+      <div class="grid gap-12 lg:grid-cols-12 lg:gap-16">
+        <div class="lg:col-span-5">
+          <p class="text-eyebrow font-semibold uppercase text-base-100/40">
+            Why it isn't just better software
+          </p>
+          <h2 class="mt-4 font-display text-h2 font-normal text-base-100">
+            Every month, it knows your business <span class="italic text-accent">better.</span>
+          </h2>
+          <p class="mt-6 text-lead font-light text-base-100/65">
+            Forms don't learn. An agent does. Every quote, invoice, and payment
+            teaches Nila your pricing, your clients, your GST patterns — until the
+            paperwork runs the way you would have run it, without being asked.
+          </p>
+        </div>
+
+        <div class="lg:col-span-7">
+          <dl class="grid gap-px overflow-hidden rounded-box border border-base-100/10 bg-base-100/10 sm:grid-cols-2">
+            <%= for {month, label, body} <- [
+              {"Month 1", "Learns your catalogue", "Maps your service items to HSN codes and the rates you actually bill — not a generic table."},
+              {"Month 2", "Learns your clients", "Knows Apollo pays in 40 days and which contact signs off, so it chases the right person at the right time."},
+              {"Month 3", "Learns your exceptions", "Recognises the edge cases you used to fix by hand and starts handling them itself."},
+              {"Month 6", "Runs without you", "Drafts, files, and chases on its own. You approve exceptions; it does the rest."}
+            ] do %>
+              <div class="bg-[oklch(24%_0.05_245)] p-6">
+                <p class="text-label font-semibold uppercase text-accent/80">
+                  {month}
+                </p>
+                <p class="mt-2 font-display text-h4 text-base-100">{label}</p>
+                <p class="mt-2 text-small font-light text-base-100/60">
+                  {body}
+                </p>
+              </div>
+            <% end %>
+          </dl>
+          <p class="mt-5 text-fine text-base-100/40">
+            That accumulated context is the moat. It can't be cloned by bolting
+            AI onto software built for humans filling forms.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ── COLLECTS: you stop chasing, it still gets paid ─────────────────── --%>
+  <section id="collects" class="mx-auto max-w-6xl px-4 py-24 sm:px-6 sm:py-32">
+    <div class="grid items-center gap-12 lg:grid-cols-12 lg:gap-16">
+      <div class="lg:col-span-5">
+        <h2 class="font-display text-h2 font-normal">
+          You stop chasing. <span class="italic text-base-content/50">It still gets paid.</span>
+        </h2>
+        <p class="mt-6 text-lead font-light text-base-content/65">
+          Nila runs the follow-up in the background — composing, sending,
+          reminding, reading the replies — and pulls you in only when a human is
+          actually needed.
+        </p>
+        <p class="mt-7 text-fine text-base-content/55">
+          Live for Philips today. Siemens and Elekta approval chains next.
+        </p>
+      </div>
+
+      <div class="lg:col-span-7">
+        <div class="overflow-hidden rounded-box border border-base-300 bg-base-100 shadow-moon-lg">
+          <div class="flex items-center justify-between border-b border-base-300/60 px-5 py-4 sm:px-6">
+            <div class="min-w-0">
+              <p class="truncate text-small font-semibold tracking-tight">
+                Philips · CT scanner service
+              </p>
+              <p class="mt-0.5 text-fine text-base-content/55 tabular-nums">
+                INV-2026-0421 · Apollo Chennai
+              </p>
+            </div>
+            <p class="text-small font-semibold tabular-nums">₹4,82,150.00</p>
+          </div>
+
+          <div class="flex items-center gap-4 px-5 py-7 sm:px-6">
+            <span class="grid size-11 shrink-0 place-items-center rounded-full bg-success/15 text-success">
+              <.icon name="hero-check" class="size-6" />
+            </span>
+            <div class="min-w-0">
+              <p class="text-h4 font-semibold tracking-tight">Approved</p>
+              <p class="mt-0.5 text-fine text-base-content/55">
+                by Arun K · Philips South · in 9 days
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 border-t border-base-300/60 bg-base-200/30 px-5 py-3 text-fine text-base-content/55 sm:px-6">
+            <span class="flex items-center gap-1.5">
+              Sent <span class="text-base-content/30">→</span>
+              Reminder ×1 <span class="text-base-content/30">→</span>
+              <span class="font-medium text-base-content/75">Approved</span>
+            </span>
+            <span class="ml-auto font-medium tabular-nums text-base-content/70">
+              0 nudges from you
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ── CLOSING CTA: close in night, bookend the hero ──────────────────── --%>
+  <section class="moonlight-night relative overflow-hidden border-t border-base-100/5 text-base-100">
+    <div class="mx-auto max-w-3xl px-4 py-28 text-center sm:px-6 sm:py-36">
+      <h2 class="font-display text-statement font-normal text-base-100">
+        Hand it the paperwork. <span class="block italic text-accent">Go run the business.</span>
+      </h2>
+      <p class="mx-auto mt-7 max-w-lg text-lead font-light text-base-100/60">
+        Built for the back-office teams that service Philips, Siemens, Varian, and
+        Elekta equipment across India.
+      </p>
+      <div class="mt-10 flex justify-center">
+        <.link
+          navigate={~p"/today"}
+          class="group inline-flex h-12 items-center gap-2 rounded-md bg-base-100 px-6 text-body font-medium text-base-content shadow-[0_0_34px_-4px] shadow-base-100/40 transition hover:shadow-[0_0_48px_-2px] hover:shadow-base-100/55"
+        >
+          Open the app
+          <.icon
+            name="hero-arrow-right"
+            class="size-4 transition group-hover:translate-x-0.5"
+          />
+        </.link>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ── FOOTER ─────────────────────────────────────────────────────────── --%>
+  <footer class="border-t border-base-300/60 bg-base-200/35">
+    <div class="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-14">
+      <div class="grid gap-8 lg:grid-cols-12 lg:items-end">
+        <div class="lg:col-span-7">
+          <a href="/" class="inline-flex items-center">
+            <.logo class="h-6 w-auto text-base-content" />
+          </a>
+          <p class="mt-4 max-w-xl font-display text-h4 font-normal text-base-content/80">
+            An AI agent for the Indian back office.
+          </p>
+        </div>
+
+        <div class="lg:col-span-5 lg:text-right">
+          <a
+            href="mailto:hello@nilahq.com"
+            class="inline-flex items-center gap-2 text-small font-medium text-base-content/75 transition hover:text-base-content"
+          >
+            hello@nilahq.com <.icon name="hero-arrow-up-right" class="size-3.5" />
+          </a>
+        </div>
+      </div>
+
+      <div class="mt-10 flex flex-col gap-2 border-t border-base-300/60 pt-5 text-micro text-base-content/50 sm:flex-row sm:items-center sm:justify-between">
+        <p>© 2026 Nila</p>
+        <p>
+          Operated by <span class="text-base-content/65">Kaguya Media Private Limited</span>
+          · GSTIN <span class="tabular-nums text-base-content/65">33AALCK1118R1Z8</span>
+          · Chennai, India
+        </p>
+      </div>
+    </div>
+  </footer>
+</div>

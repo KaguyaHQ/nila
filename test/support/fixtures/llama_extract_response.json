@@ -1,0 +1,837 @@
+{
+  "configuration": null,
+  "configuration_id": null,
+  "created_at": "2026-05-30T08:48:46.518041Z",
+  "document_input_value": "3a183fc9-9e04-4d49-937f-fd887ebc7c2e",
+  "error_message": null,
+  "extract_metadata": {
+    "field_metadata": {
+      "document_metadata": {
+        "amount_in_words": {
+          "citation": [
+            {
+              "bounding_boxes": [
+                {
+                  "h": 7.851159655464046,
+                  "w": 371.1608914211366,
+                  "x": 35.0939946449838,
+                  "y": 682.4316143983423
+                }
+              ],
+              "matching_text": "**Amount in words**: RUPEES FIFTY-EIGHT THOUSAND THREE HUNDRED FIFTEEN AND PAISE SIXTY ONLY",
+              "page": 1,
+              "page_dimensions": {
+                "height": 841.89,
+                "width": 595.28
+              }
+            }
+          ],
+          "confidence": 0.9999998873562772,
+          "extraction_confidence": 0.9999998873562772,
+          "parsing_confidence": 1.0,
+          "reasoning": "VERBATIM EXTRACTION"
+        },
+        "bill_to": {
+          "address": {
+            "citation": [
+              {
+                "bounding_boxes": [
+                  {
+                    "h": 67.69299999999998,
+                    "w": 105.58300000000003,
+                    "x": 200.409,
+                    "y": 270.067
+                  }
+                ],
+                "matching_text": "Philips India Limited\nC/o. UPS SCS India Pvt Ltd.\n21, MRH Road, Madhavaram\n600066 CHENNAI,\nTamil Nadu - State code 33\nGSTIN: 33AABCP9487A1ZG",
+                "page": 1,
+                "page_dimensions": {
+                  "height": 841.89,
+                  "width": 595.28
+                }
+              }
+            ],
+            "confidence": 0.9732233842499077,
+            "extraction_confidence": 0.9732233842499077,
+            "parsing_confidence": 1.0
+          },
+          "gstin": {
+            "citation": [
+              {
+                "bounding_boxes": [
+                  {
+                    "h": 22.34,
+                    "w": 98.72,
+                    "x": 200.41,
+                    "y": 315.42
+                  }
+                ],
+                "matching_text": "Tamil Nadu - State code 33\nGSTIN: 33AABCP9487A1ZG",
+                "page": 1,
+                "page_dimensions": {
+                  "height": 841.89,
+                  "width": 595.28
+                }
+              }
+            ],
+            "confidence": 1.0,
+            "extraction_confidence": 1.0,
+            "parsing_confidence": 1.0
+          },
+          "name": {
+            "citation": [
+              {
+                "bounding_boxes": [
+                  {
+                    "h": 65.93,
+                    "w": 90.03,
+                    "x": 33.17,
+                    "y": 338.71
+                  }
+                ],
+                "matching_text": "C/o Philips India Limited",
+                "page": 2,
+                "page_dimensions": {
+                  "height": 841.89,
+                  "width": 595.28
+                }
+              }
+            ],
+            "confidence": 1.0,
+            "extraction_confidence": 1.0,
+            "parsing_confidence": 1.0
+          },
+          "reasoning": "VERBATIM EXTRACTION",
+          "state_code": {
+            "citation": [
+              {
+                "bounding_boxes": [
+                  {
+                    "h": 22.34,
+                    "w": 98.72,
+                    "x": 200.41,
+                    "y": 315.42
+                  }
+                ],
+                "matching_text": "Tamil Nadu - State code 33\nGSTIN: 33AABCP9487A1ZG",
+                "page": 1,
+                "page_dimensions": {
+                  "height": 841.89,
+                  "width": 595.28
+                }
+              }
+            ],
+            "confidence": 1.0,
+            "extraction_confidence": 1.0,
+            "parsing_confidence": 1.0
+          }
+        },
+        "currency": {
+          "citation": [
+            {
+              "bounding_boxes": [
+                {
+                  "h": 30.69116572265631,
+                  "w": 530.7476554455269,
+                  "x": 32.42247288907679,
+                  "y": 516.0221318472513
+                }
+              ],
+              "matching_text": "The not to exceed (NTE) purchase order price of INR 58,315.60 shall not be exceeded without prior written authorization from Philips purchasing department.",
+              "page": 2,
+              "page_dimensions": {
+                "height": 841.89,
+                "width": 595.28
+              }
+            }
+          ],
+          "confidence": 1.0,
+          "extraction_confidence": 1.0,
+          "parsing_confidence": 1.0,
+          "reasoning": "VERBATIM EXTRACTION"
+        },
+        "line_items": [
+          {
+            "amount_incl_tax": {
+              "citation": [
+                {
+                  "bounding_boxes": [
+                    {
+                      "h": 131.80564588712363,
+                      "w": 529.5277614156583,
+                      "x": 33.46743677889196,
+                      "y": 541.9565609172543
+                    }
+                  ],
+                  "matching_text": "|      |                                                                                                                                 |              | Amount incl. tax          |...",
+                  "page": 1,
+                  "page_dimensions": {
+                    "height": 841.89,
+                    "width": 595.28
+                  }
+                }
+              ],
+              "confidence": 0.9959994607934327,
+              "extraction_confidence": 0.9959994607934327,
+              "parsing_confidence": 1.0
+            },
+            "cgst_amount": {
+              "citation": [
+                {
+                  "bounding_boxes": [
+                    {
+                      "h": 131.80564588712363,
+                      "w": 529.5277614156583,
+                      "x": 33.46743677889196,
+                      "y": 541.9565609172543
+                    }
+                  ],
+                  "matching_text": "|      |                                                                                                                                 |              | Total central tax amount  |...",
+                  "page": 1,
+                  "page_dimensions": {
+                    "height": 841.89,
+                    "width": 595.28
+                  }
+                }
+              ],
+              "confidence": 0.9999405349263414,
+              "extraction_confidence": 0.9999405349263414,
+              "parsing_confidence": 1.0
+            },
+            "cgst_rate": {
+              "citation": [
+                {
+                  "bounding_boxes": [
+                    {
+                      "h": 131.80564588712363,
+                      "w": 529.5277614156583,
+                      "x": 33.46743677889196,
+                      "y": 541.9565609172543
+                    }
+                  ],
+                  "matching_text": "| 10   | Labor & Mechanical support<br/>**Delivery date: 18.05.2026**<br/><br/>HSN/SAC: 998719<br/>Vendor material: 74501651-43103809-40 | 1 EA         | Net amount                | 49,420.00/1 EA | 4...",
+                  "page": 1,
+                  "page_dimensions": {
+                    "height": 841.89,
+                    "width": 595.28
+                  }
+                }
+              ],
+              "confidence": 1.0,
+              "extraction_confidence": 1.0,
+              "parsing_confidence": 1.0
+            },
+            "description": {
+              "citation": [
+                {
+                  "bounding_boxes": [
+                    {
+                      "h": 131.80564588712363,
+                      "w": 529.5277614156583,
+                      "x": 33.46743677889196,
+                      "y": 541.9565609172543
+                    }
+                  ],
+                  "matching_text": "| 10   | Labor & Mechanical support<br/>**Delivery date: 18.05.2026**<br/><br/>HSN/SAC: 998719<br/>Vendor material: 74501651-43103809-40 | 1 EA         | Net amount                | 49,420.00/1 EA | 4...",
+                  "page": 1,
+                  "page_dimensions": {
+                    "height": 841.89,
+                    "width": 595.28
+                  }
+                }
+              ],
+              "confidence": 1.0,
+              "extraction_confidence": 1.0,
+              "parsing_confidence": 1.0
+            },
+            "hsn_sac": {
+              "citation": [
+                {
+                  "bounding_boxes": [
+                    {
+                      "h": 131.80564588712363,
+                      "w": 529.5277614156583,
+                      "x": 33.46743677889196,
+                      "y": 541.9565609172543
+                    }
+                  ],
+                  "matching_text": "| 10   | Labor & Mechanical support<br/>**Delivery date: 18.05.2026**<br/><br/>HSN/SAC: 998719<br/>Vendor material: 74501651-43103809-40 | 1 EA         | Net amount                | 49,420.00/1 EA | 4...",
+                  "page": 1,
+                  "page_dimensions": {
+                    "height": 841.89,
+                    "width": 595.28
+                  }
+                }
+              ],
+              "confidence": 1.0,
+              "extraction_confidence": 1.0,
+              "parsing_confidence": 1.0
+            },
+            "net_amount": {
+              "citation": [
+                {
+                  "bounding_boxes": [
+                    {
+                      "h": 131.80564588712363,
+                      "w": 529.5277614156583,
+                      "x": 33.46743677889196,
+                      "y": 541.9565609172543
+                    }
+                  ],
+                  "matching_text": "| 10   | Labor & Mechanical support<br/>**Delivery date: 18.05.2026**<br/><br/>HSN/SAC: 998719<br/>Vendor material: 74501651-43103809-40 | 1 EA         | Net amount                | 49,420.00/1 EA...",
+                  "page": 1,
+                  "page_dimensions": {
+                    "height": 841.89,
+                    "width": 595.28
+                  }
+                }
+              ],
+              "confidence": 0.9981071666444514,
+              "extraction_confidence": 0.9981071666444514,
+              "parsing_confidence": 1.0
+            },
+            "quantity": {
+              "citation": [
+                {
+                  "bounding_boxes": [
+                    {
+                      "h": 131.80564588712363,
+                      "w": 529.5277614156583,
+                      "x": 33.46743677889196,
+                      "y": 541.9565609172543
+                    }
+                  ],
+                  "matching_text": "| 10   | Labor & Mechanical support<br/>**Delivery date: 18.05.2026**<br/><br/>HSN/SAC: 998719<br/>Vendor material: 74501651-43103809-40 | 1 EA         | Net amount                | 49,420.00/1 EA | 4...",
+                  "page": 1,
+                  "page_dimensions": {
+                    "height": 841.89,
+                    "width": 595.28
+                  }
+                }
+              ],
+              "confidence": 1.0,
+              "extraction_confidence": 1.0,
+              "parsing_confidence": 1.0
+            },
+            "reasoning": "VERBATIM EXTRACTION",
+            "sgst_amount": {
+              "citation": [
+                {
+                  "bounding_boxes": [
+                    {
+                      "h": 131.80564588712363,
+                      "w": 529.5277614156583,
+                      "x": 33.46743677889196,
+                      "y": 541.9565609172543
+                    }
+                  ],
+                  "matching_text": "|      |                                                                                                                                 |              | Total central tax amount  |...",
+                  "page": 1,
+                  "page_dimensions": {
+                    "height": 841.89,
+                    "width": 595.28
+                  }
+                }
+              ],
+              "confidence": 1.0,
+              "extraction_confidence": 1.0,
+              "parsing_confidence": 1.0
+            },
+            "sgst_rate": {
+              "citation": [
+                {
+                  "bounding_boxes": [
+                    {
+                      "h": 131.80564588712363,
+                      "w": 529.5277614156583,
+                      "x": 33.46743677889196,
+                      "y": 541.9565609172543
+                    }
+                  ],
+                  "matching_text": "| 10   | Labor & Mechanical support<br/>**Delivery date: 18.05.2026**<br/><br/>HSN/SAC: 998719<br/>Vendor material: 74501651-43103809-40 | 1 EA         | Net amount                | 49,420.00/1 EA | 4...",
+                  "page": 1,
+                  "page_dimensions": {
+                    "height": 841.89,
+                    "width": 595.28
+                  }
+                }
+              ],
+              "confidence": 1.0,
+              "extraction_confidence": 1.0,
+              "parsing_confidence": 1.0
+            },
+            "unit_price": {
+              "citation": [
+                {
+                  "bounding_boxes": [
+                    {
+                      "h": 131.80564588712363,
+                      "w": 529.5277614156583,
+                      "x": 33.46743677889196,
+                      "y": 541.9565609172543
+                    }
+                  ],
+                  "matching_text": "| 10   | Labor & Mechanical support<br/>**Delivery date: 18.05.2026**<br/><br/>HSN/SAC: 998719<br/>Vendor material: 74501651-43103809-40 | 1 EA         | Net amount                | 49,420.00/1 EA...",
+                  "page": 1,
+                  "page_dimensions": {
+                    "height": 841.89,
+                    "width": 595.28
+                  }
+                }
+              ],
+              "confidence": 0.9999863140698758,
+              "extraction_confidence": 0.9999863140698758,
+              "parsing_confidence": 1.0
+            },
+            "uom": {
+              "citation": [
+                {
+                  "bounding_boxes": [
+                    {
+                      "h": 131.80564588712363,
+                      "w": 529.5277614156583,
+                      "x": 33.46743677889196,
+                      "y": 541.9565609172543
+                    }
+                  ],
+                  "matching_text": "...*Delivery date: 18.05.2026**<br/><br/>HSN/SAC: 998719<br/>Vendor material: 74501651-43103809-40 | 1 EA         | Net amount                | 49,420.00/1 EA | 49,420.00 |",
+                  "page": 1,
+                  "page_dimensions": {
+                    "height": 841.89,
+                    "width": 595.28
+                  }
+                }
+              ],
+              "confidence": 1.0,
+              "extraction_confidence": 1.0,
+              "parsing_confidence": 1.0
+            }
+          }
+        ],
+        "nte_amount": {
+          "citation": [
+            {
+              "bounding_boxes": [
+                {
+                  "h": 30.69116572265631,
+                  "w": 530.7476554455269,
+                  "x": 32.42247288907679,
+                  "y": 516.0221318472513
+                }
+              ],
+              "matching_text": "The not to exceed (NTE) purchase order price of INR 58,315.60 shall not be exceeded without prior written authorization from Philips purchasing department.",
+              "page": 2,
+              "page_dimensions": {
+                "height": 841.89,
+                "width": 595.28
+              }
+            }
+          ],
+          "confidence": 0.9999879120999408,
+          "extraction_confidence": 0.9999879120999408,
+          "parsing_confidence": 1.0,
+          "reasoning": "The NTE clause on page 2 states: 'The not to exceed (NTE) purchase order price of INR 58,315.60 shall not be exceeded...'."
+        },
+        "payment_terms": {
+          "citation": [
+            {
+              "bounding_boxes": [
+                {
+                  "h": 29.48111428192886,
+                  "w": 175.61543375095277,
+                  "x": 367.0910229658918,
+                  "y": 265.1191499714177
+                }
+              ],
+              "matching_text": "**Incoterms**: FCA CHENNAI\n**Payment terms**: Payment within 45 days after date of invoice\n**Place of supply**: Tamil Nadu - State code 33",
+              "page": 1,
+              "page_dimensions": {
+                "height": 841.89,
+                "width": 595.28
+              }
+            }
+          ],
+          "confidence": 1.0,
+          "extraction_confidence": 1.0,
+          "parsing_confidence": 1.0,
+          "reasoning": "VERBATIM EXTRACTION"
+        },
+        "place_of_supply": {
+          "citation": [
+            {
+              "bounding_boxes": [
+                {
+                  "h": 22.34,
+                  "w": 98.22,
+                  "x": 200.41,
+                  "y": 315.42
+                }
+              ],
+              "matching_text": "Tamil Nadu - State code 33\nGSTIN: 33AEWPH4158J1Z3",
+              "page": 1,
+              "page_dimensions": {
+                "height": 841.89,
+                "width": 595.28
+              }
+            }
+          ],
+          "confidence": 0.9999997850210227,
+          "extraction_confidence": 0.9999997850210227,
+          "parsing_confidence": 1.0,
+          "reasoning": "VERBATIM EXTRACTION"
+        },
+        "po_date": {
+          "citation": [
+            {
+              "bounding_boxes": [
+                {
+                  "h": 18.764457564786586,
+                  "w": 143.596447775343,
+                  "x": 367.5223400771723,
+                  "y": 72.10759826436858
+                }
+              ],
+              "matching_text": "**Document number**: IN90 - 4700329424\n**Date of issue**: 18.05.2026",
+              "page": 1,
+              "page_dimensions": {
+                "height": 841.89,
+                "width": 595.28
+              }
+            }
+          ],
+          "confidence": 1.0,
+          "extraction_confidence": 1.0,
+          "parsing_confidence": 1.0,
+          "reasoning": "VERBATIM EXTRACTION"
+        },
+        "po_number": {
+          "citation": [
+            {
+              "bounding_boxes": [
+                {
+                  "h": 18.764457564786586,
+                  "w": 143.596447775343,
+                  "x": 367.5223400771723,
+                  "y": 72.10759826436858
+                }
+              ],
+              "matching_text": "**Document number**: IN90 - 4700329424\n**Date of issue**: 18.05.2026",
+              "page": 1,
+              "page_dimensions": {
+                "height": 841.89,
+                "width": 595.28
+              }
+            }
+          ],
+          "confidence": 1.0,
+          "extraction_confidence": 1.0,
+          "parsing_confidence": 1.0,
+          "reasoning": "Extracted from '**Document number**: IN90 - 4700329424'. The PO number is the digits: 4700329424."
+        },
+        "ship_to": {
+          "address": {
+            "citation": [
+              {
+                "bounding_boxes": [
+                  {
+                    "h": 33.68,
+                    "w": 105.44,
+                    "x": 33.17,
+                    "y": 270.07
+                  }
+                ],
+                "matching_text": "KILPAUK MEDICAL COLLEGE\n822, Poonamallee High Road\n600010 CHENNAI",
+                "page": 1,
+                "page_dimensions": {
+                  "height": 841.89,
+                  "width": 595.28
+                }
+              }
+            ],
+            "confidence": 0.9788564182381868,
+            "extraction_confidence": 0.9788564182381868,
+            "parsing_confidence": 1.0
+          },
+          "name": {
+            "citation": [
+              {
+                "bounding_boxes": [
+                  {
+                    "h": 33.68,
+                    "w": 105.44,
+                    "x": 33.17,
+                    "y": 270.07
+                  }
+                ],
+                "matching_text": "KILPAUK MEDICAL COLLEGE\n822, Poonamallee High Road\n600010 CHENNAI",
+                "page": 1,
+                "page_dimensions": {
+                  "height": 841.89,
+                  "width": 595.28
+                }
+              }
+            ],
+            "confidence": 1.0,
+            "extraction_confidence": 1.0,
+            "parsing_confidence": 1.0
+          },
+          "reasoning": "VERBATIM EXTRACTION"
+        },
+        "supplier": {
+          "address": {
+            "citation": [
+              {
+                "bounding_boxes": [
+                  {
+                    "h": 83.86964918942337,
+                    "w": 154.74370700862238,
+                    "x": 85.99405288085937,
+                    "y": 153.6696774763898
+                  }
+                ],
+                "matching_text": "BREEZETECH\n37/15A, Mullai Street, Kumaran\nNagar Extn 2, Padi,\n600050 CHENNAI\nTamil Nadu - State code 33\nGSTIN: 33AEWPH4158J1Z3",
+                "page": 1,
+                "page_dimensions": {
+                  "height": 841.89,
+                  "width": 595.28
+                }
+              }
+            ],
+            "confidence": 0.999976043337546,
+            "extraction_confidence": 0.999976043337546,
+            "parsing_confidence": 1.0
+          },
+          "gstin": {
+            "citation": [
+              {
+                "bounding_boxes": [
+                  {
+                    "h": 22.34,
+                    "w": 98.22,
+                    "x": 200.41,
+                    "y": 315.42
+                  }
+                ],
+                "matching_text": "Tamil Nadu - State code 33\nGSTIN: 33AEWPH4158J1Z3",
+                "page": 1,
+                "page_dimensions": {
+                  "height": 841.89,
+                  "width": 595.28
+                }
+              }
+            ],
+            "confidence": 1.0,
+            "extraction_confidence": 1.0,
+            "parsing_confidence": 1.0
+          },
+          "name": {
+            "citation": [
+              {
+                "bounding_boxes": [
+                  {
+                    "h": 15.0,
+                    "w": 62.0,
+                    "x": 86.74,
+                    "y": 152.16
+                  }
+                ],
+                "matching_text": "BREEZETECH",
+                "page": 1,
+                "page_dimensions": {
+                  "height": 841.89,
+                  "width": 595.28
+                }
+              }
+            ],
+            "confidence": 0.9999995798258142,
+            "extraction_confidence": 0.9999995798258142,
+            "parsing_confidence": 1.0
+          },
+          "reasoning": "VERBATIM EXTRACTION",
+          "state_code": {
+            "citation": [
+              {
+                "bounding_boxes": [
+                  {
+                    "h": 22.34,
+                    "w": 98.22,
+                    "x": 200.41,
+                    "y": 315.42
+                  }
+                ],
+                "matching_text": "Tamil Nadu - State code 33\nGSTIN: 33AEWPH4158J1Z3",
+                "page": 1,
+                "page_dimensions": {
+                  "height": 841.89,
+                  "width": 595.28
+                }
+              }
+            ],
+            "confidence": 1.0,
+            "extraction_confidence": 1.0,
+            "parsing_confidence": 1.0
+          }
+        },
+        "total_cgst_amount": {
+          "citation": [
+            {
+              "bounding_boxes": [
+                {
+                  "h": 131.80564588712363,
+                  "w": 529.5277614156583,
+                  "x": 33.46743677889196,
+                  "y": 541.9565609172543
+                }
+              ],
+              "matching_text": "|      |                                                                                                                                 |              | Central GST (9%)          |...",
+              "page": 1,
+              "page_dimensions": {
+                "height": 841.89,
+                "width": 595.28
+              }
+            }
+          ],
+          "confidence": 0.9999929782071433,
+          "extraction_confidence": 0.9999929782071433,
+          "parsing_confidence": 1.0,
+          "reasoning": "VERBATIM EXTRACTION"
+        },
+        "total_gross_amount": {
+          "citation": [
+            {
+              "bounding_boxes": [
+                {
+                  "h": 131.80564588712363,
+                  "w": 529.5277614156583,
+                  "x": 33.46743677889196,
+                  "y": 541.9565609172543
+                }
+              ],
+              "matching_text": "|      |                                                                                                                                 |              | Amount incl. tax          |...",
+              "page": 1,
+              "page_dimensions": {
+                "height": 841.89,
+                "width": 595.28
+              }
+            }
+          ],
+          "confidence": 0.9999946172474017,
+          "extraction_confidence": 0.9999946172474017,
+          "parsing_confidence": 1.0,
+          "reasoning": "VERBATIM EXTRACTION"
+        },
+        "total_igst_amount": {
+          "confidence": 0.9999993295729128,
+          "extraction_confidence": 0.9999993295729128,
+          "parsing_confidence": 1.0,
+          "reasoning": "No IGST is mentioned in the line item or totals; only CGST and SGST are present."
+        },
+        "total_net_amount": {
+          "citation": [
+            {
+              "bounding_boxes": [
+                {
+                  "h": 131.80564588712363,
+                  "w": 529.5277614156583,
+                  "x": 33.46743677889196,
+                  "y": 541.9565609172543
+                }
+              ],
+              "matching_text": "| 10   | Labor & Mechanical support<br/>**Delivery date: 18.05.2026**<br/><br/>HSN/SAC: 998719<br/>Vendor material: 74501651-43103809-40 | 1 EA         | Net amount                | 49,420.00/1 EA...",
+              "page": 1,
+              "page_dimensions": {
+                "height": 841.89,
+                "width": 595.28
+              }
+            }
+          ],
+          "confidence": 0.9951031151341505,
+          "extraction_confidence": 0.9951031151341505,
+          "parsing_confidence": 1.0,
+          "reasoning": "VERBATIM EXTRACTION"
+        },
+        "total_sgst_amount": {
+          "citation": [
+            {
+              "bounding_boxes": [
+                {
+                  "h": 131.80564588712363,
+                  "w": 529.5277614156583,
+                  "x": 33.46743677889196,
+                  "y": 541.9565609172543
+                }
+              ],
+              "matching_text": "|      |                                                                                                                                 |              | Central GST (9%)          |...",
+              "page": 1,
+              "page_dimensions": {
+                "height": 841.89,
+                "width": 595.28
+              }
+            }
+          ],
+          "confidence": 0.9999998621940971,
+          "extraction_confidence": 0.9999998621940971,
+          "parsing_confidence": 1.0,
+          "reasoning": "VERBATIM EXTRACTION"
+        }
+      },
+      "page_metadata": null,
+      "row_metadata": null
+    },
+    "parse_job_id": "pjb-az3zpvptd65qbnmi2hv11sl7du7m",
+    "parse_tier": null
+  },
+  "extract_result": {
+    "amount_in_words": "RUPEES FIFTY-EIGHT THOUSAND THREE HUNDRED FIFTEEN AND PAISE SIXTY ONLY",
+    "bill_to": {
+      "address": "Philips India Limited C/o. UPS SCS India Pvt Ltd. 21, MRH Road, Madhavaram 600066 CHENNAI, Tamil Nadu - State code 33",
+      "gstin": "33AABCP9487A1ZG",
+      "name": "Philips India Limited",
+      "state_code": "33"
+    },
+    "currency": "INR",
+    "line_items": [
+      {
+        "amount_incl_tax": 58315.6,
+        "cgst_amount": 4447.8,
+        "cgst_rate": 9.0,
+        "description": "Labor & Mechanical support",
+        "hsn_sac": "998719",
+        "igst_amount": null,
+        "igst_rate": null,
+        "net_amount": 49420.0,
+        "quantity": 1.0,
+        "sgst_amount": 4447.8,
+        "sgst_rate": 9.0,
+        "unit_price": 49420.0,
+        "uom": "EA"
+      }
+    ],
+    "nte_amount": 58315.6,
+    "payment_terms": "Payment within 45 days after date of invoice",
+    "place_of_supply": "Tamil Nadu - State code 33",
+    "po_date": "18.05.2026",
+    "po_number": "4700329424",
+    "ship_to": {
+      "address": "KILPAUK MEDICAL COLLEGE 822, Poonamallee High Road 600010 CHENNAI Tamil Nadu - State code 33",
+      "name": "KILPAUK MEDICAL COLLEGE"
+    },
+    "supplier": {
+      "address": "37/15A, Mullai Street, Kumaran Nagar Extn 2, Padi, 600050 CHENNAI Tamil Nadu - State code 33",
+      "gstin": "33AEWPH4158J1Z3",
+      "name": "BREEZETECH",
+      "state_code": "33"
+    },
+    "total_cgst_amount": 4447.8,
+    "total_gross_amount": 58315.6,
+    "total_igst_amount": 0.0,
+    "total_net_amount": 49420.0,
+    "total_sgst_amount": 4447.8
+  },
+  "file_input": "3a183fc9-9e04-4d49-937f-fd887ebc7c2e",
+  "id": "ext-xkuug0m6s3f2sp6bipn8kiok2oq1",
+  "metadata": null,
+  "project_id": "adcb0302-9675-491e-a91b-8a84c6383424",
+  "status": "COMPLETED",
+  "updated_at": "2026-05-30T08:49:21.603111Z"
+}

@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Runs the full precommit gate before code leaves the machine.
+# Bypass intentionally with: git push --no-verify
+echo "→ pre-push: mix precommit"
+mix precommit

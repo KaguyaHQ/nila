@@ -1,0 +1,423 @@
+/* See the Tailwind configuration guide for advanced usage
+   https://tailwindcss.com/docs/configuration */
+
+@import "tailwindcss" source(none);
+@source "../css";
+@source "../js";
+@source "../../lib/nila_web";
+
+/* A Tailwind plugin that makes "hero-#{ICON}" classes available.
+   The heroicons installation itself is managed by your mix.exs */
+@plugin "../vendor/heroicons";
+
+/* daisyUI Tailwind Plugin. You can update this file by fetching the latest version with:
+   curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui.js
+   Make sure to look at the daisyUI changelog: https://daisyui.com/docs/changelog/ */
+@plugin "../vendor/daisyui" {
+  themes: false;
+}
+
+/* daisyUI theme plugin. You can update this file by fetching the latest version with:
+  curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui-theme.js
+  Nila is light-mode only. The palette is "moonlight": a hushed sea-blue on a
+  deep midnight "ink" (#004865), warmed by a single sand accent (#d3c0aa), over
+  cool near-white surfaces. No purple — night over water. Low chroma, soft
+  luminance, calm not loud. See BRAND.md / DESIGN.md. Build your own at:
+  https://daisyui.com/theme-generator/ */
+@plugin "../vendor/daisyui-theme" {
+  name: "light";
+  default: true;
+  prefersdark: false;
+  color-scheme: "light";
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(96.8% 0.007 235);
+  --color-base-300: oklch(92% 0.008 235);
+  --color-base-content: oklch(30% 0.055 233);
+  --color-primary: oklch(47% 0.06 232);
+  --color-primary-content: oklch(99% 0.005 235);
+  --color-secondary: oklch(50% 0.018 258);
+  --color-secondary-content: oklch(99% 0.005 235);
+  --color-accent: oklch(80% 0.035 78);
+  --color-accent-content: oklch(30% 0.055 233);
+  --color-neutral: oklch(33% 0.06 233);
+  --color-neutral-content: oklch(98% 0.004 235);
+  --color-info: oklch(55% 0.09 235);
+  --color-info-content: oklch(98% 0.01 235);
+  --color-success: oklch(68% 0.12 162);
+  --color-success-content: oklch(98% 0.014 180.72);
+  --color-warning: oklch(77% 0.13 76);
+  --color-warning-content: oklch(30% 0.055 233);
+  --color-error: oklch(60% 0.17 22);
+  --color-error-content: oklch(98% 0.015 12.422);
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.875rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Web fonts. Switzer (variable, 100–900 + italic) for sans and Newsreader
+   (variable, normal 300–600 + italic 300–500) for the display serif are both
+   self-hosted from priv/static/fonts, served via NilaWeb.static_paths. No
+   runtime font CDN. Newsreader is split by unicode-range so only the subset
+   needed for visible glyphs is downloaded. */
+@font-face {
+  font-family: "Switzer";
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/switzer-wght-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Switzer";
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+  src: url("/fonts/switzer-wght-italic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Newsreader";
+  font-weight: 300 600;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/newsreader-vietnamese.woff2") format("woff2");
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "Newsreader";
+  font-weight: 300 600;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/newsreader-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Newsreader";
+  font-weight: 300 600;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/newsreader-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Newsreader";
+  font-weight: 300 500;
+  font-style: italic;
+  font-display: swap;
+  src: url("/fonts/newsreader-italic-vietnamese.woff2") format("woff2");
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "Newsreader";
+  font-weight: 300 500;
+  font-style: italic;
+  font-display: swap;
+  src: url("/fonts/newsreader-italic-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Newsreader";
+  font-weight: 300 500;
+  font-style: italic;
+  font-display: swap;
+  src: url("/fonts/newsreader-italic-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Type. Switzer is the body/UI sans; Newsreader (an editorial serif) is the
+   display face for hero and large headings. Tailwind v4 turns --font-display
+   into a `font-display` utility.
+   The serif reads contemplative at a lighter weight — display sits at
+   font-normal (400). */
+@theme {
+  --font-sans: "Switzer", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Newsreader", ui-serif, Georgia, Cambria, "Times New Roman",
+    serif;
+}
+
+/* Type scale. One ramp, named by role, with line-height and tracking bundled
+   into each step so markup never repeats them. Display steps are fluid (clamp)
+   and pair with `font-display`; body/label steps are fixed and use the sans.
+   Never reach for an arbitrary `text-[13.5px]` — pick the nearest step. The
+   scale is documented in docs/design/typography.md. */
+@theme {
+  /* Display & headings — fluid, serif. Pair with `font-display`. */
+  --text-hero: clamp(3.25rem, 1.9rem + 6vw, 5.25rem);
+  --text-hero--line-height: 0.96;
+  --text-hero--letter-spacing: -0.025em;
+
+  --text-statement: clamp(3rem, 2rem + 4.4vw, 4.5rem);
+  --text-statement--line-height: 1.02;
+  --text-statement--letter-spacing: -0.025em;
+
+  --text-h2: clamp(2.25rem, 1.7rem + 2.4vw, 3rem);
+  --text-h2--line-height: 1.05;
+  --text-h2--letter-spacing: -0.025em;
+
+  --text-h3: clamp(1.875rem, 1.4rem + 2.1vw, 2.5rem);
+  --text-h3--line-height: 1.05;
+  --text-h3--letter-spacing: -0.025em;
+
+  --text-h4: 1.25rem;
+  --text-h4--line-height: 1.35;
+  --text-h4--letter-spacing: -0.025em;
+
+  /* Body & UI — fixed, sans. */
+  --text-lead: 1.0625rem; /* 17px — hero/section intros */
+  --text-lead--line-height: 1.65;
+
+  --text-body: 0.9375rem; /* 15px — default reading copy */
+  --text-body--line-height: 1.7;
+
+  --text-small: 0.8125rem; /* 13px — dense copy, list rows */
+  --text-small--line-height: 1.6;
+
+  --text-fine: 0.75rem; /* 12px — metadata, timestamps */
+  --text-fine--line-height: 1.5;
+
+  --text-micro: 0.6875rem; /* 11px — captions, footnotes */
+  --text-micro--line-height: 1.4;
+
+  /* Uppercase labels — tracking bundled. */
+  --text-eyebrow: 0.6875rem; /* 11px — section kickers */
+  --text-eyebrow--line-height: 1;
+  --text-eyebrow--letter-spacing: 0.2em;
+
+  --text-label: 0.6875rem; /* 11px — UI micro-labels */
+  --text-label--line-height: 1;
+  --text-label--letter-spacing: 0.14em;
+}
+
+/* Add variants based on LiveView classes */
+@custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
+@custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
+@custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
+
+/* Make LiveView wrapper divs transparent for layout */
+[data-phx-session], [data-phx-teleported-src] { display: contents }
+
+/* Restore pointer cursor on buttons — Tailwind v4 Preflight follows the
+   browser default (arrow), but users expect pointer on web controls. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  /* Kill the grey/blue tap flash on iOS Safari. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+    /* Native checkboxes, radios, and range inputs follow the brand. */
+    accent-color: var(--color-primary);
+  }
+}
+
+/* Respect users who ask the OS to reduce motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Nila moonlight design system ────────────────────────────────────────
+   The feeling is moonlight on a pale wall: cool, hushed, low-chroma light and
+   soft luminance — never glare. Keep these few utilities and reuse them; the
+   calm comes from restraint, not from many one-off styles. See BRAND.md. */
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Moonlight ground: a pale cool sea-blue wash with a soft pool of light up top,
+   fading to near-white, plus one faint warm-sand glow low on the right — the
+   amber window in a blue night. Use for the hero. Pair with "ink" text. */
+.moonlight {
+  background-color: oklch(98.5% 0.005 235);
+  background-image:
+    radial-gradient(125% 80% at 50% -22%, oklch(92% 0.035 233 / 0.85), transparent 60%),
+    radial-gradient(80% 60% at 88% 116%, oklch(89% 0.04 80 / 0.35), transparent 62%),
+    linear-gradient(180deg, oklch(97.5% 0.012 233), oklch(99.4% 0.004 235));
+}
+
+/* An even quieter sea-blue wash for section backgrounds. */
+.moonlight-soft {
+  background-image: linear-gradient(
+    170deg,
+    oklch(99% 0.005 235),
+    oklch(97.5% 0.012 233)
+  );
+}
+
+/* Night ground: the moon itself. A deep midnight-sea ink base with a soft pool
+   of cool moonlight blooming from upper-left, and the one warm sand window
+   glowing low on the right — the amber window in a blue night. Pair with light
+   type (text-base-100 / cool near-whites), never ink. This is the inverse of
+   .moonlight: dark so the light can be soft against something. */
+.moonlight-night {
+  background-color: oklch(24% 0.05 245);
+  background-image:
+    radial-gradient(80% 60% at 22% -8%, oklch(72% 0.07 230 / 0.4), transparent 58%),
+    radial-gradient(70% 55% at 92% 112%, oklch(78% 0.07 78 / 0.28), transparent 60%),
+    linear-gradient(165deg, oklch(27% 0.055 240), oklch(20% 0.045 248));
+}
+
+/* Two close sea-blue tones clipped to text — a soft accent for eyebrows and
+   figures. Low chroma on purpose: it should whisper, not shout. */
+.text-moon {
+  background-image: linear-gradient(
+    100deg,
+    oklch(40% 0.07 233),
+    oklch(50% 0.05 232)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Soft, layered elevation in the midnight-ink hue — moonlight, not a hard drop. */
+.shadow-moon {
+  box-shadow:
+    0 1px 2px oklch(30% 0.055 233 / 0.05),
+    0 8px 28px oklch(30% 0.055 233 / 0.08);
+}
+.shadow-moon-lg {
+  box-shadow:
+    0 2px 4px oklch(30% 0.055 233 / 0.06),
+    0 18px 48px oklch(30% 0.055 233 / 0.13);
+}
+
+/* Calm entrance: a slow, eased rise from below — moonlight settling into place,
+   not a bounce. Pair with `[animation-delay:Nms]` in markup to stagger a group.
+   Honors reduced-motion: the content is simply present, never hidden. */
+@keyframes moon-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.moon-rise {
+  opacity: 0;
+  animation: moon-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .moon-rise {
+    opacity: 1;
+    animation: none;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 14mm 12mm;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-shadow: none !important;
+  }
+
+  html,
+  body {
+    width: 210mm;
+    min-height: 297mm;
+    background: white !important;
+  }
+
+  body {
+    color: oklch(30% 0.055 233);
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  main > .mx-auto {
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  .invoice-print-page,
+  .invoice-print-shell {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .invoice-print-shell {
+    position: static !important;
+  }
+
+  .invoice-document {
+    box-sizing: border-box;
+    width: 100% !important;
+    max-width: 186mm !important;
+    margin: 0 auto !important;
+    overflow: visible !important;
+    color: oklch(30% 0.055 233);
+    font-size: 10pt;
+  }
+
+  .invoice-document table {
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .invoice-document th,
+  .invoice-document td {
+    overflow-wrap: anywhere;
+  }
+
+  .invoice-document th:nth-child(1),
+  .invoice-document td:nth-child(1) {
+    width: 43%;
+  }
+
+  .invoice-document th:nth-child(2),
+  .invoice-document td:nth-child(2) {
+    width: 12%;
+  }
+
+  .invoice-document th:nth-child(3),
+  .invoice-document td:nth-child(3) {
+    width: 8%;
+  }
+
+  .invoice-document th:nth-child(4),
+  .invoice-document td:nth-child(4),
+  .invoice-document th:nth-child(6),
+  .invoice-document td:nth-child(6) {
+    width: 15%;
+  }
+
+  .invoice-document th:nth-child(5),
+  .invoice-document td:nth-child(5) {
+    width: 7%;
+  }
+
+  .invoice-document tr,
+  .invoice-document section,
+  .invoice-document footer {
+    break-inside: avoid;
+  }
+}

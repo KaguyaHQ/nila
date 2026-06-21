@@ -1,0 +1,58 @@
+# The directory Mix will write compiled artifacts to.
+/_build/
+
+# If you run "mix test --cover", coverage assets end up here.
+/cover/
+
+# The directory Mix downloads your dependencies sources to.
+/deps/
+
+# Where 3rd-party dependencies like ExDoc output generated docs.
+/doc/
+
+# Ignore .fetch files in case you like to edit your project deps locally.
+/.fetch
+
+# If the VM crashes, it generates a dump, let's ignore it too.
+erl_crash.dump
+
+# Also ignore archive artifacts (built via "mix archive.build").
+*.ez
+
+# Temporary files, for example, from tests.
+/tmp/
+
+# Local LlamaExtract benchmark outputs.
+/scripts/llama_extract_bench/fixtures/
+/scripts/llama_extract_bench/results/
+/scripts/llama_extract_bench/.venv/
+/scripts/llama_extract_bench/__pycache__/
+
+# Ignore package tarball (built via "mix hex.build").
+nila-*.tar
+
+# Ignore assets that are produced by build tools.
+/priv/static/assets/
+
+# Uploaded development files; keep the directory itself.
+/priv/static/uploads/*
+!/priv/static/uploads/.gitkeep
+
+# Ignore digested assets cache.
+/priv/static/cache_manifest.json
+
+# In case you use Node.js/npm, you want to ignore these.
+npm-debug.log
+/assets/node_modules/
+
+# Local environment variables loaded by Dotenvy in config/runtime.exs.
+.env
+.DS_Store
+
+# Local-only scratch plans (not shared, not tracked).
+docs/.plans/
+docs/.scratchpad/
+
+# Extractor data files — not tracked. Regenerable JSON comes from extract.py;
+# the paste-sourced *_ac_addon.json lives in the DB, re-key from source if lost.
+/priv/repo/import/*.json

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <.live_title default="Nila" suffix=" - Back Office Automation" phx-no-format>{assigns[:page_title]}</.live_title>
+    <%!-- Stable, un-digested paths on purpose: favicons want a constant URL, and
+          Plug.Static's `only` list allows these exact names but not the
+          content-hashed variants `~p` would produce. Modern browsers pick the
+          SVG and fall back to the .ico themselves — no "alternate" rel needed. --%>
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
+    </script>
+  </head>
+  <body>
+    {@inner_content}
+  </body>
+</html>
