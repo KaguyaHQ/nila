@@ -58,12 +58,7 @@ config :nila, Oban,
   repo: Nila.Repo,
   queues: [documents: 5, workflows: 10, reminders: 5, approvals: 5],
   plugins: [
-    Oban.Plugins.Pruner,
-    {Oban.Plugins.Cron,
-     crontab: [
-       {"*/30 * * * *", Nila.Approvals.ReplyPollWorker},
-       {"0 3 * * *", Nila.Approvals.CadenceWorker}
-     ]}
+    Oban.Plugins.Pruner
   ]
 
 config :nila, Nila.Storage,
