@@ -19,7 +19,7 @@ defmodule NilaWeb.Components.Card do
 
   def card(assigns) do
     ~H"""
-    <div class={["rounded-box border border-base-300 bg-base-100 p-5 shadow-moon", @class]} {@rest}>
+    <div class={["bg-base-100 border-base-300 rounded-box shadow-moon border p-5", @class]} {@rest}>
       {render_slot(@inner_block)}
     </div>
     """
@@ -49,23 +49,23 @@ defmodule NilaWeb.Components.Card do
   def stat_card(assigns) do
     ~H"""
     <div
-      class={["rounded-box border border-base-300 bg-base-100 px-4 py-3 shadow-moon", @class]}
+      class={["bg-base-100 border-base-300 rounded-box shadow-moon border px-4 py-3", @class]}
       {@rest}
     >
-      <div class="text-label font-medium uppercase text-base-content/60">{@label}</div>
+      <div class="text-base-content/60 text-label font-medium uppercase">{@label}</div>
       <div
         id={@value_id}
         class={[
-          "mt-1 text-base-content",
+          "text-base-content mt-1",
           if(@figure,
-            do: "font-display text-h3 font-normal leading-none tabular-nums",
+            do: "font-display text-h3 leading-none font-normal tabular-nums",
             else: "text-h4 font-semibold"
           )
         ]}
       >
         {render_slot(@inner_block)}
       </div>
-      <div :if={@caption != []} class="mt-2 text-fine text-base-content/55">
+      <div :if={@caption != []} class="text-base-content/55 text-fine mt-2">
         {render_slot(@caption)}
       </div>
     </div>

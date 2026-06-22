@@ -34,17 +34,17 @@ defmodule NilaWeb.UserRegistrationLive do
     ~H"""
     <Layouts.flash_group flash={@flash} />
 
-    <main class="min-h-screen bg-base-200 text-base-content">
+    <main class="bg-base-200 text-base-content min-h-screen">
       <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-12">
         <div class="mb-8">
-          <.link navigate={~p"/"} class="inline-flex items-center gap-2 text-small font-semibold">
-            <span class="grid size-8 place-items-center rounded-field bg-primary text-white">
+          <.link navigate={~p"/"} class="text-small inline-flex items-center gap-2 font-semibold">
+            <span class="bg-primary rounded-field grid size-8 place-items-center text-white">
               <.icon name="hero-moon" class="size-4" />
             </span>
             Nila
           </.link>
-          <h1 class="mt-8 text-h4 font-semibold">Create your workspace</h1>
-          <p class="mt-2 text-body text-base-content/70">
+          <h1 class="text-h4 mt-8 font-semibold">Create your workspace</h1>
+          <p class="text-base-content/70 text-body mt-2">
             Start with your company workspace. You can invite the team later.
           </p>
         </div>
@@ -82,9 +82,9 @@ defmodule NilaWeb.UserRegistrationLive do
           </.button>
         </.form>
 
-        <p class="mt-5 text-body text-base-content/70">
+        <p class="text-base-content/70 text-body mt-5">
           Already have an account?
-          <.link navigate={~p"/users/log_in"} class="font-semibold text-primary">
+          <.link navigate={~p"/users/log_in"} class="text-primary font-semibold">
             Sign in
           </.link>
         </p>

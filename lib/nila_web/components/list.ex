@@ -46,17 +46,17 @@ defmodule NilaWeb.Components.List do
     <button
       type={@type}
       class={[
-        "w-full rounded-field border border-l-4 px-3 py-2 text-left text-small transition-all duration-200",
+        "rounded-field text-small w-full border border-l-4 px-3 py-2 text-left transition-all duration-200",
         @active &&
-          "border-primary/30 border-l-primary bg-primary/10 text-primary shadow-moon-lg -translate-y-px",
+          "bg-primary/10 border-l-primary border-primary/30 shadow-moon-lg text-primary -translate-y-px",
         !@active &&
-          "border-base-300 border-l-base-300 bg-base-100 text-base-content/75 hover:border-primary/30 hover:border-l-primary/40 hover:bg-base-200 hover:text-base-content",
+          "bg-base-100 border-base-300 border-l-base-300 hover:bg-base-200 hover:border-l-primary/40 hover:border-primary/30 hover:text-base-content text-base-content/75",
         @class
       ]}
       {@rest}
     >
       <span class="block truncate font-medium">{render_slot(@title)}</span>
-      <span :if={@subtitle != []} class="mt-0.5 block truncate text-fine opacity-70">
+      <span :if={@subtitle != []} class="text-fine mt-0.5 block truncate opacity-70">
         {render_slot(@subtitle)}
       </span>
     </button>

@@ -14,10 +14,10 @@ defmodule NilaWeb.Components.Feedback do
   def progress_steps(assigns) do
     ~H"""
     <ol class="space-y-3">
-      <li :for={{label, state} <- @steps} class="flex items-center gap-3 text-small">
+      <li :for={{label, state} <- @steps} class="text-small flex items-center gap-3">
         <span class={[
           "grid size-6 shrink-0 place-items-center rounded-full border",
-          state == :done && "border-success bg-success text-success-content",
+          state == :done && "bg-success border-success text-success-content",
           state == :active && "border-base-content/40 text-base-content",
           state == :pending && "border-base-content/20 text-base-content/40"
         ]}>
@@ -65,7 +65,7 @@ defmodule NilaWeb.Components.Feedback do
       >
         <div class="flex items-center gap-2 whitespace-nowrap">
           <span class={[
-            "flex size-7 items-center justify-center rounded-full border text-fine font-semibold",
+            "text-fine flex size-7 items-center justify-center rounded-full border font-semibold",
             stage_marker_class(step.state)
           ]}>
             <.icon :if={step.state == :done} name="hero-check" class="size-4" />

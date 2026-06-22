@@ -39,7 +39,7 @@ defmodule NilaWeb.Components.Form do
       id={@id}
       disabled={@disabled}
       phx-disable-with={@loading}
-      class="btn btn-primary btn-soft btn-sm transition-all"
+      class="btn btn-primary btn-sm btn-soft transition-all"
       {@rest}
     >
       <.icon name={@icon} class="size-4" />

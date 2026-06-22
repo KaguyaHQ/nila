@@ -22,15 +22,15 @@ defmodule NilaWeb.TodayLive do
         </.page_header>
 
         <.card class="space-y-3">
-          <h2 class="text-h4 font-semibold text-base-content">Nothing to review yet</h2>
-          <p class="text-small text-base-content/60">
+          <h2 class="text-base-content text-h4 font-semibold">Nothing to review yet</h2>
+          <p class="text-base-content/60 text-small">
             Ingest a bank statement or document to get started — the assistant can
             help you find anything already uploaded.
           </p>
           <div class="pt-1">
             <.link
               navigate={~p"/assistant"}
-              class="inline-flex h-10 items-center justify-center rounded-field border border-base-300 bg-base-100 px-4 text-small font-semibold text-base-content/75 transition hover:bg-base-200"
+              class="bg-base-100 border-base-300 hover:bg-base-200 rounded-field text-base-content/75 text-small inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
             >
               Open the assistant
             </.link>

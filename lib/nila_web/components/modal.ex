@@ -27,23 +27,23 @@ defmodule NilaWeb.Components.Modal do
 
   def modal(assigns) do
     ~H"""
-    <div id={@id} class="fixed inset-0 z-50 flex items-center justify-center bg-base-content/40 px-4">
+    <div id={@id} class="bg-base-content/40 fixed inset-0 z-50 flex items-center justify-center px-4">
       <.focus_wrap
         id={"#{@id}-focus-wrap"}
         phx-click-away={@on_close}
         phx-window-keydown={@on_close}
         phx-key="escape"
         class={[
-          "max-h-[90vh] w-full overflow-y-auto rounded-box border border-base-300 bg-base-100 p-5 shadow-moon-lg",
+          "bg-base-100 border-base-300 rounded-box shadow-moon-lg max-h-[90vh] w-full overflow-y-auto border p-5",
           @class
         ]}
       >
         <header class="mb-4 flex items-center justify-between">
-          <h3 class="text-body font-semibold text-base-content">{@title}</h3>
+          <h3 class="text-base-content text-body font-semibold">{@title}</h3>
           <button
             type="button"
             phx-click={@on_close}
-            class="rounded-field p-1 text-base-content/60 transition hover:bg-base-200 hover:text-base-content"
+            class="hover:bg-base-200 hover:text-base-content rounded-field text-base-content/60 p-1 transition"
           >
             <.icon name="hero-x-mark" class="size-4" />
           </button>

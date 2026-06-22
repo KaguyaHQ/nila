@@ -57,14 +57,14 @@ defmodule NilaWeb.Components.Table do
 
     ~H"""
     <div class={[
-      "overflow-x-auto rounded-box border border-base-300 bg-base-100 shadow-moon",
+      "bg-base-100 border-base-300 rounded-box shadow-moon overflow-x-auto border",
       @class
     ]}>
-      <div :if={@is_empty?} class="px-4 py-12 text-center text-small text-base-content/60">
+      <div :if={@is_empty?} class="text-base-content/60 text-small px-4 py-12 text-center">
         {render_slot(@empty)}
       </div>
-      <table :if={!@is_empty?} class={["w-full text-left text-small", @min_width]}>
-        <thead class="bg-base-200 text-label uppercase text-base-content/55">
+      <table :if={!@is_empty?} class={["text-small w-full text-left", @min_width]}>
+        <thead class="bg-base-200 text-base-content/55 text-label uppercase">
           <tr>
             <th
               :for={col <- @col}
@@ -74,11 +74,11 @@ defmodule NilaWeb.Components.Table do
             </th>
           </tr>
         </thead>
-        <tbody id={@id} phx-update={@stream? && "stream"} class="divide-y divide-base-200">
+        <tbody id={@id} phx-update={@stream? && "stream"} class="divide-base-200 divide-y">
           <tr
             :for={row <- @rows}
             id={@row_id && @row_id.(row)}
-            class={["transition-colors", @row_click && "cursor-pointer hover:bg-base-200/60"]}
+            class={["transition-colors", @row_click && "hover:bg-base-200/60 cursor-pointer"]}
             phx-click={@row_click && @row_click.(@row_item.(row))}
           >
             <td

@@ -33,10 +33,10 @@ defmodule NilaWeb.UserConfirmationLive do
 
         <.card class="space-y-5">
           <div>
-            <h2 class="text-h4 font-semibold text-base-content">
+            <h2 class="text-base-content text-h4 font-semibold">
               {if @current_scope.user.confirmed_at, do: "Email verified", else: "Check your inbox"}
             </h2>
-            <p class="mt-1 text-body text-base-content/60">
+            <p class="text-base-content/60 text-body mt-1">
               {if @current_scope.user.confirmed_at do
                 "#{@current_scope.user.email} is verified."
               else
@@ -56,7 +56,7 @@ defmodule NilaWeb.UserConfirmationLive do
             </.button>
           </.form>
 
-          <.link navigate={~p"/today"} class="inline-flex text-small font-semibold text-primary">
+          <.link navigate={~p"/today"} class="text-primary text-small inline-flex font-semibold">
             Back to Today
           </.link>
         </.card>

@@ -169,11 +169,11 @@ defmodule NilaWeb.Settings.UsersLive do
           min_width="min-w-[640px]"
         >
           <:col :let={member} label="Name">
-            <span class="font-medium text-base-content">
+            <span class="text-base-content font-medium">
               {member.user.name}
               <span
                 :if={member.user_id == @current_scope.user.id}
-                class="ml-1 text-fine font-normal text-base-content/50"
+                class="text-base-content/50 text-fine ml-1 font-normal"
               >
                 (you)
               </span>
@@ -212,7 +212,7 @@ defmodule NilaWeb.Settings.UsersLive do
                 type="button"
                 phx-click="resend_invite"
                 phx-value-user_id={member.user_id}
-                class="text-fine font-semibold text-primary transition hover:underline"
+                class="text-fine text-primary font-semibold transition hover:underline"
               >
                 Resend invite
               </button>
@@ -221,7 +221,7 @@ defmodule NilaWeb.Settings.UsersLive do
                 type="button"
                 phx-click="toggle_active"
                 phx-value-user_id={member.user_id}
-                class="text-fine font-semibold text-base-content/70 transition hover:text-base-content"
+                class="hover:text-base-content text-base-content/70 text-fine font-semibold transition"
               >
                 {if member.user.active, do: "Disable", else: "Enable"}
               </button>
@@ -231,13 +231,13 @@ defmodule NilaWeb.Settings.UsersLive do
         </.data_table>
       </div>
 
-      <div class="mt-8 rounded-box border border-error/20 bg-error/5 p-5">
+      <div class="bg-error/5 border-error/20 rounded-box mt-8 border p-5">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div class="space-y-1">
-            <h3 class="flex items-center gap-1.5 text-small font-semibold text-error">
+            <h3 class="text-error text-small flex items-center gap-1.5 font-semibold">
               <.icon name="hero-exclamation-triangle" class="size-4" /> Danger zone
             </h3>
-            <p class="max-w-xl text-body text-base-content/60">
+            <p class="text-base-content/60 text-body max-w-xl">
               Delete all work orders, invoices, documents, customers, and related records. Your workspace, entities, and users are preserved. Entity invoice numbering resets to 1.
             </p>
           </div>
@@ -271,7 +271,7 @@ defmodule NilaWeb.Settings.UsersLive do
             label="Role"
             options={Policy.assignable_roles()}
           />
-          <p class="text-fine text-base-content/60">
+          <p class="text-base-content/60 text-fine">
             They'll get an email with a link to set a password and join. Owners and
             admins manage the workspace; operators run work orders, invoices and approvals;
             viewers can only read and export.

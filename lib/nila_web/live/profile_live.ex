@@ -22,43 +22,43 @@ defmodule NilaWeb.ProfileLive do
 
         <.card class="space-y-5">
           <div class="flex items-center gap-4">
-            <div class="grid size-14 shrink-0 place-items-center rounded-field bg-primary text-body font-semibold text-primary-content shadow-moon">
+            <div class="bg-primary rounded-field shadow-moon text-body text-primary-content grid size-14 shrink-0 place-items-center font-semibold">
               {user_initials(@current_scope.user)}
             </div>
             <div class="min-w-0">
-              <h2 id="profile-name" class="truncate text-h4 font-semibold text-base-content">
+              <h2 id="profile-name" class="text-base-content text-h4 truncate font-semibold">
                 {@current_scope.user.name}
               </h2>
-              <p id="profile-email" class="truncate text-small text-base-content/60">
+              <p id="profile-email" class="text-base-content/60 text-small truncate">
                 {@current_scope.user.email}
               </p>
             </div>
           </div>
 
-          <div class="border-t border-base-300 pt-5">
+          <div class="border-base-300 border-t pt-5">
             <.link
               id="profile-account-settings-link"
               navigate={~p"/settings/account"}
-              class="inline-flex h-10 items-center justify-center rounded-field border border-base-300 bg-base-100 px-4 text-small font-semibold text-base-content/75 transition hover:border-base-300 hover:bg-base-200"
+              class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-base-content/75 text-small inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
             >
               Manage account settings
             </.link>
           </div>
 
-          <dl class="grid gap-4 border-t border-base-300 pt-5 sm:grid-cols-2">
+          <dl class="border-base-300 grid gap-4 border-t pt-5 sm:grid-cols-2">
             <div>
-              <dt class="text-label font-medium uppercase text-base-content/50">
+              <dt class="text-base-content/50 text-label font-medium uppercase">
                 Workspace
               </dt>
-              <dd id="profile-workspace" class="mt-1 text-small font-semibold text-base-content">
+              <dd id="profile-workspace" class="text-base-content text-small mt-1 font-semibold">
                 {workspace_name(@current_scope)}
               </dd>
             </div>
             <div>
-              <dt class="text-label font-medium uppercase text-base-content/50">
+              <dt class="text-base-content/50 text-label font-medium uppercase">
                 Role
               </dt>
-              <dd id="profile-role" class="mt-1 text-small font-semibold text-base-content">
+              <dd id="profile-role" class="text-base-content text-small mt-1 font-semibold">
                 {role_label(@current_scope)}
               </dd>
             </div>

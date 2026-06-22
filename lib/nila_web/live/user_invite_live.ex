@@ -30,11 +30,11 @@ defmodule NilaWeb.UserInviteLive do
     ~H"""
     <Layouts.flash_group flash={@flash} />
 
-    <main class="min-h-screen bg-base-200 text-base-content">
+    <main class="bg-base-200 text-base-content min-h-screen">
       <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-12">
         <div class="mb-8">
-          <.link navigate={~p"/"} class="inline-flex items-center gap-2 text-small font-semibold">
-            <span class="grid size-8 place-items-center rounded-field bg-primary text-white">
+          <.link navigate={~p"/"} class="text-small inline-flex items-center gap-2 font-semibold">
+            <span class="bg-primary rounded-field grid size-8 place-items-center text-white">
               <.icon name="hero-moon" class="size-4" />
             </span>
             Nila
@@ -43,7 +43,7 @@ defmodule NilaWeb.UserInviteLive do
 
         <div :if={@user} id="invite-accept">
           <h1 class="text-h4 font-semibold">Welcome, {@user.name}</h1>
-          <p class="mt-2 text-body text-base-content/70">
+          <p class="text-base-content/70 text-body mt-2">
             Set a password to join the workspace and sign in.
           </p>
 
@@ -76,13 +76,13 @@ defmodule NilaWeb.UserInviteLive do
 
         <div :if={is_nil(@user)} id="invite-invalid">
           <h1 class="text-h4 font-semibold">This invite link is no longer valid</h1>
-          <p class="mt-2 text-body text-base-content/70">
+          <p class="text-base-content/70 text-body mt-2">
             It may have expired or already been used. Ask an owner to send a fresh
             invitation.
           </p>
           <.link
             navigate={~p"/users/log_in"}
-            class="mt-6 inline-flex h-10 items-center justify-center rounded-field border border-base-300 bg-base-100 px-4 text-small font-semibold text-base-content/75 transition hover:border-base-300 hover:bg-base-200"
+            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-base-content/75 text-small mt-6 inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
           >
             Go to sign in
           </.link>

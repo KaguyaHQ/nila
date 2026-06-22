@@ -29,15 +29,15 @@ defmodule NilaWeb.Components.Page do
     ~H"""
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div class="space-y-2">
-        <p :if={@eyebrow} class="text-eyebrow font-semibold uppercase text-moon">
+        <p :if={@eyebrow} class="text-eyebrow text-moon font-semibold uppercase">
           {@eyebrow}
         </p>
-        <h1 class="font-display text-h2 font-normal text-base-content">
+        <h1 class="font-display text-base-content text-h2 font-normal">
           {@title}
         </h1>
         <p
           :if={@inner_block != []}
-          class="max-w-2xl text-body font-light text-base-content/70"
+          class="text-base-content/70 text-body max-w-2xl font-light"
         >
           {render_slot(@inner_block)}
         </p>
@@ -61,7 +61,7 @@ defmodule NilaWeb.Components.Page do
         <h1 class="text-h4 font-semibold">
           {render_slot(@inner_block)}
         </h1>
-        <p :if={@subtitle != []} class="text-small text-base-content/70">
+        <p :if={@subtitle != []} class="text-base-content/70 text-small">
           {render_slot(@subtitle)}
         </p>
       </div>
@@ -81,13 +81,13 @@ defmodule NilaWeb.Components.Page do
     ~H"""
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div class="space-y-2">
-        <p class="text-eyebrow font-semibold uppercase text-moon">Settings</p>
-        <h1 class="font-display text-h2 font-normal text-base-content">
+        <p class="text-eyebrow text-moon font-semibold uppercase">Settings</p>
+        <h1 class="font-display text-base-content text-h2 font-normal">
           {@title}
         </h1>
         <p
           :if={@inner_block != []}
-          class="max-w-2xl text-body font-light text-base-content/70"
+          class="text-base-content/70 text-body max-w-2xl font-light"
         >
           {render_slot(@inner_block)}
         </p>
@@ -117,8 +117,8 @@ defmodule NilaWeb.Components.Page do
         class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
       >
         <div>
-          <h3 :if={@title} class="text-small font-semibold text-base-content">{@title}</h3>
-          <p :if={@description} class="mt-1 text-small text-base-content/70">
+          <h3 :if={@title} class="text-base-content text-small font-semibold">{@title}</h3>
+          <p :if={@description} class="text-base-content/70 text-small mt-1">
             {@description}
           </p>
         </div>

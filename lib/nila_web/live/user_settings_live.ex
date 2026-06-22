@@ -65,8 +65,8 @@ defmodule NilaWeb.UserSettingsLive do
 
         <.card class="space-y-5">
           <div>
-            <h2 class="text-h4 font-semibold text-base-content">Change password</h2>
-            <p class="mt-1 text-small text-base-content/60">
+            <h2 class="text-base-content text-h4 font-semibold">Change password</h2>
+            <p class="text-base-content/60 text-small mt-1">
               We'll sign out other sessions after your password changes.
             </p>
           </div>
@@ -105,8 +105,8 @@ defmodule NilaWeb.UserSettingsLive do
 
         <.card class="space-y-5">
           <div>
-            <h2 class="text-h4 font-semibold text-base-content">Change email</h2>
-            <p class="mt-1 text-small text-base-content/60">
+            <h2 class="text-base-content text-h4 font-semibold">Change email</h2>
+            <p class="text-base-content/60 text-small mt-1">
               We'll send a confirmation link to your new email address.
             </p>
           </div>

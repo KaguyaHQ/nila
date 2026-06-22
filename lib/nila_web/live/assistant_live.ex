@@ -202,19 +202,19 @@ defmodule NilaWeb.AssistantLive do
 
   def document_card(assigns) do
     ~H"""
-    <div class="flex flex-col gap-1 rounded-box border border-base-300 bg-base-100 p-3 text-left text-small shadow-moon">
+    <div class="bg-base-100 border-base-300 rounded-box shadow-moon text-small flex flex-col gap-1 border p-3 text-left">
       <div class="flex items-center justify-between gap-2">
-        <span class="truncate font-medium text-base-content">
+        <span class="text-base-content truncate font-medium">
           {@doc.filename || "(unnamed)"}
         </span>
-        <span class="rounded-full bg-base-200 px-2 py-0.5 text-label font-medium uppercase text-base-content/70">
+        <span class="bg-base-200 text-base-content/70 text-label rounded-full px-2 py-0.5 font-medium uppercase">
           {@doc.status}
         </span>
       </div>
-      <div :if={@doc.document_type} class="text-fine text-base-content/70">
+      <div :if={@doc.document_type} class="text-base-content/70 text-fine">
         {@doc.document_type}
       </div>
-      <div class="flex items-center justify-between text-micro text-base-content/60">
+      <div class="text-base-content/60 text-micro flex items-center justify-between">
         <span :if={@doc.uploaded_at}>{@doc.uploaded_at}</span>
       </div>
     </div>
@@ -230,7 +230,7 @@ defmodule NilaWeb.AssistantLive do
       id="assistant-form"
       phx-submit="send"
       phx-change="draft"
-      class="flex w-full items-center gap-3 rounded-box border border-base-300 bg-base-100 px-4 py-3 shadow-moon"
+      class="bg-base-100 border-base-300 rounded-box shadow-moon flex w-full items-center gap-3 border px-4 py-3"
     >
       <textarea
         id="assistant-input"
@@ -239,7 +239,7 @@ defmodule NilaWeb.AssistantLive do
         placeholder="Ask about a document you've uploaded…"
         phx-hook="SubmitOnEnter"
         disabled={@pending?}
-        class="block max-h-48 flex-1 resize-none overflow-y-hidden border-0 bg-transparent text-body text-base-content placeholder:text-base-content/50 focus:outline-none focus:ring-0 disabled:opacity-50"
+        class="placeholder:text-base-content/50 text-base-content text-body block max-h-48 flex-1 resize-none overflow-y-hidden border-0 bg-transparent focus:ring-0 focus:outline-none disabled:opacity-50"
       >{@draft}</textarea>
       <.button
         :if={!@pending?}
@@ -255,7 +255,7 @@ defmodule NilaWeb.AssistantLive do
         id="assistant-stop"
         type="button"
         phx-click="stop"
-        class="inline-flex h-10 items-center justify-center gap-2 rounded-field bg-error px-3 text-small font-medium text-error-content shadow-moon transition hover:bg-error/90"
+        class="bg-error hover:bg-error/90 rounded-field shadow-moon text-error-content text-small inline-flex h-10 items-center justify-center gap-2 px-3 font-medium transition"
       >
         <.icon name="hero-stop" class="size-4" />
         <span>Stop</span>
@@ -278,9 +278,9 @@ defmodule NilaWeb.AssistantLive do
             detail: %{text: chip.text}
           )
         }
-        class="inline-flex items-center gap-1.5 rounded-field border border-base-300 bg-base-100 px-3 py-1.5 text-small font-medium text-base-content/80 shadow-moon transition hover:border-base-content/20 hover:bg-base-200"
+        class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-content/20 rounded-field shadow-moon text-base-content/80 text-small inline-flex items-center gap-1.5 border px-3 py-1.5 font-medium transition"
       >
-        <.icon name={chip.icon} class="size-4 text-base-content/50" />
+        <.icon name={chip.icon} class="text-base-content/50 size-4" />
         {chip.label}
       </button>
     </div>

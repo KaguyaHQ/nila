@@ -91,8 +91,8 @@ defmodule NilaWeb.Settings.ConnectorsLive do
         <.settings_panel>
           <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h3 class="text-body font-semibold text-base-content">Add Gmail account</h3>
-              <p class="mt-1 text-small text-base-content/70">
+              <h3 class="text-base-content text-body font-semibold">Add Gmail account</h3>
+              <p class="text-base-content/70 text-small mt-1">
                 Name the inbox and pick the entity before starting OAuth.
               </p>
             </div>
@@ -108,7 +108,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                 id="settings-add-gmail-label"
                 label="Label"
                 placeholder="Caltech invoices"
-                class="w-full rounded-field border border-base-300 px-3 py-2 text-small"
+                class="border-base-300 rounded-field text-small w-full border px-3 py-2"
               />
               <.input
                 field={@gmail_form[:entity_id]}
@@ -117,7 +117,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                 label="Entity"
                 prompt="None"
                 options={@entity_options}
-                class="w-full rounded-field border border-base-300 px-3 py-2 text-small"
+                class="border-base-300 rounded-field text-small w-full border px-3 py-2"
               />
               <.button
                 type="submit"
@@ -132,9 +132,9 @@ defmodule NilaWeb.Settings.ConnectorsLive do
         </.settings_panel>
 
         <.settings_panel title="Connected accounts" class="overflow-hidden" body_class="-mx-5 -mb-5">
-          <div id="settings-connection-list" class="divide-y divide-base-300">
+          <div id="settings-connection-list" class="divide-base-300 divide-y">
             <div :if={@connections == []} id="settings-connections-empty" class="px-5 py-8">
-              <p class="text-small text-base-content/70">No connectors yet.</p>
+              <p class="text-base-content/70 text-small">No connectors yet.</p>
             </div>
 
             <article
@@ -149,18 +149,18 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                     {connection_status(connection)}
                   </.badge>
                 </div>
-                <h4 class="mt-2 truncate text-small font-semibold text-base-content">
+                <h4 class="text-base-content text-small mt-2 truncate font-semibold">
                   {Connection.display_label(connection)}
                 </h4>
-                <p class="mt-1 truncate text-small text-base-content/70">
+                <p class="text-base-content/70 text-small mt-1 truncate">
                   {connection.external_account_id}
                 </p>
-                <p class="mt-2 text-micro text-base-content/60">
+                <p class="text-base-content/60 text-micro mt-2">
                   Entity: {entity_name(connection)} · Last sync: {last_sync_label(
                     connection.last_synced_at
                   )}
                 </p>
-                <p :if={connection.last_error} class="mt-2 text-fine text-error">
+                <p :if={connection.last_error} class="text-error text-fine mt-2">
                   {connection.last_error}
                 </p>
               </div>
@@ -177,7 +177,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                     field={to_form(connection_form_data(connection), as: :connection)[:label]}
                     id={"settings-connection-label-#{connection.id}"}
                     label="Label"
-                    class="w-full rounded-field border border-base-300 px-3 py-2 text-small"
+                    class="border-base-300 rounded-field text-small w-full border px-3 py-2"
                   />
                   <.input
                     field={to_form(connection_form_data(connection), as: :connection)[:entity_id]}
@@ -186,7 +186,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                     label="Entity"
                     prompt="None"
                     options={@entity_options}
-                    class="w-full rounded-field border border-base-300 px-3 py-2 text-small"
+                    class="border-base-300 rounded-field text-small w-full border px-3 py-2"
                   />
                   <div class="flex flex-wrap items-center gap-2 sm:col-span-2">
                     <.button

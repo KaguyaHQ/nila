@@ -129,10 +129,10 @@ defmodule NilaWeb.Settings.WorkspaceLive do
               <div id="settings-entity-list" class="mt-4 space-y-2">
                 <div
                   :if={@selected_entity && is_nil(@selected_entity.id)}
-                  class="w-full rounded-field border border-primary/30 bg-primary/10 px-3 py-2 text-left text-small shadow-moon"
+                  class="bg-primary/10 border-primary/30 rounded-field shadow-moon text-small w-full border px-3 py-2 text-left"
                 >
-                  <span class="block truncate font-medium text-primary">New entity</span>
-                  <span class="mt-0.5 block truncate text-fine text-primary/70">
+                  <span class="text-primary block truncate font-medium">New entity</span>
+                  <span class="text-fine text-primary/70 mt-0.5 block truncate">
                     Fill in details below
                   </span>
                 </div>
@@ -235,10 +235,10 @@ defmodule NilaWeb.Settings.WorkspaceLive do
                     <p
                       :if={@invoice_preview}
                       id="settings-invoice-preview"
-                      class="mt-3 text-small text-base-content/70"
+                      class="text-base-content/70 text-small mt-3"
                     >
                       Next invoice will look like
-                      <span class="ml-1 rounded-field bg-base-200 px-2 py-0.5 font-mono text-base-content">
+                      <span class="bg-base-200 rounded-field text-base-content ml-1 px-2 py-0.5 font-mono">
                         {@invoice_preview}
                       </span>
                     </p>
@@ -271,7 +271,7 @@ defmodule NilaWeb.Settings.WorkspaceLive do
           </div>
         <% else %>
           <.settings_panel class="p-6">
-            <p class="text-small text-base-content/70">
+            <p class="text-base-content/70 text-small">
               Create a workspace before configuring entities.
             </p>
           </.settings_panel>
@@ -331,7 +331,7 @@ defmodule NilaWeb.Settings.WorkspaceLive do
   defp form_section(assigns) do
     ~H"""
     <section class="space-y-4">
-      <h4 class="text-label font-semibold uppercase text-base-content/50">
+      <h4 class="text-base-content/50 text-label font-semibold uppercase">
         {@title}
       </h4>
       {render_slot(@inner_block)}

@@ -132,7 +132,7 @@ defmodule NilaWeb.Components.Input do
         <select
           id={@id}
           name={@name}
-          class={[@class || "w-full select", @errors != [] && (@error_class || "select-error")]}
+          class={[@class || "select w-full", @errors != [] && (@error_class || "select-error")]}
           multiple={@multiple}
           {@rest}
         >
@@ -154,7 +154,7 @@ defmodule NilaWeb.Components.Input do
           id={@id}
           name={@name}
           class={[
-            @class || "w-full textarea",
+            @class || "textarea w-full",
             @errors != [] && (@error_class || "textarea-error")
           ]}
           {@rest}
@@ -176,7 +176,7 @@ defmodule NilaWeb.Components.Input do
           id={@id}
           value={Phoenix.HTML.Form.normalize_value("password", @value)}
           class={[
-            (@class || "w-full input") <> " pr-12",
+            (@class || "input w-full") <> "pr-12",
             @errors != [] && (@error_class || "input-error")
           ]}
           {@rest}
@@ -187,7 +187,7 @@ defmodule NilaWeb.Components.Input do
           aria-label="Show password"
           aria-controls={@id}
           aria-pressed="false"
-          class="absolute inset-y-0 right-0 z-10 inline-flex w-11 items-center justify-center rounded-r-field text-base-content/55 transition hover:text-base-content focus:outline-none focus:ring-2 focus:ring-primary/40"
+          class="focus:ring-primary/40 hover:text-base-content rounded-r-field text-base-content/55 absolute inset-y-0 right-0 z-10 inline-flex w-11 items-center justify-center transition focus:ring-2 focus:outline-none"
           phx-hook=".PasswordVisibility"
           data-password-input={@id}
         >
@@ -247,7 +247,7 @@ defmodule NilaWeb.Components.Input do
           phx-update="ignore"
           data-date-display
           class={[
-            @class || "w-full input",
+            @class || "input w-full",
             @errors != [] && (@error_class || "input-error")
           ]}
           {@rest}
@@ -257,7 +257,7 @@ defmodule NilaWeb.Components.Input do
             the explicit value arg of render_change/render_submit (the sanctioned path
             for hook-set hidden fields), since the masking hook can't run server-side. --%>
       <input type="hidden" name={@name} value={@iso} data-date-value />
-      <p :if={@hint && @errors == []} class="mt-1 text-fine text-base-content/50">{@hint}</p>
+      <p :if={@hint && @errors == []} class="text-base-content/50 text-fine mt-1">{@hint}</p>
       <.error :for={msg <- @errors}>{msg}</.error>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".DateField">
         export default {
@@ -326,13 +326,13 @@ defmodule NilaWeb.Components.Input do
           id={@id}
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
           class={[
-            @class || "w-full input",
+            @class || "input w-full",
             @errors != [] && (@error_class || "input-error")
           ]}
           {@rest}
         />
       </label>
-      <p :if={@hint && @errors == []} class="mt-1 text-fine text-base-content/50">{@hint}</p>
+      <p :if={@hint && @errors == []} class="text-base-content/50 text-fine mt-1">{@hint}</p>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -350,7 +350,7 @@ defmodule NilaWeb.Components.Input do
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 flex gap-2 items-center text-small text-error">
+    <p class="text-error text-small mt-1.5 flex items-center gap-2">
       <.icon name="hero-exclamation-circle" class="size-5" />
       {render_slot(@inner_block)}
     </p>

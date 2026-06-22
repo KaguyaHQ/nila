@@ -42,11 +42,11 @@ defmodule NilaWeb.Components.Flash do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="toast toast-end toast-top z-50"
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
+        "alert w-80 max-w-80 text-wrap sm:w-96 sm:max-w-96",
         @kind == :info && "alert-info",
         @kind == :error && "alert-error"
       ]}>
@@ -57,7 +57,7 @@ defmodule NilaWeb.Components.Flash do
           <p>{msg}</p>
         </div>
         <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
+        <button type="button" class="group cursor-pointer self-start" aria-label={gettext("close")}>
           <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
         </button>
       </div>
