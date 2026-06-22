@@ -22,6 +22,7 @@ defmodule Nila.Banking.Transaction do
 
     belongs_to :org, Nila.Orgs.Org
     belongs_to :bank_account, Nila.Banking.Account
+    belongs_to :client, Nila.Clients.Client
 
     timestamps()
   end

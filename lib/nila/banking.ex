@@ -97,6 +97,16 @@ defmodule Nila.Banking do
     end)
   end
 
+  @doc """
+  Ties a transaction to the client who paid. `client_id` is programmatic (never
+  cast from extraction), so it's set explicitly on the struct.
+  """
+  def match_transaction(%Transaction{} = transaction, client_id) do
+    transaction
+    |> Ecto.Changeset.change(client_id: client_id)
+    |> Repo.update()
+  end
+
   defp normalize_line(account, line) do
     value_date = parse_date(line["value_date"]) || parse_date(line["txn_date"])
     amount = parse_decimal(line["amount"])
