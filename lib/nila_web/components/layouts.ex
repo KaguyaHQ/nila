@@ -74,6 +74,12 @@ defmodule NilaWeb.Layouts do
               current_path={@current_path}
             />
             <.rail_link
+              href={~p"/bank"}
+              icon="hero-building-library"
+              label="Bank"
+              current_path={@current_path}
+            />
+            <.rail_link
               href={~p"/assistant"}
               icon="hero-chat-bubble-left-ellipsis"
               label="Assistant"
