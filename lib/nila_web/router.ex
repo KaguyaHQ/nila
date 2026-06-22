@@ -92,6 +92,7 @@ defmodule NilaWeb.Router do
         {NilaWeb.UserAuth, :mount_current_path}
       ] do
       live "/today", TodayLive, :index
+      live "/bank", BankLive, :index
       live "/profile", ProfileLive, :show
       live "/settings/account", UserSettingsLive, :edit
       live "/settings/account/confirm_email/:token", UserSettingsLive, :confirm_email

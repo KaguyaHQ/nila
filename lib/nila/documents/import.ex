@@ -4,6 +4,7 @@ defmodule Nila.Documents.Import do
   """
 
   alias Nila.Documents
+  alias Nila.Documents.BankStatementExtractionWorker
   alias Nila.Documents.PurchaseOrderExtractionWorker
   alias Nila.Repo
   alias Nila.Storage
@@ -68,6 +69,29 @@ defmodule Nila.Documents.Import do
     end
   end
 
+  def import_bank_statement(attrs) do
+    attrs
+    |> Map.put(:document_type, "bank_statement")
+    |> Map.put_new(:content_type, "application/pdf")
+    |> import_document()
+  end
+
+  def import_bank_statement_from_path(path, opts) do
+    org_id = Keyword.fetch!(opts, :org_id)
+    uploaded_by_id = Keyword.get(opts, :uploaded_by_id)
+    expanded_path = path |> URI.decode() |> Path.expand()
+
+    with {:ok, bytes} <- File.read(expanded_path) do
+      import_bank_statement(%{
+        org_id: org_id,
+        uploaded_by_id: uploaded_by_id,
+        filename: Path.basename(expanded_path),
+        content_type: "application/pdf",
+        bytes: bytes
+      })
+    end
+  end
+
   def enqueue_extraction(%{id: document_id}), do: enqueue_extraction(document_id)
 
   def enqueue_extraction(document_id) do
@@ -78,6 +102,13 @@ defmodule Nila.Documents.Import do
 
   defp maybe_enqueue_extraction(%{document_type: "purchase_order", id: document_id}) do
     {:ok, _job} = enqueue_extraction(document_id)
+  end
+
+  defp maybe_enqueue_extraction(%{document_type: "bank_statement", id: document_id}) do
+    {:ok, _job} =
+      %{document_id: document_id}
+      |> BankStatementExtractionWorker.new()
+      |> Oban.insert()
   end
 
   defp maybe_enqueue_extraction(_document), do: :ok

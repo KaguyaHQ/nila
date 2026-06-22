@@ -11,6 +11,7 @@ config :nila,
   ecto_repos: [Nila.Repo],
   generators: [timestamp_type: :utc_datetime_usec],
   po_extractor: Nila.Documents.Extractor.Stub,
+  bank_extractor: Nila.Banking.Extractor.Stub,
   gmail_adapter: Nila.Integrations.Gmail,
   whatsapp_adapter: Nila.Integrations.WhatsApp
 
@@ -103,7 +104,7 @@ config :esbuild,
 
 # Configure tailwind (the version is required)
 config :tailwind,
-  version: "4.1.12",
+  version: "4.2.2",
   nila: [
     args: ~w(
       --input=assets/css/app.css
