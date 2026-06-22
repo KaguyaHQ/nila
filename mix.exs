@@ -53,6 +53,7 @@ defmodule Nila.MixProject do
       {:oban, "~> 2.22"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
+      {:canonical_tailwind, "~> 0.2.0", only: [:dev, :test], runtime: false},
       {:heroicons,
        github: "tailwindlabs/heroicons",
        tag: "v2.2.0",
