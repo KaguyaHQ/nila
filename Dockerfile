@@ -56,6 +56,10 @@ RUN mix release
 # ---- runtime image -------------------------------------------------------
 FROM ${RUNNER_IMAGE}
 
+# Points the GHCR package at this repo (the package was first pushed from the
+# now-archived nila-ops repo, which left the source link stale).
+LABEL org.opencontainers.image.source="https://github.com/KaguyaHQ/nila"
+
 RUN apt-get update -y && \
   apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates curl xz-utils \
   fonts-dejavu-core fonts-noto-core fonts-noto-ui-core \
