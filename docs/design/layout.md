@@ -28,8 +28,8 @@ pattern is what makes most enterprise apps feel exhausting.
 Field discovery confirmed this split: back-office staff spend hours a day on
 one-at-a-time queue work (chasing, reviewing) and also need to look up records,
 run reports, and configure settings (record work). Both are first-class jobs.
-For the CA engine the queue work is low-confidence classification/reconciliation
-review; the record work is browsing documents, bank accounts, and clients.
+For the AI accountant the queue work is reviewing flagged draft lines and
+exceptions; the record work is browsing documents, bank accounts, and clients.
 
 ## Decision
 

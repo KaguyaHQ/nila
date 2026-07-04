@@ -7,10 +7,10 @@ in [`layout.md`](./layout.md).
 
 ## Brand
 
-**Nila** — Cyclical, calm, reliable, quiet. It works while you
+**Nila** (நிலா) — the moon. Cyclical, calm, reliable, quiet. It works while you
 sleep; it's reflective, not generative — it processes and softens what's already
 there and surfaces only what needs a human. That is literally the product: an
-AI-labor engine that drafts the compliance back office's work in the background.
+AI accountant that drafts the compliance back office's work in the background.
 The brand should feel like the moon, not the sun.
 
 Traits → design: **calm/graceful** → muted low-glare palette, ink and whitespace

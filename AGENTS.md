@@ -1,16 +1,16 @@
 # Nila Agent Notes
 
-Nila is a Phoenix + LiveView monolith. Nila is Claude Code for accounting.
+Nila is a Phoenix + LiveView monolith. Nila is the AI accountant.
 
 ## Thesis
 
-**Claude Code for accounting.** The same loop as a coding agent, aimed at the compliance
-back office: the user dumps an unstructured mess (a PDF, a photo, a paste, a forwarded
-statement), an agent extracts → classifies → drafts the structured artifact (voucher,
-ledger entry, return line) with a **confidence per line**, and the human only touches the
-exceptions before Phoenix commits business truth. We are not building data-entry forms; we
-are building the dump → draft → review loop. When you add a feature, ask "does this make
-the loop work on a new artifact type, or is it just a form?" Build the loop.
+**The AI accountant.** Nila does the junior accountant's job, starting with GST: the user
+dumps an unstructured mess (a PDF, a photo, a paste, a forwarded statement), Nila
+extracts → classifies → drafts the structured artifact (invoice record, return line),
+flags the uncertain lines, and the human only touches the exceptions before Phoenix
+commits business truth. We are not building data-entry forms; we are building the
+dump → draft → review loop. When you add a feature, ask "does this make the loop work on
+a new artifact type, or is it just a form?" Build the loop.
 
 ## Product Boundary
 

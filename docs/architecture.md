@@ -1,7 +1,7 @@
 # Architecture
 
-_Runtime, contexts, and the state principle for the CA AI-labor engine. See
-`docs/prd.md` for product intent and `docs/STRATEGY.md` for the wedge reasoning._
+_Runtime, contexts, and the state principle for the AI accountant. See
+`docs/prd.md` for product intent and the GST wedge._
 
 Nila is a Phoenix 1.8 monolith. The application shell, business contexts,
 background jobs, and audit trail live in one OTP application. Postgres is
@@ -24,9 +24,9 @@ the source of truth; no Redis, Kafka, or external task queue.
 - `Nila.Accounts` — user identity.
 - `Nila.Orgs` — tenancy: orgs, entities, and memberships (a CA firm and
   the client entities it files for).
-- `Nila.Clients` — the firm's clients: the parties bank credits are
-  matched against. `match_hints` accumulates known payer identities so
-  confirmed matches auto-resolve next time.
+- `Nila.Clients` — the firm's clients: the entities whose compliance work
+  Nila drafts. `match_hints` accumulates known payer identities so
+  confirmed bank-credit matches auto-resolve next time.
 - `Nila.Documents` — uploaded documents and extracted/reviewed artifacts;
   the messy-PDF→structured extractor is the crown jewel of the substrate.
 - `Nila.Banking` — bank-statement spine: accounts and the structured
@@ -42,8 +42,8 @@ the source of truth; no Redis, Kafka, or external task queue.
   are stateless; they never write business state.
 - `Nila.Audits` — append-only audit records across every state transition.
 
-The classification / routing (HITL review-unit) context is being built on
-top of this substrate; see `docs/.plans/`.
+The GST engine (invoice extraction → GSTR-1 draft lines → review queue) is
+being built on top of this substrate.
 
 ## State principle
 
@@ -94,9 +94,9 @@ trigger workflow steps and audited state transitions.
 - `Layouts.app/1` hosts the global shell (left rail, page header) per
   `docs/design/layout.md`.
 - `/today` is the single list-detail cockpit for queue-shaped work (document
-  review, low-confidence classification review, reconciliation exceptions, all
-  actioned from its detail pane); record-management pages use Ramp-style tables
-  and tabs (`/documents` archive, bank accounts, clients).
+  review, flagged return lines, exceptions, all actioned from its detail
+  pane); record-management pages use Ramp-style tables and tabs
+  (`/documents` archive, bank accounts, clients).
 
 ## Where to read next
 
@@ -104,5 +104,4 @@ trigger workflow steps and audited state transitions.
   R2 storage adapter design).
 - `design/DESIGN.md` — brand, principles, and the moonlight system;
   `design/layout.md` — shell and cockpit layout.
-- `.plans/` — feature implementation plans, with status headers.
-- `prd.md` — product intent: why/who, the bet, goals and non-goals.
+- `prd.md` — product intent: why/who, the GST wedge, goals and non-goals.
