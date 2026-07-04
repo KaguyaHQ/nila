@@ -59,17 +59,17 @@ same `Storage` behaviour with a key like `orgs/<org_id>/artifacts/<doc>/<kind>/<
 
 Docling is expected processing infrastructure, but it is not wired in this scaffold. The integration boundary exists so the service can be added once the document-processing contract is proven.
 
-## Ingestion: Manual Capture First, Inbox Watching Deferred (MVP)
+## Ingestion: Manual Capture First, Inbox Watching Deferred
 
-> Status: scope decision, 2026-06-01. Scopes **inbound document ingestion**.
-> Does not touch approval-reply polling (`ReplyPollWorker`), which stays — it is
-> narrow, thread-scoped, and already shipped.
+> Status: scope decision, 2026-06-01, made pre-pivot for the field-service MVP
+> (§-references point at the archived `nila-ops` discovery docs). The reasoning
+> survives the pivot: the CA engine's inputs are bank statements a human uploads
+> or forwards monthly, which is even more batch-shaped than PO capture was.
 
-The MVP magic is **killing invoice re-typing**, and that alone clears the bar.
-The family retypes invoices across systems, sends them from the wrong account,
-and hand-forwards GST data between seven uncoordinated inboxes today (discovery
-§2, §14.2). Remove the retyping and the reward is already "magical"; nothing
-else has to be automated to justify the product.
+The magic is **killing re-typing**, and that alone clears the bar. The
+original user retyped invoices across systems and hand-forwarded GST data
+between seven uncoordinated inboxes. Remove the retyping and the reward is
+already "magical"; nothing else has to be automated to justify the product.
 
 **Retrieval is the reward, and it is free.** Once a document's data is on Nila,
 Nila *is* the index. So cross-inbox **search** is explicitly not an MVP feature:
@@ -100,11 +100,11 @@ manual syncs or stand up watching infra) and over-cutting (do not make them log
 into seven inboxes to find the PO). One drag-drop, or one forward, per PO.
 
 **Free bonus: the noise problem disappears.** Because a human only ever feeds a
-real PO, there is no personal mail (matrimony threads, etc.) to filter and no
-tokens burned classifying junk. Automatic watching would reintroduce that
+real document, there is no personal mail (matrimony threads, etc.) to filter and
+no tokens burned classifying junk. Automatic watching would reintroduce that
 filtering work; manual capture removes it by construction. The connector's
-`has:attachment` default + blanket `purchase_order` typing only become a real
-token risk once watching is on — another reason to defer.
+`has:attachment` default + blanket document typing only become a real token
+risk once watching is on — another reason to defer.
 
 Revisit watching only when "I am tired of forwarding" is an *observed* complaint
 from a real user, not an anticipated one.
@@ -166,10 +166,9 @@ Keep `Multi` for:
   switches on which step failed and uses the partial-changes map, that's a
   real use of `Multi`'s shape, not incidental.
 
-Neither pattern is currently load-bearing in Nila. Today's `Multi` usage in
-`approvals.ex`, `operations.ex`, `invoices.ex`, and `documents.ex` is the
-entity-plus-audit-log shape that `transact` + `with` + `insert!` expresses
-more directly.
+Neither pattern is currently load-bearing in Nila; the entity-plus-audit-log
+shape that used to be written as `Multi` is expressed more directly with
+`transact` + `with` + `insert!`.
 
 ### Reads compose with `fetch`
 

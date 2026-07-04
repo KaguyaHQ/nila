@@ -37,6 +37,6 @@ mix precommit
 - `lib/nila/` contains business contexts: accounts, orgs, documents, workflows, audits, integrations, and storage.
 - `lib/nila_web/` contains Phoenix web and LiveView code.
 - `priv/static/uploads/` is the local development upload root.
-- `docs/` records architecture, decisions, and processing contracts.
+- `docs/` records architecture, decisions, and the processing contract (in `architecture.md`).
 
 Docling integration is intentionally not wired yet.

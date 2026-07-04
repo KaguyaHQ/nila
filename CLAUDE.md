@@ -12,7 +12,7 @@ Detailed Elixir, Phoenix, LiveView, Ecto, and HEEx coding rules live in `AGENTS.
 
 ## UI / Design
 
-`docs/design/DESIGN.md` (brand rationale in `docs/design/BRAND.md`) is authoritative for all UI — read it before editing `.heex` or components. The system is **"moonlight"**: daisyUI v5 semantic tokens over a bespoke oklch palette (light-only, no purple). Token reference lives in `docs/design/DESIGN.md`.
+`docs/design/DESIGN.md` is authoritative for all UI (brand, principles, tokens, type scale in one file) — read it before editing `.heex` or components. The system is **"moonlight"**: daisyUI v5 semantic tokens over a bespoke oklch palette (light-only, no purple). Token reference lives in `docs/design/DESIGN.md`.
 
 - Use the moonlight tokens; never hard-code colors (`slate-*`, `bg-white`, raw hex). Parts of the interior still use legacy slate — that's drift to fix when you touch a page, not a pattern to copy.
 - Build pages from the shared components in `lib/nila_web/components/core_components.ex` (`page_header`, `card`, `stat_card`, `badge`, `modal`, …); extract a new one when a pattern repeats rather than pasting class strings. That module is the single source of truth for the look.
