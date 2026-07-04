@@ -12,8 +12,8 @@ app".
 - The **root causes** ranked by likelihood, with how to tell them apart.
 - The **knobs that actually move the needle**, and the ones that don't.
 
-What does **not** live here: feature design (that's `docs/.plans/`),
-system decisions (`docs/decisions.md`), open ops backlog (`docs/TODO.md`).
+What does **not** live here: feature design (that's `docs/.plans/`) or
+system decisions (`docs/decisions.md`).
 
 ## Conventions
 

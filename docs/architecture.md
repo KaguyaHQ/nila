@@ -1,10 +1,7 @@
 # Architecture
 
-> **Status (2026-06-21).** This document still describes the archived field-service
-> (ops) domain. The runtime shape below — Phoenix 1.8 monolith, supervision tree,
-> Postgres-as-truth — remains accurate, but the business contexts it details
-> (customers, quotes, invoices, jobs) have been removed in the CA pivot. Pending a
-> rewrite for the CA engine; see `docs/CA_PIVOT_PLAN.md` and `docs/prd.md`.
+_Runtime, contexts, and the state principle for the CA AI-labor engine. See
+`docs/prd.md` for product intent and `docs/STRATEGY.md` for the wedge reasoning._
 
 Nila is a Phoenix 1.8 monolith. The application shell, business contexts,
 background jobs, and audit trail live in one OTP application. Postgres is
@@ -25,19 +22,28 @@ the source of truth; no Redis, Kafka, or external task queue.
 ## Domain boundaries
 
 - `Nila.Accounts` — user identity.
-- `Nila.Orgs` — tenancy: orgs and memberships.
-- `Nila.Documents` — uploaded documents and extracted/reviewed artifacts.
-- `Nila.Operations` — receivables ledger: the `Operation` primitive and
-  its status pipeline, with append-only `Event` rows for transitions and
-  follow-ups. Money is integer paise.
-- `Nila.Workflows` — workflow runs and steps (invoicegen).
-- `Nila.Approvals` — `ApprovalRequest`, per-OEM state machines, reply
-  classification, cadence. SDC for Philips first; generic enough for the
-  Siemens GRN chain and Elekta revision cycle.
-- `Nila.Contacts` — OEM approver directory and site-to-region routing.
+- `Nila.Orgs` — tenancy: orgs, entities, and memberships (a CA firm and
+  the client entities it files for).
+- `Nila.Clients` — the firm's clients: the parties bank credits are
+  matched against. `match_hints` accumulates known payer identities so
+  confirmed matches auto-resolve next time.
+- `Nila.Documents` — uploaded documents and extracted/reviewed artifacts;
+  the messy-PDF→structured extractor is the crown jewel of the substrate.
+- `Nila.Banking` — bank-statement spine: accounts and the structured
+  transactions projected from statement extractions. Source-agnostic
+  (PDF-extracted rows today, AA-pulled rows later). Money is integer paise.
+- `Nila.Gst` — pure GST jurisdiction logic (intra/inter-state treatment,
+  tax split), plus `gstin`/`state_codes`/`place_of_supply` helpers.
+- `Nila.Workflows` — Oban-backed workflow runs and steps (the step-runner
+  that drives ingest→extract→classify).
+- `Nila.Assistant` — server-side tool-use loop against an
+  OpenAI-compatible endpoint, scoped by org.
 - `Nila.Integrations` — external connectors (Gmail, WhatsApp). Adapters
   are stateless; they never write business state.
 - `Nila.Audits` — append-only audit records across every state transition.
+
+The classification / routing (HITL review-unit) context is being built on
+top of this substrate; see `docs/.plans/`.
 
 ## State principle
 
@@ -46,21 +52,57 @@ own business state. Phoenix contexts validate, review, audit, and commit
 every state transition. The human is in the loop for anything that lands
 as `needs_review` or `pending_review`.
 
+## Processing contract
+
+External document processors satisfy a fixed interface. Nila sends a document
+reference, metadata, and requested artifact kinds; the processor reads bytes
+via a controlled storage URL or receives them directly, and returns structured
+artifacts only:
+
+```json
+{
+  "kind": "bank_statement_extraction",
+  "version": 1,
+  "data": {
+    "account_number": "XXXX1234",
+    "period_start": "2026-05-01",
+    "period_end": "2026-05-31",
+    "transactions": [
+      {
+        "date": "2026-05-06",
+        "narration": "UPI/EXAMPLE TRADERS/...",
+        "amount": "12500.00",
+        "direction": "credit"
+      }
+    ]
+  },
+  "confidence": {
+    "transactions.0.amount": 0.98,
+    "transactions.0.direction": 0.91
+  },
+  "exceptions": []
+}
+```
+
+Rules: processors never write business state; Phoenix stores returned artifacts
+as `pending_review`; humans approve or reject exceptions; approved artifacts can
+trigger workflow steps and audited state transitions.
+
 ## Web layer
 
 - `lib/nila_web/` — controllers, LiveViews, components.
 - `Layouts.app/1` hosts the global shell (left rail, page header) per
   `docs/design/layout.md`.
 - `/today` is the single list-detail cockpit for queue-shaped work (document
-  review, acceptance chase, receivable follow-up, all actioned from its detail
-  pane); record-management pages use Ramp-style tables and tabs (`/receivables`,
-  future `/invoices`, `/documents` archive).
+  review, low-confidence classification review, reconciliation exceptions, all
+  actioned from its detail pane); record-management pages use Ramp-style tables
+  and tabs (`/documents` archive, bank accounts, clients).
 
 ## Where to read next
 
 - `decisions.md` — system-level decisions (Postgres, Oban, monolith, the
   R2 storage adapter design).
-- `design/` — UI architecture decisions, starting with `layout.md`.
-- `plans/` — feature implementation plans, with status headers.
-- `processing_contract.md` — the contract for document processors.
+- `design/DESIGN.md` — brand, principles, and the moonlight system;
+  `design/layout.md` — shell and cockpit layout.
+- `.plans/` — feature implementation plans, with status headers.
 - `prd.md` — product intent: why/who, the bet, goals and non-goals.

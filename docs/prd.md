@@ -11,9 +11,9 @@ If it contradicts the code, the code is right and this needs a review.
 
 > **History.** Nila began as a system-of-record for a family field-service business. That
 > thesis is archived intact in the `nila-ops` repo. The product pivoted to a **CA AI-labor
-> engine**; `docs/CA_PIVOT_PLAN.md` records the repo-extraction decision and
-> `docs/STRATEGY.md` the reasoning. Some interior docs (`architecture.md`, `discovery/`,
-> `AGENT_MAP.md`) still describe the archived ops thesis and are pending a CA rewrite.
+> engine**, seeding a clean repo from the portable substrate (extraction, tenancy, GST,
+> audit, storage); `docs/STRATEGY.md` records the reasoning. The inherited substrate still
+> carries some invoice-shaped doc-comments and columns from that lift.
 
 ---
 

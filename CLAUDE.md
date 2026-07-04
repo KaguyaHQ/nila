@@ -40,11 +40,10 @@ Dev-only routes (behind `:dev_routes`): LiveDashboard at `/dev/dashboard`, Swoos
 
 ## Docs Fast Path
 
-Start with `docs/AGENT_MAP.md` for task-specific doc routing.
-
 Canonical sources:
 
 - Product intent (why/who, goals, non-goals): `docs/prd.md`
+- Wedge reasoning (value model, ICP, bets): `docs/STRATEGY.md`
 - Runtime and domain shape: `docs/architecture.md`
 - Architecture decisions: `docs/decisions.md`
 - UI system: `docs/design/DESIGN.md`, with reasoning in `docs/design/`
@@ -58,6 +57,6 @@ Standard Phoenix umbrella-free layout split into a domain root (`Nila`) and web 
 - `lib/nila_web.ex` — defines the `use NilaWeb, :controller | :live_view | :html | :router` macros; app-wide imports/aliases (e.g. `Layouts`) belong in its `html_helpers` block.
 - `lib/nila/application.ex` — supervision tree: Telemetry → Repo → Oban → DNSCluster → `Phoenix.PubSub` (`Nila.PubSub`) → Endpoint.
 
-Routing: `/` is the public marketing landing (`PageController`); the rest of the app sits behind a `:require_authenticated` pipeline (session auth, RBAC via `Nila.Accounts.Policy`), and signed-in users land on the `/today` cockpit (`TodayLive`, currently a placeholder). `/health` is a JSON probe used by the container healthcheck. Substrate contexts (accounts, orgs, documents + extractor, gst, workflows, audits, integrations, assistant), Oban wiring, and a pluggable `Nila.Storage` behaviour are in place; the CA engine (classify / route / reconcile) and its review-unit are built on top — see `docs/CA_PIVOT_PLAN.md` and `docs/prd.md`.
+Routing: `/` is the public marketing landing (`PageController`); the rest of the app sits behind a `:require_authenticated` pipeline (session auth, RBAC via `Nila.Accounts.Policy`), and signed-in users land on the `/today` cockpit (`TodayLive`, currently a placeholder). `/health` is a JSON probe used by the container healthcheck. Substrate contexts (accounts, orgs, documents + extractor, gst, workflows, audits, integrations, assistant), Oban wiring, and a pluggable `Nila.Storage` behaviour are in place; the CA engine (classify / route / reconcile) and its review-unit are built on top — see `docs/prd.md`.
 
 Deploys to a Hetzner box at `nilahq.com` via GitHub Actions (`.github/workflows/deploy.yml`); see `hetzner/README.md`.

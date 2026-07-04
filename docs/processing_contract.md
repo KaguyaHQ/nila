@@ -12,17 +12,24 @@ Processors return structured artifacts:
 
 ```json
 {
-  "kind": "invoice_extraction",
+  "kind": "bank_statement_extraction",
   "version": 1,
   "data": {
-    "supplier_name": "Example Traders",
-    "invoice_number": "INV-001",
-    "invoice_date": "2026-05-26",
-    "total_amount": "12500.00"
+    "account_number": "XXXX1234",
+    "period_start": "2026-05-01",
+    "period_end": "2026-05-31",
+    "transactions": [
+      {
+        "date": "2026-05-06",
+        "narration": "UPI/EXAMPLE TRADERS/...",
+        "amount": "12500.00",
+        "direction": "credit"
+      }
+    ]
   },
   "confidence": {
-    "invoice_number": 0.98,
-    "total_amount": 0.91
+    "transactions.0.amount": 0.98,
+    "transactions.0.direction": 0.91
   },
   "exceptions": []
 }

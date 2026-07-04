@@ -8,7 +8,6 @@ Sibling folders:
 
 - `docs/decisions.md` — system-level decisions (Postgres, Oban, monolith).
 - `docs/.plans/` — feature implementation plans.
-- `docs/discovery/` — customer / workflow research.
 - This folder — UI architecture and design language.
 
 ## How this folder grows

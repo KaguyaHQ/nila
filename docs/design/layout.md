@@ -25,10 +25,11 @@ These are different cognitive tasks. Ramp/Rippling/Stripe optimize for the
 first; Front/Superhuman/Things optimize for the second. Forcing both into one
 pattern is what makes most enterprise apps feel exhausting.
 
-The customer-workflow discovery (`docs/discovery/customer-workflows.md`)
-confirms this: Jaimathi spends 2–3 hours a day chasing approvals one invoice
-at a time (queue work) and also needs to look up old invoices, run aging
-reports, and configure approvers (record work). Both are first-class jobs.
+Field discovery confirmed this split: back-office staff spend hours a day on
+one-at-a-time queue work (chasing, reviewing) and also need to look up records,
+run reports, and configure settings (record work). Both are first-class jobs.
+For the CA engine the queue work is low-confidence classification/reconciliation
+review; the record work is browsing documents, bank accounts, and clients.
 
 ## Decision
 
