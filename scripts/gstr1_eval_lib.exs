@@ -137,7 +137,9 @@ defmodule Gstr1Eval do
       end)
 
     validation =
-      Enum.flat_map(issues, fn issue ->
+      issues
+      |> Enum.reject(&(&1["level"] == "info"))
+      |> Enum.flat_map(fn issue ->
         Enum.map(issue["fields"] || [], fn field ->
           %{"invoice" => issue["invoice"], "field" => field}
         end)
@@ -241,7 +243,8 @@ defmodule Gstr1Eval do
     report["issues"]
     |> Enum.each(fn issue ->
       where = issue["invoice"] || "bundle"
-      IO.puts("- #{where}: #{issue["code"]} #{issue["message"]}")
+      level = if issue["level"], do: " [#{issue["level"]}]", else: ""
+      IO.puts("- #{where}: #{issue["code"]}#{level} #{issue["message"]}")
     end)
 
     case report["raw"]["mismatches"] do
@@ -291,7 +294,8 @@ defmodule Gstr1Eval do
     arithmetic_issues(invoice) ++
       gstin_issues(invoice) ++
       consistency_issues(invoice) ++
-      lopsided_split_issues(invoice) ++ furniture_row_issues(invoice) ++ line_issues
+      lopsided_split_issues(invoice) ++
+      furniture_row_issues(invoice) ++ bucket_rounding_issues(invoice) ++ line_issues
   end
 
   defp furniture_row_issues(invoice) do
@@ -316,6 +320,80 @@ defmodule Gstr1Eval do
       ]
     end
   end
+
+  defp bucket_rounding_issues(invoice) do
+    invoice["line_items"]
+    |> Enum.group_by(&line_rate/1)
+    |> Enum.flat_map(fn {rate, lines} ->
+      lines
+      |> Enum.group_by(&tax_mode/1)
+      |> Enum.flat_map(fn {mode, mode_lines} ->
+        bucket_tax = computed_bucket_tax(mode_lines, rate, mode)
+
+        case mode do
+          :interstate ->
+            rounding_issue(
+              invoice,
+              rate,
+              mode_lines,
+              "iamt",
+              sum(mode_lines, "igst_amount"),
+              bucket_tax.iamt
+            )
+
+          :intrastate ->
+            rounding_issue(
+              invoice,
+              rate,
+              mode_lines,
+              "camt",
+              sum(mode_lines, "cgst_amount"),
+              bucket_tax.camt
+            ) ++
+              rounding_issue(
+                invoice,
+                rate,
+                mode_lines,
+                "samt",
+                sum(mode_lines, "sgst_amount"),
+                bucket_tax.samt
+              )
+        end
+      end)
+    end)
+  end
+
+  defp rounding_issue(invoice, rate, lines, field, extracted, computed) do
+    delta = round2(extracted - computed)
+
+    cond do
+      close?(extracted, computed, @diff_tolerance) ->
+        []
+
+      abs(delta) <= rounding_variance_bound(lines) ->
+        [
+          issue(
+            invoice,
+            "rounding_variance",
+            "#{field} line-tax sum #{round2(extracted)} differs from bucket taxable × #{rate}% #{round2(computed)} by #{delta}, within per-line rounding bound",
+            ["line_items"],
+            "info"
+          )
+        ]
+
+      true ->
+        [
+          issue(
+            invoice,
+            "bucket_tax_mismatch",
+            "#{field} line-tax sum #{round2(extracted)} differs from bucket taxable × #{rate}% #{round2(computed)} by #{delta}, beyond per-line rounding bound",
+            ["line_items"]
+          )
+        ]
+    end
+  end
+
+  defp rounding_variance_bound(lines), do: 0.005 * length(lines) + 0.000001
 
   defp line_issues(invoice, line, index) do
     taxable = num(line["taxable_value"])
@@ -514,14 +592,18 @@ defmodule Gstr1Eval do
     end
   end
 
-  defp issue(invoice, code, message, fields) do
+  defp issue(invoice, code, message, fields, level \\ nil) do
     %{
       "invoice" => invoice["invoice_number"],
       "code" => code,
       "message" => message,
       "fields" => fields
     }
+    |> maybe_put_level(level)
   end
+
+  defp maybe_put_level(issue, nil), do: issue
+  defp maybe_put_level(issue, level), do: Map.put(issue, "level", level)
 
   defp derive_invoice(invoice, seller_state) do
     buyer_state = state_code(invoice["buyer_gstin"])
@@ -532,14 +614,16 @@ defmodule Gstr1Eval do
       |> Enum.sort_by(fn {rate, _lines} -> rate end)
       |> Enum.with_index(1)
       |> Enum.map(fn {{rate, lines}, index} ->
+        tax = computed_bucket_tax(lines, rate, invoice_tax_mode(lines, seller_state, buyer_state))
+
         %{
           "num" => index,
           "itm_det" => %{
             "rt" => normalize_number(rate),
-            "txval" => round2(sum(lines, "taxable_value")),
-            "camt" => round2(sum(lines, "cgst_amount")),
-            "samt" => round2(sum(lines, "sgst_amount")),
-            "iamt" => round2(sum(lines, "igst_amount")),
+            "txval" => tax.txval,
+            "camt" => tax.camt,
+            "samt" => tax.samt,
+            "iamt" => tax.iamt,
             "csamt" => 0
           }
         }
@@ -564,15 +648,21 @@ defmodule Gstr1Eval do
     |> Enum.flat_map(& &1["line_items"])
     |> Enum.group_by(fn line -> {hsn4(line["hsn_sac"]), line_rate(line)} end)
     |> Enum.map(fn {{hsn, rate}, lines} ->
+      intra_tax =
+        computed_bucket_tax(Enum.filter(lines, &(tax_mode(&1) == :intrastate)), rate, :intrastate)
+
+      inter_tax =
+        computed_bucket_tax(Enum.filter(lines, &(tax_mode(&1) == :interstate)), rate, :interstate)
+
       %{
         "hsn_sc" => hsn,
         "rt" => normalize_number(rate),
         "uqc" => if(String.starts_with?(to_string(hsn), "99"), do: "NA", else: "OTH"),
         "qty" => 0,
         "txval" => round2(sum(lines, "taxable_value")),
-        "camt" => round2(sum(lines, "cgst_amount")),
-        "samt" => round2(sum(lines, "sgst_amount")),
-        "iamt" => round2(sum(lines, "igst_amount"))
+        "camt" => intra_tax.camt,
+        "samt" => intra_tax.samt,
+        "iamt" => inter_tax.iamt
       }
     end)
     |> Enum.sort_by(& &1["hsn_sc"])
@@ -736,8 +826,47 @@ defmodule Gstr1Eval do
   defp invoice_taxable(invoice), do: sum(invoice["line_items"], "taxable_value")
 
   defp invoice_tax(invoice) do
-    sum(invoice["line_items"], "cgst_amount") + sum(invoice["line_items"], "sgst_amount") +
-      sum(invoice["line_items"], "igst_amount")
+    invoice["line_items"]
+    |> Enum.group_by(&line_rate/1)
+    |> Enum.map(fn {rate, lines} ->
+      lines
+      |> Enum.group_by(&tax_mode/1)
+      |> Enum.map(fn {mode, mode_lines} ->
+        tax = computed_bucket_tax(mode_lines, rate, mode)
+        tax.camt + tax.samt + tax.iamt
+      end)
+      |> Enum.sum()
+    end)
+    |> Enum.sum()
+  end
+
+  defp computed_bucket_tax([], _rate, _mode), do: %{txval: 0, camt: 0, samt: 0, iamt: 0}
+
+  defp computed_bucket_tax(lines, rate, :interstate) do
+    txval = round2(sum(lines, "taxable_value"))
+    %{txval: txval, camt: 0, samt: 0, iamt: round2(txval * num(rate) / 100)}
+  end
+
+  defp computed_bucket_tax(lines, rate, :intrastate) do
+    txval = round2(sum(lines, "taxable_value"))
+    side_tax = round2(txval * num(rate) / 200)
+    %{txval: txval, camt: side_tax, samt: side_tax, iamt: 0}
+  end
+
+  defp invoice_tax_mode(lines, seller_state, buyer_state) do
+    cond do
+      seller_state && buyer_state && seller_state != buyer_state -> :interstate
+      seller_state && buyer_state -> :intrastate
+      true -> tax_mode(List.first(lines) || %{})
+    end
+  end
+
+  defp tax_mode(line) do
+    if num(line["igst_amount"]) > 0 or num(line["igst_rate"]) > 0 do
+      :interstate
+    else
+      :intrastate
+    end
   end
 
   defp sum(lines, field), do: lines |> Enum.map(&num(&1[field])) |> Enum.sum()
