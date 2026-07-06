@@ -91,7 +91,12 @@ defmodule Gstr1Eval do
     data = raw["data"] || raw["extract_result"] || raw["result"] || raw
     seller = data["seller"] || %{}
     buyer = data["buyer"] || data["bill_to"] || %{}
-    line_items = data["line_items"] || []
+
+    line_items =
+      data
+      |> Map.get("line_items", [])
+      |> Enum.map(&normalize_line/1)
+      |> Enum.reject(&degenerate_line?/1)
 
     %{
       "page" => raw["page"] || data["page"],
@@ -101,7 +106,7 @@ defmodule Gstr1Eval do
       "seller_gstin" => value(data, ["seller_gstin"]) || seller["gstin"],
       "buyer_name" => value(data, ["buyer_name"]) || buyer["name"],
       "buyer_gstin" => value(data, ["buyer_gstin"]) || buyer["gstin"],
-      "line_items" => Enum.map(line_items, &normalize_line/1),
+      "line_items" => line_items,
       "printed_total_taxable" =>
         money(value(data, ["printed_total_taxable", "total_net_amount"])),
       "printed_total_tax" => money(value(data, ["printed_total_tax", "total_tax_amount"])),
@@ -285,7 +290,31 @@ defmodule Gstr1Eval do
 
     arithmetic_issues(invoice) ++
       gstin_issues(invoice) ++
-      consistency_issues(invoice) ++ lopsided_split_issues(invoice) ++ line_issues
+      consistency_issues(invoice) ++
+      lopsided_split_issues(invoice) ++ furniture_row_issues(invoice) ++ line_issues
+  end
+
+  defp furniture_row_issues(invoice) do
+    furniture_rows =
+      invoice["line_items"]
+      |> Enum.with_index(1)
+      |> Enum.filter(fn {line, _index} ->
+        furniture_description?(line["description"]) and not degenerate_line?(line)
+      end)
+      |> Enum.map(fn {_line, index} -> index end)
+
+    if furniture_rows == [] do
+      []
+    else
+      [
+        issue(
+          invoice,
+          "furniture_row_with_values",
+          "furniture rows #{Enum.join(furniture_rows, ", ")} carry taxable/tax values — keep for review, do not silently drop",
+          ["line_items"]
+        )
+      ]
+    end
   end
 
   defp line_issues(invoice, line, index) do
@@ -522,7 +551,7 @@ defmodule Gstr1Eval do
     %{
       "inum" => invoice["invoice_number"],
       "idt" => normalize_date(invoice["invoice_date"]),
-      "val" => round(taxable + tax),
+      "val" => round2(taxable + tax),
       "pos" => buyer_state || seller_state,
       "rchrg" => "N",
       "inv_typ" => "R",
@@ -673,7 +702,7 @@ defmodule Gstr1Eval do
       "field" => field,
       "derived" => derived,
       "filed" => filed,
-      "match" => equivalent?(derived, filed)
+      "match" => equivalent?(field, derived, filed)
     }
   end
 
@@ -691,11 +720,16 @@ defmodule Gstr1Eval do
     end
   end
 
-  defp equivalent?(a, b) when is_number(a) or is_number(b) do
+  # Auditor entry convention varies between whole-rupee rounding and paise for invoice val.
+  defp equivalent?("val", a, b) when is_number(a) or is_number(b) do
+    close?(num(a), num(b), 1.0)
+  end
+
+  defp equivalent?(_field, a, b) when is_number(a) or is_number(b) do
     close?(num(a), num(b), @diff_tolerance)
   end
 
-  defp equivalent?(a, b), do: normalize_blank(a) == normalize_blank(b)
+  defp equivalent?(_field, a, b), do: normalize_blank(a) == normalize_blank(b)
 
   defp close?(a, b, tolerance), do: abs(num(a) - num(b)) <= tolerance + 0.000001
 
@@ -707,6 +741,21 @@ defmodule Gstr1Eval do
   end
 
   defp sum(lines, field), do: lines |> Enum.map(&num(&1[field])) |> Enum.sum()
+
+  defp degenerate_line?(line) do
+    zeroish?(line["taxable_value"]) and zeroish?(line["quantity"]) and
+      zeroish?(line["cgst_amount"]) and zeroish?(line["sgst_amount"]) and
+      zeroish?(line["igst_amount"])
+  end
+
+  defp furniture_description?(description) do
+    description = description |> to_string() |> String.trim()
+
+    String.match?(description, ~r/^total\b/i) or
+      String.match?(description, ~r/amount.*\bwords\b/i)
+  end
+
+  defp zeroish?(value), do: is_nil(value) or num(value) == 0
 
   defp line_rate(line),
     do: num(line["cgst_rate"]) + num(line["sgst_rate"]) + num(line["igst_rate"])
