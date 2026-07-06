@@ -9,7 +9,7 @@ defmodule Gstr1Eval do
   end
 
   def default_out_dir do
-    Path.expand("../tmp/eval/2026-05-breeze", __DIR__)
+    default_fixture_dir() |> default_out_dir_for_fixture()
   end
 
   def parse_args(args) do
@@ -26,20 +26,49 @@ defmodule Gstr1Eval do
       )
 
     fixture_dir = Path.expand(opts[:fixture_dir] || default_fixture_dir())
-    out_dir = Path.expand(opts[:out_dir] || default_out_dir())
+    out_dir = Path.expand(opts[:out_dir] || default_out_dir_for_fixture(fixture_dir))
 
     %{
       fixture_dir: fixture_dir,
       out_dir: out_dir,
-      pdf_path: Path.expand(opts[:pdf] || Path.join(fixture_dir, "breeze_may_sales.pdf")),
+      pdf_path: Path.expand(opts[:pdf] || single_fixture_file!(fixture_dir, "*.pdf", "PDF")),
       filed_path:
         Path.expand(
-          opts[:filed] ||
-            Path.join(fixture_dir, "returns_06072026_R1_33AEWPH4158J1Z3_offline_others_0.json")
+          opts[:filed] || single_fixture_file!(fixture_dir, "returns_*.json", "filed return JSON")
         ),
       pages_dir: Path.expand(opts[:pages] || Path.join(out_dir, "pages")),
-      corrections_path: opts[:corrections] && Path.expand(opts[:corrections])
+      corrections_path:
+        (opts[:corrections] && Path.expand(opts[:corrections])) ||
+          optional_fixture_file(fixture_dir, "corrections.json")
     }
+  end
+
+  defp default_out_dir_for_fixture(fixture_dir) do
+    period = Path.basename(fixture_dir)
+    seller = fixture_dir |> Path.dirname() |> Path.basename()
+    Path.expand("../tmp/eval/#{period}-#{seller}", __DIR__)
+  end
+
+  defp single_fixture_file!(fixture_dir, pattern, label) do
+    matches = fixture_dir |> Path.join(pattern) |> Path.wildcard() |> Enum.sort()
+
+    case matches do
+      [path] ->
+        path
+
+      [] ->
+        Mix.raise("no #{label} found in #{fixture_dir}; pass it explicitly")
+
+      paths ->
+        Mix.raise(
+          "multiple #{label} files found in #{fixture_dir}; pass one explicitly: #{Enum.join(paths, ", ")}"
+        )
+    end
+  end
+
+  defp optional_fixture_file(fixture_dir, filename) do
+    path = Path.join(fixture_dir, filename)
+    if File.exists?(path), do: path
   end
 
   def read_json!(path), do: path |> File.read!() |> Jason.decode!()
