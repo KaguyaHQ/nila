@@ -1,0 +1,24 @@
+{
+  "corrections": [
+    {
+      "invoice": "27/2026-27",
+      "field": "line_items",
+      "value": [
+        {
+          "description": "CAMC for Chiller",
+          "hsn_sac": "998719",
+          "quantity": 10,
+          "uom": "",
+          "unit_price": 47500,
+          "taxable_value": 475000,
+          "cgst_rate": 9,
+          "cgst_amount": 42750,
+          "sgst_rate": 9,
+          "sgst_amount": 42750,
+          "igst_rate": null,
+          "igst_amount": null
+        }
+      ]
+    }
+  ]
+}

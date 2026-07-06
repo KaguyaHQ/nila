@@ -1,0 +1,862 @@
+defmodule Gstr1Eval do
+  @confidence_threshold 0.90
+  @money_tolerance 0.5
+  @diff_tolerance 0.01
+  @ignored_invoice_fields ~w(chksum flag updby cflag)
+
+  def default_fixture_dir do
+    Path.expand("../test/fixtures/gstr1/breeze/2026-05", __DIR__)
+  end
+
+  def default_out_dir do
+    Path.expand("../tmp/eval/2026-05-breeze", __DIR__)
+  end
+
+  def parse_args(args) do
+    {opts, _argv, _invalid} =
+      OptionParser.parse(args,
+        strict: [
+          fixture_dir: :string,
+          out_dir: :string,
+          pdf: :string,
+          filed: :string,
+          pages: :string,
+          corrections: :string
+        ]
+      )
+
+    fixture_dir = Path.expand(opts[:fixture_dir] || default_fixture_dir())
+    out_dir = Path.expand(opts[:out_dir] || default_out_dir())
+
+    %{
+      fixture_dir: fixture_dir,
+      out_dir: out_dir,
+      pdf_path: Path.expand(opts[:pdf] || Path.join(fixture_dir, "breeze_may_sales.pdf")),
+      filed_path:
+        Path.expand(
+          opts[:filed] ||
+            Path.join(fixture_dir, "returns_06072026_R1_33AEWPH4158J1Z3_offline_others_0.json")
+        ),
+      pages_dir: Path.expand(opts[:pages] || Path.join(out_dir, "pages")),
+      corrections_path: opts[:corrections] && Path.expand(opts[:corrections])
+    }
+  end
+
+  def read_json!(path), do: path |> File.read!() |> Jason.decode!()
+
+  def write_json!(path, value) do
+    path |> Path.dirname() |> File.mkdir_p!()
+    File.write!(path, Jason.encode!(value, pretty: true))
+  end
+
+  def load_invoices!(pages_dir) do
+    pages_dir
+    |> Path.join("*.json")
+    |> Path.wildcard()
+    |> Enum.sort_by(&page_sort_key/1)
+    |> Enum.map(&read_json!/1)
+    |> Enum.map(&normalize_invoice/1)
+  end
+
+  def normalize_invoice(raw) when is_map(raw) do
+    data = raw["data"] || raw["extract_result"] || raw["result"] || raw
+    seller = data["seller"] || %{}
+    buyer = data["buyer"] || data["bill_to"] || %{}
+    line_items = data["line_items"] || []
+
+    %{
+      "page" => raw["page"] || data["page"],
+      "invoice_number" => normalize_invoice_number(value(data, ["invoice_number", "inum"])),
+      "invoice_date" => value(data, ["invoice_date", "idt"]),
+      "seller_name" => value(data, ["seller_name"]) || seller["name"],
+      "seller_gstin" => value(data, ["seller_gstin"]) || seller["gstin"],
+      "buyer_name" => value(data, ["buyer_name"]) || buyer["name"],
+      "buyer_gstin" => value(data, ["buyer_gstin"]) || buyer["gstin"],
+      "line_items" => Enum.map(line_items, &normalize_line/1),
+      "printed_total_taxable" =>
+        money(value(data, ["printed_total_taxable", "total_net_amount"])),
+      "printed_total_tax" => money(value(data, ["printed_total_tax", "total_tax_amount"])),
+      "printed_grand_total" => money(value(data, ["printed_grand_total", "total_gross_amount"])),
+      "confidence" => non_empty_map(raw["confidence"]) || build_confidence(raw),
+      "_raw" => raw
+    }
+  end
+
+  def validation_issues(invoices) do
+    invoice_issues = Enum.flat_map(invoices, &invoice_issues/1)
+    sequence_issues(invoices) ++ invoice_issues
+  end
+
+  def flagged_fields(invoices, issues) do
+    low_conf =
+      invoices
+      |> Enum.flat_map(fn invoice ->
+        confidence = invoice["confidence"] || %{}
+        invoice_number = invoice["invoice_number"]
+
+        confidence
+        |> flatten_confidence()
+        |> Enum.filter(fn {_field, value} ->
+          is_number(value) and value < @confidence_threshold
+        end)
+        |> Enum.map(fn {field, _value} -> %{"invoice" => invoice_number, "field" => field} end)
+      end)
+
+    validation =
+      Enum.flat_map(issues, fn issue ->
+        Enum.map(issue["fields"] || [], fn field ->
+          %{"invoice" => issue["invoice"], "field" => field}
+        end)
+      end)
+
+    MapSet.new(low_conf ++ validation, &flag_key/1)
+  end
+
+  def apply_corrections(invoices, nil, flagged), do: {invoices, [], [], flagged}
+
+  def apply_corrections(invoices, path, flagged) do
+    corrections = read_json!(path)["corrections"] || read_json!(path)
+
+    Enum.reduce(corrections, {invoices, [], [], flagged}, fn correction,
+                                                             {acc, flagged_ok, silent, flags} ->
+      invoice_number = correction["invoice"] || correction["inum"]
+
+      updated =
+        Enum.map(acc, fn invoice ->
+          if invoice["invoice_number"] == invoice_number do
+            put_field(invoice, correction["field"], correction["value"])
+          else
+            invoice
+          end
+        end)
+
+      if correction_flagged?(flags, correction) do
+        {updated, [correction | flagged_ok], silent, flags}
+      else
+        {updated, flagged_ok, [correction | silent], flags}
+      end
+    end)
+  end
+
+  def derive_gstr1(invoices, filed) do
+    seller_gstin = filed["gstin"] || first_present(invoices, "seller_gstin")
+    seller_state = state_code(seller_gstin)
+
+    b2b =
+      invoices
+      |> Enum.group_by(& &1["buyer_gstin"])
+      |> Enum.map(fn {ctin, buyer_invoices} ->
+        %{
+          "ctin" => ctin,
+          "inv" =>
+            Enum.map(
+              Enum.sort_by(buyer_invoices, &invoice_sort_key(&1["invoice_number"])),
+              &derive_invoice(&1, seller_state)
+            )
+        }
+      end)
+      |> Enum.sort_by(& &1["ctin"])
+
+    %{
+      "gstin" => seller_gstin,
+      "fp" => filed["fp"],
+      "filing_typ" => filed["filing_typ"] || "M",
+      "gt" => filed["gt"] || 0.0,
+      "cur_gt" => filed["cur_gt"] || 0.0,
+      "b2b" => b2b,
+      "hsn" => %{"hsn_b2b" => derive_hsn(invoices), "hsn_b2c" => []},
+      "doc_issue" => derive_doc_issue(invoices),
+      "fil_dt" => filed["fil_dt"]
+    }
+  end
+
+  def diff(derived, filed) do
+    invoice_diffs = diff_invoices(derived, filed)
+    hsn_diffs = diff_hsn(derived, filed)
+    doc_diffs = diff_doc(derived, filed)
+    rows = invoice_diffs ++ hsn_diffs ++ doc_diffs
+    matches = Enum.count(rows, & &1["match"])
+    total = length(rows)
+    score = if total == 0, do: 0.0, else: matches * 100 / total
+
+    %{
+      "score" => Float.round(score, 2),
+      "matches" => matches,
+      "total" => total,
+      "mismatches" => Enum.reject(rows, & &1["match"]),
+      "rows" => rows
+    }
+  end
+
+  def print_report(report) do
+    IO.puts(
+      "raw score: #{report["raw"]["score"]}% (#{report["raw"]["matches"]}/#{report["raw"]["total"]})"
+    )
+
+    if report["final"] do
+      IO.puts(
+        "final score: #{report["final"]["score"]}% (#{report["final"]["matches"]}/#{report["final"]["total"]})"
+      )
+
+      IO.puts("flagged corrections: #{length(report["flagged_corrections"])}")
+      IO.puts("silent errors: #{length(report["silent_errors"])}")
+    end
+
+    IO.puts("issues: #{length(report["issues"])}")
+
+    report["issues"]
+    |> Enum.each(fn issue ->
+      where = issue["invoice"] || "bundle"
+      IO.puts("- #{where}: #{issue["code"]} #{issue["message"]}")
+    end)
+
+    case report["raw"]["mismatches"] do
+      [] ->
+        IO.puts("mismatches: 0")
+
+      mismatches ->
+        IO.puts("mismatches: #{length(mismatches)}")
+
+        mismatches
+        |> Enum.take(40)
+        |> Enum.each(fn row ->
+          IO.puts(
+            "- #{row["scope"]} #{row["key"]} #{row["field"]}: derived=#{inspect(row["derived"])} filed=#{inspect(row["filed"])}"
+          )
+        end)
+    end
+  end
+
+  defp normalize_line(line) do
+    cgst = line["cgst"] || %{}
+    sgst = line["sgst"] || %{}
+    igst = line["igst"] || %{}
+
+    %{
+      "description" => line["description"],
+      "hsn_sac" => to_string_or_nil(value(line, ["hsn_sac", "hsn_sc"])),
+      "quantity" => money(value(line, ["quantity", "qty"])),
+      "uom" => value(line, ["uom", "unit"]),
+      "unit_price" => money(value(line, ["unit_price", "rate"])),
+      "taxable_value" => money(value(line, ["taxable_value", "taxable", "net_amount", "txval"])),
+      "cgst_rate" => money(line["cgst_rate"] || cgst["rate"]),
+      "cgst_amount" => money(line["cgst_amount"] || cgst["amount"] || line["camt"]),
+      "sgst_rate" => money(line["sgst_rate"] || sgst["rate"]),
+      "sgst_amount" => money(line["sgst_amount"] || sgst["amount"] || line["samt"]),
+      "igst_rate" => money(line["igst_rate"] || igst["rate"]),
+      "igst_amount" => money(line["igst_amount"] || igst["amount"] || line["iamt"])
+    }
+  end
+
+  defp invoice_issues(invoice) do
+    line_issues =
+      invoice["line_items"]
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {line, index} -> line_issues(invoice, line, index) end)
+
+    arithmetic_issues(invoice) ++
+      gstin_issues(invoice) ++
+      consistency_issues(invoice) ++ lopsided_split_issues(invoice) ++ line_issues
+  end
+
+  defp line_issues(invoice, line, index) do
+    taxable = num(line["taxable_value"])
+    tax = num(line["cgst_amount"]) + num(line["sgst_amount"]) + num(line["igst_amount"])
+    rate = num(line["cgst_rate"]) + num(line["sgst_rate"]) + num(line["igst_rate"])
+    expected_tax = taxable * rate / 100
+
+    arithmetic =
+      if close?(tax, expected_tax, @money_tolerance) do
+        []
+      else
+        [
+          issue(
+            invoice,
+            "line_arithmetic",
+            "line #{index} tax #{tax} does not match #{taxable} × #{rate}% = #{round2(expected_tax)}",
+            [
+              "line_items[#{index - 1}].taxable_value",
+              "line_items[#{index - 1}].cgst_amount",
+              "line_items[#{index - 1}].sgst_amount",
+              "line_items[#{index - 1}].igst_amount"
+            ]
+          )
+        ]
+      end
+
+    arithmetic
+  end
+
+  # A real intra-state line always carries both CGST and SGST. Lines with
+  # exactly one of them (and no IGST) mean the extractor split one printed
+  # row's stacked tax sub-rows into separate line items — the invoice-27
+  # failure mode. One issue per invoice, not per line.
+  defp lopsided_split_issues(invoice) do
+    lopsided =
+      invoice["line_items"]
+      |> Enum.with_index(1)
+      |> Enum.filter(fn {line, _index} ->
+        is_nil(line["igst_amount"]) and
+          is_nil(line["cgst_amount"]) != is_nil(line["sgst_amount"])
+      end)
+      |> Enum.map(fn {_line, index} -> index end)
+
+    if lopsided == [] do
+      []
+    else
+      [
+        issue(
+          invoice,
+          "lopsided_tax_split",
+          "lines #{Enum.join(lopsided, ", ")} carry only one of CGST/SGST — stacked tax sub-rows were likely split into separate line items",
+          ["line_items"]
+        )
+      ]
+    end
+  end
+
+  defp arithmetic_issues(invoice) do
+    taxable = invoice_taxable(invoice)
+    tax = invoice_tax(invoice)
+    grand = taxable + tax
+
+    [
+      maybe_issue(
+        invoice,
+        "printed_taxable_mismatch",
+        invoice["printed_total_taxable"],
+        taxable,
+        "printed taxable total does not match line taxable sum",
+        ["printed_total_taxable", "line_items"]
+      ),
+      maybe_issue(
+        invoice,
+        "printed_tax_mismatch",
+        invoice["printed_total_tax"],
+        tax,
+        "printed tax total does not match line tax sum",
+        ["printed_total_tax", "line_items"]
+      ),
+      maybe_issue(
+        invoice,
+        "grand_total_mismatch",
+        invoice["printed_grand_total"],
+        grand,
+        "printed grand total does not match line taxable + tax",
+        ["printed_grand_total", "line_items"]
+      )
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp gstin_issues(invoice) do
+    [
+      {"seller_gstin", invoice["seller_gstin"]},
+      {"buyer_gstin", invoice["buyer_gstin"]}
+    ]
+    |> Enum.flat_map(fn {field, gstin} ->
+      if valid_gstin?(gstin) do
+        []
+      else
+        [
+          issue(invoice, "invalid_gstin", "#{field} #{inspect(gstin)} fails GSTIN checksum", [
+            field
+          ])
+        ]
+      end
+    end)
+  end
+
+  defp consistency_issues(invoice) do
+    seller_state = state_code(invoice["seller_gstin"])
+    buyer_state = state_code(invoice["buyer_gstin"])
+    interstate? = seller_state && buyer_state && seller_state != buyer_state
+    igst = invoice["line_items"] |> Enum.map(&num(&1["igst_amount"])) |> Enum.sum()
+
+    split =
+      invoice["line_items"]
+      |> Enum.map(&(num(&1["cgst_amount"]) + num(&1["sgst_amount"])))
+      |> Enum.sum()
+
+    cond do
+      is_nil(seller_state) or is_nil(buyer_state) ->
+        []
+
+      interstate? and igst <= 0 and split > 0 ->
+        [
+          issue(
+            invoice,
+            "tax_split_mismatch",
+            "buyer state #{buyer_state} differs from seller state #{seller_state}, but tax is CGST/SGST",
+            ["buyer_gstin", "line_items"]
+          )
+        ]
+
+      not interstate? and split <= 0 and igst > 0 ->
+        [
+          issue(
+            invoice,
+            "tax_split_mismatch",
+            "buyer state #{buyer_state} equals seller state #{seller_state}, but tax is IGST",
+            ["buyer_gstin", "line_items"]
+          )
+        ]
+
+      true ->
+        []
+    end
+  end
+
+  defp sequence_issues(invoices) do
+    parsed =
+      invoices
+      |> Enum.map(&parse_invoice_number(&1["invoice_number"]))
+      |> Enum.reject(&is_nil/1)
+
+    case parsed do
+      [] ->
+        []
+
+      parsed ->
+        numbers = Enum.map(parsed, & &1.number)
+        min = Enum.min(numbers)
+        max = Enum.max(numbers)
+        missing = Enum.to_list(min..max) -- numbers
+
+        if missing == [] do
+          []
+        else
+          suffix = parsed |> hd() |> Map.fetch!(:suffix)
+
+          [
+            %{
+              "invoice" => nil,
+              "code" => "sequence_gaps",
+              "message" =>
+                "missing/cancelled inferred from sequence: #{Enum.map_join(missing, ", ", &"#{&1}#{suffix}")} — confirm cancellation records",
+              "fields" => ["doc_issue"]
+            }
+          ]
+        end
+    end
+  end
+
+  defp maybe_issue(_invoice, _code, nil, _expected, _message, _fields), do: nil
+
+  defp maybe_issue(invoice, code, actual, expected, message, fields) do
+    if close?(num(actual), expected, @money_tolerance) do
+      nil
+    else
+      issue(
+        invoice,
+        code,
+        "#{message}: printed #{round2(num(actual))}, derived #{round2(expected)}",
+        fields
+      )
+    end
+  end
+
+  defp issue(invoice, code, message, fields) do
+    %{
+      "invoice" => invoice["invoice_number"],
+      "code" => code,
+      "message" => message,
+      "fields" => fields
+    }
+  end
+
+  defp derive_invoice(invoice, seller_state) do
+    buyer_state = state_code(invoice["buyer_gstin"])
+    lines_by_rate = Enum.group_by(invoice["line_items"], &line_rate/1)
+
+    itms =
+      lines_by_rate
+      |> Enum.sort_by(fn {rate, _lines} -> rate end)
+      |> Enum.with_index(1)
+      |> Enum.map(fn {{rate, lines}, index} ->
+        %{
+          "num" => index,
+          "itm_det" => %{
+            "rt" => normalize_number(rate),
+            "txval" => round2(sum(lines, "taxable_value")),
+            "camt" => round2(sum(lines, "cgst_amount")),
+            "samt" => round2(sum(lines, "sgst_amount")),
+            "iamt" => round2(sum(lines, "igst_amount")),
+            "csamt" => 0
+          }
+        }
+      end)
+
+    taxable = invoice_taxable(invoice)
+    tax = invoice_tax(invoice)
+
+    %{
+      "inum" => invoice["invoice_number"],
+      "idt" => normalize_date(invoice["invoice_date"]),
+      "val" => round(taxable + tax),
+      "pos" => buyer_state || seller_state,
+      "rchrg" => "N",
+      "inv_typ" => "R",
+      "itms" => itms
+    }
+  end
+
+  defp derive_hsn(invoices) do
+    invoices
+    |> Enum.flat_map(& &1["line_items"])
+    |> Enum.group_by(fn line -> {hsn4(line["hsn_sac"]), line_rate(line)} end)
+    |> Enum.map(fn {{hsn, rate}, lines} ->
+      %{
+        "hsn_sc" => hsn,
+        "rt" => normalize_number(rate),
+        "uqc" => if(String.starts_with?(to_string(hsn), "99"), do: "NA", else: "OTH"),
+        "qty" => 0,
+        "txval" => round2(sum(lines, "taxable_value")),
+        "camt" => round2(sum(lines, "cgst_amount")),
+        "samt" => round2(sum(lines, "sgst_amount")),
+        "iamt" => round2(sum(lines, "igst_amount"))
+      }
+    end)
+    |> Enum.sort_by(& &1["hsn_sc"])
+    |> Enum.with_index(1)
+    |> Enum.map(fn {row, index} -> Map.put(row, "num", index) end)
+  end
+
+  defp derive_doc_issue(invoices) do
+    parsed =
+      invoices |> Enum.map(&parse_invoice_number(&1["invoice_number"])) |> Enum.reject(&is_nil/1)
+
+    numbers = Enum.map(parsed, & &1.number)
+    min = Enum.min(numbers)
+    max = Enum.max(numbers)
+    suffix = parsed |> hd() |> Map.fetch!(:suffix)
+    totnum = max - min + 1
+    net_issue = length(Enum.uniq(numbers))
+
+    %{
+      "doc_det" => [
+        %{
+          "doc_num" => 1,
+          "docs" => [
+            %{
+              "num" => 1,
+              "from" => "#{min}#{suffix}",
+              "to" => "#{max}#{suffix}",
+              "totnum" => totnum,
+              "cancel" => totnum - net_issue,
+              "net_issue" => net_issue
+            }
+          ]
+        }
+      ]
+    }
+  end
+
+  defp diff_invoices(derived, filed) do
+    derived_rows = invoice_rows(derived)
+    filed_rows = invoice_rows(filed)
+    keys = (Map.keys(derived_rows) ++ Map.keys(filed_rows)) |> Enum.uniq() |> Enum.sort()
+    invoice_fields = ~w(ctin inum idt val pos rchrg inv_typ)
+    item_fields = ~w(rt txval camt samt iamt csamt)
+
+    Enum.flat_map(keys, fn key ->
+      derived = derived_rows[key] || %{}
+      filed = filed_rows[key] || %{}
+
+      invoice_checks =
+        Enum.map(invoice_fields, fn field ->
+          diff_row("invoice", key, field, derived[field], filed[field])
+        end)
+
+      item_checks =
+        Enum.map(item_fields, fn field ->
+          diff_row(
+            "invoice_item",
+            key,
+            field,
+            get_in(derived, ["itm_det", field]),
+            get_in(filed, ["itm_det", field])
+          )
+        end)
+
+      invoice_checks ++ item_checks
+    end)
+  end
+
+  defp invoice_rows(gstr1) do
+    for ctin_block <- gstr1["b2b"] || [],
+        inv <- ctin_block["inv"] || [],
+        item <- inv["itms"] || [],
+        reduce: %{} do
+      acc ->
+        cleaned_inv = Map.drop(inv, @ignored_invoice_fields)
+        key = "#{ctin_block["ctin"]}|#{inv["inum"]}|#{get_in(item, ["itm_det", "rt"])}"
+
+        Map.put(
+          acc,
+          key,
+          cleaned_inv
+          |> Map.put("ctin", ctin_block["ctin"])
+          |> Map.put("itm_det", item["itm_det"] || %{})
+        )
+    end
+  end
+
+  defp diff_hsn(derived, filed) do
+    derived_rows = hsn_rows(derived)
+    filed_rows = hsn_rows(filed)
+    keys = (Map.keys(derived_rows) ++ Map.keys(filed_rows)) |> Enum.uniq() |> Enum.sort()
+
+    Enum.flat_map(keys, fn key ->
+      Enum.map(~w(hsn_sc rt txval camt samt iamt), fn field ->
+        diff_row(
+          "hsn",
+          key,
+          field,
+          get_in(derived_rows, [key, field]),
+          get_in(filed_rows, [key, field])
+        )
+      end)
+    end)
+  end
+
+  defp hsn_rows(gstr1) do
+    for row <- get_in(gstr1, ["hsn", "hsn_b2b"]) || [], reduce: %{} do
+      acc -> Map.put(acc, "#{row["hsn_sc"]}|#{row["rt"]}", row)
+    end
+  end
+
+  defp diff_doc(derived, filed) do
+    derived_doc =
+      get_in(derived, ["doc_issue", "doc_det", Access.at(0), "docs", Access.at(0)]) || %{}
+
+    filed_doc = get_in(filed, ["doc_issue", "doc_det", Access.at(0), "docs", Access.at(0)]) || %{}
+
+    Enum.map(~w(from to totnum net_issue cancel), fn field ->
+      diff_row("doc_issue", "doc_issue", field, derived_doc[field], filed_doc[field])
+    end)
+  end
+
+  defp diff_row(scope, key, field, derived, filed) do
+    %{
+      "scope" => scope,
+      "key" => key,
+      "field" => field,
+      "derived" => derived,
+      "filed" => filed,
+      "match" => equivalent?(derived, filed)
+    }
+  end
+
+  defp put_field(invoice, field, value) do
+    case Regex.run(~r/^line_items\[(\d+)\]\.(.+)$/, field || "") do
+      [_, index, line_field] ->
+        index = String.to_integer(index)
+
+        update_in(invoice, ["line_items", Access.at(index)], fn line ->
+          Map.put(line || %{}, line_field, value)
+        end)
+
+      _ ->
+        Map.put(invoice, field, value)
+    end
+  end
+
+  defp equivalent?(a, b) when is_number(a) or is_number(b) do
+    close?(num(a), num(b), @diff_tolerance)
+  end
+
+  defp equivalent?(a, b), do: normalize_blank(a) == normalize_blank(b)
+
+  defp close?(a, b, tolerance), do: abs(num(a) - num(b)) <= tolerance + 0.000001
+
+  defp invoice_taxable(invoice), do: sum(invoice["line_items"], "taxable_value")
+
+  defp invoice_tax(invoice) do
+    sum(invoice["line_items"], "cgst_amount") + sum(invoice["line_items"], "sgst_amount") +
+      sum(invoice["line_items"], "igst_amount")
+  end
+
+  defp sum(lines, field), do: lines |> Enum.map(&num(&1[field])) |> Enum.sum()
+
+  defp line_rate(line),
+    do: num(line["cgst_rate"]) + num(line["sgst_rate"]) + num(line["igst_rate"])
+
+  defp normalize_date(nil), do: nil
+
+  defp normalize_date(date) do
+    date
+    |> to_string()
+    |> String.trim()
+    |> String.replace(~r/[.\/]/, "-")
+  end
+
+  defp hsn4(nil), do: nil
+  defp hsn4(hsn), do: hsn |> to_string() |> String.replace(~r/\D/, "") |> String.slice(0, 4)
+
+  defp normalize_invoice_number(nil), do: nil
+
+  defp normalize_invoice_number(invoice_number) do
+    invoice_number
+    |> to_string()
+    |> String.trim()
+    |> String.replace(~r/\s*\/\s*/, "/")
+  end
+
+  defp parse_invoice_number(nil), do: nil
+
+  defp parse_invoice_number(invoice_number) do
+    case Regex.run(~r/^(\d+)(.*)$/, normalize_invoice_number(invoice_number)) do
+      [_, number, suffix] -> %{number: String.to_integer(number), suffix: suffix}
+      _ -> nil
+    end
+  end
+
+  defp invoice_sort_key(invoice_number) do
+    case parse_invoice_number(invoice_number) do
+      %{number: number} -> number
+      nil -> 999_999
+    end
+  end
+
+  defp page_sort_key(path) do
+    case Regex.run(~r/(\d+)/, Path.basename(path)) do
+      [_, number] -> String.to_integer(number)
+      _ -> 999_999
+    end
+  end
+
+  def valid_gstin?(gstin) when is_binary(gstin) do
+    gstin = String.upcase(String.trim(gstin))
+
+    if String.match?(gstin, ~r/^\d{2}[A-Z0-9]{13}$/) and String.length(gstin) == 15 do
+      body = String.slice(gstin, 0, 14)
+      expected = gstin_check_digit(body)
+      String.at(gstin, 14) == expected
+    else
+      false
+    end
+  end
+
+  def valid_gstin?(_), do: false
+
+  defp gstin_check_digit(body) do
+    chars = String.graphemes(body)
+
+    sum =
+      chars
+      |> Enum.with_index()
+      |> Enum.reduce(0, fn {char, index}, acc ->
+        product = base36_value(char) * if(rem(index, 2) == 0, do: 1, else: 2)
+        acc + div(product, 36) + rem(product, 36)
+      end)
+
+    check = rem(36 - rem(sum, 36), 36)
+    base36_char(check)
+  end
+
+  defp base36_value(<<char>>) when char in ?0..?9, do: char - ?0
+  defp base36_value(<<char>>) when char in ?A..?Z, do: char - ?A + 10
+  defp base36_char(value) when value < 10, do: <<?0 + value>>
+  defp base36_char(value), do: <<?A + value - 10>>
+
+  defp state_code(nil), do: nil
+
+  defp state_code(gstin) do
+    gstin = to_string(gstin)
+
+    if String.length(gstin) >= 2 do
+      String.slice(gstin, 0, 2)
+    end
+  end
+
+  defp money(nil), do: nil
+  defp money(value) when is_number(value), do: value
+
+  defp money(value) when is_binary(value) do
+    value = value |> String.replace(",", "") |> String.replace(~r/[^0-9.\-]/, "")
+
+    case Float.parse(value) do
+      {number, _} -> number
+      :error -> nil
+    end
+  end
+
+  defp num(nil), do: 0
+  defp num(value) when is_integer(value), do: value / 1
+  defp num(value) when is_float(value), do: value
+  defp num(value) when is_binary(value), do: money(value) || 0
+
+  defp round2(value), do: Float.round(num(value), 2)
+
+  defp normalize_number(value) do
+    value = round2(value)
+
+    if value == trunc(value) / 1 do
+      trunc(value)
+    else
+      value
+    end
+  end
+
+  defp normalize_blank(nil), do: nil
+  defp normalize_blank(value) when is_binary(value), do: String.trim(value)
+  defp normalize_blank(value), do: value
+
+  defp value(map, keys), do: Enum.find_value(keys, &map[&1])
+
+  defp to_string_or_nil(nil), do: nil
+  defp to_string_or_nil(value), do: to_string(value)
+
+  defp first_present(invoices, field), do: Enum.find_value(invoices, & &1[field])
+
+  defp build_confidence(raw) do
+    non_empty_map(get_in(raw, ["extract_metadata", "field_metadata", "document_metadata"])) ||
+      non_empty_map(
+        get_in(raw, ["_raw", "extract_metadata", "field_metadata", "document_metadata"])
+      ) || %{}
+  end
+
+  defp non_empty_map(value) when is_map(value) and map_size(value) > 0, do: value
+  defp non_empty_map(_), do: nil
+
+  defp flatten_confidence(map, prefix \\ nil) when is_map(map) do
+    Enum.flat_map(map, fn {key, value} ->
+      field = if prefix, do: "#{prefix}.#{key}", else: key
+
+      cond do
+        is_map(value) and is_number(value["confidence"]) -> [{field, value["confidence"]}]
+        is_map(value) -> flatten_confidence(value, field)
+        is_list(value) -> flatten_list_confidence(value, field)
+        is_number(value) -> [{field, value}]
+        true -> []
+      end
+    end)
+  end
+
+  defp flatten_list_confidence(values, prefix) do
+    values
+    |> Enum.with_index()
+    |> Enum.flat_map(fn {value, index} ->
+      if is_map(value), do: flatten_confidence(value, "#{prefix}[#{index}]"), else: []
+    end)
+  end
+
+  defp correction_flagged?(flags, correction) do
+    invoice = correction["invoice"] || correction["inum"]
+    field = correction["field"]
+
+    MapSet.member?(flags, {invoice, field}) ||
+      Enum.any?(flags, fn
+        {^invoice, flagged_field} when is_binary(flagged_field) and is_binary(field) ->
+          field == flagged_field or String.starts_with?(field, flagged_field <> "[") or
+            String.starts_with?(field, flagged_field <> ".")
+
+        _ ->
+          false
+      end)
+  end
+
+  defp flag_key(%{"invoice" => invoice, "field" => field}), do: {invoice, field}
+  defp flag_key(%{"inum" => invoice, "field" => field}), do: {invoice, field}
+end
