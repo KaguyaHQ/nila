@@ -1,0 +1,59 @@
+{
+  "note": "Human-reviewed corrections. Each traced against the scanned page image; in all 8 cases the paper agrees with GSTR-2B and the raw extraction was wrong (see eval trace 2026-07-09). Values in paise.",
+  "corrections": [
+    {
+      "invoice": "RAC2451",
+      "field": "taxable_paise",
+      "value": 28043,
+      "why": "extractor read tax-inclusive Amount column for the copper line; printed taxable is 280.43"
+    },
+    {
+      "invoice": "INV8101",
+      "field": "tax_paise",
+      "value": {"cgst": 20475, "sgst": 20475, "igst": 0},
+      "why": "CGST/SGST printed in Add-CGST/Add-SGST summary box, missed as zero"
+    },
+    {
+      "invoice": "INV8193",
+      "field": "tax_paise",
+      "value": {"cgst": 47700, "sgst": 47700, "igst": 0},
+      "why": "CGST/SGST printed in Add-CGST/Add-SGST summary box, missed as zero"
+    },
+    {
+      "invoice": "TI-AN-25-26-1339",
+      "field": "taxable_paise",
+      "value": 13139000,
+      "why": "page-2 HSN tax-summary rows ingested as extra line items, taxable double-counted"
+    },
+    {
+      "invoice": "84418",
+      "field": "taxable_paise",
+      "value": 36000,
+      "why": "handwritten bill; borax 2kg @180 = 360.00 legible on image"
+    },
+    {
+      "invoice": "84418",
+      "field": "tax_paise",
+      "value": {"cgst": 3240, "sgst": 3240, "igst": 0},
+      "why": "handwritten 9% + 9% on 360.00; 2B concurs"
+    },
+    {
+      "invoice": "261997",
+      "field": "tax_paise",
+      "value": {"cgst": 620298, "sgst": 620298, "igst": 0},
+      "why": "tax misread from tiny per-line cells; printed summary CGST/SGST 6202.98 each"
+    },
+    {
+      "invoice": "A024532",
+      "field": "taxable_paise",
+      "value": 298080,
+      "why": "pre-discount sub-total double-counted with page-2 post-discount turnover; true taxable 2980.80"
+    },
+    {
+      "invoice": "A024691",
+      "field": "taxable_paise",
+      "value": 220482,
+      "why": "second item list value added on top of turnover; true taxable 2204.82"
+    }
+  ]
+}

@@ -7,11 +7,11 @@ defmodule Nila.Gst.Gstr2b do
   reconciler never touches floats. Pure: takes a decoded map (or raw JSON
   binary), returns plain maps, no DB, no IO.
 
-  Built against the documented portal shape — top-level
+  Verified against a real portal download (Oct 2025, v1.0): top-level
   `%{"data" => %{"docdata" => %{"b2b" => [...]}}}`, with tolerance for dumps
-  that start at `"docdata"` directly. **We do not yet have a real portal
-  fixture; this parser must be verified against a real GSTR-2B download before
-  it is trusted in production.**
+  that start at `"docdata"` directly. Real dumps carry `txval`/`cgst`/`sgst`/
+  `igst` directly on each invoice; some documented variants nest per-rate
+  `items` instead — both are handled, invoice-level fields winning when present.
   """
 
   @doc """
@@ -82,17 +82,24 @@ defmodule Nila.Gst.Gstr2b do
       "invoice_number" => to_string(inv["inum"] || ""),
       "invoice_date" => parse_date(inv["dt"]),
       "total_paise" => paise(inv["val"]),
-      "taxable_paise" => sum_items(items, "txval"),
+      "taxable_paise" => amount(inv, items, "txval"),
       "tax_paise" => %{
-        "cgst" => sum_items(items, "cgst"),
-        "sgst" => sum_items(items, "sgst"),
-        "igst" => sum_items(items, "igst")
+        "cgst" => amount(inv, items, "cgst"),
+        "sgst" => amount(inv, items, "sgst"),
+        "igst" => amount(inv, items, "igst")
       },
       "itc_available" => inv["itcavl"] == "Y",
       "itc_reason" => inv["rsn"],
       "reverse_charge" => inv["rev"] == "Y",
       "pos" => pos(inv["pos"])
     }
+  end
+
+  defp amount(inv, items, key) do
+    case inv[key] do
+      value when is_number(value) -> paise(value)
+      _ -> sum_items(items, key)
+    end
   end
 
   defp sum_items(items, key) do

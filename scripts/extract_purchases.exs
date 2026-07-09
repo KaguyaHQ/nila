@@ -283,7 +283,7 @@ defmodule PurchaseExtractScript do
         line_items: %{
           type: "array",
           description:
-            "One entry per S.No in the item table. The Tax Type column may stack CGST and SGST as two printed sub-rows within a single item's row — these are two tax components of the SAME line item, never two separate items. Never emit separate CGST-only and SGST-only entries; an intra-state line carries both cgst and sgst fields. Line items are authoritative for taxable value and tax; printed totals may be wrong.",
+            "One entry per S.No in the GOODS/SERVICES item table ONLY. NEVER include rows from an HSN-wise tax summary block, GST slab summary, or tax recapitulation table — those repeat the same amounts as reconciliation totals, and including them double-counts the invoice; report them via the printed_total fields instead. The Tax Type column may stack CGST and SGST as two printed sub-rows within a single item's row — these are two tax components of the SAME line item, never two separate items. Never emit separate CGST-only and SGST-only entries; an intra-state line carries both cgst and sgst fields. taxable_value is the value BEFORE GST but AFTER any discount; when a discount row follows the items, the post-discount turnover is the true taxable, never the pre-discount sub-total. If a column is tax-INCLUSIVE (often headed Amount or Value incl. GST), do not report it as taxable_value. When per-line tax columns are absent but a tax summary box prints CGST/SGST/IGST amounts (e.g. 'Add CGST 477.00'), attach those amounts to the lines — never report tax as zero when the invoice plainly charges GST.",
           items: %{
             type: "object",
             properties: %{

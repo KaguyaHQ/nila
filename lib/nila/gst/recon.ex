@@ -312,6 +312,7 @@ defmodule Nila.Gst.Recon do
     |> String.trim()
     |> String.upcase()
     |> String.replace(~r/\s+/, " ")
+    |> String.replace(~r/^[^0-9A-Z]+|[^0-9A-Z]+$/, "")
   end
 
   defp relax_inum(inum) do
@@ -320,7 +321,7 @@ defmodule Nila.Gst.Recon do
     s = if stripped == "", do: s, else: stripped
 
     s
-    |> String.replace(~r|[-/. ]|, "")
+    |> String.replace(~r|[-/.: ]|, "")
     |> then(
       &Regex.replace(~r/\d+/, &1, fn run ->
         run |> String.to_integer() |> Integer.to_string()
