@@ -67,8 +67,10 @@
     portal with no difference. #str(c.needs_human_count) need a human decision
     (each with the reason and a drafted next step), #str(c.not_in_2b_count)
     are missing from the vendor's filing, and #str(c.in_2b_only_count) appear
-    in GSTR-2B but not in the documents provided. Every line links to the
-    source scan; nothing in this pack is asserted without a page behind it.
+    in GSTR-2B but not in the documents provided. Every invoice in the
+    register names the scanned page it came from; the accompanying Excel
+    opens that scan from each line, and every exception and catch in this
+    pack reproduces its source page in the evidence section at the back.
   ]
 
   section("Reconciliation against GSTR-2B")
