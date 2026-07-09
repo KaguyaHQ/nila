@@ -169,9 +169,32 @@
 
   // ---- ITC position ----
   section("Input tax credit position")
-  kv("GST on invoices matched to GSTR-2B", data.itc.matched_tax)
+  kv("GST on invoices matched to GSTR-2B (per portal)", data.itc.matched_tax)
   v(0.3em)
-  kv("GST on invoices not yet matched", data.itc.unmatched_tax)
+  kv("GST on 2B invoices awaiting a human decision", data.itc.awaiting_tax)
+  v(0.3em)
+  kv("GST on 2B invoices with no bill provided", data.itc.in_2b_only_tax)
+  v(0.3em)
+  kv("Total ITC per GSTR-2B", data.itc.total_2b_tax)
+  if data.itc.filed_3b != none {
+    v(0.3em)
+    kv("Net ITC claimed in the filed GSTR-3B", data.itc.filed_3b)
+    v(0.5em)
+    if data.itc.filed_matches_2b == true {
+      text(size: 8.5pt, fill: muted)[
+        The filed figure equals the GSTR-2B total — the return claims exactly
+        what the portal offers, including items this pack routes to a human
+        below. Whether each of those belongs in the claim is the reviewer's
+        call.
+      ]
+    } else {
+      text(size: 8.5pt, fill: muted)[
+        The filed figure differs from the GSTR-2B total; each difference is
+        traceable through the buckets above and the register — the trace is
+        provided, the judgment is not.
+      ]
+    }
+  }
   v(0.8em)
   text(size: 8.5pt, fill: muted)[
     No eligibility figure is computed: the items below carry statutory
@@ -184,10 +207,6 @@
     ("Inv No", "Vendor", "GST", "Question"),
     data.itc.flagged.map(x => (x.inum, x.vendor, x.tax, x.code)),
   )
-  if data.itc.filed_3b != none {
-    v(0.8em)
-    kv("ITC claimed in filed GSTR-3B", data.itc.filed_3b)
-  }
 
   pagebreak()
 

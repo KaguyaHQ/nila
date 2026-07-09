@@ -5,8 +5,8 @@ defmodule PackBuildScript do
     {opts, _, _} =
       OptionParser.parse(args,
         strict: [register_dir: :string, books: :string, corrections: :string,
-                 entity_name: :string, gstin: :string, address: :string,
-                 period: :string, out: :string]
+                 filed_3b: :string, entity_name: :string, gstin: :string,
+                 address: :string, period: :string, out: :string]
       )
 
     register_dir = Path.expand(req!(opts, :register_dir))
@@ -24,6 +24,12 @@ defmodule PackBuildScript do
         path -> path |> File.read!() |> Jason.decode!() |> Map.fetch!("corrections")
       end
 
+    filed_3b =
+      case opts[:filed_3b] do
+        nil -> nil
+        path -> path |> File.read!() |> Jason.decode!()
+      end
+
     meta = %{
       "entity" => req!(opts, :entity_name),
       "gstin" => req!(opts, :gstin),
@@ -32,7 +38,7 @@ defmodule PackBuildScript do
       "prepared_on" => Date.utc_today() |> Calendar.strftime("%d-%m-%Y")
     }
 
-    pack = Nila.Gst.MonthPack.build(rows, recon, corrections, meta)
+    pack = Nila.Gst.MonthPack.build(rows, recon, corrections, meta, filed_3b)
 
     jpg_dir = Path.join(System.tmp_dir!(), "pack-jpg-#{System.unique_integer([:positive])}")
     File.mkdir_p!(jpg_dir)

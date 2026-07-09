@@ -13,7 +13,7 @@ defmodule Nila.Gst.MonthPack do
 
   alias Nila.Formatters
 
-  def build(register_rows, recon, corrections, meta) do
+  def build(register_rows, recon, corrections, meta, filed_3b \\ nil) do
     books_rows = Enum.reject(register_rows, &(&1["bucket"] == "in_2b_not_books"))
     g2b_only = Enum.filter(register_rows, &(&1["bucket"] == "in_2b_not_books"))
 
@@ -25,7 +25,7 @@ defmodule Nila.Gst.MonthPack do
       "catches" => catches(books_rows),
       "corrections" => Enum.map(corrections, &correction_line/1),
       "confession" => confession(register_rows),
-      "itc" => itc(books_rows, recon),
+      "itc" => itc(books_rows, recon, filed_3b),
       "appendix" => appendix(register_rows)
     }
   end
@@ -141,9 +141,20 @@ defmodule Nila.Gst.MonthPack do
     review_rows ++ recon_rows
   end
 
-  defp itc(books_rows, recon) do
-    matched_tax =
-      recon["matched"] |> Enum.map(&tax_sum(&1["books"])) |> Enum.sum()
+  defp itc(books_rows, recon, filed_3b) do
+    matched_2b = recon["matched"] |> Enum.map(&tax_sum(&1["gstr2b"])) |> Enum.sum()
+
+    in_2b_only_tax =
+      recon["in_2b_not_books"]
+      |> Enum.map(&tax_sum(&1["gstr2b"] || &1))
+      |> Enum.sum()
+
+    all_2b =
+      (recon["matched"] ++ recon["value_mismatch"])
+      |> Enum.map(&tax_sum(&1["gstr2b"]))
+      |> Enum.sum()
+      |> Kernel.+(in_2b_only_tax)
+      |> Kernel.+(awaiting_2b_tax(recon))
 
     flagged =
       for row <- books_rows,
@@ -159,18 +170,44 @@ defmodule Nila.Gst.MonthPack do
         }
       end
 
-    unmatched_tax =
-      books_rows
-      |> Enum.reject(&(&1["bucket"] == "matched"))
-      |> Enum.map(&(&1["cgst_paise"] + &1["sgst_paise"] + &1["igst_paise"]))
-      |> Enum.sum()
-
-    %{
-      "matched_tax" => money(matched_tax),
-      "unmatched_tax" => money(unmatched_tax),
+    base = %{
+      "matched_tax" => money(matched_2b),
+      "awaiting_tax" => money(awaiting_2b_tax(recon)),
+      "in_2b_only_tax" => money(in_2b_only_tax),
+      "total_2b_tax" => money(all_2b),
       "flagged" => flagged,
-      "filed_3b" => nil
+      "filed_3b" => nil,
+      "filed_matches_2b" => nil
     }
+
+    case filed_3b do
+      nil ->
+        base
+
+      %{"itc" => %{"net_itc_4c" => net}} ->
+        filed_total = (net["igst"] || 0) + (net["cgst"] || 0) + (net["sgst"] || 0)
+
+        %{
+          base
+          | "filed_3b" => money(filed_total),
+            "filed_matches_2b" => filed_total == all_2b
+        }
+    end
+  end
+
+  # GST on 2B invoices that recon routed to human (deduped: ambiguous pairs
+  # list the same 2B candidate from both books rows).
+  defp awaiting_2b_tax(recon) do
+    recon["needs_human"]
+    |> Enum.flat_map(fn e ->
+      case e["candidates"] |> List.wrap() |> List.first() || e["gstr2b"] do
+        nil -> []
+        g -> [g]
+      end
+    end)
+    |> Enum.uniq_by(fn g -> {g["vendor_gstin"], g["invoice_number"]} end)
+    |> Enum.map(&tax_sum/1)
+    |> Enum.sum()
   end
 
   defp appendix(rows) do

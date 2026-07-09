@@ -1,0 +1,10 @@
+{
+  "note": "Transcribed from GSTR3B_33AEWPH4158J1Z3_102025.pdf (filed, ARN AB331025620393N, 20/11/2025). Paise integers.",
+  "period": "2025-10",
+  "gstin": "33AEWPH4158J1Z3",
+  "itc": {
+    "all_other_itc_4a5": {"igst": 1476062, "cgst": 2746878, "sgst": 2746878},
+    "rcm_4a3": {"igst": 0, "cgst": 3773, "sgst": 3773},
+    "net_itc_4c": {"igst": 1476062, "cgst": 2750651, "sgst": 2750651}
+  }
+}
