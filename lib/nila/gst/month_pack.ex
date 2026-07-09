@@ -1,9 +1,12 @@
 defmodule Nila.Gst.MonthPack do
   @moduledoc """
-  Assembles the month-pack data: the narrative document a partner reads —
-  cover summary, reconciliation story, catches, corrections trace, confession
-  sheet, and evidence appendix — from the register rows, recon result, flags,
-  and corrections.
+  Assembles the month-brief data: cover numbers, one-line exceptions and
+  catches, the ITC position vs the filed 3B, and one sample evidence page —
+  from the register rows, recon result, flags, and corrections.
+
+  The brief reads in ninety seconds; depth (full register, every scan, the
+  portal's own files) ships alongside it, consulted only when a line is
+  doubted. Reader-first on purpose — nobody reads a stranger's invoices.
 
   Pure and presentation-ready: every money value is formatted here (via
   `Nila.Formatters`) so the Typst template positions text and nothing else.
@@ -26,8 +29,32 @@ defmodule Nila.Gst.MonthPack do
       "corrections" => Enum.map(corrections, &correction_line/1),
       "confession" => confession(register_rows),
       "itc" => itc(books_rows, recon, filed_3b),
-      "appendix" => appendix(register_rows)
+      "appendix" => appendix(register_rows),
+      "sample_evidence" => sample_evidence(register_rows)
     }
+  end
+
+  # One evidence page proves the mechanism; the rest live in the files.
+  # Prefer a catch with a story (duplicate scan), else any flagged row.
+  defp sample_evidence(rows) do
+    candidate =
+      Enum.find(rows, fn r ->
+        r["images"] != [] and Enum.any?(r["flags"], &(&1["code"] == "duplicate_invoice"))
+      end) ||
+        Enum.find(rows, fn r -> r["images"] != [] and r["flags"] != [] end)
+
+    case candidate do
+      nil ->
+        nil
+
+      row ->
+        %{
+          "inum" => row["invoice_number"] || "—",
+          "vendor" => row["vendor_name"] || "—",
+          "note" => row["flag_summary"] || row["bucket_label"],
+          "image" => List.first(row["images"])
+        }
+    end
   end
 
   defp cover(books_rows, g2b_only, recon, corrections) do
@@ -78,9 +105,25 @@ defmodule Nila.Gst.MonthPack do
         "amount" => money(row["total_paise"]),
         "bucket" => row["bucket_label"],
         "note" => row["recon_note"],
+        "short_reason" => short_exception_reason(row),
         "next_action" => distinct_action(row["next_action"], row["recon_note"]),
         "pages" => pages_label(row["pages"])
       }
+    end
+  end
+
+  defp short_exception_reason(row) do
+    note = to_string(row["recon_note"] || "")
+
+    cond do
+      row["bucket"] == "in_2b_not_books" -> "in 2B, no bill provided"
+      row["bucket"] == "in_books_not_2b" -> "not in vendor's 2B filing"
+      note =~ ~r/share invoice number/ -> "same bill scanned twice"
+      note =~ ~r/more than one/ -> "two possible 2B pairings"
+      note =~ ~r/only one of date\/value/ -> "number matches, weak corroboration"
+      note =~ ~r/lacks exact invoice number/ -> "name-only match, unconfirmed"
+      row["bucket"] == "needs_human" -> "could not pair confidently"
+      true -> row["bucket_label"] || "—"
     end
   end
 
@@ -100,11 +143,38 @@ defmodule Nila.Gst.MonthPack do
         "severity" => flag["severity"],
         "code" => flag["code"],
         "reason" => flag["reason"],
+        "short_reason" => short_catch_reason(flag, row),
         "section" => flag["section"],
         "pages" => pages_label(row["pages"])
       }
     end
     |> Enum.sort_by(&severity_rank(&1["severity"]))
+  end
+
+  defp short_catch_reason(flag, row) do
+    vendor = row["vendor_name"] || "—"
+
+    case flag["code"] do
+      "invalid_gstin" -> "#{vendor}: GSTIN fails check digit — misread or typo"
+      "duplicate_invoice" -> "#{vendor}: same bill scanned twice"
+      "gstin_state_mismatch" -> "#{vendor}: other-state GSTIN but CGST/SGST charged"
+      "personal_expense_17_5" -> "#{vendor}: #{personal_gloss(flag)}"
+      "missing_gstin" -> "#{vendor}: no GSTIN on the bill — ITC at risk"
+      "name_gstin_mismatch" -> "#{vendor}: name doesn't match the GSTIN's 2B record"
+      "hsn_implausible" -> "#{vendor}: HSN unusual for this business"
+      "tax_arithmetic_off" -> "#{vendor}: line totals don't tie to the invoice"
+      _ -> flag["code"]
+    end
+  end
+
+  defp personal_gloss(flag) do
+    cond do
+      to_string(flag["reason"]) =~ ~r/delivery address/ ->
+        "delivered to another address — 17(5) question"
+
+      true ->
+        "blocked-credit pattern — 17(5) question"
+    end
   end
 
   defp correction_line(c) do

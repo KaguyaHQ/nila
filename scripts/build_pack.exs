@@ -43,11 +43,11 @@ defmodule PackBuildScript do
     jpg_dir = Path.join(System.tmp_dir!(), "pack-jpg-#{System.unique_integer([:positive])}")
     File.mkdir_p!(jpg_dir)
 
-    {pack, assets} = compress_appendix(pack, books_dir, jpg_dir)
+    {pack, assets} = compress_sample(pack, books_dir, jpg_dir)
 
-    out = Path.expand(opts[:out] || Path.join(register_dir, "month_pack_#{period}.pdf"))
+    out = Path.expand(opts[:out] || Path.join(register_dir, "month_brief_#{period}.pdf"))
 
-    case Nila.Typst.render("month_pack", pack, assets: assets) do
+    case Nila.Typst.render("month_brief", pack, assets: assets) do
       {:ok, pdf} ->
         File.write!(out, pdf)
         IO.puts("wrote #{out} (#{byte_size(pdf)} bytes, #{length(assets)} evidence images)")
@@ -59,12 +59,12 @@ defmodule PackBuildScript do
 
   defp req!(opts, key), do: opts[key] || Mix.raise("--#{key} is required")
 
-  defp compress_appendix(pack, books_dir, jpg_dir) do
-    mapping =
-      pack["appendix"]
-      |> Enum.flat_map(& &1["images"])
-      |> Enum.uniq()
-      |> Enum.flat_map(fn rel ->
+  defp compress_sample(pack, books_dir, jpg_dir) do
+    case pack["sample_evidence"] do
+      nil ->
+        {pack, []}
+
+      %{"image" => rel} = sample ->
         src = Path.join(books_dir, rel)
 
         if File.exists?(src) do
@@ -79,27 +79,12 @@ defmodule PackBuildScript do
               stderr_to_stdout: true
             )
 
-          [{rel, {jpg_rel, out}}]
+          {Map.put(pack, "sample_evidence", Map.put(sample, "image", jpg_rel)),
+           [{jpg_rel, out}]}
         else
-          []
+          {Map.put(pack, "sample_evidence", nil), []}
         end
-      end)
-      |> Map.new()
-
-    appendix =
-      Enum.map(pack["appendix"], fn item ->
-        Map.update!(item, "images", fn images ->
-          Enum.map(images, fn rel ->
-            case mapping[rel] do
-              {jpg_rel, _} -> jpg_rel
-              nil -> rel
-            end
-          end)
-        end)
-      end)
-
-    assets = Enum.map(mapping, fn {_rel, {jpg_rel, out}} -> {jpg_rel, out} end)
-    {Map.put(pack, "appendix", appendix), assets}
+    end
   end
 end
 
