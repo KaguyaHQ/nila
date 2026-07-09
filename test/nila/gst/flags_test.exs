@@ -268,6 +268,103 @@ defmodule Nila.Gst.FlagsTest do
     test "business delivery to the registered address with a business item is clean" do
       assert invoice(%{}) |> Flags.evaluate(@entity_ctx) |> only("personal_expense_17_5") == []
     end
+
+    test "own address with OCR noise and reformatting does not flag (October regression)" do
+      noisy_variants = [
+        "M/s. ENTITY\nPlot 12 Ambattur Indl Estate\nChennai-58",
+        "Plot 12, AMBATTUR INDUSTRIAL ESTATE,\nCHENNAI-600 058, Tamil Nadu",
+        "plot 12 ambattur estate chennai"
+      ]
+
+      for delivery <- noisy_variants do
+        inv = invoice(%{"delivery_address" => delivery})
+
+        assert inv |> Flags.evaluate(@entity_ctx) |> only("personal_expense_17_5") == [],
+               "false positive on own-address variant: #{inspect(delivery)}"
+      end
+    end
+
+    test "bare city or state token is not treated as evidence of a different place" do
+      for delivery <- ["CHENNAI", "TAMILNADU"] do
+        inv = invoice(%{"delivery_address" => delivery})
+
+        assert inv |> Flags.evaluate(@entity_ctx) |> only("personal_expense_17_5") == [],
+               "false positive on uninformative address: #{inspect(delivery)}"
+      end
+    end
+
+    test "genuinely different city still flags" do
+      inv = invoice(%{"delivery_address" => "14 Gandhi Road, Visakhapatnam 530001"})
+
+      [flag] = inv |> Flags.evaluate(@entity_ctx) |> only("personal_expense_17_5")
+      assert flag["severity"] == "review"
+    end
+
+    test "paint product named BEAUTY SHEEN does not match health/beauty services (October regression)" do
+      inv =
+        invoice(%{
+          "line_items" => [
+            %{
+              "description" => "4LT KNP BEAUTY SHEEN BSH1 MORNING FROST-7361",
+              "hsn_sac" => "3209",
+              "taxable_paise" => 72_034
+            }
+          ]
+        })
+
+      assert inv |> Flags.evaluate(@entity_ctx) |> only("personal_expense_17_5") == []
+    end
+
+    test "beauty parlour service still flags 17(5)(b)" do
+      inv =
+        invoice(%{
+          "line_items" => [
+            %{
+              "description" => "Beauty parlour services for staff event",
+              "hsn_sac" => "999721",
+              "taxable_paise" => 15_000_00
+            }
+          ]
+        })
+
+      [flag] = inv |> Flags.evaluate(@entity_ctx) |> only("personal_expense_17_5")
+      assert flag["section"] == "CGST Act 17(5)(b)"
+    end
+  end
+
+  describe "duplicate_invoice" do
+    test "same vendor GSTIN + invoice number scanned twice flags both rows naming pages and ITC" do
+      a = invoice(%{"id" => "inv_14", "pages" => [15], "invoice_number" => "254111"})
+      b = invoice(%{"id" => "inv_46", "pages" => [48], "invoice_number" => "254111"})
+
+      flags = Flags.evaluate_all([a, b], @entity_ctx)
+
+      [fa] = only(flags["inv_14"], "duplicate_invoice")
+      [fb] = only(flags["inv_46"], "duplicate_invoice")
+
+      assert fa["severity"] == "warning"
+      assert fa["reason"] =~ "pages 15, 48"
+      assert fa["reason"] =~ "inv_46"
+      assert fa["reason"] =~ "₹1,800.00"
+      assert fb["reason"] =~ "inv_14"
+    end
+
+    test "different invoice numbers from the same vendor do not flag" do
+      a = invoice(%{"id" => "a", "invoice_number" => "254111"})
+      b = invoice(%{"id" => "b", "invoice_number" => "254112"})
+
+      flags = Flags.evaluate_all([a, b], @entity_ctx)
+      assert only(flags["a"], "duplicate_invoice") == []
+      assert only(flags["b"], "duplicate_invoice") == []
+    end
+
+    test "missing invoice numbers never group as duplicates" do
+      a = invoice(%{"id" => "a", "invoice_number" => nil})
+      b = invoice(%{"id" => "b", "invoice_number" => nil})
+
+      flags = Flags.evaluate_all([a, b], @entity_ctx)
+      assert only(flags["a"], "duplicate_invoice") == []
+    end
   end
 
   describe "missing_gstin" do

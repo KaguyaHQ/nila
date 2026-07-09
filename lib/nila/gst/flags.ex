@@ -24,20 +24,26 @@ defmodule Nila.Gst.Flags do
   # generous on long strings). 0.75 splits those populations.
   @name_match_threshold 0.75
 
-  # Below 0.75 two addresses are materially different: the same address with
-  # abbreviation noise scores ~0.95, distinct Chennai addresses score 0.65-0.70.
-  @address_match_threshold 0.75
+  # Address comparison is token-evidence based, not whole-string fuzzy: OCR'd
+  # multiline delivery addresses of the *same* place score badly on Jaro (the
+  # October real-data run produced ~10 false 17(5) flags on the entity's own
+  # address). We flag only on affirmative evidence of a different place: the
+  # delivery address carries informative tokens and none of them appear in the
+  # registered address (or entity name). Uninformative or overlapping
+  # addresses are treated as the business's own.
 
   @blocked_patterns [
-    {~r/refrigerator|fridge/, "refrigerator", "CGST Act 17(5)(g)"},
-    {~r/air condition/, "air conditioner", "CGST Act 17(5)(g)"},
+    {~r/refrigerator|\bfridge\b/, "refrigerator", "CGST Act 17(5)(g)"},
+    {~r/air condition(er|ing)?\b|\bsplit ac\b|\bwindow ac\b/, "air conditioner",
+     "CGST Act 17(5)(g)"},
     {~r/television|\btv\b/, "television", "CGST Act 17(5)(g)"},
     {~r/washing machine/, "washing machine", "CGST Act 17(5)(g)"},
     {~r/furniture/, "furniture", "CGST Act 17(5)(g)"},
     {~r/\bfood\b|catering|restaurant/, "food/catering", "CGST Act 17(5)(b)"},
     {~r/\bclub\b|membership/, "club/membership", "CGST Act 17(5)(b)"},
     {~r/motor vehicle|motorcycle|\bcar\b|\bbike\b/, "motor vehicle", "CGST Act 17(5)(a)"},
-    {~r/health|beauty|cosmetic/, "health/beauty/cosmetic", "CGST Act 17(5)(b)"},
+    {~r/beauty (treatment|parlou?r)|\bsalon\b|cosmetic surgery|plastic surgery|health (service|club|checkup)|\bgym\b|\bspa\b/,
+     "health/beauty services", "CGST Act 17(5)(b)"},
     {~r/works contract/, "works contract (construction)", "CGST Act 17(5)(c)"}
   ]
 
@@ -54,9 +60,48 @@ defmodule Nila.Gst.Flags do
   end
 
   def evaluate_all(invoices, entity_ctx, vendor_dir \\ %{}) do
+    duplicates = duplicate_flags(invoices)
+
     Map.new(invoices, fn invoice ->
-      {invoice["id"], evaluate(invoice, entity_ctx, vendor_dir)}
+      {invoice["id"],
+       evaluate(invoice, entity_ctx, vendor_dir) ++ Map.get(duplicates, invoice["id"], [])}
     end)
+  end
+
+  defp duplicate_flags(invoices) do
+    invoices
+    |> Enum.reject(&(&1["invoice_number"] in [nil, ""]))
+    |> Enum.group_by(fn inv ->
+      {inv["vendor_gstin"], Fuzzy.normalize(inv["invoice_number"])}
+    end)
+    |> Enum.filter(fn {{gstin, _inum}, group} -> gstin != nil and length(group) > 1 end)
+    |> Enum.flat_map(fn {_key, group} ->
+      pages = group |> Enum.flat_map(&(&1["pages"] || [])) |> Enum.sort()
+
+      Enum.map(group, fn inv ->
+        others = Enum.reject(group, &(&1["id"] == inv["id"]))
+
+        flag(
+          inv,
+          "duplicate_invoice",
+          "warning",
+          "Invoice #{inv["invoice_number"]} from #{inv["vendor_name"]} appears " <>
+            "#{length(group)} times in this dump (pages #{Enum.join(pages, ", ")}) — " <>
+            "likely the same bill scanned twice. Booking both would claim ITC of " <>
+            "#{rupees(tax_total(inv))} twice; keep one (duplicates: " <>
+            "#{Enum.map_join(others, ", ", & &1["id"])}).",
+          nil,
+          ["invoice_number"],
+          0.9
+        )
+      end)
+    end)
+    |> Enum.group_by(& &1["invoice_id"])
+  end
+
+  defp tax_total(inv) do
+    tax = inv["tax_paise"] || %{}
+    (tax["cgst"] || 0) + (tax["sgst"] || 0) + (tax["igst"] || 0)
   end
 
   def confession_rows(flags) do
@@ -359,8 +404,8 @@ defmodule Nila.Gst.Flags do
           "delivery address \"#{delivery}\" matches residential marker \"#{marker}\""
 
         is_binary(registered) and registered != "" and
-            symmetric_score(delivery, registered) < @address_match_threshold ->
-          "delivery address \"#{delivery}\" differs materially from the registered address"
+            different_place?(normalized_delivery, registered, entity_ctx["entity_name"]) ->
+          "delivery address \"#{delivery}\" shares nothing with the registered address"
 
         true ->
           nil
@@ -368,6 +413,24 @@ defmodule Nila.Gst.Flags do
     else
       _ -> nil
     end
+  end
+
+  defp different_place?(normalized_delivery, registered, entity_name) do
+    known =
+      [registered, entity_name]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map_join(" ", &Fuzzy.normalize/1)
+      |> String.replace(" ", "")
+
+    tokens =
+      normalized_delivery
+      |> String.split(" ", trim: true)
+      |> Enum.filter(fn t -> String.length(t) >= 3 or t =~ ~r/\d/ end)
+
+    informative? = Enum.any?(tokens, fn t -> String.length(t) >= 4 end)
+    overlap? = Enum.any?(tokens, fn t -> String.contains?(known, t) end)
+
+    informative? and not overlap?
   end
 
   defp personal_fields(nil), do: ["line_items"]
