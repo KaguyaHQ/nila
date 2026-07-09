@@ -24,17 +24,29 @@ defmodule Nila.Typst do
   against `data`, returning the PDF bytes.
 
   `data` is JSON-encoded and exposed to the template as `json("data.json")`.
+
+  `opts[:assets]` is a list of `{relative_name, source_path}` files (e.g.
+  scan images) copied beside the template so `image(relative_name)` resolves.
   """
-  def render(template, data) do
+  def render(template, data, opts \\ []) do
     with {:ok, bin} <- executable(),
          {:ok, json} <- encode(data) do
       in_tmp_dir(fn dir ->
         File.write!(Path.join(dir, "data.json"), json)
         copy_partials(dir)
+        copy_assets(dir, Keyword.get(opts, :assets, []))
         File.write!(Path.join(dir, "entry.typ"), entry_source(template))
         compile(bin, dir)
       end)
     end
+  end
+
+  defp copy_assets(dir, assets) do
+    Enum.each(assets, fn {name, source} ->
+      dest = Path.join(dir, name)
+      File.mkdir_p!(Path.dirname(dest))
+      File.cp!(source, dest)
+    end)
   end
 
   defp entry_source(template) do

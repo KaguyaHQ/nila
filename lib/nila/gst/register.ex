@@ -59,8 +59,7 @@ defmodule Nila.Gst.Register do
           "bucket_label" => @bucket_labels[bucket],
           "recon_note" => recon_note(bucket, entry),
           "next_action" => entry && entry["next_action"],
-          "flags" =>
-            Enum.map(flags, &Map.take(&1, ["code", "severity", "reason", "section"])),
+          "flags" => Enum.map(flags, &Map.take(&1, ["code", "severity", "reason", "section"])),
           "flag_summary" => flag_summary(flags)
         }
       end)
