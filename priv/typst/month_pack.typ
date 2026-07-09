@@ -198,14 +198,34 @@
   )
 
   // ---- Evidence appendix ----
+  // One page per scan: slim header band, scan fills the remainder of the
+  // same page (fit: contain), so the flagged line and its paper never split.
   for item in data.appendix {
-    pagebreak()
-    section("Evidence — " + item.inum + " · " + item.vendor)
-    kv("Status", item.bucket)
-    if item.flags != none { v(0.3em); kv("Flags", item.flags) }
-    v(0.8em)
-    for img in item.images {
-      image(img, width: 100%)
+    for (idx, img) in item.images.enumerate() {
+      pagebreak()
+      grid(
+        columns: (1fr, auto),
+        align: (left + top, right + top),
+        [
+          #text(font: sans, size: 10pt, weight: "semibold")[Evidence — #item.inum · #item.vendor]
+          #if item.images.len() > 1 [
+            #text(size: 8pt, fill: faint)[ (sheet #str(idx + 1) of #str(item.images.len()))]
+          ]
+        ],
+        [
+          #text(size: 8pt, fill: muted)[#item.bucket]
+          #if item.flags != none [
+            #linebreak()
+            #text(size: 7.5pt, fill: faint)[#item.flags]
+          ]
+        ],
+      )
+      v(0.5em)
+      line(length: 100%, stroke: 0.5pt + hair)
+      v(0.6em)
+      block(height: 1fr, width: 100%)[
+        #align(center + top)[#image(img, fit: "contain", width: 100%, height: 100%)]
+      ]
     }
   }
 }
