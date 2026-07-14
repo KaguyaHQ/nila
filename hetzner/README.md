@@ -1,18 +1,19 @@
 # Nila — Hetzner Deployment
 
 Nila runs on the **same Hetzner box as kaguya** (`46.224.237.179`, Nuremberg),
-as its own compose project at `/home/deploy/nila`. Kaguya's Caddy is the shared
-ingress (owns ports 80/443) and reverse-proxies `nilahq.com` to Nila's container
-over a shared Docker network named `edge`.
+as its own compose project at `/home/deploy/nila`. The **edge-ops** Caddy is the
+shared ingress (owns ports 80/443) and reverse-proxies `nila.tax` to Nila's container
+over a shared Docker network named `edge`. `nilahq.com` redirects to `nila.tax`
+and remains the verified sender domain for email.
 
 ```
-Browser → Cloudflare (TLS + cache) → Caddy (kaguya stack) ──edge──▶ nila:8080 (Phoenix LiveView)
+Browser → Cloudflare (TLS + cache) → Caddy (edge-ops stack) ──edge──▶ nila:8080 (Phoenix LiveView)
                                                                        │ internal
                                                                        ▼
                                                                  nila-postgres:5432
 ```
 
-- **Domain**: `nilahq.com` (Cloudflare origin cert in `kaguya-api/hetzner/certs/nila-origin*.pem` — regenerate for `nilahq.com`, see notes below)
+- **Domain**: `nila.tax` (Cloudflare origin cert in `edge-ops/caddy/certs/nila-origin*.pem` — regenerate with `nila.tax` in the SAN, see notes below). `nilahq.com` redirects to `nila.tax` (Caddy, edge-ops repo) and stays the email sender domain.
 - **Image**: `ghcr.io/kaguyahq/nila` (built by `.github/workflows/deploy.yml`)
 - **DB**: dedicated `postgres:16` container, private `internal` network, volume `nila_pgdata`
 - **Server files**: `/home/deploy/nila/` (`docker-compose.yml`, `deploy.sh`, `.env`)
@@ -37,7 +38,7 @@ Add the same secrets the kaguya repo uses (Settings → Secrets → Actions):
 ssh deploy@46.224.237.179 'docker network create edge || true'
 ```
 
-> The kaguya Caddy and the Nila app both attach to this. It already exists if
+> The edge-ops Caddy and the Nila app both attach to this. It already exists if
 > some other app set it up — `|| true` makes this idempotent.
 
 ### 3. Seed Nila's server directory + secrets
@@ -62,19 +63,20 @@ Make sure `DATABASE_URL` uses the **same** password and points at the
 `ecto://nila:<password>@nila-postgres/nila_prod`.
 
 The server must also be logged in to GHCR to pull the private image (already
-done for kaguya on this box; re-run if needed):
+done for the edge-ops stack on this box; re-run if needed):
 
 ```bash
 echo <GHCR_PAT> | ssh deploy@46.224.237.179 'docker login ghcr.io -u <github-user> --password-stdin'
 ```
 
-### 4. Roll out the shared-Caddy changes (kaguya repo)
+### 4. Roll out the shared-Caddy changes (edge-ops repo)
 
-The `edge` network attachment and the `nilahq.com` block live in the **kaguya**
-repo (`hetzner/docker-compose.yml` + `hetzner/Caddyfile`). Deploy them once:
+The `edge` network attachment and the `nila.tax` vhost (plus the `nilahq.com` →
+`nila.tax` redirect) live in the **edge-ops** repo (`caddy/Caddyfile`). The
+`nila.tax` origin cert must be present in `caddy/certs/` first. Deploy them once:
 
 ```bash
-# from the kaguya-api repo
+# from the edge-ops repo
 ./scripts/deploy.sh
 ```
 
@@ -89,13 +91,13 @@ compose errors out.
 ```
 
 This builds the image, pushes to GHCR, syncs ops files, runs migrations, and
-starts the stack. DNS for `nilahq.com` must point at Cloudflare → the box IP, with
+starts the stack. DNS for `nila.tax` must point at Cloudflare → the box IP, with
 the origin cert active (proxied / orange-cloud).
 
 Verify:
 
 ```bash
-curl -s https://nilahq.com/health        # {"status":"healthy","db":"ok","oban":"ok"}
+curl -s https://nila.tax/health        # {"status":"healthy","db":"ok","oban":"ok"}
 ```
 
 ---
@@ -230,11 +232,11 @@ Absent means the feature is off or a default applies:
   `X-Forwarded-Proto: https`, so POSTs are never 301'd (the bug that bit kaguya
   came from an SSR POST path Nila doesn't have — but keep an eye on it if you
   add controller-based form POSTs).
-- **`check_origin`** is `["https://#{PHX_HOST}"]` → `["https://nilahq.com"]` (runtime.exs). If you add another
+- **`check_origin`** is `["https://#{PHX_HOST}"]` → `["https://nila.tax"]` (runtime.exs). If you add another
   hostname that should serve the app directly (not redirect), add it there or
   the LiveView socket will refuse the connection.
 - **Caddy reaches `nila` by network alias**, set in
   `hetzner/docker-compose.yml` (`networks.edge.aliases: [nila]`). Renaming that
-  alias means updating the kaguya Caddyfile too.
+  alias means updating the edge-ops Caddyfile too.
 - Postgres is **not** exposed outside the `internal` network — connect via
   `docker compose exec nila-postgres psql ...`.

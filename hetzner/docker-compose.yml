@@ -23,7 +23,7 @@ services:
     environment:
       - PHX_SERVER=true
       - PORT=8080
-      - PHX_HOST=nilahq.com
+      - PHX_HOST=nila.tax
     networks:
       edge:
         aliases:
