@@ -52,6 +52,15 @@ Nila drafts, the human reviews, the CA signs. Every screen answers to that loop.
 - **Calm is the aesthetic.** Their world is overload; relief is the deliverable.
   Beauty is how we win the tie, never the reason we win.
 
+## The ledger (marketing pages only)
+
+The public homepage is set as a leaf from an account book: warm paper
+(`bg-paper`), true ink (`text-ink`), feint blue ruling (`border-feint`), the
+double red margin rule (`redink`), and double rules opening/closing the leaf.
+Those four tokens live in `app.css` under "Ledger (marketing identity)" and are
+for marketing surfaces only — product screens stay on moonlight below. Red ink
+means exactly one thing there: a line waiting on a human.
+
 ## The moonlight system
 
 The feeling is moonlight on a pale wall: calm, quiet, reflective — soft
