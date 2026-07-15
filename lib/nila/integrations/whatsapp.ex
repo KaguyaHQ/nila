@@ -60,7 +60,7 @@ defmodule Nila.Integrations.WhatsApp do
       filename:
         Map.get(media, "filename") || "#{fallback_name}-#{media_id}#{extension(content_type)}",
       content_type: content_type,
-      document_type: "purchase_order",
+      document_type: "bank_statement",
       source_ref: "whatsapp:#{message_id}:#{media_id}"
     }
   end

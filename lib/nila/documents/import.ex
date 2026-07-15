@@ -1,11 +1,11 @@
 defmodule Nila.Documents.Import do
   @moduledoc """
-  Imports source purchase order files into Nila storage and document records.
+  Imports source document files into Nila storage and document records, and
+  enqueues the extraction worker for the document's type.
   """
 
   alias Nila.Documents
   alias Nila.Documents.BankStatementExtractionWorker
-  alias Nila.Documents.PurchaseOrderExtractionWorker
   alias Nila.Repo
   alias Nila.Storage
 
@@ -15,7 +15,7 @@ defmodule Nila.Documents.Import do
     bytes = Map.fetch!(attrs, :bytes)
     uploaded_by_id = Map.get(attrs, :uploaded_by_id)
     content_type = Map.get(attrs, :content_type, "application/octet-stream")
-    document_type = Map.get(attrs, :document_type, "purchase_order")
+    document_type = Map.get(attrs, :document_type, "bank_statement")
     sha256 = sha256(bytes)
     storage_key = storage_key(org_id, sha256, filename, content_type)
 
@@ -46,29 +46,6 @@ defmodule Nila.Documents.Import do
     end)
   end
 
-  def import_purchase_order(attrs) do
-    attrs
-    |> Map.put_new(:document_type, "purchase_order")
-    |> Map.put_new(:content_type, "application/pdf")
-    |> import_document()
-  end
-
-  def import_purchase_order_from_path(path, opts) do
-    org_id = Keyword.fetch!(opts, :org_id)
-    uploaded_by_id = Keyword.get(opts, :uploaded_by_id)
-    expanded_path = path |> URI.decode() |> Path.expand()
-
-    with {:ok, bytes} <- File.read(expanded_path) do
-      import_purchase_order(%{
-        org_id: org_id,
-        uploaded_by_id: uploaded_by_id,
-        filename: Path.basename(expanded_path),
-        content_type: "application/pdf",
-        bytes: bytes
-      })
-    end
-  end
-
   def import_bank_statement(attrs) do
     attrs
     |> Map.put(:document_type, "bank_statement")
@@ -90,18 +67,6 @@ defmodule Nila.Documents.Import do
         bytes: bytes
       })
     end
-  end
-
-  def enqueue_extraction(%{id: document_id}), do: enqueue_extraction(document_id)
-
-  def enqueue_extraction(document_id) do
-    %{document_id: document_id}
-    |> PurchaseOrderExtractionWorker.new()
-    |> Oban.insert()
-  end
-
-  defp maybe_enqueue_extraction(%{document_type: "purchase_order", id: document_id}) do
-    {:ok, _job} = enqueue_extraction(document_id)
   end
 
   defp maybe_enqueue_extraction(%{document_type: "bank_statement", id: document_id}) do

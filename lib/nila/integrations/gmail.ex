@@ -109,7 +109,7 @@ defmodule Nila.Integrations.Gmail do
           filename: Map.fetch!(attachment, "filename"),
           bytes: Map.fetch!(attachment, "bytes"),
           content_type: Map.get(attachment, "content_type", "application/octet-stream"),
-          document_type: Map.get(attachment, "document_type", "purchase_order"),
+          document_type: Map.get(attachment, "document_type", "bank_statement"),
           source_ref: Map.get(attachment, "source_ref")
         }
       end)

@@ -1,7 +1,7 @@
 defmodule Nila.Documents do
   import Ecto.Query
 
-  alias Nila.Documents.{Artifact, Document, Import}
+  alias Nila.Documents.{Artifact, Document}
   alias Nila.Repo
 
   @doc """
@@ -47,34 +47,6 @@ defmodule Nila.Documents do
 
   def mark_failed(%Document{} = document) do
     update_document(document, %{status: "failed"})
-  end
-
-  def retry_extraction(%Document{status: "failed"} = document) do
-    Repo.transact(fn ->
-      with {:ok, document} <-
-             update_document(document, %{
-               status: "processing",
-               processing_started_at: DateTime.utc_now(),
-               extracted_at: nil
-             }),
-           {:ok, _job} <- Import.enqueue_extraction(document) do
-        {:ok, document}
-      end
-    end)
-    |> case do
-      {:ok, document} ->
-        broadcast_progress(document, {:po_progress, document.id, :sent_to_reader})
-        {:ok, document}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  def retry_extraction(%Document{}), do: {:error, :not_failed}
-
-  def broadcast_progress(%Document{} = document, message) do
-    Phoenix.PubSub.broadcast(Nila.PubSub, "po_extraction:#{document.org_id}", message)
   end
 
   def create_artifact(attrs) do

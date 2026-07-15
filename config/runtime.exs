@@ -68,20 +68,20 @@ if config_env() in [:prod, :dev] do
   end
 end
 
-# LlamaExtract PO extraction. Read via Dotenvy (so `.env` works) like the
-# assistant key above. When `LLAMA_CLOUD_API_KEY` is present we flip the
-# `:po_extractor` from the Stub to the real client. In prod the key is
-# REQUIRED: a missing key raises here rather than silently serving canned Stub
-# data. In dev/CI it stays optional so they keep working offline on the Stub.
-# Pin `LLAMA_VERSION` in prod.
+# LlamaExtract for the GST month worker's per-page purchase-bill extraction.
+# Read via Dotenvy (so `.env` works) like the assistant key above. When
+# `LLAMA_CLOUD_API_KEY` is present we flip `:purchase_extractor` from the Stub to
+# the real client. In prod the key is REQUIRED: a missing key raises here rather
+# than silently serving canned Stub data. In dev/CI it stays optional so they
+# keep working offline on the Stub. Pin `LLAMA_VERSION` in prod.
 if config_env() in [:prod, :dev] do
   api_key = env!("LLAMA_CLOUD_API_KEY", :string, nil)
 
   if config_env() == :prod and is_nil(api_key) do
     raise """
     environment variable LLAMA_CLOUD_API_KEY is missing.
-    Without it the app falls back to the Stub PO extractor, which returns
-    canned/fake data for every upload instead of parsing the real PDF.
+    Without it the app falls back to the Stub purchase-bill extractor, which
+    returns canned/fake data for every upload instead of parsing the real PDF.
     Set it in /home/deploy/nila/.env (see hetzner/README.md), then redeploy.
     """
   end
@@ -89,29 +89,21 @@ if config_env() in [:prod, :dev] do
   if api_key do
     project_id = env!("LLAMA_PROJECT_ID", :string, nil)
 
-    config :nila, :po_extractor, Nila.Documents.Extractor.LlamaExtract
     config :nila, :purchase_extractor, Nila.Gst.PurchaseExtractor.LlamaExtract
-
-    config :nila, Nila.Documents.Extractor.LlamaExtract,
-      api_key: api_key,
-      project_id: project_id
 
     config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract,
       api_key: api_key,
       project_id: project_id
 
     if base_url = env!("LLAMA_BASE_URL", :string, nil) do
-      config :nila, Nila.Documents.Extractor.LlamaExtract, base_url: base_url
       config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, base_url: base_url
     end
 
     if tier = env!("LLAMA_TIER", :string, nil) do
-      config :nila, Nila.Documents.Extractor.LlamaExtract, tier: tier
       config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, tier: tier
     end
 
     if version = env!("LLAMA_VERSION", :string, nil) do
-      config :nila, Nila.Documents.Extractor.LlamaExtract, version: version
       config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, version: version
     end
   end

@@ -2,8 +2,7 @@ defmodule Nila.Gst.PurchaseExtractor do
   @moduledoc """
   Per-page, multi-invoice extraction for a purchase-bills PDF.
 
-  Distinct from `Nila.Documents.Extractor` (single-doc, purchase-order shape):
-  a month's bills are many invoices dumped into one PDF, so extraction runs
+  A month's bills are many invoices dumped into one PDF, so extraction runs
   `extraction_target: "per_page"` against the purchase-invoice schema and
   returns one artifact per page (with `is_invoice` / `continuation_of_previous`
   flags) that `Nila.Gst.PurchaseBooks` assembles into invoices.
