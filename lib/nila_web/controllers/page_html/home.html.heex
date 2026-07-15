@@ -9,12 +9,12 @@
           <.logo class="text-ink h-7 w-auto" />
         </a>
         <div class="flex items-center gap-5">
-          <p class="text-ink/55 text-fine hidden tabular-nums md:block">
+          <p class="text-fine text-ink/55 hidden tabular-nums md:block">
             GST work for India's CA firms
           </p>
           <.link
             navigate={~p"/users/log_in"}
-            class="text-ink/70 hover:text-ink text-small font-medium transition"
+            class="hover:text-ink text-ink/70 text-small font-medium transition"
           >
             Log in
           </.link>
@@ -60,7 +60,7 @@
           >
             Send us a filed month
           </.link>
-          <p class="text-ink/60 text-fine max-w-xs">
+          <p class="text-fine text-ink/60 max-w-xs">
             One you've already filed. You tear our output apart against your
             own workings. Twenty minutes, worst case.
           </p>
@@ -71,17 +71,17 @@
             <dd class="font-display text-h3 leading-none font-normal tabular-nums">
               ₹41,86,300
             </dd>
-            <dt class="text-ink/60 text-fine mt-2">taxable · the month below</dt>
+            <dt class="text-fine text-ink/60 mt-2">taxable · the month below</dt>
           </div>
           <div>
             <dd class="font-display text-h3 leading-none font-normal tabular-nums">412</dd>
-            <dt class="text-ink/60 text-fine mt-2">lines, each traced to its bill</dt>
+            <dt class="text-fine text-ink/60 mt-2">lines, each traced to its bill</dt>
           </div>
           <div>
-            <dd class="font-display text-redink text-h3 leading-none font-normal tabular-nums">
+            <dd class="font-display text-h3 text-redink leading-none font-normal tabular-nums">
               5
             </dd>
-            <dt class="text-ink/60 text-fine mt-2">in red, for your senior</dt>
+            <dt class="text-fine text-ink/60 mt-2">in red, for your senior</dt>
           </div>
         </dl>
       </section>
@@ -120,7 +120,7 @@
           <h2 class="font-display text-h3 font-normal">
             Purchase register · June 2026
           </h2>
-          <p class="text-ink/55 text-fine tabular-nums">412 lines · showing 10</p>
+          <p class="text-fine text-ink/55 tabular-nums">412 lines · showing 10</p>
         </div>
         <p class="text-ink/60 text-small mt-2">
           Sheet 1 of 5 — also inside: workings in your firm's format, the
@@ -128,19 +128,19 @@
         </p>
 
         <div class="mt-8 overflow-x-auto">
-          <table class="text-fine w-full min-w-[46rem]">
+          <table class="text-fine w-full min-w-184">
             <thead>
               <tr class="border-ink/60 text-ink/55 text-micro border-b text-left">
                 <th class="py-2.5 pr-3 font-semibold">Date</th>
                 <th class="py-2.5 pr-3 font-semibold">Vendor</th>
                 <th class="py-2.5 pr-3 font-semibold">Invoice</th>
-                <th class="border-redink/40 border-l py-2.5 pr-3 pl-3 text-right font-semibold">
+                <th class="border-redink/40 border-l px-3 py-2.5 text-right font-semibold">
                   Taxable
                 </th>
-                <th class="border-feint border-l py-2.5 pr-3 pl-3 text-right font-semibold">
+                <th class="border-feint border-l px-3 py-2.5 text-right font-semibold">
                   GST
                 </th>
-                <th class="border-feint border-l py-2.5 pr-3 pl-3 font-semibold">2B</th>
+                <th class="border-feint border-l px-3 py-2.5 font-semibold">2B</th>
                 <th class="border-feint border-l py-2.5 pl-3 font-semibold">Source</th>
               </tr>
             </thead>
@@ -164,20 +164,20 @@
                     <p class="text-ink/45 text-micro tabular-nums">{gstin}</p>
                   </td>
                   <td class="text-ink/70 py-2.5 pr-3 tabular-nums">{inv}</td>
-                  <td class="font-display border-redink/40 border-l py-2.5 pr-3 pl-3 text-right tabular-nums">
+                  <td class="border-redink/40 font-display border-l px-3 py-2.5 text-right tabular-nums">
                     {taxable}
                   </td>
-                  <td class="font-display border-feint border-l py-2.5 pr-3 pl-3 text-right tabular-nums">
+                  <td class="border-feint font-display border-l px-3 py-2.5 text-right tabular-nums">
                     {gst}
                   </td>
                   <td class={[
-                    "border-feint text-micro border-l py-2.5 pr-3 pl-3",
+                    "border-feint text-micro border-l px-3 py-2.5",
                     kind == :ok && "text-ink/60",
                     kind == :warn && "text-redink font-semibold"
                   ]}>
                     {status}
                   </td>
-                  <td class="text-ink/60 text-micro border-feint border-l py-2.5 pl-3">
+                  <td class="border-feint text-ink/60 text-micro border-l py-2.5 pl-3">
                     {source}
                   </td>
                 </tr>
@@ -188,10 +188,10 @@
                 <td colspan="3" class="text-ink/60 text-micro py-3 pr-3">
                   June totals · 412 lines · 407 matched, 5 carried to the exceptions sheet
                 </td>
-                <td class="font-display border-redink/40 border-l py-3 pr-3 pl-3 text-right font-medium tabular-nums">
+                <td class="border-redink/40 font-display border-l p-3 text-right font-medium tabular-nums">
                   41,86,300
                 </td>
-                <td class="font-display border-feint border-l py-3 pr-3 pl-3 text-right font-medium tabular-nums">
+                <td class="border-feint font-display border-l p-3 text-right font-medium tabular-nums">
                   7,12,480
                 </td>
                 <td colspan="2" class="border-feint border-l py-3 pl-3"></td>
@@ -210,7 +210,7 @@
         <h2 class="font-display text-h3 font-normal">
           What walks out when a junior resigns
         </h2>
-        <p class="text-ink/70 text-body mt-4 max-w-2xl font-light">
+        <p class="text-body text-ink/70 mt-4 max-w-2xl font-light">
           Every firm runs the same GST-week sums: more filing work than hands,
           so you hire, train for six months, and lose it all to a resignation
           letter in March. Weigh Nila against that — a junior's salary and the
@@ -218,7 +218,7 @@
         </p>
 
         <div class="mt-8 overflow-x-auto">
-          <table class="text-small w-full min-w-[40rem]">
+          <table class="text-small w-full min-w-160">
             <thead>
               <tr class="border-ink/60 text-micro border-b text-left">
                 <th class="text-ink/55 w-40 py-2.5 pr-4 font-semibold">Entry</th>
@@ -251,7 +251,7 @@
         </p>
 
         <h2 class="font-display text-h3 font-normal">The signature stays yours</h2>
-        <p class="text-ink/70 text-body mt-4 max-w-2xl font-light">
+        <p class="text-body text-ink/70 mt-4 max-w-2xl font-light">
           Nila files nothing. Every month comes back for your senior's review
           before anything reaches a return, and anything Nila couldn't settle
           is entered in red — the whole sheet, with the evidence needed to
@@ -260,13 +260,13 @@
         </p>
 
         <div class="mt-8 overflow-x-auto">
-          <table class="text-fine w-full min-w-[46rem]">
+          <table class="text-fine w-full min-w-184">
             <thead>
               <tr class="border-ink/60 text-ink/55 text-micro border-b text-left">
                 <th class="py-2.5 pr-3 font-semibold">Issue</th>
                 <th class="py-2.5 pr-3 font-semibold">Line</th>
                 <th class="py-2.5 pr-3 font-semibold">Evidence</th>
-                <th class="border-redink/40 border-l py-2.5 pr-3 pl-3 text-right font-semibold">
+                <th class="border-redink/40 border-l px-3 py-2.5 text-right font-semibold">
                   ITC at stake
                 </th>
                 <th class="border-feint border-l py-2.5 pl-3 font-semibold">Waiting on</th>
@@ -284,10 +284,10 @@
                   <td class="text-redink py-3 pr-3 font-semibold">{issue}</td>
                   <td class="py-3 pr-3 font-medium">{line}</td>
                   <td class="text-ink/65 py-3 pr-3 font-light">{evidence}</td>
-                  <td class="font-display text-redink border-redink/40 border-l py-3 pr-3 pl-3 text-right tabular-nums">
+                  <td class="border-redink/40 font-display text-redink border-l p-3 text-right tabular-nums">
                     {stake}
                   </td>
-                  <td class="text-ink/70 border-feint border-l py-3 pl-3">{waiting}</td>
+                  <td class="border-feint text-ink/70 border-l py-3 pl-3">{waiting}</td>
                 </tr>
               <% end %>
             </tbody>
@@ -296,7 +296,7 @@
                 <td colspan="3" class="text-ink/60 text-micro py-3 pr-3">
                   ITC held pending your senior's review
                 </td>
-                <td class="font-display text-redink border-redink/40 border-l py-3 pr-3 pl-3 text-right font-medium tabular-nums">
+                <td class="border-redink/40 font-display text-redink border-l p-3 text-right font-medium tabular-nums">
                   24,127
                 </td>
                 <td class="border-feint border-l py-3 pl-3"></td>
@@ -315,7 +315,7 @@
         <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div class="max-w-xl">
             <h2 class="font-display text-h3 font-normal">Put us to the test</h2>
-            <p class="text-ink/70 text-body mt-3 font-light">
+            <p class="text-body text-ink/70 mt-3 font-light">
               Give us one month you've already filed. We reproduce it; you tear
               our output apart against your own workings, line by line. If it's
               garbage, you've lost twenty minutes. If it holds up, hand over
@@ -340,7 +340,7 @@
         </a>
         <a
           href="mailto:hello@nilahq.com"
-          class="text-ink/75 hover:text-ink text-small font-medium transition"
+          class="hover:text-ink text-ink/75 text-small font-medium transition"
         >
           hello@nilahq.com
         </a>

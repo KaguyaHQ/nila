@@ -70,7 +70,13 @@ defmodule NilaWeb.Layouts do
             <.rail_link
               href={~p"/today"}
               icon="hero-inbox-stack"
-              label="Today"
+              label="GST months"
+              current_path={@current_path}
+            />
+            <.rail_link
+              href={~p"/gst/upload"}
+              icon="hero-arrow-up-tray"
+              label="Add a month"
               current_path={@current_path}
             />
             <.rail_link
