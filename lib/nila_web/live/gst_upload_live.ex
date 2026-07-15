@@ -22,7 +22,10 @@ defmodule NilaWeb.GstUploadLive do
      socket
      |> assign(:page_title, "Add a month")
      |> assign(:clients, list_clients(socket))
-     |> assign(:form, to_form(%{"client_id" => nil, "period" => ""}, as: :month))
+     |> assign(
+       :form,
+       to_form(%{"client_id" => nil, "period_month" => "", "period_year" => ""}, as: :month)
+     )
      |> assign(:status, :idle)
      |> assign(:stage, nil)
      |> assign(:error, nil)
@@ -39,7 +42,7 @@ defmodule NilaWeb.GstUploadLive do
     org = socket.assigns.current_scope.current_org
 
     with {:ok, client_id} <- fetch_client(org, params["client_id"]),
-         {:ok, period} <- fetch_period(params["period"]),
+         {:ok, period} <- fetch_period(params["period_year"], params["period_month"]),
          {:ok, pdf_key} <- consume_upload(socket, :bills, org.id, client_id, period, "bills.pdf"),
          {:ok, gstr2b_key} <-
            consume_upload(socket, :gstr2b, org.id, client_id, period, "gstr2b") do
@@ -98,15 +101,23 @@ defmodule NilaWeb.GstUploadLive do
     end
   end
 
-  defp fetch_period(period) when is_binary(period) do
-    if Regex.match?(~r/\A\d{4}-\d{2}\z/, period) do
-      {:ok, period}
-    else
-      {:error, "Pick a period."}
-    end
+  defp fetch_period(year, month)
+       when is_binary(year) and is_binary(month) and year != "" and month != "" do
+    {:ok, "#{year}-#{month}"}
   end
 
-  defp fetch_period(_), do: {:error, "Pick a period."}
+  defp fetch_period(_year, _month), do: {:error, "Pick a month and year."}
+
+  defp month_options do
+    ~w(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec)
+    |> Enum.with_index(1)
+    |> Enum.map(fn {name, n} -> {name, String.pad_leading(to_string(n), 2, "0")} end)
+  end
+
+  defp year_options do
+    current = Date.utc_today().year
+    for y <- current..(current - 3)//-1, do: {to_string(y), to_string(y)}
+  end
 
   defp consume_upload(socket, name, org_id, client_id, period, label) do
     case uploaded_entries(socket, name) do
@@ -165,15 +176,42 @@ defmodule NilaWeb.GstUploadLive do
         <.card :if={@status in [:idle, :failed]}>
           <.form for={@form} id="gst-upload-form" phx-change="validate" phx-submit="submit">
             <div class="space-y-5">
-              <.input
-                field={@form[:client_id]}
-                type="select"
-                label="Client"
-                prompt="Select a client"
-                options={@clients}
-              />
+              <div>
+                <.input
+                  field={@form[:client_id]}
+                  type="select"
+                  label="Client"
+                  prompt="Select a client"
+                  options={@clients}
+                />
+                <p class="text-base-content/60 text-fine mt-1">
+                  Client not listed?
+                  <.link
+                    navigate={~p"/clients/new"}
+                    id="gst-upload-add-client"
+                    class="text-moon font-semibold"
+                  >
+                    Add one
+                  </.link>
+                </p>
+              </div>
 
-              <.input field={@form[:period]} type="month" label="Period" />
+              <div class="grid grid-cols-2 gap-3">
+                <.input
+                  field={@form[:period_month]}
+                  type="select"
+                  label="Month"
+                  prompt="Month"
+                  options={month_options()}
+                />
+                <.input
+                  field={@form[:period_year]}
+                  type="select"
+                  label="Year"
+                  prompt="Year"
+                  options={year_options()}
+                />
+              </div>
 
               <div class="fieldset mb-2" id="gst-upload-bills">
                 <span class="label mb-1">Purchase bills (PDF)</span>

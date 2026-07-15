@@ -7,6 +7,8 @@ defmodule NilaWeb.GstUploadLiveTest do
   alias Nila.Clients
 
   @period "2025-10"
+  @period_month "10"
+  @period_year "2025"
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
@@ -46,7 +48,9 @@ defmodule NilaWeb.GstUploadLiveTest do
     assert render_upload(gstr2b, "gstr2b.json") =~ "gstr2b.json"
 
     view
-    |> form("#gst-upload-form", month: %{client_id: client.id, period: @period})
+    |> form("#gst-upload-form",
+      month: %{client_id: client.id, period_month: @period_month, period_year: @period_year}
+    )
     |> render_submit()
 
     assert has_element?(view, "#gst-upload-progress")
@@ -61,7 +65,9 @@ defmodule NilaWeb.GstUploadLiveTest do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
     view
-    |> form("#gst-upload-form", month: %{client_id: client.id, period: @period})
+    |> form("#gst-upload-form",
+      month: %{client_id: client.id, period_month: @period_month, period_year: @period_year}
+    )
     |> render_submit()
 
     assert has_element?(view, "#gst-upload-error")
