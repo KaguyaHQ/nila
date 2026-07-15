@@ -105,8 +105,8 @@ defmodule NilaWeb.Settings.WorkspaceLive do
     >
       <div id="settings-workspace" class="space-y-6">
         <.settings_header title="Workspace">
-          Manage the legal entities that share this family workspace. Each entity keeps its own
-          GSTIN, bank account, address, contact details, and invoice sequence.
+          Your firm's filing identity. Each entity keeps its own GSTIN, bank account,
+          address, contact details, and invoice sequence used on the returns you file.
         </.settings_header>
 
         <%= if @current_scope.current_org do %>
