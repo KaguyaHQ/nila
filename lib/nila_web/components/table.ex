@@ -30,6 +30,7 @@ defmodule NilaWeb.Components.Table do
   attr :rows, :any, required: true
   attr :row_id, :any, default: nil, doc: "fn row -> dom id; defaults to the stream id"
   attr :row_click, :any, default: nil, doc: "fn item -> JS command, run on row click"
+  attr :row_class, :any, default: nil, doc: "fn item -> extra class string for the <tr>"
   attr :empty?, :any, default: nil, doc: "force the empty state (required for streams)"
   attr :min_width, :string, default: nil, doc: "e.g. min-w-[760px] for horizontal scroll"
   attr :class, :any, default: nil
@@ -78,7 +79,11 @@ defmodule NilaWeb.Components.Table do
           <tr
             :for={row <- @rows}
             id={@row_id && @row_id.(row)}
-            class={["transition-colors", @row_click && "hover:bg-base-200/60 cursor-pointer"]}
+            class={[
+              "transition-colors",
+              @row_click && "hover:bg-base-200/60 cursor-pointer",
+              @row_class && @row_class.(@row_item.(row))
+            ]}
             phx-click={@row_click && @row_click.(@row_item.(row))}
           >
             <td
