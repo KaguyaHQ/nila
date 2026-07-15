@@ -55,14 +55,7 @@ defmodule Nila.Gst.Recon do
   `"next_action"`.
   """
   def reconcile(books_invoices, gstr2b_invoices, opts \\ []) do
-    opts = %{
-      tolerance: Keyword.get(opts, :tolerance_paise, 100),
-      date_window: Keyword.get(opts, :date_window_days, 7),
-      name_threshold: Keyword.get(opts, :name_threshold, 0.85),
-      candidate_floor: Keyword.get(opts, :candidate_floor_paise, 500),
-      candidate_cap: Keyword.get(opts, :candidate_cap_paise, 2_500),
-      candidate_pct_bp: Keyword.get(opts, :candidate_pct_bp, 10)
-    }
+    opts = opts(opts)
 
     g2b =
       gstr2b_invoices
@@ -92,6 +85,47 @@ defmodule Nila.Gst.Recon do
       "in_books_not_2b" => Enum.map(gstin_books_left ++ no_gstin_left, &books_residual/1),
       "in_2b_not_books" => Enum.map(g2b, &g2b_residual/1)
     }
+  end
+
+  defp opts(opts) do
+    %{
+      tolerance: Keyword.get(opts, :tolerance_paise, 100),
+      date_window: Keyword.get(opts, :date_window_days, 7),
+      name_threshold: Keyword.get(opts, :name_threshold, 0.85),
+      candidate_floor: Keyword.get(opts, :candidate_floor_paise, 500),
+      candidate_cap: Keyword.get(opts, :candidate_cap_paise, 2_500),
+      candidate_pct_bp: Keyword.get(opts, :candidate_pct_bp, 10)
+    }
+  end
+
+  @doc """
+  Content ref for a GSTR-2B invoice, stable across re-reconciliation. A human
+  resolution stores this so it keeps pointing at the same 2B candidate even
+  after inputs are re-reconciled (the ephemeral position index is not stable).
+  """
+  def gstr2b_ref(g) do
+    [g["vendor_gstin"], g["invoice_number"], g["taxable_paise"], g["total_paise"]]
+    |> Enum.map_join("|", &to_string/1)
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 16)
+  end
+
+  @doc """
+  Builds a `matched`/`value_mismatch` row for a human-confirmed pairing, using
+  the same value logic as the machine rungs so a confirmed pair is byte-identical
+  in shape to an auto-matched one. `basis` records that a human made the call.
+  """
+  def manual_pair(b, g, opts \\ []) do
+    o = opts(opts)
+    row = %{"books" => b, "gstr2b" => strip(g), "deltas" => deltas(b, g)}
+    basis = ["human_confirmed"]
+
+    if values_close?(b, g, o) do
+      {"matched", Map.put(row, "match_basis", basis ++ ["value"])}
+    else
+      {"value_mismatch", Map.put(row, "match_basis", basis)}
+    end
   end
 
   defp match_group(acc, books, g2b, opts) do
@@ -358,7 +392,12 @@ defmodule Nila.Gst.Recon do
     }
   end
 
-  defp books_residual(b) do
+  @doc """
+  The `in_books_not_2b` residual entry for a books invoice with no confident 2B
+  match. Public so the workings overlay reuses the exact same shape when a human
+  confirmation displaces a books row from an existing machine match.
+  """
+  def books_residual(b) do
     %{
       "books" => b,
       "reason" => %{

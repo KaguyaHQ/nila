@@ -12,6 +12,8 @@ defmodule NilaWeb.GstMonthLive do
         {:ok,
          socket
          |> assign(:page_title, "GST · Breeze Tech · October 2025")
+         |> assign(:client_id, client_month.client_id)
+         |> assign(:period, client_month.period)
          |> assign(:rows, build_rows(client_month))
          |> assign(:summary, client_month.summary)
          |> assign(:stats, build_stats(client_month.summary))
@@ -124,9 +126,11 @@ defmodule NilaWeb.GstMonthLive do
           <.stat_card label="Matched to 2B" value_id="gst-stat-matched">
             {@stats.matched}
           </.stat_card>
-          <.stat_card label="Need a decision" value_id="gst-stat-need-decision">
-            {@stats.need_decision}
-          </.stat_card>
+          <.link navigate={~p"/gst/#{@client_id}/#{@period}/exceptions"} id="gst-open-exceptions">
+            <.stat_card label="Need a decision" value_id="gst-stat-need-decision">
+              {@stats.need_decision}
+            </.stat_card>
+          </.link>
           <.stat_card label="ITC / matched tax" value_id="gst-stat-matched-tax" figure>
             {format_money(@stats.matched_tax_paise, prefix: "₹")}
           </.stat_card>

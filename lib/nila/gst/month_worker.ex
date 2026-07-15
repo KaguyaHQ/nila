@@ -21,7 +21,7 @@ defmodule Nila.Gst.MonthWorker do
   use Oban.Worker, queue: :documents, max_attempts: 3
 
   alias Nila.Clients
-  alias Nila.Gst.{ClientMonths, Flags, Gstr2b, PurchaseBooks, Recon, Register}
+  alias Nila.Gst.{ClientMonths, EntityContext, Flags, Gstr2b, PurchaseBooks, Recon, Register}
   alias Nila.Storage
 
   require Logger
@@ -119,21 +119,9 @@ defmodule Nila.Gst.MonthWorker do
     end)
   end
 
-  # Reconciliation identity is the CLIENT whose bills these are (their GSTIN
-  # decides intra/inter-state treatment and place-of-supply), not the CA firm
-  # that owns the org.
   defp entity_ctx(org_id, client_id) do
     {:ok, client} = Clients.get_client(org_id, client_id)
-    gstin = client.gstin
-
-    %{
-      "gstin" => gstin,
-      "entity_name" => client.name,
-      "state_code" => gstin && String.slice(gstin, 0, 2),
-      "registered_address" => client.address,
-      "business_hsn_prefixes" => [],
-      "residential_markers" => []
-    }
+    EntityContext.for_client(client)
   end
 
   defp handle_failure(ctx, job, reason) do

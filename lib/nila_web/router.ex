@@ -98,6 +98,7 @@ defmodule NilaWeb.Router do
       live "/bank", BankLive, :index
       live "/gst/upload", GstUploadLive, :new
       live "/gst/:client_id/:period", GstMonthLive, :index
+      live "/gst/:client_id/:period/exceptions", GstExceptionsLive, :index
       live "/profile", ProfileLive, :show
       live "/settings/account", UserSettingsLive, :edit
       live "/settings/account/confirm_email/:token", UserSettingsLive, :confirm_email
