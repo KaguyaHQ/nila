@@ -4,7 +4,6 @@ defmodule NilaWeb.Components.Input do
   helpers.
   """
   use Phoenix.Component
-  use Gettext, backend: NilaWeb.Gettext
 
   import NilaWeb.Components.Icon
 
@@ -358,30 +357,12 @@ defmodule NilaWeb.Components.Input do
   end
 
   @doc """
-  Translates an error message using gettext.
+  Interpolates the `%{key}` placeholders in a changeset error message with the
+  values Ecto supplies (e.g. `count`, `max`).
   """
   def translate_error({msg, opts}) do
-    # When using gettext, we typically pass the strings we want
-    # to translate as a static argument:
-    #
-    #     # Translate the number of files with plural rules
-    #     dngettext("errors", "1 file", "%{count} files", count)
-    #
-    # However the error messages in our forms and APIs are generated
-    # dynamically, so we need to translate them by calling Gettext
-    # with our gettext backend as first argument. Translations are
-    # available in the errors.po file (as we use the "errors" domain).
-    if count = opts[:count] do
-      Gettext.dngettext(NilaWeb.Gettext, "errors", msg, msg, count, opts)
-    else
-      Gettext.dgettext(NilaWeb.Gettext, "errors", msg, opts)
-    end
-  end
-
-  @doc """
-  Translates the errors for a field from a keyword list of errors.
-  """
-  def translate_errors(errors, field) when is_list(errors) do
-    for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
+    Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
+      opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+    end)
   end
 end

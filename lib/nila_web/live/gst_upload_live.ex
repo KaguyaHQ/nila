@@ -38,6 +38,11 @@ defmodule NilaWeb.GstUploadLive do
     {:noreply, assign(socket, :form, to_form(params, as: :month))}
   end
 
+  def handle_event("cancel-upload", %{"ref" => ref}, socket) do
+    name = if entry_in?(socket, :bills, ref), do: :bills, else: :gstr2b
+    {:noreply, cancel_upload(socket, name, ref)}
+  end
+
   def handle_event("submit", %{"month" => params}, socket) do
     org = socket.assigns.current_scope.current_org
 
@@ -92,6 +97,10 @@ defmodule NilaWeb.GstUploadLive do
 
   defp apply_progress(socket, stage) when is_atom(stage) do
     assign(socket, :stage, stage)
+  end
+
+  defp entry_in?(socket, name, ref) do
+    Enum.any?(socket.assigns.uploads[name].entries, &(&1.ref == ref))
   end
 
   defp fetch_client(org, client_id) do
@@ -213,27 +222,21 @@ defmodule NilaWeb.GstUploadLive do
                 />
               </div>
 
-              <div class="fieldset mb-2" id="gst-upload-bills">
-                <span class="label mb-1">Purchase bills (PDF)</span>
-                <.live_file_input upload={@uploads.bills} />
-                <p
-                  :for={entry <- @uploads.bills.entries}
-                  class="text-base-content/60 text-fine mt-1"
-                >
-                  {entry.client_name}
-                </p>
-              </div>
+              <.file_drop
+                id="gst-upload-bills"
+                upload={@uploads.bills}
+                label="Purchase bills (PDF)"
+                hint="One PDF, up to 50 MB"
+                on_cancel="cancel-upload"
+              />
 
-              <div class="fieldset mb-2" id="gst-upload-gstr2b">
-                <span class="label mb-1">GSTR-2B (JSON from the GST portal)</span>
-                <.live_file_input upload={@uploads.gstr2b} />
-                <p
-                  :for={entry <- @uploads.gstr2b.entries}
-                  class="text-base-content/60 text-fine mt-1"
-                >
-                  {entry.client_name}
-                </p>
-              </div>
+              <.file_drop
+                id="gst-upload-gstr2b"
+                upload={@uploads.gstr2b}
+                label="GSTR-2B (JSON from the GST portal)"
+                hint="The JSON downloaded from the GST portal"
+                on_cancel="cancel-upload"
+              />
 
               <p :if={@error} id="gst-upload-error" class="text-error text-small">
                 {@error}

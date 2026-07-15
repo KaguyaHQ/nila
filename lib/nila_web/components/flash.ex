@@ -3,7 +3,6 @@ defmodule NilaWeb.Components.Flash do
   Flash notice component.
   """
   use Phoenix.Component
-  use Gettext, backend: NilaWeb.Gettext
 
   import NilaWeb.Components.Icon
   import NilaWeb.Components.Modal, only: [hide: 2]
@@ -57,7 +56,7 @@ defmodule NilaWeb.Components.Flash do
           <p>{msg}</p>
         </div>
         <div class="flex-1" />
-        <button type="button" class="group cursor-pointer self-start" aria-label={gettext("close")}>
+        <button type="button" class="group cursor-pointer self-start" aria-label="close">
           <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
         </button>
       </div>

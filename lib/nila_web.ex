@@ -40,8 +40,6 @@ defmodule NilaWeb do
     quote do
       use Phoenix.Controller, formats: [:html, :json]
 
-      use Gettext, backend: NilaWeb.Gettext
-
       import Plug.Conn
 
       unquote(verified_routes())
@@ -80,9 +78,6 @@ defmodule NilaWeb do
 
   defp html_helpers do
     quote do
-      # Translation
-      use Gettext, backend: NilaWeb.Gettext
-
       # HTML escaping functionality
       import Phoenix.HTML
       # Core UI components
