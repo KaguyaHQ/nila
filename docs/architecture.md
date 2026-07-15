@@ -29,21 +29,30 @@ the source of truth; no Redis, Kafka, or external task queue.
   confirmed bank-credit matches auto-resolve next time.
 - `Nila.Documents` — uploaded documents and extracted/reviewed artifacts;
   the messy-PDF→structured extractor is the crown jewel of the substrate.
-- `Nila.Banking` — bank-statement spine: accounts and the structured
-  transactions projected from statement extractions. Source-agnostic
-  (PDF-extracted rows today, AA-pulled rows later). Money is integer paise.
-- `Nila.Gst` — pure GST jurisdiction logic (intra/inter-state treatment,
-  tax split), plus `gstin`/`state_codes`/`place_of_supply` helpers.
-- `Nila.Workflows` — Oban-backed workflow runs and steps (the step-runner
-  that drives ingest→extract→classify).
-- `Nila.Assistant` — server-side tool-use loop against an
-  OpenAI-compatible endpoint, scoped by org.
+- `Nila.Gst` — the GST engine. Purchase reconciliation against the portal's
+  GSTR-2B (`recon` — a "flag, don't guess" matching ladder), validation
+  `flags`, the purchase `register`, `gstr2b` parsing, `month_pack` brief
+  assembly, and `client_months` persistence (a client's worked month stored
+  as JSON blobs, org-scoped). Plus pure jurisdiction helpers
+  (intra/inter-state treatment, tax split, `gstin`/`state_codes`/`place_of_supply`).
 - `Nila.Integrations` — external connectors (Gmail, WhatsApp). Adapters
   are stateless; they never write business state.
 - `Nila.Audits` — append-only audit records across every state transition.
 
-The GST engine (invoice extraction → GSTR-1 draft lines → review queue) is
-being built on top of this substrate.
+Frozen substrate — built for the earlier assistant/generic-workflow
+direction, kept but not the current path (see `prd.md` §6):
+
+- `Nila.Banking` — bank-statement spine: accounts and structured
+  transactions projected from statement extractions. Money is integer paise.
+  Reactivates later for full-bookkeeping clients.
+- `Nila.Workflows` — Oban-backed generic workflow runs and steps. The GST
+  month lifecycle is likely to get its own `client_month` state machine
+  rather than this abstract Run/Step engine.
+- `Nila.Assistant` — server-side tool-use loop against an
+  OpenAI-compatible endpoint, scoped by org.
+
+The engine's brain (`recon`/`flags`/`month_pack`) is validated end-to-end on
+a real filed month; the review surface is built on top (see below).
 
 ## State principle
 
@@ -93,10 +102,13 @@ trigger workflow steps and audited state transitions.
 - `lib/nila_web/` — controllers, LiveViews, components.
 - `Layouts.app/1` hosts the global shell (left rail, page header) per
   `docs/design/layout.md`.
-- `/today` is the single list-detail cockpit for queue-shaped work (document
-  review, flagged return lines, exceptions, all actioned from its detail
-  pane); record-management pages use Ramp-style tables and tabs
-  (`/documents` archive, bank accounts, clients).
+- `NilaWeb.GstMonthLive` (`/gst/:client_id/:period`) is the product surface:
+  a live, org-scoped review workspace rendering a client's worked GST month —
+  stats, the purchase register, and tap-a-row → the scanned bill served
+  through a tenant-isolated evidence route (`GstEvidenceController`). Resolve/
+  override and the collection loop are the next milestones (`docs/.plans/`).
+- `/today` (`TodayLive`) is a placeholder cockpit; it will become the list of
+  client-months needing attention that feeds the workspace.
 
 ## Where to read next
 

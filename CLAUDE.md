@@ -47,6 +47,8 @@ Canonical sources:
 - Architecture decisions: `docs/decisions.md`
 - UI system: `docs/design/DESIGN.md`, with reasoning in `docs/design/`
 
+Scratch/implementation plans go in `docs/.plans/` — gitignored, local-only. Not `docs/plans/` (that path is tracked).
+
 ## Architecture
 
 Standard Phoenix umbrella-free layout split into a domain root (`Nila`) and web layer (`NilaWeb`):
@@ -56,6 +58,6 @@ Standard Phoenix umbrella-free layout split into a domain root (`Nila`) and web 
 - `lib/nila_web.ex` — defines the `use NilaWeb, :controller | :live_view | :html | :router` macros; app-wide imports/aliases (e.g. `Layouts`) belong in its `html_helpers` block.
 - `lib/nila/application.ex` — supervision tree: Telemetry → Repo → Oban → DNSCluster → `Phoenix.PubSub` (`Nila.PubSub`) → Endpoint.
 
-Routing: `/` is the public marketing landing (`PageController`); the rest of the app sits behind a `:require_authenticated` pipeline (session auth, RBAC via `Nila.Accounts.Policy`), and signed-in users land on the `/today` cockpit (`TodayLive`, currently a placeholder). `/health` is a JSON probe used by the container healthcheck. Substrate contexts (accounts, orgs, documents + extractor, gst, workflows, audits, integrations, assistant), Oban wiring, and a pluggable `Nila.Storage` behaviour are in place; the GST engine (extract invoices → draft GSTR-1 lines → review queue) is built on top — see `docs/prd.md`.
+Routing: `/` is the public marketing landing (`PageController`); the rest of the app sits behind a `:require_authenticated` pipeline (session auth, RBAC via `Nila.Accounts.Policy`), and signed-in users land on the `/today` cockpit (`TodayLive`, currently a placeholder). `/health` is a JSON probe used by the container healthcheck. Substrate contexts (accounts, orgs, documents + extractor, gst, audits, integrations), Oban wiring, and a pluggable `Nila.Storage` behaviour are in place. The current product is the **GST engine** (`Nila.Gst`: purchase reconciliation vs GSTR-2B, validation flags, register, `client_months` persistence) and its **review workspace** (`GstMonthLive` at `/gst/:client_id/:period`). The assistant (`Nila.Assistant`), generic workflows (`Nila.Workflows`), and banking (`Nila.Banking`) are frozen — built for an earlier direction, kept but not the current path. See `docs/prd.md`.
 
 Deploys to a Hetzner box at `nilahq.com` via GitHub Actions (`.github/workflows/deploy.yml`); see `hetzner/README.md`.

@@ -1,6 +1,6 @@
 # Nila
 
-Nila is a Phoenix + LiveView scaffold for workflow-heavy document back-office automation for Indian SMBs and CAs.
+Nila is a Phoenix + LiveView app — the AI accountant for Indian CA firms, starting with GST.
 
 Phoenix owns business truth. Postgres is the source of truth. Oban runs background jobs. External processors may return structured artifacts later, but humans approve exceptions before Phoenix commits state.
 
@@ -16,7 +16,6 @@ Phoenix owns business truth. Postgres is the source of truth. Oban runs backgrou
 ## Local Setup
 
 ```bash
-cp .env.example .env
 docker compose up -d postgres
 mix setup
 mix phx.server
