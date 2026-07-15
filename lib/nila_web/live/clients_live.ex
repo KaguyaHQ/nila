@@ -36,7 +36,13 @@ defmodule NilaWeb.ClientsLive do
           </:actions>
         </.page_header>
 
-        <.data_table id="clients-table" rows={@clients} empty?={@clients == []}>
+        <.data_table
+          id="clients-table"
+          rows={@clients}
+          row_id={fn client -> "client-#{client.id}" end}
+          row_click={fn client -> JS.navigate(~p"/clients/#{client.id}/edit") end}
+          empty?={@clients == []}
+        >
           <:col :let={client} label="Name">{client.name}</:col>
           <:col :let={client} label="Type">{type_label(client.type)}</:col>
           <:col :let={client} label="GSTIN">{client.gstin}</:col>
