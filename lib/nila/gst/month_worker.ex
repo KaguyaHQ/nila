@@ -20,8 +20,8 @@ defmodule Nila.Gst.MonthWorker do
   """
   use Oban.Worker, queue: :documents, max_attempts: 3
 
+  alias Nila.Clients
   alias Nila.Gst.{ClientMonths, Flags, Gstr2b, PurchaseBooks, Recon, Register}
-  alias Nila.Orgs
   alias Nila.Storage
 
   require Logger
@@ -77,7 +77,7 @@ defmodule Nila.Gst.MonthWorker do
   end
 
   defp build_and_upsert(ctx, invoices, gstr2b, images) do
-    entity_ctx = entity_ctx(ctx.org_id)
+    entity_ctx = entity_ctx(ctx.org_id, ctx.client_id)
     vendor_dir = Map.new(gstr2b, fn g -> {g["vendor_gstin"], g["vendor_name"]} end)
 
     recon = Recon.reconcile(invoices, gstr2b)
@@ -119,15 +119,18 @@ defmodule Nila.Gst.MonthWorker do
     end)
   end
 
-  defp entity_ctx(org_id) do
-    org = Orgs.get_org!(org_id)
-    gstin = org.gstin
+  # Reconciliation identity is the CLIENT whose bills these are (their GSTIN
+  # decides intra/inter-state treatment and place-of-supply), not the CA firm
+  # that owns the org.
+  defp entity_ctx(org_id, client_id) do
+    {:ok, client} = Clients.get_client(org_id, client_id)
+    gstin = client.gstin
 
     %{
       "gstin" => gstin,
-      "entity_name" => org.legal_name || org.name,
+      "entity_name" => client.name,
       "state_code" => gstin && String.slice(gstin, 0, 2),
-      "registered_address" => nil,
+      "registered_address" => client.address,
       "business_hsn_prefixes" => [],
       "residential_markers" => []
     }
