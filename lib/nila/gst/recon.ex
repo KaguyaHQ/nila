@@ -58,7 +58,10 @@ defmodule Nila.Gst.Recon do
     opts = %{
       tolerance: Keyword.get(opts, :tolerance_paise, 100),
       date_window: Keyword.get(opts, :date_window_days, 7),
-      name_threshold: Keyword.get(opts, :name_threshold, 0.85)
+      name_threshold: Keyword.get(opts, :name_threshold, 0.85),
+      candidate_floor: Keyword.get(opts, :candidate_floor_paise, 500),
+      candidate_cap: Keyword.get(opts, :candidate_cap_paise, 2_500),
+      candidate_pct_bp: Keyword.get(opts, :candidate_pct_bp, 10)
     }
 
     g2b =
@@ -225,9 +228,26 @@ defmodule Nila.Gst.Recon do
           Fuzzy.match_score(bname, Fuzzy.normalize(g["vendor_name"] || "")) >=
             opts.name_threshold and
             (norm_inum(b["invoice_number"]) == norm_inum(g["invoice_number"]) or
-               values_close?(b, g, opts))
+               taxable_plausible?(b, g, opts))
         end)
     end
+  end
+
+  # Candidacy only — looser than `values_close?`, which gates matched/mismatch.
+  # A value discrepancy must not erase identity evidence: two records that are
+  # probably the same invoice should surface as a review candidate, with the
+  # difference attached, rather than be declared unrelated. Handwritten cash
+  # bills are hand-totaled, so the taxable ties to the portal while the tax
+  # drifts a few rupees on rounding. Band = percentage of the value, floored to
+  # absorb paise/rounding and capped so large invoices don't go loose.
+  defp taxable_plausible?(b, g, opts) do
+    bt = b["taxable_paise"] || 0
+    gt = g["taxable_paise"] || 0
+    abs(bt - gt) <= candidate_band(max(abs(bt), abs(gt)), opts)
+  end
+
+  defp candidate_band(value, opts) do
+    min(opts.candidate_cap, max(opts.candidate_floor, div(value * opts.candidate_pct_bp, 10_000)))
   end
 
   defp resolve_proposals(acc, proposals, g2b, single_fun) do
@@ -342,11 +362,11 @@ defmodule Nila.Gst.Recon do
     %{
       "books" => b,
       "reason" => %{
-        "code" => "missing_in_gstr2b",
-        "message" => "No GSTR-2B invoice corresponds to this books invoice."
+        "code" => "no_confident_gstr2b_match",
+        "message" => "No confident GSTR-2B match was found automatically."
       },
       "next_action" =>
-        "Invoice #{b["invoice_number"]} is not appearing in your GSTR-2B; ask vendor #{b["vendor_name"]} to confirm it was reported in their GSTR-1."
+        "No GSTR-2B row matched invoice #{b["invoice_number"]} from #{b["vendor_name"]} automatically. Review the 2B for a near-match before concluding it is absent; if genuinely missing, ask the vendor to confirm it was reported in their GSTR-1."
     }
   end
 

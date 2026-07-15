@@ -254,7 +254,12 @@ defmodule Nila.Gst.PurchaseExtractor.LlamaExtract do
           description: "The supplier/vendor issuing this purchase bill",
           properties: %{
             name: %{type: "string", description: "Vendor legal/trade name as printed"},
-            gstin: %{type: "string", description: @gstin_desc},
+            gstin: %{
+              anyOf: [%{type: "string"}, %{type: "null"}],
+              description:
+                @gstin_desc <>
+                  " Seller's own GSTIN from the vendor header; many cash bills don't print one, so return null rather than using the buyer's GSTIN."
+            },
             address: %{type: "string", description: "Vendor address as printed"},
             state: %{type: "string", description: "Vendor state name or code if printed"}
           }

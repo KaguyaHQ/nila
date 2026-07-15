@@ -78,6 +78,16 @@ defmodule Nila.Gst.FlagsTest do
       assert flag["severity"] == "error"
       assert flag["reason"] =~ @entity_gstin
     end
+
+    test "flags an OCR near-miss of the entity's own GSTIN (buyer stolen as vendor)" do
+      [flag] =
+        invoice(%{"vendor_gstin" => "33AABCC6407D1Z0"})
+        |> Flags.evaluate(@entity_ctx)
+        |> only("own_gstin_as_vendor")
+
+      assert flag["severity"] == "error"
+      assert flag["reason"] =~ "near-match"
+    end
   end
 
   describe "gstin_state_mismatch" do

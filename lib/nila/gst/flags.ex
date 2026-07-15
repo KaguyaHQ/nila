@@ -150,6 +150,22 @@ defmodule Nila.Gst.Flags do
           )
         ]
 
+      own != nil and not Gstin.valid?(gstin) and String.jaro_distance(gstin, own) >= 0.85 ->
+        [
+          flag(
+            invoice,
+            "own_gstin_as_vendor",
+            "error",
+            "Vendor GSTIN #{gstin} is a near-match to this entity's own GSTIN #{own} — " <>
+              "the extractor likely picked up the buyer's GSTIN off the bill instead of " <>
+              "the vendor's (the bill may not print a vendor GSTIN). Treat the vendor " <>
+              "GSTIN as unknown and identify the vendor by name and value.",
+            nil,
+            ["vendor_gstin"],
+            0.9
+          )
+        ]
+
       not Gstin.valid?(gstin) ->
         [
           flag(

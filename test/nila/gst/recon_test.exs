@@ -204,6 +204,40 @@ defmodule Nila.Gst.ReconTest do
       assert row["reason"]["code"] == "fuzzy_name_weak_corroboration"
     end
 
+    # Regression: a handwritten cash bill (Maheswari & Co) whose vendor GSTIN was
+    # mis-extracted to the buyer's, invoice number missed, and whose hand-totaled
+    # tax drifts ~3 paise from the portal, while the taxable ties exactly. It must
+    # surface its 2B counterpart as a review candidate, never a false "missing".
+    test "taxable ties exactly but tax drifts: candidate for review, not missing" do
+      maheswari_books =
+        books(%{
+          "vendor_gstin" => "33BPBK1081A1Z0",
+          "vendor_name" => "Maheswari & Co",
+          "invoice_number" => nil,
+          "taxable_paise" => 238_100,
+          "tax_paise" => %{"cgst" => 24_400, "sgst" => 24_400, "igst" => 0},
+          "total_paise" => 286_900
+        })
+
+      maheswari_2b =
+        g2b(%{
+          "vendor_gstin" => "33APZPP6215J1ZB",
+          "vendor_name" => "MAHESWARI AND CO",
+          "invoice_number" => "125",
+          "taxable_paise" => 238_100,
+          "tax_paise" => %{"cgst" => 24_259, "sgst" => 24_259, "igst" => 0},
+          "total_paise" => 286_818
+        })
+
+      result = Recon.reconcile([maheswari_books], [maheswari_2b])
+
+      assert result["in_books_not_2b"] == []
+      assert [row] = result["needs_human"]
+      assert row["reason"]["code"] == "fuzzy_name_weak_corroboration"
+      assert [candidate] = row["candidates"]
+      assert candidate["vendor_name"] == "MAHESWARI AND CO"
+    end
+
     test "invalid GSTIN is treated as missing and routed through the fuzzy rung" do
       result =
         Recon.reconcile(
@@ -229,12 +263,12 @@ defmodule Nila.Gst.ReconTest do
   end
 
   describe "residuals" do
-    test "poke: books invoice absent from 2B drafts a vendor chaser" do
+    test "poke: books invoice absent from 2B is flagged honestly, not asserted missing" do
       result = Recon.reconcile([books(%{})], [])
 
       assert [row] = result["in_books_not_2b"]
-      assert row["reason"]["code"] == "missing_in_gstr2b"
-      assert row["next_action"] =~ "not appearing in your GSTR-2B"
+      assert row["reason"]["code"] == "no_confident_gstr2b_match"
+      assert row["next_action"] =~ "automatically"
       assert row["next_action"] =~ "Sharma Steels"
       assert row["next_action"] =~ "GSTR-1"
     end
