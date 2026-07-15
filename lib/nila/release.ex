@@ -36,9 +36,8 @@ defmodule Nila.Release do
     Repo.transact(fn ->
       with {:ok, user} <- get_or_create_user(attrs),
            {:ok, org} <- get_or_create_org(attrs),
-           entity <- Orgs.get_or_create_default_entity!(org.id),
            {:ok, membership} <- add_owner(org, user) do
-        {:ok, %{user: user, org: org, entity: entity, membership: membership}}
+        {:ok, %{user: user, org: org, membership: membership}}
       end
     end)
   end

@@ -17,14 +17,14 @@ defmodule Nila.Accounts.UserNotifier do
   end
 
   @doc """
-  Emails an invited user the link to set their password and join a workspace.
+  Emails an invited user the link to set their password and join a firm.
   """
   def deliver_invitation(user, org, url) do
     deliver(user.email, "You've been invited to #{org.name} on Nila", """
 
     Hi #{user.name},
 
-    You've been invited to the #{org.name} workspace on Nila.
+    You've been invited to the #{org.name} firm on Nila.
 
     Set your password and sign in:
 

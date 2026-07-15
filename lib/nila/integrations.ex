@@ -15,8 +15,7 @@ defmodule Nila.Integrations do
     Repo.all(
       from connection in Connection,
         where: connection.org_id == ^org_id,
-        order_by: [asc: connection.provider, asc: connection.external_account_id],
-        preload: [:entity]
+        order_by: [asc: connection.provider, asc: connection.external_account_id]
     )
   end
 
@@ -50,7 +49,6 @@ defmodule Nila.Integrations do
       on_conflict:
         {:replace,
          [
-           :entity_id,
            :label,
            :status,
            :credentials,

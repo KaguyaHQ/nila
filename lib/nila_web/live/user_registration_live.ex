@@ -43,9 +43,9 @@ defmodule NilaWeb.UserRegistrationLive do
             </span>
             Nila
           </.link>
-          <h1 class="text-h4 mt-8 font-semibold">Create your workspace</h1>
+          <h1 class="text-h4 mt-8 font-semibold">Create your firm</h1>
           <p class="text-base-content/70 text-body mt-2">
-            Start with your company workspace. You can invite the team later.
+            Start with your firm. You can invite the team later.
           </p>
         </div>
 
@@ -78,7 +78,7 @@ defmodule NilaWeb.UserRegistrationLive do
           />
 
           <.button class="w-full">
-            Create workspace
+            Create firm
           </.button>
         </.form>
 

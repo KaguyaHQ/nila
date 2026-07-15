@@ -14,19 +14,16 @@ defmodule Nila.BankingTest do
         gstin: "29ABCDE1234F1ZW"
       })
 
-    entity = Orgs.get_or_create_default_entity!(org.id)
-
     {:ok, account} =
       Banking.upsert_account(%{
         org_id: org.id,
-        entity_id: entity.id,
         account_number_masked: "4021",
         ifsc: "HDFC0000123",
         bank_name: "HDFC Bank",
         label: "HDFC Current"
       })
 
-    %{org: org, entity: entity, account: account}
+    %{org: org, account: account}
   end
 
   defp lines do
@@ -56,13 +53,11 @@ defmodule Nila.BankingTest do
 
   test "upsert_account is idempotent on the natural key", %{
     org: org,
-    entity: entity,
     account: account
   } do
     {:ok, again} =
       Banking.upsert_account(%{
         org_id: org.id,
-        entity_id: entity.id,
         account_number_masked: "4021",
         ifsc: "HDFC0000123",
         bank_name: "HDFC Bank Ltd",

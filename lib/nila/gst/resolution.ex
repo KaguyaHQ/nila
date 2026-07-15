@@ -14,10 +14,12 @@ defmodule Nila.Gst.Resolution do
       re-suggest that pairing.
     * `correct_field` — the extractor misread a books field; payload carries
       `{"field", "from", "to"}`. Re-reconciliation may then match cleanly.
+    * `reopen`        — undo: discards this books row's prior decisions so it
+      returns to the engine's default (the exception re-opens for review).
   """
   use Nila.Schema
 
-  @verbs ~w(confirm_pair reject_pair correct_field)
+  @verbs ~w(confirm_pair reject_pair correct_field reopen)
 
   def verbs, do: @verbs
 

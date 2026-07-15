@@ -170,7 +170,7 @@ defmodule NilaWeb.Layouts do
             <.settings_link
               href={~p"/settings/workspace"}
               icon="hero-building-office-2"
-              label="Workspace"
+              label="Firm"
               active={@active_section == :workspace}
             />
             <.settings_link

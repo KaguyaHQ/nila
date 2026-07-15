@@ -30,7 +30,7 @@ defmodule NilaWeb.UserLoginLiveTest do
     {:ok, view, _html} = live(conn, ~p"/users/log_in")
 
     assert has_element?(view, "#user_password[type=password][autocomplete='current-password']")
-    assert has_element?(view, "a[href='/users/sign_up']", "Create a workspace")
+    assert has_element?(view, "a[href='/users/sign_up']", "Create a firm")
 
     assert has_element?(
              view,

@@ -44,7 +44,7 @@ defmodule NilaWeb.UserInviteLive do
         <div :if={@user} id="invite-accept">
           <h1 class="text-h4 font-semibold">Welcome, {@user.name}</h1>
           <p class="text-base-content/70 text-body mt-2">
-            Set a password to join the workspace and sign in.
+            Set a password to join the firm and sign in.
           </p>
 
           <.form

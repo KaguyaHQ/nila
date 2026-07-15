@@ -20,7 +20,6 @@ defmodule Nila.Integrations.Connection do
     field :disconnected_at, :utc_datetime_usec
 
     belongs_to :org, Nila.Orgs.Org
-    belongs_to :entity, Nila.Orgs.Entity
 
     timestamps()
   end
@@ -29,7 +28,6 @@ defmodule Nila.Integrations.Connection do
     connection
     |> cast(attrs, [
       :org_id,
-      :entity_id,
       :provider,
       :status,
       :external_account_id,

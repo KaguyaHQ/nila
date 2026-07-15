@@ -14,8 +14,7 @@ defmodule Nila.Banking do
     Repo.all(
       from account in Account,
         where: account.org_id == ^org_id,
-        order_by: [asc: account.bank_name, asc: account.account_number_masked],
-        preload: [:entity]
+        order_by: [asc: account.bank_name, asc: account.account_number_masked]
     )
   end
 
@@ -45,7 +44,7 @@ defmodule Nila.Banking do
 
   @doc """
   Idempotently upserts the account a statement belongs to, keyed on
-  `[org_id, entity_id, account_number_masked, ifsc]` (same pattern as
+  `[org_id, account_number_masked, ifsc]` (same pattern as
   `Integrations.upsert_connection/1`).
   """
   def upsert_account(attrs) do
@@ -53,7 +52,7 @@ defmodule Nila.Banking do
     |> Account.changeset(attrs)
     |> Repo.insert(
       on_conflict: {:replace, [:bank_name, :label, :updated_at]},
-      conflict_target: [:org_id, :entity_id, :account_number_masked, :ifsc],
+      conflict_target: [:org_id, :account_number_masked, :ifsc],
       returning: true
     )
   end

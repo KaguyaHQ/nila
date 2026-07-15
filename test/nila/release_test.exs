@@ -6,7 +6,7 @@ defmodule Nila.ReleaseTest do
   alias Nila.Repo
   alias Nila.Release
 
-  test "create_owner/1 creates user, org, entity, and owner membership idempotently" do
+  test "create_owner/1 creates user, org, and owner membership idempotently" do
     attrs = %{
       name: "Owner User",
       email: "owner#{System.unique_integer([:positive])}@example.com",
@@ -16,12 +16,11 @@ defmodule Nila.ReleaseTest do
       gstin: "33ABCDE1234F1Z7"
     }
 
-    assert {:ok, %{user: user, org: org, entity: entity, membership: membership}} =
+    assert {:ok, %{user: user, org: org, membership: membership}} =
              Release.create_owner(attrs)
 
     assert user.email == attrs.email
     assert org.name == attrs.org_name
-    assert entity.org_id == org.id
     assert membership.role == "owner"
     assert Accounts.get_user_by_email_and_password(attrs.email, attrs.password)
 

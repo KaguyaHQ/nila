@@ -56,6 +56,8 @@ defmodule Nila.Gst.Resolutions do
 
     %{
       recon: recon,
+      baseline: Workings.materialize(month.recon, []),
+      decisions: Workings.decisions(resolutions),
       rows: rows,
       summary: Register.summary(rows),
       resolution_count: length(resolutions)

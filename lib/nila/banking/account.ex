@@ -9,7 +9,6 @@ defmodule Nila.Banking.Account do
     field :label, :string
 
     belongs_to :org, Nila.Orgs.Org
-    belongs_to :entity, Nila.Orgs.Entity
     has_many :transactions, Nila.Banking.Transaction, foreign_key: :bank_account_id
 
     timestamps()
@@ -19,15 +18,14 @@ defmodule Nila.Banking.Account do
     account
     |> cast(attrs, [
       :org_id,
-      :entity_id,
       :account_number_masked,
       :ifsc,
       :bank_name,
       :label
     ])
-    |> validate_required([:org_id, :entity_id])
-    |> unique_constraint([:org_id, :entity_id, :account_number_masked, :ifsc],
-      name: :bank_accounts_org_entity_account_ifsc_index
+    |> validate_required([:org_id])
+    |> unique_constraint([:org_id, :account_number_masked, :ifsc],
+      name: :bank_accounts_org_account_ifsc_index
     )
   end
 end

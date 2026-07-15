@@ -4,7 +4,7 @@ defmodule Nila.Gst.StateCodes do
   list of Indian states/UTs they map to.
 
   Single source for both the name↔code mapping used across quotes, invoices, and
-  PDFs and the state list used by form selects (`Nila.Orgs.Entity.indian_states/0`
+  PDFs and the state list used by form selects (`Nila.Orgs.Org.indian_states/0`
   delegates here).
   """
 

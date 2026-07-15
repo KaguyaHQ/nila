@@ -13,7 +13,7 @@ defmodule NilaWeb.UserRegistrationController do
 
       user ->
         conn
-        |> put_flash(:info, "Workspace created. Check your email to verify your account.")
+        |> put_flash(:info, "Firm created. Check your email to verify your account.")
         |> UserAuth.log_in_user(user)
     end
   end
@@ -26,12 +26,12 @@ defmodule NilaWeb.UserRegistrationController do
         end)
 
         conn
-        |> put_flash(:info, "Workspace created. Check your email to verify your account.")
+        |> put_flash(:info, "Firm created. Check your email to verify your account.")
         |> UserAuth.log_in_user(user)
 
       {:error, _changeset} ->
         conn
-        |> put_flash(:error, "Could not create your workspace. Check the details and try again.")
+        |> put_flash(:error, "Could not create your firm. Check the details and try again.")
         |> redirect(to: ~p"/users/sign_up")
     end
   end

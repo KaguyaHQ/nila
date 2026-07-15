@@ -113,16 +113,11 @@ defmodule Nila.Documents.BankStatementExtractionWorker do
 
     Banking.upsert_account(%{
       org_id: document.org_id,
-      entity_id: entity_id(document),
       account_number_masked: account_attrs["account_number_masked"],
       ifsc: account_attrs["ifsc"],
       bank_name: account_attrs["bank_name"],
       label: account_attrs["label"]
     })
-  end
-
-  defp entity_id(document) do
-    Nila.Orgs.get_or_create_default_entity!(document.org_id).id
   end
 
   defp transactions(extraction), do: Map.get(extraction, "transactions", [])

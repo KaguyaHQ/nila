@@ -57,25 +57,29 @@ defmodule NilaWeb.GstExceptionsLive do
         summary: workings.summary
       })
 
-    queue = build_queue(workings.recon, month)
+    queue = build_queue(workings, month)
 
     socket
     |> assign(:month, %{month | client: socket.assigns.month.client})
     |> assign(:workings, workings)
     |> assign(:queue, queue)
+    |> assign(:progress, progress(queue))
   end
 
-  # One queue item per exception that still needs a human. Only the
-  # invoice_number_mismatch type is wired with verbs this pass; other
-  # needs_human/residual types show read-only until their verbs land.
-  defp build_queue(recon, month) do
-    (recon["needs_human"] || [])
-    |> Enum.map(fn entry -> exception_item(entry, month) end)
+  # The queue is the STABLE baseline exception set (the engine's needs_human
+  # before any human input), each annotated with its current decision status.
+  # Building from the baseline — not the effective recon — is what lets a
+  # resolved item stay visible with its outcome + an Undo, instead of vanishing.
+  # Only invoice_number_mismatch is wired with verbs this pass.
+  defp build_queue(workings, month) do
+    (workings.baseline["needs_human"] || [])
+    |> Enum.map(fn entry -> exception_item(entry, workings.decisions, month) end)
   end
 
-  defp exception_item(entry, month) do
+  defp exception_item(entry, decisions, month) do
     books = entry["books"]
     candidate = List.first(entry["candidates"] || [])
+    verb = decisions[books["id"]]
 
     %{
       id: books["id"],
@@ -88,8 +92,20 @@ defmodule NilaWeb.GstExceptionsLive do
       candidate_ref: candidate && Recon.gstr2b_ref(candidate),
       images: image_urls(books, month),
       diff: candidate && field_diff(books, candidate),
-      resolvable: entry["reason"]["code"] == "invoice_number_mismatch" and candidate != nil
+      resolvable: entry["reason"]["code"] == "invoice_number_mismatch" and candidate != nil,
+      verb: verb,
+      resolved: verb != nil,
+      outcome: outcome_label(verb)
     }
+  end
+
+  defp outcome_label("confirm_pair"), do: "Confirmed — same bill"
+  defp outcome_label("reject_pair"), do: "Rejected — not the same"
+  defp outcome_label("correct_field"), do: "Corrected & re-matched"
+  defp outcome_label(_), do: nil
+
+  defp progress(queue) do
+    %{done: Enum.count(queue, & &1.resolved), total: length(queue)}
   end
 
   defp image_urls(books, month) do
@@ -175,41 +191,42 @@ defmodule NilaWeb.GstExceptionsLive do
     end
   end
 
-  defp record(socket, attrs, after_fun \\ & &1) do
-    prev_ids = Enum.map(socket.assigns.queue, & &1.id)
+  def handle_event("undo", %{"id" => id}, socket) do
+    {:ok, _} =
+      Resolutions.record(
+        socket.assigns.month,
+        %{"verb" => "reopen", "books_id" => id},
+        socket.assigns.current_scope.user.id
+      )
 
+    # Stay on the item just reopened so the reviewer sees it back in play.
+    {:noreply, socket |> load_workings() |> assign(:selected_id, id)}
+  end
+
+  defp record(socket, attrs, after_fun \\ & &1) do
+    socket = socket |> load_workings_after(attrs) |> after_fun.()
+    {:noreply, socket}
+  end
+
+  defp load_workings_after(socket, attrs) do
     {:ok, _} =
       Resolutions.record(socket.assigns.month, attrs, socket.assigns.current_scope.user.id)
 
-    socket = socket |> load_workings() |> after_fun.()
-    {:noreply, advance(socket, attrs["books_id"], prev_ids)}
+    socket |> load_workings() |> advance(attrs["books_id"])
   end
 
-  # After a resolution, move focus to the next still-open exception, so the
-  # reviewer clears the queue without touching navigation.
-  defp advance(socket, resolved_id, prev_ids) do
-    open_ids = Enum.map(socket.assigns.queue, & &1.id)
+  # After a decision, move focus to the next still-OPEN exception so the reviewer
+  # clears the pile without navigating. The resolved item stays visible in place;
+  # focus just moves on. If none are open, stay put.
+  defp advance(socket, resolved_id) do
+    queue = socket.assigns.queue
+    idx = Enum.find_index(queue, &(&1.id == resolved_id)) || 0
 
     next =
-      if resolved_id in open_ids do
-        resolved_id
-      else
-        next_after(prev_ids, resolved_id, open_ids)
-      end
+      (Enum.drop(queue, idx + 1) ++ Enum.take(queue, idx))
+      |> Enum.find(&(not &1.resolved))
 
-    assign(socket, :selected_id, next)
-  end
-
-  defp next_after(prev_ids, resolved_id, open_ids) do
-    idx = Enum.find_index(prev_ids, &(&1 == resolved_id)) || 0
-
-    prev_ids
-    |> Enum.drop(idx + 1)
-    |> Enum.find(&(&1 in open_ids))
-    |> case do
-      nil -> List.first(open_ids)
-      id -> id
-    end
+    assign(socket, :selected_id, (next && next.id) || resolved_id)
   end
 
   defp find_item(socket, id), do: Enum.find(socket.assigns.queue, &(&1.id == id))
@@ -230,15 +247,35 @@ defmodule NilaWeb.GstExceptionsLive do
       <div id="gst-exceptions" class="mx-auto max-w-7xl space-y-4">
         <div class="flex items-center justify-between">
           <.page_header eyebrow="GST · Exceptions" title={"#{@month.client.name} · #{@month.period}"}>
-            The pile that needs a decision. Each is one tap from its scanned bill — decide,
-            and it leaves the queue.
+            The pile that needs a decision. Each is one tap from its scanned bill — decide it,
+            and it stays here marked done. Undo anytime.
           </.page_header>
-          <.link
-            navigate={~p"/gst/#{@month.client_id}/#{@month.period}"}
-            class="hover:text-base-content text-base-content/60 text-small shrink-0"
-          >
-            ← Full register
-          </.link>
+          <div class="flex shrink-0 items-center gap-4">
+            <span
+              :if={@progress.total > 0}
+              id="gst-exceptions-progress"
+              class="text-base-content/60 text-small"
+            >
+              {@progress.done} of {@progress.total} resolved
+            </span>
+            <.link
+              navigate={~p"/gst/#{@month.client_id}/#{@month.period}"}
+              class="hover:text-base-content text-base-content/60 text-small"
+            >
+              ← Full register
+            </.link>
+          </div>
+        </div>
+
+        <div
+          :if={@progress.total > 0 and @progress.done == @progress.total}
+          id="gst-exceptions-cleared"
+          class="bg-success/[0.04] border-success/40 rounded-box flex items-center gap-2 border px-4 py-3"
+        >
+          <.icon name="hero-check-circle" class="text-success size-5 shrink-0" />
+          <p class="text-base-content text-small">
+            Every exception is resolved — the register is review-ready. Anything look wrong? Undo it below.
+          </p>
         </div>
 
         <div
@@ -247,9 +284,9 @@ defmodule NilaWeb.GstExceptionsLive do
           class="border-base-300 rounded-box border border-dashed p-12 text-center"
         >
           <.icon name="hero-check-circle" class="text-success mx-auto size-10" />
-          <p class="text-base-content text-body mt-3 font-medium">Nothing left to decide</p>
+          <p class="text-base-content text-body mt-3 font-medium">No exceptions</p>
           <p class="text-base-content/60 text-small mt-1">
-            Every exception in this month is resolved. The register is review-ready.
+            The engine matched every invoice confidently — nothing needs a human decision.
           </p>
         </div>
 
@@ -265,14 +302,30 @@ defmodule NilaWeb.GstExceptionsLive do
               phx-click="select"
               phx-value-id={item.id}
               class={[
-                "flex w-full flex-col gap-0.5 px-3 py-2.5 text-left transition",
+                "flex w-full items-start gap-2 px-3 py-2.5 text-left transition",
                 item.id == @selected_id && "bg-base-200",
                 item.id != @selected_id && "hover:bg-base-200/50"
               ]}
             >
-              <span class="text-base-content text-small font-medium">{item.vendor}</span>
-              <span class="text-base-content/60 text-fine">
-                {item.invoice_number || "no invoice no"} · {short_type(item.type)}
+              <.icon
+                :if={item.resolved}
+                name="hero-check-circle-mini"
+                class="text-success mt-0.5 size-4 shrink-0"
+              />
+              <span :if={not item.resolved} class="bg-warning mt-1.5 size-2 shrink-0 rounded-full" />
+              <span class="flex flex-col gap-0.5">
+                <span class={[
+                  "text-small font-medium",
+                  item.resolved && "text-base-content/50",
+                  not item.resolved && "text-base-content"
+                ]}>
+                  {item.vendor}
+                </span>
+                <span class="text-base-content/50 text-fine">
+                  {if item.resolved,
+                    do: item.outcome,
+                    else: "#{item.invoice_number || "no invoice no"} · #{short_type(item.type)}"}
+                </span>
               </span>
             </button>
           </div>
@@ -347,7 +400,23 @@ defmodule NilaWeb.GstExceptionsLive do
         />
       </div>
 
-      <div :if={@selected.resolvable} class="border-base-300 flex flex-wrap gap-2 border-t pt-4">
+      <div
+        :if={@selected.resolved}
+        id="gst-exception-outcome"
+        class="border-base-300 flex flex-wrap items-center gap-3 border-t pt-4"
+      >
+        <span class="text-small text-success flex items-center gap-1.5 font-medium">
+          <.icon name="hero-check-circle-mini" class="size-4" /> {@selected.outcome}
+        </span>
+        <.button variant="ghost" size="sm" phx-click="undo" phx-value-id={@selected.id}>
+          <.icon name="hero-arrow-uturn-left-mini" class="size-4" /> Undo
+        </.button>
+      </div>
+
+      <div
+        :if={@selected.resolvable and not @selected.resolved}
+        class="border-base-300 flex flex-wrap gap-2 border-t pt-4"
+      >
         <%= if @correcting && @correcting.id == @selected.id do %>
           <form phx-submit="save_correct" class="flex w-full items-end gap-2">
             <.input type="hidden" name="id" id="correct-id" value={@selected.id} />
@@ -378,7 +447,10 @@ defmodule NilaWeb.GstExceptionsLive do
         <% end %>
       </div>
 
-      <div :if={!@selected.resolvable} class="border-base-300 border-t pt-4">
+      <div
+        :if={not @selected.resolvable and not @selected.resolved}
+        class="border-base-300 border-t pt-4"
+      >
         <p class="text-base-content/50 text-fine">
           This exception type isn't wired for one-tap resolution yet — review in the full register.
         </p>

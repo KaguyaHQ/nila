@@ -8,8 +8,8 @@ defmodule Nila.Gstin do
   alphanumeric check digit. The check digit is a weighted base-36 sum over
   the first 14 characters with alternating weights 1, 2.
 
-  Single source of truth for GSTIN checks — `Nila.Orgs.Entity` defers here so the
-  rule cannot drift.
+  Single source of truth for GSTIN checks — `Nila.Orgs.Org` and
+  `Nila.Clients.Client` defer here so the rule cannot drift.
   """
 
   import Ecto.Changeset

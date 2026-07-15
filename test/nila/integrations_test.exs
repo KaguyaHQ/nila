@@ -13,16 +13,13 @@ defmodule Nila.IntegrationsTest do
         gstin: "29ABCDE1234F1ZW"
       })
 
-    entity = Orgs.get_or_create_default_entity!(org.id)
-
-    %{org: org, entity: entity}
+    %{org: org}
   end
 
-  test "upserts connection credentials encrypted at rest", %{org: org, entity: entity} do
+  test "upserts connection credentials encrypted at rest", %{org: org} do
     assert {:ok, connection} =
              Integrations.upsert_connection(%{
                org_id: org.id,
-               entity_id: entity.id,
                label: "Caltech invoices",
                provider: "gmail",
                status: "active",
@@ -35,7 +32,6 @@ defmodule Nila.IntegrationsTest do
              })
 
     assert connection.credentials["refresh_token"] == "refresh-secret"
-    assert connection.entity_id == entity.id
     assert connection.label == "Caltech invoices"
 
     %{rows: [[stored_credentials]]} =
@@ -50,7 +46,6 @@ defmodule Nila.IntegrationsTest do
     assert {:ok, updated} =
              Integrations.upsert_connection(%{
                org_id: org.id,
-               entity_id: entity.id,
                label: "Renamed inbox",
                provider: "gmail",
                status: "active",
@@ -65,11 +60,10 @@ defmodule Nila.IntegrationsTest do
     assert Repo.aggregate(Nila.Integrations.Connection, :count) == 1
   end
 
-  test "connection status helpers support settings health", %{org: org, entity: entity} do
+  test "connection status helpers support settings health", %{org: org} do
     assert {:ok, connection} =
              Integrations.upsert_connection(%{
                org_id: org.id,
-               entity_id: entity.id,
                label: "GRN tracking",
                provider: "gmail",
                status: "active",

@@ -10,7 +10,6 @@ defmodule NilaWeb.IntegrationsController do
       state =
         Phoenix.Token.sign(conn, "gmail_oauth", %{
           "org_id" => org.id,
-          "entity_id" => blank_to_nil(connection_params["entity_id"] || params["entity_id"]),
           "label" => blank_to_nil(connection_params["label"] || params["label"])
         })
 
@@ -31,7 +30,6 @@ defmodule NilaWeb.IntegrationsController do
          {:ok, _connection} <-
            Integrations.upsert_connection(%{
              org_id: oauth_state["org_id"],
-             entity_id: oauth_state["entity_id"],
              label: oauth_state["label"] || external_account_id,
              provider: "gmail",
              status: "active",

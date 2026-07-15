@@ -49,7 +49,7 @@ defmodule NilaWeb.UserLoginLive do
         <p class="text-base-content/70 text-small mt-5">
           New to Nila?
           <.link navigate={~p"/users/sign_up"} class="text-primary font-semibold">
-            Create a workspace
+            Create a firm
           </.link>
         </p>
 

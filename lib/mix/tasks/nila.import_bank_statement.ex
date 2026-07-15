@@ -6,28 +6,24 @@ defmodule Mix.Tasks.Nila.ImportBankStatement do
   and enqueues `Nila.Documents.BankStatementExtractionWorker` to extract and
   project transactions.
 
-      mix nila.import_bank_statement PATH --entity ENTITY_ID
       mix nila.import_bank_statement PATH --org ORG_ID
 
-  Pass either `--entity` (the owning legal entity, whose org is used) or `--org`
-  directly. The worker projects rows under the org's default entity when the
-  account can't be tied to a specific one.
+  Pass `--org` to attribute the imported statement to a firm.
   """
 
   use Mix.Task
 
   alias Nila.Documents.Import
-  alias Nila.Orgs
 
   @impl Mix.Task
   def run(args) do
     {opts, positional, _} =
-      OptionParser.parse(args, strict: [entity: :integer, org: :integer])
+      OptionParser.parse(args, strict: [org: :integer])
 
     path =
       case positional do
         [path | _] -> path
-        [] -> Mix.raise("Usage: mix nila.import_bank_statement PATH --entity ID")
+        [] -> Mix.raise("Usage: mix nila.import_bank_statement PATH --org ORG_ID")
       end
 
     Mix.Task.run("app.start")
@@ -46,18 +42,9 @@ defmodule Mix.Tasks.Nila.ImportBankStatement do
   end
 
   defp resolve_org_id(opts) do
-    cond do
-      org_id = Keyword.get(opts, :org) ->
-        org_id
-
-      entity_id = Keyword.get(opts, :entity) ->
-        case Orgs.get_entity(entity_id) do
-          {:ok, entity} -> entity.org_id
-          {:error, :not_found} -> Mix.raise("No entity with id #{entity_id}")
-        end
-
-      true ->
-        Mix.raise("Pass --entity ENTITY_ID or --org ORG_ID")
+    case Keyword.get(opts, :org) do
+      nil -> Mix.raise("Pass --org ORG_ID")
+      org_id -> org_id
     end
   end
 end

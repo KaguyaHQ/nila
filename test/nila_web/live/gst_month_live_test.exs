@@ -89,7 +89,7 @@ defmodule NilaWeb.GstMonthLiveTest do
   end
 
   test "another org cannot fetch this org's evidence image", %{client: client} do
-    %{user: other_user} = user_with_org_fixture(%{org: %{gstin: "27ZZZZZ9999Z1ZP"}})
+    %{user: other_user} = user_with_org_fixture(%{org: %{gstin: "27AAPFU0939F1ZV"}})
     conn = log_in_user(Phoenix.ConnTest.build_conn(), other_user)
 
     conn = get(conn, ~p"/gst/#{client.id}/#{@period}/evidence/page_09.png")

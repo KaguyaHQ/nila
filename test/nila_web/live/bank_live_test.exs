@@ -4,16 +4,13 @@ defmodule NilaWeb.BankLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Banking
-  alias Nila.Orgs
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
-    entity = Orgs.get_or_create_default_entity!(org.id)
 
     {:ok, account} =
       Banking.upsert_account(%{
         org_id: org.id,
-        entity_id: entity.id,
         account_number_masked: "4021",
         ifsc: "HDFC0000123",
         bank_name: "HDFC Bank",

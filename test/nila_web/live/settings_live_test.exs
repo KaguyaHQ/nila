@@ -20,63 +20,41 @@ defmodule NilaWeb.SettingsLiveTest do
       assert redirected_to(conn) == ~p"/settings/workspace"
     end
 
-    test "renders workspace stub in the settings shell", %{conn: conn} do
+    test "renders the firm settings form in the settings shell", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings/workspace")
 
       assert has_element?(view, "#app-shell")
       assert has_element?(view, "#settings-cockpit")
       assert has_element?(view, "#settings-nav")
       assert has_element?(view, "#settings-workspace")
-      assert has_element?(view, "#settings-entity-list")
-      assert has_element?(view, "#settings-entity-form")
+      assert has_element?(view, "#settings-firm-form")
       assert has_element?(view, ~s|a[aria-current="page"][href="/settings/workspace"]|)
     end
 
-    test "updates and creates legal entities", %{conn: conn, org: org} do
+    test "updates the firm's filing identity", %{conn: conn, org: org} do
       {:ok, view, _html} = live(conn, ~p"/settings/workspace")
 
       view
-      |> form("#settings-entity-form",
-        entity: %{
-          name: "Caltech Refrigeration",
+      |> form("#settings-firm-form",
+        org: %{
+          name: "Balaji & Associates",
+          legal_name: "Balaji and Associates LLP",
           gstin: "33BPBPK1081A1ZO",
           state: "Tamil Nadu",
-          contact_email: "kannancaltech@gmail.com",
+          contact_email: "balaji@example.com",
           contact_phone: "9962550448",
-          bank_account_holder: "Caltech Refrigeration",
-          bank_account_number: "1234567890",
-          bank_ifsc: "HDFC0001234",
-          bank_name: "HDFC Bank",
-          invoice_prefix: "",
-          invoice_next: "30",
-          invoice_padding: "0"
+          address_line1: "No 1 Marina",
+          city: "Chennai",
+          postal_code: "600001"
         }
       )
       |> render_submit()
 
-      assert [caltech] = Orgs.list_entities(org.id)
-      assert caltech.name == "Caltech Refrigeration"
-      assert caltech.invoice_next == 30
-
-      view |> element("#settings-new-entity") |> render_click()
-
-      view
-      |> form("#settings-entity-form",
-        entity: %{
-          name: "Breezetech Services",
-          gstin: "33ABCDE1234F1Z7",
-          state: "Tamil Nadu",
-          invoice_prefix: "BT-",
-          invoice_next: "7",
-          invoice_padding: "3"
-        }
-      )
-      |> render_submit()
-
-      assert Enum.map(Orgs.list_entities(org.id), & &1.name) == [
-               "Breezetech Services",
-               "Caltech Refrigeration"
-             ]
+      firm = Orgs.get_org!(org.id)
+      assert firm.name == "Balaji & Associates"
+      assert firm.legal_name == "Balaji and Associates LLP"
+      assert firm.gstin == "33BPBPK1081A1ZO"
+      assert firm.city == "Chennai"
     end
 
     test "renders the connectors stub", %{conn: conn} do
@@ -89,12 +67,9 @@ defmodule NilaWeb.SettingsLiveTest do
       conn: conn,
       org: org
     } do
-      entity = Orgs.get_or_create_default_entity!(org.id)
-
       {:ok, connection} =
         Integrations.upsert_connection(%{
           org_id: org.id,
-          entity_id: entity.id,
           label: "Caltech invoices",
           provider: "gmail",
           status: "active",
@@ -109,7 +84,7 @@ defmodule NilaWeb.SettingsLiveTest do
 
       view
       |> form("#settings-connection-form-#{connection.id}",
-        connection: %{label: "GRN tracking", entity_id: entity.id}
+        connection: %{label: "GRN tracking"}
       )
       |> render_submit()
 

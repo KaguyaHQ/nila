@@ -27,7 +27,7 @@ defmodule NilaWeb.UserRegistrationLiveTest do
              conn |> log_in_user(user) |> live(~p"/users/sign_up")
   end
 
-  test "creates workspace and signs in", %{conn: conn} do
+  test "creates firm and signs in", %{conn: conn} do
     attrs = valid_signup_attributes()
 
     conn = post(conn, ~p"/users/sign_up", %{"signup" => attrs})
@@ -35,7 +35,7 @@ defmodule NilaWeb.UserRegistrationLiveTest do
     assert redirected_to(conn) == ~p"/today"
 
     assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
-             "Workspace created. Check your email to verify your account."
+             "Firm created. Check your email to verify your account."
 
     user = Accounts.get_user_by_email(attrs["email"])
     assert user.name == attrs["name"]

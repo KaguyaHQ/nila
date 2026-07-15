@@ -27,7 +27,7 @@ defmodule NilaWeb.UserConfirmationLive do
     >
       <div id="verify-email-page" class="mx-auto max-w-xl space-y-6">
         <.page_header eyebrow="Account" title="Verify your email">
-          Confirm your work email before you rely on this workspace for invoices,
+          Confirm your work email before you rely on this firm for filings,
           approvals, and integrations.
         </.page_header>
 

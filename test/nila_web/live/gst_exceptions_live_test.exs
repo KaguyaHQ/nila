@@ -71,15 +71,22 @@ defmodule NilaWeb.GstExceptionsLiveTest do
     assert render(view) =~ "CHN-SER-1134"
   end
 
-  test "confirm clears the exception from the queue", %{conn: conn, client: client, org: org} do
+  test "confirm marks the exception resolved in place with its outcome", %{
+    conn: conn,
+    client: client,
+    org: org
+  } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/exceptions")
 
     view
     |> element("button", "Confirm — same bill")
     |> render_click()
 
-    refute has_element?(view, "#queue-page_01")
-    assert has_element?(view, "#gst-exceptions-empty")
+    # Stays visible (not vanished), marked done, register updated, all-cleared banner shown.
+    assert has_element?(view, "#queue-page_01")
+    assert render(view) =~ "Confirmed — same bill"
+    assert has_element?(view, "#gst-exceptions-cleared")
+    assert has_element?(view, "#gst-exceptions-progress")
 
     month = ClientMonths.get_by_period(org.id, client.id, @period) |> elem(1)
     assert [res] = Resolutions.list(month.id)
@@ -89,6 +96,23 @@ defmodule NilaWeb.GstExceptionsLiveTest do
     workings = Resolutions.workings(month)
     assert [row] = workings.recon["matched"]
     assert "human_confirmed" in row["match_basis"]
+  end
+
+  test "undo reopens a resolved exception", %{conn: conn, client: client, org: org} do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/exceptions")
+
+    view |> element("button", "Confirm — same bill") |> render_click()
+    assert render(view) =~ "Confirmed — same bill"
+
+    view |> element("#gst-exception-outcome button", "Undo") |> render_click()
+
+    # Back to open: the verb buttons return, the register match is gone.
+    assert has_element?(view, "button", "Confirm — same bill")
+
+    month = ClientMonths.get_by_period(org.id, client.id, @period) |> elem(1)
+    workings = Resolutions.workings(month)
+    assert workings.recon["matched"] == []
+    assert length(workings.recon["needs_human"]) == 1
   end
 
   test "correcting the invoice number auto-matches via the engine", %{
@@ -104,7 +128,8 @@ defmodule NilaWeb.GstExceptionsLiveTest do
     |> form("#gst-exception-detail form", %{value: "CHN-SER-1134"})
     |> render_submit()
 
-    refute has_element?(view, "#queue-page_01")
+    assert render(view) =~ "Corrected"
+    assert has_element?(view, "#gst-exception-outcome")
 
     month = ClientMonths.get_by_period(org.id, client.id, @period) |> elem(1)
     workings = Resolutions.workings(month)

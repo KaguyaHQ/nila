@@ -17,7 +17,7 @@ defmodule NilaWeb.ProfileLive do
     >
       <div id="profile-page" class="mx-auto max-w-3xl space-y-6">
         <.page_header eyebrow="Account" title="Profile">
-          Your personal account details for this workspace.
+          Your personal account details for this firm.
         </.page_header>
 
         <.card class="space-y-5">
@@ -48,7 +48,7 @@ defmodule NilaWeb.ProfileLive do
           <dl class="border-base-300 grid gap-4 border-t pt-5 sm:grid-cols-2">
             <div>
               <dt class="text-base-content/50 text-label font-medium uppercase">
-                Workspace
+                Firm
               </dt>
               <dd id="profile-workspace" class="text-base-content text-small mt-1 font-semibold">
                 {workspace_name(@current_scope)}

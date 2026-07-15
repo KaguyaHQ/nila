@@ -1,7 +1,7 @@
 defmodule Nila.Orgs do
   import Ecto.Query
 
-  alias Nila.Orgs.{Entity, Membership, Org}
+  alias Nila.Orgs.{Membership, Org}
   alias Nila.Repo
 
   def list_orgs do
@@ -28,102 +28,6 @@ defmodule Nila.Orgs do
     |> Repo.update()
   end
 
-  def list_entities(org_id) do
-    Repo.all(from entity in Entity, where: entity.org_id == ^org_id, order_by: [asc: entity.name])
-  end
-
-  def default_entity(org_id) do
-    Entity
-    |> where([entity], entity.org_id == ^org_id)
-    |> order_by([entity], asc: entity.id)
-    |> limit(1)
-    |> Repo.fetch_one()
-  end
-
-  def get_or_create_default_entity!(org_id) do
-    case default_entity(org_id) do
-      {:ok, entity} ->
-        entity
-
-      {:error, :not_found} ->
-        org = get_org!(org_id)
-
-        %Entity{}
-        |> Entity.changeset(%{
-          org_id: org.id,
-          name: org.legal_name || org.name,
-          gstin: org.gstin,
-          invoice_prefix: "",
-          invoice_next: 1,
-          invoice_padding: 0
-        })
-        |> Repo.insert!()
-    end
-  end
-
-  def get_entity(id), do: Repo.fetch(Entity, id)
-
-  def get_entity!(id), do: Repo.get!(Entity, id)
-
-  def create_entity(attrs) do
-    %Entity{}
-    |> Entity.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  def update_entity(%Entity{} = entity, attrs) do
-    entity
-    |> Entity.changeset(attrs)
-    |> Repo.update()
-  end
-
-  def change_entity(%Entity{} = entity, attrs \\ %{}) do
-    Entity.changeset(entity, attrs)
-  end
-
-  def formatted_invoice_number(%Entity{} = entity, date \\ Date.utc_today()) do
-    sequence =
-      entity.invoice_next
-      |> Integer.to_string()
-      |> String.pad_leading(entity.invoice_padding || 0, "0")
-
-    fiscal_year = fiscal_year_label(date, entity.fiscal_year_start_month || 4)
-
-    "#{entity.invoice_prefix || ""}#{sequence}/#{fiscal_year}"
-  end
-
-  @doc """
-  Atomically consumes the entity's next invoice number and returns it formatted.
-
-  Uses `UPDATE org_entities SET invoice_next = invoice_next + 1 RETURNING *` inside
-  a transaction so concurrent callers cannot collide on the same number. The Postgres
-  RETURNING clause yields the POST-update row; the number we just consumed is
-  `invoice_next - 1`. Tested for sequentialness under contention in
-  `test/nila/orgs_test.exs`.
-
-  Returns `{:ok, "PREFIX0001/25-26"}` or `{:error, :entity_not_found}`.
-  """
-  def assign_next_invoice_number(entity_or_id, date \\ Date.utc_today())
-
-  def assign_next_invoice_number(%Entity{id: id}, date),
-    do: assign_next_invoice_number(id, date)
-
-  def assign_next_invoice_number(entity_id, %Date{} = date) when is_integer(entity_id) do
-    Repo.transact(fn ->
-      case Repo.update_all(
-             from(e in Entity, where: e.id == ^entity_id, select: e),
-             inc: [invoice_next: 1]
-           ) do
-        {1, [post_update]} ->
-          consumed = %{post_update | invoice_next: post_update.invoice_next - 1}
-          {:ok, formatted_invoice_number(consumed, date)}
-
-        {0, _} ->
-          {:error, :entity_not_found}
-      end
-    end)
-  end
-
   def add_user(%Org{} = org, user_id, role \\ "member") do
     %Membership{}
     |> Membership.changeset(%{org_id: org.id, user_id: user_id, role: role})
@@ -148,7 +52,7 @@ defmodule Nila.Orgs do
   @doc """
   Updates a membership's role.
 
-  Refuses to demote the last owner of an org so a workspace can never be left
+  Refuses to demote the last owner of an org so a firm can never be left
   without one. Returns `{:error, :last_owner}` in that case.
   """
   def update_membership_role(%Membership{} = membership, role) do
@@ -201,23 +105,5 @@ defmodule Nila.Orgs do
 
       {:ok, docs + audits + runs}
     end)
-  end
-
-  @doc """
-  The Indian fiscal-year label (`"2026-27"`) for `date` under `entity`'s
-  fiscal-year start month.
-  """
-  def fiscal_year_for(%Entity{} = entity, date \\ Date.utc_today()),
-    do: fiscal_year_label(date, entity.fiscal_year_start_month || 4)
-
-  defp fiscal_year_label(%Date{} = date, 4) do
-    start_year =
-      if date.month >= 4 do
-        date.year
-      else
-        date.year - 1
-      end
-
-    "#{start_year}-#{rem(start_year + 1, 100) |> Integer.to_string() |> String.pad_leading(2, "0")}"
   end
 end

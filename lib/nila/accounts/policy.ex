@@ -1,20 +1,21 @@
 defmodule Nila.Accounts.Policy do
   @moduledoc """
-  The single capability map for workspace roles.
+  The single capability map for firm roles.
 
-  Roles live on the `Nila.Orgs.Membership` joining a user to an org, and are
-  carried on the current `Nila.Accounts.Scope`. There are four roles, forming a
-  tier from most to least privileged:
+  Roles live on the `Nila.Orgs.Membership` joining a user to a firm (org), and
+  are carried on the current `Nila.Accounts.Scope`. There are four roles, forming
+  a tier from most to least privileged:
 
       owner ─ admin ─ member (operator) ─ viewer
 
-  - **owner / admin** manage everything: users, settings, connectors, records.
-  - **member** is the operator (e.g. Jaimathi): runs jobs, invoices, payments,
-    approvals and sends messages, but cannot manage users, settings, or inboxes.
-  - **viewer** (e.g. the CA later): read and export only.
+  - **owner / admin** manage everything: the firm's staff, settings, connectors,
+    and all client records.
+  - **member** is the operator (the junior accountant): works client months,
+    resolves exceptions, and sends messages, but cannot manage staff or settings.
+  - **viewer**: read and export only.
 
   `admin` is kept as a synonym for `owner` so the enum the schema already ships
-  with stays stable; the family MVP only needs owner / operator / viewer.
+  with stays stable.
 
   Authorize with `can?/2`. Web guards (`NilaWeb.UserAuth`) delegate here so the
   rules live in one place.

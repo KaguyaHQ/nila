@@ -53,7 +53,7 @@ defmodule NilaWeb.Settings.UsersLive do
              |> load_members()}
 
           {:error, :already_member} ->
-            {:noreply, put_flash(socket, :error, "That person is already in this workspace.")}
+            {:noreply, put_flash(socket, :error, "That person is already in this firm.")}
 
           {:error, _changeset} ->
             {:noreply, put_flash(socket, :error, "Could not send the invitation.")}
@@ -76,7 +76,7 @@ defmodule NilaWeb.Settings.UsersLive do
         {:error, :last_owner} ->
           {:noreply,
            socket
-           |> put_flash(:error, "You can't remove the workspace's last owner.")
+           |> put_flash(:error, "You can't remove the firm's last owner.")
            |> load_members()}
 
         _ ->
@@ -100,7 +100,7 @@ defmodule NilaWeb.Settings.UsersLive do
           {:noreply, put_flash(socket, :error, "You can't disable your own account.")}
 
         disabling_last_owner?(members, member) ->
-          {:noreply, put_flash(socket, :error, "You can't disable the workspace's last owner.")}
+          {:noreply, put_flash(socket, :error, "You can't disable the firm's last owner.")}
 
         true ->
           {:ok, _user} = Accounts.set_user_active(member.user, not member.user.active)
@@ -133,7 +133,7 @@ defmodule NilaWeb.Settings.UsersLive do
 
       case Orgs.delete_all_work_data(org.id) do
         {:ok, count} ->
-          {:noreply, put_flash(socket, :info, "Deleted #{count} records. Workspace is clean.")}
+          {:noreply, put_flash(socket, :info, "Deleted #{count} records. Firm is clean.")}
 
         {:error, reason} ->
           {:noreply, put_flash(socket, :error, "Delete failed: #{inspect(reason)}")}
@@ -152,7 +152,7 @@ defmodule NilaWeb.Settings.UsersLive do
     >
       <div id="settings-users" class="space-y-6">
         <.page_header eyebrow="Settings" title="Users">
-          Everyone who shares this workspace. Owners and admins manage access;
+          Everyone who works at this firm. Owners and admins manage access;
           operators run the day-to-day; viewers read and export.
           <:actions>
             <.button id="invite-user-button" phx-click="open_invite" variant="primary">
@@ -238,7 +238,7 @@ defmodule NilaWeb.Settings.UsersLive do
               <.icon name="hero-exclamation-triangle" class="size-4" /> Danger zone
             </h3>
             <p class="text-base-content/60 text-body max-w-xl">
-              Delete all work orders, invoices, documents, customers, and related records. Your workspace, entities, and users are preserved. Entity invoice numbering resets to 1.
+              Delete all documents, audit logs, and workflow runs. Your firm, clients, and users are preserved.
             </p>
           </div>
           <.button
@@ -273,7 +273,7 @@ defmodule NilaWeb.Settings.UsersLive do
           />
           <p class="text-base-content/60 text-fine">
             They'll get an email with a link to set a password and join. Owners and
-            admins manage the workspace; operators run work orders, invoices and approvals;
+            admins manage the firm; operators run the day-to-day work and approvals;
             viewers can only read and export.
           </p>
           <div class="flex justify-end gap-2 pt-2">
