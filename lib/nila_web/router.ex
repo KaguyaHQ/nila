@@ -95,14 +95,12 @@ defmodule NilaWeb.Router do
       live "/clients", ClientsLive, :index
       live "/clients/new", ClientNewLive, :new
       live "/clients/:id/edit", ClientEditLive, :edit
-      live "/bank", BankLive, :index
       live "/gst/upload", GstUploadLive, :new
       live "/gst/:client_id/:period", GstMonthLive, :index
       live "/gst/:client_id/:period/exceptions", GstExceptionsLive, :index
       live "/profile", ProfileLive, :show
       live "/settings/account", UserSettingsLive, :edit
       live "/settings/account/confirm_email/:token", UserSettingsLive, :confirm_email
-      live "/assistant", AssistantLive, :index
     end
 
     # Tenant-scoped GST evidence: the controller checks the current org owns the
