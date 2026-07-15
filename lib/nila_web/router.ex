@@ -93,11 +93,17 @@ defmodule NilaWeb.Router do
       ] do
       live "/today", TodayLive, :index
       live "/bank", BankLive, :index
+      live "/gst/upload", GstUploadLive, :new
+      live "/gst/:client_id/:period", GstMonthLive, :index
       live "/profile", ProfileLive, :show
       live "/settings/account", UserSettingsLive, :edit
       live "/settings/account/confirm_email/:token", UserSettingsLive, :confirm_email
       live "/assistant", AssistantLive, :index
     end
+
+    # Tenant-scoped GST evidence: the controller checks the current org owns the
+    # client_month before streaming, so bills never leak across firms.
+    get "/gst/:client_id/:period/evidence/:basename", GstEvidenceController, :show
 
     get "/settings", SettingsController, :index
     post "/settings/account/password", UserSettingsController, :update_password

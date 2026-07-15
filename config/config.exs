@@ -12,6 +12,7 @@ config :nila,
   generators: [timestamp_type: :utc_datetime_usec],
   po_extractor: Nila.Documents.Extractor.Stub,
   bank_extractor: Nila.Banking.Extractor.Stub,
+  purchase_extractor: Nila.Gst.PurchaseExtractor.Stub,
   gmail_adapter: Nila.Integrations.Gmail,
   whatsapp_adapter: Nila.Integrations.WhatsApp
 
@@ -36,6 +37,17 @@ config :nila, Nila.Documents.Extractor.LlamaExtract,
   receive_timeout: 60_000,
   poll_interval_ms: 3_000,
   max_polls: 40
+
+# LlamaExtract — per-page purchase-bill extraction for the GST month worker.
+# `:purchase_extractor` (above) stays on the Stub until config/runtime.exs flips
+# it to this module when LLAMA_CLOUD_API_KEY is set.
+config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract,
+  base_url: "https://api.cloud.llamaindex.ai",
+  tier: "agentic",
+  version: "latest",
+  receive_timeout: 60_000,
+  poll_interval_ms: 3_000,
+  max_polls: 200
 
 config :hammer,
   backend:
