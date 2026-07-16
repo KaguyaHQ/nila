@@ -175,7 +175,8 @@ defmodule NilaWeb.Components.Input do
           id={@id}
           value={Phoenix.HTML.Form.normalize_value("password", @value)}
           class={[
-            (@class || "input w-full") <> "pr-12",
+            @class || "input w-full",
+            "pr-12",
             @errors != [] && (@error_class || "input-error")
           ]}
           {@rest}

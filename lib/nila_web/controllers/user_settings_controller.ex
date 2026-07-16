@@ -12,7 +12,7 @@ defmodule NilaWeb.UserSettingsController do
       {:ok, user} ->
         conn
         |> put_flash(:info, "Password updated.")
-        |> put_session(:user_return_to, ~p"/settings/account")
+        |> put_session(:user_return_to, ~p"/settings/security")
         |> UserAuth.log_in_user(user)
 
       {:error, _changeset} ->
@@ -21,7 +21,7 @@ defmodule NilaWeb.UserSettingsController do
           :error,
           "Could not update password. Check your current password and try again."
         )
-        |> redirect(to: ~p"/settings/account")
+        |> redirect(to: ~p"/settings/security")
     end
   end
 end

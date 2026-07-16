@@ -9,7 +9,7 @@ defmodule Nila.AccountsSettingsTest do
   defp email_url_fun(test_pid \\ self()) do
     fn token ->
       send(test_pid, {:change_email_token, token})
-      "http://localhost/settings/account/confirm_email/#{token}"
+      "http://localhost/settings/profile/confirm_email/#{token}"
     end
   end
 

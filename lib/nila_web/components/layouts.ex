@@ -155,24 +155,49 @@ defmodule NilaWeb.Layouts do
             class="border-base-300 flex gap-2 overflow-x-auto border-b pb-3 lg:flex-col lg:overflow-visible lg:border-r lg:border-b-0 lg:pr-4 lg:pb-0"
             aria-label="Settings sections"
           >
-            <.settings_link
-              href={~p"/settings/workspace"}
-              icon="hero-building-office-2"
-              label="Firm"
-              active={@active_section == :workspace}
-            />
-            <.settings_link
-              href={~p"/settings/connectors"}
-              icon="hero-link"
-              label="Connectors"
-              active={@active_section == :connectors}
-            />
-            <.settings_link
-              href={~p"/settings/users"}
-              icon="hero-users"
-              label="Users"
-              active={@active_section == :users}
-            />
+            <div class="flex gap-2 lg:flex-col">
+              <span class="text-base-content/40 text-label hidden px-3 pb-1 font-semibold uppercase lg:block">
+                Account
+              </span>
+              <.settings_link
+                href={~p"/settings/profile"}
+                icon="hero-user-circle"
+                label="Profile"
+                active={@active_section == :profile}
+              />
+              <.settings_link
+                href={~p"/settings/security"}
+                icon="hero-lock-closed"
+                label="Security"
+                active={@active_section == :security}
+              />
+            </div>
+            <div
+              :if={Nila.Accounts.Policy.can?(@current_scope, :manage_settings)}
+              class="flex gap-2 lg:mt-5 lg:flex-col"
+            >
+              <span class="text-base-content/40 text-label hidden px-3 pb-1 font-semibold uppercase lg:block">
+                Firm
+              </span>
+              <.settings_link
+                href={~p"/settings/workspace"}
+                icon="hero-building-office-2"
+                label="Firm"
+                active={@active_section == :workspace}
+              />
+              <.settings_link
+                href={~p"/settings/connectors"}
+                icon="hero-link"
+                label="Connectors"
+                active={@active_section == :connectors}
+              />
+              <.settings_link
+                href={~p"/settings/users"}
+                icon="hero-users"
+                label="Users"
+                active={@active_section == :users}
+              />
+            </div>
           </nav>
         </aside>
 
@@ -318,17 +343,7 @@ defmodule NilaWeb.Layouts do
         @placement == :header && "right-0 mt-2"
       ]}>
         <.link
-          navigate={~p"/profile"}
-          id={"#{@id_prefix}-profile-link"}
-          class="focus:ring-primary/20 hover:bg-base-200 hover:text-base-content rounded-field text-base-content/70 text-small flex h-10 items-center gap-2.5 px-2.5 font-medium transition focus:ring-2 focus:outline-none"
-        >
-          <.icon name="hero-user-circle" class="text-base-content/55 size-4" />
-          <span>Profile</span>
-        </.link>
-
-        <.link
-          :if={Nila.Accounts.Policy.can?(@current_scope, :manage_settings)}
-          navigate={~p"/settings/workspace"}
+          navigate={~p"/settings/profile"}
           id={"#{@id_prefix}-settings-link"}
           class="focus:ring-primary/20 hover:bg-base-200 hover:text-base-content rounded-field text-base-content/70 text-small flex h-10 items-center gap-2.5 px-2.5 font-medium transition focus:ring-2 focus:outline-none"
         >

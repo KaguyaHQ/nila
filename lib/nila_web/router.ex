@@ -98,9 +98,9 @@ defmodule NilaWeb.Router do
       live "/gst/upload", GstUploadLive, :new
       live "/gst/:client_id/:period", MonthLive, :index
       live "/gst/:client_id/:period/exceptions", GstExceptionsLive, :index
-      live "/profile", ProfileLive, :show
-      live "/settings/account", UserSettingsLive, :edit
-      live "/settings/account/confirm_email/:token", UserSettingsLive, :confirm_email
+      live "/settings/profile", Settings.ProfileLive, :edit
+      live "/settings/profile/confirm_email/:token", Settings.ProfileLive, :confirm_email
+      live "/settings/security", Settings.SecurityLive, :edit
     end
 
     # Tenant-scoped GST evidence: the controller checks the current org owns the
@@ -110,10 +110,9 @@ defmodule NilaWeb.Router do
     get "/gstr1/:client_id/:period/evidence/:basename", Gstr1Controller, :evidence
 
     get "/settings", SettingsController, :index
-    post "/settings/account/password", UserSettingsController, :update_password
+    post "/settings/security/password", UserSettingsController, :update_password
 
-    # Settings (workspace, invoicing, approvals, connectors, users) are owner /
-    # admin only. The capability guard mounts the scope and redirects everyone
+    # Firm settings (workspace, connectors, users) are owner / admin only. The capability guard mounts the scope and redirects everyone
     # else back to their cockpit.
     live_session :settings,
       on_mount: [
