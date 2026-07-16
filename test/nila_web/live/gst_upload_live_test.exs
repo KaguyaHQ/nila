@@ -24,6 +24,7 @@ defmodule NilaWeb.GstUploadLiveTest do
     assert has_element?(view, "#gst-upload-form")
     assert has_element?(view, "#gst-upload-bills")
     assert has_element?(view, "#gst-upload-gstr2b")
+    assert has_element?(view, "#gst-upload-sales")
     assert has_element?(view, "#gst-upload-submit")
   end
 
@@ -59,6 +60,77 @@ defmodule NilaWeb.GstUploadLiveTest do
       worker: Nila.Gst.MonthWorker,
       args: %{org_id: org.id, client_id: client.id, period: @period}
     )
+
+    refute_enqueued(worker: Nila.Gst.Gstr1Worker)
+  end
+
+  test "attaching sales bills also enqueues the GSTR-1 worker", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    bills =
+      file_input(view, "#gst-upload-form", :bills, [
+        %{name: "bills.pdf", content: "%PDF-1.4 fake", type: "application/pdf"}
+      ])
+
+    gstr2b =
+      file_input(view, "#gst-upload-form", :gstr2b, [
+        %{name: "gstr2b.json", content: ~s({"docdata":{"b2b":[]}}), type: "application/json"}
+      ])
+
+    sales =
+      file_input(view, "#gst-upload-form", :sales, [
+        %{name: "sales.pdf", content: "%PDF-1.4 fake sales", type: "application/pdf"}
+      ])
+
+    render_upload(bills, "bills.pdf")
+    render_upload(gstr2b, "gstr2b.json")
+    render_upload(sales, "sales.pdf")
+
+    view
+    |> form("#gst-upload-form",
+      month: %{client_id: client.id, period_month: @period_month, period_year: @period_year}
+    )
+    |> render_submit()
+
+    assert_enqueued(
+      worker: Nila.Gst.MonthWorker,
+      args: %{org_id: org.id, client_id: client.id, period: @period}
+    )
+
+    assert_enqueued(
+      worker: Nila.Gst.Gstr1Worker,
+      args: %{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        pdf_key: "gstr1/#{org.id}/#{client.id}/#{@period}/source/bills.pdf"
+      }
+    )
+  end
+
+  test "sales bills alone do not start a month", %{conn: conn, client: client} do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    sales =
+      file_input(view, "#gst-upload-form", :sales, [
+        %{name: "sales.pdf", content: "%PDF-1.4 fake sales", type: "application/pdf"}
+      ])
+
+    render_upload(sales, "sales.pdf")
+
+    view
+    |> form("#gst-upload-form",
+      month: %{client_id: client.id, period_month: @period_month, period_year: @period_year}
+    )
+    |> render_submit()
+
+    assert has_element?(view, "#gst-upload-error")
+    refute_enqueued(worker: Nila.Gst.Gstr1Worker)
+    refute_enqueued(worker: Nila.Gst.MonthWorker)
   end
 
   test "rejects a submit with no files attached", %{conn: conn, client: client} do

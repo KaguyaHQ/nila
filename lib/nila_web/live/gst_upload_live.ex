@@ -3,7 +3,7 @@ defmodule NilaWeb.GstUploadLive do
 
   alias Nila.Clients
   alias Nila.Gst.ClientMonths
-  alias Nila.Gst.MonthWorker
+  alias Nila.Gst.{Gstr1Worker, MonthWorker}
   alias Nila.Storage
 
   @stage_copy %{
@@ -30,7 +30,8 @@ defmodule NilaWeb.GstUploadLive do
      |> assign(:stage, nil)
      |> assign(:error, nil)
      |> allow_upload(:bills, accept: ~w(.pdf), max_entries: 1, max_file_size: 50_000_000)
-     |> allow_upload(:gstr2b, accept: ~w(.json), max_entries: 1, max_file_size: 20_000_000)}
+     |> allow_upload(:gstr2b, accept: ~w(.json), max_entries: 1, max_file_size: 20_000_000)
+     |> allow_upload(:sales, accept: ~w(.pdf), max_entries: 1, max_file_size: 50_000_000)}
   end
 
   @impl true
@@ -39,7 +40,7 @@ defmodule NilaWeb.GstUploadLive do
   end
 
   def handle_event("cancel-upload", %{"ref" => ref}, socket) do
-    name = if entry_in?(socket, :bills, ref), do: :bills, else: :gstr2b
+    name = Enum.find([:bills, :gstr2b, :sales], :sales, &entry_in?(socket, &1, ref))
     {:noreply, cancel_upload(socket, name, ref)}
   end
 
@@ -60,6 +61,8 @@ defmodule NilaWeb.GstUploadLive do
           gstr2b_key: gstr2b_key
         })
         |> Oban.insert()
+
+      enqueue_sales(socket, org.id, client_id, period)
 
       {:noreply,
        socket
@@ -128,27 +131,53 @@ defmodule NilaWeb.GstUploadLive do
     for y <- current..(current - 3)//-1, do: {to_string(y), to_string(y)}
   end
 
-  defp consume_upload(socket, name, org_id, client_id, period, label) do
-    case uploaded_entries(socket, name) do
+  # The sales-bills PDF is optional: when attached, the outward month is worked
+  # in parallel by Gstr1Worker. Progress and navigation stay keyed to the
+  # purchase month — the sales month lands on its own and the R1 view picks it up.
+  defp enqueue_sales(socket, org_id, client_id, period) do
+    case uploaded_entries(socket, :sales) do
       {[_entry], []} ->
-        [key] =
-          consume_uploaded_entries(socket, name, fn %{path: path}, entry ->
-            bytes = File.read!(path)
-            key = source_key(org_id, client_id, period, label, entry.client_name)
-            {:ok, _} = Storage.put(key, bytes)
-            {:ok, key}
-          end)
+        [pdf_key] = store_entries(socket, :sales, "gstr1", org_id, client_id, period, "bills")
 
-        {:ok, key}
+        {:ok, _job} =
+          Gstr1Worker.new(%{
+            org_id: org_id,
+            client_id: client_id,
+            period: period,
+            pdf_key: pdf_key
+          })
+          |> Oban.insert()
+
+        :ok
 
       _ ->
-        {:error, "Attach both files."}
+        :ok
     end
   end
 
-  defp source_key(org_id, client_id, period, label, client_name) do
+  defp consume_upload(socket, name, org_id, client_id, period, label) do
+    case uploaded_entries(socket, name) do
+      {[_entry], []} ->
+        [key] = store_entries(socket, name, "gst", org_id, client_id, period, label)
+        {:ok, key}
+
+      _ ->
+        {:error, "Attach the purchase bills and the GSTR-2B."}
+    end
+  end
+
+  defp store_entries(socket, name, prefix, org_id, client_id, period, label) do
+    consume_uploaded_entries(socket, name, fn %{path: path}, entry ->
+      bytes = File.read!(path)
+      key = source_key(prefix, org_id, client_id, period, label, entry.client_name)
+      {:ok, _} = Storage.put(key, bytes)
+      {:ok, key}
+    end)
+  end
+
+  defp source_key(prefix, org_id, client_id, period, label, client_name) do
     ext = client_name |> Path.extname() |> String.downcase()
-    "gst/#{org_id}/#{client_id}/#{period}/source/#{label}#{ext}"
+    "#{prefix}/#{org_id}/#{client_id}/#{period}/source/#{label}#{ext}"
   end
 
   defp subscribe(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}),
@@ -178,8 +207,9 @@ defmodule NilaWeb.GstUploadLive do
     >
       <div id="gst-upload-page" class="mx-auto max-w-2xl space-y-6">
         <.page_header eyebrow="GST" title="Add a month">
-          Drop a client's purchase-bills PDF and their GSTR-2B. Nila extracts every
-          invoice, reconciles it against 2B, and files the worked month for review.
+          Drop a client's purchase-bills PDF and their GSTR-2B — and the sales bills
+          too, if you have them. Nila extracts every invoice, reconciles purchases
+          against 2B, derives the GSTR-1, and files the worked month for review.
         </.page_header>
 
         <.card :if={@status in [:idle, :failed]}>
@@ -235,6 +265,14 @@ defmodule NilaWeb.GstUploadLive do
                 upload={@uploads.gstr2b}
                 label="GSTR-2B (JSON from the GST portal)"
                 hint="The JSON downloaded from the GST portal"
+                on_cancel="cancel-upload"
+              />
+
+              <.file_drop
+                id="gst-upload-sales"
+                upload={@uploads.sales}
+                label="Sales bills (PDF, optional)"
+                hint="One PDF — adds the outward month: GSTR-1 and the 3B liability"
                 on_cancel="cancel-upload"
               />
 
