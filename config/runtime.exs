@@ -90,21 +90,29 @@ if config_env() in [:prod, :dev] do
     project_id = env!("LLAMA_PROJECT_ID", :string, nil)
 
     config :nila, :purchase_extractor, Nila.Gst.PurchaseExtractor.LlamaExtract
+    config :nila, :sales_extractor, Nila.Gst.SalesExtractor.LlamaExtract
 
     config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract,
       api_key: api_key,
       project_id: project_id
 
+    config :nila, Nila.Gst.SalesExtractor.LlamaExtract,
+      api_key: api_key,
+      project_id: project_id
+
     if base_url = env!("LLAMA_BASE_URL", :string, nil) do
       config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, base_url: base_url
+      config :nila, Nila.Gst.SalesExtractor.LlamaExtract, base_url: base_url
     end
 
     if tier = env!("LLAMA_TIER", :string, nil) do
       config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, tier: tier
+      config :nila, Nila.Gst.SalesExtractor.LlamaExtract, tier: tier
     end
 
     if version = env!("LLAMA_VERSION", :string, nil) do
       config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, version: version
+      config :nila, Nila.Gst.SalesExtractor.LlamaExtract, version: version
     end
   end
 end

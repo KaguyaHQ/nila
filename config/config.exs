@@ -12,6 +12,7 @@ config :nila,
   generators: [timestamp_type: :utc_datetime_usec],
   bank_extractor: Nila.Banking.Extractor.Stub,
   purchase_extractor: Nila.Gst.PurchaseExtractor.Stub,
+  sales_extractor: Nila.Gst.SalesExtractor.Stub,
   gmail_adapter: Nila.Integrations.Gmail,
   whatsapp_adapter: Nila.Integrations.WhatsApp
 
@@ -31,6 +32,17 @@ config :nila, Nila.Assistant,
 # `:purchase_extractor` (above) stays on the Stub until config/runtime.exs flips
 # it to this module when LLAMA_CLOUD_API_KEY is set.
 config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract,
+  base_url: "https://api.cloud.llamaindex.ai",
+  tier: "agentic",
+  version: "latest",
+  receive_timeout: 60_000,
+  poll_interval_ms: 3_000,
+  max_polls: 200
+
+# LlamaExtract — per-page sales-invoice extraction for the GSTR-1 worker.
+# `:sales_extractor` (above) stays on the Stub until config/runtime.exs flips
+# it to this module when LLAMA_CLOUD_API_KEY is set.
+config :nila, Nila.Gst.SalesExtractor.LlamaExtract,
   base_url: "https://api.cloud.llamaindex.ai",
   tier: "agentic",
   version: "latest",
