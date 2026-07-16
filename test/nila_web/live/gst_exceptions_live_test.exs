@@ -137,6 +137,57 @@ defmodule NilaWeb.GstExceptionsLiveTest do
     assert "invoice_number" in row["match_basis"]
   end
 
+  test "a fuzzy-name single-candidate exception is also resolvable (not just invoice_number_mismatch)",
+       %{
+         conn: conn,
+         org: org,
+         client: client
+       } do
+    # No valid vendor GSTIN + a fuzzy name + exact value -> fuzzy_name_weak
+    # corroboration with one candidate: must be resolvable, same as Bikezone.
+    books = %{
+      "id" => "fz_01",
+      "vendor_name" => "Maheswari & Co",
+      "vendor_gstin" => nil,
+      "invoice_number" => "1",
+      "invoice_date" => ~D[2025-11-05],
+      "taxable_paise" => 238_100,
+      "tax_paise" => %{"cgst" => 24_400, "sgst" => 24_400, "igst" => 0},
+      "total_paise" => 286_900,
+      "images" => [],
+      "pages" => [1]
+    }
+
+    g2b = %{
+      "vendor_gstin" => "33APZPP6215J1ZB",
+      "vendor_name" => "MAHESWARI AND CO",
+      "invoice_number" => "125",
+      "invoice_date" => ~D[2025-11-05],
+      "taxable_paise" => 238_100,
+      "tax_paise" => %{"cgst" => 24_400, "sgst" => 24_400, "igst" => 0},
+      "total_paise" => 286_900,
+      "pos" => "33"
+    }
+
+    recon = Recon.reconcile([books], [g2b])
+    assert [%{"reason" => %{"code" => "fuzzy_name_weak_corroboration"}}] = recon["needs_human"]
+    rows = Register.rows([books], recon, %{})
+
+    {:ok, _} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: "2025-12",
+        state: "worked",
+        register_rows: rows,
+        recon: recon,
+        summary: Register.summary(rows)
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/2025-12/exceptions")
+    assert has_element?(view, "button", "Confirm — same bill")
+  end
+
   test "another org cannot open the month", %{conn: conn, client: client} do
     %{user: other_user} = user_with_org_fixture()
 

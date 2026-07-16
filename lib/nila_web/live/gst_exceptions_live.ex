@@ -78,7 +78,8 @@ defmodule NilaWeb.GstExceptionsLive do
 
   defp exception_item(entry, decisions, month) do
     books = entry["books"]
-    candidate = List.first(entry["candidates"] || [])
+    candidates = entry["candidates"] || []
+    candidate = List.first(candidates)
     verb = decisions[books["id"]]
 
     %{
@@ -92,11 +93,23 @@ defmodule NilaWeb.GstExceptionsLive do
       candidate_ref: candidate && Recon.gstr2b_ref(candidate),
       images: image_urls(books, month),
       diff: candidate && field_diff(books, candidate),
-      resolvable: entry["reason"]["code"] == "invoice_number_mismatch" and candidate != nil,
+      resolvable: single_candidate_type?(entry["reason"]["code"]) and length(candidates) == 1,
       verb: verb,
       resolved: verb != nil,
       outcome: outcome_label(verb)
     }
+  end
+
+  # A single books row against a single 2B candidate — confirm/reject/correct
+  # resolve it directly. `ambiguous_matches` is deliberately excluded: it has
+  # multiple candidates and needs a "pick which one" surface, not a yes/no, so
+  # confirming would silently ignore the other candidates ("flag, don't guess").
+  defp single_candidate_type?(code) do
+    code in [
+      "invoice_number_mismatch",
+      "relaxed_match_weak_corroboration",
+      "fuzzy_name_weak_corroboration"
+    ]
   end
 
   defp outcome_label("confirm_pair"), do: "Confirmed — same bill"
