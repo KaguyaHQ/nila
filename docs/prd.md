@@ -127,9 +127,10 @@ abstraction from real data.
   review-brief assembly. Validated end-to-end on a real filed month.
 - **The month review workspace** (`NilaWeb.GstMonthLive`, `Nila.Gst.ClientMonths`) — a
   live, org-scoped surface rendering a client's worked month: stats, the register, and
-  tap-a-row → the scanned bill served through a tenant-isolated evidence route. This is
-  the product surface; resolve/override and the collection loop are the next milestones
-  (see `docs/plans/gst-workspace.md`).
+  tap-a-row → the scanned bill served through a tenant-isolated evidence route, plus the
+  human resolve loop (`NilaWeb.GstExceptionsLive`) for reconciliation exceptions. This is
+  the product surface; the collection loop is the next milestone (implementation plans
+  live in `docs/.plans/`, local-only).
 - **Substrate:** auth + tenancy (orgs / entities / memberships), the document→structured
   **extractor** behind a swappable behaviour, GST jurisdiction logic, the audit log,
   pluggable storage, and email/WhatsApp ingestion scaffolding.

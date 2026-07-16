@@ -38,7 +38,8 @@ defmodule Nila.Gst.ItcPosition do
         "claimable_paise"  => integer,   # ceiling - blocked
         "blocks" => [%{
           "block_id", "code", "section", "vendor", "invoice_number",
-          "tax_paise", "reason", "state" => "recommended"|"blocked"|"allowed"
+          "tax_paise", "tax_heads" => %{"igst"|"cgst"|"sgst" => paise},
+          "reason", "state" => "recommended"|"blocked"|"allowed"
         }]
       }
   """
@@ -68,11 +69,38 @@ defmodule Nila.Gst.ItcPosition do
     matched + in_2b_only + awaiting_2b_tax(recon)
   end
 
+  @doc """
+  The ceiling split by tax head (`%{"igst" | "cgst" | "sgst" => paise}`) —
+  same traversal as `ceiling_paise/1`, so the heads always sum to it. 3B's
+  Table 4 is head-wise; the lump total alone cannot fill it.
+  """
+  def ceiling_heads(recon) do
+    matched =
+      for b <- ["matched", "value_mismatch"], e <- recon[b] || [], g = e["gstr2b"] || %{}, do: g
+
+    in_2b_only = for e <- recon["in_2b_not_books"] || [], do: e["gstr2b"] || e
+
+    (matched ++ in_2b_only ++ awaiting_2b_invoices(recon))
+    |> Enum.map(&(&1["tax_paise"] || %{}))
+    |> sum_heads()
+  end
+
+  @doc "Sums a list of head maps (`%{\"igst\" | \"cgst\" | \"sgst\" => paise}`)."
+  def sum_heads(head_maps) do
+    Enum.reduce(head_maps, %{"igst" => 0, "cgst" => 0, "sgst" => 0}, fn heads, acc ->
+      Map.new(acc, fn {k, v} -> {k, v + (heads[k] || 0)} end)
+    end)
+  end
+
   defp tax_of(entries), do: entries |> Enum.map(&tax_sum(&1["gstr2b"])) |> Enum.sum()
 
   # 2B invoices routed to human, deduped (an ambiguous pair lists the same
   # candidate from both books rows). Mirrors MonthPack.awaiting_2b_tax.
   defp awaiting_2b_tax(recon) do
+    recon |> awaiting_2b_invoices() |> Enum.map(&tax_sum/1) |> Enum.sum()
+  end
+
+  defp awaiting_2b_invoices(recon) do
     recon["needs_human"]
     |> Enum.flat_map(fn e ->
       case e["candidates"] |> List.wrap() |> List.first() || e["gstr2b"] do
@@ -81,8 +109,6 @@ defmodule Nila.Gst.ItcPosition do
       end
     end)
     |> Enum.uniq_by(fn g -> {g["vendor_gstin"], g["invoice_number"]} end)
-    |> Enum.map(&tax_sum/1)
-    |> Enum.sum()
   end
 
   # The block candidates for a month: one per full-block flag (personal / state)
@@ -99,6 +125,7 @@ defmodule Nila.Gst.ItcPosition do
           "vendor" => row["vendor_name"],
           "invoice_number" => row["invoice_number"],
           "tax_paise" => row_tax(row),
+          "tax_heads" => row_heads(row, 1),
           "reason" => flag["reason"]
         }
       end
@@ -125,6 +152,7 @@ defmodule Nila.Gst.ItcPosition do
         "vendor" => keep["vendor_name"],
         "invoice_number" => keep["invoice_number"],
         "tax_paise" => row_tax(keep) * (n - 1),
+        "tax_heads" => row_heads(keep, n - 1),
         "reason" => dup_flag["reason"]
       }
     end)
@@ -145,6 +173,14 @@ defmodule Nila.Gst.ItcPosition do
 
   defp row_tax(row),
     do: (row["cgst_paise"] || 0) + (row["sgst_paise"] || 0) + (row["igst_paise"] || 0)
+
+  defp row_heads(row, copies) do
+    %{
+      "igst" => (row["igst_paise"] || 0) * copies,
+      "cgst" => (row["cgst_paise"] || 0) * copies,
+      "sgst" => (row["sgst_paise"] || 0) * copies
+    }
+  end
 
   defp tax_sum(inv), do: (inv["tax_paise"] || %{}) |> Map.values() |> Enum.sum()
   defp norm(inum), do: inum |> to_string() |> String.trim() |> String.upcase()

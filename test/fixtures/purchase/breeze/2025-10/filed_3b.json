@@ -1,10 +1,29 @@
 {
-  "note": "Transcribed from GSTR3B_33AEWPH4158J1Z3_102025.pdf (filed, ARN AB331025620393N, 20/11/2025). Paise integers.",
+  "note": "Transcribed from GSTR3B_33AEWPH4158J1Z3_102025.pdf (filed, ARN AB331025620393N, 20/11/2025). Paise integers throughout; 6.1 amounts are whole-rupee (portal rounds) expressed in paise.",
   "period": "2025-10",
   "gstin": "33AEWPH4158J1Z3",
+  "liability_31": {
+    "a": {"txval": 72189549, "igst": 2644200, "cgst": 5174959, "sgst": 5174959},
+    "d": {"txval": 150900, "igst": 0, "cgst": 3773, "sgst": 3773}
+  },
   "itc": {
     "all_other_itc_4a5": {"igst": 1476062, "cgst": 2746878, "sgst": 2746878},
     "rcm_4a3": {"igst": 0, "cgst": 3773, "sgst": 3773},
+    "reversed_4b1": {"igst": 0, "cgst": 0, "sgst": 0},
+    "reversed_4b2": {"igst": 0, "cgst": 0, "sgst": 0},
     "net_itc_4c": {"igst": 1476062, "cgst": 2750651, "sgst": 2750651}
+  },
+  "setoff_61": {
+    "other": {
+      "igst": {"payable": 2644200, "itc_igst": 1476100, "itc_cgst": 0, "itc_sgst": 0, "cash": 1168100},
+      "cgst": {"payable": 5175000, "itc_igst": 0, "itc_cgst": 2750700, "itc_sgst": 0, "cash": 2424300},
+      "sgst": {"payable": 5175000, "itc_igst": 0, "itc_cgst": 0, "itc_sgst": 2750700, "cash": 2424300}
+    },
+    "rcm": {
+      "igst": {"payable": 0, "cash": 0},
+      "cgst": {"payable": 3800, "cash": 3800},
+      "sgst": {"payable": 3800, "cash": 3800}
+    },
+    "cash_total": 6024300
   }
 }

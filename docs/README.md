@@ -8,6 +8,31 @@ What's in here. Open the one that answers your question.
 - [`design/DESIGN.md`](./design/DESIGN.md) — brand, principles, and the moonlight UI system; layout reasoning in [`design/layout.md`](./design/layout.md).
 - [`runbooks/`](./runbooks/) — debugging playbooks for shipped features.
 
-`.plans/` is local-only scratch (gitignored) for in-flight implementation plans.
-
 Coding conventions live in [`../AGENTS.md`](../AGENTS.md). Claude-specific repo guidance in [`../CLAUDE.md`](../CLAUDE.md).
+
+## Plans (`.plans/`, local-only, gitignored)
+
+Implementation specs drafted after a grill, handed to an agent to build, then
+**retained as the rationale record** — code shows *what* shipped, a plan explains
+*why* it was built that way. They are not throwaway: a completed plan is the only
+place the reasoning survives, so plans are never deleted on completion — their
+`Status` flips instead.
+
+Every plan opens with this header block, so the lifecycle is legible at a glance
+without reading the body:
+
+```
+> **Status:** draft | handed-off | in-progress | shipped | proven | superseded | abandoned
+> **Created / revised:** YYYY-MM-DD
+> **Ships as:** <what it becomes in the codebase, or “scripts/ eval”>
+> **Supersedes / superseded-by:** <plan filename, or —>
+```
+
+Status meanings: `draft` (pre-handoff), `handed-off` (given to an agent),
+`in-progress` (partially built), `shipped` (in the product), `proven` (validated
+against real data but not yet productionized), `superseded` (a newer plan replaced
+it — kept for history), `abandoned` (dropped, kept so the dead end isn’t re-walked).
+
+Body format is free — an eval plan and a milestone plan are genuinely different
+shapes. Only the header is uniform. Plans are prefixed with their creation date
+(`YYYY-MM-DD-name.md`) so they sort chronologically.
