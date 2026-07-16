@@ -76,6 +76,24 @@ defmodule Nila.Gst.Workings do
     |> Enum.reduce(%{}, fn r, acc -> Map.put(acc, r["books_id"], r["verb"]) end)
   end
 
+  @doc """
+  The effective block/allow decision per ITC block target: `%{block_id => verb}`
+  where verb is `"block_itc" | "allow_itc"`, latest wins. These target a
+  `payload["block_id"]`, independent of the recon buckets. `reopen` on a block
+  target clears it back to Nila's recommendation.
+  """
+  def itc_decisions(resolutions) do
+    resolutions
+    |> Enum.filter(&(&1["verb"] in ["block_itc", "allow_itc", "reopen"]))
+    |> Enum.reduce(%{}, fn r, acc ->
+      case {r["verb"], get_in(r, ["payload", "block_id"])} do
+        {_verb, nil} -> acc
+        {"reopen", id} -> Map.delete(acc, id)
+        {verb, id} -> Map.put(acc, id, verb)
+      end
+    end)
+  end
+
   @doc "The books invoices embedded in a recon, one per books-side bucket entry."
   def books_invoices(recon) do
     for bucket <- @books_buckets,

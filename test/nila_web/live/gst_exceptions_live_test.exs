@@ -145,4 +145,66 @@ defmodule NilaWeb.GstExceptionsLiveTest do
              |> log_in_user(other_user)
              |> live(~p"/gst/#{client.id}/#{@period}/exceptions")
   end
+
+  test "blocking a recommended duplicate credit reduces claimable ITC and logs it", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    # Two identical scans of the same bill -> the flag engine recomputes a
+    # duplicate_invoice flag, and the ITC panel recommends blocking one copy.
+    dup = fn id ->
+      %{
+        "id" => id,
+        "vendor_name" => "National Electric",
+        "vendor_gstin" => @gstin,
+        "invoice_number" => "254111",
+        "invoice_date" => ~D[2025-10-06],
+        "taxable_paise" => 3_500,
+        "tax_paise" => %{"cgst" => 315, "sgst" => 315, "igst" => 0},
+        "total_paise" => 4_130,
+        "images" => [],
+        "pages" => [if(id == "d1", do: 3, else: 9)]
+      }
+    end
+
+    g2b = %{
+      "vendor_gstin" => @gstin,
+      "invoice_number" => "254111",
+      "taxable_paise" => 3_500,
+      "tax_paise" => %{"cgst" => 315, "sgst" => 315, "igst" => 0},
+      "total_paise" => 4_130,
+      "pos" => "33"
+    }
+
+    recon = Recon.reconcile([dup.("d1"), dup.("d2")], [g2b])
+    rows = Register.rows([dup.("d1"), dup.("d2")], recon, %{})
+
+    {:ok, month} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: "2025-11",
+        state: "worked",
+        register_rows: rows,
+        recon: recon,
+        summary: Register.summary(rows)
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/2025-11/exceptions")
+
+    assert has_element?(view, "#gst-itc-panel")
+    block_id = "d1:duplicate_invoice"
+
+    view
+    |> element(~s|button[phx-click="block_itc"][phx-value-block-id="#{block_id}"]|)
+    |> render_click()
+
+    workings = Resolutions.workings(month)
+    # one of two ₹6.30 copies blocked -> ₹6.30 (630 paise) removed
+    assert workings.itc["blocked_paise"] == 630
+    assert [res] = Resolutions.list(month.id)
+    assert res.verb == "block_itc"
+    assert res.payload["block_id"] == block_id
+  end
 end

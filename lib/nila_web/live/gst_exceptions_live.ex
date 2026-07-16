@@ -61,9 +61,9 @@ defmodule NilaWeb.GstExceptionsLive do
 
     socket
     |> assign(:month, %{month | client: socket.assigns.month.client})
-    |> assign(:workings, workings)
     |> assign(:queue, queue)
     |> assign(:progress, progress(queue))
+    |> assign(:itc, workings.itc)
   end
 
   # The queue is the STABLE baseline exception set (the engine's needs_human
@@ -203,6 +203,29 @@ defmodule NilaWeb.GstExceptionsLive do
     {:noreply, socket |> load_workings() |> assign(:selected_id, id)}
   end
 
+  def handle_event(verb, %{"block-id" => block_id}, socket)
+      when verb in ["block_itc", "allow_itc"] do
+    {:ok, _} =
+      Resolutions.record(
+        socket.assigns.month,
+        %{"verb" => verb, "payload" => %{"block_id" => block_id}},
+        socket.assigns.current_scope.user.id
+      )
+
+    {:noreply, load_workings(socket)}
+  end
+
+  def handle_event("reopen_block", %{"block-id" => block_id}, socket) do
+    {:ok, _} =
+      Resolutions.record(
+        socket.assigns.month,
+        %{"verb" => "reopen", "payload" => %{"block_id" => block_id}},
+        socket.assigns.current_scope.user.id
+      )
+
+    {:noreply, load_workings(socket)}
+  end
+
   defp record(socket, attrs, after_fun \\ & &1) do
     socket = socket |> load_workings_after(attrs) |> after_fun.()
     {:noreply, socket}
@@ -278,6 +301,8 @@ defmodule NilaWeb.GstExceptionsLive do
           </p>
         </div>
 
+        {itc_panel(assigns)}
+
         <div
           :if={@queue == []}
           id="gst-exceptions-empty"
@@ -338,6 +363,114 @@ defmodule NilaWeb.GstExceptionsLive do
     </Layouts.app>
     """
   end
+
+  # The ITC position: the 2B ceiling (which ties to what the vendors reported),
+  # Nila's recommended blocks per flagged credit, and the running claimable that
+  # moves as the human confirms or overrides each block. Nila takes the position;
+  # nothing is committed silently.
+  defp itc_panel(%{itc: %{"blocks" => []}} = assigns) do
+    ~H"""
+    <div
+      id="gst-itc-panel"
+      class="border-base-300 rounded-box flex items-center justify-between border px-4 py-3"
+    >
+      <span class="text-base-content/60 text-small">Claimable ITC (2B ceiling, no blocked credits)</span>
+      <span class="text-base-content text-body font-mono font-semibold">
+        {itc_money(@itc["claimable_paise"])}
+      </span>
+    </div>
+    """
+  end
+
+  defp itc_panel(assigns) do
+    ~H"""
+    <div id="gst-itc-panel" class="border-base-300 rounded-box border">
+      <div class="border-base-300 flex items-center justify-between border-b px-4 py-3">
+        <div>
+          <div class="text-base-content/60 text-label font-medium uppercase">Claimable ITC</div>
+          <div class="text-base-content/50 text-fine mt-0.5">
+            2B ceiling {itc_money(@itc["ceiling_paise"])} − blocked {itc_money(@itc["blocked_paise"])}
+          </div>
+        </div>
+        <div id="gst-itc-claimable" class="text-base-content text-lead font-mono font-semibold">
+          {itc_money(@itc["claimable_paise"])}
+        </div>
+      </div>
+
+      <div class="divide-base-300 divide-y">
+        <div
+          :for={b <- @itc["blocks"]}
+          id={"itc-block-#{b["block_id"]}"}
+          class="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5"
+        >
+          <span class="text-base-content/40 text-fine w-40 shrink-0 uppercase">
+            {block_label(b["code"])}{if b["section"], do: " · #{b["section"]}"}
+          </span>
+          <span class="text-base-content text-small min-w-0 flex-1 truncate">
+            {b["vendor"]} · {b["invoice_number"] || "—"}
+          </span>
+          <span class={[
+            "text-small w-24 text-right font-mono",
+            b["state"] == "blocked" && "text-error",
+            b["state"] != "blocked" && "text-base-content/50"
+          ]}>
+            −{itc_money(b["tax_paise"])}
+          </span>
+
+          <span :if={b["state"] == "recommended"} class="flex gap-1.5">
+            <.button
+              variant="error"
+              size="xs"
+              phx-click="block_itc"
+              phx-value-block-id={b["block_id"]}
+            >
+              Block
+            </.button>
+            <.button
+              variant="ghost"
+              size="xs"
+              phx-click="allow_itc"
+              phx-value-block-id={b["block_id"]}
+            >
+              Keep credit
+            </.button>
+          </span>
+          <span :if={b["state"] == "blocked"} class="flex items-center gap-1.5">
+            <span class="text-error text-fine font-medium">Blocked</span>
+            <.button
+              variant="ghost"
+              size="xs"
+              phx-click="reopen_block"
+              phx-value-block-id={b["block_id"]}
+            >
+              Undo
+            </.button>
+          </span>
+          <span :if={b["state"] == "allowed"} class="flex items-center gap-1.5">
+            <span class="text-base-content/50 text-fine font-medium">Credit kept</span>
+            <.button
+              variant="ghost"
+              size="xs"
+              phx-click="reopen_block"
+              phx-value-block-id={b["block_id"]}
+            >
+              Undo
+            </.button>
+          </span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ITC figures show paise — tax precision matters for a claimable number the
+  # firm will file, unlike the register's rupee-rounded display.
+  defp itc_money(paise), do: Nila.Formatters.format_money_with_paise(paise || 0)
+
+  defp block_label("personal_expense_17_5"), do: "Personal / 17(5)"
+  defp block_label("duplicate_invoice"), do: "Duplicate"
+  defp block_label("gstin_state_mismatch"), do: "State mismatch"
+  defp block_label(code), do: code
 
   defp detail(%{selected: nil} = assigns) do
     ~H"""

@@ -14,7 +14,7 @@ defmodule Nila.Gst.Resolutions do
   import Ecto.Query, only: [from: 2]
 
   alias Nila.Clients
-  alias Nila.Gst.{ClientMonth, EntityContext, Flags, Register, Resolution, Workings}
+  alias Nila.Gst.{ClientMonth, EntityContext, Flags, ItcPosition, Register, Resolution, Workings}
   alias Nila.Repo
 
   @doc "Resolutions for a month, oldest first (append-only replay order)."
@@ -58,9 +58,9 @@ defmodule Nila.Gst.Resolutions do
       recon: recon,
       baseline: Workings.materialize(month.recon, []),
       decisions: Workings.decisions(resolutions),
+      itc: ItcPosition.compute(recon, rows, Workings.itc_decisions(resolutions)),
       rows: rows,
-      summary: Register.summary(rows),
-      resolution_count: length(resolutions)
+      summary: Register.summary(rows)
     }
   end
 

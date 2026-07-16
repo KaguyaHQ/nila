@@ -16,10 +16,14 @@ defmodule Nila.Gst.Resolution do
       `{"field", "from", "to"}`. Re-reconciliation may then match cleanly.
     * `reopen`        — undo: discards this books row's prior decisions so it
       returns to the engine's default (the exception re-opens for review).
+    * `block_itc` / `allow_itc` — confirm or override Nila's recommendation to
+      block a credit (personal/17(5), duplicate, state mismatch). Targets a
+      `block_id` in `payload["block_id"]`, not a books row — it adjusts the
+      claimable ITC, not the recon buckets.
   """
   use Nila.Schema
 
-  @verbs ~w(confirm_pair reject_pair correct_field reopen)
+  @verbs ~w(confirm_pair reject_pair correct_field reopen block_itc allow_itc)
 
   def verbs, do: @verbs
 
