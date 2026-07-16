@@ -38,6 +38,12 @@ defmodule NilaWeb.UserAuth do
     |> redirect(to: ~p"/")
   end
 
+  def log_out_all_user_sessions(conn, user) do
+    Accounts.delete_user_session_tokens(user)
+    NilaWeb.Endpoint.broadcast(user_sessions_topic(user), "disconnect_user_sessions", %{})
+    log_out_user(conn)
+  end
+
   def fetch_current_scope_for_user(conn, _opts) do
     {user_token, conn} = ensure_user_token(conn)
     user = user_token && Accounts.get_user_by_session_token(user_token)
@@ -209,13 +215,32 @@ defmodule NilaWeb.UserAuth do
   defp verified?(%Scope{user: %{confirmed_at: confirmed_at}}), do: not is_nil(confirmed_at)
 
   defp mount_current_scope(socket, session) do
-    Phoenix.Component.assign_new(socket, :current_scope, fn ->
-      with token when not is_nil(token) <- session["user_token"],
-           user when not is_nil(user) <- Accounts.get_user_by_session_token(token) do
-        Scope.for_user(user)
-      end
+    socket =
+      Phoenix.Component.assign_new(socket, :current_scope, fn ->
+        with token when not is_nil(token) <- session["user_token"],
+             user when not is_nil(user) <- Accounts.get_user_by_session_token(token) do
+          Scope.for_user(user)
+        end
+      end)
+
+    mount_session_disconnect(socket)
+  end
+
+  defp mount_session_disconnect(%{assigns: %{current_scope: %Scope{user: user}}} = socket) do
+    if Phoenix.LiveView.connected?(socket) do
+      NilaWeb.Endpoint.subscribe(user_sessions_topic(user))
+    end
+
+    Phoenix.LiveView.attach_hook(socket, :disconnect_user_sessions, :handle_info, fn
+      %Phoenix.Socket.Broadcast{event: "disconnect_user_sessions"}, socket ->
+        {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/users/log_in")}
+
+      _message, socket ->
+        {:cont, socket}
     end)
   end
+
+  defp mount_session_disconnect(socket), do: socket
 
   defp ensure_user_token(conn) do
     if token = get_session(conn, :user_token) do
@@ -254,6 +279,8 @@ defmodule NilaWeb.UserAuth do
   end
 
   defp maybe_store_return_to(conn), do: conn
+
+  defp user_sessions_topic(user), do: "users:#{user.id}:sessions"
 
   defp signed_in_path(_conn_or_socket), do: ~p"/today"
 end

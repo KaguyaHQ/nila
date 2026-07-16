@@ -68,6 +68,21 @@ defmodule NilaWeb.Settings.SecurityLive do
             </.button>
           </.form>
         </.settings_panel>
+
+        <.settings_panel
+          title="Active sessions"
+          description="Sign out every browser and device using your account."
+        >
+          <.form
+            for={%{}}
+            id="sign-out-everywhere-form"
+            action={~p"/settings/security/sessions"}
+          >
+            <.button variant="error">
+              Sign out everywhere
+            </.button>
+          </.form>
+        </.settings_panel>
       </div>
     </Layouts.settings>
     """

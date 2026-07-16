@@ -111,6 +111,7 @@ defmodule NilaWeb.Router do
 
     get "/settings", SettingsController, :index
     post "/settings/security/password", UserSettingsController, :update_password
+    post "/settings/security/sessions", UserSettingsController, :delete_sessions
 
     # Firm settings (workspace, connectors, users) are owner / admin only. The capability guard mounts the scope and redirects everyone
     # else back to their cockpit.

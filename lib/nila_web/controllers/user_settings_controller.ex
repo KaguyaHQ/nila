@@ -24,4 +24,8 @@ defmodule NilaWeb.UserSettingsController do
         |> redirect(to: ~p"/settings/security")
     end
   end
+
+  def delete_sessions(conn, _params) do
+    UserAuth.log_out_all_user_sessions(conn, conn.assigns.current_scope.user)
+  end
 end

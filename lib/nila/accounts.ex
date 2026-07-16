@@ -96,6 +96,11 @@ defmodule Nila.Accounts do
     :ok
   end
 
+  def delete_user_session_tokens(%User{} = user) do
+    Repo.delete_all(UserToken.by_user_and_contexts_query(user, ["session"]))
+    :ok
+  end
+
   def delete_all_user_tokens(user) do
     Repo.delete_all(UserToken.by_user_and_contexts_query(user, :all))
     :ok

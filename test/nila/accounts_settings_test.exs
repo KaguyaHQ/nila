@@ -43,6 +43,24 @@ defmodule Nila.AccountsSettingsTest do
     assert is_nil(Accounts.get_user_by_reset_password_token(reset_token))
   end
 
+  test "delete_user_session_tokens/1 revokes only sessions" do
+    user = user_fixture()
+    session_token = Accounts.generate_user_session_token(user)
+
+    Accounts.deliver_user_reset_password_instructions(user.email, fn token ->
+      send(self(), {:reset_token, token})
+      "http://reset/#{token}"
+    end)
+
+    assert_received {:reset_token, reset_token}
+    assert Accounts.get_user_by_session_token(session_token)
+
+    assert :ok = Accounts.delete_user_session_tokens(user)
+
+    assert is_nil(Accounts.get_user_by_session_token(session_token))
+    assert Accounts.get_user_by_reset_password_token(reset_token)
+  end
+
   test "deliver_user_update_email_instructions/4 validates and sends to new email" do
     user = user_fixture()
 
