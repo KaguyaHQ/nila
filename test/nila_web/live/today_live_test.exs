@@ -53,7 +53,7 @@ defmodule NilaWeb.TodayLiveTest do
     month
   end
 
-  test "a month row shows the 3B clock, the slots, and no last ask yet", %{
+  test "a month row shows the deadline clock and no last ask yet", %{
     conn: conn,
     org: org,
     client: client
@@ -62,11 +62,54 @@ defmodule NilaWeb.TodayLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/today")
 
-    row = "#client-month-#{client.id}-#{@period}"
+    row = "#today-row-#{client.id}-#{@period}"
     assert has_element?(view, row)
     assert has_element?(view, "#{row}", "overdue")
-    assert has_element?(view, "#{row}", "purchase ✓ · sales missing")
     refute has_element?(view, "#{row}", "asked")
+  end
+
+  test "a client with nothing sent appears under waiting-on-client for the closeable period",
+       %{conn: conn, client: client} do
+    {:ok, view, _html} = live(conn, ~p"/today")
+
+    closeable = Nila.Gst.Calendar.closeable_period(Date.utc_today())
+
+    assert has_element?(view, "#today-waiting_on_client")
+    assert has_element?(view, "#today-row-#{client.id}-#{closeable}", "purchase missing")
+    assert has_element?(view, "#draft-ask-#{client.id}-#{closeable}")
+  end
+
+  test "a month with open decisions lands in needs-you; clean slots move it to waiting-on-senior",
+       %{conn: conn, org: org, client: client} do
+    seed_client_month(org, client, recon_with_2b_gap())
+
+    {:ok, view, _html} = live(conn, ~p"/today")
+    assert has_element?(view, "#today-needs_you #today-row-#{client.id}-#{@period}")
+
+    clean_recon =
+      recon_with_2b_gap()
+      |> Map.put("in_2b_not_books", [])
+
+    {:ok, _} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        state: "worked",
+        recon: clean_recon,
+        summary: %{"buckets" => %{"matched" => 1}}
+      })
+
+    {:ok, _} =
+      SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        state: "reviewed"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/today")
+    assert has_element?(view, "#today-waiting_on_senior #today-row-#{client.id}-#{@period}")
   end
 
   test "incomplete slots draft the month_open ask with client name and due date", %{
@@ -148,7 +191,7 @@ defmodule NilaWeb.TodayLiveTest do
 
     refute has_element?(view, "#chase-draft-modal")
     assert render(view) =~ "Ask logged."
-    assert has_element?(view, "#client-month-#{client.id}-#{@period}", "asked today")
+    assert has_element?(view, "#today-row-#{client.id}-#{@period}", "asked today")
 
     assert {:ok, ask} = Chase.last_ask(org.id, client.id, @period)
     assert ask.kind == "month_open"

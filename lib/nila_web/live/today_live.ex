@@ -1,90 +1,69 @@
 defmodule NilaWeb.TodayLive do
   use NilaWeb, :live_view
 
-  alias Nila.Gst.{Calendar, Chase, ClientMonths}
+  alias Nila.Gst.{Chase, Today}
 
-  # The cockpit lists months that already exist (a purchase dump arrived and
-  # was worked). A client with no months yet has nothing to chase from this
-  # list — the "all clients × current period" matrix is a later slice.
+  # The front door: one row per client-month the firm should look at today,
+  # grouped by who it's waiting on (Nila.Gst.Today). The junior reads
+  # "Needs you" top to bottom and that is their day; clients who sent
+  # nothing appear under "Waiting on the client" with the chase verbs.
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
      socket
      |> assign(:page_title, "Today")
      |> assign(:draft, nil)
-     |> assign_months()}
+     |> assign_rows()}
   end
 
-  defp assign_months(socket) do
-    assign(socket, :months, list_months(socket))
+  defp assign_rows(socket) do
+    rows = list_rows(socket)
+
+    sections =
+      Today.sections()
+      |> Enum.map(fn section -> {section, Enum.filter(rows, &(&1.section == section))} end)
+      |> Enum.reject(fn {_section, rows} -> rows == [] end)
+
+    socket
+    |> assign(:rows, rows)
+    |> assign(:sections, sections)
   end
 
-  defp list_months(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}) do
-    today = Date.utc_today()
+  defp list_rows(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}),
+    do: Today.rows(org_id, Date.utc_today())
 
-    org_id
-    |> ClientMonths.list_for_org()
-    |> Enum.map(&month_view(&1, today))
-  end
+  defp list_rows(_socket), do: []
 
-  defp list_months(_socket), do: []
+  defp days_left_label(days) when days < 0, do: "#{-days}d overdue"
+  defp days_left_label(0), do: "due today"
+  defp days_left_label(days), do: "#{days}d left"
 
-  defp month_view(client_month, today) do
-    buckets = client_month.summary["buckets"] || %{}
-    total = buckets |> Map.values() |> Enum.sum()
-    matched = buckets["matched"] || 0
-    slots = Chase.slots(client_month.org_id, client_month.client_id, client_month.period)
+  defp days_left_variant(days) when days < 0, do: "error"
+  defp days_left_variant(days) when days <= 5, do: "warning"
+  defp days_left_variant(_days), do: "neutral"
 
-    %{
-      client_id: client_month.client_id,
-      period: client_month.period,
-      client_name: client_month.client.name,
-      state: client_month.state,
-      period_label: period_label(client_month.period),
-      invoices: total,
-      need_decision: total - matched,
-      gstr3b_days_left: Calendar.status(client_month.period, today).gstr3b_days_left,
-      slots: slots,
-      last_ask_label: last_ask_label(client_month, today),
-      draft: build_draft(client_month, slots)
-    }
-  end
+  defp section_variant(:to_file), do: "error"
+  defp section_variant(:needs_you), do: "warning"
+  defp section_variant(_section), do: "neutral"
 
-  defp last_ask_label(client_month, today) do
-    case Chase.last_ask(client_month.org_id, client_month.client_id, client_month.period) do
-      {:ok, ask} ->
-        case ask.inserted_at |> DateTime.to_date() |> then(&Date.diff(today, &1)) do
-          0 -> "asked today"
-          days -> "asked #{days}d ago"
-        end
+  defp last_ask_label(nil, _today), do: nil
 
-      {:error, :not_found} ->
-        nil
+  defp last_ask_label(asked_at, today) do
+    case asked_at |> DateTime.to_date() |> then(&Date.diff(today, &1)) do
+      0 -> "asked today"
+      days -> "asked #{days}d ago"
     end
   end
 
-  # The right ask for where the month stands: dumps still missing -> the
-  # opening nudge; dumps in but the engine found gaps -> the specific chase;
-  # everything in and nothing missing -> nothing to ask.
-  defp build_draft(client_month, slots) do
-    cond do
-      not (slots.purchase and slots.sales) ->
-        %{
-          kind: "month_open",
-          body: Chase.draft(:month_open, client_month.client, client_month.period)
-        }
-
-      true ->
-        case Chase.gaps(client_month) do
-          %{in_2b_not_books: [], sequence_issues: []} ->
-            nil
-
-          gaps ->
-            %{
-              kind: "missing_bills",
-              body: Chase.draft(:missing_bills, client_month.client, client_month.period, gaps)
-            }
-        end
+  defp work_label(row) do
+    [
+      row.need_decision > 0 && "#{row.need_decision} to decide",
+      row.sales_open > 0 && "#{row.sales_open} sales issues"
+    ]
+    |> Enum.filter(& &1)
+    |> case do
+      [] -> nil
+      parts -> Enum.join(parts, " · ")
     end
   end
 
@@ -96,24 +75,11 @@ defmodule NilaWeb.TodayLive do
     end)
   end
 
-  defp days_left_label(days) when days < 0, do: "#{-days}d overdue"
-  defp days_left_label(0), do: "due today"
-  defp days_left_label(days), do: "#{days}d left"
-
-  defp state_variant("reviewed"), do: "success"
-  defp state_variant("filed"), do: "success"
-  defp state_variant("worked"), do: "warning"
-  defp state_variant(_state), do: "neutral"
-
-  defp days_left_variant(days) when days < 0, do: "error"
-  defp days_left_variant(days) when days <= 5, do: "warning"
-  defp days_left_variant(_days), do: "neutral"
-
   @impl true
   def handle_event("open-draft", %{"client-id" => client_id, "period" => period}, socket) do
-    month =
+    row =
       Enum.find(
-        socket.assigns.months,
+        socket.assigns.rows,
         &(to_string(&1.client_id) == client_id and &1.period == period)
       )
 
@@ -121,12 +87,12 @@ defmodule NilaWeb.TodayLive do
      assign(
        socket,
        :draft,
-       month && month.draft &&
-         Map.merge(month.draft, %{
-           client_id: month.client_id,
-           period: month.period,
-           client_name: month.client_name,
-           period_label: month.period_label
+       row && row.draft &&
+         Map.merge(row.draft, %{
+           client_id: row.client_id,
+           period: row.period,
+           client_name: row.client_name,
+           period_label: period_label(row.period)
          })
      )}
   end
@@ -151,12 +117,14 @@ defmodule NilaWeb.TodayLive do
     {:noreply,
      socket
      |> assign(:draft, nil)
-     |> assign_months()
+     |> assign_rows()
      |> put_flash(:info, "Ask logged.")}
   end
 
   @impl true
   def render(assigns) do
+    assigns = assign(assigns, :today, Date.utc_today())
+
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -164,65 +132,81 @@ defmodule NilaWeb.TodayLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <div id="today-page" class="mx-auto max-w-6xl space-y-6">
-        <.page_header eyebrow="Cockpit" title="Client months">
-          Every worked GST month for your firm. Open one to review it — each row is one
-          tap from its scanned bill.
+      <div id="today-page" class="mx-auto max-w-6xl space-y-8">
+        <.page_header eyebrow="Today" title="Today">
+          Every client's month, led by who it's waiting on.
           <:actions>
-            <.button navigate={~p"/gst/upload"} id="add-month">Add a month</.button>
+            <.button navigate={~p"/gst/upload"} id="add-month">Bring in documents</.button>
           </:actions>
         </.page_header>
 
-        <.data_table
-          id="client-months"
-          rows={@months}
-          row_id={fn m -> "client-month-#{m.client_id}-#{m.period}" end}
-          row_click={fn m -> JS.navigate(~p"/gst/#{m.client_id}/#{m.period}") end}
-          empty?={@months == []}
-          min_width="min-w-[880px]"
-        >
-          <:col :let={m} label="Client">{m.client_name}</:col>
-          <:col :let={m} label="Period">{m.period_label}</:col>
-          <:col :let={m} label="Status">
-            <.badge variant={state_variant(m.state)}>{month_state_label(m.state)}</.badge>
-          </:col>
-          <:col :let={m} label="GSTR-3B">
-            <.badge variant={days_left_variant(m.gstr3b_days_left)}>
-              {days_left_label(m.gstr3b_days_left)}
-            </.badge>
-          </:col>
-          <:col :let={m} label="Slots">
-            <span class="text-base-content/70 text-fine">{slots_label(m.slots)}</span>
-          </:col>
-          <:col :let={m} label="Last ask">
-            <span :if={m.last_ask_label} class="text-base-content/70 text-fine">
-              {m.last_ask_label}
+        <div :if={@sections == []} class="text-base-content/60 text-small py-12 text-center">
+          No clients yet — add a client, then bring in their documents.
+        </div>
+
+        <section :for={{section, rows} <- @sections} id={"today-#{section}"} class="space-y-3">
+          <h2 class="flex items-center gap-2.5">
+            <span class="text-base-content text-small font-semibold">
+              {Today.section_title(section)}
             </span>
-            <span :if={!m.last_ask_label} class="text-base-content/45">—</span>
-          </:col>
-          <:col :let={m} label="Invoices" align="right">{m.invoices}</:col>
-          <:col :let={m} label="Need a decision" align="right">
-            <.badge :if={m.need_decision > 0} variant="warning">{m.need_decision}</.badge>
-            <span :if={m.need_decision == 0} class="text-base-content/45">—</span>
-          </:col>
-          <:col :let={m} label="Chase">
-            <.button
-              :if={m.draft}
-              id={"draft-ask-#{m.client_id}-#{m.period}"}
-              variant="soft"
-              size="xs"
-              phx-click={
-                JS.push("open-draft",
-                  value: %{"client-id" => to_string(m.client_id), "period" => m.period}
-                )
-              }
-            >
-              Draft ask
-            </.button>
-            <span :if={!m.draft} class="text-base-content/45">—</span>
-          </:col>
-          <:empty>No worked months yet.</:empty>
-        </.data_table>
+            <.badge variant={section_variant(section)}>{length(rows)}</.badge>
+          </h2>
+
+          <.data_table
+            id={"today-#{section}-table"}
+            rows={rows}
+            row_id={fn r -> "today-row-#{r.client_id}-#{r.period}" end}
+            row_click={fn r -> JS.navigate(r.path) end}
+            min_width="min-w-[840px]"
+          >
+            <:col :let={r} label="Client">{r.client_name}</:col>
+            <:col :let={r} label="Period">{period_label(r.period)}</:col>
+            <:col :let={r} label="Due">
+              <.badge :if={r.deadline} variant={days_left_variant(r.deadline.days_left)}>
+                {r.deadline.return} · {days_left_label(r.deadline.days_left)}
+              </.badge>
+              <span :if={!r.deadline} class="text-base-content/45">filed</span>
+            </:col>
+            <:col :let={r} label="Where it stands">
+              <span :if={section == :waiting_on_client} class="text-base-content/70 text-fine">
+                {slots_label(r.slots)}
+              </span>
+              <span :if={section != :waiting_on_client and work_label(r)} class="text-small">
+                {work_label(r)}
+              </span>
+              <span
+                :if={section != :waiting_on_client and !work_label(r)}
+                class="text-base-content/45"
+              >
+                —
+              </span>
+            </:col>
+            <:col :let={r} label="Last ask">
+              <span :if={last_ask_label(r.last_ask_at, @today)} class="text-base-content/70 text-fine">
+                {last_ask_label(r.last_ask_at, @today)}
+              </span>
+              <span :if={!last_ask_label(r.last_ask_at, @today)} class="text-base-content/45">
+                —
+              </span>
+            </:col>
+            <:col :let={r} label="Chase">
+              <.button
+                :if={r.draft}
+                id={"draft-ask-#{r.client_id}-#{r.period}"}
+                variant="soft"
+                size="xs"
+                phx-click={
+                  JS.push("open-draft",
+                    value: %{"client-id" => to_string(r.client_id), "period" => r.period}
+                  )
+                }
+              >
+                Draft ask
+              </.button>
+              <span :if={!r.draft} class="text-base-content/45">—</span>
+            </:col>
+          </.data_table>
+        </section>
       </div>
 
       <.modal

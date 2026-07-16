@@ -40,6 +40,19 @@ defmodule Nila.Gst.Calendar do
     }
   end
 
+  @doc """
+  The period the firm is closing as of `today`: the previous calendar month.
+  June's returns file in July (R1 the 11th, 3B the 20th), so June stays "the
+  month" until August 1st.
+
+      iex> Nila.Gst.Calendar.closeable_period(~D[2025-11-05])
+      "2025-10"
+  """
+  def closeable_period(%Date{} = today) do
+    prev = today |> Date.beginning_of_month() |> Date.add(-1)
+    Elixir.Calendar.strftime(prev, "%Y-%m")
+  end
+
   defp filing_month(period) do
     [year, month] = period |> String.split("-") |> Enum.map(&String.to_integer/1)
 
