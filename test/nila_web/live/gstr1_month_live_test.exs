@@ -131,6 +131,41 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     end
   end
 
+  test "owner signs a reviewed month; the wall blocks decisions; reopen lifts it", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gstr1/#{client.id}/#{@period}")
+
+    confirm_all_open_issues(view)
+    view |> element("#gstr1-mark-reviewed") |> render_click()
+
+    assert has_element?(view, "#gstr1-signoff-button")
+    view |> element("#gstr1-signoff-button") |> render_click()
+
+    assert has_element?(view, "#gstr1-signoff-banner")
+    refute has_element?(view, "#gstr1-signoff-button")
+    refute has_element?(view, "button[phx-click='confirm_issue']")
+
+    view |> element("#gstr1-reopen-signoff") |> render_click()
+
+    refute has_element?(view, "#gstr1-signoff-banner")
+    assert has_element?(view, "#gstr1-signoff-button")
+  end
+
+  test "a member cannot see the sign-off button", %{org: org, client: client} do
+    member = Nila.AccountsFixtures.user_fixture()
+    {:ok, _} = Nila.Orgs.add_user(org, member.id, "member")
+    conn = log_in_user(build_conn(), member)
+
+    {:ok, view, _html} = live(conn, ~p"/gstr1/#{client.id}/#{@period}")
+
+    confirm_all_open_issues(view)
+    view |> element("#gstr1-mark-reviewed") |> render_click()
+
+    refute has_element?(view, "#gstr1-signoff-button")
+  end
+
   test "downloads the portal-shaped GSTR-1 JSON", %{conn: conn, client: client} do
     conn = get(conn, ~p"/gstr1/#{client.id}/#{@period}/return.json")
 

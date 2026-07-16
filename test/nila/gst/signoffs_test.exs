@@ -1,11 +1,14 @@
 defmodule Nila.Gst.SignoffsTest do
   use Nila.DataCase, async: true
+  use Oban.Testing, repo: Nila.Repo
 
   import Nila.AccountsFixtures
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
-  alias Nila.Gst.{ClientMonths, Recon, Register, Signoffs}
+  alias Nila.Gst.{ClientMonths, Gstr1Worker, Recon, Register, SalesMonths, SalesResolutions}
+  alias Nila.Gst.{SalesWorkings, Signoffs}
+  alias Nila.Storage
 
   @period "2025-10"
   @gstin "33AAACS1234A1Z9"
@@ -95,5 +98,142 @@ defmodule Nila.Gst.SignoffsTest do
 
     {:ok, reviewed} = ClientMonths.get_by_period(month.org_id, month.client_id, month.period)
     assert {:error, :already_signed} = Signoffs.sign_off(reviewed, scope)
+  end
+
+  test "reopening a 3B signoff revokes it and demotes the month", %{
+    month: month,
+    owner_scope: scope
+  } do
+    {:ok, signoff} = Signoffs.sign_off(month, scope)
+
+    assert {:ok, revoked} = Signoffs.reopen(signoff, scope)
+    assert revoked.revoked_at
+    assert revoked.revoked_by_id == scope.user.id
+
+    assert {:error, :not_found} = Signoffs.latest_signoff(month.id)
+    {:ok, month} = ClientMonths.get_by_period(month.org_id, month.client_id, month.period)
+    assert month.state == "worked"
+
+    assert {:error, :already_revoked} = Signoffs.reopen(revoked, scope)
+  end
+
+  test "a member cannot reopen", %{month: month, owner_scope: scope, org: org} do
+    {:ok, signoff} = Signoffs.sign_off(month, scope)
+
+    member = user_fixture()
+    {:ok, membership} = Nila.Orgs.add_user(org, member.id, "member")
+    member_scope = %Scope{user: member, current_org: org, membership: membership}
+
+    assert {:error, :not_allowed} = Signoffs.reopen(signoff, member_scope)
+    assert {:ok, _} = Signoffs.latest_signoff(month.id)
+  end
+
+  describe "GSTR-1 sign-off" do
+    setup %{org: org, month: month} do
+      {:ok, client} = Clients.get_client(org.id, month.client_id)
+
+      pdf_key = "gstr1/#{org.id}/#{client.id}/#{@period}/source/bills.pdf"
+      {:ok, _} = Storage.put(pdf_key, "%PDF-1.4 fake bytes")
+
+      :ok =
+        perform_job(Gstr1Worker, %{
+          "org_id" => org.id,
+          "client_id" => client.id,
+          "period" => @period,
+          "pdf_key" => pdf_key
+        })
+
+      {:ok, sales_month} = SalesMonths.get_by_period(org.id, client.id, @period)
+      %{sales_month: sales_month}
+    end
+
+    defp make_reviewed(sales_month, user_id) do
+      SalesResolutions.workings(sales_month).issues
+      |> Enum.filter(&(&1["status"] == "open" and &1["level"] != "info"))
+      |> Enum.each(fn issue ->
+        {:ok, _} =
+          SalesResolutions.record(
+            sales_month,
+            %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(issue)},
+            user_id
+          )
+      end)
+
+      {:ok, reviewed} = SalesResolutions.mark_reviewed(sales_month)
+      reviewed
+    end
+
+    test "requires the maker gate", %{sales_month: sales_month, owner_scope: scope} do
+      assert {:error, :not_reviewed} = Signoffs.sign_off_gstr1(sales_month, scope)
+    end
+
+    test "signs a reviewed sales month with a frozen outward snapshot", %{
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      reviewed = make_reviewed(sales_month, scope.user.id)
+
+      assert {:ok, signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
+      assert signoff.artifact == "gstr1"
+      assert signoff.sales_month_id == sales_month.id
+
+      for key <- ~w(invoices issues derived) do
+        assert Map.has_key?(signoff.snapshot, key), "snapshot missing #{key}"
+      end
+
+      assert {:ok, latest} = Signoffs.latest_gstr1_signoff(sales_month.id)
+      assert latest.id == signoff.id
+
+      assert {:error, :already_signed} = Signoffs.sign_off_gstr1(reviewed, scope)
+    end
+
+    test "a signed sales month is a wall for new decisions", %{
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      reviewed = make_reviewed(sales_month, scope.user.id)
+      {:ok, _} = Signoffs.sign_off_gstr1(reviewed, scope)
+
+      assert {:error, :signed_off} =
+               SalesResolutions.record(
+                 reviewed,
+                 %{"verb" => "reopen", "target" => "anything"},
+                 scope.user.id
+               )
+    end
+
+    test "reopening the GSTR-1 cascades to the dependent 3B signature", %{
+      month: client_month,
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      reviewed = make_reviewed(sales_month, scope.user.id)
+      {:ok, r1_signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
+      {:ok, _gstr3b_signoff} = Signoffs.sign_off(client_month, scope)
+
+      assert {:ok, _} = Signoffs.reopen(r1_signoff, scope)
+
+      assert {:error, :not_found} = Signoffs.latest_gstr1_signoff(sales_month.id)
+      assert {:error, :not_found} = Signoffs.latest_signoff(client_month.id)
+
+      {:ok, client_month} =
+        ClientMonths.get_by_period(
+          client_month.org_id,
+          client_month.client_id,
+          client_month.period
+        )
+
+      assert client_month.state == "worked"
+
+      {:ok, sales_month} =
+        SalesMonths.get_by_period(sales_month.org_id, sales_month.client_id, @period)
+
+      assert {:ok, _} =
+               SalesResolutions.record(
+                 sales_month,
+                 %{"verb" => "reopen", "target" => "anything"},
+                 scope.user.id
+               )
+    end
   end
 end

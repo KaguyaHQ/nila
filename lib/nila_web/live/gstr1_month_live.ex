@@ -1,7 +1,8 @@
 defmodule NilaWeb.Gstr1MonthLive do
   use NilaWeb, :live_view
 
-  alias Nila.Gst.{SalesMonths, SalesResolutions, SalesWorkings}
+  alias Nila.Accounts.Policy
+  alias Nila.Gst.{SalesMonths, SalesResolutions, SalesWorkings, Signoffs}
   alias Nila.Repo
 
   @impl true
@@ -29,29 +30,47 @@ defmodule NilaWeb.Gstr1MonthLive do
 
   # Everything renders from the effective workings — the engine's output with
   # every human resolution replayed over it — so the table, the issues, and
-  # the JSON download can never disagree with the stored decisions.
+  # the JSON download can never disagree with the stored decisions. A signed
+  # month is the exception: it renders from the signature's frozen snapshot,
+  # never a live re-derivation, so the numbers under the signature cannot
+  # drift when the engine improves.
   defp load_workings(socket, sales_month) do
-    workings = SalesResolutions.workings(sales_month)
+    signoff =
+      case Signoffs.latest_gstr1_signoff(sales_month.id) do
+        {:ok, signoff} -> signoff
+        {:error, :not_found} -> nil
+      end
+
+    {effective_invoices, issues, flagged} =
+      case signoff do
+        nil ->
+          workings = SalesResolutions.workings(sales_month)
+          {workings.invoices, workings.issues, workings.flagged}
+
+        signoff ->
+          {signoff.snapshot["invoices"], signoff.snapshot["issues"], MapSet.new()}
+      end
 
     invoices =
       sales_month.invoices
-      |> Enum.zip(workings.invoices)
+      |> Enum.zip(effective_invoices)
       |> Enum.map(fn {pristine, effective} ->
         effective
         |> Map.put("pristine_inum", pristine["invoice_number"])
         |> Map.put("image_urls", image_urls(effective, sales_month))
       end)
 
-    {month_issues, invoice_issues} = Enum.split_with(workings.issues, &is_nil(&1["invoice"]))
+    {month_issues, invoice_issues} = Enum.split_with(issues, &is_nil(&1["invoice"]))
 
     socket
     |> assign(:sales_month, sales_month)
+    |> assign(:signoff, signoff)
     |> assign(:invoices, invoices)
     |> assign(:issues_by_invoice, Enum.group_by(invoice_issues, & &1["invoice"]))
     |> assign(:month_issues, month_issues)
-    |> assign(:flagged, workings.flagged)
-    |> assign(:open_issue_count, Enum.count(workings.issues, &(&1["status"] == "open")))
-    |> assign(:reviewable, SalesWorkings.reviewable?(workings.issues))
+    |> assign(:flagged, flagged)
+    |> assign(:open_issue_count, Enum.count(issues, &(&1["status"] == "open")))
+    |> assign(:reviewable, SalesWorkings.reviewable?(issues))
   end
 
   defp reload(socket) do
@@ -127,15 +146,51 @@ defmodule NilaWeb.Gstr1MonthLive do
     end
   end
 
-  defp record(socket, attrs) do
-    {:ok, _} =
-      SalesResolutions.record(
-        socket.assigns.sales_month,
-        attrs,
-        socket.assigns.current_scope.user.id
-      )
+  def handle_event("sign_off", _params, socket) do
+    case Signoffs.sign_off_gstr1(socket.assigns.sales_month, socket.assigns.current_scope) do
+      {:ok, _signoff} ->
+        {:noreply, socket |> reload() |> put_flash(:info, "GSTR-1 signed off.")}
 
-    {:noreply, socket |> reload() |> assign(:correcting, nil)}
+      {:error, :not_allowed} ->
+        {:noreply, put_flash(socket, :error, "You don't have permission to sign off.")}
+
+      {:error, :not_reviewed} ->
+        {:noreply, put_flash(socket, :error, "Mark the month reviewed first.")}
+
+      {:error, :already_signed} ->
+        {:noreply, put_flash(socket, :error, "This GSTR-1 is already signed off.")}
+    end
+  end
+
+  def handle_event("reopen_signoff", _params, socket) do
+    case Signoffs.reopen(socket.assigns.signoff, socket.assigns.current_scope) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> reload()
+         |> put_flash(:info, "Signature reopened — the month can be worked again.")}
+
+      {:error, :not_allowed} ->
+        {:noreply, put_flash(socket, :error, "You don't have permission to reopen.")}
+
+      {:error, :already_revoked} ->
+        {:noreply, reload(socket)}
+    end
+  end
+
+  defp record(socket, attrs) do
+    case SalesResolutions.record(
+           socket.assigns.sales_month,
+           attrs,
+           socket.assigns.current_scope.user.id
+         ) do
+      {:ok, _} ->
+        {:noreply, socket |> reload() |> assign(:correcting, nil)}
+
+      {:error, :signed_off} ->
+        {:noreply,
+         put_flash(socket, :error, "This GSTR-1 is signed off — a senior must reopen it first.")}
+    end
   end
 
   defp selected_invoice(%{selected_inum: nil}), do: nil
@@ -251,6 +306,29 @@ defmodule NilaWeb.Gstr1MonthLive do
           </.link>
         </.page_header>
 
+        <div
+          :if={@signoff}
+          id="gstr1-signoff-banner"
+          class="bg-success/[0.04] border-success/40 rounded-box flex items-center gap-2 border px-4 py-3"
+        >
+          <.icon name="hero-check-badge" class="text-success size-5 shrink-0" />
+          <p class="text-base-content text-small flex-1">
+            GSTR-1 signed off by {(@signoff.signed_by && @signoff.signed_by.name) || "—"} · {format_display_datetime(
+              @signoff.inserted_at
+            )} — figures are frozen as approved.
+          </p>
+          <.button
+            :if={Policy.can?(@current_scope, :sign_off)}
+            id="gstr1-reopen-signoff"
+            variant="ghost"
+            size="xs"
+            phx-click="reopen_signoff"
+            data-confirm="Reopen this signed GSTR-1? The signature is revoked — and any GSTR-3B signed against it is reopened too."
+          >
+            Reopen
+          </.button>
+        </div>
+
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="text-base-content/60 text-small flex items-center gap-2">
             <span :if={@sales_month.state == "reviewed"} id="gstr1-reviewed-badge">
@@ -273,6 +351,18 @@ defmodule NilaWeb.Gstr1MonthLive do
               size="sm"
             >
               <.icon name="hero-check-circle" class="size-4" /> Mark reviewed
+            </.button>
+            <.button
+              :if={
+                @sales_month.state == "reviewed" and is_nil(@signoff) and
+                  Policy.can?(@current_scope, :sign_off)
+              }
+              id="gstr1-signoff-button"
+              phx-click="sign_off"
+              variant="primary"
+              size="sm"
+            >
+              <.icon name="hero-check-badge-mini" class="size-4" /> Sign off GSTR-1
             </.button>
             <.button
               id="gstr1-download-json"

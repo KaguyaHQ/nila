@@ -14,7 +14,7 @@ defmodule Nila.Gst.SalesResolutions do
   import Ecto.Query, only: [from: 2]
 
   alias Nila.Clients
-  alias Nila.Gst.{Gstr1, SalesMonth, SalesResolution, SalesWorkings}
+  alias Nila.Gst.{Gstr1, SalesMonth, SalesResolution, SalesWorkings, Signoffs}
   alias Nila.Repo
 
   @doc "Resolutions for a sales month, oldest first (append-only replay order)."
@@ -30,12 +30,17 @@ defmodule Nila.Gst.SalesResolutions do
   Records one decision. `org_id` and `sales_month_id` are set on the struct,
   never cast (tenancy is not user-supplied). `decided_by_id` attributes the
   call. A new decision on a reviewed month demotes it back to "worked" — the
-  review no longer covers the changed month. Returns
-  `{:ok, resolution} | {:error, changeset}`.
+  review no longer covers the changed month. A *signed* month is a wall:
+  decisions are rejected with `{:error, :signed_off}` until a senior reopens
+  the GSTR-1 signature. Returns
+  `{:ok, resolution} | {:error, :signed_off} | {:error, changeset}`.
   """
   def record(%SalesMonth{} = month, attrs, decided_by_id) do
     Repo.transact(fn ->
-      with {:ok, resolution} <-
+      month = lock_month(month)
+
+      with :ok <- refuse_signed(month),
+           {:ok, resolution} <-
              %SalesResolution{
                org_id: month.org_id,
                sales_month_id: month.id,
@@ -43,10 +48,17 @@ defmodule Nila.Gst.SalesResolutions do
              }
              |> SalesResolution.changeset(attrs)
              |> Repo.insert() do
-        month |> lock_month() |> reopen_review()
+        reopen_review(month)
         {:ok, resolution}
       end
     end)
+  end
+
+  defp refuse_signed(%SalesMonth{} = month) do
+    case Signoffs.latest_gstr1_signoff(month.id) do
+      {:ok, _signoff} -> {:error, :signed_off}
+      {:error, :not_found} -> :ok
+    end
   end
 
   @doc """

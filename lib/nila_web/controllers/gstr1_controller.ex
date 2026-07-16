@@ -7,14 +7,14 @@ defmodule NilaWeb.Gstr1Controller do
   """
   use NilaWeb, :controller
 
-  alias Nila.Gst.{SalesMonths, SalesResolutions}
+  alias Nila.Gst.{SalesMonths, SalesResolutions, Signoffs}
 
   def return_json(conn, %{"client_id" => client_id, "period" => period}) do
     org_id = conn.assigns.current_scope.current_org.id
 
     case SalesMonths.get_by_period(org_id, client_id, period) do
       {:ok, sales_month} ->
-        derived = SalesResolutions.workings(sales_month).derived
+        derived = effective_return(sales_month)
         filename = "gstr1_#{derived["gstin"]}_#{period}.json"
 
         conn
@@ -43,6 +43,15 @@ defmodule NilaWeb.Gstr1Controller do
         conn
         |> put_status(:not_found)
         |> text("Not found")
+    end
+  end
+
+  # A signed month downloads the frozen return from the signature's snapshot
+  # — the file an auditor uploads must be the numbers the senior approved.
+  defp effective_return(sales_month) do
+    case Signoffs.latest_gstr1_signoff(sales_month.id) do
+      {:ok, signoff} -> signoff.snapshot["derived"]
+      {:error, :not_found} -> SalesResolutions.workings(sales_month).derived
     end
   end
 

@@ -95,6 +95,26 @@ defmodule NilaWeb.GstMonthLive do
     {:noreply, assign(socket, :selected_row, nil)}
   end
 
+  def handle_event("reopen-signoff", _params, socket) do
+    case Signoffs.reopen(socket.assigns.signoff, socket.assigns.current_scope) do
+      {:ok, _} ->
+        client_month = %{socket.assigns.client_month | state: "worked"}
+
+        {:noreply,
+         socket
+         |> assign(:client_month, client_month)
+         |> assign(:signoff, nil)
+         |> assign_month_figures(client_month, nil)
+         |> put_flash(:info, "Signature reopened — the month can be worked again.")}
+
+      {:error, :not_allowed} ->
+        {:noreply, put_flash(socket, :error, "You don't have permission to reopen.")}
+
+      {:error, :already_revoked} ->
+        {:noreply, socket}
+    end
+  end
+
   def handle_event("sign-off", _params, socket) do
     case Signoffs.sign_off(socket.assigns.client_month, socket.assigns.current_scope) do
       {:ok, signoff} ->
@@ -193,11 +213,21 @@ defmodule NilaWeb.GstMonthLive do
           class="bg-success/[0.04] border-success/40 rounded-box flex items-center gap-2 border px-4 py-3"
         >
           <.icon name="hero-check-badge" class="text-success size-5 shrink-0" />
-          <p class="text-base-content text-small">
+          <p class="text-base-content text-small flex-1">
             Signed off by {(@signoff.signed_by && @signoff.signed_by.name) || "—"} · {format_display_datetime(
               @signoff.inserted_at
             )} — figures are frozen as approved.
           </p>
+          <.button
+            :if={Policy.can?(@current_scope, :sign_off)}
+            id="gst-reopen-signoff"
+            variant="ghost"
+            size="xs"
+            phx-click="reopen-signoff"
+            data-confirm="Reopen this signed month? The signature is revoked and the month can be worked again."
+          >
+            Reopen
+          </.button>
         </div>
 
         <div id="gst-stats" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
