@@ -57,9 +57,15 @@ defmodule Nila.Accounts.Policy do
     end
   end
 
-  @doc "Roles assignable through the UI, as `{label, value}` pairs for selects."
+  @doc """
+  Roles assignable through the UI, as `{label, value}` pairs for selects.
+
+  `admin` is omitted: it is a behavioural synonym for `owner`, so offering both
+  is a choice with no consequence. Existing `admin` memberships still resolve
+  through `role_label/1` and `can?/2`.
+  """
   def assignable_roles do
-    [{"Owner", "owner"}, {"Admin", "admin"}, {"Operator", "member"}, {"Viewer", "viewer"}]
+    [{"Owner", "owner"}, {"Operator", "member"}, {"Viewer", "viewer"}]
   end
 
   @doc "Human label for a stored role value."
@@ -68,4 +74,14 @@ defmodule Nila.Accounts.Policy do
   def role_label("member"), do: "Operator"
   def role_label("viewer"), do: "Viewer"
   def role_label(other) when is_binary(other), do: String.capitalize(other)
+
+  @doc "One-line description of what a role can do, for the UI."
+  def role_description("owner"), do: "Manages the firm, staff, settings, and all client work."
+  def role_description("admin"), do: "Manages the firm, staff, settings, and all client work."
+
+  def role_description("member"),
+    do: "Works client months and resolves exceptions; no staff or settings access."
+
+  def role_description("viewer"), do: "Reads and exports only."
+  def role_description(_other), do: ""
 end

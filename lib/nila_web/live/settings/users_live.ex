@@ -183,7 +183,11 @@ defmodule NilaWeb.Settings.UsersLive do
             <span class="text-base-content/70">{member.user.email}</span>
           </:col>
           <:col :let={member} label="Role">
-            <form id={"role-form-#{member.id}"} phx-change="change_role" class="inline-flex">
+            <form
+              id={"role-form-#{member.id}"}
+              phx-change="change_role"
+              class="inline-flex flex-col gap-1"
+            >
               <input type="hidden" name="membership_id" value={member.id} />
               <select
                 name="role"
@@ -199,6 +203,9 @@ defmodule NilaWeb.Settings.UsersLive do
                   {label}
                 </option>
               </select>
+              <span class="text-base-content/50 text-fine max-w-56">
+                {Policy.role_description(member.role)}
+              </span>
             </form>
           </:col>
           <:col :let={member} label="Status">
