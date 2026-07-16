@@ -2,6 +2,7 @@ defmodule NilaWeb.ClientsLive do
   use NilaWeb, :live_view
 
   alias Nila.Clients
+  alias Nila.Gst.ClientMonths
 
   @impl true
   def mount(_params, _session, socket) do
@@ -11,12 +12,43 @@ defmodule NilaWeb.ClientsLive do
      |> assign(:clients, list_clients(socket))}
   end
 
-  defp list_clients(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}),
-    do: Clients.list_clients(org_id)
+  defp list_clients(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}) do
+    latest = ClientMonths.latest_by_client(org_id)
+
+    org_id
+    |> Clients.list_clients()
+    |> Enum.map(&client_view(&1, latest[&1.id]))
+  end
 
   defp list_clients(_socket), do: []
 
+  defp client_view(client, month) do
+    %{
+      id: client.id,
+      name: client.name,
+      type: type_label(client.type),
+      gstin: client.gstin,
+      month: month && %{period: month.period, state: month.state},
+      need_decision: month && need_decision(month)
+    }
+  end
+
+  defp need_decision(month) do
+    buckets = month.summary["buckets"] || %{}
+    total = buckets |> Map.values() |> Enum.sum()
+    total - (buckets["matched"] || 0)
+  end
+
   defp type_label(type), do: type |> to_string() |> String.capitalize()
+
+  defp state_variant("reviewed"), do: "success"
+  defp state_variant("filed"), do: "success"
+  defp state_variant("worked"), do: "warning"
+  defp state_variant(_state), do: "neutral"
+
+  # Click follows the work: latest month when one exists, else start one.
+  defp row_path(%{month: %{period: period}, id: id}), do: ~p"/gst/#{id}/#{period}"
+  defp row_path(_client), do: ~p"/gst/upload"
 
   @impl true
   def render(assigns) do
@@ -29,8 +61,7 @@ defmodule NilaWeb.ClientsLive do
     >
       <div id="clients-page" class="mx-auto max-w-5xl space-y-6">
         <.page_header eyebrow="Clients" title="Clients">
-          The businesses whose GST you file. Add a client before uploading their bills so
-          the worked month files under the right party.
+          Every business the firm files for, with where their GST work stands.
           <:actions>
             <.button navigate={~p"/clients/new"} id="clients-add">Add client</.button>
           </:actions>
@@ -40,13 +71,47 @@ defmodule NilaWeb.ClientsLive do
           id="clients-table"
           rows={@clients}
           row_id={fn client -> "client-#{client.id}" end}
-          row_click={fn client -> JS.navigate(~p"/clients/#{client.id}/edit") end}
+          row_click={fn client -> JS.navigate(row_path(client)) end}
           empty?={@clients == []}
         >
-          <:col :let={client} label="Name">{client.name}</:col>
-          <:col :let={client} label="Type">{type_label(client.type)}</:col>
-          <:col :let={client} label="GSTIN">{client.gstin}</:col>
-          <:col :let={client} label="PAN">{client.pan}</:col>
+          <:col :let={client} label="Name">
+            <div class="flex items-center gap-2">
+              <span class="font-medium">{client.name}</span>
+              <.badge :if={!client.gstin} variant="warning">no GSTIN</.badge>
+            </div>
+          </:col>
+          <:col :let={client} label="Type">{client.type}</:col>
+          <:col :let={client} label="Latest month">
+            <span :if={client.month}>{period_label(client.month.period)}</span>
+            <span :if={!client.month} class="text-base-content/45">no months yet</span>
+          </:col>
+          <:col :let={client} label="Status">
+            <.badge :if={client.month} variant={state_variant(client.month.state)}>
+              {month_state_label(client.month.state)}
+            </.badge>
+            <span :if={!client.month} class="text-base-content/45">—</span>
+          </:col>
+          <:col :let={client} label="Need a decision" align="right">
+            <.badge :if={client.need_decision && client.need_decision > 0} variant="warning">
+              {client.need_decision}
+            </.badge>
+            <span
+              :if={!client.need_decision || client.need_decision == 0}
+              class="text-base-content/45"
+            >
+              —
+            </span>
+          </:col>
+          <:col :let={client} label="">
+            <.link
+              navigate={~p"/clients/#{client.id}/edit"}
+              id={"client-edit-#{client.id}"}
+              class="hover:text-base-content text-base-content/60 text-fine"
+              onclick="event.stopPropagation()"
+            >
+              Edit
+            </.link>
+          </:col>
           <:empty>No clients yet.</:empty>
         </.data_table>
       </div>

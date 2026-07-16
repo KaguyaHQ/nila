@@ -91,6 +91,23 @@ defmodule Nila.Formatters do
   @doc "The operator-language name for a month state."
   def month_state_label(state), do: Map.get(@month_states, state) || humanize_label(state)
 
+  @doc ~S|A `"2025-10"` period as `"Oct 2025"`. Unparseable input passes through.|
+  def period_label(period) do
+    case String.split(period, "-") do
+      [year, month] ->
+        name =
+          Enum.at(
+            ~w(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec),
+            String.to_integer(month) - 1
+          )
+
+        "#{name} #{year}"
+
+      _ ->
+        period
+    end
+  end
+
   def humanize_label(nil), do: "—"
 
   def humanize_label(value) do

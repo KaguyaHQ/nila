@@ -88,22 +88,6 @@ defmodule NilaWeb.TodayLive do
     end
   end
 
-  defp period_label(period) do
-    case String.split(period, "-") do
-      [year, month] ->
-        name =
-          Enum.at(
-            ~w(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec),
-            String.to_integer(month) - 1
-          )
-
-        "#{name} #{year}"
-
-      _ ->
-        period
-    end
-  end
-
   defp slots_label(%{purchase: purchase, sales: sales}) do
     [{"purchase", purchase}, {"sales", sales}]
     |> Enum.map_join(" · ", fn

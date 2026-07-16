@@ -106,7 +106,8 @@ defmodule NilaWeb do
           humanize_label: 1,
           human_status: 1,
           issue_label: 1,
-          month_state_label: 1
+          month_state_label: 1,
+          period_label: 1
         ]
 
       # Common modules used in templates
