@@ -53,7 +53,7 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     view |> element("#gstr1-inv-20\\/2026-27") |> render_click()
 
     assert has_element?(view, "#gstr1-evidence-modal")
-    assert render(view) =~ "Grand Total Mismatch"
+    assert render(view) =~ "Bill total doesn&#39;t tally"
   end
 
   test "confirming an issue resolves it; undo reopens it", %{conn: conn, client: client} do
@@ -62,7 +62,7 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     view |> element("#gstr1-inv-20\\/2026-27") |> render_click()
 
     view
-    |> element("button[phx-value-target='20/2026-27:grand_total_mismatch']", "Confirm")
+    |> element("button[phx-value-target='20/2026-27:grand_total_mismatch']", "Checked")
     |> render_click()
 
     assert render(view) =~ "Confirmed"
@@ -90,7 +90,7 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     |> element("form[phx-submit='save_correct']")
     |> render_submit(%{"field" => "printed_grand_total", "value" => "76171.36"})
 
-    refute render(view) =~ "Grand Total Mismatch"
+    refute render(view) =~ "Bill total doesn&#39;t tally"
   end
 
   test "mark reviewed appears once issues are cleared and flips the state", %{

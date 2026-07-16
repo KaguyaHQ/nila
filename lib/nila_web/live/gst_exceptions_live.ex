@@ -431,7 +431,7 @@ defmodule NilaWeb.GstExceptionsLive do
           class="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5"
         >
           <span class="text-base-content/40 text-fine w-40 shrink-0 uppercase">
-            {block_label(b["code"])}{if b["section"], do: " · #{b["section"]}"}
+            {issue_label(b["code"])}{if b["section"], do: " · #{b["section"]}"}
           </span>
           <span class="text-base-content text-small min-w-0 flex-1 truncate">
             {b["vendor"]} · {b["invoice_number"] || "—"}
@@ -495,11 +495,6 @@ defmodule NilaWeb.GstExceptionsLive do
   # ITC figures show paise — tax precision matters for a claimable number the
   # firm will file, unlike the register's rupee-rounded display.
   defp itc_money(paise), do: Nila.Formatters.format_money_with_paise(paise || 0)
-
-  defp block_label("personal_expense_17_5"), do: "Personal / 17(5)"
-  defp block_label("duplicate_invoice"), do: "Duplicate"
-  defp block_label("gstin_state_mismatch"), do: "State mismatch"
-  defp block_label(code), do: code
 
   defp detail(%{selected: nil} = assigns) do
     ~H"""

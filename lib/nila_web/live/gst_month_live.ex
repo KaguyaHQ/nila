@@ -315,7 +315,7 @@ defmodule NilaWeb.GstMonthLive do
                 class="bg-base-200/40 border-base-300 rounded-box border p-3"
               >
                 <.badge variant={if(flag["severity"] == "error", do: "error", else: "warning")}>
-                  {humanize_label(flag["code"])}
+                  {issue_label(flag["code"])}
                 </.badge>
                 <p class="text-base-content/80 text-small mt-2">{flag["reason"]}</p>
               </div>

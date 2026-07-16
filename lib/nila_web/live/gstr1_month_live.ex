@@ -294,7 +294,7 @@ defmodule NilaWeb.Gstr1MonthLive do
             <.badge variant={
               if issue["status"] == "resolved", do: "success", else: severity_variant(issue["level"])
             }>
-              {humanize_label(issue["code"])}
+              {issue_label(issue["code"])}
             </.badge>
             <span class="text-base-content/80 text-small min-w-0 flex-1">{issue["message"]}</span>
             <.button
@@ -304,7 +304,7 @@ defmodule NilaWeb.Gstr1MonthLive do
               phx-click="confirm_issue"
               phx-value-target={SalesWorkings.issue_key(issue)}
             >
-              Confirm — reviewed
+              Checked — it's fine
             </.button>
             <span :if={issue["status"] == "resolved"} class="flex items-center gap-1.5">
               <span class="text-fine text-success font-medium">Confirmed</span>
@@ -416,7 +416,7 @@ defmodule NilaWeb.Gstr1MonthLive do
                     do: "success",
                     else: severity_variant(issue["level"])
                 }>
-                  {humanize_label(issue["code"])}
+                  {issue_label(issue["code"])}
                 </.badge>
                 <p class="text-base-content/80 text-small mt-2">{issue["message"]}</p>
                 <div class="mt-2">
@@ -427,7 +427,7 @@ defmodule NilaWeb.Gstr1MonthLive do
                     phx-click="confirm_issue"
                     phx-value-target={SalesWorkings.issue_key(issue)}
                   >
-                    Confirm — extraction matches the scan
+                    Checked against the bill — it's fine
                   </.button>
                   <span :if={issue["status"] == "resolved"} class="flex items-center gap-1.5">
                     <span class="text-fine text-success font-medium">Confirmed</span>

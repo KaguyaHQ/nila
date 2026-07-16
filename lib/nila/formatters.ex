@@ -49,6 +49,48 @@ defmodule Nila.Formatters do
     rupees * 100 + round((f - rupees) * 100)
   end
 
+  # Operator language: what a CA-firm junior would say out loud, not the
+  # engine's issue-code enum (DESIGN.md — "Speak the operator's language").
+  # Codes stay stable in the data; this is purely a display dictionary.
+  @issue_labels %{
+    "printed_taxable_mismatch" => "Taxable total doesn't tally",
+    "printed_tax_mismatch" => "Tax total doesn't tally",
+    "grand_total_mismatch" => "Bill total doesn't tally",
+    "invalid_gstin" => "GSTIN doesn't check out",
+    "missing_gstin" => "No GSTIN on the bill",
+    "sequence_gaps" => "Missing invoice numbers",
+    "furniture_row_with_values" => "Blank row carries amounts",
+    "rounding_variance" => "Rounding difference",
+    "bucket_tax_mismatch" => "Tax doesn't match the rate",
+    "line_arithmetic" => "Line doesn't multiply out",
+    "lopsided_tax_split" => "CGST and SGST split unevenly",
+    "tax_split_mismatch" => "Wrong tax type for the state",
+    "personal_expense_17_5" => "Personal / 17(5)",
+    "duplicate_invoice" => "Billed twice",
+    "gstin_state_mismatch" => "Wrong-state GSTIN",
+    "hsn_implausible" => "HSN looks wrong",
+    "name_gstin_mismatch" => "Name doesn't match the GSTIN",
+    "own_gstin_as_vendor" => "Client's own GSTIN as the vendor",
+    "tax_arithmetic_off" => "Tax doesn't add up"
+  }
+
+  @doc """
+  The operator-language label for an engine issue/flag code. Falls back to
+  `humanize_label/1` for codes the dictionary doesn't know — a new engine
+  check should still render something readable before its label is written.
+  """
+  def issue_label(code), do: Map.get(@issue_labels, code) || humanize_label(code)
+
+  @month_states %{
+    "collecting" => "Collecting documents",
+    "worked" => "Ready for review",
+    "reviewed" => "Reviewed",
+    "filed" => "Filed"
+  }
+
+  @doc "The operator-language name for a month state."
+  def month_state_label(state), do: Map.get(@month_states, state) || humanize_label(state)
+
   def humanize_label(nil), do: "—"
 
   def humanize_label(value) do

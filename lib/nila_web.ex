@@ -104,7 +104,9 @@ defmodule NilaWeb do
           format_money: 2,
           format_time: 1,
           humanize_label: 1,
-          human_status: 1
+          human_status: 1,
+          issue_label: 1,
+          month_state_label: 1
         ]
 
       # Common modules used in templates

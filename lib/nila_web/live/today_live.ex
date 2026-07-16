@@ -116,6 +116,11 @@ defmodule NilaWeb.TodayLive do
   defp days_left_label(0), do: "due today"
   defp days_left_label(days), do: "#{days}d left"
 
+  defp state_variant("reviewed"), do: "success"
+  defp state_variant("filed"), do: "success"
+  defp state_variant("worked"), do: "warning"
+  defp state_variant(_state), do: "neutral"
+
   defp days_left_variant(days) when days < 0, do: "error"
   defp days_left_variant(days) when days <= 5, do: "warning"
   defp days_left_variant(_days), do: "neutral"
@@ -194,6 +199,9 @@ defmodule NilaWeb.TodayLive do
         >
           <:col :let={m} label="Client">{m.client_name}</:col>
           <:col :let={m} label="Period">{m.period_label}</:col>
+          <:col :let={m} label="Status">
+            <.badge variant={state_variant(m.state)}>{month_state_label(m.state)}</.badge>
+          </:col>
           <:col :let={m} label="GSTR-3B">
             <.badge variant={days_left_variant(m.gstr3b_days_left)}>
               {days_left_label(m.gstr3b_days_left)}
