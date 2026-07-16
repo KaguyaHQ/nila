@@ -93,6 +93,29 @@ defmodule NilaWeb.GstMonthLiveTest do
     assert html =~ "outward liability needs the month"
     assert html =~ "C Net ITC"
     refute has_element?(view, "#gst-3b-cash")
+    refute has_element?(view, "#gst-open-gstr1")
+  end
+
+  test "links to the GSTR-1 month when a sales month exists", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, _} =
+      Nila.Gst.SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        state: "worked",
+        invoices: [],
+        derived_gstr1: %{},
+        issues: [],
+        summary: %{}
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#gst-open-gstr1")
   end
 
   test "the owning org can fetch an evidence image", %{conn: conn, client: client} do

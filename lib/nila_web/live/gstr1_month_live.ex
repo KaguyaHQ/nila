@@ -242,6 +242,13 @@ defmodule NilaWeb.Gstr1MonthLive do
         >
           The outward month as Nila derived it — every sales invoice, its validation
           issues, and the portal-shaped return ready for review.
+          <.link
+            navigate={~p"/gst/#{@sales_month.client_id}/#{@sales_month.period}"}
+            id="gstr1-open-purchases"
+            class="text-moon font-semibold"
+          >
+            Open the purchase month →
+          </.link>
         </.page_header>
 
         <div class="flex flex-wrap items-center justify-between gap-3">

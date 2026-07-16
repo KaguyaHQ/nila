@@ -2,7 +2,7 @@ defmodule NilaWeb.GstMonthLive do
   use NilaWeb, :live_view
 
   alias Nila.Accounts.Policy
-  alias Nila.Gst.{ClientMonths, Resolutions, Signoffs}
+  alias Nila.Gst.{ClientMonths, Resolutions, SalesMonths, Signoffs}
 
   @impl true
   def mount(%{"client_id" => client_id, "period" => period}, _session, socket) do
@@ -23,6 +23,7 @@ defmodule NilaWeb.GstMonthLive do
          |> assign(:client_id, client_month.client_id)
          |> assign(:period, client_month.period)
          |> assign(:signoff, signoff)
+         |> assign(:sales_month?, sales_month?(client_month))
          |> assign_month_figures(client_month, signoff)
          |> assign(:selected_row, nil)}
 
@@ -53,6 +54,13 @@ defmodule NilaWeb.GstMonthLive do
     |> assign(:summary, snapshot["summary"])
     |> assign(:stats, build_stats(snapshot["summary"]))
     |> assign(:gstr3b, snapshot["gstr3b"])
+  end
+
+  defp sales_month?(client_month) do
+    match?(
+      {:ok, _},
+      SalesMonths.get_by_period(client_month.org_id, client_month.client_id, client_month.period)
+    )
   end
 
   defp build_rows(rows, client_month) do
@@ -334,6 +342,14 @@ defmodule NilaWeb.GstMonthLive do
             {if liability_missing?(@gstr3b),
               do: "ITC side assembled — outward liability needs the month's sales bills",
               else: "Assembled from the worked sales month and the 2B reconciliation"}
+            <.link
+              :if={@sales_month?}
+              navigate={~p"/gstr1/#{@client_id}/#{@period}"}
+              id="gst-open-gstr1"
+              class="text-moon font-semibold"
+            >
+              Open the GSTR-1 →
+            </.link>
           </div>
         </div>
         <div :if={!liability_missing?(@gstr3b)} class="text-right">

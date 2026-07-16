@@ -39,6 +39,7 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     {:ok, view, _html} = live(conn, ~p"/gstr1/#{client.id}/#{@period}")
 
     assert has_element?(view, "#gstr1-month-page")
+    assert has_element?(view, "#gstr1-open-purchases")
     assert has_element?(view, "#gstr1-inv-20\\/2026-27")
     assert render(view) =~ "open issues"
   end
