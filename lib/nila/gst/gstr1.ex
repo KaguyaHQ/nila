@@ -580,9 +580,17 @@ defmodule Nila.Gst.Gstr1 do
   end
 
   defp derive_doc_issue(invoices) do
-    parsed =
-      invoices |> Enum.map(&parse_invoice_number(&1["invoice_number"])) |> Enum.reject(&is_nil/1)
+    invoices
+    |> Enum.map(&parse_invoice_number(&1["invoice_number"]))
+    |> Enum.reject(&is_nil/1)
+    |> build_doc_issue()
+  end
 
+  # No parseable invoice numbers (empty month, or none numeric) means nothing
+  # was issued — a valid return with an empty doc_det, not a crash.
+  defp build_doc_issue([]), do: %{"doc_det" => []}
+
+  defp build_doc_issue(parsed) do
     numbers = Enum.map(parsed, & &1.number)
     min = Enum.min(numbers)
     max = Enum.max(numbers)

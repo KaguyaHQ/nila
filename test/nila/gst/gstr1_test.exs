@@ -110,6 +110,24 @@ defmodule Nila.Gst.Gstr1Test do
     end
   end
 
+  describe "derive/2 — empty domain" do
+    test "zero invoices returns an empty-but-valid return, not a crash" do
+      result = Gstr1.derive([], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "052026"})
+
+      assert result["gstin"] == "33AEWPH4158J1Z3"
+      assert result["b2b"] == []
+      assert result["doc_issue"] == %{"doc_det" => []}
+      assert result["hsn"] == %{"hsn_b2b" => [], "hsn_b2c" => []}
+    end
+
+    test "invoices with no parseable numbers yield an empty doc_issue" do
+      invoice = %{"invoice_number" => nil, "buyer_gstin" => "33AABCP9487A1ZG", "line_items" => []}
+      result = Gstr1.derive([invoice], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "052026"})
+
+      assert result["doc_issue"] == %{"doc_det" => []}
+    end
+  end
+
   # Reproduction baselines against real filed returns. `raw` is the first-pass
   # score; nil means "run it, just don't assert a number yet". These lock in
   # current behavior — change them deliberately when a rule is fixed.
