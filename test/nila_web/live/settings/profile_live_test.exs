@@ -45,6 +45,32 @@ defmodule NilaWeb.Settings.ProfileLiveTest do
     refute has_element?(view, ~s|#settings-nav a[href="/settings/workspace"]|)
   end
 
+  test "name change updates the user and the profile card", %{conn: conn} do
+    %{user: user} = user_with_org_fixture(%{user: %{name: "Old Name"}})
+
+    {:ok, view, _html} = conn |> log_in_user(user) |> live(~p"/settings/profile")
+
+    view
+    |> form("#change-name-form", name_user: %{name: "New Name"})
+    |> render_submit()
+
+    assert has_element?(view, "#profile-name", "New Name")
+    assert Nila.Repo.get!(Nila.Accounts.User, user.id).name == "New Name"
+  end
+
+  test "name change rejects a blank name", %{conn: conn} do
+    %{user: user} = user_with_org_fixture(%{user: %{name: "Kept Name"}})
+
+    {:ok, view, _html} = conn |> log_in_user(user) |> live(~p"/settings/profile")
+
+    view
+    |> form("#change-name-form", name_user: %{name: ""})
+    |> render_submit()
+
+    assert has_element?(view, "#change-name-form", "can't be blank")
+    assert Nila.Repo.get!(Nila.Accounts.User, user.id).name == "Kept Name"
+  end
+
   test "email change form sends confirmation to new address", %{conn: conn} do
     %{user: user} = user_with_org_fixture()
 

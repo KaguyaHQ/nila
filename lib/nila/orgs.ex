@@ -84,26 +84,4 @@ defmodule Nila.Orgs do
   def change_org(%Org{} = org, attrs \\ %{}) do
     Org.changeset(org, attrs)
   end
-
-  @doc """
-  Deletes all work data for an org: documents (and their artifacts), audit logs,
-  and workflow runs (and their steps). Preserves the org, its entities, and
-  users/memberships.
-
-  Returns `{:ok, total_deleted}`.
-  """
-  def delete_all_work_data(org_id) do
-    Repo.transact(fn ->
-      # Documents cascade to document_artifacts.
-      {docs, _} = Repo.delete_all(from(d in Nila.Documents.Document, where: d.org_id == ^org_id))
-
-      # Audit logs.
-      {audits, _} = Repo.delete_all(from(al in Nila.Audits.AuditLog, where: al.org_id == ^org_id))
-
-      # Workflow runs cascade to workflow_steps.
-      {runs, _} = Repo.delete_all(from(wr in Nila.Workflows.Run, where: wr.org_id == ^org_id))
-
-      {:ok, docs + audits + runs}
-    end)
-  end
 end

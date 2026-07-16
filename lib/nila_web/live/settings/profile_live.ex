@@ -9,10 +9,38 @@ defmodule NilaWeb.Settings.ProfileLive do
       socket
       |> assign(:page_title, "Profile")
       |> assign(:settings_section, :profile)
+      |> assign_name_form(%{})
       |> assign_email_form(%{})
       |> maybe_confirm_email(params)
 
     {:ok, socket}
+  end
+
+  @impl true
+  def handle_event("validate_name", %{"name_user" => params}, socket) do
+    {:noreply, assign_name_form(socket, Map.take(params, ["name"]))}
+  end
+
+  @impl true
+  def handle_event("update_name", %{"name_user" => params}, socket) do
+    user = socket.assigns.current_scope.user
+
+    case Accounts.update_user(user, Map.take(params, ["name"])) do
+      {:ok, user} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Name updated.")
+         |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
+         |> assign_name_form(%{})}
+
+      {:error, changeset} ->
+        {:noreply,
+         assign(
+           socket,
+           :name_form,
+           to_form(Map.put(changeset, :action, :validate), as: "name_user")
+         )}
+    end
   end
 
   @impl true
@@ -98,6 +126,21 @@ defmodule NilaWeb.Settings.ProfileLive do
           </dl>
         </.settings_panel>
 
+        <.settings_panel title="Change name" description="How your name appears across the firm.">
+          <.form
+            for={@name_form}
+            id="change-name-form"
+            phx-change="validate_name"
+            phx-submit="update_name"
+            class="space-y-4"
+          >
+            <.input field={@name_form[:name]} label="Name" required />
+            <.button>
+              Update name
+            </.button>
+          </.form>
+        </.settings_panel>
+
         <.settings_panel
           title="Change email"
           description="We'll send a confirmation link to your new email address."
@@ -142,6 +185,16 @@ defmodule NilaWeb.Settings.ProfileLive do
   end
 
   defp maybe_confirm_email(socket, _params), do: socket
+
+  defp assign_name_form(socket, params) do
+    form =
+      socket.assigns.current_scope.user
+      |> Accounts.change_user(params)
+      |> Map.put(:action, :validate)
+      |> to_form(as: "name_user")
+
+    assign(socket, :name_form, form)
+  end
 
   defp assign_email_form(socket, params) do
     form =

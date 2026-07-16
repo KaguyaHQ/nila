@@ -127,21 +127,6 @@ defmodule NilaWeb.Settings.UsersLive do
   end
 
   @impl true
-  def handle_event("delete_all_data", _params, socket) do
-    with :ok <- ensure_can_manage(socket) do
-      org = socket.assigns.current_scope.current_org
-
-      case Orgs.delete_all_work_data(org.id) do
-        {:ok, count} ->
-          {:noreply, put_flash(socket, :info, "Deleted #{count} records. Firm is clean.")}
-
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Delete failed: #{inspect(reason)}")}
-      end
-    end
-  end
-
-  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.settings
@@ -236,30 +221,6 @@ defmodule NilaWeb.Settings.UsersLive do
           </:col>
           <:empty>No members yet.</:empty>
         </.data_table>
-      </div>
-
-      <div class="bg-error/5 border-error/20 rounded-box mt-8 border p-5">
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div class="space-y-1">
-            <h3 class="text-error text-small flex items-center gap-1.5 font-semibold">
-              <.icon name="hero-exclamation-triangle" class="size-4" /> Danger zone
-            </h3>
-            <p class="text-base-content/60 text-body max-w-xl">
-              Delete all documents, audit logs, and workflow runs. Your firm, clients, and users are preserved.
-            </p>
-          </div>
-          <.button
-            type="button"
-            id="delete-all-data"
-            phx-click="delete_all_data"
-            data-confirm="Delete all work data? This cannot be undone."
-            variant="error"
-            size="sm"
-            class="shrink-0"
-          >
-            <.icon name="hero-trash" class="size-4" /> Delete all work data
-          </.button>
-        </div>
       </div>
 
       <.modal :if={@show_invite} id="invite-modal" title="Invite user" on_close="close_invite">
