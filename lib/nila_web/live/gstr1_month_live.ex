@@ -162,6 +162,22 @@ defmodule NilaWeb.Gstr1MonthLive do
     end
   end
 
+  def handle_event("mark_filed", params, socket) do
+    arn = params["arn"] |> to_string() |> String.trim()
+    arn = if arn == "", do: nil, else: arn
+
+    case Signoffs.mark_filed(socket.assigns.sales_month, socket.assigns.current_scope, arn) do
+      {:ok, _} ->
+        {:noreply, socket |> reload() |> put_flash(:info, "GSTR-1 marked filed.")}
+
+      {:error, :not_signed} ->
+        {:noreply, put_flash(socket, :error, "Sign off the GSTR-1 before marking it filed.")}
+
+      {:error, :already_filed} ->
+        {:noreply, reload(socket)}
+    end
+  end
+
   def handle_event("reopen_signoff", _params, socket) do
     case Signoffs.reopen(socket.assigns.signoff, socket.assigns.current_scope) do
       {:ok, _} ->
@@ -316,9 +332,29 @@ defmodule NilaWeb.Gstr1MonthLive do
             GSTR-1 signed off by {(@signoff.signed_by && @signoff.signed_by.name) || "—"} · {format_display_datetime(
               @signoff.inserted_at
             )} — figures are frozen as approved.
+            <span :if={@sales_month.filed_at} id="gstr1-filed-note" class="font-medium">
+              Filed {format_display_datetime(@sales_month.filed_at)}{if @sales_month.filing_arn,
+                do: " · ARN #{@sales_month.filing_arn}"}.
+            </span>
           </p>
+          <form
+            :if={is_nil(@sales_month.filed_at)}
+            id="gstr1-mark-filed"
+            phx-submit="mark_filed"
+            class="flex items-center gap-2"
+          >
+            <.input
+              type="text"
+              name="arn"
+              id="gstr1-filed-arn"
+              value=""
+              placeholder="ARN (optional)"
+              class="input input-sm w-40 font-mono"
+            />
+            <.button type="submit" variant="success" size="xs">Filed on portal</.button>
+          </form>
           <.button
-            :if={Policy.can?(@current_scope, :sign_off)}
+            :if={Policy.can?(@current_scope, :sign_off) and is_nil(@sales_month.filed_at)}
             id="gstr1-reopen-signoff"
             variant="ghost"
             size="xs"

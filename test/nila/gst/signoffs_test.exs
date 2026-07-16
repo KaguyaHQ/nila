@@ -117,6 +117,25 @@ defmodule Nila.Gst.SignoffsTest do
     assert {:error, :already_revoked} = Signoffs.reopen(revoked, scope)
   end
 
+  test "mark_filed requires a signature, records the filing, and locks reopen", %{
+    month: month,
+    owner_scope: scope
+  } do
+    assert {:error, :not_signed} = Signoffs.mark_filed(month, scope, "AA331025000001")
+
+    {:ok, signoff} = Signoffs.sign_off(month, scope)
+    {:ok, month} = ClientMonths.get_by_period(month.org_id, month.client_id, month.period)
+
+    assert {:ok, filed} = Signoffs.mark_filed(month, scope, "AA331025000001")
+    assert filed.state == "filed"
+    assert filed.filed_at
+    assert filed.filed_by_id == scope.user.id
+    assert filed.filing_arn == "AA331025000001"
+
+    assert {:error, :already_filed} = Signoffs.mark_filed(filed, scope, nil)
+    assert {:error, :filed} = Signoffs.reopen(signoff, scope)
+  end
+
   test "a member cannot reopen", %{month: month, owner_scope: scope, org: org} do
     {:ok, signoff} = Signoffs.sign_off(month, scope)
 
@@ -215,6 +234,23 @@ defmodule Nila.Gst.SignoffsTest do
 
       expected = Nila.Gst.Gstr3b.liability_from_gstr1(signoff.snapshot["derived"])
       assert gstr3b["liability_31"]["a"]["txval"] == expected["txval"]
+    end
+
+    test "a signed GSTR-1 files independently of the 3B", %{
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      reviewed = make_reviewed(sales_month, scope.user.id)
+
+      assert {:error, :not_signed} = Signoffs.mark_filed(reviewed, scope, nil)
+
+      {:ok, r1_signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
+
+      assert {:ok, filed} = Signoffs.mark_filed(reviewed, scope, nil)
+      assert filed.state == "filed"
+      assert filed.filed_at
+
+      assert {:error, :filed} = Signoffs.reopen(r1_signoff, scope)
     end
 
     test "reopening the GSTR-1 cascades to the dependent 3B signature", %{

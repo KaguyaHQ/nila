@@ -17,6 +17,12 @@ defmodule Nila.Gst.Signoffs do
   that revokes the signature. Reopening a GSTR-1 cascades to the dependent
   GSTR-3B signature, because a 3B approved against a liability that is about
   to change is no longer approved.
+
+  Filing is the step after signing: `mark_filed/3` records that the signed
+  return went to the portal (who, when, optional ARN). It requires a live
+  signature — the funnel is maker → checker → filed — and a filed artifact
+  can no longer be reopened: a return on the portal is a fact; corrections
+  go through the amendment path, not by unsigning history.
   """
 
   import Ecto.Query, only: [from: 2]
@@ -152,6 +158,9 @@ defmodule Nila.Gst.Signoffs do
       signoff.revoked_at != nil ->
         {:error, :already_revoked}
 
+      filed?(signoff) ->
+        {:error, :filed}
+
       true ->
         Repo.transact(fn ->
           signoff = revoke!(signoff, scope)
@@ -165,6 +174,48 @@ defmodule Nila.Gst.Signoffs do
         end)
     end
   end
+
+  @doc """
+  Records that a signed return was filed on the portal. `month` is the
+  artifact's parent (`%SalesMonth{}` for GSTR-1, `%ClientMonth{}` for
+  GSTR-3B). No capability gate — filing is mechanical; whoever uploaded the
+  JSON marks it. Requires a live signature (`{:error, :not_signed}`),
+  refuses a double mark (`{:error, :already_filed}`). `arn` is the portal's
+  acknowledgment number, optional.
+  """
+  def mark_filed(month, scope, arn \\ nil)
+
+  def mark_filed(%SalesMonth{} = month, scope, arn) do
+    cond do
+      month.filed_at -> {:error, :already_filed}
+      not match?({:ok, _}, latest_gstr1_signoff(month.id)) -> {:error, :not_signed}
+      true -> file!(month, SalesMonth, scope, arn)
+    end
+  end
+
+  def mark_filed(%ClientMonth{} = month, scope, arn) do
+    cond do
+      month.filed_at -> {:error, :already_filed}
+      not match?({:ok, _}, latest_signoff(month.id)) -> {:error, :not_signed}
+      true -> file!(month, ClientMonth, scope, arn)
+    end
+  end
+
+  defp file!(month, schema, scope, arn) do
+    {:ok,
+     month
+     |> schema.changeset(%{state: "filed", filing_arn: arn})
+     |> Ecto.Changeset.put_change(:filed_at, DateTime.utc_now())
+     |> Ecto.Changeset.put_change(:filed_by_id, scope.user.id)
+     |> Repo.update!()}
+  end
+
+  # Whether the signed artifact has been filed — filed returns are immutable.
+  defp filed?(%Signoff{artifact: "gstr1", sales_month_id: id}),
+    do: Repo.get!(SalesMonth, id).filed_at != nil
+
+  defp filed?(%Signoff{artifact: "gstr3b", client_month_id: id}),
+    do: Repo.get!(ClientMonth, id).filed_at != nil
 
   @doc "The live (unrevoked) GSTR-3B signoff for a client month, signer preloaded."
   def latest_signoff(client_month_id) do
@@ -207,7 +258,9 @@ defmodule Nila.Gst.Signoffs do
     |> Repo.update!()
   end
 
-  # Reopening the outward return invalidates the 3B approved against it.
+  # Reopening the outward return invalidates the 3B approved against it —
+  # unless that 3B is already on the portal: a filed return is a fact, and
+  # the discrepancy is an amendment problem, not an unsigning problem.
   defp cascade_to_gstr3b(%Signoff{sales_month_id: sales_month_id}, scope) do
     sales_month = Repo.get!(SalesMonth, sales_month_id)
 
@@ -217,6 +270,7 @@ defmodule Nila.Gst.Signoffs do
              sales_month.client_id,
              sales_month.period
            ),
+         nil <- client_month.filed_at,
          {:ok, gstr3b_signoff} <- latest_signoff(client_month.id) do
       revoke!(gstr3b_signoff, scope)
       demote_client_month!(client_month.id)

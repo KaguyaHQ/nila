@@ -153,6 +153,26 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     assert has_element?(view, "#gstr1-signoff-button")
   end
 
+  test "marking a signed GSTR-1 filed records the ARN and hides reopen", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gstr1/#{client.id}/#{@period}")
+
+    confirm_all_open_issues(view)
+    view |> element("#gstr1-mark-reviewed") |> render_click()
+    view |> element("#gstr1-signoff-button") |> render_click()
+
+    view
+    |> element("#gstr1-mark-filed")
+    |> render_submit(%{"arn" => "AA331025000001"})
+
+    assert has_element?(view, "#gstr1-filed-note")
+    assert render(view) =~ "AA331025000001"
+    refute has_element?(view, "#gstr1-mark-filed")
+    refute has_element?(view, "#gstr1-reopen-signoff")
+  end
+
   test "a member cannot see the sign-off button", %{org: org, client: client} do
     member = Nila.AccountsFixtures.user_fixture()
     {:ok, _} = Nila.Orgs.add_user(org, member.id, "member")

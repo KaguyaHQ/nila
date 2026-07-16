@@ -95,6 +95,25 @@ defmodule NilaWeb.GstMonthLive do
     {:noreply, assign(socket, :selected_row, nil)}
   end
 
+  def handle_event("mark-filed", params, socket) do
+    arn = params["arn"] |> to_string() |> String.trim()
+    arn = if arn == "", do: nil, else: arn
+
+    case Signoffs.mark_filed(socket.assigns.client_month, socket.assigns.current_scope, arn) do
+      {:ok, client_month} ->
+        {:noreply,
+         socket
+         |> assign(:client_month, client_month)
+         |> put_flash(:info, "GSTR-3B marked filed.")}
+
+      {:error, :not_signed} ->
+        {:noreply, put_flash(socket, :error, "Sign off the month before marking it filed.")}
+
+      {:error, :already_filed} ->
+        {:noreply, socket}
+    end
+  end
+
   def handle_event("reopen-signoff", _params, socket) do
     case Signoffs.reopen(socket.assigns.signoff, socket.assigns.current_scope) do
       {:ok, _} ->
@@ -217,9 +236,29 @@ defmodule NilaWeb.GstMonthLive do
             Signed off by {(@signoff.signed_by && @signoff.signed_by.name) || "—"} · {format_display_datetime(
               @signoff.inserted_at
             )} — figures are frozen as approved.
+            <span :if={@client_month.filed_at} id="gst-filed-note" class="font-medium">
+              Filed {format_display_datetime(@client_month.filed_at)}{if @client_month.filing_arn,
+                do: " · ARN #{@client_month.filing_arn}"}.
+            </span>
           </p>
+          <form
+            :if={is_nil(@client_month.filed_at)}
+            id="gst-mark-filed"
+            phx-submit="mark-filed"
+            class="flex items-center gap-2"
+          >
+            <.input
+              type="text"
+              name="arn"
+              id="gst-filed-arn"
+              value=""
+              placeholder="ARN (optional)"
+              class="input input-sm w-40 font-mono"
+            />
+            <.button type="submit" variant="success" size="xs">Filed on portal</.button>
+          </form>
           <.button
-            :if={Policy.can?(@current_scope, :sign_off)}
+            :if={Policy.can?(@current_scope, :sign_off) and is_nil(@client_month.filed_at)}
             id="gst-reopen-signoff"
             variant="ghost"
             size="xs"
