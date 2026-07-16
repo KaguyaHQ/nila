@@ -81,6 +81,19 @@ defmodule NilaWeb.GstMonthLiveTest do
     assert render(view) =~ row["recon_note"]
   end
 
+  test "the 3B panel shows the ITC side and says the liability is missing", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#gst-3b-panel")
+    html = render(view)
+    assert html =~ "outward liability needs the month"
+    assert html =~ "C Net ITC"
+    refute has_element?(view, "#gst-3b-cash")
+  end
+
   test "the owning org can fetch an evidence image", %{conn: conn, client: client} do
     conn = get(conn, ~p"/gst/#{client.id}/#{@period}/evidence/page_09.png")
 

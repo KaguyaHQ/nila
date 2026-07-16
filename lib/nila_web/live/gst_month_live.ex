@@ -1,7 +1,7 @@
 defmodule NilaWeb.GstMonthLive do
   use NilaWeb, :live_view
 
-  alias Nila.Gst.ClientMonths
+  alias Nila.Gst.{ClientMonths, Resolutions}
 
   @impl true
   def mount(%{"client_id" => client_id, "period" => period}, _session, socket) do
@@ -17,6 +17,7 @@ defmodule NilaWeb.GstMonthLive do
          |> assign(:rows, build_rows(client_month))
          |> assign(:summary, client_month.summary)
          |> assign(:stats, build_stats(client_month.summary))
+         |> assign(:gstr3b, Resolutions.workings(client_month).gstr3b)
          |> assign(:selected_row, nil)}
 
       _ ->
@@ -136,6 +137,8 @@ defmodule NilaWeb.GstMonthLive do
           </.stat_card>
         </div>
 
+        {gstr3b_panel(assigns)}
+
         <.data_table
           id="gst-register"
           rows={@rows}
@@ -243,6 +246,99 @@ defmodule NilaWeb.GstMonthLive do
     </Layouts.app>
     """
   end
+
+  # The month's ending: the assembled GSTR-3B. Liability (3.1a) comes from the
+  # client's worked sales month when one exists; ITC (Table 4) from the 2B
+  # reconciliation + confirmed blocks; 6.1 resolves them into cash payable.
+  # When no sales month exists the liability side is honestly absent — the
+  # panel shows the ITC half and says what's missing, never a fake ₹0 payable.
+  defp gstr3b_panel(assigns) do
+    ~H"""
+    <div id="gst-3b-panel" class="border-base-300 rounded-box border">
+      <div class="border-base-300 flex items-center justify-between border-b px-4 py-3">
+        <div>
+          <div class="text-base-content/60 text-label font-medium uppercase">GSTR-3B</div>
+          <div class="text-base-content/50 text-fine mt-0.5">
+            {if liability_missing?(@gstr3b),
+              do: "ITC side assembled — outward liability needs the month's sales bills",
+              else: "Assembled from the worked sales month and the 2B reconciliation"}
+          </div>
+        </div>
+        <div :if={!liability_missing?(@gstr3b)} class="text-right">
+          <div class="text-base-content/60 text-label font-medium uppercase">Cash payable</div>
+          <div id="gst-3b-cash" class="text-base-content text-lead font-mono font-semibold">
+            {money_paise(@gstr3b["setoff_61"]["cash_total"])}
+          </div>
+        </div>
+      </div>
+
+      <div class="grid gap-x-6 gap-y-2 px-4 py-3 sm:grid-cols-2">
+        <div :if={!liability_missing?(@gstr3b)} class="space-y-1.5">
+          <div class="text-base-content/40 text-fine uppercase">3.1 Outward liability</div>
+          <.gstr3b_line label="(a) Taxable supplies" heads={@gstr3b["liability_31"]["a"]} />
+          <.gstr3b_line label="(d) Reverse charge" heads={@gstr3b["liability_31"]["d"]} />
+        </div>
+        <div :if={liability_missing?(@gstr3b)} class="space-y-1.5">
+          <div class="text-base-content/40 text-fine uppercase">3.1 Outward liability</div>
+          <p class="text-base-content/50 text-small">
+            No worked sales month for this period yet — upload the sales bills to derive
+            GSTR-1 and complete the return.
+          </p>
+          <.gstr3b_line label="(d) Reverse charge" heads={@gstr3b["liability_31"]["d"]} />
+        </div>
+
+        <div class="space-y-1.5">
+          <div class="text-base-content/40 text-fine uppercase">4. Eligible ITC</div>
+          <.gstr3b_line label="A(3) Reverse charge credit" heads={@gstr3b["itc"]["rcm_4a3"]} />
+          <.gstr3b_line label="A(5) All other ITC" heads={@gstr3b["itc"]["all_other_itc_4a5"]} />
+          <.gstr3b_line
+            label="B Reversed (confirmed blocks)"
+            heads={sum_4b(@gstr3b["itc"])}
+            negative
+          />
+          <.gstr3b_line label="C Net ITC" heads={@gstr3b["itc"]["net_itc_4c"]} strong />
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :label, :string, required: true
+  attr :heads, :map, required: true
+  attr :negative, :boolean, default: false
+  attr :strong, :boolean, default: false
+
+  defp gstr3b_line(assigns) do
+    ~H"""
+    <div class="flex items-baseline justify-between gap-3">
+      <span class={[
+        "text-small",
+        (@strong && "text-base-content font-medium") || "text-base-content/70"
+      ]}>
+        {@label}
+      </span>
+      <span class={[
+        "text-small font-mono",
+        @negative && "text-error",
+        !@negative && ((@strong && "text-base-content font-semibold") || "text-base-content/80")
+      ]}>
+        {if @negative, do: "−"}{money_paise(heads_total(@heads))}
+      </span>
+    </div>
+    """
+  end
+
+  defp liability_missing?(gstr3b), do: gstr3b["liability_source"] == "missing"
+
+  defp heads_total(heads),
+    do: (heads["igst"] || 0) + (heads["cgst"] || 0) + (heads["sgst"] || 0)
+
+  defp sum_4b(itc) do
+    Nila.Gst.ItcPosition.sum_heads([itc["reversed_4b1"], itc["reversed_4b2"]])
+  end
+
+  # 3B figures keep paise — this is the return the firm files.
+  defp money_paise(paise), do: Nila.Formatters.format_money_with_paise(paise || 0)
 
   defp evidence_title(row) do
     [row["invoice_number"], row["vendor_name"]]

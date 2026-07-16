@@ -14,7 +14,19 @@ defmodule Nila.Gst.Resolutions do
   import Ecto.Query, only: [from: 2]
 
   alias Nila.Clients
-  alias Nila.Gst.{ClientMonth, EntityContext, Flags, ItcPosition, Register, Resolution, Workings}
+
+  alias Nila.Gst.{
+    ClientMonth,
+    EntityContext,
+    Flags,
+    Gstr3b,
+    ItcPosition,
+    Register,
+    Resolution,
+    SalesMonths,
+    Workings
+  }
+
   alias Nila.Repo
 
   @doc "Resolutions for a month, oldest first (append-only replay order)."
@@ -53,15 +65,36 @@ defmodule Nila.Gst.Resolutions do
     invoices = Workings.books_invoices(recon)
     flags = flags_for(month, invoices)
     rows = Register.rows(invoices, recon, flags)
+    itc = ItcPosition.compute(recon, rows, Workings.itc_decisions(resolutions))
 
     %{
       recon: recon,
       baseline: Workings.materialize(month.recon, []),
       decisions: Workings.decisions(resolutions),
-      itc: ItcPosition.compute(recon, rows, Workings.itc_decisions(resolutions)),
+      itc: itc,
+      gstr3b: gstr3b(month, recon, itc),
       rows: rows,
       summary: Register.summary(rows)
     }
+  end
+
+  # The assembled 3B for the month. Outward liability comes from the client's
+  # worked sales month (GSTR-1 derivation) when one exists; without it the
+  # return is assembled with zero liability and marked so the UI never shows a
+  # cash-payable figure computed from a liability we don't have.
+  defp gstr3b(%ClientMonth{} = month, recon, itc) do
+    {source, liability} =
+      case SalesMonths.get_by_period(month.org_id, month.client_id, month.period) do
+        {:ok, %{derived_gstr1: derived}} when map_size(derived) > 0 ->
+          {"gstr1_derived", Gstr3b.liability_from_gstr1(derived)}
+
+        _ ->
+          {"missing", %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}}
+      end
+
+    liability
+    |> Gstr3b.assemble(recon, itc)
+    |> Map.put("liability_source", source)
   end
 
   defp flags_for(%ClientMonth{} = month, invoices) do
