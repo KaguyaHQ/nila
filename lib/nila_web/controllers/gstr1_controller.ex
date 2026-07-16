@@ -7,19 +7,20 @@ defmodule NilaWeb.Gstr1Controller do
   """
   use NilaWeb, :controller
 
-  alias Nila.Gst.SalesMonths
+  alias Nila.Gst.{SalesMonths, SalesResolutions}
 
   def return_json(conn, %{"client_id" => client_id, "period" => period}) do
     org_id = conn.assigns.current_scope.current_org.id
 
     case SalesMonths.get_by_period(org_id, client_id, period) do
       {:ok, sales_month} ->
-        filename = "gstr1_#{sales_month.derived_gstr1["gstin"]}_#{period}.json"
+        derived = SalesResolutions.workings(sales_month).derived
+        filename = "gstr1_#{derived["gstin"]}_#{period}.json"
 
         conn
         |> put_resp_content_type("application/json")
         |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
-        |> send_resp(200, Jason.encode!(sales_month.derived_gstr1))
+        |> send_resp(200, Jason.encode!(derived))
 
       {:error, _} ->
         conn

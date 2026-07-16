@@ -19,7 +19,7 @@ defmodule Nila.Gst.Workings do
   build the projection, so every surface reads one source and cannot drift.
   """
 
-  alias Nila.Gst.Recon
+  alias Nila.Gst.{Recon, Replay}
 
   @books_buckets ["matched", "value_mismatch", "needs_human", "in_books_not_2b"]
 
@@ -33,7 +33,7 @@ defmodule Nila.Gst.Workings do
     books = recon |> books_invoices() |> Enum.map(&coerce_date/1)
     g2b = recon |> gstr2b_invoices() |> Enum.map(&coerce_date/1)
 
-    resolutions = drop_reopened(resolutions)
+    resolutions = Replay.drop_reopened(resolutions, "books_id")
 
     {corrections, pairs} =
       Enum.split_with(resolutions, &(&1["verb"] == "correct_field"))
@@ -46,35 +46,11 @@ defmodule Nila.Gst.Workings do
     apply_rejections(recon, rejected)
   end
 
-  # `reopen` is undo: for each books row it discards every prior decision on that
-  # row, returning it to the engine's default. Append-only and latest-wins — a
-  # later confirm/reject after a reopen simply lands on the clean slate. Drops
-  # each books_id's events that precede its last reopen, then the reopens.
-  defp drop_reopened(resolutions) do
-    last_reopen =
-      resolutions
-      |> Enum.with_index()
-      |> Enum.reduce(%{}, fn {r, i}, acc ->
-        if r["verb"] == "reopen", do: Map.put(acc, r["books_id"], i), else: acc
-      end)
-
-    resolutions
-    |> Enum.with_index()
-    |> Enum.reject(fn {r, i} ->
-      r["verb"] == "reopen" or i < Map.get(last_reopen, r["books_id"], -1)
-    end)
-    |> Enum.map(fn {r, _i} -> r end)
-  end
-
   @doc """
   The effective latest decision per books row: `%{books_id => verb}` after undo
   (`reopen`) cancellation. A books row absent from the map is still open.
   """
-  def decisions(resolutions) do
-    resolutions
-    |> drop_reopened()
-    |> Enum.reduce(%{}, fn r, acc -> Map.put(acc, r["books_id"], r["verb"]) end)
-  end
+  def decisions(resolutions), do: Replay.decisions(resolutions, "books_id")
 
   @doc """
   The effective block/allow decision per ITC block target: `%{block_id => verb}`

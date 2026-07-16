@@ -126,6 +126,23 @@ defmodule Nila.Gst.Gstr1 do
     end)
   end
 
+  @doc """
+  The minimal production header for `derive/2` when there is no filed return —
+  because the return is what we are producing. `derive/2` only reads
+  gstin/fp/fil_dt from its second argument, so the client's own GSTIN and the
+  filing period (stored "YYYY-MM", the portal's fp is "MMYYYY") suffice.
+  """
+  def production_header(gstin, period) do
+    %{"gstin" => gstin, "fp" => portal_fp(period), "fil_dt" => nil}
+  end
+
+  defp portal_fp(period) do
+    case String.split(period, "-") do
+      [year, month] -> month <> year
+      _ -> period
+    end
+  end
+
   def derive(invoices, filed) do
     seller_gstin = filed["gstin"] || first_present(invoices, "seller_gstin")
     seller_state = state_code(seller_gstin)

@@ -1,7 +1,7 @@
 defmodule NilaWeb.Gstr1MonthLive do
   use NilaWeb, :live_view
 
-  alias Nila.Gst.SalesMonths
+  alias Nila.Gst.{SalesMonths, SalesResolutions, SalesWorkings}
   alias Nila.Repo
 
   @impl true
@@ -15,10 +15,9 @@ defmodule NilaWeb.Gstr1MonthLive do
         {:ok,
          socket
          |> assign(:page_title, "GSTR-1 · #{sales_month.client.name} · #{period}")
-         |> assign(:sales_month, sales_month)
-         |> assign(:invoices, build_invoices(sales_month))
-         |> assign(:issues_by_invoice, Enum.group_by(sales_month.issues, & &1["invoice"]))
-         |> assign(:selected_invoice, nil)}
+         |> assign(:selected_inum, nil)
+         |> assign(:correcting, nil)
+         |> load_workings(sales_month)}
 
       _ ->
         {:ok,
@@ -28,10 +27,36 @@ defmodule NilaWeb.Gstr1MonthLive do
     end
   end
 
-  defp build_invoices(sales_month) do
-    Enum.map(sales_month.invoices, fn invoice ->
-      Map.put(invoice, "image_urls", image_urls(invoice, sales_month))
-    end)
+  # Everything renders from the effective workings — the engine's output with
+  # every human resolution replayed over it — so the table, the issues, and
+  # the JSON download can never disagree with the stored decisions.
+  defp load_workings(socket, sales_month) do
+    workings = SalesResolutions.workings(sales_month)
+
+    invoices =
+      sales_month.invoices
+      |> Enum.zip(workings.invoices)
+      |> Enum.map(fn {pristine, effective} ->
+        effective
+        |> Map.put("pristine_inum", pristine["invoice_number"])
+        |> Map.put("image_urls", image_urls(effective, sales_month))
+      end)
+
+    {month_issues, invoice_issues} = Enum.split_with(workings.issues, &is_nil(&1["invoice"]))
+
+    socket
+    |> assign(:sales_month, sales_month)
+    |> assign(:invoices, invoices)
+    |> assign(:issues_by_invoice, Enum.group_by(invoice_issues, & &1["invoice"]))
+    |> assign(:month_issues, month_issues)
+    |> assign(:flagged, workings.flagged)
+    |> assign(:open_issue_count, Enum.count(workings.issues, &(&1["status"] == "open")))
+    |> assign(:reviewable, SalesWorkings.reviewable?(workings.issues))
+  end
+
+  defp reload(socket) do
+    sales_month = socket.assigns.sales_month |> Repo.reload!() |> Repo.preload(:client)
+    load_workings(socket, sales_month)
   end
 
   defp image_urls(invoice, sales_month) do
@@ -50,22 +75,130 @@ defmodule NilaWeb.Gstr1MonthLive do
 
   @impl true
   def handle_event("select-invoice", %{"inum" => inum}, socket) do
-    invoice = Enum.find(socket.assigns.invoices, &(&1["invoice_number"] == inum))
-    {:noreply, assign(socket, :selected_invoice, invoice)}
+    {:noreply, assign(socket, selected_inum: inum, correcting: nil)}
   end
 
   def handle_event("close-evidence", _params, socket) do
-    {:noreply, assign(socket, :selected_invoice, nil)}
+    {:noreply, assign(socket, selected_inum: nil, correcting: nil)}
+  end
+
+  def handle_event("confirm_issue", %{"target" => target}, socket) do
+    record(socket, %{"verb" => "confirm_issue", "target" => target})
+  end
+
+  def handle_event("undo", %{"target" => target}, socket) do
+    record(socket, %{"verb" => "reopen", "target" => target})
+  end
+
+  def handle_event("start_correct", %{"field" => field}, socket) do
+    invoice = selected_invoice(socket.assigns)
+
+    {:noreply,
+     assign(socket, :correcting, %{field: field, value: to_string(field_value(invoice, field))})}
+  end
+
+  def handle_event("cancel_correct", _params, socket) do
+    {:noreply, assign(socket, :correcting, nil)}
+  end
+
+  def handle_event("save_correct", %{"field" => field, "value" => value}, socket) do
+    invoice = selected_invoice(socket.assigns)
+    from = field_value(invoice, field)
+    value = String.trim(value)
+
+    if value == "" or value == to_string(from) do
+      {:noreply, assign(socket, :correcting, nil)}
+    else
+      record(socket, %{
+        "verb" => "correct_field",
+        "target" => invoice["pristine_inum"],
+        "payload" => %{"field" => field, "from" => from, "to" => coerce(field, value)}
+      })
+    end
+  end
+
+  def handle_event("mark_reviewed", _params, socket) do
+    case SalesResolutions.mark_reviewed(socket.assigns.sales_month) do
+      {:ok, _} ->
+        {:noreply, socket |> reload() |> put_flash(:info, "Sales month marked reviewed.")}
+
+      {:error, :open_issues} ->
+        {:noreply, put_flash(socket, :error, "Open issues remain — resolve them first.")}
+    end
+  end
+
+  defp record(socket, attrs) do
+    {:ok, _} =
+      SalesResolutions.record(
+        socket.assigns.sales_month,
+        attrs,
+        socket.assigns.current_scope.user.id
+      )
+
+    {:noreply, socket |> reload() |> assign(:correcting, nil)}
+  end
+
+  defp selected_invoice(%{selected_inum: nil}), do: nil
+
+  defp selected_invoice(assigns) do
+    Enum.find(assigns.invoices, &(&1["invoice_number"] == assigns.selected_inum)) ||
+      Enum.find(assigns.invoices, &(&1["pristine_inum"] == assigns.selected_inum))
+  end
+
+  # The fields a human may correct on this invoice: flagged by the engine
+  # (low confidence or implicated in a validation issue) and addressable by
+  # `Gstr1.apply_corrections/3` — scalar paths only, not whole-list markers
+  # like "line_items" or derived markers like "doc_issue".
+  defp correctable_fields(flagged, invoice) do
+    flagged
+    |> Enum.filter(fn {inum, field} ->
+      inum == invoice["pristine_inum"] and correctable?(field)
+    end)
+    |> Enum.map(fn {_inum, field} -> field end)
+    |> Enum.sort()
+  end
+
+  defp correctable?(field),
+    do: field not in ["line_items", "doc_issue"] and not String.contains?(field, "confidence")
+
+  defp field_value(invoice, field) do
+    case Regex.run(~r/^line_items\[(\d+)\]\.(.+)$/, field) do
+      [_, index, line_field] ->
+        line = Enum.at(invoice["line_items"], String.to_integer(index)) || %{}
+        line[line_field]
+
+      _ ->
+        invoice[field]
+    end
+  end
+
+  # Corrected values arrive as text; numeric fields must go back to numbers so
+  # the engine's arithmetic and the table's sums keep working on the effective
+  # invoices. Only known-numeric fields parse — a purely numeric invoice
+  # number must stay a string, or every downstream comparison breaks.
+  @numeric_field ~r/^(printed_total_taxable|printed_total_tax|printed_grand_total)$|\.(taxable_value|quantity|unit_price|[csi]gst_(rate|amount))$/
+
+  defp coerce(field, value) do
+    with true <- Regex.match?(@numeric_field, field),
+         {number, ""} <- Float.parse(value) do
+      number
+    else
+      _ -> value
+    end
   end
 
   defp invoice_issues(issues_by_invoice, invoice) do
     issues_by_invoice[invoice["invoice_number"]] || []
   end
 
+  defp open_issues(issues_by_invoice, invoice) do
+    issues_by_invoice |> invoice_issues(invoice) |> Enum.count(&(&1["status"] == "open"))
+  end
+
   defp invoice_taxable(invoice) do
     invoice["line_items"]
     |> List.wrap()
-    |> Enum.map(&(&1["taxable_value"] || 0))
+    |> Enum.map(&(num(&1["taxable_value"]) || 0))
     |> Enum.sum()
   end
 
@@ -73,10 +206,14 @@ defmodule NilaWeb.Gstr1MonthLive do
     invoice["line_items"]
     |> List.wrap()
     |> Enum.map(fn line ->
-      (line["cgst_amount"] || 0) + (line["sgst_amount"] || 0) + (line["igst_amount"] || 0)
+      (num(line["cgst_amount"]) || 0) + (num(line["sgst_amount"]) || 0) +
+        (num(line["igst_amount"]) || 0)
     end)
     |> Enum.sum()
   end
+
+  defp num(value) when is_number(value), do: value
+  defp num(_), do: 0
 
   defp severity_variant("error"), do: "error"
   defp severity_variant(_), do: "warning"
@@ -89,6 +226,8 @@ defmodule NilaWeb.Gstr1MonthLive do
 
   @impl true
   def render(assigns) do
+    assigns = assign(assigns, :selected_invoice, selected_invoice(assigns))
+
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -106,23 +245,72 @@ defmodule NilaWeb.Gstr1MonthLive do
         </.page_header>
 
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <div class="text-base-content/60 text-small">
+          <div class="text-base-content/60 text-small flex items-center gap-2">
+            <span :if={@sales_month.state == "reviewed"} id="gstr1-reviewed-badge">
+              <.badge variant="success">Reviewed</.badge>
+            </span>
             {length(@invoices)} invoices ·
             <span class={[
-              length(@sales_month.issues) > 0 && "text-warning",
-              length(@sales_month.issues) == 0 && "text-base-content/60"
+              @open_issue_count > 0 && "text-warning",
+              @open_issue_count == 0 && "text-base-content/60"
             ]}>
-              {length(@sales_month.issues)} validation issues
+              {@open_issue_count} open issues
             </span>
           </div>
-          <.button
-            id="gstr1-download-json"
-            href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/return.json"}
-            variant="primary"
-            size="sm"
+          <div class="flex items-center gap-2">
+            <.button
+              :if={@sales_month.state == "worked" and @reviewable}
+              id="gstr1-mark-reviewed"
+              phx-click="mark_reviewed"
+              variant="success"
+              size="sm"
+            >
+              <.icon name="hero-check-circle" class="size-4" /> Mark reviewed
+            </.button>
+            <.button
+              id="gstr1-download-json"
+              href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/return.json"}
+              variant="primary"
+              size="sm"
+            >
+              <.icon name="hero-arrow-down-tray" class="size-4" /> Portal JSON
+            </.button>
+          </div>
+        </div>
+
+        <div :if={@month_issues != []} id="gstr1-month-issues" class="space-y-2">
+          <div
+            :for={issue <- @month_issues}
+            id={"gstr1-month-issue-#{issue["code"]}"}
+            class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
-            <.icon name="hero-arrow-down-tray" class="size-4" /> Portal JSON
-          </.button>
+            <.badge variant={
+              if issue["status"] == "resolved", do: "success", else: severity_variant(issue["level"])
+            }>
+              {humanize_label(issue["code"])}
+            </.badge>
+            <span class="text-base-content/80 text-small min-w-0 flex-1">{issue["message"]}</span>
+            <.button
+              :if={issue["status"] == "open"}
+              variant="outline"
+              size="xs"
+              phx-click="confirm_issue"
+              phx-value-target={SalesWorkings.issue_key(issue)}
+            >
+              Confirm — reviewed
+            </.button>
+            <span :if={issue["status"] == "resolved"} class="flex items-center gap-1.5">
+              <span class="text-fine text-success font-medium">Confirmed</span>
+              <.button
+                variant="ghost"
+                size="xs"
+                phx-click="undo"
+                phx-value-target={SalesWorkings.issue_key(issue)}
+              >
+                Undo
+              </.button>
+            </span>
+          </div>
         </div>
 
         <.data_table
@@ -137,7 +325,7 @@ defmodule NilaWeb.Gstr1MonthLive do
           <:col :let={invoice} label="Inv No">
             <div class="flex items-center gap-2">
               <.icon
-                :if={invoice_issues(@issues_by_invoice, invoice) != []}
+                :if={open_issues(@issues_by_invoice, invoice) > 0}
                 name="hero-exclamation-triangle-mini"
                 class="text-warning size-4 shrink-0"
               />
@@ -154,11 +342,17 @@ defmodule NilaWeb.Gstr1MonthLive do
           </:col>
           <:col :let={invoice} label="Tax" align="right">{rupees(invoice_tax(invoice))}</:col>
           <:col :let={invoice} label="Issues">
+            <span :if={open_issues(@issues_by_invoice, invoice) > 0} class="text-small text-warning">
+              {open_issues(@issues_by_invoice, invoice)} open
+            </span>
             <span
-              :if={invoice_issues(@issues_by_invoice, invoice) != []}
-              class="text-small text-warning"
+              :if={
+                open_issues(@issues_by_invoice, invoice) == 0 and
+                  invoice_issues(@issues_by_invoice, invoice) != []
+              }
+              class="text-small text-success"
             >
-              {length(invoice_issues(@issues_by_invoice, invoice))}
+              resolved
             </span>
             <span
               :if={invoice_issues(@issues_by_invoice, invoice) == []}
@@ -204,20 +398,91 @@ defmodule NilaWeb.Gstr1MonthLive do
               </div>
             </div>
 
-            <div
-              :if={invoice_issues(@issues_by_invoice, @selected_invoice) != []}
-              class="space-y-2"
-            >
+            <div :if={invoice_issues(@issues_by_invoice, @selected_invoice) != []} class="space-y-2">
               <div class="text-base-content/60 text-label font-medium uppercase">Issues</div>
               <div
                 :for={issue <- invoice_issues(@issues_by_invoice, @selected_invoice)}
                 class="bg-base-200/40 border-base-300 rounded-box border p-3"
               >
-                <.badge variant={severity_variant(issue["severity"])}>
+                <.badge variant={
+                  if issue["status"] == "resolved",
+                    do: "success",
+                    else: severity_variant(issue["level"])
+                }>
                   {humanize_label(issue["code"])}
                 </.badge>
                 <p class="text-base-content/80 text-small mt-2">{issue["message"]}</p>
+                <div class="mt-2">
+                  <.button
+                    :if={issue["status"] == "open"}
+                    variant="outline"
+                    size="xs"
+                    phx-click="confirm_issue"
+                    phx-value-target={SalesWorkings.issue_key(issue)}
+                  >
+                    Confirm — extraction matches the scan
+                  </.button>
+                  <span :if={issue["status"] == "resolved"} class="flex items-center gap-1.5">
+                    <span class="text-fine text-success font-medium">Confirmed</span>
+                    <.button
+                      variant="ghost"
+                      size="xs"
+                      phx-click="undo"
+                      phx-value-target={SalesWorkings.issue_key(issue)}
+                    >
+                      Undo
+                    </.button>
+                  </span>
+                </div>
               </div>
+            </div>
+
+            <div
+              :if={correctable_fields(@flagged, @selected_invoice) != []}
+              id="gstr1-corrections"
+              class="space-y-2"
+            >
+              <div class="text-base-content/60 text-label font-medium uppercase">
+                Flagged fields
+              </div>
+              <%= for field <- correctable_fields(@flagged, @selected_invoice) do %>
+                <%= if @correcting && @correcting.field == field do %>
+                  <form phx-submit="save_correct" class="flex items-end gap-2">
+                    <.input type="hidden" name="field" id="gstr1-correct-field" value={field} />
+                    <div class="flex-1">
+                      <.input
+                        type="text"
+                        name="value"
+                        value={@correcting.value}
+                        label={field}
+                        id="gstr1-correct-value"
+                      />
+                    </div>
+                    <.button type="submit" variant="primary" size="sm">Save</.button>
+                    <.button type="button" variant="ghost" size="sm" phx-click="cancel_correct">
+                      Cancel
+                    </.button>
+                  </form>
+                <% else %>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-base-content/70 text-small min-w-0 truncate font-mono">
+                      {field} = {to_string(field_value(@selected_invoice, field))}
+                    </span>
+                    <.button
+                      variant="ghost"
+                      size="xs"
+                      phx-click="start_correct"
+                      phx-value-field={field}
+                    >
+                      Correct
+                    </.button>
+                  </div>
+                <% end %>
+              <% end %>
+              <p class="text-base-content/50 text-fine">
+                Only fields Nila flagged are correctable — fixing anything else would be a
+                silent error.
+              </p>
             </div>
           </div>
         </div>

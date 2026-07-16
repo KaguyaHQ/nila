@@ -15,8 +15,8 @@ defmodule Nila.Gst.Gstr1Worker do
   Unlike the purchase worker there is no GSTR-2B and no reconciliation — outward
   filing has a single input (the sales PDF) and derives the return that will be
   filed. `Gstr1.derive/2` was written against real filed returns for the eval;
-  in production there is no filed return yet, so the worker synthesizes a minimal
-  header (the client's own GSTIN + the filing period) for it to derive into.
+  in production there is no filed return yet, so the worker derives into
+  `Gstr1.production_header/2` (the client's own GSTIN + the filing period).
 
   Extraction is minutes-long and fallible, so the worker narrates each stage over
   PubSub (`SalesMonths.broadcast_progress/2`) and marks a terminal failure on the
@@ -79,7 +79,7 @@ defmodule Nila.Gst.Gstr1Worker do
 
     invoices = Enum.map(pages, &Gstr1.normalize_invoice/1)
     issues = Gstr1.validation_issues(invoices)
-    derived = Gstr1.derive(invoices, header(client, ctx.period))
+    derived = Gstr1.derive(invoices, Gstr1.production_header(client.gstin, ctx.period))
 
     :ok = progress(ctx, :storing)
     store_evidence(ctx, pages, images)
@@ -94,20 +94,6 @@ defmodule Nila.Gst.Gstr1Worker do
       issues: issues,
       summary: summary(invoices, issues)
     })
-  end
-
-  # In production there is no filed return; the return is what we are producing.
-  # `derive/2` only reads gstin/fp/fil_dt from this header, so supply the client's
-  # own GSTIN and the filing period (stored "YYYY-MM", the portal's fp is MMYYYY).
-  defp header(client, period) do
-    %{"gstin" => client.gstin, "fp" => portal_fp(period), "fil_dt" => nil}
-  end
-
-  defp portal_fp(period) do
-    case String.split(period, "-") do
-      [year, month] -> month <> year
-      _ -> period
-    end
   end
 
   defp summary(invoices, issues) do

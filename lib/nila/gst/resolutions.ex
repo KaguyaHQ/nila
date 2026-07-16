@@ -24,6 +24,7 @@ defmodule Nila.Gst.Resolutions do
     Register,
     Resolution,
     SalesMonths,
+    SalesResolutions,
     Workings
   }
 
@@ -79,14 +80,18 @@ defmodule Nila.Gst.Resolutions do
   end
 
   # The assembled 3B for the month. Outward liability comes from the client's
-  # worked sales month (GSTR-1 derivation) when one exists; without it the
-  # return is assembled with zero liability and marked so the UI never shows a
-  # cash-payable figure computed from a liability we don't have.
+  # worked sales month when one exists — read through the sales review loop, so
+  # human corrections land here — and `liability_source` says whether that
+  # return was human-reviewed or is still the raw derivation. Without a sales
+  # month the return is assembled with zero liability and marked so the UI
+  # never shows a cash-payable figure computed from a liability we don't have.
   defp gstr3b(%ClientMonth{} = month, recon, itc) do
     {source, liability} =
       case SalesMonths.get_by_period(month.org_id, month.client_id, month.period) do
-        {:ok, %{derived_gstr1: derived}} when map_size(derived) > 0 ->
-          {"gstr1_derived", Gstr3b.liability_from_gstr1(derived)}
+        {:ok, %{invoices: [_ | _]} = sales_month} ->
+          derived = SalesResolutions.workings(sales_month).derived
+          source = if sales_month.state == "reviewed", do: "gstr1_reviewed", else: "gstr1_derived"
+          {source, Gstr3b.liability_from_gstr1(derived)}
 
         _ ->
           {"missing", %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}}
