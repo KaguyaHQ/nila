@@ -25,6 +25,7 @@ defmodule Nila.Accounts.PolicyTest do
       refute Policy.can?(operator, :manage_users)
       refute Policy.can?(operator, :manage_settings)
       refute Policy.can?(operator, :manage_connectors)
+      refute Policy.can?(operator, :sign_off)
     end
 
     test "viewer can only read and export" do
@@ -36,6 +37,7 @@ defmodule Nila.Accounts.PolicyTest do
       refute Policy.can?(viewer, :edit_records)
       refute Policy.can?(viewer, :send_messages)
       refute Policy.can?(viewer, :manage_users)
+      refute Policy.can?(viewer, :sign_off)
     end
 
     test "an absent scope, membership, or unknown role grants nothing" do

@@ -4,7 +4,7 @@ defmodule NilaWeb.GstMonthLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.ClientMonths
+  alias Nila.Gst.{ClientMonths, Signoffs}
   alias Nila.Storage
 
   @dir "tmp/register/breeze-2025-10"
@@ -17,6 +17,7 @@ defmodule NilaWeb.GstMonthLiveTest do
 
     %{
       conn: log_in_user(conn, user),
+      user: user,
       org: org,
       client: client,
       client_month: client_month
@@ -117,6 +118,68 @@ defmodule NilaWeb.GstMonthLiveTest do
     conn = get(conn, ~p"/gst/#{client.id}/#{@period}/evidence/#{"secret.txt"}")
 
     assert response(conn, 404)
+  end
+
+  test "owner signs off: banner appears and the month moves to reviewed", %{
+    conn: conn,
+    client: client,
+    org: org
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#gst-signoff-button")
+    view |> element("#gst-signoff-button") |> render_click()
+
+    assert has_element?(view, "#gst-signoff-banner")
+    refute has_element?(view, "#gst-signoff-button")
+    assert render(view) =~ "Signed off by"
+
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    assert month.state == "reviewed"
+    assert {:ok, signoff} = Signoffs.latest_signoff(month.id)
+    assert Map.has_key?(signoff.snapshot, "gstr3b")
+  end
+
+  test "a signed month renders from the frozen snapshot, not live derivation", %{
+    conn: conn,
+    client: client,
+    org: org,
+    user: user
+  } do
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    scope = Nila.Accounts.Scope.for_user(user)
+    {:ok, _} = Signoffs.sign_off(month, scope)
+    {:ok, signoff} = Signoffs.latest_signoff(month.id)
+
+    frozen = put_in(signoff.snapshot, ["summary", "buckets", "matched"], 999)
+
+    signoff
+    |> Ecto.Changeset.change(snapshot: frozen)
+    |> Nila.Repo.update!()
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#gst-signoff-banner")
+    assert has_element?(view, "#gst-stat-matched", "999")
+  end
+
+  test "the operator (member) does not see the sign-off button and cannot sign", %{
+    client: client,
+    org: org
+  } do
+    member = user_fixture()
+    {:ok, _} = Nila.Orgs.add_user(org, member.id, "member")
+    conn = log_in_user(Phoenix.ConnTest.build_conn(), member)
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    refute has_element?(view, "#gst-signoff-button")
+
+    render_click(view, "sign-off", %{})
+    assert render(view) =~ "permission"
+
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    assert month.state == "worked"
   end
 
   test "redirects logged-out visitors to log in", %{client: client} do

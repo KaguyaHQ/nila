@@ -9,9 +9,11 @@ defmodule Nila.Accounts.Policy do
       owner ─ admin ─ member (operator) ─ viewer
 
   - **owner / admin** manage everything: the firm's staff, settings, connectors,
-    and all client records.
+    and all client records — and are the only roles that can sign off a month
+    (maker-checker: the operator who worked the month cannot self-certify).
   - **member** is the operator (the junior accountant): works client months,
-    resolves exceptions, and sends messages, but cannot manage staff or settings.
+    resolves exceptions, and sends messages, but cannot manage staff or settings
+    and cannot sign off.
   - **viewer**: read and export only.
 
   `admin` is kept as a synonym for `owner` so the enum the schema already ships
@@ -24,7 +26,7 @@ defmodule Nila.Accounts.Policy do
   alias Nila.Accounts.Scope
 
   @all_capabilities ~w(
-    view edit_records send_messages export
+    view edit_records send_messages export sign_off
     manage_settings manage_connectors manage_users
   )a
 

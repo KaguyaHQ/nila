@@ -1,7 +1,8 @@
 defmodule NilaWeb.GstMonthLive do
   use NilaWeb, :live_view
 
-  alias Nila.Gst.{ClientMonths, Resolutions}
+  alias Nila.Accounts.Policy
+  alias Nila.Gst.{ClientMonths, Resolutions, Signoffs}
 
   @impl true
   def mount(%{"client_id" => client_id, "period" => period}, _session, socket) do
@@ -9,15 +10,20 @@ defmodule NilaWeb.GstMonthLive do
 
     case org && ClientMonths.get_by_period(org.id, client_id, period) do
       {:ok, client_month} ->
+        signoff =
+          case Signoffs.latest_signoff(client_month.id) do
+            {:ok, signoff} -> signoff
+            {:error, :not_found} -> nil
+          end
+
         {:ok,
          socket
          |> assign(:page_title, "GST · Breeze Tech · October 2025")
+         |> assign(:client_month, client_month)
          |> assign(:client_id, client_month.client_id)
          |> assign(:period, client_month.period)
-         |> assign(:rows, build_rows(client_month))
-         |> assign(:summary, client_month.summary)
-         |> assign(:stats, build_stats(client_month.summary))
-         |> assign(:gstr3b, Resolutions.workings(client_month).gstr3b)
+         |> assign(:signoff, signoff)
+         |> assign_month_figures(client_month, signoff)
          |> assign(:selected_row, nil)}
 
       _ ->
@@ -28,8 +34,29 @@ defmodule NilaWeb.GstMonthLive do
     end
   end
 
-  defp build_rows(client_month) do
-    client_month.register_rows
+  # The freeze: a signed month renders from the persisted snapshot, never from
+  # a live re-derivation, so engine improvements can't move numbers a senior
+  # already certified. Unsigned months keep the live projection.
+  defp assign_month_figures(socket, client_month, nil) do
+    socket
+    |> assign(:rows, build_rows(client_month.register_rows, client_month))
+    |> assign(:summary, client_month.summary)
+    |> assign(:stats, build_stats(client_month.summary))
+    |> assign(:gstr3b, Resolutions.workings(client_month).gstr3b)
+  end
+
+  defp assign_month_figures(socket, client_month, signoff) do
+    snapshot = signoff.snapshot
+
+    socket
+    |> assign(:rows, build_rows(snapshot["rows"], client_month))
+    |> assign(:summary, snapshot["summary"])
+    |> assign(:stats, build_stats(snapshot["summary"]))
+    |> assign(:gstr3b, snapshot["gstr3b"])
+  end
+
+  defp build_rows(rows, client_month) do
+    rows
     |> Enum.with_index()
     |> Enum.map(fn {row, index} -> put_row_view(row, index, client_month) end)
   end
@@ -58,6 +85,27 @@ defmodule NilaWeb.GstMonthLive do
 
   def handle_event("close-evidence", _params, socket) do
     {:noreply, assign(socket, :selected_row, nil)}
+  end
+
+  def handle_event("sign-off", _params, socket) do
+    case Signoffs.sign_off(socket.assigns.client_month, socket.assigns.current_scope) do
+      {:ok, signoff} ->
+        signoff = Nila.Repo.preload(signoff, :signed_by)
+        client_month = %{socket.assigns.client_month | state: "reviewed"}
+
+        {:noreply,
+         socket
+         |> assign(:client_month, client_month)
+         |> assign(:signoff, signoff)
+         |> assign_month_figures(client_month, signoff)
+         |> put_flash(:info, "Month signed off.")}
+
+      {:error, :not_allowed} ->
+        {:noreply, put_flash(socket, :error, "You don't have permission to sign off this month.")}
+
+      {:error, :already_signed} ->
+        {:noreply, put_flash(socket, :error, "This month is already signed off.")}
+    end
   end
 
   defp build_stats(summary) do
@@ -115,10 +163,34 @@ defmodule NilaWeb.GstMonthLive do
       current_path={assigns[:current_path]}
     >
       <div id="gst-month-page" class="mx-auto max-w-6xl space-y-6">
-        <.page_header eyebrow="GST" title="Breeze Tech · October 2025">
-          The worked month, read-only. Every row is one tap from its scanned bill — matched
-          lines sit quiet, the pile that needs a decision is flagged.
-        </.page_header>
+        <div class="flex items-start justify-between gap-4">
+          <.page_header eyebrow="GST" title="Breeze Tech · October 2025">
+            The worked month, read-only. Every row is one tap from its scanned bill — matched
+            lines sit quiet, the pile that needs a decision is flagged.
+          </.page_header>
+          <.button
+            :if={@client_month.state == "worked" and Policy.can?(@current_scope, :sign_off)}
+            id="gst-signoff-button"
+            variant="primary"
+            size="sm"
+            phx-click="sign-off"
+          >
+            <.icon name="hero-check-badge-mini" class="size-4" /> Sign off month
+          </.button>
+        </div>
+
+        <div
+          :if={@signoff}
+          id="gst-signoff-banner"
+          class="bg-success/[0.04] border-success/40 rounded-box flex items-center gap-2 border px-4 py-3"
+        >
+          <.icon name="hero-check-badge" class="text-success size-5 shrink-0" />
+          <p class="text-base-content text-small">
+            Signed off by {(@signoff.signed_by && @signoff.signed_by.name) || "—"} · {format_display_datetime(
+              @signoff.inserted_at
+            )} — figures are frozen as approved.
+          </p>
+        </div>
 
         <div id="gst-stats" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <.stat_card label="Invoices" value_id="gst-stat-invoices">

@@ -1,7 +1,7 @@
 defmodule NilaWeb.GstExceptionsLive do
   use NilaWeb, :live_view
 
-  alias Nila.Gst.{ClientMonths, Recon, Resolutions}
+  alias Nila.Gst.{ClientMonths, Recon, Resolutions, Signoffs}
   alias Nila.Repo
 
   @impl true
@@ -17,6 +17,7 @@ defmodule NilaWeb.GstExceptionsLive do
          |> assign(:month, month)
          |> assign(:page_title, "Exceptions · #{month.client.name} · #{period}")
          |> assign(:correcting, nil)
+         |> assign(:signed_off, signed_off?(month))
          |> load_workings()}
 
       _ ->
@@ -156,6 +157,12 @@ defmodule NilaWeb.GstExceptionsLive do
      )}
   end
 
+  def handle_event(verb, _params, socket)
+      when verb in ~w(confirm_pair reject_pair start_correct save_correct undo block_itc allow_itc reopen_block) and
+             socket.assigns.signed_off do
+    {:noreply, put_flash(socket, :error, "Month is signed off — reopen is not supported yet.")}
+  end
+
   def handle_event("confirm_pair", %{"id" => id}, socket) do
     item = find_item(socket, id)
 
@@ -267,6 +274,13 @@ defmodule NilaWeb.GstExceptionsLive do
 
   defp find_item(socket, id), do: Enum.find(socket.assigns.queue, &(&1.id == id))
   defp blank?(v), do: is_nil(v) or String.trim(to_string(v)) == ""
+
+  defp signed_off?(month) do
+    case Signoffs.latest_signoff(month.id) do
+      {:ok, _} -> true
+      {:error, :not_found} -> false
+    end
+  end
 
   @impl true
   def render(assigns) do
@@ -430,7 +444,7 @@ defmodule NilaWeb.GstExceptionsLive do
             −{itc_money(b["tax_paise"])}
           </span>
 
-          <span :if={b["state"] == "recommended"} class="flex gap-1.5">
+          <span :if={b["state"] == "recommended" and not @signed_off} class="flex gap-1.5">
             <.button
               variant="error"
               size="xs"
@@ -451,6 +465,7 @@ defmodule NilaWeb.GstExceptionsLive do
           <span :if={b["state"] == "blocked"} class="flex items-center gap-1.5">
             <span class="text-error text-fine font-medium">Blocked</span>
             <.button
+              :if={not @signed_off}
               variant="ghost"
               size="xs"
               phx-click="reopen_block"
@@ -462,6 +477,7 @@ defmodule NilaWeb.GstExceptionsLive do
           <span :if={b["state"] == "allowed"} class="flex items-center gap-1.5">
             <span class="text-base-content/50 text-fine font-medium">Credit kept</span>
             <.button
+              :if={not @signed_off}
               variant="ghost"
               size="xs"
               phx-click="reopen_block"
@@ -554,13 +570,19 @@ defmodule NilaWeb.GstExceptionsLive do
         <span class="text-small text-success flex items-center gap-1.5 font-medium">
           <.icon name="hero-check-circle-mini" class="size-4" /> {@selected.outcome}
         </span>
-        <.button variant="ghost" size="sm" phx-click="undo" phx-value-id={@selected.id}>
+        <.button
+          :if={not @signed_off}
+          variant="ghost"
+          size="sm"
+          phx-click="undo"
+          phx-value-id={@selected.id}
+        >
           <.icon name="hero-arrow-uturn-left-mini" class="size-4" /> Undo
         </.button>
       </div>
 
       <div
-        :if={@selected.resolvable and not @selected.resolved}
+        :if={@selected.resolvable and not @selected.resolved and not @signed_off}
         class="border-base-300 flex flex-wrap gap-2 border-t pt-4"
       >
         <%= if @correcting && @correcting.id == @selected.id do %>

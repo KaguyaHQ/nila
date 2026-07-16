@@ -4,7 +4,7 @@ defmodule NilaWeb.GstExceptionsLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.{ClientMonths, Recon, Register, Resolutions}
+  alias Nila.Gst.{ClientMonths, Recon, Register, Resolutions, Signoffs}
 
   @period "2025-10"
   @gstin "33AAACS1234A1Z9"
@@ -58,7 +58,28 @@ defmodule NilaWeb.GstExceptionsLiveTest do
         summary: Register.summary(rows)
       })
 
-    %{conn: log_in_user(conn, user), org: org, client: client}
+    %{conn: log_in_user(conn, user), user: user, org: org, client: client}
+  end
+
+  test "a signed-off month hides the verbs and rejects resolutions server-side", %{
+    conn: conn,
+    user: user,
+    org: org,
+    client: client
+  } do
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    scope = Nila.Accounts.Scope.for_user(user)
+    {:ok, _} = Signoffs.sign_off(month, scope)
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/exceptions")
+
+    refute has_element?(view, "button", "Confirm — same bill")
+
+    render_click(view, "confirm_pair", %{"id" => "page_01"})
+    assert render(view) =~ "Month is signed off"
+
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    assert Resolutions.list(month.id) == []
   end
 
   test "renders the queue and the side-by-side diff", %{conn: conn, client: client} do
