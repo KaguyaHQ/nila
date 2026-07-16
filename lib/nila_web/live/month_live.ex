@@ -46,8 +46,9 @@ defmodule NilaWeb.MonthLive do
   end
 
   defp try_load(socket, client, period) do
-    purchase = fetch_or_nil(ClientMonths.get_by_period(client.org_id, client.id, period))
-    sales = fetch_or_nil(SalesMonths.get_by_period(client.org_id, client.id, period))
+    org_id = socket.assigns.current_scope.current_org.id
+    purchase = fetch_or_nil(ClientMonths.get_by_period(org_id, client.id, period))
+    sales = fetch_or_nil(SalesMonths.get_by_period(org_id, client.id, period))
 
     if purchase || sales do
       socket
@@ -68,8 +69,9 @@ defmodule NilaWeb.MonthLive do
 
   defp reload(socket) do
     %{client: client, period: period} = socket.assigns
-    purchase = fetch_or_nil(ClientMonths.get_by_period(client.org_id, client.id, period))
-    sales = fetch_or_nil(SalesMonths.get_by_period(client.org_id, client.id, period))
+    org_id = socket.assigns.current_scope.current_org.id
+    purchase = fetch_or_nil(ClientMonths.get_by_period(org_id, client.id, period))
+    sales = fetch_or_nil(SalesMonths.get_by_period(org_id, client.id, period))
     assign_month(socket, purchase, sales)
   end
 
@@ -254,10 +256,12 @@ defmodule NilaWeb.MonthLive do
   defp strip_variant(:done), do: "success"
   defp strip_variant(_), do: "neutral"
 
+  # Missing-side wording stays neutral — "not in yet" states a fact; "missing"
+  # would tell the firm to chase something that may simply not exist.
   defp strip_detail(assigns) do
     [
-      assigns.sales_month == nil && "sales bills missing",
-      assigns.purchase_month == nil && "purchase bills missing",
+      assigns.sales_month == nil && "sales bills not in yet",
+      assigns.purchase_month == nil && "purchase bills not in yet",
       assigns.stats && assigns.stats.need_decision > 0 &&
         "#{assigns.stats.need_decision} purchase decisions open",
       assigns.open_issue_count > 0 && "#{assigns.open_issue_count} sales issues open"

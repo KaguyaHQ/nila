@@ -2,13 +2,18 @@ defmodule Gstr1Eval do
   @moduledoc """
   Script-only IO/CLI shim around the `Nila.Gst.Gstr1` engine.
 
-  The pure derivation, validation, correction, and diff logic lives in
+  The pure derivation, validation, and correction logic lives in
   `lib/nila/gst/gstr1.ex` (tested). This module only holds what a CLI eval run
   needs and the product must not: arg parsing, fixture-directory conventions,
-  JSON file IO, page-artifact loading, and console report printing. Everything
-  substantive delegates to `Nila.Gst.Gstr1`.
+  JSON file IO, page-artifact loading, console report printing, and the
+  field-level diff/scoring of a derived return against a filed return (the
+  product never scores itself). The derivation/validation/correction logic
+  delegates to `Nila.Gst.Gstr1`.
   """
   alias Nila.Gst.Gstr1
+
+  @diff_tolerance 0.01
+  @ignored_invoice_fields ~w(chksum flag updby cflag)
 
   def default_fixture_dir do
     Path.expand("../test/fixtures/gstr1/breeze/2026-05", __DIR__)
@@ -98,7 +103,152 @@ defmodule Gstr1Eval do
   defdelegate validation_issues(invoices), to: Gstr1
   defdelegate flagged_fields(invoices, issues), to: Gstr1
   defdelegate derive_gstr1(invoices, filed), to: Gstr1, as: :derive
-  defdelegate diff(derived, filed), to: Gstr1
+
+  @doc """
+  Field-level diff of a derived GSTR-1 against a filed return, scored as a
+  match percentage. Eval-only — the product never scores itself.
+  """
+  def diff(derived, filed) do
+    invoice_diffs = diff_invoices(derived, filed)
+    hsn_diffs = diff_hsn(derived, filed)
+    doc_diffs = diff_doc(derived, filed)
+    rows = invoice_diffs ++ hsn_diffs ++ doc_diffs
+    matches = Enum.count(rows, & &1["match"])
+    total = length(rows)
+    score = if total == 0, do: 0.0, else: matches * 100 / total
+
+    %{
+      "score" => Float.round(score, 2),
+      "matches" => matches,
+      "total" => total,
+      "mismatches" => Enum.reject(rows, & &1["match"]),
+      "rows" => rows
+    }
+  end
+
+  defp diff_invoices(derived, filed) do
+    derived_rows = invoice_rows(derived)
+    filed_rows = invoice_rows(filed)
+    keys = (Map.keys(derived_rows) ++ Map.keys(filed_rows)) |> Enum.uniq() |> Enum.sort()
+    invoice_fields = ~w(ctin inum idt val pos rchrg inv_typ)
+    item_fields = ~w(rt txval camt samt iamt csamt)
+
+    Enum.flat_map(keys, fn key ->
+      derived = derived_rows[key] || %{}
+      filed = filed_rows[key] || %{}
+
+      invoice_checks =
+        Enum.map(invoice_fields, fn field ->
+          diff_row("invoice", key, field, derived[field], filed[field])
+        end)
+
+      item_checks =
+        Enum.map(item_fields, fn field ->
+          diff_row(
+            "invoice_item",
+            key,
+            field,
+            get_in(derived, ["itm_det", field]),
+            get_in(filed, ["itm_det", field])
+          )
+        end)
+
+      invoice_checks ++ item_checks
+    end)
+  end
+
+  defp invoice_rows(gstr1) do
+    for ctin_block <- gstr1["b2b"] || [],
+        inv <- ctin_block["inv"] || [],
+        item <- inv["itms"] || [],
+        reduce: %{} do
+      acc ->
+        cleaned_inv = Map.drop(inv, @ignored_invoice_fields)
+        key = "#{ctin_block["ctin"]}|#{inv["inum"]}|#{get_in(item, ["itm_det", "rt"])}"
+
+        Map.put(
+          acc,
+          key,
+          cleaned_inv
+          |> Map.put("ctin", ctin_block["ctin"])
+          |> Map.put("itm_det", item["itm_det"] || %{})
+        )
+    end
+  end
+
+  defp diff_hsn(derived, filed) do
+    derived_rows = hsn_rows(derived)
+    filed_rows = hsn_rows(filed)
+    keys = (Map.keys(derived_rows) ++ Map.keys(filed_rows)) |> Enum.uniq() |> Enum.sort()
+
+    Enum.flat_map(keys, fn key ->
+      Enum.map(~w(hsn_sc rt txval camt samt iamt), fn field ->
+        diff_row(
+          "hsn",
+          key,
+          field,
+          get_in(derived_rows, [key, field]),
+          get_in(filed_rows, [key, field])
+        )
+      end)
+    end)
+  end
+
+  defp hsn_rows(gstr1) do
+    for row <- get_in(gstr1, ["hsn", "hsn_b2b"]) || [], reduce: %{} do
+      acc -> Map.put(acc, "#{row["hsn_sc"]}|#{row["rt"]}", row)
+    end
+  end
+
+  defp diff_doc(derived, filed) do
+    derived_doc =
+      get_in(derived, ["doc_issue", "doc_det", Access.at(0), "docs", Access.at(0)]) || %{}
+
+    filed_doc = get_in(filed, ["doc_issue", "doc_det", Access.at(0), "docs", Access.at(0)]) || %{}
+
+    Enum.map(~w(from to totnum net_issue cancel), fn field ->
+      diff_row("doc_issue", "doc_issue", field, derived_doc[field], filed_doc[field])
+    end)
+  end
+
+  defp diff_row(scope, key, field, derived, filed) do
+    %{
+      "scope" => scope,
+      "key" => key,
+      "field" => field,
+      "derived" => derived,
+      "filed" => filed,
+      "match" => equivalent?(field, derived, filed)
+    }
+  end
+
+  # Auditor entry convention varies between whole-rupee rounding and paise for invoice val.
+  defp equivalent?("val", a, b) when is_number(a) or is_number(b) do
+    close?(num(a), num(b), 1.0)
+  end
+
+  defp equivalent?(_field, a, b) when is_number(a) or is_number(b) do
+    close?(num(a), num(b), @diff_tolerance)
+  end
+
+  defp equivalent?(_field, a, b), do: normalize_blank(a) == normalize_blank(b)
+
+  defp close?(a, b, tolerance), do: abs(num(a) - num(b)) <= tolerance + 0.000001
+
+  defp normalize_blank(nil), do: nil
+  defp normalize_blank(value) when is_binary(value), do: String.trim(value)
+  defp normalize_blank(value), do: value
+
+  defp num(nil), do: 0
+  defp num(value) when is_integer(value), do: value / 1
+  defp num(value) when is_float(value), do: value
+
+  defp num(value) when is_binary(value) do
+    case value |> String.replace(",", "") |> String.replace(~r/[^0-9.\-]/, "") |> Float.parse() do
+      {number, _} -> number
+      :error -> 0
+    end
+  end
 
   @doc """
   Applies corrections from a patch file path (script convenience). Reads and

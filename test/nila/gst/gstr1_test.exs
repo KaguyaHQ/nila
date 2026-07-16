@@ -11,6 +11,8 @@ defmodule Nila.Gst.Gstr1Test do
   """
   use ExUnit.Case, async: true
 
+  Code.require_file("scripts/gstr1_eval_lib.exs")
+
   alias Nila.Gst.Gstr1
 
   @eval_root Path.expand("../../../tmp/eval", __DIR__)
@@ -138,7 +140,7 @@ defmodule Nila.Gst.Gstr1Test do
             invoices = load_invoices(pages_dir)
             filed = filed_path |> File.read!() |> Jason.decode!()
             derived = Gstr1.derive(invoices, filed)
-            result = Gstr1.diff(derived, filed)
+            result = Gstr1Eval.diff(derived, filed)
             assert_in_delta result["score"], unquote(expected), 0.01
         end
       end
