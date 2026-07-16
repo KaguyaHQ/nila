@@ -42,11 +42,30 @@ defmodule Nila.Gst.Signoff do
     |> validate_parent()
   end
 
+  # Exactly one parent, matching the artifact — mirrors the DB check
+  # constraint (signoff_artifact_parent).
   defp validate_parent(changeset) do
     case get_field(changeset, :artifact) do
-      "gstr1" -> validate_required(changeset, [:sales_month_id])
-      "gstr3b" -> validate_required(changeset, [:client_month_id])
-      _ -> changeset
+      "gstr1" ->
+        changeset
+        |> validate_required([:sales_month_id])
+        |> refute_field(:client_month_id)
+
+      "gstr3b" ->
+        changeset
+        |> validate_required([:client_month_id])
+        |> refute_field(:sales_month_id)
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp refute_field(changeset, field) do
+    if get_field(changeset, field) do
+      add_error(changeset, field, "must be empty for this artifact")
+    else
+      changeset
     end
   end
 end

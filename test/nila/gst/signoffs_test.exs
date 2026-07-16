@@ -202,6 +202,21 @@ defmodule Nila.Gst.SignoffsTest do
                )
     end
 
+    test "3B assembles from the signed R1 snapshot, not a live derivation", %{
+      month: client_month,
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      reviewed = make_reviewed(sales_month, scope.user.id)
+      {:ok, signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
+
+      gstr3b = Nila.Gst.Resolutions.workings(client_month).gstr3b
+      assert gstr3b["liability_source"] == "gstr1_signed"
+
+      expected = Nila.Gst.Gstr3b.liability_from_gstr1(signoff.snapshot["derived"])
+      assert gstr3b["liability_31"]["a"]["txval"] == expected["txval"]
+    end
+
     test "reopening the GSTR-1 cascades to the dependent 3B signature", %{
       month: client_month,
       sales_month: sales_month,

@@ -388,7 +388,7 @@ defmodule NilaWeb.Gstr1MonthLive do
             </.badge>
             <span class="text-base-content/80 text-small min-w-0 flex-1">{issue["message"]}</span>
             <.button
-              :if={issue["status"] == "open"}
+              :if={issue["status"] == "open" and is_nil(@signoff)}
               variant="outline"
               size="xs"
               phx-click="confirm_issue"
@@ -399,6 +399,7 @@ defmodule NilaWeb.Gstr1MonthLive do
             <span :if={issue["status"] == "resolved"} class="flex items-center gap-1.5">
               <span class="text-fine text-success font-medium">Confirmed</span>
               <.button
+                :if={is_nil(@signoff)}
                 variant="ghost"
                 size="xs"
                 phx-click="undo"
@@ -511,7 +512,7 @@ defmodule NilaWeb.Gstr1MonthLive do
                 <p class="text-base-content/80 text-small mt-2">{issue["message"]}</p>
                 <div class="mt-2">
                   <.button
-                    :if={issue["status"] == "open"}
+                    :if={issue["status"] == "open" and is_nil(@signoff)}
                     variant="outline"
                     size="xs"
                     phx-click="confirm_issue"
@@ -522,6 +523,7 @@ defmodule NilaWeb.Gstr1MonthLive do
                   <span :if={issue["status"] == "resolved"} class="flex items-center gap-1.5">
                     <span class="text-fine text-success font-medium">Confirmed</span>
                     <.button
+                      :if={is_nil(@signoff)}
                       variant="ghost"
                       size="xs"
                       phx-click="undo"

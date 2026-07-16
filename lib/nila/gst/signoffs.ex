@@ -93,32 +93,42 @@ defmodule Nila.Gst.Signoffs do
   `{:error, :already_signed}` when a live signature exists.
   """
   def sign_off_gstr1(%SalesMonth{} = month, scope) do
-    cond do
-      not Policy.can?(scope, :sign_off) ->
-        {:error, :not_allowed}
+    if Policy.can?(scope, :sign_off) do
+      # The row lock serializes signing against SalesResolutions.record (which
+      # locks the same row before checking for a live signature) — a decision
+      # and a signature cannot interleave. The partial unique index
+      # (gst_signoffs_live_gstr1_index) backstops concurrent double-signs.
+      Repo.transact(fn ->
+        month = Repo.one!(from m in SalesMonth, where: m.id == ^month.id, lock: "FOR UPDATE")
 
-      match?({:ok, _}, latest_gstr1_signoff(month.id)) ->
-        {:error, :already_signed}
+        cond do
+          match?({:ok, _}, latest_gstr1_signoff(month.id)) ->
+            {:error, :already_signed}
 
-      month.state != "reviewed" ->
-        {:error, :not_reviewed}
+          month.state != "reviewed" ->
+            {:error, :not_reviewed}
 
-      true ->
-        workings = SalesResolutions.workings(month)
+          true ->
+            workings = SalesResolutions.workings(month)
 
-        snapshot = %{
-          "invoices" => workings.invoices,
-          "issues" => workings.issues,
-          "derived" => workings.derived
-        }
+            snapshot = %{
+              "invoices" => workings.invoices,
+              "issues" => workings.issues,
+              "derived" => workings.derived
+            }
 
-        %Signoff{
-          org_id: month.org_id,
-          sales_month_id: month.id,
-          signed_by_id: scope.user.id
-        }
-        |> Signoff.changeset(%{artifact: "gstr1", snapshot: snapshot})
-        |> Repo.insert()
+            {:ok,
+             %Signoff{
+               org_id: month.org_id,
+               sales_month_id: month.id,
+               signed_by_id: scope.user.id
+             }
+             |> Signoff.changeset(%{artifact: "gstr1", snapshot: snapshot})
+             |> Repo.insert!()}
+        end
+      end)
+    else
+      {:error, :not_allowed}
     end
   end
 
