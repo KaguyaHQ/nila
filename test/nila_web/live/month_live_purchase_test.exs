@@ -1,4 +1,4 @@
-defmodule NilaWeb.GstMonthLiveTest do
+defmodule NilaWeb.MonthLivePurchaseTest do
   use NilaWeb.ConnCase
 
   import Phoenix.LiveViewTest
@@ -30,7 +30,7 @@ defmodule NilaWeb.GstMonthLiveTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#gst-month-page")
+    assert has_element?(view, "#month-page")
     assert has_element?(view, "#gst-stat-invoices", "58")
     assert has_element?(view, "#gst-stat-matched", "37")
     assert has_element?(view, "#gst-stat-need-decision", "21")
@@ -93,14 +93,17 @@ defmodule NilaWeb.GstMonthLiveTest do
     assert html =~ "outward liability needs the month"
     assert html =~ "C Net ITC"
     refute has_element?(view, "#gst-3b-cash")
-    refute has_element?(view, "#gst-open-gstr1")
   end
 
-  test "links to the GSTR-1 month when a sales month exists", %{
+  test "the sales section renders on the same page when a sales month exists", %{
     conn: conn,
     org: org,
     client: client
   } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    assert has_element?(view, "#month-sales-missing")
+    refute has_element?(view, "#month-sales")
+
     {:ok, _} =
       Nila.Gst.SalesMonths.upsert(%{
         org_id: org.id,
@@ -115,7 +118,8 @@ defmodule NilaWeb.GstMonthLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#gst-open-gstr1")
+    assert has_element?(view, "#month-sales")
+    refute has_element?(view, "#month-sales-missing")
   end
 
   test "the owning org can fetch an evidence image", %{conn: conn, client: client} do
@@ -198,7 +202,7 @@ defmodule NilaWeb.GstMonthLiveTest do
 
     refute has_element?(view, "#gst-signoff-button")
 
-    render_click(view, "sign-off", %{})
+    render_click(view, "3b-sign-off", %{})
     assert render(view) =~ "permission"
 
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)

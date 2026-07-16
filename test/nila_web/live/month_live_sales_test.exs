@@ -1,4 +1,4 @@
-defmodule NilaWeb.Gstr1MonthLiveTest do
+defmodule NilaWeb.MonthLiveSalesTest do
   use NilaWeb.ConnCase
   use Oban.Testing, repo: Nila.Repo
 
@@ -36,10 +36,10 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
   end
 
   test "renders the worked sales month with issue flags", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, ~p"/gstr1/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#gstr1-month-page")
-    assert has_element?(view, "#gstr1-open-purchases")
+    assert has_element?(view, "#month-page")
+    assert has_element?(view, "#month-sales")
     assert has_element?(view, "#gstr1-inv-20\\/2026-27")
     assert render(view) =~ "open issues"
   end
@@ -48,7 +48,7 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gstr1/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     view |> element("#gstr1-inv-20\\/2026-27") |> render_click()
 
@@ -57,7 +57,7 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
   end
 
   test "confirming an issue resolves it; undo reopens it", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, ~p"/gstr1/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     view |> element("#gstr1-inv-20\\/2026-27") |> render_click()
 
@@ -78,7 +78,7 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gstr1/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     view |> element("#gstr1-inv-20\\/2026-27") |> render_click()
 
@@ -97,7 +97,7 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gstr1/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     refute has_element?(view, "#gstr1-mark-reviewed")
 
@@ -135,7 +135,7 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gstr1/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
     view |> element("#gstr1-mark-reviewed") |> render_click()
@@ -157,7 +157,7 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gstr1/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
     view |> element("#gstr1-mark-reviewed") |> render_click()
@@ -178,7 +178,7 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     {:ok, _} = Nila.Orgs.add_user(org, member.id, "member")
     conn = log_in_user(build_conn(), member)
 
-    {:ok, view, _html} = live(conn, ~p"/gstr1/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
     view |> element("#gstr1-mark-reviewed") |> render_click()
@@ -201,7 +201,7 @@ defmodule NilaWeb.Gstr1MonthLiveTest do
     conn = log_in_user(build_conn(), other_user)
 
     assert {:error, {:live_redirect, %{to: "/today"}}} =
-             live(conn, ~p"/gstr1/#{client.id}/#{@period}")
+             live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     conn =
       get(build_conn() |> log_in_user(other_user), ~p"/gstr1/#{client.id}/#{@period}/return.json")

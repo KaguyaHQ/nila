@@ -161,7 +161,11 @@ defmodule NilaWeb.GstExceptionsLive do
       when verb in ~w(confirm_pair reject_pair start_correct save_correct undo block_itc allow_itc reopen_block) and
              socket.assigns.signed_off do
     {:noreply,
-     put_flash(socket, :error, "Month is signed off — a senior must reopen it from the month page.")}
+     put_flash(
+       socket,
+       :error,
+       "Month is signed off — a senior must reopen it from the month page."
+     )}
   end
 
   def handle_event("confirm_pair", %{"id" => id}, socket) do

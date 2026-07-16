@@ -125,7 +125,7 @@ abstraction from real data.
   GSTR-2B with a "flag, don't guess" matching ladder, validation flags (duplicate scans,
   invalid GSTINs, blocked ITC, tax-arithmetic), the purchase register, and the
   review-brief assembly. Validated end-to-end on a real filed month.
-- **The month review workspace** (`NilaWeb.GstMonthLive`, `Nila.Gst.ClientMonths`) — a
+- **The month workbench** (`NilaWeb.MonthLive`, `Nila.Gst.ClientMonths`) — a
   live, org-scoped surface rendering a client's worked month: stats, the register, and
   tap-a-row → the scanned bill served through a tenant-isolated evidence route, plus the
   human resolve loop (`NilaWeb.GstExceptionsLive`) for reconciliation exceptions. This is

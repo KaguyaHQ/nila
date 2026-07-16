@@ -102,13 +102,14 @@ trigger workflow steps and audited state transitions.
 - `lib/nila_web/` — controllers, LiveViews, components.
 - `Layouts.app/1` hosts the global shell (left rail, page header) per
   `docs/design/layout.md`.
-- `NilaWeb.GstMonthLive` (`/gst/:client_id/:period`) is the product surface:
-  a live, org-scoped review workspace rendering a client's worked GST month —
-  stats, the purchase register, and tap-a-row → the scanned bill served
-  through a tenant-isolated evidence route (`GstEvidenceController`). Resolve/
-  override and the collection loop are the next milestones (`docs/.plans/`).
-- `/today` (`TodayLive`) is a placeholder cockpit; it will become the list of
-  client-months needing attention that feeds the workspace.
+- `NilaWeb.MonthLive` (`/gst/:client_id/:period`) is the product surface: the
+  client-month workbench — a state strip (who the month waits on), the GSTR-1
+  section (invoices, issues, review/sign-off/filed arc), the purchase register
+  (2B recon, tap-a-row → the scanned bill via tenant-isolated evidence
+  routes), and the assembled GSTR-3B with its own certification arc.
+- `/today` (`TodayLive` over `Nila.Gst.Today`) is the front door: one row per
+  client-month worth attention, sectioned by blocking state (to file / needs
+  you / waiting on client / waiting on senior / done).
 
 ## Where to read next
 

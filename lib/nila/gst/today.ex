@@ -79,7 +79,15 @@ defmodule Nila.Gst.Today do
     gstr3b_filed = purchase != nil and purchase.filed_at != nil
 
     section =
-      section(purchase, sales, need_decision, r1_signed, r1_filed, gstr3b_signed, gstr3b_filed)
+      blocking_state(%{
+        purchase: purchase,
+        sales: sales,
+        need_decision: need_decision,
+        r1_signed: r1_signed,
+        r1_filed: r1_filed,
+        gstr3b_signed: gstr3b_signed,
+        gstr3b_filed: gstr3b_filed
+      })
 
     deadline = deadline(period, today, r1_filed, gstr3b_filed)
     slots = %{purchase: purchase != nil, sales: sales != nil}
@@ -101,10 +109,22 @@ defmodule Nila.Gst.Today do
     }
   end
 
-  # First match wins, most urgent first. A signed-unfiled return outranks
-  # open work — filing is the step nobody may miss; a row with open work on
-  # one side and a signed return on the other belongs to the filing gap.
-  defp section(purchase, sales, need_decision, r1_signed, r1_filed, gstr3b_signed, gstr3b_filed) do
+  @doc """
+  Who a client-month is waiting on — the one derivation both Today's rows and
+  the month workbench's state strip read, so they can never disagree. First
+  match wins, most urgent first: a signed-unfiled return outranks open work
+  (filing is the step nobody may miss); a row with open work on one side and
+  a signed return on the other belongs to the filing gap.
+  """
+  def blocking_state(%{
+        purchase: purchase,
+        sales: sales,
+        need_decision: need_decision,
+        r1_signed: r1_signed,
+        r1_filed: r1_filed,
+        gstr3b_signed: gstr3b_signed,
+        gstr3b_filed: gstr3b_filed
+      }) do
     cond do
       r1_filed and gstr3b_filed ->
         :done
@@ -123,9 +143,11 @@ defmodule Nila.Gst.Today do
     end
   end
 
-  # The chip counts to the nearest unmet return: GSTR-1 until it's filed
-  # (due the 11th), then GSTR-3B (the 20th). Both filed — no clock.
-  defp deadline(period, today, r1_filed, gstr3b_filed) do
+  @doc """
+  The nearest unmet return's clock: GSTR-1 until it's filed (due the 11th),
+  then GSTR-3B (the 20th). Both filed — no clock (`nil`).
+  """
+  def deadline(period, today, r1_filed, gstr3b_filed) do
     status = Calendar.status(period, today)
 
     cond do
@@ -183,14 +205,12 @@ defmodule Nila.Gst.Today do
     end
   end
 
-  # Click follows the work: the purchase month page when one exists, the
-  # GSTR-1 view when only sales arrived, the upload flow when nothing has.
+  # Click follows the work: the month workbench when anything has arrived
+  # (it renders whichever sides exist), the upload flow when nothing has.
   defp row_path(client, period, purchase, sales) do
-    cond do
-      purchase != nil -> "/gst/#{client.id}/#{period}"
-      sales != nil -> "/gstr1/#{client.id}/#{period}"
-      true -> "/gst/upload"
-    end
+    if purchase || sales,
+      do: "/gst/#{client.id}/#{period}",
+      else: "/gst/upload"
   end
 
   defp section_rank(section), do: Enum.find_index(@sections, &(&1 == section))
