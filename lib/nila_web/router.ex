@@ -44,6 +44,15 @@ defmodule NilaWeb.Router do
     get "/health", HealthController, :check
   end
 
+  # Public legal & contact pages — reachable by everyone, logged in or out.
+  scope "/", NilaWeb do
+    pipe_through :browser
+
+    get "/privacy", PageController, :privacy
+    get "/terms", PageController, :terms
+    get "/contact", PageController, :contact
+  end
+
   # Public marketing site — served to logged-out visitors.
   scope "/", NilaWeb do
     pipe_through [:browser, :redirect_if_authenticated]
