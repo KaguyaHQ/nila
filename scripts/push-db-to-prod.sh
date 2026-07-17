@@ -78,4 +78,4 @@ rm -f "$REMOTE_DUMP"
 REMOTE
 
 echo "==> Done. Prod now mirrors local '$LOCAL_DB'."
-echo "    Verify: curl -s https://nilahq.com/health"
+echo "    Verify: curl -s https://nila.tax/health"
