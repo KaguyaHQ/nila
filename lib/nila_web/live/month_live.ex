@@ -20,6 +20,8 @@ defmodule NilaWeb.MonthLive do
 
   alias Nila.Gst.{
     ClientMonths,
+    Dumps,
+    DumpWorker,
     Resolutions,
     SalesMonths,
     SalesResolutions,
@@ -80,6 +82,17 @@ defmodule NilaWeb.MonthLive do
     |> assign_purchase(purchase)
     |> assign_sales(sales)
     |> assign_strip(purchase, sales)
+    |> assign_dumps()
+  end
+
+  defp assign_dumps(socket) do
+    %{client: client, period: period} = socket.assigns
+    org_id = socket.assigns.current_scope.current_org.id
+    dumps = Dumps.list(org_id, client.id, period)
+
+    socket
+    |> assign(:dumps, dumps)
+    |> assign(:attention_dumps, Enum.filter(dumps, &(&1.status in ~w(held failed))))
   end
 
   # ---------------------------------------------------------------------------
@@ -419,6 +432,22 @@ defmodule NilaWeb.MonthLive do
     end
   end
 
+  def handle_event("release-dump", %{"dump-id" => dump_id}, socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+
+    with {:ok, %{status: "held"} = dump} <- Dumps.fetch(org_id, dump_id) do
+      released = Dumps.release(dump)
+      {:ok, _} = Oban.insert(DumpWorker.new(%{dump_id: released.id}))
+
+      {:noreply,
+       socket
+       |> reload()
+       |> put_flash(:info, "Dump released — the month reworks with it now.")}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event("3b-mark-filed", params, socket) do
     case Signoffs.mark_filed(
            socket.assigns.purchase_month,
@@ -646,6 +675,35 @@ defmodule NilaWeb.MonthLive do
             </a>
             <a :if={@purchase_month} href="#month-3b" class="hover:text-base-content">3B</a>
           </nav>
+        </div>
+
+        <div :if={@attention_dumps != []} id="month-dumps" class="space-y-2">
+          <div
+            :for={dump <- @attention_dumps}
+            id={"month-dump-#{dump.id}"}
+            class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+          >
+            <.badge variant={if dump.status == "failed", do: "error", else: "warning"}>
+              {dump_kind_title(dump.kind)}
+            </.badge>
+            <span class="text-base-content/80 text-small min-w-0 flex-1">
+              <%= if dump.status == "failed" do %>
+                Extraction failed — check the file and bring it in again.
+              <% else %>
+                Arrived after the return was signed — held until the signature reopens.
+              <% end %>
+            </span>
+            <.button
+              :if={dump.status == "held" and dump_releasable?(assigns, dump)}
+              id={"month-dump-release-#{dump.id}"}
+              variant="outline"
+              size="xs"
+              phx-click="release-dump"
+              phx-value-dump-id={dump.id}
+            >
+              Rework the month with it
+            </.button>
+          </div>
         </div>
 
         <section :if={@sales_month} id="month-sales" class="scroll-mt-4 space-y-4">
@@ -1167,6 +1225,15 @@ defmodule NilaWeb.MonthLive do
     </Layouts.app>
     """
   end
+
+  defp dump_kind_title("sales"), do: "Sales bills"
+  defp dump_kind_title("purchase"), do: "Purchase bills"
+  defp dump_kind_title("gstr2b"), do: "GSTR-2B"
+
+  # A held dump is releasable once the signature over its side is gone —
+  # releasing it under a live signature would just re-hold it.
+  defp dump_releasable?(assigns, %{kind: "sales"}), do: is_nil(assigns.r1_signoff)
+  defp dump_releasable?(assigns, _dump), do: is_nil(assigns.gstr3b_signoff)
 
   defp deadline_label(days) when days < 0, do: "#{-days}d overdue"
   defp deadline_label(0), do: "due today"

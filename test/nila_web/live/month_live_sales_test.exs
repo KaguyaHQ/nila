@@ -175,6 +175,32 @@ defmodule NilaWeb.MonthLiveSalesTest do
     refute has_element?(view, "#gstr1-signoff-button")
   end
 
+  test "a held straggler shows on the workbench; release reworks the month", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    confirm_all_open_issues(view)
+    view |> element("#gstr1-mark-reviewed") |> render_click()
+    view |> element("#gstr1-signoff-button") |> render_click()
+
+    straggler = work_dump!(org, client, @period, "sales", "%PDF-1.4 late")
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    assert has_element?(view, "#month-dump-#{straggler.id}")
+    refute has_element?(view, "#month-dump-release-#{straggler.id}")
+
+    view |> element("#gstr1-reopen-signoff") |> render_click()
+    assert has_element?(view, "#month-dump-release-#{straggler.id}")
+
+    view |> element("#month-dump-release-#{straggler.id}") |> render_click()
+
+    assert [job] = all_enqueued(worker: Nila.Gst.DumpWorker)
+    assert job.args["dump_id"] == straggler.id
+  end
+
   test "downloads the portal-shaped GSTR-1 JSON", %{conn: conn, client: client} do
     conn = get(conn, ~p"/gstr1/#{client.id}/#{@period}/return.json")
 
