@@ -1,14 +1,13 @@
 defmodule Nila.Gst.SignoffsTest do
   use Nila.DataCase, async: true
-  use Oban.Testing, repo: Nila.Repo
 
   import Nila.AccountsFixtures
+  import Nila.GstFixtures
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
-  alias Nila.Gst.{ClientMonths, Gstr1Worker, Recon, Register, SalesMonths, SalesResolutions}
+  alias Nila.Gst.{ClientMonths, Recon, Register, SalesMonths, SalesResolutions}
   alias Nila.Gst.{SalesWorkings, Signoffs}
-  alias Nila.Storage
 
   @period "2025-10"
   @gstin "33AAACS1234A1Z9"
@@ -151,16 +150,7 @@ defmodule Nila.Gst.SignoffsTest do
     setup %{org: org, month: month} do
       {:ok, client} = Clients.get_client(org.id, month.client_id)
 
-      pdf_key = "gstr1/#{org.id}/#{client.id}/#{@period}/source/bills.pdf"
-      {:ok, _} = Storage.put(pdf_key, "%PDF-1.4 fake bytes")
-
-      :ok =
-        perform_job(Gstr1Worker, %{
-          "org_id" => org.id,
-          "client_id" => client.id,
-          "period" => @period,
-          "pdf_key" => pdf_key
-        })
+      work_dump!(org, client, @period, "sales", "%PDF-1.4 fake bytes")
 
       {:ok, sales_month} = SalesMonths.get_by_period(org.id, client.id, @period)
       %{sales_month: sales_month}

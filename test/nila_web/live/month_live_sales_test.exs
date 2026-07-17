@@ -1,12 +1,10 @@
 defmodule NilaWeb.MonthLiveSalesTest do
   use NilaWeb.ConnCase
-  use Oban.Testing, repo: Nila.Repo
 
   import Phoenix.LiveViewTest
+  import Nila.GstFixtures
 
   alias Nila.Clients
-  alias Nila.Gst.Gstr1Worker
-  alias Nila.Storage
 
   @period "2026-05"
 
@@ -21,16 +19,7 @@ defmodule NilaWeb.MonthLiveSalesTest do
         gstin: "33AEWPH4158J1Z3"
       })
 
-    pdf_key = "gstr1/#{org.id}/#{client.id}/#{@period}/source/bills.pdf"
-    {:ok, _} = Storage.put(pdf_key, "%PDF-1.4 fake bytes")
-
-    :ok =
-      perform_job(Gstr1Worker, %{
-        "org_id" => org.id,
-        "client_id" => client.id,
-        "period" => @period,
-        "pdf_key" => pdf_key
-      })
+    work_dump!(org, client, @period, "sales", "%PDF-1.4 fake bytes", user.id)
 
     %{conn: log_in_user(conn, user), org: org, client: client}
   end

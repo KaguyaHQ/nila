@@ -1,12 +1,11 @@
 defmodule Nila.Gst.SalesResolutionsTest do
   use Nila.DataCase, async: true
-  use Oban.Testing, repo: Nila.Repo
 
   import Nila.AccountsFixtures
+  import Nila.GstFixtures
 
   alias Nila.Clients
-  alias Nila.Gst.{Gstr1Worker, SalesMonths, SalesResolutions, SalesWorkings}
-  alias Nila.Storage
+  alias Nila.Gst.{SalesMonths, SalesResolutions, SalesWorkings}
 
   @period "2026-05"
 
@@ -21,16 +20,7 @@ defmodule Nila.Gst.SalesResolutionsTest do
         gstin: "33AEWPH4158J1Z3"
       })
 
-    pdf_key = "gstr1/#{org.id}/#{client.id}/#{@period}/source/bills.pdf"
-    {:ok, _} = Storage.put(pdf_key, "%PDF-1.4 fake bytes")
-
-    :ok =
-      perform_job(Gstr1Worker, %{
-        "org_id" => org.id,
-        "client_id" => client.id,
-        "period" => @period,
-        "pdf_key" => pdf_key
-      })
+    work_dump!(org, client, @period, "sales", "%PDF-1.4 fake bytes", user.id)
 
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
     %{user: user, org: org, client: client, month: month}

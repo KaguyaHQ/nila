@@ -110,7 +110,7 @@ defmodule Nila.Gst.ClientMonths do
 
   @doc """
   Broadcasts a month-processing progress message to an org's subscribers.
-  Called by `Nila.Gst.MonthWorker` at each stage.
+  Called by `Nila.Gst.DumpWorker` at each stage.
   """
   def broadcast_progress(org_id, message) do
     Phoenix.PubSub.broadcast(Nila.PubSub, topic(org_id), message)

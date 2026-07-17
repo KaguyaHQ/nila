@@ -5,6 +5,7 @@ defmodule NilaWeb.GstUploadLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
+  alias Nila.Gst.{Dumps, DumpWorker}
 
   @period "2025-10"
   @period_month "10"
@@ -14,65 +15,74 @@ defmodule NilaWeb.GstUploadLiveTest do
     %{user: user, org: org} = user_with_org_fixture()
     {:ok, client} = Clients.create_client(%{org_id: org.id, name: "Breeze Tech", type: "company"})
 
-    %{conn: log_in_user(conn, user), org: org, client: client}
+    %{conn: log_in_user(conn, user), user: user, org: org, client: client}
   end
 
-  test "mounts with the upload form and both file inputs", %{conn: conn} do
+  defp submit(view, client) do
+    view
+    |> form("#gst-upload-form",
+      intake: %{client_id: client.id, period_month: @period_month, period_year: @period_year}
+    )
+    |> render_submit()
+  end
+
+  test "mounts with the intake form and all three drops", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
     assert has_element?(view, "#gst-upload-page")
     assert has_element?(view, "#gst-upload-form")
-    assert has_element?(view, "#gst-upload-bills")
-    assert has_element?(view, "#gst-upload-gstr2b")
     assert has_element?(view, "#gst-upload-sales")
+    assert has_element?(view, "#gst-upload-purchase")
+    assert has_element?(view, "#gst-upload-gstr2b")
     assert has_element?(view, "#gst-upload-submit")
   end
 
-  test "accepts two uploads, enqueues the worker, and shows progress", %{
-    conn: conn,
-    org: org,
-    client: client
-  } do
+  test "prefills client and period from query params", %{conn: conn, client: client} do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload?client_id=#{client.id}&period=2025-08")
+
+    html = view |> element("#gst-upload-form") |> render()
+    assert html =~ ~s(selected="" value="#{client.id}")
+    assert html =~ ~s(selected="" value="08")
+    assert html =~ ~s(selected="" value="2025")
+  end
+
+  test "another org's client id does not prefill", %{conn: conn} do
+    %{org: other_org} = user_with_org_fixture(%{org: %{gstin: "27AAPFU0939F1ZV"}})
+
+    {:ok, other_client} =
+      Clients.create_client(%{org_id: other_org.id, name: "Rival Corp", type: "company"})
+
+    {:ok, view, _html} = live(conn, ~p"/gst/upload?client_id=#{other_client.id}")
+
+    html = view |> element("#gst-upload-form") |> render()
+    refute html =~ ~s(selected="" value="#{other_client.id}")
+  end
+
+  test "one pile creates one dump and one job", %{conn: conn, org: org, client: client} do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
-    bills =
-      file_input(view, "#gst-upload-form", :bills, [
-        %{name: "bills.pdf", content: "%PDF-1.4 fake", type: "application/pdf"}
+    sales =
+      file_input(view, "#gst-upload-form", :sales, [
+        %{name: "sales.pdf", content: "%PDF-1.4 fake sales", type: "application/pdf"}
       ])
 
-    gstr2b =
-      file_input(view, "#gst-upload-form", :gstr2b, [
-        %{name: "gstr2b.json", content: ~s({"docdata":{"b2b":[]}}), type: "application/json"}
-      ])
+    assert render_upload(sales, "sales.pdf") =~ "sales.pdf"
 
-    assert render_upload(bills, "bills.pdf") =~ "bills.pdf"
-    assert render_upload(gstr2b, "gstr2b.json") =~ "gstr2b.json"
-
-    view
-    |> form("#gst-upload-form",
-      month: %{client_id: client.id, period_month: @period_month, period_year: @period_year}
-    )
-    |> render_submit()
+    submit(view, client)
 
     assert has_element?(view, "#gst-upload-progress")
 
-    assert_enqueued(
-      worker: Nila.Gst.MonthWorker,
-      args: %{org_id: org.id, client_id: client.id, period: @period}
-    )
-
-    refute_enqueued(worker: Nila.Gst.Gstr1Worker)
+    assert [dump] = Dumps.list(org.id, client.id, @period)
+    assert dump.kind == "sales"
+    assert dump.status == "received"
+    assert_enqueued(worker: DumpWorker, args: %{dump_id: dump.id})
   end
 
-  test "attaching sales bills also enqueues the GSTR-1 worker", %{
-    conn: conn,
-    org: org,
-    client: client
-  } do
+  test "a mixed drop creates a dump per pile", %{conn: conn, org: org, client: client} do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
-    bills =
-      file_input(view, "#gst-upload-form", :bills, [
+    purchase =
+      file_input(view, "#gst-upload-form", :purchase, [
         %{name: "bills.pdf", content: "%PDF-1.4 fake", type: "application/pdf"}
       ])
 
@@ -81,38 +91,34 @@ defmodule NilaWeb.GstUploadLiveTest do
         %{name: "gstr2b.json", content: ~s({"docdata":{"b2b":[]}}), type: "application/json"}
       ])
 
-    sales =
-      file_input(view, "#gst-upload-form", :sales, [
-        %{name: "sales.pdf", content: "%PDF-1.4 fake sales", type: "application/pdf"}
-      ])
-
-    render_upload(bills, "bills.pdf")
+    render_upload(purchase, "bills.pdf")
     render_upload(gstr2b, "gstr2b.json")
-    render_upload(sales, "sales.pdf")
 
-    view
-    |> form("#gst-upload-form",
-      month: %{client_id: client.id, period_month: @period_month, period_year: @period_year}
-    )
-    |> render_submit()
+    submit(view, client)
 
-    assert_enqueued(
-      worker: Nila.Gst.MonthWorker,
-      args: %{org_id: org.id, client_id: client.id, period: @period}
-    )
+    kinds = org.id |> Dumps.list(client.id, @period) |> Enum.map(& &1.kind) |> Enum.sort()
+    assert kinds == ["gstr2b", "purchase"]
 
-    assert_enqueued(
-      worker: Nila.Gst.Gstr1Worker,
-      args: %{
-        org_id: org.id,
-        client_id: client.id,
-        period: @period,
-        pdf_key: "gstr1/#{org.id}/#{client.id}/#{@period}/source/bills.pdf"
-      }
-    )
+    for dump <- Dumps.list(org.id, client.id, @period) do
+      assert_enqueued(worker: DumpWorker, args: %{dump_id: dump.id})
+    end
   end
 
-  test "sales bills alone do not start a month", %{conn: conn, client: client} do
+  test "rejects a submit with no files attached", %{conn: conn, org: org, client: client} do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    submit(view, client)
+
+    assert has_element?(view, "#gst-upload-error")
+    assert Dumps.list(org.id, client.id, @period) == []
+    refute_enqueued(worker: DumpWorker)
+  end
+
+  test "progress narrates per dump and offers the month when done", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
     sales =
@@ -121,28 +127,20 @@ defmodule NilaWeb.GstUploadLiveTest do
       ])
 
     render_upload(sales, "sales.pdf")
+    submit(view, client)
 
-    view
-    |> form("#gst-upload-form",
-      month: %{client_id: client.id, period_month: @period_month, period_year: @period_year}
-    )
-    |> render_submit()
+    [dump] = Dumps.list(org.id, client.id, @period)
 
-    assert has_element?(view, "#gst-upload-error")
-    refute_enqueued(worker: Nila.Gst.Gstr1Worker)
-    refute_enqueued(worker: Nila.Gst.MonthWorker)
-  end
+    assert has_element?(view, "#gst-dump-#{dump.id}")
+    assert render(view) =~ "Queued"
 
-  test "rejects a submit with no files attached", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+    # The worker runs and broadcasts; drive it inline and let the view catch up.
+    assert :ok = perform_job(DumpWorker, %{"dump_id" => dump.id})
 
-    view
-    |> form("#gst-upload-form",
-      month: %{client_id: client.id, period_month: @period_month, period_year: @period_year}
-    )
-    |> render_submit()
+    assert render(view) =~ "Done"
+    assert has_element?(view, "#gst-upload-open-month")
 
-    assert has_element?(view, "#gst-upload-error")
-    refute_enqueued(worker: Nila.Gst.MonthWorker)
+    view |> element("#gst-upload-open-month") |> render_click()
+    assert_redirect(view, "/gst/#{client.id}/#{@period}")
   end
 end
