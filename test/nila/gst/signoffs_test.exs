@@ -6,7 +6,7 @@ defmodule Nila.Gst.SignoffsTest do
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
-  alias Nila.Gst.{ClientMonths, Recon, Register, SalesMonths, SalesResolutions}
+  alias Nila.Gst.{ClientMonths, Dumps, Recon, Register, SalesMonths, SalesResolutions}
   alias Nila.Gst.{SalesWorkings, Signoffs}
 
   @period "2025-10"
@@ -55,6 +55,16 @@ defmodule Nila.Gst.SignoffsTest do
       month: month,
       owner_scope: %Scope{user: owner, current_org: org, membership: owner_membership}
     }
+  end
+
+  defp held_dump!(month, user_id, kind) do
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: month.org_id, client_id: month.client_id, brought_in_by_id: user_id},
+        %{period: month.period, kind: kind, file_keys: ["held/#{kind}.pdf"]}
+      )
+
+    Dumps.mark_held(dump)
   end
 
   test "owner signs off a worked month: state reviewed, frozen snapshot persisted", %{
@@ -133,6 +143,22 @@ defmodule Nila.Gst.SignoffsTest do
 
     assert {:error, :already_filed} = Signoffs.mark_filed(filed, scope, nil)
     assert {:error, :filed} = Signoffs.reopen(signoff, scope)
+  end
+
+  test "filing GSTR-3B makes only held purchase-side dumps terminal", %{
+    month: month,
+    owner_scope: scope
+  } do
+    purchase = held_dump!(month, scope.user.id, "purchase")
+    gstr2b = held_dump!(month, scope.user.id, "gstr2b")
+    sales = held_dump!(month, scope.user.id, "sales")
+
+    assert {:ok, _} = Signoffs.sign_off(month, scope)
+    assert {:ok, _} = Signoffs.mark_filed(month, scope)
+
+    assert {:ok, %{status: "after_filing"}} = Dumps.fetch(month.org_id, purchase.id)
+    assert {:ok, %{status: "after_filing"}} = Dumps.fetch(month.org_id, gstr2b.id)
+    assert {:ok, %{status: "held"}} = Dumps.fetch(month.org_id, sales.id)
   end
 
   test "a member cannot reopen", %{month: month, owner_scope: scope, org: org} do
@@ -241,6 +267,22 @@ defmodule Nila.Gst.SignoffsTest do
       assert filed.filed_at
 
       assert {:error, :filed} = Signoffs.reopen(r1_signoff, scope)
+    end
+
+    test "filing GSTR-1 makes only held sales dumps terminal", %{
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      reviewed = make_reviewed(sales_month, scope.user.id)
+      assert {:ok, _} = Signoffs.sign_off_gstr1(reviewed, scope)
+
+      sales = held_dump!(sales_month, scope.user.id, "sales")
+      purchase = held_dump!(sales_month, scope.user.id, "purchase")
+
+      assert {:ok, _} = Signoffs.mark_filed(reviewed, scope)
+
+      assert {:ok, %{status: "after_filing"}} = Dumps.fetch(sales_month.org_id, sales.id)
+      assert {:ok, %{status: "held"}} = Dumps.fetch(sales_month.org_id, purchase.id)
     end
 
     test "reopening the GSTR-1 cascades to the dependent 3B signature", %{

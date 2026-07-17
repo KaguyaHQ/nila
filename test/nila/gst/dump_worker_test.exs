@@ -46,6 +46,23 @@ defmodule Nila.Gst.DumpWorkerTest do
 
   defp run(dump), do: perform_job(DumpWorker, %{"dump_id" => dump.id})
 
+  defp sign_sales(month, user, scope) do
+    SalesResolutions.workings(month).issues
+    |> Enum.filter(&(&1["status"] == "open" and &1["level"] != "info"))
+    |> Enum.each(fn issue ->
+      {:ok, _} =
+        SalesResolutions.record(
+          month,
+          %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(issue)},
+          user.id
+        )
+    end)
+
+    {:ok, reviewed} = SalesResolutions.mark_reviewed(month)
+    {:ok, signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
+    {reviewed, signoff}
+  end
+
   test "a sales dump alone starts the month: extracted, derived, worked", %{
     org: org,
     user: user,
@@ -150,19 +167,7 @@ defmodule Nila.Gst.DumpWorkerTest do
     assert :ok = run(bring_in(org, client, user, "sales", "%PDF-1.4 fake"))
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
 
-    SalesResolutions.workings(month).issues
-    |> Enum.filter(&(&1["status"] == "open" and &1["level"] != "info"))
-    |> Enum.each(fn issue ->
-      {:ok, _} =
-        SalesResolutions.record(
-          month,
-          %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(issue)},
-          user.id
-        )
-    end)
-
-    {:ok, month} = SalesResolutions.mark_reviewed(month)
-    {:ok, signoff} = Signoffs.sign_off_gstr1(month, scope)
+    {_reviewed, signoff} = sign_sales(month, user, scope)
 
     straggler = bring_in(org, client, user, "sales", "%PDF-1.4 late")
     assert :ok = run(straggler)
@@ -181,6 +186,67 @@ defmodule Nila.Gst.DumpWorkerTest do
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
     assert length(month.invoices) == 6
     assert month.state == "worked"
+  end
+
+  test "a sales dump on a filed GSTR-1 is terminal and excluded from the union", %{
+    org: org,
+    user: user,
+    client: client,
+    scope: scope
+  } do
+    first = bring_in(org, client, user, "sales", "%PDF-1.4 fake")
+    assert :ok = run(first)
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    {reviewed, _signoff} = sign_sales(month, user, scope)
+    assert {:ok, _filed} = Signoffs.mark_filed(reviewed, scope)
+
+    ClientMonths.subscribe(org.id)
+    straggler = bring_in(org, client, user, "sales", "%PDF-1.4 late")
+    assert :ok = run(straggler)
+
+    assert_receive {:gst_dump_progress, straggler_id, client_id, @period, "sales", :after_filing}
+
+    assert straggler_id == straggler.id
+    assert client_id == client.id
+
+    {:ok, straggler} = Dumps.fetch(org.id, straggler.id)
+    assert straggler.status == "after_filing"
+    assert Dumps.active(org.id, client.id, @period) == []
+    assert Enum.map(Dumps.effective(org.id, client.id, @period, "sales"), & &1.id) == [first.id]
+    assert_raise FunctionClauseError, fn -> Dumps.release(straggler) end
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    assert length(month.invoices) == 3
+  end
+
+  test "a purchase dump on a filed GSTR-3B is terminal and excluded from the union", %{
+    org: org,
+    user: user,
+    client: client,
+    scope: scope
+  } do
+    first = bring_in(org, client, user, "purchase", "%PDF-1.4 fake")
+    assert :ok = run(first)
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    {:ok, _signoff} = Signoffs.sign_off(month, scope)
+    assert {:ok, _filed} = Signoffs.mark_filed(month, scope)
+
+    ClientMonths.subscribe(org.id)
+    straggler = bring_in(org, client, user, "purchase", "%PDF-1.4 late")
+    assert :ok = run(straggler)
+
+    assert_receive {:gst_dump_progress, straggler_id, client_id, @period, "purchase",
+                    :after_filing}
+
+    assert straggler_id == straggler.id
+    assert client_id == client.id
+
+    {:ok, straggler} = Dumps.fetch(org.id, straggler.id)
+    assert straggler.status == "after_filing"
+
+    assert Enum.map(Dumps.effective(org.id, client.id, @period, "purchase"), & &1.id) == [
+             first.id
+           ]
   end
 
   test "purchase resolutions survive a 2B re-upload", %{

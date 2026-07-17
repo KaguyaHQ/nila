@@ -4,7 +4,7 @@ defmodule NilaWeb.MonthLivePurchaseTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.{ClientMonths, SalesMonths, Signoffs}
+  alias Nila.Gst.{Calendar, ClientMonths, Dumps, SalesMonths, Signoffs}
   alias Nila.Storage
 
   @dir "tmp/register/breeze-2025-10"
@@ -159,6 +159,36 @@ defmodule NilaWeb.MonthLivePurchaseTest do
     conn = get(conn, ~p"/gst/#{client.id}/#{@period}/evidence/#{"secret.txt"}")
 
     assert response(conn, 404)
+  end
+
+  test "a dump after filing points to the open month and cannot be released", %{
+    conn: conn,
+    user: user,
+    org: org,
+    client: client
+  } do
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id, brought_in_by_id: user.id},
+        %{period: @period, kind: "purchase", file_keys: ["late/purchase.pdf"]}
+      )
+
+    dump = Dumps.mark_after_filing(dump)
+    open_period = Calendar.closeable_period(Date.utc_today())
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#month-dump-#{dump.id}", "Arrived after this month was filed")
+    assert has_element?(view, "#month-dump-#{dump.id}", "a filed return can't change")
+
+    assert has_element?(
+             view,
+             "#month-dump-open-period-#{dump.id}[href='/gst/upload?client_id=#{client.id}&period=#{open_period}']",
+             "Bring it into the open month →"
+           )
+
+    refute has_element?(view, "#month-dump-release-#{dump.id}")
+    refute has_element?(view, "#month-dump-#{dump.id}", "reopen")
   end
 
   test "owner signs off: banner appears and the month moves to reviewed", %{

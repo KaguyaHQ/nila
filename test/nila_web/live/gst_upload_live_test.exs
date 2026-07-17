@@ -5,7 +5,7 @@ defmodule NilaWeb.GstUploadLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.{Dumps, DumpWorker}
+  alias Nila.Gst.{Calendar, Dumps, DumpWorker}
 
   @period "2025-10"
 
@@ -174,6 +174,39 @@ defmodule NilaWeb.GstUploadLiveTest do
              view,
              "#gst-dump-open-month-#{dump.id}[href='/gst/#{client.id}/#{@period}']"
            )
+  end
+
+  test "a dump after filing points intake at the open month", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    sales =
+      file_input(view, "#gst-upload-form", :sales, [
+        %{name: "sales.pdf", content: "%PDF-1.4 fake sales", type: "application/pdf"}
+      ])
+
+    render_upload(sales, "sales.pdf")
+    submit(view, client)
+    [dump] = Dumps.list(org.id, client.id, @period)
+
+    send(view.pid, {:gst_dump_progress, dump.id, client.id, @period, "sales", :after_filing})
+
+    open_period = Calendar.closeable_period(Date.utc_today())
+
+    assert render(view) =~
+             "This month is already filed — bring this into the current month instead"
+
+    assert has_element?(
+             view,
+             "#gst-dump-open-period-#{dump.id}[href='/gst/upload?client_id=#{client.id}&period=#{open_period}']",
+             "Bring it into the open month →"
+           )
+
+    refute has_element?(view, "#gst-dump-#{dump.id} .loading")
+    refute render(view) =~ "reopen"
   end
 
   test "a failed dump can return to the same prefilled form", %{

@@ -19,6 +19,7 @@ defmodule NilaWeb.MonthLive do
   alias Nila.Clients
 
   alias Nila.Gst.{
+    Calendar,
     ClientMonths,
     Dumps,
     DumpWorker,
@@ -97,9 +98,10 @@ defmodule NilaWeb.MonthLive do
 
     socket
     |> assign(:dumps, dumps)
+    |> assign(:open_period, Calendar.closeable_period(Date.utc_today()))
     |> assign(
       :attention_dumps,
-      Enum.filter(dumps, &(&1.status in ~w(received extracting held failed)))
+      Enum.filter(dumps, &(&1.status in ~w(received extracting held failed after_filing)))
     )
   end
 
@@ -812,9 +814,20 @@ defmodule NilaWeb.MonthLive do
                 <% dump.status == "failed" -> %>
                   Extraction failed — check the file and bring it in again.
                 <% dump.status == "held" -> %>
-                  Arrived after the return was signed — held until the signature reopens.
+                  Arrived after the return was signed — reopen the signature to include it.
+                <% dump.status == "after_filing" -> %>
+                  Arrived after this month was filed — a filed return can't change. This belongs in a later month's return.
               <% end %>
             </span>
+            <.button
+              :if={dump.status == "after_filing"}
+              navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@open_period}"}
+              id={"month-dump-open-period-#{dump.id}"}
+              variant="outline"
+              size="xs"
+            >
+              Bring it into the open month →
+            </.button>
             <.button
               :if={dump.status == "held" and dump_releasable?(assigns, dump)}
               id={"month-dump-release-#{dump.id}"}
@@ -1417,6 +1430,7 @@ defmodule NilaWeb.MonthLive do
 
   defp dump_variant("failed"), do: "error"
   defp dump_variant("held"), do: "warning"
+  defp dump_variant("after_filing"), do: "info"
   defp dump_variant(_status), do: "neutral"
 
   # A held dump is releasable once the signature over its side is gone —

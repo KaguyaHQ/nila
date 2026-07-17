@@ -241,16 +241,22 @@ defmodule NilaWeb.GstUploadLive do
   defp job_label(:held),
     do: "Held — this month's return is already signed. Open the month to have a senior reopen it."
 
+  defp job_label(:after_filing),
+    do: "This month is already filed — bring this into the current month instead"
+
   defp job_label(:failed), do: "Failed — check the file and bring it in again"
   defp job_label(_stage), do: "Working"
 
   defp job_variant(:done), do: "success"
   defp job_variant(:failed), do: "error"
   defp job_variant(:held), do: "warning"
+  defp job_variant(:after_filing), do: "info"
   defp job_variant(_status), do: "neutral"
 
   defp working?(jobs) do
-    Enum.any?(jobs, fn {_id, job} -> job.status not in [:done, :failed, :held] end)
+    Enum.any?(jobs, fn {_id, job} ->
+      job.status not in [:done, :failed, :held, :after_filing]
+    end)
   end
 
   defp any_done?(jobs) do
@@ -338,7 +344,7 @@ defmodule NilaWeb.GstUploadLive do
             class="flex items-center gap-3"
           >
             <span
-              :if={job.status not in [:done, :failed, :held]}
+              :if={job.status not in [:done, :failed, :held, :after_filing]}
               class="loading loading-sm loading-spinner text-moon"
             ></span>
             <.icon
@@ -356,6 +362,11 @@ defmodule NilaWeb.GstUploadLive do
               name="hero-pause-circle"
               class="text-warning size-5 shrink-0"
             />
+            <.icon
+              :if={job.status == :after_filing}
+              name="hero-information-circle"
+              class="text-info size-5 shrink-0"
+            />
             <div class="min-w-0 flex-1">
               <p class="text-base-content text-small font-medium">{kind_title(job.kind)}</p>
               <p class={["text-fine", "text-#{job_variant(job.status)}"]}>
@@ -368,6 +379,16 @@ defmodule NilaWeb.GstUploadLive do
                 class="text-fine text-moon font-semibold"
               >
                 Open the month
+              </.link>
+              <.link
+                :if={job.status == :after_filing}
+                navigate={
+                  ~p"/gst/upload?client_id=#{job.client_id}&period=#{Calendar.closeable_period(Date.utc_today())}"
+                }
+                id={"gst-dump-open-period-#{dump_id}"}
+                class="text-fine text-moon font-semibold"
+              >
+                Bring it into the open month →
               </.link>
               <.button
                 :if={job.status == :failed}

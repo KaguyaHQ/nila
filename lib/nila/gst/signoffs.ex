@@ -32,6 +32,7 @@ defmodule Nila.Gst.Signoffs do
   alias Nila.Gst.{
     ClientMonth,
     ClientMonths,
+    Dumps,
     Resolutions,
     SalesMonth,
     SalesResolutions,
@@ -202,12 +203,30 @@ defmodule Nila.Gst.Signoffs do
   end
 
   defp file!(month, schema, scope, arn) do
-    {:ok,
-     month
-     |> schema.changeset(%{state: "filed", filing_arn: arn})
-     |> Ecto.Changeset.put_change(:filed_at, DateTime.utc_now())
-     |> Ecto.Changeset.put_change(:filed_by_id, scope.user.id)
-     |> Repo.update!()}
+    Repo.transact(fn ->
+      filed =
+        month
+        |> schema.changeset(%{state: "filed", filing_arn: arn})
+        |> Ecto.Changeset.put_change(:filed_at, DateTime.utc_now())
+        |> Ecto.Changeset.put_change(:filed_by_id, scope.user.id)
+        |> Repo.update!()
+
+      transition_held_dumps(filed)
+      {:ok, filed}
+    end)
+  end
+
+  defp transition_held_dumps(%SalesMonth{} = month),
+    do: transition_held_dumps(month, ["sales"])
+
+  defp transition_held_dumps(%ClientMonth{} = month),
+    do: transition_held_dumps(month, ["purchase", "gstr2b"])
+
+  defp transition_held_dumps(month, kinds) do
+    month.org_id
+    |> Dumps.list(month.client_id, month.period)
+    |> Enum.filter(&(&1.status == "held" and &1.kind in kinds))
+    |> Enum.each(&Dumps.mark_after_filing/1)
   end
 
   # Whether the signed artifact has been filed — filed returns are immutable.

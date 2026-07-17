@@ -12,7 +12,8 @@ defmodule Nila.Gst.DumpWorker do
   A *signed* artifact is a wall here like everywhere else: when a live
   signature covers the side this dump feeds, the dump is extracted but marked
   `held` — stored, ready, not derived — until a senior reopens the signature
-  and the dump is released.
+  and the dump is released. If that side is already filed, the dump is marked
+  terminal `after_filing` instead: a filed return cannot be reworked.
 
   Extraction is minutes-long and fallible: progress narrates over PubSub
   (`ClientMonths.broadcast_progress/2`, message `{:gst_dump_progress, ...}`)
@@ -73,18 +74,25 @@ defmodule Nila.Gst.DumpWorker do
     with {:ok, dump} <- extract(dump) do
       {:ok, outcome} =
         Nila.Repo.transact(fn ->
-          lock_month(dump)
+          month = lock_month(dump)
 
-          if walled?(dump) do
-            Dumps.mark_held(dump)
-            {:ok, :held}
-          else
-            derive(dump)
-            {:ok, :done}
+          case wall_status(dump, month) do
+            :after_filing ->
+              Dumps.mark_after_filing(dump)
+              {:ok, :after_filing}
+
+            :held ->
+              Dumps.mark_held(dump)
+              {:ok, :held}
+
+            :open ->
+              derive(dump)
+              {:ok, :done}
           end
         end)
 
       case outcome do
+        :after_filing -> progress(dump, :after_filing)
         :held -> progress(dump, :held)
         :done -> progress(dump, {:done, dump.client_id, dump.period})
       end
@@ -194,21 +202,24 @@ defmodule Nila.Gst.DumpWorker do
   end
 
   # ---------------------------------------------------------------------------
-  # The wall — a live signature over the side this dump feeds holds the dump.
+  # The wall — a filed side is terminal; a live unfiled signature holds.
   # ---------------------------------------------------------------------------
 
-  defp walled?(%Dump{kind: "sales"} = dump) do
-    case SalesMonths.get_by_period(dump.org_id, dump.client_id, dump.period) do
-      {:ok, sales_month} -> match?({:ok, _}, Signoffs.latest_gstr1_signoff(sales_month.id))
-      {:error, :not_found} -> false
-    end
+  defp wall_status(_dump, nil), do: :open
+
+  defp wall_status(%Dump{kind: "sales"}, %SalesMonth{filed_at: filed_at})
+       when not is_nil(filed_at),
+       do: :after_filing
+
+  defp wall_status(%Dump{kind: "sales"}, %SalesMonth{} = month) do
+    if match?({:ok, _}, Signoffs.latest_gstr1_signoff(month.id)), do: :held, else: :open
   end
 
-  defp walled?(%Dump{} = dump) do
-    case ClientMonths.get_by_period(dump.org_id, dump.client_id, dump.period) do
-      {:ok, client_month} -> match?({:ok, _}, Signoffs.latest_signoff(client_month.id))
-      {:error, :not_found} -> false
-    end
+  defp wall_status(%Dump{}, %ClientMonth{filed_at: filed_at}) when not is_nil(filed_at),
+    do: :after_filing
+
+  defp wall_status(%Dump{}, %ClientMonth{} = month) do
+    if match?({:ok, _}, Signoffs.latest_signoff(month.id)), do: :held, else: :open
   end
 
   # ---------------------------------------------------------------------------

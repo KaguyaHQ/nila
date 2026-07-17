@@ -12,13 +12,15 @@ defmodule Nila.Gst.Dump do
   unions never collide) — the month is derived from the union across dumps,
   and a straggler dump never forces re-reading the main pile. For a 2B dump
   `invoices` holds the parsed 2B entries. `status`:
-  `received → extracting → extracted | failed | held` (held: arrived while
-  the artifact was signed — stored, not derived, until a senior reopens).
+  `received → extracting → extracted | failed | held | after_filing` (`held`:
+  arrived while the artifact was signed — stored, not derived, until a senior
+  reopens; `after_filing`: arrived after filing — terminal and never derived
+  into that filed month).
   """
   use Nila.Schema
 
   @kinds ~w(sales purchase gstr2b)
-  @statuses ~w(received extracting extracted failed held)
+  @statuses ~w(received extracting extracted failed held after_filing)
 
   def kinds, do: @kinds
 

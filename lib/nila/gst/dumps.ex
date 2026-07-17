@@ -134,6 +134,9 @@ defmodule Nila.Gst.Dumps do
   def mark_held(%Dump{} = dump),
     do: dump |> Dump.changeset(%{status: "held"}) |> Repo.update!()
 
+  def mark_after_filing(%Dump{} = dump),
+    do: dump |> Dump.changeset(%{status: "after_filing"}) |> Repo.update!()
+
   @doc "Re-queues a held dump as received so a worker can derive it in."
   def release(%Dump{status: "held"} = dump),
     do: dump |> Dump.changeset(%{status: "received"}) |> Repo.update!()
