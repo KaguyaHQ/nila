@@ -90,11 +90,7 @@ defmodule NilaWeb.PageHTML do
       </div>
       <div class="text-ink/50 text-micro flex flex-col gap-2 pb-8 sm:flex-row sm:items-center sm:justify-between">
         <p>© 2026 Nila</p>
-        <p>
-          Operated by Kaguya Media Private Limited · GSTIN
-          <span class="tabular-nums">33AALCK1118R1Z8</span>
-          · Chennai, India
-        </p>
+        <p>Operated by Kaguya Media Private Limited · Chennai, India</p>
       </div>
     </footer>
     """
