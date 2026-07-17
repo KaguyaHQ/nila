@@ -23,10 +23,14 @@ defmodule Nila.Gst.DumpWorker do
 
   alias Nila.Clients
 
+  import Ecto.Query, only: [from: 2]
+
   alias Nila.Gst.{
+    ClientMonth,
     ClientMonths,
     Dump,
     Dumps,
+    SalesMonth,
     EntityContext,
     Flags,
     Gstr1,
@@ -59,18 +63,54 @@ defmodule Nila.Gst.DumpWorker do
     end
   end
 
+  # Wall check + derivation run in one transaction holding FOR UPDATE on the
+  # month row — the same lock `Signoffs.sign_off_gstr1` takes and the 3B
+  # sign-off's state flip contends on — so a senior signing between our check
+  # and our upsert is impossible: whoever gets the lock first wins, and the
+  # loser sees the winner's work. A month that doesn't exist yet can't be
+  # signed, so no lock is needed.
   defp do_perform(dump) do
     with {:ok, dump} <- extract(dump) do
-      if walled?(dump) do
-        Dumps.mark_held(dump)
-        progress(dump, :held)
-        :ok
-      else
-        derive(dump)
-        progress(dump, {:done, dump.client_id, dump.period})
-        :ok
+      {:ok, outcome} =
+        Nila.Repo.transact(fn ->
+          lock_month(dump)
+
+          if walled?(dump) do
+            Dumps.mark_held(dump)
+            {:ok, :held}
+          else
+            derive(dump)
+            {:ok, :done}
+          end
+        end)
+
+      case outcome do
+        :held -> progress(dump, :held)
+        :done -> progress(dump, {:done, dump.client_id, dump.period})
       end
+
+      :ok
     end
+  end
+
+  defp lock_month(%Dump{kind: "sales"} = dump) do
+    Nila.Repo.one(
+      from m in SalesMonth,
+        where:
+          m.org_id == ^dump.org_id and m.client_id == ^dump.client_id and
+            m.period == ^dump.period,
+        lock: "FOR UPDATE"
+    )
+  end
+
+  defp lock_month(%Dump{} = dump) do
+    Nila.Repo.one(
+      from m in ClientMonth,
+        where:
+          m.org_id == ^dump.org_id and m.client_id == ^dump.client_id and
+            m.period == ^dump.period,
+        lock: "FOR UPDATE"
+    )
   end
 
   # ---------------------------------------------------------------------------

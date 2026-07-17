@@ -218,6 +218,26 @@ defmodule Nila.Gst.DumpWorkerTest do
     assert row["bucket"] == "matched"
   end
 
+  test "the same bill in two purchase dumps is flagged as a duplicate", %{
+    org: org,
+    user: user,
+    client: client
+  } do
+    assert :ok = run(bring_in(org, client, user, "purchase", "%PDF-1.4 fake"))
+    # The stub returns the same pages every time, so a re-sent folder is
+    # exactly the cross-dump duplicate case.
+    assert :ok = run(bring_in(org, client, user, "purchase", "%PDF-1.4 resent"))
+
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+
+    duplicate_flags =
+      month.register_rows
+      |> Enum.flat_map(&(&1["flags"] || []))
+      |> Enum.filter(&(&1["code"] == "duplicate_invoice"))
+
+    assert duplicate_flags != []
+  end
+
   test "a broken file marks the dump failed and the month untouched", %{
     org: org,
     user: user,

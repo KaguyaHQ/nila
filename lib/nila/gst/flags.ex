@@ -86,7 +86,7 @@ defmodule Nila.Gst.Flags do
           "duplicate_invoice",
           "warning",
           "Invoice #{inv["invoice_number"]} from #{inv["vendor_name"]} appears " <>
-            "#{length(group)} times in this dump (pages #{Enum.join(pages, ", ")}) — " <>
+            "#{length(group)} times in this month's bills (pages #{Enum.join(pages, ", ")}) — " <>
             "likely the same bill scanned twice. Booking both would claim ITC of " <>
             "#{rupees(tax_total(inv))} twice; keep one (duplicates: " <>
             "#{Enum.map_join(others, ", ", & &1["id"])}).",
