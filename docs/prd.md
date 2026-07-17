@@ -2,7 +2,7 @@
 
 > "The AI accountant."
 
-_Intent doc. Last reviewed 2026-07-14._
+_Intent doc. Last reviewed 2026-07-24._
 
 This is **why Nila exists, who it is for, and what we will and won't build** — product
 intent, not a snapshot of the code. Current state lives in the code and git history. This
@@ -121,20 +121,39 @@ abstraction from real data.
 
 ## 6. What's built
 
-- **The GST reconciliation engine** (`Nila.Gst`) — purchase invoices reconciled against
-  GSTR-2B with a "flag, don't guess" matching ladder, validation flags (duplicate scans,
-  invalid GSTINs, blocked ITC, tax-arithmetic), the purchase register, and the
-  review-brief assembly. Validated end-to-end on a real filed month.
-- **The month workbench** (`NilaWeb.MonthLive`, `Nila.Gst.ClientMonths`) — a
-  live, org-scoped surface rendering a client's worked month: stats, the register, and
-  tap-a-row → the scanned bill served through a tenant-isolated evidence route, plus the
-  human resolve loop (`NilaWeb.GstExceptionsLive`) for reconciliation exceptions. This is
-  the product surface; the collection loop is the next milestone (implementation plans
-  live in `docs/.plans/`, local-only).
-- **Substrate:** auth + tenancy (orgs / entities / memberships), the document→structured
-  **extractor** behind a swappable behaviour, GST jurisdiction logic, the audit log,
-  pluggable storage, and email/WhatsApp ingestion scaffolding.
-- **Frozen** (built for the earlier assistant/generic-workflow direction, kept but not the
-  current path): the assistant chatbot (`Nila.Assistant`), the generic workflow
+The full month loop, both returns, end to end:
+
+- **The GST engine** (`Nila.Gst`) — sales-bill extraction → derived GSTR-1 with
+  validation issues; purchase invoices reconciled against GSTR-2B with a "flag, don't
+  guess" matching ladder; validation flags (duplicate scans, invalid GSTINs, blocked
+  ITC, tax-arithmetic, implausible values); the ITC position; the assembled GSTR-3B
+  consuming the *signed* GSTR-1. Validated end-to-end on real filed months.
+- **The human decision layer** — every exception ends in a recorded verb
+  (confirm/reject/pick-the-right-2B-row/correct/accept-unmatched/dismiss, ITC
+  block/allow), stored as append-only attributed resolutions, undoable, replayed over
+  the pristine recon so every surface renders one projection. This is the correction
+  capture the memory moat (§4) will learn from.
+- **Certification** — per-artifact sign-offs (GSTR-1 and 3B separately) that freeze
+  figures into snapshots; a signature is a wall (senior-only reopen, R1 reopen cascades
+  to a dependent 3B); per-return filed marks with ARN; filed is immutable, and late
+  documents are routed to the next open month.
+- **Intake** (`Nila.Gst.Dumps`) — accretive dumps, one arrival at a time: each extracts
+  on its own, the month derives from the union, a new 2B replaces the old, stragglers
+  land without re-reading earlier piles. Multi-PDF piles. Dumps arriving behind a
+  signature are held for senior release.
+- **The screens** — Today (every client-month grouped by who it's waiting on, with
+  chase drafts for clients who sent nothing), the client-month workbench (one room:
+  GSTR-1, purchase recon, 3B, in filing order, evidence one tap away), the exceptions
+  queue, Register (all-periods filed history), Clients, and intake.
+- **Substrate:** auth + tenancy (orgs / entities / memberships), the
+  document→structured **extractor** behind a swappable behaviour, GST jurisdiction
+  logic, the audit log, pluggable storage, and email/WhatsApp ingestion scaffolding.
+- **Frozen** (built for the earlier assistant/generic-workflow direction, kept but not
+  the current path): the assistant chatbot (`Nila.Assistant`), the generic workflow
   step-runner (`Nila.Workflows`), and the bank-statement spine (`Nila.Banking` —
   reactivates later for full-bookkeeping clients).
+
+The unbuilt half of the wedge (§3) remains **automated chasing** — today the chase is
+drafts a human copies into WhatsApp and marks sent; Nila chasing relentlessly on its
+own channel is the next milestone. Also deliberately unbuilt: amendments, cross-month
+ITC carry, QRMP, photo intake — pulled by real usage, not pushed.
