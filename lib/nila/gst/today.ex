@@ -26,8 +26,17 @@ defmodule Nila.Gst.Today do
   """
 
   alias Nila.Clients
-  alias Nila.Gst.{Calendar, Chase, ClientMonths, Resolutions, SalesMonths, SalesResolutions}
-  alias Nila.Gst.Signoffs
+
+  alias Nila.Gst.{
+    Calendar,
+    Chase,
+    ClientMonths,
+    Dumps,
+    Resolutions,
+    SalesMonths,
+    SalesResolutions,
+    Signoffs
+  }
 
   @sections ~w(to_file needs_you waiting_on_client waiting_on_senior done)a
 
@@ -58,15 +67,26 @@ defmodule Nila.Gst.Today do
         MapSet.new(clients, &{&1.id, closeable})
       )
 
+    processing_months =
+      org_id
+      |> Dumps.active_for_org()
+      |> MapSet.new(&{&1.client_id, &1.period})
+
     keys
     |> Enum.map(fn {client_id, period} = key ->
-      row(clients_by_id[client_id], period, months[key] || %{}, today)
+      row(
+        clients_by_id[client_id],
+        period,
+        months[key] || %{},
+        today,
+        MapSet.member?(processing_months, key)
+      )
     end)
     |> Enum.reject(&(&1.section == :done and &1.period != closeable))
     |> Enum.sort_by(&{section_rank(&1.section), &1.days_left || 999, &1.client_name})
   end
 
-  defp row(client, period, months, today) do
+  defp row(client, period, months, today, processing?) do
     purchase = months[:purchase]
     sales = months[:sales]
 
@@ -103,6 +123,7 @@ defmodule Nila.Gst.Today do
       need_decision: need_decision,
       sales_open: sales_open,
       slots: slots,
+      processing?: processing?,
       last_ask_at: last_ask_at(client.org_id, client.id, period),
       draft: build_draft(client, period, purchase, slots),
       path: row_path(client, period, purchase, sales)
@@ -160,9 +181,10 @@ defmodule Nila.Gst.Today do
   defp purchase_need_decision(nil), do: 0
 
   defp purchase_need_decision(purchase) do
-    buckets = Resolutions.workings(purchase).summary["buckets"] || %{}
+    summary = Resolutions.workings(purchase).summary
+    buckets = summary["buckets"] || %{}
     total = buckets |> Map.values() |> Enum.sum()
-    total - (buckets["matched"] || 0)
+    total - (buckets["matched"] || 0) - (summary["accepted_unmatched"] || 0)
   end
 
   defp purchase_invoices(nil), do: 0

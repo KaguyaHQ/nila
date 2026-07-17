@@ -8,10 +8,12 @@ defmodule Nila.Gst.Register do
   so the surfaces cannot drift.
   """
 
+  alias Nila.Formatters
+
   @bucket_labels %{
     "matched" => "Matched to 2B",
     "value_mismatch" => "Value differs from 2B",
-    "needs_human" => "Needs review",
+    "needs_human" => "Needs a decision",
     "in_books_not_2b" => "Not in 2B",
     "in_2b_not_books" => "In 2B only"
   }
@@ -26,7 +28,9 @@ defmodule Nila.Gst.Register do
         "taxable_paise", "cgst_paise", "sgst_paise", "igst_paise", "total_paise",
         "bucket" => recon bucket key,
         "bucket_label" => human label,
-        "recon_note" => reason/deltas summary or nil,
+        "accepted_reason" => audited unmatched outcome or nil,
+        "verdict" => short operator-language table text,
+        "recon_note" => full engine reasoning or match detail,
         "next_action" => drafted follow-up or nil,
         "flags" => [%{"code", "severity", "reason"}],
         "flag_summary" => "code, code" or nil
@@ -57,6 +61,8 @@ defmodule Nila.Gst.Register do
           "total_paise" => inv["total_paise"] || 0,
           "bucket" => bucket,
           "bucket_label" => @bucket_labels[bucket],
+          "accepted_reason" => entry && entry["accepted_reason"],
+          "verdict" => verdict(bucket, entry, flags),
           "recon_note" => recon_note(bucket, entry),
           "next_action" => entry && entry["next_action"],
           "flags" => Enum.map(flags, &Map.take(&1, ["code", "severity", "reason", "section"])),
@@ -72,6 +78,7 @@ defmodule Nila.Gst.Register do
     %{
       "total_invoices" => Enum.count(rows, &(&1["bucket"] != "in_2b_not_books")),
       "buckets" => Enum.frequencies_by(rows, & &1["bucket"]),
+      "accepted_unmatched" => Enum.count(rows, &(&1["accepted_reason"] != nil)),
       "flag_counts" =>
         rows
         |> Enum.flat_map(& &1["flags"])
@@ -118,6 +125,8 @@ defmodule Nila.Gst.Register do
         "total_paise" => g["total_paise"] || 0,
         "bucket" => "in_2b_not_books",
         "bucket_label" => @bucket_labels["in_2b_not_books"],
+        "accepted_reason" => nil,
+        "verdict" => verdict("in_2b_not_books", entry, []),
         "recon_note" => entry["reason"] && entry["reason"]["message"],
         "next_action" => entry["next_action"],
         "flags" => [],
@@ -145,6 +154,34 @@ defmodule Nila.Gst.Register do
   defp recon_note(_bucket, entry) do
     entry && entry["reason"] && entry["reason"]["message"]
   end
+
+  defp verdict(_bucket, _entry, [%{"code" => code} | _flags]),
+    do: Formatters.issue_label(code)
+
+  defp verdict("in_books_not_2b", %{"accepted_reason" => "await_2b"}, []),
+    do: "Awaiting 2B"
+
+  defp verdict("in_books_not_2b", %{"accepted_reason" => "not_claimable"}, []),
+    do: "Not claimed this month"
+
+  defp verdict(
+         "needs_human",
+         %{"reason" => %{"code" => "ambiguous_matches"}} = entry,
+         []
+       ) do
+    case length(entry["candidates"] || []) do
+      count when count > 0 -> "#{count} possible 2B matches"
+      _count -> Formatters.recon_verdict("ambiguous_matches")
+    end
+  end
+
+  defp verdict(bucket, entry, []) when bucket in ["matched", "value_mismatch"],
+    do: recon_note(bucket, entry)
+
+  defp verdict(_bucket, %{"reason" => %{"code" => code}}, []),
+    do: Formatters.recon_verdict(code)
+
+  defp verdict(_bucket, _entry, []), do: nil
 
   defp format_delta(paise) do
     sign = if paise > 0, do: "+", else: "-"

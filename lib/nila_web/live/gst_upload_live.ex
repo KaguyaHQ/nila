@@ -49,6 +49,7 @@ defmodule NilaWeb.GstUploadLive do
       |> assign(:kinds, @kinds)
       |> assign(:form, to_form(prefill(socket, params), as: :intake))
       |> assign(:jobs, %{})
+      |> assign(:pending, nil)
       |> allow_upload(:sales, accept: ~w(.pdf), max_entries: 1, max_file_size: 50_000_000)
       |> allow_upload(:purchase, accept: ~w(.pdf), max_entries: 1, max_file_size: 50_000_000)
       |> allow_upload(:gstr2b, accept: ~w(.json), max_entries: 1, max_file_size: 20_000_000)
@@ -57,22 +58,14 @@ defmodule NilaWeb.GstUploadLive do
   end
 
   defp prefill(socket, params) do
-    {year, month} =
-      case params["period"] do
-        <<year::binary-size(4), "-", month::binary-size(2)>> ->
-          {year, month}
-
-        _ ->
-          <<year::binary-size(4), "-", month::binary-size(2)>> =
-            Calendar.closeable_period(Date.utc_today())
-
-          {year, month}
-      end
+    period =
+      if Enum.any?(period_options(), &(elem(&1, 1) == params["period"])),
+        do: params["period"],
+        else: Calendar.closeable_period(Date.utc_today())
 
     %{
       "client_id" => permitted_client(socket, params["client_id"]),
-      "period_month" => month,
-      "period_year" => year
+      "period" => period
     }
   end
 
@@ -98,7 +91,7 @@ defmodule NilaWeb.GstUploadLive do
     org = socket.assigns.current_scope.current_org
 
     with {:ok, client_id} <- fetch_client(org, params["client_id"]),
-         {:ok, period} <- fetch_period(params["period_year"], params["period_month"]),
+         {:ok, period} <- fetch_period(params["period"]),
          {:ok, piles} <- attached_piles(socket) do
       jobs =
         Map.new(piles, fn name ->
@@ -120,6 +113,18 @@ defmodule NilaWeb.GstUploadLive do
   def handle_event("open-month", _params, socket) do
     %{client_id: client_id, period: period} = socket.assigns.pending
     {:noreply, push_navigate(socket, to: ~p"/gst/#{client_id}/#{period}")}
+  end
+
+  def handle_event("try-again", _params, socket) do
+    %{client_id: client_id, period: period} = socket.assigns.pending
+
+    {:noreply,
+     socket
+     |> assign(:jobs, %{})
+     |> assign(
+       :form,
+       to_form(%{"client_id" => to_string(client_id), "period" => period}, as: :intake)
+     )}
   end
 
   defp attached_piles(socket) do
@@ -186,22 +191,28 @@ defmodule NilaWeb.GstUploadLive do
     end
   end
 
-  defp fetch_period(year, month)
-       when is_binary(year) and is_binary(month) and year != "" and month != "" do
-    {:ok, "#{year}-#{month}"}
+  defp fetch_period(period) when is_binary(period) do
+    if Enum.any?(period_options(), &(elem(&1, 1) == period)),
+      do: {:ok, period},
+      else: {:error, "Pick a period."}
   end
 
-  defp fetch_period(_year, _month), do: {:error, "Pick a month and year."}
+  defp fetch_period(_period), do: {:error, "Pick a period."}
 
-  defp month_options do
-    ~w(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec)
-    |> Enum.with_index(1)
-    |> Enum.map(fn {name, n} -> {name, String.pad_leading(to_string(n), 2, "0")} end)
-  end
+  defp period_options do
+    <<year::binary-size(4), "-", month::binary-size(2)>> =
+      Calendar.closeable_period(Date.utc_today())
 
-  defp year_options do
-    current = Date.utc_today().year
-    for y <- current..(current - 3)//-1, do: {to_string(y), to_string(y)}
+    first_month = String.to_integer(year) * 12 + String.to_integer(month) - 1
+
+    for offset <- 0..35 do
+      month_index = first_month - offset
+      option_year = div(month_index, 12)
+      option_month = rem(month_index, 12) + 1
+      period = "#{option_year}-#{String.pad_leading(to_string(option_month), 2, "0")}"
+
+      {period_label(period), period}
+    end
   end
 
   defp subscribe(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}),
@@ -226,7 +237,10 @@ defmodule NilaWeb.GstUploadLive do
   defp job_label(:deriving), do: "Deriving the GSTR-1"
   defp job_label(:reconciling), do: "Reconciling against 2B"
   defp job_label(:done), do: "Done"
-  defp job_label(:held), do: "Held — the return is signed; reopen it to include this"
+
+  defp job_label(:held),
+    do: "Held — this month's return is already signed. Open the month to have a senior reopen it."
+
   defp job_label(:failed), do: "Failed — check the file and bring it in again"
   defp job_label(_stage), do: "Working"
 
@@ -258,7 +272,16 @@ defmodule NilaWeb.GstUploadLive do
           Nila extracts it, adds it to the month's pile, and reworks the month.
         </.page_header>
 
-        <.card :if={@jobs == %{}}>
+        <.card :if={@clients == [] and @jobs == %{}} id="gst-upload-empty" class="py-10 text-center">
+          <div class="space-y-4">
+            <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
+            <.button navigate={~p"/clients/new"} id="gst-upload-add-first-client">
+              Add your first client
+            </.button>
+          </div>
+        </.card>
+
+        <.card :if={@clients != [] and @jobs == %{}}>
           <.form for={@form} id="gst-upload-form" phx-change="validate" phx-submit="submit">
             <div class="space-y-5">
               <div>
@@ -281,22 +304,12 @@ defmodule NilaWeb.GstUploadLive do
                 </p>
               </div>
 
-              <div class="grid grid-cols-2 gap-3">
-                <.input
-                  field={@form[:period_month]}
-                  type="select"
-                  label="Month"
-                  prompt="Month"
-                  options={month_options()}
-                />
-                <.input
-                  field={@form[:period_year]}
-                  type="select"
-                  label="Year"
-                  prompt="Year"
-                  options={year_options()}
-                />
-              </div>
+              <.input
+                field={@form[:period]}
+                type="select"
+                label="Period"
+                options={period_options()}
+              />
 
               <.file_drop
                 :for={kind <- @kinds}
@@ -348,6 +361,24 @@ defmodule NilaWeb.GstUploadLive do
               <p class={["text-fine", "text-#{job_variant(job.status)}"]}>
                 {job_label(job.status)}
               </p>
+              <.link
+                :if={job.status == :held}
+                navigate={~p"/gst/#{job.client_id}/#{job.period}"}
+                id={"gst-dump-open-month-#{dump_id}"}
+                class="text-fine text-moon font-semibold"
+              >
+                Open the month
+              </.link>
+              <.button
+                :if={job.status == :failed}
+                id={"gst-dump-try-again-#{dump_id}"}
+                phx-click="try-again"
+                variant="soft"
+                size="xs"
+                class="mt-2"
+              >
+                Try again
+              </.button>
             </div>
           </div>
 
@@ -361,6 +392,7 @@ defmodule NilaWeb.GstUploadLive do
             phx-click="open-month"
             variant="primary"
             class="w-full"
+            autofocus
           >
             Open the month
           </.button>

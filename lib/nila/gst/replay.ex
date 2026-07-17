@@ -27,13 +27,20 @@ defmodule Nila.Gst.Replay do
     |> Enum.map(fn {r, _i} -> r end)
   end
 
+  @doc "The effective latest event per target after undo cancellation."
+  def latest(resolutions, key) do
+    resolutions
+    |> drop_reopened(key)
+    |> Enum.reduce(%{}, fn r, acc -> Map.put(acc, r[key], r) end)
+  end
+
   @doc """
   The effective latest decision per target: `%{target => verb}` after undo
   cancellation. A target absent from the map is still open.
   """
   def decisions(resolutions, key) do
     resolutions
-    |> drop_reopened(key)
-    |> Enum.reduce(%{}, fn r, acc -> Map.put(acc, r[key], r["verb"]) end)
+    |> latest(key)
+    |> Map.new(fn {target, resolution} -> {target, resolution["verb"]} end)
   end
 end

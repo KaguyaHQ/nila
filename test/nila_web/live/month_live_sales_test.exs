@@ -5,6 +5,7 @@ defmodule NilaWeb.MonthLiveSalesTest do
   import Nila.GstFixtures
 
   alias Nila.Clients
+  alias Nila.Gst.{ClientMonths, Dumps}
 
   @period "2026-05"
 
@@ -30,6 +31,7 @@ defmodule NilaWeb.MonthLiveSalesTest do
     assert has_element?(view, "#month-page")
     assert has_element?(view, "#month-sales")
     assert has_element?(view, "#gstr1-inv-20\\/2026-27")
+    assert has_element?(view, "#month-open-sales-issues", "sales issues →")
     assert render(view) =~ "open issues"
   end
 
@@ -42,6 +44,7 @@ defmodule NilaWeb.MonthLiveSalesTest do
     view |> element("#gstr1-inv-20\\/2026-27") |> render_click()
 
     assert has_element?(view, "#gstr1-evidence-modal")
+    assert has_element?(view, "#gstr1-evidence-modal p.line-clamp-2")
     assert render(view) =~ "Bill total doesn&#39;t tally"
   end
 
@@ -96,6 +99,7 @@ defmodule NilaWeb.MonthLiveSalesTest do
     view |> element("#gstr1-mark-reviewed") |> render_click()
 
     assert has_element?(view, "#gstr1-reviewed-badge")
+    assert has_element?(view, "#month-bring-documents", "Bring in documents")
   end
 
   defp confirm_all_open_issues(view) do
@@ -133,6 +137,11 @@ defmodule NilaWeb.MonthLiveSalesTest do
     view |> element("#gstr1-signoff-button") |> render_click()
 
     assert has_element?(view, "#gstr1-signoff-banner")
+    assert has_element?(view, "#month-file-gstr1[href='#gstr1-signoff-banner']")
+    assert has_element?(view, "#gstr1-guide-download-json", "Download JSON")
+    assert has_element?(view, "#gstr1-download-json.btn-outline")
+    assert has_element?(view, "#gstr1-signoff-banner a[target='_blank'][rel='noopener']")
+    assert has_element?(view, "#gstr1-filed-arn[autofocus]")
     refute has_element?(view, "#gstr1-signoff-button")
     refute has_element?(view, "button[phx-click='confirm_issue']")
 
@@ -173,6 +182,36 @@ defmodule NilaWeb.MonthLiveSalesTest do
     view |> element("#gstr1-mark-reviewed") |> render_click()
 
     refute has_element?(view, "#gstr1-signoff-button")
+  end
+
+  test "an in-flight dump appears and clears through the month subscription", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id},
+        %{period: @period, kind: "purchase", file_keys: ["dumps/purchase.pdf"]}
+      )
+
+    ClientMonths.broadcast_progress(
+      org.id,
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", :extracting}
+    )
+
+    assert has_element?(view, "#month-dump-#{dump.id}", "Extracting")
+
+    Dumps.mark_extracted(dump, [])
+
+    ClientMonths.broadcast_progress(
+      org.id,
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:done, client.id, @period}}
+    )
+
+    refute has_element?(view, "#month-dump-#{dump.id}")
   end
 
   test "a held straggler shows on the workbench; release reworks the month", %{

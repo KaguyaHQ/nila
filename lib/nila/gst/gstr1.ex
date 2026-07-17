@@ -28,6 +28,8 @@ defmodule Nila.Gst.Gstr1 do
   tooling, not product — the product never scores itself — so it lives in
   `scripts/gstr1_eval_lib.exs`, not here.
   """
+  alias Nila.Gst.Flags
+
   @confidence_threshold 0.90
   @money_tolerance 0.5
   @diff_tolerance 0.01
@@ -203,11 +205,67 @@ defmodule Nila.Gst.Gstr1 do
       |> Enum.with_index(1)
       |> Enum.flat_map(fn {line, index} -> line_issues(invoice, line, index) end)
 
-    arithmetic_issues(invoice) ++
+    invoice_number_issues(invoice) ++
+      arithmetic_issues(invoice) ++
       gstin_issues(invoice) ++
       consistency_issues(invoice) ++
       lopsided_split_issues(invoice) ++
       furniture_row_issues(invoice) ++ bucket_rounding_issues(invoice) ++ line_issues
+  end
+
+  defp invoice_number_issues(invoice) do
+    smell =
+      Flags.invoice_number_smell(invoice["invoice_number"], sales_invoice_has_values?(invoice))
+
+    case smell do
+      nil ->
+        []
+
+      :phone_number ->
+        [
+          issue(
+            invoice,
+            "implausible_invoice_number",
+            "invoice number #{invoice["invoice_number"]} looks like a phone number — verify it against the bill",
+            ["invoice_number"]
+          )
+        ]
+
+      :date ->
+        [
+          issue(
+            invoice,
+            "implausible_invoice_number",
+            "invoice number #{invoice["invoice_number"]} looks like a date — verify it against the bill",
+            ["invoice_number"]
+          )
+        ]
+
+      :missing ->
+        [
+          issue(
+            invoice,
+            "implausible_invoice_number",
+            "the invoice carries values but no invoice number was extracted — verify it against the bill",
+            ["invoice_number"]
+          )
+        ]
+    end
+  end
+
+  defp sales_invoice_has_values?(invoice) do
+    Enum.any?(
+      [
+        invoice["printed_total_taxable"],
+        invoice["printed_total_tax"],
+        invoice["printed_grand_total"]
+      ],
+      &(num(&1) != 0)
+    ) or
+      Enum.any?(invoice["line_items"] || [], fn line ->
+        num(line["taxable_value"]) != 0 or num(line["cgst_amount"]) != 0 or
+          num(line["sgst_amount"]) != 0 or num(line["igst_amount"]) != 0
+      end)
   end
 
   defp furniture_row_issues(invoice) do

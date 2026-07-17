@@ -14,8 +14,11 @@ defmodule Nila.Gst.Resolution do
       re-suggest that pairing.
     * `correct_field` — the extractor misread a books field; payload carries
       `{"field", "from", "to"}`. Re-reconciliation may then match cleanly.
-    * `reopen`        — undo: discards this books row's prior decisions so it
-      returns to the engine's default (the exception re-opens for review).
+    * `accept_unmatched` — keep an unmatched books bill with an audited reason:
+      await a future 2B or do not claim it this month.
+    * `dismiss_2b`    — remove a 2B-only row confirmed as not belonging to the client.
+    * `reopen`        — undo: discards prior decisions for its books row, 2B
+      reference, or ITC block target so the exception re-opens for review.
     * `block_itc` / `allow_itc` — confirm or override Nila's recommendation to
       block a credit (personal/17(5), duplicate, state mismatch). Targets a
       `block_id` in `payload["block_id"]`, not a books row — it adjusts the
@@ -23,7 +26,7 @@ defmodule Nila.Gst.Resolution do
   """
   use Nila.Schema
 
-  @verbs ~w(confirm_pair reject_pair correct_field reopen block_itc allow_itc)
+  @verbs ~w(confirm_pair reject_pair correct_field accept_unmatched dismiss_2b reopen block_itc allow_itc)
 
   def verbs, do: @verbs
 

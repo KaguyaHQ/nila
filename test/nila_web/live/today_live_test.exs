@@ -4,7 +4,7 @@ defmodule NilaWeb.TodayLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.{Chase, ClientMonths, SalesMonths}
+  alias Nila.Gst.{Chase, ClientMonths, Dumps, SalesMonths}
 
   @period "2025-10"
 
@@ -53,6 +53,26 @@ defmodule NilaWeb.TodayLiveTest do
     month
   end
 
+  test "an active extraction is visible without changing the row's section", %{
+    conn: conn,
+    org: org,
+    client: client,
+    user: user
+  } do
+    period = Nila.Gst.Calendar.closeable_period(Date.utc_today())
+
+    {:ok, _dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id, brought_in_by_id: user.id},
+        %{period: period, kind: "sales", file_keys: ["dumps/sales.pdf"]}
+      )
+
+    {:ok, view, _html} = live(conn, ~p"/today")
+
+    assert has_element?(view, "#today-waiting_on_client #today-row-#{client.id}-#{period}")
+    assert has_element?(view, "#today-processing-#{client.id}-#{period}", "extracting…")
+  end
+
   test "a month row shows the deadline clock and no last ask yet", %{
     conn: conn,
     org: org,
@@ -75,8 +95,17 @@ defmodule NilaWeb.TodayLiveTest do
     closeable = Nila.Gst.Calendar.closeable_period(Date.utc_today())
 
     assert has_element?(view, "#today-waiting_on_client")
-    assert has_element?(view, "#today-row-#{client.id}-#{closeable}", "purchase missing")
+    assert has_element?(view, "#today-row-#{client.id}-#{closeable}", "purchase not in")
     assert has_element?(view, "#draft-ask-#{client.id}-#{closeable}")
+  end
+
+  test "an org with no clients gets one clear first action", %{conn: conn, client: client} do
+    Nila.Repo.delete!(client)
+
+    {:ok, view, _html} = live(conn, ~p"/today")
+
+    assert has_element?(view, "#today-empty", "No clients yet")
+    assert has_element?(view, "#today-add-first-client", "Add your first client")
   end
 
   test "a month with open decisions lands in needs-you; clean slots move it to waiting-on-senior",

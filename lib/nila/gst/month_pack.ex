@@ -163,6 +163,7 @@ defmodule Nila.Gst.MonthPack do
       "name_gstin_mismatch" -> "#{vendor}: name doesn't match the GSTIN's 2B record"
       "hsn_implausible" -> "#{vendor}: HSN unusual for this business"
       "tax_arithmetic_off" -> "#{vendor}: line totals don't tie to the invoice"
+      "implausible_invoice_number" -> "#{vendor}: invoice number looks wrong"
       _ -> flag["code"]
     end
   end

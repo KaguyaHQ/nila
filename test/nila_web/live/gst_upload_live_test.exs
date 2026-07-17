@@ -8,8 +8,6 @@ defmodule NilaWeb.GstUploadLiveTest do
   alias Nila.Gst.{Dumps, DumpWorker}
 
   @period "2025-10"
-  @period_month "10"
-  @period_year "2025"
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
@@ -20,9 +18,7 @@ defmodule NilaWeb.GstUploadLiveTest do
 
   defp submit(view, client) do
     view
-    |> form("#gst-upload-form",
-      intake: %{client_id: client.id, period_month: @period_month, period_year: @period_year}
-    )
+    |> form("#gst-upload-form", intake: %{client_id: client.id, period: @period})
     |> render_submit()
   end
 
@@ -42,8 +38,20 @@ defmodule NilaWeb.GstUploadLiveTest do
 
     html = view |> element("#gst-upload-form") |> render()
     assert html =~ ~s(selected="" value="#{client.id}")
-    assert html =~ ~s(selected="" value="08")
-    assert html =~ ~s(selected="" value="2025")
+    assert html =~ ~s(selected="" value="2025-08")
+  end
+
+  test "shows an add-client empty state instead of an unusable form", %{
+    conn: conn,
+    client: client
+  } do
+    Nila.Repo.delete!(client)
+
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    assert has_element?(view, "#gst-upload-empty", "No clients yet")
+    assert has_element?(view, "#gst-upload-add-first-client", "Add your first client")
+    refute has_element?(view, "#gst-upload-form")
   end
 
   test "another org's client id does not prefill", %{conn: conn} do
@@ -75,6 +83,7 @@ defmodule NilaWeb.GstUploadLiveTest do
     assert [dump] = Dumps.list(org.id, client.id, @period)
     assert dump.kind == "sales"
     assert dump.status == "received"
+    assert Dumps.active(org.id, client.id, @period) == [dump]
     assert_enqueued(worker: DumpWorker, args: %{dump_id: dump.id})
   end
 
@@ -138,9 +147,56 @@ defmodule NilaWeb.GstUploadLiveTest do
     assert :ok = perform_job(DumpWorker, %{"dump_id" => dump.id})
 
     assert render(view) =~ "Done"
-    assert has_element?(view, "#gst-upload-open-month")
+    assert Dumps.active(org.id, client.id, @period) == []
+    assert has_element?(view, "#gst-upload-open-month[autofocus]")
 
     view |> element("#gst-upload-open-month") |> render_click()
     assert_redirect(view, "/gst/#{client.id}/#{@period}")
+  end
+
+  test "a held dump links to the signed month", %{conn: conn, org: org, client: client} do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    sales =
+      file_input(view, "#gst-upload-form", :sales, [
+        %{name: "sales.pdf", content: "%PDF-1.4 fake sales", type: "application/pdf"}
+      ])
+
+    render_upload(sales, "sales.pdf")
+    submit(view, client)
+    [dump] = Dumps.list(org.id, client.id, @period)
+
+    send(view.pid, {:gst_dump_progress, dump.id, client.id, @period, "sales", :held})
+
+    assert render(view) =~ "this month&#39;s return is already signed"
+
+    assert has_element?(
+             view,
+             "#gst-dump-open-month-#{dump.id}[href='/gst/#{client.id}/#{@period}']"
+           )
+  end
+
+  test "a failed dump can return to the same prefilled form", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    sales =
+      file_input(view, "#gst-upload-form", :sales, [
+        %{name: "sales.pdf", content: "%PDF-1.4 fake sales", type: "application/pdf"}
+      ])
+
+    render_upload(sales, "sales.pdf")
+    submit(view, client)
+    [dump] = Dumps.list(org.id, client.id, @period)
+
+    send(view.pid, {:gst_dump_progress, dump.id, client.id, @period, "sales", {:failed, "bad"}})
+    view |> element("#gst-dump-try-again-#{dump.id}") |> render_click()
+
+    html = view |> element("#gst-upload-form") |> render()
+    assert html =~ ~s(selected="" value="#{client.id}")
+    assert html =~ ~s(selected="" value="#{@period}")
   end
 end

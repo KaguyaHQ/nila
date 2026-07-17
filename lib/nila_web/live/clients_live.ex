@@ -36,7 +36,7 @@ defmodule NilaWeb.ClientsLive do
   defp need_decision(month) do
     buckets = month.summary["buckets"] || %{}
     total = buckets |> Map.values() |> Enum.sum()
-    total - (buckets["matched"] || 0)
+    total - (buckets["matched"] || 0) - (month.summary["accepted_unmatched"] || 0)
   end
 
   defp type_label(type), do: type |> to_string() |> String.capitalize()
@@ -92,7 +92,7 @@ defmodule NilaWeb.ClientsLive do
             </.badge>
             <span :if={!client.month} class="text-base-content/45">—</span>
           </:col>
-          <:col :let={client} label="Need a decision" align="right">
+          <:col :let={client} label="Needs a decision" align="right">
             <.badge :if={client.need_decision && client.need_decision > 0} variant="warning">
               {client.need_decision}
             </.badge>
@@ -113,7 +113,14 @@ defmodule NilaWeb.ClientsLive do
               Edit
             </.link>
           </:col>
-          <:empty>No clients yet.</:empty>
+          <:empty>
+            <div id="clients-empty" class="space-y-4 py-4">
+              <p>No clients yet.</p>
+              <.button navigate={~p"/clients/new"} id="clients-add-first">
+                Add your first client
+              </.button>
+            </div>
+          </:empty>
         </.data_table>
       </div>
     </Layouts.app>

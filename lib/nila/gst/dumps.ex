@@ -19,6 +19,8 @@ defmodule Nila.Gst.Dumps do
   alias Nila.Gst.Dump
   alias Nila.Repo
 
+  @active_statuses ~w(received extracting)
+
   @doc """
   Records one arrival. Tenancy (`org_id`, `client_id`) and attribution
   (`brought_in_by_id`) are set on the struct, never cast.
@@ -38,6 +40,26 @@ defmodule Nila.Gst.Dumps do
     Repo.all(
       from d in Dump,
         where: d.org_id == ^org_id and d.client_id == ^client_id and d.period == ^period,
+        order_by: [asc: d.inserted_at, asc: d.id]
+    )
+  end
+
+  @doc "Non-terminal dumps for `(org, client, period)`, oldest first."
+  def active(org_id, client_id, period) do
+    Repo.all(
+      from d in Dump,
+        where:
+          d.org_id == ^org_id and d.client_id == ^client_id and d.period == ^period and
+            d.status in ^@active_statuses,
+        order_by: [asc: d.inserted_at, asc: d.id]
+    )
+  end
+
+  @doc "All non-terminal dumps for an org, used to mark processing client-months."
+  def active_for_org(org_id) do
+    Repo.all(
+      from d in Dump,
+        where: d.org_id == ^org_id and d.status in ^@active_statuses,
         order_by: [asc: d.inserted_at, asc: d.id]
     )
   end

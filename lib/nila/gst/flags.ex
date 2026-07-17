@@ -49,6 +49,7 @@ defmodule Nila.Gst.Flags do
 
   def evaluate(invoice, entity_ctx, vendor_dir \\ %{}) do
     [
+      &check_invoice_number/3,
       &check_gstin_presence_and_validity/3,
       &check_gstin_state_vs_tax/3,
       &check_name_vs_directory/3,
@@ -104,6 +105,28 @@ defmodule Nila.Gst.Flags do
     (tax["cgst"] || 0) + (tax["sgst"] || 0) + (tax["igst"] || 0)
   end
 
+  @doc "Narrow smell check shared by purchase and sales invoice validation."
+  def invoice_number_smell(invoice_number, row_has_values?) do
+    normalized = invoice_number |> to_string() |> String.trim()
+
+    cond do
+      normalized == "" and row_has_values? ->
+        :missing
+
+      Regex.match?(~r/^[6-9]\d{9}$/, normalized) ->
+        :phone_number
+
+      Regex.match?(
+        ~r/^(?:\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2})$/,
+        normalized
+      ) ->
+        :date
+
+      true ->
+        nil
+    end
+  end
+
   def confession_rows(flags) do
     flags
     |> Enum.filter(&(&1["severity"] == "review"))
@@ -115,6 +138,42 @@ defmodule Nila.Gst.Flags do
       }
     end)
   end
+
+  defp check_invoice_number(invoice, _entity_ctx, _vendor_dir) do
+    smell = invoice_number_smell(invoice["invoice_number"], invoice_has_values?(invoice))
+
+    if smell do
+      [
+        flag(
+          invoice,
+          "implausible_invoice_number",
+          "warning",
+          invoice_number_reason(smell, invoice["invoice_number"]),
+          nil,
+          ["invoice_number"],
+          0.9
+        )
+      ]
+    else
+      []
+    end
+  end
+
+  defp invoice_has_values?(invoice) do
+    (invoice["taxable_paise"] || 0) != 0 or (invoice["total_paise"] || 0) != 0 or
+      tax_total(invoice) != 0 or
+      Enum.any?(invoice["line_items"] || [], &((&1["taxable_paise"] || 0) != 0))
+  end
+
+  defp invoice_number_reason(:phone_number, invoice_number),
+    do: "Invoice number #{invoice_number} looks like a phone number — verify it against the bill."
+
+  defp invoice_number_reason(:date, invoice_number),
+    do: "Invoice number #{invoice_number} looks like a date — verify it against the bill."
+
+  defp invoice_number_reason(:missing, _invoice_number),
+    do:
+      "The row carries invoice values but no invoice number was extracted — verify it against the bill."
 
   defp check_gstin_presence_and_validity(invoice, entity_ctx, _vendor_dir) do
     gstin = normalize_gstin(invoice["vendor_gstin"])

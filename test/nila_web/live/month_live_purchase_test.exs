@@ -4,7 +4,7 @@ defmodule NilaWeb.MonthLivePurchaseTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.{ClientMonths, Signoffs}
+  alias Nila.Gst.{ClientMonths, SalesMonths, Signoffs}
   alias Nila.Storage
 
   @dir "tmp/register/breeze-2025-10"
@@ -34,6 +34,10 @@ defmodule NilaWeb.MonthLivePurchaseTest do
     assert has_element?(view, "#gst-stat-invoices", "58")
     assert has_element?(view, "#gst-stat-matched", "37")
     assert has_element?(view, "#gst-stat-need-decision", "21")
+    assert has_element?(view, "#gst-stats", "Needs a decision")
+    assert has_element?(view, "#gst-register", "Needs a decision")
+    refute render(view) =~ "Needs review"
+    assert has_element?(view, "#month-decide-purchases", "Decide 21 purchases →")
 
     rows = read_rows()
     assert length(rows) == 58
@@ -56,11 +60,17 @@ defmodule NilaWeb.MonthLivePurchaseTest do
         row["images"] not in [nil, []] and row["flags"] not in [nil, []]
       end)
 
-    view |> element("##{dom_id(row, index)}") |> render_click()
+    reason = row["flags"] |> hd() |> Map.get("reason")
+    verdict = row["flags"] |> hd() |> Map.get("code") |> Nila.Formatters.issue_label()
+    selector = "##{dom_id(row, index)}"
+
+    refute has_element?(view, "#gst-register #{selector}", reason)
+    assert has_element?(view, "#gst-register #{selector} .truncate", verdict)
+
+    view |> element(selector) |> render_click()
 
     assert has_element?(view, "#gst-evidence-modal")
     assert has_element?(view, "#gst-evidence-images img")
-    reason = row["flags"] |> hd() |> Map.get("reason")
     assert render(view) =~ reason
   end
 
@@ -75,7 +85,11 @@ defmodule NilaWeb.MonthLivePurchaseTest do
       |> Enum.with_index()
       |> Enum.find(fn {row, _} -> row["images"] in [nil, []] and row["recon_note"] end)
 
-    view |> element("##{dom_id(row, index)}") |> render_click()
+    selector = "##{dom_id(row, index)}"
+    refute has_element?(view, "#gst-register #{selector}", row["recon_note"])
+    assert has_element?(view, "#gst-register #{selector} .truncate", "In 2B — bill not received")
+
+    view |> element(selector) |> render_click()
 
     assert has_element?(view, "#gst-evidence-modal")
     refute has_element?(view, "#gst-evidence-images img")
@@ -158,6 +172,9 @@ defmodule NilaWeb.MonthLivePurchaseTest do
     view |> element("#gst-signoff-button") |> render_click()
 
     assert has_element?(view, "#gst-signoff-banner")
+    assert has_element?(view, "#month-file-gstr3b[href='#gst-signoff-banner']")
+    assert has_element?(view, "#gst-signoff-banner a[target='_blank'][rel='noopener']")
+    assert has_element?(view, "#gst-filed-arn[autofocus]")
     refute has_element?(view, "#gst-signoff-button")
     assert render(view) =~ "Signed off by"
 
@@ -165,6 +182,41 @@ defmodule NilaWeb.MonthLivePurchaseTest do
     assert month.state == "reviewed"
     assert {:ok, signoff} = Signoffs.latest_signoff(month.id)
     assert Map.has_key?(signoff.snapshot, "gstr3b")
+  end
+
+  test "a clean worked month points seniors to sign-off and tells members to wait", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, _purchase} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        state: "worked",
+        register_rows: [],
+        recon: %{},
+        summary: %{"buckets" => %{"matched" => 0}}
+      })
+
+    {:ok, _sales} =
+      SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        state: "reviewed"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    assert has_element?(view, "#month-ready-signoff[href='#month-sales']")
+
+    member = user_fixture()
+    {:ok, _} = Nila.Orgs.add_user(org, member.id, "member")
+    member_conn = log_in_user(Phoenix.ConnTest.build_conn(), member)
+
+    {:ok, member_view, _html} = live(member_conn, ~p"/gst/#{client.id}/#{@period}")
+    assert render(member_view) =~ "Worked and clean — a senior will see it on their Today."
   end
 
   test "a signed month renders from the frozen snapshot, not live derivation", %{
@@ -188,6 +240,68 @@ defmodule NilaWeb.MonthLivePurchaseTest do
 
     assert has_element?(view, "#gst-signoff-banner")
     assert has_element?(view, "#gst-stat-matched", "999")
+  end
+
+  test "filing the second return closes the month and points back to Today", %{
+    conn: conn,
+    org: org,
+    user: user,
+    client: client,
+    client_month: client_month
+  } do
+    {:ok, sales} =
+      SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        state: "reviewed"
+      })
+
+    scope = Nila.Accounts.Scope.for_user(user)
+    assert {:ok, _} = Signoffs.sign_off_gstr1(sales, scope)
+    assert {:ok, _} = Signoffs.sign_off(client_month, scope)
+    assert {:ok, _} = Signoffs.mark_filed(sales, scope, "R1-ARN")
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    view
+    |> element("#gst-mark-filed")
+    |> render_submit(%{"arn" => "3B-ARN"})
+
+    assert render(view) =~ "Month closed."
+    assert has_element?(view, "#month-strip", "Month closed — GSTR-1 and GSTR-3B filed.")
+    assert has_element?(view, "#month-back-today", "Back to Today")
+    assert has_element?(view, ~s|#month-view-register[href="/register"]|, "View the register →")
+  end
+
+  test "filing GSTR-1 second also closes the month", %{
+    conn: conn,
+    org: org,
+    user: user,
+    client: client,
+    client_month: client_month
+  } do
+    {:ok, sales} =
+      SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        state: "reviewed"
+      })
+
+    scope = Nila.Accounts.Scope.for_user(user)
+    assert {:ok, _} = Signoffs.sign_off_gstr1(sales, scope)
+    assert {:ok, _} = Signoffs.sign_off(client_month, scope)
+    assert {:ok, _} = Signoffs.mark_filed(client_month, scope, "3B-ARN")
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    view
+    |> element("#gstr1-mark-filed")
+    |> render_submit(%{"arn" => "R1-ARN"})
+
+    assert render(view) =~ "Month closed."
+    assert has_element?(view, "#month-strip", "Month closed — GSTR-1 and GSTR-3B filed.")
   end
 
   test "the operator (member) does not see the sign-off button and cannot sign", %{

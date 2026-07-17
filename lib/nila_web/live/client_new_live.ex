@@ -27,11 +27,11 @@ defmodule NilaWeb.ClientNewLive do
     attrs = Map.put(params, "org_id", org.id)
 
     case Clients.create_client(attrs) do
-      {:ok, _client} ->
+      {:ok, client} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Client added.")
-         |> push_navigate(to: ~p"/clients")}
+         |> put_flash(:info, "Client added — now bring in their documents.")
+         |> push_navigate(to: ~p"/gst/upload?client_id=#{client.id}")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}

@@ -93,6 +93,7 @@ defmodule NilaWeb.Router do
       ] do
       live "/today", TodayLive, :index
       live "/clients", ClientsLive, :index
+      live "/register", RegisterLive, :index
       live "/clients/new", ClientNewLive, :new
       live "/clients/:id/edit", ClientEditLive, :edit
       live "/gst/upload", GstUploadLive, :new

@@ -71,7 +71,7 @@ defmodule NilaWeb.TodayLive do
     [{"purchase", purchase}, {"sales", sales}]
     |> Enum.map_join(" · ", fn
       {name, true} -> "#{name} ✓"
-      {name, false} -> "#{name} missing"
+      {name, false} -> "#{name} not in"
     end)
   end
 
@@ -140,9 +140,14 @@ defmodule NilaWeb.TodayLive do
           </:actions>
         </.page_header>
 
-        <div :if={@sections == []} class="text-base-content/60 text-small py-12 text-center">
-          No clients yet — add a client, then bring in their documents.
-        </div>
+        <.card :if={@sections == []} id="today-empty" class="py-10 text-center">
+          <div class="mx-auto max-w-sm space-y-4">
+            <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
+            <.button navigate={~p"/clients/new"} id="today-add-first-client">
+              Add your first client
+            </.button>
+          </div>
+        </.card>
 
         <section :for={{section, rows} <- @sections} id={"today-#{section}"} class="space-y-3">
           <h2 class="flex items-center gap-2.5">
@@ -168,6 +173,13 @@ defmodule NilaWeb.TodayLive do
               <span :if={!r.deadline} class="text-base-content/45">filed</span>
             </:col>
             <:col :let={r} label="Where it stands">
+              <span
+                :if={r.processing?}
+                id={"today-processing-#{r.client_id}-#{r.period}"}
+                class="text-fine text-moon mr-2 inline-flex items-center gap-1.5"
+              >
+                <span class="loading loading-spinner loading-xs"></span> extracting…
+              </span>
               <span :if={section == :waiting_on_client} class="text-base-content/70 text-fine">
                 {slots_label(r.slots)}
               </span>

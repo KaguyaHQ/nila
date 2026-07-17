@@ -71,6 +71,27 @@ defmodule Nila.Gst.Gstr1Test do
       assert "grand_total_mismatch" in codes
     end
 
+    test "flags implausible invoice numbers as correctable issues" do
+      suspicious = seq_invoice("9381153296")
+      ordinary = seq_invoice("INV-2025/046")
+
+      issues = Gstr1.validation_issues([suspicious, ordinary])
+
+      assert Enum.any?(issues, fn issue ->
+               issue["invoice"] == "9381153296" and
+                 issue["code"] == "implausible_invoice_number" and
+                 issue["fields"] == ["invoice_number"]
+             end)
+
+      refute Enum.any?(issues, fn issue ->
+               issue["invoice"] == "INV-2025/046" and
+                 issue["code"] == "implausible_invoice_number"
+             end)
+
+      flagged = Gstr1.flagged_fields([suspicious, ordinary], issues)
+      assert MapSet.member?(flagged, {"9381153296", "invoice_number"})
+    end
+
     test "flags sequence gaps from the observed invoice numbers" do
       invoices =
         for n <- [20, 21, 23], do: seq_invoice("#{n}/2026-27")

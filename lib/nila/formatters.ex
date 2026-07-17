@@ -71,7 +71,8 @@ defmodule Nila.Formatters do
     "hsn_implausible" => "HSN looks wrong",
     "name_gstin_mismatch" => "Name doesn't match the GSTIN",
     "own_gstin_as_vendor" => "Client's own GSTIN as the vendor",
-    "tax_arithmetic_off" => "Tax doesn't add up"
+    "tax_arithmetic_off" => "Tax doesn't add up",
+    "implausible_invoice_number" => "Invoice number looks wrong"
   }
 
   @doc """
@@ -80,6 +81,18 @@ defmodule Nila.Formatters do
   check should still render something readable before its label is written.
   """
   def issue_label(code), do: Map.get(@issue_labels, code) || humanize_label(code)
+
+  @recon_verdicts %{
+    "ambiguous_matches" => "Two possible 2B matches",
+    "invoice_number_mismatch" => "Invoice number differs from 2B",
+    "relaxed_match_weak_corroboration" => "Probable match — verify",
+    "fuzzy_name_weak_corroboration" => "Name-only match — verify",
+    "no_confident_gstr2b_match" => "No 2B match found",
+    "missing_in_books" => "In 2B — bill not received"
+  }
+
+  @doc "The short table-cell verdict for a reconciliation reason code."
+  def recon_verdict(code), do: Map.get(@recon_verdicts, code) || humanize_label(code)
 
   @month_states %{
     "collecting" => "Collecting documents",

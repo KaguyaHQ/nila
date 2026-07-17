@@ -67,7 +67,8 @@ defmodule NilaWeb.ClientsLiveTest do
     {:ok, view, _html} = live(conn, ~p"/clients")
 
     assert has_element?(view, "#clients-page")
-    assert render(view) =~ "No clients yet."
+    assert has_element?(view, "#clients-empty", "No clients yet.")
+    assert has_element?(view, "#clients-add-first", "Add your first client")
   end
 
   test "does not list another org's clients", %{conn: conn} do

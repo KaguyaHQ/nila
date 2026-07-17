@@ -36,6 +36,7 @@ defmodule NilaWeb.MonthLive do
 
     with true <- org != nil,
          {:ok, client} <- Clients.get_client(org.id, client_id),
+         :ok <- maybe_subscribe(socket, org.id),
          %{} = socket <- try_load(socket, client, period) do
       {:ok, socket}
     else
@@ -45,6 +46,10 @@ defmodule NilaWeb.MonthLive do
          |> put_flash(:error, "That month isn't available.")
          |> push_navigate(to: ~p"/today")}
     end
+  end
+
+  defp maybe_subscribe(socket, org_id) do
+    if connected?(socket), do: ClientMonths.subscribe(org_id), else: :ok
   end
 
   defp try_load(socket, client, period) do
@@ -92,7 +97,10 @@ defmodule NilaWeb.MonthLive do
 
     socket
     |> assign(:dumps, dumps)
-    |> assign(:attention_dumps, Enum.filter(dumps, &(&1.status in ~w(held failed))))
+    |> assign(
+      :attention_dumps,
+      Enum.filter(dumps, &(&1.status in ~w(received extracting held failed)))
+    )
   end
 
   # ---------------------------------------------------------------------------
@@ -158,7 +166,7 @@ defmodule NilaWeb.MonthLive do
     %{
       invoices: total,
       matched: matched,
-      need_decision: total - matched,
+      need_decision: total - matched - (summary["accepted_unmatched"] || 0),
       matched_tax_paise: summary["matched_tax_paise"] || 0
     }
   end
@@ -274,15 +282,10 @@ defmodule NilaWeb.MonthLive do
   defp strip_variant(:done), do: "success"
   defp strip_variant(_), do: "neutral"
 
-  # Missing-side wording stays neutral — "not in yet" states a fact; "missing"
-  # would tell the firm to chase something that may simply not exist.
-  defp strip_detail(assigns) do
+  defp strip_facts(assigns) do
     [
       assigns.sales_month == nil && "sales bills not in yet",
-      assigns.purchase_month == nil && "purchase bills not in yet",
-      assigns.stats && assigns.stats.need_decision > 0 &&
-        "#{assigns.stats.need_decision} purchase decisions open",
-      assigns.open_issue_count > 0 && "#{assigns.open_issue_count} sales issues open"
+      assigns.purchase_month == nil && "purchase bills not in yet"
     ]
     |> Enum.filter(& &1)
     |> case do
@@ -291,9 +294,24 @@ defmodule NilaWeb.MonthLive do
     end
   end
 
+  defp signoff_anchor(%{sales_month: sales, r1_signoff: nil}) when not is_nil(sales),
+    do: "#month-sales"
+
+  defp signoff_anchor(_assigns), do: "#month-3b"
+
   # ---------------------------------------------------------------------------
   # Events — sales verbs carry the r1- prefix, purchase/3B verbs the 3b-.
   # ---------------------------------------------------------------------------
+
+  @impl true
+  def handle_info(
+        {:gst_dump_progress, _dump_id, client_id, period, _kind, _message},
+        %{assigns: %{client: %{id: client_id}, period: period}} = socket
+      ) do
+    {:noreply, reload(socket)}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("select-row", %{"dom_id" => dom_id}, socket) do
@@ -393,7 +411,7 @@ defmodule NilaWeb.MonthLive do
            arn(params)
          ) do
       {:ok, _} ->
-        {:noreply, socket |> reload() |> put_flash(:info, "GSTR-1 marked filed.")}
+        {:noreply, filed_flash(socket, "GSTR-1 marked filed.")}
 
       {:error, :not_signed} ->
         {:noreply, put_flash(socket, :error, "Sign off the GSTR-1 before marking it filed.")}
@@ -455,7 +473,7 @@ defmodule NilaWeb.MonthLive do
            arn(params)
          ) do
       {:ok, _} ->
-        {:noreply, socket |> reload() |> put_flash(:info, "GSTR-3B marked filed.")}
+        {:noreply, filed_flash(socket, "GSTR-3B marked filed.")}
 
       {:error, :not_signed} ->
         {:noreply, put_flash(socket, :error, "Sign off the month before marking it filed.")}
@@ -463,6 +481,16 @@ defmodule NilaWeb.MonthLive do
       {:error, :already_filed} ->
         {:noreply, reload(socket)}
     end
+  end
+
+  defp filed_flash(socket, return_message) do
+    socket = reload(socket)
+
+    put_flash(
+      socket,
+      :info,
+      if(socket.assigns.blocking_state == :done, do: "Month closed.", else: return_message)
+    )
   end
 
   defp arn(params) do
@@ -606,13 +634,6 @@ defmodule NilaWeb.MonthLive do
     end
   end
 
-  defp row_note(row) do
-    case row["flags"] do
-      [%{"reason" => reason} | _] when is_binary(reason) and reason != "" -> reason
-      _ -> row["recon_note"]
-    end
-  end
-
   defp liability_missing?(gstr3b), do: gstr3b["liability_source"] == "missing"
 
   defp heads_total(heads),
@@ -653,14 +674,36 @@ defmodule NilaWeb.MonthLive do
         </.page_header>
 
         <div
+          :if={@blocking_state == :done}
+          id="month-strip"
+          class="bg-success/[0.06] border-success/40 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+        >
+          <.icon name="hero-check-circle" class="text-success size-5" />
+          <p class="text-base-content text-small flex-1 font-semibold">
+            Month closed — GSTR-1 and GSTR-3B filed.
+          </p>
+          <.button navigate={~p"/today"} id="month-back-today" variant="success" size="sm">
+            Back to Today
+          </.button>
+          <.link
+            navigate={~p"/register"}
+            id="month-view-register"
+            class="text-small text-success font-semibold"
+          >
+            View the register →
+          </.link>
+        </div>
+
+        <div
+          :if={@blocking_state != :done}
           id="month-strip"
           class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
         >
           <.badge variant={strip_variant(@blocking_state)}>
             {strip_label(@blocking_state)}
           </.badge>
-          <span :if={strip_detail(assigns)} class="text-base-content/70 text-small">
-            {strip_detail(assigns)}
+          <span :if={strip_facts(assigns)} class="text-base-content/70 text-small">
+            {strip_facts(assigns)}
           </span>
           <span class="flex-1"></span>
           <span :if={@deadline} id="month-deadline">
@@ -668,13 +711,85 @@ defmodule NilaWeb.MonthLive do
               {@deadline.return} · {deadline_label(@deadline.days_left)}
             </.badge>
           </span>
-          <nav class="text-base-content/60 text-fine flex items-center gap-3">
-            <a :if={@sales_month} href="#month-sales" class="hover:text-base-content">Sales</a>
-            <a :if={@purchase_month} href="#month-purchases" class="hover:text-base-content">
-              Purchases
-            </a>
-            <a :if={@purchase_month} href="#month-3b" class="hover:text-base-content">3B</a>
-          </nav>
+          <.button
+            :if={(@blocking_state == :needs_you and @stats) && @stats.need_decision > 0}
+            navigate={~p"/gst/#{@client.id}/#{@period}/exceptions"}
+            id="month-decide-purchases"
+            variant="outline"
+            size="xs"
+          >
+            Decide {@stats.need_decision} purchases →
+          </.button>
+          <a
+            :if={
+              @blocking_state == :needs_you and (!@stats || @stats.need_decision == 0) and
+                @open_issue_count > 0
+            }
+            id="month-open-sales-issues"
+            href="#month-sales"
+            class="text-moon text-small font-semibold"
+          >
+            {@open_issue_count} sales issues →
+          </a>
+          <a
+            :if={
+              @blocking_state == :needs_you and (!@stats || @stats.need_decision == 0) and
+                @open_issue_count == 0
+            }
+            id="month-review-sales"
+            href="#month-sales"
+            class="text-moon text-small font-semibold"
+          >
+            Review sales →
+          </a>
+          <.button
+            :if={@blocking_state == :waiting_on_client}
+            navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}"}
+            id="month-bring-documents"
+            variant="outline"
+            size="xs"
+          >
+            Bring in documents
+          </.button>
+          <a
+            :if={
+              @blocking_state == :waiting_on_senior and
+                Policy.can?(@current_scope, :sign_off)
+            }
+            id="month-ready-signoff"
+            href={signoff_anchor(assigns)}
+            class="text-moon text-small font-semibold"
+          >
+            Ready for your sign-off →
+          </a>
+          <span
+            :if={
+              @blocking_state == :waiting_on_senior and
+                !Policy.can?(@current_scope, :sign_off)
+            }
+            class="text-base-content/70 text-small"
+          >
+            Worked and clean — a senior will see it on their Today.
+          </span>
+          <a
+            :if={(@blocking_state == :to_file and @r1_signoff) && is_nil(@sales_month.filed_at)}
+            id="month-file-gstr1"
+            href="#gstr1-signoff-banner"
+            class="text-moon text-small font-semibold"
+          >
+            File on the portal →
+          </a>
+          <a
+            :if={
+              (@blocking_state == :to_file and @gstr3b_signoff) &&
+                is_nil(@purchase_month.filed_at)
+            }
+            id="month-file-gstr3b"
+            href="#gst-signoff-banner"
+            class="text-moon text-small font-semibold"
+          >
+            File on the portal →
+          </a>
         </div>
 
         <div :if={@attention_dumps != []} id="month-dumps" class="space-y-2">
@@ -683,14 +798,21 @@ defmodule NilaWeb.MonthLive do
             id={"month-dump-#{dump.id}"}
             class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
-            <.badge variant={if dump.status == "failed", do: "error", else: "warning"}>
+            <span
+              :if={dump.status in ~w(received extracting)}
+              class="loading loading-sm loading-spinner text-moon"
+            ></span>
+            <.badge variant={dump_variant(dump.status)}>
               {dump_kind_title(dump.kind)}
             </.badge>
             <span class="text-base-content/80 text-small min-w-0 flex-1">
-              <%= if dump.status == "failed" do %>
-                Extraction failed — check the file and bring it in again.
-              <% else %>
-                Arrived after the return was signed — held until the signature reopens.
+              <%= cond do %>
+                <% dump.status in ~w(received extracting) -> %>
+                  Extracting — the month reworks itself when it lands.
+                <% dump.status == "failed" -> %>
+                  Extraction failed — check the file and bring it in again.
+                <% dump.status == "held" -> %>
+                  Arrived after the return was signed — held until the signature reopens.
               <% end %>
             </span>
             <.button
@@ -748,7 +870,7 @@ defmodule NilaWeb.MonthLive do
               <.button
                 id="gstr1-download-json"
                 href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/return.json"}
-                variant="primary"
+                variant={if @r1_signoff, do: "outline", else: "primary"}
                 size="sm"
               >
                 <.icon name="hero-arrow-down-tray" class="size-4" /> Portal JSON
@@ -759,44 +881,76 @@ defmodule NilaWeb.MonthLive do
           <div
             :if={@r1_signoff}
             id="gstr1-signoff-banner"
-            class="bg-success/[0.04] border-success/40 rounded-box flex items-center gap-2 border px-4 py-3"
+            class="bg-success/[0.04] border-success/40 rounded-box space-y-3 border px-4 py-3"
           >
-            <.icon name="hero-check-badge" class="text-success size-5 shrink-0" />
-            <p class="text-base-content text-small flex-1">
-              GSTR-1 signed off by {(@r1_signoff.signed_by && @r1_signoff.signed_by.name) || "—"} · {format_display_datetime(
-                @r1_signoff.inserted_at
-              )} — figures are frozen as approved.
-              <span :if={@sales_month.filed_at} id="gstr1-filed-note" class="font-medium">
-                Filed {format_display_datetime(@sales_month.filed_at)}{if @sales_month.filing_arn,
-                  do: " · ARN #{@sales_month.filing_arn}"}.
-              </span>
-            </p>
-            <form
-              :if={is_nil(@sales_month.filed_at)}
-              id="gstr1-mark-filed"
-              phx-submit="r1-mark-filed"
-              class="flex items-center gap-2"
-            >
-              <.input
-                type="text"
-                name="arn"
-                id="gstr1-filed-arn"
-                value=""
-                placeholder="ARN (optional)"
-                class="input input-sm w-40 font-mono"
-              />
-              <.button type="submit" variant="success" size="xs">Filed on portal</.button>
-            </form>
-            <.button
-              :if={Policy.can?(@current_scope, :sign_off) and is_nil(@sales_month.filed_at)}
-              id="gstr1-reopen-signoff"
-              variant="ghost"
-              size="xs"
-              phx-click="r1-reopen-signoff"
-              data-confirm="Reopen this signed GSTR-1? The signature is revoked — and any GSTR-3B signed against it is reopened too."
-            >
-              Reopen
-            </.button>
+            <div class="flex items-start gap-2">
+              <.icon name="hero-check-badge" class="text-success size-5 shrink-0" />
+              <p class="text-base-content text-small flex-1">
+                GSTR-1 signed off by {(@r1_signoff.signed_by && @r1_signoff.signed_by.name) ||
+                  "—"} · {format_display_datetime(@r1_signoff.inserted_at)} — figures are frozen as approved.
+                <span :if={@sales_month.filed_at} id="gstr1-filed-note" class="font-medium">
+                  Filed {format_display_datetime(@sales_month.filed_at)}{if @sales_month.filing_arn,
+                    do: " · ARN #{@sales_month.filing_arn}"}.
+                </span>
+              </p>
+              <.button
+                :if={Policy.can?(@current_scope, :sign_off) and is_nil(@sales_month.filed_at)}
+                id="gstr1-reopen-signoff"
+                variant="ghost"
+                size="xs"
+                phx-click="r1-reopen-signoff"
+                data-confirm="Reopen this signed GSTR-1? The signature is revoked — and any GSTR-3B signed against it is reopened too."
+              >
+                Reopen
+              </.button>
+            </div>
+
+            <ol :if={is_nil(@sales_month.filed_at)} class="space-y-2 pl-7">
+              <li class="text-small flex flex-wrap items-center gap-2">
+                <span class="text-base-content/50 font-mono">1.</span>
+                <span class="text-base-content flex-1">Download the portal JSON</span>
+                <.button
+                  id="gstr1-guide-download-json"
+                  href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/return.json"}
+                  variant="outline"
+                  size="xs"
+                >
+                  Download JSON
+                </.button>
+              </li>
+              <li class="text-small flex items-center gap-2">
+                <span class="text-base-content/50 font-mono">2.</span>
+                <span class="text-base-content flex-1">File it at gst.gov.in</span>
+                <a
+                  href="https://www.gst.gov.in/"
+                  target="_blank"
+                  rel="noopener"
+                  class="text-moon font-semibold"
+                >
+                  Open portal →
+                </a>
+              </li>
+              <li>
+                <form
+                  id="gstr1-mark-filed"
+                  phx-submit="r1-mark-filed"
+                  class="text-small flex flex-wrap items-center gap-2"
+                >
+                  <span class="text-base-content/50 font-mono">3.</span>
+                  <span class="text-base-content flex-1">Paste the ARN here</span>
+                  <.input
+                    type="text"
+                    name="arn"
+                    id="gstr1-filed-arn"
+                    value=""
+                    placeholder="ARN (optional)"
+                    class="input input-sm w-40 font-mono"
+                    autofocus
+                  />
+                  <.button type="submit" variant="success" size="xs">Filed on portal</.button>
+                </form>
+              </li>
+            </ol>
           </div>
 
           <div :if={@month_issues != []} id="gstr1-month-issues" class="space-y-2">
@@ -812,7 +966,9 @@ defmodule NilaWeb.MonthLive do
               }>
                 {issue_label(issue["code"])}
               </.badge>
-              <span class="text-base-content/80 text-small min-w-0 flex-1">{issue["message"]}</span>
+              <span class="text-base-content/80 text-small line-clamp-2 min-w-0 flex-1">
+                {issue["message"]}
+              </span>
               <.button
                 :if={issue["status"] == "open" and is_nil(@r1_signoff)}
                 variant="outline"
@@ -924,7 +1080,7 @@ defmodule NilaWeb.MonthLive do
               {@stats.matched}
             </.stat_card>
             <.link navigate={~p"/gst/#{@client.id}/#{@period}/exceptions"} id="gst-open-exceptions">
-              <.stat_card label="Need a decision" value_id="gst-stat-need-decision">
+              <.stat_card label="Needs a decision" value_id="gst-stat-need-decision">
                 {@stats.need_decision}
               </.stat_card>
             </.link>
@@ -965,11 +1121,8 @@ defmodule NilaWeb.MonthLive do
               <.badge variant={bucket_variant(row["bucket"])}>{row["bucket_label"]}</.badge>
             </:col>
             <:col :let={row} label="Note" class="max-w-sm">
-              <span :if={attention?(row)} class="text-base-content text-small">
-                {row_note(row)}
-              </span>
-              <span :if={!attention?(row)} class="text-base-content/35 text-fine">
-                matched
+              <span class="text-base-content text-small block truncate">
+                {row["verdict"] || "—"}
               </span>
             </:col>
           </.data_table>
@@ -1006,44 +1159,64 @@ defmodule NilaWeb.MonthLive do
           <div
             :if={@gstr3b_signoff}
             id="gst-signoff-banner"
-            class="bg-success/[0.04] border-success/40 rounded-box flex items-center gap-2 border px-4 py-3"
+            class="bg-success/[0.04] border-success/40 rounded-box space-y-3 border px-4 py-3"
           >
-            <.icon name="hero-check-badge" class="text-success size-5 shrink-0" />
-            <p class="text-base-content text-small flex-1">
-              Signed off by {(@gstr3b_signoff.signed_by && @gstr3b_signoff.signed_by.name) || "—"} · {format_display_datetime(
-                @gstr3b_signoff.inserted_at
-              )} — figures are frozen as approved.
-              <span :if={@purchase_month.filed_at} id="gst-filed-note" class="font-medium">
-                Filed {format_display_datetime(@purchase_month.filed_at)}{if @purchase_month.filing_arn,
-                  do: " · ARN #{@purchase_month.filing_arn}"}.
-              </span>
-            </p>
-            <form
-              :if={is_nil(@purchase_month.filed_at)}
-              id="gst-mark-filed"
-              phx-submit="3b-mark-filed"
-              class="flex items-center gap-2"
-            >
-              <.input
-                type="text"
-                name="arn"
-                id="gst-filed-arn"
-                value=""
-                placeholder="ARN (optional)"
-                class="input input-sm w-40 font-mono"
-              />
-              <.button type="submit" variant="success" size="xs">Filed on portal</.button>
-            </form>
-            <.button
-              :if={Policy.can?(@current_scope, :sign_off) and is_nil(@purchase_month.filed_at)}
-              id="gst-reopen-signoff"
-              variant="ghost"
-              size="xs"
-              phx-click="3b-reopen-signoff"
-              data-confirm="Reopen this signed month? The signature is revoked and the month can be worked again."
-            >
-              Reopen
-            </.button>
+            <div class="flex items-start gap-2">
+              <.icon name="hero-check-badge" class="text-success size-5 shrink-0" />
+              <p class="text-base-content text-small flex-1">
+                Signed off by {(@gstr3b_signoff.signed_by && @gstr3b_signoff.signed_by.name) ||
+                  "—"} · {format_display_datetime(@gstr3b_signoff.inserted_at)} — figures are frozen as approved.
+                <span :if={@purchase_month.filed_at} id="gst-filed-note" class="font-medium">
+                  Filed {format_display_datetime(@purchase_month.filed_at)}{if @purchase_month.filing_arn,
+                    do: " · ARN #{@purchase_month.filing_arn}"}.
+                </span>
+              </p>
+              <.button
+                :if={Policy.can?(@current_scope, :sign_off) and is_nil(@purchase_month.filed_at)}
+                id="gst-reopen-signoff"
+                variant="ghost"
+                size="xs"
+                phx-click="3b-reopen-signoff"
+                data-confirm="Reopen this signed month? The signature is revoked and the month can be worked again."
+              >
+                Reopen
+              </.button>
+            </div>
+
+            <ol :if={is_nil(@purchase_month.filed_at)} class="space-y-2 pl-7">
+              <li class="text-small flex items-center gap-2">
+                <span class="text-base-content/50 font-mono">1.</span>
+                <span class="text-base-content flex-1">File it at gst.gov.in</span>
+                <a
+                  href="https://www.gst.gov.in/"
+                  target="_blank"
+                  rel="noopener"
+                  class="text-moon font-semibold"
+                >
+                  Open portal →
+                </a>
+              </li>
+              <li>
+                <form
+                  id="gst-mark-filed"
+                  phx-submit="3b-mark-filed"
+                  class="text-small flex flex-wrap items-center gap-2"
+                >
+                  <span class="text-base-content/50 font-mono">2.</span>
+                  <span class="text-base-content flex-1">Paste the ARN here</span>
+                  <.input
+                    type="text"
+                    name="arn"
+                    id="gst-filed-arn"
+                    value=""
+                    placeholder="ARN (optional)"
+                    class="input input-sm w-40 font-mono"
+                    autofocus
+                  />
+                  <.button type="submit" variant="success" size="xs">Filed on portal</.button>
+                </form>
+              </li>
+            </ol>
           </div>
 
           {gstr3b_panel(assigns)}
@@ -1157,7 +1330,7 @@ defmodule NilaWeb.MonthLive do
                 }>
                   {issue_label(issue["code"])}
                 </.badge>
-                <p class="text-base-content/80 text-small mt-2">{issue["message"]}</p>
+                <p class="text-base-content/80 text-small mt-2 line-clamp-2">{issue["message"]}</p>
                 <div class="mt-2">
                   <.button
                     :if={issue["status"] == "open" and is_nil(@r1_signoff)}
@@ -1241,6 +1414,10 @@ defmodule NilaWeb.MonthLive do
   defp dump_kind_title("sales"), do: "Sales bills"
   defp dump_kind_title("purchase"), do: "Purchase bills"
   defp dump_kind_title("gstr2b"), do: "GSTR-2B"
+
+  defp dump_variant("failed"), do: "error"
+  defp dump_variant("held"), do: "warning"
+  defp dump_variant(_status), do: "neutral"
 
   # A held dump is releasable once the signature over its side is gone —
   # releasing it under a live signature would just re-hold it.

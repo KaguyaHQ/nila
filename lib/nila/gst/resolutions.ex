@@ -73,6 +73,8 @@ defmodule Nila.Gst.Resolutions do
       recon: recon,
       baseline: Workings.materialize(month.recon, []),
       decisions: Workings.decisions(resolutions),
+      accepted_reasons: Workings.accepted_reasons(resolutions),
+      gstr2b_decisions: Workings.gstr2b_decisions(resolutions),
       itc: itc,
       gstr3b: gstr3b(month, recon, itc),
       rows: rows,

@@ -55,6 +55,46 @@ defmodule Nila.Gst.FlagsTest do
     end
   end
 
+  describe "implausible_invoice_number" do
+    test "flags phone-number and date-shaped invoice numbers" do
+      for number <- ["9381153296", "14/06/2026", "2026-06-14"] do
+        [flag] =
+          invoice(%{"invoice_number" => number})
+          |> Flags.evaluate(@entity_ctx)
+          |> only("implausible_invoice_number")
+
+        assert flag["severity"] == "warning"
+        assert flag["fields"] == ["invoice_number"]
+      end
+    end
+
+    test "flags an absent number only when the row carries values" do
+      assert [_flag] =
+               invoice(%{"invoice_number" => nil})
+               |> Flags.evaluate(@entity_ctx)
+               |> only("implausible_invoice_number")
+
+      empty =
+        invoice(%{
+          "invoice_number" => nil,
+          "taxable_paise" => 0,
+          "tax_paise" => %{},
+          "total_paise" => 0,
+          "line_items" => []
+        })
+
+      assert empty |> Flags.evaluate(@entity_ctx) |> only("implausible_invoice_number") == []
+    end
+
+    test "keeps ordinary invoice formats quiet" do
+      for number <- ["INV-2025/046", "046"] do
+        assert invoice(%{"invoice_number" => number})
+               |> Flags.evaluate(@entity_ctx)
+               |> only("implausible_invoice_number") == []
+      end
+    end
+  end
+
   describe "invalid_gstin" do
     test "flags a GSTIN with a bad check digit as an error, naming the GSTIN" do
       bad = "33AAACR5055K1ZF"

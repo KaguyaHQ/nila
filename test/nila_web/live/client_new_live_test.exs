@@ -10,7 +10,7 @@ defmodule NilaWeb.ClientNewLiveTest do
     %{conn: log_in_user(conn, user), org: org}
   end
 
-  test "creates a client scoped to the org and redirects to the list", %{conn: conn, org: org} do
+  test "creates a client and lands in prefilled intake", %{conn: conn, org: org} do
     {:ok, view, _html} = live(conn, ~p"/clients/new")
 
     assert has_element?(view, "#client-form")
@@ -20,14 +20,19 @@ defmodule NilaWeb.ClientNewLiveTest do
       |> form("#client-form", client: %{name: "Aurora Foods", type: "company"})
       |> render_submit()
 
-    assert {:error, {:live_redirect, %{to: "/clients"}}} = result
-
     assert [client] = Clients.list_clients(org.id)
     assert client.name == "Aurora Foods"
     assert client.org_id == org.id
 
-    {:ok, list_view, _html} = live(conn, ~p"/clients")
-    assert render(list_view) =~ "Aurora Foods"
+    path = "/gst/upload?client_id=#{client.id}"
+    assert {:error, {:live_redirect, %{to: ^path}}} = result
+
+    {:ok, intake, html} = follow_redirect(result, conn)
+    assert html =~ "Client added — now bring in their documents."
+    assert has_element?(intake, "#gst-upload-form option[selected][value='#{client.id}']")
+
+    closeable = Nila.Gst.Calendar.closeable_period(Date.utc_today())
+    assert has_element?(intake, "#gst-upload-form option[selected][value='#{closeable}']")
   end
 
   test "a blank name shows an error and creates nothing", %{conn: conn, org: org} do

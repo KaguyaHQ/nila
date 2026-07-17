@@ -71,6 +71,25 @@ defmodule Nila.FormattersTest do
     end
   end
 
+  describe "recon_verdict/1" do
+    test "uses the shared operator vocabulary and humanizes unknown codes" do
+      assert Formatters.recon_verdict("ambiguous_matches") == "Two possible 2B matches"
+
+      assert Formatters.recon_verdict("invoice_number_mismatch") ==
+               "Invoice number differs from 2B"
+
+      assert Formatters.recon_verdict("relaxed_match_weak_corroboration") ==
+               "Probable match — verify"
+
+      assert Formatters.recon_verdict("fuzzy_name_weak_corroboration") ==
+               "Name-only match — verify"
+
+      assert Formatters.recon_verdict("no_confident_gstr2b_match") == "No 2B match found"
+      assert Formatters.recon_verdict("missing_in_books") == "In 2B — bill not received"
+      assert Formatters.recon_verdict("future_reason_code") == "Future Reason Code"
+    end
+  end
+
   describe "human_status/1" do
     test "preserves the old status helper as a wrapper" do
       assert Formatters.human_status(nil) == "—"

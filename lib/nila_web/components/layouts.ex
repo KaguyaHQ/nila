@@ -85,6 +85,12 @@ defmodule NilaWeb.Layouts do
               label="Clients"
               current_path={@current_path}
             />
+            <.rail_link
+              href={~p"/register"}
+              icon="hero-table-cells"
+              label="Register"
+              current_path={@current_path}
+            />
           </div>
         </nav>
 

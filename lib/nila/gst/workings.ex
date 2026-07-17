@@ -10,7 +10,9 @@ defmodule Nila.Gst.Workings do
       re-reconciled by the real `Recon.reconcile/3` (never a reimplementation);
     * `confirm_pair` pins a books row and a 2B row as `matched`/`value_mismatch`
       using `Recon.manual_pair/3`;
-    * `reject_pair` forbids a pairing so the engine never re-suggests it.
+    * `reject_pair` forbids a pairing so the engine never re-suggests it;
+    * `accept_unmatched` keeps a decided books row honestly outside 2B;
+    * `dismiss_2b` removes a 2B-only row confirmed as not belonging to the client.
 
   Pure: recon + resolutions in, effective recon out. Latest resolution per
   target wins (append-only store, so ordering is by insertion).
@@ -33,24 +35,59 @@ defmodule Nila.Gst.Workings do
     books = recon |> books_invoices() |> Enum.map(&coerce_date/1)
     g2b = recon |> gstr2b_invoices() |> Enum.map(&coerce_date/1)
 
-    resolutions = Replay.drop_reopened(resolutions, "books_id")
+    book_resolutions =
+      resolutions
+      |> with_target("books_id")
+      |> Replay.drop_reopened("books_id")
+
+    ref_resolutions =
+      resolutions
+      |> with_target("gstr2b_ref")
+      |> Replay.drop_reopened("gstr2b_ref")
 
     {corrections, pairs} =
-      Enum.split_with(resolutions, &(&1["verb"] == "correct_field"))
+      Enum.split_with(book_resolutions, &(&1["verb"] == "correct_field"))
 
     books = apply_corrections(books, corrections)
     {confirmed, rejected} = fold_pairs(pairs)
 
-    recon = Recon.reconcile(books, g2b)
-    recon = apply_confirmations(recon, confirmed)
-    apply_rejections(recon, rejected)
+    Recon.reconcile(books, g2b)
+    |> apply_confirmations(confirmed)
+    |> apply_rejections(rejected)
+    |> apply_acceptances(accepted_reasons(book_resolutions))
+    |> apply_dismissals(dismissed_refs(ref_resolutions))
   end
 
   @doc """
   The effective latest decision per books row: `%{books_id => verb}` after undo
   (`reopen`) cancellation. A books row absent from the map is still open.
   """
-  def decisions(resolutions), do: Replay.decisions(resolutions, "books_id")
+  def decisions(resolutions) do
+    resolutions
+    |> with_target("books_id")
+    |> Replay.decisions("books_id")
+  end
+
+  @doc "The accepted-unmatched reason per effective books-row decision."
+  def accepted_reasons(resolutions) do
+    resolutions
+    |> with_target("books_id")
+    |> Replay.latest("books_id")
+    |> Enum.reduce(%{}, fn
+      {books_id, %{"verb" => "accept_unmatched", "payload" => %{"reason" => reason}}}, acc ->
+        Map.put(acc, books_id, reason)
+
+      _decision, acc ->
+        acc
+    end)
+  end
+
+  @doc "The effective latest decision per stable GSTR-2B content reference."
+  def gstr2b_decisions(resolutions) do
+    resolutions
+    |> with_target("gstr2b_ref")
+    |> Replay.decisions("gstr2b_ref")
+  end
 
   @doc """
   The effective block/allow decision per ITC block target: `%{block_id => verb}`
@@ -104,6 +141,17 @@ defmodule Nila.Gst.Workings do
   end
 
   defp coerce_date(inv), do: inv
+
+  defp with_target(resolutions, key), do: Enum.filter(resolutions, &(&1[key] != nil))
+
+  defp dismissed_refs(resolutions) do
+    resolutions
+    |> Replay.latest("gstr2b_ref")
+    |> Enum.reduce(MapSet.new(), fn
+      {ref, %{"verb" => "dismiss_2b"}}, refs -> MapSet.put(refs, ref)
+      _decision, refs -> refs
+    end)
+  end
 
   defp apply_corrections(books, corrections) do
     by_id =
@@ -234,6 +282,43 @@ defmodule Nila.Gst.Workings do
         Map.update(e, "candidates", [], fn cands ->
           Enum.reject(cands, &MapSet.member?(rejected, {bid, Recon.gstr2b_ref(&1)}))
         end)
+      end)
+    end)
+  end
+
+  defp apply_acceptances(recon, accepted) do
+    Enum.reduce(accepted, recon, fn {books_id, reason}, effective ->
+      case Enum.find(books_invoices(effective), &(&1["id"] == books_id)) do
+        nil ->
+          effective
+
+        books ->
+          residual =
+            books
+            |> Recon.books_residual()
+            |> Map.put("accepted_reason", reason)
+            |> Map.put("next_action", accepted_next_action(reason))
+
+          effective
+          |> drop_books(books_id)
+          |> Map.update("in_books_not_2b", [residual], &(&1 ++ [residual]))
+      end
+    end)
+  end
+
+  defp accepted_next_action("await_2b"),
+    do: "Keep the bill outside this month's ITC and check a future GSTR-2B."
+
+  defp accepted_next_action("not_claimable"), do: "Do not claim this bill this month."
+  defp accepted_next_action(_reason), do: nil
+
+  defp apply_dismissals(recon, dismissed_refs) do
+    Map.update(recon, "in_2b_not_books", [], fn entries ->
+      Enum.reject(entries, fn entry ->
+        entry
+        |> then(&(&1["gstr2b"] || &1))
+        |> Recon.gstr2b_ref()
+        |> then(&MapSet.member?(dismissed_refs, &1))
       end)
     end)
   end

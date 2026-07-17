@@ -1,7 +1,7 @@
 defmodule Nila.Gst.WorkingsTest do
   use ExUnit.Case, async: true
 
-  alias Nila.Gst.{Recon, Workings}
+  alias Nila.Gst.{ItcPosition, Recon, Register, Workings}
 
   @gstin "33AAACS1234A1Z9"
 
@@ -44,6 +44,15 @@ defmodule Nila.Gst.WorkingsTest do
     b = books(%{"invoice_number" => "1134"})
     g = g2b(%{"invoice_number" => "CHN-SER-1134"})
     Recon.reconcile([b], [g])
+  end
+
+  defp ambiguous_recon do
+    b = books(%{"invoice_number" => "DUP-1"})
+
+    g1 = g2b(%{"invoice_number" => "DUP-1", "total_paise" => 1_180_000})
+    g2 = g2b(%{"invoice_number" => "DUP-1", "total_paise" => 1_180_100})
+
+    Recon.reconcile([b], [g1, g2])
   end
 
   defp ref(recon) do
@@ -169,5 +178,124 @@ defmodule Nila.Gst.WorkingsTest do
     assert result["matched"] == []
     assert [entry] = result["needs_human"]
     assert entry["candidates"] == []
+  end
+
+  test "rejecting every ambiguous candidate leaves an unmatched review row" do
+    recon = ambiguous_recon()
+    [entry] = recon["needs_human"]
+
+    resolutions =
+      Enum.map(entry["candidates"], fn candidate ->
+        %{
+          "verb" => "reject_pair",
+          "books_id" => "page_01",
+          "gstr2b_ref" => Recon.gstr2b_ref(candidate),
+          "payload" => %{}
+        }
+      end)
+
+    result = Workings.materialize(recon, resolutions)
+
+    assert [%{"books" => %{"id" => "page_01"}, "candidates" => []}] =
+             result["needs_human"]
+  end
+
+  test "accept_unmatched moves a review row to an honest residual and reopen restores it" do
+    recon = mismatch_recon()
+
+    accepted = %{
+      "verb" => "accept_unmatched",
+      "books_id" => "page_01",
+      "gstr2b_ref" => nil,
+      "payload" => %{"reason" => "await_2b"}
+    }
+
+    result = Workings.materialize(recon, [accepted])
+
+    assert result["needs_human"] == []
+    assert [entry] = result["in_books_not_2b"]
+    assert entry["books"]["id"] == "page_01"
+    assert entry["accepted_reason"] == "await_2b"
+
+    rows = Register.rows([books(%{"invoice_number" => "1134"})], result, %{})
+    assert [row] = rows
+    assert row["verdict"] == "Awaiting 2B"
+    assert row["recon_note"] == "No confident GSTR-2B match was found automatically."
+    assert Register.summary(rows)["accepted_unmatched"] == 1
+    assert ItcPosition.compute(result, rows, %{})["claimable_paise"] == 0
+
+    reopened =
+      Workings.materialize(recon, [
+        accepted,
+        %{"verb" => "reopen", "books_id" => "page_01", "payload" => %{}}
+      ])
+
+    assert [%{"books" => %{"id" => "page_01"}}] = reopened["needs_human"]
+    assert reopened["in_books_not_2b"] == []
+  end
+
+  test "dismiss_2b removes a 2B-only row and ref-targeted reopen restores it" do
+    recon = Recon.reconcile([], [g2b(%{"invoice_number" => "PORTAL-9"})])
+    [entry] = recon["in_2b_not_books"]
+    ref = Recon.gstr2b_ref(entry["gstr2b"])
+    dismissed = %{"verb" => "dismiss_2b", "gstr2b_ref" => ref, "payload" => %{}}
+
+    assert Workings.materialize(recon, [dismissed])["in_2b_not_books"] == []
+
+    reopened =
+      Workings.materialize(recon, [
+        dismissed,
+        %{"verb" => "reopen", "gstr2b_ref" => ref, "payload" => %{}}
+      ])
+
+    assert [%{"gstr2b" => %{"invoice_number" => "PORTAL-9"}}] =
+             reopened["in_2b_not_books"]
+  end
+
+  test "register rows keep full recon prose beside short verdicts" do
+    ambiguous = ambiguous_recon()
+    [ambiguous_row] = Register.rows(Workings.books_invoices(ambiguous), ambiguous, %{})
+    assert ambiguous_row["verdict"] == "2 possible 2B matches"
+    assert ambiguous_row["recon_note"] =~ "confirm which pairing is correct"
+
+    mismatch = mismatch_recon()
+    [mismatch_row] = Register.rows(Workings.books_invoices(mismatch), mismatch, %{})
+    assert mismatch_row["verdict"] == "Invoice number differs from 2B"
+    assert mismatch_row["recon_note"] =~ "invoice numbers disagree"
+
+    g2b_only = Recon.reconcile([], [g2b(%{"invoice_number" => "PORTAL-9"})])
+    [g2b_row] = Register.rows([], g2b_only, %{})
+    assert g2b_row["verdict"] == "In 2B — bill not received"
+    assert g2b_row["recon_note"] == "No books invoice corresponds to this GSTR-2B invoice."
+
+    flags = %{
+      "page_01" => [
+        %{
+          "code" => "implausible_invoice_number",
+          "severity" => "warning",
+          "reason" => "The extracted invoice number looks like a phone number."
+        }
+      ]
+    }
+
+    [flagged_row] = Register.rows(Workings.books_invoices(mismatch), mismatch, flags)
+    assert flagged_row["verdict"] == "Invoice number looks wrong"
+    assert flagged_row["recon_note"] =~ "invoice numbers disagree"
+  end
+
+  test "books reopen does not disturb a ref-targeted dismissal" do
+    b = books(%{"id" => "other", "invoice_number" => "BOOK-1"})
+    g = g2b(%{"vendor_gstin" => "27AAPFU0939F1ZV", "invoice_number" => "PORTAL-9"})
+    recon = Recon.reconcile([b], [g])
+    [entry] = recon["in_2b_not_books"]
+    ref = Recon.gstr2b_ref(entry["gstr2b"])
+
+    result =
+      Workings.materialize(recon, [
+        %{"verb" => "dismiss_2b", "gstr2b_ref" => ref, "payload" => %{}},
+        %{"verb" => "reopen", "books_id" => "other", "payload" => %{}}
+      ])
+
+    assert result["in_2b_not_books"] == []
   end
 end
