@@ -897,6 +897,12 @@ defmodule NilaWeb.MonthLive do
           class="border-base-300 rounded-box text-base-content/60 text-small border border-dashed px-4 py-6 text-center"
         >
           No sales bills for this period yet — the GSTR-1 derives once they arrive.
+          <.link
+            navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}"}
+            class="text-moon font-semibold"
+          >
+            Bring them in →
+          </.link>
         </div>
 
         <section :if={@purchase_month} id="month-purchases" class="scroll-mt-4 space-y-4">
@@ -975,6 +981,12 @@ defmodule NilaWeb.MonthLive do
           class="border-base-300 rounded-box text-base-content/60 text-small border border-dashed px-4 py-6 text-center"
         >
           No purchase bills for this period yet — the 2B reconciliation and the 3B need them.
+          <.link
+            navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}"}
+            class="text-moon font-semibold"
+          >
+            Bring them in →
+          </.link>
         </div>
 
         <section :if={@purchase_month} id="month-3b" class="scroll-mt-4 space-y-4">

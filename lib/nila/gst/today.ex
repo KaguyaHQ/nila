@@ -206,11 +206,12 @@ defmodule Nila.Gst.Today do
   end
 
   # Click follows the work: the month workbench when anything has arrived
-  # (it renders whichever sides exist), the upload flow when nothing has.
+  # (it renders whichever sides exist), the intake flow — pre-scoped to this
+  # client-month — when nothing has.
   defp row_path(client, period, purchase, sales) do
     if purchase || sales,
       do: "/gst/#{client.id}/#{period}",
-      else: "/gst/upload"
+      else: "/gst/upload?client_id=#{client.id}&period=#{period}"
   end
 
   defp section_rank(section), do: Enum.find_index(@sections, &(&1 == section))

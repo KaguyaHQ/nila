@@ -46,9 +46,10 @@ defmodule NilaWeb.ClientsLive do
   defp state_variant("worked"), do: "warning"
   defp state_variant(_state), do: "neutral"
 
-  # Click follows the work: latest month when one exists, else start one.
+  # Click follows the work: latest month when one exists, else start one —
+  # intake pre-scoped to this client.
   defp row_path(%{month: %{period: period}, id: id}), do: ~p"/gst/#{id}/#{period}"
-  defp row_path(_client), do: ~p"/gst/upload"
+  defp row_path(%{id: id}), do: ~p"/gst/upload?client_id=#{id}"
 
   @impl true
   def render(assigns) do
