@@ -205,9 +205,14 @@ defmodule NilaWeb.MonthLive do
     |> assign(:reviewable, SalesWorkings.reviewable?(issues))
   end
 
+  # Dump-based months carry the stored evidence basename on the invoice
+  # (namespaced per dump); older months derive it from the page number.
   defp sales_image_urls(invoice, sales) do
-    case invoice["page"] do
-      page when is_integer(page) ->
+    case {invoice["image"], invoice["page"]} do
+      {basename, _} when is_binary(basename) ->
+        [~p"/gstr1/#{sales.client_id}/#{sales.period}/evidence/#{basename}"]
+
+      {_, page} when is_integer(page) ->
         basename = "page_" <> String.pad_leading(Integer.to_string(page), 2, "0") <> ".png"
         [~p"/gstr1/#{sales.client_id}/#{sales.period}/evidence/#{basename}"]
 

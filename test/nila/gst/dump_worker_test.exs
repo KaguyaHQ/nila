@@ -1,0 +1,281 @@
+defmodule Nila.Gst.DumpWorkerTest do
+  use Nila.DataCase, async: true
+  use Oban.Testing, repo: Nila.Repo
+
+  import Nila.AccountsFixtures
+
+  alias Nila.Accounts.Scope
+  alias Nila.Clients
+  alias Nila.Gst.{ClientMonths, DumpWorker, Dumps, Resolutions}
+  alias Nila.Gst.{SalesMonths, SalesResolutions, SalesWorkings, Signoffs}
+  alias Nila.Storage
+
+  @period "2026-05"
+
+  setup do
+    %{user: user, org: org, membership: membership} = user_with_org_fixture()
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Breeze Tech",
+        type: "company",
+        gstin: "33AEWPH4158J1Z3"
+      })
+
+    %{
+      org: org,
+      user: user,
+      client: client,
+      scope: %Scope{user: user, current_org: org, membership: membership}
+    }
+  end
+
+  defp bring_in(org, client, user, kind, bytes) do
+    key = "dumps/#{org.id}/#{client.id}/#{@period}/#{System.unique_integer([:positive])}"
+    {:ok, _} = Storage.put(key, bytes)
+
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id, brought_in_by_id: user.id},
+        %{period: @period, kind: kind, file_keys: [key]}
+      )
+
+    dump
+  end
+
+  defp run(dump), do: perform_job(DumpWorker, %{"dump_id" => dump.id})
+
+  test "a sales dump alone starts the month: extracted, derived, worked", %{
+    org: org,
+    user: user,
+    client: client
+  } do
+    dump = bring_in(org, client, user, "sales", "%PDF-1.4 fake")
+
+    assert :ok = run(dump)
+
+    {:ok, dump} = Dumps.fetch(org.id, dump.id)
+    assert dump.status == "extracted"
+    assert length(dump.invoices) == 3
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    assert month.state == "worked"
+    assert length(month.invoices) == 3
+    assert month.derived_gstr1["gstin"] == "33AEWPH4158J1Z3"
+
+    # Evidence is stored under the dump-namespaced basename carried on the invoice.
+    basename = month.invoices |> hd() |> Map.fetch!("image")
+    assert basename =~ "d#{dump.id}_"
+    assert {:ok, bytes} = SalesMonths.fetch_evidence(org.id, client.id, @period, basename)
+    assert byte_size(bytes) > 0
+  end
+
+  test "a purchase dump without 2B derives an honest bookside-only month", %{
+    org: org,
+    user: user,
+    client: client
+  } do
+    dump = bring_in(org, client, user, "purchase", "%PDF-1.4 fake")
+
+    assert :ok = run(dump)
+
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    assert month.state == "worked"
+
+    buckets = month.summary["buckets"]
+    assert buckets["in_books_not_2b"] >= 1
+    assert (buckets["matched"] || 0) == 0
+  end
+
+  test "a 2B dump after the purchase dump re-reconciles; a second 2B replaces the first", %{
+    org: org,
+    user: user,
+    client: client
+  } do
+    assert :ok = run(bring_in(org, client, user, "purchase", "%PDF-1.4 fake"))
+    assert :ok = run(bring_in(org, client, user, "gstr2b", gstr2b_json()))
+
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    assert month.summary["buckets"]["matched"] >= 1
+    assert month.summary["buckets"]["in_2b_not_books"] >= 1
+
+    # A later, empty 2B replaces the first snapshot entirely.
+    assert :ok = run(bring_in(org, client, user, "gstr2b", empty_gstr2b_json()))
+
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    assert (month.summary["buckets"]["matched"] || 0) == 0
+    assert (month.summary["buckets"]["in_2b_not_books"] || 0) == 0
+  end
+
+  test "a straggler sales dump accretes and earlier resolutions survive", %{
+    org: org,
+    user: user,
+    client: client
+  } do
+    assert :ok = run(bring_in(org, client, user, "sales", "%PDF-1.4 fake"))
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+
+    poison =
+      SalesResolutions.workings(month).issues
+      |> Enum.find(&(&1["code"] == "grand_total_mismatch"))
+
+    {:ok, _} =
+      SalesResolutions.record(
+        month,
+        %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(poison)},
+        user.id
+      )
+
+    # The straggler doubles the invoice pile (stub returns the same 3 pages).
+    assert :ok = run(bring_in(org, client, user, "sales", "%PDF-1.4 more"))
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    assert length(month.invoices) == 6
+
+    replayed = SalesResolutions.workings(month)
+    confirmed = Enum.find(replayed.issues, &(SalesWorkings.issue_key(&1) == poison["target"]))
+    resolved = Enum.filter(replayed.issues, &(&1["status"] == "resolved"))
+
+    assert confirmed == nil or confirmed["status"] == "resolved"
+    assert resolved != []
+  end
+
+  test "a sales dump on a signed GSTR-1 is held; release derives it in", %{
+    org: org,
+    user: user,
+    client: client,
+    scope: scope
+  } do
+    assert :ok = run(bring_in(org, client, user, "sales", "%PDF-1.4 fake"))
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+
+    SalesResolutions.workings(month).issues
+    |> Enum.filter(&(&1["status"] == "open" and &1["level"] != "info"))
+    |> Enum.each(fn issue ->
+      {:ok, _} =
+        SalesResolutions.record(
+          month,
+          %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(issue)},
+          user.id
+        )
+    end)
+
+    {:ok, month} = SalesResolutions.mark_reviewed(month)
+    {:ok, signoff} = Signoffs.sign_off_gstr1(month, scope)
+
+    straggler = bring_in(org, client, user, "sales", "%PDF-1.4 late")
+    assert :ok = run(straggler)
+
+    {:ok, straggler} = Dumps.fetch(org.id, straggler.id)
+    assert straggler.status == "held"
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    assert length(month.invoices) == 3
+
+    # Senior reopens; the released dump derives in.
+    {:ok, _} = Signoffs.reopen(signoff, scope)
+    released = Dumps.release(straggler)
+    assert :ok = run(released)
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    assert length(month.invoices) == 6
+    assert month.state == "worked"
+  end
+
+  test "purchase resolutions survive a 2B re-upload", %{
+    org: org,
+    user: user,
+    client: client
+  } do
+    assert :ok = run(bring_in(org, client, user, "purchase", "%PDF-1.4 fake"))
+    assert :ok = run(bring_in(org, client, user, "gstr2b", gstr2b_json()))
+
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+
+    entry =
+      Resolutions.workings(month).recon["needs_human"]
+      |> Enum.find(&(length(&1["candidates"] || []) == 1))
+
+    assert entry
+    books_id = entry["books"]["id"]
+    ref = entry["candidates"] |> hd() |> Nila.Gst.Recon.gstr2b_ref()
+
+    {:ok, _} =
+      Resolutions.record(
+        month,
+        %{"verb" => "confirm_pair", "books_id" => books_id, "gstr2b_ref" => ref},
+        user.id
+      )
+
+    # Same 2B re-uploaded: recon rebuilds, decision replays — the ref is
+    # content-derived, so the same 2B line carries the same ref.
+    assert :ok = run(bring_in(org, client, user, "gstr2b", gstr2b_json()))
+
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    replayed = Resolutions.workings(month)
+    row = Enum.find(replayed.rows, &(&1["id"] == books_id))
+    assert row["bucket"] == "matched"
+  end
+
+  test "a broken file marks the dump failed and the month untouched", %{
+    org: org,
+    user: user,
+    client: client
+  } do
+    dump = bring_in(org, client, user, "gstr2b", "not json at all")
+
+    assert {:error, _} = run(dump)
+
+    {:ok, dump} = Dumps.fetch(org.id, dump.id)
+    assert dump.status == "failed"
+    assert dump.error
+
+    assert {:error, :not_found} = ClientMonths.get_by_period(org.id, client.id, @period)
+  end
+
+  # A GSTR-2B that reconciles against the purchase stub's invoices: DPS-0072
+  # matches exactly; INTER COOL's invoice number disagrees (→ needs_human);
+  # an unknown vendor is 2B-only (→ in_2b_not_books).
+  defp gstr2b_json do
+    Jason.encode!(%{
+      "data" => %{
+        "docdata" => %{
+          "b2b" => [
+            supplier("32AAMFD7558A1ZL", "DAWN POWER SOLUTIONS", [
+              invoice("DPS-0072", "08-10-2025", 20_060.0, 17_000.0, 3060.0)
+            ]),
+            supplier("32ACVPR7455F1Z3", "INTER COOL REFRIGERATION", [
+              invoice("GX999", "12-10-2025", 949.99, 805.08, 144.91)
+            ]),
+            supplier("29AAACS9999A1Z5", "PHANTOM SUPPLIES", [
+              invoice("PS-1", "05-10-2025", 5900.0, 5000.0, 900.0)
+            ])
+          ]
+        }
+      }
+    })
+  end
+
+  defp empty_gstr2b_json do
+    Jason.encode!(%{"data" => %{"docdata" => %{"b2b" => []}}})
+  end
+
+  defp supplier(ctin, trdnm, invoices),
+    do: %{"ctin" => ctin, "trdnm" => trdnm, "inv" => invoices}
+
+  defp invoice(inum, dt, val, txval, igst) do
+    %{
+      "inum" => inum,
+      "dt" => dt,
+      "val" => val,
+      "pos" => "33",
+      "rev" => "N",
+      "itcavl" => "Y",
+      "txval" => txval,
+      "igst" => igst,
+      "cgst" => 0,
+      "sgst" => 0
+    }
+  end
+end
