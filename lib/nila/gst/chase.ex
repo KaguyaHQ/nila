@@ -15,6 +15,7 @@ defmodule Nila.Gst.Chase do
 
   alias Nila.Formatters
   alias Nila.Gst.{Calendar, ChaseAsk, ClientMonth, ClientMonths, Resolutions, SalesMonths}
+  alias Nila.Orgs.Org
   alias Nila.Repo
 
   @doc """
@@ -56,22 +57,25 @@ defmodule Nila.Gst.Chase do
 
   @doc """
   Drafts the chase message as plain multiline text for manual or automated
-  delivery. The value is the specificity: named vendors, amounts, real due dates.
+  delivery. The value is the specificity: named vendors, amounts, real due
+  dates. The register is the Indian professional one — the message goes out in
+  the firm's name and closes with the firm's signature, so a proprietor
+  reading it knows exactly who is asking.
 
   `:month_open` is the opening nudge for a period whose dumps haven't arrived.
   """
-  def draft(:month_open, client, period) do
+  def draft(:month_open, %Org{} = org, client, period) do
     dates = Calendar.due_dates(period)
     month = month_name(period)
 
     """
-    Hi #{client.name},
+    Dear #{client.name},
 
-    #{month_label(period)} GST filing is open. Please send us your #{month} sales invoices and purchase bills when you get a chance.
+    GST filing for #{month_label(period)} is open. Please send us your #{month} sales invoices and purchase bills for filing.
 
-    GSTR-1 is due #{Formatters.format_display_date(dates.gstr1)}, so the sooner they reach us the sooner we can file on time.
+    GSTR-1 is due #{Formatters.format_display_date(dates.gstr1)} — sending them early helps us file on time.
 
-    Thanks!\
+    #{signature(org)}\
     """
   end
 
@@ -80,7 +84,7 @@ defmodule Nila.Gst.Chase do
   is listed with vendor, invoice number, and amount; sequence gaps in the
   client's own invoices are relayed in their own words.
   """
-  def draft(:missing_bills, client, period, gaps) do
+  def draft(:missing_bills, %Org{} = org, client, period, gaps) do
     sections =
       [
         missing_bills_section(period, gaps.in_2b_not_books),
@@ -90,13 +94,13 @@ defmodule Nila.Gst.Chase do
       |> Enum.join("\n\n")
 
     """
-    Hi #{client.name},
+    Dear #{client.name},
 
     #{sections}
 
-    GSTR-3B for #{month_label(period)} is due #{Formatters.format_display_date(due(period))} — sending these across soon helps us file without a scramble.
+    GSTR-3B for #{month_label(period)} is due #{Formatters.format_display_date(due(period))} — please send these across soon so we can file on time.
 
-    Thanks!\
+    #{signature(org)}\
     """
   end
 
@@ -124,12 +128,13 @@ defmodule Nila.Gst.Chase do
     )
   end
 
-  @doc "All asks for `(org, client, period)`, newest first."
+  @doc "All asks for `(org, client, period)`, newest first, `sent_by` preloaded."
   def list_asks(org_id, client_id, period) do
     Repo.all(
       from a in ChaseAsk,
         where: a.org_id == ^org_id and a.client_id == ^client_id and a.period == ^period,
-        order_by: [desc: a.inserted_at, desc: a.id]
+        order_by: [desc: a.inserted_at, desc: a.id],
+        preload: [:sent_by]
     )
   end
 
@@ -164,6 +169,12 @@ defmodule Nila.Gst.Chase do
 
   defp bills_phrase(1), do: "a bill"
   defp bills_phrase(n), do: "#{n} bills"
+
+  defp signature(org) do
+    ["Regards,", org.name, org.contact_phone]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n")
+  end
 
   defp due(period), do: Calendar.due_dates(period).gstr3b
 

@@ -116,6 +116,7 @@ defmodule NilaWeb.Router do
     # Tenant-scoped GST evidence: the controller checks the current org owns the
     # client_month before streaming, so bills never leak across firms.
     get "/gst/:client_id/:period/evidence/:basename", GstEvidenceController, :show
+    get "/gst/:client_id/:period/original/:dump_id/:index", GstEvidenceController, :original
     get "/gstr1/:client_id/:period/return.json", Gstr1Controller, :return_json
     get "/gstr1/:client_id/:period/evidence/:basename", Gstr1Controller, :evidence
 

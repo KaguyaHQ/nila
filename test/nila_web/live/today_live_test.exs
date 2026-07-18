@@ -285,8 +285,8 @@ defmodule NilaWeb.TodayLiveTest do
 
     assert has_element?(view, "#chase-draft-modal")
     body = view |> element("#chase-draft-body") |> render()
-    assert body =~ "Hi Breeze Tech"
-    assert body =~ "October 2025 GST filing is open"
+    assert body =~ "Dear Breeze Tech"
+    assert body =~ "GST filing for October 2025 is open"
     assert body =~ "GSTR-1 is due 11 Nov 2025"
     assert has_element?(view, "#chase-copy-button")
   end
@@ -357,7 +357,7 @@ defmodule NilaWeb.TodayLiveTest do
     assert ask.kind == "month_open"
     assert ask.channel == "manual"
     assert ask.sent_by_id == user.id
-    assert ask.body =~ "Hi Breeze Tech"
+    assert ask.body =~ "Dear Breeze Tech"
   end
 
   test "redirects logged-out visitors to log in" do

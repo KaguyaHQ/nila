@@ -26,6 +26,7 @@ defmodule Nila.Gst.Today do
   """
 
   alias Nila.Clients
+  alias Nila.Orgs
 
   alias Nila.Gst.{
     Calendar,
@@ -51,6 +52,7 @@ defmodule Nila.Gst.Today do
   @doc "The assembled rows for `org_id` as of `today`, sorted section-then-deadline."
   def rows(org_id, %Date{} = today) do
     closeable = Calendar.closeable_period(today)
+    org = Orgs.get_org!(org_id)
     clients = Clients.list_clients(org_id)
     clients_by_id = Map.new(clients, &{&1.id, &1})
 
@@ -75,6 +77,7 @@ defmodule Nila.Gst.Today do
     keys
     |> Enum.map(fn {client_id, period} = key ->
       row(
+        org,
         clients_by_id[client_id],
         period,
         months[key] || %{},
@@ -86,7 +89,7 @@ defmodule Nila.Gst.Today do
     |> Enum.sort_by(&{section_rank(&1.section), &1.days_left || 999, &1.client_name})
   end
 
-  defp row(client, period, months, today, processing?) do
+  defp row(org, client, period, months, today, processing?) do
     purchase = months[:purchase]
     sales = months[:sales]
 
@@ -129,7 +132,7 @@ defmodule Nila.Gst.Today do
       processing?: processing?,
       last_ask_at: asks |> List.first() |> then(&(&1 && &1.inserted_at)),
       ask_count: length(asks),
-      draft: build_draft(client, period, purchase, slots),
+      draft: build_draft(org, client, period, purchase, slots),
       path: row_path(client, period, purchase, sales)
     }
   end
@@ -208,10 +211,10 @@ defmodule Nila.Gst.Today do
   # The right ask for where the month stands: dumps still missing -> the
   # opening nudge; dumps in but the engine found gaps -> the specific chase;
   # everything in and nothing missing -> nothing to ask.
-  defp build_draft(client, period, purchase, slots) do
+  defp build_draft(org, client, period, purchase, slots) do
     cond do
       not (slots.purchase and slots.sales) ->
-        %{kind: "month_open", body: Chase.draft(:month_open, client, period)}
+        %{kind: "month_open", body: Chase.draft(:month_open, org, client, period)}
 
       true ->
         case Chase.gaps(purchase) do
@@ -219,7 +222,7 @@ defmodule Nila.Gst.Today do
             nil
 
           gaps ->
-            %{kind: "missing_bills", body: Chase.draft(:missing_bills, client, period, gaps)}
+            %{kind: "missing_bills", body: Chase.draft(:missing_bills, org, client, period, gaps)}
         end
     end
   end

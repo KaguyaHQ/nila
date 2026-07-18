@@ -82,6 +82,7 @@ defmodule Nila.Gst.Arrivals do
                    %{
                      period: period,
                      kind: kind,
+                     source: hd(locked).source,
                      file_keys: Enum.map(locked, & &1.storage_key)
                    }
                  ),

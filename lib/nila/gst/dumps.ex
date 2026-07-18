@@ -40,8 +40,25 @@ defmodule Nila.Gst.Dumps do
     Repo.all(
       from d in Dump,
         where: d.org_id == ^org_id and d.client_id == ^client_id and d.period == ^period,
-        order_by: [asc: d.inserted_at, asc: d.id]
+        order_by: [asc: d.inserted_at, asc: d.id],
+        preload: [:brought_in_by]
     )
+  end
+
+  @doc """
+  One original file of an org's dump, for download: the dump row is the
+  authority — the path's client/period must match it — and `index` addresses
+  into `file_keys`. `{:error, :not_found}` on any mismatch.
+  """
+  def fetch_original(org_id, client_id, period, dump_id, index) do
+    with {:ok, dump} <- fetch(org_id, dump_id),
+         true <- to_string(dump.client_id) == to_string(client_id) and dump.period == period,
+         key when is_binary(key) <- Enum.at(dump.file_keys, index),
+         {:ok, bytes} <- Nila.Storage.get(key) do
+      {:ok, dump, key, bytes}
+    else
+      _ -> {:error, :not_found}
+    end
   end
 
   @doc "Non-terminal dumps for `(org, client, period)`, oldest first."
@@ -51,7 +68,8 @@ defmodule Nila.Gst.Dumps do
         where:
           d.org_id == ^org_id and d.client_id == ^client_id and d.period == ^period and
             d.status in ^@active_statuses,
-        order_by: [asc: d.inserted_at, asc: d.id]
+        order_by: [asc: d.inserted_at, asc: d.id],
+        preload: [:brought_in_by]
     )
   end
 

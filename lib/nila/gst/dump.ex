@@ -7,7 +7,9 @@ defmodule Nila.Gst.Dump do
 
   `kind` is human-declared at intake (`sales` | `purchase` | `gstr2b`) — the
   accountant knows what they're holding, and a mis-classified dump would
-  quietly poison two returns. `invoices` holds the dump's own normalized
+  quietly poison two returns. `source` records the channel that carried the
+  arrival (`whatsapp` | `email`) when the dump was routed from one; direct
+  uploads leave it nil. `invoices` holds the dump's own normalized
   extraction output (invoice ids and image paths namespaced by dump, so
   unions never collide) — the month is derived from the union across dumps,
   and a straggler dump never forces re-reading the main pile. For a 2B dump
@@ -28,6 +30,7 @@ defmodule Nila.Gst.Dump do
     field :period, :string
     field :kind, :string
     field :status, :string, default: "received"
+    field :source, :string
     field :file_keys, {:array, :string}, default: []
     field :invoices, {:array, :map}, default: []
     field :meta, :map, default: %{}
@@ -42,7 +45,8 @@ defmodule Nila.Gst.Dump do
 
   def changeset(dump, attrs) do
     dump
-    |> cast(attrs, [:period, :kind, :status, :file_keys, :invoices, :meta, :error])
+    |> cast(attrs, [:period, :kind, :status, :source, :file_keys, :invoices, :meta, :error])
+    |> validate_inclusion(:source, ~w(whatsapp email))
     |> validate_required([:org_id, :client_id, :period, :kind, :status])
     |> validate_inclusion(:kind, @kinds)
     |> validate_inclusion(:status, @statuses)

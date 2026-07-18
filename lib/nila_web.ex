@@ -94,6 +94,7 @@ defmodule NilaWeb do
       import NilaWeb.Components.Page
       import NilaWeb.Components.Form
       import NilaWeb.Components.Feedback
+      import NilaWeb.Components.ChaseHistory
 
       import Nila.Formatters,
         only: [

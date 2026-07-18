@@ -368,10 +368,16 @@ defmodule NilaWeb.GstExceptionsLive do
     month = socket.assigns.month
 
     body =
-      Chase.draft(:missing_bills, month.client, month.period, %{
-        in_2b_not_books: [%{"gstr2b" => item.gstr2b}],
-        sequence_issues: []
-      })
+      Chase.draft(
+        :missing_bills,
+        socket.assigns.current_scope.current_org,
+        month.client,
+        month.period,
+        %{
+          in_2b_not_books: [%{"gstr2b" => item.gstr2b}],
+          sequence_issues: []
+        }
+      )
 
     {:noreply, assign(socket, :draft, %{body: body, item_id: id})}
   end

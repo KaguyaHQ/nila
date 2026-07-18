@@ -20,6 +20,7 @@ defmodule NilaWeb.MonthLive do
 
   alias Nila.Gst.{
     Calendar,
+    Chase,
     ClientMonths,
     Dumps,
     DumpWorker,
@@ -66,6 +67,7 @@ defmodule NilaWeb.MonthLive do
       |> assign(:selected_row, nil)
       |> assign(:selected_inum, nil)
       |> assign(:correcting, nil)
+      |> assign(:show_chase_history, false)
       |> assign_month(purchase, sales)
     else
       nil
@@ -98,11 +100,22 @@ defmodule NilaWeb.MonthLive do
 
     socket
     |> assign(:dumps, dumps)
+    |> assign(:superseded_2b_ids, superseded_2b_ids(dumps))
+    |> assign(:asks, Chase.list_asks(org_id, client.id, period))
     |> assign(:open_period, Calendar.closeable_period(Date.utc_today()))
     |> assign(
       :attention_dumps,
       Enum.filter(dumps, &(&1.status in ~w(received extracting held failed after_filing)))
     )
+  end
+
+  # A 2B snapshot replaces its predecessors (Dumps.effective/4) — the older
+  # extracted 2B dumps are part of the story but no longer the effective set.
+  defp superseded_2b_ids(dumps) do
+    dumps
+    |> Enum.filter(&(&1.kind == "gstr2b" and &1.status == "extracted"))
+    |> Enum.drop(-1)
+    |> MapSet.new(& &1.id)
   end
 
   # ---------------------------------------------------------------------------
@@ -327,6 +340,14 @@ defmodule NilaWeb.MonthLive do
 
   def handle_event("close-evidence", _params, socket) do
     {:noreply, assign(socket, selected_row: nil, selected_inum: nil, correcting: nil)}
+  end
+
+  def handle_event("open-chase-history", _params, socket) do
+    {:noreply, assign(socket, :show_chase_history, true)}
+  end
+
+  def handle_event("close-chase-history", _params, socket) do
+    {:noreply, assign(socket, :show_chase_history, false)}
   end
 
   def handle_event("confirm_issue", %{"target" => target}, socket) do
@@ -841,6 +862,42 @@ defmodule NilaWeb.MonthLive do
           </div>
         </div>
 
+        <section :if={@dumps != []} id="month-arrived" class="space-y-1.5">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="text-base-content/60 text-small font-semibold">Arrived</h2>
+            <button
+              :if={@asks != []}
+              type="button"
+              id="month-chase-history-link"
+              phx-click="open-chase-history"
+              class="text-fine text-moon font-semibold"
+            >
+              Asked {length(@asks)}× — see what we sent
+            </button>
+          </div>
+          <div
+            :for={dump <- @dumps}
+            id={"month-arrived-#{dump.id}"}
+            class="text-base-content/60 text-small flex flex-wrap items-center gap-x-2 gap-y-1"
+          >
+            <span class={MapSet.member?(@superseded_2b_ids, dump.id) && "line-through opacity-70"}>
+              {arrived_line(dump)}
+            </span>
+            <span :if={MapSet.member?(@superseded_2b_ids, dump.id)} class="text-fine">
+              (replaced)
+            </span>
+            <.link
+              :for={{_key, index} <- Enum.with_index(dump.file_keys)}
+              href={~p"/gst/#{@client.id}/#{@period}/original/#{dump.id}/#{index}"}
+              id={"month-arrived-file-#{dump.id}-#{index}"}
+              class="text-fine text-moon inline-flex items-center gap-1 font-semibold"
+            >
+              <.icon name="hero-arrow-down-tray" class="size-3.5" />
+              {if length(dump.file_keys) > 1, do: "file #{index + 1}", else: "file"}
+            </.link>
+          </div>
+        </section>
+
         <section :if={@sales_month} id="month-sales" class="scroll-mt-4 space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -1237,6 +1294,16 @@ defmodule NilaWeb.MonthLive do
       </div>
 
       <.modal
+        :if={@show_chase_history}
+        id="month-chase-history-modal"
+        title={"Asked #{@client.name} · #{period_label(@period)}"}
+        on_close="close-chase-history"
+        class="max-w-2xl"
+      >
+        <.chase_history asks={@asks} />
+      </.modal>
+
+      <.modal
         :if={@selected_row}
         id="gst-evidence-modal"
         title={evidence_title(@selected_row)}
@@ -1427,6 +1494,26 @@ defmodule NilaWeb.MonthLive do
   defp dump_kind_title("sales"), do: "Sales bills"
   defp dump_kind_title("purchase"), do: "Purchase bills"
   defp dump_kind_title("gstr2b"), do: "GSTR-2B"
+
+  # One quiet ledger line: what it was, how many files, when, who — and the
+  # channel when the dump came through a routed arrival.
+  defp arrived_line(dump) do
+    [
+      dump_kind_title(dump.kind),
+      file_count_label(length(dump.file_keys)),
+      format_display_datetime(dump.inserted_at),
+      dump.brought_in_by && "brought in by #{dump.brought_in_by.name}",
+      dump.source && "over #{source_label(dump.source)}"
+    ]
+    |> Enum.filter(& &1)
+    |> Enum.join(" · ")
+  end
+
+  defp file_count_label(1), do: "1 file"
+  defp file_count_label(n), do: "#{n} files"
+
+  defp source_label("whatsapp"), do: "WhatsApp"
+  defp source_label("email"), do: "email"
 
   defp dump_variant("failed"), do: "error"
   defp dump_variant("held"), do: "warning"

@@ -16,6 +16,7 @@ defmodule NilaWeb.TodayLive do
      socket
      |> assign(:page_title, "Today")
      |> assign(:draft, nil)
+     |> assign(:chase_history, nil)
      |> assign(:arrival_group, nil)
      |> assign(:arrival_form, nil)
      |> assign(:arrival_error, nil)
@@ -152,6 +153,34 @@ defmodule NilaWeb.TodayLive do
 
   def handle_event("close-draft", _params, socket) do
     {:noreply, assign(socket, :draft, nil)}
+  end
+
+  def handle_event(
+        "open-chase-history",
+        %{"client-id" => client_id, "period" => period},
+        socket
+      ) do
+    row =
+      Enum.find(
+        socket.assigns.rows,
+        &(to_string(&1.client_id) == client_id and &1.period == period)
+      )
+
+    {:noreply,
+     assign(
+       socket,
+       :chase_history,
+       row &&
+         %{
+           client_name: row.client_name,
+           period_label: period_label(row.period),
+           asks: Chase.list_asks(row.org_id, row.client_id, row.period)
+         }
+     )}
+  end
+
+  def handle_event("close-chase-history", _params, socket) do
+    {:noreply, assign(socket, :chase_history, nil)}
   end
 
   def handle_event("open-arrivals", %{"arrival-id" => arrival_id}, socket) do
@@ -396,16 +425,40 @@ defmodule NilaWeb.TodayLive do
               </span>
             </:col>
             <:col :let={r} label="Last ask">
-              <span :if={last_ask_label(r.last_ask_at, @today)} class="text-base-content/70 text-fine">
+              <button
+                :if={last_ask_label(r.last_ask_at, @today)}
+                type="button"
+                id={"last-ask-#{r.client_id}-#{r.period}"}
+                class="hover:text-moon text-base-content/70 text-fine cursor-pointer underline decoration-dotted underline-offset-2"
+                phx-click={
+                  JS.push("open-chase-history",
+                    value: %{"client-id" => to_string(r.client_id), "period" => r.period}
+                  )
+                }
+              >
                 {last_ask_label(r.last_ask_at, @today)}
-              </span>
+              </button>
               <span :if={!last_ask_label(r.last_ask_at, @today)} class="text-base-content/45">
                 —
               </span>
             </:col>
             <:col :let={r} label="Chase">
               <div :if={r.chase_channel != "none"} class="flex items-center gap-2">
+                <button
+                  :if={r.ask_count > 0}
+                  type="button"
+                  id={"automated-chase-#{r.client_id}-#{r.period}"}
+                  class="hover:text-moon text-base-content/70 text-fine cursor-pointer underline decoration-dotted underline-offset-2"
+                  phx-click={
+                    JS.push("open-chase-history",
+                      value: %{"client-id" => to_string(r.client_id), "period" => r.period}
+                    )
+                  }
+                >
+                  {automated_ask_label(r, @today)}
+                </button>
                 <span
+                  :if={r.ask_count == 0}
                   id={"automated-chase-#{r.client_id}-#{r.period}"}
                   class="text-base-content/70 text-fine"
                 >
@@ -508,6 +561,16 @@ defmodule NilaWeb.TodayLive do
             </div>
           </div>
         </.form>
+      </.modal>
+
+      <.modal
+        :if={@chase_history}
+        id="today-chase-history-modal"
+        title={"Asked #{@chase_history.client_name} · #{@chase_history.period_label}"}
+        on_close="close-chase-history"
+        class="max-w-2xl"
+      >
+        <.chase_history asks={@chase_history.asks} />
       </.modal>
 
       <.modal
