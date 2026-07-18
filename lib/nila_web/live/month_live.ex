@@ -338,6 +338,7 @@ defmodule NilaWeb.MonthLive do
         purchase.filed_at -> {"filed", :done}
         assigns.gstr3b_signoff -> {"signed", :done}
         need_decision > 0 -> {"waiting", :idle}
+        sales == nil -> {"needs the GSTR-1", :idle}
         true -> {"ready", :ready}
       end
 
@@ -780,7 +781,7 @@ defmodule NilaWeb.MonthLive do
         <div
           :if={@blocking_state == :done}
           id="month-strip"
-          class="bg-success/[0.06] border-success/40 rounded-box sticky top-0 z-20 flex flex-wrap items-center gap-3 border px-4 py-3 backdrop-blur"
+          class="border-success/40 rounded-box sticky -top-6 z-20 flex flex-wrap items-center gap-3 border bg-[color-mix(in_oklab,var(--color-success)_6%,var(--color-base-200))] px-4 py-3"
         >
           <.icon name="hero-check-circle" class="text-success size-5" />
           <p class="text-base-content text-small flex-1 font-semibold">
@@ -802,7 +803,7 @@ defmodule NilaWeb.MonthLive do
         <div
           :if={@blocking_state != :done}
           id="month-strip"
-          class="bg-base-200/95 border-base-300 rounded-box sticky top-0 z-20 flex flex-wrap items-center gap-3 border px-4 py-3 backdrop-blur"
+          class="bg-base-200 border-base-300 rounded-box sticky -top-6 z-20 flex flex-wrap items-center gap-3 border px-4 py-3"
         >
           <.badge variant={strip_variant(@blocking_state)}>
             {strip_label(@blocking_state)}
@@ -1605,7 +1606,7 @@ defmodule NilaWeb.MonthLive do
   defp deadline_label(%{days_left: days}), do: "#{days}d left"
 
   defp deadline_variant(days) when days < 0, do: "error"
-  defp deadline_variant(days) when days <= 3, do: "warning"
+  defp deadline_variant(days) when days <= 5, do: "warning"
   defp deadline_variant(_days), do: "neutral"
 
   # The month's ending: the assembled GSTR-3B. Liability (3.1a) comes from the

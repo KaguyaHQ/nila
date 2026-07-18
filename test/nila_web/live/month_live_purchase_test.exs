@@ -317,6 +317,50 @@ defmodule NilaWeb.MonthLivePurchaseTest do
     assert has_element?(view, "#month-strip", "Month closed — GSTR-1 and GSTR-3B filed.")
     assert has_element?(view, "#month-back-today", "Back to Today")
     assert has_element?(view, ~s|#month-view-register[href="/register"]|, "View the register →")
+
+    assert has_element?(view, "#spine-inputs", "in")
+    assert has_element?(view, "#spine-gstr1", "filed")
+    assert has_element?(view, "#spine-gstr3b", "filed")
+    refute has_element?(view, "#month-deadline")
+  end
+
+  test "a signed-unfiled month shows signed spine steps and an overdue-since deadline", %{
+    conn: conn,
+    org: org,
+    user: user,
+    client: client,
+    client_month: client_month
+  } do
+    {:ok, sales} =
+      SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        state: "reviewed"
+      })
+
+    scope = Nila.Accounts.Scope.for_user(user)
+    assert {:ok, _} = Signoffs.sign_off_gstr1(sales, scope)
+    assert {:ok, _} = Signoffs.sign_off(client_month, scope)
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#spine-gstr1", "signed")
+    assert has_element?(view, "#spine-gstr3b", "signed")
+    assert has_element?(view, "#month-deadline", "overdue since 11 Nov 2025")
+  end
+
+  test "matched rows without flags render a silent note column", %{conn: conn, client: client} do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    {row, index} =
+      read_rows()
+      |> Enum.with_index()
+      |> Enum.find(fn {row, _} ->
+        row["bucket"] == "matched" and row["flags"] in [nil, []]
+      end)
+
+    refute view |> element("##{dom_id(row, index)}") |> render() =~ "matched on"
   end
 
   test "filing GSTR-1 second also closes the month", %{

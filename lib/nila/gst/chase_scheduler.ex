@@ -34,6 +34,7 @@ defmodule Nila.Gst.ChaseScheduler do
   end
 
   def should_ask?(%{draft: nil}, _today), do: false
+  def should_ask?(%{deadline: nil}, _today), do: false
   def should_ask?(%{ask_count: count}, _today) when count >= 4, do: false
   def should_ask?(%{last_ask_at: nil}, _today), do: true
 
