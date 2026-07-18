@@ -47,6 +47,21 @@ defmodule NilaWeb.MonthLivePurchaseTest do
     end
   end
 
+  test "the spine shows each step's state and jumps to its section", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#month-spine")
+    assert has_element?(view, "#spine-inputs", "partial")
+    assert has_element?(view, "#spine-gstr1", "missing")
+    assert has_element?(view, "#spine-purchases", "21 to decide")
+    assert has_element?(view, "#spine-gstr3b", "waiting")
+    assert view |> element("#spine-purchases") |> render() =~ ~s(href="#month-purchases")
+    assert view |> element("#spine-gstr1") |> render() =~ ~s(href="#month-sales-missing")
+  end
+
   test "clicking a row with images shows the bill and reason text", %{
     conn: conn,
     client: client

@@ -314,6 +314,100 @@ defmodule NilaWeb.MonthLive do
 
   defp signoff_anchor(_assigns), do: "#month-3b"
 
+  # The spine — where the month stands, step by step. Pure exhaust from the
+  # assigns the page already carries; clicking a step jumps to its section.
+  defp spine_steps(assigns) do
+    sales = assigns.sales_month
+    purchase = assigns.purchase_month
+    need_decision = (assigns.stats && assigns.stats.need_decision) || 0
+
+    inputs =
+      cond do
+        sales && purchase -> {"in", :done}
+        sales || purchase -> {"partial", :attention}
+        true -> {"missing", :idle}
+      end
+
+    gstr1 =
+      cond do
+        sales == nil -> {"missing", :idle}
+        sales.filed_at -> {"filed", :done}
+        assigns.r1_signoff -> {"signed", :done}
+        sales.state == "reviewed" -> {"ready", :ready}
+        assigns.open_issue_count > 0 -> {"#{assigns.open_issue_count} issues", :attention}
+        true -> {"needs review", :attention}
+      end
+
+    purchases =
+      cond do
+        purchase == nil -> {"missing", :idle}
+        need_decision > 0 -> {"#{need_decision} to decide", :attention}
+        true -> {"clear", :done}
+      end
+
+    gstr3b =
+      cond do
+        purchase == nil -> {"missing", :idle}
+        purchase.filed_at -> {"filed", :done}
+        assigns.gstr3b_signoff -> {"signed", :done}
+        need_decision > 0 -> {"waiting", :idle}
+        true -> {"ready", :ready}
+      end
+
+    [
+      %{id: "inputs", label: "Inputs", state: inputs, href: inputs_anchor(assigns)},
+      %{
+        id: "gstr1",
+        label: "GSTR-1",
+        state: gstr1,
+        href: if(sales, do: "#month-sales", else: "#month-sales-missing")
+      },
+      %{
+        id: "purchases",
+        label: "Purchases · 2B",
+        state: purchases,
+        href: if(purchase, do: "#month-purchases", else: "#month-purchases-missing")
+      },
+      %{
+        id: "gstr3b",
+        label: "GSTR-3B",
+        state: gstr3b,
+        href: if(purchase, do: "#month-3b", else: "#month-purchases-missing")
+      }
+    ]
+  end
+
+  defp inputs_anchor(%{dumps: dumps}) when dumps != [], do: "#month-arrived"
+  defp inputs_anchor(%{sales_month: nil}), do: "#month-sales-missing"
+  defp inputs_anchor(%{purchase_month: nil}), do: "#month-purchases-missing"
+  defp inputs_anchor(_assigns), do: "#month-page"
+
+  defp spine_dot(:done), do: "bg-success"
+  defp spine_dot(:attention), do: "bg-warning"
+  defp spine_dot(:ready), do: "bg-moon"
+  defp spine_dot(:idle), do: "bg-base-content/25"
+
+  attr :steps, :list, required: true
+
+  defp spine(assigns) do
+    ~H"""
+    <nav id="month-spine" aria-label="Month progress" class="flex w-full flex-wrap items-center gap-1">
+      <%= for {step, index} <- Enum.with_index(@steps) do %>
+        <span :if={index > 0} class="text-base-content/25 text-small">→</span>
+        <a
+          href={step.href}
+          id={"spine-#{step.id}"}
+          class="hover:bg-base-100/60 rounded-field flex items-center gap-1.5 px-1.5 py-0.5"
+        >
+          <span class={["size-1.5 rounded-full", spine_dot(elem(step.state, 1))]}></span>
+          <span class="text-base-content/80 text-small font-medium">{step.label}</span>
+          <span class="text-base-content/50 text-fine">{elem(step.state, 0)}</span>
+        </a>
+      <% end %>
+    </nav>
+    """
+  end
+
   # ---------------------------------------------------------------------------
   # Events — sales verbs carry the r1- prefix, purchase/3B verbs the 3b-.
   # ---------------------------------------------------------------------------
@@ -699,7 +793,7 @@ defmodule NilaWeb.MonthLive do
         <div
           :if={@blocking_state == :done}
           id="month-strip"
-          class="bg-success/[0.06] border-success/40 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+          class="bg-success/[0.06] border-success/40 rounded-box sticky top-0 z-20 flex flex-wrap items-center gap-3 border px-4 py-3 backdrop-blur"
         >
           <.icon name="hero-check-circle" class="text-success size-5" />
           <p class="text-base-content text-small flex-1 font-semibold">
@@ -715,12 +809,13 @@ defmodule NilaWeb.MonthLive do
           >
             View the register →
           </.link>
+          <.spine steps={spine_steps(assigns)} />
         </div>
 
         <div
           :if={@blocking_state != :done}
           id="month-strip"
-          class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+          class="bg-base-200/95 border-base-300 rounded-box sticky top-0 z-20 flex flex-wrap items-center gap-3 border px-4 py-3 backdrop-blur"
         >
           <.badge variant={strip_variant(@blocking_state)}>
             {strip_label(@blocking_state)}
@@ -813,6 +908,7 @@ defmodule NilaWeb.MonthLive do
           >
             File on the portal →
           </a>
+          <.spine steps={spine_steps(assigns)} />
         </div>
 
         <div :if={@attention_dumps != []} id="month-dumps" class="space-y-2">
@@ -862,7 +958,7 @@ defmodule NilaWeb.MonthLive do
           </div>
         </div>
 
-        <section :if={@dumps != []} id="month-arrived" class="space-y-1.5">
+        <section :if={@dumps != []} id="month-arrived" class="scroll-mt-28 space-y-1.5">
           <div class="flex flex-wrap items-center gap-3">
             <h2 class="text-base-content/60 text-small font-semibold">Arrived</h2>
             <button
@@ -898,7 +994,7 @@ defmodule NilaWeb.MonthLive do
           </div>
         </section>
 
-        <section :if={@sales_month} id="month-sales" class="scroll-mt-4 space-y-4">
+        <section :if={@sales_month} id="month-sales" class="scroll-mt-28 space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 class="text-base-content font-semibold">GSTR-1 — outward</h2>
@@ -1120,7 +1216,7 @@ defmodule NilaWeb.MonthLive do
         <div
           :if={!@sales_month}
           id="month-sales-missing"
-          class="border-base-300 rounded-box text-base-content/60 text-small border border-dashed px-4 py-6 text-center"
+          class="border-base-300 rounded-box text-base-content/60 text-small scroll-mt-28 border border-dashed px-4 py-6 text-center"
         >
           No sales bills for this period yet — the GSTR-1 derives once they arrive.
           <.link
@@ -1131,7 +1227,7 @@ defmodule NilaWeb.MonthLive do
           </.link>
         </div>
 
-        <section :if={@purchase_month} id="month-purchases" class="scroll-mt-4 space-y-4">
+        <section :if={@purchase_month} id="month-purchases" class="scroll-mt-28 space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 class="text-base-content font-semibold">Purchases — 2B reconciliation</h2>
@@ -1201,7 +1297,7 @@ defmodule NilaWeb.MonthLive do
         <div
           :if={!@purchase_month}
           id="month-purchases-missing"
-          class="border-base-300 rounded-box text-base-content/60 text-small border border-dashed px-4 py-6 text-center"
+          class="border-base-300 rounded-box text-base-content/60 text-small scroll-mt-28 border border-dashed px-4 py-6 text-center"
         >
           No purchase bills for this period yet — the 2B reconciliation and the 3B need them.
           <.link
@@ -1212,7 +1308,7 @@ defmodule NilaWeb.MonthLive do
           </.link>
         </div>
 
-        <section :if={@purchase_month} id="month-3b" class="scroll-mt-4 space-y-4">
+        <section :if={@purchase_month} id="month-3b" class="scroll-mt-28 space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <h2 class="text-base-content font-semibold">GSTR-3B — the month's ending</h2>
             <.button
