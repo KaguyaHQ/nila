@@ -181,8 +181,7 @@ defmodule NilaWeb.MonthLive do
     %{
       invoices: total,
       matched: matched,
-      need_decision: total - matched - (summary["accepted_unmatched"] || 0),
-      matched_tax_paise: summary["matched_tax_paise"] || 0
+      need_decision: total - matched - (summary["accepted_unmatched"] || 0)
     }
   end
 
@@ -296,18 +295,6 @@ defmodule NilaWeb.MonthLive do
   defp strip_variant(:needs_you), do: "warning"
   defp strip_variant(:done), do: "success"
   defp strip_variant(_), do: "neutral"
-
-  defp strip_facts(assigns) do
-    [
-      assigns.sales_month == nil && "sales bills not in yet",
-      assigns.purchase_month == nil && "purchase bills not in yet"
-    ]
-    |> Enum.filter(& &1)
-    |> case do
-      [] -> nil
-      parts -> Enum.join(parts, " · ")
-    end
-  end
 
   defp signoff_anchor(%{sales_month: sales, r1_signoff: nil}) when not is_nil(sales),
     do: "#month-sales"
@@ -820,13 +807,10 @@ defmodule NilaWeb.MonthLive do
           <.badge variant={strip_variant(@blocking_state)}>
             {strip_label(@blocking_state)}
           </.badge>
-          <span :if={strip_facts(assigns)} class="text-base-content/70 text-small">
-            {strip_facts(assigns)}
-          </span>
           <span class="flex-1"></span>
           <span :if={@deadline} id="month-deadline">
-            <.badge variant="neutral">
-              {@deadline.return} · {deadline_label(@deadline.days_left)}
+            <.badge variant={deadline_variant(@deadline.days_left)}>
+              {@deadline.return} · {deadline_label(@deadline)}
             </.badge>
           </span>
           <.button
@@ -1216,9 +1200,9 @@ defmodule NilaWeb.MonthLive do
         <div
           :if={!@sales_month}
           id="month-sales-missing"
-          class="border-base-300 rounded-box text-base-content/60 text-small scroll-mt-28 border border-dashed px-4 py-6 text-center"
+          class="border-base-300 rounded-box text-base-content/60 text-small flex scroll-mt-28 flex-wrap items-center gap-2 border border-dashed px-4 py-2.5"
         >
-          No sales bills for this period yet — the GSTR-1 derives once they arrive.
+          <span class="flex-1">Sales bills not in yet — the GSTR-1 derives once they arrive.</span>
           <.link
             navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}"}
             class="text-moon font-semibold"
@@ -1231,28 +1215,15 @@ defmodule NilaWeb.MonthLive do
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 class="text-base-content font-semibold">Purchases — 2B reconciliation</h2>
-              <p class="text-base-content/60 text-small">
-                Every row is one tap from its scanned bill — matched lines sit quiet, the
-                pile that needs a decision is flagged.
+              <p id="gst-stats" class="text-base-content/60 text-small">
+                <span id="gst-stat-invoices">{@stats.invoices}</span>
+                invoices · <span id="gst-stat-matched">{@stats.matched}</span>
+                matched to 2B ·
+                <span class={@stats.need_decision > 0 && "text-warning font-medium"}>
+                  <span id="gst-stat-need-decision">{@stats.need_decision}</span> need a decision
+                </span>
               </p>
             </div>
-          </div>
-
-          <div id="gst-stats" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <.stat_card label="Invoices" value_id="gst-stat-invoices">
-              {@stats.invoices}
-            </.stat_card>
-            <.stat_card label="Matched to 2B" value_id="gst-stat-matched">
-              {@stats.matched}
-            </.stat_card>
-            <.link navigate={~p"/gst/#{@client.id}/#{@period}/exceptions"} id="gst-open-exceptions">
-              <.stat_card label="Needs a decision" value_id="gst-stat-need-decision">
-                {@stats.need_decision}
-              </.stat_card>
-            </.link>
-            <.stat_card label="ITC / matched tax" value_id="gst-stat-matched-tax" figure>
-              {format_money(@stats.matched_tax_paise, prefix: "₹")}
-            </.stat_card>
           </div>
 
           <.data_table
@@ -1287,8 +1258,11 @@ defmodule NilaWeb.MonthLive do
               <.badge variant={bucket_variant(row["bucket"])}>{row["bucket_label"]}</.badge>
             </:col>
             <:col :let={row} label="Note" class="max-w-sm">
-              <span class="text-base-content text-small block truncate">
-                {row["verdict"] || "—"}
+              <span
+                :if={row["bucket"] != "matched" or row["flags"] not in [nil, []]}
+                class="text-base-content text-small block truncate"
+              >
+                {row["verdict"]}
               </span>
             </:col>
           </.data_table>
@@ -1297,9 +1271,11 @@ defmodule NilaWeb.MonthLive do
         <div
           :if={!@purchase_month}
           id="month-purchases-missing"
-          class="border-base-300 rounded-box text-base-content/60 text-small scroll-mt-28 border border-dashed px-4 py-6 text-center"
+          class="border-base-300 rounded-box text-base-content/60 text-small flex scroll-mt-28 flex-wrap items-center gap-2 border border-dashed px-4 py-2.5"
         >
-          No purchase bills for this period yet — the 2B reconciliation and the 3B need them.
+          <span class="flex-1">
+            Purchase bills not in yet — the 2B reconciliation and the 3B need them.
+          </span>
           <.link
             navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}"}
             class="text-moon font-semibold"
@@ -1621,9 +1597,16 @@ defmodule NilaWeb.MonthLive do
   defp dump_releasable?(assigns, %{kind: "sales"}), do: is_nil(assigns.r1_signoff)
   defp dump_releasable?(assigns, _dump), do: is_nil(assigns.gstr3b_signoff)
 
-  defp deadline_label(days) when days < 0, do: "#{-days}d overdue"
-  defp deadline_label(0), do: "due today"
-  defp deadline_label(days), do: "#{days}d left"
+  defp deadline_label(%{days_left: days, due: due}) when days < -30,
+    do: "overdue since #{format_display_date(due)}"
+
+  defp deadline_label(%{days_left: days}) when days < 0, do: "#{-days}d overdue"
+  defp deadline_label(%{days_left: 0}), do: "due today"
+  defp deadline_label(%{days_left: days}), do: "#{days}d left"
+
+  defp deadline_variant(days) when days < 0, do: "error"
+  defp deadline_variant(days) when days <= 3, do: "warning"
+  defp deadline_variant(_days), do: "neutral"
 
   # The month's ending: the assembled GSTR-3B. Liability (3.1a) comes from the
   # client's worked sales month when one exists; ITC (Table 4) from the 2B

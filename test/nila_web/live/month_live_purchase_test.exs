@@ -34,7 +34,7 @@ defmodule NilaWeb.MonthLivePurchaseTest do
     assert has_element?(view, "#gst-stat-invoices", "58")
     assert has_element?(view, "#gst-stat-matched", "37")
     assert has_element?(view, "#gst-stat-need-decision", "21")
-    assert has_element?(view, "#gst-stats", "Needs a decision")
+    assert has_element?(view, "#gst-stats", "need a decision")
     assert has_element?(view, "#gst-register", "Needs a decision")
     refute render(view) =~ "Needs review"
     assert has_element?(view, "#month-decide-purchases", "Decide 21 purchases →")

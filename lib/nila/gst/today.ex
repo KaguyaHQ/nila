@@ -179,9 +179,14 @@ defmodule Nila.Gst.Today do
     status = Calendar.status(period, today)
 
     cond do
-      not r1_filed -> %{return: "GSTR-1", days_left: status.gstr1_days_left}
-      not gstr3b_filed -> %{return: "GSTR-3B", days_left: status.gstr3b_days_left}
-      true -> nil
+      not r1_filed ->
+        %{return: "GSTR-1", days_left: status.gstr1_days_left, due: status.gstr1_due}
+
+      not gstr3b_filed ->
+        %{return: "GSTR-3B", days_left: status.gstr3b_days_left, due: status.gstr3b_due}
+
+      true ->
+        nil
     end
   end
 
