@@ -197,6 +197,8 @@ The app refuses to boot, or compose errors, without these:
 | `SECRET_KEY_BASE` | Signs and encrypts cookies and sessions. Generate with `mix phx.gen.secret`. |
 | `DATABASE_URL` | Ecto connection string. Must use the same password as `POSTGRES_PASSWORD` and point at host `nila-postgres`. |
 | `ASSISTANT_API_KEY` | API key for the OpenAI-compatible assistant. `runtime.exs` raises in prod if missing. |
+| `R2_ENDPOINT` / `R2_BUCKET` | Private Cloudflare R2 account endpoint and bucket name. |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Bucket-scoped R2 Object Read & Write credentials. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Postgres container credentials, interpolated by compose. |
 
 `PHX_SERVER`, `PORT`, and `PHX_HOST` are set in `docker-compose.yml`
