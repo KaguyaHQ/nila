@@ -88,7 +88,7 @@ defmodule Nila.Formatters do
     "relaxed_match_weak_corroboration" => "Probable match — verify",
     "fuzzy_name_weak_corroboration" => "Name-only match — verify",
     "no_confident_gstr2b_match" => "No 2B match found",
-    "missing_in_books" => "In 2B — bill not received"
+    "missing_in_books" => "Ask the client for this bill"
   }
 
   @doc "The short table-cell verdict for a reconciliation reason code."

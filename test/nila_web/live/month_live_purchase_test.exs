@@ -102,7 +102,12 @@ defmodule NilaWeb.MonthLivePurchaseTest do
 
     selector = "##{dom_id(row, index)}"
     refute has_element?(view, "#gst-register #{selector}", row["recon_note"])
-    assert has_element?(view, "#gst-register #{selector} .truncate", "In 2B — bill not received")
+
+    assert has_element?(
+             view,
+             "#gst-register #{selector} .truncate",
+             "Ask the client for this bill"
+           )
 
     view |> element(selector) |> render_click()
 
@@ -218,6 +223,40 @@ defmodule NilaWeb.MonthLivePurchaseTest do
     client: client,
     org: org
   } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    refute has_element?(view, "#gst-signoff-button")
+    assert has_element?(view, "#gst-signoff-blocked", "21 purchases to decide")
+    assert has_element?(view, "#gst-signoff-blocked", "the sales bills")
+
+    {:ok, _sales} =
+      SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        state: "reviewed",
+        invoices: []
+      })
+
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+
+    clean_recon =
+      month.recon
+      |> Map.put("needs_human", [])
+      |> Map.put("in_2b_not_books", [])
+      |> Map.put("in_books_not_2b", [])
+
+    {:ok, _} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        state: "worked",
+        register_rows: month.register_rows,
+        recon: clean_recon,
+        summary: month.summary
+      })
+
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     assert has_element?(view, "#gst-signoff-button")

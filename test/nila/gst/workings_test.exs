@@ -265,7 +265,7 @@ defmodule Nila.Gst.WorkingsTest do
 
     g2b_only = Recon.reconcile([], [g2b(%{"invoice_number" => "PORTAL-9"})])
     [g2b_row] = Register.rows([], g2b_only, %{})
-    assert g2b_row["verdict"] == "In 2B — bill not received"
+    assert g2b_row["verdict"] == "Ask the client for this bill"
     assert g2b_row["recon_note"] == "No books invoice corresponds to this GSTR-2B invoice."
 
     flags = %{

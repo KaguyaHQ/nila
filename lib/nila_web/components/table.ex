@@ -33,6 +33,12 @@ defmodule NilaWeb.Components.Table do
   attr :row_class, :any, default: nil, doc: "fn item -> extra class string for the <tr>"
   attr :empty?, :any, default: nil, doc: "force the empty state (required for streams)"
   attr :min_width, :string, default: nil, doc: "e.g. min-w-[760px] for horizontal scroll"
+
+  attr :sticky_header, :string,
+    default: nil,
+    doc:
+      "top-offset class (e.g. \"xl:top-14\") — keeps the header row pinned while the\n    page scrolls. Applies at xl+ only: sticky needs the wrapper's horizontal overflow\n    relaxed, so narrow screens keep their scroll and wide screens get the pinned header"
+
   attr :class, :any, default: nil
 
   slot :col do
@@ -59,13 +65,17 @@ defmodule NilaWeb.Components.Table do
     ~H"""
     <div class={[
       "bg-base-100 border-base-300 rounded-box shadow-moon overflow-x-auto border",
+      @sticky_header && "xl:overflow-x-visible",
       @class
     ]}>
       <div :if={@is_empty?} class="text-base-content/60 text-small px-4 py-12 text-center">
         {render_slot(@empty)}
       </div>
       <table :if={!@is_empty?} class={["text-small w-full text-left", @min_width]}>
-        <thead class="bg-base-200 text-base-content/55 text-label uppercase">
+        <thead class={[
+          "bg-base-200 text-base-content/55 text-label uppercase",
+          @sticky_header && ["xl:sticky xl:z-10", @sticky_header]
+        ]}>
           <tr>
             <th
               :for={col <- @col}

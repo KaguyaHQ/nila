@@ -286,7 +286,7 @@ defmodule NilaWeb.MonthLive do
   end
 
   defp strip_label(:to_file), do: "Signed — file on the portal"
-  defp strip_label(:needs_you), do: "Needs you"
+  defp strip_label(:needs_you), do: "Blocked — needs you"
   defp strip_label(:waiting_on_client), do: "Waiting on the client"
   defp strip_label(:waiting_on_senior), do: "Waiting on a senior"
   defp strip_label(:done), do: "Done — both returns filed"
@@ -735,11 +735,20 @@ defmodule NilaWeb.MonthLive do
         "border-l-2 border-l-warning/60"
 
       true ->
-        "opacity-60"
+        "text-base-content/75"
     end
   end
 
   defp liability_missing?(gstr3b), do: gstr3b["liability_source"] == "missing"
+
+  defp signoff_blockers(assigns) do
+    [
+      assigns.stats.need_decision > 0 && "#{assigns.stats.need_decision} purchases to decide",
+      assigns.sales_month == nil && "the sales bills"
+    ]
+    |> Enum.filter(& &1)
+    |> Enum.join(" · ")
+  end
 
   defp heads_total(heads),
     do: (heads["igst"] || 0) + (heads["cgst"] || 0) + (heads["sgst"] || 0)
@@ -815,7 +824,19 @@ defmodule NilaWeb.MonthLive do
             </.badge>
           </span>
           <.button
-            :if={(@blocking_state == :needs_you and @stats) && @stats.need_decision > 0}
+            :if={@blocking_state == :needs_you and @sales_month == nil}
+            navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}"}
+            id="month-bring-sales"
+            variant="outline"
+            size="xs"
+          >
+            Bring in the sales bills →
+          </.button>
+          <.button
+            :if={
+              (@blocking_state == :needs_you and @sales_month != nil and @stats) &&
+                @stats.need_decision > 0
+            }
             navigate={~p"/gst/#{@client.id}/#{@period}/exceptions"}
             id="month-decide-purchases"
             variant="outline"
@@ -823,6 +844,17 @@ defmodule NilaWeb.MonthLive do
           >
             Decide {@stats.need_decision} purchases →
           </.button>
+          <.link
+            :if={
+              (@blocking_state == :needs_you and @sales_month == nil and @stats) &&
+                @stats.need_decision > 0
+            }
+            navigate={~p"/gst/#{@client.id}/#{@period}/exceptions"}
+            id="month-decide-purchases"
+            class="text-moon text-small font-semibold"
+          >
+            Decide {@stats.need_decision} purchases →
+          </.link>
           <a
             :if={
               @blocking_state == :needs_you and (!@stats || @stats.need_decision == 0) and
@@ -1146,6 +1178,7 @@ defmodule NilaWeb.MonthLive do
 
           <.data_table
             id="gstr1-invoices"
+            sticky_header="xl:top-16"
             rows={@invoices}
             row_id={fn invoice -> "gstr1-inv-#{invoice["invoice_number"]}" end}
             row_click={
@@ -1229,6 +1262,7 @@ defmodule NilaWeb.MonthLive do
 
           <.data_table
             id="gst-register"
+            sticky_header="xl:top-16"
             rows={@rows}
             row_id={fn row -> row["dom_id"] end}
             row_click={fn row -> JS.push("select-row", value: %{dom_id: row["dom_id"]}) end}
@@ -1287,9 +1321,12 @@ defmodule NilaWeb.MonthLive do
 
         <section :if={@purchase_month} id="month-3b" class="scroll-mt-28 space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <h2 class="text-base-content font-semibold">GSTR-3B — the month's ending</h2>
+            <h2 class="text-base-content font-semibold">GSTR-3B — ITC and tax payable</h2>
             <.button
-              :if={@purchase_month.state == "worked" and Policy.can?(@current_scope, :sign_off)}
+              :if={
+                @purchase_month.state == "worked" and Policy.can?(@current_scope, :sign_off) and
+                  @stats.need_decision == 0 and @sales_month != nil
+              }
               id="gst-signoff-button"
               variant="primary"
               size="sm"
@@ -1297,6 +1334,16 @@ defmodule NilaWeb.MonthLive do
             >
               <.icon name="hero-check-badge-mini" class="size-4" /> Sign off month
             </.button>
+            <span
+              :if={
+                @purchase_month.state == "worked" and Policy.can?(@current_scope, :sign_off) and
+                  (@stats.need_decision > 0 or @sales_month == nil)
+              }
+              id="gst-signoff-blocked"
+              class="text-base-content/60 text-small"
+            >
+              Sign-off waits — {signoff_blockers(assigns)}
+            </span>
           </div>
 
           <div
@@ -1618,13 +1665,10 @@ defmodule NilaWeb.MonthLive do
     ~H"""
     <div id="gst-3b-panel" class="border-base-300 rounded-box border">
       <div class="border-base-300 flex items-center justify-between border-b px-4 py-3">
-        <div>
-          <div class="text-base-content/60 text-label font-medium uppercase">GSTR-3B</div>
-          <div class="text-base-content/50 text-fine mt-0.5">
-            {if liability_missing?(@gstr3b),
-              do: "ITC side assembled — outward liability needs the month's sales bills",
-              else: "Assembled from the worked sales month and the 2B reconciliation"}
-          </div>
+        <div class="text-base-content/50 text-fine">
+          {if liability_missing?(@gstr3b),
+            do: "ITC side assembled — outward liability needs the month's sales bills",
+            else: "Assembled from the worked sales month and the 2B reconciliation"}
         </div>
         <div :if={!liability_missing?(@gstr3b)} class="text-right">
           <div class="text-base-content/60 text-label font-medium uppercase">Cash payable</div>

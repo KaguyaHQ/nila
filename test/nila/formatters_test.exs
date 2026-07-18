@@ -85,7 +85,7 @@ defmodule Nila.FormattersTest do
                "Name-only match — verify"
 
       assert Formatters.recon_verdict("no_confident_gstr2b_match") == "No 2B match found"
-      assert Formatters.recon_verdict("missing_in_books") == "In 2B — bill not received"
+      assert Formatters.recon_verdict("missing_in_books") == "Ask the client for this bill"
       assert Formatters.recon_verdict("future_reason_code") == "Future Reason Code"
     end
   end
