@@ -23,7 +23,7 @@ defmodule Nila.Documents.Import do
       with {:ok, document} <-
              (case get_by_sha(org_id, sha256) do
                 {:error, :not_found} ->
-                  {:ok, _stored} = Storage.put(storage_key, bytes)
+                  {:ok, _stored} = Storage.put(storage_key, bytes, content_type: content_type)
 
                   Documents.create_document(%{
                     org_id: org_id,

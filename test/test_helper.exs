@@ -1,4 +1,4 @@
-ExUnit.start()
+ExUnit.start(exclude: [r2_integration: true])
 Ecto.Adapters.SQL.Sandbox.mode(Nila.Repo, :manual)
 
 # Local storage writes real files under the OS temp dir during the suite; the DB

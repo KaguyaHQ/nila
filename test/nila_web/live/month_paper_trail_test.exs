@@ -82,6 +82,18 @@ defmodule NilaWeb.MonthPaperTrailTest do
     assert get_resp_header(conn, "content-disposition") |> hd() =~ "GSTR-2B.json"
   end
 
+  test "logged-out visitors cannot download originals", %{org: org, client: client} do
+    dump = seed_dump(org, client, "purchase")
+
+    conn =
+      get(
+        Phoenix.ConnTest.build_conn(),
+        ~p"/gst/#{client.id}/#{@period}/original/#{dump.id}/0"
+      )
+
+    assert redirected_to(conn) == "/users/log_in"
+  end
+
   test "another org cannot download this org's original", %{org: org, client: client} do
     dump = seed_dump(org, client, "purchase")
 
@@ -103,6 +115,18 @@ defmodule NilaWeb.MonthPaperTrailTest do
     assert conn |> get(~p"/gst/#{client.id}/2024-01/original/#{dump.id}/0") |> response(404)
     assert conn |> get(~p"/gst/#{client.id}/#{@period}/original/#{dump.id}/5") |> response(404)
     assert conn |> get(~p"/gst/#{client.id}/#{@period}/original/#{dump.id}/nope") |> response(404)
+  end
+
+  test "storage objects are not served through the public static path", %{
+    org: org,
+    client: client
+  } do
+    dump = seed_dump(org, client, "purchase")
+    [key] = dump.file_keys
+
+    conn = get(Phoenix.ConnTest.build_conn(), "/uploads/#{key}")
+
+    assert response(conn, 404)
   end
 
   # ---------------------------------------------------------------------------

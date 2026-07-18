@@ -148,6 +148,23 @@ if config_env() in [:prod, :dev] do
 end
 
 if config_env() == :prod do
+  r2_endpoint = env!("R2_ENDPOINT", :string!)
+  r2_uri = URI.parse(r2_endpoint)
+
+  unless r2_uri.scheme == "https" and is_binary(r2_uri.host) and r2_uri.path in [nil, ""] do
+    raise "environment variable R2_ENDPOINT must be an HTTPS account endpoint without a path"
+  end
+
+  config :ex_aws,
+    http_client: ExAws.Request.Req,
+    access_key_id: env!("R2_ACCESS_KEY_ID", :string!),
+    secret_access_key: env!("R2_SECRET_ACCESS_KEY", :string!),
+    region: "auto",
+    s3: [scheme: "https://", host: r2_uri.host, port: r2_uri.port || 443]
+
+  config :nila, Nila.Storage, adapter: Nila.Storage.R2
+  config :nila, Nila.Storage.R2, bucket: env!("R2_BUCKET", :string!)
+
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """

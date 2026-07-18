@@ -2,13 +2,14 @@ defmodule Nila.Storage.Local do
   @behaviour Nila.Storage
 
   @impl true
-  def put(key, data, _opts) do
+  def put(key, data, opts) do
     path = path_for!(key)
     File.mkdir_p!(Path.dirname(path))
     bytes = IO.iodata_to_binary(data)
+    content_type = Keyword.get(opts, :content_type, "application/octet-stream")
 
     case File.write(path, bytes) do
-      :ok -> {:ok, %{key: key, byte_size: byte_size(bytes)}}
+      :ok -> {:ok, %{key: key, byte_size: byte_size(bytes), content_type: content_type}}
       {:error, reason} -> {:error, reason}
     end
   end

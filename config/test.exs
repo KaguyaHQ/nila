@@ -38,6 +38,17 @@ config :nila, Nila.Storage,
   root: Path.join(System.tmp_dir!(), "nila_test_uploads"),
   public_path: "/uploads"
 
+config :nila, Nila.Storage.R2, bucket: "test-bucket"
+
+config :ex_aws,
+  http_client: ExAws.Request.Req,
+  access_key_id: "test-access-key",
+  secret_access_key: "test-secret-key",
+  region: "auto",
+  s3: [scheme: "https://", host: "r2.example.test"]
+
+config :ex_aws, :req_opts, plug: {Req.Test, Nila.Storage.R2Test}
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 

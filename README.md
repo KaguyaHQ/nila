@@ -38,7 +38,7 @@ through one workings projection so nothing drifts.
 - Oban (extraction and derivation jobs)
 - Tailwind CSS + daisyUI ("moonlight" tokens, `docs/design/DESIGN.md`)
 - Req/Jason for HTTP/JSON
-- `Nila.Storage` — local disk in dev/test
+- `Nila.Storage` — local disk in dev/test, private Cloudflare R2 in production
 
 ## Local setup
 
@@ -54,6 +54,29 @@ Open http://localhost:4000.
 mix test
 mix ecto.reset
 mix precommit
+```
+
+## Production object storage
+
+Production uses the private `nila-documents` Cloudflare R2 bucket through the
+S3-compatible API. Create an R2 API token with Object Read & Write permission, scope it
+only to `nila-documents`, and leave public access and custom domains disabled. Object
+Read & Write includes the read, upload, and delete operations Nila needs.
+
+Set these only in the production runtime environment:
+
+```env
+R2_ENDPOINT=https://0b6491b35807b48232b57646af4e7eeb.r2.cloudflarestorage.com
+R2_BUCKET=nila-documents
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+```
+
+The normal test suite always uses `Nila.Storage.Local`. To explicitly run the live R2
+put/get/metadata/delete smoke test, export the four variables above and run:
+
+```bash
+mix test --include r2_integration test/nila/storage/r2_integration_test.exs
 ```
 
 ## Layout

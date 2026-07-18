@@ -17,8 +17,9 @@ defmodule Nila.Gst.Arrivals do
       nil ->
         filename = attrs |> Map.fetch!(:filename) |> Path.basename() |> safe_filename()
         bytes = Map.fetch!(attrs, :bytes)
-        key = storage_key(org_id, filename, source_ref)
-        {:ok, _stored} = Storage.put(key, bytes)
+        content_type = Map.get(attrs, :content_type, "application/octet-stream")
+        key = storage_key(org_id, content_type)
+        {:ok, _stored} = Storage.put(key, bytes, content_type: content_type)
 
         result =
           %Arrival{org_id: org_id, client_id: scope[:client_id]}
@@ -28,7 +29,7 @@ defmodule Nila.Gst.Arrivals do
             sender: Map.fetch!(attrs, :sender),
             storage_key: key,
             filename: filename,
-            content_type: Map.get(attrs, :content_type, "application/octet-stream"),
+            content_type: content_type,
             received_at: Map.get(attrs, :received_at, DateTime.utc_now()),
             status: "pending"
           })
@@ -149,14 +150,15 @@ defmodule Nila.Gst.Arrivals do
   defp existing(org_id, source, source_ref),
     do: Repo.get_by(Arrival, org_id: org_id, source: source, source_ref: source_ref)
 
-  defp storage_key(org_id, filename, nil) do
-    "arrivals/#{org_id}/#{System.unique_integer([:positive, :monotonic])}/#{filename}"
+  defp storage_key(org_id, content_type) do
+    "orgs/#{org_id}/arrivals/#{Ecto.UUID.generate()}/original#{extension(content_type)}"
   end
 
-  defp storage_key(org_id, filename, source_ref) do
-    digest = :crypto.hash(:sha256, source_ref) |> Base.url_encode64(padding: false)
-    "arrivals/#{org_id}/#{digest}/#{filename}"
-  end
+  defp extension("application/pdf"), do: ".pdf"
+  defp extension("application/json"), do: ".json"
+  defp extension("image/jpeg"), do: ".jpg"
+  defp extension("image/png"), do: ".png"
+  defp extension(_content_type), do: ".bin"
 
   defp safe_filename(filename) when filename in ["", "."], do: "attachment.bin"
   defp safe_filename(filename), do: filename

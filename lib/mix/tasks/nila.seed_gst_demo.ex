@@ -53,7 +53,7 @@ defmodule Mix.Tasks.Nila.SeedGstDemo do
 
     Mix.shell().info(
       "Seeded client_month ##{client_month.id} (#{@client_name} · #{@period}) with " <>
-        "#{length(basenames)} evidence images under gst/#{org.id}/#{client.id}/#{@period}/."
+        "#{length(basenames)} evidence images under orgs/#{org.id}/clients/#{client.id}/#{@period}/evidence/."
     )
   end
 
@@ -103,9 +103,17 @@ defmodule Mix.Tasks.Nila.SeedGstDemo do
     |> Enum.map(fn basename ->
       bytes = File.read!(Path.join([@dir, "images", basename]))
       key = ClientMonths.evidence_key(org_id, client_id, @period, basename)
-      {:ok, _} = Storage.put(key, bytes)
+      {:ok, _} = Storage.put(key, bytes, content_type: content_type(basename))
       basename
     end)
+  end
+
+  defp content_type(basename) do
+    case Path.extname(basename) do
+      ".png" -> "image/png"
+      ext when ext in [".jpg", ".jpeg"] -> "image/jpeg"
+      ".webp" -> "image/webp"
+    end
   end
 
   defp read_json(file) do

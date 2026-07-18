@@ -196,9 +196,19 @@ defmodule Nila.Gst.DumpWorker do
 
   defp store_evidence(dump, images, key_fun) do
     Enum.each(images, fn {basename, bytes} ->
-      key = key_fun.(dump.org_id, dump.client_id, dump.period, namespace(dump, basename))
-      {:ok, _} = Storage.put(key, bytes)
+      basename = namespace(dump, basename)
+      key = key_fun.(dump.org_id, dump.client_id, dump.period, basename)
+      {:ok, _} = Storage.put(key, bytes, content_type: evidence_content_type(basename))
     end)
+  end
+
+  defp evidence_content_type(basename) do
+    case Path.extname(basename) do
+      ".png" -> "image/png"
+      ext when ext in [".jpg", ".jpeg"] -> "image/jpeg"
+      ".webp" -> "image/webp"
+      _ -> "application/octet-stream"
+    end
   end
 
   # ---------------------------------------------------------------------------

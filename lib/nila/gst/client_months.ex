@@ -74,7 +74,7 @@ defmodule Nila.Gst.ClientMonths do
   it cannot escape the `(org, client, period)` prefix.
   """
   def evidence_key(org_id, client_id, period, basename) do
-    "gst/#{org_id}/#{client_id}/#{period}/#{basename}"
+    "orgs/#{org_id}/clients/#{client_id}/#{period}/evidence/#{basename}"
   end
 
   @doc """

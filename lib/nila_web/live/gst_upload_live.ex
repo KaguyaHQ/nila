@@ -146,9 +146,9 @@ defmodule NilaWeb.GstUploadLive do
         ext = entry.client_name |> Path.extname() |> String.downcase()
 
         key =
-          "dumps/#{org_id}/#{client_id}/#{period}/#{kind}_#{System.unique_integer([:positive])}#{ext}"
+          "orgs/#{org_id}/clients/#{client_id}/#{period}/dumps/#{Ecto.UUID.generate()}/original#{ext}"
 
-        {:ok, _} = Storage.put(key, bytes)
+        {:ok, _} = Storage.put(key, bytes, content_type: upload_content_type(kind))
         {:ok, key}
       end)
 
@@ -227,6 +227,9 @@ defmodule NilaWeb.GstUploadLive do
   end
 
   defp list_clients(_socket), do: []
+
+  defp upload_content_type("gstr2b"), do: "application/json"
+  defp upload_content_type(_kind), do: "application/pdf"
 
   defp kind_title("sales"), do: "Sales bills"
   defp kind_title("purchase"), do: "Purchase bills"

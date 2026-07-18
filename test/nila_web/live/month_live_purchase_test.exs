@@ -158,6 +158,13 @@ defmodule NilaWeb.MonthLivePurchaseTest do
     assert get_resp_header(conn, "content-type") |> hd() =~ "image/png"
   end
 
+  test "logged-out visitors cannot fetch evidence", %{client: client} do
+    conn =
+      get(Phoenix.ConnTest.build_conn(), ~p"/gst/#{client.id}/#{@period}/evidence/page_09.png")
+
+    assert redirected_to(conn) == "/users/log_in"
+  end
+
   test "another org cannot fetch this org's evidence image", %{client: client} do
     %{user: other_user} = user_with_org_fixture(%{org: %{gstin: "27AAPFU0939F1ZV"}})
     conn = log_in_user(Phoenix.ConnTest.build_conn(), other_user)

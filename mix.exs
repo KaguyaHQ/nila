@@ -44,6 +44,8 @@ defmodule Nila.MixProject do
       {:phoenix, "~> 1.8.7"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
+      {:ex_aws, "~> 2.7"},
+      {:ex_aws_s3, "~> 2.5.9"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},

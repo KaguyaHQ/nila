@@ -36,6 +36,9 @@ defmodule Nila.Gst.ArrivalsTest do
              })
 
     assert dump.file_keys == [arrival.storage_key]
+    assert String.starts_with?(arrival.storage_key, "orgs/#{context.org.id}/arrivals/")
+    assert String.ends_with?(arrival.storage_key, "/original.pdf")
+    refute arrival.storage_key =~ "one.pdf"
     assert_enqueued(worker: DumpWorker, args: %{dump_id: dump.id})
 
     routed = Repo.get!(Arrival, arrival.id)
