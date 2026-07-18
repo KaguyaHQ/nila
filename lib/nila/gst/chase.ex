@@ -5,10 +5,10 @@ defmodule Nila.Gst.Chase do
 
   Nila drafts the ask from authoritative knowledge — the compliance calendar,
   the intake slots, and engine-derived gaps (2B bills the client never sent,
-  holes in their own invoice sequence). A human copies the text and sends it
-  over whatever channel they already use; `record_ask/3` then logs it
-  append-only so reminders don't repeat and the cockpit shows "asked N days
-  ago". There is no channel integration and no auto-send.
+  holes in their own invoice sequence). The firm can send the draft manually,
+  or a consenting client can receive it through the firm's connected WhatsApp
+  or Gmail account. `record_ask/2` logs every delivery append-only so reminders
+  don't repeat and the cockpit shows "asked N days ago".
   """
 
   import Ecto.Query, only: [from: 2]
@@ -55,8 +55,8 @@ defmodule Nila.Gst.Chase do
   end
 
   @doc """
-  Drafts the chase message. Plain multiline text a human copies and sends —
-  the value is the specificity: named vendors, amounts, real due dates.
+  Drafts the chase message as plain multiline text for manual or automated
+  delivery. The value is the specificity: named vendors, amounts, real due dates.
 
   `:month_open` is the opening nudge for a period whose dumps haven't arrived.
   """
@@ -102,11 +102,11 @@ defmodule Nila.Gst.Chase do
 
   @doc """
   Logs one sent ask, append-only. `org_id`/`client_id` come from the scoped
-  lookup and `sent_by_id` from the current user — set on the struct, never
-  cast.
+  lookup and optional `sent_by_id` from the current user — set on the struct,
+  never cast. Automated asks have no human sender and identify their channel.
   """
-  def record_ask(%{org_id: org_id, client_id: client_id, sent_by_id: sent_by_id}, attrs) do
-    %ChaseAsk{org_id: org_id, client_id: client_id, sent_by_id: sent_by_id}
+  def record_ask(%{org_id: org_id, client_id: client_id} = scope, attrs) do
+    %ChaseAsk{org_id: org_id, client_id: client_id, sent_by_id: scope[:sent_by_id]}
     |> ChaseAsk.changeset(attrs)
     |> Repo.insert()
   end

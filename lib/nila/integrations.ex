@@ -77,6 +77,22 @@ defmodule Nila.Integrations do
     |> Repo.update()
   end
 
+  def ensure_gmail_access_token(%Connection{provider: "gmail"} = connection) do
+    credentials = connection.credentials
+
+    if token_fresh?(credentials) do
+      {:ok, connection}
+    else
+      refresh_token = Map.fetch!(credentials, "refresh_token")
+      adapter = Application.get_env(:nila, :gmail_adapter, Nila.Integrations.Gmail)
+
+      with {:ok, refreshed} <- adapter.refresh_token(refresh_token),
+           credentials <- Map.merge(credentials, refreshed) do
+        update_credentials(connection, credentials)
+      end
+    end
+  end
+
   def mark_synced(%Connection{} = connection, synced_at \\ DateTime.utc_now()) do
     synced_at = DateTime.truncate(synced_at, :second)
 
@@ -148,6 +164,19 @@ defmodule Nila.Integrations do
         end)
     }
   end
+
+  defp token_fresh?(%{"access_token" => access_token, "expires_at" => expires_at})
+       when is_binary(access_token) and is_binary(expires_at) do
+    case DateTime.from_iso8601(expires_at) do
+      {:ok, expires_at, _offset} ->
+        DateTime.compare(expires_at, DateTime.add(DateTime.utc_now(), 60)) == :gt
+
+      _error ->
+        false
+    end
+  end
+
+  defp token_fresh?(_credentials), do: false
 
   defp error_message(error) when is_binary(error), do: error
   defp error_message(%{message: message}) when is_binary(message), do: message

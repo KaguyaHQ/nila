@@ -1,10 +1,11 @@
 defmodule NilaWeb.TodayLiveTest do
   use NilaWeb.ConnCase
+  use Oban.Testing, repo: Nila.Repo
 
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.{Chase, ClientMonths, Dumps, SalesMonths}
+  alias Nila.Gst.{Arrival, Arrivals, Chase, ClientMonths, Dumps, DumpWorker, SalesMonths}
 
   @period "2025-10"
 
@@ -53,6 +54,97 @@ defmodule NilaWeb.TodayLiveTest do
     month
   end
 
+  test "pending arrivals render, prefill, and route through the existing dump worker", %{
+    conn: conn,
+    org: org,
+    client: client,
+    user: user
+  } do
+    {:ok, arrival} =
+      Arrivals.ingest(
+        %{org_id: org.id, client_id: client.id},
+        %{
+          source: "whatsapp",
+          sender: "919876543210",
+          filename: "purchase.pdf",
+          content_type: "application/pdf",
+          bytes: "%PDF-1.4 fake"
+        }
+      )
+
+    {:ok, view, _html} = live(conn, ~p"/today")
+    assert has_element?(view, "#pending-arrivals", "Breeze Tech sent a file over WhatsApp")
+
+    view |> element("#arrival-group-#{arrival.id}") |> render_click()
+    assert has_element?(view, "#arrival-sort-modal")
+    assert has_element?(view, "#arrival-sort-form option[selected][value='#{client.id}']")
+
+    period = Nila.Gst.Calendar.closeable_period(Date.utc_today())
+    assert has_element?(view, "#arrival-sort-form input[value='#{period}']")
+
+    view
+    |> form("#arrival-sort-form",
+      arrival: %{client_id: client.id, period: period, kind: "purchase"}
+    )
+    |> render_submit()
+
+    refute has_element?(view, "#arrival-sort-modal")
+    refute has_element?(view, "#pending-arrivals")
+
+    routed = Nila.Repo.get!(Arrival, arrival.id)
+    assert routed.status == "routed"
+    assert routed.routed_dump_id
+    assert_enqueued(worker: DumpWorker, args: %{dump_id: routed.routed_dump_id})
+    assert Nila.Repo.get!(Nila.Gst.Dump, routed.routed_dump_id).brought_in_by_id == user.id
+  end
+
+  test "an unknown WhatsApp number stays unattributed for sorting", %{conn: conn, org: org} do
+    {:ok, arrival} =
+      Arrivals.ingest(
+        %{org_id: org.id, client_id: nil},
+        %{
+          source: "whatsapp",
+          sender: "919999999999",
+          filename: "mystery.pdf",
+          content_type: "application/pdf",
+          bytes: "%PDF-1.4 fake"
+        }
+      )
+
+    {:ok, view, _html} = live(conn, ~p"/today")
+    assert has_element?(view, "#arrival-group-#{arrival.id}", "Unknown number +919999999999")
+
+    view |> element("#arrival-group-#{arrival.id}") |> render_click()
+    refute has_element?(view, "#arrival-sort-form option[selected][value]")
+  end
+
+  test "a modal closes honestly when another operator sorts its arrival", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, arrival} =
+      Arrivals.ingest(
+        %{org_id: org.id, client_id: client.id},
+        %{
+          source: "email",
+          sender: "accounts@breeze.example",
+          filename: "purchase.pdf",
+          content_type: "application/pdf",
+          bytes: "%PDF-1.4 fake"
+        }
+      )
+
+    {:ok, view, _html} = live(conn, ~p"/today")
+    view |> element("#arrival-group-#{arrival.id}") |> render_click()
+    assert has_element?(view, "#arrival-sort-modal")
+
+    assert {:ok, _} = Arrivals.dismiss_many([arrival])
+
+    assert render(view) =~ "These files were already sorted — refreshed."
+    refute has_element?(view, "#arrival-sort-modal")
+  end
+
   test "an active extraction is visible without changing the row's section", %{
     conn: conn,
     org: org,
@@ -97,6 +189,45 @@ defmodule NilaWeb.TodayLiveTest do
     assert has_element?(view, "#today-waiting_on_client")
     assert has_element?(view, "#today-row-#{client.id}-#{closeable}", "purchase not in")
     assert has_element?(view, "#draft-ask-#{client.id}-#{closeable}")
+  end
+
+  test "an automated channel shows Nila's ask count and keeps a manual override", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, client} =
+      Clients.update_client(client, %{phone: "9876543210", chase_channel: "whatsapp"})
+
+    period = Nila.Gst.Calendar.closeable_period(Date.utc_today())
+
+    asks =
+      for days_ago <- [3, 2] do
+        {:ok, ask} =
+          Chase.record_ask(
+            %{org_id: org.id, client_id: client.id},
+            %{kind: "month_open", period: period, body: "Please send it.", channel: "whatsapp"}
+          )
+
+        ask
+        |> Ecto.Changeset.change(inserted_at: DateTime.add(DateTime.utc_now(), -days_ago, :day))
+        |> Nila.Repo.update!()
+      end
+
+    assert length(asks) == 2
+    {:ok, view, _html} = live(conn, ~p"/today")
+
+    assert has_element?(
+             view,
+             "#automated-chase-#{client.id}-#{period}",
+             "Nila asks — asked 2d ago · 2×"
+           )
+
+    assert has_element?(view, "#manual-chase-#{client.id}-#{period}", "Manual")
+    refute has_element?(view, "#draft-ask-#{client.id}-#{period}")
+
+    view |> element("#manual-chase-#{client.id}-#{period}") |> render_click()
+    assert has_element?(view, "#chase-draft-modal")
   end
 
   test "an org with no clients gets one clear first action", %{conn: conn, client: client} do
@@ -224,6 +355,7 @@ defmodule NilaWeb.TodayLiveTest do
 
     assert {:ok, ask} = Chase.last_ask(org.id, client.id, @period)
     assert ask.kind == "month_open"
+    assert ask.channel == "manual"
     assert ask.sent_by_id == user.id
     assert ask.body =~ "Hi Breeze Tech"
   end

@@ -1,7 +1,9 @@
 defmodule Nila.Integrations.WhatsAppIngestWorker do
   use Oban.Worker, queue: :documents, max_attempts: 3
 
-  alias Nila.Documents.Import
+  alias Nila.Clients
+  alias Nila.Clients.Client
+  alias Nila.Gst.Arrivals
   alias Nila.Integrations
 
   @impl Oban.Worker
@@ -10,21 +12,39 @@ defmodule Nila.Integrations.WhatsAppIngestWorker do
     token = Map.fetch!(connection.credentials, "access_token")
 
     with {:ok, attachments} <- whatsapp_adapter().normalize(payload, connection: connection) do
-      Enum.each(attachments, fn attachment ->
+      attachments
+      |> Enum.filter(&supported?/1)
+      |> Enum.each(fn attachment ->
         {:ok, bytes} = whatsapp_adapter().fetch_media(attachment.media_id, token)
+        sender = Client.normalize_phone(attachment.sender)
 
-        attrs =
-          attachment
-          |> Map.take([:filename, :content_type, :document_type])
-          |> Map.put(:bytes, bytes)
-          |> Map.put(:org_id, connection.org_id)
+        client_id =
+          case Clients.get_by_phone(connection.org_id, sender) do
+            {:ok, client} -> client.id
+            {:error, :not_found} -> nil
+          end
 
-        {:ok, _document} = Import.import_document(attrs)
+        {:ok, _arrival} =
+          Arrivals.ingest(
+            %{org_id: connection.org_id, client_id: client_id},
+            %{
+              source: "whatsapp",
+              source_ref: Map.get(attachment, :source_ref),
+              sender: sender,
+              filename: attachment.filename,
+              content_type: attachment.content_type,
+              bytes: bytes
+            }
+          )
       end)
 
       :ok
     end
   end
+
+  defp supported?(%{content_type: "application/pdf"}), do: true
+  defp supported?(%{content_type: "image/" <> _}), do: true
+  defp supported?(_attachment), do: false
 
   defp whatsapp_adapter do
     Application.get_env(:nila, :whatsapp_adapter, Nila.Integrations.WhatsApp)

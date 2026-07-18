@@ -25,6 +25,14 @@ config :nila, Nila.Mailer, adapter: Swoosh.Adapters.Test
 
 config :nila, Oban, testing: :manual, queues: false, plugins: false
 
+config :nila,
+  whatsapp_chase_template: "nila_document_chase"
+
+config :nila, Nila.Integrations.WhatsApp,
+  req_options: [plug: {Req.Test, Nila.Integrations.WhatsApp}]
+
+config :nila, Nila.Integrations.Gmail, req_options: [plug: {Req.Test, Nila.Integrations.Gmail}]
+
 config :nila, Nila.Storage,
   adapter: Nila.Storage.Local,
   root: Path.join(System.tmp_dir!(), "nila_test_uploads"),

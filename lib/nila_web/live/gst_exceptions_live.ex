@@ -386,7 +386,7 @@ defmodule NilaWeb.GstExceptionsLive do
     {:ok, _ask} =
       Chase.record_ask(
         %{org_id: month.org_id, client_id: month.client_id, sent_by_id: scope.user.id},
-        %{kind: "missing_bills", period: month.period, body: draft.body}
+        %{kind: "missing_bills", period: month.period, body: draft.body, channel: "manual"}
       )
 
     {:noreply,

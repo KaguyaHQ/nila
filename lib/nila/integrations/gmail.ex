@@ -2,7 +2,7 @@ defmodule Nila.Integrations.Gmail do
   @behaviour Nila.Integrations.Connector
 
   @moduledoc """
-  Gmail inbound adapter.
+  Gmail adapter for attachment sync and outbound messages.
   """
 
   @accounts_url "https://accounts.google.com/o/oauth2/v2/auth"
@@ -66,13 +66,17 @@ defmodule Nila.Integrations.Gmail do
     end
   end
 
+  def send_message(connection, recipient, message) when is_binary(recipient),
+    do: send_message(connection, Map.put(message, :to, recipient))
+
   def send_message(connection, message) do
     access_token = Map.fetch!(connection.credentials, "access_token")
     url = "#{@api_url}/users/me/messages/send"
     raw = encode_message(message)
     body = maybe_put_thread(%{"raw" => raw}, Map.get(message, :thread_id))
+    options = [auth: {:bearer, access_token}, json: body] ++ req_options()
 
-    case Req.post(url, auth: {:bearer, access_token}, json: body) do
+    case Req.post(url, options) do
       {:ok, %{status: status, body: %{"id" => message_id, "threadId" => thread_id}}}
       when status in 200..299 ->
         {:ok, %{message_id: message_id, thread_id: thread_id}}
@@ -109,7 +113,7 @@ defmodule Nila.Integrations.Gmail do
           filename: Map.fetch!(attachment, "filename"),
           bytes: Map.fetch!(attachment, "bytes"),
           content_type: Map.get(attachment, "content_type", "application/octet-stream"),
-          document_type: Map.get(attachment, "document_type", "bank_statement"),
+          sender: Map.get(attachment, "sender"),
           source_ref: Map.get(attachment, "source_ref")
         }
       end)
@@ -353,9 +357,13 @@ defmodule Nila.Integrations.Gmail do
            Req.get(url, auth: {:bearer, access_token}, params: [format: "full"]) do
       parts = collect_parts(body["payload"])
 
+      sender = body |> header("From") |> sender_email()
+
       parts
       |> Enum.filter(&attachment_part?/1)
-      |> Task.async_stream(&fetch_attachment(access_token, message_id, &1), timeout: :infinity)
+      |> Task.async_stream(&fetch_attachment(access_token, message_id, &1, sender),
+        timeout: :infinity
+      )
       |> Enum.reduce_while({:ok, []}, fn
         {:ok, {:ok, item}}, {:ok, acc} -> {:cont, {:ok, [item | acc]}}
         {:ok, {:error, reason}}, _acc -> {:halt, {:error, reason}}
@@ -371,7 +379,7 @@ defmodule Nila.Integrations.Gmail do
     end
   end
 
-  defp fetch_attachment(access_token, message_id, part) do
+  defp fetch_attachment(access_token, message_id, part, sender) do
     attachment_id = get_in(part, ["body", "attachmentId"])
     url = "#{@api_url}/users/me/messages/#{message_id}/attachments/#{attachment_id}"
 
@@ -383,6 +391,7 @@ defmodule Nila.Integrations.Gmail do
          "filename" => part["filename"],
          "bytes" => bytes,
          "content_type" => part["mimeType"],
+         "sender" => sender,
          "source_ref" => "gmail:#{message_id}:#{attachment_id}"
        }}
     else
@@ -405,6 +414,15 @@ defmodule Nila.Integrations.Gmail do
 
   defp attachment_part?(_part), do: false
 
+  defp sender_email(nil), do: nil
+
+  defp sender_email(value) do
+    case Regex.run(~r/<([^>]+)>/, value) do
+      [_, email] -> String.downcase(String.trim(email))
+      _ -> value |> String.trim() |> String.downcase()
+    end
+  end
+
   defp gmail_query(connection) do
     base_query = get_in(connection.settings || %{}, ["query"]) || "has:attachment"
 
@@ -413,6 +431,9 @@ defmodule Nila.Integrations.Gmail do
       synced_at -> "#{base_query} after:#{Date.to_iso8601(DateTime.to_date(synced_at))}"
     end
   end
+
+  defp req_options,
+    do: Application.get_env(:nila, __MODULE__, []) |> Keyword.get(:req_options, [])
 
   defp config!(key) do
     value = Application.get_env(:nila, __MODULE__, []) |> Keyword.get(key)

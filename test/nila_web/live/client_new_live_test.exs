@@ -35,6 +35,33 @@ defmodule NilaWeb.ClientNewLiveTest do
     assert has_element?(intake, "#gst-upload-form option[selected][value='#{closeable}']")
   end
 
+  test "chase consent fields render and email points to Connectors when Gmail is absent", %{
+    conn: conn,
+    org: org
+  } do
+    {:ok, view, _html} = live(conn, ~p"/clients/new")
+
+    assert has_element?(view, "#client_email")
+    assert has_element?(view, "#client_chase_channel", "We'll send asks ourselves")
+    assert has_element?(view, "#client_chase_channel", "WhatsApp")
+
+    html =
+      view
+      |> form("#client-form",
+        client: %{
+          name: "Aurora Foods",
+          type: "company",
+          email: "accounts@aurora.example",
+          chase_channel: "email"
+        }
+      )
+      |> render_submit()
+
+    assert html =~ "requires a connected Gmail account"
+    assert html =~ "Settings → Connectors"
+    assert Clients.list_clients(org.id) == []
+  end
+
   test "a blank name shows an error and creates nothing", %{conn: conn, org: org} do
     {:ok, view, _html} = live(conn, ~p"/clients/new")
 

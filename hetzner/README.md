@@ -219,6 +219,7 @@ Absent means the feature is off or a default applies:
 | `INTEGRATION_CREDENTIAL_KEY` | Encrypts stored integration credentials. Falls back to `SECRET_KEY_BASE` if unset; set it explicitly so rotating `SECRET_KEY_BASE` does not lock you out of saved credentials. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GMAIL_REDIRECT_URI` | Gmail integration. Inactive in prod when unset. |
 | `WHATSAPP_APP_SECRET` / `WHATSAPP_VERIFY_TOKEN` | WhatsApp webhook. Inactive in prod when unset. |
+| `WHATSAPP_CHASE_TEMPLATE` | Name of the pre-approved Cloud API template whose single body variable receives Nila's chase draft. Automated WhatsApp asks fail safely without it. |
 | `POOL_SIZE` | DB pool size (default 10). |
 | `ECTO_IPV6` | Set `true`/`1` for an IPv6 DB socket. |
 | `DNS_CLUSTER_QUERY` | libcluster DNS query. Unset means no clustering (fine for one box). |

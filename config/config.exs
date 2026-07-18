@@ -14,7 +14,8 @@ config :nila,
   purchase_extractor: Nila.Gst.PurchaseExtractor.Stub,
   sales_extractor: Nila.Gst.SalesExtractor.Stub,
   gmail_adapter: Nila.Integrations.Gmail,
-  whatsapp_adapter: Nila.Integrations.WhatsApp
+  whatsapp_adapter: Nila.Integrations.WhatsApp,
+  whatsapp_chase_template: nil
 
 config :nila, Nila.Repo, migration_timestamps: [type: :utc_datetime_usec]
 
@@ -70,9 +71,13 @@ config :nila, NilaWeb.Webhooks.WhatsAppController,
 
 config :nila, Oban,
   repo: Nila.Repo,
-  queues: [documents: 5, workflows: 10, reminders: 5, approvals: 5],
+  queues: [documents: 5, workflows: 10, reminders: 5, approvals: 5, chase: 5],
   plugins: [
-    Oban.Plugins.Pruner
+    Oban.Plugins.Pruner,
+    {Oban.Plugins.Cron,
+     crontab: [
+       {"30 3 * * *", Nila.Gst.ChaseScheduler}
+     ]}
   ]
 
 config :nila, Nila.Storage,

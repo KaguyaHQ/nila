@@ -111,10 +111,13 @@ defmodule Nila.Gst.Today do
 
     deadline = deadline(period, today, r1_filed, gstr3b_filed)
     slots = %{purchase: purchase != nil, sales: sales != nil}
+    asks = Chase.list_asks(client.org_id, client.id, period)
 
     %{
+      org_id: client.org_id,
       client_id: client.id,
       client_name: client.name,
+      chase_channel: client.chase_channel,
       period: period,
       section: section,
       deadline: deadline,
@@ -124,7 +127,8 @@ defmodule Nila.Gst.Today do
       sales_open: sales_open,
       slots: slots,
       processing?: processing?,
-      last_ask_at: last_ask_at(client.org_id, client.id, period),
+      last_ask_at: asks |> List.first() |> then(&(&1 && &1.inserted_at)),
+      ask_count: length(asks),
       draft: build_draft(client, period, purchase, slots),
       path: row_path(client, period, purchase, sales)
     }
@@ -199,13 +203,6 @@ defmodule Nila.Gst.Today do
   defp sales_open_issues(sales) do
     SalesResolutions.workings(sales).issues
     |> Enum.count(&(&1["status"] == "open" and &1["level"] != "info"))
-  end
-
-  defp last_ask_at(org_id, client_id, period) do
-    case Chase.last_ask(org_id, client_id, period) do
-      {:ok, ask} -> ask.inserted_at
-      {:error, :not_found} -> nil
-    end
   end
 
   # The right ask for where the month stands: dumps still missing -> the

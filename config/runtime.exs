@@ -129,6 +129,12 @@ end
 # so it's fine for a first smoke test but NOT for inviting real teammates — set
 # `MAIL_FROM=noreply@nilahq.com` once the domain is verified.
 if config_env() in [:prod, :dev] do
+  if template = env!("WHATSAPP_CHASE_TEMPLATE", :string, nil) do
+    config :nila, whatsapp_chase_template: template
+  end
+end
+
+if config_env() in [:prod, :dev] do
   if resend_key = env!("RESEND_API_KEY", :string, nil) do
     config :nila, Nila.Mailer,
       adapter: Swoosh.Adapters.Resend,

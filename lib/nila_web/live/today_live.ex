@@ -1,7 +1,8 @@
 defmodule NilaWeb.TodayLive do
   use NilaWeb, :live_view
 
-  alias Nila.Gst.{Chase, Today}
+  alias Nila.Clients
+  alias Nila.Gst.{Arrivals, Calendar, Chase, Today}
 
   # The front door: one row per client-month the firm should look at today,
   # grouped by who it's waiting on (Nila.Gst.Today). The junior reads
@@ -9,10 +10,16 @@ defmodule NilaWeb.TodayLive do
   # nothing appear under "Waiting on the client" with the chase verbs.
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket), do: subscribe_arrivals(socket)
+
     {:ok,
      socket
      |> assign(:page_title, "Today")
      |> assign(:draft, nil)
+     |> assign(:arrival_group, nil)
+     |> assign(:arrival_form, nil)
+     |> assign(:arrival_error, nil)
+     |> assign(:client_options, client_options(socket))
      |> assign_rows()}
   end
 
@@ -27,12 +34,53 @@ defmodule NilaWeb.TodayLive do
     socket
     |> assign(:rows, rows)
     |> assign(:sections, sections)
+    |> assign(:arrival_groups, arrival_groups(socket))
   end
 
   defp list_rows(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}),
     do: Today.rows(org_id, Date.utc_today())
 
   defp list_rows(_socket), do: []
+
+  defp arrival_groups(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}) do
+    org_id
+    |> Arrivals.pending_for_org()
+    |> Enum.group_by(&{&1.client_id, &1.source, &1.sender, arrival_batch(&1)})
+    |> Enum.map(fn {_key, arrivals} ->
+      latest = hd(arrivals)
+
+      %{
+        id: latest.id,
+        arrivals: arrivals,
+        client_id: latest.client_id,
+        client_name: latest.client && latest.client.name,
+        source: latest.source,
+        sender: latest.sender,
+        received_at: latest.received_at,
+        count: length(arrivals)
+      }
+    end)
+    |> Enum.sort_by(&DateTime.to_unix(&1.received_at, :microsecond), :desc)
+  end
+
+  defp arrival_groups(_socket), do: []
+
+  defp arrival_batch(%{source_ref: nil, id: id}), do: "arrival:#{id}"
+
+  defp arrival_batch(%{source_ref: source_ref}) do
+    source_ref |> String.split(":") |> Enum.take(2) |> Enum.join(":")
+  end
+
+  defp client_options(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}) do
+    org_id |> Clients.list_clients() |> Enum.map(&{&1.name, &1.id})
+  end
+
+  defp client_options(_socket), do: []
+
+  defp subscribe_arrivals(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}),
+    do: Arrivals.subscribe(org_id)
+
+  defp subscribe_arrivals(_socket), do: :ok
 
   defp days_left_label(days) when days < 0, do: "#{-days}d overdue"
   defp days_left_label(0), do: "due today"
@@ -53,6 +101,11 @@ defmodule NilaWeb.TodayLive do
       0 -> "asked today"
       days -> "asked #{days}d ago"
     end
+  end
+
+  defp automated_ask_label(row, today) do
+    timing = last_ask_label(row.last_ask_at, today) || "not asked yet"
+    "Nila asks — #{timing} · #{row.ask_count}×"
   end
 
   defp work_label(row) do
@@ -101,6 +154,80 @@ defmodule NilaWeb.TodayLive do
     {:noreply, assign(socket, :draft, nil)}
   end
 
+  def handle_event("open-arrivals", %{"arrival-id" => arrival_id}, socket) do
+    group = Enum.find(socket.assigns.arrival_groups, &(to_string(&1.id) == arrival_id))
+
+    form =
+      to_form(
+        %{
+          "client_id" => group && group.client_id,
+          "period" => Calendar.closeable_period(Date.utc_today()),
+          "kind" => ""
+        },
+        as: :arrival
+      )
+
+    {:noreply,
+     socket
+     |> assign(:arrival_group, group)
+     |> assign(:arrival_form, form)
+     |> assign(:arrival_error, nil)}
+  end
+
+  def handle_event("close-arrivals", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:arrival_group, nil)
+     |> assign(:arrival_form, nil)
+     |> assign(:arrival_error, nil)}
+  end
+
+  def handle_event("validate-arrival", %{"arrival" => params}, socket) do
+    {:noreply,
+     socket
+     |> assign(:arrival_form, to_form(params, as: :arrival))
+     |> assign(:arrival_error, nil)}
+  end
+
+  def handle_event("route-arrivals", %{"arrival" => params}, socket) do
+    group = socket.assigns.arrival_group
+    scope = socket.assigns.current_scope
+
+    attrs = Map.put(params, "brought_in_by_id", scope.user.id)
+
+    case group && Arrivals.route_many(group.arrivals, attrs) do
+      {:ok, _dump} ->
+        {:noreply,
+         socket
+         |> assign(:arrival_group, nil)
+         |> assign(:arrival_form, nil)
+         |> assign(:arrival_error, nil)
+         |> assign_rows()
+         |> put_flash(:info, "Arrival routed — extraction is queued.")}
+
+      _error ->
+        {:noreply, assign(socket, :arrival_error, "Pick a client, period, and document kind.")}
+    end
+  end
+
+  def handle_event("dismiss-arrivals", _params, socket) do
+    case socket.assigns.arrival_group do
+      nil ->
+        {:noreply, socket}
+
+      group ->
+        {:ok, _} = Arrivals.dismiss_many(group.arrivals)
+
+        {:noreply,
+         socket
+         |> assign(:arrival_group, nil)
+         |> assign(:arrival_form, nil)
+         |> assign(:arrival_error, nil)
+         |> assign_rows()
+         |> put_flash(:info, "Arrival dismissed.")}
+    end
+  end
+
   def handle_event("mark-sent", _params, socket) do
     %{draft: draft, current_scope: scope} = socket.assigns
 
@@ -111,7 +238,7 @@ defmodule NilaWeb.TodayLive do
           client_id: draft.client_id,
           sent_by_id: scope.user.id
         },
-        %{kind: draft.kind, period: draft.period, body: draft.body}
+        %{kind: draft.kind, period: draft.period, body: draft.body, channel: "manual"}
       )
 
     {:noreply,
@@ -122,8 +249,60 @@ defmodule NilaWeb.TodayLive do
   end
 
   @impl true
+  def handle_info({:gst_arrivals_changed, _org_id}, socket) do
+    socket = assign_rows(socket)
+
+    if socket.assigns.arrival_group &&
+         not Enum.any?(
+           socket.assigns.arrival_groups,
+           &(&1.id == socket.assigns.arrival_group.id)
+         ) do
+      {:noreply,
+       socket
+       |> assign(:arrival_group, nil)
+       |> assign(:arrival_form, nil)
+       |> assign(:arrival_error, nil)
+       |> put_flash(:info, "These files were already sorted — refreshed.")}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp arrival_label(%{client_name: nil} = group) do
+    "Unknown number #{display_sender(group)} sent #{file_phrase(group.count)}"
+  end
+
+  defp arrival_label(group) do
+    "#{group.client_name} sent #{file_phrase(group.count)} over #{source_label(group.source)}"
+  end
+
+  defp source_label("whatsapp"), do: "WhatsApp"
+  defp source_label("email"), do: "Email"
+
+  defp display_sender(%{source: "whatsapp", sender: sender}), do: "+#{sender}"
+  defp display_sender(%{sender: sender}), do: sender
+
+  defp file_phrase(1), do: "a file"
+  defp file_phrase(count), do: "#{count} files"
+
+  defp arrival_age(received_at, now) do
+    seconds = max(DateTime.diff(now, received_at, :second), 0)
+
+    cond do
+      seconds < 3_600 -> "#{max(div(seconds, 60), 1)}m ago"
+      seconds < 86_400 -> "#{div(seconds, 3_600)}h ago"
+      true -> "#{div(seconds, 86_400)}d ago"
+    end
+  end
+
+  defp arrival_kind_options,
+    do: [{"Sales bills", "sales"}, {"Purchase bills", "purchase"}, {"GSTR-2B", "gstr2b"}]
+
+  @impl true
   def render(assigns) do
-    assigns = assign(assigns, :today, Date.utc_today())
+    assigns = assigns |> assign(:today, Date.utc_today()) |> assign(:now, DateTime.utc_now())
 
     ~H"""
     <Layouts.app
@@ -139,6 +318,29 @@ defmodule NilaWeb.TodayLive do
             <.button navigate={~p"/gst/upload"} id="add-month">Bring in documents</.button>
           </:actions>
         </.page_header>
+
+        <section :if={@arrival_groups != []} id="pending-arrivals" class="space-y-2">
+          <h2 class="text-base-content text-small font-semibold">New arrivals</h2>
+          <.card class="divide-base-300 divide-y p-0">
+            <button
+              :for={group <- @arrival_groups}
+              type="button"
+              id={"arrival-group-#{group.id}"}
+              phx-click="open-arrivals"
+              phx-value-arrival-id={group.id}
+              class="hover:bg-base-200/50 flex w-full items-center gap-3 px-4 py-3 text-left transition"
+            >
+              <.icon name="hero-inbox-arrow-down" class="text-moon size-5 shrink-0" />
+              <span class="text-base-content text-small flex-1 font-medium">
+                {arrival_label(group)}
+              </span>
+              <span class="text-base-content/50 text-fine">
+                {arrival_age(group.received_at, @now)}
+              </span>
+              <.icon name="hero-chevron-right" class="text-base-content/40 size-4" />
+            </button>
+          </.card>
+        </section>
 
         <.card :if={@sections == []} id="today-empty" class="py-10 text-center">
           <div class="mx-auto max-w-sm space-y-4">
@@ -202,8 +404,29 @@ defmodule NilaWeb.TodayLive do
               </span>
             </:col>
             <:col :let={r} label="Chase">
+              <div :if={r.chase_channel != "none"} class="flex items-center gap-2">
+                <span
+                  id={"automated-chase-#{r.client_id}-#{r.period}"}
+                  class="text-base-content/70 text-fine"
+                >
+                  {automated_ask_label(r, @today)}
+                </span>
+                <.button
+                  :if={r.draft}
+                  id={"manual-chase-#{r.client_id}-#{r.period}"}
+                  variant="ghost"
+                  size="xs"
+                  phx-click={
+                    JS.push("open-draft",
+                      value: %{"client-id" => to_string(r.client_id), "period" => r.period}
+                    )
+                  }
+                >
+                  Manual
+                </.button>
+              </div>
               <.button
-                :if={r.draft}
+                :if={r.chase_channel == "none" and r.draft}
                 id={"draft-ask-#{r.client_id}-#{r.period}"}
                 variant="soft"
                 size="xs"
@@ -215,11 +438,77 @@ defmodule NilaWeb.TodayLive do
               >
                 Draft ask
               </.button>
-              <span :if={!r.draft} class="text-base-content/45">—</span>
+              <span :if={r.chase_channel == "none" and !r.draft} class="text-base-content/45">
+                —
+              </span>
             </:col>
           </.data_table>
         </section>
       </div>
+
+      <.modal
+        :if={@arrival_group}
+        id="arrival-sort-modal"
+        title={"Sort #{file_phrase(@arrival_group.count)}"}
+        on_close="close-arrivals"
+      >
+        <.form
+          for={@arrival_form}
+          id="arrival-sort-form"
+          phx-change="validate-arrival"
+          phx-submit="route-arrivals"
+        >
+          <div class="space-y-4">
+            <div class="bg-base-200/40 rounded-box px-3 py-2">
+              <p class="text-base-content/60 text-fine">
+                From {display_sender(@arrival_group)} over {source_label(@arrival_group.source)}
+              </p>
+              <p :for={arrival <- @arrival_group.arrivals} class="text-base-content text-small mt-1">
+                {arrival.filename}
+              </p>
+            </div>
+
+            <.input
+              field={@arrival_form[:client_id]}
+              type="select"
+              label="Client"
+              prompt="Select a client"
+              options={@client_options}
+            />
+            <.input
+              field={@arrival_form[:period]}
+              label="Period"
+              placeholder="YYYY-MM"
+              pattern="[0-9]{4}-[0-9]{2}"
+              required
+            />
+            <.input
+              field={@arrival_form[:kind]}
+              type="select"
+              label="Document kind"
+              prompt="Select what arrived"
+              options={arrival_kind_options()}
+            />
+
+            <p :if={@arrival_error} id="arrival-sort-error" class="text-error text-small">
+              {@arrival_error}
+            </p>
+
+            <div class="flex items-center justify-between gap-3">
+              <.button
+                type="button"
+                id="arrival-dismiss"
+                variant="ghost"
+                size="sm"
+                phx-click="dismiss-arrivals"
+              >
+                Dismiss as junk
+              </.button>
+              <.button type="submit" id="arrival-route" size="sm">Bring into month</.button>
+            </div>
+          </div>
+        </.form>
+      </.modal>
 
       <.modal
         :if={@draft}

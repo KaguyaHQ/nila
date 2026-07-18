@@ -42,6 +42,14 @@ defmodule NilaWeb.ClientNewLive do
     Enum.map(Client.types(), &{String.capitalize(&1), &1})
   end
 
+  defp chase_channel_options do
+    [
+      {"We'll send asks ourselves", "none"},
+      {"WhatsApp", "whatsapp"},
+      {"Email", "email"}
+    ]
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -71,6 +79,13 @@ defmodule NilaWeb.ClientNewLive do
               <.input field={@form[:gstin]} label="GSTIN" />
               <.input field={@form[:pan]} label="PAN" />
               <.input field={@form[:phone]} label="Phone" />
+              <.input field={@form[:email]} type="email" label="Email" />
+              <.input
+                field={@form[:chase_channel]}
+                type="select"
+                label="How should Nila ask for documents?"
+                options={chase_channel_options()}
+              />
 
               <div class="flex items-center gap-3">
                 <.button type="submit" id="client-submit">Add client</.button>
