@@ -75,9 +75,9 @@ if config_env() in [:prod, :dev] do
   mistral_key = env!("MISTRAL_API_KEY", :string, nil)
 
   if llama_key do
-    llama_config = [api_key: llama_key, project_id: env!("LLAMA_PROJECT_ID", :string, nil)]
-    config :nila, Nila.Gst.Extraction.Purchase.LlamaExtract, llama_config
-    config :nila, Nila.Gst.Extraction.Sales.LlamaExtract, llama_config
+    config :nila, Nila.Gst.Extraction.LlamaExtract,
+      api_key: llama_key,
+      project_id: env!("LLAMA_PROJECT_ID", :string, nil)
   end
 
   if mistral_key do
@@ -105,18 +105,15 @@ if config_env() in [:prod, :dev] do
   end
 
   if base_url = env!("LLAMA_BASE_URL", :string, nil) do
-    config :nila, Nila.Gst.Extraction.Purchase.LlamaExtract, base_url: base_url
-    config :nila, Nila.Gst.Extraction.Sales.LlamaExtract, base_url: base_url
+    config :nila, Nila.Gst.Extraction.LlamaExtract, base_url: base_url
   end
 
   if tier = env!("LLAMA_TIER", :string, nil) do
-    config :nila, Nila.Gst.Extraction.Purchase.LlamaExtract, tier: tier
-    config :nila, Nila.Gst.Extraction.Sales.LlamaExtract, tier: tier
+    config :nila, Nila.Gst.Extraction.LlamaExtract, tier: tier
   end
 
   if version = env!("LLAMA_VERSION", :string, nil) do
-    config :nila, Nila.Gst.Extraction.Purchase.LlamaExtract, version: version
-    config :nila, Nila.Gst.Extraction.Sales.LlamaExtract, version: version
+    config :nila, Nila.Gst.Extraction.LlamaExtract, version: version
   end
 
   if base_url = env!("MISTRAL_BASE_URL", :string, nil) do
