@@ -88,7 +88,7 @@ defmodule NilaWeb.Layouts do
             <.rail_link
               href={~p"/register"}
               icon="hero-table-cells"
-              label="Register"
+              label="GST months"
               current_path={@current_path}
             />
           </div>

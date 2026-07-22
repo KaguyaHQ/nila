@@ -144,7 +144,7 @@ defmodule NilaWeb.RegisterLiveTest do
     assert has_element?(
              view,
              "#register-empty",
-             "Nothing worked yet — bring in a client's documents and the register fills itself."
+             "No GST months yet — bring in a client's documents and this view fills itself."
            )
 
     assert has_element?(view, ~s|#register-bring-documents[href="/gst/upload"]|)

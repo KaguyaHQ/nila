@@ -9,7 +9,7 @@ defmodule NilaWeb.RegisterLive do
 
     {:ok,
      socket
-     |> assign(:page_title, "Register")
+     |> assign(:page_title, "GST months")
      |> assign(:grid, FilingRegister.grid(org_id))}
   end
 
@@ -37,14 +37,14 @@ defmodule NilaWeb.RegisterLive do
       current_path={assigns[:current_path]}
     >
       <div id="register-page" class="mx-auto max-w-6xl space-y-6">
-        <.page_header eyebrow="Register" title="Register">
-          Every month the firm has worked — where each return stands.
+        <.page_header eyebrow="GST" title="GST months">
+          Every client-period the firm has worked — open, partly filed, or filed.
         </.page_header>
 
         <.card :if={@grid.periods == []} id="register-empty" class="py-10 text-center">
           <div class="mx-auto max-w-md space-y-4">
             <p class="text-base-content/70 text-body font-light">
-              Nothing worked yet — bring in a client's documents and the register fills itself.
+              No GST months yet — bring in a client's documents and this view fills itself.
             </p>
             <.button navigate={~p"/gst/upload"} id="register-bring-documents">
               Bring in documents

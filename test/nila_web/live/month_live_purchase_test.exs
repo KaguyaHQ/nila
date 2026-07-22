@@ -362,7 +362,7 @@ defmodule NilaWeb.MonthLivePurchaseTest do
     assert render(view) =~ "Month closed."
     assert has_element?(view, "#month-strip", "Month closed — GSTR-1 and GSTR-3B filed.")
     assert has_element?(view, "#month-back-today", "Back to Today")
-    assert has_element?(view, ~s|#month-view-register[href="/register"]|, "View the register →")
+    assert has_element?(view, ~s|#month-view-register[href="/register"]|, "View GST months →")
 
     assert has_element?(view, "#spine-inputs", "in")
     assert has_element?(view, "#spine-gstr1", "filed")

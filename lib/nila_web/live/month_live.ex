@@ -804,7 +804,7 @@ defmodule NilaWeb.MonthLive do
             id="month-view-register"
             class="text-small text-success font-semibold"
           >
-            View the register →
+            View GST months →
           </.link>
           <.spine steps={spine_steps(assigns)} />
         </div>
