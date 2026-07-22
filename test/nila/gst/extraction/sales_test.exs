@@ -2,7 +2,7 @@ defmodule Nila.Gst.Extraction.SalesTest do
   use ExUnit.Case, async: true
 
   alias Nila.Gst.Sales.Gstr1
-  alias Nila.Gst.Extraction.LlamaExtract
+  alias Nila.Gst.Extraction.Providers.Llama
   alias Nila.Gst.Extraction.Sales.Stub
 
   describe "Stub.extract/2" do
@@ -45,7 +45,7 @@ defmodule Nila.Gst.Extraction.SalesTest do
     end
   end
 
-  describe "LlamaExtract.pages/3 (pure response mapping)" do
+  describe "Providers.Llama.pages/3 (pure response mapping)" do
     test "reshapes per-page results and attaches rendered image basenames" do
       body = %{
         "extract_result" => [
@@ -60,7 +60,7 @@ defmodule Nila.Gst.Extraction.SalesTest do
 
       images = %{"page_01.png" => <<0>>}
 
-      [first, second] = LlamaExtract.pages(:sales, body, images)
+      [first, second] = Llama.pages(:sales, body, images)
 
       assert first["page"] == 1
       assert first["image"] == "images/page_01.png"
@@ -73,7 +73,7 @@ defmodule Nila.Gst.Extraction.SalesTest do
     end
 
     test "returns [] when the response has no recognizable page list" do
-      assert LlamaExtract.pages(:sales, %{"status" => "COMPLETED"}, %{}) == []
+      assert Llama.pages(:sales, %{"status" => "COMPLETED"}, %{}) == []
     end
   end
 end

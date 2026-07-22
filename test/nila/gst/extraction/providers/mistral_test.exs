@@ -1,13 +1,13 @@
-defmodule Nila.Gst.Extraction.MistralOCRTest do
+defmodule Nila.Gst.Extraction.Providers.MistralTest do
   use ExUnit.Case, async: true
 
-  alias Nila.Gst.Extraction.MistralOCR
+  alias Nila.Gst.Extraction.Providers.Mistral
   alias Nila.Gst.Extraction.Purchase
 
   test "sends the original PDF to pinned OCR 4 with annotations, blocks, and confidence" do
     pdf = "%PDF-1.7 original bytes"
 
-    Req.Test.expect(MistralOCR, fn conn ->
+    Req.Test.expect(Mistral, fn conn ->
       assert conn.request_path == "/v1/ocr"
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer test-mistral-key"]
 
@@ -73,7 +73,7 @@ defmodule Nila.Gst.Extraction.MistralOCRTest do
   test "sends an image unchanged as an image_url" do
     image = <<0xFF, 0xD8, 0xFF, 0x00>>
 
-    Req.Test.expect(MistralOCR, fn conn ->
+    Req.Test.expect(Mistral, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       payload = Jason.decode!(body)
       assert payload["document"]["type"] == "image_url"
@@ -93,7 +93,7 @@ defmodule Nila.Gst.Extraction.MistralOCRTest do
   end
 
   test "returns the failed provider response for audit without fallback" do
-    Req.Test.expect(MistralOCR, fn conn ->
+    Req.Test.expect(Mistral, fn conn ->
       conn
       |> Plug.Conn.put_status(422)
       |> Plug.Conn.put_resp_header("x-request-id", "req-failed")

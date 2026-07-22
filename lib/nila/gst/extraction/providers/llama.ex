@@ -1,7 +1,7 @@
-defmodule Nila.Gst.Extraction.LlamaExtract do
+defmodule Nila.Gst.Extraction.Providers.Llama do
   @moduledoc false
 
-  # Shared LlamaExtract v2 engine behind the per-type
+  # Shared LlamaExtract v2 provider behind the per-type
   # `Nila.Gst.Extraction.Purchase.LlamaExtract` / `Sales.LlamaExtract` adapters.
   # Lifts the proven flow from `scripts/extract_{purchases,sales}.exs`: render
   # each PDF page to a PNG with `pdftoppm`, upload the PDF for a `file_id`,

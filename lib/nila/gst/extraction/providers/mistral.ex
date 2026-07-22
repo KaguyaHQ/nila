@@ -1,4 +1,4 @@
-defmodule Nila.Gst.Extraction.MistralOCR do
+defmodule Nila.Gst.Extraction.Providers.Mistral do
   @moduledoc false
 
   @model "mistral-ocr-4-0"

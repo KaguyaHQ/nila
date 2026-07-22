@@ -8,7 +8,7 @@ defmodule PurchaseExtractScript do
 
     api_key =
       System.get_env("LLAMA_CLOUD_API_KEY") ||
-        get_in(Application.get_env(:nila, Nila.Gst.Extraction.LlamaExtract, []), [:api_key])
+        get_in(Application.get_env(:nila, Nila.Gst.Extraction.Providers.Llama, []), [:api_key])
 
     if is_nil(api_key) or api_key == "" do
       Mix.raise("LLAMA_CLOUD_API_KEY is required to run extraction")

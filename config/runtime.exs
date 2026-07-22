@@ -75,13 +75,13 @@ if config_env() in [:prod, :dev] do
   mistral_key = env!("MISTRAL_API_KEY", :string, nil)
 
   if llama_key do
-    config :nila, Nila.Gst.Extraction.LlamaExtract,
+    config :nila, Nila.Gst.Extraction.Providers.Llama,
       api_key: llama_key,
       project_id: env!("LLAMA_PROJECT_ID", :string, nil)
   end
 
   if mistral_key do
-    config :nila, Nila.Gst.Extraction.MistralOCR, api_key: mistral_key
+    config :nila, Nila.Gst.Extraction.Providers.Mistral, api_key: mistral_key
   end
 
   provider = env!("GST_OCR_PROVIDER", :string, if(config_env() == :dev, do: "mistral", else: nil))
@@ -105,19 +105,19 @@ if config_env() in [:prod, :dev] do
   end
 
   if base_url = env!("LLAMA_BASE_URL", :string, nil) do
-    config :nila, Nila.Gst.Extraction.LlamaExtract, base_url: base_url
+    config :nila, Nila.Gst.Extraction.Providers.Llama, base_url: base_url
   end
 
   if tier = env!("LLAMA_TIER", :string, nil) do
-    config :nila, Nila.Gst.Extraction.LlamaExtract, tier: tier
+    config :nila, Nila.Gst.Extraction.Providers.Llama, tier: tier
   end
 
   if version = env!("LLAMA_VERSION", :string, nil) do
-    config :nila, Nila.Gst.Extraction.LlamaExtract, version: version
+    config :nila, Nila.Gst.Extraction.Providers.Llama, version: version
   end
 
   if base_url = env!("MISTRAL_BASE_URL", :string, nil) do
-    config :nila, Nila.Gst.Extraction.MistralOCR, base_url: base_url
+    config :nila, Nila.Gst.Extraction.Providers.Mistral, base_url: base_url
   end
 end
 

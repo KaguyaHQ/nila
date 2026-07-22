@@ -68,9 +68,9 @@ config :phoenix_live_view,
 config :phoenix,
   sort_verified_routes_query_params: true
 
-config :nila, Nila.Gst.Extraction.MistralOCR,
+config :nila, Nila.Gst.Extraction.Providers.Mistral,
   api_key: "test-mistral-key",
-  req_options: [plug: {Req.Test, Nila.Gst.Extraction.MistralOCR}]
+  req_options: [plug: {Req.Test, Nila.Gst.Extraction.Providers.Mistral}]
 
 config :nila, Nila.Assistant,
   http_client: Nila.Assistant.HTTPClient.Stub,
