@@ -1,4 +1,4 @@
-defmodule NilaWeb.GstUploadLive do
+defmodule NilaWeb.Gst.UploadLive do
   use NilaWeb, :live_view
 
   @moduledoc """

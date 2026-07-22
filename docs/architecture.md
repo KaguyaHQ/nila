@@ -102,7 +102,7 @@ trigger workflow steps and audited state transitions.
 - `lib/nila_web/` — controllers, LiveViews, components.
 - `Layouts.app/1` hosts the global shell (left rail, page header) per
   `docs/design/layout.md`.
-- `NilaWeb.MonthLive` (`/gst/:client_id/:period`) is the product surface: the
+- `NilaWeb.Gst.MonthLive` (`/gst/:client_id/:period`) is the product surface: the
   client-month workbench — a state strip (who the month waits on), the GSTR-1
   section (invoices, issues, review/sign-off/filed arc), the purchase register
   (2B recon, tap-a-row → the scanned bill via tenant-isolated evidence

@@ -73,6 +73,22 @@ defmodule Nila.Gst.Purchase.Register do
     books_rows ++ g2b_only_rows(recon)
   end
 
+  @doc "Returns the web-facing invoice, match, and decision counts for a summary."
+  def stats(summary) do
+    buckets = summary["buckets"] || %{}
+    invoices = buckets |> Map.values() |> Enum.sum()
+    matched = buckets["matched"] || 0
+
+    %{
+      invoices: invoices,
+      matched: matched,
+      need_decision: invoices - matched - (summary["accepted_unmatched"] || 0)
+    }
+  end
+
+  @doc "Returns how many summary rows still need a human decision."
+  def need_decision(summary), do: stats(summary).need_decision
+
   @doc "Bucket counts plus flag totals for the cover/status page."
   def summary(rows) do
     %{

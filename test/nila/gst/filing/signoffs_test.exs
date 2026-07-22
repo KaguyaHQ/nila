@@ -9,7 +9,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
   alias Nila.Gst.Filing.Signoffs
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.Months, as: ClientMonths
-  alias Nila.Gst.Purchase.{Register}
+  alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Purchase.Reconciliation, as: Recon
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
@@ -94,6 +94,36 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     assert {:ok, latest} = Signoffs.latest_signoff(month.id)
     assert latest.id == signoff.id
     assert latest.signed_by.id == scope.user.id
+  end
+
+  test "purchase signoff snapshots the effective projection from the locked fresh month", %{
+    month: stale_month,
+    owner_scope: scope
+  } do
+    assert {:ok, _resolution} =
+             Resolutions.record(
+               stale_month,
+               %{
+                 "verb" => "accept_unmatched",
+                 "books_id" => "page_01",
+                 "payload" => %{"reason" => "await_2b"}
+               },
+               scope.user.id
+             )
+
+    {:ok, fresh_month} =
+      ClientMonths.get_by_period(
+        stale_month.org_id,
+        stale_month.client_id,
+        stale_month.period
+      )
+
+    expected = Resolutions.workings(fresh_month)
+    assert {:ok, signoff} = Signoffs.sign_off(stale_month, scope)
+    assert signoff.snapshot["rows"] == expected.rows
+    assert signoff.snapshot["summary"] == expected.summary
+    assert signoff.snapshot["itc"] == expected.itc
+    assert signoff.snapshot["gstr3b"] == expected.gstr3b
   end
 
   test "the operator (member) cannot self-certify", %{month: month, org: org} do

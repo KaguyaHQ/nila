@@ -102,12 +102,12 @@ defmodule NilaWeb.Router do
       ] do
       live "/today", TodayLive, :index
       live "/clients", ClientsLive, :index
-      live "/register", RegisterLive, :index
+      live "/register", Gst.RegisterLive, :index
       live "/clients/new", ClientNewLive, :new
       live "/clients/:id/edit", ClientEditLive, :edit
-      live "/gst/upload", GstUploadLive, :new
-      live "/gst/:client_id/:period", MonthLive, :index
-      live "/gst/:client_id/:period/exceptions", GstExceptionsLive, :index
+      live "/gst/upload", Gst.UploadLive, :new
+      live "/gst/:client_id/:period", Gst.MonthLive, :index
+      live "/gst/:client_id/:period/exceptions", Gst.ExceptionsLive, :index
       live "/settings/profile", Settings.ProfileLive, :edit
       live "/settings/profile/confirm_email/:token", Settings.ProfileLive, :confirm_email
       live "/settings/security", Settings.SecurityLive, :edit

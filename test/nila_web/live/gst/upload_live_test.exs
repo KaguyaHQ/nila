@@ -1,4 +1,4 @@
-defmodule NilaWeb.GstUploadLiveTest do
+defmodule NilaWeb.Gst.UploadLiveTest do
   use NilaWeb.ConnCase, async: true
   use Oban.Testing, repo: Nila.Repo
 

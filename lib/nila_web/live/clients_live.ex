@@ -2,7 +2,7 @@ defmodule NilaWeb.ClientsLive do
   use NilaWeb, :live_view
 
   alias Nila.Clients
-  alias Nila.Gst.Purchase.Months
+  alias Nila.Gst.Purchase.{Months, Register}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -29,14 +29,8 @@ defmodule NilaWeb.ClientsLive do
       type: type_label(client.type),
       gstin: client.gstin,
       month: month && %{period: month.period, state: month.state},
-      need_decision: month && need_decision(month)
+      need_decision: month && Register.need_decision(month.summary)
     }
-  end
-
-  defp need_decision(month) do
-    buckets = month.summary["buckets"] || %{}
-    total = buckets |> Map.values() |> Enum.sum()
-    total - (buckets["matched"] || 0) - (month.summary["accepted_unmatched"] || 0)
   end
 
   defp type_label(type), do: type |> to_string() |> String.capitalize()

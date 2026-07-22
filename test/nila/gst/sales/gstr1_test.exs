@@ -149,6 +149,65 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     end
   end
 
+  describe "review correction helpers" do
+    test "returns only sorted scalar fields for the pristine invoice number" do
+      flagged =
+        MapSet.new([
+          {"INV-1", "seller_name"},
+          {"INV-1", "line_items[0].taxable_value"},
+          {"INV-1", "line_items"},
+          {"INV-1", "doc_issue"},
+          {"INV-1", "line_items[0].confidence"},
+          {"INV-2", "buyer_name"}
+        ])
+
+      assert Gstr1.correctable_fields(flagged, "INV-1") == [
+               "line_items[0].taxable_value",
+               "seller_name"
+             ]
+    end
+
+    test "reads scalar and indexed line-item field paths" do
+      invoice = %{
+        "invoice_number" => "1234",
+        "line_items" => [%{"taxable_value" => 125.5}]
+      }
+
+      assert Gstr1.field_value(invoice, "invoice_number") == "1234"
+      assert Gstr1.field_value(invoice, "line_items[0].taxable_value") == 125.5
+      assert Gstr1.field_value(invoice, "line_items[9].taxable_value") == nil
+    end
+
+    test "coerces only the existing numeric field set and leaves invoice numbers as strings" do
+      assert Gstr1.coerce_correction("printed_total_taxable", "100.25") == 100.25
+      assert Gstr1.coerce_correction("line_items[0].cgst_amount", "9") == 9.0
+      assert Gstr1.coerce_correction("invoice_number", "1234") == "1234"
+      assert Gstr1.coerce_correction("line_items[0].description", "9") == "9"
+      assert Gstr1.coerce_correction("line_items[0].taxable_value", "9x") == "9x"
+    end
+
+    test "sums only extracted numeric line-item values without rounding" do
+      invoice = %{
+        "line_items" => [
+          %{
+            "taxable_value" => 100.25,
+            "cgst_amount" => 9.02,
+            "sgst_amount" => 9.02,
+            "igst_amount" => nil
+          },
+          %{
+            "taxable_value" => 50,
+            "cgst_amount" => "4.5",
+            "sgst_amount" => 0,
+            "igst_amount" => 9.5
+          }
+        ]
+      }
+
+      assert Gstr1.extracted_totals(invoice) == %{taxable: 150.25, tax: 27.54}
+    end
+  end
+
   # Reproduction baselines against real filed returns. `raw` is the first-pass
   # score; nil means "run it, just don't assert a number yet". These lock in
   # current behavior — change them deliberately when a rule is fixed.

@@ -33,6 +33,55 @@ defmodule Nila.Gst.Sales.Gstr1 do
   @confidence_threshold 0.90
   @money_tolerance 0.5
   @diff_tolerance 0.01
+  @numeric_correction_field ~r/^(printed_total_taxable|printed_total_tax|printed_grand_total)$|\.(taxable_value|quantity|unit_price|[csi]gst_(rate|amount))$/
+
+  @doc "Returns the flagged scalar fields that may be corrected for an invoice."
+  def correctable_fields(flagged, pristine_invoice_number) do
+    flagged
+    |> Enum.filter(fn {invoice_number, field} ->
+      invoice_number == pristine_invoice_number and field not in ["line_items", "doc_issue"] and
+        not String.contains?(field, "confidence")
+    end)
+    |> Enum.map(fn {_invoice_number, field} -> field end)
+    |> Enum.sort()
+  end
+
+  @doc "Reads a scalar invoice field, including `line_items[index].field` paths."
+  def field_value(invoice, field_path) do
+    case Regex.run(~r/^line_items\[(\d+)\]\.(.+)$/, field_path) do
+      [_, index, line_field] ->
+        line = Enum.at(invoice["line_items"], String.to_integer(index)) || %{}
+        line[line_field]
+
+      _ ->
+        invoice[field_path]
+    end
+  end
+
+  @doc "Coerces correction text for the numeric fields accepted by the review UI."
+  def coerce_correction(field_path, text) do
+    with true <- Regex.match?(@numeric_correction_field, field_path),
+         {number, ""} <- Float.parse(text) do
+      number
+    else
+      _ -> text
+    end
+  end
+
+  @doc "Sums extracted taxable and tax amounts without deriving or rounding them."
+  def extracted_totals(invoice) do
+    Enum.reduce(List.wrap(invoice["line_items"]), %{taxable: 0, tax: 0}, fn line, totals ->
+      %{
+        taxable: totals.taxable + extracted_number(line["taxable_value"]),
+        tax:
+          totals.tax + extracted_number(line["cgst_amount"]) +
+            extracted_number(line["sgst_amount"]) + extracted_number(line["igst_amount"])
+      }
+    end)
+  end
+
+  defp extracted_number(value) when is_number(value), do: value
+  defp extracted_number(_value), do: 0
 
   def normalize_invoice(raw) when is_map(raw) do
     data = raw["data"] || raw["extract_result"] || raw["result"] || raw

@@ -48,39 +48,50 @@ defmodule Nila.Gst.Filing.Signoffs do
   `{:error, :already_signed}` when the month is not in `worked`.
   """
   def sign_off(%PurchaseMonth{} = month, scope) do
-    cond do
-      not Policy.can?(scope, :sign_off) ->
-        {:error, :not_allowed}
+    if Policy.can?(scope, :sign_off) do
+      Repo.transact(fn ->
+        month =
+          Repo.one!(
+            from m in PurchaseMonth,
+              where: m.id == ^month.id,
+              lock: "FOR UPDATE"
+          )
 
-      month.state != "worked" ->
-        {:error, :already_signed}
+        cond do
+          match?({:ok, _}, latest_signoff(month.id)) ->
+            {:error, :already_signed}
 
-      true ->
-        workings = Resolutions.workings(month)
+          month.state != "worked" ->
+            {:error, :already_signed}
 
-        snapshot = %{
-          "summary" => workings.summary,
-          "itc" => workings.itc,
-          "gstr3b" => workings.gstr3b,
-          "rows" => workings.rows
-        }
+          true ->
+            workings = Resolutions.workings(month)
 
-        Repo.transact(fn ->
-          signoff =
-            %Signoff{
-              org_id: month.org_id,
-              client_month_id: month.id,
-              signed_by_id: scope.user.id
+            snapshot = %{
+              "summary" => workings.summary,
+              "itc" => workings.itc,
+              "gstr3b" => workings.gstr3b,
+              "rows" => workings.rows
             }
-            |> Signoff.changeset(%{artifact: "gstr3b", snapshot: snapshot})
-            |> Repo.insert!()
 
-          month
-          |> PurchaseMonth.changeset(%{state: "reviewed"})
-          |> Repo.update!()
+            signoff =
+              %Signoff{
+                org_id: month.org_id,
+                client_month_id: month.id,
+                signed_by_id: scope.user.id
+              }
+              |> Signoff.changeset(%{artifact: "gstr3b", snapshot: snapshot})
+              |> Repo.insert!()
 
-          {:ok, signoff}
-        end)
+            month
+            |> PurchaseMonth.changeset(%{state: "reviewed"})
+            |> Repo.update!()
+
+            {:ok, signoff}
+        end
+      end)
+    else
+      {:error, :not_allowed}
     end
   end
 

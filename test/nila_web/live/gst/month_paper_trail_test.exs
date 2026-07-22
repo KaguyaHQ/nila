@@ -1,4 +1,4 @@
-defmodule NilaWeb.MonthPaperTrailTest do
+defmodule NilaWeb.Gst.MonthPaperTrailTest do
   @moduledoc """
   The month's paper trail: originals downloadable, every arrival visible on
   the month page, and the chase asks readable verbatim — months later, from

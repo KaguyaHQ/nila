@@ -51,6 +51,15 @@ defmodule Nila.Gst.Purchase.Months do
     Repo.fetch_by(Month, org_id: org_id, client_id: client_id, period: period)
   end
 
+  @doc "Fetches an org-scoped worked month with its client preloaded."
+  def get_by_period_with_client(org_id, client_id, period) do
+    Repo.fetch_one(
+      from cm in Month,
+        where: cm.org_id == ^org_id and cm.client_id == ^client_id and cm.period == ^period,
+        preload: [:client]
+    )
+  end
+
   @doc """
   Inserts or updates the month for `(org_id, client_id, period)`. `org_id` and
   `client_id` are set on the struct, never cast (tenancy is not user-supplied).

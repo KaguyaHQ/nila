@@ -1,4 +1,4 @@
-defmodule NilaWeb.RegisterLiveTest do
+defmodule NilaWeb.Gst.RegisterLiveTest do
   use NilaWeb.ConnCase, async: true
 
   import Ecto.Changeset

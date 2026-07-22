@@ -31,7 +31,7 @@ defmodule Nila.Gst.WorkQueue do
   alias Nila.Gst.Chase
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.Dumps
-  alias Nila.Gst.Purchase.Resolutions
+  alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Months, as: SalesMonths
@@ -193,17 +193,12 @@ defmodule Nila.Gst.WorkQueue do
   defp purchase_need_decision(nil), do: 0
 
   defp purchase_need_decision(purchase) do
-    summary = Resolutions.workings(purchase).summary
-    buckets = summary["buckets"] || %{}
-    total = buckets |> Map.values() |> Enum.sum()
-    total - (buckets["matched"] || 0) - (summary["accepted_unmatched"] || 0)
+    purchase |> Resolutions.workings() |> then(&Register.need_decision(&1.summary))
   end
 
   defp purchase_invoices(nil), do: 0
 
-  defp purchase_invoices(purchase) do
-    (purchase.summary["buckets"] || %{}) |> Map.values() |> Enum.sum()
-  end
+  defp purchase_invoices(purchase), do: Register.stats(purchase.summary).invoices
 
   defp sales_open_issues(nil), do: 0
   defp sales_open_issues(%{invoices: []}), do: 0

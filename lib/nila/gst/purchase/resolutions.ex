@@ -32,18 +32,78 @@ defmodule Nila.Gst.Purchase.Resolutions do
   end
 
   @doc """
-  Records one decision. `org_id` and `client_month_id` are set on the struct,
-  never cast (tenancy is not user-supplied). `decided_by_id` attributes the
-  call. Returns `{:ok, resolution} | {:error, changeset}`.
+  Records one decision and refreshes the month's persisted effective projection.
+  Returns `{:ok, resolution} | {:error, reason}`.
   """
   def record(%Month{} = month, attrs, decided_by_id) do
-    %Resolution{
-      org_id: month.org_id,
-      client_month_id: month.id,
-      decided_by_id: decided_by_id
-    }
-    |> Resolution.changeset(attrs)
-    |> Repo.insert()
+    case record_and_refresh(month, attrs, decided_by_id) do
+      {:ok, %{resolution: resolution}} -> {:ok, resolution}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Records one decision and atomically refreshes the effective projection."
+  def record_and_refresh(%Month{} = month, attrs, decided_by_id) do
+    record_many_and_refresh(month, [attrs], decided_by_id)
+  end
+
+  @doc "Records a batch of decisions and atomically refreshes the effective projection."
+  def record_many_and_refresh(%Month{} = month, attrs_list, decided_by_id) do
+    Repo.transact(fn ->
+      month = lock_month(month)
+
+      with :ok <- refuse_signed(month),
+           {:ok, resolutions} <- insert_all(month, attrs_list, decided_by_id) do
+        workings = workings(month)
+
+        month =
+          month
+          |> Month.changeset(%{register_rows: workings.rows, summary: workings.summary})
+          |> Repo.update!()
+          |> Repo.preload(:client)
+
+        {:ok,
+         %{
+           resolution: List.first(resolutions),
+           resolutions: resolutions,
+           month: month,
+           workings: workings
+         }}
+      end
+    end)
+  end
+
+  defp lock_month(%Month{id: id}) do
+    Repo.one!(from m in Month, where: m.id == ^id, lock: "FOR UPDATE")
+  end
+
+  defp refuse_signed(%Month{} = month) do
+    case Signoffs.latest_signoff(month.id) do
+      {:ok, _signoff} -> {:error, :signed_off}
+      {:error, :not_found} -> :ok
+    end
+  end
+
+  defp insert_all(month, attrs_list, decided_by_id) do
+    Enum.reduce_while(attrs_list, {:ok, []}, fn attrs, {:ok, resolutions} ->
+      result =
+        %Resolution{
+          org_id: month.org_id,
+          client_month_id: month.id,
+          decided_by_id: decided_by_id
+        }
+        |> Resolution.changeset(attrs)
+        |> Repo.insert()
+
+      case result do
+        {:ok, resolution} -> {:cont, {:ok, [resolution | resolutions]}}
+        {:error, changeset} -> {:halt, {:error, changeset}}
+      end
+    end)
+    |> case do
+      {:ok, resolutions} -> {:ok, Enum.reverse(resolutions)}
+      {:error, changeset} -> {:error, changeset}
+    end
   end
 
   @doc """

@@ -1,4 +1,4 @@
-defmodule NilaWeb.RegisterLive do
+defmodule NilaWeb.Gst.RegisterLive do
   use NilaWeb, :live_view
 
   alias Nila.Gst.Filing.History

@@ -1,4 +1,4 @@
-defmodule NilaWeb.GstExceptionsLiveTest do
+defmodule NilaWeb.Gst.ExceptionsLiveTest do
   use NilaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -153,6 +153,33 @@ defmodule NilaWeb.GstExceptionsLiveTest do
     assert has_element?(view, "#gst-exception-detail")
     assert render(view) =~ "1134"
     assert render(view) =~ "CHN-SER-1134"
+  end
+
+  test "opening exceptions derives assigns without writing the projection or resolutions", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+
+    {:ok, before} =
+      ClientMonths.upsert(%{
+        org_id: month.org_id,
+        client_id: month.client_id,
+        period: month.period,
+        state: month.state,
+        register_rows: [%{"stored" => "projection"}],
+        recon: month.recon,
+        summary: %{"stored" => "summary"}
+      })
+
+    assert {:ok, _view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/exceptions")
+
+    {:ok, after_open} = ClientMonths.get_by_period(org.id, client.id, @period)
+    assert after_open.register_rows == before.register_rows
+    assert after_open.summary == before.summary
+    assert after_open.updated_at == before.updated_at
+    assert Resolutions.list(month.id) == []
   end
 
   test "confirm marks the exception resolved in place with its outcome", %{

@@ -1,4 +1,4 @@
-defmodule NilaWeb.MonthLiveSalesTest do
+defmodule NilaWeb.Gst.MonthLiveSalesTest do
   use NilaWeb.ConnCase
 
   import Phoenix.LiveViewTest
