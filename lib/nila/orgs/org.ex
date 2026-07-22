@@ -20,7 +20,6 @@ defmodule Nila.Orgs.Org do
 
     has_many :memberships, Nila.Orgs.Membership
     has_many :clients, Nila.Clients.Client
-    has_many :documents, Nila.Documents.Document
     has_many :integration_connections, Nila.Integrations.Connection
 
     timestamps()

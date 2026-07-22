@@ -14,18 +14,8 @@ defmodule Nila.AssistantTest do
         gstin: "29ABCDE1234F1ZW"
       })
 
-    document =
-      Nila.Repo.insert!(%Nila.Documents.Document{
-        org_id: org.id,
-        storage_key: "test/statement.pdf",
-        filename: "statement.pdf",
-        byte_size: 1024,
-        status: "uploaded",
-        document_type: "bank_statement"
-      })
-
     scope = %Scope{user: nil, current_org: org, membership: nil}
-    %{scope: scope, org: org, document: document}
+    %{scope: scope, org: org}
   end
 
   defp text_response(text) do
@@ -43,31 +33,6 @@ defmodule Nila.AssistantTest do
      }}
   end
 
-  defp tool_call_response(call_id, tool_name, args) do
-    {:ok,
-     %{
-       status: 200,
-       body: %{
-         "choices" => [
-           %{
-             "finish_reason" => "tool_calls",
-             "message" => %{
-               "role" => "assistant",
-               "content" => nil,
-               "tool_calls" => [
-                 %{
-                   "id" => call_id,
-                   "type" => "function",
-                   "function" => %{"name" => tool_name, "arguments" => Jason.encode!(args)}
-                 }
-               ]
-             }
-           }
-         ]
-       }
-     }}
-  end
-
   describe "chat/2" do
     test "returns an assembled turn for a text-only response", %{scope: scope} do
       Stub.put_responses(text_response("Hello, how can I help?"))
@@ -79,28 +44,10 @@ defmodule Nila.AssistantTest do
       assert turn.attachments == []
     end
 
-    test "completes a tool_calls → tool result → text loop", %{scope: scope} do
-      Stub.put_responses([
-        tool_call_response("call_1", "search_documents", %{}),
-        text_response("Found 1 document.")
-      ])
-
-      turns = [%{role: :user, text: "show documents", id: 1}]
-      assert {:ok, %{turn: turn}} = Assistant.chat(scope, turns)
-      assert turn.text == "Found 1 document."
-
-      docs = attachment_for(turn, :documents)
-      assert is_list(docs)
-      assert Enum.any?(docs, &(&1.filename == "statement.pdf"))
-    end
-
-    test "caps at max_tool_iterations and returns :tool_loop_exceeded", %{scope: scope} do
-      loop = tool_call_response("call_loop", "search_documents", %{})
-      Stub.put_responses(List.duplicate(loop, 10))
-
-      assert {:error, :tool_loop_exceeded} =
-               Assistant.chat(scope, [%{role: :user, text: "spin", id: 1}])
-    end
+    # NOTE: tool-loop coverage (tool_calls → tool result → text, and the
+    # max-iteration cap) was dropped when the `search_documents` tool was
+    # retired with the generic Documents context. `Nila.Assistant.Tools.specs/0`
+    # is empty; restore these tests alongside the first real GST-facing tool.
 
     test "maps 429 to :rate_limited", %{scope: scope} do
       Stub.put_responses({:ok, %{status: 429, body: %{}}})
@@ -134,7 +81,6 @@ defmodule Nila.AssistantTest do
       assert headers["authorization"] =~ ~r/^Bearer /
       assert body["model"] == config[:model]
       assert is_list(body["tools"])
-      assert hd(body["tools"])["type"] == "function"
       assert [%{"role" => "system"} | _] = body["messages"]
     end
 
@@ -178,12 +124,5 @@ defmodule Nila.AssistantTest do
       today = Date.utc_today() |> Date.to_iso8601()
       assert Assistant.system_prompt() =~ today
     end
-  end
-
-  defp attachment_for(turn, tag) do
-    Enum.find_value(turn.attachments, fn
-      {^tag, list} -> list
-      _ -> nil
-    end)
   end
 end

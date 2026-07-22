@@ -10,7 +10,6 @@ import Config
 config :nila,
   ecto_repos: [Nila.Repo],
   generators: [timestamp_type: :utc_datetime_usec],
-  bank_extractor: Nila.Banking.Extractor.Stub,
   purchase_extractor: Nila.Gst.Extraction.Purchase.MistralOCR,
   sales_extractor: Nila.Gst.Extraction.Sales.MistralOCR,
   gmail_adapter: Nila.Integrations.Gmail,
