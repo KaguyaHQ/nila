@@ -107,7 +107,7 @@ trigger workflow steps and audited state transitions.
   section (invoices, issues, review/sign-off/filed arc), the purchase register
   (2B recon, tap-a-row → the scanned bill via tenant-isolated evidence
   routes), and the assembled GSTR-3B with its own certification arc.
-- `/today` (`TodayLive` over `Nila.Gst.Today`) is the front door: one row per
+- `/today` (`TodayLive` over `Nila.Gst.WorkQueue`) is the front door: one row per
   client-month worth attention, sectioned by blocking state (to file / needs
   you / waiting on client / waiting on senior / done).
 

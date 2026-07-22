@@ -76,12 +76,12 @@ if config_env() in [:prod, :dev] do
 
   if llama_key do
     llama_config = [api_key: llama_key, project_id: env!("LLAMA_PROJECT_ID", :string, nil)]
-    config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, llama_config
-    config :nila, Nila.Gst.SalesExtractor.LlamaExtract, llama_config
+    config :nila, Nila.Gst.Extraction.Purchase.LlamaExtract, llama_config
+    config :nila, Nila.Gst.Extraction.Sales.LlamaExtract, llama_config
   end
 
   if mistral_key do
-    config :nila, Nila.Gst.MistralOCR, api_key: mistral_key
+    config :nila, Nila.Gst.Extraction.MistralOCR, api_key: mistral_key
   end
 
   provider = env!("GST_OCR_PROVIDER", :string, if(config_env() == :dev, do: "mistral", else: nil))
@@ -89,13 +89,13 @@ if config_env() in [:prod, :dev] do
   case provider do
     "llama" ->
       if is_nil(llama_key), do: raise("GST_OCR_PROVIDER=llama requires LLAMA_CLOUD_API_KEY")
-      config :nila, :purchase_extractor, Nila.Gst.PurchaseExtractor.LlamaExtract
-      config :nila, :sales_extractor, Nila.Gst.SalesExtractor.LlamaExtract
+      config :nila, :purchase_extractor, Nila.Gst.Extraction.Purchase.LlamaExtract
+      config :nila, :sales_extractor, Nila.Gst.Extraction.Sales.LlamaExtract
 
     "mistral" ->
       if is_nil(mistral_key), do: raise("GST_OCR_PROVIDER=mistral requires MISTRAL_API_KEY")
-      config :nila, :purchase_extractor, Nila.Gst.PurchaseExtractor.MistralOCR
-      config :nila, :sales_extractor, Nila.Gst.SalesExtractor.MistralOCR
+      config :nila, :purchase_extractor, Nila.Gst.Extraction.Purchase.MistralOCR
+      config :nila, :sales_extractor, Nila.Gst.Extraction.Sales.MistralOCR
 
     nil ->
       raise "GST_OCR_PROVIDER is required in production (llama or mistral)"
@@ -105,22 +105,22 @@ if config_env() in [:prod, :dev] do
   end
 
   if base_url = env!("LLAMA_BASE_URL", :string, nil) do
-    config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, base_url: base_url
-    config :nila, Nila.Gst.SalesExtractor.LlamaExtract, base_url: base_url
+    config :nila, Nila.Gst.Extraction.Purchase.LlamaExtract, base_url: base_url
+    config :nila, Nila.Gst.Extraction.Sales.LlamaExtract, base_url: base_url
   end
 
   if tier = env!("LLAMA_TIER", :string, nil) do
-    config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, tier: tier
-    config :nila, Nila.Gst.SalesExtractor.LlamaExtract, tier: tier
+    config :nila, Nila.Gst.Extraction.Purchase.LlamaExtract, tier: tier
+    config :nila, Nila.Gst.Extraction.Sales.LlamaExtract, tier: tier
   end
 
   if version = env!("LLAMA_VERSION", :string, nil) do
-    config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, version: version
-    config :nila, Nila.Gst.SalesExtractor.LlamaExtract, version: version
+    config :nila, Nila.Gst.Extraction.Purchase.LlamaExtract, version: version
+    config :nila, Nila.Gst.Extraction.Sales.LlamaExtract, version: version
   end
 
   if base_url = env!("MISTRAL_BASE_URL", :string, nil) do
-    config :nila, Nila.Gst.MistralOCR, base_url: base_url
+    config :nila, Nila.Gst.Extraction.MistralOCR, base_url: base_url
   end
 end
 

@@ -20,7 +20,7 @@ defmodule Mix.Tasks.Nila.SeedGstDemo do
 
   alias Nila.Clients
   alias Nila.Clients.Client
-  alias Nila.Gst.ClientMonths
+  alias Nila.Gst.Purchase.Months
   alias Nila.Orgs
   alias Nila.Repo
   alias Nila.Storage
@@ -41,7 +41,7 @@ defmodule Mix.Tasks.Nila.SeedGstDemo do
     basenames = copy_images(org.id, client.id)
 
     {:ok, client_month} =
-      ClientMonths.upsert(%{
+      Months.upsert(%{
         org_id: org.id,
         client_id: client.id,
         period: @period,
@@ -102,7 +102,7 @@ defmodule Mix.Tasks.Nila.SeedGstDemo do
     |> Enum.sort()
     |> Enum.map(fn basename ->
       bytes = File.read!(Path.join([@dir, "images", basename]))
-      key = ClientMonths.evidence_key(org_id, client_id, @period, basename)
+      key = Months.evidence_key(org_id, client_id, @period, basename)
       {:ok, _} = Storage.put(key, bytes, content_type: content_type(basename))
       basename
     end)

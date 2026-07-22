@@ -9,7 +9,9 @@ defmodule NilaWeb.MonthPaperTrailTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.{Chase, ClientMonths, Dumps}
+  alias Nila.Gst.Chase
+  alias Nila.Gst.Intake.Dumps
+  alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Storage
 
   @period "2025-10"

@@ -5,7 +5,11 @@ defmodule NilaWeb.TodayLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.{Arrival, Arrivals, Chase, ClientMonths, Dumps, DumpWorker, SalesMonths}
+  alias Nila.Gst.Chase
+  alias Nila.Gst.Filing.Calendar
+  alias Nila.Gst.Intake.{Arrival, Arrivals, Dumps, DumpWorker}
+  alias Nila.Gst.Purchase.Months, as: ClientMonths
+  alias Nila.Gst.Sales.Months, as: SalesMonths
 
   @period "2025-10"
 
@@ -79,7 +83,7 @@ defmodule NilaWeb.TodayLiveTest do
     assert has_element?(view, "#arrival-sort-modal")
     assert has_element?(view, "#arrival-sort-form option[selected][value='#{client.id}']")
 
-    period = Nila.Gst.Calendar.closeable_period(Date.utc_today())
+    period = Calendar.closeable_period(Date.utc_today())
     assert has_element?(view, "#arrival-sort-form input[value='#{period}']")
 
     view
@@ -95,7 +99,7 @@ defmodule NilaWeb.TodayLiveTest do
     assert routed.status == "routed"
     assert routed.routed_dump_id
     assert_enqueued(worker: DumpWorker, args: %{dump_id: routed.routed_dump_id})
-    assert Nila.Repo.get!(Nila.Gst.Dump, routed.routed_dump_id).brought_in_by_id == user.id
+    assert Nila.Repo.get!(Nila.Gst.Intake.Dump, routed.routed_dump_id).brought_in_by_id == user.id
   end
 
   test "an unknown WhatsApp number stays unattributed for sorting", %{conn: conn, org: org} do
@@ -151,7 +155,7 @@ defmodule NilaWeb.TodayLiveTest do
     client: client,
     user: user
   } do
-    period = Nila.Gst.Calendar.closeable_period(Date.utc_today())
+    period = Calendar.closeable_period(Date.utc_today())
 
     {:ok, _dump} =
       Dumps.record(
@@ -184,7 +188,7 @@ defmodule NilaWeb.TodayLiveTest do
        %{conn: conn, client: client} do
     {:ok, view, _html} = live(conn, ~p"/today")
 
-    closeable = Nila.Gst.Calendar.closeable_period(Date.utc_today())
+    closeable = Calendar.closeable_period(Date.utc_today())
 
     assert has_element?(view, "#today-waiting_on_client")
     assert has_element?(view, "#today-row-#{client.id}-#{closeable}", "purchase not in")
@@ -199,7 +203,7 @@ defmodule NilaWeb.TodayLiveTest do
     {:ok, client} =
       Clients.update_client(client, %{phone: "9876543210", chase_channel: "whatsapp"})
 
-    period = Nila.Gst.Calendar.closeable_period(Date.utc_today())
+    period = Calendar.closeable_period(Date.utc_today())
 
     asks =
       for days_ago <- [3, 2] do

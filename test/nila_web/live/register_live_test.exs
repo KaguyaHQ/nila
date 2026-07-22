@@ -5,7 +5,8 @@ defmodule NilaWeb.RegisterLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.{ClientMonths, SalesMonths}
+  alias Nila.Gst.Purchase.Months, as: ClientMonths
+  alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Repo
 
   setup %{conn: conn} do

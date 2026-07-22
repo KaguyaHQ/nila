@@ -2,7 +2,7 @@ defmodule NilaWeb.ClientsLive do
   use NilaWeb, :live_view
 
   alias Nila.Clients
-  alias Nila.Gst.ClientMonths
+  alias Nila.Gst.Purchase.Months
 
   @impl true
   def mount(_params, _session, socket) do
@@ -13,7 +13,7 @@ defmodule NilaWeb.ClientsLive do
   end
 
   defp list_clients(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}) do
-    latest = ClientMonths.latest_by_client(org_id)
+    latest = Months.latest_by_client(org_id)
 
     org_id
     |> Clients.list_clients()

@@ -35,7 +35,7 @@ defmodule NilaWeb.ClientsLiveTest do
       })
 
     {:ok, _} =
-      Nila.Gst.ClientMonths.upsert(%{
+      Nila.Gst.Purchase.Months.upsert(%{
         org_id: org.id,
         client_id: client.id,
         period: "2025-10",

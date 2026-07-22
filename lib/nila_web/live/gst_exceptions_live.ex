@@ -1,7 +1,10 @@
 defmodule NilaWeb.GstExceptionsLive do
   use NilaWeb, :live_view
 
-  alias Nila.Gst.{Chase, ClientMonths, Recon, Resolutions, Signoffs}
+  alias Nila.Gst.Chase
+  alias Nila.Gst.Filing.Signoffs
+  alias Nila.Gst.Purchase.{Reconciliation, Resolutions}
+  alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Repo
 
   @impl true
@@ -124,7 +127,7 @@ defmodule NilaWeb.GstExceptionsLive do
 
   defp gstr2b_item(entry, decisions, asked_at) do
     gstr2b = entry["gstr2b"] || entry
-    ref = Recon.gstr2b_ref(gstr2b)
+    ref = Reconciliation.gstr2b_ref(gstr2b)
     verb = decisions[ref]
 
     %{
@@ -163,7 +166,11 @@ defmodule NilaWeb.GstExceptionsLive do
 
   defp candidate_views(books, candidates) do
     Enum.map(candidates, fn candidate ->
-      %{gstr2b: candidate, ref: Recon.gstr2b_ref(candidate), diff: field_diff(books, candidate)}
+      %{
+        gstr2b: candidate,
+        ref: Reconciliation.gstr2b_ref(candidate),
+        diff: field_diff(books, candidate)
+      }
     end)
   end
 

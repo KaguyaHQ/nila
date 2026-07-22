@@ -3,7 +3,7 @@ defmodule Nila.Integrations.GmailSyncWorker do
 
   alias Nila.Clients
   alias Nila.Clients.Client
-  alias Nila.Gst.Arrivals
+  alias Nila.Gst.Intake.Arrivals
   alias Nila.Integrations
 
   @impl Oban.Worker

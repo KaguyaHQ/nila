@@ -18,7 +18,7 @@ defmodule Mix.Tasks.Nila.BenchmarkOcr do
     manifest = opts[:manifest] || "bench/ocr/manifest.json"
     output = opts[:output] || Path.join("bench/ocr/results", timestamp())
 
-    case Nila.Gst.ExtractorBenchmark.run(Path.expand(manifest), Path.expand(output)) do
+    case Nila.Gst.Extraction.Benchmark.run(Path.expand(manifest), Path.expand(output)) do
       {:ok, summary} ->
         failures =
           summary["cases"]

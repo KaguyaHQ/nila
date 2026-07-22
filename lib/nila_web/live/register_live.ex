@@ -1,7 +1,7 @@
 defmodule NilaWeb.RegisterLive do
   use NilaWeb, :live_view
 
-  alias Nila.Gst.FilingRegister
+  alias Nila.Gst.Filing.History
 
   @impl true
   def mount(_params, _session, socket) do
@@ -10,7 +10,7 @@ defmodule NilaWeb.RegisterLive do
     {:ok,
      socket
      |> assign(:page_title, "GST months")
-     |> assign(:grid, FilingRegister.grid(org_id))}
+     |> assign(:grid, History.grid(org_id))}
   end
 
   defp cell_title(%{state: :filed} = cell) do

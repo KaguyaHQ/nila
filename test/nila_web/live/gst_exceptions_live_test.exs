@@ -4,7 +4,11 @@ defmodule NilaWeb.GstExceptionsLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.{Chase, ClientMonths, Recon, Register, Resolutions, Signoffs}
+  alias Nila.Gst.Chase
+  alias Nila.Gst.Filing.Signoffs
+  alias Nila.Gst.Purchase.Months, as: ClientMonths
+  alias Nila.Gst.Purchase.{Register, Resolutions}
+  alias Nila.Gst.Purchase.Reconciliation, as: Recon
 
   @period "2025-10"
   @gstin "33AAACS1234A1Z9"

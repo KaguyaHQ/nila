@@ -27,8 +27,8 @@ config :nila, Oban, testing: :manual, queues: false, plugins: false
 
 config :nila,
   whatsapp_chase_template: "nila_document_chase",
-  purchase_extractor: Nila.Gst.PurchaseExtractor.Stub,
-  sales_extractor: Nila.Gst.SalesExtractor.Stub
+  purchase_extractor: Nila.Gst.Extraction.Purchase.Stub,
+  sales_extractor: Nila.Gst.Extraction.Sales.Stub
 
 config :nila, Nila.Integrations.WhatsApp,
   req_options: [plug: {Req.Test, Nila.Integrations.WhatsApp}]
@@ -68,9 +68,9 @@ config :phoenix_live_view,
 config :phoenix,
   sort_verified_routes_query_params: true
 
-config :nila, Nila.Gst.MistralOCR,
+config :nila, Nila.Gst.Extraction.MistralOCR,
   api_key: "test-mistral-key",
-  req_options: [plug: {Req.Test, Nila.Gst.MistralOCR}]
+  req_options: [plug: {Req.Test, Nila.Gst.Extraction.MistralOCR}]
 
 config :nila, Nila.Assistant,
   http_client: Nila.Assistant.HTTPClient.Stub,

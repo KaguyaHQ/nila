@@ -6,7 +6,7 @@ defmodule NilaWeb.GstUploadLive do
   documents actually reach a firm: sales bills early in the month, 2B when
   the portal generates it (~14th), purchase bills whenever the client gets
   around to it, stragglers after the chase. Drop whatever came; each pile
-  becomes a `Nila.Gst.Dump` and a `DumpWorker` job, and the month re-derives
+  becomes a `Nila.Gst.Intake.Dump` and a `DumpWorker` job, and the month re-derives
   from the union of everything that has arrived.
 
   Accepts `?client_id=&period=` so Today rows and the workbench can open it
@@ -14,7 +14,9 @@ defmodule NilaWeb.GstUploadLive do
   """
 
   alias Nila.Clients
-  alias Nila.Gst.{Calendar, ClientMonths, Dumps, DumpWorker}
+  alias Nila.Gst.Filing.Calendar
+  alias Nila.Gst.Intake.{Dumps, DumpWorker}
+  alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Storage
 
   @kinds [

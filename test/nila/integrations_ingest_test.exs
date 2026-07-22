@@ -5,7 +5,7 @@ defmodule Nila.IntegrationsIngestTest do
   import Nila.AccountsFixtures
 
   alias Nila.Clients
-  alias Nila.Gst.Arrivals
+  alias Nila.Gst.Intake.Arrivals
   alias Nila.Integrations
   alias Nila.Integrations.{GmailSyncWorker, WhatsAppIngestWorker}
 

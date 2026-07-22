@@ -11,8 +11,8 @@ config :nila,
   ecto_repos: [Nila.Repo],
   generators: [timestamp_type: :utc_datetime_usec],
   bank_extractor: Nila.Banking.Extractor.Stub,
-  purchase_extractor: Nila.Gst.PurchaseExtractor.MistralOCR,
-  sales_extractor: Nila.Gst.SalesExtractor.MistralOCR,
+  purchase_extractor: Nila.Gst.Extraction.Purchase.MistralOCR,
+  sales_extractor: Nila.Gst.Extraction.Sales.MistralOCR,
   gmail_adapter: Nila.Integrations.Gmail,
   whatsapp_adapter: Nila.Integrations.WhatsApp,
   whatsapp_chase_template: nil
@@ -30,7 +30,7 @@ config :nila, Nila.Assistant,
   receive_timeout: 60_000
 
 # LlamaExtract remains available only for explicit comparison benchmarks.
-config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract,
+config :nila, Nila.Gst.Extraction.Purchase.LlamaExtract,
   base_url: "https://api.cloud.llamaindex.ai",
   tier: "agentic",
   version: "latest",
@@ -39,7 +39,7 @@ config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract,
   max_polls: 200
 
 # Sales-side LlamaExtract comparison adapter.
-config :nila, Nila.Gst.SalesExtractor.LlamaExtract,
+config :nila, Nila.Gst.Extraction.Sales.LlamaExtract,
   base_url: "https://api.cloud.llamaindex.ai",
   tier: "agentic",
   version: "latest",
@@ -47,7 +47,7 @@ config :nila, Nila.Gst.SalesExtractor.LlamaExtract,
   poll_interval_ms: 3_000,
   max_polls: 200
 
-config :nila, Nila.Gst.MistralOCR,
+config :nila, Nila.Gst.Extraction.MistralOCR,
   base_url: "https://api.mistral.ai",
   receive_timeout: 300_000
 
@@ -76,7 +76,7 @@ config :nila, Oban,
     Oban.Plugins.Pruner,
     {Oban.Plugins.Cron,
      crontab: [
-       {"30 3 * * *", Nila.Gst.ChaseScheduler}
+       {"30 3 * * *", Nila.Gst.Chase.Scheduler}
      ]}
   ]
 

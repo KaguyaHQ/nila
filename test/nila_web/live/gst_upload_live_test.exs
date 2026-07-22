@@ -5,7 +5,8 @@ defmodule NilaWeb.GstUploadLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.{Calendar, Dumps, DumpWorker}
+  alias Nila.Gst.Filing.Calendar
+  alias Nila.Gst.Intake.{Dumps, DumpWorker}
 
   @period "2025-10"
 

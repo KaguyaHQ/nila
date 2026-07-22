@@ -11,7 +11,8 @@ defmodule NilaWeb.GstEvidenceController do
   use NilaWeb, :controller
 
   alias Nila.Clients
-  alias Nila.Gst.{ClientMonths, Dumps}
+  alias Nila.Gst.Intake.Dumps
+  alias Nila.Gst.Purchase.Months, as: ClientMonths
 
   def show(conn, %{"client_id" => client_id, "period" => period, "basename" => basename}) do
     org_id = conn.assigns.current_scope.current_org.id

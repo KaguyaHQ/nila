@@ -1,16 +1,16 @@
 defmodule Gstr1Eval do
   @moduledoc """
-  Script-only IO/CLI shim around the `Nila.Gst.Gstr1` engine.
+  Script-only IO/CLI shim around the `Nila.Gst.Sales.Gstr1` engine.
 
   The pure derivation, validation, and correction logic lives in
-  `lib/nila/gst/gstr1.ex` (tested). This module only holds what a CLI eval run
+  `lib/nila/gst/sales/gstr1.ex` (tested). This module only holds what a CLI eval run
   needs and the product must not: arg parsing, fixture-directory conventions,
   JSON file IO, page-artifact loading, console report printing, and the
   field-level diff/scoring of a derived return against a filed return (the
   product never scores itself). The derivation/validation/correction logic
-  delegates to `Nila.Gst.Gstr1`.
+  delegates to `Nila.Gst.Sales.Gstr1`.
   """
-  alias Nila.Gst.Gstr1
+  alias Nila.Gst.Sales.Gstr1
 
   @diff_tolerance 0.01
   @ignored_invoice_fields ~w(chksum flag updby cflag)
@@ -252,7 +252,7 @@ defmodule Gstr1Eval do
 
   @doc """
   Applies corrections from a patch file path (script convenience). Reads and
-  decodes the file, then delegates to `Nila.Gst.Gstr1.apply_corrections/3`.
+  decodes the file, then delegates to `Nila.Gst.Sales.Gstr1.apply_corrections/3`.
   """
   def apply_corrections(invoices, nil, flagged), do: Gstr1.apply_corrections(invoices, nil, flagged)
 

@@ -4,7 +4,10 @@ defmodule NilaWeb.MonthLivePurchaseTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.Gst.{Calendar, ClientMonths, Dumps, SalesMonths, Signoffs}
+  alias Nila.Gst.Filing.{Calendar, Signoffs}
+  alias Nila.Gst.Intake.Dumps
+  alias Nila.Gst.Purchase.Months, as: ClientMonths
+  alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Storage
 
   @dir "tmp/register/breeze-2025-10"
@@ -139,7 +142,7 @@ defmodule NilaWeb.MonthLivePurchaseTest do
     refute has_element?(view, "#month-sales")
 
     {:ok, _} =
-      Nila.Gst.SalesMonths.upsert(%{
+      Nila.Gst.Sales.Months.upsert(%{
         org_id: org.id,
         client_id: client.id,
         period: @period,

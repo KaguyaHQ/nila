@@ -10,7 +10,7 @@ defmodule NilaWeb.MonthLive do
 
   Both returns follow the same certification arc on this page: maker works →
   senior signs (figures freeze into the signature's snapshot) → someone
-  marks it filed. The strip reads `Nila.Gst.Today.blocking_state/1` — the
+  marks it filed. The strip reads `Nila.Gst.WorkQueue.blocking_state/1` — the
   same derivation as the front door's sections, so the row that sent you
   here and the strip you land on can never disagree.
   """
@@ -18,19 +18,15 @@ defmodule NilaWeb.MonthLive do
   alias Nila.Accounts.Policy
   alias Nila.Clients
 
-  alias Nila.Gst.{
-    Calendar,
-    Chase,
-    ClientMonths,
-    Dumps,
-    DumpWorker,
-    Resolutions,
-    SalesMonths,
-    SalesResolutions,
-    SalesWorkings,
-    Signoffs,
-    Today
-  }
+  alias Nila.Gst.Chase
+  alias Nila.Gst.Filing.{Calendar, ItcPosition, Signoffs}
+  alias Nila.Gst.Intake.{Dumps, DumpWorker}
+  alias Nila.Gst.Purchase.Resolutions
+  alias Nila.Gst.Purchase.Months, as: PurchaseMonths
+  alias Nila.Gst.Sales.Months, as: SalesMonths
+  alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
+  alias Nila.Gst.Sales.Workings, as: SalesWorkings
+  alias Nila.Gst.WorkQueue
 
   @impl true
   def mount(%{"client_id" => client_id, "period" => period}, _session, socket) do
@@ -51,12 +47,12 @@ defmodule NilaWeb.MonthLive do
   end
 
   defp maybe_subscribe(socket, org_id) do
-    if connected?(socket), do: ClientMonths.subscribe(org_id), else: :ok
+    if connected?(socket), do: PurchaseMonths.subscribe(org_id), else: :ok
   end
 
   defp try_load(socket, client, period) do
     org_id = socket.assigns.current_scope.current_org.id
-    purchase = fetch_or_nil(ClientMonths.get_by_period(org_id, client.id, period))
+    purchase = fetch_or_nil(PurchaseMonths.get_by_period(org_id, client.id, period))
     sales = fetch_or_nil(SalesMonths.get_by_period(org_id, client.id, period))
 
     if purchase || sales do
@@ -80,7 +76,7 @@ defmodule NilaWeb.MonthLive do
   defp reload(socket) do
     %{client: client, period: period} = socket.assigns
     org_id = socket.assigns.current_scope.current_org.id
-    purchase = fetch_or_nil(ClientMonths.get_by_period(org_id, client.id, period))
+    purchase = fetch_or_nil(PurchaseMonths.get_by_period(org_id, client.id, period))
     sales = fetch_or_nil(SalesMonths.get_by_period(org_id, client.id, period))
     assign_month(socket, purchase, sales)
   end
@@ -257,7 +253,7 @@ defmodule NilaWeb.MonthLive do
   end
 
   # ---------------------------------------------------------------------------
-  # The strip — same derivation as Today's sections.
+  # The strip — same derivation as WorkQueue sections.
   # ---------------------------------------------------------------------------
 
   defp assign_strip(socket, purchase, sales) do
@@ -267,7 +263,7 @@ defmodule NilaWeb.MonthLive do
     gstr3b_filed = purchase != nil and purchase.filed_at != nil
 
     state =
-      Today.blocking_state(%{
+      WorkQueue.blocking_state(%{
         purchase: purchase,
         sales: sales,
         need_decision: (stats && stats.need_decision) || 0,
@@ -281,7 +277,7 @@ defmodule NilaWeb.MonthLive do
     |> assign(:blocking_state, state)
     |> assign(
       :deadline,
-      Today.deadline(socket.assigns.period, Date.utc_today(), r1_filed, gstr3b_filed)
+      WorkQueue.deadline(socket.assigns.period, Date.utc_today(), r1_filed, gstr3b_filed)
     )
   end
 
@@ -754,7 +750,7 @@ defmodule NilaWeb.MonthLive do
     do: (heads["igst"] || 0) + (heads["cgst"] || 0) + (heads["sgst"] || 0)
 
   defp sum_4b(itc) do
-    Nila.Gst.ItcPosition.sum_heads([itc["reversed_4b1"], itc["reversed_4b2"]])
+    ItcPosition.sum_heads([itc["reversed_4b1"], itc["reversed_4b2"]])
   end
 
   # 3B figures keep paise — this is the return the firm files.

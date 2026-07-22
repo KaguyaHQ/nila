@@ -2,10 +2,13 @@ defmodule NilaWeb.TodayLive do
   use NilaWeb, :live_view
 
   alias Nila.Clients
-  alias Nila.Gst.{Arrivals, Calendar, Chase, Today}
+  alias Nila.Gst.Chase
+  alias Nila.Gst.Filing.Calendar
+  alias Nila.Gst.Intake.Arrivals
+  alias Nila.Gst.WorkQueue
 
   # The front door: one row per client-month the firm should look at today,
-  # grouped by who it's waiting on (Nila.Gst.Today). The junior reads
+  # grouped by who it's waiting on (Nila.Gst.WorkQueue). The junior reads
   # "Needs you" top to bottom and that is their day; clients who sent
   # nothing appear under "Waiting on the client" with the chase verbs.
   @impl true
@@ -28,7 +31,7 @@ defmodule NilaWeb.TodayLive do
     rows = list_rows(socket)
 
     sections =
-      Today.sections()
+      WorkQueue.sections()
       |> Enum.map(fn section -> {section, Enum.filter(rows, &(&1.section == section))} end)
       |> Enum.reject(fn {_section, rows} -> rows == [] end)
 
@@ -39,7 +42,7 @@ defmodule NilaWeb.TodayLive do
   end
 
   defp list_rows(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}),
-    do: Today.rows(org_id, Date.utc_today())
+    do: WorkQueue.rows(org_id, Date.utc_today())
 
   defp list_rows(_socket), do: []
 
@@ -383,7 +386,7 @@ defmodule NilaWeb.TodayLive do
         <section :for={{section, rows} <- @sections} id={"today-#{section}"} class="space-y-3">
           <h2 class="flex items-center gap-2.5">
             <span class="text-base-content text-small font-semibold">
-              {Today.section_title(section)}
+              {WorkQueue.section_title(section)}
             </span>
             <.badge variant={section_variant(section)}>{length(rows)}</.badge>
           </h2>

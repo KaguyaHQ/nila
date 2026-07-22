@@ -9,7 +9,9 @@ defmodule NilaWeb.Components.ChaseHistory do
   import NilaWeb.Components.Badge
   import Nila.Formatters, only: [format_display_datetime_with_time: 1]
 
-  attr :asks, :list, required: true, doc: "ChaseAsk structs, newest first, sent_by preloaded"
+  attr :asks, :list,
+    required: true,
+    doc: "Chase.Delivery structs, newest first, sent_by preloaded"
 
   def chase_history(assigns) do
     ~H"""

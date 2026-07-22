@@ -137,7 +137,7 @@ The full month loop, both returns, end to end:
   figures into snapshots; a signature is a wall (senior-only reopen, R1 reopen cascades
   to a dependent 3B); per-return filed marks with ARN; filed is immutable, and late
   documents are routed to the next open month.
-- **Intake** (`Nila.Gst.Dumps`) — accretive dumps, one arrival at a time: each extracts
+- **Intake** (`Nila.Gst.Intake.Dumps`) — accretive dumps, one arrival at a time: each extracts
   on its own, the month derives from the union, a new 2B replaces the old, stragglers
   land without re-reading earlier piles. Multi-PDF piles. Dumps arriving behind a
   signature are held for senior release.

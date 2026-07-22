@@ -5,7 +5,7 @@ defmodule Nila.GstFixtures do
   """
   use Oban.Testing, repo: Nila.Repo
 
-  alias Nila.Gst.{DumpWorker, Dumps}
+  alias Nila.Gst.Intake.{DumpWorker, Dumps}
   alias Nila.Storage
 
   @doc """

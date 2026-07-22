@@ -5,7 +5,8 @@ defmodule NilaWeb.MonthLiveSalesTest do
   import Nila.GstFixtures
 
   alias Nila.Clients
-  alias Nila.Gst.{ClientMonths, Dumps}
+  alias Nila.Gst.Intake.Dumps
+  alias Nila.Gst.Purchase.Months, as: ClientMonths
 
   @period "2026-05"
 
@@ -236,7 +237,7 @@ defmodule NilaWeb.MonthLiveSalesTest do
 
     view |> element("#month-dump-release-#{straggler.id}") |> render_click()
 
-    assert [job] = all_enqueued(worker: Nila.Gst.DumpWorker)
+    assert [job] = all_enqueued(worker: Nila.Gst.Intake.DumpWorker)
     assert job.args["dump_id"] == straggler.id
   end
 

@@ -22,7 +22,7 @@ defmodule RegisterBuildScript do
       |> Enum.map(&decode_date/1)
       |> apply_corrections(opts[:corrections])
 
-    {:ok, g2b} = Nila.Gst.Gstr2b.parse(File.read!(g2b_path))
+    {:ok, g2b} = Nila.Gst.Filing.Gstr2b.parse(File.read!(g2b_path))
 
     entity_ctx = %{
       "gstin" => req!(opts, :gstin),
@@ -34,10 +34,10 @@ defmodule RegisterBuildScript do
     }
 
     vendor_dir = Map.new(g2b, fn g -> {g["vendor_gstin"], g["vendor_name"]} end)
-    recon = Nila.Gst.Recon.reconcile(invoices, g2b)
-    flags = Nila.Gst.Flags.evaluate_all(invoices, entity_ctx, vendor_dir)
-    rows = Nila.Gst.Register.rows(invoices, recon, flags)
-    summary = Nila.Gst.Register.summary(rows)
+    recon = Nila.Gst.Purchase.Reconciliation.reconcile(invoices, g2b)
+    flags = Nila.Gst.Purchase.Flags.evaluate_all(invoices, entity_ctx, vendor_dir)
+    rows = Nila.Gst.Purchase.Register.rows(invoices, recon, flags)
+    summary = Nila.Gst.Purchase.Register.summary(rows)
 
     File.mkdir_p!(out_dir)
     copy_images(books_path, out_dir, rows)

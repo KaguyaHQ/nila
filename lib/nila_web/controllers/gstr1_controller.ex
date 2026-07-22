@@ -7,7 +7,9 @@ defmodule NilaWeb.Gstr1Controller do
   """
   use NilaWeb, :controller
 
-  alias Nila.Gst.{SalesMonths, SalesResolutions, Signoffs}
+  alias Nila.Gst.Filing.Signoffs
+  alias Nila.Gst.Sales.Months, as: SalesMonths
+  alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
 
   def return_json(conn, %{"client_id" => client_id, "period" => period}) do
     org_id = conn.assigns.current_scope.current_org.id

@@ -38,7 +38,7 @@ defmodule PackBuildScript do
       "prepared_on" => Date.utc_today() |> Calendar.strftime("%d-%m-%Y")
     }
 
-    pack = Nila.Gst.MonthPack.build(rows, recon, corrections, meta, filed_3b)
+    pack = Nila.Gst.Filing.ReviewPack.build(rows, recon, corrections, meta, filed_3b)
 
     jpg_dir = Path.join(System.tmp_dir!(), "pack-jpg-#{System.unique_integer([:positive])}")
     File.mkdir_p!(jpg_dir)

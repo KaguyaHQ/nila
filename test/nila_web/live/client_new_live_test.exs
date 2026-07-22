@@ -31,7 +31,7 @@ defmodule NilaWeb.ClientNewLiveTest do
     assert html =~ "Client added — now bring in their documents."
     assert has_element?(intake, "#gst-upload-form option[selected][value='#{client.id}']")
 
-    closeable = Nila.Gst.Calendar.closeable_period(Date.utc_today())
+    closeable = Nila.Gst.Filing.Calendar.closeable_period(Date.utc_today())
     assert has_element?(intake, "#gst-upload-form option[selected][value='#{closeable}']")
   end
 
