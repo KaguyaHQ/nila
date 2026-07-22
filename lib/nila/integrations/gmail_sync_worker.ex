@@ -14,28 +14,7 @@ defmodule Nila.Integrations.GmailSyncWorker do
          {:ok, attachments} <- gmail_adapter().sync(connection) do
       attachments
       |> Enum.filter(&supported?/1)
-      |> Enum.each(fn attachment ->
-        sender = Client.normalize_email(attachment.sender)
-
-        case Clients.get_by_email(connection.org_id, sender) do
-          {:ok, client} ->
-            {:ok, _arrival} =
-              Arrivals.ingest(
-                %{org_id: connection.org_id, client_id: client.id},
-                %{
-                  source: "email",
-                  source_ref: Map.get(attachment, :source_ref),
-                  sender: sender,
-                  filename: attachment.filename,
-                  content_type: attachment.content_type,
-                  bytes: attachment.bytes
-                }
-              )
-
-          {:error, :not_found} ->
-            :ok
-        end
-      end)
+      |> Enum.each(&ingest_attachment(connection, &1))
 
       {:ok, _connection} = Integrations.mark_synced(connection)
       :ok
@@ -47,6 +26,29 @@ defmodule Nila.Integrations.GmailSyncWorker do
       reason ->
         {:ok, _connection} = Integrations.mark_error(connection, reason)
         {:error, reason}
+    end
+  end
+
+  defp ingest_attachment(connection, attachment) do
+    if sender = Client.normalize_email(attachment.sender) do
+      client_id =
+        case Clients.get_by_email(connection.org_id, sender) do
+          {:ok, client} -> client.id
+          {:error, :not_found} -> nil
+        end
+
+      {:ok, _arrival} =
+        Arrivals.ingest(
+          %{org_id: connection.org_id, client_id: client_id},
+          %{
+            source: "email",
+            source_ref: Map.get(attachment, :source_ref),
+            sender: sender,
+            filename: attachment.filename,
+            content_type: attachment.content_type,
+            bytes: attachment.bytes
+          }
+        )
     end
   end
 

@@ -1,5 +1,5 @@
 defmodule Nila.Integrations.Gmail do
-  @behaviour Nila.Integrations.Connector
+  @behaviour Nila.Integrations.GmailAdapter
 
   @moduledoc """
   Gmail adapter for attachment sync and outbound messages.
@@ -10,6 +10,7 @@ defmodule Nila.Integrations.Gmail do
   @api_url "https://gmail.googleapis.com/gmail/v1"
   @scope "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send"
 
+  @impl true
   def authorize_url(opts) do
     params = [
       client_id: config!(:client_id),
@@ -24,6 +25,7 @@ defmodule Nila.Integrations.Gmail do
     @accounts_url <> "?" <> URI.encode_query(params)
   end
 
+  @impl true
   def exchange_code(code) do
     request_token(%{
       "client_id" => config!(:client_id),
@@ -34,6 +36,7 @@ defmodule Nila.Integrations.Gmail do
     })
   end
 
+  @impl true
   def profile_email(access_token) do
     case Req.get("#{@api_url}/users/me/profile", auth: {:bearer, access_token}) do
       {:ok, %{status: status, body: %{"emailAddress" => email}}} when status in 200..299 ->
@@ -47,6 +50,7 @@ defmodule Nila.Integrations.Gmail do
     end
   end
 
+  @impl true
   def refresh_token(refresh_token) do
     request_token(%{
       "client_id" => config!(:client_id),
@@ -56,6 +60,7 @@ defmodule Nila.Integrations.Gmail do
     })
   end
 
+  @impl true
   def sync(connection) do
     access_token = Map.fetch!(connection.credentials, "access_token")
     query = gmail_query(connection)
@@ -66,6 +71,7 @@ defmodule Nila.Integrations.Gmail do
     end
   end
 
+  @impl true
   def send_message(connection, recipient, message) when is_binary(recipient),
     do: send_message(connection, Map.put(message, :to, recipient))
 
@@ -105,7 +111,6 @@ defmodule Nila.Integrations.Gmail do
     end
   end
 
-  @impl true
   def normalize(%{"attachments" => attachments}, _opts) when is_list(attachments) do
     normalized =
       Enum.map(attachments, fn attachment ->

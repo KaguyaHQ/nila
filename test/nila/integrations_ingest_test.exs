@@ -24,7 +24,7 @@ defmodule Nila.IntegrationsIngestTest do
   test "WhatsApp media from a known number is attributed and an unknown number is held", %{
     org: org
   } do
-    Application.put_env(:nila, :whatsapp_adapter, Nila.WhatsAppStub)
+    Application.put_env(:nila, :whatsapp_adapter, Nila.Integrations.WhatsAppStub)
     connection = connection!(org, "whatsapp", "phone-number-123")
 
     {:ok, client} =
@@ -63,8 +63,8 @@ defmodule Nila.IntegrationsIngestTest do
     assert unknown.source == "whatsapp"
   end
 
-  test "Gmail attachments from a client become arrivals and stranger mail is ignored", %{org: org} do
-    Application.put_env(:nila, :gmail_adapter, Nila.GmailStub)
+  test "Gmail attachments from a client are attributed and stranger mail is held", %{org: org} do
+    Application.put_env(:nila, :gmail_adapter, Nila.Integrations.GmailStub)
     connection = connection!(org, "gmail", "firm@example.com")
 
     {:ok, client} =
@@ -87,16 +87,29 @@ defmodule Nila.IntegrationsIngestTest do
         bytes: "%PDF-1.4 stranger",
         content_type: "application/pdf",
         sender: "stranger@example.com"
+      },
+      %{
+        filename: "missing-sender.pdf",
+        bytes: "%PDF-1.4 missing sender",
+        content_type: "application/pdf",
+        sender: nil
       }
     ])
 
     assert :ok = perform_job(GmailSyncWorker, %{"connection_id" => connection.id})
 
-    assert [arrival] = Arrivals.pending_for_org(org.id)
-    assert arrival.client_id == client.id
-    assert arrival.filename == "known.pdf"
-    assert arrival.sender == "ravi@example.com"
-    assert arrival.source == "email"
+    arrivals = Arrivals.pending_for_org(org.id)
+    assert length(arrivals) == 2
+
+    known = Enum.find(arrivals, &(&1.filename == "known.pdf"))
+    assert known.client_id == client.id
+    assert known.sender == "ravi@example.com"
+    assert known.source == "email"
+
+    stranger = Enum.find(arrivals, &(&1.filename == "stranger.pdf"))
+    assert is_nil(stranger.client_id)
+    assert stranger.sender == "stranger@example.com"
+    assert stranger.source == "email"
   end
 
   defp connection!(org, provider, external_account_id) do

@@ -1,5 +1,5 @@
 defmodule Nila.Integrations.WhatsApp do
-  @behaviour Nila.Integrations.Connector
+  @behaviour Nila.Integrations.WhatsAppAdapter
 
   @moduledoc """
   WhatsApp Cloud API adapter for inbound media and outbound chase templates.
@@ -19,6 +19,7 @@ defmodule Nila.Integrations.WhatsApp do
     {:ok, attachments}
   end
 
+  @impl true
   def send_message(connection, recipient, draft, template_name)
       when is_binary(recipient) and is_binary(draft) and is_binary(template_name) do
     token = Map.fetch!(connection.credentials, "access_token")
@@ -54,6 +55,7 @@ defmodule Nila.Integrations.WhatsApp do
     end
   end
 
+  @impl true
   def fetch_media(media_id, token) do
     with {:ok, media_url} <- fetch_media_url(media_id, token),
          {:ok, response} <- Req.get(media_url, auth: {:bearer, token}),
