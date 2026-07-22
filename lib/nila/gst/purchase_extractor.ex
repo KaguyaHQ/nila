@@ -9,7 +9,7 @@ defmodule Nila.Gst.PurchaseExtractor do
 
   The implementation is selected via `Application.get_env(:nila,
   :purchase_extractor, Nila.Gst.PurchaseExtractor.MistralOCR)`. Mistral OCR is
-  the operational default; tests override it with the offline stub and
+  the operational default; tests override it with a test-only extractor and
   LlamaExtract remains an explicit benchmark adapter.
 
   A successful `extract/2` returns:

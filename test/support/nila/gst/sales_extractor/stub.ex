@@ -1,6 +1,6 @@
 defmodule Nila.Gst.SalesExtractor.Stub do
   @moduledoc """
-  Deterministic offline sales extractor used in dev (no API key) and tests.
+  Deterministic sales extractor used only by tests.
 
   Returns a handful of real-looking per-page sales-invoice artifacts (valid
   GSTINs, intra-state CGST/SGST lines, the poison-total canary on page 1) plus

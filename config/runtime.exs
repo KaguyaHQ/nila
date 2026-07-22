@@ -84,14 +84,9 @@ if config_env() in [:prod, :dev] do
     config :nila, Nila.Gst.MistralOCR, api_key: mistral_key
   end
 
-  provider = env!("GST_OCR_PROVIDER", :string, if(config_env() == :dev, do: "stub", else: nil))
+  provider = env!("GST_OCR_PROVIDER", :string, if(config_env() == :dev, do: "mistral", else: nil))
 
   case provider do
-    "stub" ->
-      if config_env() != :dev, do: raise("GST_OCR_PROVIDER=stub is forbidden in production")
-      config :nila, :purchase_extractor, Nila.Gst.PurchaseExtractor.Stub
-      config :nila, :sales_extractor, Nila.Gst.SalesExtractor.Stub
-
     "llama" ->
       if is_nil(llama_key), do: raise("GST_OCR_PROVIDER=llama requires LLAMA_CLOUD_API_KEY")
       config :nila, :purchase_extractor, Nila.Gst.PurchaseExtractor.LlamaExtract

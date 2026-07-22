@@ -10,8 +10,8 @@ defmodule Nila.Gst.SalesExtractor do
   The outward mirror of `Nila.Gst.PurchaseExtractor`: the implementation is
   selected via `Application.get_env(:nila, :sales_extractor,
   Nila.Gst.SalesExtractor.MistralOCR)`. Mistral OCR is the operational default;
-  tests override it with the offline stub and LlamaExtract remains an explicit
-  benchmark adapter.
+  tests override it with a test-only extractor and LlamaExtract remains an
+  explicit benchmark adapter.
 
   A successful `extract/2` returns:
 

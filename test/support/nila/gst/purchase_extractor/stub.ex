@@ -1,6 +1,6 @@
 defmodule Nila.Gst.PurchaseExtractor.Stub do
   @moduledoc """
-  Deterministic offline purchase extractor used in dev (no API key) and tests.
+  Deterministic purchase extractor used only by tests.
 
   Returns a handful of real-looking per-page artifacts (valid GSTINs, an
   intra-state and inter-state bill, a continuation page) plus tiny placeholder
