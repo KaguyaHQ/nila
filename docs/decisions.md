@@ -194,3 +194,54 @@ Inside a `transact` callback:
 Do not nest `transact` calls or call `Repo.transaction` inside a `transact`
 callback. Savepoint semantics have surprised the Ecto team before (Ecto 1 to
 2 transition); we have no concrete need that justifies introducing them here.
+
+## Frozen Generic Substrate Retired
+
+> Status: cleanup, 2026-07-22. Recovery point: commit `b48071e`
+> ("retire frozen generic substrate the GST engine outgrew"). Full working
+> versions also live in the archived `nila-ops` repo.
+
+Four contexts carried over from the pre-pivot scaffold were deleted because the
+live GST product had **empirically refuted** them — it reified each one
+domain-specifically and never called the generic version. Recorded here so the
+knowledge (that they existed, why they went, and when to revive) lives in a
+decision, not as dead code future readers have to excavate.
+
+Removed, and what replaced each:
+
+- **`Nila.Workflows`** (`workflow_runs`/`workflow_steps`) — a stillborn
+  Oban-backed Run/Step engine that never had a caller in either repo.
+  `Gst.Intake` reifies the same shape: `Dump` (the run), `DumpWorker` (the
+  driver), `ExtractionAttempt` (the audited step).
+- **`Nila.Documents` + `Nila.Audits`** — the generic HITL document-extraction
+  engine (Document/Artifact review lifecycle) plus its generic audit log. Wrong
+  altitude: it generalized *meaning* (status machines, review gates, versioned
+  artifacts) where meaning is domain-specific, while the truly-generic mechanical
+  layer (`Nila.Storage`) was already factored out beside it. Superseded by
+  `Gst.Intake` + `Gst.Filing.Signoffs`.
+- **`Nila.Banking`** (`bank_accounts`/`bank_transactions`) — built for the
+  abandoned bank-statement-classification thesis. The context itself was clean and
+  standalone, but its only data-entry path was the Documents-coupled
+  `BankStatementExtractionWorker`, and nothing live called it.
+
+Dropped tables: `workflow_runs`, `workflow_steps`, `documents`,
+`document_artifacts`, `audit_logs`, `bank_accounts`, `bank_transactions`
+(migrations `20260722155241`, `20260722165125`; both irreversible by design).
+
+**Kept:** the `Nila.Assistant` harness — the tool-use loop, SSE streaming, and
+trace narration (~900 loc, a few days to rebuild). Its original "bring me the
+document" use case died with the persona pivot (the customer is now a back-office
+worker who fetches for themselves, not a principal), so its only tool — which
+queried the retired `Documents` context — was dropped and the tool set moved to
+a config-driven, empty-by-default registry (`config :nila, :assistant_tools`).
+The harness is persona-neutral mechanism worth keeping for a future
+junior-accountant assistant; wire real GST tools into the registry then.
+
+**When to revive Banking:** TDS/ITR bank work (interest income, TDS
+reconciliation) is a near-certain future need — but it is deferred per the PRD
+("later, once GST earns trust") and, when it lands, should be **rebuilt fresh on
+the `Extraction`/`Intake` pattern**, not reverted as-was. The old shape's
+transaction-to-client matching was thesis-specific, and bank-statement *import*
+is commoditizing (Suvit → Vyapar; Tally IRA now auto-imports) — treat bank data
+as an integration/commodity input, not a bespoke capability to own. The moat is
+the reconciliation + audit + trust surface, not the ingestion plumbing.
