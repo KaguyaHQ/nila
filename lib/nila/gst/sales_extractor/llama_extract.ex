@@ -9,12 +9,15 @@ defmodule Nila.Gst.SalesExtractor.LlamaExtract do
   printed totals only for reconciliation), poll to completion, then reshape each
   page result into the artifact `Nila.Gst.Gstr1.normalize_invoice/1` consumes.
 
-  Activated only when `LLAMA_CLOUD_API_KEY` is present (see `config/runtime.exs`);
-  otherwise the worker stays on `Nila.Gst.SalesExtractor.Stub`.
+  Selected explicitly with `GST_OCR_PROVIDER=llama`; credentials alone never
+  change the active provider.
   """
   @behaviour Nila.Gst.SalesExtractor
 
   require Logger
+
+  def provider, do: "llama"
+  def model, do: version()
 
   @impl true
   def extract(pdf_bytes, opts) when is_binary(pdf_bytes) do
@@ -172,7 +175,7 @@ defmodule Nila.Gst.SalesExtractor.LlamaExtract do
         "kind" => "gstr1_sales_invoice_extraction",
         "version" => 1,
         "page" => page_no,
-        "image" => Map.has_key?(images, basename) && "images/#{basename}",
+        "image" => if(Map.has_key?(images, basename), do: "images/#{basename}"),
         "data" => page["data"] || page["extract_result"] || page["result"] || page,
         "confidence" => non_empty_map(page["confidence"]) || non_empty_map(page["field_metadata"])
       }

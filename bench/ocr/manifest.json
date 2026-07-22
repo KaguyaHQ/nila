@@ -1,0 +1,46 @@
+{
+  "documents": [
+    {
+      "name": "breeze-purchases-2025-10",
+      "kind": "purchase",
+      "source": "../../test/fixtures/purchase/breeze/2025-10/breeze_oct_purchases.pdf",
+      "content_type": "application/pdf"
+    },
+    {
+      "name": "breeze-sales-2026-01",
+      "kind": "sales",
+      "source": "../../test/fixtures/gstr1/breeze/2026-01/breeze_jan_sales.pdf",
+      "content_type": "application/pdf"
+    },
+    {
+      "name": "breeze-sales-2026-05",
+      "kind": "sales",
+      "source": "../../test/fixtures/gstr1/breeze/2026-05/breeze_may_sales.pdf",
+      "content_type": "application/pdf"
+    },
+    {
+      "name": "caltech-sales-2025-10",
+      "kind": "sales",
+      "source": "../../test/fixtures/gstr1/caltech/2025-10/caltech_oct_sales.pdf",
+      "content_type": "application/pdf"
+    },
+    {
+      "name": "caltech-sales-2025-11",
+      "kind": "sales",
+      "source": "../../test/fixtures/gstr1/caltech/2025-11/caltech_nov_sales.pdf",
+      "content_type": "application/pdf"
+    },
+    {
+      "name": "caltech-sales-2025-12",
+      "kind": "sales",
+      "source": "../../test/fixtures/gstr1/caltech/2025-12/caltech_dec_sales.pdf",
+      "content_type": "application/pdf"
+    },
+    {
+      "name": "caltech-sales-2026-01",
+      "kind": "sales",
+      "source": "../../test/fixtures/gstr1/caltech/2026-01/caltech_jan_sales.pdf",
+      "content_type": "application/pdf"
+    }
+  ]
+}

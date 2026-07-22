@@ -68,52 +68,64 @@ if config_env() in [:prod, :dev] do
   end
 end
 
-# LlamaExtract for the GST month worker's per-page purchase-bill extraction.
-# Read via Dotenvy (so `.env` works) like the assistant key above. When
-# `LLAMA_CLOUD_API_KEY` is present we flip `:purchase_extractor` from the Stub to
-# the real client. In prod the key is REQUIRED: a missing key raises here rather
-# than silently serving canned Stub data. In dev/CI it stays optional so they
-# keep working offline on the Stub. Pin `LLAMA_VERSION` in prod.
+# GST OCR provider selection is explicit. Credentials configure clients for the
+# comparison benchmark, but never select a provider and never trigger fallback.
 if config_env() in [:prod, :dev] do
-  api_key = env!("LLAMA_CLOUD_API_KEY", :string, nil)
+  llama_key = env!("LLAMA_CLOUD_API_KEY", :string, nil)
+  mistral_key = env!("MISTRAL_API_KEY", :string, nil)
 
-  if config_env() == :prod and is_nil(api_key) do
-    raise """
-    environment variable LLAMA_CLOUD_API_KEY is missing.
-    Without it the app falls back to the Stub purchase-bill extractor, which
-    returns canned/fake data for every upload instead of parsing the real PDF.
-    Set it in /home/deploy/nila/.env (see hetzner/README.md), then redeploy.
-    """
+  if llama_key do
+    llama_config = [api_key: llama_key, project_id: env!("LLAMA_PROJECT_ID", :string, nil)]
+    config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, llama_config
+    config :nila, Nila.Gst.SalesExtractor.LlamaExtract, llama_config
   end
 
-  if api_key do
-    project_id = env!("LLAMA_PROJECT_ID", :string, nil)
+  if mistral_key do
+    config :nila, Nila.Gst.MistralOCR, api_key: mistral_key
+  end
 
-    config :nila, :purchase_extractor, Nila.Gst.PurchaseExtractor.LlamaExtract
-    config :nila, :sales_extractor, Nila.Gst.SalesExtractor.LlamaExtract
+  provider = env!("GST_OCR_PROVIDER", :string, if(config_env() == :dev, do: "stub", else: nil))
 
-    config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract,
-      api_key: api_key,
-      project_id: project_id
+  case provider do
+    "stub" ->
+      if config_env() != :dev, do: raise("GST_OCR_PROVIDER=stub is forbidden in production")
+      config :nila, :purchase_extractor, Nila.Gst.PurchaseExtractor.Stub
+      config :nila, :sales_extractor, Nila.Gst.SalesExtractor.Stub
 
-    config :nila, Nila.Gst.SalesExtractor.LlamaExtract,
-      api_key: api_key,
-      project_id: project_id
+    "llama" ->
+      if is_nil(llama_key), do: raise("GST_OCR_PROVIDER=llama requires LLAMA_CLOUD_API_KEY")
+      config :nila, :purchase_extractor, Nila.Gst.PurchaseExtractor.LlamaExtract
+      config :nila, :sales_extractor, Nila.Gst.SalesExtractor.LlamaExtract
 
-    if base_url = env!("LLAMA_BASE_URL", :string, nil) do
-      config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, base_url: base_url
-      config :nila, Nila.Gst.SalesExtractor.LlamaExtract, base_url: base_url
-    end
+    "mistral" ->
+      if is_nil(mistral_key), do: raise("GST_OCR_PROVIDER=mistral requires MISTRAL_API_KEY")
+      config :nila, :purchase_extractor, Nila.Gst.PurchaseExtractor.MistralOCR
+      config :nila, :sales_extractor, Nila.Gst.SalesExtractor.MistralOCR
 
-    if tier = env!("LLAMA_TIER", :string, nil) do
-      config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, tier: tier
-      config :nila, Nila.Gst.SalesExtractor.LlamaExtract, tier: tier
-    end
+    nil ->
+      raise "GST_OCR_PROVIDER is required in production (llama or mistral)"
 
-    if version = env!("LLAMA_VERSION", :string, nil) do
-      config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, version: version
-      config :nila, Nila.Gst.SalesExtractor.LlamaExtract, version: version
-    end
+    other ->
+      raise "unsupported GST_OCR_PROVIDER=#{inspect(other)}"
+  end
+
+  if base_url = env!("LLAMA_BASE_URL", :string, nil) do
+    config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, base_url: base_url
+    config :nila, Nila.Gst.SalesExtractor.LlamaExtract, base_url: base_url
+  end
+
+  if tier = env!("LLAMA_TIER", :string, nil) do
+    config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, tier: tier
+    config :nila, Nila.Gst.SalesExtractor.LlamaExtract, tier: tier
+  end
+
+  if version = env!("LLAMA_VERSION", :string, nil) do
+    config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract, version: version
+    config :nila, Nila.Gst.SalesExtractor.LlamaExtract, version: version
+  end
+
+  if base_url = env!("MISTRAL_BASE_URL", :string, nil) do
+    config :nila, Nila.Gst.MistralOCR, base_url: base_url
   end
 end
 

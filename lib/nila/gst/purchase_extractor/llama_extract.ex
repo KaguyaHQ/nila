@@ -9,12 +9,15 @@ defmodule Nila.Gst.PurchaseExtractor.LlamaExtract do
   CGST/SGST, and discounts — do not trim it), poll to completion, then reshape
   each page result into the artifact `Nila.Gst.PurchaseBooks` consumes.
 
-  Activated only when `LLAMA_CLOUD_API_KEY` is present (see `config/runtime.exs`);
-  otherwise the worker stays on `Nila.Gst.PurchaseExtractor.Stub`.
+  Selected explicitly with `GST_OCR_PROVIDER=llama`; credentials alone never
+  change the active provider.
   """
   @behaviour Nila.Gst.PurchaseExtractor
 
   require Logger
+
+  def provider, do: "llama"
+  def model, do: version()
 
   @impl true
   def extract(pdf_bytes, opts) when is_binary(pdf_bytes) do
@@ -174,7 +177,7 @@ defmodule Nila.Gst.PurchaseExtractor.LlamaExtract do
         "kind" => "purchase_invoice_extraction",
         "version" => 1,
         "page" => page_no,
-        "image" => Map.has_key?(images, basename) && "images/#{basename}",
+        "image" => if(Map.has_key?(images, basename), do: "images/#{basename}"),
         "data" => page["data"] || page["extract_result"] || page["result"] || page,
         "confidence" => non_empty_map(page["confidence"]) || non_empty_map(page["field_metadata"])
       }

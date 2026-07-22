@@ -47,6 +47,8 @@ defmodule Nila.Gst.Gstr1 do
 
     %{
       "page" => raw["page"] || data["page"],
+      "source_pages" => raw["source_pages"] || [raw["page"] || data["page"]],
+      "source_attribution" => raw["source_attribution"],
       "invoice_number" => normalize_invoice_number(value(data, ["invoice_number", "inum"])),
       "invoice_date" => value(data, ["invoice_date", "idt"]),
       "seller_name" => value(data, ["seller_name"]) || seller["name"],
@@ -58,8 +60,7 @@ defmodule Nila.Gst.Gstr1 do
         money(value(data, ["printed_total_taxable", "total_net_amount"])),
       "printed_total_tax" => money(value(data, ["printed_total_tax", "total_tax_amount"])),
       "printed_grand_total" => money(value(data, ["printed_grand_total", "total_gross_amount"])),
-      "confidence" => non_empty_map(raw["confidence"]) || build_confidence(raw),
-      "_raw" => raw
+      "confidence" => non_empty_map(raw["confidence"]) || build_confidence(raw)
     }
   end
 
@@ -875,10 +876,7 @@ defmodule Nila.Gst.Gstr1 do
   defp first_present(invoices, field), do: Enum.find_value(invoices, & &1[field])
 
   defp build_confidence(raw) do
-    non_empty_map(get_in(raw, ["extract_metadata", "field_metadata", "document_metadata"])) ||
-      non_empty_map(
-        get_in(raw, ["_raw", "extract_metadata", "field_metadata", "document_metadata"])
-      ) || %{}
+    non_empty_map(get_in(raw, ["extract_metadata", "field_metadata", "document_metadata"])) || %{}
   end
 
   defp non_empty_map(value) when is_map(value) and map_size(value) > 0, do: value

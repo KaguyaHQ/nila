@@ -23,6 +23,7 @@ defmodule Nila.Gst.Flags do
   # and score >= 0.82; unrelated names land 0.50-0.65 on raw Jaro (which runs
   # generous on long strings). 0.75 splits those populations.
   @name_match_threshold 0.75
+  @ocr_minimum_review_threshold 0.8
 
   # Address comparison is token-evidence based, not whole-string fuzzy: OCR'd
   # multiline delivery addresses of the *same* place score badly on Jaro (the
@@ -49,6 +50,9 @@ defmodule Nila.Gst.Flags do
 
   def evaluate(invoice, entity_ctx, vendor_dir \\ %{}) do
     [
+      &check_source_attribution/3,
+      &check_ocr_confidence/3,
+      &check_arithmetic_basis/3,
       &check_invoice_number/3,
       &check_gstin_presence_and_validity/3,
       &check_gstin_state_vs_tax/3,
@@ -138,6 +142,80 @@ defmodule Nila.Gst.Flags do
       }
     end)
   end
+
+  defp check_source_attribution(%{"source_attribution" => attribution} = invoice, _ctx, _dir)
+       when is_map(attribution) do
+    if attribution["status"] == "verified" do
+      []
+    else
+      [
+        flag(
+          invoice,
+          "source_attribution_uncertain",
+          "review",
+          source_attribution_reason(attribution),
+          nil,
+          ["source_attribution"],
+          1.0
+        )
+      ]
+    end
+  end
+
+  defp check_source_attribution(_invoice, _ctx, _dir), do: []
+
+  defp check_ocr_confidence(
+         %{"confidence" => %{"ocr_minimum" => minimum}} = invoice,
+         _ctx,
+         _dir
+       )
+       when is_number(minimum) and minimum < @ocr_minimum_review_threshold do
+    [
+      flag(
+        invoice,
+        "low_ocr_confidence",
+        "review",
+        "OCR minimum word confidence is #{Float.round(minimum * 100, 1)}% — inspect the original for omitted or misread handwritten values.",
+        nil,
+        ["confidence"],
+        1.0
+      )
+    ]
+  end
+
+  defp check_ocr_confidence(_invoice, _ctx, _dir), do: []
+
+  defp source_attribution_reason(%{"status" => "ambiguous", "candidate_pages" => pages}) do
+    "This invoice matches multiple source pages (#{Enum.join(pages, ", ")}) — open the original document and confirm the right pages."
+  end
+
+  defp source_attribution_reason(%{"status" => "unverified"}) do
+    "The annotated source page could not be verified against OCR text — open the original document and confirm it."
+  end
+
+  defp source_attribution_reason(_attribution) do
+    "No source page could be resolved for this invoice — open the original document and attach the right page."
+  end
+
+  defp check_arithmetic_basis(
+         %{"arithmetic_basis" => "printed_final_reconciled"} = invoice,
+         _ctx,
+         _dir
+       ) do
+    [
+      flag(
+        invoice,
+        "subtotal_breakdown_uncertain",
+        "review",
+        "Taxable value, tax and grand total reconcile, but the printed subtotal/discount breakdown does not — confirm the source invoice.",
+        nil,
+        ["taxable_paise", "tax_paise", "total_paise"],
+        1.0
+      )
+    ]
+  end
+
+  defp check_arithmetic_basis(_invoice, _ctx, _dir), do: []
 
   defp check_invoice_number(invoice, _entity_ctx, _vendor_dir) do
     smell = invoice_number_smell(invoice["invoice_number"], invoice_has_values?(invoice))

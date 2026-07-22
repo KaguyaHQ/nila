@@ -26,7 +26,9 @@ config :nila, Nila.Mailer, adapter: Swoosh.Adapters.Test
 config :nila, Oban, testing: :manual, queues: false, plugins: false
 
 config :nila,
-  whatsapp_chase_template: "nila_document_chase"
+  whatsapp_chase_template: "nila_document_chase",
+  purchase_extractor: Nila.Gst.PurchaseExtractor.Stub,
+  sales_extractor: Nila.Gst.SalesExtractor.Stub
 
 config :nila, Nila.Integrations.WhatsApp,
   req_options: [plug: {Req.Test, Nila.Integrations.WhatsApp}]
@@ -65,6 +67,10 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+config :nila, Nila.Gst.MistralOCR,
+  api_key: "test-mistral-key",
+  req_options: [plug: {Req.Test, Nila.Gst.MistralOCR}]
 
 config :nila, Nila.Assistant,
   http_client: Nila.Assistant.HTTPClient.Stub,

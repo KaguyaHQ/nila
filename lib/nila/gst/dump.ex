@@ -40,6 +40,8 @@ defmodule Nila.Gst.Dump do
     belongs_to :client, Nila.Clients.Client
     belongs_to :brought_in_by, Nila.Accounts.User
 
+    has_many :extraction_attempts, Nila.Gst.ExtractionAttempt, foreign_key: :gst_dump_id
+
     timestamps()
   end
 

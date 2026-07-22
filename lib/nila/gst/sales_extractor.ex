@@ -9,8 +9,9 @@ defmodule Nila.Gst.SalesExtractor do
 
   The outward mirror of `Nila.Gst.PurchaseExtractor`: the implementation is
   selected via `Application.get_env(:nila, :sales_extractor,
-  Nila.Gst.SalesExtractor.Stub)` so tests and dev stay offline while prod hits
-  LlamaExtract.
+  Nila.Gst.SalesExtractor.MistralOCR)`. Mistral OCR is the operational default;
+  tests override it with the offline stub and LlamaExtract remains an explicit
+  benchmark adapter.
 
   A successful `extract/2` returns:
 
@@ -23,8 +24,23 @@ defmodule Nila.Gst.SalesExtractor do
   `"data"` (the extracted fields), and `"confidence"`.
   """
 
-  @callback extract(pdf_bytes :: binary(), opts :: keyword()) ::
-              {:ok, %{pages: [map()], images: %{String.t() => binary()}}} | {:error, term()}
+  @type audit :: %{
+          optional(:provider_request_id) => String.t() | nil,
+          optional(:http_status) => integer(),
+          optional(:source_page_count) => non_neg_integer(),
+          optional(:usage) => map(),
+          optional(:raw_response) => binary()
+        }
+
+  @callback extract(source_bytes :: binary(), opts :: keyword()) ::
+              {:ok,
+               %{
+                 required(:pages) => [map()],
+                 required(:images) => %{String.t() => binary()},
+                 optional(:audit) => audit()
+               }}
+              | {:error, term()}
+              | {:error, term(), audit()}
 
   # Supported opts: :filename and an optional :on_progress callback receiving
   # coarse stages such as :rendering, :reading, :extracting.

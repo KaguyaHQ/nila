@@ -22,11 +22,12 @@ erl_crash.dump
 # Temporary files, for example, from tests.
 /tmp/
 
-# Local LlamaExtract benchmark outputs.
+# Local extractor benchmark outputs.
 /scripts/llama_extract_bench/fixtures/
 /scripts/llama_extract_bench/results/
 /scripts/llama_extract_bench/.venv/
 /scripts/llama_extract_bench/__pycache__/
+/bench/ocr/results/
 
 # Ignore package tarball (built via "mix hex.build").
 nila-*.tar

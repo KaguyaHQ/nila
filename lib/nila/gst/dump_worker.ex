@@ -31,6 +31,7 @@ defmodule Nila.Gst.DumpWorker do
     ClientMonths,
     Dump,
     Dumps,
+    ExtractionAttempts,
     SalesMonth,
     EntityContext,
     Flags,
@@ -52,7 +53,7 @@ defmodule Nila.Gst.DumpWorker do
     case Nila.Repo.fetch(Dump, dump_id) do
       {:ok, dump} ->
         try do
-          do_perform(dump)
+          do_perform(dump, job.attempt)
         rescue
           exception ->
             handle_failure(dump, job, Exception.format(:error, exception, __STACKTRACE__))
@@ -70,8 +71,8 @@ defmodule Nila.Gst.DumpWorker do
   # and our upsert is impossible: whoever gets the lock first wins, and the
   # loser sees the winner's work. A month that doesn't exist yet can't be
   # signed, so no lock is needed.
-  defp do_perform(dump) do
-    with {:ok, dump} <- extract(dump) do
+  defp do_perform(dump, worker_attempt) do
+    with {:ok, dump} <- extract(dump, worker_attempt) do
       {:ok, outcome} =
         Nila.Repo.transact(fn ->
           month = lock_month(dump)
@@ -126,14 +127,14 @@ defmodule Nila.Gst.DumpWorker do
   # dumps (a held dump being released) skip straight to derivation.
   # ---------------------------------------------------------------------------
 
-  defp extract(%Dump{status: "held"} = dump), do: {:ok, dump}
-  defp extract(%Dump{status: "extracted"} = dump), do: {:ok, dump}
+  defp extract(%Dump{status: "held"} = dump, _worker_attempt), do: {:ok, dump}
+  defp extract(%Dump{status: "extracted"} = dump, _worker_attempt), do: {:ok, dump}
 
-  defp extract(%Dump{} = dump) do
+  defp extract(%Dump{} = dump, worker_attempt) do
     dump = Dumps.mark_extracting(dump)
     progress(dump, :extracting)
 
-    with {:ok, invoices, meta} <- extract_kind(dump) do
+    with {:ok, invoices, meta} <- extract_kind(dump, worker_attempt) do
       {:ok, Dumps.mark_extracted(dump, invoices, meta)}
     else
       {:error, reason} ->
@@ -143,15 +144,17 @@ defmodule Nila.Gst.DumpWorker do
     end
   end
 
-  defp extract_kind(%Dump{kind: "gstr2b"} = dump) do
-    with {:ok, bytes} <- Storage.get(hd(dump.file_keys)),
+  defp extract_kind(%Dump{kind: "gstr2b"} = dump, _worker_attempt) do
+    with {:ok, key} <- one_source_key(dump),
+         {:ok, bytes} <- Storage.get(key),
          {:ok, entries} <- Gstr2b.parse(bytes) do
       {:ok, entries, %{}}
     end
   end
 
-  defp extract_kind(%Dump{kind: "purchase"} = dump) do
-    with {:ok, %{pages: pages, images: images}} <- extract_pdf(dump, purchase_extractor()) do
+  defp extract_kind(%Dump{kind: "purchase"} = dump, worker_attempt) do
+    with {:ok, %{pages: pages, images: images}} <-
+           extract_source(dump, purchase_extractor(), worker_attempt) do
       %{"invoices" => invoices, "skipped_pages" => skipped} = PurchaseBooks.normalize(pages)
 
       invoices =
@@ -168,8 +171,9 @@ defmodule Nila.Gst.DumpWorker do
     end
   end
 
-  defp extract_kind(%Dump{kind: "sales"} = dump) do
-    with {:ok, %{pages: pages, images: images}} <- extract_pdf(dump, sales_extractor()) do
+  defp extract_kind(%Dump{kind: "sales"} = dump, worker_attempt) do
+    with {:ok, %{pages: pages, images: images}} <-
+           extract_source(dump, sales_extractor(), worker_attempt) do
       invoices =
         Enum.map(pages, fn page ->
           image = page["image"] && namespace(dump, Path.basename(page["image"]))
@@ -184,11 +188,108 @@ defmodule Nila.Gst.DumpWorker do
     end
   end
 
-  defp extract_pdf(dump, extractor) do
-    with {:ok, bytes} <- Storage.get(hd(dump.file_keys)) do
-      extractor.extract(bytes, filename: "bills.pdf", on_progress: fn _stage -> :ok end)
+  defp extract_source(dump, extractor, worker_attempt) do
+    with {:ok, key} <- one_source_key(dump),
+         {:ok, bytes} <- Storage.get(key) do
+      opts = [filename: Path.basename(key), on_progress: fn _stage -> :ok end]
+
+      if function_exported?(extractor, :provider, 0) and function_exported?(extractor, :model, 0) do
+        extract_with_attempt(dump, key, bytes, extractor, worker_attempt, opts)
+      else
+        extractor.extract(bytes, opts)
+      end
     end
   end
+
+  defp extract_with_attempt(dump, key, bytes, extractor, worker_attempt, opts) do
+    started_at = DateTime.utc_now()
+    started_native = System.monotonic_time()
+
+    with {:ok, attempt} <-
+           ExtractionAttempts.start(dump, %{
+             source_storage_key: key,
+             provider: extractor.provider(),
+             model: extractor.model(),
+             worker_attempt: worker_attempt,
+             source_byte_size: byte_size(bytes),
+             started_at: started_at
+           }) do
+      try do
+        case extractor.extract(bytes, opts) do
+          {:ok, result} ->
+            finish_attempt(attempt, :succeeded, result, started_native)
+
+          {:error, reason, audit} ->
+            finish_attempt(attempt, {:failed, reason}, %{audit: audit}, started_native)
+
+          {:error, reason} ->
+            finish_attempt(attempt, {:failed, reason}, %{}, started_native)
+        end
+      rescue
+        exception ->
+          _ =
+            ExtractionAttempts.fail(attempt, %{
+              completed_at: DateTime.utc_now(),
+              duration_ms: elapsed_ms(started_native),
+              error: Exception.message(exception)
+            })
+
+          reraise exception, __STACKTRACE__
+      end
+    end
+  end
+
+  defp finish_attempt(attempt, :succeeded, result, started_native) do
+    audit = Map.get(result, :audit, %{})
+
+    attrs =
+      audit
+      |> audit_attrs()
+      |> Map.put(:completed_at, DateTime.utc_now())
+      |> Map.put(:duration_ms, elapsed_ms(started_native))
+
+    case ExtractionAttempts.succeed(attempt, attrs) do
+      {:ok, _attempt} -> {:ok, Map.drop(result, [:audit])}
+      {:error, reason} -> {:error, {:extraction_attempt_persistence_failed, reason}}
+    end
+  end
+
+  defp finish_attempt(attempt, {:failed, reason}, result, started_native) do
+    attrs =
+      result
+      |> Map.get(:audit, %{})
+      |> audit_attrs()
+      |> Map.put(:completed_at, DateTime.utc_now())
+      |> Map.put(:duration_ms, elapsed_ms(started_native))
+      |> Map.put(:error, inspect(reason, limit: 20, printable_limit: 2_000))
+
+    case ExtractionAttempts.fail(attempt, attrs) do
+      {:ok, _attempt} ->
+        {:error, reason}
+
+      {:error, persistence_reason} ->
+        {:error, {:extraction_attempt_persistence_failed, persistence_reason, reason}}
+    end
+  end
+
+  defp audit_attrs(audit) do
+    Map.take(audit, [
+      :provider_request_id,
+      :http_status,
+      :source_page_count,
+      :usage,
+      :raw_response
+    ])
+  end
+
+  defp elapsed_ms(started_native) do
+    System.monotonic_time()
+    |> Kernel.-(started_native)
+    |> System.convert_time_unit(:native, :millisecond)
+  end
+
+  defp one_source_key(%Dump{file_keys: [key]}) when is_binary(key), do: {:ok, key}
+  defp one_source_key(%Dump{}), do: {:error, :dump_must_have_exactly_one_source_file}
 
   # Basenames namespaced per dump so two dumps' page_01.png never collide in
   # tenant storage — and ids likewise, so unions concatenate without renumbering.
@@ -314,10 +415,10 @@ defmodule Nila.Gst.DumpWorker do
   end
 
   defp purchase_extractor do
-    Application.get_env(:nila, :purchase_extractor, Nila.Gst.PurchaseExtractor.Stub)
+    Application.get_env(:nila, :purchase_extractor, Nila.Gst.PurchaseExtractor.MistralOCR)
   end
 
   defp sales_extractor do
-    Application.get_env(:nila, :sales_extractor, Nila.Gst.SalesExtractor.Stub)
+    Application.get_env(:nila, :sales_extractor, Nila.Gst.SalesExtractor.MistralOCR)
   end
 end

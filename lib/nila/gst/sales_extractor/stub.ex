@@ -96,6 +96,8 @@ defmodule Nila.Gst.SalesExtractor.Stub do
       "kind" => "gstr1_sales_invoice_extraction",
       "version" => 1,
       "page" => number,
+      "source_pages" => [number],
+      "source_attribution" => %{"status" => "verified", "candidate_pages" => [number]},
       "image" => "images/page_#{padded}.png",
       "data" => data,
       "confidence" => nil

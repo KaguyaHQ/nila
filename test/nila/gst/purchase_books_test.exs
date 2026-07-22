@@ -101,6 +101,135 @@ defmodule Nila.Gst.PurchaseBooksTest do
       assert invoice["taxable_paise"] == 10_000
     end
 
+    test "uses a printed post-discount breakdown only when the complete invoice arithmetic reconciles" do
+      result =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "is_invoice" => true,
+            "invoice_number" => "A024532",
+            "invoice_date" => "2025-10-08",
+            "seller" => %{"name" => "Selvam Paints", "gstin" => "33BREPK0552R1ZK"},
+            "buyer" => %{},
+            "line_items" => [line(3497.68, cgst: 0, sgst: 0)],
+            "printed_subtotal_before_discount" => 3497.68,
+            "printed_discount_amount" => 516.88,
+            "printed_total_taxable" => 2980.80,
+            "printed_cgst" => 268.26,
+            "printed_sgst" => 268.26,
+            "printed_igst" => nil,
+            "printed_total_tax" => 536.52,
+            "printed_additional_charges" => 5.00,
+            "printed_rounding_adjustment" => -0.32,
+            "printed_grand_total" => 3522.00
+          })
+        ])
+
+      assert [invoice] = result["invoices"]
+      assert invoice["taxable_paise"] == 298_080
+      assert invoice["tax_paise"] == %{"cgst" => 26_826, "sgst" => 26_826, "igst" => 0}
+      assert invoice["total_paise"] == 352_200
+      assert invoice["printed_discount_paise"] == 51_688
+      assert invoice["arithmetic_basis"] == "printed_reconciled"
+    end
+
+    test "treats an unprinted discount as zero when the complete totals reconcile" do
+      result =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "is_invoice" => true,
+            "invoice_number" => "INV8101",
+            "seller" => %{"gstin" => "33AAAFR6942G1ZB"},
+            "buyer" => %{},
+            "line_items" => [line(2275, cgst: 112.50, sgst: 112.50)],
+            "printed_subtotal_before_discount" => 2275,
+            "printed_discount_amount" => nil,
+            "printed_total_taxable" => 2275,
+            "printed_cgst" => 204.75,
+            "printed_sgst" => 204.75,
+            "printed_total_tax" => 409.50,
+            "printed_rounding_adjustment" => 0.50,
+            "printed_grand_total" => 2685
+          })
+        ])
+
+      assert [invoice] = result["invoices"]
+      assert invoice["tax_paise"] == %{"cgst" => 20_475, "sgst" => 20_475, "igst" => 0}
+      assert invoice["total_paise"] == 268_500
+      assert invoice["arithmetic_basis"] == "printed_reconciled"
+    end
+
+    test "uses final reconciled values but marks a conflicting subtotal basis" do
+      result =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "is_invoice" => true,
+            "invoice_number" => "RAC2451",
+            "seller" => %{"gstin" => "32BQPPA1973C1Z7"},
+            "buyer" => %{},
+            "line_items" => [line(560.86, igst: 100.96)],
+            "printed_subtotal_before_discount" => 50.48,
+            "printed_total_taxable" => 280.43,
+            "printed_igst" => 50.48,
+            "printed_total_tax" => 50.48,
+            "printed_rounding_adjustment" => 0.09,
+            "printed_grand_total" => 331
+          })
+        ])
+
+      assert [invoice] = result["invoices"]
+      assert invoice["taxable_paise"] == 28_043
+      assert invoice["tax_paise"] == %{"cgst" => 0, "sgst" => 0, "igst" => 5_048}
+      assert invoice["total_paise"] == 33_100
+      assert invoice["arithmetic_basis"] == "printed_final_reconciled"
+    end
+
+    test "does not trust an incomplete printed taxable figure" do
+      result =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "is_invoice" => true,
+            "invoice_number" => "A1",
+            "seller" => %{"gstin" => "33BREPK0552R1ZK"},
+            "buyer" => %{},
+            "line_items" => [line(3497.68, cgst: 0, sgst: 0)],
+            "printed_total_taxable" => 2980.80,
+            "printed_grand_total" => 3522.00
+          })
+        ])
+
+      assert [invoice] = result["invoices"]
+      assert invoice["taxable_paise"] == 349_768
+      assert invoice["total_paise"] == 349_768
+      assert invoice["printed_total_paise"] == 352_200
+      assert invoice["arithmetic_basis"] == "line_items"
+    end
+
+    test "does not silently repair a negative structured discount" do
+      result =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "is_invoice" => true,
+            "invoice_number" => "A1",
+            "seller" => %{"gstin" => "33BREPK0552R1ZK"},
+            "buyer" => %{},
+            "line_items" => [line(3497.68, cgst: 0, sgst: 0)],
+            "printed_subtotal_before_discount" => 3497.68,
+            "printed_discount_amount" => -516.88,
+            "printed_total_taxable" => 2980.80,
+            "printed_cgst" => 268.26,
+            "printed_sgst" => 268.26,
+            "printed_total_tax" => 536.52,
+            "printed_additional_charges" => 5.00,
+            "printed_rounding_adjustment" => -0.32,
+            "printed_grand_total" => 3522.00
+          })
+        ])
+
+      assert [invoice] = result["invoices"]
+      assert invoice["taxable_paise"] == 349_768
+      assert invoice["arithmetic_basis"] == "line_items"
+    end
+
     test "non-invoice page with nothing on it is skipped with reason" do
       result =
         PurchaseBooks.normalize([
@@ -138,6 +267,7 @@ defmodule Nila.Gst.PurchaseBooksTest do
       assert ~D[2025-10-08] = PurchaseBooks.parse_date("08.10.2025")
       assert ~D[2025-10-08] = PurchaseBooks.parse_date("08/10/2025")
       assert ~D[2025-10-08] = PurchaseBooks.parse_date("8-10-25")
+      assert ~D[2025-10-08] = PurchaseBooks.parse_date("2025-10-08")
       assert ~D[2025-10-08] = PurchaseBooks.parse_date("Date: 08/10/2025 7:32PM")
     end
 

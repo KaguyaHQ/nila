@@ -197,6 +197,8 @@ The app refuses to boot, or compose errors, without these:
 | `SECRET_KEY_BASE` | Signs and encrypts cookies and sessions. Generate with `mix phx.gen.secret`. |
 | `DATABASE_URL` | Ecto connection string. Must use the same password as `POSTGRES_PASSWORD` and point at host `nila-postgres`. |
 | `ASSISTANT_API_KEY` | API key for the OpenAI-compatible assistant. `runtime.exs` raises in prod if missing. |
+| `GST_OCR_PROVIDER` | Explicit GST extractor. Deploy with `mistral`; there is no automatic fallback. |
+| `MISTRAL_API_KEY` | Required by the operational Mistral OCR provider. |
 | `R2_ENDPOINT` / `R2_BUCKET` | Private Cloudflare R2 account endpoint and bucket name. |
 | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Bucket-scoped R2 Object Read & Write credentials. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Postgres container credentials, interpolated by compose. |
@@ -216,8 +218,9 @@ Absent means the feature is off or a default applies:
 | `ASSISTANT_EXTRA_HEADERS` | JSON object merged into every assistant request (LLM-gateway routing). |
 | `RESEND_API_KEY` | When set, `Nila.Mailer` switches from the dev mailbox to Resend. **Unset means invite emails are silently dropped in prod** (the mailer is inert), so this is effectively required to onboard teammates. |
 | `MAIL_FROM` / `MAIL_FROM_NAME` | Sender for outgoing mail (default `Nila <onboarding@resend.dev>`). The from-address domain must be verified in Resend; `onboarding@resend.dev` only delivers to your own Resend account email. Set `MAIL_FROM=noreply@nilahq.com` after verifying the domain. Only read when `RESEND_API_KEY` is set. |
-| `LLAMA_CLOUD_API_KEY` | When set, PO extraction switches from the Stub to real LlamaExtract. Unset means no real extraction. |
-| `LLAMA_PROJECT_ID` / `LLAMA_BASE_URL` / `LLAMA_TIER` / `LLAMA_VERSION` | Only read when `LLAMA_CLOUD_API_KEY` is set. Pin `LLAMA_VERSION` in prod. |
+| `LLAMA_CLOUD_API_KEY` | Configures the costly LlamaExtract comparison adapter; omit it outside deliberate benchmarks. |
+| `LLAMA_PROJECT_ID` / `LLAMA_BASE_URL` / `LLAMA_TIER` / `LLAMA_VERSION` | LlamaExtract benchmark settings. |
+| `MISTRAL_BASE_URL` | Optional Mistral endpoint override. The model is pinned in code to `mistral-ocr-4-0`. |
 | `INTEGRATION_CREDENTIAL_KEY` | Encrypts stored integration credentials. Falls back to `SECRET_KEY_BASE` if unset; set it explicitly so rotating `SECRET_KEY_BASE` does not lock you out of saved credentials. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GMAIL_REDIRECT_URI` | Gmail integration. Inactive in prod when unset. |
 | `WHATSAPP_APP_SECRET` / `WHATSAPP_VERIFY_TOKEN` | WhatsApp webhook. Inactive in prod when unset. |

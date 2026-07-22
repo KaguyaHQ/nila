@@ -11,8 +11,8 @@ config :nila,
   ecto_repos: [Nila.Repo],
   generators: [timestamp_type: :utc_datetime_usec],
   bank_extractor: Nila.Banking.Extractor.Stub,
-  purchase_extractor: Nila.Gst.PurchaseExtractor.Stub,
-  sales_extractor: Nila.Gst.SalesExtractor.Stub,
+  purchase_extractor: Nila.Gst.PurchaseExtractor.MistralOCR,
+  sales_extractor: Nila.Gst.SalesExtractor.MistralOCR,
   gmail_adapter: Nila.Integrations.Gmail,
   whatsapp_adapter: Nila.Integrations.WhatsApp,
   whatsapp_chase_template: nil
@@ -29,9 +29,7 @@ config :nila, Nila.Assistant,
   max_tool_iterations: 8,
   receive_timeout: 60_000
 
-# LlamaExtract — per-page purchase-bill extraction for the GST month worker.
-# `:purchase_extractor` (above) stays on the Stub until config/runtime.exs flips
-# it to this module when LLAMA_CLOUD_API_KEY is set.
+# LlamaExtract remains available only for explicit comparison benchmarks.
 config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract,
   base_url: "https://api.cloud.llamaindex.ai",
   tier: "agentic",
@@ -40,9 +38,7 @@ config :nila, Nila.Gst.PurchaseExtractor.LlamaExtract,
   poll_interval_ms: 3_000,
   max_polls: 200
 
-# LlamaExtract — per-page sales-invoice extraction for the GSTR-1 worker.
-# `:sales_extractor` (above) stays on the Stub until config/runtime.exs flips
-# it to this module when LLAMA_CLOUD_API_KEY is set.
+# Sales-side LlamaExtract comparison adapter.
 config :nila, Nila.Gst.SalesExtractor.LlamaExtract,
   base_url: "https://api.cloud.llamaindex.ai",
   tier: "agentic",
@@ -50,6 +46,10 @@ config :nila, Nila.Gst.SalesExtractor.LlamaExtract,
   receive_timeout: 60_000,
   poll_interval_ms: 3_000,
   max_polls: 200
+
+config :nila, Nila.Gst.MistralOCR,
+  base_url: "https://api.mistral.ai",
+  receive_timeout: 300_000
 
 config :hammer,
   backend:

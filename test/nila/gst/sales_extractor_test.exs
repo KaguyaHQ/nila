@@ -66,8 +66,8 @@ defmodule Nila.Gst.SalesExtractorTest do
       assert first["data"]["invoice_number"] == "20/2026-27"
       assert first["confidence"] == %{"x" => 0.9}
 
-      # No rendered image for page 2 → image is false, confidence stays nil.
-      assert second["image"] == false
+      # No rendered image for page 2 → image and confidence stay nil.
+      assert second["image"] == nil
       assert second["confidence"] == nil
     end
 

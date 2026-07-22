@@ -55,6 +55,73 @@ defmodule Nila.Gst.FlagsTest do
     end
   end
 
+  describe "source attribution" do
+    test "routes ambiguous, unverified, and unresolved attribution to review" do
+      attributions = [
+        %{"status" => "ambiguous", "candidate_pages" => [5, 19]},
+        %{"status" => "unverified", "candidate_pages" => []},
+        %{"status" => "unresolved", "candidate_pages" => []}
+      ]
+
+      for attribution <- attributions do
+        [flag] =
+          invoice(%{"source_attribution" => attribution})
+          |> Flags.evaluate(@entity_ctx)
+          |> only("source_attribution_uncertain")
+
+        assert flag["severity"] == "review"
+        assert flag["fields"] == ["source_attribution"]
+      end
+    end
+
+    test "keeps verified attribution quiet" do
+      flags =
+        invoice(%{
+          "source_attribution" => %{"status" => "verified", "candidate_pages" => [5]}
+        })
+        |> Flags.evaluate(@entity_ctx)
+
+      refute "source_attribution_uncertain" in codes(flags)
+    end
+  end
+
+  describe "arithmetic provenance" do
+    test "routes a final-only printed reconciliation to review" do
+      [flag] =
+        invoice(%{"arithmetic_basis" => "printed_final_reconciled"})
+        |> Flags.evaluate(@entity_ctx)
+        |> only("subtotal_breakdown_uncertain")
+
+      assert flag["severity"] == "review"
+    end
+  end
+
+  describe "OCR confidence" do
+    test "routes the handwritten page 5 confidence regression to review" do
+      [flag] =
+        invoice(%{
+          "confidence" => %{
+            "ocr_minimum" => 0.774205195673312,
+            "ocr_average" => 0.9859865285218263
+          }
+        })
+        |> Flags.evaluate(@entity_ctx)
+        |> only("low_ocr_confidence")
+
+      assert flag["severity"] == "review"
+      assert flag["reason"] =~ "77.4%"
+      assert flag["fields"] == ["confidence"]
+    end
+
+    test "keeps minimum OCR confidence at the threshold quiet" do
+      flags =
+        invoice(%{"confidence" => %{"ocr_minimum" => 0.8}})
+        |> Flags.evaluate(@entity_ctx)
+
+      refute "low_ocr_confidence" in codes(flags)
+    end
+  end
+
   describe "implausible_invoice_number" do
     test "flags phone-number and date-shaped invoice numbers" do
       for number <- ["9381153296", "14/06/2026", "2026-06-14"] do
