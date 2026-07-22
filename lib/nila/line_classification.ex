@@ -1,4 +1,4 @@
-defmodule Nila.LineKind do
+defmodule Nila.LineClassification do
   @moduledoc """
   Goods-vs-service classification for line items — the input that drives
   place-of-supply derivation (goods follow the movement/ship-to state; services
