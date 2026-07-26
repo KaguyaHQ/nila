@@ -13,7 +13,8 @@ defmodule Nila.Gst.Intake.ExtractionAttempts do
       model: Map.fetch!(attrs, :model),
       worker_attempt: Map.fetch!(attrs, :worker_attempt),
       source_byte_size: Map.fetch!(attrs, :source_byte_size),
-      started_at: Map.fetch!(attrs, :started_at)
+      started_at: Map.fetch!(attrs, :started_at),
+      request_metadata: Map.get(attrs, :request_metadata) || %{}
     }
     |> ExtractionAttempt.changeset(%{})
     |> Repo.insert()
@@ -71,11 +72,11 @@ defmodule Nila.Gst.Intake.ExtractionAttempts do
   defp store_response(_attempt, nil), do: {:ok, %{}}
 
   defp store_response(attempt, raw_response) when is_binary(raw_response) do
-    compressed = :zlib.gzip(raw_response)
+    compressed = IO.iodata_to_binary(:zstd.compress(raw_response))
     sha256 = Base.encode16(:crypto.hash(:sha256, raw_response), case: :lower)
     key = artifact_key(attempt)
 
-    case Storage.put(key, compressed, content_type: "application/gzip") do
+    case Storage.put(key, compressed, content_type: "application/zstd") do
       {:ok, _stored} ->
         {:ok,
          %{
@@ -91,7 +92,7 @@ defmodule Nila.Gst.Intake.ExtractionAttempts do
   end
 
   defp artifact_key(attempt) do
-    "orgs/#{attempt.org_id}/gst/dumps/#{attempt.gst_dump_id}/extraction_attempts/#{attempt.id}/raw_response.json.gz"
+    "orgs/#{attempt.org_id}/gst/dumps/#{attempt.gst_dump_id}/extraction_attempts/#{attempt.id}/raw_response.json.zst"
   end
 
   defp delete_artifact(%Ecto.Changeset{changes: %{response_artifact_key: key}}) do

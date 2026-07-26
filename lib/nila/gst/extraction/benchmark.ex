@@ -161,14 +161,18 @@ defmodule Nila.Gst.Extraction.Benchmark do
   defp persist_raw(output_dir, case_name, provider, raw_response) do
     case_dir = Path.join(output_dir, safe_name(case_name))
     File.mkdir_p!(case_dir)
-    File.write!(Path.join(case_dir, "#{provider}_raw_response.json.gz"), :zlib.gzip(raw_response))
+
+    File.write!(
+      Path.join(case_dir, "#{provider}_raw_response.json.zst"),
+      :zstd.compress(raw_response)
+    )
   end
 
   defp persist_raw(case_dir, provider, raw_response) do
     if raw_response do
       File.write!(
-        Path.join(case_dir, "#{provider}_raw_response.json.gz"),
-        :zlib.gzip(raw_response)
+        Path.join(case_dir, "#{provider}_raw_response.json.zst"),
+        :zstd.compress(raw_response)
       )
     end
   end

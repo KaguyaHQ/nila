@@ -62,7 +62,7 @@ defmodule Nila.Gst.Intake.ExtractionAttemptsTest do
     assert completed.artifact_byte_size > 0
 
     assert {:ok, compressed} = Storage.get(completed.response_artifact_key)
-    assert :zlib.gunzip(compressed) == raw
+    assert IO.iodata_to_binary(:zstd.decompress(compressed)) == raw
 
     assert [listed] = ExtractionAttempts.list_for_dump(dump.id)
     assert listed.id == completed.id

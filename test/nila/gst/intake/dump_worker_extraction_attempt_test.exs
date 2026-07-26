@@ -92,7 +92,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
     assert attempt.response_artifact_key
 
     assert {:ok, compressed} = Storage.get(attempt.response_artifact_key)
-    assert Jason.decode!(:zlib.gunzip(compressed))["model"] == "mistral-ocr-4-0"
+    assert Jason.decode!(:zstd.decompress(compressed))["model"] == "mistral-ocr-4-0"
 
     {:ok, extracted} = Dumps.fetch(org.id, dump.id)
     assert extracted.status == "extracted"
