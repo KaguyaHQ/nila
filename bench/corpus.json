@@ -1,0 +1,138 @@
+{
+  "bucket": "nila-eval-corpus",
+  "note": "Real client packets for OCR evals. Bytes live in R2 (private, eval-scoped token); this file is the registry. Pull with `mix nila.eval_corpus pull`; add packets with `mix nila.eval_corpus push`. Ground-truth JSONs stay in test/fixtures/.",
+  "documents": [
+    {
+      "name": "breeze-2025-10-purchase",
+      "key": "breeze/2025-10/purchase.pdf",
+      "sha256": "c4c9982b0c0f6e02386d6ae0f4a612aee822a0fc4a34b9349869f9ff6d786d5b",
+      "byte_size": 12244362,
+      "pages": 57,
+      "client": "breeze",
+      "period": "2025-10",
+      "kind": "purchase",
+      "ground_truth": "test/fixtures/purchase/breeze/2025-10/filed_3b.json"
+    },
+    {
+      "name": "breeze-2026-01-sales",
+      "key": "breeze/2026-01/sales.pdf",
+      "sha256": "27fe2df4ee7893cf995d27144313e95121c854e127abef7c2eedf04a9be89993",
+      "byte_size": 2037595,
+      "pages": 8,
+      "client": "breeze",
+      "period": "2026-01",
+      "kind": "sales",
+      "ground_truth": "test/fixtures/gstr1/breeze/2026-01/returns_012026_R1_33AEWPH4158J1Z3.json"
+    },
+    {
+      "name": "breeze-2026-05-sales",
+      "key": "breeze/2026-05/sales.pdf",
+      "sha256": "3ff2bcdb77dbd90050dc11cd1e5b85fe1646225d34104f4e5842c31033cebf45",
+      "byte_size": 4851632,
+      "pages": 15,
+      "client": "breeze",
+      "period": "2026-05",
+      "kind": "sales",
+      "ground_truth": "test/fixtures/gstr1/breeze/2026-05/returns_06072026_R1_33AEWPH4158J1Z3_offline_others_0.json"
+    },
+    {
+      "name": "breeze-2026-06-purchase",
+      "key": "breeze/2026-06/purchase.pdf",
+      "sha256": "1d90f1fd67f50e5f1beb3ac9d2fa5c74e342a035c61cf9409c3f9abe501e6677",
+      "byte_size": 4222761,
+      "pages": 28,
+      "client": "breeze",
+      "period": "2026-06",
+      "kind": "purchase",
+      "ground_truth": null
+    },
+    {
+      "name": "caltech-2025-10-sales",
+      "key": "caltech/2025-10/sales.pdf",
+      "sha256": "d12a647df5d915d1d65a1cc29425b5ee5b4b309ce52859b3155c4c5b3be3ef6e",
+      "byte_size": 2247029,
+      "pages": 6,
+      "client": "caltech",
+      "period": "2025-10",
+      "kind": "sales",
+      "ground_truth": "test/fixtures/gstr1/caltech/2025-10/returns_102025_R1_33BPBPK1081A1ZO.json"
+    },
+    {
+      "name": "caltech-2025-11-sales",
+      "key": "caltech/2025-11/sales.pdf",
+      "sha256": "fae4fcdee0a5bb1d28b29fb63d5962a875d779b5de146a75b12f091269b52957",
+      "byte_size": 5294351,
+      "pages": 15,
+      "client": "caltech",
+      "period": "2025-11",
+      "kind": "sales",
+      "ground_truth": "test/fixtures/gstr1/caltech/2025-11/returns_112025_R1_33BPBPK1081A1ZO.json"
+    },
+    {
+      "name": "caltech-2025-12-sales",
+      "key": "caltech/2025-12/sales.pdf",
+      "sha256": "3fa7b5e8b8bb89e4c3ca4a314fcd5bbf1098e8e94b2ea2e6e31e244e2475f5d7",
+      "byte_size": 1228778,
+      "pages": 4,
+      "client": "caltech",
+      "period": "2025-12",
+      "kind": "sales",
+      "ground_truth": "test/fixtures/gstr1/caltech/2025-12/returns_122025_R1_33BPBPK1081A1ZO.json"
+    },
+    {
+      "name": "caltech-2026-01-sales",
+      "key": "caltech/2026-01/sales.pdf",
+      "sha256": "271543d0d01e2ecdc42c5d4c782786ff4a52025b016cbbaeb0e4276e44023598",
+      "byte_size": 2110461,
+      "pages": 6,
+      "client": "caltech",
+      "period": "2026-01",
+      "kind": "sales",
+      "ground_truth": "test/fixtures/gstr1/caltech/2026-01/returns_012026_R1_33BPBPK1081A1ZO.json"
+    },
+    {
+      "name": "caltech-2025-06-purchase",
+      "key": "caltech/2025-06/purchase.pdf",
+      "sha256": "e90f728973190d8c012c391512f5f1878e2dbc998fe05ef58db8815d882ba7d2",
+      "byte_size": 4181542,
+      "pages": 13,
+      "client": "caltech",
+      "period": "2025-06",
+      "kind": "purchase",
+      "ground_truth": null
+    },
+    {
+      "name": "caltech-2025-05-purchase-part1",
+      "key": "caltech/2025-05/purchase-part1.pdf",
+      "sha256": "6ed5c2a50bd2d61f155e6081eea744a5c9dcdf63c5fb70bade1eee18fcf099b9",
+      "byte_size": 586606,
+      "pages": 3,
+      "client": "caltech",
+      "period": "2025-05",
+      "kind": "purchase",
+      "ground_truth": null
+    },
+    {
+      "name": "misc-newdoc-8p",
+      "key": "misc/new-doc-2025-06-03.pdf",
+      "sha256": "6a203a9119b4c03e9a27dd50957dc1249ff612e43ca50301d2f6eb28f81d537f",
+      "byte_size": 1021349,
+      "pages": 8,
+      "client": null,
+      "period": null,
+      "kind": "purchase",
+      "ground_truth": null
+    },
+    {
+      "name": "misc-may-pur-ahse-9p",
+      "key": "misc/may-pur-ahse.pdf",
+      "sha256": "283943dc203795fffab1103aa76f7b2874fbba88bfa8600fb633cd3ff81f4f6c",
+      "byte_size": 1226291,
+      "pages": 9,
+      "client": null,
+      "period": null,
+      "kind": "purchase",
+      "ground_truth": null
+    }
+  ]
+}

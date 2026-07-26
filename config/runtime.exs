@@ -151,6 +151,13 @@ if config_env() in [:prod, :dev] do
   end
 end
 
+if config_env() in [:prod, :dev] do
+  config :nila, Nila.EvalCorpus,
+    endpoint: env!("R2_ENDPOINT", :string, nil),
+    access_key_id: env!("R2_EVAL_ACCESS_KEY_ID", :string, nil),
+    secret_access_key: env!("R2_EVAL_SECRET_ACCESS_KEY", :string, nil)
+end
+
 if config_env() == :prod do
   r2_endpoint = env!("R2_ENDPOINT", :string!)
   r2_uri = URI.parse(r2_endpoint)

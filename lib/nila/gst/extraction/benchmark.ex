@@ -45,7 +45,13 @@ defmodule Nila.Gst.Extraction.Benchmark do
   defp run_case(document, manifest_path, output_dir) do
     name = Map.fetch!(document, "name")
     kind = benchmark_kind(Map.fetch!(document, "kind"))
-    source_path = resolve_source(document["source"], manifest_path)
+
+    source_path =
+      case document["corpus"] do
+        nil -> resolve_source(document["source"], manifest_path)
+        name -> Nila.EvalCorpus.fetch!(name)
+      end
+
     content_type = document["content_type"] || content_type(source_path)
     bytes = File.read!(source_path)
 

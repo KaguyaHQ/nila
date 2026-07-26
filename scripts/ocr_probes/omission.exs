@@ -3,23 +3,17 @@ defmodule OcrProbe.Omission do
 
   alias Nila.Gst.Extraction.Providers.Mistral
 
-  @fixtures_root "test/fixtures/gstr1"
-
-  @cases [
-    {"breeze/2026-01", "breeze_jan_sales.pdf", "returns_012026_R1_33AEWPH4158J1Z3.json"},
-    {"breeze/2026-05", "breeze_may_sales.pdf",
-     "returns_06072026_R1_33AEWPH4158J1Z3_offline_others_0.json"},
-    {"caltech/2025-10", "caltech_oct_sales.pdf", "returns_102025_R1_33BPBPK1081A1ZO.json"},
-    {"caltech/2025-11", "caltech_nov_sales.pdf", "returns_112025_R1_33BPBPK1081A1ZO.json"},
-    {"caltech/2025-12", "caltech_dec_sales.pdf", "returns_122025_R1_33BPBPK1081A1ZO.json"},
-    {"caltech/2026-01", "caltech_jan_sales.pdf", "returns_012026_R1_33BPBPK1081A1ZO.json"}
-  ]
+  # Every sales corpus document with filed-R1 ground truth (bench/corpus.json).
+  def cases do
+    Nila.EvalCorpus.documents()
+    |> Enum.filter(&(&1["kind"] == "sales" and &1["ground_truth"]))
+  end
 
   def run do
     out_dir = "tmp/mistral_omission_probe"
     File.mkdir_p!(out_dir)
 
-    results = Enum.map(@cases, &probe(&1, out_dir))
+    results = Enum.map(cases(), &probe(&1, out_dir))
 
     IO.puts("\n================ SUMMARY ================")
 
@@ -39,12 +33,12 @@ defmodule OcrProbe.Omission do
     IO.puts("\nwrote #{Path.join(out_dir, "summary.json")}")
   end
 
-  defp probe({dir, pdf, returns}, out_dir) do
-    pdf_path = Path.join([@fixtures_root, dir, pdf])
-    returns_path = Path.join([@fixtures_root, dir, returns])
+  defp probe(doc, out_dir) do
+    dir = doc["name"]
+    pdf = Path.basename(doc["key"])
 
-    truth = filed_invoice_numbers(returns_path)
-    bytes = File.read!(pdf_path)
+    truth = filed_invoice_numbers(doc["ground_truth"])
+    bytes = doc["name"] |> Nila.EvalCorpus.fetch!() |> File.read!()
 
     IO.puts("\n>>> #{dir}: whole-PDF OCR (no chunking), truth=#{length(truth)} invoices")
     started = System.monotonic_time(:millisecond)

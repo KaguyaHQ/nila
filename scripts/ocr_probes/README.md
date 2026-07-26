@@ -17,10 +17,12 @@ MIX_ENV=dev mix run scripts/ocr_probes/<probe>.exs
 | `cold_latency_curve.exs`  | Cold latency vs. page count (the ~3.5s/page budget)?        | changing chunk size, model version, or provider           |
 
 Notes:
-- `omission.exs` reads sales fixtures under `test/fixtures/gstr1/` and diffs against
-  the `returns_*_R1_*.json` ground truth — self-contained in the repo.
-- `whole_packet_canary.exs` and `cold_latency_curve.exs` point at local demo PDFs
-  under `~/Documents/data/demo/` (not committed). Repoint the paths to any large
-  packet to reproduce. The canary defaults to the windowed path; pass `whole` to
-  reproduce the single-call failure it was written for.
+- All probes read packets from the private eval corpus (`bench/corpus.json` →
+  R2 bucket `nila-eval-corpus`). First run: `mix nila.eval_corpus pull` — needs
+  the eval-scoped token in `.env`. Ground-truth `returns_*_R1_*.json` files stay
+  committed under `test/fixtures/`.
+- `omission.exs` runs every sales corpus document that has filed-R1 ground truth
+  and diffs extracted invoice numbers against it.
+- The canary defaults to the windowed path; pass `whole` to reproduce the
+  single-call failure it was written for.
 - Raw responses are written under `tmp/mistral_*_probe/` for inspection.

@@ -14,18 +14,23 @@ defmodule OcrProbe.WholePacketCanary do
   alias Nila.Gst.Extraction.Providers.Mistral
   alias Nila.Gst.Extraction.Windowed
 
-  @path "/Users/vasanthk/Documents/data/demo/purchase/Breezetech October month purchase bills-2025-26.pdf"
+  @doc_name "breeze-2025-10-purchase"
   @canary "RAC2451"
+
+  defp packet do
+    path = Nila.EvalCorpus.fetch!(@doc_name)
+    {File.read!(path), Path.basename(path)}
+  end
 
   def run(["whole" | _rest]), do: whole()
   def run(_argv), do: windowed()
 
   defp windowed do
-    bytes = File.read!(@path)
+    {bytes, filename} = packet()
     IO.puts("windowed run: 57p breezetech-oct bytes=#{byte_size(bytes)}")
     started = System.monotonic_time(:millisecond)
 
-    result = Windowed.extract(:purchase, bytes, filename: Path.basename(@path))
+    result = Windowed.extract(:purchase, bytes, filename: filename)
 
     ms = System.monotonic_time(:millisecond) - started
 
@@ -46,7 +51,7 @@ defmodule OcrProbe.WholePacketCanary do
   end
 
   defp whole do
-    bytes = File.read!(@path)
+    {bytes, _filename} = packet()
     payload = Mistral.request_payload(:purchase, bytes, "application/pdf")
     config = Application.get_env(:nila, Mistral, [])
     base_url = config[:base_url] || "https://api.mistral.ai"

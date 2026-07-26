@@ -3,17 +3,19 @@ defmodule OcrProbe.ColdLatencyCurve do
 
   alias Nila.Gst.Extraction.Providers.Mistral
 
-  # Fresh, never-sent purchase documents → cold latency, one shot each, no repeats.
+  # Cold latency curve across sizes. NOTE: these corpus docs have been sent to
+  # Mistral before — server-side caching means a rerun may not be truly cold.
+  # For a genuine cold point, add a never-sent packet to the corpus first.
   @docs [
-    {"1p  june-p1", "/tmp/june_p1.pdf"},
-    {"3p  may-1", "/Users/vasanthk/Documents/data/demo/caltech may month purchase bills-2025-26-1.pdf"},
-    {"8p  newdoc", "/Users/vasanthk/Documents/data/demo/New Doc 06-03-2025 10.36.pdf"},
-    {"9p  maypurahse", "/Users/vasanthk/Documents/data/demo/May pur ahse.pdf"},
-    {"13p june-full", "/Users/vasanthk/Documents/data/demo/purchase/Caltech June Month Purchase Bills-2025-26.pdf"}
+    {"3p  may-1", "caltech-2025-05-purchase-part1"},
+    {"8p  newdoc", "misc-newdoc-8p"},
+    {"9p  maypurahse", "misc-may-pur-ahse-9p"},
+    {"13p june-full", "caltech-2025-06-purchase"},
+    {"28p june-26", "breeze-2026-06-purchase"}
   ]
 
   def run do
-    rows = Enum.map(@docs, &measure/1)
+    rows = Enum.map(@docs, fn {label, name} -> measure({label, Nila.EvalCorpus.fetch!(name)}) end)
 
     IO.puts("\n================ COLD CURVE (one shot each, never-sent docs) ================")
     IO.puts("doc            bytes       ms      status  pages_processed  invoices")
