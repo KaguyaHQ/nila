@@ -53,7 +53,6 @@ defmodule Nila.Gst.Purchase.ResolutionsTest do
       assert {:ok, fetched} = Months.get_by_period_with_client(org.id, client.id, @period)
       assert fetched.id == month.id
       assert fetched.client.id == client.id
-      refute match?(%Ecto.Association.NotLoaded{}, fetched.client)
 
       %{org: other_org} = user_with_org_fixture()
 

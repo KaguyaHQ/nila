@@ -158,7 +158,6 @@ defmodule NilaWeb.Components.Gst.Month.Status do
 
   defp strip_variant(:to_file), do: "error"
   defp strip_variant(:needs_you), do: "warning"
-  defp strip_variant(:done), do: "success"
   defp strip_variant(_), do: "neutral"
 
   defp signoff_anchor(%{sales_month: sales, r1_signoff: nil}) when not is_nil(sales),
