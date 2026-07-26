@@ -239,10 +239,17 @@ or an image, is still one whole-document call — small packets are proven clean
 - [x] Eval packets moved out of git into the private `nila-eval-corpus` R2 bucket;
       `bench/corpus.json` is the registry (sha256 + ground-truth mapping),
       `mix nila.eval_corpus` pulls/pushes. Probes resolve packets by corpus name.
-- [ ] Invoice-number reconciliation guard — harvest inum candidates from the page
-      markdown and diff against extracted records, both directions (miss +
-      hallucination flags). Designed in `docs/.plans/2026-07-26-windowed-extraction.md`
-      §4; catches the "page produced 2 of 3 invoices" hole the page ledger cannot.
+- [ ] Hallucination check — every extracted invoice_number must appear in the
+      window's page markdown (exact search of a known string); absent ⇒ review
+      flag. The symmetric miss-direction guard (harvest candidates from markdown)
+      was **measured and rejected**: invoice numbers in this corpus share no regex
+      shape (`045`, `1018`, `825/25-26`, `TI-AN-25-26-1339`), ~⅓ sit in bare
+      table cells with no label anchor — label-anchored ≈ 62% recall, shape-based
+      ≈ ~57 junk candidates/packet. The hole it would cover (partial drop on a
+      multi-invoice page inside a window) has not occurred in any measured packet;
+      single-invoice-page drops produce zero artifacts and the ledger catches them
+      (page 41, Evidence 5). Revisit only on real-packet evidence — details in
+      `docs/.plans/2026-07-26-windowed-extraction.md` §4.
 - [ ] Suspicious-table crop/retry for handwritten nested totals (separate failure;
       see the `84418` case — full-page decoder omits a nested footer the model reads
       correctly when cropped).
