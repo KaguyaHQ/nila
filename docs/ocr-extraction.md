@@ -21,9 +21,14 @@ is explicit via `GST_OCR_PROVIDER`, with no automatic fallback.
 - **The fix is chunking**, not a provider change: small page windows keep the
   annotation step inside the context length where it stays reliable. Chunk + verify
   page coverage so any residual drop is loud, never silent.
-- **Timeouts are recoverable, not fatal**: Mistral caches OCR on identical document
-  bytes, so a retry after a client timeout returns in seconds. Retry on timeout;
-  don't fail the dump.
+- **Timeouts are recoverable, not fatal**: Mistral caches OCR on identical
+  *requests* (same bytes AND same parameters), so a retry after a client timeout
+  returns in seconds. Retry on timeout; don't fail the dump. **Caveat learned
+  later**: windowed subset requests do NOT hit this cache across runs — assume
+  every window pays cold OCR (§Evidence 5).
+- **Windowed extraction passes acceptance**: on the 57-page canary the windowed
+  path recovers the dropped invoice, extracts 47–48 unique (vs 34), hallucinates
+  nothing, and flags genuinely problematic pages for review (§Evidence 5–6).
 
 ## What the request actually does
 
@@ -58,6 +63,23 @@ This is textbook for *any* LLM extractor (Mistral, GPT, Claude). Whole-packet wo
 at ≤15 pages by luck: the context was short enough to stay in the reliable zone.
 Chunking isn't a workaround — it's keeping each request inside the context length
 where the model behaves.
+
+Vendor context that corroborates this: Mistral's annotation feature had a **hard
+8-page cap until January 2026** ("Document Annotations update and improvements, 8
+page limit removed" — their changelog). The cap was removed without any replacement
+quality guarantee or degradation warning; their own cookbooks still say "we
+recommend spliting your documents", and partner deployments (Azure Foundry, Vertex)
+still enforce 8–30-page caps. Our 8-page window matches the size Mistral itself
+considered safe when it enforced one. Additionally, the annotation model receives
+only the **first 8 image bounding boxes of the whole document** (their FAQ) — in a
+long document, pages past the first few are annotated from OCR text alone, with no
+visual signal; in an 8-page window, every page's crops fit the budget.
+
+A related finding: the annotation's `source_pages` attribution is unreliable at
+length — on the 57p whole call a pages-20–21 invoice was tagged `[1,2]`, and even
+within 8-page windows occasional implausible page sets appear (a 1-page invoice
+claiming `[20, 25, 28]`). Treat model attribution as a hint; the deterministic
+evidence check (`resolve_source_pages`) and the page ledger are the guards.
 
 ## Evidence
 
@@ -123,10 +145,50 @@ duplicated entries:     39 extra dupes across 20 invoice numbers
 ```
 
 The annotation degrades in **both** directions at once: it omits real invoices *and*
-hallucinates duplicates (261997 ×9, CH/CR-6277 ×6), returns HTTP 200, no error. The
+hallucinates duplicates (261997 ×12 plus ×3 under a garbled variant, CH/CR-6277 ×7),
+returns HTTP 200, no error. The
 per-page OCR was perfect — only the "reason over everything at once" step failed.
 This is the definitive proof that whole-packet extraction is unsafe past the
 threshold (somewhere between 15 and 57 pages).
+
+### 5. Windowed acceptance on the same 57-page packet — passes
+
+`Nila.Gst.Extraction.Windowed` (8-page windows, overlap 2, concurrent), same PDF:
+
+```
+                    whole call          windowed
+invoices returned   73 entries          53–54
+unique              34                  47–48
+RAC2451             DROPPED             present
+hallucinated dupes  39 excess entries   0 (repeats = real duplicate scans)
+missed pages        invisible           flagged for review
+wall clock          ~200s               42s (concurrency 16) / 107s (4)
+```
+
+The repeated numbers that remain are genuine duplicate scans in the packet
+(disjoint pages), correctly left to the `duplicate_invoice` review flag. The
+flagged unaccounted pages across runs: a misattributed-but-extracted invoice
+(noise, safe side), a blank e-invoice continuation sheet (correct), and — on one
+run — a genuinely missed, badly blurred phone-photo invoice (City Makson
+CME/0642/25-26, page 41): **the ledger surfacing a true miss that the whole call
+would have swallowed silently.** Run-to-run annotation variance on marginal pages
+is real; the guards make it visible either way.
+
+Cache correction: windows are *not* warmed by prior whole-document runs, and
+re-running identical windows minutes later still paid cold OCR (~42s, not ~5s).
+The warm cache observed on whole-document resends does not extend to page-subset
+requests (or expires quickly). Budget every windowed run as cold.
+
+### 6. Fresh 28-page packet — clean end-to-end
+
+Breezetech June 2026 (28p, never sent before): 36s cold, 5 windows, 25 invoices,
+all unique, zero dupes, multi-page invoice on pages 1–2 assembled inside its
+window. Three pages flagged: Porter-style trip receipts (app screenshots, zero
+GST) that produced no invoice — correct review-flag behaviour. Notable
+inconsistency: two later pages of the *same* receipt type were instead extracted
+as zero-tax invoices — the model's "is this an invoice" threshold wobbles on
+non-invoice pages; either path is safe (flag or zero-tax record), but review sees
+both shapes.
 
 ## Design mandate — shipped as `Nila.Gst.Extraction.Windowed`
 
@@ -172,11 +234,15 @@ or an image, is still one whole-document call — small packets are proven clean
 - [x] Chunker (windows + overlap + dedupe + retry + skipped-page ledger) — built as
       `Nila.Gst.Extraction.Windowed`, covered offline in
       `test/nila/gst/extraction/windowed_test.exs`.
-- [ ] Live acceptance against the 57-page canary — run
-      `mix run scripts/ocr_probes/whole_packet_canary.exs` and record the row below.
-      Whether the response numbers a window's pages absolutely or relatively is
-      handled either way (`absolute_page_numbers/2` decides per response), but the
-      live run is what pins which one Mistral actually does.
+- [x] Live acceptance against the 57-page canary — passed (Evidence 5). Verified
+      again on a fresh 28-page packet (Evidence 6).
+- [x] Eval packets moved out of git into the private `nila-eval-corpus` R2 bucket;
+      `bench/corpus.json` is the registry (sha256 + ground-truth mapping),
+      `mix nila.eval_corpus` pulls/pushes. Probes resolve packets by corpus name.
+- [ ] Invoice-number reconciliation guard — harvest inum candidates from the page
+      markdown and diff against extracted records, both directions (miss +
+      hallucination flags). Designed in `docs/.plans/2026-07-26-windowed-extraction.md`
+      §4; catches the "page produced 2 of 3 invoices" hole the page ledger cannot.
 - [ ] Suspicious-table crop/retry for handwritten nested totals (separate failure;
       see the `84418` case — full-page decoder omits a nested footer the model reads
       correctly when cropped).
@@ -197,3 +263,6 @@ cost — plain OCR ≈ OCR+features ≈ full annotation, ~1–1.4s/1p) and a nov
 | 2026-07-23 | `omission.exs`                 | Does whole-PDF drop invoices ≤15p?        | No silent omission at ≤15p; one recoverable timeout.          |
 | 2026-07-23 | `cold_latency_curve.exs`       | Cold latency vs. size?                     | ~linear, ~2s + ~3.5s/page.                                    |
 | 2026-07-23 | `whole_packet_canary.exs`      | Does the 57p packet still drop invoices?   | Yes — RAC2451 dropped, 39 dup entries, HTTP 200. Threshold confirmed. |
+| 2026-07-26 | `whole_packet_canary.exs` (windowed) | Does windowing recover RAC2451?      | Yes — 47–48 unique vs 34, no hallucinated dupes, true miss on p41 flagged. 42s at concurrency 16. |
+| 2026-07-26 | ad-hoc (fresh 28p packet)      | Does windowed hold on unseen data?         | Clean: 25/25 unique, 36s cold, non-invoice pages flagged. |
+| 2026-07-26 | canary re-run ×2               | Do window requests warm-cache?             | No — identical windows re-ran cold (~42s). Budget windowed runs as cold. |

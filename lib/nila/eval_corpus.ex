@@ -52,10 +52,31 @@ defmodule Nila.EvalCorpus do
   end
 
   def status do
-    Enum.each(documents(), fn doc ->
-      state = if File.exists?(local_path(doc)), do: "cached ", else: "missing"
-      IO.puts("#{state}  #{doc["name"]}  #{doc["pages"]}p  #{doc["key"]}")
+    docs = documents()
+
+    docs
+    |> Enum.group_by(&(&1["client"] || "misc"))
+    |> Enum.sort()
+    |> Enum.each(fn {client, client_docs} ->
+      IO.puts("#{client}:")
+
+      client_docs
+      |> Enum.sort_by(&{&1["period"] || "", &1["kind"]})
+      |> Enum.each(fn doc ->
+        cache = if File.exists?(local_path(doc)), do: "cached", else: "MISSING (mix nila.eval_corpus pull)"
+
+        eval =
+          case doc["ground_truth"] do
+            nil -> "no ground truth — not evaluable"
+            path -> if File.exists?(path), do: "evaluable", else: "GROUND TRUTH FILE MISSING: #{path}"
+          end
+
+        IO.puts("  #{doc["period"] || "-"}  #{String.pad_trailing(doc["kind"] || "?", 8)} #{String.pad_leading(to_string(doc["pages"]), 3)}p  #{cache}  #{eval}")
+      end)
     end)
+
+    evaluable = Enum.count(docs, & &1["ground_truth"])
+    IO.puts("\n#{length(docs)} documents, #{evaluable} evaluable (have ground truth)")
   end
 
   @doc """
