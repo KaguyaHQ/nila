@@ -13,6 +13,7 @@ defmodule Nila.Gst.Intake.ExtractionAttempt do
     field :http_status, :integer
     field :source_byte_size, :integer
     field :source_page_count, :integer
+    field :request_metadata, :map, default: %{}
     field :started_at, :utc_datetime_usec
     field :completed_at, :utc_datetime_usec
     field :duration_ms, :integer
@@ -36,6 +37,7 @@ defmodule Nila.Gst.Intake.ExtractionAttempt do
       :status,
       :http_status,
       :source_page_count,
+      :request_metadata,
       :completed_at,
       :duration_ms,
       :usage,

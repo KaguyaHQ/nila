@@ -144,7 +144,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   end
 
   defp extract_kind(%Dump{kind: "purchase"} = dump, worker_attempt) do
-    with {:ok, %{pages: pages, images: images}} <-
+    with {:ok, %{pages: pages, images: images} = result} <-
            extract_source(dump, purchase_extractor(), worker_attempt) do
       %{"invoices" => invoices, "skipped_pages" => skipped} = Books.normalize(pages)
 
@@ -158,12 +158,14 @@ defmodule Nila.Gst.Intake.DumpWorker do
         end)
 
       store_evidence(dump, images, &PurchaseMonths.evidence_key/4)
-      {:ok, invoices, %{"skipped_pages" => skipped}}
+
+      {:ok, invoices,
+       %{"skipped_pages" => skipped, "unaccounted_pages" => unaccounted_pages(result)}}
     end
   end
 
   defp extract_kind(%Dump{kind: "sales"} = dump, worker_attempt) do
-    with {:ok, %{pages: pages, images: images}} <-
+    with {:ok, %{pages: pages, images: images} = result} <-
            extract_source(dump, sales_extractor(), worker_attempt) do
       invoices =
         Enum.map(pages, fn page ->
@@ -175,24 +177,50 @@ defmodule Nila.Gst.Intake.DumpWorker do
         end)
 
       store_evidence(dump, images, &SalesMonths.evidence_key/4)
-      {:ok, invoices, %{}}
+      {:ok, invoices, %{"unaccounted_pages" => unaccounted_pages(result)}}
     end
   end
 
+  defp unaccounted_pages(result), do: Map.get(result, :unaccounted_pages) || []
+
+  # A windowed extractor makes one provider call per page window, so the audit
+  # row is per call, not per dump: it takes the attempt-persisting wrapper and
+  # applies it around each one, tagging the row with the window's page range.
   defp extract_source(dump, extractor, worker_attempt) do
     with {:ok, key} <- one_source_key(dump),
          {:ok, bytes} <- Storage.get(key) do
       opts = [filename: Path.basename(key), on_progress: fn _stage -> :ok end]
 
-      if function_exported?(extractor, :provider, 0) and function_exported?(extractor, :model, 0) do
-        extract_with_attempt(dump, key, bytes, extractor, worker_attempt, opts)
-      else
-        extractor.extract(bytes, opts)
+      cond do
+        not audited?(extractor) ->
+          extractor.extract(bytes, opts)
+
+        per_call?(extractor) ->
+          wrapper = fn metadata, call ->
+            with_attempt(dump, key, bytes, extractor, worker_attempt, metadata, call)
+          end
+
+          extractor.extract(bytes, Keyword.put(opts, :per_call, wrapper))
+
+        true ->
+          with_attempt(dump, key, bytes, extractor, worker_attempt, %{}, fn ->
+            extractor.extract(bytes, opts)
+          end)
       end
     end
   end
 
-  defp extract_with_attempt(dump, key, bytes, extractor, worker_attempt, opts) do
+  defp audited?(extractor) do
+    exports?(extractor, :provider, 0) and exports?(extractor, :model, 0)
+  end
+
+  defp per_call?(extractor), do: exports?(extractor, :per_call?, 0) and extractor.per_call?()
+
+  defp exports?(module, function, arity) do
+    Code.ensure_loaded?(module) and function_exported?(module, function, arity)
+  end
+
+  defp with_attempt(dump, key, bytes, extractor, worker_attempt, metadata, call) do
     started_at = DateTime.utc_now()
     started_native = System.monotonic_time()
 
@@ -203,10 +231,11 @@ defmodule Nila.Gst.Intake.DumpWorker do
              model: extractor.model(),
              worker_attempt: worker_attempt,
              source_byte_size: byte_size(bytes),
-             started_at: started_at
+             started_at: started_at,
+             request_metadata: metadata
            }) do
       try do
-        case extractor.extract(bytes, opts) do
+        case call.() do
           {:ok, result} ->
             finish_attempt(attempt, :succeeded, result, started_native)
 
@@ -240,7 +269,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
       |> Map.put(:duration_ms, elapsed_ms(started_native))
 
     case ExtractionAttempts.succeed(attempt, attrs) do
-      {:ok, _attempt} -> {:ok, Map.drop(result, [:audit])}
+      {:ok, _attempt} -> {:ok, drop_raw_response(result)}
       {:error, reason} -> {:error, {:extraction_attempt_persistence_failed, reason}}
     end
   end
@@ -262,6 +291,13 @@ defmodule Nila.Gst.Intake.DumpWorker do
         {:error, {:extraction_attempt_persistence_failed, persistence_reason, reason}}
     end
   end
+
+  # The raw response lives on the attempt row now; carrying a copy of every
+  # window's JSON back up the call stack is pure memory.
+  defp drop_raw_response(%{audit: audit} = result) when is_map(audit),
+    do: %{result | audit: Map.drop(audit, [:raw_response])}
+
+  defp drop_raw_response(result), do: result
 
   defp audit_attrs(audit) do
     Map.take(audit, [
@@ -335,7 +371,10 @@ defmodule Nila.Gst.Intake.DumpWorker do
     invoices = Dumps.union_invoices(dump.org_id, dump.client_id, dump.period, "sales")
 
     {:ok, client} = Clients.get_client(dump.org_id, dump.client_id)
-    issues = Gstr1.validation_issues(invoices)
+
+    issues =
+      ledger_issues(dump, "sales") ++ Gstr1.validation_issues(invoices)
+
     derived = Gstr1.derive(invoices, Gstr1.production_header(client.gstin, dump.period))
 
     {:ok, _} =
@@ -371,6 +410,11 @@ defmodule Nila.Gst.Intake.DumpWorker do
     flags = Flags.evaluate_all(invoices, entity_ctx, vendor_dir)
     rows = Register.rows(invoices, recon, flags)
 
+    document_flags =
+      dump.org_id
+      |> Dumps.unaccounted_pages(dump.client_id, dump.period, "purchase")
+      |> Flags.document_flags()
+
     {:ok, _} =
       PurchaseMonths.upsert(%{
         org_id: dump.org_id,
@@ -379,10 +423,28 @@ defmodule Nila.Gst.Intake.DumpWorker do
         state: "worked",
         register_rows: rows,
         recon: recon,
-        summary: Register.summary(rows)
+        summary: Map.put(Register.summary(rows), "document_flags", document_flags)
       })
 
     :ok
+  end
+
+  # The sales side already renders month-level issues (`"invoice" => nil`), so
+  # the ledger lands there rather than in a second surface.
+  defp ledger_issues(dump, kind) do
+    dump.org_id
+    |> Dumps.unaccounted_pages(dump.client_id, dump.period, kind)
+    |> Enum.map(fn %{"source" => source, "pages" => pages} ->
+      %{
+        "invoice" => nil,
+        "code" => "pages_unaccounted",
+        "level" => "warning",
+        "message" =>
+          "pages #{Enum.join(pages, ", ")} of #{source} produced no invoice. Open the " <>
+            "original and confirm no bill was missed.",
+        "fields" => ["doc_issue"]
+      }
+    end)
   end
 
   defp handle_failure(dump, job, reason) do

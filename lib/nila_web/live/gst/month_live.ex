@@ -108,6 +108,7 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:gstr3b_signoff, nil)
     |> assign(:rows, [])
     |> assign(:stats, nil)
+    |> assign(:document_flags, [])
     |> assign(:gstr3b, nil)
   end
 
@@ -129,6 +130,7 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:gstr3b_signoff, signoff)
     |> assign(:rows, build_rows(rows, purchase))
     |> assign(:stats, Register.stats(summary))
+    |> assign(:document_flags, summary["document_flags"] || [])
     |> assign(:gstr3b, gstr3b)
   end
 
@@ -523,6 +525,7 @@ defmodule NilaWeb.Gst.MonthLive do
         <Purchase.purchase_section
           purchase_month={@purchase_month}
           stats={@stats}
+          document_flags={@document_flags}
           rows={@rows}
           client={@client}
           period={@period}

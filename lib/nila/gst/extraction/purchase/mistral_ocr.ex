@@ -5,6 +5,8 @@ defmodule Nila.Gst.Extraction.Purchase.MistralOCR do
   def model, do: Nila.Gst.Extraction.Providers.Mistral.model()
 
   @impl true
-  def extract(bytes, opts),
-    do: Nila.Gst.Extraction.Providers.Mistral.extract(:purchase, bytes, opts)
+  def per_call?, do: true
+
+  @impl true
+  def extract(bytes, opts), do: Nila.Gst.Extraction.Windowed.extract(:purchase, bytes, opts)
 end

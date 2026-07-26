@@ -2,7 +2,10 @@ defmodule Nila.Gst.Extraction.Providers.MistralTest do
   use ExUnit.Case, async: true
 
   alias Nila.Gst.Extraction.Providers.Mistral
-  alias Nila.Gst.Extraction.Purchase
+
+  # Provider-level tests call `Mistral.extract/3` directly: the kind wrappers
+  # route through `Nila.Gst.Extraction.Windowed`, which owns the `:pages` /
+  # `:page_numbers` pairing these assert on.
 
   test "sends the original PDF to pinned OCR 4 with annotations, blocks, and confidence" do
     pdf = "%PDF-1.7 original bytes"
@@ -44,7 +47,7 @@ defmodule Nila.Gst.Extraction.Providers.MistralTest do
     end)
 
     assert {:ok, result} =
-             Purchase.MistralOCR.extract(pdf,
+             Mistral.extract(:purchase, pdf,
                filename: "bills.pdf",
                content_type: "application/pdf",
                pages: [0, 1]
@@ -86,7 +89,7 @@ defmodule Nila.Gst.Extraction.Providers.MistralTest do
     end)
 
     assert {:ok, _result} =
-             Purchase.MistralOCR.extract(image,
+             Mistral.extract(:purchase, image,
                filename: "phone.jpg",
                content_type: "image/jpeg"
              )
@@ -101,7 +104,7 @@ defmodule Nila.Gst.Extraction.Providers.MistralTest do
     end)
 
     assert {:error, {:mistral_ocr_failed, 422, %{"message" => "bad schema"}}, audit} =
-             Purchase.MistralOCR.extract("%PDF",
+             Mistral.extract(:purchase, "%PDF",
                filename: "bad.pdf",
                content_type: "application/pdf"
              )

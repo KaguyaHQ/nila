@@ -7,17 +7,24 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
   def model, do: @model
   def provider, do: "mistral"
 
+  @doc """
+  One `/v1/ocr` call. `:pages` is the provider's own **0-indexed** page subset;
+  `:page_numbers` is the same window expressed as **1-based document pages**, in
+  request order, and is what the returned artifacts are numbered by. Pass both
+  or neither — `Nila.Gst.Extraction.Windowed` owns that pairing.
+  """
   def extract(kind, bytes, opts) when kind in [:purchase, :sales] and is_binary(bytes) do
     filename = Keyword.get(opts, :filename, default_filename(kind))
     content_type = Keyword.get(opts, :content_type, content_type(filename))
     on_progress = Keyword.get(opts, :on_progress, fn _stage -> :ok end)
     pages = Keyword.get(opts, :pages)
+    page_numbers = Keyword.get(opts, :page_numbers)
 
     with true <- content_type in @supported_content_types,
          :ok <- on_progress.(:reading),
          {:ok, response} <- request(kind, bytes, content_type, pages),
          :ok <- on_progress.(:extracting),
-         {:ok, result} <- map_response(kind, response) do
+         {:ok, result} <- map_response(kind, response, page_numbers) do
       {:ok, result}
     else
       false -> {:error, {:unsupported_content_type, content_type}}
@@ -178,7 +185,9 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
     |> maybe_put_pages(pages)
   end
 
-  def map_response(kind, %{body: body} = response) when is_binary(body) do
+  def map_response(kind, response, page_numbers \\ nil)
+
+  def map_response(kind, %{body: body} = response, page_numbers) when is_binary(body) do
     audit = audit(response, body)
 
     with true <- response.status in 200..299,
@@ -186,7 +195,7 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
          {:ok, annotation} <- decode_annotation(decoded["document_annotation"]),
          invoices when is_list(invoices) <- annotation["invoices"],
          pages when is_list(pages) <- decoded["pages"],
-         artifacts when artifacts != [] <- artifacts(kind, invoices, pages) do
+         artifacts when artifacts != [] <- artifacts(kind, invoices, pages, page_numbers) do
       {:ok,
        %{
          pages: artifacts,
@@ -246,13 +255,14 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
      }}
   end
 
-  defp artifacts(kind, invoices, ocr_pages) do
+  defp artifacts(kind, invoices, ocr_pages, page_numbers) do
+    absolute = absolute_page_numbers(ocr_pages, page_numbers)
+
     pages_by_number =
       ocr_pages
       |> Enum.with_index(1)
       |> Map.new(fn {page, fallback} ->
-        page_number = if is_integer(page["index"]), do: page["index"] + 1, else: fallback
-        {page_number, page}
+        {Map.get(absolute, response_page_number(page, fallback), fallback), page}
       end)
 
     page_markdown = Map.new(pages_by_number, fn {number, page} -> {number, page_text(page)} end)
@@ -260,7 +270,7 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
     invoices
     |> Enum.with_index(1)
     |> Enum.map(fn {invoice, fallback_page} ->
-      {source_pages, attribution} = resolve_source_pages(invoice, page_markdown)
+      {source_pages, attribution} = resolve_source_pages(invoice, page_markdown, absolute)
       page = List.first(source_pages) || fallback_page
 
       confidence =
@@ -285,17 +295,47 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
     end)
   end
 
+  # The response numbers its pages from `page["index"]`, and the annotation's
+  # `source_pages` speak that same numbering. Whole-document calls get it right
+  # by construction; a windowed call may number the window's pages from the
+  # document start (absolute) or from the window start (relative), and both are
+  # observed-shaped guesses until a live run pins it. Decide per response: if
+  # every returned number is one of the window's document pages it is already
+  # absolute; otherwise the response is relative and maps by position.
+  defp absolute_page_numbers(ocr_pages, page_numbers) do
+    raw = Enum.with_index(ocr_pages, fn page, index -> response_page_number(page, index + 1) end)
+
+    cond do
+      not is_list(page_numbers) or page_numbers == [] ->
+        Map.new(raw, &{&1, &1})
+
+      Enum.all?(raw, &(&1 in page_numbers)) ->
+        Map.new(raw, &{&1, &1})
+
+      true ->
+        raw
+        |> Enum.with_index()
+        |> Map.new(fn {number, index} -> {number, Enum.at(page_numbers, index, number)} end)
+    end
+  end
+
+  defp response_page_number(page, fallback) do
+    if is_integer(page["index"]), do: page["index"] + 1, else: fallback
+  end
+
   defp page_text(page) do
     table_text = Enum.map_join(page["tables"] || [], "\n", &(&1["content"] || ""))
     block_text = Enum.map_join(page["blocks"] || [], "\n", &(&1["content"] || ""))
     Enum.join([page["markdown"] || "", table_text, block_text], "\n")
   end
 
-  defp resolve_source_pages(invoice, page_markdown) do
+  defp resolve_source_pages(invoice, page_markdown, absolute) do
     annotated =
       invoice
       |> Map.get("source_pages", [])
-      |> Enum.filter(&(is_integer(&1) and Map.has_key?(page_markdown, &1)))
+      |> Enum.filter(&is_integer/1)
+      |> Enum.map(&Map.get(absolute, &1, &1))
+      |> Enum.filter(&Map.has_key?(page_markdown, &1))
       |> Enum.uniq()
       |> Enum.sort()
 
@@ -447,7 +487,8 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
   defp default_filename(:purchase), do: "purchase_bills.pdf"
   defp default_filename(:sales), do: "sales_bills.pdf"
 
-  defp content_type(filename) do
+  @doc "Content type inferred from a filename's extension."
+  def content_type(filename) do
     case filename |> Path.extname() |> String.downcase() do
       ".pdf" -> "application/pdf"
       ext when ext in [".jpg", ".jpeg"] -> "image/jpeg"

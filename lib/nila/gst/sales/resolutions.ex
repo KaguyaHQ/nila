@@ -69,8 +69,17 @@ defmodule Nila.Gst.Sales.Resolutions do
   """
   def workings(%Month{} = month) do
     resolutions = month.id |> list() |> Enum.map(&resolution_map/1)
-    Workings.materialize(month.invoices, resolutions, header(month))
+    Workings.materialize(month.invoices, resolutions, header(month), document_issues(month))
   end
+
+  # Issues about the packet rather than any invoice — the extraction ledger's
+  # unread pages — can't be re-derived from the invoices, so they carry over
+  # from what extraction recorded.
+  defp document_issues(%Month{issues: issues}) when is_list(issues) do
+    Enum.filter(issues, &(&1["invoice"] == nil and &1["code"] == "pages_unaccounted"))
+  end
+
+  defp document_issues(_month), do: []
 
   @doc """
   Marks the month reviewed — the human has cleared every open issue, so 3B may

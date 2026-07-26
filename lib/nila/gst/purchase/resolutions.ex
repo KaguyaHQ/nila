@@ -129,8 +129,15 @@ defmodule Nila.Gst.Purchase.Resolutions do
       itc: itc,
       gstr3b: gstr3b(month, recon, itc),
       rows: rows,
-      summary: Register.summary(rows)
+      summary: summary(month, rows)
     }
+  end
+
+  # Rows are re-derived from the resolutions; the extraction ledger's
+  # month-level flags are not derivable from them, so they carry over from the
+  # summary extraction persisted.
+  defp summary(%Month{} = month, rows) do
+    Map.merge(Register.summary(rows), Map.take(month.summary || %{}, ["document_flags"]))
   end
 
   # The assembled 3B for the month. Outward liability comes from the client's

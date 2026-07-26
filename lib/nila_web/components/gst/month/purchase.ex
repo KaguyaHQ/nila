@@ -5,6 +5,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
   attr :purchase_month, :any, default: nil
   attr :stats, :any, default: nil
+  attr :document_flags, :list, default: []
   attr :rows, :list, required: true
   attr :client, :map, required: true
   attr :period, :string, required: true
@@ -23,6 +24,17 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               <span id="gst-stat-need-decision">{@stats.need_decision}</span> need a decision
             </span>
           </p>
+        </div>
+      </div>
+
+      <div :if={@document_flags != []} id="gst-document-flags" class="space-y-2">
+        <div
+          :for={{flag, index} <- Enum.with_index(@document_flags)}
+          id={"gst-document-flag-#{index}"}
+          class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+        >
+          <.badge variant="warning">{issue_label(flag["code"])}</.badge>
+          <span class="text-base-content/80 text-small min-w-0 flex-1">{flag["reason"]}</span>
         </div>
       </div>
 

@@ -34,7 +34,7 @@ defmodule Nila.Gst.Sales.Workings do
   `Gstr1.flagged_fields/2` set on the pristine invoices (what a human may
   legitimately correct).
   """
-  def materialize(invoices, resolutions, header) do
+  def materialize(invoices, resolutions, header, document_issues \\ []) do
     effective = Replay.drop_reopened(resolutions, "target")
     decisions = Replay.decisions(resolutions, "target")
 
@@ -56,6 +56,7 @@ defmodule Nila.Gst.Sales.Workings do
     issues =
       invoices
       |> Gstr1.validation_issues()
+      |> Enum.concat(document_issues)
       |> Enum.map(fn issue ->
         status = if MapSet.member?(confirmed_keys, issue_key(issue)), do: "resolved", else: "open"
         Map.put(issue, "status", status)

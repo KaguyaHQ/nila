@@ -72,7 +72,8 @@ defmodule Nila.Formatters do
     "name_gstin_mismatch" => "Name doesn't match the GSTIN",
     "own_gstin_as_vendor" => "Client's own GSTIN as the vendor",
     "tax_arithmetic_off" => "Tax doesn't add up",
-    "implausible_invoice_number" => "Invoice number looks wrong"
+    "implausible_invoice_number" => "Invoice number looks wrong",
+    "pages_unaccounted" => "Pages with no invoice"
   }
 
   @doc """

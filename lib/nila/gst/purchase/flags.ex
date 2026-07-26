@@ -73,6 +73,39 @@ defmodule Nila.Gst.Purchase.Flags do
     end)
   end
 
+  @doc """
+  Month-level flags: facts about the packet rather than any one invoice, so
+  they carry `"invoice_id" => nil` and hang off the month, not a register row.
+
+  Takes `Nila.Gst.Intake.Dumps.unaccounted_pages/4` — the pages extraction read
+  but produced no invoice from. That is the loud version of the failure this
+  engine most fears: the annotation model omitting a real bill while returning
+  a clean 200. A blank or separator page fires it too, and dismissing one is a
+  glance; silence would cost a month's ITC.
+  """
+  def document_flags(unaccounted_pages) when is_list(unaccounted_pages) do
+    Enum.map(unaccounted_pages, fn %{"source" => source, "pages" => pages} ->
+      %{
+        "invoice_id" => nil,
+        "code" => "pages_unaccounted",
+        "severity" => "review",
+        "reason" =>
+          "#{page_label(pages)} of #{source} produced no invoice. The text was read, " <>
+            "but nothing was extracted from #{pronoun(pages)}. Open the original and " <>
+            "confirm no bill was missed; a blank or separator page is fine to dismiss.",
+        "section" => nil,
+        "fields" => ["pages"],
+        "confidence" => 1.0
+      }
+    end)
+  end
+
+  defp page_label([page]), do: "Page #{page}"
+  defp page_label(pages), do: "Pages #{Enum.join(pages, ", ")}"
+
+  defp pronoun([_page]), do: "it"
+  defp pronoun(_pages), do: "them"
+
   defp duplicate_flags(invoices) do
     invoices
     |> Enum.reject(&(&1["invoice_number"] in [nil, ""]))

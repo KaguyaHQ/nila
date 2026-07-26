@@ -128,21 +128,26 @@ per-page OCR was perfect — only the "reason over everything at once" step fail
 This is the definitive proof that whole-packet extraction is unsafe past the
 threshold (somewhere between 15 and 57 pages).
 
-## Design mandate
+## Design mandate — shipped as `Nila.Gst.Extraction.Windowed`
 
 Grounded in the evidence above, not theory:
 
-1. **Chunk into small page windows.** 6-page windows keep each request in the clean
-   regime (≤15p never dropped) at ~3.5s/page ≈ 22s cold — comfortably under any sane
-   timeout, and far from the degradation zone.
+1. **Chunk into small page windows.** 8-page windows keep each request in the clean
+   regime (≤15p never dropped) at ~3.5s/page ≈ 30s cold — comfortably under any sane
+   timeout, and far from the degradation zone. 8 also matches Mistral's own
+   historical annotation cap.
 2. **Overlap by 2 pages.** A multi-page invoice at a boundary is fully contained in
    one window and re-seen in the next, so nothing falls in a crack. GST invoices are
    1–2 pages, so overlap-2 covers essentially everything.
 3. **Dedupe on `(seller_gstin, invoice_number)`.** Overlap and the model's own
    duplication both produce repeats; a stable identity key collapses them. The 57p
-   run proves dedupe is mandatory even for a *single* call.
+   run proves dedupe is mandatory even for a *single* call. Only records whose
+   pages **touch** collapse — that is the mechanical echo. The same number on pages
+   that don't touch stays two records and reaches the `duplicate_invoice` flag,
+   which is the business question ("scanned twice?"), not the mechanical one.
 4. **Timeout → retry per chunk.** Retries hit the warm server-side cache and return
-   in seconds. Idempotent and cheap.
+   in seconds. Idempotent and cheap. One retry, then the window's page range fails
+   the dump — no partial-success months.
 5. **Skipped-page ledger.** Every physical page must appear in at least one chunk's
    extracted `source_pages`, or it's flagged. This is the guard that turns a silent
    RAC2451 drop into a visible "page 51 unaccounted" review flag. Chunking shrinks
@@ -152,12 +157,26 @@ Chunking makes LLM extraction *reliable enough plus auditable*, not perfect — 
 model is probabilistic. Belt (chunk to stay in the good zone) and suspenders (verify
 page coverage).
 
+Shape as built: page count from `pdfinfo` (poppler is installed in the runtime
+image for it), windows planned 1-based and converted to the API's 0-indexed
+`pages` at the call boundary, `Task.async_stream` at concurrency 4, one
+`gst_extraction_attempts` row per window carrying its page range in
+`request_metadata`, and unaccounted pages surfacing as a month-level
+`pages_unaccounted` review flag (purchase) / issue (sales). A packet of ≤8 pages,
+or an image, is still one whole-document call — small packets are proven clean.
+
 ## Status
 
 - [x] Provider behaviour characterised (this document).
 - [x] Whole-packet degradation reproduced and root-caused.
-- [ ] Chunker (windows + overlap + dedupe + retry + skipped-page ledger) — designed
-      here, not yet built.
+- [x] Chunker (windows + overlap + dedupe + retry + skipped-page ledger) — built as
+      `Nila.Gst.Extraction.Windowed`, covered offline in
+      `test/nila/gst/extraction/windowed_test.exs`.
+- [ ] Live acceptance against the 57-page canary — run
+      `mix run scripts/ocr_probes/whole_packet_canary.exs` and record the row below.
+      Whether the response numbers a window's pages absolutely or relatively is
+      handled either way (`absolute_page_numbers/2` decides per response), but the
+      live run is what pins which one Mistral actually does.
 - [ ] Suspicious-table crop/retry for handwritten nested totals (separate failure;
       see the `84418` case — full-page decoder omits a nested footer the model reads
       correctly when cropped).

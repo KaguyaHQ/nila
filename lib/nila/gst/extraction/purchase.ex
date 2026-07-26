@@ -41,6 +41,16 @@ defmodule Nila.Gst.Extraction.Purchase do
               | {:error, term()}
               | {:error, term(), audit()}
 
-  # Supported opts: :filename and an optional :on_progress callback receiving
-  # coarse stages such as :rendering, :reading, :extracting.
+  @doc """
+  True when `extract/2` accepts a `:per_call` wrapper and applies it around
+  every provider request — a windowed extractor makes many requests per source,
+  and the caller persists one audit row per request rather than one per source.
+  """
+  @callback per_call?() :: boolean()
+
+  @optional_callbacks per_call?: 0
+
+  # Supported opts: :filename, an optional :on_progress callback receiving
+  # coarse stages such as :rendering, :reading, :extracting, and :per_call for
+  # extractors that declare `per_call?/0`.
 end

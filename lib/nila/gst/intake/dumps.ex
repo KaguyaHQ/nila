@@ -117,6 +117,31 @@ defmodule Nila.Gst.Intake.Dumps do
   end
 
   @doc """
+  The pages of each effective dump that no extracted invoice claims, in arrival
+  order: `[%{"dump_id" => 3, "source" => "oct-bills.pdf", "pages" => [51]}]`.
+
+  Page numbers are per dump — each arrival is its own document — so the ledger
+  names the dump alongside them. Dumps whose every page is accounted for drop
+  out, leaving `[]` for a clean month.
+  """
+  def unaccounted_pages(org_id, client_id, period, kind) do
+    org_id
+    |> effective(client_id, period, kind)
+    |> Enum.flat_map(fn dump ->
+      case Map.get(dump.meta || %{}, "unaccounted_pages") do
+        pages when is_list(pages) and pages != [] ->
+          [%{"dump_id" => dump.id, "source" => source_name(dump), "pages" => pages}]
+
+        _none ->
+          []
+      end
+    end)
+  end
+
+  defp source_name(%Dump{file_keys: [key | _rest]}) when is_binary(key), do: Path.basename(key)
+  defp source_name(%Dump{id: id}), do: "dump ##{id}"
+
+  @doc """
   Restores types the JSONB round-trip flattens: `invoice_date` comes back an
   ISO string; the recon and flags expect `Date`. Applied on every read of a
   dump's invoices so downstream code sees the same shapes the extractors
