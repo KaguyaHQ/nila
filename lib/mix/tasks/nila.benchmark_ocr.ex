@@ -7,18 +7,17 @@ defmodule Mix.Tasks.Nila.BenchmarkOcr do
   def run(args) do
     Mix.Task.run("app.start")
 
-    {opts, _rest, invalid} =
+    {opts, names, invalid} =
       OptionParser.parse(args,
-        strict: [manifest: :string, output: :string],
-        aliases: [m: :manifest, o: :output]
+        strict: [output: :string],
+        aliases: [o: :output]
       )
 
     if invalid != [], do: Mix.raise("invalid options: #{inspect(invalid)}")
 
-    manifest = opts[:manifest] || "bench/ocr/manifest.json"
-    output = opts[:output] || Path.join("bench/ocr/results", timestamp())
+    output = opts[:output] || Path.join("tmp/benchmark_ocr", timestamp())
 
-    case Nila.Gst.Extraction.Benchmark.run(Path.expand(manifest), Path.expand(output)) do
+    case Nila.Gst.Extraction.Benchmark.run(names, Path.expand(output)) do
       {:ok, summary} ->
         failures =
           summary["cases"]

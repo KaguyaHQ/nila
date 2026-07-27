@@ -13,46 +13,44 @@ defmodule Nila.Gst.Extraction.Benchmark do
     }
   }
 
-  def run(manifest_path, output_dir) do
-    with {:ok, manifest} <- read_json(manifest_path),
-         documents when is_list(documents) <- manifest["documents"] do
-      File.mkdir_p!(output_dir)
+  def run(names, output_dir) do
+    documents =
+      Nila.EvalCorpus.documents()
+      |> Enum.filter(fn doc ->
+        doc["kind"] in ["purchase", "sales"] and (names == [] or doc["name"] in names)
+      end)
 
-      cases =
-        Enum.map(documents, fn document ->
-          run_case(document, manifest_path, output_dir)
-        end)
+    case documents do
+      [] ->
+        {:error, :no_documents_matched}
 
-      summary = %{
-        "generated_at" => DateTime.utc_now(),
-        "case_count" => length(cases),
-        "false_clean_gate" => "requires human-reviewed expected values",
-        "cases" => cases
-      }
+      documents ->
+        File.mkdir_p!(output_dir)
 
-      File.write!(
-        Path.join(output_dir, "summary.json"),
-        Jason.encode_to_iodata!(summary, pretty: true)
-      )
+        cases = Enum.map(documents, &run_case(&1, output_dir))
 
-      {:ok, summary}
-    else
-      nil -> {:error, :manifest_missing_documents}
-      {:error, reason} -> {:error, reason}
+        summary = %{
+          "generated_at" => DateTime.utc_now(),
+          "case_count" => length(cases),
+          "false_clean_gate" => "requires human-reviewed expected values",
+          "cases" => cases
+        }
+
+        File.write!(
+          Path.join(output_dir, "summary.json"),
+          Jason.encode_to_iodata!(summary, pretty: true)
+        )
+
+        {:ok, summary}
     end
   end
 
-  defp run_case(document, manifest_path, output_dir) do
+  defp run_case(document, output_dir) do
     name = Map.fetch!(document, "name")
     kind = benchmark_kind(Map.fetch!(document, "kind"))
 
-    source_path =
-      case document["corpus"] do
-        nil -> resolve_source(document["source"], manifest_path)
-        name -> Nila.EvalCorpus.fetch!(name)
-      end
-
-    content_type = document["content_type"] || content_type(source_path)
+    source_path = Nila.EvalCorpus.fetch!(name)
+    content_type = content_type(source_path)
     bytes = File.read!(source_path)
 
     results =
@@ -256,18 +254,6 @@ defmodule Nila.Gst.Extraction.Benchmark do
           end)
       }
     end)
-  end
-
-  defp resolve_source(source, manifest_path) do
-    if Path.type(source) == :absolute do
-      source
-    else
-      Path.expand(source, Path.dirname(manifest_path))
-    end
-  end
-
-  defp read_json(path) do
-    with {:ok, bytes} <- File.read(path), do: Jason.decode(bytes)
   end
 
   defp benchmark_kind("purchase"), do: :purchase
