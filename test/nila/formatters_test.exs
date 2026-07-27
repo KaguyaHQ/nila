@@ -104,6 +104,16 @@ defmodule Nila.FormattersTest do
       assert Formatters.format_display_date(nil) == "—"
     end
 
+    # One column holds invoices from before dates were parsed at the boundary
+    # (printed text) and after (ISO, off the JSONB round-trip). Both read the
+    # same way, and text that is not a date is shown as the extractor saw it.
+    test "reads dates that arrive as text, whatever shape they are in" do
+      assert Formatters.format_display_date("2026-05-30") == "30 May 2026"
+      assert Formatters.format_display_date("30.05.2026") == "30 May 2026"
+      assert Formatters.format_display_date("30/05/2026") == "30 May 2026"
+      assert Formatters.format_display_date("Invoice Dt.") == "Invoice Dt."
+    end
+
     test "formats SDC and ISO dates for non-UI consumers" do
       assert Formatters.format_sdc_date(~D[2026-05-30]) == "30.05.2026"
       assert Formatters.format_sdc_date(nil) == nil

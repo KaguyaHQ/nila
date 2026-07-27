@@ -36,8 +36,8 @@ defmodule Nila.Gst.Extraction.Sales.Stub do
       # disagrees with the line sum (64,552 + tax) — validation must flag it,
       # never silently trust the printed total.
       page(1, %{
-        "invoice_number" => "20/2026-27",
-        "invoice_date" => "04.05.2026",
+        "invoice_number" => "20/2025-26",
+        "invoice_date" => "08.10.2025",
         "seller" => %{"name" => "BREEZE TECH", "gstin" => "33AEWPH4158J1Z3"},
         "buyer" => %{"name" => "PONMANI AND CO", "gstin" => "33AABCP9487A1ZG"},
         "line_items" => [
@@ -51,8 +51,8 @@ defmodule Nila.Gst.Extraction.Sales.Stub do
         "printed_grand_total" => 2_75_000.00
       }),
       page(2, %{
-        "invoice_number" => "21/2026-27",
-        "invoice_date" => "06.05.2026",
+        "invoice_number" => "21/2025-26",
+        "invoice_date" => "10.10.2025",
         "seller" => %{"name" => "BREEZE TECH", "gstin" => "33AEWPH4158J1Z3"},
         "buyer" => %{"name" => "PONMANI AND CO", "gstin" => "33AABCP9487A1ZG"},
         "line_items" => [line("AC service", "8415", 12_000.0, 9.0)],
@@ -61,8 +61,8 @@ defmodule Nila.Gst.Extraction.Sales.Stub do
         "printed_grand_total" => 14_160.0
       }),
       page(3, %{
-        "invoice_number" => "22/2026-27",
-        "invoice_date" => "09.05.2026",
+        "invoice_number" => "22/2025-26",
+        "invoice_date" => "12.10.2025",
         "seller" => %{"name" => "BREEZE TECH", "gstin" => "33AEWPH4158J1Z3"},
         "buyer" => %{"name" => "SIEMENS HEALTHCARE", "gstin" => "33AAVCS8021P1ZM"},
         "line_items" => [line("134A Gas", "2903", 10_200.0, 9.0)],

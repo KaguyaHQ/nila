@@ -81,7 +81,7 @@ defmodule NilaWeb.Components.Gst.Month.Precondition do
             id="month-precondition-reason"
             label={"Why does this packet belong in #{Formatters.period_label(@period)}?"}
             value=""
-            placeholder="Availing these credits this month — the bills came in late"
+            placeholder={reason_placeholder(@dump.kind)}
           />
           <p class="text-base-content/55 text-fine">
             Recorded on the arrival. It is what the signature stands on if anyone asks later.
@@ -134,8 +134,18 @@ defmodule NilaWeb.Components.Gst.Month.Precondition do
   defp confirm_label(_assigns), do: "Confirm"
 
   defp arrival_line(dump) do
-    kind = if dump.kind == "gstr2b", do: "GSTR-2B", else: "purchase packet"
-
-    "The #{kind} that arrived #{format_display_datetime(dump.inserted_at)}."
+    "The #{kind_label(dump.kind)} that arrived #{format_display_datetime(dump.inserted_at)}."
   end
+
+  defp kind_label("gstr2b"), do: "GSTR-2B"
+  defp kind_label("purchase"), do: "purchase packet"
+  defp kind_label("sales"), do: "sales packet"
+
+  # A sales packet has no credits to avail, and an example that describes the
+  # wrong side of the ledger teaches the reviewer to write the wrong reason.
+  defp reason_placeholder("sales"),
+    do: "Raised late — these went out this month even though they're dated earlier"
+
+  defp reason_placeholder(_kind),
+    do: "Availing these credits this month — the bills came in late"
 end

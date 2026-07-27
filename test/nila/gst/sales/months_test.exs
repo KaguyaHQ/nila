@@ -22,7 +22,7 @@ defmodule Nila.Gst.Sales.MonthsTest do
         client_id: client.id,
         period: @period,
         state: "worked",
-        invoices: [%{"invoice_number" => "20/2026-27"}],
+        invoices: [%{"invoice_number" => "20/2025-26"}],
         derived_gstr1: %{"gstin" => "33AEWPH4158J1Z3"},
         issues: [%{"code" => "grand_total_mismatch"}],
         summary: %{"count" => 1}

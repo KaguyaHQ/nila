@@ -17,6 +17,7 @@ defmodule Nila.Gst.Intake.Dumps do
   import Ecto.Query, only: [from: 2]
 
   alias Nila.Gst.Intake.Dump
+  alias Nila.Gst.Purchase.Books
   alias Nila.Repo
 
   @active_statuses ~w(received extracting)
@@ -223,23 +224,20 @@ defmodule Nila.Gst.Intake.Dumps do
 
   @doc """
   Restores types the JSONB round-trip flattens: `invoice_date` comes back an
-  ISO string; the recon and flags expect `Date`. Applied on every read of a
-  dump's invoices so downstream code sees the same shapes the extractors
-  produced.
+  ISO string; the recon and flags expect `Date`.
+
+  Parses printed dates too, not just the ISO the round-trip writes. Sales
+  invoices extracted before dates were parsed at the boundary are stored as the
+  model printed them (`"05.06.2026"`), and a rehydrate that only read ISO left
+  every one of those months invisible to the checks that match on `Date` — the
+  guard failing open on exactly the history it exists to compare against.
   """
   def rehydrate(invoice) do
     Map.update(invoice, "invoice_date", nil, fn
       %Date{} = date -> date
-      value when is_binary(value) -> from_iso(value)
+      value when is_binary(value) -> Books.parse_date(value) || value
       other -> other
     end)
-  end
-
-  defp from_iso(value) do
-    case Date.from_iso8601(value) do
-      {:ok, date} -> date
-      {:error, _} -> value
-    end
   end
 
   def mark_extracting(%Dump{} = dump),

@@ -19,9 +19,9 @@ defmodule Nila.Gst.Extraction.SalesTest do
       invoices = Enum.map(pages, &Gstr1.normalize_invoice/1)
 
       assert Enum.map(invoices, & &1["invoice_number"]) == [
-               "20/2026-27",
-               "21/2026-27",
-               "22/2026-27"
+               "20/2025-26",
+               "21/2025-26",
+               "22/2025-26"
              ]
     end
 
@@ -51,10 +51,10 @@ defmodule Nila.Gst.Extraction.SalesTest do
         "extract_result" => [
           %{
             "page" => 1,
-            "data" => %{"invoice_number" => "20/2026-27"},
+            "data" => %{"invoice_number" => "20/2025-26"},
             "confidence" => %{"x" => 0.9}
           },
-          %{"page" => 2, "data" => %{"invoice_number" => "21/2026-27"}}
+          %{"page" => 2, "data" => %{"invoice_number" => "21/2025-26"}}
         ]
       }
 
@@ -64,7 +64,7 @@ defmodule Nila.Gst.Extraction.SalesTest do
 
       assert first["page"] == 1
       assert first["image"] == "images/page_01.png"
-      assert first["data"]["invoice_number"] == "20/2026-27"
+      assert first["data"]["invoice_number"] == "20/2025-26"
       assert first["confidence"] == %{"x" => 0.9}
 
       # No rendered image for page 2 → image and confidence stay nil.

@@ -278,18 +278,26 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
     %{
       tone: if(finding["kind"] == "cross_month_duplicate", do: :alarm, else: :calm),
-      headline: question_headline(finding, facts),
+      headline: question_headline(finding, facts, subject_noun(dump.kind)),
       door: nil,
       question: %{dump: dump, finding: finding},
       dump: dump
     }
   end
 
-  defp question_headline(finding, facts) do
+  # A packet of bills you received and a packet of invoices you raised are not
+  # the same noun, and the sentence is the whole surface here. Enumerated for
+  # the same reason `Preconditions.check/1` is: a catch-all silently gives a new
+  # kind the wrong word instead of failing where someone would notice.
+  defp subject_noun("sales"), do: "invoice"
+  defp subject_noun("purchase"), do: "bill"
+  defp subject_noun("gstr2b"), do: "entry"
+
+  defp question_headline(finding, facts, noun) do
     {sentences, _first?} =
-      [&mismatch_sentence/3, &duplicate_sentence/3, &overlap_sentence/3]
+      [&mismatch_sentence/4, &duplicate_sentence/4, &overlap_sentence/4]
       |> Enum.reduce({[], true}, fn build, {acc, first?} ->
-        case build.(finding, facts, first?) do
+        case build.(finding, facts, first?, noun) do
           nil -> {acc, first?}
           sentence -> {[sentence | acc], false}
         end
@@ -301,28 +309,34 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     end
   end
 
-  defp mismatch_sentence(%{"outside_period" => count, "total" => total} = finding, facts, first?) do
-    "#{bill_subject(count, total, first?)} #{are(count)} dated #{dated_range(finding)}, " <>
+  defp mismatch_sentence(
+         %{"outside_period" => count, "total" => total} = finding,
+         facts,
+         first?,
+         noun
+       ) do
+    "#{bill_subject(count, total, first?, noun)} #{are(count)} dated #{dated_range(finding)}, " <>
       "not #{Formatters.period_label(facts.period)}."
   end
 
-  defp mismatch_sentence(_finding, _facts, _first?), do: nil
+  defp mismatch_sentence(_finding, _facts, _first?, _noun), do: nil
 
   defp duplicate_sentence(
          %{"duplicate_of" => %{"period" => period, "count" => count}, "total" => total},
          _facts,
-         first?
+         first?,
+         noun
        ) do
-    "#{bill_subject(count, total, first?)} #{are(count)} already in " <>
+    "#{bill_subject(count, total, first?, noun)} #{are(count)} already in " <>
       "#{Formatters.period_label(period)} — same invoice numbers, same dates."
   end
 
-  defp duplicate_sentence(_finding, _facts, _first?), do: nil
+  defp duplicate_sentence(_finding, _facts, _first?, _noun), do: nil
 
   # What was observed, never a cause the engine cannot know. The same move as
   # the unaccounted-pages ledger one layer down: the engine reporting on the
   # quality of its own output instead of just handing it over.
-  defp overlap_sentence(%{"observed" => observed}, _facts, _first?) do
+  defp overlap_sentence(%{"observed" => observed}, _facts, _first?, _noun) do
     books = observed["books"]
     gstr2b = observed["gstr2b"]
 
@@ -330,13 +344,13 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       "2B #{pluralise(gstr2b, "entry", "entries")}, and not one of them matched the other side."
   end
 
-  defp overlap_sentence(_finding, _facts, _first?), do: nil
+  defp overlap_sentence(_finding, _facts, _first?, _noun), do: nil
 
-  defp bill_subject(count, total, first?) do
+  defp bill_subject(count, total, first?, noun) do
     cond do
-      count == total and first? -> "All #{total} #{pluralise(total, "bill")} in this packet"
+      count == total and first? -> "All #{total} #{pluralise(total, noun)} in this packet"
       count == total -> "All #{total} of them"
-      first? -> "#{count} of this packet's #{total} #{pluralise(total, "bill")}"
+      first? -> "#{count} of this packet's #{total} #{pluralise(total, noun)}"
       true -> "#{count} of them"
     end
   end

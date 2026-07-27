@@ -4,17 +4,17 @@ defmodule Nila.Gst.Sales.WorkingsTest do
   alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
 
-  @header Gstr1.production_header("33AEWPH4158J1Z3", "2026-05")
+  @header Gstr1.production_header("33AEWPH4158J1Z3", "2025-10")
 
   # Stub-shaped raw pages run through the real normalizer, so these tests
   # exercise the same invoice shape production stores in sales_months.
   defp invoices do
     [
       # Poison total: printed grand total disagrees with line sum.
-      raw(1, "20/2026-27", [line("Refrigeration unit", 55_552.0)], 2_75_000.0),
-      raw(2, "21/2026-27", [line("AC service", 12_000.0)], 14_160.0),
+      raw(1, "20/2025-26", [line("Refrigeration unit", 55_552.0)], 2_75_000.0),
+      raw(2, "21/2025-26", [line("AC service", 12_000.0)], 14_160.0),
       # Sequence gap: 22 is missing, 23 follows.
-      raw(3, "23/2026-27", [line("134A Gas", 10_200.0)], 12_036.0)
+      raw(3, "23/2025-26", [line("134A Gas", 10_200.0)], 12_036.0)
     ]
     |> Enum.map(&Gstr1.normalize_invoice/1)
   end
@@ -27,7 +27,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
       "page" => page,
       "data" => %{
         "invoice_number" => inum,
-        "invoice_date" => "04.05.2026",
+        "invoice_date" => "08.10.2025",
         "seller" => %{"name" => "BREEZE TECH", "gstin" => "33AEWPH4158J1Z3"},
         "buyer" => %{"name" => "PONMANI AND CO", "gstin" => "33AABCP9487A1ZG"},
         "line_items" => line_items,
@@ -71,7 +71,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     resolutions = [
       %{
         "verb" => "correct_field",
-        "target" => "20/2026-27",
+        "target" => "20/2025-26",
         "payload" => %{"field" => "printed_grand_total", "from" => 2_75_000.0, "to" => 65_551.36}
       }
     ]
@@ -89,7 +89,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     resolutions = [
       %{
         "verb" => "correct_field",
-        "target" => "21/2026-27",
+        "target" => "21/2025-26",
         "payload" => %{"field" => "buyer_name", "from" => "PONMANI AND CO", "to" => "MALLORY"}
       }
     ]
@@ -97,7 +97,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     result = SalesWorkings.materialize(invoices(), resolutions, @header)
 
     assert [%{"field" => "buyer_name"}] = result.silent_errors
-    clean = Enum.find(result.invoices, &(&1["invoice_number"] == "21/2026-27"))
+    clean = Enum.find(result.invoices, &(&1["invoice_number"] == "21/2025-26"))
     assert clean["buyer_name"] == "PONMANI AND CO"
   end
 
@@ -139,7 +139,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     invoices =
       invoices()
       |> Enum.map(fn
-        %{"invoice_number" => "20/2026-27"} = invoice ->
+        %{"invoice_number" => "20/2025-26"} = invoice ->
           Map.put(invoice, "confidence", %{"invoice_number" => 0.3})
 
         invoice ->
@@ -149,19 +149,19 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     resolutions = [
       %{
         "verb" => "correct_field",
-        "target" => "20/2026-27",
-        "payload" => %{"field" => "invoice_number", "from" => "20/2026-27", "to" => "19/2026-27"}
+        "target" => "20/2025-26",
+        "payload" => %{"field" => "invoice_number", "from" => "20/2025-26", "to" => "19/2025-26"}
       },
       %{
         "verb" => "correct_field",
-        "target" => "20/2026-27",
+        "target" => "20/2025-26",
         "payload" => %{"field" => "printed_grand_total", "from" => 2_75_000.0, "to" => 65_551.36}
       }
     ]
 
     result = SalesWorkings.materialize(invoices, resolutions, @header)
 
-    renamed = Enum.find(result.invoices, &(&1["invoice_number"] == "19/2026-27"))
+    renamed = Enum.find(result.invoices, &(&1["invoice_number"] == "19/2025-26"))
     assert renamed
     assert renamed["printed_grand_total"] == 65_551.36
     refute "grand_total_mismatch" in open_codes(result)

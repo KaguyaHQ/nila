@@ -28,6 +28,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   tooling, not product — the product never scores itself — so it lives in
   `scripts/gstr1_eval_lib.exs`, not here.
   """
+  alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Purchase.Flags
 
   @confidence_threshold 0.90
@@ -99,7 +100,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "source_pages" => raw["source_pages"] || [raw["page"] || data["page"]],
       "source_attribution" => raw["source_attribution"],
       "invoice_number" => normalize_invoice_number(value(data, ["invoice_number", "inum"])),
-      "invoice_date" => value(data, ["invoice_date", "idt"]),
+      "invoice_date" => normalize_invoice_date(value(data, ["invoice_date", "idt"])),
       "seller_name" => value(data, ["seller_name"]) || seller["name"],
       "seller_gstin" => value(data, ["seller_gstin"]) || seller["gstin"],
       "buyer_name" => value(data, ["buyer_name"]) || buyer["name"],
@@ -256,12 +257,64 @@ defmodule Nila.Gst.Sales.Gstr1 do
       |> Enum.flat_map(fn {line, index} -> line_issues(invoice, line, index) end)
 
     invoice_number_issues(invoice) ++
+      invoice_date_issues(invoice) ++
       arithmetic_issues(invoice) ++
       gstin_issues(invoice) ++
       consistency_issues(invoice) ++
       lopsided_split_issues(invoice) ++
       furniture_row_issues(invoice) ++ bucket_rounding_issues(invoice) ++ line_issues
   end
+
+  # The date is the one field that reaches the portal with nothing downstream
+  # comparing it, so without this it files whatever the model printed.
+  #
+  # Asks whether the value *is* a date, not whether it is a `Date`: an invoice
+  # read back out of JSONB carries the ISO string, and a check keyed on the
+  # struct would flag every stored invoice in the product. Anything that is not
+  # a date — a bare number the schema asked to be a string, a caption, a blank —
+  # is flagged rather than let through, because each of those is also invisible
+  # to the precondition checks, which match on `Date`.
+  #
+  # Gated on the invoice carrying values, the same gate `invoice_number_issues/1`
+  # uses: a furniture row scraped off a page header is not a bill anyone files.
+  defp invoice_date_issues(%{"invoice_date" => %Date{}}), do: []
+
+  defp invoice_date_issues(invoice) do
+    printed = invoice["invoice_date"]
+
+    cond do
+      not sales_invoice_has_values?(invoice) ->
+        []
+
+      blank_date?(printed) ->
+        [
+          issue(
+            invoice,
+            "unreadable_invoice_date",
+            "the invoice carries values but no invoice date was extracted — read it off the bill",
+            ["invoice_date"]
+          )
+        ]
+
+      is_binary(printed) and Books.parse_date(printed) ->
+        []
+
+      true ->
+        [
+          issue(
+            invoice,
+            "unreadable_invoice_date",
+            "the invoice date reads #{inspect(printed)}, which is not a date — correct it " <>
+              "before filing",
+            ["invoice_date"]
+          )
+        ]
+    end
+  end
+
+  defp blank_date?(nil), do: true
+  defp blank_date?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank_date?(_value), do: false
 
   defp invoice_number_issues(invoice) do
     smell =
@@ -807,17 +860,39 @@ defmodule Nila.Gst.Sales.Gstr1 do
   defp line_rate(line),
     do: num(line["cgst_rate"]) + num(line["sgst_rate"]) + num(line["igst_rate"])
 
+  # The portal wants `idt` as DD-MM-YYYY. Swapping separators on whatever the
+  # model printed only produced that by luck — an ISO date came out ISO and was
+  # filed that way. Anything datable is formatted; anything else is passed
+  # through, because a date we cannot read is a question for the reviewer
+  # (`unreadable_invoice_date`), not something to invent a format for.
   defp normalize_date(nil), do: nil
 
+  defp normalize_date(%Date{} = date), do: Calendar.strftime(date, "%d-%m-%Y")
+
   defp normalize_date(date) do
-    date
-    |> to_string()
-    |> String.trim()
-    |> String.replace(~r/[.\/]/, "-")
+    case Books.parse_date(to_string(date)) do
+      %Date{} = parsed -> normalize_date(parsed)
+      nil -> date |> to_string() |> String.trim() |> String.replace(~r/[.\/]/, "-")
+    end
   end
 
   defp hsn4(nil), do: nil
   defp hsn4(hsn), do: hsn |> to_string() |> String.replace(~r/\D/, "") |> String.slice(0, 4)
+
+  # Dates are parsed at the boundary, so every kind of dump carries the same
+  # type downstream and a check written once covers all of them. An unparseable
+  # date keeps its printed text rather than becoming nil — losing it would hide
+  # the problem instead of showing it — and `unreadable_invoice_date` says so.
+  defp normalize_invoice_date(nil), do: nil
+
+  defp normalize_invoice_date(%Date{} = date), do: date
+
+  defp normalize_invoice_date(value) do
+    case Books.parse_date(to_string(value)) do
+      %Date{} = date -> date
+      nil -> value
+    end
+  end
 
   defp normalize_invoice_number(nil), do: nil
 

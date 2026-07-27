@@ -129,7 +129,9 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               <span class="font-medium">{invoice["invoice_number"] || "—"}</span>
             </div>
           </:col>
-          <:col :let={invoice} label="Date">{invoice["invoice_date"] || "—"}</:col>
+          <:col :let={invoice} label="Date">
+            {Nila.Formatters.format_display_date(invoice["invoice_date"])}
+          </:col>
           <:col :let={invoice} label="Buyer">{invoice["buyer_name"] || "—"}</:col>
           <:col :let={invoice} label="Buyer GSTIN">
             <span class="text-fine font-mono">{invoice["buyer_gstin"] || "—"}</span>

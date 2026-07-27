@@ -38,16 +38,24 @@ defmodule Nila.Gst.Intake.Preconditions do
   then refuse to build a month on it. The alternative — asking before reading —
   can only ask about the filename, which is exactly the guess that failed.
 
-  The checks run on bill packets and the 2B, never on sales: a sales invoice's
-  date survives extraction as the printed string rather than a `Date`, so a date
-  window there would be a second date parser, and the failure this exists for is
-  purchase-side.
+  Which check runs is a property of the dump's kind, so `check/1` enumerates
+  every kind rather than falling through a catch-all. A catch-all here answers
+  "nothing wrong" for the kinds nobody thought about, and that is exactly how
+  sales went unguarded while a June packet filed itself into December.
+
+  `zero_overlap` is purchase-only because it needs a second side to compare
+  against, and sales has none. The other two run on every packet: sales invoice
+  dates are parsed at extraction (`Gstr1.normalize_invoice/1`), so a sales
+  packet answers the period question in the same terms as a bill packet, and a
+  sales invoice declared in two months is the same error read from the other
+  side of the ledger.
   """
 
   alias Nila.Fuzzy
   alias Nila.Gst.Intake.{Dump, Dumps}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Purchase.Reconciliation
+  alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Storage
 
   # A two-bill packet where both are old is noise; fourteen of fourteen is a
@@ -74,16 +82,27 @@ defmodule Nila.Gst.Intake.Preconditions do
         "observed" => %{"books" => 14, "gstr2b" => 8, "matched" => 0}
       }
   """
-  def check(%Dump{kind: kind} = dump) when kind in ~w(purchase gstr2b) do
+  # Every kind in `Dump.kinds/0`, listed on purpose. A fourth kind raises here
+  # rather than being waved through, and the test that walks `Dump.kinds/0`
+  # catches it before a worker ever does.
+  def check(%Dump{kind: kind} = dump) when kind in ~w(purchase sales gstr2b) do
     if answered?(dump), do: nil, else: findings(dump)
   end
-
-  def check(%Dump{}), do: nil
 
   defp findings(%Dump{kind: "gstr2b"} = dump),
     do: merge([zero_overlap(dump)], dump, dump.invoices)
 
-  defp findings(%Dump{} = dump) do
+  defp findings(%Dump{kind: "sales"} = dump) do
+    invoices = Enum.map(dump.invoices, &Dumps.rehydrate/1)
+
+    merge(
+      [period_mismatch(dump, invoices), cross_month_duplicate(dump, invoices)],
+      dump,
+      invoices
+    )
+  end
+
+  defp findings(%Dump{kind: "purchase"} = dump) do
     invoices = Enum.map(dump.invoices, &Dumps.rehydrate/1)
 
     [period_mismatch(dump, invoices), cross_month_duplicate(dump, invoices), zero_overlap(dump)]
@@ -111,12 +130,17 @@ defmodule Nila.Gst.Intake.Preconditions do
   # a. Dates outside the period — a question.
   # ---------------------------------------------------------------------------
 
+  # The majority is taken over the invoices that *have* a date, not over every
+  # entry on the dump. Rows the check cannot date — a cover sheet the sales path
+  # maps like any other page, an unreadable date — say nothing either way, and
+  # counting them in the denominator only ever votes against asking. Four June
+  # bills behind four junk pages is still four bills in the wrong month.
   defp period_mismatch(%Dump{} = dump, invoices) do
     dated = for invoice <- invoices, period = period_of(invoice), do: period
     outside = Enum.reject(dated, &(&1 == dump.period))
     count = length(outside)
 
-    if count >= @minimum_outside and count * 2 > length(invoices) do
+    if count >= @minimum_outside and count * 2 > length(dated) do
       %{
         "kind" => "period_mismatch",
         "outside_period" => count,
@@ -292,10 +316,16 @@ defmodule Nila.Gst.Intake.Preconditions do
     end)
   end
 
-  defp move_evidence(%Dump{kind: "purchase"} = dump, from_period) do
-    for invoice <- dump.invoices, basename <- invoice["images"] || [] do
-      from = PurchaseMonths.evidence_key(dump.org_id, dump.client_id, from_period, basename)
-      to = PurchaseMonths.evidence_key(dump.org_id, dump.client_id, dump.period, basename)
+  # Purchase names its pages in a list, sales in a scalar, and the two write to
+  # different prefixes — so the move has to know both. A 2B carries no scans.
+  defp move_evidence(%Dump{kind: "gstr2b"}, _from_period), do: :ok
+
+  defp move_evidence(%Dump{} = dump, from_period) do
+    key_fun = evidence_key_fun(dump.kind)
+
+    for invoice <- dump.invoices, basename <- basenames(invoice) do
+      from = key_fun.(dump.org_id, dump.client_id, from_period, basename)
+      to = key_fun.(dump.org_id, dump.client_id, dump.period, basename)
 
       with {:ok, bytes} <- Storage.get(from) do
         Storage.put(to, bytes, content_type: content_type(basename))
@@ -305,7 +335,16 @@ defmodule Nila.Gst.Intake.Preconditions do
     :ok
   end
 
-  defp move_evidence(%Dump{}, _from_period), do: :ok
+  defp evidence_key_fun("purchase"), do: &PurchaseMonths.evidence_key/4
+  defp evidence_key_fun("sales"), do: &SalesMonths.evidence_key/4
+
+  defp basenames(invoice) do
+    case invoice["images"] || invoice["image"] do
+      names when is_list(names) -> names
+      name when is_binary(name) -> [name]
+      _none -> []
+    end
+  end
 
   defp content_type(basename) do
     case Path.extname(basename) do

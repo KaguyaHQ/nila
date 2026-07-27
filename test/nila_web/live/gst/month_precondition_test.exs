@@ -17,7 +17,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
     %{conn: log_in_user(conn, user), user: user, org: org, client: client}
   end
 
-  defp in_question(context, finding \\ nil) do
+  defp in_question(context, finding \\ nil, kind \\ "purchase") do
     {:ok, dump} =
       Dumps.record(
         %{
@@ -27,7 +27,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
         },
         %{
           period: @period,
-          kind: "purchase",
+          kind: kind,
           status: "extracted",
           file_keys: ["dumps/april.pdf"],
           invoices: invoices()
@@ -213,5 +213,24 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
     refute has_element?(view, "#month-precondition")
     assert has_element?(view, "#month-arrived-answer-#{dump.id}", "Discarded as a double upload")
     refute_enqueued(worker: DumpWorker)
+  end
+
+  # A packet of bills you received and a packet of invoices you raised are not
+  # the same noun, and the reason a reviewer is asked to write is not the same
+  # sentence. The question is one paragraph — if it describes the wrong side of
+  # the ledger, it is describing someone else's month.
+  test "the question reads as sales when a sales packet raised it", context do
+    _dump = in_question(context, nil, "sales")
+
+    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+
+    assert has_element?(view, "#month-precondition", "The sales packet that arrived")
+    assert has_element?(view, "#month-headline", "All 14 invoices in this packet are dated")
+    refute has_element?(view, "#month-headline", "bills")
+
+    view |> element("#month-precondition-choose-keep") |> render_click()
+
+    refute has_element?(view, "#month-precondition-reason[placeholder*='credits']")
+    assert has_element?(view, "#month-precondition-reason[placeholder*='Raised late']")
   end
 end

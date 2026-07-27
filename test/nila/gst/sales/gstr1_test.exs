@@ -49,6 +49,100 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert invoice["seller_gstin"] == "33AEWPH4158J1Z3"
       assert length(invoice["line_items"]) == 1
     end
+
+    # Parsed here so every kind of packet carries the same type downstream and a
+    # check written once covers all of them — the gap that let a June sales
+    # packet file itself into December unremarked.
+    test "parses printed dates in every shape the packets arrive in" do
+      for printed <- ["04.05.2026", "04/05/2026", "04-05-2026", "2026-05-04", "4/5/26"] do
+        assert dated(printed)["invoice_date"] == ~D[2026-05-04], "failed on #{printed}"
+      end
+    end
+
+    test "a date nothing can read keeps its printed text rather than becoming nil" do
+      assert dated("Invoice Dt.")["invoice_date"] == "Invoice Dt."
+      assert dated(nil)["invoice_date"] == nil
+    end
+  end
+
+  describe "validation_issues/1 — the date that reaches the portal unchecked" do
+    test "an unreadable date is raised as a correctable issue" do
+      issues = Gstr1.validation_issues([dated("Invoice Dt.")])
+      assert issue = Enum.find(issues, &(&1["code"] == "unreadable_invoice_date"))
+      assert "invoice_date" in issue["fields"]
+    end
+
+    test "a date that parsed is not an issue" do
+      codes = Gstr1.validation_issues([dated("04.05.2026")]) |> Enum.map(& &1["code"])
+      refute "unreadable_invoice_date" in codes
+    end
+
+    # The provider schemas ask for a string; that is a request, not a guarantee.
+    # A bare number files as `idt: "20260504"` and is invisible to the period
+    # checks too, so it has to be caught here or nowhere.
+    test "a date that is not even text is caught" do
+      codes = Gstr1.validation_issues([dated(20_260_504)]) |> Enum.map(& &1["code"])
+      assert "unreadable_invoice_date" in codes
+    end
+
+    test "an invoice carrying values but no date is asked for one" do
+      for empty <- [nil, "", "   "] do
+        issue = Gstr1.validation_issues([dated(empty)]) |> Enum.find(&date_issue?/1)
+        assert issue, "stayed quiet on #{inspect(empty)}"
+        assert issue["message"] =~ "no invoice date was extracted"
+      end
+    end
+
+    # Same gate `invoice_number_issues/1` uses. A caption scraped off a page
+    # header is not a bill, and flagging it is noise in the reviewer's queue.
+    test "a furniture row with no values is not asked about its date" do
+      furniture =
+        Gstr1.normalize_invoice(%{
+          "page" => 1,
+          "data" => %{
+            "invoice_number" => nil,
+            "invoice_date" => "Invoice Dt.",
+            "line_items" => []
+          }
+        })
+
+      refute Enum.any?(Gstr1.validation_issues([furniture]), &date_issue?/1)
+    end
+  end
+
+  describe "derive/2 — the portal's date format" do
+    # `idt` is DD-MM-YYYY. Swapping separators on whatever the model printed only
+    # produced that by luck: an ISO date came out ISO and was filed that way.
+    test "renders idt as DD-MM-YYYY whatever the bill printed" do
+      for printed <- ["2026-05-04", "04/05/2026", "4.5.2026"] do
+        assert idt(printed) == "04-05-2026", "failed on #{printed}"
+      end
+    end
+  end
+
+  defp date_issue?(issue), do: issue["code"] == "unreadable_invoice_date"
+
+  defp dated(printed) do
+    Gstr1.normalize_invoice(%{
+      "page" => 1,
+      "data" => %{
+        "invoice_number" => "20/2026-27",
+        "invoice_date" => printed,
+        "seller" => %{"name" => "S", "gstin" => "33AEWPH4158J1Z3"},
+        "buyer" => %{"name" => "B", "gstin" => "33AABCP9487A1ZG"},
+        "line_items" => [
+          %{"taxable_value" => 1000, "cgst_rate" => 9, "cgst_amount" => 90, "sgst_amount" => 90}
+        ],
+        "printed_grand_total" => 1180.0
+      }
+    })
+  end
+
+  defp idt(printed) do
+    %{"b2b" => [%{"inv" => [inv | _rest]} | _more]} =
+      Gstr1.derive([dated(printed)], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "052026"})
+
+    inv["idt"]
   end
 
   describe "validation_issues/1 — the poison-total canary" do

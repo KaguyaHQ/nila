@@ -9,7 +9,7 @@ defmodule Nila.Gst.Sales.ResolutionsTest do
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
 
-  @period "2026-05"
+  @period "2025-10"
 
   setup do
     %{user: user, org: org} = user_with_org_fixture()

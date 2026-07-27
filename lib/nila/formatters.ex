@@ -140,6 +140,19 @@ defmodule Nila.Formatters do
   def format_display_date(nil), do: "—"
   def format_display_date(%Date{} = date), do: Calendar.strftime(date, "%d %b %Y")
 
+  # Dates that came back off a JSONB round-trip arrive as text, and invoices
+  # extracted before dates were parsed at the boundary carry whatever the bill
+  # printed. One column holds both, so both are read here rather than leaving a
+  # table showing `2025-10-08` in one row and `04.05.2026` in the next. Text
+  # that is not a date at all is shown as it was read — the reviewer needs to
+  # see what the extractor saw.
+  def format_display_date(value) when is_binary(value) do
+    case Nila.Gst.Purchase.Books.parse_date(value) do
+      %Date{} = date -> format_display_date(date)
+      nil -> value
+    end
+  end
+
   def format_long_display_date(nil), do: "—"
   def format_long_display_date(%Date{} = date), do: Calendar.strftime(date, "%a %d %b %Y")
 

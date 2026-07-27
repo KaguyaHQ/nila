@@ -9,6 +9,7 @@ defmodule Nila.Gst.Intake.PreconditionsTest do
   alias Nila.Gst.Filing.Signoffs
   alias Nila.Gst.Intake.{DumpWorker, Dumps, Preconditions}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
+  alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Storage
 
   # A purchase extractor the test hands its own packet to. Deliberately exports
@@ -21,10 +22,23 @@ defmodule Nila.Gst.Intake.PreconditionsTest do
     def extract(_bytes, _opts), do: {:ok, %{pages: Process.get(:packet, []), images: %{}}}
   end
 
+  defmodule SalesPacket do
+    @behaviour Nila.Gst.Extraction.Sales
+
+    @impl true
+    def extract(_bytes, _opts), do: {:ok, %{pages: Process.get(:packet, []), images: %{}}}
+  end
+
   setup do
     previous = Application.get_env(:nila, :purchase_extractor)
+    previous_sales = Application.get_env(:nila, :sales_extractor)
     Application.put_env(:nila, :purchase_extractor, Packet)
-    on_exit(fn -> Application.put_env(:nila, :purchase_extractor, previous) end)
+    Application.put_env(:nila, :sales_extractor, SalesPacket)
+
+    on_exit(fn ->
+      Application.put_env(:nila, :purchase_extractor, previous)
+      Application.put_env(:nila, :sales_extractor, previous_sales)
+    end)
 
     %{user: user, org: org, membership: membership} = user_with_org_fixture()
 
@@ -354,6 +368,164 @@ defmodule Nila.Gst.Intake.PreconditionsTest do
     assert {:error, :not_in_question} = Preconditions.keep(reload(context, dump), "why", 1)
     assert {:error, :not_in_question} = Preconditions.discard(reload(context, dump), 1)
     assert {:error, :not_in_question} = Preconditions.move(reload(context, dump), "2026-05", 1)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Sales — the same two packet checks, read from the other side of the ledger
+  # ---------------------------------------------------------------------------
+
+  test "a sales packet dated June filed under December asks before drafting a return",
+       context do
+    bills = for i <- 1..8, do: {"#{i}/2026-27", "#{i}/06/2026"}
+
+    dump = bring_in(context, "2025-12", bills, "sales")
+    assert :ok = run(dump)
+
+    dump = reload(context, dump)
+    assert dump.status == "needs_confirmation"
+
+    finding = dump.meta["precondition"]
+    assert finding["kind"] == "period_mismatch"
+    assert finding["modal_period"] == "2026-06"
+    assert finding["outside_period"] == 8
+
+    # The return is the thing this protects: nothing outward is built from it.
+    assert Dumps.effective(context.org.id, context.client.id, "2025-12", "sales") == []
+  end
+
+  test "the same sales invoice declared in two months is an error", context do
+    invoices = for i <- 1..4, do: {"#{i}/2026-27", "0#{i}/04/2026"}
+
+    assert :ok = run(bring_in(context, "2026-04", invoices, "sales"))
+
+    resent = bring_in(context, "2026-05", invoices, "sales")
+    assert :ok = run(resent)
+
+    resent = reload(context, resent)
+    assert resent.status == "needs_confirmation"
+    assert resent.meta["precondition"]["kind"] == "cross_month_duplicate"
+    assert resent.meta["precondition"]["duplicate_of"] == %{"period" => "2026-04", "count" => 4}
+  end
+
+  # Sales has no second side to reconcile against, so the pairing check must not
+  # reach across and fire on the purchase month that happens to share the period.
+  test "a sales packet is never asked the overlap question", context do
+    assert :ok = run(bring_in(context, "2026-04", april_bills(4)))
+
+    dump = bring_in(context, "2026-04", [{"1/2026-27", "05/04/2026"}], "sales")
+    assert :ok = run(dump)
+
+    assert reload(context, dump).status == "extracted"
+  end
+
+  # The guard is scoped by kind, so its coverage has to be checked by kind. A
+  # fourth kind added to the schema without a clause fails here rather than in a
+  # worker, which is the whole reason `check/1` has no catch-all. Each dump
+  # carries an in-period invoice so the checks actually run: an empty packet
+  # returns nil from every check before reaching any of them, which would pass
+  # just as well for a kind whose clause did nothing at all.
+  test "every kind a dump can be is answered by check/1, and runs its checks", context do
+    # A period each, so one kind's stored packet is not the other kind's finding
+    # — a 2B lands beside the purchase books and the pair is checked for real.
+    for {kind, period} <- Enum.zip(Nila.Gst.Intake.Dump.kinds(), ~w(2026-01 2026-02 2026-03)) do
+      dump = bring_in(context, period, [], kind)
+
+      dump =
+        Dumps.mark_extracted(dump, [stored_invoice("A-1", Date.from_iso8601!(period <> "-08"))])
+
+      assert Preconditions.check(dump) == nil, "#{kind} was not handled"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # What the checks can and cannot see
+  # ---------------------------------------------------------------------------
+
+  # Sales invoices extracted before dates were parsed at the boundary are stored
+  # as the model printed them. A guard that only read ISO was blind to exactly
+  # the history it exists to compare a new packet against.
+  test "a packet stored with printed dates is still read", context do
+    dump = bring_in(context, "2025-12", [], "sales")
+
+    dump =
+      Dumps.mark_extracted(dump, [
+        stored_invoice("1/2026-27", "05.06.2026"),
+        stored_invoice("2/2026-27", "06.06.2026"),
+        stored_invoice("3/2026-27", "09.06.2026"),
+        stored_invoice("4/2026-27", "11.06.2026")
+      ])
+
+    assert %{"kind" => "period_mismatch", "modal_period" => "2026-06"} =
+             Preconditions.check(dump)
+  end
+
+  # A date nothing can read says nothing either way. It must not be counted as
+  # in-period (which would vote against asking) and must not crash the check.
+  test "dates nothing can read neither trip the check nor silence it", context do
+    dump = bring_in(context, "2025-12", [], "sales")
+
+    unreadable =
+      for i <- 1..4, do: stored_invoice("X-#{i}", "Invoice Dt.")
+
+    assert Preconditions.check(Dumps.mark_extracted(dump, unreadable)) == nil
+
+    # Four June invoices behind four unreadable rows is still four invoices in
+    # the wrong month: the majority is taken over what could be dated.
+    june = for i <- 1..4, do: stored_invoice("JUN-#{i}", "0#{i}.06.2026")
+
+    assert %{"kind" => "period_mismatch"} =
+             Preconditions.check(Dumps.mark_extracted(dump, unreadable ++ june))
+  end
+
+  # Sales maps every page through normalization, cover sheets included, so the
+  # denominator has to be the invoices that carry a date rather than the rows.
+  test "undated pages do not dilute the majority", context do
+    dump = bring_in(context, "2025-12", [], "sales")
+
+    furniture = for i <- 1..9, do: %{"invoice_number" => "PAGE-#{i}", "invoice_date" => nil}
+    june = for i <- 1..3, do: stored_invoice("JUN-#{i}", "0#{i}.06.2026")
+
+    assert %{"kind" => "period_mismatch", "outside_period" => 3} =
+             Preconditions.check(Dumps.mark_extracted(dump, furniture ++ june))
+  end
+
+  test "moving a sales packet carries its scans to the destination month", context do
+    dump = bring_in(context, "2025-12", [], "sales")
+    basename = "d#{dump.id}_page_01.png"
+
+    Storage.put(
+      SalesMonths.evidence_key(context.org.id, context.client.id, "2025-12", basename),
+      "PNG"
+    )
+
+    dump =
+      dump
+      |> Dumps.mark_extracted([
+        Map.put(stored_invoice("1/2026-27", ~D[2026-06-05]), "image", basename)
+      ])
+      |> Dumps.mark_needs_confirmation(%{"kind" => "period_mismatch"})
+
+    {:ok, moved} = Preconditions.move(dump, "2026-06", context.user.id)
+    assert moved.period == "2026-06"
+
+    # Read through storage rather than `fetch_evidence/4`: the destination month
+    # is derived by the worker afterwards, and the scans must already be there
+    # when it is.
+    assert {:ok, "PNG"} =
+             Storage.get(
+               SalesMonths.evidence_key(context.org.id, context.client.id, "2026-06", basename)
+             )
+  end
+
+  defp stored_invoice(number, date) do
+    %{
+      "invoice_number" => number,
+      "invoice_date" => date,
+      "line_items" => [],
+      "taxable_paise" => 10_000,
+      "tax_paise" => %{"igst" => 1800},
+      "total_paise" => 11_800
+    }
   end
 
   defp gstr2b_json(numbers) do

@@ -8,7 +8,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.Months, as: ClientMonths
 
-  @period "2026-05"
+  @period "2025-10"
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
@@ -31,7 +31,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert has_element?(view, "#month-page")
     assert has_element?(view, "#month-sales")
-    assert has_element?(view, "#gstr1-inv-20\\/2026-27")
+    assert has_element?(view, "#gstr1-inv-20\\/2025-26")
     assert has_element?(view, "#month-door-sales-issues", "Check the")
     assert render(view) =~ "to check"
   end
@@ -44,7 +44,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     view |> element("#month-door-sales-issues") |> render_click()
 
     assert has_element?(view, "#gstr1-evidence-modal")
-    assert has_element?(view, "button[phx-value-target='20/2026-27:grand_total_mismatch']")
+    assert has_element?(view, "button[phx-value-target='20/2025-26:grand_total_mismatch']")
   end
 
   test "clicking an invoice shows its issues in the evidence modal", %{
@@ -53,7 +53,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    view |> element("#gstr1-inv-20\\/2026-27") |> render_click()
+    view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
     assert has_element?(view, "#gstr1-evidence-modal")
     assert has_element?(view, "#gstr1-evidence-modal p.line-clamp-2")
@@ -63,16 +63,16 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
   test "confirming an issue resolves it; undo reopens it", %{conn: conn, client: client} do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    view |> element("#gstr1-inv-20\\/2026-27") |> render_click()
+    view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
     view
-    |> element("button[phx-value-target='20/2026-27:grand_total_mismatch']", "Checked")
+    |> element("button[phx-value-target='20/2025-26:grand_total_mismatch']", "Checked")
     |> render_click()
 
     assert render(view) =~ "Confirmed"
 
     view
-    |> element("button[phx-value-target='20/2026-27:grand_total_mismatch']", "Undo")
+    |> element("button[phx-value-target='20/2025-26:grand_total_mismatch']", "Undo")
     |> render_click()
 
     refute render(view) =~ "Confirmed"
@@ -84,7 +84,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    view |> element("#gstr1-inv-20\\/2026-27") |> render_click()
+    view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
     view
     |> element("button[phx-value-field='printed_grand_total']", "Correct")
@@ -117,7 +117,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
   defp confirm_all_open_issues(view) do
     # Month-level issues confirm from the strip; invoice issues from the modal.
-    for invoice <- ["20/2026-27"] do
+    for invoice <- ["20/2025-26"] do
       view |> element("#gstr1-inv-#{String.replace(invoice, "/", "\\/")}") |> render_click()
 
       while_confirmable(view)
@@ -259,7 +259,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert response_content_type(conn, :json)
     body = json_response(conn, 200)
     assert body["gstin"] == "33AEWPH4158J1Z3"
-    assert body["fp"] == "052026"
+    assert body["fp"] == "102025"
     assert is_list(body["b2b"])
   end
 
