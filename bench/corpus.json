@@ -91,6 +91,17 @@
       "ground_truth": "test/fixtures/gstr1/caltech/2026-01/returns_012026_R1_33BPBPK1081A1ZO.json"
     },
     {
+      "name": "caltech-2026-04-purchase",
+      "key": "caltech/2026-04/purchase.pdf",
+      "sha256": "959fa9a66d9e7e79cd80ba9c4f303f9ad23b29e445eabe1bdaaadb2c47d9440d",
+      "byte_size": 6224948,
+      "pages": 15,
+      "client": "caltech",
+      "period": "2026-04",
+      "kind": "purchase",
+      "ground_truth": null
+    },
+    {
       "name": "caltech-2025-06-purchase",
       "key": "caltech/2025-06/purchase.pdf",
       "sha256": "e90f728973190d8c012c391512f5f1878e2dbc998fe05ef58db8815d882ba7d2",
