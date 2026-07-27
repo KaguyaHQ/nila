@@ -1,0 +1,692 @@
+{
+    "data": {
+        "itcsumm": {
+            "itcavl": {
+                "nonrevsup": {
+                    "sgst": 6530.47,
+                    "b2b": {
+                        "sgst": 6530.47,
+                        "txval": 461206.62,
+                        "cgst": 6530.47,
+                        "cess": 0,
+                        "igst": 69956.28
+                    },
+                    "cgst": 6530.47,
+                    "cess": 0,
+                    "igst": 69956.28
+                }
+            }
+        },
+        "rtnprd": "042026",
+        "docdata": {
+            "b2b": [
+                {
+                    "inv": [
+                        {
+                            "val": 240,
+                            "sgst": 18.31,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 203.39,
+                            "typ": "R",
+                            "cgst": 18.31,
+                            "inum": "HR66/26-27",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "09-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "SRI KARUNAMBIKA HARDWARES",
+                    "supfildt": "11-05-2026",
+                    "supprd": "042026",
+                    "ctin": "33AAXFS3661C1Z1"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 702,
+                            "sgst": 53.57,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "979c6955d8c40d1117ce8617da8420c4c5410974a3d4adf4c1ec5224d9e5687a",
+                            "txval": 595.25,
+                            "typ": "R",
+                            "cgst": 53.57,
+                            "irngendate": "02-05-2026",
+                            "inum": "620",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "24-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "SHRI MISHRI MOTORS LLP",
+                    "supfildt": "11-05-2026",
+                    "supprd": "042026",
+                    "ctin": "33ADSFS5603E1Z2"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 319922,
+                            "sgst": 0,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 271120,
+                            "typ": "R",
+                            "cgst": 0,
+                            "inum": "132",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 48801.6,
+                            "dt": "04-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        },
+                        {
+                            "val": 30149,
+                            "sgst": 0,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 25550,
+                            "typ": "R",
+                            "cgst": 0,
+                            "inum": "133",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 4599,
+                            "dt": "04-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "FUTURE AIRCON",
+                    "supfildt": "09-05-2026",
+                    "supprd": "042026",
+                    "ctin": "29AAJFF9289R1Z2"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 35695,
+                            "sgst": 0,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 30250,
+                            "typ": "R",
+                            "cgst": 0,
+                            "inum": "119",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 5445,
+                            "dt": "02-02-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "FUTURE AIRCON",
+                    "supfildt": "27-04-2026",
+                    "supprd": "022026",
+                    "ctin": "29AAJFF9289R1Z2"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 4160.68,
+                            "sgst": 317.34,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 3526,
+                            "typ": "R",
+                            "cgst": 317.34,
+                            "inum": "INVMAA260400205",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "21-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        },
+                        {
+                            "val": 4322.34,
+                            "sgst": 329.67,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 3663,
+                            "typ": "R",
+                            "cgst": 329.67,
+                            "inum": "INVMAA260400206",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "21-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "BROEKMAN LOGISTICS INDIA PRIVATE LIMITED",
+                    "supfildt": "11-05-2026",
+                    "supprd": "042026",
+                    "ctin": "33AAACC8442P2ZD"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 8773,
+                            "sgst": 669.15,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "d7bf55b1d689d251d1fd31de21b2d1c83fb143a318b57296554dec8864701dc6",
+                            "txval": 7435,
+                            "typ": "R",
+                            "cgst": 669.15,
+                            "irngendate": "24-04-2026",
+                            "inum": "KNHQ/0108/26-27",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "24-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "KUTTI & NATHAN PRIVATE LIMITED",
+                    "supfildt": "11-05-2026",
+                    "supprd": "042026",
+                    "ctin": "33AAJCK0592M1Z8"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 2900,
+                            "sgst": 221.19,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 2457.62,
+                            "typ": "R",
+                            "cgst": 221.19,
+                            "inum": "VA26-0669",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "30-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "VARAAGI AGENCIES",
+                    "supfildt": "10-05-2026",
+                    "supprd": "042026",
+                    "ctin": "33AAWFV2699C1ZN"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 12236,
+                            "sgst": 933.26,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "b4553eb6d942e2b775d05242c9b1db9a85f0af00b9534f32024a2fd00e9d310d",
+                            "txval": 10369.52,
+                            "typ": "R",
+                            "cgst": 933.26,
+                            "irngendate": "22-04-2026",
+                            "inum": "SGR/0490/26-27",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "22-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        },
+                        {
+                            "val": 5500,
+                            "sgst": 419.49,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "3a23e7446e70e446fba8e2121602a5e7ec1edf8835aa09a6f1b279fb01efe937",
+                            "txval": 4661,
+                            "typ": "R",
+                            "cgst": 419.49,
+                            "irngendate": "29-04-2026",
+                            "inum": "SGR/0638/26-27",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "29-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "SRI GOLDAN REFRIGERATION",
+                    "supfildt": "09-05-2026",
+                    "supprd": "042026",
+                    "ctin": "33AGTPM3339F1Z9"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 6844,
+                            "sgst": 522,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 5800,
+                            "typ": "R",
+                            "cgst": 522,
+                            "inum": "CSH-75-26-27",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "28-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "GLOBAL BRASS AND PNEUMATICS",
+                    "supfildt": "08-05-2026",
+                    "supprd": "042026",
+                    "ctin": "33AAVFG8610R1ZL"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 39813,
+                            "sgst": 0,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 33740,
+                            "typ": "R",
+                            "cgst": 0,
+                            "inum": "107",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 6073.2,
+                            "dt": "03-01-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "FUTURE AIRCON",
+                    "supfildt": "27-04-2026",
+                    "supprd": "012026",
+                    "ctin": "29AAJFF9289R1Z2"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 1593,
+                            "sgst": 121.5,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 1350,
+                            "typ": "R",
+                            "cgst": 121.5,
+                            "inum": "28535",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "13-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "KOVAI AIRCON",
+                    "supfildt": "08-05-2026",
+                    "supprd": "042026",
+                    "ctin": "33AFAPK5693J1ZA"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 5812,
+                            "sgst": 443.29,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 4925.42,
+                            "typ": "R",
+                            "cgst": 443.29,
+                            "inum": "SDEH/009/26-27",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "04-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        },
+                        {
+                            "val": 6577,
+                            "sgst": 501.63,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 5573.72,
+                            "typ": "R",
+                            "cgst": 501.63,
+                            "inum": "SDEH/073/26-27",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "28-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "SHREE DURGA ELECTRICALS AND HARDWARES",
+                    "supfildt": "10-05-2026",
+                    "supprd": "042026",
+                    "ctin": "33ALVPD4633Q1ZJ"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 3300,
+                            "sgst": 251.7,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 2796.62,
+                            "typ": "R",
+                            "cgst": 251.7,
+                            "inum": "L-9326",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "14-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "AAA AIRCON",
+                    "supfildt": "11-05-2026",
+                    "supprd": "042026",
+                    "ctin": "33AIYPM0211F1ZI"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 21600,
+                            "sgst": 1647.46,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "9ce4c4a52f4abfb494ebb2b6b2e4d0ef9683ea39d86f8fcae4f014f2fee6a998",
+                            "txval": 18305.08,
+                            "typ": "R",
+                            "cgst": 1647.46,
+                            "irngendate": "06-05-2026",
+                            "inum": "VSPD/26-27/94",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "04-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "V.S. ENTERPRISES",
+                    "supfildt": "08-05-2026",
+                    "supprd": "042026",
+                    "ctin": "33AADFV0279M1ZX"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 1060.82,
+                            "sgst": 80.91,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "735d2b4b26dfa5017bb73407582e1a00c5135162db684670fb3b61d8ec151e37",
+                            "txval": 899,
+                            "typ": "R",
+                            "cgst": 80.91,
+                            "irngendate": "11-04-2026",
+                            "inum": "1026270023639",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "11-04-2026",
+                            "imsStatus": "A",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "ZOHO CORPORATION PRIVATE LIMITED",
+                    "supfildt": "11-05-2026",
+                    "supprd": "042026",
+                    "ctin": "33AAACZ4322M2Z9"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 33023,
+                            "sgst": 0,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 27986,
+                            "typ": "R",
+                            "cgst": 0,
+                            "inum": "127",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 5037.48,
+                            "dt": "09-03-2026",
+                            "imsStatus": "A",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "FUTURE AIRCON",
+                    "supfildt": "28-04-2026",
+                    "supprd": "032026",
+                    "ctin": "29AAJFF9289R1Z2"
+                }
+            ]
+        },
+        "gendt": "18-05-2026",
+        "gstin": "33BPBPK1081A1ZO",
+        "version": "1.0",
+        "cpsumm": {
+            "b2b": [
+                {
+                    "sgst": 221.19,
+                    "ttldocs": 1,
+                    "trdnm": "VARAAGI AGENCIES",
+                    "supprd": "042026",
+                    "supfildt": "10-05-2026",
+                    "txval": 2457.62,
+                    "ctin": "33AAWFV2699C1ZN",
+                    "cgst": 221.19,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 0,
+                    "ttldocs": 1,
+                    "trdnm": "FUTURE AIRCON",
+                    "supprd": "022026",
+                    "supfildt": "27-04-2026",
+                    "txval": 30250,
+                    "ctin": "29AAJFF9289R1Z2",
+                    "cgst": 0,
+                    "cess": 0,
+                    "igst": 5445
+                },
+                {
+                    "sgst": 1352.75,
+                    "ttldocs": 2,
+                    "trdnm": "SRI GOLDAN REFRIGERATION",
+                    "supprd": "042026",
+                    "supfildt": "09-05-2026",
+                    "txval": 15030.52,
+                    "ctin": "33AGTPM3339F1Z9",
+                    "cgst": 1352.75,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 80.91,
+                    "ttldocs": 1,
+                    "trdnm": "ZOHO CORPORATION PRIVATE LIMITED",
+                    "supprd": "042026",
+                    "supfildt": "11-05-2026",
+                    "txval": 899,
+                    "ctin": "33AAACZ4322M2Z9",
+                    "cgst": 80.91,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 0,
+                    "ttldocs": 2,
+                    "trdnm": "FUTURE AIRCON",
+                    "supprd": "042026",
+                    "supfildt": "09-05-2026",
+                    "txval": 296670,
+                    "ctin": "29AAJFF9289R1Z2",
+                    "cgst": 0,
+                    "cess": 0,
+                    "igst": 53400.6
+                },
+                {
+                    "sgst": 647.01,
+                    "ttldocs": 2,
+                    "trdnm": "BROEKMAN LOGISTICS INDIA PRIVATE LIMITED",
+                    "supprd": "042026",
+                    "supfildt": "11-05-2026",
+                    "txval": 7189,
+                    "ctin": "33AAACC8442P2ZD",
+                    "cgst": 647.01,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 18.31,
+                    "ttldocs": 1,
+                    "trdnm": "SRI KARUNAMBIKA HARDWARES",
+                    "supprd": "042026",
+                    "supfildt": "11-05-2026",
+                    "txval": 203.39,
+                    "ctin": "33AAXFS3661C1Z1",
+                    "cgst": 18.31,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 1647.46,
+                    "ttldocs": 1,
+                    "trdnm": "V.S. ENTERPRISES",
+                    "supprd": "042026",
+                    "supfildt": "08-05-2026",
+                    "txval": 18305.08,
+                    "ctin": "33AADFV0279M1ZX",
+                    "cgst": 1647.46,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 53.57,
+                    "ttldocs": 1,
+                    "trdnm": "SHRI MISHRI MOTORS LLP",
+                    "supprd": "042026",
+                    "supfildt": "11-05-2026",
+                    "txval": 595.25,
+                    "ctin": "33ADSFS5603E1Z2",
+                    "cgst": 53.57,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 0,
+                    "ttldocs": 1,
+                    "trdnm": "FUTURE AIRCON",
+                    "supprd": "012026",
+                    "supfildt": "27-04-2026",
+                    "txval": 33740,
+                    "ctin": "29AAJFF9289R1Z2",
+                    "cgst": 0,
+                    "cess": 0,
+                    "igst": 6073.2
+                },
+                {
+                    "sgst": 522,
+                    "ttldocs": 1,
+                    "trdnm": "GLOBAL BRASS AND PNEUMATICS",
+                    "supprd": "042026",
+                    "supfildt": "08-05-2026",
+                    "txval": 5800,
+                    "ctin": "33AAVFG8610R1ZL",
+                    "cgst": 522,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 121.5,
+                    "ttldocs": 1,
+                    "trdnm": "KOVAI AIRCON",
+                    "supprd": "042026",
+                    "supfildt": "08-05-2026",
+                    "txval": 1350,
+                    "ctin": "33AFAPK5693J1ZA",
+                    "cgst": 121.5,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 0,
+                    "ttldocs": 1,
+                    "trdnm": "FUTURE AIRCON",
+                    "supprd": "032026",
+                    "supfildt": "28-04-2026",
+                    "txval": 27986,
+                    "ctin": "29AAJFF9289R1Z2",
+                    "cgst": 0,
+                    "cess": 0,
+                    "igst": 5037.48
+                },
+                {
+                    "sgst": 251.7,
+                    "ttldocs": 1,
+                    "trdnm": "AAA AIRCON",
+                    "supprd": "042026",
+                    "supfildt": "11-05-2026",
+                    "txval": 2796.62,
+                    "ctin": "33AIYPM0211F1ZI",
+                    "cgst": 251.7,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 944.92,
+                    "ttldocs": 2,
+                    "trdnm": "SHREE DURGA ELECTRICALS AND HARDWARES",
+                    "supprd": "042026",
+                    "supfildt": "10-05-2026",
+                    "txval": 10499.14,
+                    "ctin": "33ALVPD4633Q1ZJ",
+                    "cgst": 944.92,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 669.15,
+                    "ttldocs": 1,
+                    "trdnm": "KUTTI & NATHAN PRIVATE LIMITED",
+                    "supprd": "042026",
+                    "supfildt": "11-05-2026",
+                    "txval": 7435,
+                    "ctin": "33AAJCK0592M1Z8",
+                    "cgst": 669.15,
+                    "cess": 0,
+                    "igst": 0
+                }
+            ]
+        }
+    },
+    "chksum": "d3ac61a447f088623d404f9cd093d35979883bdc3e5a0d00402c6b87e8d55318"
+}

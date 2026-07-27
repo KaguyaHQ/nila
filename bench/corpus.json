@@ -99,7 +99,7 @@
       "client": "caltech",
       "period": "2026-04",
       "kind": "purchase",
-      "ground_truth": null
+      "ground_truth": "test/fixtures/purchase/caltech/2026-04/returns_R2B_33BPBPK1081A1ZO_042026.json"
     },
     {
       "name": "caltech-2025-06-purchase",
