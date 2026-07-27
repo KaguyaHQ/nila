@@ -23,6 +23,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       purchase_month: nil,
       sales_month: nil,
       open_issue_count: 0,
+      open_issue_invoice: nil,
       reviewable: false,
       r1_signoff: nil,
       gstr3b_signoff: nil,
@@ -161,6 +162,36 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       assert verdict.headline == "Purchases clear, ₹58,400 ITC. GSTR-1 has 3 issues to check."
       assert door_id(verdict) == "month-door-sales-issues"
       assert verdict.deadline.return == "GSTR-1"
+    end
+
+    test "sales issues that live on invoices: the door opens the invoice, not the section" do
+      verdict =
+        Verdict.resolve(
+          facts(
+            tracks: %{sales: :open, purchase: :clear},
+            stats: stats(0, 0, 5_840_000),
+            open_issue_count: 1,
+            open_issue_invoice: "20/2026-27"
+          )
+        )
+
+      assert verdict.door.kind == :click
+      assert verdict.door.event == "select-invoice"
+      assert verdict.door.value == %{"inum" => "20/2026-27"}
+    end
+
+    test "a month-level sales issue keeps the anchor: its card is in the section" do
+      verdict =
+        Verdict.resolve(
+          facts(
+            tracks: %{sales: :open, purchase: :clear},
+            stats: stats(0, 0, 5_840_000),
+            open_issue_count: 1
+          )
+        )
+
+      assert verdict.door.kind == :anchor
+      assert verdict.door.to == "#month-sales"
     end
 
     test "sales drafted and clean: the maker's door is the review, not a signature" do

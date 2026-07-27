@@ -152,13 +152,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       %{
         tone: :calm,
         headline: sales_issues_headline(facts, count),
-        door: %{
-          id: "month-door-sales-issues",
-          label: "Check the #{count} #{pluralise(count, "issue")}",
-          kind: :anchor,
-          to: "#month-sales",
-          open: "month-sales"
-        }
+        door: sales_issue_door(facts, count)
       }
     else
       %{
@@ -272,6 +266,33 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       end
 
     "#{prefix} #{riding} riding on #{count} #{pluralise(count, "decision")}."
+  end
+
+  # A door has to land on the control that does the work. An invoice-level
+  # issue's confirm button lives in that invoice's modal and nowhere else — the
+  # table only shows an "n open" cell — so the door opens the modal directly.
+  # An anchor would be a no-op here anyway whenever the sales section is
+  # already unfolded, which is exactly when the sales track owns the door.
+  # Month-level issues do render as cards inside the section, so those keep the
+  # anchor and the unfold.
+  defp sales_issue_door(%{open_issue_invoice: inum}, count) when is_binary(inum) do
+    %{
+      id: "month-door-sales-issues",
+      label: "Check the #{count} #{pluralise(count, "issue")}",
+      kind: :click,
+      event: "select-invoice",
+      value: %{"inum" => inum}
+    }
+  end
+
+  defp sales_issue_door(_facts, count) do
+    %{
+      id: "month-door-sales-issues",
+      label: "Check the #{count} #{pluralise(count, "issue")}",
+      kind: :anchor,
+      to: "#month-sales",
+      open: "month-sales"
+    }
   end
 
   defp sales_issues_headline(%{tracks: %{purchase: :absent}}, count),

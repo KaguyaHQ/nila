@@ -36,6 +36,17 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert render(view) =~ "to check"
   end
 
+  test "the verdict door opens the invoice carrying the issue", %{conn: conn, client: client} do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    refute has_element?(view, "#gstr1-evidence-modal")
+
+    view |> element("#month-door-sales-issues") |> render_click()
+
+    assert has_element?(view, "#gstr1-evidence-modal")
+    assert has_element?(view, "button[phx-value-target='20/2026-27:grand_total_mismatch']")
+  end
+
   test "clicking an invoice shows its issues in the evidence modal", %{
     conn: conn,
     client: client

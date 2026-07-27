@@ -163,6 +163,7 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:month_issues, [])
     |> assign(:flagged, MapSet.new())
     |> assign(:open_issue_count, 0)
+    |> assign(:open_issue_invoice, nil)
     |> assign(:reviewable, false)
   end
 
@@ -201,7 +202,24 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:month_issues, month_issues)
     |> assign(:flagged, flagged)
     |> assign(:open_issue_count, Enum.count(issues, &(&1["status"] == "open")))
+    |> assign(:open_issue_invoice, first_open_invoice(month_issues, invoice_issues))
     |> assign(:reviewable, SalesWorkings.reviewable?(issues))
+  end
+
+  # An invoice-level issue has no representation on the page beyond an "n open"
+  # cell, so the verdict's door has to carry the reviewer into the invoice's
+  # modal — that is where the confirm button lives. A month-level issue renders
+  # as a card inside the sales section, so for those the door stays an anchor
+  # and this is nil.
+  defp first_open_invoice(month_issues, invoice_issues) do
+    if Enum.any?(month_issues, &(&1["status"] == "open")) do
+      nil
+    else
+      case Enum.find(invoice_issues, &(&1["status"] == "open")) do
+        nil -> nil
+        issue -> issue["invoice"]
+      end
+    end
   end
 
   defp sales_image_urls(invoice, sales) do
@@ -242,6 +260,7 @@ defmodule NilaWeb.Gst.MonthLive do
       purchase_month: purchase,
       sales_month: sales,
       open_issue_count: socket.assigns.open_issue_count,
+      open_issue_invoice: socket.assigns.open_issue_invoice,
       reviewable: socket.assigns.reviewable,
       r1_signoff: r1_signoff,
       gstr3b_signoff: gstr3b_signoff,
