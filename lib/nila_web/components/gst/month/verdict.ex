@@ -14,6 +14,9 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   The month is a pair (`WorkQueue.track_states/1`), so this module owns the
   precedence that turns a pair into one door:
 
+    0. A packet awaiting confirmation outranks everything: a month cannot be
+       worked while its inputs are in question. The question takes the verdict's
+       position and the verdict's weight — it is not a fifth CTA in a strip.
     1. An interrupted pile (failed / held / arrived-after-filing) wins, because
        decisions taken on half the documents are worth nothing.
     2. A signed-but-unfiled return wins next. Filing is the step nobody may
@@ -30,6 +33,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   alias Nila.Formatters
   alias Nila.Gst.Filing.Calendar
+  alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.WorkQueue
 
   @doc """
@@ -45,9 +49,12 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     |> put_deadline(facts)
   end
 
-  # 1. Interrupted piles.
+  # 0/1. A packet in question, then interrupted piles.
   defp door_and_headline(%{attention_dumps: dumps} = facts) when dumps != [] do
     cond do
+      dump = find_dump(dumps, "needs_confirmation") ->
+        question(facts, dump)
+
       dump = find_dump(dumps, "failed") ->
         %{
           tone: :alarm,
@@ -257,10 +264,105 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     }
   end
 
-  defp file_door(_facts, track, return, signoff) do
+  # The question that outranks the door. There is no door: three answers of
+  # equal weight take its place (`Components.Gst.Month.Precondition`), because a
+  # pre-selected answer to a question the product is asking *because it does not
+  # know* would be dishonest.
+  #
+  # Tone follows severity, not volume. Dates outside the period are a question —
+  # availing an April credit in June is legal and late bills are ordinary — so
+  # the copy states what it saw and never scolds. The same invoice in two months
+  # is an error, and only that turns the headline red.
+  defp question(facts, dump) do
+    finding = Dumps.precondition(dump) || %{}
+
+    %{
+      tone: if(finding["kind"] == "cross_month_duplicate", do: :alarm, else: :calm),
+      headline: question_headline(finding, facts),
+      door: nil,
+      question: %{dump: dump, finding: finding},
+      dump: dump
+    }
+  end
+
+  defp question_headline(finding, facts) do
+    {sentences, _first?} =
+      [&mismatch_sentence/3, &duplicate_sentence/3, &overlap_sentence/3]
+      |> Enum.reduce({[], true}, fn build, {acc, first?} ->
+        case build.(finding, facts, first?) do
+          nil -> {acc, first?}
+          sentence -> {[sentence | acc], false}
+        end
+      end)
+
+    case Enum.reverse(sentences) do
+      [] -> "This packet needs a second look before the month is built from it."
+      sentences -> Enum.join(sentences, " ")
+    end
+  end
+
+  defp mismatch_sentence(%{"outside_period" => count, "total" => total} = finding, facts, first?) do
+    "#{bill_subject(count, total, first?)} #{are(count)} dated #{dated_range(finding)}, " <>
+      "not #{Formatters.period_label(facts.period)}."
+  end
+
+  defp mismatch_sentence(_finding, _facts, _first?), do: nil
+
+  defp duplicate_sentence(
+         %{"duplicate_of" => %{"period" => period, "count" => count}, "total" => total},
+         _facts,
+         first?
+       ) do
+    "#{bill_subject(count, total, first?)} #{are(count)} already in " <>
+      "#{Formatters.period_label(period)} — same invoice numbers, same dates."
+  end
+
+  defp duplicate_sentence(_finding, _facts, _first?), do: nil
+
+  # What was observed, never a cause the engine cannot know. The same move as
+  # the unaccounted-pages ledger one layer down: the engine reporting on the
+  # quality of its own output instead of just handing it over.
+  defp overlap_sentence(%{"observed" => observed}, _facts, _first?) do
+    books = observed["books"]
+    gstr2b = observed["gstr2b"]
+
+    "#{books} purchase #{pluralise(books, "bill")} in and #{gstr2b} " <>
+      "2B #{pluralise(gstr2b, "entry", "entries")}, and not one of them matched the other side."
+  end
+
+  defp overlap_sentence(_finding, _facts, _first?), do: nil
+
+  defp bill_subject(count, total, first?) do
+    cond do
+      count == total and first? -> "All #{total} #{pluralise(total, "bill")} in this packet"
+      count == total -> "All #{total} of them"
+      first? -> "#{count} of this packet's #{total} #{pluralise(total, "bill")}"
+      true -> "#{count} of them"
+    end
+  end
+
+  defp are(1), do: "is"
+  defp are(_count), do: "are"
+
+  defp dated_range(%{"outside_periods" => [only]}), do: Formatters.period_label(only)
+
+  defp dated_range(%{"outside_periods" => [first | _rest] = periods}) do
+    last = List.last(periods)
+
+    if String.slice(first, 0, 4) == String.slice(last, 0, 4),
+      do: "#{month_name(first)}–#{Formatters.period_label(last)}",
+      else: "#{Formatters.period_label(first)}–#{Formatters.period_label(last)}"
+  end
+
+  defp dated_range(_finding), do: "another month"
+
+  defp month_name(period),
+    do: period |> Formatters.period_label() |> String.split(" ") |> List.first()
+
+  defp file_door(facts, track, return, signoff) do
     %{
       tone: :calm,
-      headline: "#{return} signed by #{signer(signoff)}. It is not on the portal yet.",
+      headline: file_headline(facts, track, return, signoff),
       door: %{
         id: "month-door-file-#{track}",
         label: "File it and record the ARN",
@@ -272,6 +374,32 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     }
   end
 
+  # Cash payable is the only figure in this whole flow that leaves the client's
+  # bank account, and a signed-unfiled 3B is where it is both determined and
+  # not yet paid. So it leads. The GSTR-1 carries no payment, and a nil or zero
+  # setoff means the number is not established — neither earns a lead.
+  defp file_headline(facts, :purchase, return, signoff) do
+    case cash_payable(facts) do
+      nil -> plain_file_headline(return, signoff)
+      cash -> "#{money(cash)} payable. #{plain_file_headline(return, signoff)}"
+    end
+  end
+
+  defp file_headline(_facts, _track, return, signoff),
+    do: plain_file_headline(return, signoff)
+
+  defp plain_file_headline(return, signoff),
+    do: "#{return} signed by #{signer(signoff)}. It is not on the portal yet."
+
+  defp cash_payable(%{gstr3b: gstr3b}) when is_map(gstr3b) do
+    case get_in(gstr3b, ["setoff_61", "cash_total"]) do
+      cash when is_integer(cash) and cash > 0 -> cash
+      _ -> nil
+    end
+  end
+
+  defp cash_payable(_facts), do: nil
+
   defp sign_target(%{tracks: %{sales: sales}}) when sales in [:signed, :filed],
     do: {"3b-sign-off", "Sign the GSTR-3B", "month-door-sign-3b"}
 
@@ -280,18 +408,17 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   # Headlines lead with rupees whenever rupees exist. A screen without a money
   # rollup is not a position, it is homework.
-  defp decisions_headline(facts, count) do
-    stats = facts.stats
-    riding = money(stats.open_tax_paise)
-    clean = money(stats.matched_tax_paise)
-
-    prefix =
-      case facts.tracks.sales do
-        :filed -> "GSTR-1 filed."
-        _ -> "#{clean} ITC clean."
-      end
-
-    "#{prefix} #{riding} riding on #{count} #{pluralise(count, "decision")}."
+  #
+  # The lead is the month's whole ITC and the second figure is explicitly a
+  # *subset* of it. The previous copy put matched and open side by side — two
+  # numbers a reader naturally adds, which is wrong, because audited-accepted
+  # rows sit in neither. It also called the matched pot "clean"; ITC matched to
+  # the 2B is unchallenged so far, not banked. Nothing is claimed until the 3B
+  # is filed, and telling a reviewer otherwise is how a page gets trusted for
+  # something it never checked.
+  defp decisions_headline(%{stats: stats}, count) do
+    "#{money(stats.total_tax_paise)} of ITC this month. " <>
+      "#{money(stats.open_tax_paise)} of it rides on #{count} #{pluralise(count, "decision")}."
   end
 
   # Both 2B headlines lead with what the month *has* rather than with what it
@@ -358,9 +485,18 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       "Purchases clear, #{money(facts.stats.matched_tax_paise)} ITC. " <>
         "GSTR-1 has #{count} #{pluralise(count, "issue")} to check."
 
+  # Same reason as the file door: at a 3B signature the payable is the fact the
+  # signer is putting their name to, so it leads rather than trailing the word
+  # "Clean". A GSTR-1 signature has no payable, and falls back to the rollup.
   defp ready_headline(facts) do
-    "Clean. #{money_clause(facts)}"
+    cash = signing_3b?(facts) && cash_payable(facts)
+
+    if cash,
+      do: "#{money(cash)} payable. Worked and clean.",
+      else: "Clean. #{money_clause(facts)}"
   end
+
+  defp signing_3b?(facts), do: match?({"3b-sign-off", _, _}, sign_target(facts))
 
   defp money_clause(%{gstr3b: gstr3b}) when is_map(gstr3b) do
     itc = heads_total(get_in(gstr3b, ["itc", "net_itc_4c"]))
@@ -506,8 +642,10 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp to_date(%NaiveDateTime{} = datetime), do: NaiveDateTime.to_date(datetime)
   defp to_date(_other), do: nil
 
-  defp pluralise(1, word), do: word
-  defp pluralise(_count, word), do: word <> "s"
+  defp pluralise(count, word, plural \\ nil)
+  defp pluralise(1, word, _plural), do: word
+  defp pluralise(_count, word, nil), do: word <> "s"
+  defp pluralise(_count, _word, plural), do: plural
 
   @doc """
   The verdict block: what the month is, what it is worth, and the one thing to

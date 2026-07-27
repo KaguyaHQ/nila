@@ -3,6 +3,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
 
   alias Nila.Gst.Chase
   alias Nila.Gst.Filing.Signoffs
+  alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.{Reconciliation, Resolutions}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias NilaWeb.Components.Gst.Exceptions.{Itc, Modal, Surface}
@@ -20,6 +21,8 @@ defmodule NilaWeb.Gst.ExceptionsLive do
          |> assign(:page_title, "Exceptions · #{month.client.name} · #{period}")
          |> assign(:correcting, nil)
          |> assign(:draft, nil)
+         |> assign(:evidence_open, false)
+         |> assign(:evidence_page, 0)
          |> assign_workings(month, workings)}
 
       _ ->
@@ -32,7 +35,17 @@ defmodule NilaWeb.Gst.ExceptionsLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    {:noreply, assign(socket, :selected_id, params["exception"] || default_selected(socket))}
+    {:noreply, select(socket, params["exception"] || default_selected(socket))}
+  end
+
+  # Selecting a different exception starts its evidence over: page 1, overlay
+  # shut. The overlay's own Esc never comes through here, so closing the reader
+  # leaves the selection exactly where it was.
+  defp select(socket, id) do
+    socket
+    |> assign(:selected_id, id)
+    |> assign(:evidence_page, 0)
+    |> assign(:evidence_open, false)
   end
 
   defp default_selected(socket) do
@@ -55,12 +68,13 @@ defmodule NilaWeb.Gst.ExceptionsLive do
 
   defp build_queue(workings, month) do
     asked_at = last_ask_at(month)
+    gaps = evidence_gaps(month)
 
     books_items =
       (workings.baseline["needs_human"] || []) ++
         (workings.baseline["in_books_not_2b"] || [])
 
-    books_queue = Enum.map(books_items, &exception_item(&1, workings, month))
+    books_queue = Enum.map(books_items, &exception_item(&1, workings, month, gaps))
 
     gstr2b_queue =
       Enum.map(workings.baseline["in_2b_not_books"] || [], fn entry ->
@@ -80,7 +94,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
     (tax["cgst"] || 0) + (tax["sgst"] || 0) + (tax["igst"] || 0)
   end
 
-  defp exception_item(entry, workings, month) do
+  defp exception_item(entry, workings, month, gaps) do
     books = entry["books"]
     type = entry["reason"]["code"]
     candidates = effective_candidates(workings.recon, books["id"], entry["candidates"] || [])
@@ -104,6 +118,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
       gstr2b: nil,
       candidates: candidate_views(candidates),
       images: image_urls(books, month),
+      evidence_gap: evidence_gap(books, gaps),
       tax_paise: tax_total(books),
       action: books_action(type, candidates),
       verb: verb,
@@ -130,6 +145,8 @@ defmodule NilaWeb.Gst.ExceptionsLive do
       gstr2b_ref: ref,
       candidates: [],
       images: [],
+      # A 2B-only line never had a bill to render; its emptiness is the finding.
+      evidence_gap: nil,
       tax_paise: tax_total(gstr2b),
       action: :gstr2b,
       verb: verb,
@@ -193,6 +210,32 @@ defmodule NilaWeb.Gst.ExceptionsLive do
     end)
   end
 
+  # A dump whose pages could not be rasterized leaves its invoices with no
+  # images — on the page, indistinguishable from a bill that never arrived,
+  # which is the one case that has no next step. Extraction namespaces the
+  # dump id into every invoice id (`d12_page_03`), so the failed dumps can name
+  # their own rows and offer the original file instead.
+  defp evidence_gaps(month) do
+    month.org_id
+    |> Dumps.evidence_gaps(month.client_id, month.period, "purchase")
+    |> Map.new(fn %{"dump_id" => dump_id, "source" => source} ->
+      {dump_id,
+       %{
+         source: source,
+         original_url: ~p"/gst/#{month.client_id}/#{month.period}/original/#{dump_id}/0"
+       }}
+    end)
+  end
+
+  defp evidence_gap(books, gaps) do
+    images = books["images"] || []
+
+    case Regex.run(~r/\Ad(\d+)_/, to_string(books["id"])) do
+      [_match, dump_id] when images == [] -> Map.get(gaps, String.to_integer(dump_id))
+      _no_dump_prefix -> nil
+    end
+  end
+
   @impl true
   def handle_event("select", %{"id" => id}, socket) do
     {:noreply,
@@ -200,6 +243,23 @@ defmodule NilaWeb.Gst.ExceptionsLive do
        to:
          ~p"/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}/exceptions?exception=#{id}"
      )}
+  end
+
+  # The reader is read-only, so it stays open on a signed-off month and never
+  # touches the selection: Esc closes the overlay and nothing else.
+  def handle_event("open-evidence", _params, socket),
+    do: {:noreply, assign(socket, :evidence_open, true)}
+
+  def handle_event("close-evidence", _params, socket),
+    do: {:noreply, assign(socket, :evidence_open, false)}
+
+  def handle_event("evidence-page", %{"page" => page}, socket) do
+    pages = length(selected_images(socket))
+
+    case Integer.parse(to_string(page)) do
+      {n, ""} when n >= 0 and n < pages -> {:noreply, assign(socket, :evidence_page, n)}
+      _out_of_range -> {:noreply, socket}
+    end
   end
 
   def handle_event(verb, _params, socket)
@@ -244,8 +304,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
            socket.assigns.current_scope.user.id
          ) do
       {:ok, result} ->
-        {:noreply,
-         socket |> assign_workings(result.month, result.workings) |> assign(:selected_id, id)}
+        {:noreply, socket |> assign_workings(result.month, result.workings) |> select(id)}
 
       {:error, :signed_off} ->
         signed_off(socket)
@@ -307,8 +366,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
            socket.assigns.current_scope.user.id
          ) do
       {:ok, result} ->
-        {:noreply,
-         socket |> assign_workings(result.month, result.workings) |> assign(:selected_id, id)}
+        {:noreply, socket |> assign_workings(result.month, result.workings) |> select(id)}
 
       {:error, :signed_off} ->
         signed_off(socket)
@@ -348,7 +406,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
      socket
      |> assign(:draft, nil)
      |> assign_workings(month, workings)
-     |> assign(:selected_id, draft.item_id)
+     |> select(draft.item_id)
      |> put_flash(:info, "Ask logged.")}
   end
 
@@ -410,6 +468,14 @@ defmodule NilaWeb.Gst.ExceptionsLive do
   end
 
   defp find_item(socket, id), do: Enum.find(socket.assigns.queue, &(&1.id == id))
+
+  defp selected_images(socket) do
+    case find_item(socket, socket.assigns.selected_id) do
+      nil -> []
+      item -> item.images
+    end
+  end
+
   defp blank?(v), do: is_nil(v) or String.trim(to_string(v)) == ""
 
   defp signed_off?(month) do
@@ -470,8 +536,19 @@ defmodule NilaWeb.Gst.ExceptionsLive do
           selected={@selected}
           signed_off={@signed_off}
           correcting={@correcting}
+          evidence_page={@evidence_page}
         />
       </div>
+
+      <.evidence_overlay
+        :if={(@evidence_open and @selected) && @selected.images != []}
+        id="gst-evidence-overlay"
+        images={@selected.images}
+        page={@evidence_page}
+        title={"#{@selected.invoice_number || "—"} · #{@selected.vendor}"}
+        on_close="close-evidence"
+        on_page="evidence-page"
+      />
 
       <Modal.missing_bill_modal draft={@draft} />
     </Layouts.app>

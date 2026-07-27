@@ -18,6 +18,7 @@ defmodule NilaWeb.Gst.UploadLive do
   alias Nila.Gst.Intake.{Dumps, DumpWorker}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Storage
+  alias NilaWeb.Gst.PeriodOptions
 
   # Mistral's own document limit, and the reason `Nila.Gst.Extraction.Windowed`
   # uploads a packet once instead of inlining it per window: base64's 4/3
@@ -51,12 +52,15 @@ defmodule NilaWeb.Gst.UploadLive do
   def mount(params, _session, socket) do
     if connected?(socket), do: subscribe(socket)
 
+    prefilled = prefill(socket, params)
+
     socket =
       socket
       |> assign(:page_title, "Bring in documents")
       |> assign(:clients, list_clients(socket))
       |> assign(:kinds, @kinds)
-      |> assign(:form, to_form(prefill(socket, params), as: :intake))
+      |> assign(:form, to_form(prefilled, as: :intake))
+      |> assign_period_options(prefilled["client_id"])
       |> assign(:jobs, %{})
       |> assign(:pending, nil)
       |> allow_upload(:sales, accept: ~w(.pdf), max_entries: 1, max_file_size: @max_pdf_bytes)
@@ -68,7 +72,7 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp prefill(socket, params) do
     period =
-      if Enum.any?(period_options(), &(elem(&1, 1) == params["period"])),
+      if params["period"] in period_values(),
         do: params["period"],
         else: Calendar.closeable_period(Date.utc_today())
 
@@ -88,7 +92,10 @@ defmodule NilaWeb.Gst.UploadLive do
 
   @impl true
   def handle_event("validate", %{"intake" => params}, socket) do
-    {:noreply, assign(socket, :form, to_form(params, as: :intake))}
+    {:noreply,
+     socket
+     |> assign(:form, to_form(params, as: :intake))
+     |> assign_period_options(params["client_id"])}
   end
 
   def handle_event("cancel-upload", %{"ref" => ref}, socket) do
@@ -142,7 +149,8 @@ defmodule NilaWeb.Gst.UploadLive do
      |> assign(
        :form,
        to_form(%{"client_id" => to_string(client_id), "period" => period}, as: :intake)
-     )}
+     )
+     |> assign_period_options(client_id)}
   end
 
   defp attached_piles(socket) do
@@ -223,27 +231,27 @@ defmodule NilaWeb.Gst.UploadLive do
   end
 
   defp fetch_period(period) when is_binary(period) do
-    if Enum.any?(period_options(), &(elem(&1, 1) == period)),
+    if period in period_values(),
       do: {:ok, period},
       else: {:error, "Pick a period."}
   end
 
   defp fetch_period(_period), do: {:error, "Pick a period."}
 
-  defp period_options do
-    <<year::binary-size(4), "-", month::binary-size(2)>> =
-      Calendar.closeable_period(Date.utc_today())
+  defp period_values, do: PeriodOptions.periods()
 
-    first_month = String.to_integer(year) * 12 + String.to_integer(month) - 1
+  # The period a pile lands in is the one field on this form the operator can
+  # get wrong without noticing, so each option says what that month already
+  # holds. Recomputed on every change because the client is itself a field.
+  defp assign_period_options(socket, client_id) do
+    org = socket.assigns.current_scope.current_org
 
-    for offset <- 0..35 do
-      month_index = first_month - offset
-      option_year = div(month_index, 12)
-      option_month = rem(month_index, 12) + 1
-      period = "#{option_year}-#{String.pad_leading(to_string(option_month), 2, "0")}"
+    id =
+      Enum.find_value(socket.assigns[:clients] || list_clients(socket), fn {_name, id} ->
+        to_string(id) == to_string(client_id) && id
+      end)
 
-      {period_label(period), period}
-    end
+    assign(socket, :period_options, PeriodOptions.for_client(org && org.id, id))
   end
 
   defp subscribe(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}),
@@ -275,6 +283,9 @@ defmodule NilaWeb.Gst.UploadLive do
   defp job_label(:held),
     do: "Held — this month's return is already signed. Open the month to have a senior reopen it."
 
+  defp job_label(:needs_confirmation),
+    do: "Read, but it doesn't look like this month's — open the month to sort it out"
+
   defp job_label(:after_filing),
     do: "This month is already filed — bring this into the current month instead"
 
@@ -284,20 +295,21 @@ defmodule NilaWeb.Gst.UploadLive do
   defp job_variant(:done), do: "success"
   defp job_variant(:failed), do: "error"
   defp job_variant(:held), do: "warning"
+  defp job_variant(:needs_confirmation), do: "warning"
   defp job_variant(:after_filing), do: "info"
   defp job_variant(_status), do: "neutral"
 
+  @settled [:done, :failed, :held, :after_filing, :needs_confirmation]
+
   defp working?(jobs) do
-    Enum.any?(jobs, fn {_id, job} ->
-      job.status not in [:done, :failed, :held, :after_filing]
-    end)
+    Enum.any?(jobs, fn {_id, job} -> job.status not in @settled end)
   end
 
   defp any_done?(jobs) do
     Enum.any?(jobs, fn {_id, job} -> job.status == :done end)
   end
 
-  defp spinning?(status), do: status not in [:done, :failed, :held, :after_filing]
+  defp spinning?(status), do: status not in @settled
 
   # Pages are the unit the operator can see in their own PDF, so the bar counts
   # pages when the page count is known and falls back to windows when `pdfinfo`
@@ -392,7 +404,7 @@ defmodule NilaWeb.Gst.UploadLive do
                 field={@form[:period]}
                 type="select"
                 label="Period"
-                options={period_options()}
+                options={@period_options}
               />
 
               <.file_drop
@@ -453,6 +465,11 @@ defmodule NilaWeb.Gst.UploadLive do
                 class="text-warning mt-0.5 size-5 shrink-0"
               />
               <.icon
+                :if={job.status == :needs_confirmation}
+                name="hero-question-mark-circle"
+                class="text-warning mt-0.5 size-5 shrink-0"
+              />
+              <.icon
                 :if={job.status == :after_filing}
                 name="hero-information-circle"
                 class="text-info mt-0.5 size-5 shrink-0"
@@ -463,7 +480,7 @@ defmodule NilaWeb.Gst.UploadLive do
                   {job_label(job.status)}
                 </p>
                 <.link
-                  :if={job.status == :held}
+                  :if={job.status in [:held, :needs_confirmation]}
                   navigate={~p"/gst/#{job.client_id}/#{job.period}"}
                   id={"gst-dump-open-month-#{dump_id}"}
                   class="text-fine text-moon font-semibold"

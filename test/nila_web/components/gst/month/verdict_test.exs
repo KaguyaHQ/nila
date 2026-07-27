@@ -37,12 +37,16 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
     |> Map.merge(Map.new(overrides))
   end
 
-  defp stats(need_decision, open_tax, matched_tax) do
+  # `total_tax` defaults to matched + open, which is what a register with no
+  # audited-accepted rows actually sums to. Tests that care about the gap pass
+  # it explicitly.
+  defp stats(need_decision, open_tax, matched_tax, total_tax \\ nil) do
     %{
       invoices: 23,
       matched: 23 - need_decision,
       need_decision: need_decision,
       taxable_paise: 0,
+      total_tax_paise: total_tax || matched_tax + open_tax,
       matched_tax_paise: matched_tax,
       open_tax_paise: open_tax
     }
@@ -105,16 +109,21 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       assert door_id(signed) == "month-door-file-purchase"
     end
 
+    # The lead is the *whole* month's ITC (₹75,000 here, not the ₹72,300 that
+    # matched + open comes to — ₹2,700 sits in audited-accepted rows), and the
+    # open figure is stated as a subset of it. The copy this replaced put
+    # matched beside open and called matched "clean": two numbers that sum to
+    # nothing, one of them claiming a finality the month has not reached.
     test "purchases open, sales absent (the screenshot): money first, one door" do
       verdict =
         Verdict.resolve(
           facts(
             tracks: %{sales: :absent, purchase: :open},
-            stats: stats(12, 1_390_000, 5_840_000)
+            stats: stats(12, 1_390_000, 5_840_000, 7_500_000)
           )
         )
 
-      assert verdict.headline == "₹58,400 ITC clean. ₹13,900 riding on 12 decisions."
+      assert verdict.headline == "₹75,000 of ITC this month. ₹13,900 of it rides on 12 decisions."
       assert door_id(verdict) == "month-door-decisions"
       assert verdict.quiet == ["Sales bills not in, so the GSTR-1 waits."]
       assert verdict.deadline.return == "GSTR-3B"
@@ -222,7 +231,10 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      assert verdict.headline == "GSTR-1 filed. ₹13,900 riding on 12 decisions."
+      # The headline no longer spends its opening clause on "GSTR-1 filed" —
+      # the quiet line below already carries that, and the headline's job is
+      # the money the door is about.
+      assert verdict.headline == "₹72,300 of ITC this month. ₹13,900 of it rides on 12 decisions."
       assert door_id(verdict) == "month-door-decisions"
       assert verdict.quiet == ["GSTR-1 filed."]
       assert verdict.deadline.return == "GSTR-3B"
@@ -298,6 +310,22 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       assert door_id(verdict) == "month-door-sign-r1"
     end
 
+    # At the 3B signature the payable is the fact the senior is putting their
+    # name to, so it leads rather than trailing the word "Clean". The GSTR-1
+    # signature above has no payable and keeps the rollup.
+    test "signing the 3B: the payable leads, not the reconciliation rollup" do
+      verdict =
+        Verdict.resolve(
+          facts(
+            tracks: %{sales: :filed, purchase: :clear},
+            gstr3b: %{"setoff_61" => %{"cash_total" => 12_300_000}}
+          )
+        )
+
+      assert verdict.headline == "₹1,23,000 payable. Worked and clean."
+      assert door_id(verdict) == "month-door-sign-3b"
+    end
+
     test "the GSTR-3B signs only once the GSTR-1 is out of the way" do
       for sales <- [:signed, :filed] do
         verdict = Verdict.resolve(facts(tracks: %{sales: sales, purchase: :clear}))
@@ -329,6 +357,56 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       assert verdict.headline == "GSTR-3B signed by Vasanth. It is not on the portal yet."
       assert door_id(verdict) == "month-door-file-purchase"
       assert verdict.door.to == "#month-exit-gstr3b"
+    end
+
+    # Cash payable is the only number in the month that leaves the client's
+    # bank account, and this is the one state where it is settled and unpaid.
+    # It leads; the signature line follows it.
+    test "signed, not filed, and money is due: the payable leads" do
+      verdict =
+        Verdict.resolve(
+          facts(
+            tracks: %{sales: :filed, purchase: :signed},
+            gstr3b_signoff: %{signed_by: %{name: "Vasanth"}},
+            gstr3b: %{"setoff_61" => %{"cash_total" => 12_300_000}}
+          )
+        )
+
+      assert verdict.headline ==
+               "₹1,23,000 payable. GSTR-3B signed by Vasanth. It is not on the portal yet."
+    end
+
+    # A nil setoff means the number was never established, and a zero one is
+    # not news worth the lead — the whole point of this pass was to stop the
+    # hero announcing ₹0 as a finding.
+    test "an unestablished or zero payable does not earn the lead" do
+      for setoff <- [nil, %{"setoff_61" => %{"cash_total" => 0}}, %{"setoff_61" => %{}}] do
+        verdict =
+          Verdict.resolve(
+            facts(
+              tracks: %{sales: :filed, purchase: :signed},
+              gstr3b_signoff: %{signed_by: %{name: "Vasanth"}},
+              gstr3b: setoff
+            )
+          )
+
+        assert verdict.headline == "GSTR-3B signed by Vasanth. It is not on the portal yet."
+      end
+    end
+
+    # The GSTR-1 is a disclosure, not a payment, so its file door keeps the
+    # plain line even when the 3B beside it has a payable.
+    test "the GSTR-1's file door never borrows the 3B's payable" do
+      verdict =
+        Verdict.resolve(
+          facts(
+            tracks: %{sales: :signed, purchase: :open},
+            r1_signoff: %{signed_by: %{name: "Vasanth"}},
+            gstr3b: %{"setoff_61" => %{"cash_total" => 12_300_000}}
+          )
+        )
+
+      assert verdict.headline == "GSTR-1 signed by Vasanth. It is not on the portal yet."
     end
 
     test "filed: the page runs out of content when the work runs out" do

@@ -90,6 +90,7 @@ never hard-code hex.
 | `base-200` | cool near-white | Subtle section fills |
 | `base-300` | cool light gray | Borders, hairlines |
 | `base-content` | midnight ink `#004865` → `oklch(30% 0.055 233)` | Primary text |
+| `scrim` | near-black `oklch(20% 0.012 233)` | Full-screen document reader only |
 | `success` / `warning` / `error` | green / honey-amber / red | Status |
 
 The palette is teal-blue, **no purple** — night over water. Chroma is kept low
@@ -98,6 +99,11 @@ warmth held inside the cool — reserve it for a genuine accent, never decoratio
 
 Body text on white uses `base-content`; secondary text uses
 `text-base-content/70`, muted labels `text-base-content/60`.
+
+**Dimming.** An overlay that keeps its page readable underneath uses
+`base-content` at low opacity (`<.modal>`: `/40`). One that replaces the page to
+show a document uses `scrim` — `base-content` is a real blue, and at full
+opacity it tints the paper inside it.
 
 ## Typography
 

@@ -78,22 +78,30 @@ defmodule Nila.Gst.Purchase.Register do
 
   Counts alone cannot answer the reviewer's actual question ("what is my ITC
   position and what is riding on the open items"), so the rupee fields ride
-  along: `matched_tax_paise` is settled tax, `open_tax_paise` is the tax on
-  rows still needing a decision. Both come straight from `summary/1`; older
-  summaries and pre-money signoff snapshots simply read 0.
+  along: `total_tax_paise` is the month's whole ITC, `matched_tax_paise` is
+  settled tax, `open_tax_paise` is the tax on rows still needing a decision.
+  All come straight from `summary/1`; older summaries and pre-money signoff
+  snapshots simply read 0.
   """
   def stats(summary) do
     buckets = summary["buckets"] || %{}
     invoices = buckets |> Map.values() |> Enum.sum()
     matched = buckets["matched"] || 0
+    matched_tax = summary["matched_tax_paise"] || 0
+    open_tax = summary["open_tax_paise"] || 0
 
     %{
       invoices: invoices,
       matched: matched,
       need_decision: invoices - matched - (summary["accepted_unmatched"] || 0),
       taxable_paise: summary["taxable_paise"] || 0,
-      matched_tax_paise: summary["matched_tax_paise"] || 0,
-      open_tax_paise: summary["open_tax_paise"] || 0
+      # Summaries written before `total_tax_paise` existed fall back to the two
+      # fields they do have. That understates by the accepted rows, but it can
+      # never read ₹0 next to a live open figure, which is the one way this
+      # number can actively mislead.
+      total_tax_paise: summary["total_tax_paise"] || matched_tax + open_tax,
+      matched_tax_paise: matched_tax,
+      open_tax_paise: open_tax
     }
   end
 
@@ -115,6 +123,13 @@ defmodule Nila.Gst.Purchase.Register do
         |> Enum.reject(&(&1["bucket"] == "in_2b_not_books"))
         |> Enum.map(& &1["taxable_paise"])
         |> Enum.sum(),
+      # The month's whole ITC, and the anchor the other two rupee fields are
+      # subsets of: matched + accepted + open closes exactly, because those
+      # three predicates partition the register. Without it the page can only
+      # show two figures that sum to less than the month by whatever sits in
+      # audited-accepted rows — a gap a reviewer reading them side by side has
+      # no way to see.
+      "total_tax_paise" => rows |> Enum.map(&row_tax/1) |> Enum.sum(),
       "matched_tax_paise" =>
         rows
         |> Enum.filter(&(&1["bucket"] == "matched"))

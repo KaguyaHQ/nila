@@ -59,6 +59,17 @@
   --noise: 0;
 }
 
+/* Scrim: the near-black behind a full-screen document reader. `base-content`
+   is midnight ink — a real blue — which is right for text and right for the
+   modal's light 40% dim, but wrong filling a whole screen around a scanned
+   bill: a chromatic surround shifts the paper inside it warmer by simultaneous
+   contrast, and judging that paper is the entire job of the surface it sits
+   behind. Same hue family so it doesn't read as foreign, chroma dropped to a
+   whisper so it stops editorialising about the evidence. */
+@theme {
+  --color-scrim: oklch(20% 0.012 233);
+}
+
 /* Web fonts. Switzer (variable, 100–900 + italic) for sans and Newsreader
    (variable, normal 300–600 + italic 300–500) for the display serif are both
    self-hosted from priv/static/fonts, served via NilaWeb.static_paths. No

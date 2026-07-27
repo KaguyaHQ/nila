@@ -520,12 +520,23 @@ defmodule Nila.Gst.Extraction.Windowed do
     end
   end
 
-  defp render_pages(bytes, opts) do
+  @doc """
+  Renders a packet's pages to PNG, keyed by the basename an artifact's `"image"`
+  points at (`"page_01.png"`).
+
+  Public because rendering is separable from reading: a month extracted before
+  this module rendered anything can be given its pictures back from the stored
+  original alone, with no provider call — see `Nila.Gst.Intake.EvidenceBackfill`.
+  Re-reading would risk a different invoice set, and invoice ids are positional.
+
+  `{:ok, %{}}` for a packet that arrived as an image: it is already its own
+  evidence, so there is nothing to rasterize and nothing broken.
+  """
+  @spec render_pages(binary(), keyword()) :: {:ok, %{String.t() => binary()}} | {:error, term()}
+  def render_pages(bytes, opts \\ []) do
     filename = Keyword.get(opts, :filename, "document.pdf")
     content_type = Keyword.get(opts, :content_type) || Mistral.content_type(filename)
 
-    # A packet that arrived as an image is already its own evidence: nothing to
-    # rasterize, and nothing broken, so it is not a gap worth flagging.
     if content_type == "application/pdf", do: rasterize(bytes), else: {:ok, %{}}
   end
 
@@ -569,7 +580,13 @@ defmodule Nila.Gst.Extraction.Windowed do
     end)
   end
 
-  defp page_basename(page), do: "page_#{String.pad_leading(to_string(page), 2, "0")}.png"
+  @doc """
+  The basename page `n`'s render is stored under. Public for the same reason
+  `render_pages/2` is: a backfill has to rebuild the artifact→page binding from
+  stored page numbers, and it must spell the name exactly the way extraction did.
+  """
+  @spec page_basename(pos_integer()) :: String.t()
+  def page_basename(page), do: "page_#{String.pad_leading(to_string(page), 2, "0")}.png"
 
   defp pdftocairo, do: Application.get_env(:nila, __MODULE__, [])[:pdftocairo] || "pdftocairo"
 

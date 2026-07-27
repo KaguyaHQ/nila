@@ -61,6 +61,34 @@ defmodule Nila.Gst.Intake.Dumps do
     end
   end
 
+  @doc """
+  What each period of a client already holds:
+  `%{"2026-04" => %{bills: 14, gstr2b?: true}}`, extracted arrivals only.
+
+  Asked by the intake form so a period is never a bare label. The upload form
+  cannot know the dates inside the file it is being handed, but it can say that
+  June is empty and April is full — the tell in every wrong-month upload, and
+  the one the pre-selected closeable period hides.
+  """
+  def holdings(org_id, client_id) do
+    Repo.all(
+      from d in Dump,
+        where: d.org_id == ^org_id and d.client_id == ^client_id and d.status == "extracted",
+        select: {d.period, d.kind, fragment("coalesce(array_length(?, 1), 0)", d.invoices)}
+    )
+    |> Enum.reduce(%{}, fn {period, kind, count}, acc ->
+      held = Map.get(acc, period, %{bills: 0, gstr2b?: false})
+
+      held =
+        case kind do
+          "gstr2b" -> %{held | gstr2b?: true}
+          _bills -> %{held | bills: held.bills + count}
+        end
+
+      Map.put(acc, period, held)
+    end)
+  end
+
   @doc "Non-terminal dumps for `(org, client, period)`, oldest first."
   def active(org_id, client_id, period) do
     Repo.all(
@@ -119,6 +147,24 @@ defmodule Nila.Gst.Intake.Dumps do
 
   def effective(org_id, client_id, period, kind) when kind in ~w(sales purchase) do
     extracted(org_id, client_id, period, kind)
+  end
+
+  @doc """
+  Every extracted `kind` dump of this client in *other* periods, oldest period
+  first — what a new packet's invoices are checked against for a bill already
+  booked in another month.
+
+  Scoped to the client, never the org: two clients legitimately hold the same
+  vendor's invoice number.
+  """
+  def extracted_elsewhere(org_id, client_id, period, kind) do
+    Repo.all(
+      from d in Dump,
+        where:
+          d.org_id == ^org_id and d.client_id == ^client_id and d.kind == ^kind and
+            d.status == "extracted" and d.period != ^period,
+        order_by: [asc: d.period, asc: d.id]
+    )
   end
 
   @doc """
@@ -210,6 +256,63 @@ defmodule Nila.Gst.Intake.Dumps do
 
   def mark_held(%Dump{} = dump),
     do: dump |> Dump.changeset(%{status: "held"}) |> Repo.update!()
+
+  @doc """
+  Extracted, stored, and deliberately not derived: the packet raises a question
+  about whether it is even the right work for this month. `finding` is the
+  `Nila.Gst.Intake.Preconditions` shape, recorded on `meta["precondition"]`.
+  """
+  def mark_needs_confirmation(%Dump{} = dump, finding) do
+    dump
+    |> Dump.changeset(%{
+      status: "needs_confirmation",
+      meta: Map.put(meta(dump), "precondition", finding)
+    })
+    |> Repo.update!()
+  end
+
+  @doc "Answered: the packet belongs here after all. Derivable again."
+  def confirm_kept(%Dump{} = dump, answer),
+    do:
+      dump
+      |> Dump.changeset(%{status: "extracted", meta: answered(dump, answer)})
+      |> Repo.update()
+
+  @doc """
+  Answered: the packet belongs to `period`. The dump is repointed and left
+  derivable — nothing about the extraction is re-run, because nothing about it
+  was wrong.
+  """
+  def confirm_moved(%Dump{} = dump, period, answer) do
+    dump
+    |> Dump.changeset(%{status: "extracted", period: period, meta: answered(dump, answer)})
+    |> Repo.update()
+  end
+
+  @doc "Answered: the packet was a double upload. Terminal, never derived."
+  def mark_discarded(%Dump{} = dump, answer),
+    do:
+      dump
+      |> Dump.changeset(%{status: "discarded", meta: answered(dump, answer)})
+      |> Repo.update()
+
+  @doc """
+  The answer a human gave to this dump's precondition question, or `nil`.
+
+  Kept on the dump rather than thrown away with the flag: "we knew, and here is
+  why we booked it anyway" is the sentence a signature has to stand on.
+  """
+  def precondition_answer(%Dump{} = dump), do: Map.get(meta(dump), "precondition_answer")
+
+  @doc "The open precondition question on this dump, or `nil`."
+  def precondition(%Dump{} = dump), do: Map.get(meta(dump), "precondition")
+
+  defp meta(%Dump{meta: meta}) when is_map(meta), do: meta
+  defp meta(%Dump{}), do: %{}
+
+  defp answered(dump, answer) do
+    dump |> meta() |> Map.delete("precondition") |> Map.put("precondition_answer", answer)
+  end
 
   def mark_after_filing(%Dump{} = dump),
     do: dump |> Dump.changeset(%{status: "after_filing"}) |> Repo.update!()

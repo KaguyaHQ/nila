@@ -8,6 +8,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   attr :selected, :any, default: nil
   attr :signed_off, :boolean, required: true
   attr :correcting, :any, default: nil
+  attr :evidence_page, :integer, default: 0
 
   def exception_surface(assigns) do
     ~H"""
@@ -76,7 +77,12 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       </div>
 
       <div id="gst-exception-detail" class="border-base-300 rounded-box border p-5">
-        <.detail selected={@selected} signed_off={@signed_off} correcting={@correcting} />
+        <.detail
+          selected={@selected}
+          signed_off={@signed_off}
+          correcting={@correcting}
+          evidence_page={@evidence_page}
+        />
       </div>
     </div>
     """
@@ -85,6 +91,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   attr :selected, :any, default: nil
   attr :signed_off, :boolean, required: true
   attr :correcting, :any, default: nil
+  attr :evidence_page, :integer, default: 0
 
   def detail(%{selected: nil} = assigns) do
     ~H"""
@@ -108,26 +115,57 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         </p>
       </div>
 
-      <div :if={@selected.candidates != []} id="gst-exception-candidates" class="space-y-3">
-        <.candidate_card
-          :for={{candidate, index} <- Enum.with_index(@selected.candidates, 1)}
-          candidate={candidate}
-          books={@selected.books}
-          index={index}
-          selected_id={@selected.id}
-          show_pick={@selected.action == :ambiguous and not @selected.resolved and not @signed_off}
-        />
-      </div>
+      <%!-- The dispute is the hero: books-vs-2B leads, and the bill sits beside
+      it as corroboration. A full-width A4 raster above the grid would push the
+      ✓/✗ column below the fold and make the reviewer scroll between the two
+      things they are comparing. --%>
+      <div class={[
+        "grid gap-5",
+        (facts?(@selected) and evidence?(@selected)) && "lg:grid-cols-[1fr_15rem]"
+      ]}>
+        <div :if={facts?(@selected)} class="min-w-0 space-y-3">
+          <div :if={@selected.candidates != []} id="gst-exception-candidates" class="space-y-3">
+            <.candidate_card
+              :for={{candidate, index} <- Enum.with_index(@selected.candidates, 1)}
+              candidate={candidate}
+              books={@selected.books}
+              index={index}
+              selected_id={@selected.id}
+              show_pick={
+                @selected.action == :ambiguous and not @selected.resolved and not @signed_off
+              }
+            />
+          </div>
 
-      <.gstr2b_card :if={@selected.kind == :gstr2b} gstr2b={@selected.gstr2b} />
+          <.gstr2b_card :if={@selected.kind == :gstr2b} gstr2b={@selected.gstr2b} />
+        </div>
 
-      <div :if={@selected.images != []} id="gst-exception-evidence" class="space-y-2">
-        <div class="text-base-content/60 text-label font-medium uppercase">Scanned bill</div>
-        <img
-          :for={url <- @selected.images}
-          src={url}
-          alt="Scanned bill"
-          class="border-base-300 rounded-box w-full max-w-lg border"
+        <%!-- Nothing to compare against (a bill the portal has never seen): the
+        bill is the whole of the evidence, so it gets a column of its own rather
+        than a lane beside an empty one. --%>
+        <div
+          :if={@selected.images != []}
+          id="gst-exception-evidence"
+          class={[not facts?(@selected) && "max-w-xs"]}
+        >
+          <.evidence_frame
+            id="gst-exception-evidence-frame"
+            images={@selected.images}
+            page={@evidence_page}
+            on_open="open-evidence"
+            on_page="evidence-page"
+          />
+        </div>
+
+        <%!-- Absence exceptions (the bill was never received) render nothing
+        here — the 2B card is the evidence, and absence is the information. A
+        bill that arrived but could not be rasterized is a different case, and
+        the only one with a next step. --%>
+        <.evidence_unavailable
+          :if={@selected.images == [] and @selected.evidence_gap}
+          id="gst-exception-evidence-unavailable"
+          source={@selected.evidence_gap.source}
+          original_url={@selected.evidence_gap.original_url}
         />
       </div>
 
@@ -342,6 +380,9 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
     ]
     |> Enum.map(fn {label, bv, gv} -> {label, bv, gv, norm(bv) == norm(gv)} end)
   end
+
+  defp facts?(selected), do: selected.candidates != [] or selected.kind == :gstr2b
+  defp evidence?(selected), do: selected.images != [] or selected.evidence_gap != nil
 
   defp norm(v), do: v |> to_string() |> String.trim() |> String.upcase()
   defp tax_sum(inv), do: (inv["tax_paise"] || %{}) |> Map.values() |> Enum.sum()

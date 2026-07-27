@@ -10,7 +10,10 @@ defmodule Nila.Gst.Intake.ArrivalsTest do
   alias Nila.Gst.Intake.{Arrival, Arrivals, DumpWorker, Dumps}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
 
-  @period "2026-06"
+  # October 2025, because that is when the purchase stub's bills are dated: a
+  # packet whose contents disagree with its period never reaches the wall check
+  # (`Nila.Gst.Intake.Preconditions`), and this test is about the wall.
+  @period "2025-10"
 
   setup do
     %{user: user, org: org, membership: membership} = user_with_org_fixture()

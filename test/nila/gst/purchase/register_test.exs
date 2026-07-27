@@ -14,6 +14,7 @@ defmodule Nila.Gst.Purchase.RegisterTest do
         },
         "accepted_unmatched" => 2,
         "taxable_paise" => 500_000,
+        "total_tax_paise" => 160_000,
         "matched_tax_paise" => 90_000,
         "open_tax_paise" => 45_000
       }
@@ -23,6 +24,7 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                matched: 3,
                need_decision: 9,
                taxable_paise: 500_000,
+               total_tax_paise: 160_000,
                matched_tax_paise: 90_000,
                open_tax_paise: 45_000
              }
@@ -36,11 +38,22 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                matched: 0,
                need_decision: 0,
                taxable_paise: 0,
+               total_tax_paise: 0,
                matched_tax_paise: 0,
                open_tax_paise: 0
              }
 
       assert Register.need_decision(%{"buckets" => %{"in_2b_not_books" => 1}}) == 1
+    end
+
+    # Every summary written before `total_tax_paise` existed is still on disk.
+    # Reading ₹0 there would put a headline like "₹0 of ITC this month, ₹45,000
+    # of it riding on 9 decisions" in front of a reviewer, so the old fields
+    # stand in. It understates by the accepted rows; it never contradicts.
+    test "an older summary falls back to matched + open rather than zero" do
+      summary = %{"matched_tax_paise" => 90_000, "open_tax_paise" => 45_000}
+
+      assert Register.stats(summary).total_tax_paise == 135_000
     end
   end
 
@@ -59,6 +72,27 @@ defmodule Nila.Gst.Purchase.RegisterTest do
       assert summary["open_tax_paise"] == 10_000
       assert summary["matched_tax_paise"] == 1_000
       assert Register.need_decision(summary) == 2
+    end
+
+    # The property the month headline leans on: the total is what the two
+    # published subsets are subsets *of*. Without it the page could only show
+    # matched beside open — ₹1,000 and ₹10,000 — with c's ₹4,000 sitting in
+    # neither and no way for a reader adding them to notice the shortfall.
+    test "total_tax_paise closes: matched + accepted + open, with nothing falling between" do
+      rows = [
+        row("a", "matched", nil, 1_000),
+        row("b", "needs_human", nil, 2_000),
+        row("c", "in_books_not_2b", "await_2b", 4_000),
+        row("d", "in_2b_not_books", nil, 8_000)
+      ]
+
+      summary = Register.summary(rows)
+      accepted = 4_000
+
+      assert summary["total_tax_paise"] == 15_000
+
+      assert summary["total_tax_paise"] ==
+               summary["matched_tax_paise"] + accepted + summary["open_tax_paise"]
     end
 
     defp row(id, bucket, accepted_reason, tax) do

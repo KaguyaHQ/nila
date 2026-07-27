@@ -42,6 +42,57 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert html =~ ~s(selected="" value="2025-08")
   end
 
+  # The trap this closes: a correct-looking default beside a file the form knows
+  # nothing about. It cannot know the dates, but it can show that October is
+  # empty and September is full — the tell in every wrong-month upload.
+  test "each period says what that month already holds", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, _bills} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id},
+        %{
+          period: "2025-09",
+          kind: "purchase",
+          status: "extracted",
+          invoices: for(i <- 1..9, do: %{"invoice_number" => "S-#{i}"})
+        }
+      )
+
+    {:ok, _snapshot} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id},
+        %{period: "2025-09", kind: "gstr2b", status: "extracted", invoices: [%{"inum" => "S-1"}]}
+      )
+
+    {:ok, view, _html} = live(conn, ~p"/gst/upload?client_id=#{client.id}")
+    html = view |> element("#gst-upload-form") |> render()
+
+    assert html =~ "Sep 2025 — 9 bills, 2B in"
+    assert html =~ "Oct 2025 — nothing in yet"
+  end
+
+  test "with no client picked yet the periods stay bare", %{conn: conn, org: org, client: client} do
+    {:ok, _bills} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id},
+        %{
+          period: "2025-09",
+          kind: "purchase",
+          status: "extracted",
+          invoices: [%{"invoice_number" => "S-1"}]
+        }
+      )
+
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+    html = view |> element("#gst-upload-form") |> render()
+
+    assert html =~ "Sep 2025"
+    refute html =~ "Sep 2025 —"
+  end
+
   test "shows an add-client empty state instead of an unusable form", %{
     conn: conn,
     client: client

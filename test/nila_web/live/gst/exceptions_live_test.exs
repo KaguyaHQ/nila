@@ -7,6 +7,7 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
   alias Nila.Clients
   alias Nila.Gst.Chase
   alias Nila.Gst.Filing.Signoffs
+  alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Purchase.Reconciliation, as: Recon
@@ -121,6 +122,204 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
       })
 
     month
+  end
+
+  # A disputed bill (books number vs 2B number) that also carries page images —
+  # the shape the evidence viewer exists for.
+  defp disputed_with_images!(org, client, period, images) do
+    books = books(%{"id" => "img_01", "invoice_number" => "1134", "images" => images})
+    g2b = g2b(%{"invoice_number" => "CHN-SER-1134"})
+    recon = Recon.reconcile([books], [g2b])
+    put_recon!(org, client, period, [books], recon)
+  end
+
+  defp evidence_url(client, period, basename),
+    do: "/gst/#{client.id}/#{period}/evidence/#{basename}"
+
+  defp at(html, needle) do
+    {index, _length} = :binary.match(html, needle)
+    index
+  end
+
+  test "the bill sits after the disputed grid and before the verbs", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    period = "2026-05"
+    disputed_with_images!(org, client, period, ["d1_page_01.webp"])
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
+    html = render(view)
+
+    assert has_element?(view, "#gst-exception-evidence")
+    assert has_element?(view, ~s|#gst-exception-evidence-frame-open|)
+
+    assert has_element?(
+             view,
+             ~s|#gst-exception-evidence img[src="#{evidence_url(client, period, "d1_page_01.webp")}"]|
+           )
+
+    # The dispute is the hero: the ✓/✗ grid leads, the bill corroborates it,
+    # and the decision row stays below both.
+    assert at(html, ~s|id="gst-exception-candidates"|) <
+             at(html, ~s|id="gst-exception-evidence"|)
+
+    assert at(html, ~s|id="gst-exception-evidence"|) < at(html, "Confirm — same bill")
+
+    # Read-only: no resolution verb inside the evidence block.
+    refute has_element?(view, "#gst-exception-evidence button[phx-click='confirm_pair']")
+  end
+
+  test "an absence exception renders no image block and no placeholder", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    period = "2026-06"
+    gstr2b = g2b(%{"vendor_name" => "PORTAL VENDOR", "invoice_number" => "PORTAL-9"})
+    put_recon!(org, client, period, [], Recon.reconcile([], [gstr2b]))
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
+
+    assert has_element?(view, "#gst-exception-gstr2b")
+    refute has_element?(view, "#gst-exception-evidence")
+    refute has_element?(view, "#gst-exception-evidence-unavailable")
+    refute render(view) =~ "Scanned bill"
+  end
+
+  test "a bill with nothing to compare against still shows the scan above its verbs", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    period = "2026-11"
+
+    books =
+      books(%{"id" => "solo_01", "invoice_number" => "BOOK-ONLY", "images" => ["d1_p1.webp"]})
+
+    put_recon!(org, client, period, [books], Recon.reconcile([books], []))
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
+    html = render(view)
+
+    refute has_element?(view, "#gst-exception-candidates")
+    assert has_element?(view, "#gst-exception-evidence")
+    assert at(html, ~s|id="gst-exception-evidence"|) < at(html, ~s|id="gst-accept-await-2b"|)
+  end
+
+  test "clicking the bill opens the reader and Esc returns with the same exception selected", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    period = "2026-07"
+    disputed_with_images!(org, client, period, ["d1_page_01.webp"])
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
+    refute has_element?(view, "#gst-evidence-overlay")
+
+    view |> element("#gst-exception-evidence-frame-open") |> render_click()
+    assert has_element?(view, "#gst-evidence-overlay")
+
+    assert has_element?(
+             view,
+             ~s|#gst-evidence-overlay img[src="#{evidence_url(client, period, "d1_page_01.webp")}"]|
+           )
+
+    # The dim area around the bill dismisses too — the hook reads the event off
+    # the stage, so if this attribute goes missing the backdrop silently stops
+    # closing and the only way out is the ✕.
+    assert has_element?(
+             view,
+             ~s|#gst-evidence-overlay-stage[data-close-event="close-evidence"]|
+           )
+
+    view |> element("#gst-evidence-overlay") |> render_keydown(%{"key" => "Escape"})
+
+    refute has_element?(view, "#gst-evidence-overlay")
+    assert has_element?(view, "#queue-img_01.bg-base-200")
+    assert has_element?(view, "#gst-exception-detail", "1134")
+    assert has_element?(view, "#gst-exception-evidence")
+  end
+
+  test "a multi-page bill pages forward and back", %{conn: conn, org: org, client: client} do
+    period = "2026-08"
+    disputed_with_images!(org, client, period, ["d1_page_01.webp", "d1_page_02.webp"])
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
+
+    assert has_element?(view, "#gst-exception-evidence-frame-nav", "1/2")
+    view |> element("#gst-exception-evidence-frame-nav-next") |> render_click()
+
+    assert has_element?(view, "#gst-exception-evidence-frame-nav", "2/2")
+
+    assert has_element?(
+             view,
+             ~s|#gst-exception-evidence img[src="#{evidence_url(client, period, "d1_page_02.webp")}"]|
+           )
+
+    # The reader opens on the page being previewed, and its own arrows work.
+    view |> element("#gst-exception-evidence-frame-open") |> render_click()
+    assert has_element?(view, "#gst-evidence-overlay-nav", "2/2")
+    view |> element("#gst-evidence-overlay-nav-prev") |> render_click()
+    assert has_element?(view, "#gst-evidence-overlay-nav", "1/2")
+
+    assert has_element?(
+             view,
+             ~s|#gst-evidence-overlay img[src="#{evidence_url(client, period, "d1_page_01.webp")}"]|
+           )
+  end
+
+  test "a bill whose pages could not be rendered says so and offers the original", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    period = "2026-09"
+
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id},
+        %{
+          period: period,
+          kind: "purchase",
+          status: "extracted",
+          file_keys: ["dumps/#{org.id}/#{client.id}/#{period}/oct-bills.pdf"],
+          meta: %{"evidence_unavailable" => true}
+        }
+      )
+
+    books = books(%{"id" => "d#{dump.id}_page_01", "invoice_number" => "1134", "images" => []})
+    recon = Recon.reconcile([books], [g2b(%{"invoice_number" => "CHN-SER-1134"})])
+    put_recon!(org, client, period, [books], recon)
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
+
+    assert has_element?(view, "#gst-exception-evidence-unavailable", "couldn't be rendered")
+    assert has_element?(view, "#gst-exception-evidence-unavailable", "oct-bills.pdf")
+    refute has_element?(view, "#gst-exception-evidence")
+
+    assert has_element?(
+             view,
+             ~s|#gst-exception-evidence-unavailable a[href="/gst/#{client.id}/#{period}/original/#{dump.id}/0"]|
+           )
+  end
+
+  test "a bill that was never received shows no rendering-failure notice", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    period = "2026-10"
+    books = books(%{"id" => "plain_01", "invoice_number" => "1134", "images" => []})
+    recon = Recon.reconcile([books], [g2b(%{"invoice_number" => "CHN-SER-1134"})])
+    put_recon!(org, client, period, [books], recon)
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
+
+    refute has_element?(view, "#gst-exception-evidence")
+    refute has_element?(view, "#gst-exception-evidence-unavailable")
   end
 
   test "a signed-off month hides the verbs and rejects resolutions server-side", %{

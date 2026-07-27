@@ -15,7 +15,7 @@ Detailed Elixir, Phoenix, LiveView, Ecto, and HEEx coding rules live in `AGENTS.
 `docs/design/DESIGN.md` is authoritative for all UI (brand, principles, tokens, type scale in one file) — read it before editing `.heex` or components. The system is **"moonlight"**: daisyUI v5 semantic tokens over a bespoke oklch palette (light-only, no purple). Token reference lives in `docs/design/DESIGN.md`.
 
 - Use the moonlight tokens; never hard-code colors (`slate-*`, `bg-white`, raw hex). Parts of the interior still use legacy slate — that's drift to fix when you touch a page, not a pattern to copy.
-- Build pages from the shared components in `lib/nila_web/components/core_components.ex` (`page_header`, `card`, `stat_card`, `badge`, `modal`, …); extract a new one when a pattern repeats rather than pasting class strings. That module is the single source of truth for the look.
+- Build pages from the shared components in `lib/nila_web/components/` — one module per component (`card.ex`, `badge.ex`, `modal.ex`, `table.ex`, `evidence.ex`, …), all imported by `lib/nila_web.ex`'s `html_helpers`. Extract a new module when a pattern repeats rather than pasting class strings. That directory is the single source of truth for the look.
 - Dropdowns & overlays — reach for the lightest tool that works, in this order. Form values (select, combobox): native daisyUI `<select>`; it submits correctly, needs zero JS, and can't drop a pre-filled value. Tooltips and simple menus (row "⋮" actions): daisyUI's CSS `tooltip` / popover-based `dropdown` — also no JS. Only build an owned JS component when a control genuinely needs interaction the platform can't give (e.g. a type-to-filter combobox), and when you do, server-render its `<input type="hidden">` so the value is present on first paint and testable. Do not vendor a component suite to style a `<select>` — that was tried and reverted; the engine's weight and form-integration seams cost more than they bought.
 
 ## Commands
@@ -54,7 +54,7 @@ Scratch/implementation plans go in `docs/.plans/` — gitignored, local-only. No
 Standard Phoenix umbrella-free layout split into a domain root (`Nila`) and web layer (`NilaWeb`):
 
 - `lib/nila/` — business/domain code. `Nila.Repo` (Postgres via `ecto_sql`), `Nila.Mailer` (Swoosh). New contexts go here.
-- `lib/nila_web/` — HTTP/LiveView layer. `NilaWeb.Endpoint` (Bandit adapter), `NilaWeb.Router`, controllers, and `components/` (`core_components.ex`, `layouts.ex`).
+- `lib/nila_web/` — HTTP/LiveView layer. `NilaWeb.Endpoint` (Bandit adapter), `NilaWeb.Router`, controllers, and `components/` (one module per shared component, plus `layouts.ex`).
 - `lib/nila_web.ex` — defines the `use NilaWeb, :controller | :live_view | :html | :router` macros; app-wide imports/aliases (e.g. `Layouts`) belong in its `html_helpers` block.
 - `lib/nila/application.ex` — supervision tree: Telemetry → Repo → Oban → DNSCluster → `Phoenix.PubSub` (`Nila.PubSub`) → Endpoint.
 

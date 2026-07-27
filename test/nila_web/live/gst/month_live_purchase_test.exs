@@ -35,7 +35,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     assert has_element?(view, "#month-page")
-    assert has_element?(view, "#month-headline", "riding on 21 decisions")
+    assert has_element?(view, "#month-headline", "of it rides on 21 decisions")
     assert has_element?(view, "#month-door-decisions", "Work the 21 decisions")
 
     # The losing track is one quiet line, never a second button.

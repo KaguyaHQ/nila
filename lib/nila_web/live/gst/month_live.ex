@@ -9,7 +9,7 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Clients
   alias Nila.Gst.Chase
   alias Nila.Gst.Filing.{Calendar, Signoffs}
-  alias Nila.Gst.Intake.{Dumps, DumpWorker}
+  alias Nila.Gst.Intake.{DumpWorker, Dumps, Preconditions}
   alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Sales.Gstr1
@@ -17,7 +17,18 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias Nila.Gst.WorkQueue
-  alias NilaWeb.Components.Gst.Month.{Arrivals, Evidence, Filing, Purchase, Sales, Verdict}
+
+  alias NilaWeb.Components.Gst.Month.{
+    Arrivals,
+    Evidence,
+    Filing,
+    Precondition,
+    Purchase,
+    Sales,
+    Verdict
+  }
+
+  alias NilaWeb.Gst.PeriodOptions
 
   @impl true
   def mount(%{"client_id" => client_id, "period" => period}, _session, socket) do
@@ -41,12 +52,17 @@ defmodule NilaWeb.Gst.MonthLive do
     if connected?(socket), do: PurchaseMonths.subscribe(org_id), else: :ok
   end
 
+  # A month with no derived side is still a real page when documents arrived and
+  # were deliberately not derived — a packet awaiting confirmation is exactly
+  # that, and bouncing the reviewer to Today would leave the question
+  # unanswerable.
   defp try_load(socket, client, period) do
     org_id = socket.assigns.current_scope.current_org.id
     purchase = fetch_or_nil(PurchaseMonths.get_by_period(org_id, client.id, period))
     sales = fetch_or_nil(SalesMonths.get_by_period(org_id, client.id, period))
+    dumps = Dumps.list(org_id, client.id, period)
 
-    if purchase || sales do
+    if purchase || sales || dumps != [] do
       socket
       |> assign(:client, client)
       |> assign(:period, period)
@@ -55,6 +71,7 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:selected_inum, nil)
       |> assign(:correcting, nil)
       |> assign(:show_chase_history, false)
+      |> assign(:precondition_choice, nil)
       |> assign(:can_sign_off, Policy.can?(socket.assigns.current_scope, :sign_off))
       |> assign_month(purchase, sales)
     end
@@ -83,16 +100,25 @@ defmodule NilaWeb.Gst.MonthLive do
     %{client: client, period: period} = socket.assigns
     org_id = socket.assigns.current_scope.current_org.id
     dumps = Dumps.list(org_id, client.id, period)
+    in_question = Enum.find(dumps, &(&1.status == "needs_confirmation"))
 
     socket
     |> assign(:dumps, dumps)
+    |> assign(:precondition_dump, in_question)
+    |> assign(
+      :move_options,
+      in_question && PeriodOptions.for_client(org_id, client.id, except: period)
+    )
     |> assign(:gstr2b_in, Enum.any?(dumps, &(&1.kind == "gstr2b" and &1.status == "extracted")))
     |> assign(:superseded_2b_ids, superseded_2b_ids(dumps))
     |> assign(:asks, Chase.list_asks(org_id, client.id, period))
     |> assign(:open_period, Calendar.closeable_period(Date.utc_today()))
     |> assign(
       :attention_dumps,
-      Enum.filter(dumps, &(&1.status in ~w(received extracting held failed after_filing)))
+      Enum.filter(
+        dumps,
+        &(&1.status in ~w(received extracting held failed after_filing needs_confirmation))
+      )
     )
   end
 
@@ -438,6 +464,30 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
+  def handle_event("precondition-choose", %{"answer" => answer}, socket)
+      when answer in ~w(move keep discard),
+      do: {:noreply, assign(socket, :precondition_choice, answer)}
+
+  def handle_event("precondition-cancel", _params, socket),
+    do: {:noreply, assign(socket, :precondition_choice, nil)}
+
+  # Answering is a routing decision, not a data edit: the dump's `period` was
+  # the thing that was wrong, and nothing about the extraction is re-run. A move
+  # hands the packet back to the worker, which runs the same wall check every
+  # arrival runs — a signed destination holds it, and that is the correct,
+  # already-built outcome.
+  def handle_event("precondition-answer", params, socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+    user_id = socket.assigns.current_scope.user.id
+
+    with %{id: dump_id} <- socket.assigns.precondition_dump,
+         {:ok, dump} <- Dumps.fetch(org_id, dump_id) do
+      answer_precondition(socket, dump, params, user_id)
+    else
+      _ -> {:noreply, reload(socket)}
+    end
+  end
+
   def handle_event("release-dump", %{"dump-id" => dump_id}, socket) do
     org_id = socket.assigns.current_scope.current_org.id
 
@@ -468,6 +518,59 @@ defmodule NilaWeb.Gst.MonthLive do
         {:noreply, reload(socket)}
     end
   end
+
+  defp answer_precondition(socket, dump, %{"answer" => "move", "period" => period}, user_id) do
+    case Preconditions.move(dump, period, user_id) do
+      {:ok, moved} ->
+        {:ok, _job} = Oban.insert(DumpWorker.new(%{dump_id: moved.id}))
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Packet moved to #{period_label(period)}.")
+         |> push_navigate(to: ~p"/gst/#{moved.client_id}/#{moved.period}")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Pick the month this packet belongs to.")}
+    end
+  end
+
+  defp answer_precondition(socket, dump, %{"answer" => "keep"} = params, user_id) do
+    case Preconditions.keep(dump, params["reason"], user_id) do
+      {:ok, kept} ->
+        {:ok, _job} = Oban.insert(DumpWorker.new(%{dump_id: kept.id}))
+
+        {:noreply,
+         socket
+         |> assign(:precondition_choice, nil)
+         |> reload()
+         |> put_flash(
+           :info,
+           "Kept in #{period_label(kept.period)} — the month reworks with it now."
+         )}
+
+      {:error, :reason_required} ->
+        {:noreply, put_flash(socket, :error, "Say why this packet belongs here.")}
+
+      {:error, _reason} ->
+        {:noreply, reload(socket)}
+    end
+  end
+
+  defp answer_precondition(socket, dump, %{"answer" => "discard"}, user_id) do
+    case Preconditions.discard(dump, user_id) do
+      {:ok, _discarded} ->
+        {:noreply,
+         socket
+         |> assign(:precondition_choice, nil)
+         |> reload()
+         |> put_flash(:info, "Packet discarded. It stays on the paper trail.")}
+
+      {:error, _reason} ->
+        {:noreply, reload(socket)}
+    end
+  end
+
+  defp answer_precondition(socket, _dump, _params, _user_id), do: {:noreply, reload(socket)}
 
   defp filed_flash(socket, return_message) do
     socket = reload(socket)
@@ -527,6 +630,17 @@ defmodule NilaWeb.Gst.MonthLive do
             item, or the exit has not earned a reader's attention. --%>
       <div id="month-page" class="mx-auto max-w-5xl space-y-8">
         <Verdict.verdict verdict={@verdict} client={@client} period={@period} />
+
+        <%!-- The question takes the door's place, never a place beside it: a
+              month cannot be worked while its inputs are in question. --%>
+        <Precondition.question
+          :if={@verdict[:question]}
+          dump={@verdict.question.dump}
+          finding={@verdict.question.finding}
+          period={@period}
+          choice={@precondition_choice}
+          period_options={@move_options || []}
+        />
 
         <div class="space-y-3">
           <Purchase.settled stats={@stats} rows={@rows} />

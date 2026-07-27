@@ -56,6 +56,10 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
                   Arrived after the return was signed. Reopen the signature to include it.
                 <% dump.status == "after_filing" -> %>
                   Arrived after this month was filed. A filed return cannot change, so this belongs in a later month's return.
+                <% dump.status == "needs_confirmation" -> %>
+                  Read, but what it holds does not answer to this month. Nothing is built from it until the question above is answered.
+                <% true -> %>
+                  {dump.status}
               <% end %>
             </span>
             <.button
@@ -95,10 +99,24 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
             id={"month-arrived-#{dump.id}"}
             class="text-base-content/55 text-small flex flex-wrap items-center gap-x-2 gap-y-1"
           >
-            <span class={MapSet.member?(@superseded_2b_ids, dump.id) && "line-through opacity-70"}>
+            <span class={
+              (MapSet.member?(@superseded_2b_ids, dump.id) or dump.status == "discarded") &&
+                "line-through opacity-70"
+            }>
               {arrived_line(dump)}
             </span>
             <span :if={MapSet.member?(@superseded_2b_ids, dump.id)} class="text-fine">(replaced)</span>
+            <%!-- The answer to a precondition question outlives the question. "We
+                  knew, and here is why we booked it anyway" is the sentence a
+                  signature stands on, so it lives in the paper trail rather than
+                  disappearing with the flag it cleared. --%>
+            <span
+              :if={answer_line(dump)}
+              id={"month-arrived-answer-#{dump.id}"}
+              class="text-base-content/70 text-fine"
+            >
+              {answer_line(dump)}
+            </span>
             <.link
               :for={{_key, index} <- Enum.with_index(dump.file_keys)}
               href={~p"/gst/#{@client.id}/#{@period}/original/#{dump.id}/#{index}"}
@@ -139,6 +157,15 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
     ]
     |> Enum.filter(& &1)
     |> Enum.join(" · ")
+  end
+
+  defp answer_line(dump) do
+    case Nila.Gst.Intake.Dumps.precondition_answer(dump) do
+      %{"answer" => "keep", "reason" => reason} -> "Confirmed as this month's: #{reason}"
+      %{"answer" => "move", "moved_from" => from} -> "Moved here from #{period_label(from)}"
+      %{"answer" => "discard"} -> "Discarded as a double upload"
+      _none -> nil
+    end
   end
 
   defp file_count_label(1), do: "1 file"

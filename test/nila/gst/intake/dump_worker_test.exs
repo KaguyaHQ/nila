@@ -15,7 +15,10 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias Nila.Storage
 
-  @period "2026-05"
+  # The stub packet's bills are dated October 2025, and so is the 2B fixture
+  # below. The period has to agree with them or intake's precondition check
+  # (correctly) refuses to build the month — see `Nila.Gst.Intake.Preconditions`.
+  @period "2025-10"
 
   setup do
     %{user: user, org: org, membership: membership} = user_with_org_fixture()

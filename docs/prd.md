@@ -140,7 +140,12 @@ The full month loop, both returns, end to end:
 - **Intake** (`Nila.Gst.Intake.Dumps`) — accretive dumps, one arrival at a time: each extracts
   on its own, the month derives from the union, a new 2B replaces the old, stragglers
   land without re-reading earlier piles. Multi-PDF piles. Dumps arriving behind a
-  signature are held for senior release.
+  signature are held for senior release. **Preconditions**
+  (`Nila.Gst.Intake.Preconditions`) run between reading and deriving: a packet
+  dated outside its month, a packet already booked in another month, or a
+  books/2B pair with nothing in common stops as one question with three answers
+  (move / keep with a recorded reason / discard) instead of becoming a queue of
+  exceptions nobody can answer.
 - **The screens** — Today (every client-month grouped by who it's waiting on, with
   chase drafts for clients who sent nothing), the client-month workbench (one room:
   GSTR-1, purchase recon, 3B, in filing order, evidence one tap away), the exceptions

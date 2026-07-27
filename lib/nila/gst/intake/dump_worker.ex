@@ -30,7 +30,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   import Ecto.Query, only: [from: 2]
 
   alias Nila.Gst.Filing.{Gstr2b, Signoffs}
-  alias Nila.Gst.Intake.{Dump, Dumps, ExtractionAttempts}
+  alias Nila.Gst.Intake.{Dump, Dumps, ExtractionAttempts, Preconditions}
   alias Nila.Gst.Purchase.{Books, Flags, Reconciliation, Register, TaxpayerContext}
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
@@ -59,41 +59,67 @@ defmodule Nila.Gst.Intake.DumpWorker do
     end
   end
 
+  # Preconditions come between reading and deriving, on the same seam the wall
+  # check sits on: a dump can be fully extracted and deliberately not derived.
+  # A packet whose contents do not answer to the month it was filed under is a
+  # question about whether this is the right work at all, and questions are
+  # answered once — before they can turn into a pile of exceptions that are
+  # each individually unanswerable.
+  defp do_perform(dump, worker_attempt) do
+    with {:ok, dump} <- extract(dump, worker_attempt) do
+      case Preconditions.check(dump) do
+        nil -> settle(dump)
+        finding -> ask(dump, finding)
+      end
+    end
+  end
+
+  defp ask(dump, finding) do
+    dump = Dumps.mark_needs_confirmation(dump, finding)
+    progress(dump, :needs_confirmation)
+    :ok
+  end
+
   # Wall check + derivation run in one transaction holding FOR UPDATE on the
   # month row — the same lock `Signoffs.sign_off_gstr1` takes and the 3B
   # sign-off's state flip contends on — so a senior signing between our check
   # and our upsert is impossible: whoever gets the lock first wins, and the
   # loser sees the winner's work. A month that doesn't exist yet can't be
   # signed, so no lock is needed.
-  defp do_perform(dump, worker_attempt) do
-    with {:ok, dump} <- extract(dump, worker_attempt) do
-      {:ok, outcome} =
-        Nila.Repo.transact(fn ->
-          month = lock_month(dump)
+  #
+  # Public because it is the whole of "derive from what this dump already holds":
+  # a backfill that changes a dump's stored invoices without re-reading the file
+  # (`Nila.Gst.Intake.EvidenceBackfill`) has to rebuild the month, and it must
+  # pass the same signature wall a fresh arrival does rather than upserting past
+  # it.
+  @doc false
+  def settle(dump) do
+    {:ok, outcome} =
+      Nila.Repo.transact(fn ->
+        month = lock_month(dump)
 
-          case wall_status(dump, month) do
-            :after_filing ->
-              Dumps.mark_after_filing(dump)
-              {:ok, :after_filing}
+        case wall_status(dump, month) do
+          :after_filing ->
+            Dumps.mark_after_filing(dump)
+            {:ok, :after_filing}
 
-            :held ->
-              Dumps.mark_held(dump)
-              {:ok, :held}
+          :held ->
+            Dumps.mark_held(dump)
+            {:ok, :held}
 
-            :open ->
-              derive(dump)
-              {:ok, :done}
-          end
-        end)
+          :open ->
+            derive(dump)
+            {:ok, :done}
+        end
+      end)
 
-      case outcome do
-        :after_filing -> progress(dump, :after_filing)
-        :held -> progress(dump, :held)
-        :done -> progress(dump, {:done, dump.client_id, dump.period})
-      end
-
-      :ok
+    case outcome do
+      :after_filing -> progress(dump, :after_filing)
+      :held -> progress(dump, :held)
+      :done -> progress(dump, {:done, dump.client_id, dump.period})
     end
+
+    :ok
   end
 
   defp lock_month(%Dump{kind: "sales"} = dump) do
@@ -123,6 +149,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
   defp extract(%Dump{status: "held"} = dump, _worker_attempt), do: {:ok, dump}
   defp extract(%Dump{status: "extracted"} = dump, _worker_attempt), do: {:ok, dump}
+  defp extract(%Dump{status: "needs_confirmation"} = dump, _worker_attempt), do: {:ok, dump}
 
   defp extract(%Dump{} = dump, worker_attempt) do
     dump = Dumps.mark_extracting(dump)
