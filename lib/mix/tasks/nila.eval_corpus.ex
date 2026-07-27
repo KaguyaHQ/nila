@@ -1,18 +1,21 @@
 defmodule Mix.Tasks.Nila.EvalCorpus do
-  @shortdoc "Manage the private eval corpus (status | pull | push <key> <file> [ground-truth])"
+  @shortdoc "Manage the private eval corpus (status | pull | add <pdf> <truth.json> | attach <name> <truth.json>)"
 
   @moduledoc """
   Real client packets for OCR evals live in the `nila-eval-corpus` R2 bucket,
   registered in `bench/corpus.json`. Probes and the benchmark fetch them via
   `Nila.EvalCorpus` into `~/.cache/nila/eval-corpus`.
 
-      mix nila.eval_corpus            # status: cached / missing per document
-      mix nila.eval_corpus pull       # fetch everything missing, verify checksums
-      mix nila.eval_corpus push breeze/2026-06/purchase.pdf ~/Downloads/june.pdf \\
-        test/fixtures/gstr1/breeze/2026-06/returns_...json
+      mix nila.eval_corpus                # status: what exists, what's evaluable
+      mix nila.eval_corpus pull           # fetch everything missing, verify checksums
+      mix nila.eval_corpus add ~/Downloads/packet.pdf ~/Downloads/returns_R2B_....json
+      mix nila.eval_corpus attach breeze-2026-06-purchase ~/Downloads/returns_R2B_....json
 
-  `push` uploads and prints the manifest entry — paste it into
-  `bench/corpus.json` and commit alongside the ground-truth fixture.
+  `add` onboards a month in one step: it reads the portal truth JSON (filed
+  GSTR-1 for sales, GSTR-2B for purchase) to infer client/period/kind, uploads
+  the PDF, places the truth under `test/fixtures/`, and updates the manifest.
+  `attach` adds a truth to a packet already in the corpus. Both leave changes
+  uncommitted — review the diff and commit.
   """
 
   use Mix.Task
@@ -24,12 +27,31 @@ defmodule Mix.Tasks.Nila.EvalCorpus do
     {:ok, _} = Application.ensure_all_started(:req)
 
     case args do
-      [] -> Nila.EvalCorpus.status()
-      ["status"] -> Nila.EvalCorpus.status()
-      ["pull"] -> Nila.EvalCorpus.pull()
-      ["push", key, file] -> Nila.EvalCorpus.push!(key, file)
-      ["push", key, file, ground_truth] -> Nila.EvalCorpus.push!(key, file, ground_truth)
-      _ -> Mix.raise("usage: mix nila.eval_corpus [status | pull | push <key> <file> [gt]]")
+      [] ->
+        Nila.EvalCorpus.status()
+
+      ["status"] ->
+        Nila.EvalCorpus.status()
+
+      ["pull"] ->
+        Nila.EvalCorpus.pull()
+
+      ["add", pdf, truth] ->
+        Nila.EvalCorpus.add!(pdf, truth)
+
+      ["add", pdf, client, period, kind] ->
+        Nila.EvalCorpus.add!(pdf, client, period, kind)
+
+      ["attach", name, truth] ->
+        Nila.EvalCorpus.attach!(name, truth)
+
+      ["open", name] ->
+        Nila.EvalCorpus.open!(name)
+
+      _ ->
+        Mix.raise(
+          "usage: mix nila.eval_corpus [status | pull | add <pdf> <truth.json> | attach <name> <truth.json> | open <name>]"
+        )
     end
   end
 end
