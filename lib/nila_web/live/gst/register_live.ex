@@ -38,7 +38,7 @@ defmodule NilaWeb.Gst.RegisterLive do
     >
       <div id="register-page" class="mx-auto max-w-6xl space-y-6">
         <.page_header eyebrow="GST" title="GST months">
-          Every client-period the firm has worked — open, partly filed, or filed.
+          The firm's recent client-periods — open, partly filed, or filed.
         </.page_header>
 
         <.card :if={@grid.periods == []} id="register-empty" class="py-10 text-center">
@@ -85,22 +85,22 @@ defmodule NilaWeb.Gst.RegisterLive do
               <tr
                 :for={row <- @grid.rows}
                 id={"register-row-#{row.client_id}"}
-                class="group/register-row"
+                class="group/register-row last:[&>td]:border-b-0 last:[&>th]:border-b-0"
               >
-                <th class="bg-base-100 border-base-300 group-hover/register-row:bg-base-200/50 sticky left-0 z-10 border-b p-4 text-left font-medium transition last:border-b-0">
+                <th class="bg-base-100 border-base-300 group-hover/register-row:bg-base-200/50 sticky left-0 z-10 border-b p-4 text-left font-medium transition">
                   {row.client_name}
                 </th>
                 <td
                   :if={@grid.periods == []}
                   id={"register-cell-#{row.client_id}-none"}
-                  class="border-base-300 group-hover/register-row:bg-base-200/50 text-base-content/35 border-b p-4 text-center transition last:border-b-0"
+                  class="border-base-300 group-hover/register-row:bg-base-200/50 text-base-content/35 border-b p-4 text-center transition"
                 >
                   —
                 </td>
                 <td
                   :for={period <- @grid.periods}
                   id={"register-cell-#{row.client_id}-#{period}"}
-                  class="border-base-300 group-hover/register-row:bg-base-200/50 border-b p-0 text-center transition last:border-b-0"
+                  class="border-base-300 group-hover/register-row:bg-base-200/50 border-b p-0 text-center transition"
                 >
                   <%= if cell = row.cells[period] do %>
                     <.link
