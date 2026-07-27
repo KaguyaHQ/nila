@@ -72,6 +72,11 @@ config :nila, Nila.Gst.Extraction.Providers.Mistral,
   api_key: "test-mistral-key",
   req_options: [plug: {Req.Test, Nila.Gst.Extraction.Providers.Mistral}]
 
+# Windowed reads inline the document by default here so the provider stub sees
+# only `/v1/ocr` calls. The upload path has its own (async: false) test module,
+# which turns this on.
+config :nila, Nila.Gst.Extraction.Windowed, share_document: false
+
 config :nila, Nila.Assistant,
   http_client: Nila.Assistant.HTTPClient.Stub,
   api_key: "test-key",

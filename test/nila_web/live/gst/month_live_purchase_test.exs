@@ -27,20 +27,23 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     }
   end
 
-  test "renders header stats and all register rows from DB data", %{
+  test "purchases open and sales absent: one door, money in the headline", %{
     conn: conn,
     client: client
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     assert has_element?(view, "#month-page")
-    assert has_element?(view, "#gst-stat-invoices", "58")
-    assert has_element?(view, "#gst-stat-matched", "37")
-    assert has_element?(view, "#gst-stat-need-decision", "21")
-    assert has_element?(view, "#gst-stats", "need a decision")
-    assert has_element?(view, "#gst-register", "Needs a decision")
-    refute render(view) =~ "Needs review"
-    assert has_element?(view, "#month-decide-purchases", "Decide 21 purchases →")
+    assert has_element?(view, "#month-headline", "riding on 21 decisions")
+    assert has_element?(view, "#month-door-decisions", "Work the 21 decisions")
+
+    # The losing track is one quiet line, never a second button.
+    assert render(view) =~ "Sales bills not in, so the GSTR-1 waits."
+    assert doors(view) == ["month-door-decisions"]
+
+    # Settled work is folded to a sentence; the register is an appendix.
+    assert has_element?(view, "#month-settled-line", "matched to 2B, values agree")
+    assert has_element?(view, "#month-register", "All 58 invoices")
 
     rows = read_rows()
     assert length(rows) == 58
@@ -50,19 +53,59 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     end
   end
 
-  test "the spine shows each step's state and jumps to its section", %{
+  test "the headline carries rupees, not only counts", %{conn: conn, client: client, org: org} do
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    workings = Nila.Gst.Purchase.Resolutions.workings(month)
+    stats = Nila.Gst.Purchase.Register.stats(workings.summary)
+
+    assert stats.open_tax_paise > 0
+    assert stats.matched_tax_paise > 0
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(
+             view,
+             "#month-headline",
+             Nila.Formatters.format_money(stats.open_tax_paise, prefix: "₹")
+           )
+  end
+
+  test "the ⚠ and the row accent are spent only on rows needing a decision", %{
     conn: conn,
     client: client
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#month-spine")
-    assert has_element?(view, "#spine-inputs", "partial")
-    assert has_element?(view, "#spine-gstr1", "missing")
-    assert has_element?(view, "#spine-purchases", "21 to decide")
-    assert has_element?(view, "#spine-gstr3b", "waiting")
-    assert view |> element("#spine-purchases") |> render() =~ ~s(href="#month-purchases")
-    assert view |> element("#spine-gstr1") |> render() =~ ~s(href="#month-sales-missing")
+    {flagged_matched, index} =
+      read_rows()
+      |> Enum.with_index()
+      |> Enum.find(fn {row, _} ->
+        row["bucket"] == "matched" and row["flags"] not in [nil, []]
+      end)
+
+    row_html = view |> element("##{dom_id(flagged_matched, index)}") |> render()
+
+    refute row_html =~ "hero-exclamation-triangle-mini"
+    refute row_html =~ "border-l-warning"
+    # The note still speaks, because a flag on a matched bill is worth reading.
+    assert row_html =~ "truncate"
+  end
+
+  test "clicking an open register row lands in the queue on that item", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    {open_row, index} =
+      read_rows()
+      |> Enum.with_index()
+      |> Enum.find(fn {row, _} ->
+        is_binary(row["id"]) and row["bucket"] != "matched" and row["accepted_reason"] == nil
+      end)
+
+    assert view |> element("##{dom_id(open_row, index)}") |> render() =~
+             "/gst/#{client.id}/#{@period}/exceptions?exception=#{open_row["id"]}"
   end
 
   test "clicking a row with images shows the bill and reason text", %{
@@ -75,15 +118,16 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
       read_rows()
       |> Enum.with_index()
       |> Enum.find(fn {row, _} ->
-        row["images"] not in [nil, []] and row["flags"] not in [nil, []]
+        row["images"] not in [nil, []] and row["flags"] not in [nil, []] and
+          row["bucket"] == "matched"
       end)
 
     reason = row["flags"] |> hd() |> Map.get("reason")
     verdict = row["flags"] |> hd() |> Map.get("code") |> Nila.Formatters.issue_label()
-    selector = "##{dom_id(row, index)}"
+    selector = "#gst-register ##{dom_id(row, index)}"
 
-    refute has_element?(view, "#gst-register #{selector}", reason)
-    assert has_element?(view, "#gst-register #{selector} .truncate", verdict)
+    refute has_element?(view, selector, reason)
+    assert has_element?(view, "#{selector} .truncate", verdict)
 
     view |> element(selector) |> render_click()
 
@@ -127,7 +171,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     assert has_element?(view, "#gst-3b-panel")
     html = render(view)
-    assert html =~ "outward liability needs the month"
+    assert html =~ "Outward liability needs the month"
     assert html =~ "C Net ITC"
     refute has_element?(view, "#gst-3b-cash")
   end
@@ -138,7 +182,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     client: client
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
-    assert has_element?(view, "#month-sales-missing")
+    assert render(view) =~ "Sales bills not in, so the GSTR-1 waits."
     refute has_element?(view, "#month-sales")
 
     {:ok, _} =
@@ -208,14 +252,19 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#month-dump-#{dump.id}", "Arrived after this month was filed")
-    assert has_element?(view, "#month-dump-#{dump.id}", "a filed return can't change")
+    # An interrupted pile owns the door: decisions taken on half the documents
+    # are worth nothing, so it outranks the 21 open decisions underneath.
+    assert has_element?(view, "#month-headline", "Documents arrived after this month was filed")
 
     assert has_element?(
              view,
-             "#month-dump-open-period-#{dump.id}[href='/gst/upload?client_id=#{client.id}&period=#{open_period}']",
-             "Bring it into the open month →"
+             "#month-door-after-filing[href='/gst/upload?client_id=#{client.id}&period=#{open_period}']"
            )
+
+    assert doors(view) == ["month-door-after-filing"]
+
+    assert has_element?(view, "#month-dump-#{dump.id}", "Arrived after this month was filed")
+    assert has_element?(view, "#month-dump-#{dump.id}", "A filed return cannot change")
 
     refute has_element?(view, "#month-dump-release-#{dump.id}")
     refute has_element?(view, "#month-dump-#{dump.id}", "reopen")
@@ -228,7 +277,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    refute has_element?(view, "#gst-signoff-button")
+    refute has_element?(view, "#month-door-sign-3b")
     assert has_element?(view, "#gst-signoff-blocked", "21 purchases to decide")
     assert has_element?(view, "#gst-signoff-blocked", "the sales bills")
 
@@ -262,15 +311,26 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#gst-signoff-button")
-    view |> element("#gst-signoff-button") |> render_click()
+    # Both tracks clear: the door is the signature itself, in filing order,
+    # one at a time. The GSTR-1 files on the 11th, so it goes first, and the
+    # filing gap outranks the next signature all the way through.
+    assert doors(view) == ["month-door-sign-r1"]
+    view |> element("#month-door-sign-r1") |> render_click()
 
-    assert has_element?(view, "#gst-signoff-banner")
-    assert has_element?(view, "#month-file-gstr3b[href='#gst-signoff-banner']")
-    assert has_element?(view, "#gst-signoff-banner a[target='_blank'][rel='noopener']")
-    assert has_element?(view, "#gst-filed-arn[autofocus]")
-    refute has_element?(view, "#gst-signoff-button")
-    assert render(view) =~ "Signed off by"
+    assert doors(view) == ["month-door-file-sales"]
+    assert has_element?(view, "#month-door-file-sales[href='#month-exit-gstr1']")
+    view |> element("#gstr1-mark-filed") |> render_submit(%{"arn" => "R1-ARN"})
+
+    assert doors(view) == ["month-door-sign-3b"]
+    view |> element("#month-door-sign-3b") |> render_click()
+
+    # Signed: the door becomes the filing step and points at the ARN entry.
+    assert doors(view) == ["month-door-file-purchase"]
+    assert has_element?(view, "#month-door-file-purchase[href='#month-exit-gstr3b']")
+    assert has_element?(view, "#month-exit-gstr3b a[target='_blank'][rel='noopener']")
+    assert has_element?(view, "#gst-filed-arn")
+    refute has_element?(view, "#month-door-sign-3b")
+    assert render(view) =~ "signed off by"
 
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
     assert month.state == "reviewed"
@@ -303,14 +363,17 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
       })
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
-    assert has_element?(view, "#month-ready-signoff[href='#month-sales']")
+    assert doors(view) == ["month-door-sign-r1"]
 
+    # Same state, different role: a signature is not live work for a junior,
+    # so the page offers them nothing to press.
     member = user_fixture()
     {:ok, _} = Nila.Orgs.add_user(org, member.id, "member")
     member_conn = log_in_user(Phoenix.ConnTest.build_conn(), member)
 
     {:ok, member_view, _html} = live(member_conn, ~p"/gst/#{client.id}/#{@period}")
-    assert render(member_view) =~ "Worked and clean — a senior will see it on their Today."
+    assert has_element?(member_view, "#month-headline", "Waiting on a senior to sign.")
+    assert doors(member_view) == []
   end
 
   test "a signed month renders from the frozen snapshot, not live derivation", %{
@@ -332,8 +395,10 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#gst-signoff-banner")
-    assert has_element?(view, "#gst-stat-matched", "999")
+    assert has_element?(view, "#month-exit-gstr3b", "signed off by")
+
+    frozen_invoices = frozen["summary"]["buckets"] |> Map.values() |> Enum.sum()
+    assert has_element?(view, "#month-register", "All #{frozen_invoices} invoices")
   end
 
   test "filing the second return closes the month and points back to Today", %{
@@ -363,17 +428,14 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     |> render_submit(%{"arn" => "3B-ARN"})
 
     assert render(view) =~ "Month closed."
-    assert has_element?(view, "#month-strip", "Month closed — GSTR-1 and GSTR-3B filed.")
-    assert has_element?(view, "#month-back-today", "Back to Today")
-    assert has_element?(view, ~s|#month-view-register[href="/register"]|, "View GST months →")
 
-    assert has_element?(view, "#spine-inputs", "in")
-    assert has_element?(view, "#spine-gstr1", "filed")
-    assert has_element?(view, "#spine-gstr3b", "filed")
+    # The page runs out of content when the work runs out: no door, no clock.
+    assert has_element?(view, "#month-headline", "ARN 3B-ARN. Month closed.")
+    assert doors(view) == []
     refute has_element?(view, "#month-deadline")
   end
 
-  test "a signed-unfiled month shows signed spine steps and an overdue-since deadline", %{
+  test "a signed-unfiled month leads with the filing gap and its own return's clock", %{
     conn: conn,
     org: org,
     user: user,
@@ -394,9 +456,12 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#spine-gstr1", "signed")
-    assert has_element?(view, "#spine-gstr3b", "signed")
-    assert has_element?(view, "#month-deadline", "overdue since 11 Nov 2025")
+    # Purchases win the door, so the chip is the 3B's clock (the 20th), not
+    # the GSTR-1's (the 11th) that deadline/4 would have led with.
+    assert doors(view) == ["month-door-file-purchase"]
+    assert has_element?(view, "#month-deadline", "GSTR-3B")
+    assert has_element?(view, "#month-deadline", "overdue since 20 Nov 2025")
+    assert render(view) =~ "GSTR-1 signed, not yet on the portal."
   end
 
   test "matched rows without flags render a silent note column", %{conn: conn, client: client} do
@@ -439,7 +504,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     |> render_submit(%{"arn" => "R1-ARN"})
 
     assert render(view) =~ "Month closed."
-    assert has_element?(view, "#month-strip", "Month closed — GSTR-1 and GSTR-3B filed.")
+    assert has_element?(view, "#month-headline", "Month closed.")
   end
 
   test "the operator (member) does not see the sign-off button and cannot sign", %{
@@ -452,7 +517,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    refute has_element?(view, "#gst-signoff-button")
+    refute has_element?(view, "#month-door-sign-3b")
+    refute has_element?(view, "#month-door-sign-r1")
 
     render_click(view, "3b-sign-off", %{})
     assert render(view) =~ "permission"
@@ -502,4 +568,14 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
   defp dom_id(%{"id" => id}, _index) when is_binary(id), do: "gst-row-#{id}"
   defp dom_id(_row, index), do: "gst-row-idx-#{index}"
+
+  # The page's weight rule as an assertion: at most one saturated control,
+  # and it is the door. Everything else earns its place by being quieter.
+  defp doors(view) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(".btn-primary")
+    |> LazyHTML.attribute("id")
+  end
 end

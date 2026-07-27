@@ -277,6 +277,119 @@ defmodule Nila.Gst.Extraction.WindowedTest do
     end
   end
 
+  describe "extract/3 — :on_window" do
+    test "reports the plan first, then pages covered as each window lands" do
+      test_pid = self()
+
+      Req.Test.stub(Mistral, fn conn ->
+        payload = payload(conn)
+        respond(conn, payload, [invoice("A-1", [3])])
+      end)
+
+      on_window = fn event -> send(test_pid, event) end
+
+      assert {:ok, _result} = extract(PdfFixtures.pdf(20), on_window: on_window)
+
+      # The plan lands before any provider call, so a screen can show the size
+      # of the job rather than a spinner over an unknown wait.
+      assert_receive {:progress, %{done: 0, total: 3, pages_done: 0, page_count: 20}}
+
+      # Overlapping windows are unioned, so pages_done never double-counts and
+      # ends at the real page count.
+      assert_receive {:progress, %{done: 1, pages_done: 8, page_count: 20}}
+      assert_receive {:progress, %{done: 2, pages_done: 14, page_count: 20}}
+      assert_receive {:progress, %{done: 3, pages_done: 20, page_count: 20}}
+      refute_receive {:progress, _more}
+    end
+
+    test "a single whole-document call still reports a plan and a finish" do
+      test_pid = self()
+
+      Req.Test.stub(Mistral, fn conn ->
+        Req.Test.json(conn, response(1..5, [invoice("DPS-0072", [2])]))
+      end)
+
+      on_window = fn event -> send(test_pid, event) end
+
+      assert {:ok, _result} = extract(PdfFixtures.pdf(5), on_window: on_window)
+
+      assert_receive {:progress, %{done: 0, total: 1, pages_done: 0, page_count: 5}}
+      assert_receive {:progress, %{done: 1, total: 1, pages_done: 5, page_count: 5}}
+    end
+
+    test "an image is one page" do
+      test_pid = self()
+
+      Req.Test.stub(Mistral, fn conn ->
+        Req.Test.json(conn, response(1..1, [invoice("IMG-1", [1])]))
+      end)
+
+      on_window = fn event -> send(test_pid, event) end
+
+      assert {:ok, _result} =
+               Windowed.extract(:purchase, "not-a-pdf",
+                 filename: "bill.png",
+                 on_window: on_window
+               )
+
+      assert_receive {:progress, %{done: 1, total: 1, page_count: 1}}
+    end
+
+    # `pdfinfo` failing on a PDF is the one case with no page count to report.
+    # `page_count: nil` is the signal for that, and it is what makes a screen
+    # fall back to window counts rather than render a bar against a made-up total.
+    test "a page count pdfinfo cannot read reports nil rather than inventing one" do
+      test_pid = self()
+
+      Req.Test.stub(Mistral, fn conn ->
+        Req.Test.json(conn, response(1..1, [invoice("A-1", [1])]))
+      end)
+
+      on_window = fn event -> send(test_pid, event) end
+
+      assert {:ok, _result} = extract("%PDF-1.4 truncated", on_window: on_window)
+
+      assert_receive {:progress, %{done: 0, total: 1, page_count: nil}}
+      assert_receive {:progress, %{done: 1, total: 1, page_count: nil}}
+    end
+
+    test "extraction runs unchanged when no callback is given" do
+      Req.Test.stub(Mistral, fn conn ->
+        payload = payload(conn)
+        respond(conn, payload, [invoice("A-1", [3])])
+      end)
+
+      assert {:ok, result} = extract(PdfFixtures.pdf(20))
+      assert result.unaccounted_pages != nil
+    end
+
+    # A resent window holds the bar still for another provider round-trip. The
+    # live failure this was written from (`Req.TransportError{reason: :closed}`
+    # on a 15-page packet) sat silent for ~40s per retry.
+    test "a resent window is reported rather than sat through in silence" do
+      test_pid = self()
+      counter = :counters.new(1, [])
+
+      Req.Test.stub(Mistral, fn conn ->
+        payload = payload(conn)
+
+        if 0 in payload["pages"] and :counters.get(counter, 1) == 0 do
+          :counters.add(counter, 1, 1)
+          Req.Test.transport_error(conn, :closed)
+        else
+          respond(conn, payload, [invoice("A-1", [3])])
+        end
+      end)
+
+      on_window = fn event -> send(test_pid, event) end
+
+      assert {:ok, _result} = extract(PdfFixtures.pdf(14), on_window: on_window)
+
+      assert_receive {:retrying, "1-8"}
+      assert_receive {:progress, %{done: 2, total: 2, pages_done: 14}}
+    end
+  end
+
   # ── helpers ─────────────────────────────────────────────────────────────────
 
   defp extract(bytes, opts \\ []) do

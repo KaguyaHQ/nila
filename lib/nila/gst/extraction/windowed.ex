@@ -18,6 +18,18 @@ defmodule Nila.Gst.Extraction.Windowed do
 
   Small packets keep exactly today's behaviour: an image, or a PDF of at most
   `window_size/0` pages, is one whole-document call with no `pages:` subset.
+
+  ## One upload, many windows
+
+  Every window reads the same document, so a multi-window packet is uploaded
+  once (`Mistral.upload/2`) and each call references the signed URL. Inlining it
+  per window would base64 the whole file into all of them — ~87 MB of request
+  bodies to read a 6.9 MB 57-page packet — and base64's 4/3 expansion would cap
+  an inlined document at ~37.5 MB against the API's 50 MB limit, rejecting a
+  large shoebox for size after a minute of work. The upload is deleted as soon
+  as the read finishes; an upload that fails logs and falls back to inlining.
+  Set `config :nila, #{inspect(__MODULE__)}, share_document: false` to force the
+  inline path.
   """
 
   alias Nila.Fuzzy
@@ -29,7 +41,7 @@ defmodule Nila.Gst.Extraction.Windowed do
   # corpus's longest invoice (2 pages), so no invoice can fall in a crack.
   @window 8
   @overlap 2
-  @max_concurrency 4
+  @max_concurrency 16
 
   @doc "Pages per window."
   def window_size, do: @window
@@ -76,47 +88,159 @@ defmodule Nila.Gst.Extraction.Windowed do
       around every provider call so the caller can persist one audit row per
       window. Defaults to calling straight through.
 
+    * `:on_window` — `(event -> any)`, called with `{:progress, t:progress/0}`
+      once for the plan and again as each window lands, and with
+      `{:retrying, pages}` when a window is resent. Windows run concurrently and
+      a packet takes minutes, so this is what lets an intake screen narrate the
+      wait in pages rather than showing a dead spinner. A retry is reported for
+      the same reason the ledger exists: a stalled window that recovers silently
+      looks identical to a screen that has hung.
+
   Any window that fails after its retry fails the whole extraction, page range
   named. No partial-success dumps: a silently short month is the disease this
   cures, not a feature.
   """
   def extract(kind, bytes, opts \\ []) when kind in [:purchase, :sales] and is_binary(bytes) do
-    per_call = Keyword.get(opts, :per_call) || (&call_through/2)
-    provider_opts = Keyword.drop(opts, [:per_call, :pages, :page_numbers])
+    hooks = %{
+      per_call: Keyword.get(opts, :per_call) || (&call_through/2),
+      on_window: Keyword.get(opts, :on_window) || (&ignore_progress/1)
+    }
+
+    provider_opts = Keyword.drop(opts, [:per_call, :on_window, :pages, :page_numbers])
 
     with {:ok, page_count} <- page_count(bytes, provider_opts) do
-      run(kind, bytes, provider_opts, per_call, windows(page_count), page_count)
+      windows = windows(page_count)
+      report(hooks, progress(0, length(windows), MapSet.new(), page_count))
+      shared(kind, bytes, provider_opts, hooks, windows, page_count)
     end
   end
 
+  defp report(%{on_window: on_window}, progress), do: on_window.({:progress, progress})
+
+  # Many windows read one document, so the document is uploaded once and every
+  # window references it. A single window is left alone: one upload plus one
+  # signed-URL fetch is two round trips to save an inline body we were going to
+  # send exactly once.
+  #
+  # An upload that fails falls back to inlining rather than failing the read.
+  # That path is the one validated against the corpus, so degrading to it is
+  # strictly safer than refusing to work — but it degrades *loudly*, because a
+  # silent fallback is how a fixed size ceiling comes back unnoticed.
+  defp shared(kind, bytes, opts, hooks, windows, page_count) when length(windows) > 1 do
+    if share_document?() do
+      case Mistral.upload(bytes, Keyword.get(opts, :filename, "document.pdf")) do
+        {:ok, %{file_id: file_id, document: document}} ->
+          try do
+            run(kind, bytes, Keyword.put(opts, :document, document), hooks, windows, page_count)
+          after
+            delete_quietly(file_id)
+          end
+
+        {:error, reason} ->
+          Logger.warning(
+            "windowed_extraction.upload_fallback windows=#{length(windows)} " <>
+              "bytes=#{byte_size(bytes)} reason=#{inspect(reason)}"
+          )
+
+          run(kind, bytes, opts, hooks, windows, page_count)
+      end
+    else
+      run(kind, bytes, opts, hooks, windows, page_count)
+    end
+  end
+
+  defp shared(kind, bytes, opts, hooks, windows, page_count),
+    do: run(kind, bytes, opts, hooks, windows, page_count)
+
+  # The document is a client's invoices sitting in a third party's file store,
+  # so it goes as soon as the read is done rather than aging out after 24h.
+  defp delete_quietly(file_id) do
+    case Mistral.delete(file_id) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("windowed_extraction.upload_cleanup_failed reason=#{inspect(reason)}")
+        :ok
+    end
+  end
+
+  defp share_document?, do: Application.get_env(:nila, __MODULE__, [])[:share_document] != false
+
   defp call_through(_metadata, call), do: call.()
+
+  defp ignore_progress(_progress), do: :ok
+
+  @typedoc """
+  One `:on_window` report. `pages_done`/`page_count` are the honest unit for a
+  human watching (a CA counts pages, not windows); `page_count` is `nil` when
+  `pdfinfo` could not read the document, and callers should fall back to
+  `done`/`total` there.
+  """
+  @type progress :: %{
+          done: non_neg_integer(),
+          total: pos_integer(),
+          pages_done: non_neg_integer(),
+          page_count: pos_integer() | nil
+        }
+
+  defp progress(done, total, covered, page_count) do
+    %{
+      done: done,
+      total: total,
+      pages_done: MapSet.size(covered),
+      page_count: if(is_integer(page_count), do: page_count)
+    }
+  end
+
+  # A window's own pages, for the covered-so-far count. This is the *planned*
+  # range, not the pages that yielded invoices — the ledger in `assemble/2` owns
+  # that stricter question; here we are only narrating how far the read has got.
+  defp window_pages(:whole_document, page_count) when is_integer(page_count), do: 1..page_count
+  defp window_pages(:whole_document, :unknown), do: 1..1
+  defp window_pages(first..last//_, _page_count), do: first..last
 
   defp windows(:unknown), do: [:whole_document]
   defp windows(page_count) when page_count <= @window, do: [:whole_document]
   defp windows(page_count), do: plan(page_count)
 
-  defp run(kind, bytes, opts, per_call, [window], page_count) do
-    with {:ok, result} <- call_window(kind, bytes, opts, per_call, window) do
+  defp run(kind, bytes, opts, hooks, [window], page_count) do
+    with {:ok, result} <- call_window(kind, bytes, opts, hooks, window) do
+      covered = window |> window_pages(page_count) |> MapSet.new()
+      report(hooks, progress(1, 1, covered, page_count))
       {:ok, assemble([result], page_count)}
     end
   end
 
-  defp run(kind, bytes, opts, per_call, windows, page_count) do
+  # Reduced over the stream lazily rather than after an `Enum.map`, so each
+  # window reports the moment it lands instead of every window reporting at the
+  # end. A failed window still consumes the rest (first error wins, as before)
+  # rather than halting the stream, which would kill in-flight windows and leave
+  # their audit rows open.
+  defp run(kind, bytes, opts, hooks, windows, page_count) do
+    total = length(windows)
+
     windows
-    |> Task.async_stream(&call_window(kind, bytes, opts, per_call, &1),
+    |> Task.async_stream(&call_window(kind, bytes, opts, hooks, &1),
       max_concurrency: @max_concurrency,
       timeout: :infinity,
       ordered: true
     )
-    |> Enum.map(fn {:ok, result} -> result end)
-    |> Enum.reduce({:ok, []}, fn
-      {:ok, result}, {:ok, acc} -> {:ok, [result | acc]}
-      {:error, reason}, {:ok, _acc} -> {:error, reason}
-      _result, {:error, _reason} = error -> error
+    |> Enum.reduce(%{results: [], covered: MapSet.new(), error: nil}, fn
+      {:ok, {:ok, result}}, %{error: nil} = acc ->
+        covered = MapSet.union(acc.covered, MapSet.new(window_pages(result.window, page_count)))
+        report(hooks, progress(length(acc.results) + 1, total, covered, page_count))
+        %{acc | results: [result | acc.results], covered: covered}
+
+      {:ok, {:error, reason}}, %{error: nil} = acc ->
+        %{acc | error: reason}
+
+      _outcome, acc ->
+        acc
     end)
     |> case do
-      {:ok, results} -> {:ok, assemble(Enum.reverse(results), page_count)}
-      {:error, reason} -> {:error, reason}
+      %{error: nil, results: results} -> {:ok, assemble(Enum.reverse(results), page_count)}
+      %{error: reason} -> {:error, reason}
     end
   end
 
@@ -127,10 +251,10 @@ defmodule Nila.Gst.Extraction.Windowed do
   # `:pages` is the provider's 0-indexed subset; `:page_numbers` is the same
   # window in 1-based document pages, which is how the artifacts come back
   # numbered. The two must be planned together — hence both set right here.
-  defp call_window(kind, bytes, opts, per_call, window) do
+  defp call_window(kind, bytes, opts, hooks, window) do
     {request_opts, metadata} = window_request(opts, window)
 
-    case attempt(kind, bytes, request_opts, per_call, metadata, 1) do
+    case attempt(kind, bytes, request_opts, hooks, metadata, 1) do
       {:ok, result} ->
         {:ok, %{window: window, result: result}}
 
@@ -163,8 +287,8 @@ defmodule Nila.Gst.Extraction.Windowed do
   # One retry, and only for the failures a retry can fix: Mistral caches OCR on
   # identical document bytes, so a resend after a client timeout lands in
   # seconds (measured — see docs/ocr-extraction.md).
-  defp attempt(kind, bytes, request_opts, per_call, metadata, try_number) do
-    case per_call.(metadata, fn -> Mistral.extract(kind, bytes, request_opts) end) do
+  defp attempt(kind, bytes, request_opts, hooks, metadata, try_number) do
+    case hooks.per_call.(metadata, fn -> Mistral.extract(kind, bytes, request_opts) end) do
       {:ok, result} ->
         {:ok, result}
 
@@ -176,7 +300,8 @@ defmodule Nila.Gst.Extraction.Windowed do
             "windowed_extraction.retry pages=#{metadata["pages"]} reason=#{inspect(reason)}"
           )
 
-          attempt(kind, bytes, request_opts, per_call, metadata, try_number + 1)
+          hooks.on_window.({:retrying, metadata["pages"]})
+          attempt(kind, bytes, request_opts, hooks, metadata, try_number + 1)
         else
           {:error, reason}
         end

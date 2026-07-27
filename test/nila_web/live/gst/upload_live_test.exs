@@ -155,6 +155,68 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert_redirect(view, "/gst/#{client.id}/#{@period}")
   end
 
+  test "extraction narrates in pages read, not a dead spinner", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    purchase =
+      file_input(view, "#gst-upload-form", :purchase, [
+        %{name: "bills.pdf", content: "%PDF-1.4 fake", type: "application/pdf"}
+      ])
+
+    render_upload(purchase, "bills.pdf")
+    submit(view, client)
+    [dump] = Dumps.list(org.id, client.id, @period)
+
+    # The client-month the pile belongs to stays on screen through the wait.
+    assert has_element?(view, "#gst-upload-progress-header", "Breeze Tech")
+    assert has_element?(view, "#gst-upload-progress-header", "Oct 2025")
+
+    plan = %{done: 0, total: 8, pages_done: 0, page_count: 57}
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:extracting, plan}}
+    )
+
+    # Nothing has landed: the size of the job, and an indeterminate bar.
+    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "57 pages to read")
+    refute has_element?(view, "#gst-dump-progress-#{dump.id} progress[value]")
+
+    landed = %{done: 3, total: 8, pages_done: 20, page_count: 57}
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:extracting, landed}}
+    )
+
+    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "20 of 57 pages read")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id} progress[value='20'][max='57']")
+
+    # A resent window holds the bar still for another ~40s round-trip; saying so
+    # is what separates a slow read from a screen that looks hung.
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:extracting_retry, "7-14"}}
+    )
+
+    assert has_element?(
+             view,
+             "#gst-dump-progress-#{dump.id}",
+             "Pages 7-14 did not come back. Asking again."
+           )
+
+    # Derivation is a different unit of work — a bar frozen at 20/57 would read
+    # as stuck, so it goes away rather than lying.
+    send(view.pid, {:gst_dump_progress, dump.id, client.id, @period, "purchase", :reconciling})
+
+    assert render(view) =~ "Reconciling against 2B"
+    refute has_element?(view, "#gst-dump-progress-#{dump.id}")
+  end
+
   test "a held dump links to the signed month", %{conn: conn, org: org, client: client} do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 

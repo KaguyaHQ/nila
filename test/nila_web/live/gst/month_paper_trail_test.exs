@@ -213,7 +213,7 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
       )
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
-    assert has_element?(view, "#month-chase-history-link", "Asked 2× — see what we sent")
+    assert has_element?(view, "#month-chase-history-link", "Asked 2×, see what we sent")
 
     view |> element("#month-chase-history-link") |> render_click()
 

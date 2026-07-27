@@ -344,7 +344,7 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
     put_recon!(org, client, period, [books], recon)
 
     {:ok, month_view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
-    assert has_element?(month_view, "#gst-stat-need-decision", "1")
+    assert has_element?(month_view, "#month-door-decisions", "Work the 1 decision")
 
     {:ok, today, _html} = live(conn, ~p"/today")
     assert has_element?(today, "#today-row-#{client.id}-#{period}", "1 to decide")
@@ -371,7 +371,7 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
     refute has_element?(today, "#today-row-#{client.id}-#{period}", "to decide")
 
     {:ok, month_view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
-    assert has_element?(month_view, "#gst-stat-need-decision", "0")
+    assert has_element?(month_view, "#month-door-bring-sales", "Bring in the sales bills")
 
     view |> element("#gst-exception-outcome button", "Undo") |> render_click()
     assert has_element?(view, "#gst-accept-await-2b")

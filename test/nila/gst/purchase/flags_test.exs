@@ -42,6 +42,16 @@ defmodule Nila.Gst.Purchase.FlagsTest do
 
   defp codes(flags), do: Enum.map(flags, & &1["code"])
 
+  # A packet of otherwise-clean bills, distinguished only by scan quality.
+  defp scanned(minimums) do
+    for {minimum, index} <- Enum.with_index(minimums, 1) do
+      invoice(%{
+        "id" => "scan_#{index}",
+        "confidence" => %{"ocr_minimum" => minimum, "ocr_average" => 0.98}
+      })
+    end
+  end
+
   defp only(flags, code), do: Enum.filter(flags, &(&1["code"] == code))
 
   describe "clean invoice" do
@@ -97,28 +107,45 @@ defmodule Nila.Gst.Purchase.FlagsTest do
   end
 
   describe "OCR confidence" do
-    test "routes the handwritten page 5 confidence regression to review" do
-      [flag] =
-        invoice(%{
-          "confidence" => %{
-            "ocr_minimum" => 0.774205195673312,
-            "ocr_average" => 0.9859865285218263
-          }
-        })
-        |> Flags.evaluate(@entity_ctx)
-        |> only("low_ocr_confidence")
+    test "flags the one bill that reads worse than the rest of its packet" do
+      packet =
+        scanned([0.97, 0.96, 0.95, 0.94, 0.62]) ++ [invoice(%{"id" => "no_confidence"})]
 
+      flagged = Flags.ocr_outlier_flags(packet)
+
+      assert Map.keys(flagged) == ["scan_5"]
+      [flag] = flagged["scan_5"]
       assert flag["severity"] == "review"
-      assert flag["reason"] =~ "77.4%"
+      assert flag["reason"] =~ "62.0%"
+      assert flag["reason"] =~ "below the rest of this packet"
       assert flag["fields"] == ["confidence"]
     end
 
-    test "keeps minimum OCR confidence at the threshold quiet" do
-      flags =
-        invoice(%{"confidence" => %{"ocr_minimum" => 0.8}})
-        |> Flags.evaluate(@entity_ctx)
+    # The measured disease: one bad photography sitting used to trip a fixed
+    # 0.8 threshold on ~80% of a packet's rows, and uniform alarm is no alarm.
+    test "a uniformly mediocre packet flags nothing, because nothing is an outlier" do
+      assert Flags.ocr_outlier_flags(scanned([0.72, 0.71, 0.70, 0.70, 0.69])) == %{}
+    end
 
-      refute "low_ocr_confidence" in codes(flags)
+    test "an unreadable bill still flags even when its neighbours are just as bad" do
+      flagged = Flags.ocr_outlier_flags(scanned([0.31, 0.32, 0.33, 0.34, 0.35]))
+
+      # Worst first, and never more than a fifth of the packet.
+      assert Map.keys(flagged) == ["scan_1"]
+    end
+
+    test "the flag can never become the packet's baseline" do
+      minimums = for n <- 1..20, do: 0.10 + n / 1000
+      flagged = Flags.ocr_outlier_flags(scanned(minimums))
+
+      assert map_size(flagged) == 4
+    end
+
+    test "evaluate_all merges the packet's scan flags onto the right invoice" do
+      by_id = Flags.evaluate_all(scanned([0.97, 0.96, 0.60]), @entity_ctx)
+
+      assert "low_ocr_confidence" in codes(by_id["scan_3"])
+      refute "low_ocr_confidence" in codes(by_id["scan_1"])
     end
   end
 

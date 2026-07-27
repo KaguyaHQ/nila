@@ -138,13 +138,25 @@ defmodule Nila.Gst.WorkQueue do
   end
 
   @doc """
-  Who a client-month is waiting on — the one derivation both WorkQueue rows and
-  the month workbench's state strip read, so they can never disagree. First
-  match wins, most urgent first: a signed-unfiled return outranks open work
-  (filing is the step nobody may miss); a row with open work on one side and
-  a signed return on the other belongs to the filing gap.
+  Per-return status for a client-month: `%{sales: status, purchase: status}`.
+
+  A month is a *pair*, not a scalar. The two returns have independent
+  lifecycles (GSTR-1 files on the 11th, GSTR-3B on the 20th), so any surface
+  that collapses them to one word has to invent a precedence rule, and two
+  surfaces inventing it separately is how the month page grew two doors out
+  of one state. This is the single derivation; `blocking_state/1` folds it for
+  Today, and the month workbench reads the pair directly.
+
+  Statuses, in lifecycle order:
+
+    * `:absent` — no month row yet; the documents haven't arrived.
+    * `:open` — live work for the person on the page (decisions to make,
+      issues to check, a draft the maker hasn't finished).
+    * `:clear` — worked clean, waiting on a signature.
+    * `:signed` — signed but not on the portal. The filing gap.
+    * `:filed` — done.
   """
-  def blocking_state(%{
+  def track_states(%{
         purchase: purchase,
         sales: sales,
         need_decision: need_decision,
@@ -153,21 +165,42 @@ defmodule Nila.Gst.WorkQueue do
         gstr3b_signed: gstr3b_signed,
         gstr3b_filed: gstr3b_filed
       }) do
+    %{
+      sales: sales_track(sales, r1_signed, r1_filed),
+      purchase: purchase_track(purchase, need_decision, gstr3b_signed, gstr3b_filed)
+    }
+  end
+
+  defp sales_track(nil, _signed, _filed), do: :absent
+  defp sales_track(_sales, _signed, true), do: :filed
+  defp sales_track(_sales, true, _filed), do: :signed
+  defp sales_track(%{state: "reviewed"}, _signed, _filed), do: :clear
+  defp sales_track(_sales, _signed, _filed), do: :open
+
+  defp purchase_track(nil, _need, _signed, _filed), do: :absent
+  defp purchase_track(_purchase, _need, _signed, true), do: :filed
+  defp purchase_track(_purchase, _need, true, _filed), do: :signed
+  defp purchase_track(_purchase, need, _signed, _filed) when need > 0, do: :open
+  defp purchase_track(_purchase, _need, _signed, _filed), do: :clear
+
+  @doc """
+  Who a client-month is waiting on — the fold of `track_states/1` down to the
+  one atom Today's sections need. Most urgent first: a signed-unfiled return
+  outranks open work (filing is the step nobody may miss), so a month with
+  open work on one side and a signature on the other belongs to the filing gap.
+  """
+  def blocking_state(input) when is_map(input), do: input |> track_states() |> fold_state()
+
+  @doc "Folds a `track_states/1` pair to Today's single section atom."
+  def fold_state(%{sales: sales, purchase: purchase}) do
+    tracks = [sales, purchase]
+
     cond do
-      r1_filed and gstr3b_filed ->
-        :done
-
-      (r1_signed and not r1_filed) or (gstr3b_signed and not gstr3b_filed) ->
-        :to_file
-
-      (purchase != nil and need_decision > 0) or (sales != nil and sales.state == "worked") ->
-        :needs_you
-
-      purchase == nil or sales == nil ->
-        :waiting_on_client
-
-      true ->
-        :waiting_on_senior
+      Enum.all?(tracks, &(&1 == :filed)) -> :done
+      Enum.any?(tracks, &(&1 == :signed)) -> :to_file
+      Enum.any?(tracks, &(&1 == :open)) -> :needs_you
+      Enum.any?(tracks, &(&1 == :absent)) -> :waiting_on_client
+      true -> :waiting_on_senior
     end
   end
 
@@ -187,6 +220,31 @@ defmodule Nila.Gst.WorkQueue do
 
       true ->
         nil
+    end
+  end
+
+  @doc """
+  One track's clock, whichever return that track files.
+
+  The month page's chip follows the track that owns its door: `deadline/4`
+  always leads with GSTR-1 while it is unfiled, which is the wrong return to
+  put in front of a reviewer working 3B decisions in the 3B window.
+
+  There is no "already met" case to render. A filed return never owns the
+  door, so its clock is never asked for, and the page simply stops mentioning
+  it. What is deliberately *not* silenced is age: an old unfiled month keeps
+  its alarm, because a client who never filed February is not history, they
+  are late.
+  """
+  def track_deadline(period, %Date{} = today, track) when track in [:sales, :purchase] do
+    status = Calendar.status(period, today)
+
+    case track do
+      :sales ->
+        %{return: "GSTR-1", days_left: status.gstr1_days_left, due: status.gstr1_due}
+
+      :purchase ->
+        %{return: "GSTR-3B", days_left: status.gstr3b_days_left, due: status.gstr3b_due}
     end
   end
 

@@ -19,10 +19,11 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
     on_progress = Keyword.get(opts, :on_progress, fn _stage -> :ok end)
     pages = Keyword.get(opts, :pages)
     page_numbers = Keyword.get(opts, :page_numbers)
+    document = Keyword.get(opts, :document)
 
     with true <- content_type in @supported_content_types,
          :ok <- on_progress.(:reading),
-         {:ok, response} <- request(kind, bytes, content_type, pages),
+         {:ok, response} <- request(kind, bytes, content_type, pages, document),
          :ok <- on_progress.(:extracting),
          {:ok, result} <- map_response(kind, response, page_numbers) do
       {:ok, result}
@@ -31,6 +32,77 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
       {:error, reason, audit} -> {:error, reason, audit}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  @doc """
+  Uploads a document once and returns the `:document` payload that references it.
+
+  A windowed read makes one `/v1/ocr` call per 8-page window (Mistral's own
+  `document_annotation` cap), and inlining the document base64-encodes the whole
+  file into every one of them: a 57-page packet ships ~87 MB to read 6.9 MB.
+  Worse, base64's 4/3 expansion caps an inlined document at ~37.5 MB against the
+  API's 50 MB limit, so a large shoebox is rejected for size after a minute of
+  work. Uploading once and passing the signed URL costs two extra round trips
+  and removes both problems.
+
+  The file is Mistral's for 24 hours unless deleted, so callers should
+  `delete/1` once the read is done — see `Nila.Gst.Extraction.Windowed`.
+  """
+  def upload(bytes, filename) when is_binary(bytes) do
+    with {:ok, %{"id" => file_id}} <- upload_file(bytes, filename),
+         {:ok, %{"url" => url}} <- signed_url(file_id) do
+      {:ok, %{file_id: file_id, document: %{type: "document_url", document_url: url}}}
+    else
+      {:ok, body} -> {:error, {:mistral_files_unexpected_response, body}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Best-effort removal of an uploaded document. Never raises."
+  def delete(file_id) when is_binary(file_id) do
+    case Req.delete(request_options(url: "/v1/files/#{file_id}")) do
+      {:ok, %Req.Response{status: status}} when status in 200..299 -> :ok
+      {:ok, %Req.Response{status: status}} -> {:error, {:mistral_files_delete_failed, status}}
+      {:error, reason} -> {:error, {:mistral_files_delete_failed, reason}}
+    end
+  end
+
+  defp upload_file(bytes, filename) do
+    options =
+      request_options(
+        url: "/v1/files",
+        form_multipart: [purpose: "ocr", file: {bytes, filename: filename}]
+      )
+
+    options |> Req.post() |> decode_files_response()
+  end
+
+  defp signed_url(file_id) do
+    request_options(url: "/v1/files/#{file_id}/url", params: [expiry: 24])
+    |> Req.get()
+    |> decode_files_response()
+  end
+
+  defp decode_files_response({:ok, %Req.Response{status: status, body: body}})
+       when status in 200..299 do
+    case body do
+      body when is_map(body) -> {:ok, body}
+      body when is_binary(body) -> Jason.decode(body)
+      body -> {:error, {:mistral_files_unexpected_response, body}}
+    end
+  end
+
+  defp decode_files_response({:ok, %Req.Response{status: status, body: body}}),
+    do: {:error, {:mistral_files_failed, status, decode_error_body(body)}}
+
+  defp decode_files_response({:error, reason}),
+    do: {:error, {:mistral_files_request_failed, reason}}
+
+  defp request_options(options) do
+    options
+    |> Keyword.update!(:url, &url/1)
+    |> Keyword.merge(auth: {:bearer, api_key()}, retry: false, receive_timeout: receive_timeout())
+    |> Keyword.merge(req_options())
   end
 
   def annotation_schema(kind) when kind in [:purchase, :sales] do
@@ -165,10 +237,10 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
     nullable(type) |> Map.put(:description, description)
   end
 
-  def request_payload(kind, bytes, content_type, pages \\ nil) do
+  def request_payload(kind, bytes, content_type, pages \\ nil, document \\ nil) do
     %{
       model: @model,
-      document: document(bytes, content_type),
+      document: document || document(bytes, content_type),
       table_format: "markdown",
       include_blocks: true,
       confidence_scores_granularity: "word",
@@ -223,8 +295,8 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
     end
   end
 
-  defp request(kind, bytes, content_type, pages) do
-    payload = request_payload(kind, bytes, content_type, pages)
+  defp request(kind, bytes, content_type, pages, document) do
+    payload = request_payload(kind, bytes, content_type, pages, document)
 
     options =
       [
@@ -464,12 +536,16 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
     |> List.first()
   end
 
-  defp decode_error_body(body) do
+  # `/v1/ocr` is fetched with `decode_body: false` and hands back a raw string;
+  # the Files endpoints let Req decode, so an error body arrives already a map.
+  defp decode_error_body(body) when is_binary(body) do
     case Jason.decode(body) do
       {:ok, decoded} -> decoded
       {:error, _reason} -> body
     end
   end
+
+  defp decode_error_body(body), do: body
 
   defp annotation_prompt(:purchase) do
     "Extract every purchase invoice in the selected pages from first page to last. Return one array entry for every distinct invoice, even when uncertain. Assemble multi-page invoices into one entry and include every 1-based source page from the original document. Use null for unprinted fields. Preserve printed values exactly. taxable_value always means the post-discount value before GST, never list value or pre-discount subtotal. When a GST Slab, Tax Summary, Add-CGST/Add-SGST, CGST OUTWARD or SGST OUTWARD summary is printed, copy its taxable turnover and tax amounts exactly into the printed_* fields; never recalculate or redistribute those summary values across item rows. Read handwritten tax and total boxes as printed values too. Capture subtotal, product discount, final taxable turnover, CGST, SGST, IGST, additional charges, rounding and grand total separately. A GST/HSN summary may supply invoice totals but must never become another line item. Include every actual item row, but never turn subtotal, total or amount-in-words rows into line items."

@@ -46,13 +46,25 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             class="text-success mt-0.5 size-4 shrink-0"
           />
           <span :if={not item.resolved} class="bg-warning mt-1.5 size-2 shrink-0 rounded-full" />
-          <span class="flex min-w-0 flex-col gap-0.5">
-            <span class={[
-              "text-small font-medium",
-              item.resolved && "text-base-content/50",
-              not item.resolved && "text-base-content"
-            ]}>
-              {item.vendor}
+          <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span class="flex items-baseline gap-2">
+              <span class={[
+                "text-small min-w-0 flex-1 truncate font-medium",
+                item.resolved && "text-base-content/50",
+                not item.resolved && "text-base-content"
+              ]}>
+                {item.vendor}
+              </span>
+              <span
+                :if={item.tax_paise > 0}
+                id={"queue-tax-#{item.id}"}
+                class={[
+                  "text-fine shrink-0 font-mono",
+                  (item.resolved && "text-base-content/40") || "text-base-content/70"
+                ]}
+              >
+                {format_money(item.tax_paise, prefix: "₹")}
+              </span>
             </span>
             <span class="text-base-content/50 text-fine truncate">
               {if item.resolved,
@@ -84,8 +96,11 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
     ~H"""
     <div class="space-y-5">
       <div>
-        <h3 class="text-base-content text-body font-semibold">
-          {@selected.invoice_number || "—"} · {@selected.vendor}
+        <h3 class="text-base-content text-body flex flex-wrap items-baseline gap-x-3 font-semibold">
+          <span>{@selected.invoice_number || "—"} · {@selected.vendor}</span>
+          <span :if={@selected.tax_paise > 0} id="gst-exception-tax" class="text-small font-mono">
+            {format_money(@selected.tax_paise, prefix: "₹")} tax at stake
+          </span>
         </h3>
         <p class="text-base-content/70 text-small mt-1">{@selected.reason}</p>
         <p :if={asked_label(@selected.asked_at)} class="text-fine text-moon mt-1 font-medium">

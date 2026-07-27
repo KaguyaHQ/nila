@@ -1,7 +1,17 @@
 defmodule NilaWeb.Components.Gst.Month.Filing do
   use NilaWeb, :html
 
-  @moduledoc "GSTR-3B filing presentation for the GST month workbench."
+  @moduledoc """
+  The exit block: both returns' signatures, the portal steps, and the assembled
+  3B.
+
+  It is never a second door. The one saturated control on the page is the
+  verdict's door at the top, and in a sign state that door *is* the sign
+  action. What lives down here is only its consequences: the reason a
+  signature is still blocked, the ARN entry once a return is signed (the one
+  state whose actionable control belongs at the exit), and the closed record
+  after filing. The page ends at *filed*, not at signed.
+  """
 
   alias Nila.Gst.Filing.ItcPosition
 
@@ -10,120 +20,215 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :stats, :any, default: nil
   attr :gstr3b, :any, default: nil
   attr :gstr3b_signoff, :any, default: nil
+  attr :r1_signoff, :any, default: nil
+  attr :open_issue_count, :integer, default: 0
   attr :can_sign_off, :boolean, required: true
 
-  def gstr3b_section(assigns) do
+  def exit_block(assigns) do
     ~H"""
-    <section :if={@purchase_month} id="month-3b" class="scroll-mt-28 space-y-4">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <h2 class="text-base-content font-semibold">GSTR-3B — ITC and tax payable</h2>
-        <.button
-          :if={
-            @purchase_month.state == "worked" and @can_sign_off and @stats.need_decision == 0 and
-              @sales_month != nil
-          }
-          id="gst-signoff-button"
-          variant="primary"
-          size="sm"
-          phx-click="3b-sign-off"
+    <section
+      :if={@purchase_month || @sales_month}
+      id="month-exit"
+      class="border-base-300 space-y-4 border-t pt-6"
+    >
+      <h2 class="text-base-content/45 text-label font-medium uppercase">Signatures and filing</h2>
+
+      <div :if={@sales_month} id="month-exit-gstr1" class="scroll-mt-28">
+        <.return_state
+          return="GSTR-1"
+          signoff={@r1_signoff}
+          month={@sales_month}
+          blocked_reason={r1_blocked_reason(assigns)}
+          reopen_event="r1-reopen-signoff"
+          reopen_id="gstr1-reopen-signoff"
+          reopen_confirm="Reopen this signed GSTR-1? The signature is revoked, and any GSTR-3B signed against it is reopened too."
+          filed_event="r1-mark-filed"
+          form_id="gstr1-mark-filed"
+          arn_id="gstr1-filed-arn"
+          blocked_id="gstr1-signoff-blocked"
+          filed_note_id="gstr1-filed-note"
+          can_sign_off={@can_sign_off}
         >
-          <.icon name="hero-check-badge-mini" class="size-4" /> Sign off month
-        </.button>
-        <span
-          :if={
-            @purchase_month.state == "worked" and @can_sign_off and
-              (@stats.need_decision > 0 or @sales_month == nil)
-          }
-          id="gst-signoff-blocked"
-          class="text-base-content/60 text-small"
-        >
-          Sign-off waits — {signoff_blockers(assigns)}
-        </span>
+          <:extra_step>
+            <li class="text-small flex flex-wrap items-center gap-2">
+              <span class="text-base-content/50 font-mono">1.</span>
+              <span class="text-base-content flex-1">Download the portal JSON</span>
+              <.button
+                id="gstr1-guide-download-json"
+                href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/return.json"}
+                variant="outline"
+                size="xs"
+              >
+                Download JSON
+              </.button>
+            </li>
+          </:extra_step>
+        </.return_state>
       </div>
 
-      <div
-        :if={@gstr3b_signoff}
-        id="gst-signoff-banner"
-        class="bg-success/[0.04] border-success/40 rounded-box space-y-3 border px-4 py-3"
-      >
-        <div class="flex items-start gap-2">
-          <.icon name="hero-check-badge" class="text-success size-5 shrink-0" />
-          <p class="text-base-content text-small flex-1">
-            Signed off by {(@gstr3b_signoff.signed_by && @gstr3b_signoff.signed_by.name) || "—"} · {format_display_datetime(
-              @gstr3b_signoff.inserted_at
-            )} — figures are frozen as approved.
-            <span :if={@purchase_month.filed_at} id="gst-filed-note" class="font-medium">
-              Filed {format_display_datetime(@purchase_month.filed_at)}{if @purchase_month.filing_arn,
-                do: " · ARN #{@purchase_month.filing_arn}"}.
-            </span>
-          </p>
-          <.button
-            :if={@can_sign_off and is_nil(@purchase_month.filed_at)}
-            id="gst-reopen-signoff"
-            variant="ghost"
-            size="xs"
-            phx-click="3b-reopen-signoff"
-            data-confirm="Reopen this signed month? The signature is revoked and the month can be worked again."
-          >
-            Reopen
-          </.button>
-        </div>
-
-        <ol :if={is_nil(@purchase_month.filed_at)} class="space-y-2 pl-7">
-          <li class="text-small flex items-center gap-2">
-            <span class="text-base-content/50 font-mono">1.</span>
-            <span class="text-base-content flex-1">File it at gst.gov.in</span>
-            <a
-              href="https://www.gst.gov.in/"
-              target="_blank"
-              rel="noopener"
-              class="text-moon font-semibold"
-            >
-              Open portal →
-            </a>
-          </li>
-          <li>
-            <form
-              id="gst-mark-filed"
-              phx-submit="3b-mark-filed"
-              class="text-small flex flex-wrap items-center gap-2"
-            >
-              <span class="text-base-content/50 font-mono">2.</span>
-              <span class="text-base-content flex-1">Paste the ARN here</span>
-              <.input
-                type="text"
-                name="arn"
-                id="gst-filed-arn"
-                value=""
-                placeholder="ARN (optional)"
-                class="input input-sm w-40 font-mono"
-                autofocus
-              />
-              <.button type="submit" variant="success" size="xs">Filed on portal</.button>
-            </form>
-          </li>
-        </ol>
+      <div :if={@purchase_month} id="month-exit-gstr3b" class="scroll-mt-28">
+        <.return_state
+          return="GSTR-3B"
+          signoff={@gstr3b_signoff}
+          month={@purchase_month}
+          blocked_reason={gstr3b_blocked_reason(assigns)}
+          reopen_event="3b-reopen-signoff"
+          reopen_id="gst-reopen-signoff"
+          reopen_confirm="Reopen this signed month? The signature is revoked and the month can be worked again."
+          filed_event="3b-mark-filed"
+          form_id="gst-mark-filed"
+          arn_id="gst-filed-arn"
+          blocked_id="gst-signoff-blocked"
+          filed_note_id="gst-filed-note"
+          can_sign_off={@can_sign_off}
+        />
       </div>
 
-      <.gstr3b_panel gstr3b={@gstr3b} />
+      <details :if={@gstr3b} id="month-3b" class="group scroll-mt-28">
+        <summary class="hover:text-base-content text-base-content/70 text-small flex cursor-pointer list-none items-center gap-2">
+          <.icon name="hero-document-text" class="text-base-content/40 size-4 shrink-0" />
+          <span class="flex-1">The assembled GSTR-3B</span>
+          <.icon
+            name="hero-chevron-down-mini"
+            class="text-base-content/40 size-4 shrink-0 transition-transform group-open:rotate-180"
+          />
+        </summary>
+        <.gstr3b_panel gstr3b={@gstr3b} />
+      </details>
     </section>
     """
+  end
+
+  attr :return, :string, required: true
+  attr :signoff, :any, default: nil
+  attr :month, :any, required: true
+  attr :blocked_reason, :any, default: nil
+  attr :reopen_event, :string, required: true
+  attr :reopen_id, :string, required: true
+  attr :reopen_confirm, :string, required: true
+  attr :filed_event, :string, required: true
+  attr :form_id, :string, required: true
+  attr :arn_id, :string, required: true
+  attr :blocked_id, :string, required: true
+  attr :filed_note_id, :string, required: true
+  attr :can_sign_off, :boolean, required: true
+  slot :extra_step
+
+  defp return_state(assigns) do
+    ~H"""
+    <p
+      :if={is_nil(@signoff) and @blocked_reason}
+      id={@blocked_id}
+      class="text-base-content/55 text-small"
+    >
+      {@return} signature waits: {@blocked_reason}
+    </p>
+
+    <p
+      :if={is_nil(@signoff) and is_nil(@blocked_reason)}
+      class="text-base-content/55 text-small"
+    >
+      {@return} is ready for a signature.
+    </p>
+
+    <div :if={@signoff} class="space-y-3">
+      <div class="flex items-start gap-2">
+        <.icon name="hero-check-badge" class="text-success size-5 shrink-0" />
+        <p class="text-base-content text-small flex-1">
+          {@return} signed off by {(@signoff.signed_by && @signoff.signed_by.name) || "—"} · {format_display_datetime(
+            @signoff.inserted_at
+          )}. Figures are frozen as approved.
+          <span :if={@month.filed_at} id={@filed_note_id} class="font-medium">
+            Filed {format_display_datetime(@month.filed_at)}{if @month.filing_arn,
+              do: " · ARN #{@month.filing_arn}"}.
+          </span>
+        </p>
+        <.button
+          :if={@can_sign_off and is_nil(@month.filed_at)}
+          id={@reopen_id}
+          variant="ghost"
+          size="xs"
+          phx-click={@reopen_event}
+          data-confirm={@reopen_confirm}
+        >
+          Reopen
+        </.button>
+      </div>
+
+      <ol :if={is_nil(@month.filed_at)} class="space-y-2 pl-7">
+        {render_slot(@extra_step)}
+        <li class="text-small flex items-center gap-2">
+          <span class="text-base-content/50 font-mono">{if @extra_step != [], do: "2.", else: "1."}</span>
+          <span class="text-base-content flex-1">File it at gst.gov.in</span>
+          <a
+            href="https://www.gst.gov.in/"
+            target="_blank"
+            rel="noopener"
+            class="text-moon font-semibold"
+          >
+            Open portal →
+          </a>
+        </li>
+        <li>
+          <form
+            id={@form_id}
+            phx-submit={@filed_event}
+            class="text-small flex flex-wrap items-center gap-2"
+          >
+            <span class="text-base-content/50 font-mono">{if @extra_step != [], do: "3.", else: "2."}</span>
+            <span class="text-base-content flex-1">Paste the ARN here</span>
+            <.input
+              type="text"
+              name="arn"
+              id={@arn_id}
+              value=""
+              placeholder="ARN (optional)"
+              class="input input-sm w-40 font-mono"
+            />
+            <.button type="submit" variant="outline" size="xs">Filed on portal</.button>
+          </form>
+        </li>
+      </ol>
+    </div>
+    """
+  end
+
+  defp r1_blocked_reason(%{sales_month: sales, open_issue_count: open}) do
+    cond do
+      is_nil(sales) -> "the sales bills are not in"
+      open > 0 -> "#{open} #{if open == 1, do: "issue", else: "issues"} to check"
+      sales.state != "reviewed" -> "the GSTR-1 is not marked reviewed yet"
+      true -> nil
+    end
+  end
+
+  defp gstr3b_blocked_reason(assigns) do
+    [
+      assigns.stats && assigns.stats.need_decision > 0 &&
+        "#{assigns.stats.need_decision} #{if assigns.stats.need_decision == 1, do: "purchase", else: "purchases"} to decide",
+      assigns.sales_month == nil && "the sales bills"
+    ]
+    |> Enum.filter(& &1)
+    |> case do
+      [] -> nil
+      reasons -> Enum.join(reasons, ", ")
+    end
   end
 
   attr :gstr3b, :map, required: true
 
   defp gstr3b_panel(assigns) do
     ~H"""
-    <div id="gst-3b-panel" class="border-base-300 rounded-box border">
+    <div id="gst-3b-panel" class="border-base-300 rounded-box mt-3 border">
       <div class="border-base-300 flex items-center justify-between border-b px-4 py-3">
         <div class="text-base-content/50 text-fine">
           {if liability_missing?(@gstr3b),
-            do: "ITC side assembled — outward liability needs the month's sales bills",
-            else: "Assembled from the worked sales month and the 2B reconciliation"}
+            do: "ITC side assembled. Outward liability needs the month's sales bills.",
+            else: "Assembled from the worked sales month and the 2B reconciliation."}
         </div>
         <div :if={!liability_missing?(@gstr3b)} class="text-right">
           <div class="text-base-content/60 text-label font-medium uppercase">Cash payable</div>
-          <div id="gst-3b-cash" class="text-base-content text-lead font-mono font-semibold">
+          <div id="gst-3b-cash" class="text-base-content text-body font-mono font-semibold">
             {money_paise(@gstr3b["setoff_61"]["cash_total"])}
           </div>
         </div>
@@ -138,7 +243,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         <div :if={liability_missing?(@gstr3b)} class="space-y-1.5">
           <div class="text-base-content/40 text-fine uppercase">3.1 Outward liability</div>
           <p class="text-base-content/50 text-small">
-            No worked sales month for this period yet — upload the sales bills to derive GSTR-1 and complete the return.
+            No worked sales month for this period yet. Upload the sales bills to derive the GSTR-1 and complete the return.
           </p>
           <.gstr3b_line label="(d) Reverse charge" heads={@gstr3b["liability_31"]["d"]} />
         </div>
@@ -177,15 +282,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       </span>
     </div>
     """
-  end
-
-  defp signoff_blockers(assigns) do
-    [
-      assigns.stats.need_decision > 0 && "#{assigns.stats.need_decision} purchases to decide",
-      assigns.sales_month == nil && "the sales bills"
-    ]
-    |> Enum.filter(& &1)
-    |> Enum.join(" · ")
   end
 
   defp liability_missing?(gstr3b), do: gstr3b["liability_source"] == "missing"

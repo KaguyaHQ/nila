@@ -32,8 +32,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#month-page")
     assert has_element?(view, "#month-sales")
     assert has_element?(view, "#gstr1-inv-20\\/2026-27")
-    assert has_element?(view, "#month-open-sales-issues", "sales issues →")
-    assert render(view) =~ "open issues"
+    assert has_element?(view, "#month-door-sales-issues", "Check the")
+    assert render(view) =~ "to check"
   end
 
   test "clicking an invoice shows its issues in the evidence modal", %{
@@ -100,7 +100,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     view |> element("#gstr1-mark-reviewed") |> render_click()
 
     assert has_element?(view, "#gstr1-reviewed-badge")
-    assert has_element?(view, "#month-bring-documents", "Bring in documents")
+    assert has_element?(view, "#month-door-sign-r1", "Sign the GSTR-1")
+    assert render(view) =~ "Purchase bills not in"
   end
 
   defp confirm_all_open_issues(view) do
@@ -134,22 +135,22 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     confirm_all_open_issues(view)
     view |> element("#gstr1-mark-reviewed") |> render_click()
 
-    assert has_element?(view, "#gstr1-signoff-button")
-    view |> element("#gstr1-signoff-button") |> render_click()
+    assert has_element?(view, "#month-door-sign-r1")
+    view |> element("#month-door-sign-r1") |> render_click()
 
-    assert has_element?(view, "#gstr1-signoff-banner")
-    assert has_element?(view, "#month-file-gstr1[href='#gstr1-signoff-banner']")
+    assert has_element?(view, "#month-exit-gstr1")
+    assert has_element?(view, "#month-door-file-sales[href='#month-exit-gstr1']")
     assert has_element?(view, "#gstr1-guide-download-json", "Download JSON")
     assert has_element?(view, "#gstr1-download-json.btn-outline")
-    assert has_element?(view, "#gstr1-signoff-banner a[target='_blank'][rel='noopener']")
-    assert has_element?(view, "#gstr1-filed-arn[autofocus]")
-    refute has_element?(view, "#gstr1-signoff-button")
+    assert has_element?(view, "#month-exit-gstr1 a[target='_blank'][rel='noopener']")
+    assert has_element?(view, "#gstr1-filed-arn")
+    refute has_element?(view, "#month-door-sign-r1")
     refute has_element?(view, "button[phx-click='confirm_issue']")
 
     view |> element("#gstr1-reopen-signoff") |> render_click()
 
-    refute has_element?(view, "#gstr1-signoff-banner")
-    assert has_element?(view, "#gstr1-signoff-button")
+    refute has_element?(view, "#month-exit-gstr1", "signed off by")
+    assert has_element?(view, "#month-door-sign-r1")
   end
 
   test "marking a signed GSTR-1 filed records the ARN and hides reopen", %{
@@ -160,7 +161,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     confirm_all_open_issues(view)
     view |> element("#gstr1-mark-reviewed") |> render_click()
-    view |> element("#gstr1-signoff-button") |> render_click()
+    view |> element("#month-door-sign-r1") |> render_click()
 
     view
     |> element("#gstr1-mark-filed")
@@ -182,7 +183,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     confirm_all_open_issues(view)
     view |> element("#gstr1-mark-reviewed") |> render_click()
 
-    refute has_element?(view, "#gstr1-signoff-button")
+    refute has_element?(view, "#month-door-sign-r1")
   end
 
   test "an in-flight dump appears and clears through the month subscription", %{
@@ -224,7 +225,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     confirm_all_open_issues(view)
     view |> element("#gstr1-mark-reviewed") |> render_click()
-    view |> element("#gstr1-signoff-button") |> render_click()
+    view |> element("#month-door-sign-r1") |> render_click()
 
     straggler = work_dump!(org, client, @period, "sales", "%PDF-1.4 late")
 

@@ -17,7 +17,7 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias Nila.Gst.WorkQueue
-  alias NilaWeb.Components.Gst.Month.{Arrivals, Evidence, Filing, Purchase, Sales, Status}
+  alias NilaWeb.Components.Gst.Month.{Arrivals, Evidence, Filing, Purchase, Sales, Verdict}
 
   @impl true
   def mount(%{"client_id" => client_id, "period" => period}, _session, socket) do
@@ -75,8 +75,8 @@ defmodule NilaWeb.Gst.MonthLive do
     socket
     |> assign_purchase(purchase)
     |> assign_sales(sales)
-    |> assign_strip(purchase, sales)
     |> assign_dumps()
+    |> assign_verdict(purchase, sales)
   end
 
   defp assign_dumps(socket) do
@@ -218,28 +218,45 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
-  defp assign_strip(socket, purchase, sales) do
+  # The month is a pair of tracks, and exactly one of them owns the page's one
+  # door. Deriving the pair here (from the same WorkQueue projection Today
+  # folds) is what stops this page from inventing a second answer.
+  defp assign_verdict(socket, purchase, sales) do
     %{stats: stats, r1_signoff: r1_signoff, gstr3b_signoff: gstr3b_signoff} = socket.assigns
-    r1_filed = sales != nil and sales.filed_at != nil
-    gstr3b_filed = purchase != nil and purchase.filed_at != nil
 
-    state =
-      WorkQueue.blocking_state(%{
+    tracks =
+      WorkQueue.track_states(%{
         purchase: purchase,
         sales: sales,
         need_decision: (stats && stats.need_decision) || 0,
         r1_signed: r1_signoff != nil,
-        r1_filed: r1_filed,
+        r1_filed: sales != nil and sales.filed_at != nil,
         gstr3b_signed: gstr3b_signoff != nil,
-        gstr3b_filed: gstr3b_filed
+        gstr3b_filed: purchase != nil and purchase.filed_at != nil
       })
 
+    facts = %{
+      tracks: tracks,
+      stats: stats,
+      gstr3b: socket.assigns.gstr3b,
+      purchase_month: purchase,
+      sales_month: sales,
+      open_issue_count: socket.assigns.open_issue_count,
+      reviewable: socket.assigns.reviewable,
+      r1_signoff: r1_signoff,
+      gstr3b_signoff: gstr3b_signoff,
+      can_sign_off: socket.assigns.can_sign_off,
+      attention_dumps: socket.assigns.attention_dumps,
+      open_period: socket.assigns.open_period,
+      client: socket.assigns.client,
+      period: socket.assigns.period,
+      today: Date.utc_today()
+    }
+
     socket
-    |> assign(:blocking_state, state)
-    |> assign(
-      :deadline,
-      WorkQueue.deadline(socket.assigns.period, Date.utc_today(), r1_filed, gstr3b_filed)
-    )
+    |> assign(:tracks, tracks)
+    |> assign(:blocking_state, WorkQueue.fold_state(tracks))
+    |> assign(:verdict, Verdict.resolve(facts))
   end
 
   @impl true
@@ -479,63 +496,59 @@ defmodule NilaWeb.Gst.MonthLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <div id="month-page" class="mx-auto max-w-6xl space-y-6">
-        <.page_header eyebrow="Client month" title={"#{@client.name} · #{period_label(@period)}"}>
-          The whole month in one room — the GSTR-1, the purchase register, and the
-          assembled 3B, in the order they file.
-        </.page_header>
+      <%!-- The eye path, top to bottom, progressively quieter: the verdict and
+            its one door, then what the engine settled, then the working
+            surface for whichever track is live, then the register appendix,
+            then the paper trail, then the exit. Everything below the door is
+            folded, because anything that is not the verdict, an undecided
+            item, or the exit has not earned a reader's attention. --%>
+      <div id="month-page" class="mx-auto max-w-5xl space-y-8">
+        <Verdict.verdict verdict={@verdict} client={@client} period={@period} />
 
-        <Status.status_strip
-          blocking_state={@blocking_state}
-          deadline={@deadline}
-          sales_month={@sales_month}
-          purchase_month={@purchase_month}
-          stats={@stats}
-          open_issue_count={@open_issue_count}
-          r1_signoff={@r1_signoff}
-          gstr3b_signoff={@gstr3b_signoff}
-          client={@client}
-          period={@period}
-          dumps={@dumps}
-          can_sign_off={@can_sign_off}
-        />
-        <Arrivals.arrivals
-          attention_dumps={@attention_dumps}
-          dumps={@dumps}
-          asks={@asks}
-          superseded_2b_ids={@superseded_2b_ids}
-          client={@client}
-          period={@period}
-          open_period={@open_period}
-          r1_signoff={@r1_signoff}
-          gstr3b_signoff={@gstr3b_signoff}
-        />
-        <Sales.sales_section
-          sales_month={@sales_month}
-          invoices={@invoices}
-          open_issue_count={@open_issue_count}
-          reviewable={@reviewable}
-          r1_signoff={@r1_signoff}
-          month_issues={@month_issues}
-          issues_by_invoice={@issues_by_invoice}
-          can_sign_off={@can_sign_off}
-          client={@client}
-          period={@period}
-        />
-        <Purchase.purchase_section
-          purchase_month={@purchase_month}
-          stats={@stats}
-          document_flags={@document_flags}
-          rows={@rows}
-          client={@client}
-          period={@period}
-        />
-        <Filing.gstr3b_section
+        <div class="space-y-3">
+          <Purchase.settled stats={@stats} rows={@rows} />
+
+          <Sales.sales_section
+            sales_month={@sales_month}
+            invoices={@invoices}
+            open_issue_count={@open_issue_count}
+            reviewable={@reviewable}
+            r1_signoff={@r1_signoff}
+            month_issues={@month_issues}
+            issues_by_invoice={@issues_by_invoice}
+            open={@tracks.sales == :open}
+          />
+
+          <Purchase.register
+            purchase_month={@purchase_month}
+            stats={@stats}
+            document_flags={@document_flags}
+            rows={@rows}
+            client={@client}
+            period={@period}
+          />
+
+          <Arrivals.paper_trail
+            attention_dumps={@attention_dumps}
+            dumps={@dumps}
+            asks={@asks}
+            superseded_2b_ids={@superseded_2b_ids}
+            client={@client}
+            period={@period}
+            open_period={@open_period}
+            r1_signoff={@r1_signoff}
+            gstr3b_signoff={@gstr3b_signoff}
+          />
+        </div>
+
+        <Filing.exit_block
           purchase_month={@purchase_month}
           sales_month={@sales_month}
           stats={@stats}
           gstr3b={@gstr3b}
           gstr3b_signoff={@gstr3b_signoff}
+          r1_signoff={@r1_signoff}
+          open_issue_count={@open_issue_count}
           can_sign_off={@can_sign_off}
         />
       </div>

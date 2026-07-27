@@ -18,7 +18,10 @@ defmodule Nila.Gst.Intake.DumpWorker do
   Extraction is minutes-long and fallible: progress narrates over PubSub
   (`PurchaseMonths.broadcast_progress/2`, message `{:gst_dump_progress, ...}`)
   and terminal failure marks the dump `failed` so intake surfaces can show
-  which arrival broke.
+  which arrival broke. A windowed extractor reports each window as it lands, so
+  the coarse `:extracting` stage is followed by `{:extracting, progress}` counts
+  (`t:Nila.Gst.Extraction.Windowed.progress/0`) and the wait is narrated in
+  pages read rather than a spinner.
   """
   use Oban.Worker, queue: :documents, max_attempts: 3
 
@@ -189,7 +192,14 @@ defmodule Nila.Gst.Intake.DumpWorker do
   defp extract_source(dump, extractor, worker_attempt) do
     with {:ok, key} <- one_source_key(dump),
          {:ok, bytes} <- Storage.get(key) do
-      opts = [filename: Path.basename(key), on_progress: fn _stage -> :ok end]
+      opts = [
+        filename: Path.basename(key),
+        on_progress: fn _stage -> :ok end,
+        on_window: fn
+          {:progress, window} -> progress(dump, {:extracting, window})
+          {:retrying, pages} -> progress(dump, {:extracting_retry, pages})
+        end
+      ]
 
       cond do
         not audited?(extractor) ->

@@ -73,7 +73,10 @@ defmodule Nila.Formatters do
     "own_gstin_as_vendor" => "Client's own GSTIN as the vendor",
     "tax_arithmetic_off" => "Tax doesn't add up",
     "implausible_invoice_number" => "Invoice number looks wrong",
-    "pages_unaccounted" => "Pages with no invoice"
+    "pages_unaccounted" => "Pages with no invoice",
+    "low_ocr_confidence" => "Blurry scan, check the total",
+    "source_attribution_uncertain" => "Not sure which page this is from",
+    "subtotal_breakdown_uncertain" => "Line items don't add up"
   }
 
   @doc """

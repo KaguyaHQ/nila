@@ -23,7 +23,13 @@ defmodule Nila.Gst.Purchase.Flags do
   # and score >= 0.82; unrelated names land 0.50-0.65 on raw Jaro (which runs
   # generous on long strings). 0.75 splits those populations.
   @name_match_threshold 0.75
-  @ocr_minimum_review_threshold 0.8
+
+  # Scan quality is judged per packet (see `ocr_outlier_flags/1`): a bill has
+  # to be worse than its own neighbours by this margin, or unreadable outright,
+  # and no more than this share of a packet can carry the flag.
+  @ocr_outlier_margin 0.15
+  @ocr_unreadable_floor 0.5
+  @ocr_outlier_share 0.2
 
   # Address comparison is token-evidence based, not whole-string fuzzy: OCR'd
   # multiline delivery addresses of the *same* place score badly on Jaro (the
@@ -51,7 +57,6 @@ defmodule Nila.Gst.Purchase.Flags do
   def evaluate(invoice, entity_ctx, vendor_dir \\ %{}) do
     [
       &check_source_attribution/3,
-      &check_ocr_confidence/3,
       &check_arithmetic_basis/3,
       &check_invoice_number/3,
       &check_gstin_presence_and_validity/3,
@@ -66,11 +71,81 @@ defmodule Nila.Gst.Purchase.Flags do
 
   def evaluate_all(invoices, entity_ctx, vendor_dir \\ %{}) do
     duplicates = duplicate_flags(invoices)
+    blurry = ocr_outlier_flags(invoices)
 
     Map.new(invoices, fn invoice ->
       {invoice["id"],
-       evaluate(invoice, entity_ctx, vendor_dir) ++ Map.get(duplicates, invoice["id"], [])}
+       evaluate(invoice, entity_ctx, vendor_dir) ++
+         Map.get(duplicates, invoice["id"], []) ++ Map.get(blurry, invoice["id"], [])}
     end)
+  end
+
+  @doc """
+  Scan-quality flags, judged against *this packet* rather than an absolute bar.
+
+  A fixed threshold measures the client's phone camera, not the bill. On a
+  packet photographed in one bad sitting every bill reads below any global
+  line, so the flag fired on ~80% of rows, and a warning that fires on
+  everything is not a warning: the ₹48,802 GSTIN problem ended up screaming
+  exactly as loud as a ₹107 scooter bill.
+
+  So this marks outliers instead. A bill flags when it is meaningfully worse
+  than its own packet's baseline, or when it is bad in absolute terms
+  (`#{@ocr_unreadable_floor}`) no matter how bad its neighbours are. Then the
+  worst-first cap keeps it to #{trunc(@ocr_outlier_share * 100)}% of the
+  packet, so the flag can never become the baseline again by construction.
+  """
+  def ocr_outlier_flags(invoices) when is_list(invoices) do
+    scored =
+      invoices
+      |> Enum.filter(&is_number(ocr_minimum(&1)))
+      |> Enum.sort_by(&ocr_minimum/1)
+
+    case scored do
+      [] ->
+        %{}
+
+      scored ->
+        baseline = median(Enum.map(scored, &ocr_minimum/1))
+        cap = max(1, ceil(length(invoices) * @ocr_outlier_share))
+
+        scored
+        |> Enum.filter(&ocr_outlier?(&1, baseline))
+        |> Enum.take(cap)
+        |> Map.new(&{&1["id"], [low_ocr_flag(&1)]})
+    end
+  end
+
+  defp ocr_outlier?(invoice, baseline) do
+    minimum = ocr_minimum(invoice)
+    minimum < @ocr_unreadable_floor or minimum < baseline - @ocr_outlier_margin
+  end
+
+  defp ocr_minimum(invoice), do: get_in(invoice, ["confidence", "ocr_minimum"])
+
+  defp median(sorted) do
+    count = length(sorted)
+    middle = div(count, 2)
+
+    if rem(count, 2) == 1 do
+      Enum.at(sorted, middle)
+    else
+      (Enum.at(sorted, middle - 1) + Enum.at(sorted, middle)) / 2
+    end
+  end
+
+  defp low_ocr_flag(invoice) do
+    flag(
+      invoice,
+      "low_ocr_confidence",
+      "review",
+      "OCR minimum word confidence is #{Float.round(ocr_minimum(invoice) * 100, 1)}% — " <>
+        "well below the rest of this packet. Inspect the original for omitted or " <>
+        "misread handwritten values.",
+      nil,
+      ["confidence"],
+      1.0
+    )
   end
 
   @doc """
@@ -196,27 +271,6 @@ defmodule Nila.Gst.Purchase.Flags do
   end
 
   defp check_source_attribution(_invoice, _ctx, _dir), do: []
-
-  defp check_ocr_confidence(
-         %{"confidence" => %{"ocr_minimum" => minimum}} = invoice,
-         _ctx,
-         _dir
-       )
-       when is_number(minimum) and minimum < @ocr_minimum_review_threshold do
-    [
-      flag(
-        invoice,
-        "low_ocr_confidence",
-        "review",
-        "OCR minimum word confidence is #{Float.round(minimum * 100, 1)}% — inspect the original for omitted or misread handwritten values.",
-        nil,
-        ["confidence"],
-        1.0
-      )
-    ]
-  end
-
-  defp check_ocr_confidence(_invoice, _ctx, _dir), do: []
 
   defp source_attribution_reason(%{"status" => "ambiguous", "candidate_pages" => pages}) do
     "This invoice matches multiple source pages (#{Enum.join(pages, ", ")}) — open the original document and confirm the right pages."

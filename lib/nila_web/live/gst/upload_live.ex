@@ -19,6 +19,13 @@ defmodule NilaWeb.Gst.UploadLive do
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Storage
 
+  # Mistral's own document limit, and the reason `Nila.Gst.Extraction.Windowed`
+  # uploads a packet once instead of inlining it per window: base64's 4/3
+  # expansion would put anything over ~37.5 MB past this ceiling, and the drop
+  # zone is where a too-large pile should be refused — not a minute later, from
+  # inside extraction, as a provider size error.
+  @max_pdf_bytes 50_000_000
+
   @kinds [
     %{
       name: :sales,
@@ -52,8 +59,8 @@ defmodule NilaWeb.Gst.UploadLive do
       |> assign(:form, to_form(prefill(socket, params), as: :intake))
       |> assign(:jobs, %{})
       |> assign(:pending, nil)
-      |> allow_upload(:sales, accept: ~w(.pdf), max_entries: 1, max_file_size: 50_000_000)
-      |> allow_upload(:purchase, accept: ~w(.pdf), max_entries: 1, max_file_size: 50_000_000)
+      |> allow_upload(:sales, accept: ~w(.pdf), max_entries: 1, max_file_size: @max_pdf_bytes)
+      |> allow_upload(:purchase, accept: ~w(.pdf), max_entries: 1, max_file_size: @max_pdf_bytes)
       |> allow_upload(:gstr2b, accept: ~w(.json), max_entries: 1, max_file_size: 20_000_000)
 
     {:ok, assign(socket, :error, nil)}
@@ -98,7 +105,16 @@ defmodule NilaWeb.Gst.UploadLive do
       jobs =
         Map.new(piles, fn name ->
           dump = create_dump(socket, org.id, client_id, period, name)
-          {dump.id, %{kind: dump.kind, status: :queued, client_id: client_id, period: period}}
+
+          {dump.id,
+           %{
+             kind: dump.kind,
+             status: :queued,
+             progress: nil,
+             retrying: nil,
+             client_id: client_id,
+             period: period
+           }}
         end)
 
       {:noreply,
@@ -180,7 +196,20 @@ defmodule NilaWeb.Gst.UploadLive do
   defp apply_progress(job, {:done, _client_id, _period}), do: %{job | status: :done}
   defp apply_progress(job, {:failed, _reason}), do: %{job | status: :failed}
   defp apply_progress(job, :held), do: %{job | status: :held}
-  defp apply_progress(job, stage) when is_atom(stage), do: %{job | status: stage}
+
+  defp apply_progress(job, {:extracting, window}) when is_map(window),
+    do: %{job | status: :extracting, progress: window}
+
+  # A resent window costs another provider round-trip, so the bar sits still for
+  # ~40s while it happens. Saying so is the difference between a slow read and a
+  # screen that looks hung — the same reason the ledger refuses silence.
+  defp apply_progress(job, {:extracting_retry, pages}),
+    do: %{job | status: :extracting, retrying: pages}
+
+  # Past extraction the window counts are stale — derivation is a different unit
+  # of work, and a bar frozen at "48 of 57 pages" would read as stuck.
+  defp apply_progress(job, stage) when is_atom(stage),
+    do: %{job | status: stage, progress: nil, retrying: nil}
 
   defp entry_in?(socket, name, ref) do
     Enum.any?(socket.assigns.uploads[name].entries, &(&1.ref == ref))
@@ -238,7 +267,7 @@ defmodule NilaWeb.Gst.UploadLive do
   defp kind_title("gstr2b"), do: "GSTR-2B"
 
   defp job_label(:queued), do: "Queued"
-  defp job_label(:extracting), do: "Extracting invoices — this takes a few minutes"
+  defp job_label(:extracting), do: "Reading the bills"
   defp job_label(:deriving), do: "Deriving the GSTR-1"
   defp job_label(:reconciling), do: "Reconciling against 2B"
   defp job_label(:done), do: "Done"
@@ -266,6 +295,50 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp any_done?(jobs) do
     Enum.any?(jobs, fn {_id, job} -> job.status == :done end)
+  end
+
+  defp spinning?(status), do: status not in [:done, :failed, :held, :after_filing]
+
+  # Pages are the unit the operator can see in their own PDF, so the bar counts
+  # pages when the page count is known and falls back to windows when `pdfinfo`
+  # could not read the document. Nothing landed yet omits `value` entirely,
+  # which is daisyUI's indeterminate bar — the honest render for "started, no
+  # ground covered", and the thing a static empty bar gets wrong.
+  defp progress_value(%{page_count: page_count, pages_done: 0}) when is_integer(page_count),
+    do: nil
+
+  defp progress_value(%{page_count: page_count, pages_done: pages_done})
+       when is_integer(page_count),
+       do: pages_done
+
+  defp progress_value(%{done: 0}), do: nil
+  defp progress_value(%{done: done}), do: done
+
+  defp progress_max(%{page_count: page_count}) when is_integer(page_count), do: page_count
+  defp progress_max(%{total: total}), do: total
+
+  # Before the first window lands the count is the *size of the job*, which is
+  # the reassuring number ("of course a 57-page packet takes a minute"), not a
+  # zero.
+  defp progress_caption(%{page_count: count, pages_done: 0}) when is_integer(count),
+    do: "#{count} #{pluralize(count, "page")} to read"
+
+  defp progress_caption(%{page_count: count, pages_done: done}) when is_integer(count),
+    do: "#{done} of #{count} #{pluralize(count, "page")} read"
+
+  defp progress_caption(%{done: 0, total: total}),
+    do: "#{total} #{pluralize(total, "part")} to read"
+
+  defp progress_caption(%{done: done, total: total}),
+    do: "#{done} of #{total} #{pluralize(total, "part")} read"
+
+  defp pluralize(1, word), do: word
+  defp pluralize(_count, word), do: word <> "s"
+
+  defp client_name(clients, client_id) do
+    Enum.find_value(clients, fn {name, id} ->
+      if to_string(id) == to_string(client_id), do: name
+    end)
   end
 
   @impl true
@@ -342,69 +415,96 @@ defmodule NilaWeb.Gst.UploadLive do
           </.form>
         </.card>
 
-        <.card :if={@jobs != %{}} id="gst-upload-progress" class="space-y-4">
+        <.card :if={@jobs != %{}} id="gst-upload-progress" class="space-y-5">
+          <div
+            :if={@pending}
+            id="gst-upload-progress-header"
+            class="border-base-300 flex items-baseline justify-between gap-4 border-b pb-4"
+          >
+            <p class="text-base-content text-h4 truncate font-semibold">
+              {client_name(@clients, @pending.client_id) || "This client"}
+            </p>
+            <p class="text-base-content/60 text-fine shrink-0">{period_label(@pending.period)}</p>
+          </div>
+
           <div
             :for={{dump_id, job} <- Enum.sort(@jobs)}
             id={"gst-dump-#{dump_id}"}
-            class="flex items-center gap-3"
+            class="space-y-2"
           >
-            <span
-              :if={job.status not in [:done, :failed, :held, :after_filing]}
-              class="loading loading-sm loading-spinner text-moon"
-            ></span>
-            <.icon
-              :if={job.status == :done}
-              name="hero-check-circle"
-              class="text-success size-5 shrink-0"
-            />
-            <.icon
-              :if={job.status == :failed}
-              name="hero-exclamation-circle"
-              class="text-error size-5 shrink-0"
-            />
-            <.icon
-              :if={job.status == :held}
-              name="hero-pause-circle"
-              class="text-warning size-5 shrink-0"
-            />
-            <.icon
-              :if={job.status == :after_filing}
-              name="hero-information-circle"
-              class="text-info size-5 shrink-0"
-            />
-            <div class="min-w-0 flex-1">
-              <p class="text-base-content text-small font-medium">{kind_title(job.kind)}</p>
-              <p class={["text-fine", "text-#{job_variant(job.status)}"]}>
-                {job_label(job.status)}
-              </p>
-              <.link
-                :if={job.status == :held}
-                navigate={~p"/gst/#{job.client_id}/#{job.period}"}
-                id={"gst-dump-open-month-#{dump_id}"}
-                class="text-fine text-moon font-semibold"
-              >
-                Open the month
-              </.link>
-              <.link
-                :if={job.status == :after_filing}
-                navigate={
-                  ~p"/gst/upload?client_id=#{job.client_id}&period=#{Calendar.closeable_period(Date.utc_today())}"
-                }
-                id={"gst-dump-open-period-#{dump_id}"}
-                class="text-fine text-moon font-semibold"
-              >
-                Bring it into the open month →
-              </.link>
-              <.button
+            <div class="flex items-start gap-3">
+              <span
+                :if={spinning?(job.status)}
+                class="loading loading-sm loading-spinner text-primary mt-0.5 shrink-0"
+              ></span>
+              <.icon
+                :if={job.status == :done}
+                name="hero-check-circle"
+                class="text-success mt-0.5 size-5 shrink-0"
+              />
+              <.icon
                 :if={job.status == :failed}
-                id={"gst-dump-try-again-#{dump_id}"}
-                phx-click="try-again"
-                variant="soft"
-                size="xs"
-                class="mt-2"
-              >
-                Try again
-              </.button>
+                name="hero-exclamation-circle"
+                class="text-error mt-0.5 size-5 shrink-0"
+              />
+              <.icon
+                :if={job.status == :held}
+                name="hero-pause-circle"
+                class="text-warning mt-0.5 size-5 shrink-0"
+              />
+              <.icon
+                :if={job.status == :after_filing}
+                name="hero-information-circle"
+                class="text-info mt-0.5 size-5 shrink-0"
+              />
+              <div class="min-w-0 flex-1">
+                <p class="text-base-content text-small font-medium">{kind_title(job.kind)}</p>
+                <p class={["text-fine", "text-#{job_variant(job.status)}"]}>
+                  {job_label(job.status)}
+                </p>
+                <.link
+                  :if={job.status == :held}
+                  navigate={~p"/gst/#{job.client_id}/#{job.period}"}
+                  id={"gst-dump-open-month-#{dump_id}"}
+                  class="text-fine text-moon font-semibold"
+                >
+                  Open the month
+                </.link>
+                <.link
+                  :if={job.status == :after_filing}
+                  navigate={
+                    ~p"/gst/upload?client_id=#{job.client_id}&period=#{Calendar.closeable_period(Date.utc_today())}"
+                  }
+                  id={"gst-dump-open-period-#{dump_id}"}
+                  class="text-fine text-moon font-semibold"
+                >
+                  Bring it into the open month →
+                </.link>
+                <.button
+                  :if={job.status == :failed}
+                  id={"gst-dump-try-again-#{dump_id}"}
+                  phx-click="try-again"
+                  variant="soft"
+                  size="xs"
+                  class="mt-2"
+                >
+                  Try again
+                </.button>
+              </div>
+            </div>
+
+            <div :if={job.progress} id={"gst-dump-progress-#{dump_id}"} class="space-y-1.5 pl-8">
+              <progress
+                class="progress progress-primary block h-1.5 w-full"
+                value={progress_value(job.progress)}
+                max={progress_max(job.progress)}
+              ></progress>
+              <p class="text-base-content/60 text-fine tabular-nums">
+                {progress_caption(job.progress)}
+              </p>
+              <p :if={job.retrying} class="text-fine text-warning">
+                Pages {job.retrying} did not come back. Asking again.
+              </p>
             </div>
           </div>
 

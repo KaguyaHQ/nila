@@ -67,7 +67,17 @@ defmodule NilaWeb.Gst.ExceptionsLive do
         gstr2b_item(entry, workings.gstr2b_decisions, asked_at)
       end)
 
-    books_queue ++ gstr2b_queue
+    # Biggest exposure first. The queue used to run in extraction order, which
+    # spends the reviewer's freshest attention on whatever happened to be
+    # scanned first rather than on the ₹48,802 decision.
+    Enum.sort_by(books_queue ++ gstr2b_queue, & &1.tax_paise, :desc)
+  end
+
+  defp tax_total(nil), do: 0
+
+  defp tax_total(invoice) do
+    tax = invoice["tax_paise"] || %{}
+    (tax["cgst"] || 0) + (tax["sgst"] || 0) + (tax["igst"] || 0)
   end
 
   defp exception_item(entry, workings, month) do
@@ -94,6 +104,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
       gstr2b: nil,
       candidates: candidate_views(candidates),
       images: image_urls(books, month),
+      tax_paise: tax_total(books),
       action: books_action(type, candidates),
       verb: verb,
       resolved: resolved,
@@ -119,6 +130,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
       gstr2b_ref: ref,
       candidates: [],
       images: [],
+      tax_paise: tax_total(gstr2b),
       action: :gstr2b,
       verb: verb,
       resolved: verb == "dismiss_2b",

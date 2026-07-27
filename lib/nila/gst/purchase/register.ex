@@ -73,7 +73,15 @@ defmodule Nila.Gst.Purchase.Register do
     books_rows ++ g2b_only_rows(recon)
   end
 
-  @doc "Returns the web-facing invoice, match, and decision counts for a summary."
+  @doc """
+  The web-facing counts *and money* for a summary.
+
+  Counts alone cannot answer the reviewer's actual question ("what is my ITC
+  position and what is riding on the open items"), so the rupee fields ride
+  along: `matched_tax_paise` is settled tax, `open_tax_paise` is the tax on
+  rows still needing a decision. Both come straight from `summary/1`; older
+  summaries and pre-money signoff snapshots simply read 0.
+  """
   def stats(summary) do
     buckets = summary["buckets"] || %{}
     invoices = buckets |> Map.values() |> Enum.sum()
@@ -82,7 +90,10 @@ defmodule Nila.Gst.Purchase.Register do
     %{
       invoices: invoices,
       matched: matched,
-      need_decision: invoices - matched - (summary["accepted_unmatched"] || 0)
+      need_decision: invoices - matched - (summary["accepted_unmatched"] || 0),
+      taxable_paise: summary["taxable_paise"] || 0,
+      matched_tax_paise: summary["matched_tax_paise"] || 0,
+      open_tax_paise: summary["open_tax_paise"] || 0
     }
   end
 
@@ -107,10 +118,25 @@ defmodule Nila.Gst.Purchase.Register do
       "matched_tax_paise" =>
         rows
         |> Enum.filter(&(&1["bucket"] == "matched"))
-        |> Enum.map(&(&1["cgst_paise"] + &1["sgst_paise"] + &1["igst_paise"]))
+        |> Enum.map(&row_tax/1)
+        |> Enum.sum(),
+      # The counterpart of need_decision, in rupees: what is still riding on
+      # the undecided rows. Same predicate as the count (unmatched and not
+      # audited-accepted), so the two can never disagree.
+      "open_tax_paise" =>
+        rows
+        |> Enum.filter(&open_row?/1)
+        |> Enum.map(&row_tax/1)
         |> Enum.sum()
     }
   end
+
+  @doc "Whether a row still needs a human decision (the money-side twin of `need_decision/1`)."
+  def open_row?(row), do: row["bucket"] != "matched" and row["accepted_reason"] == nil
+
+  @doc "Total tax on a register row."
+  def row_tax(row),
+    do: (row["cgst_paise"] || 0) + (row["sgst_paise"] || 0) + (row["igst_paise"] || 0)
 
   defp bucket_index(recon) do
     for bucket <- ["matched", "value_mismatch", "needs_human", "in_books_not_2b"],
