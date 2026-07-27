@@ -2,6 +2,7 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
   use NilaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
+  import Nila.GstFixtures
 
   alias Nila.Clients
   alias Nila.Gst.Chase
@@ -51,6 +52,8 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
     recon = Recon.reconcile([books], [g2b])
     rows = Register.rows([books], recon, %{})
 
+    gstr2b_arrived!(org, client, @period, [g2b])
+
     {:ok, _month} =
       ClientMonths.upsert(%{
         org_id: org.id,
@@ -99,7 +102,11 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
     )
   end
 
+  # Every exception in this file is a real disagreement with the portal, which
+  # only exists once the portal snapshot is in. `reconcile(books, [])` here
+  # models "the 2B arrived and this bill is not in it", not "no 2B yet".
   defp put_recon!(org, client, period, books, recon) do
+    gstr2b_arrived!(org, client, period)
     rows = Register.rows(books, recon, %{})
 
     {:ok, month} =

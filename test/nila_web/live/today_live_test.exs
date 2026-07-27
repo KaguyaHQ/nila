@@ -3,6 +3,8 @@ defmodule NilaWeb.TodayLiveTest do
   use Oban.Testing, repo: Nila.Repo
 
   import Phoenix.LiveViewTest
+  # Scoped: GstFixtures `use`s Oban.Testing, whose helpers this module defines itself.
+  import Nila.GstFixtures, only: [gstr2b_arrived!: 3]
 
   alias Nila.Clients
   alias Nila.Gst.Chase
@@ -44,7 +46,11 @@ defmodule NilaWeb.TodayLiveTest do
     }
   end
 
+  # A seeded recon implies the portal snapshot arrived; without the dump row
+  # the month reads as "no 2B in" and lands in a different section entirely.
   defp seed_client_month(org, client, recon) do
+    gstr2b_arrived!(org, client, @period)
+
     {:ok, month} =
       ClientMonths.upsert(%{
         org_id: org.id,

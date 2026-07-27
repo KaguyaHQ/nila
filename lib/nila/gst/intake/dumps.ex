@@ -88,6 +88,25 @@ defmodule Nila.Gst.Intake.Dumps do
   end
 
   @doc """
+  The `{client_id, period}` pairs an extracted GSTR-2B has landed for.
+
+  Asked once per org rather than per row, because it decides a *state*, not a
+  detail: with no 2B there is nothing for the books to be reconciled against,
+  every invoice is unmatched by construction, and a purchase month's open
+  count is an artifact of the missing snapshot rather than a pile of real
+  decisions.
+  """
+  def gstr2b_months(org_id) do
+    Repo.all(
+      from d in Dump,
+        where: d.org_id == ^org_id and d.kind == "gstr2b" and d.status == "extracted",
+        distinct: true,
+        select: {d.client_id, d.period}
+    )
+    |> MapSet.new()
+  end
+
+  @doc """
   The effective dump set for deriving a month: every extracted bill dump of
   `kind`, arrival order. For `"gstr2b"` the latest extracted dump alone — a
   2B snapshot replaces its predecessors.

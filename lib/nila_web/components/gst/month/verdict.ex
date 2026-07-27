@@ -29,6 +29,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   """
 
   alias Nila.Formatters
+  alias Nila.Gst.Filing.Calendar
   alias Nila.Gst.WorkQueue
 
   @doc """
@@ -125,7 +126,24 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp settled_door_and_headline(%{tracks: %{sales: :signed}} = facts),
     do: file_door(facts, :sales, "GSTR-1", facts.r1_signoff)
 
-  # 3. Live work, purchases first. A track that is merely *absent* is not live
+  # 3. The 2B is published and nobody has fetched it. This outranks every
+  #    decision because every decision is behind it: with no 2B side, the
+  #    reconciliation matched nothing, so the register's "open" rows are an
+  #    artifact of the missing snapshot rather than real disagreements.
+  defp settled_door_and_headline(%{tracks: %{purchase: :need_2b}} = facts) do
+    %{
+      tone: :calm,
+      headline: need_2b_headline(facts),
+      door: %{
+        id: "month-door-bring-2b",
+        label: "Bring in the GSTR-2B",
+        kind: :navigate,
+        to: upload_path(facts, facts.period)
+      }
+    }
+  end
+
+  # 4. Live work, purchases first. A track that is merely *absent* is not live
   #    work for the person on the page (it is a chase, and it is somebody
   #    else's move), so it must not outrank a signature that is ready now.
   #    Each return has its own deadline; the GSTR-1 does not wait on purchase
@@ -171,7 +189,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     end
   end
 
-  # 4. Worked clean and signable now. The senior's door; the junior has none,
+  # 5. Worked clean and signable now. The senior's door; the junior has none,
   #    so for them the page falls through to whatever is still missing.
   defp settled_door_and_headline(%{can_sign_off: true, tracks: tracks} = facts)
        when tracks.sales == :clear
@@ -185,7 +203,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     }
   end
 
-  # 5. One side worked, the other never arrived.
+  # 6. One side worked, the other never arrived.
   defp settled_door_and_headline(%{tracks: %{purchase: :absent}} = facts) do
     %{
       tone: :calm,
@@ -212,7 +230,15 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     }
   end
 
-  # 6. Both filed.
+  # 7. The portal has not published the 2B yet, and everything a person could
+  #    do has been done. Deliberately doorless: the honest answer to "what is
+  #    my move" is "none until the 14th", and inventing a button here is how
+  #    the old page ended up sending reviewers at work that cannot be done.
+  defp settled_door_and_headline(%{tracks: %{purchase: :awaiting_2b}} = facts) do
+    %{tone: :calm, headline: awaiting_2b_headline(facts), door: nil}
+  end
+
+  # 8. Both filed.
   defp settled_door_and_headline(%{tracks: %{sales: :filed, purchase: :filed}} = facts) do
     %{
       tone: :calm,
@@ -222,7 +248,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     }
   end
 
-  # 7. Clean, and there is nothing this viewer can press.
+  # 9. Clean, and there is nothing this viewer can press.
   defp settled_door_and_headline(facts) do
     %{
       tone: :calm,
@@ -266,6 +292,35 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       end
 
     "#{prefix} #{riding} riding on #{count} #{pluralise(count, "decision")}."
+  end
+
+  # Both 2B headlines lead with what the month *has* rather than with what it
+  # is missing, because the bills being in is the reviewer's own work and it
+  # is real. What follows is a date, not a task.
+  defp need_2b_headline(facts) do
+    "#{bills_clause(facts)} The GSTR-2B has been out since #{gstr2b_date(facts)}. " <>
+      "Nothing reconciles until it is in."
+  end
+
+  defp awaiting_2b_headline(facts) do
+    "#{bills_clause(facts)} The portal publishes the GSTR-2B on #{gstr2b_date(facts)}. " <>
+      "Nothing reconciles until then."
+  end
+
+  # With no 2B side, nothing can be matched, so the open pot *is* the month's
+  # claimable credit. Named for what it is here rather than "riding on N
+  # decisions", because there are no decisions yet.
+  defp bills_clause(%{stats: %{invoices: count} = stats}) when count > 0,
+    do:
+      "#{count} purchase #{pluralise(count, "bill")} in, carrying #{money(stats.open_tax_paise)} of ITC."
+
+  defp bills_clause(_facts), do: "The purchase bills are in."
+
+  defp gstr2b_date(facts) do
+    facts.period
+    |> Calendar.status(facts.today)
+    |> Map.fetch!(:gstr2b_due)
+    |> Formatters.format_display_date()
   end
 
   # A door has to land on the control that does the work. An invoice-level
@@ -361,12 +416,14 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       facts.attention_dumps != [] -> nil
       tracks.purchase == :signed -> :purchase
       tracks.sales == :signed -> :sales
+      tracks.purchase == :need_2b -> :purchase
       tracks.purchase == :open -> :purchase
       tracks.sales == :open -> :sales
       signable?(facts, :sales) -> :sales
       signable?(facts, :purchase) -> :purchase
       tracks.purchase == :absent -> :purchase
       tracks.sales == :absent -> :sales
+      tracks.purchase == :awaiting_2b -> :purchase
       true -> nil
     end
   end
@@ -391,6 +448,11 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp line_for(:purchase, :absent, _facts),
     do: "Purchase bills not in, so the 2B reconciliation waits."
+
+  defp line_for(:purchase, :awaiting_2b, facts),
+    do: "Purchases: the GSTR-2B lands #{gstr2b_date(facts)}."
+
+  defp line_for(:purchase, :need_2b, _facts), do: "Purchases: the GSTR-2B is not in yet."
 
   defp line_for(:purchase, :open, %{stats: %{need_decision: n}}) when n > 0,
     do: "Purchases: #{n} #{pluralise(n, "decision")} waiting."

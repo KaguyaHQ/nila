@@ -34,6 +34,7 @@ defmodule Nila.Gst.Filing.Calendar do
     %{
       gstr1_due: dates.gstr1,
       gstr3b_due: dates.gstr3b,
+      gstr2b_due: dates.gstr2b_expected,
       gstr1_days_left: Date.diff(dates.gstr1, today),
       gstr3b_days_left: Date.diff(dates.gstr3b, today),
       gstr2b_available?: Date.compare(today, dates.gstr2b_expected) != :lt

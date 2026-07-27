@@ -20,6 +20,9 @@ defmodule Nila.Gst.WorkQueue do
     * `:waiting_on_client` — documents missing and nothing workable yet.
       Chase verbs live here.
     * `:waiting_on_senior` — worked clean, awaiting signature.
+    * `:waiting_on_portal` — the bills are in but the portal has not published
+      the GSTR-2B yet. Nobody's move, so it sits below the sections that name
+      a person.
     * `:done` — both returns filed.
 
   Within a section, nearest unmet deadline first.
@@ -36,7 +39,7 @@ defmodule Nila.Gst.WorkQueue do
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Months, as: SalesMonths
 
-  @sections ~w(to_file needs_you waiting_on_client waiting_on_senior done)a
+  @sections ~w(to_file needs_you waiting_on_client waiting_on_senior waiting_on_portal done)a
 
   def sections, do: @sections
 
@@ -44,6 +47,7 @@ defmodule Nila.Gst.WorkQueue do
   def section_title(:needs_you), do: "Needs you"
   def section_title(:waiting_on_client), do: "Waiting on the client"
   def section_title(:waiting_on_senior), do: "Waiting on a senior"
+  def section_title(:waiting_on_portal), do: "Waiting on the portal's GSTR-2B"
   def section_title(:done), do: "Done"
 
   @doc "The assembled rows for `org_id` as of `today`, sorted section-then-deadline."
@@ -74,6 +78,8 @@ defmodule Nila.Gst.WorkQueue do
       |> Dumps.active_for_org()
       |> MapSet.new(&{&1.client_id, &1.period})
 
+    gstr2b_months = Dumps.gstr2b_months(org_id)
+
     keys
     |> Enum.map(fn {client_id, period} = key ->
       row(
@@ -82,14 +88,15 @@ defmodule Nila.Gst.WorkQueue do
         period,
         months[key] || %{},
         today,
-        MapSet.member?(processing_months, key)
+        MapSet.member?(processing_months, key),
+        MapSet.member?(gstr2b_months, key)
       )
     end)
     |> Enum.reject(&(&1.section == :done and &1.period != closeable))
     |> Enum.sort_by(&{section_rank(&1.section), &1.days_left || 999, &1.client_name})
   end
 
-  defp row(org, client, period, months, today, processing?) do
+  defp row(org, client, period, months, today, processing?, gstr2b_in?) do
     purchase = months[:purchase]
     sales = months[:sales]
 
@@ -106,6 +113,8 @@ defmodule Nila.Gst.WorkQueue do
         purchase: purchase,
         sales: sales,
         need_decision: need_decision,
+        gstr2b_in: gstr2b_in?,
+        gstr2b_available: Calendar.status(period, today).gstr2b_available?,
         r1_signed: r1_signed,
         r1_filed: r1_filed,
         gstr3b_signed: gstr3b_signed,
@@ -150,38 +159,55 @@ defmodule Nila.Gst.WorkQueue do
   Statuses, in lifecycle order:
 
     * `:absent` — no month row yet; the documents haven't arrived.
+    * `:awaiting_2b` — purchase only. The bills are in, but the portal has not
+      published the GSTR-2B for this period yet. Nothing can be reconciled and
+      nobody can act; this is the normal state of every client for the first
+      two weeks of a filing month.
+    * `:need_2b` — purchase only. The 2B has been published and nobody has
+      brought it in. Live work, and it blocks every decision behind it.
     * `:open` — live work for the person on the page (decisions to make,
       issues to check, a draft the maker hasn't finished).
     * `:clear` — worked clean, waiting on a signature.
     * `:signed` — signed but not on the portal. The filing gap.
     * `:filed` — done.
+
+  The two 2B statuses exist because `Reconciliation.reconcile/3` accepts an
+  empty 2B side without complaint: every books invoice falls into
+  `in_books_not_2b`, so `need_decision` counts the whole register and the page
+  reads it as a pile of judgements. They are not judgements — there is nothing
+  to judge against. Without this split the month page points a primary button
+  at work that cannot be done correctly, and any answer given is guessing that
+  the real 2B will contradict on the 14th.
   """
-  def track_states(%{
-        purchase: purchase,
-        sales: sales,
-        need_decision: need_decision,
-        r1_signed: r1_signed,
-        r1_filed: r1_filed,
-        gstr3b_signed: gstr3b_signed,
-        gstr3b_filed: gstr3b_filed
-      }) do
-    %{
-      sales: sales_track(sales, r1_signed, r1_filed),
-      purchase: purchase_track(purchase, need_decision, gstr3b_signed, gstr3b_filed)
-    }
+  def track_states(
+        %{
+          purchase: _,
+          sales: _,
+          need_decision: _,
+          gstr2b_in: _,
+          gstr2b_available: _,
+          r1_signed: _,
+          r1_filed: _,
+          gstr3b_signed: _,
+          gstr3b_filed: _
+        } = facts
+      ) do
+    %{sales: sales_track(facts), purchase: purchase_track(facts)}
   end
 
-  defp sales_track(nil, _signed, _filed), do: :absent
-  defp sales_track(_sales, _signed, true), do: :filed
-  defp sales_track(_sales, true, _filed), do: :signed
-  defp sales_track(%{state: "reviewed"}, _signed, _filed), do: :clear
-  defp sales_track(_sales, _signed, _filed), do: :open
+  defp sales_track(%{sales: nil}), do: :absent
+  defp sales_track(%{r1_filed: true}), do: :filed
+  defp sales_track(%{r1_signed: true}), do: :signed
+  defp sales_track(%{sales: %{state: "reviewed"}}), do: :clear
+  defp sales_track(_facts), do: :open
 
-  defp purchase_track(nil, _need, _signed, _filed), do: :absent
-  defp purchase_track(_purchase, _need, _signed, true), do: :filed
-  defp purchase_track(_purchase, _need, true, _filed), do: :signed
-  defp purchase_track(_purchase, need, _signed, _filed) when need > 0, do: :open
-  defp purchase_track(_purchase, _need, _signed, _filed), do: :clear
+  defp purchase_track(%{purchase: nil}), do: :absent
+  defp purchase_track(%{gstr3b_filed: true}), do: :filed
+  defp purchase_track(%{gstr3b_signed: true}), do: :signed
+  defp purchase_track(%{gstr2b_in: false, gstr2b_available: false}), do: :awaiting_2b
+  defp purchase_track(%{gstr2b_in: false}), do: :need_2b
+  defp purchase_track(%{need_decision: need}) when need > 0, do: :open
+  defp purchase_track(_facts), do: :clear
 
   @doc """
   Who a client-month is waiting on — the fold of `track_states/1` down to the
@@ -191,16 +217,24 @@ defmodule Nila.Gst.WorkQueue do
   """
   def blocking_state(input) when is_map(input), do: input |> track_states() |> fold_state()
 
-  @doc "Folds a `track_states/1` pair to Today's single section atom."
+  @doc """
+  Folds a `track_states/1` pair to Today's single section atom.
+
+  `:awaiting_2b` is the only status that names nobody, so it falls to the
+  bottom: a section that says "waiting on the portal" must not outrank one
+  that says "waiting on a person", or the junior's list leads with rows he
+  cannot move.
+  """
   def fold_state(%{sales: sales, purchase: purchase}) do
     tracks = [sales, purchase]
 
     cond do
       Enum.all?(tracks, &(&1 == :filed)) -> :done
       Enum.any?(tracks, &(&1 == :signed)) -> :to_file
-      Enum.any?(tracks, &(&1 == :open)) -> :needs_you
+      Enum.any?(tracks, &(&1 in [:open, :need_2b])) -> :needs_you
       Enum.any?(tracks, &(&1 == :absent)) -> :waiting_on_client
-      true -> :waiting_on_senior
+      Enum.any?(tracks, &(&1 == :clear)) -> :waiting_on_senior
+      true -> :waiting_on_portal
     end
   end
 

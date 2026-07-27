@@ -86,6 +86,7 @@ defmodule NilaWeb.Gst.MonthLive do
 
     socket
     |> assign(:dumps, dumps)
+    |> assign(:gstr2b_in, Enum.any?(dumps, &(&1.kind == "gstr2b" and &1.status == "extracted")))
     |> assign(:superseded_2b_ids, superseded_2b_ids(dumps))
     |> assign(:asks, Chase.list_asks(org_id, client.id, period))
     |> assign(:open_period, Calendar.closeable_period(Date.utc_today()))
@@ -241,12 +242,15 @@ defmodule NilaWeb.Gst.MonthLive do
   # folds) is what stops this page from inventing a second answer.
   defp assign_verdict(socket, purchase, sales) do
     %{stats: stats, r1_signoff: r1_signoff, gstr3b_signoff: gstr3b_signoff} = socket.assigns
+    today = Date.utc_today()
 
     tracks =
       WorkQueue.track_states(%{
         purchase: purchase,
         sales: sales,
         need_decision: (stats && stats.need_decision) || 0,
+        gstr2b_in: socket.assigns.gstr2b_in,
+        gstr2b_available: Calendar.status(socket.assigns.period, today).gstr2b_available?,
         r1_signed: r1_signoff != nil,
         r1_filed: sales != nil and sales.filed_at != nil,
         gstr3b_signed: gstr3b_signoff != nil,
@@ -269,7 +273,7 @@ defmodule NilaWeb.Gst.MonthLive do
       open_period: socket.assigns.open_period,
       client: socket.assigns.client,
       period: socket.assigns.period,
-      today: Date.utc_today()
+      today: today
     }
 
     socket

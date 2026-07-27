@@ -27,6 +27,7 @@ defmodule Nila.Gst.Filing.CalendarTest do
     assert status == %{
              gstr1_due: ~D[2025-11-11],
              gstr3b_due: ~D[2025-11-20],
+             gstr2b_due: ~D[2025-11-14],
              gstr1_days_left: 6,
              gstr3b_days_left: 15,
              gstr2b_available?: false

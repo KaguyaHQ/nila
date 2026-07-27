@@ -25,4 +25,23 @@ defmodule Nila.GstFixtures do
     :ok = perform_job(DumpWorker, %{"dump_id" => dump.id})
     dump
   end
+
+  @doc """
+  Records an already-extracted GSTR-2B arrival, for tests that seed a month's
+  reconciliation from disk rather than through the worker.
+
+  The dumps table is where "has the portal snapshot arrived" is answered. A
+  month seeded with a matched recon but no 2B row is incoherent, and the page
+  reads it correctly: nothing has been reconciled against, so nothing in the
+  register is a real decision yet.
+  """
+  def gstr2b_arrived!(org, client, period, invoices \\ []) do
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id},
+        %{period: period, kind: "gstr2b", status: "extracted", invoices: invoices}
+      )
+
+    dump
+  end
 end

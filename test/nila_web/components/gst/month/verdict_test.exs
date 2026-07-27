@@ -120,6 +120,85 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       assert verdict.deadline.return == "GSTR-3B"
     end
 
+    # The state every client sits in for the first two weeks of a filing
+    # month. `reconcile(books, [])` happily buckets the whole register as
+    # unmatched, and the page used to read that as a pile of judgements and
+    # point a primary button at it. There is nothing to judge against yet.
+    test "bills in, portal has not published the 2B: a date, and deliberately no door" do
+      verdict =
+        Verdict.resolve(
+          facts(
+            tracks: %{sales: :filed, purchase: :awaiting_2b},
+            stats: stats(14, 7_956_600, 0),
+            today: ~D[2026-05-03]
+          )
+        )
+
+      assert verdict.headline =~ "23 purchase bills in, carrying ₹79,566 of ITC."
+      assert verdict.headline =~ "publishes the GSTR-2B on 14 May 2026"
+      refute verdict.headline =~ "decision"
+      assert is_nil(verdict.door)
+    end
+
+    # Waiting on the portal is nobody's move; waiting on the client is a chase
+    # somebody can start now. The clock keeps the 2B date as a quiet line.
+    test "no 2B yet and no sales bills: the chase wins, the 2B date stays visible" do
+      verdict =
+        Verdict.resolve(
+          facts(
+            tracks: %{sales: :absent, purchase: :awaiting_2b},
+            stats: stats(14, 7_956_600, 0),
+            today: ~D[2026-05-03]
+          )
+        )
+
+      assert door_id(verdict) == "month-door-bring-sales"
+      assert "Purchases: the GSTR-2B lands 14 May 2026." in verdict.quiet
+    end
+
+    test "the 2B is out and nobody fetched it: that outranks the decisions behind it" do
+      verdict =
+        Verdict.resolve(
+          facts(
+            tracks: %{sales: :filed, purchase: :need_2b},
+            stats: stats(14, 7_956_600, 0)
+          )
+        )
+
+      assert verdict.headline =~ "has been out since 14 May 2026"
+      assert verdict.headline =~ "Nothing reconciles until it is in."
+      assert door_id(verdict) == "month-door-bring-2b"
+    end
+
+    # An absent track is somebody else's move; a missing 2B is *this* reader's.
+    test "no 2B and no sales bills: fetching the 2B wins over chasing the client" do
+      verdict =
+        Verdict.resolve(
+          facts(tracks: %{sales: :absent, purchase: :need_2b}, stats: stats(14, 7_956_600, 0))
+        )
+
+      assert door_id(verdict) == "month-door-bring-2b"
+      assert "Sales bills not in, so the GSTR-1 waits." in verdict.quiet
+    end
+
+    # Falls out of the ordering rather than being asserted anywhere: :clear is
+    # unreachable while the 2B is missing, so a 3B can never be signed against
+    # a reconciliation that never happened.
+    test "a 3B cannot be signed while the 2B is missing" do
+      for purchase <- [:awaiting_2b, :need_2b] do
+        verdict =
+          Verdict.resolve(
+            facts(
+              tracks: %{sales: :filed, purchase: purchase},
+              stats: stats(14, 7_956_600, 0),
+              can_sign_off: true
+            )
+          )
+
+        refute door_id(verdict) == "month-door-sign-3b"
+      end
+    end
+
     test "purchases open, sales open: purchases win, sales becomes a line" do
       verdict =
         Verdict.resolve(
@@ -285,7 +364,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
   describe "the rules the table is an example of" do
     test "no state offers two doors" do
       for sales <- [:absent, :open, :clear, :signed, :filed],
-          purchase <- [:absent, :open, :clear, :signed, :filed],
+          purchase <- [:absent, :awaiting_2b, :need_2b, :open, :clear, :signed, :filed],
           can_sign_off <- [true, false] do
         verdict =
           Verdict.resolve(

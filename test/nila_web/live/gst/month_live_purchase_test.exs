@@ -2,6 +2,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
   use NilaWeb.ConnCase
 
   import Phoenix.LiveViewTest
+  import Nila.GstFixtures
 
   alias Nila.Clients
   alias Nila.Gst.Filing.{Calendar, Signoffs}
@@ -539,7 +540,12 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     client
   end
 
+  # The recon on disk was produced against a real 2B, so the arrival has to be
+  # on record too — without it the month is (correctly) "no 2B in", and every
+  # open row is an artifact rather than a decision.
   defp seed_month(org, client) do
+    gstr2b_arrived!(org, client, @period)
+
     for basename <- File.ls!(Path.join(@dir, "images")) do
       bytes = File.read!(Path.join([@dir, "images", basename]))
       key = ClientMonths.evidence_key(org.id, client.id, @period, basename)
