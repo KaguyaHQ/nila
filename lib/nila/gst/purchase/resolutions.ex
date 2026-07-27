@@ -7,8 +7,8 @@ defmodule Nila.Gst.Purchase.Resolutions do
   every resolution (`Workings.materialize`), recomputes flags against the
   client's entity context on the corrected invoices, and rebuilds the register
   rows and summary via `Register`. Every surface — the register table, the
-  exceptions queue, the Typst pack — reads through this one function, so they
-  cannot drift from the stored decisions.
+  exceptions queue, the 3B — reads through this one function, so they cannot
+  drift from the stored decisions.
   """
 
   import Ecto.Query, only: [from: 2]

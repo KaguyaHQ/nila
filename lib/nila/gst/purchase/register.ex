@@ -4,8 +4,8 @@ defmodule Nila.Gst.Purchase.Register do
   result (`Nila.Gst.Purchase.Reconciliation`), and the validation flags (`Nila.Gst.Purchase.Flags`).
 
   Pure: plain maps in, plain maps out. The row shape is the single source for
-  every register rendering — the Excel deliverable, the Typst pack tables —
-  so the surfaces cannot drift.
+  every register rendering — the month's register table, the Excel deliverable
+  — so the surfaces cannot drift.
   """
 
   alias Nila.Formatters

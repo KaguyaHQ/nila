@@ -14,8 +14,8 @@ defmodule Nila.Gst.Filing.ItcPosition do
 
     * The 2B is the ceiling — you cannot claim credit the vendor didn't report.
       `ceiling_paise` is the total tax across all GSTR-2B rows the engine saw
-      (matched + value_mismatch + awaiting-in-needs_human + 2B-only), matching
-      `ReviewPack.itc`'s `all_2b` so the two cannot drift.
+      (matched + value_mismatch + awaiting-in-needs_human + 2B-only), which is
+      what ties to the filed 3B's Table 4A(5).
     * Blocked credits reduce what is *claimable* below the ceiling:
       - `personal_expense_17_5` / `gstin_state_mismatch`: the row's full tax is
         ineligible (s.17(5) / inter-state CGST-SGST wrongly charged).
@@ -61,8 +61,8 @@ defmodule Nila.Gst.Filing.ItcPosition do
   @doc "The stable id a block/allow resolution targets for one flagged row."
   def block_id(row_id, code), do: "#{row_id}:#{code}"
 
-  # The 2B ITC ceiling — reproduced from recon exactly as ReviewPack.itc's all_2b
-  # so the two never diverge (validated to tie to the filed 3B).
+  # The 2B ITC ceiling — every 2B invoice the engine saw, whichever bucket recon
+  # put it in. Validated to tie to the filed 3B.
   def ceiling_paise(recon) do
     matched = tax_of(recon["matched"]) + tax_of(recon["value_mismatch"])
     in_2b_only = recon["in_2b_not_books"] |> Enum.map(&tax_sum(&1["gstr2b"] || &1)) |> Enum.sum()
@@ -95,7 +95,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
   defp tax_of(entries), do: entries |> Enum.map(&tax_sum(&1["gstr2b"])) |> Enum.sum()
 
   # 2B invoices routed to human, deduped (an ambiguous pair lists the same
-  # candidate from both books rows). Mirrors ReviewPack.awaiting_2b_tax.
+  # candidate from both books rows).
   defp awaiting_2b_tax(recon) do
     recon |> awaiting_2b_invoices() |> Enum.map(&tax_sum/1) |> Enum.sum()
   end
