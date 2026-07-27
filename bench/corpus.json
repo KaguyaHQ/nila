@@ -111,28 +111,6 @@
       "period": "2025-05",
       "kind": "purchase",
       "ground_truth": null
-    },
-    {
-      "name": "misc-newdoc-8p",
-      "key": "misc/new-doc-2025-06-03.pdf",
-      "sha256": "6a203a9119b4c03e9a27dd50957dc1249ff612e43ca50301d2f6eb28f81d537f",
-      "byte_size": 1021349,
-      "pages": 8,
-      "client": null,
-      "period": null,
-      "kind": "purchase",
-      "ground_truth": null
-    },
-    {
-      "name": "misc-may-pur-ahse-9p",
-      "key": "misc/may-pur-ahse.pdf",
-      "sha256": "283943dc203795fffab1103aa76f7b2874fbba88bfa8600fb633cd3ff81f4f6c",
-      "byte_size": 1226291,
-      "pages": 9,
-      "client": null,
-      "period": null,
-      "kind": "purchase",
-      "ground_truth": null
     }
   ]
 }
