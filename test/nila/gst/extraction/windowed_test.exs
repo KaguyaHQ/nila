@@ -390,6 +390,70 @@ defmodule Nila.Gst.Extraction.WindowedTest do
     end
   end
 
+  describe "extract/3 — evidence" do
+    test "renders every page and points each artifact at the one it was read from" do
+      Req.Test.stub(Mistral, fn conn ->
+        Req.Test.json(conn, response(1..5, [invoice("A-1", [3])]))
+      end)
+
+      assert {:ok, result} = extract(PdfFixtures.pdf(5))
+
+      assert result.images |> Map.keys() |> Enum.sort() ==
+               ~w(page_01.png page_02.png page_03.png page_04.png page_05.png)
+
+      assert Enum.all?(Map.values(result.images), &(byte_size(&1) > 0))
+
+      assert [artifact] = result.pages
+      assert artifact["image"] == "page_03.png"
+      refute Map.has_key?(result, :evidence_error)
+    end
+
+    # Pointing an unplaceable invoice at a page anyway would put the wrong bill
+    # in front of a reviewer, which is worse than putting none there: they would
+    # check an invoice against a picture of a different one and see no problem.
+    test "an invoice extraction could not place points at no page" do
+      Req.Test.stub(Mistral, fn conn ->
+        Req.Test.json(conn, response(1..5, [invoice("A-1", [])]))
+      end)
+
+      assert {:ok, result} = extract(PdfFixtures.pdf(5))
+
+      assert [artifact] = result.pages
+      assert artifact["source_pages"] == []
+      assert artifact["image"] == nil
+    end
+
+    # A packet the provider reads but poppler cannot render still has to produce
+    # a register: the pictures are how a reviewer checks, not what they check.
+    test "a document that will not render still extracts, and says so" do
+      Req.Test.stub(Mistral, fn conn ->
+        Req.Test.json(conn, response(1..1, [invoice("A-1", [1])]))
+      end)
+
+      assert {:ok, result} = extract("%PDF-1.4 truncated")
+
+      assert [artifact] = result.pages
+      assert artifact["data"]["invoice_number"] == "A-1"
+      assert artifact["image"] == nil
+      assert result.images == %{}
+      assert {:page_render_failed, 1, _output} = result.evidence_error
+    end
+
+    # An image packet is already its own evidence — nothing to rasterize, and
+    # nothing broken, so it must not read as a gap.
+    test "an image packet renders nothing and reports no gap" do
+      Req.Test.stub(Mistral, fn conn ->
+        Req.Test.json(conn, response(1..1, [invoice("IMG-1", [1])]))
+      end)
+
+      assert {:ok, result} =
+               Windowed.extract(:purchase, <<0xFF, 0xD8, 0xFF, 0x00>>, filename: "bill.jpg")
+
+      assert result.images == %{}
+      refute Map.has_key?(result, :evidence_error)
+    end
+  end
+
   # ── helpers ─────────────────────────────────────────────────────────────────
 
   defp extract(bytes, opts \\ []) do

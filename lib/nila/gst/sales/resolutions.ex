@@ -73,10 +73,12 @@ defmodule Nila.Gst.Sales.Resolutions do
   end
 
   # Issues about the packet rather than any invoice — the extraction ledger's
-  # unread pages — can't be re-derived from the invoices, so they carry over
-  # from what extraction recorded.
+  # unread pages, and pages it read but could not render — can't be re-derived
+  # from the invoices, so they carry over from what extraction recorded.
+  @document_codes ~w(pages_unaccounted evidence_unavailable)
+
   defp document_issues(%Month{issues: issues}) when is_list(issues) do
-    Enum.filter(issues, &(&1["invoice"] == nil and &1["code"] == "pages_unaccounted"))
+    Enum.filter(issues, &(&1["invoice"] == nil and &1["code"] in @document_codes))
   end
 
   defp document_issues(_month), do: []

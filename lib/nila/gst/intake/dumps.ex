@@ -157,6 +157,21 @@ defmodule Nila.Gst.Intake.Dumps do
     end)
   end
 
+  @doc """
+  The effective dumps whose pages could not be rendered, in arrival order:
+  `[%{"dump_id" => 3, "source" => "oct-bills.pdf"}]`.
+
+  A failed render never fails a read — a month with no pictures beats no month
+  — so this is what keeps the hole visible. Without it a packet nobody can
+  eyeball looks exactly like a packet that had nothing worth showing.
+  """
+  def evidence_gaps(org_id, client_id, period, kind) do
+    org_id
+    |> effective(client_id, period, kind)
+    |> Enum.filter(&(Map.get(&1.meta || %{}, "evidence_unavailable") == true))
+    |> Enum.map(&%{"dump_id" => &1.id, "source" => source_name(&1)})
+  end
+
   defp source_name(%Dump{file_keys: [key | _rest]}) when is_binary(key), do: Path.basename(key)
   defp source_name(%Dump{id: id}), do: "dump ##{id}"
 

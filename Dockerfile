@@ -60,9 +60,10 @@ FROM ${RUNNER_IMAGE}
 # now-archived nila-ops repo, which left the source link stale).
 LABEL org.opencontainers.image.source="https://github.com/KaguyaHQ/nila"
 
-# poppler-utils: `pdfinfo` counts a packet's pages before extraction windows it
-# (Nila.Gst.Extraction.Windowed) and `pdftoppm` renders pages for the benchmark
-# adapter. Without it every purchase dump fails at the page count.
+# poppler-utils: `pdfinfo` counts a packet's pages before extraction windows it,
+# `pdftocairo` renders those pages as the evidence a reviewer checks a line
+# against (both Nila.Gst.Extraction.Windowed), and `pdftoppm` serves the
+# benchmark adapter. Without it every purchase dump fails at the page count.
 RUN apt-get update -y && \
   apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates curl xz-utils \
   poppler-utils fonts-dejavu-core fonts-noto-core fonts-noto-ui-core \

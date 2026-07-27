@@ -175,6 +175,32 @@ defmodule Nila.Gst.Purchase.Flags do
     end)
   end
 
+  @doc """
+  Month-level flags for dumps whose pages could not be rendered — the register
+  is complete, but no scanned bill sits beside its rows.
+
+  Takes `Nila.Gst.Intake.Dumps.evidence_gaps/4`. A reviewer who cannot see the
+  paper is checking arithmetic against arithmetic, which is not review; saying
+  so out loud is the difference between a month signed knowingly and one signed
+  because nothing objected.
+  """
+  def evidence_flags(gaps) when is_list(gaps) do
+    Enum.map(gaps, fn %{"source" => source} ->
+      %{
+        "invoice_id" => nil,
+        "code" => "evidence_unavailable",
+        "severity" => "review",
+        "reason" =>
+          "#{source} was read, but its pages could not be rendered, so no scanned bill " <>
+            "shows beside the invoices it produced. Check them against the original PDF " <>
+            "before signing.",
+        "section" => nil,
+        "fields" => ["pages"],
+        "confidence" => 1.0
+      }
+    end)
+  end
+
   defp page_label([page]), do: "Page #{page}"
   defp page_label(pages), do: "Pages #{Enum.join(pages, ", ")}"
 

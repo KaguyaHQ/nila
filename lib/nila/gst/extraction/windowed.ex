@@ -82,7 +82,9 @@ defmodule Nila.Gst.Extraction.Windowed do
   Extracts `bytes` window by window and reassembles one packet-level result.
 
   Returns the extractor contract (`%{pages: , images: , audit: }`) plus
-  `:unaccounted_pages`. Supported opts are the provider's, plus:
+  `:unaccounted_pages`, and `:evidence_error` when the pages could not be
+  rendered. `images` are this document's page rasters, keyed by the basename
+  each artifact's `"image"` points at. Supported opts are the provider's, plus:
 
     * `:per_call` — `(metadata, (-> provider_result)) -> provider_result`, applied
       around every provider call so the caller can persist one audit row per
@@ -111,7 +113,11 @@ defmodule Nila.Gst.Extraction.Windowed do
     with {:ok, page_count} <- page_count(bytes, provider_opts) do
       windows = windows(page_count)
       report(hooks, progress(0, length(windows), MapSet.new(), page_count))
-      shared(kind, bytes, provider_opts, hooks, windows, page_count)
+
+      case shared(kind, bytes, provider_opts, hooks, windows, page_count) do
+        {:ok, result} -> {:ok, attach_evidence(result, bytes, provider_opts)}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
@@ -474,6 +480,98 @@ defmodule Nila.Gst.Extraction.Windowed do
       windows: length(window_results)
     }
   end
+
+  # ---------------------------------------------------------------------------
+  # Evidence — the page picture a reviewer checks an extracted line against
+  # ---------------------------------------------------------------------------
+
+  # Rendering lives here rather than in the provider because the orchestrator is
+  # what holds the whole document; a window only ever sees its own slice, and
+  # rendering per window would redo the overlap. It runs after the read, not
+  # before, so a packet the provider rejects never pays for pictures nobody will
+  # look at.
+  #
+  # A render that fails does NOT fail the extraction. A PDF Mistral can OCR but
+  # poppler chokes on still has to produce a register — a month with no pictures
+  # beats no month at all. The gap comes back as `:evidence_error` so intake can
+  # flag it; a silent gap is the only unacceptable outcome.
+  defp attach_evidence(result, bytes, opts) do
+    case render_pages(bytes, opts) do
+      {:ok, images} ->
+        %{result | images: images, pages: Enum.map(result.pages, &put_image(&1, images))}
+
+      {:error, reason} ->
+        Logger.warning("windowed_extraction.render_failed reason=#{inspect(reason)}")
+        Map.put(result, :evidence_error, reason)
+    end
+  end
+
+  # An artifact points at the page it was read from. Where the read could not
+  # say which page that was (`source_pages` empty — already flagged as
+  # attribution-uncertain), it points at none: showing a reviewer the wrong bill
+  # is worse than showing them no bill.
+  defp put_image(artifact, images) do
+    with [page | _rest] <- artifact["source_pages"],
+         basename = page_basename(page),
+         true <- is_map_key(images, basename) do
+      Map.put(artifact, "image", basename)
+    else
+      _no_page -> Map.put(artifact, "image", nil)
+    end
+  end
+
+  defp render_pages(bytes, opts) do
+    filename = Keyword.get(opts, :filename, "document.pdf")
+    content_type = Keyword.get(opts, :content_type) || Mistral.content_type(filename)
+
+    # A packet that arrived as an image is already its own evidence: nothing to
+    # rasterize, and nothing broken, so it is not a gap worth flagging.
+    if content_type == "application/pdf", do: rasterize(bytes), else: {:ok, %{}}
+  end
+
+  # pdftocairo over pdftoppm: same poppler package, same flags, and cairo's
+  # antialiasing renders a vector-exported (Tally, Busy) bill more legibly at
+  # the same DPI. On a phone photo the two are identical — the page is one
+  # embedded raster either way.
+  defp rasterize(bytes) do
+    dir = Path.join(System.tmp_dir!(), "nila_render_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+
+    try do
+      pdf_path = Path.join(dir, "source.pdf")
+      File.write!(pdf_path, bytes)
+
+      case System.cmd(pdftocairo(), ["-png", "-r", "200", pdf_path, Path.join(dir, "page")],
+             stderr_to_stdout: true
+           ) do
+        {_output, 0} -> {:ok, read_rendered(dir)}
+        {output, status} -> {:error, {:page_render_failed, status, String.trim(output)}}
+      end
+    rescue
+      # A missing binary raises rather than exiting non-zero.
+      error -> {:error, {:page_render_failed, Exception.message(error)}}
+    after
+      File.rm_rf(dir)
+    end
+  end
+
+  # pdftocairo pads its own suffix to the width of the page count — `page-1.png`
+  # from a 3-page document, `page-001.png` from a 120-page one. Basenames are
+  # re-padded to a fixed two so a page's evidence key reads the same whatever
+  # else happened to arrive in the same packet.
+  defp read_rendered(dir) do
+    dir
+    |> Path.join("page-*.png")
+    |> Path.wildcard()
+    |> Map.new(fn path ->
+      [number] = Regex.run(~r/page-(\d+)\.png$/, path, capture: :all_but_first)
+      {number |> String.to_integer() |> page_basename(), File.read!(path)}
+    end)
+  end
+
+  defp page_basename(page), do: "page_#{String.pad_leading(to_string(page), 2, "0")}.png"
+
+  defp pdftocairo, do: Application.get_env(:nila, __MODULE__, [])[:pdftocairo] || "pdftocairo"
 
   # ---------------------------------------------------------------------------
   # Page count — windowing needs it before the first call

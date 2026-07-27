@@ -163,7 +163,11 @@ defmodule Nila.Gst.Intake.DumpWorker do
       store_evidence(dump, images, &PurchaseMonths.evidence_key/4)
 
       {:ok, invoices,
-       %{"skipped_pages" => skipped, "unaccounted_pages" => unaccounted_pages(result)}}
+       %{
+         "skipped_pages" => skipped,
+         "unaccounted_pages" => unaccounted_pages(result),
+         "evidence_unavailable" => evidence_unavailable?(result)
+       }}
     end
   end
 
@@ -180,11 +184,22 @@ defmodule Nila.Gst.Intake.DumpWorker do
         end)
 
       store_evidence(dump, images, &SalesMonths.evidence_key/4)
-      {:ok, invoices, %{"unaccounted_pages" => unaccounted_pages(result)}}
+
+      {:ok, invoices,
+       %{
+         "unaccounted_pages" => unaccounted_pages(result),
+         "evidence_unavailable" => evidence_unavailable?(result)
+       }}
     end
   end
 
   defp unaccounted_pages(result), do: Map.get(result, :unaccounted_pages) || []
+
+  # Pages that could not be rendered are a hole in the evidence a reviewer
+  # checks a line against, not a failed read — so the dump lands, and the hole
+  # is recorded here for derivation to flag rather than left to look like a
+  # packet that simply had nothing to show.
+  defp evidence_unavailable?(result), do: not is_nil(Map.get(result, :evidence_error))
 
   # A windowed extractor makes one provider call per page window, so the audit
   # row is per call, not per dump: it takes the attempt-persisting wrapper and
@@ -420,10 +435,9 @@ defmodule Nila.Gst.Intake.DumpWorker do
     flags = Flags.evaluate_all(invoices, entity_ctx, vendor_dir)
     rows = Register.rows(invoices, recon, flags)
 
-    document_flags =
-      dump.org_id
-      |> Dumps.unaccounted_pages(dump.client_id, dump.period, "purchase")
-      |> Flags.document_flags()
+    unaccounted = Dumps.unaccounted_pages(dump.org_id, dump.client_id, dump.period, "purchase")
+    evidence_gaps = Dumps.evidence_gaps(dump.org_id, dump.client_id, dump.period, "purchase")
+    document_flags = Flags.document_flags(unaccounted) ++ Flags.evidence_flags(evidence_gaps)
 
     {:ok, _} =
       PurchaseMonths.upsert(%{
@@ -442,19 +456,37 @@ defmodule Nila.Gst.Intake.DumpWorker do
   # The sales side already renders month-level issues (`"invoice" => nil`), so
   # the ledger lands there rather than in a second surface.
   defp ledger_issues(dump, kind) do
-    dump.org_id
-    |> Dumps.unaccounted_pages(dump.client_id, dump.period, kind)
-    |> Enum.map(fn %{"source" => source, "pages" => pages} ->
-      %{
-        "invoice" => nil,
-        "code" => "pages_unaccounted",
-        "level" => "warning",
-        "message" =>
-          "pages #{Enum.join(pages, ", ")} of #{source} produced no invoice. Open the " <>
-            "original and confirm no bill was missed.",
-        "fields" => ["doc_issue"]
-      }
-    end)
+    unaccounted =
+      dump.org_id
+      |> Dumps.unaccounted_pages(dump.client_id, dump.period, kind)
+      |> Enum.map(fn %{"source" => source, "pages" => pages} ->
+        %{
+          "invoice" => nil,
+          "code" => "pages_unaccounted",
+          "level" => "warning",
+          "message" =>
+            "pages #{Enum.join(pages, ", ")} of #{source} produced no invoice. Open the " <>
+              "original and confirm no bill was missed.",
+          "fields" => ["doc_issue"]
+        }
+      end)
+
+    evidence =
+      dump.org_id
+      |> Dumps.evidence_gaps(dump.client_id, dump.period, kind)
+      |> Enum.map(fn %{"source" => source} ->
+        %{
+          "invoice" => nil,
+          "code" => "evidence_unavailable",
+          "level" => "warning",
+          "message" =>
+            "#{source} was read, but its pages could not be rendered, so no scanned bill " <>
+              "shows beside these invoices. Check them against the original before signing.",
+          "fields" => ["doc_issue"]
+        }
+      end)
+
+    unaccounted ++ evidence
   end
 
   defp handle_failure(dump, job, reason) do

@@ -153,6 +153,18 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
     {:ok, extracted} = Dumps.fetch(org.id, dump.id)
     assert Enum.map(extracted.invoices, & &1["invoice_number"]) == ["WIN-1", "WIN-2"]
     assert extracted.meta["unaccounted_pages"] == [14]
+    refute extracted.meta["evidence_unavailable"]
+
+    # Each invoice points at the page it was read from, stored under a basename
+    # namespaced by the dump so a straggler's page_01 can never overwrite this one.
+    assert [first, second] = extracted.invoices
+    assert first["images"] == ["d#{dump.id}_page_01.png"]
+    assert second["images"] == ["d#{dump.id}_page_09.png"]
+
+    assert {:ok, bytes} =
+             PurchaseMonths.fetch_evidence(org.id, client.id, "2025-10", hd(first["images"]))
+
+    assert byte_size(bytes) > 0
 
     {:ok, month} = PurchaseMonths.get_by_period(org.id, client.id, "2025-10")
 
@@ -160,6 +172,66 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
     assert flag["code"] == "pages_unaccounted"
     assert flag["severity"] == "review"
     assert flag["reason"] =~ "Page 14 of windowed.pdf"
+  end
+
+  defmodule UnrenderableProvider do
+    @behaviour Nila.Gst.Extraction.Purchase
+
+    def provider, do: "mistral"
+    def model, do: "mistral-ocr-4-0"
+
+    @impl true
+    def extract(_bytes, _opts) do
+      {:ok,
+       Map.put(
+         Provider.extract(<<>>, []) |> elem(1),
+         :evidence_error,
+         {:page_render_failed, 1, "boom"}
+       )}
+    end
+  end
+
+  # A packet whose pages will not render still has to produce a register — but
+  # the reviewer has to be told, or a month with no pictures looks exactly like
+  # a month whose pictures nobody happened to open.
+  test "pages that could not be rendered flag the month rather than failing the dump" do
+    previous = Application.get_env(:nila, :purchase_extractor)
+    Application.put_env(:nila, :purchase_extractor, UnrenderableProvider)
+    on_exit(fn -> Application.put_env(:nila, :purchase_extractor, previous) end)
+
+    %{user: user, org: org} = user_with_org_fixture()
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Breeze Tech",
+        type: "company",
+        gstin: "33AEWPH4158J1Z3"
+      })
+
+    key = "orgs/#{org.id}/gst/test/unrenderable.pdf"
+    {:ok, _stored} = Storage.put(key, "%PDF-1.7 test")
+
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id, brought_in_by_id: user.id},
+        %{period: "2025-10", kind: "purchase", file_keys: [key]}
+      )
+
+    assert :ok = perform_job(DumpWorker, %{"dump_id" => dump.id})
+
+    {:ok, extracted} = Dumps.fetch(org.id, dump.id)
+    assert extracted.status == "extracted"
+    assert [invoice] = extracted.invoices
+    assert invoice["invoice_number"] == "DPS-0072"
+    assert invoice["images"] == []
+
+    {:ok, month} = PurchaseMonths.get_by_period(org.id, client.id, "2025-10")
+
+    assert [flag] = month.summary["document_flags"]
+    assert flag["code"] == "evidence_unavailable"
+    assert flag["severity"] == "review"
+    assert flag["reason"] =~ "unrenderable.pdf"
   end
 
   defp window_response(pages, {number, invoice_pages}) do
