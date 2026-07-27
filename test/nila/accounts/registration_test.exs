@@ -1,5 +1,5 @@
 defmodule Nila.Accounts.RegistrationTest do
-  use Nila.DataCase
+  use Nila.DataCase, async: true
 
   import Nila.AccountsFixtures
   import Swoosh.TestAssertions

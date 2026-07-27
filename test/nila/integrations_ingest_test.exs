@@ -1,5 +1,8 @@
 defmodule Nila.IntegrationsIngestTest do
-  use Nila.DataCase
+  # Sync on purpose: these tests swap the :gmail_adapter / :whatsapp_adapter
+  # application env, which is global. Running async would let one test's stub
+  # leak into another's.
+  use Nila.DataCase, async: false
   use Oban.Testing, repo: Nila.Repo
 
   import Nila.AccountsFixtures

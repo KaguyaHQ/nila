@@ -1,5 +1,5 @@
 defmodule NilaWeb.Gst.MonthLiveSalesTest do
-  use NilaWeb.ConnCase
+  use NilaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
   import Nila.GstFixtures

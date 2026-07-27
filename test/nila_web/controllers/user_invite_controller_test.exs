@@ -1,5 +1,5 @@
 defmodule NilaWeb.UserInviteControllerTest do
-  use NilaWeb.ConnCase
+  use NilaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 

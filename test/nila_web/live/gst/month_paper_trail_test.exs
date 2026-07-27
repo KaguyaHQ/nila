@@ -4,7 +4,7 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
   the month page, and the chase asks readable verbatim — months later, from
   the one room that exists for every month.
   """
-  use NilaWeb.ConnCase
+  use NilaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 

@@ -1,5 +1,5 @@
 defmodule Nila.IntegrationsTest do
-  use Nila.DataCase
+  use Nila.DataCase, async: true
 
   alias Nila.Integrations
   alias Nila.Orgs

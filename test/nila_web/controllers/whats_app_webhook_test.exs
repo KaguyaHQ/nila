@@ -1,5 +1,5 @@
 defmodule NilaWeb.WhatsAppWebhookTest do
-  use NilaWeb.ConnCase
+  use NilaWeb.ConnCase, async: true
 
   alias Nila.Integrations
   alias Nila.Orgs

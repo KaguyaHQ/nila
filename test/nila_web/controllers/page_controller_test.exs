@@ -1,5 +1,5 @@
 defmodule NilaWeb.PageControllerTest do
-  use NilaWeb.ConnCase
+  use NilaWeb.ConnCase, async: true
 
   test "GET /", %{conn: conn} do
     conn = get(conn, ~p"/")

@@ -1,5 +1,5 @@
 defmodule NilaWeb.UserAuthTest do
-  use NilaWeb.ConnCase
+  use NilaWeb.ConnCase, async: true
 
   alias Nila.Accounts.Scope
   alias NilaWeb.UserAuth

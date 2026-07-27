@@ -1,5 +1,5 @@
 defmodule NilaWeb.TodayLiveTest do
-  use NilaWeb.ConnCase
+  use NilaWeb.ConnCase, async: true
   use Oban.Testing, repo: Nila.Repo
 
   import Phoenix.LiveViewTest

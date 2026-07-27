@@ -84,3 +84,10 @@ config :nila, Nila.Assistant,
   model: "step-3.7-flash",
   max_tokens: 4096,
   max_tool_iterations: 8
+
+# bcrypt's cost is 2^log_rounds, so the production default of 12 makes every
+# fixture user cost ~250ms — the suite was spending most of its wall clock
+# proving it resists offline cracking, against attackers who do not exist here.
+# `phx.gen.auth` writes this line for you; this repo's auth was copied in from
+# the nila-ops substrate, so it never arrived. Test env only.
+config :bcrypt_elixir, log_rounds: 1
