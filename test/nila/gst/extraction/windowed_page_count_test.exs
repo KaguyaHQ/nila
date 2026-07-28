@@ -18,6 +18,7 @@ defmodule Nila.Gst.Extraction.WindowedPageCountTest do
              Windowed.extract(:purchase, PdfFixtures.pdf(14), filename: "bills.pdf")
   end
 
+  @tag :capture_log
   test "bytes pdfinfo can't read fall back to one whole-document call" do
     Req.Test.stub(Nila.Gst.Extraction.Providers.Mistral, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)

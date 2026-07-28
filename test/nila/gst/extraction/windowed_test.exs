@@ -209,6 +209,7 @@ defmodule Nila.Gst.Extraction.WindowedTest do
   end
 
   describe "extract/3 — failure and retry" do
+    @tag :capture_log
     test "retries a window once, and the retry's result stands" do
       counter = :counters.new(1, [])
 
@@ -230,6 +231,7 @@ defmodule Nila.Gst.Extraction.WindowedTest do
       assert Enum.map(result.pages, & &1["data"]["invoice_number"]) == ["A-1", "B-2"]
     end
 
+    @tag :capture_log
     test "a window that keeps failing fails the packet, naming its pages" do
       Req.Test.stub(Mistral, fn conn ->
         payload = payload(conn)
@@ -338,6 +340,7 @@ defmodule Nila.Gst.Extraction.WindowedTest do
     # `pdfinfo` failing on a PDF is the one case with no page count to report.
     # `page_count: nil` is the signal for that, and it is what makes a screen
     # fall back to window counts rather than render a bar against a made-up total.
+    @tag :capture_log
     test "a page count pdfinfo cannot read reports nil rather than inventing one" do
       test_pid = self()
 
@@ -366,6 +369,7 @@ defmodule Nila.Gst.Extraction.WindowedTest do
     # A resent window holds the bar still for another provider round-trip. The
     # live failure this was written from (`Req.TransportError{reason: :closed}`
     # on a 15-page packet) sat silent for ~40s per retry.
+    @tag :capture_log
     test "a resent window is reported rather than sat through in silence" do
       test_pid = self()
       counter = :counters.new(1, [])
@@ -425,6 +429,7 @@ defmodule Nila.Gst.Extraction.WindowedTest do
 
     # A packet the provider reads but poppler cannot render still has to produce
     # a register: the pictures are how a reviewer checks, not what they check.
+    @tag :capture_log
     test "a document that will not render still extracts, and says so" do
       Req.Test.stub(Mistral, fn conn ->
         Req.Test.json(conn, response(1..1, [invoice("A-1", [1])]))

@@ -53,11 +53,8 @@ defmodule NilaWeb.UserResetPasswordLive do
     <main class="bg-base-200 text-base-content min-h-screen">
       <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-12">
         <div class="mb-8">
-          <.link navigate={~p"/"} class="text-small inline-flex items-center gap-2 font-semibold">
-            <span class="bg-primary rounded-field grid size-8 place-items-center text-white">
-              <.icon name="hero-moon" class="size-4" />
-            </span>
-            Nila
+          <.link navigate={~p"/"} class="inline-flex items-center">
+            <.logo class="text-base-content h-7 w-auto" />
           </.link>
         </div>
 

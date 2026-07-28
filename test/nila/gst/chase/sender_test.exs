@@ -85,6 +85,7 @@ defmodule Nila.Gst.Chase.SenderTest do
     assert [%{channel: "email", sent_by_id: nil}] = Chase.list_asks(org.id, client.id, @period)
   end
 
+  @tag :capture_log
   test "a missing connection returns an error and records no ask" do
     org = org_fixture()
 

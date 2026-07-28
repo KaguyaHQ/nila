@@ -72,6 +72,7 @@ defmodule Nila.Gst.Extraction.WindowedSharedDocumentTest do
       assert payload["document"]["document_url"] =~ "data:application/pdf;base64,"
     end
 
+    @tag :capture_log
     test "an upload failure falls back to inlining rather than failing the read" do
       test_pid = self()
 
@@ -97,6 +98,7 @@ defmodule Nila.Gst.Extraction.WindowedSharedDocumentTest do
       end
     end
 
+    @tag :capture_log
     test "a failed cleanup does not fail an otherwise good read" do
       Req.Test.stub(Mistral, fn conn ->
         case {conn.method, conn.request_path} do

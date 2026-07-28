@@ -54,12 +54,33 @@ Nila drafts, the human reviews, the CA signs. Every screen answers to that loop.
 
 ## The ledger (marketing pages only)
 
-The public homepage is set as a leaf from an account book: warm paper
+The public pages are set as a leaf from an account book: warm paper
 (`bg-paper`), true ink (`text-ink`), feint blue ruling (`border-feint`), the
 double red margin rule (`redink`), and double rules opening/closing the leaf.
 Those four tokens live in `app.css` under "Ledger (marketing identity)" and are
 for marketing surfaces only — product screens stay on moonlight below. Red ink
 means exactly one thing there: a line waiting on a human.
+
+**The ledger is a setting, not a second brand.** Every one of the four values is
+cut from a hue moonlight already uses, so crossing from `/` into the product
+changes the room, not the palette:
+
+| Token | Value | Its moonlight counterpart |
+| --- | --- | --- |
+| `paper` | `oklch(97.6% 0.005 78)` | `accent` (hue 78) at half chroma — the page's warmth is the brand's one sanctioned warm note, kept to a whisper because a tint that reads as an accent on a badge reads as cream across a whole page |
+| `ink` | `oklch(23% 0.045 233)` | `base-content` (`30% 0.055 233`) pressed darker for ink on paper |
+| `feint` | `oklch(89.5% 0.02 233)` | `base-300`'s hue, chroma held higher — feint blue ruling has to read blue |
+| `redink` | `oklch(50% 0.17 22)` | `error` exactly, at 50% L not 60% — the margin rule and `text-micro` flags need the contrast on paper |
+
+What the ledger keeps as its own is **structure, not color**: zero radius on
+rules and tables, 4px double borders, the red margin rule, ruled rows. Only the
+things a visitor clicks — buttons — take the theme's `rounded-field`, so the CTA
+on marketing matches the button waiting after log-in.
+
+All four public pages render through `<.page_shell>` in
+`lib/nila_web/controllers/page_html.ex`. It owns the paper, the header, the
+margin rule, and the footer. Add a marketing page by wrapping its body in the
+shell — never by re-declaring the chrome.
 
 ## The moonlight system
 

@@ -10,9 +10,13 @@ defmodule NilaWeb.PageHTML do
 
   @doc """
   The marketing chrome — the ledger header and footer that frame every public
-  page. Legal and contact pages wrap their body in this so they inherit the
-  same paper, red margin rule, and heavy double borders as the home page.
+  page. Every public page wraps its body in this, so the paper, the red margin
+  rule, and the heavy double borders are defined once and cannot drift apart.
+
+  The `tagline` slot sits left of the header links on `md` and up; pages that
+  don't set it just get the links.
   """
+  slot :tagline, doc: "one line of positioning, shown in the header on wide screens"
   slot :inner_block, required: true
 
   def page_shell(assigns) do
@@ -25,6 +29,9 @@ defmodule NilaWeb.PageHTML do
               <.logo class="text-ink h-7 w-auto" />
             </a>
             <div class="flex items-center gap-5">
+              <p :if={@tagline != []} class="text-fine text-ink/55 hidden md:block">
+                {render_slot(@tagline)}
+              </p>
               <.link
                 navigate={~p"/users/log_in"}
                 class="hover:text-ink text-ink/70 text-small font-medium transition"
@@ -33,7 +40,7 @@ defmodule NilaWeb.PageHTML do
               </.link>
               <.link
                 href="mailto:hello@nilahq.com?subject=Put%20Nila%20to%20the%20test"
-                class="bg-ink text-paper text-small inline-flex h-9 items-center px-4 font-semibold transition hover:opacity-85"
+                class="bg-ink rounded-field text-paper text-small inline-flex h-9 items-center px-4 font-semibold transition hover:opacity-85"
               >
                 Put us to the test
               </.link>

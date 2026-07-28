@@ -17,6 +17,7 @@ defmodule Nila.RateLimiterTest do
     assert RateLimiter.check(bucket, 60_000, 1) == :deny
   end
 
+  @tag :capture_log
   test "fails open when the limiter backend is unavailable" do
     bucket = bucket()
 

@@ -1,151 +1,129 @@
 <Layouts.flash_group flash={@flash} />
 
-<div class="bg-paper text-ink min-h-screen">
-  <div class="mx-auto max-w-6xl px-4 sm:px-6">
-    <%!-- ── HEADER: the ledger heading band, closed with a heavy double rule ── --%>
-    <header class="border-ink border-b-4 border-double">
-      <div class="flex h-16 items-center justify-between">
-        <a href="/" class="flex items-center">
-          <.logo class="text-ink h-7 w-auto" />
-        </a>
-        <div class="flex items-center gap-5">
-          <p class="text-fine text-ink/55 hidden tabular-nums md:block">
-            GST work for India's CA firms
-          </p>
-          <.link
-            navigate={~p"/users/log_in"}
-            class="hover:text-ink text-ink/70 text-small font-medium transition"
-          >
-            Log in
-          </.link>
-          <.link
-            href="mailto:hello@nilahq.com?subject=Put%20Nila%20to%20the%20test"
-            class="bg-ink text-paper text-small inline-flex h-9 items-center px-4 font-semibold transition hover:opacity-85"
-          >
-            Put us to the test
-          </.link>
-        </div>
-      </div>
-    </header>
+<.page_shell>
+  <:tagline>GST work for India's CA firms</:tagline>
 
-    <%!-- ── THE LEAF: every section sits right of the red margin rule ──────── --%>
-    <div class="relative">
-      <div
-        aria-hidden="true"
-        class="border-redink/50 absolute inset-y-0 left-3 w-1 border-x sm:left-4 lg:left-40"
+  <%!-- ── THE OFFER ─────────────────────────────────────────────────────── --%>
+  <section class="relative pt-16 pb-14 pl-10 sm:pl-12 lg:pt-20 lg:pl-48">
+    <p class="text-ink/55 text-label mb-6 font-semibold uppercase lg:absolute lg:top-20 lg:left-0 lg:mb-0 lg:w-32 lg:text-right">
+      The offer
+    </p>
+
+    <h1 class="font-display text-hero max-w-3xl font-normal">
+      Give us your ten worst clients. Their months come back finished.
+    </h1>
+
+    <p class="text-ink/75 text-lead mt-7 max-w-xl font-light">
+      Nila does a junior's monthly GST work.
+    </p>
+
+    <dl class="border-feint divide-feint mt-5 max-w-xl divide-y border-y">
+      <%= for {label, entry} <- [
+            {"Goes in", "Bills as they arrive, bank statements, the 2B."},
+            {"Comes back", "The register, the reconciliation, workings in your firm's format, the Winman sheet."},
+            {"Stays yours", "The flagged lines, the review, the signature."}
+          ] do %>
+        <div class="flex gap-4 py-2.5">
+          <dt class="text-ink/50 text-small w-24 shrink-0 font-medium">{label}</dt>
+          <dd class="text-ink/80 text-small font-light">{entry}</dd>
+        </div>
+      <% end %>
+    </dl>
+
+    <div class="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
+      <.link
+        href="mailto:hello@nilahq.com?subject=Put%20Nila%20to%20the%20test"
+        class="bg-ink rounded-field text-paper text-small inline-flex h-12 items-center px-7 font-semibold transition hover:opacity-85"
       >
+        Send us a filed month
+      </.link>
+      <p class="text-fine text-ink/60 max-w-xs">
+        One you've already filed — tear our output apart against your own
+        workings. Twenty minutes, worst case. If it holds, the ten worst
+        clients are next.
+      </p>
+    </div>
+
+    <dl class="border-feint mt-14 flex max-w-2xl flex-wrap gap-x-14 gap-y-6 border-t pt-6">
+      <div>
+        <dd class="font-display text-h3 leading-none font-normal tabular-nums">412</dd>
+        <dt class="text-fine text-ink/60 mt-2">lines in the month below</dt>
       </div>
+      <div>
+        <dd class="font-display text-h3 leading-none font-normal tabular-nums">407</dd>
+        <dt class="text-fine text-ink/60 mt-2">matched to the 2B, bill attached</dt>
+      </div>
+      <div>
+        <dd class="font-display text-h3 text-redink leading-none font-normal tabular-nums">
+          5
+        </dd>
+        <dt class="text-fine text-ink/60 mt-2">in red, for your senior</dt>
+      </div>
+    </dl>
+  </section>
 
-      <%!-- ── THE OFFER ─────────────────────────────────────────────────────── --%>
-      <section class="relative pt-16 pb-14 pl-10 sm:pl-12 lg:pt-20 lg:pl-48">
-        <p class="text-ink/55 text-label mb-6 font-semibold uppercase lg:absolute lg:top-20 lg:left-0 lg:mb-0 lg:w-32 lg:text-right">
-          The offer
-        </p>
+  <%!-- ── HOW A MONTH RUNS ──────────────────────────────────────────────── --%>
+  <section class="border-feint relative border-t py-14 pl-10 sm:pl-12 lg:pl-48">
+    <p class="text-ink/55 text-label mb-8 font-semibold uppercase lg:absolute lg:top-14 lg:left-0 lg:mb-0 lg:w-32 lg:text-right">
+      How a month runs
+    </p>
 
-        <h1 class="font-display text-hero max-w-3xl font-normal">
-          Give us your ten worst clients. Their months come back finished.
-        </h1>
-
-        <p class="text-ink/75 text-lead mt-7 max-w-xl font-light">
-          Nila does a junior's monthly GST work. Bills, statements, and the 2B
-          go in; the register, the reconciliation, the workings in your firm's
-          format, and the Winman sheet come back. Your senior reviews the
-          flagged lines. You sign.
-        </p>
-
-        <div class="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
-          <.link
-            href="mailto:hello@nilahq.com?subject=Put%20Nila%20to%20the%20test"
-            class="bg-ink text-paper text-small inline-flex h-12 items-center px-7 font-semibold transition hover:opacity-85"
-          >
-            Send us a filed month
-          </.link>
-          <p class="text-fine text-ink/60 max-w-xs">
-            One you've already filed. You tear our output apart against your
-            own workings. Twenty minutes, worst case.
-          </p>
-        </div>
-
-        <dl class="border-feint mt-14 flex max-w-2xl flex-wrap gap-x-14 gap-y-6 border-t pt-6">
-          <div>
-            <dd class="font-display text-h3 leading-none font-normal tabular-nums">
-              ₹41,86,300
-            </dd>
-            <dt class="text-fine text-ink/60 mt-2">taxable · the month below</dt>
-          </div>
-          <div>
-            <dd class="font-display text-h3 leading-none font-normal tabular-nums">412</dd>
-            <dt class="text-fine text-ink/60 mt-2">lines, each traced to its bill</dt>
-          </div>
-          <div>
-            <dd class="font-display text-h3 text-redink leading-none font-normal tabular-nums">
-              5
-            </dd>
-            <dt class="text-fine text-ink/60 mt-2">in red, for your senior</dt>
-          </div>
-        </dl>
-      </section>
-
-      <%!-- ── HOW A MONTH RUNS ──────────────────────────────────────────────── --%>
-      <section class="border-feint relative border-t py-14 pl-10 sm:pl-12 lg:pl-48">
-        <p class="text-ink/55 text-label mb-8 font-semibold uppercase lg:absolute lg:top-14 lg:left-0 lg:mb-0 lg:w-32 lg:text-right">
-          How a month runs
-        </p>
-
-        <ol class="divide-feint grid divide-y md:grid-cols-2 md:gap-x-12 md:divide-y-0 lg:grid-cols-4">
-          <%= for {step, title, body} <- [
+    <ol class="divide-feint grid divide-y md:grid-cols-2 md:gap-x-12 md:divide-y-0 lg:grid-cols-4">
+      <%= for {step, title, body} <- [
             {"1.", "You send the month", "Bills as they arrive — WhatsApp photos included — with bank statements and the 2B. No scanning discipline required of your clients."},
-            {"2.", "Nila chases what's missing", "It keeps the tally of what hasn't arrived and follows up over WhatsApp and email, in your firm's name, until the month is complete."},
+            {"2.", "What's missing gets chased", "Nila keeps the tally of what hasn't arrived and drafts each follow-up in your firm's name, ready to send. Chasing becomes a forward, not an afternoon."},
             {"3.", "The month comes back", "One pack: purchase register with a source trail on every line, 2B reconciliation, workings in your format, Winman import sheet."},
             {"4.", "Your senior reviews, you sign", "Routine lines are settled. Only the judgment calls reach a person, each carrying the evidence needed to decide it."}
           ] do %>
-            <li class="flex gap-4 py-5 md:py-2 lg:block">
-              <p class="font-display text-h4 text-ink/45 shrink-0 tabular-nums">{step}</p>
-              <div>
-                <h2 class="text-body font-semibold tracking-tight lg:mt-3">{title}</h2>
-                <p class="text-ink/65 text-small mt-1.5 font-light">{body}</p>
-              </div>
-            </li>
-          <% end %>
-        </ol>
-      </section>
+        <li class="flex gap-4 py-5 md:py-2 lg:block">
+          <p class="font-display text-h4 text-ink/45 shrink-0 tabular-nums">{step}</p>
+          <div>
+            <h2 class="text-body font-semibold tracking-tight lg:mt-3">{title}</h2>
+            <p class="text-ink/65 text-small mt-1.5 font-light">{body}</p>
+          </div>
+        </li>
+      <% end %>
+    </ol>
+  </section>
 
-      <%!-- ── THE PACK: the register, ruled like the book it is ─────────────── --%>
-      <section class="border-feint relative border-t py-14 pl-10 sm:pl-12 lg:pl-48">
-        <p class="text-ink/55 text-label mb-6 font-semibold uppercase lg:absolute lg:top-14 lg:left-0 lg:mb-0 lg:w-32 lg:text-right">
-          The pack
-        </p>
+  <%!-- ── THE PACK: the register, ruled like the book it is ─────────────── --%>
+  <section class="border-feint relative border-t py-14 pl-10 sm:pl-12 lg:pl-48">
+    <p class="text-ink/55 text-label mb-6 font-semibold uppercase lg:absolute lg:top-14 lg:left-0 lg:mb-0 lg:w-32 lg:text-right">
+      The pack
+    </p>
 
-        <div class="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 class="font-display text-h3 font-normal">
-            Purchase register · June 2026
-          </h2>
-          <p class="text-fine text-ink/55 tabular-nums">412 lines · showing 10</p>
-        </div>
-        <p class="text-ink/60 text-small mt-2">
-          Sheet 1 of 5 — also inside: workings in your firm's format, the
-          Winman B2B import, the exceptions sheet, and a printable review pack.
-        </p>
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h2 class="font-display text-h3 font-normal">
+        Purchase register · June 2026
+      </h2>
+      <p class="text-fine text-ink/55 tabular-nums">showing 10 of 412</p>
+    </div>
+    <p class="text-ink/60 text-small mt-2 max-w-2xl">
+      412 lines went in. 407 matched against the 2B, each with its bill
+      attached; the 5 that need a judgment are entered in red and carried
+      to the exceptions sheet. Also inside the pack: workings in your
+      firm's format, the Winman B2B import, and a printable review pack.
+    </p>
 
-        <div class="mt-8 overflow-x-auto">
-          <table class="text-fine w-full min-w-184">
-            <thead>
-              <tr class="border-ink/60 text-ink/55 text-micro border-b text-left">
-                <th class="py-2.5 pr-3 font-semibold">Date</th>
-                <th class="py-2.5 pr-3 font-semibold">Vendor</th>
-                <th class="py-2.5 pr-3 font-semibold">Invoice</th>
-                <th class="border-redink/40 border-l px-3 py-2.5 text-right font-semibold">
-                  Taxable
-                </th>
-                <th class="border-feint border-l px-3 py-2.5 text-right font-semibold">
-                  GST
-                </th>
-                <th class="border-feint border-l px-3 py-2.5 font-semibold">2B</th>
-                <th class="border-feint border-l py-2.5 pl-3 font-semibold">Source</th>
-              </tr>
-            </thead>
-            <tbody class="divide-feint divide-y">
-              <%= for {date, vendor, gstin, inv, taxable, gst, kind, status, source} <- [
+    <div class="mt-8 overflow-x-auto">
+      <table class="text-fine w-full min-w-184">
+        <thead>
+          <tr class="border-ink/60 text-ink/55 text-micro border-b text-left">
+            <th class="py-2.5 pr-3 font-semibold">Date</th>
+            <th class="py-2.5 pr-3 font-semibold">Vendor</th>
+            <th class="py-2.5 pr-3 font-semibold">Invoice</th>
+            <th class="border-redink/40 border-l px-3 py-2.5 text-right font-semibold">
+              Taxable
+            </th>
+            <th class="border-feint border-l px-3 py-2.5 text-right font-semibold">
+              GST
+            </th>
+            <th class="border-feint border-l px-3 py-2.5 font-semibold">2B</th>
+            <th class="border-feint border-l py-2.5 pl-3 font-semibold">Source</th>
+          </tr>
+        </thead>
+        <tbody class="divide-feint divide-y">
+          <%= for {date, vendor, gstin, inv, taxable, gst, kind, status, source} <- [
                 {"02-06", "Sri Murugan Traders", "33AAACS4821F1ZP", "SMT/1043", "1,84,200", "33,156", :ok, "Matched", "bill_003.jpg"},
                 {"03-06", "Apex Polymers", "33AABCP9214E1ZQ", "AP-2287", "96,400", "17,352", :ok, "Matched", "bill_007.jpg"},
                 {"05-06", "VK Steels", "33AADCV1108K1ZM", "VKS/889", "2,41,000", "43,380", :warn, "Mismatch −4,320", "bill_011.jpg"},
@@ -157,182 +135,179 @@
                 {"24-06", "Chola Hardware", "33AAJCC6644N1ZV", "CH/1187", "14,900", "2,682", :ok, "Matched", "bill_031.jpg"},
                 {"28-06", "VK Steels", "33AADCV1108K1ZM", "VKS/912", "1,58,000", "28,440", :ok, "Matched", "bill_034.jpg"}
               ] do %>
-                <tr>
-                  <td class="text-ink/70 py-2.5 pr-3 tabular-nums">{date}</td>
-                  <td class="py-2.5 pr-3">
-                    <p class="font-medium">{vendor}</p>
-                    <p class="text-ink/45 text-micro tabular-nums">{gstin}</p>
-                  </td>
-                  <td class="text-ink/70 py-2.5 pr-3 tabular-nums">{inv}</td>
-                  <td class="border-redink/40 font-display border-l px-3 py-2.5 text-right tabular-nums">
-                    {taxable}
-                  </td>
-                  <td class="border-feint font-display border-l px-3 py-2.5 text-right tabular-nums">
-                    {gst}
-                  </td>
-                  <td class={[
-                    "border-feint text-micro border-l px-3 py-2.5",
-                    kind == :ok && "text-ink/60",
-                    kind == :warn && "text-redink font-semibold"
-                  ]}>
-                    {status}
-                  </td>
-                  <td class="border-feint text-ink/60 text-micro border-l py-2.5 pl-3">
-                    {source}
-                  </td>
-                </tr>
-              <% end %>
-            </tbody>
-            <tfoot>
-              <tr class="border-ink border-t-2 border-b-4 border-double">
-                <td colspan="3" class="text-ink/60 text-micro py-3 pr-3">
-                  June totals · 412 lines · 407 matched, 5 carried to the exceptions sheet
-                </td>
-                <td class="border-redink/40 font-display border-l p-3 text-right font-medium tabular-nums">
-                  41,86,300
-                </td>
-                <td class="border-feint font-display border-l p-3 text-right font-medium tabular-nums">
-                  7,12,480
-                </td>
-                <td colspan="2" class="border-feint border-l py-3 pl-3"></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </section>
+            <tr>
+              <td class="text-ink/70 py-2.5 pr-3 tabular-nums">{date}</td>
+              <td class="py-2.5 pr-3">
+                <p class="font-medium">{vendor}</p>
+                <p class="text-ink/45 text-micro tabular-nums">{gstin}</p>
+              </td>
+              <td class="text-ink/70 py-2.5 pr-3 tabular-nums">{inv}</td>
+              <td class="border-redink/40 font-display border-l px-3 py-2.5 text-right tabular-nums">
+                {taxable}
+              </td>
+              <td class="border-feint font-display border-l px-3 py-2.5 text-right tabular-nums">
+                {gst}
+              </td>
+              <td class={[
+                "border-feint text-micro border-l px-3 py-2.5",
+                kind == :ok && "text-ink/60",
+                kind == :warn && "text-redink font-semibold"
+              ]}>
+                {status}
+              </td>
+              <td class="border-feint text-ink/60 text-micro border-l py-2.5 pl-3">
+                {source}
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+        <tfoot>
+          <tr class="border-ink border-t-2 border-b-4 border-double">
+            <td colspan="3" class="text-ink/60 text-micro py-3 pr-3">
+              June totals · 412 lines · 407 matched, 5 carried to the exceptions sheet
+            </td>
+            <td class="border-redink/40 font-display border-l p-3 text-right font-medium tabular-nums">
+              41,86,300
+            </td>
+            <td class="border-feint font-display border-l p-3 text-right font-medium tabular-nums">
+              7,12,480
+            </td>
+            <td colspan="2" class="border-feint border-l py-3 pl-3"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <p class="text-ink/45 text-micro mt-3">
+      Specimen entries — a real month comes back in your firm's own format.
+    </p>
+  </section>
 
-      <%!-- ── THE ARITHMETIC: junior vs Nila, ruled side by side ────────────── --%>
-      <section class="border-feint relative border-t py-14 pl-10 sm:pl-12 lg:pl-48">
-        <p class="text-ink/55 text-label mb-6 font-semibold uppercase lg:absolute lg:top-14 lg:left-0 lg:mb-0 lg:w-32 lg:text-right">
-          The arithmetic
-        </p>
+  <%!-- ── THE ARITHMETIC: junior vs Nila, ruled side by side ────────────── --%>
+  <section class="border-feint relative border-t py-14 pl-10 sm:pl-12 lg:pl-48">
+    <p class="text-ink/55 text-label mb-6 font-semibold uppercase lg:absolute lg:top-14 lg:left-0 lg:mb-0 lg:w-32 lg:text-right">
+      The arithmetic
+    </p>
 
-        <h2 class="font-display text-h3 font-normal">
-          What walks out when a junior resigns
-        </h2>
-        <p class="text-body text-ink/70 mt-4 max-w-2xl font-light">
-          Every firm runs the same GST-week sums: more filing work than hands,
-          so you hire, train for six months, and lose it all to a resignation
-          letter in March. Weigh Nila against that — a junior's salary and the
-          hiring you redo every year, not a licence renewal.
-        </p>
+    <h2 class="font-display text-h3 font-normal">
+      What walks out when a junior resigns
+    </h2>
+    <p class="text-body text-ink/70 mt-4 max-w-2xl font-light">
+      The resignation letter arrives in March, and six months of training
+      walks out with it. Weigh Nila against that — the junior's salary and
+      the hiring you redo every year, not a licence renewal.
+    </p>
 
-        <div class="mt-8 overflow-x-auto">
-          <table class="text-small w-full min-w-160">
-            <thead>
-              <tr class="border-ink/60 text-micro border-b text-left">
-                <th class="text-ink/55 w-40 py-2.5 pr-4 font-semibold">Entry</th>
-                <th class="text-ink/55 py-2.5 pr-4 font-semibold">The junior you keep hiring</th>
-                <th class="border-redink/40 border-l py-2.5 pl-4 font-semibold">Nila</th>
-              </tr>
-            </thead>
-            <tbody class="divide-feint divide-y">
-              <%= for {entry, junior, nila} <- [
-                {"Training", "Six months per hire, repeated after every resignation", "Learns each client from its first month, and doesn't forget"},
-                {"When March comes", "Ledger heads, vendor quirks, narration mappings — out the door", "The context stays, and compounds every month it runs"},
+    <div class="mt-8 overflow-x-auto">
+      <table class="text-small w-full min-w-160">
+        <thead>
+          <tr class="border-ink/60 text-micro border-b text-left">
+            <th class="text-ink/55 w-40 py-2.5 pr-4 font-semibold">Entry</th>
+            <th class="text-ink/55 py-2.5 pr-4 font-semibold">The junior you keep hiring</th>
+            <th class="border-redink/40 border-l py-2.5 pl-4 font-semibold">Nila</th>
+          </tr>
+        </thead>
+        <tbody class="divide-feint divide-y">
+          <%= for {entry, junior, nila} <- [
+                {"When March comes", "Ledger heads, vendor quirks, narration mappings — out the door", "Ledger heads, vendor quirks, narration mappings — kept, compounding"},
+                {"Training", "Six months per hire, repeated after every resignation", "Each client taught once, in its first month; every month after builds on it"},
                 {"The cost sits against", "Salary, plus the hiring and retraining you redo every year", "Per client, per month"},
                 {"GST week", "Overtime and triage", "Your seniors review the flagged lines and sign"}
               ] do %>
-                <tr>
-                  <td class="text-ink/55 py-3.5 pr-4 font-medium">{entry}</td>
-                  <td class="text-ink/75 py-3.5 pr-4 font-light">{junior}</td>
-                  <td class="border-redink/40 border-l py-3.5 pl-4 font-medium">{nila}</td>
-                </tr>
-              <% end %>
-            </tbody>
-          </table>
-        </div>
-      </section>
+            <tr>
+              <td class="text-ink/55 py-3.5 pr-4 font-medium">{entry}</td>
+              <td class="text-ink/75 py-3.5 pr-4 font-light">{junior}</td>
+              <td class="border-redink/40 border-l py-3.5 pl-4 font-medium">{nila}</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </section>
 
-      <%!-- ── REVIEW & SIGNATURE: the red-ink entries, all of them ──────────── --%>
-      <section class="border-feint relative border-t py-14 pl-10 sm:pl-12 lg:pl-48">
-        <p class="text-ink/55 text-label mb-6 font-semibold uppercase lg:absolute lg:top-14 lg:left-0 lg:mb-0 lg:w-32 lg:text-right">
-          Review &amp; signature
-        </p>
+  <%!-- ── REVIEW & SIGNATURE: the red-ink entries, all of them ──────────── --%>
+  <section class="border-feint relative border-t py-14 pl-10 sm:pl-12 lg:pl-48">
+    <p class="text-ink/55 text-label mb-6 font-semibold uppercase lg:absolute lg:top-14 lg:left-0 lg:mb-0 lg:w-32 lg:text-right">
+      Review &amp; signature
+    </p>
 
-        <h2 class="font-display text-h3 font-normal">The signature stays yours</h2>
-        <p class="text-body text-ink/70 mt-4 max-w-2xl font-light">
-          Nila files nothing. Every month comes back for your senior's review
-          before anything reaches a return, and anything Nila couldn't settle
-          is entered in red — the whole sheet, with the evidence needed to
-          decide each line. Nothing is claimed on your behalf while a line
-          waits here.
-        </p>
+    <h2 class="font-display text-h3 font-normal">The signature stays yours</h2>
+    <p class="text-body text-ink/70 mt-4 max-w-2xl font-light">
+      Nila files nothing. Every month comes back for your senior's review
+      before anything reaches a return, and anything Nila couldn't settle
+      is entered in red — the whole sheet, with the evidence needed to
+      decide each line. Nothing is claimed on your behalf while a line
+      waits here.
+    </p>
 
-        <div class="mt-8 overflow-x-auto">
-          <table class="text-fine w-full min-w-184">
-            <thead>
-              <tr class="border-ink/60 text-ink/55 text-micro border-b text-left">
-                <th class="py-2.5 pr-3 font-semibold">Issue</th>
-                <th class="py-2.5 pr-3 font-semibold">Line</th>
-                <th class="py-2.5 pr-3 font-semibold">Evidence</th>
-                <th class="border-redink/40 border-l px-3 py-2.5 text-right font-semibold">
-                  ITC at stake
-                </th>
-                <th class="border-feint border-l py-2.5 pl-3 font-semibold">Waiting on</th>
-              </tr>
-            </thead>
-            <tbody class="divide-feint divide-y">
-              <%= for {issue, line, evidence, stake, waiting} <- [
+    <div class="mt-8 overflow-x-auto">
+      <table class="text-fine w-full min-w-184">
+        <thead>
+          <tr class="border-ink/60 text-ink/55 text-micro border-b text-left">
+            <th class="py-2.5 pr-3 font-semibold">Issue</th>
+            <th class="py-2.5 pr-3 font-semibold">Line</th>
+            <th class="py-2.5 pr-3 font-semibold">Evidence</th>
+            <th class="border-redink/40 border-l px-3 py-2.5 text-right font-semibold">
+              ITC at stake
+            </th>
+            <th class="border-feint border-l py-2.5 pl-3 font-semibold">Waiting on</th>
+          </tr>
+        </thead>
+        <tbody class="divide-feint divide-y">
+          <%= for {issue, line, evidence, stake, waiting} <- [
                 {"ITC mismatch", "VK Steels · VKS/889", "2B shows ₹4,320 less than bill_011.jpg — vendor may have amended", "4,320", "Senior's call"},
-                {"Not in 2B", "GreenLeaf Packaging · GLP-778", "Bill in hand, vendor hasn't filed GSTR-1 — follow-up sent in your firm's name", "9,414", "Vendor reply"},
+                {"Not in 2B", "GreenLeaf Packaging · GLP-778", "Bill in hand, vendor hasn't filed GSTR-1 — follow-up drafted in your firm's name", "9,414", "Vendor reply"},
                 {"RCM check", "Kaveri Transport · KT/903", "Freight above ₹750 on stmt_r214 — confirm reverse-charge treatment", "1,375", "Senior's call"},
-                {"Duplicate suspect", "Sri Balaji Timbers · SBT/221", "bill_009.jpg and bill_025.jpg carry the same invoice number — entered once, held", "6,102", "Client confirmation"},
+                {"Duplicate suspect", "Sri Vetri Timbers · SVT/221", "bill_009.jpg and bill_025.jpg carry the same invoice number — entered once, held", "6,102", "Client confirmation"},
                 {"GSTIN cancelled", "Sakthi Enterprises · SE/102", "Vendor's registration cancelled 14-05 — ITC ineligible unless revoked", "2,916", "Senior's call"}
               ] do %>
-                <tr>
-                  <td class="text-redink py-3 pr-3 font-semibold">{issue}</td>
-                  <td class="py-3 pr-3 font-medium">{line}</td>
-                  <td class="text-ink/65 py-3 pr-3 font-light">{evidence}</td>
-                  <td class="border-redink/40 font-display text-redink border-l p-3 text-right tabular-nums">
-                    {stake}
-                  </td>
-                  <td class="border-feint text-ink/70 border-l py-3 pl-3">{waiting}</td>
-                </tr>
-              <% end %>
-            </tbody>
-            <tfoot>
-              <tr class="border-ink border-t-2 border-b-4 border-double">
-                <td colspan="3" class="text-ink/60 text-micro py-3 pr-3">
-                  ITC held pending your senior's review
-                </td>
-                <td class="border-redink/40 font-display text-redink border-l p-3 text-right font-medium tabular-nums">
-                  24,127
-                </td>
-                <td class="border-feint border-l py-3 pl-3"></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </section>
-
-      <%!-- ── THE TEST: the closing entry ───────────────────────────────────── --%>
-      <section class="border-feint relative border-t py-14 pl-10 sm:pl-12 lg:pl-48">
-        <p class="text-ink/55 text-label mb-6 font-semibold uppercase lg:absolute lg:top-14 lg:left-0 lg:mb-0 lg:w-32 lg:text-right">
-          The test
-        </p>
-
-        <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div class="max-w-xl">
-            <h2 class="font-display text-h3 font-normal">Put us to the test</h2>
-            <p class="text-body text-ink/70 mt-3 font-light">
-              Give us one month you've already filed. We reproduce it; you tear
-              our output apart against your own workings, line by line. If it's
-              garbage, you've lost twenty minutes. If it holds up, hand over
-              your ten worst clients.
-            </p>
-          </div>
-          <.link
-            href="mailto:hello@nilahq.com?subject=Put%20Nila%20to%20the%20test"
-            class="bg-ink text-paper text-small inline-flex h-12 shrink-0 items-center px-7 font-semibold transition hover:opacity-85"
-          >
-            Send us a filed month
-          </.link>
-        </div>
-      </section>
+            <tr>
+              <td class="text-redink py-3 pr-3 font-semibold">{issue}</td>
+              <td class="py-3 pr-3 font-medium">{line}</td>
+              <td class="text-ink/65 py-3 pr-3 font-light">{evidence}</td>
+              <td class="border-redink/40 font-display text-redink border-l p-3 text-right tabular-nums">
+                {stake}
+              </td>
+              <td class="border-feint text-ink/70 border-l py-3 pl-3">{waiting}</td>
+            </tr>
+          <% end %>
+        </tbody>
+        <tfoot>
+          <tr class="border-ink border-t-2 border-b-4 border-double">
+            <td colspan="3" class="text-ink/60 text-micro py-3 pr-3">
+              ITC held pending your senior's review
+            </td>
+            <td class="border-redink/40 font-display text-redink border-l p-3 text-right font-medium tabular-nums">
+              24,127
+            </td>
+            <td class="border-feint border-l py-3 pl-3"></td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
+  </section>
 
-    <%!-- ── FOOTER: the leaf closed with the same heavy rule it opened on ──── --%>
-    <.page_footer />
-  </div>
-</div>
+  <%!-- ── THE TEST: the closing entry ───────────────────────────────────── --%>
+  <section class="border-feint relative border-t py-14 pl-10 sm:pl-12 lg:pl-48">
+    <p class="text-ink/55 text-label mb-6 font-semibold uppercase lg:absolute lg:top-14 lg:left-0 lg:mb-0 lg:w-32 lg:text-right">
+      The test
+    </p>
+
+    <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+      <div class="max-w-xl">
+        <h2 class="font-display text-h3 font-normal">Put us to the test</h2>
+        <p class="text-body text-ink/70 mt-3 font-light">
+          Give us one month you've already filed. We reproduce it; you tear
+          our output apart against your own workings, line by line. If it's
+          garbage, you've lost twenty minutes. If it holds up, hand over
+          your ten worst clients.
+        </p>
+      </div>
+      <.link
+        href="mailto:hello@nilahq.com?subject=Put%20Nila%20to%20the%20test"
+        class="bg-ink rounded-field text-paper text-small inline-flex h-12 shrink-0 items-center px-7 font-semibold transition hover:opacity-85"
+      >
+        Send us a filed month
+      </.link>
+    </div>
+  </section>
+</.page_shell>

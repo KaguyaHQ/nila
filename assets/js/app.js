@@ -112,7 +112,10 @@ window.addEventListener("phx:nila:scroll-to-error", _e => {
 })
 
 // Show progress bar on live navigation and form submits
-topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
+// The loading bar is the one piece of chrome that shows on both the ledger
+// marketing pages and the moonlight product, so it uses `primary` — the sea
+// blue both palettes share. Phoenix ships "#29d", a stock azure in neither.
+topbar.config({barColors: {0: "#316177"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
