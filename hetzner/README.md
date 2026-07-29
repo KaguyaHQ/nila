@@ -3,8 +3,7 @@
 Nila runs on the **same Hetzner box as kaguya** (`46.224.237.179`, Nuremberg),
 as its own compose project at `/home/deploy/nila`. The **edge-ops** Caddy is the
 shared ingress (owns ports 80/443) and reverse-proxies `nila.tax` to Nila's container
-over a shared Docker network named `edge`. `nilahq.com` redirects to `nila.tax`
-and remains the verified sender domain for email.
+over a shared Docker network named `edge`. `nilahq.com` redirects to `nila.tax`.
 
 ```
 Browser → Cloudflare (TLS + cache) → Caddy (edge-ops stack) ──edge──▶ nila:8080 (Phoenix LiveView)
@@ -13,7 +12,7 @@ Browser → Cloudflare (TLS + cache) → Caddy (edge-ops stack) ──edge──
                                                                  nila-postgres:5432
 ```
 
-- **Domain**: `nila.tax` (Cloudflare origin cert in `edge-ops/caddy/certs/nila-origin*.pem` — regenerate with `nila.tax` in the SAN, see notes below). `nilahq.com` redirects to `nila.tax` (Caddy, edge-ops repo) and stays the email sender domain.
+- **Domain**: `nila.tax` (Cloudflare origin cert in `edge-ops/caddy/certs/nila-origin*.pem` — regenerate with `nila.tax` in the SAN, see notes below). `nilahq.com` redirects to `nila.tax` (Caddy, edge-ops repo). Email sends from `nila.tax`.
 - **Image**: `ghcr.io/kaguyahq/nila` (built by `.github/workflows/deploy.yml`)
 - **DB**: dedicated `postgres:16` container, private `internal` network, volume `nila_pgdata`
 - **Server files**: `/home/deploy/nila/` (`docker-compose.yml`, `deploy.sh`, `.env`)
@@ -217,7 +216,7 @@ Absent means the feature is off or a default applies:
 | `ASSISTANT_RECEIVE_TIMEOUT` | Upstream read timeout in ms (default 60000). |
 | `ASSISTANT_EXTRA_HEADERS` | JSON object merged into every assistant request (LLM-gateway routing). |
 | `RESEND_API_KEY` | When set, `Nila.Mailer` switches from the dev mailbox to Resend. **Unset means invite emails are silently dropped in prod** (the mailer is inert), so this is effectively required to onboard teammates. |
-| `MAIL_FROM` / `MAIL_FROM_NAME` | Sender for outgoing mail (default `Nila <onboarding@resend.dev>`). The from-address domain must be verified in Resend; `onboarding@resend.dev` only delivers to your own Resend account email. Set `MAIL_FROM=noreply@nilahq.com` after verifying the domain. Only read when `RESEND_API_KEY` is set. |
+| `MAIL_FROM` / `MAIL_FROM_NAME` | Sender for outgoing mail (default `Nila <onboarding@resend.dev>`). The from-address domain must be verified in Resend; `onboarding@resend.dev` only delivers to your own Resend account email. `nila.tax` is verified — use `MAIL_FROM=noreply@nila.tax`. Only read when `RESEND_API_KEY` is set. |
 | `LLAMA_CLOUD_API_KEY` | Configures the costly LlamaExtract comparison adapter; omit it outside deliberate benchmarks. |
 | `LLAMA_PROJECT_ID` / `LLAMA_BASE_URL` / `LLAMA_TIER` / `LLAMA_VERSION` | LlamaExtract benchmark settings. |
 | `MISTRAL_BASE_URL` | Optional Mistral endpoint override. The model is pinned in code to `mistral-ocr-4-0`. |

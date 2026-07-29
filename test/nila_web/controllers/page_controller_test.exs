@@ -19,6 +19,6 @@ defmodule NilaWeb.PageControllerTest do
 
   test "GET /contact", %{conn: conn} do
     conn = get(conn, ~p"/contact")
-    assert html_response(conn, 200) =~ "hello@nilahq.com"
+    assert html_response(conn, 200) =~ "hello@nila.tax"
   end
 end

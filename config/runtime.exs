@@ -128,10 +128,10 @@ end
 # so invite emails won't deliver until this is set.
 #
 # `MAIL_FROM` / `MAIL_FROM_NAME` set the sender. The from-address domain must be
-# verified in Resend (e.g. nilahq.com) or sends are rejected. Resend's shared
-# `onboarding@resend.dev` sender only delivers to your own Resend account email,
-# so it's fine for a first smoke test but NOT for inviting real teammates — set
-# `MAIL_FROM=noreply@nilahq.com` once the domain is verified.
+# verified in Resend or sends are rejected. `nila.tax` is verified, so prod uses
+# `MAIL_FROM=noreply@nila.tax`. Resend's shared `onboarding@resend.dev` sender
+# only delivers to your own Resend account email — fine for a smoke test, never
+# for inviting real teammates.
 if config_env() in [:prod, :dev] do
   if template = env!("WHATSAPP_CHASE_TEMPLATE", :string, nil) do
     config :nila, whatsapp_chase_template: template

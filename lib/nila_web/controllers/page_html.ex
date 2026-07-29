@@ -39,7 +39,7 @@ defmodule NilaWeb.PageHTML do
                 Log in
               </.link>
               <.link
-                href="mailto:hello@nilahq.com?subject=Put%20Nila%20to%20the%20test"
+                href="mailto:hello@nila.tax?subject=Put%20Nila%20to%20the%20test"
                 class="bg-ink rounded-field text-paper text-small inline-flex h-9 items-center px-4 font-semibold transition hover:opacity-85"
               >
                 Put us to the test
