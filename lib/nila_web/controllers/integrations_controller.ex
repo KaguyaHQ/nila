@@ -22,6 +22,12 @@ defmodule NilaWeb.IntegrationsController do
     end
   end
 
+  def connect(conn, _params) do
+    conn
+    |> put_flash(:error, "Unknown connector.")
+    |> redirect(to: ~p"/settings/connectors")
+  end
+
   def callback(conn, %{"provider" => "gmail", "code" => code, "state" => state}) do
     with {:ok, oauth_state} <- Phoenix.Token.verify(conn, "gmail_oauth", state, max_age: 600),
          {:ok, credentials} <- gmail_adapter().exchange_code(code),
@@ -53,6 +59,27 @@ defmodule NilaWeb.IntegrationsController do
   def callback(conn, %{"provider" => "gmail"}) do
     conn
     |> put_flash(:error, "Gmail connection failed.")
+    |> redirect(to: ~p"/settings/connectors")
+  end
+
+  # Microsoft records the grant in the customer's tenant when their admin
+  # approves, so this lands after the fact and binds nothing. The connection is
+  # created by hand until self-serve onboarding needs the tenant validated.
+  def callback(conn, %{"provider" => "microsoft"} = params) do
+    conn
+    |> put_flash(
+      :info,
+      case params do
+        %{"admin_consent" => "True"} -> "Microsoft consent granted. Nila will finish the setup."
+        _denied -> "Microsoft consent was not granted."
+      end
+    )
+    |> redirect(to: ~p"/settings/connectors")
+  end
+
+  def callback(conn, _params) do
+    conn
+    |> put_flash(:error, "Unknown connector.")
     |> redirect(to: ~p"/settings/connectors")
   end
 
