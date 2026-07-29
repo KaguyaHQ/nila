@@ -218,6 +218,11 @@ if config_env() == :prod do
     client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
     redirect_uri: System.get_env("GMAIL_REDIRECT_URI")
 
+  config :nila, Nila.Integrations.Microsoft,
+    client_id: System.get_env("MICROSOFT_CLIENT_ID"),
+    client_secret: System.get_env("MICROSOFT_CLIENT_SECRET"),
+    redirect_uri: System.get_env("MICROSOFT_REDIRECT_URI")
+
   config :nila, NilaWeb.Webhooks.WhatsAppController,
     app_secret: System.get_env("WHATSAPP_APP_SECRET"),
     verify_token: System.get_env("WHATSAPP_VERIFY_TOKEN")

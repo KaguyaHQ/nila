@@ -85,8 +85,7 @@ defmodule Nila.Gst.Chase.SenderTest do
     assert [%{channel: "email", sent_by_id: nil}] = Chase.list_asks(org.id, client.id, @period)
   end
 
-  @tag :capture_log
-  test "an email connector with no adapter fails the job instead of crashing it" do
+  test "email sends through Microsoft Graph when that is the firm's mailbox" do
     org = org_fixture()
     _connection = connection!(org, "microsoft", "mail@bvccas.com")
 
@@ -99,10 +98,24 @@ defmodule Nila.Gst.Chase.SenderTest do
         chase_channel: "email"
       })
 
-    assert {:error, {:unsupported_provider, "microsoft"}} =
-             perform_job(ChaseSender, args(org, client, "email"))
+    Req.Test.expect(Nila.Integrations.Microsoft, fn conn ->
+      assert conn.request_path == "/v1.0/users/mail@bvccas.com/sendMail"
+      {:ok, bytes, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(bytes)
 
-    assert Chase.list_asks(org.id, client.id, @period) == []
+      assert payload["saveToSentItems"] == true
+      assert payload["message"]["subject"] == "Documents for June 2026 GST — #{org.name}"
+      assert payload["message"]["body"]["content"] == @draft
+
+      assert Enum.map(payload["message"]["toRecipients"], & &1["emailAddress"]["address"]) == [
+               "ravi@example.com"
+             ]
+
+      Plug.Conn.send_resp(conn, 202, "")
+    end)
+
+    assert :ok = perform_job(ChaseSender, args(org, client, "email"))
+    assert [%{channel: "email", sent_by_id: nil}] = Chase.list_asks(org.id, client.id, @period)
   end
 
   @tag :capture_log
@@ -136,16 +149,29 @@ defmodule Nila.Gst.Chase.SenderTest do
   end
 
   defp connection!(org, provider, external_account_id) do
+    expires_at = DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_iso8601()
+
+    {credentials, settings} =
+      case provider do
+        "microsoft" ->
+          {%{"access_token" => "token", "expires_at" => expires_at},
+           %{"tenant_id" => "11111111-2222-3333-4444-555555555555"}}
+
+        _oauth ->
+          {%{
+             "access_token" => "token",
+             "refresh_token" => "refresh",
+             "expires_at" => expires_at
+           }, %{}}
+      end
+
     {:ok, connection} =
       Integrations.upsert_connection(%{
         org_id: org.id,
         provider: provider,
         external_account_id: external_account_id,
-        credentials: %{
-          "access_token" => "token",
-          "refresh_token" => "refresh",
-          "expires_at" => DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_iso8601()
-        }
+        settings: settings,
+        credentials: credentials
       })
 
     connection

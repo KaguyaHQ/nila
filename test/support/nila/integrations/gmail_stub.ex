@@ -1,5 +1,6 @@
 defmodule Nila.Integrations.GmailStub do
   @behaviour Nila.Integrations.GmailAdapter
+  @behaviour Nila.Integrations.MailAdapter
 
   @impl true
   def authorize_url(opts), do: "https://gmail.test/oauth?" <> URI.encode_query(opts)

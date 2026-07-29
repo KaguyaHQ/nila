@@ -1,5 +1,6 @@
 defmodule Nila.Integrations.Gmail do
   @behaviour Nila.Integrations.GmailAdapter
+  @behaviour Nila.Integrations.MailAdapter
 
   @moduledoc """
   Gmail adapter for attachment sync and outbound messages.

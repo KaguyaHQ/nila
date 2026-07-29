@@ -110,6 +110,9 @@ defmodule Nila.Integrations do
   def fetch_adapter("gmail"),
     do: {:ok, Application.get_env(:nila, :gmail_adapter, Nila.Integrations.Gmail)}
 
+  def fetch_adapter("microsoft"),
+    do: {:ok, Application.get_env(:nila, :microsoft_adapter, Nila.Integrations.Microsoft)}
+
   def fetch_adapter("whatsapp"),
     do: {:ok, Application.get_env(:nila, :whatsapp_adapter, Nila.Integrations.WhatsApp)}
 

@@ -119,19 +119,11 @@ defmodule Nila.IntegrationsTest do
     assert is_nil(Integrations.first_active_email_connection(org.id))
   end
 
-  test "a storable provider with no adapter errors instead of raising", %{org: org} do
-    assert {:ok, connection} =
-             Integrations.upsert_connection(%{
-               org_id: org.id,
-               provider: "microsoft",
-               external_account_id: "mail@bvccas.com",
-               credentials: %{"access_token" => "token"}
-             })
+  test "a provider with no adapter errors instead of raising" do
+    assert {:error, {:unsupported_provider, "zoho"}} = Integrations.fetch_adapter("zoho")
 
-    assert {:error, {:unsupported_provider, "microsoft"}} =
-             Integrations.fetch_adapter(connection.provider)
-
-    assert {:error, {:unsupported_provider, "microsoft"}} = Integrations.ensure_token(connection)
+    assert {:error, {:unsupported_provider, "zoho"}} =
+             Integrations.ensure_token(%Integrations.Connection{provider: "zoho"})
   end
 
   test "connection status helpers support settings health", %{org: org} do

@@ -13,6 +13,7 @@ config :nila,
   purchase_extractor: Nila.Gst.Extraction.Purchase.MistralOCR,
   sales_extractor: Nila.Gst.Extraction.Sales.MistralOCR,
   gmail_adapter: Nila.Integrations.Gmail,
+  microsoft_adapter: Nila.Integrations.Microsoft,
   whatsapp_adapter: Nila.Integrations.WhatsApp,
   whatsapp_chase_template: nil
 
@@ -48,6 +49,13 @@ config :hammer,
        expiry_ms: 60_000 * 60 * 2,
        cleanup_interval_ms: 60_000 * 10
      ]}
+
+config :nila, Nila.Integrations.Microsoft,
+  client_id: System.get_env("MICROSOFT_CLIENT_ID") || "dev-microsoft-client-id",
+  client_secret: System.get_env("MICROSOFT_CLIENT_SECRET") || "dev-microsoft-client-secret",
+  redirect_uri:
+    System.get_env("MICROSOFT_REDIRECT_URI") ||
+      "http://localhost:4000/integrations/microsoft/callback"
 
 config :nila, Nila.Integrations.Gmail,
   client_id: System.get_env("GOOGLE_CLIENT_ID") || "dev-google-client-id",
