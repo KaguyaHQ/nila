@@ -130,12 +130,8 @@ defmodule Nila.Integrations.Microsoft do
     connection.settings |> Kernel.||(%{}) |> Map.get(key)
   end
 
-  defp fetch_tenant_id(connection) do
-    case setting_value(connection, "tenant_id") do
-      tenant_id when is_binary(tenant_id) -> {:ok, tenant_id}
-      _missing -> {:error, :missing_tenant_id}
-    end
-  end
+  defp fetch_tenant_id(%{tenant_id: tenant_id}) when is_binary(tenant_id), do: {:ok, tenant_id}
+  defp fetch_tenant_id(_connection), do: {:error, :missing_tenant_id}
 
   # App-only credentials are the whole token and nothing else: there is no
   # refresh token to carry forward, so each mint replaces the previous one.

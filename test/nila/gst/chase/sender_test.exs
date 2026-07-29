@@ -151,18 +151,18 @@ defmodule Nila.Gst.Chase.SenderTest do
   defp connection!(org, provider, external_account_id) do
     expires_at = DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_iso8601()
 
-    {credentials, settings} =
+    {credentials, tenant_id} =
       case provider do
         "microsoft" ->
           {%{"access_token" => "token", "expires_at" => expires_at},
-           %{"tenant_id" => "11111111-2222-3333-4444-555555555555"}}
+           "11111111-2222-3333-4444-555555555555"}
 
         _oauth ->
           {%{
              "access_token" => "token",
              "refresh_token" => "refresh",
              "expires_at" => expires_at
-           }, %{}}
+           }, nil}
       end
 
     {:ok, connection} =
@@ -170,7 +170,7 @@ defmodule Nila.Gst.Chase.SenderTest do
         org_id: org.id,
         provider: provider,
         external_account_id: external_account_id,
-        settings: settings,
+        tenant_id: tenant_id,
         credentials: credentials
       })
 

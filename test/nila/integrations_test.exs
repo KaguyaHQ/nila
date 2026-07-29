@@ -143,6 +143,31 @@ defmodule Nila.IntegrationsTest do
     assert updated.external_account_id == "mail@bvccas.com"
   end
 
+  test "a Microsoft tenant binds to one workspace only", %{org: org} do
+    other_org = Nila.AccountsFixtures.org_fixture()
+    tenant = "11111111-2222-3333-4444-555555555555"
+
+    assert {:ok, _connection} =
+             Integrations.upsert_connection(%{
+               org_id: org.id,
+               provider: "microsoft",
+               external_account_id: "mail@bvccas.com",
+               tenant_id: tenant,
+               credentials: %{}
+             })
+
+    assert {:error, changeset} =
+             Integrations.upsert_connection(%{
+               org_id: other_org.id,
+               provider: "microsoft",
+               external_account_id: "mail@bvccas.com",
+               tenant_id: tenant,
+               credentials: %{}
+             })
+
+    assert "is already connected to another workspace" in errors_on(changeset).tenant_id
+  end
+
   test "a provider with no adapter errors instead of raising" do
     assert {:error, {:unsupported_provider, "zoho"}} = Integrations.fetch_adapter("zoho")
 

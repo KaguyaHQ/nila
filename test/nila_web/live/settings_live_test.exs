@@ -14,6 +14,19 @@ defmodule NilaWeb.SettingsLiveTest do
       {:ok, conn: log_in_user(conn, user), org: org}
     end
 
+    test "offers a Microsoft consent form on the connectors screen", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings/connectors")
+
+      assert has_element?(view, "#settings-add-microsoft-form")
+      assert has_element?(view, "#settings-add-microsoft-tenant")
+      assert has_element?(view, "#settings-add-microsoft-mailbox")
+
+      assert has_element?(
+               view,
+               ~s|form#settings-add-microsoft-form[action="/integrations/microsoft/connect"]|
+             )
+    end
+
     test "redirects /settings to workspace settings", %{conn: conn} do
       conn = get(conn, ~p"/settings")
 

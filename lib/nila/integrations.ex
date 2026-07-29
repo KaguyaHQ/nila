@@ -62,6 +62,7 @@ defmodule Nila.Integrations do
          [
            :label,
            :status,
+           :tenant_id,
            :credentials,
            :settings,
            :last_synced_at,

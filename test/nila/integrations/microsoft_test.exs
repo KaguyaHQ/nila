@@ -1,9 +1,12 @@
 defmodule Nila.Integrations.MicrosoftTest do
   use Nila.DataCase, async: true
 
+  use Oban.Testing, repo: Nila.Repo
+
   alias Nila.Integrations
-  alias Nila.Integrations.Microsoft
+  alias Nila.Integrations.{Microsoft, MicrosoftGrantWorker}
   alias Nila.Orgs
+  alias Nila.Repo
 
   @tenant "11111111-2222-3333-4444-555555555555"
   @mailbox "mail@bvccas.com"
@@ -102,7 +105,7 @@ defmodule Nila.Integrations.MicrosoftTest do
   test "a connection with no tenant errors instead of raising", %{org: org} do
     connection =
       connection!(org,
-        settings: %{"cc" => []},
+        tenant_id: nil,
         credentials: %{"access_token" => "stale", "expires_at" => past()}
       )
 
@@ -113,7 +116,6 @@ defmodule Nila.Integrations.MicrosoftTest do
     connection =
       connection!(org,
         settings: %{
-          "tenant_id" => @tenant,
           "cc" => ["balaji@bvccas.com", "vijayan@bvccas.com"],
           "reply_to" => "caltech.bvc@nila.tax"
         }
@@ -174,6 +176,50 @@ defmodule Nila.Integrations.MicrosoftTest do
     assert get_in(body, ["error", "code"]) == "ErrorAccessDenied"
   end
 
+  test "a grant still propagating retries instead of marking the connection broken", %{org: org} do
+    connection = connection!(org, credentials: %{}, last_status: "pending")
+
+    Req.Test.expect(Microsoft, fn conn ->
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(400, Jason.encode!(%{"error" => "unauthorized_client"}))
+    end)
+
+    assert {:error, _reason} =
+             perform_job(MicrosoftGrantWorker, %{"connection_id" => connection.id}, attempt: 1)
+
+    assert Repo.reload!(connection).last_status == "pending"
+
+    Req.Test.expect(Microsoft, fn conn ->
+      Req.Test.json(conn, %{"access_token" => "minted", "expires_in" => 3600})
+    end)
+
+    assert :ok =
+             perform_job(MicrosoftGrantWorker, %{"connection_id" => connection.id}, attempt: 2)
+
+    connection = Repo.reload!(connection)
+    assert connection.last_status == "connected"
+    assert connection.credentials["access_token"] == "minted"
+  end
+
+  test "an exhausted grant confirmation reports the connection as broken", %{org: org} do
+    connection = connection!(org, credentials: %{})
+
+    Req.Test.expect(Microsoft, fn conn ->
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(400, Jason.encode!(%{"error" => "unauthorized_client"}))
+    end)
+
+    assert {:error, _reason} =
+             perform_job(MicrosoftGrantWorker, %{"connection_id" => connection.id},
+               attempt: 6,
+               max_attempts: 6
+             )
+
+    assert Repo.reload!(connection).status == "error"
+  end
+
   test "the admin consent url carries the signed state" do
     url = Microsoft.admin_consent_url("signed-state-token")
     assert %URI{host: "login.microsoftonline.com", path: "/common/adminconsent"} = URI.parse(url)
@@ -182,8 +228,6 @@ defmodule Nila.Integrations.MicrosoftTest do
   end
 
   defp connection!(org, opts \\ []) do
-    settings = Keyword.get(opts, :settings, %{"tenant_id" => @tenant})
-
     credentials =
       Keyword.get(opts, :credentials, %{"access_token" => "token", "expires_at" => future()})
 
@@ -192,8 +236,10 @@ defmodule Nila.Integrations.MicrosoftTest do
         org_id: org.id,
         provider: "microsoft",
         external_account_id: @mailbox,
+        tenant_id: Keyword.get(opts, :tenant_id, @tenant),
+        last_status: Keyword.get(opts, :last_status, "connected"),
         credentials: credentials,
-        settings: settings
+        settings: Keyword.get(opts, :settings, %{})
       })
 
     connection

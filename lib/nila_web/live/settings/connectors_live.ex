@@ -11,6 +11,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
      |> assign(:page_title, "Connector settings")
      |> assign(:settings_section, :connectors)
      |> assign(:gmail_form, to_form(%{}, as: :connection))
+     |> assign(:microsoft_form, to_form(%{}, as: :connection))
      |> load_connector_state()}
   end
 
@@ -115,6 +116,56 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                 class="btn-soft mt-6"
               >
                 <.icon name="hero-plus" class="size-4" /> Add Gmail
+              </.button>
+            </.form>
+          </div>
+        </.settings_panel>
+
+        <.settings_panel>
+          <div class="flex flex-col gap-4">
+            <div>
+              <h3 class="text-base-content text-body font-semibold">Add Microsoft 365 mailbox</h3>
+              <p class="text-base-content/70 text-small mt-1">
+                Nila sends from a shared mailbox once the firm's Microsoft admin approves.
+                Restrict the app to this mailbox in Exchange, or it can send as any mailbox
+                in the tenant.
+              </p>
+            </div>
+            <.form
+              for={@microsoft_form}
+              id="settings-add-microsoft-form"
+              method="get"
+              action={~p"/integrations/microsoft/connect"}
+              class="grid gap-3 sm:grid-cols-3"
+            >
+              <.input
+                field={@microsoft_form[:tenant_id]}
+                id="settings-add-microsoft-tenant"
+                label="Directory (tenant) ID"
+                placeholder="00000000-0000-0000-0000-000000000000"
+                class="border-base-300 rounded-field text-small w-full border px-3 py-2"
+              />
+              <.input
+                field={@microsoft_form[:mailbox]}
+                id="settings-add-microsoft-mailbox"
+                label="Send from"
+                placeholder="mail@firm.com"
+                class="border-base-300 rounded-field text-small w-full border px-3 py-2"
+              />
+              <.input
+                field={@microsoft_form[:label]}
+                id="settings-add-microsoft-label"
+                label="Label"
+                placeholder="Firm mailbox"
+                class="border-base-300 rounded-field text-small w-full border px-3 py-2"
+              />
+              <.button
+                type="submit"
+                id="settings-add-microsoft"
+                size="sm"
+                class="btn-soft w-fit"
+              >
+                <.icon name="hero-plus" class="size-4" /> Start Microsoft consent
               </.button>
             </.form>
           </div>

@@ -5,12 +5,13 @@ defmodule Nila.Integrations.Connection do
   @providers ~w(gmail microsoft whatsapp)
   @email_providers ~w(gmail microsoft)
   @statuses ~w(active error disconnected)
-  @last_statuses ~w(connected expired revoked error)
+  @last_statuses ~w(connected pending expired revoked error)
 
   schema "integration_connections" do
     field :provider, :string
     field :status, :string, default: "active"
     field :external_account_id, :string
+    field :tenant_id, :string
     field :label, :string
     field :credentials, Nila.EncryptedMap
     field :settings, :map, default: %{}
@@ -32,6 +33,7 @@ defmodule Nila.Integrations.Connection do
       :provider,
       :status,
       :external_account_id,
+      :tenant_id,
       :label,
       :credentials,
       :settings,
@@ -47,6 +49,10 @@ defmodule Nila.Integrations.Connection do
     |> validate_inclusion(:last_status, @last_statuses)
     |> update_change(:label, &normalize_blank/1)
     |> unique_constraint([:org_id, :provider, :external_account_id])
+    |> unique_constraint(:tenant_id,
+      name: :integration_connections_provider_tenant_id_index,
+      message: "is already connected to another workspace"
+    )
   end
 
   @doc """
