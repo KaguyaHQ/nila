@@ -76,9 +76,15 @@ defmodule Nila.Integrations do
     )
   end
 
+  @doc """
+  Applies an operator's edits from the connectors screen.
+
+  Scoped to `Connection.settings_changeset/2` so a form can never reach the
+  grant or the send-as mailbox.
+  """
   def update_connection(%Connection{} = connection, attrs) do
     connection
-    |> Connection.changeset(attrs)
+    |> Connection.settings_changeset(attrs)
     |> Repo.update()
   end
 

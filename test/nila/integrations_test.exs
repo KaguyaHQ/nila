@@ -119,6 +119,30 @@ defmodule Nila.IntegrationsTest do
     assert is_nil(Integrations.first_active_email_connection(org.id))
   end
 
+  test "operator edits cannot reach the grant or the send-as mailbox", %{org: org} do
+    assert {:ok, connection} =
+             Integrations.upsert_connection(%{
+               org_id: org.id,
+               provider: "microsoft",
+               external_account_id: "mail@bvccas.com",
+               credentials: %{"access_token" => "token"},
+               settings: %{"tenant_id" => "real-tenant"}
+             })
+
+    assert {:ok, updated} =
+             Integrations.update_connection(connection, %{
+               label: "Firm mailbox",
+               settings: %{"tenant_id" => "attacker-tenant"},
+               credentials: %{"access_token" => "attacker-token"},
+               external_account_id: "partner@bvccas.com"
+             })
+
+    assert updated.label == "Firm mailbox"
+    assert updated.settings == %{"tenant_id" => "real-tenant"}
+    assert updated.credentials == %{"access_token" => "token"}
+    assert updated.external_account_id == "mail@bvccas.com"
+  end
+
   test "a provider with no adapter errors instead of raising" do
     assert {:error, {:unsupported_provider, "zoho"}} = Integrations.fetch_adapter("zoho")
 

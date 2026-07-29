@@ -49,6 +49,18 @@ defmodule Nila.Integrations.Connection do
     |> unique_constraint([:org_id, :provider, :external_account_id])
   end
 
+  @doc """
+  Changeset for the fields a person may edit.
+
+  `settings` carries the send-as mailbox, tenant, and cc list, and `credentials`
+  carries the grant. Neither is user data, so neither is castable from a form.
+  """
+  def settings_changeset(connection, attrs) do
+    connection
+    |> cast(attrs, [:label])
+    |> update_change(:label, &normalize_blank/1)
+  end
+
   def providers, do: @providers
   def email_providers, do: @email_providers
   def statuses, do: @statuses
