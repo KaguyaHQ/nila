@@ -60,6 +60,80 @@ defmodule Nila.IntegrationsTest do
     assert Repo.aggregate(Nila.Integrations.Connection, :count) == 1
   end
 
+  test "a stale Gmail token is refreshed through the adapter and persisted", %{org: org} do
+    assert {:ok, connection} =
+             Integrations.upsert_connection(%{
+               org_id: org.id,
+               provider: "gmail",
+               external_account_id: "firm@example.com",
+               credentials: %{
+                 "access_token" => "stale",
+                 "refresh_token" => "refresh-secret",
+                 "expires_at" => DateTime.utc_now() |> DateTime.add(-60) |> DateTime.to_iso8601()
+               }
+             })
+
+    Req.Test.expect(Nila.Integrations.Gmail, fn conn ->
+      {:ok, bytes, conn} = Plug.Conn.read_body(conn)
+      form = URI.decode_query(bytes)
+
+      assert form["grant_type"] == "refresh_token"
+      assert form["refresh_token"] == "refresh-secret"
+
+      Req.Test.json(conn, %{"access_token" => "fresh", "expires_in" => 3600})
+    end)
+
+    assert {:ok, refreshed} = Integrations.ensure_token(connection)
+    assert refreshed.credentials["access_token"] == "fresh"
+    assert refreshed.credentials["refresh_token"] == "refresh-secret"
+    assert Integrations.token_fresh?(refreshed.credentials)
+
+    assert {:ok, reused} = Integrations.ensure_token(refreshed)
+    assert reused.credentials["access_token"] == "fresh"
+  end
+
+  test "email delivery resolves any connected mail provider, not just Gmail", %{org: org} do
+    assert is_nil(Integrations.first_active_email_connection(org.id))
+
+    assert {:ok, _whatsapp} =
+             Integrations.upsert_connection(%{
+               org_id: org.id,
+               provider: "whatsapp",
+               external_account_id: "phone-number-123",
+               credentials: %{"access_token" => "token"}
+             })
+
+    assert is_nil(Integrations.first_active_email_connection(org.id))
+
+    assert {:ok, microsoft} =
+             Integrations.upsert_connection(%{
+               org_id: org.id,
+               provider: "microsoft",
+               external_account_id: "mail@bvccas.com",
+               credentials: %{"access_token" => "token"}
+             })
+
+    assert Integrations.first_active_email_connection(org.id).id == microsoft.id
+
+    assert {:ok, _disconnected} = Integrations.disconnect(microsoft)
+    assert is_nil(Integrations.first_active_email_connection(org.id))
+  end
+
+  test "a storable provider with no adapter errors instead of raising", %{org: org} do
+    assert {:ok, connection} =
+             Integrations.upsert_connection(%{
+               org_id: org.id,
+               provider: "microsoft",
+               external_account_id: "mail@bvccas.com",
+               credentials: %{"access_token" => "token"}
+             })
+
+    assert {:error, {:unsupported_provider, "microsoft"}} =
+             Integrations.fetch_adapter(connection.provider)
+
+    assert {:error, {:unsupported_provider, "microsoft"}} = Integrations.ensure_token(connection)
+  end
+
   test "connection status helpers support settings health", %{org: org} do
     assert {:ok, connection} =
              Integrations.upsert_connection(%{

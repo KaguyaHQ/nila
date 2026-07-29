@@ -68,15 +68,14 @@ defmodule Nila.Clients do
   defp validate_chase_connection(changeset) do
     if Ecto.Changeset.get_change(changeset, :chase_channel) == "email" and
          is_nil(
-           Integrations.first_active_connection(
-             Ecto.Changeset.get_field(changeset, :org_id),
-             "gmail"
+           Integrations.first_active_email_connection(
+             Ecto.Changeset.get_field(changeset, :org_id)
            )
          ) do
       Ecto.Changeset.add_error(
         changeset,
         :chase_channel,
-        "requires a connected Gmail account — open Settings → Connectors"
+        "requires a connected email account — open Settings → Connectors"
       )
     else
       changeset

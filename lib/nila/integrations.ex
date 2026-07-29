@@ -31,16 +31,27 @@ defmodule Nila.Integrations do
     )
   end
 
-  def first_active_connection(org_id, provider) do
+  def first_active_connection(org_id, provider) when is_binary(provider),
+    do: first_active_connection(org_id, [provider])
+
+  def first_active_connection(org_id, providers) when is_list(providers) do
     Repo.one(
       from connection in Connection,
         where:
-          connection.org_id == ^org_id and connection.provider == ^provider and
+          connection.org_id == ^org_id and connection.provider in ^providers and
             connection.status == "active",
         order_by: [asc: connection.inserted_at],
         limit: 1
     )
   end
+
+  @doc """
+  Providers that can deliver an email chase, in preference order.
+  """
+  def email_providers, do: Connection.email_providers()
+
+  def first_active_email_connection(org_id),
+    do: first_active_connection(org_id, email_providers())
 
   def upsert_connection(attrs) do
     %Connection{}
@@ -77,21 +88,32 @@ defmodule Nila.Integrations do
     |> Repo.update()
   end
 
-  def ensure_gmail_access_token(%Connection{provider: "gmail"} = connection) do
-    credentials = connection.credentials
+  @doc """
+  Returns the connection with a live access token.
 
-    if token_fresh?(credentials) do
-      {:ok, connection}
-    else
-      refresh_token = Map.fetch!(credentials, "refresh_token")
-      adapter = Application.get_env(:nila, :gmail_adapter, Nila.Integrations.Gmail)
-
-      with {:ok, refreshed} <- adapter.refresh_token(refresh_token),
-           credentials <- Map.merge(credentials, refreshed) do
-        update_credentials(connection, credentials)
-      end
+  Each provider owns its own token lifecycle: Gmail refreshes an offline grant,
+  app-only providers re-mint. The context only asks for a usable connection.
+  """
+  def ensure_token(%Connection{} = connection) do
+    with {:ok, adapter} <- fetch_adapter(connection.provider) do
+      adapter.ensure_token(connection)
     end
   end
+
+  @doc """
+  Resolves the adapter for a provider.
+
+  A provider can be storable (`Connection.providers/0`) before its adapter
+  exists, so this returns an error tuple rather than raising into whichever
+  worker happened to pick the connection up.
+  """
+  def fetch_adapter("gmail"),
+    do: {:ok, Application.get_env(:nila, :gmail_adapter, Nila.Integrations.Gmail)}
+
+  def fetch_adapter("whatsapp"),
+    do: {:ok, Application.get_env(:nila, :whatsapp_adapter, Nila.Integrations.WhatsApp)}
+
+  def fetch_adapter(provider), do: {:error, {:unsupported_provider, provider}}
 
   def mark_synced(%Connection{} = connection, synced_at \\ DateTime.utc_now()) do
     synced_at = DateTime.truncate(synced_at, :second)
@@ -165,8 +187,8 @@ defmodule Nila.Integrations do
     }
   end
 
-  defp token_fresh?(%{"access_token" => access_token, "expires_at" => expires_at})
-       when is_binary(access_token) and is_binary(expires_at) do
+  def token_fresh?(%{"access_token" => access_token, "expires_at" => expires_at})
+      when is_binary(access_token) and is_binary(expires_at) do
     case DateTime.from_iso8601(expires_at) do
       {:ok, expires_at, _offset} ->
         DateTime.compare(expires_at, DateTime.add(DateTime.utc_now(), 60)) == :gt
@@ -176,7 +198,7 @@ defmodule Nila.Integrations do
     end
   end
 
-  defp token_fresh?(_credentials), do: false
+  def token_fresh?(_credentials), do: false
 
   defp error_message(error) when is_binary(error), do: error
   defp error_message(%{message: message}) when is_binary(message), do: message

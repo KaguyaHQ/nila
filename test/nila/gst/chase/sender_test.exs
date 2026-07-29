@@ -86,6 +86,26 @@ defmodule Nila.Gst.Chase.SenderTest do
   end
 
   @tag :capture_log
+  test "an email connector with no adapter fails the job instead of crashing it" do
+    org = org_fixture()
+    _connection = connection!(org, "microsoft", "mail@bvccas.com")
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Ravi Traders",
+        type: "company",
+        email: "ravi@example.com",
+        chase_channel: "email"
+      })
+
+    assert {:error, {:unsupported_provider, "microsoft"}} =
+             perform_job(ChaseSender, args(org, client, "email"))
+
+    assert Chase.list_asks(org.id, client.id, @period) == []
+  end
+
+  @tag :capture_log
   test "a missing connection returns an error and records no ask" do
     org = org_fixture()
 

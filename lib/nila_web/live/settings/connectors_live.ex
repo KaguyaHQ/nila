@@ -61,10 +61,10 @@ defmodule NilaWeb.Settings.ConnectorsLive do
   def handle_event("sync_now", %{"id" => id}, socket) do
     with {:ok, %{provider: "gmail"} = connection} <- fetch_current_org_connection(socket, id),
          {:ok, _job} <- %{connection_id: connection.id} |> GmailSyncWorker.new() |> Oban.insert() do
-      {:noreply, put_flash(socket, :info, "Gmail sync queued.")}
+      {:noreply, put_flash(socket, :info, "Mailbox sync queued.")}
     else
       {:ok, _connection} ->
-        {:noreply, put_flash(socket, :error, "Manual sync is only available for Gmail.")}
+        {:noreply, put_flash(socket, :error, "Manual sync is not available for this connector.")}
 
       _error ->
         {:noreply, put_flash(socket, :error, "Could not queue sync.")}

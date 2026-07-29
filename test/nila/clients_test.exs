@@ -49,7 +49,7 @@ defmodule Nila.ClientsTest do
     assert "is required for email chases" in errors_on(email).email
   end
 
-  test "email chase selection requires an active Gmail connector" do
+  test "email chase selection requires an active email connector" do
     org = org_fixture()
 
     attrs = %{
@@ -62,7 +62,7 @@ defmodule Nila.ClientsTest do
 
     assert {:error, changeset} = Clients.create_client(attrs)
     assert [message] = errors_on(changeset).chase_channel
-    assert message =~ "requires a connected Gmail account"
+    assert message =~ "requires a connected email account"
 
     assert {:ok, _connection} =
              Integrations.upsert_connection(%{

@@ -2,7 +2,8 @@ defmodule Nila.Integrations.Connection do
   use Nila.Schema
   import Ecto.Changeset
 
-  @providers ~w(gmail whatsapp)
+  @providers ~w(gmail microsoft whatsapp)
+  @email_providers ~w(gmail microsoft)
   @statuses ~w(active error disconnected)
   @last_statuses ~w(connected expired revoked error)
 
@@ -49,6 +50,7 @@ defmodule Nila.Integrations.Connection do
   end
 
   def providers, do: @providers
+  def email_providers, do: @email_providers
   def statuses, do: @statuses
   def last_statuses, do: @last_statuses
 

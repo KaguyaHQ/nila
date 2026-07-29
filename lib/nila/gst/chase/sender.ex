@@ -80,14 +80,15 @@ defmodule Nila.Gst.Chase.Sender do
   end
 
   defp deliver("email", org, client, args) do
-    with %{} = connection <- Integrations.first_active_connection(org.id, "gmail"),
-         {:ok, connection} <- Integrations.ensure_gmail_access_token(connection) do
-      gmail_adapter().send_message(connection, client.email, %{
+    with %{} = connection <- Integrations.first_active_email_connection(org.id),
+         {:ok, adapter} <- Integrations.fetch_adapter(connection.provider),
+         {:ok, connection} <- Integrations.ensure_token(connection) do
+      adapter.send_message(connection, client.email, %{
         subject: "Documents for #{month_label(args["period"])} GST — #{org.name}",
         body: args["body"]
       })
     else
-      nil -> {:error, :no_gmail_connection}
+      nil -> {:error, :no_email_connection}
       error -> error
     end
   end
@@ -111,7 +112,4 @@ defmodule Nila.Gst.Chase.Sender do
 
   defp whatsapp_adapter,
     do: Application.get_env(:nila, :whatsapp_adapter, Nila.Integrations.WhatsApp)
-
-  defp gmail_adapter,
-    do: Application.get_env(:nila, :gmail_adapter, Nila.Integrations.Gmail)
 end

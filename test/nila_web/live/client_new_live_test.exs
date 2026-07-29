@@ -35,10 +35,11 @@ defmodule NilaWeb.ClientNewLiveTest do
     assert has_element?(intake, "#gst-upload-form option[selected][value='#{closeable}']")
   end
 
-  test "chase consent fields render and email points to Connectors when Gmail is absent", %{
-    conn: conn,
-    org: org
-  } do
+  test "chase consent fields render and email points to Connectors when no mailbox is connected",
+       %{
+         conn: conn,
+         org: org
+       } do
     {:ok, view, _html} = live(conn, ~p"/clients/new")
 
     assert has_element?(view, "#client_email")
@@ -57,7 +58,7 @@ defmodule NilaWeb.ClientNewLiveTest do
       )
       |> render_submit()
 
-    assert html =~ "requires a connected Gmail account"
+    assert html =~ "requires a connected email account"
     assert html =~ "Settings → Connectors"
     assert Clients.list_clients(org.id) == []
   end

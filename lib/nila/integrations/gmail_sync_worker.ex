@@ -10,8 +10,9 @@ defmodule Nila.Integrations.GmailSyncWorker do
   def perform(%Oban.Job{args: %{"connection_id" => connection_id}}) do
     connection = Integrations.get_connection!(connection_id)
 
-    with {:ok, connection} <- Integrations.ensure_gmail_access_token(connection),
-         {:ok, attachments} <- gmail_adapter().sync(connection) do
+    with {:ok, adapter} <- Integrations.fetch_adapter(connection.provider),
+         {:ok, connection} <- Integrations.ensure_token(connection),
+         {:ok, attachments} <- adapter.sync(connection) do
       attachments
       |> Enum.filter(&supported?/1)
       |> Enum.each(&ingest_attachment(connection, &1))
@@ -55,8 +56,4 @@ defmodule Nila.Integrations.GmailSyncWorker do
   defp supported?(%{content_type: "application/pdf"}), do: true
   defp supported?(%{content_type: "image/" <> _}), do: true
   defp supported?(_attachment), do: false
-
-  defp gmail_adapter do
-    Application.get_env(:nila, :gmail_adapter, Nila.Integrations.Gmail)
-  end
 end

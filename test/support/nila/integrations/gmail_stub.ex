@@ -16,6 +16,9 @@ defmodule Nila.Integrations.GmailStub do
   def refresh_token(_refresh_token), do: {:error, :unexpected_refresh}
 
   @impl true
+  def ensure_token(connection), do: {:ok, connection}
+
+  @impl true
   def sync(_connection), do: {:ok, Process.get(:gmail_attachments, [])}
 
   @impl true

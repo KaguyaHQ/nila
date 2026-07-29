@@ -5,6 +5,8 @@ defmodule Nila.Integrations.Gmail do
   Gmail adapter for attachment sync and outbound messages.
   """
 
+  alias Nila.Integrations
+
   @accounts_url "https://accounts.google.com/o/oauth2/v2/auth"
   @token_url "https://oauth2.googleapis.com/token"
   @api_url "https://gmail.googleapis.com/gmail/v1"
@@ -58,6 +60,19 @@ defmodule Nila.Integrations.Gmail do
       "grant_type" => "refresh_token",
       "refresh_token" => refresh_token
     })
+  end
+
+  @impl true
+  def ensure_token(connection) do
+    credentials = connection.credentials
+
+    if Integrations.token_fresh?(credentials) do
+      {:ok, connection}
+    else
+      with {:ok, refreshed} <- refresh_token(Map.fetch!(credentials, "refresh_token")) do
+        Integrations.update_credentials(connection, Map.merge(credentials, refreshed))
+      end
+    end
   end
 
   @impl true
@@ -129,7 +144,7 @@ defmodule Nila.Integrations.Gmail do
   def normalize(_raw, _opts), do: {:error, :invalid_payload}
 
   defp request_token(form) do
-    case Req.post(@token_url, form: form) do
+    case Req.post(@token_url, [form: form] ++ req_options()) do
       {:ok, %{status: status, body: body}} when status in 200..299 ->
         {:ok, put_expiry(body)}
 
