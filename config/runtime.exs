@@ -119,6 +119,13 @@ if config_env() in [:prod, :dev] do
   if base_url = env!("MISTRAL_BASE_URL", :string, nil) do
     config :nila, Nila.Gst.Extraction.Providers.Mistral, base_url: base_url
   end
+
+  # The segmented pipeline's text calls — segmentation and per-invoice reading —
+  # are a model choice, not a provider choice: same key, same endpoint, swapped
+  # by config and auditioned through `mix nila.eval`. Defaults to the cheap tier.
+  if model = env!("GST_TEXT_MODEL", :string, nil) do
+    config :nila, Nila.Gst.Extraction.Providers.MistralChat, model: model
+  end
 end
 
 # Transactional email (invites, etc.) via Resend, using Swoosh's built-in

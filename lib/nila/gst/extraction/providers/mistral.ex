@@ -106,14 +106,45 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
   end
 
   def annotation_schema(kind) when kind in [:purchase, :sales] do
-    invoice_properties = %{
-      source_pages: %{
+    strict_object(%{
+      invoices: %{
         type: "array",
         description:
-          "All 1-based source page numbers belonging to this invoice, including continuation pages.",
-        items: %{type: "integer", minimum: 1},
-        minItems: 1
-      },
+          "Every distinct GST invoice in the complete document. A multi-page invoice is one entry, never one entry per page.",
+        items: invoice_schema(kind)
+      }
+    })
+  end
+
+  @doc """
+  One invoice's schema, shared by the windowed annotation call and the segmented
+  per-invoice chat call.
+
+  `source_pages: false` drops the page-attribution field: when the caller already
+  knows which pages it handed over — a segment — asking the model to restate them
+  invites a guess where there is a fact.
+  """
+  def invoice_schema(kind, opts \\ []) when kind in [:purchase, :sales] do
+    properties = invoice_properties(kind)
+
+    properties =
+      if Keyword.get(opts, :source_pages, true) do
+        Map.put(properties, :source_pages, %{
+          type: "array",
+          description:
+            "All 1-based source page numbers belonging to this invoice, including continuation pages.",
+          items: %{type: "integer", minimum: 1},
+          minItems: 1
+        })
+      else
+        properties
+      end
+
+    strict_object(properties)
+  end
+
+  defp invoice_properties(kind) do
+    %{
       invoice_number: %{type: "string"},
       invoice_date: %{type: "string"},
       seller: party_schema(kind == :purchase),
@@ -173,17 +204,6 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
           "Final printed amount payable after tax, charges and rounding."
         )
     }
-
-    invoice_schema = strict_object(invoice_properties)
-
-    strict_object(%{
-      invoices: %{
-        type: "array",
-        description:
-          "Every distinct GST invoice in the complete document. A multi-page invoice is one entry, never one entry per page.",
-        items: invoice_schema
-      }
-    })
   end
 
   defp party_schema(include_address?) do
@@ -238,12 +258,9 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
   end
 
   def request_payload(kind, bytes, content_type, pages \\ nil, document \\ nil) do
-    %{
-      model: @model,
-      document: document || document(bytes, content_type),
-      table_format: "markdown",
-      include_blocks: true,
-      confidence_scores_granularity: "word",
+    bytes
+    |> transcription_payload(content_type, pages, document)
+    |> Map.merge(%{
       document_annotation_format: %{
         type: "json_schema",
         json_schema: %{
@@ -253,8 +270,53 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
         }
       },
       document_annotation_prompt: annotation_prompt(kind)
+    })
+  end
+
+  @doc """
+  The same `/v1/ocr` request with the annotation layer removed: transcription only.
+
+  `/v1/ocr` fuses two jobs — transcribe the pixels, then have a language model
+  read the transcription and emit JSON. Only the second one has a per-call output
+  budget, and that budget is what a dense multi-invoice window overruns. Asking
+  for transcription alone therefore has no size ceiling worth windowing around,
+  and it produces the artifact every later stage argues over: **one canonical
+  text per physical page**. The interpretation half moves to
+  `Nila.Gst.Extraction.Providers.MistralChat`, text in and JSON out, where it can
+  be re-run offline against these bytes and scoped to a single invoice.
+  """
+  def transcription_payload(bytes, content_type, pages \\ nil, document \\ nil) do
+    %{
+      model: @model,
+      document: document || document(bytes, content_type),
+      table_format: "markdown",
+      include_blocks: true,
+      confidence_scores_granularity: "word"
     }
     |> maybe_put_pages(pages)
+  end
+
+  @doc "Transcription-only call. Same `{:ok, %{status, headers, body}}` shape as `request_raw/3`."
+  def transcribe_raw(bytes, opts \\ []) when is_binary(bytes) do
+    filename = Keyword.get(opts, :filename, "document.pdf")
+    content_type = Keyword.get(opts, :content_type, content_type(filename))
+
+    if content_type in @supported_content_types do
+      bytes
+      |> transcription_payload(
+        content_type,
+        Keyword.get(opts, :pages),
+        Keyword.get(opts, :document)
+      )
+      |> post_ocr()
+    else
+      {:error, {:unsupported_content_type, content_type}}
+    end
+  end
+
+  @doc "Cache key parts for a transcription: no prompt, no schema, so only the model shapes it."
+  def transcription_fingerprint do
+    %{model: @model, mode: "transcription"}
   end
 
   @doc """
@@ -334,8 +396,12 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
   end
 
   defp request(kind, bytes, content_type, pages, document) do
-    payload = request_payload(kind, bytes, content_type, pages, document)
+    kind
+    |> request_payload(bytes, content_type, pages, document)
+    |> post_ocr()
+  end
 
+  defp post_ocr(payload) do
     options =
       [
         url: url("/v1/ocr"),

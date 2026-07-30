@@ -54,4 +54,34 @@ defmodule Nila.GstinTest do
       assert {"is not a valid GSTIN", _} = cs.errors[:gstin]
     end
   end
+
+  describe "repair/1" do
+    test "corrects a scan-damaged GSTIN when the grammar and check digit leave one reading" do
+      # Real capture from breeze 2026-06 page 22: the scanner read Alleppey Techno
+      # Care's GSTIN with a digit 1 where the format demands a letter.
+      assert Gstin.repair("32ABSP14532L1ZG") == {:repaired, "32ABSPI4532L1ZG"}
+      assert Gstin.valid?("32ABSPI4532L1ZG")
+    end
+
+    test "corrects a letter read as a digit in the numeric run" do
+      assert Gstin.repair("33AENFS082OH1Z6") == {:repaired, "33AENFS0820H1Z6"}
+    end
+
+    test "passes a valid GSTIN through untouched" do
+      assert Gstin.repair("33AEWPH4158J1Z3") == {:ok, "33AEWPH4158J1Z3"}
+    end
+
+    test "refuses when the damage is not a substitution" do
+      # A dropped character (14 chars) and a mangled tail: no single reading is
+      # implied, and guessing a supplier's identity is worse than flagging it.
+      assert Gstin.repair("33AEWPH4158JZ3") == :error
+      assert Gstin.repair("33A-EWPH41587123") == :error
+    end
+
+    test "refuses nonsense rather than inventing a supplier" do
+      assert Gstin.repair("") == :error
+      assert Gstin.repair(nil) == :error
+      assert Gstin.repair("HELLO") == :error
+    end
+  end
 end

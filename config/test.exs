@@ -75,6 +75,12 @@ config :nila, Nila.Gst.Extraction.Providers.Mistral,
   api_key: "test-mistral-key",
   req_options: [plug: {Req.Test, Nila.Gst.Extraction.Providers.Mistral}]
 
+# The segmented pipeline's text calls get their own stub, so an OCR expectation
+# and a chat expectation can never satisfy each other.
+config :nila, Nila.Gst.Extraction.Providers.MistralChat,
+  api_key: "test-mistral-key",
+  req_options: [plug: {Req.Test, Nila.Gst.Extraction.Providers.MistralChat}]
+
 # Windowed reads inline the document by default here so the provider stub sees
 # only `/v1/ocr` calls. The upload path has its own (async: false) test module,
 # which turns this on.
