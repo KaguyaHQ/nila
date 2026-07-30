@@ -39,7 +39,8 @@ defmodule Nila.Eval.Gstr1Diff do
     %{
       "tolerance" => @diff_tolerance,
       "val_tolerance" => @val_tolerance,
-      "ignored_invoice_fields" => @ignored_invoice_fields
+      "ignored_invoice_fields" => @ignored_invoice_fields,
+      "hsn_comparison" => "rolled to the shorter side's code length"
     }
   end
 
@@ -116,10 +117,28 @@ defmodule Nila.Eval.Gstr1Diff do
     end
   end
 
+  # HSN codes are compared at the coarser of the two sides' lengths.
+  #
+  # An HSN code is a prefix tree: `9987` is the same classification as `998719`,
+  # read to fewer digits. Filing software differs on how many digits it writes —
+  # breeze's reports `9987` where the bill prints `998719` — and treating that as
+  # disagreement scores a month where every rupee agrees as broken. Breeze
+  # 2026-01 rolls up to the paise on both rows.
+  #
+  # Same intent as the `val` tolerance: the diff exists to find where we disagree
+  # about money, not about formatting. It stays honest because rolling up sums
+  # the amounts, so a genuine gap survives — breeze 2026-05 still fails its 9987
+  # row by ₹209,950, which is three invoices we read short.
   defp hsn_diff(derived, filed) do
     derived_rows = hsn_rows(derived)
     filed_rows = hsn_rows(filed)
-    keys = (Map.keys(derived_rows) ++ Map.keys(filed_rows)) |> Enum.uniq() |> Enum.sort()
+    length = comparison_length(derived_rows, filed_rows)
+
+    derived_rolled = roll_up(derived_rows, length)
+    filed_rolled = roll_up(filed_rows, length)
+
+    keys =
+      (Map.keys(derived_rolled) ++ Map.keys(filed_rolled)) |> Enum.uniq() |> Enum.sort()
 
     Enum.flat_map(keys, fn key ->
       Enum.map(@hsn_fields, fn field ->
@@ -127,11 +146,61 @@ defmodule Nila.Eval.Gstr1Diff do
           "hsn",
           key,
           field,
-          get_in(derived_rows, [key, field]),
-          get_in(filed_rows, [key, field])
+          get_in(derived_rolled, [key, field]),
+          get_in(filed_rolled, [key, field])
         )
       end)
     end)
+  end
+
+  # The shortest code either side filed. Service codes (99xxxx) are never fewer
+  # than 4 digits and goods codes come in 4/6/8, so this lands on a real prefix
+  # boundary rather than an arbitrary cut.
+  defp comparison_length(derived_rows, filed_rows) do
+    lengths =
+      Enum.map(Map.values(derived_rows) ++ Map.values(filed_rows), fn hsn ->
+        hsn["hsn_sc"] |> to_string() |> String.length()
+      end)
+
+    case Enum.reject(lengths, &(&1 == 0)) do
+      [] -> 8
+      lengths -> Enum.min(lengths)
+    end
+  end
+
+  defp roll_up(rows, length) do
+    rows
+    |> Map.values()
+    |> Enum.group_by(fn hsn ->
+      code = hsn["hsn_sc"] |> to_string() |> String.slice(0, length)
+      {code, hsn["rt"]}
+    end)
+    |> Map.new(fn {{code, rate}, group} ->
+      {"#{code}|#{rate}", merge_hsn(group, code, rate)}
+    end)
+  end
+
+  # Amounts sum; the code and rate are the grouping key. A rolled-up row carries
+  # the codes it came from so a reviewer can see what was combined.
+  # Even a lone row is rewritten to the comparison length: the code column is
+  # otherwise the one field that still fails on formatting alone, which is the
+  # thing this rule exists to stop counting.
+  defp merge_hsn([single], code, _rate), do: Map.put(single, "hsn_sc", code)
+
+  defp merge_hsn(group, code, rate) do
+    %{
+      "hsn_sc" => code,
+      "rt" => rate,
+      "txval" => sum_field(group, "txval"),
+      "camt" => sum_field(group, "camt"),
+      "samt" => sum_field(group, "samt"),
+      "iamt" => sum_field(group, "iamt"),
+      "rolled_from" => group |> Enum.map(&to_string(&1["hsn_sc"])) |> Enum.sort()
+    }
+  end
+
+  defp sum_field(group, field) do
+    group |> Enum.map(&num(&1[field])) |> Enum.sum() |> Float.round(2)
   end
 
   defp hsn_rows(gstr1) do

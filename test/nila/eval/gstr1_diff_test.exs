@@ -142,6 +142,73 @@ defmodule Nila.Eval.Gstr1DiffTest do
     end
   end
 
+  describe "HSN code length" do
+    defp with_hsn(rows) do
+      %{"b2b" => [], "hsn" => %{"hsn_b2b" => rows}, "doc_issue" => %{"doc_det" => []}}
+    end
+
+    defp hsn(code, txval, opts \\ []) do
+      %{
+        "hsn_sc" => code,
+        "rt" => 18,
+        "txval" => txval,
+        "camt" => Keyword.get(opts, :camt, 0),
+        "samt" => Keyword.get(opts, :samt, 0),
+        "iamt" => Keyword.get(opts, :iamt, 0)
+      }
+    end
+
+    test "the same classification written to different digit counts agrees" do
+      ours = with_hsn([hsn("998719", 1000)])
+      theirs = with_hsn([hsn("9987", 1000)])
+
+      assert Enum.all?(Gstr1Diff.rows(ours, theirs), & &1["match"]),
+             "9987 is 998719 read to fewer digits, not a different product"
+    end
+
+    test "several specific codes roll into the summary row they belong to" do
+      ours = with_hsn([hsn("998717", 400), hsn("998719", 600)])
+      theirs = with_hsn([hsn("9987", 1000)])
+
+      rows = Gstr1Diff.rows(ours, theirs)
+
+      assert Enum.all?(rows, & &1["match"])
+      assert Enum.find(rows, &(&1["field"] == "txval"))["derived"] == 1000.0
+    end
+
+    test "a real gap survives the roll-up" do
+      ours = with_hsn([hsn("998717", 400), hsn("998719", 500)])
+      theirs = with_hsn([hsn("9987", 1000)])
+
+      txval = Enum.find(Gstr1Diff.rows(ours, theirs), &(&1["field"] == "txval"))
+
+      refute txval["match"], "rolling up must not hide missing money"
+      assert txval["derived"] == 900.0
+    end
+
+    test "genuinely different classifications still disagree" do
+      ours = with_hsn([hsn("996519", 1000)])
+      theirs = with_hsn([hsn("998719", 1000)])
+
+      refute Enum.all?(Gstr1Diff.rows(ours, theirs), & &1["match"]),
+             "a courier code and a maintenance code are not the same row"
+    end
+
+    test "the same rate is required, not just the same code" do
+      ours = with_hsn([%{hsn("998719", 1000) | "rt" => 5}])
+      theirs = with_hsn([hsn("9987", 1000)])
+
+      refute Enum.all?(Gstr1Diff.rows(ours, theirs), & &1["match"])
+    end
+
+    test "tax amounts roll up with the taxable value" do
+      ours = with_hsn([hsn("998717", 400, camt: 36), hsn("998719", 600, camt: 54)])
+      theirs = with_hsn([hsn("9987", 1000, camt: 90)])
+
+      assert Enum.all?(Gstr1Diff.rows(ours, theirs), & &1["match"])
+    end
+  end
+
   describe "policy/0" do
     test "records the comparison rules a score depends on" do
       policy = Gstr1Diff.policy()
@@ -149,6 +216,7 @@ defmodule Nila.Eval.Gstr1DiffTest do
       assert policy["tolerance"] == 0.01
       assert policy["val_tolerance"] == 1.0
       assert "chksum" in policy["ignored_invoice_fields"]
+      assert policy["hsn_comparison"] =~ "shorter"
     end
   end
 end
