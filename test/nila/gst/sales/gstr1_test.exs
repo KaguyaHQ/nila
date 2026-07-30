@@ -2,21 +2,16 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   @moduledoc """
   Unit + reproduction tests for the GSTR-1 derivation engine.
 
-  The unit tests are self-contained. The reproduction tests replay the real
-  filed-return eval against the captured page artifacts in `tmp/eval/<period>-<client>/pages`
-  (gitignored — see `docs/.plans/2026-07-29-eval-loop.md`). When those artifacts
-  are absent (a cold checkout / CI), the reproduction cases skip rather than
-  fail — which is why they are not a gate, and why they are replaced by
-  synthetic-fixture tests once the corpus is re-extracted under Mistral. The
-  baselines below measure LlamaExtract and are retained only until that sweep.
+  Everything here is self-contained and runs on any checkout. Scoring the real
+  corpus is `mix nila.eval score`, whose numbers live in run records that carry
+  the extractor, model and prompt fingerprint that produced them — a test
+  asserting a corpus score would either skip (reading as a pass) or freeze a
+  number nobody can attribute.
   """
   use ExUnit.Case, async: true
 
   alias Nila.Eval.Gstr1Diff
   alias Nila.Gst.Sales.Gstr1
-
-  @eval_root Path.expand("../../../../tmp/eval", __DIR__)
-  @fixtures_root Path.expand("../../../../test/fixtures/gstr1", __DIR__)
 
   describe "valid_gstin?/1" do
     test "accepts real GSTINs and rejects checksum-broken ones" do
@@ -302,49 +297,123 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     end
   end
 
-  # Reproduction baselines against real filed returns. `raw` is the first-pass
-  # score; nil means "run it, just don't assert a number yet". These lock in
-  # current behavior — change them deliberately when a rule is fixed.
-  @baselines %{
-    {"breeze", "2026-05"} => 87.34,
-    {"breeze", "2026-01"} => 92.14,
-    {"caltech", "2025-10"} => 55.79,
-    {"caltech", "2025-11"} => 69.52,
-    {"caltech", "2025-12"} => 53.23,
-    {"caltech", "2026-01"} => 57.84
-  }
+  # A whole month end to end, on invoices small enough to read. The real corpus
+  # cannot gate anything — its artifacts are gitignored, so a test keyed on them
+  # reports "skipped" as if it were "passed" everywhere but one machine. Real
+  # months are scored by `mix nila.eval score`, which keeps its numbers in run
+  # records where they carry provenance.
+  describe "derive/2 end to end against a filed return" do
+    setup do
+      invoices = [
+        month_invoice("1", "33AABCP9487A1ZG", 1000, 18),
+        month_invoice("2", "33AABCP9487A1ZG", 2000, 18),
+        month_invoice("3", "29AAVCS8021P1ZB", 5000, 5)
+      ]
 
-  describe "reproduction against filed returns (replays tmp/eval artifacts)" do
-    for {{client, period}, expected} <- @baselines do
-      @tag client: client, period: period, expected: expected
-      test "#{client} #{period} derives to the #{expected}% baseline" do
-        pages_dir = Path.join([@eval_root, "#{unquote(period)}-#{unquote(client)}", "pages"])
+      %{invoices: invoices, header: Gstr1.production_header("33AEWPH4158J1Z3", "2026-05")}
+    end
 
-        filed_glob =
-          Path.join([@fixtures_root, unquote(client), unquote(period), "returns_*.json"])
+    test "a return derived from invoices scores 100% against itself", %{
+      invoices: invoices,
+      header: header
+    } do
+      derived = Gstr1.derive(invoices, header)
 
-        cond do
-          not File.dir?(pages_dir) ->
-            # Captured extraction artifacts are gitignored; skip on cold checkout.
-            assert true
+      assert %{"score" => 100.0} = Gstr1Diff.diff(derived, derived)
+    end
 
-          [filed_path] = Path.wildcard(filed_glob) ->
-            invoices = load_invoices(pages_dir)
-            filed = filed_path |> File.read!() |> Jason.decode!()
-            derived = Gstr1.derive(invoices, filed)
-            result = Gstr1Diff.diff(derived, filed)
-            assert_in_delta result["score"], unquote(expected), 0.01
-        end
-      end
+    test "groups invoices by counterparty and splits tax by place of supply", %{
+      invoices: invoices,
+      header: header
+    } do
+      derived = Gstr1.derive(invoices, header)
+
+      assert [%{"ctin" => "29AAVCS8021P1ZB"}, %{"ctin" => "33AABCP9487A1ZG", "inv" => local}] =
+               derived["b2b"]
+
+      assert length(local) == 2
+
+      # Seller and buyer are both 33, so the tax is CGST+SGST and IGST is zero.
+      [%{"itms" => [%{"itm_det" => item}]} | _rest] = local
+      assert item["camt"] == 90.0 and item["samt"] == 90.0 and item["iamt"] == 0
+
+      # 29 against a 33 seller is interstate: IGST carries the whole tax.
+      [%{"inv" => [%{"itms" => [%{"itm_det" => interstate}]}]} | _] = derived["b2b"]
+      assert interstate["iamt"] == 250.0 and interstate["camt"] == 0
+    end
+
+    test "a missing invoice is visible as unmatched rows, not a quiet lower score", %{
+      invoices: invoices,
+      header: header
+    } do
+      filed = Gstr1.derive(invoices, header)
+      short = Gstr1.derive(Enum.take(invoices, 2), header)
+
+      rows = Gstr1Diff.rows(short, filed)
+      missing = Enum.filter(rows, &(&1["key"] =~ "3" and is_nil(&1["derived"])))
+
+      assert missing != []
+      assert Gstr1Diff.score(rows)["score"] < 100.0
+    end
+
+    test "a wrong amount fails the row it is on and no others", %{
+      invoices: invoices,
+      header: header
+    } do
+      filed = Gstr1.derive(invoices, header)
+      [first | rest] = invoices
+      wrong = put_in(first, ["line_items", Access.at(0), "taxable_value"], 999)
+      derived = Gstr1.derive([wrong | rest], header)
+
+      mismatches = Gstr1Diff.diff(derived, filed)["mismatches"]
+      {invoice_rows, hsn_rows} = Enum.split_with(mismatches, &(&1["scope"] != "hsn"))
+
+      assert Enum.all?(invoice_rows, &(&1["key"] =~ "|1|")),
+             "one bad amount must not smear across other invoices"
+
+      # HSN is a turnover summary across the whole month, so a single wrong
+      # amount legitimately moves its bucket too. That is why an HSN mismatch
+      # cannot be attributed to an invoice by itself.
+      assert hsn_rows != []
     end
   end
 
-  defp load_invoices(pages_dir) do
-    pages_dir
-    |> Path.join("*.json")
-    |> Path.wildcard()
-    |> Enum.sort()
-    |> Enum.map(&(&1 |> File.read!() |> Jason.decode!() |> Gstr1.normalize_invoice()))
+  defp month_invoice(number, buyer_gstin, taxable, rate) do
+    tax = taxable * rate / 100
+    local? = String.starts_with?(buyer_gstin, "33")
+    half = Float.round(tax / 2, 2)
+
+    line =
+      if local? do
+        %{
+          "taxable_value" => taxable,
+          "hsn_sac" => "998719",
+          "cgst_rate" => rate / 2,
+          "cgst_amount" => half,
+          "sgst_rate" => rate / 2,
+          "sgst_amount" => half
+        }
+      else
+        %{
+          "taxable_value" => taxable,
+          "hsn_sac" => "998719",
+          "igst_rate" => rate,
+          "igst_amount" => tax
+        }
+      end
+
+    Gstr1.normalize_invoice(%{
+      "data" => %{
+        "invoice_number" => number,
+        "invoice_date" => "04.05.2026",
+        "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
+        "buyer" => %{"gstin" => buyer_gstin},
+        "printed_total_taxable" => taxable,
+        "printed_total_tax" => tax,
+        "printed_grand_total" => taxable + tax,
+        "line_items" => [line]
+      }
+    })
   end
 
   defp seq_invoice(number) do

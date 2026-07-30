@@ -86,32 +86,32 @@ defmodule Nila.EvalTest do
       assert [%{"line_items" => [%{"taxable_value" => 900}]}] = worked.invoices
     end
 
-    # Reads gitignored artifacts, so it is excluded by default rather than
-    # skipping green on a cold checkout. Run with `mix test --include archived`.
-    @tag :archived
-    test "the committed breeze correction reproduces its reviewed score through materialize/4" do
-      {:ok, invoices} = Nila.Eval.archived_invoices("breeze", "2026-05")
-      {:ok, filed} = Nila.Eval.filed_return("breeze", "2026-05")
+    test "a correction reaches the derived return, not just the invoice", %{
+      invoices: invoices,
+      header: header
+    } do
+      fix = %{
+        "verb" => "correct_field",
+        "target" => "1",
+        "payload" => %{
+          "field" => "line_items",
+          "to" => [
+            %{
+              "taxable_value" => 1000,
+              "cgst_rate" => 9,
+              "cgst_amount" => 90,
+              "sgst_rate" => 9,
+              "sgst_amount" => 90
+            }
+          ]
+        }
+      }
 
-      fixes =
-        "test/fixtures/gstr1/breeze/2026-05/corrections.json"
-        |> File.read!()
-        |> Jason.decode!()
-        |> Map.fetch!("corrections")
-        |> Enum.map(fn c ->
-          %{
-            "verb" => "correct_field",
-            "target" => c["invoice"],
-            "payload" => %{"field" => c["field"], "to" => c["value"]}
-          }
-        end)
+      before = Gstr1.derive(invoices, header)
+      worked = Workings.materialize(invoices, [fix], header)
 
-      header = Gstr1.production_header("33AEWPH4158J1Z3", "2026-05")
-      worked = Workings.materialize(invoices, fixes, header)
-      score = Nila.Eval.Gstr1Diff.score(Nila.Eval.Gstr1Diff.rows(worked.derived, filed))
-
-      assert worked.silent_errors == []
-      assert score["score"] == 100.0
+      assert bucket_txval(before) == 900
+      assert bucket_txval(worked.derived) == 1000
     end
 
     test "a correction to an unflagged field never enters the month", %{
@@ -133,11 +133,32 @@ defmodule Nila.EvalTest do
     end
   end
 
-  describe "score_archived/3" do
-    @tag :tmp_dir
-    test "reports missing artifacts rather than scoring an empty month" do
-      assert {:error, {:no_artifacts, _dir}} =
-               Eval.score_archived("nobody", "1999-01", "test-run")
+  describe "score/2" do
+    test "reports a document that has never been extracted rather than scoring nothing" do
+      assert {:error, {:no_attempt, "caltech-2026-01-sales"}} =
+               Eval.score("caltech-2026-01-sales", "test-run")
+    end
+  end
+
+  defp bucket_txval(derived) do
+    get_in(derived, [
+      "b2b",
+      Access.at(0),
+      "inv",
+      Access.at(0),
+      "itms",
+      Access.at(0),
+      "itm_det",
+      "txval"
+    ])
+  end
+
+  describe "evaluable/0" do
+    test "is the sales months that have a filed return to score against" do
+      names = Eval.evaluable()
+
+      assert "caltech-2025-11-sales" in names
+      refute Enum.any?(names, &String.contains?(&1, "purchase"))
     end
   end
 
