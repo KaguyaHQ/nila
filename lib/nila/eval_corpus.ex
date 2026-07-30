@@ -3,7 +3,7 @@ defmodule Nila.EvalCorpus do
   Local mirror of the private `nila-eval-corpus` R2 bucket.
 
   Real client packets (scanned purchase/sales PDFs) used by OCR probes and the
-  extraction benchmark live in R2, not in git. `bench/corpus.json` is the
+  extraction benchmark live in R2, not in git. `eval/corpus.json` is the
   committed registry: object key, sha256, page count, and the in-repo ground
   truth each packet is evaluated against. This module pulls objects into a
   local cache (`~/.cache/nila/eval-corpus`) and verifies checksums, so any
@@ -14,7 +14,7 @@ defmodule Nila.EvalCorpus do
   versa) plus the shared `R2_ENDPOINT`. See `mix nila.eval_corpus`.
   """
 
-  @manifest_path "bench/corpus.json"
+  @manifest_path "eval/corpus.json"
   @cache_root "~/.cache/nila/eval-corpus"
 
   def manifest do
@@ -106,7 +106,7 @@ defmodule Nila.EvalCorpus do
   @doc """
   Onboard a month in one step: infer client/period/kind from the portal truth
   JSON, upload the PDF, place the truth file under test/fixtures/, and update
-  bench/corpus.json. Review the git diff and commit.
+  eval/corpus.json. Review the git diff and commit.
   """
   def add!(pdf_path, truth_path) do
     {kind, gstin, period} = parse_truth!(truth_path)
@@ -259,7 +259,7 @@ defmodule Nila.EvalCorpus do
   def document!(name) do
     Enum.find(documents(), &(&1["name"] == name)) ||
       raise ArgumentError,
-            "unknown corpus document #{inspect(name)} — see bench/corpus.json (mix nila.eval_corpus status)"
+            "unknown corpus document #{inspect(name)} — see eval/corpus.json (mix nila.eval_corpus status)"
   end
 
   defp local_path(doc), do: Path.join(Path.expand(@cache_root), doc["key"])

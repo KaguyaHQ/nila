@@ -237,7 +237,7 @@ or an image, is still one whole-document call — small packets are proven clean
 - [x] Live acceptance against the 57-page canary — passed (Evidence 5). Verified
       again on a fresh 28-page packet (Evidence 6).
 - [x] Eval packets moved out of git into the private `nila-eval-corpus` R2 bucket;
-      `bench/corpus.json` is the registry (sha256 + ground-truth mapping),
+      `eval/corpus.json` is the registry (sha256 + ground-truth mapping),
       `mix nila.eval_corpus` pulls/pushes. Probes resolve packets by corpus name.
 - [ ] Hallucination check — every extracted invoice_number must appear in the
       window's page markdown (exact search of a known string); absent ⇒ review

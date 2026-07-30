@@ -3,7 +3,7 @@ defmodule OcrProbe.Omission do
 
   alias Nila.Gst.Extraction.Providers.Mistral
 
-  # Every sales corpus document with filed-R1 ground truth (bench/corpus.json).
+  # Every sales corpus document with filed-R1 ground truth (eval/corpus.json).
   def cases do
     Nila.EvalCorpus.documents()
     |> Enum.filter(&(&1["kind"] == "sales" and &1["ground_truth"]))

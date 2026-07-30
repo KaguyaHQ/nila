@@ -31,7 +31,7 @@ defmodule Nila.Eval.AdjudicationsTest do
   end
 
   # Mirrors `load/2`'s private indexing so validation can be tested without
-  # writing into bench/.
+  # writing into eval/.
   defp index(entries) do
     Map.new(entries, &{{&1["scope"], &1["key"], &1["field"]}, &1})
   end

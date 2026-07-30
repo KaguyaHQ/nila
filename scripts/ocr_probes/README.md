@@ -17,7 +17,7 @@ MIX_ENV=dev mix run scripts/ocr_probes/<probe>.exs
 | `cold_latency_curve.exs`  | Cold latency vs. page count (the ~3.5s/page budget)?        | changing chunk size, model version, or provider           |
 
 Notes:
-- All probes read packets from the private eval corpus (`bench/corpus.json` →
+- All probes read packets from the private eval corpus (`eval/corpus.json` →
   R2 bucket `nila-eval-corpus`). First run: `mix nila.eval_corpus pull` — needs
   the eval-scoped token in `.env`. Ground-truth `returns_*_R1_*.json` files stay
   committed under `test/fixtures/`.

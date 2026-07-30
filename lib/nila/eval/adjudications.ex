@@ -21,7 +21,7 @@ defmodule Nila.Eval.Adjudications do
 
   ## The file is the only source
 
-  The eval reads adjudications from `bench/adjudications/` and nowhere else —
+  The eval reads adjudications from `eval/adjudications/` and nowhere else —
   no database precedence. A run scored against un-exported DB rows would not be
   reproducible from the repo, which is the provenance the eval loop exists for.
   With file-only reads a run record's git sha pins exactly which adjudication
@@ -40,7 +40,7 @@ defmodule Nila.Eval.Adjudications do
   """
 
   @verdicts ~w(AUDITOR OCR_MISREAD OUR_BUG CORRECT_BUT_UNMATCHED)
-  @root "bench/adjudications"
+  @root "eval/adjudications"
 
   def verdicts, do: @verdicts
 

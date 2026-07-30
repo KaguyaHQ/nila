@@ -3,7 +3,7 @@ defmodule Mix.Tasks.Nila.EvalCorpus do
 
   @moduledoc """
   Real client packets for OCR evals live in the `nila-eval-corpus` R2 bucket,
-  registered in `bench/corpus.json`. Probes and the benchmark fetch them via
+  registered in `eval/corpus.json`. Probes and the benchmark fetch them via
   `Nila.EvalCorpus` into `~/.cache/nila/eval-corpus`.
 
       mix nila.eval_corpus                # status: what exists, what's evaluable

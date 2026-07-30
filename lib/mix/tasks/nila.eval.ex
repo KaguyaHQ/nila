@@ -20,7 +20,7 @@ defmodule Mix.Tasks.Nila.Eval do
   behind a cache hit. It writes `fields.jsonl` and `report.md` under
   `tmp/eval/runs/<run_id>/`.
 
-  Verdicts on rows the diff cannot settle live in `bench/adjudications/`; see
+  Verdicts on rows the diff cannot settle live in `eval/adjudications/`; see
   `Nila.Eval.Adjudications`.
   """
 
