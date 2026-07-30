@@ -4,15 +4,15 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
   The unit tests are self-contained. The reproduction tests replay the real
   filed-return eval against the captured page artifacts in `tmp/eval/<period>-<client>/pages`
-  (gitignored — see `docs/.plans/2026-07-06-gstr1-eval.md`). When those artifacts
+  (gitignored — see `docs/.plans/2026-07-29-eval-loop.md`). When those artifacts
   are absent (a cold checkout / CI), the reproduction cases skip rather than
-  fail. The score baselines below lock in current behavior so future rule changes
-  (HSN digit length, rounding convention) are made visible, test-first.
+  fail — which is why they are not a gate, and why they are replaced by
+  synthetic-fixture tests once the corpus is re-extracted under Mistral. The
+  baselines below measure LlamaExtract and are retained only until that sweep.
   """
   use ExUnit.Case, async: true
 
-  Code.require_file("scripts/gstr1_eval_lib.exs")
-
+  alias Nila.Eval.Gstr1Diff
   alias Nila.Gst.Sales.Gstr1
 
   @eval_root Path.expand("../../../../tmp/eval", __DIR__)
@@ -332,7 +332,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
             invoices = load_invoices(pages_dir)
             filed = filed_path |> File.read!() |> Jason.decode!()
             derived = Gstr1.derive(invoices, filed)
-            result = Gstr1Eval.diff(derived, filed)
+            result = Gstr1Diff.diff(derived, filed)
             assert_in_delta result["score"], unquote(expected), 0.01
         end
       end

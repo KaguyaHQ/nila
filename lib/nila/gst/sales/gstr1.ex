@@ -7,10 +7,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
   and review-correction discipline the reproduction eval proved against real
   filed returns.
 
-  This module is pure: no file IO, no network, no CLI. The dev eval runner
-  (`scripts/gstr1_eval_lib.exs`) and the tests wrap it with fixture loading and
-  scoring; the product wires it behind the sales extractor + worker. Ported from
-  the original `scripts/gstr1_eval_lib.exs` reproduction harness.
+  This module is pure: no file IO, no network, no CLI. `Nila.Eval` wraps it with
+  artifact loading and scoring; the product wires it behind the sales extractor
+  + worker.
 
   ## Public surface
 
@@ -26,7 +25,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   Field-level diff/scoring of a derived return against a filed return is eval
   tooling, not product — the product never scores itself — so it lives in
-  `scripts/gstr1_eval_lib.exs`, not here.
+  `Nila.Eval.Gstr1Diff`, not here.
   """
   alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Purchase.Flags
@@ -182,9 +181,17 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   @doc """
   The minimal production header for `derive/2` when there is no filed return —
-  because the return is what we are producing. `derive/2` only reads
-  gstin/fp/fil_dt from its second argument, so the client's own GSTIN and the
-  filing period (stored "YYYY-MM", the portal's fp is "MMYYYY") suffice.
+  because the return is what we are producing. The client's own GSTIN and the
+  filing period (stored "YYYY-MM", the portal's fp is "MMYYYY") are what we can
+  know without one.
+
+  `derive/2` reads six keys from its second argument, not three: `gstin`, `fp`,
+  `filing_typ`, `gt`, `cur_gt` and `fil_dt`. This header supplies gstin/fp/fil_dt
+  and lets the other three take their fallbacks (`"M"`, `0.0`, `0.0`) — correct,
+  because a monthly filing is the default and the turnover figures are portal
+  bookkeeping we do not derive. `mix nila.eval bridge --header production` is the
+  control that keeps this honest: it re-scores every month with this header and
+  must reproduce the same numbers as the filed one.
   """
   def production_header(gstin, period) do
     %{"gstin" => gstin, "fp" => portal_fp(period), "fil_dt" => nil}
