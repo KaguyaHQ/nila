@@ -1,4 +1,7 @@
-ExUnit.start(exclude: [r2_integration: true])
+# `archived` tests read the gitignored eval artifacts under tmp/eval/. Excluded
+# by default so a cold checkout reports "excluded" rather than a silent skip
+# that reads as a pass.
+ExUnit.start(exclude: [r2_integration: true, archived: true])
 Ecto.Adapters.SQL.Sandbox.mode(Nila.Repo, :manual)
 
 # Local storage writes real files under the OS temp dir during the suite; the DB

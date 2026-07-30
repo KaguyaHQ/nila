@@ -8,11 +8,17 @@ defmodule Mix.Tasks.Nila.Eval do
 
       mix nila.eval bridge                    # reproduce pre-lift baselines
       mix nila.eval bridge --header production # same, with the production header
+      mix nila.eval report <client> <period>  # score a month, write run artifacts
+      mix nila.eval report --all
 
   `bridge` is the faithfulness control: it re-scores the archived page artifacts
   and asserts the numbers the retired script produced. Run it under both headers
   — `filed` proves the lift into `lib/` changed nothing, `production` proves the
   header swap is score-neutral.
+
+  `report` scores a month and writes `fields.jsonl` + `report.md` under
+  `tmp/eval/runs/<run_id>/`. Until the Mistral sweep lands it reads the archived
+  page artifacts, so the instrument is usable before a single API call.
   """
 
   use Mix.Task
@@ -23,13 +29,42 @@ defmodule Mix.Tasks.Nila.Eval do
   def run(args) do
     Mix.Task.run("app.start")
 
-    {opts, positional, _invalid} = OptionParser.parse(args, strict: [header: :string])
+    {opts, positional, _invalid} =
+      OptionParser.parse(args, strict: [header: :string, all: :boolean])
 
     case positional do
       ["bridge"] -> bridge(opts)
+      ["report", client, period] -> report_months([{client, period}])
+      ["report"] -> report_all(opts)
       [] -> Mix.shell().info(@moduledoc)
       other -> Mix.raise("unknown command #{inspect(Enum.join(other, " "))}")
     end
+  end
+
+  defp report_all(opts) do
+    opts[:all] ||
+      Mix.raise("mix nila.eval report needs <client> <period>, or --all for every month")
+
+    Eval.baselines() |> Map.keys() |> Enum.sort() |> report_months()
+  end
+
+  defp report_months(months) do
+    run_id = Eval.run_id()
+    Mix.shell().info("run #{run_id}\n")
+
+    Enum.each(months, fn {client, period} ->
+      case Eval.score_archived(client, period, run_id) do
+        {:ok, month} ->
+          Mix.shell().info(
+            "  #{String.pad_trailing("#{client} #{period}", 18)} " <>
+              "#{month.raw["score"]}%  #{length(month.mismatches)} mismatches across " <>
+              "#{length(month.by_invoice)} invoices  → #{month.report_path}"
+          )
+
+        {:error, reason} ->
+          Mix.shell().error("  #{client} #{period}  #{inspect(reason)}")
+      end
+    end)
   end
 
   defp bridge(opts) do
