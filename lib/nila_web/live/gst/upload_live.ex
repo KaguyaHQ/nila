@@ -329,6 +329,18 @@ defmodule NilaWeb.Gst.UploadLive do
   defp progress_max(%{page_count: page_count}) when is_integer(page_count), do: page_count
   defp progress_max(%{total: total}), do: total
 
+  # The read has three stages and the honest unit changes between them: the scan
+  # is one call, the packet is then labelled page by page, and only then is each
+  # bill read. Saying "pages" while bills are being read would stall a bar that
+  # is in fact moving.
+  defp progress_caption(%{stage: :transcribing}), do: "reading the scan"
+
+  defp progress_caption(%{stage: :reading, done: 0, total: total}),
+    do: "#{total} #{pluralize(total, "bill")} to read"
+
+  defp progress_caption(%{stage: :reading, done: done, total: total}),
+    do: "#{done} of #{total} #{pluralize(total, "bill")} read"
+
   # Before the first window lands the count is the *size of the job*, which is
   # the reassuring number ("of course a 57-page packet takes a minute"), not a
   # zero.

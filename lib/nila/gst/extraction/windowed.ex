@@ -511,7 +511,15 @@ defmodule Nila.Gst.Extraction.Windowed do
   # poppler chokes on still has to produce a register — a month with no pictures
   # beats no month at all. The gap comes back as `:evidence_error` so intake can
   # flag it; a silent gap is the only unacceptable outcome.
-  defp attach_evidence(result, bytes, opts) do
+  @doc """
+  Renders the packet's pages and points each artifact at its own.
+
+  Public because evidence is a property of the packet, not of how it was read:
+  `Nila.Gst.Extraction.Pipeline` attaches the same pictures to segment-extracted
+  artifacts, and a render that fails leaves `:evidence_error` for the flags layer
+  rather than failing the read.
+  """
+  def attach_evidence(result, bytes, opts) do
     case render_pages(bytes, opts) do
       {:ok, images} ->
         %{result | images: images, pages: Enum.map(result.pages, &put_image(&1, images))}

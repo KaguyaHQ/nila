@@ -99,9 +99,14 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
 
   Raw responses, in page order — the mapping is pure and runs at score time, so
   the eval caches these bytes and re-runs the stitcher for free.
+
+  `:on_page` is called with `{done, total}` as each label lands.
   """
   def request_all(%Transcription{} = transcription, opts \\ []) do
     numbers = Transcription.numbers(transcription)
+
+    report = Keyword.get(opts, :on_page) || fn _done, _total -> :ok end
+    total = length(numbers)
 
     numbers
     |> Task.async_stream(
@@ -110,7 +115,10 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
       timeout: :infinity,
       ordered: true
     )
-    |> Enum.reduce_while({:ok, []}, fn {:ok, {number, result}}, {:ok, acc} ->
+    |> Stream.with_index(1)
+    |> Enum.reduce_while({:ok, []}, fn {{:ok, {number, result}}, done}, {:ok, acc} ->
+      report.(done, total)
+
       case result do
         {:ok, response} -> {:cont, {:ok, acc ++ [%{page: number, response: response}]}}
         {:error, reason} -> {:halt, {:error, {:page_label_failed, number, reason}}}

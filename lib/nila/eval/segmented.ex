@@ -54,7 +54,7 @@ defmodule Nila.Eval.Segmented do
          {:ok, responses} <- discover(shape, transcription, opts),
          {:ok, discovery} <- interpret(shape, transcription, responses) do
       report.({:segmented, discovery.segments, discovery.violations})
-      buyer_gstin = Discovery.buyer_gstin(transcription)
+      client_gstin = Discovery.client_gstin(transcription)
 
       dir = Path.join([@root, extract_id(doc, kind, shape, transcription_dir), attempt_id()])
       File.mkdir_p!(Path.join(dir, "raw"))
@@ -72,7 +72,7 @@ defmodule Nila.Eval.Segmented do
             transcription_dir,
             transcription,
             discovery,
-            buyer_gstin,
+            client_gstin,
             started
           )
 
@@ -241,7 +241,7 @@ defmodule Nila.Eval.Segmented do
           responses = Enum.map(chunks, &%{pages: &1.chunk_pages, response: &1.response})
 
           Segmented.map_segment(kind, transcription, segment, responses,
-            buyer_gstin: meta["buyer_gstin"]
+            client_gstin: meta["client_gstin"] || meta["buyer_gstin"]
           )
         end)
 
@@ -374,7 +374,7 @@ defmodule Nila.Eval.Segmented do
          transcription_dir,
          transcription,
          discovery,
-         buyer_gstin,
+         client_gstin,
          started
        ) do
     confirmed_non_invoice =
@@ -394,7 +394,7 @@ defmodule Nila.Eval.Segmented do
             MistralChat.fingerprint(Segmented.prompt(kind), Segmented.schema(kind)),
           "discovery_fingerprint" => discovery_fingerprint(shape),
           "transcription_attempt" => transcription_dir,
-          "buyer_gstin" => buyer_gstin,
+          "client_gstin" => client_gstin,
           "page_count" => Transcription.page_count(transcription),
           "segments" => length(discovery.segments),
           "invoice_segments" => Enum.count(discovery.segments, &(&1.kind == :invoice)),

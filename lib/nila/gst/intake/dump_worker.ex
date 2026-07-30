@@ -18,10 +18,10 @@ defmodule Nila.Gst.Intake.DumpWorker do
   Extraction is minutes-long and fallible: progress narrates over PubSub
   (`PurchaseMonths.broadcast_progress/2`, message `{:gst_dump_progress, ...}`)
   and terminal failure marks the dump `failed` so intake surfaces can show
-  which arrival broke. A windowed extractor reports each window as it lands, so
-  the coarse `:extracting` stage is followed by `{:extracting, progress}` counts
-  (`t:Nila.Gst.Extraction.Windowed.progress/0`) and the wait is narrated in
-  pages read rather than a spinner.
+  which arrival broke. The extractor reports each unit as it lands, so the
+  coarse `:extracting` stage is followed by `{:extracting, progress}` counts
+  (`t:Nila.Gst.Extraction.Pipeline.progress/0`) and the wait is narrated in
+  pages labelled and bills read rather than a spinner.
   """
   use Oban.Worker, queue: :documents, max_attempts: 3
 
@@ -236,6 +236,9 @@ defmodule Nila.Gst.Intake.DumpWorker do
          {:ok, bytes} <- Storage.get(key) do
       opts = [
         filename: Path.basename(key),
+        # The client's own GSTIN is a fact we hold, so the read is told it
+        # rather than left to infer it from the packet.
+        client_gstin: client_gstin(dump),
         on_progress: fn _stage -> :ok end,
         on_window: fn
           {:progress, window} -> progress(dump, {:extracting, window})
@@ -259,6 +262,13 @@ defmodule Nila.Gst.Intake.DumpWorker do
             extractor.extract(bytes, opts)
           end)
       end
+    end
+  end
+
+  defp client_gstin(%Dump{} = dump) do
+    case Clients.get_client(dump.org_id, dump.client_id) do
+      {:ok, client} -> client.gstin
+      _not_found -> nil
     end
   end
 

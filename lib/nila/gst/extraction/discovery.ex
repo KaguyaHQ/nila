@@ -29,7 +29,7 @@ defmodule Nila.Gst.Extraction.Discovery do
       text. The model may not name a number that is not on the page.
     * **one seller** — an invoice has one supplier, so a segment whose pages
       carry two different valid seller GSTINs is a merge of two bills. (The
-      buyer's own GSTIN is on every page of the packet and is discounted.) This
+      client's own GSTIN is on every page of the packet and is discounted.) This
       caught a real merge the model made on breeze 2026-06: a page titled
       "Tax Invoice(Page 2)" was attached to the *next* bill rather than left
       alone, and the two pages named different suppliers.
@@ -154,10 +154,10 @@ defmodule Nila.Gst.Extraction.Discovery do
   end
 
   @doc "Decodes a whole-dump decider response and runs the guards over it."
-  def map_response(%Transcription{} = transcription, response) do
+  def map_response(%Transcription{} = transcription, response, client_gstin \\ nil) do
     with {:ok, content, usage} <- MistralChat.decode(response) do
       segments = content["segments"] |> List.wrap() |> Enum.map(&normalize/1)
-      {segments, violations} = guard(transcription, segments)
+      {segments, violations} = guard(transcription, segments, client_gstin)
       {:ok, %{segments: segments, violations: violations, usage: usage}}
     end
   end
@@ -175,13 +175,15 @@ defmodule Nila.Gst.Extraction.Discovery do
     case Keyword.get(opts, :shape, :per_page) do
       :whole_dump ->
         with {:ok, response} <- request_raw(transcription, opts) do
-          map_response(transcription, response)
+          map_response(transcription, response, opts[:client_gstin])
         end
 
       :per_page ->
         with {:ok, responses} <- PageLabels.request_all(transcription, opts),
              {:ok, labels} <- PageLabels.map_responses(responses) do
-          {segments, violations} = transcription |> guard(PageLabels.stitch(labels))
+          {segments, violations} =
+            guard(transcription, PageLabels.stitch(labels), opts[:client_gstin])
+
           {:ok, %{segments: segments, violations: violations, usage: %{}}}
         end
     end
@@ -217,8 +219,11 @@ defmodule Nila.Gst.Extraction.Discovery do
 
   Both decider shapes end here, so a change to a guard changes both at once and
   neither can quietly acquire a rule the other lacks.
+
+  `client_gstin` is the client's own number, told to us in production and
+  inferred from the packet when nobody has — see `client_gstin/1`.
   """
-  def guard(transcription, segments) do
+  def guard(transcription, segments, client_gstin \\ nil) do
     known = Transcription.numbers(transcription) |> MapSet.new()
 
     {claimed, seen} =
@@ -229,7 +234,7 @@ defmodule Nila.Gst.Extraction.Discovery do
 
     missing = known |> MapSet.difference(seen) |> Enum.sort()
 
-    buyer = buyer_gstin(transcription)
+    client = client_gstin || client_gstin(transcription)
 
     segments =
       (claimed ++ Enum.map(missing, &unassigned_segment/1))
@@ -237,10 +242,10 @@ defmodule Nila.Gst.Extraction.Discovery do
       # extract, but its double-claim is carried out as a violation below rather
       # than dropped with it.
       |> Enum.reject(&(&1.pages == []))
-      |> Enum.flat_map(&split_on_evidence(&1, transcription, buyer))
+      |> Enum.flat_map(&split_on_evidence(&1, transcription, client))
       |> Enum.map(&ground(&1, transcription))
-      |> Enum.map(&one_seller(&1, transcription, buyer))
-      |> Enum.map(&confirm_kind(&1, transcription, buyer))
+      |> Enum.map(&one_seller(&1, transcription, client))
+      |> Enum.map(&confirm_kind(&1, transcription, client))
       |> Enum.sort_by(&List.first(&1.pages))
 
     {segments, violations(segments, missing, double_claimed(claimed))}
@@ -326,14 +331,14 @@ defmodule Nila.Gst.Extraction.Discovery do
   reported. (Over-splitting is not symmetrical — nothing on a continuation page
   proves it belongs to the page before it — so that stays a report.)
   """
-  def split_on_evidence(segment, transcription, buyer)
+  def split_on_evidence(segment, transcription, client)
 
-  def split_on_evidence(%{pages: [_single]} = segment, _transcription, _buyer), do: [segment]
+  def split_on_evidence(%{pages: [_single]} = segment, _transcription, _client), do: [segment]
 
-  def split_on_evidence(segment, transcription, buyer) do
+  def split_on_evidence(segment, transcription, client) do
     groups =
       segment.pages
-      |> Enum.map(&{&1, identity(transcription, &1, buyer)})
+      |> Enum.map(&{&1, identity(transcription, &1, client)})
       |> Enum.reduce([], fn {page, identity}, groups ->
         case groups do
           [%{identity: current} = group | rest] ->
@@ -363,11 +368,11 @@ defmodule Nila.Gst.Extraction.Discovery do
     end
   end
 
-  defp identity(transcription, page, buyer) do
+  defp identity(transcription, page, client) do
     features = page_features(transcription, page)
 
     %{
-      seller: features.gstins_valid |> Enum.reject(&(&1 == buyer)) |> List.first(),
+      seller: features.gstins_valid |> Enum.reject(&(&1 == client)) |> List.first(),
       number: features.invoice_no
     }
   end
@@ -438,14 +443,15 @@ defmodule Nila.Gst.Extraction.Discovery do
   end
 
   @doc """
-  The buyer's GSTIN, inferred from the packet.
+  The client's own GSTIN, inferred from the packet.
 
-  The client's own GSTIN is printed as the buyer on nearly every page of their
-  own purchase packet, which is exactly what makes it identifiable without being
-  told: it is the one GSTIN that is everywhere. (In production the client record
-  already knows it; this is the eval path's oracle for the same fact.)
+  It is printed on nearly every page of their own packet — as the buyer on a
+  purchase pile, as the seller on a sales one — which is exactly what makes it
+  identifiable without being told: it is the one GSTIN that is everywhere. (In
+  production the client record already knows it, and `Nila.Gst.Extraction.Pipeline`
+  passes it; this is the oracle for the same fact when nobody has.)
   """
-  def buyer_gstin(transcription) do
+  def client_gstin(transcription) do
     pages = Transcription.numbers(transcription)
 
     counts =
@@ -465,13 +471,13 @@ defmodule Nila.Gst.Extraction.Discovery do
     end
   end
 
-  defp one_seller(segment, transcription, buyer) do
+  defp one_seller(segment, transcription, client) do
     scans = Enum.map(segment.pages, &page_features(transcription, &1))
 
     sellers =
       scans
       |> Enum.flat_map(& &1.gstins_valid)
-      |> Enum.reject(&(&1 == buyer))
+      |> Enum.reject(&(&1 == client))
       |> Enum.uniq()
 
     # Two bills from the *same* supplier defeat the seller check, and two
@@ -511,14 +517,14 @@ defmodule Nila.Gst.Extraction.Discovery do
   #
   # The three genuine non-invoices in that packet (Porter trip screenshots with
   # ₹0.00 CGST and no supplier GSTIN) carry their marker and pass unchanged.
-  defp confirm_kind(%{kind: :invoice} = segment, _transcription, _buyer), do: segment
+  defp confirm_kind(%{kind: :invoice} = segment, _transcription, _client), do: segment
 
-  defp confirm_kind(segment, transcription, buyer) do
+  defp confirm_kind(segment, transcription, client) do
     scans = Enum.map(segment.pages, &page_features(transcription, &1))
 
     invoice_evidence? =
       Enum.any?(scans, fn features ->
-        sellers = Enum.reject(features.gstins_valid, &(&1 == buyer))
+        sellers = Enum.reject(features.gstins_valid, &(&1 == client))
         sellers != [] and features.tax_words? and (features.total_row? or features.words?)
       end)
 

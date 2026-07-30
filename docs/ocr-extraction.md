@@ -190,6 +190,19 @@ as zero-tax invoices — the model's "is this an invoice" threshold wobbles on
 non-invoice pages; either path is safe (flag or zero-tax record), but review sees
 both shapes.
 
+> **Superseded, 2026-07-30.** Production now reads packets through
+> `Nila.Gst.Extraction.Pipeline`: transcribe with annotation off, label each page
+> against its neighbours to find the bill boundaries, then extract one bill per
+> call and ground every printed number in that bill's own text. The mechanism
+> below is still the reason — the annotation half of `/v1/ocr` carries the output
+> budget — but windows treated it as a size problem when it was a *unit* problem:
+> a window held several bills and spent one budget across them. Reading one bill
+> per call removes the budget question rather than shrinking it, and makes
+> hallucination checkable, since there is now text to search. Everything from here
+> to §Status is the record of the path that got us there, kept because the
+> measurements are still true. See `Nila.Gst.Extraction.Discovery` for why the
+> per-page decider beat a whole-dump one.
+
 ## Design mandate — shipped as `Nila.Gst.Extraction.Windowed`
 
 Grounded in the evidence above, not theory:
@@ -229,6 +242,13 @@ or an image, is still one whole-document call — small packets are proven clean
 
 ## Status
 
+- [x] **Segment-then-extract shipped and switched on** (2026-07-30):
+      `Nila.Gst.Extraction.Pipeline` is what `Purchase.MistralOCR` and
+      `Sales.MistralOCR` call. Windowed is kept for page rendering and for months
+      already read through it. The open items below belong to the windowed path
+      and are answered by construction in the new one — grounding is no longer a
+      candidate check but the rule every printed field passes
+      (`Nila.Gst.Extraction.Verify`).
 - [x] Provider behaviour characterised (this document).
 - [x] Whole-packet degradation reproduced and root-caused.
 - [x] Chunker (windows + overlap + dedupe + retry + skipped-page ledger) — built as

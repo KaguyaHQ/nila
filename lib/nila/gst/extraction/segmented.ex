@@ -66,9 +66,14 @@ defmodule Nila.Gst.Extraction.Segmented do
 
   Returns the same shape `Nila.Gst.Extraction.Windowed.assemble/2` returns, so
   scoring, normalization and the workbench read either pipeline unchanged.
+
+  `:on_segment` is called with `{done, total}` as each segment lands, so a
+  caller can narrate a long read.
   """
   def extract(kind, %Transcription{} = transcription, segments, opts \\ []) do
     invoice_segments = Enum.filter(segments, &(&1.kind == :invoice))
+    total = length(invoice_segments)
+    report = Keyword.get(opts, :on_segment) || fn _done, _total -> :ok end
 
     results =
       invoice_segments
@@ -77,7 +82,13 @@ defmodule Nila.Gst.Extraction.Segmented do
         max_concurrency: Keyword.get(opts, :max_concurrency, @max_concurrency),
         timeout: :infinity
       )
-      |> Enum.map(fn {:ok, result} -> result end)
+      # Mapped over the stream rather than after it, so each segment narrates as
+      # it lands instead of every segment narrating at the end.
+      |> Stream.with_index(1)
+      |> Enum.map(fn {{:ok, result}, done} ->
+        report.(done, total)
+        result
+      end)
 
     artifacts =
       results
@@ -94,7 +105,8 @@ defmodule Nila.Gst.Extraction.Segmented do
         provider: MistralChat.provider(),
         model: MistralChat.model(),
         segments: length(segments),
-        invoice_segments: length(invoice_segments),
+        invoice_segments: total,
+        usage: artifacts |> Enum.map(& &1["usage"]) |> sum_usage(),
         failures: Enum.flat_map(results, &failure/1)
       },
       unaccounted_pages: unaccounted_pages(transcription, segments, artifacts)
@@ -103,6 +115,18 @@ defmodule Nila.Gst.Extraction.Segmented do
 
   defp failure({segment, {:error, reason}}), do: [%{pages: segment.pages, reason: reason}]
   defp failure(_ok), do: []
+
+  @doc "Adds up token counts across calls, keeping whatever keys the provider sent."
+  def sum_usage(usages) do
+    usages
+    |> Enum.reject(&(!is_map(&1)))
+    |> Enum.reduce(%{}, fn usage, acc ->
+      Map.merge(acc, usage, fn
+        _key, left, right when is_number(left) and is_number(right) -> left + right
+        _key, left, _right -> left
+      end)
+    end)
+  end
 
   @doc "One segment: call, map, verify."
   def extract_segment(kind, transcription, segment, opts \\ []) do
@@ -149,21 +173,21 @@ defmodule Nila.Gst.Extraction.Segmented do
   @doc """
   Maps cached or live chunk responses into one verified artifact.
 
-  `:buyer_gstin` is the client's own GSTIN, used to repair a scan-damaged buyer
-  field — see `repair_gstins/2`.
+  `:client_gstin` is the client's own GSTIN, used to repair a scan-damaged
+  reading of their own side of the bill — see `repair_gstins/3`.
   """
   def map_segment(kind, transcription, segment, responses, opts \\ []) do
     decoded =
-      Enum.reduce_while(responses, {:ok, []}, fn %{response: response}, {:ok, acc} ->
+      Enum.reduce_while(responses, {:ok, [], []}, fn %{response: response}, {:ok, acc, usage} ->
         case MistralChat.decode(response) do
-          {:ok, invoice, _usage} -> {:cont, {:ok, acc ++ [invoice]}}
+          {:ok, invoice, call_usage} -> {:cont, {:ok, acc ++ [invoice], usage ++ [call_usage]}}
           {:error, reason} -> {:halt, {:error, reason}}
         end
       end)
 
-    with {:ok, invoices} <- decoded do
+    with {:ok, invoices, usage} <- decoded do
       {data, repairs} =
-        invoices |> merge_chunks() |> markers(kind) |> repair_gstins(opts[:buyer_gstin])
+        invoices |> merge_chunks() |> markers(kind) |> repair_gstins(kind, opts[:client_gstin])
 
       text = Transcription.text(transcription, segment.pages)
       verification = Verify.invoice(data, text, repairs)
@@ -198,6 +222,9 @@ defmodule Nila.Gst.Extraction.Segmented do
              )
          },
          "repairs" => repairs,
+         # Per-invoice, because that is the unit the call was made in and the
+         # unit a cost per bill is quoted in.
+         "usage" => sum_usage(usage),
          "segment" => %{
            "pages" => segment.pages,
            "invoice_no_candidate" => segment.invoice_no,
@@ -241,19 +268,23 @@ defmodule Nila.Gst.Extraction.Segmented do
     * the **format itself** — `Nila.Gstin.repair/1` corrects a damaged GSTIN
       when the fixed grammar plus the check digit leave exactly one legal
       reading, and refuses when they leave two;
-    * the **known buyer** — every page of a client's purchase packet prints
-      their own GSTIN, so a buyer field that fails its check digit next to a
-      near-identical known value is a scan artefact, not a different company.
-      The threshold is deliberately high, and it applies to the buyer only: the
-      buyer's identity is a fact we hold independently, the supplier's is not.
+    * the **known client** — every page of a client's own packet prints their
+      own GSTIN, so a field that fails its check digit next to a near-identical
+      known value is a scan artefact, not a different company. The threshold is
+      deliberately high, and it applies to the client's own side only (buyer on
+      a purchase packet, seller on a sales one): that identity is a fact we hold
+      independently, the counterparty's is not.
 
   Left alone otherwise. An invalid GSTIN nobody can resolve stays invalid and
   the verifier flags it, which is the correct outcome — the alternative is a
   purchase attributed to a supplier who does not exist.
   """
-  def repair_gstins(data, buyer_gstin) do
-    {seller, seller_repair} = repair_party(data["seller"], "seller.gstin", nil)
-    {buyer, buyer_repair} = repair_party(data["buyer"], "buyer.gstin", buyer_gstin)
+  def repair_gstins(data, kind, client_gstin) do
+    {seller, seller_repair} =
+      repair_party(data["seller"], "seller.gstin", known(kind, :seller, client_gstin))
+
+    {buyer, buyer_repair} =
+      repair_party(data["buyer"], "buyer.gstin", known(kind, :buyer, client_gstin))
 
     data =
       data
@@ -262,6 +293,17 @@ defmodule Nila.Gst.Extraction.Segmented do
 
     {data, Enum.reject([seller_repair, buyer_repair], &is_nil/1)}
   end
+
+  # The client is the buyer on their own purchase packet and the seller on their
+  # own sales packet. Only the side we hold independently may be snapped to:
+  # snapping the other side would rewrite a counterparty's identity from a
+  # value that has nothing to do with them. On a sales packet that is not a
+  # hypothetical — the customer's GSTIN changes every bill while the client's
+  # does not, so a buyer-snapping rule would smear the client's own number
+  # across their customers.
+  defp known(:purchase, :buyer, gstin), do: gstin
+  defp known(:sales, :seller, gstin), do: gstin
+  defp known(_kind, _party, _gstin), do: nil
 
   defp maybe_put(data, _key, nil), do: data
   defp maybe_put(data, key, value), do: Map.put(data, key, value)
@@ -292,7 +334,7 @@ defmodule Nila.Gst.Extraction.Segmented do
 
   defp snap_to_known(value, known) when is_binary(known) do
     if String.jaro_distance(String.upcase(value), known) >= @similarity do
-      {known, "known_buyer"}
+      {known, "known_client"}
     end
   end
 
