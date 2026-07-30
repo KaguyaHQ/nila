@@ -51,8 +51,8 @@ defmodule Nila.Eval.Segmented do
     with {:ok, transcription_dir} <- EvalTranscription.ensure(name),
          {:ok, transcription} <- EvalTranscription.load(transcription_dir),
          :ok <- report.({:transcribed, Transcription.page_count(transcription)}),
-         {:ok, responses} <- discover(shape, transcription, opts),
-         {:ok, discovery} <- interpret(shape, transcription, responses) do
+         {:ok, responses} <- discover(shape, transcription, Keyword.put(opts, :kind, kind)),
+         {:ok, discovery} <- interpret(shape, transcription, responses, kind) do
       report.({:segmented, discovery.segments, discovery.violations})
       client_gstin = Discovery.client_gstin(transcription)
 
@@ -95,15 +95,17 @@ defmodule Nila.Eval.Segmented do
 
   # Both shapes end at the same guards, so a rule can never apply to one decider
   # and not the other.
-  defp interpret(:per_page, transcription, responses) do
+  defp interpret(:per_page, transcription, responses, kind) do
     with {:ok, labels} <- PageLabels.map_responses(responses) do
-      {segments, violations} = Discovery.guard(transcription, PageLabels.stitch(labels))
+      {segments, violations} =
+        Discovery.guard(transcription, PageLabels.stitch(labels), kind: kind)
+
       {:ok, %{segments: segments, violations: violations, labels: labels}}
     end
   end
 
-  defp interpret(:whole_dump, transcription, response) do
-    with {:ok, result} <- Discovery.map_response(transcription, response) do
+  defp interpret(:whole_dump, transcription, response, kind) do
+    with {:ok, result} <- Discovery.map_response(transcription, response, kind: kind) do
       {:ok, Map.put(result, :labels, [])}
     end
   end
@@ -113,14 +115,24 @@ defmodule Nila.Eval.Segmented do
 
     case shape do
       :per_page ->
-        Enum.each(responses, fn %{page: page, response: response} ->
-          name = "page_#{pad(page)}"
-          File.write!(Path.join([dir, "discovery", "#{name}.json"]), response.body)
+        Enum.each(responses, fn entry ->
+          name = "page_#{pad(entry.page)}"
 
-          File.write!(
-            Path.join([dir, "discovery", "#{name}.meta.json"]),
-            Jason.encode!(%{"page" => page, "status" => response.status})
-          )
+          case entry do
+            %{response: response} ->
+              File.write!(Path.join([dir, "discovery", "#{name}.json"]), response.body)
+
+              File.write!(
+                Path.join([dir, "discovery", "#{name}.meta.json"]),
+                Jason.encode!(%{"page" => entry.page, "status" => response.status})
+              )
+
+            %{error: reason} ->
+              File.write!(
+                Path.join([dir, "discovery", "#{name}.meta.json"]),
+                Jason.encode!(%{"page" => entry.page, "error" => inspect(reason)})
+              )
+          end
         end)
 
       :whole_dump ->
@@ -145,7 +157,8 @@ defmodule Nila.Eval.Segmented do
     shape = String.to_existing_atom(meta["discovery_shape"])
 
     with {:ok, transcription} <- EvalTranscription.load(meta["transcription_attempt"]) do
-      interpret(shape, transcription, cached_discovery(dir, shape))
+      kind = String.to_existing_atom(meta["kind"])
+      interpret(shape, transcription, cached_discovery(dir, shape), kind)
     end
   end
 

@@ -48,6 +48,8 @@ defmodule Nila.Gst.Extraction.Pipeline do
   alias Nila.Gst.Extraction.Transcription
   alias Nila.Gst.Extraction.Windowed
 
+  require Logger
+
   @typedoc """
   One `:on_window` report. `stage` names which of the three is running, because
   the honest unit changes with it: pages while the packet is being labelled,
@@ -79,7 +81,11 @@ defmodule Nila.Gst.Extraction.Pipeline do
       on_window: Keyword.get(opts, :on_window) || (&ignore_progress/1)
     }
 
-    provider_opts = Keyword.drop(opts, [:per_call, :on_window, :on_progress])
+    # `:pages` and `:page_numbers` would transcribe a subset while the evidence
+    # renderer still rasterizes the whole packet — the windowed path dropped
+    # them for the same reason.
+    provider_opts =
+      Keyword.drop(opts, [:per_call, :on_window, :on_progress, :pages, :page_numbers])
 
     with {:ok, transcription} <- transcribe(bytes, provider_opts, hooks) do
       # Told to us in production, inferred from the packet otherwise, and
@@ -88,9 +94,14 @@ defmodule Nila.Gst.Extraction.Pipeline do
       client = provider_opts[:client_gstin] || Discovery.client_gstin(transcription)
       provider_opts = Keyword.put(provider_opts, :client_gstin, client)
 
-      with {:ok, discovery} <- discover(transcription, provider_opts, hooks),
+      with {:ok, discovery} <- discover(kind, transcription, provider_opts, hooks),
            {:ok, result} <- read_segments(kind, transcription, discovery, provider_opts, hooks) do
         {:ok, Windowed.attach_evidence(result, bytes, provider_opts)}
+      else
+        # A stage reports its audit alongside the reason so the attempt row can
+        # be closed with it; the caller asked for invoices and gets one shape.
+        {:error, reason, _audit} -> {:error, reason}
+        {:error, reason} -> {:error, reason}
       end
     end
   end
@@ -100,31 +111,58 @@ defmodule Nila.Gst.Extraction.Pipeline do
   defp transcribe(bytes, opts, hooks) do
     report(hooks, %{stage: :transcribing, done: 0, total: 1})
 
-    hooks.per_call.(%{stage: "transcription"}, fn ->
-      case Mistral.transcribe_raw(bytes, opts) do
-        {:ok, %{status: status, body: body} = response} when status in 200..299 ->
-          with {:ok, transcription} <- Transcription.from_response(body) do
-            {:ok,
-             %{
-               transcription: transcription,
-               audit: transcription_audit(response, Transcription.page_count(transcription))
-             }}
-          end
-
-        {:ok, response} ->
-          {:error, {:transcription_failed, response.status, error_body(response)},
-           %{http_status: response.status, provider: Mistral.provider(), model: Mistral.model()}}
-
-        {:error, reason, audit} ->
-          {:error, reason, audit}
-
-        {:error, reason} ->
-          {:error, reason}
+    with {:ok, opts} <- shared_document(bytes, opts) do
+      try do
+        case attempt_transcription(bytes, opts, hooks, 1) do
+          {:ok, %{transcription: transcription}} -> {:ok, transcription}
+          {:error, reason} -> {:error, reason}
+          {:error, reason, _audit} -> {:error, reason}
+        end
+      after
+        delete_upload(opts)
       end
-    end)
-    |> case do
-      {:ok, %{transcription: transcription}} -> {:ok, transcription}
-      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # One retry, and only for what a retry can fix. Mistral caches OCR on identical
+  # document bytes, so a resend after a client timeout lands in seconds — the
+  # windowed path measured this and relied on it, and dropping the retry with the
+  # windows would have turned one slow response into a failed month.
+  defp attempt_transcription(bytes, opts, hooks, try_number) do
+    result = hooks.per_call.(%{stage: "transcription"}, fn -> transcription_call(bytes, opts) end)
+
+    with {:error, _reason} <- normalize_error(result),
+         true <- try_number == 1 and retryable?(reason(result)) do
+      Logger.warning("segmented_extraction.transcription_retry reason=#{inspect(reason(result))}")
+      # The page count is not known until the scan comes back, so the retry
+      # narrates the whole packet rather than a range.
+      hooks.on_window.({:retrying, "all"})
+      attempt_transcription(bytes, opts, hooks, try_number + 1)
+    else
+      _no_retry -> result
+    end
+  end
+
+  defp transcription_call(bytes, opts) do
+    case Mistral.transcribe_raw(bytes, opts) do
+      {:ok, %{status: status, body: body} = response} when status in 200..299 ->
+        with {:ok, transcription} <- Transcription.from_response(body) do
+          {:ok,
+           %{
+             transcription: transcription,
+             audit: transcription_audit(response, Transcription.page_count(transcription))
+           }}
+        end
+
+      {:ok, response} ->
+        {:error, {:mistral_ocr_failed, response.status, error_body(response)},
+         %{http_status: response.status, provider: Mistral.provider(), model: Mistral.model()}}
+
+      {:error, reason, audit} ->
+        {:error, reason, audit}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -135,14 +173,87 @@ defmodule Nila.Gst.Extraction.Pipeline do
       http_status: response.status,
       provider_request_id: request_id(response.headers),
       source_page_count: page_count,
-      usage: %{},
+      # The billed unit for OCR is the page, and it is the one usage figure this
+      # stage has; dropping it would leave cost-per-dump underivable from the
+      # audit table.
+      usage: usage_info(response.body),
       raw_response: response.body
     }
   end
 
+  defp usage_info(body) do
+    case Jason.decode(body) do
+      {:ok, %{"usage_info" => usage}} when is_map(usage) -> usage
+      _no_usage -> %{}
+    end
+  end
+
+  # Inlining base64s the packet into the request body, and base64's 4/3 expansion
+  # caps an inlined document at ~37.5 MB against the API's 50 MB limit — a large
+  # shoebox would be refused for size after a minute of work. Anything near that
+  # is uploaded once and referenced; an upload that fails degrades to inlining
+  # rather than failing the read, and says so.
+  @inline_limit 20_000_000
+
+  defp shared_document(bytes, opts) do
+    if byte_size(bytes) > @inline_limit and share_document?() do
+      case Mistral.upload(bytes, Keyword.get(opts, :filename, "document.pdf")) do
+        {:ok, %{file_id: file_id, document: document}} ->
+          {:ok, opts |> Keyword.put(:document, document) |> Keyword.put(:upload_id, file_id)}
+
+        {:error, reason} ->
+          Logger.warning(
+            "segmented_extraction.upload_fallback bytes=#{byte_size(bytes)} " <>
+              "reason=#{inspect(reason)}"
+          )
+
+          {:ok, opts}
+      end
+    else
+      {:ok, opts}
+    end
+  end
+
+  # The packet is a client's invoices sitting in a third party's file store, so it
+  # goes as soon as the read is done rather than aging out.
+  defp delete_upload(opts) do
+    case Keyword.get(opts, :upload_id) do
+      nil ->
+        :ok
+
+      file_id ->
+        case Mistral.delete(file_id) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning("segmented_extraction.upload_cleanup_failed reason=#{inspect(reason)}")
+            :ok
+        end
+    end
+  end
+
+  defp share_document?, do: Application.get_env(:nila, __MODULE__, [])[:share_document] != false
+
+  defp normalize_error({:error, reason, _audit}), do: {:error, reason}
+  defp normalize_error(other), do: other
+
+  defp reason({:error, reason, _audit}), do: reason
+  defp reason({:error, reason}), do: reason
+  defp reason(_ok), do: nil
+
+  defp retryable?({:mistral_ocr_request_failed, %{reason: reason}})
+       when reason in [:timeout, :closed, :econnrefused],
+       do: true
+
+  defp retryable?({:mistral_ocr_failed, status, _body}) when status in [429, 500, 502, 503, 504],
+    do: true
+
+  defp retryable?(_reason), do: false
+
   # ---- discover ----
 
-  defp discover(transcription, opts, hooks) do
+  defp discover(kind, transcription, opts, hooks) do
     page_count = Transcription.page_count(transcription)
     report(hooks, segmenting(0, page_count))
 
@@ -152,6 +263,9 @@ defmodule Nila.Gst.Extraction.Pipeline do
       opts
       |> Keyword.put(:on_page, on_page)
       |> Keyword.put(:shape, :per_page)
+      # Which side of the bill the client is on changes both the prompt and the
+      # guards — see `Nila.Gst.Extraction.Discovery.guard/3`.
+      |> Keyword.put(:kind, kind)
 
     hooks.per_call.(%{stage: "discovery", pages: page_count}, fn ->
       case Discovery.discover(transcription, call_opts) do
@@ -174,8 +288,17 @@ defmodule Nila.Gst.Extraction.Pipeline do
       model: MistralChat.model(),
       source_page_count: page_count,
       usage: discovery.usage,
-      segments: length(discovery.segments),
-      violations: Enum.map(discovery.violations, &Discovery.describe/1)
+      # `:metadata` is merged into the attempt's `request_metadata` when it
+      # finishes. Everything here answers "did it segment, and did anything have
+      # to be corrected" — the questions a reviewer opens the row to ask.
+      metadata: %{
+        "segments" => length(discovery.segments),
+        "violations" => Enum.map(discovery.violations, &Discovery.describe/1),
+        "non_invoice_pages" =>
+          discovery.segments
+          |> Enum.filter(&(&1.kind == :non_invoice))
+          |> Enum.flat_map(& &1.pages)
+      }
     }
   end
 
@@ -193,7 +316,17 @@ defmodule Nila.Gst.Extraction.Pipeline do
 
     hooks.per_call.(%{stage: "extraction", segments: invoice_count}, fn ->
       result = Segmented.extract(kind, transcription, segments, call_opts)
-      {:ok, Map.put(result, :audit, extraction_audit(result, discovery, transcription))}
+      audit = extraction_audit(result, discovery, transcription)
+
+      # A read that produced no invoice at all is a failure, not an empty month.
+      # A partial loss is nameable — those pages stay in the ledger and a human
+      # is sent to them — but "nothing came back" names nothing, and letting it
+      # through would derive an empty register over whatever the month already
+      # held.
+      case result.pages do
+        [] -> {:error, {:no_invoices_extracted, result.audit.failures}, audit}
+        _some -> {:ok, Map.put(result, :audit, audit)}
+      end
     end)
   end
 
@@ -201,12 +334,29 @@ defmodule Nila.Gst.Extraction.Pipeline do
   # interpretable next to the cut that produced it, and the two are written by
   # different calls.
   defp extraction_audit(result, discovery, transcription) do
-    result.audit
-    |> Map.put(:source_page_count, Transcription.page_count(transcription))
-    |> Map.put(
-      :segmentation,
-      Enum.map(discovery.segments, &%{pages: &1.pages, kind: &1.kind, invoice_no: &1.invoice_no})
-    )
+    %{
+      provider: result.audit.provider,
+      model: result.audit.model,
+      usage: result.audit.usage,
+      source_page_count: Transcription.page_count(transcription),
+      metadata: %{
+        "segments" =>
+          Enum.map(
+            discovery.segments,
+            &%{
+              "pages" => &1.pages,
+              "kind" => to_string(&1.kind),
+              "invoice_no" => &1.invoice_no
+            }
+          ),
+        "failures" =>
+          Enum.map(result.audit.failures, &%{"pages" => &1.pages, "reason" => inspect(&1.reason)}),
+        "repairs" =>
+          result.pages
+          |> Enum.flat_map(&(&1["repairs"] || []))
+          |> Enum.map(&Map.take(&1, ["field", "from", "to", "basis"]))
+      }
+    }
   end
 
   # ---- plumbing ----

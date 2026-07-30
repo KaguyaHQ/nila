@@ -64,8 +64,21 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
     }
   end
 
-  @doc "The instruction block, hashed into the cache key by callers."
-  def prompt do
+  @doc """
+  The instruction block, hashed into the cache key by callers.
+
+  Two variants, because the two piles are mirror images. On a purchase pile the
+  supplier changes with every bill and is the strongest boundary signal there
+  is; on a sales pile the supplier is the client and never changes, so the same
+  sentence would say "continuation" about every page in the packet. What varies
+  on a sales pile is the customer and the document number.
+
+  The purchase text is byte-identical to what it always was, so cached decisions
+  stay valid and the measured runs still describe the code.
+  """
+  def prompt(kind \\ :purchase)
+
+  def prompt(:purchase) do
     """
     You are labelling ONE page of a scanned packet of Indian GST bills. The \
     packet is in scan order. You are shown the page to judge, marked JUDGE THIS \
@@ -94,6 +107,40 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
     """
   end
 
+  def prompt(:sales) do
+    """
+    You are labelling ONE page of a scanned packet of Indian GST bills that one \
+    business issued to its customers. The packet is in scan order. You are shown \
+    the page to judge, marked JUDGE THIS PAGE, with its neighbouring pages for \
+    context only.
+
+    Answer only about the marked page.
+
+    - Every page in this packet carries the same seller — the business whose \
+    packet it is. The seller is therefore NO evidence either way. Judge by the \
+    document number, the customer, and whether the item table starts again.
+    - "start" if this page begins a new bill: its own document number, or a \
+    fresh header with an item table beginning again at row 1.
+    - "continuation" if it carries on a bill that began on an earlier page: the \
+    item table running on, no new document number of its own. A page headed \
+    "Page 2" carrying the same number as the page before it is a continuation.
+    - A different document number from the previous page means "start", however \
+    alike the two pages look. Consecutive bills to the SAME customer are \
+    ordinary; they are still two bills.
+    - One bill may name two customers — "bill to" and "ship to" are the same \
+    document. Two names alone do not make two bills; a second document number \
+    does.
+    - Credit notes and debit notes the business issued are bills, not \
+    "non_invoice": label them "start" and copy their own number.
+    - "non_invoice" for a delivery challan or packing slip carrying no tax, a \
+    quotation, proforma invoice, purchase order, e-way bill printed on its own \
+    page, payment receipt, blank or separator page. Judge by what the document \
+    charges, not by its title: a "TAX INVOICE CUM DELIVERY CHALLAN" is a bill.
+    - invoice_no must be printed on the marked page itself. If it is not there, \
+    return null, even when a neighbouring page shows one.
+    """
+  end
+
   @doc """
   Labels every page, in parallel, returning `{:ok, [%{page:, response:}]}`.
 
@@ -110,27 +157,47 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
 
     numbers
     |> Task.async_stream(
-      fn number -> {number, request_page(transcription, number, opts)} end,
+      fn number -> {number, contained(fn -> request_page(transcription, number, opts) end)} end,
       max_concurrency: Keyword.get(opts, :max_concurrency, @max_concurrency),
       timeout: :infinity,
       ordered: true
     )
     |> Stream.with_index(1)
-    |> Enum.reduce_while({:ok, []}, fn {{:ok, {number, result}}, done}, {:ok, acc} ->
+    |> Enum.map(fn {{:ok, {number, result}}, done} ->
       report.(done, total)
 
       case result do
-        {:ok, response} -> {:cont, {:ok, acc ++ [%{page: number, response: response}]}}
-        {:error, reason} -> {:halt, {:error, {:page_label_failed, number, reason}}}
+        {:ok, response} -> %{page: number, response: response}
+        {:error, reason} -> %{page: number, error: reason}
       end
     end)
+    |> then(&{:ok, &1})
+  end
+
+  # A raise inside an `async_stream` child reaches the caller as an exit, which no
+  # `try/rescue` up the stack can catch — the audit row would stay open and the
+  # dump would sit in `extracting` forever. Contained here, one page's crash is
+  # one page's error.
+  defp contained(call) do
+    try do
+      call.()
+    rescue
+      error -> {:error, {:page_label_crashed, Exception.message(error)}}
+    catch
+      kind, value -> {:error, {:page_label_crashed, inspect({kind, value})}}
+    end
   end
 
   @doc "One page's call."
   def request_page(transcription, number, opts \\ []) do
     messages = [
       %{role: "system", content: "You label pages of scanned packets. You answer only in JSON."},
-      %{role: "user", content: prompt() <> "\n\n" <> context_block(transcription, number)}
+      %{
+        role: "user",
+        content:
+          prompt(Keyword.get(opts, :kind, :purchase)) <>
+            "\n\n" <> context_block(transcription, number)
+      }
     ]
 
     MistralChat.request_raw(messages, "nila_page_label", schema(), opts)
@@ -138,25 +205,33 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
 
   @doc "Decodes labelled pages into `{:ok, [%{page:, label:, invoice_no:}]}`."
   def map_responses(responses) do
-    Enum.reduce_while(responses, {:ok, []}, fn %{page: page, response: response}, {:ok, acc} ->
-      case MistralChat.decode(response) do
-        {:ok, content, _usage} ->
-          {:cont,
-           {:ok,
-            acc ++
-              [
-                %{
-                  page: page,
-                  label: label(content["label"]),
-                  invoice_no: blank_to_nil(content["invoice_no"]),
-                  reason: blank_to_nil(content["reason"])
-                }
-              ]}}
+    {:ok, Enum.map(responses, &map_response/1)}
+  end
 
-        {:error, reason} ->
-          {:halt, {:error, {:page_label_undecodable, page, reason}}}
-      end
-    end)
+  defp map_response(%{page: page, error: reason}), do: unreadable(page, reason)
+
+  defp map_response(%{page: page, response: response}) do
+    case MistralChat.decode(response) do
+      {:ok, content, usage} ->
+        %{
+          page: page,
+          label: label(content["label"]),
+          invoice_no: blank_to_nil(content["invoice_no"]),
+          reason: blank_to_nil(content["reason"]),
+          usage: usage
+        }
+
+      {:error, reason} ->
+        unreadable(page, reason)
+    end
+  end
+
+  # A page whose label never came back is `unreadable`, not a dead month. One
+  # rate-limited call out of fifty-seven used to fail the whole packet and throw
+  # away fifty-six good labels; now the page is reported by the ledger, which is
+  # the same discipline every other unknown here gets.
+  defp unreadable(page, reason) do
+    %{page: page, label: :unreadable, invoice_no: nil, reason: inspect(reason), usage: %{}}
   end
 
   defp label("start"), do: :start

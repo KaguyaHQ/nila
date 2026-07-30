@@ -42,6 +42,14 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
   require Logger
 
+  # Oban's default is `:infinity`. A packet reads as one OCR call plus one small
+  # call per page and per bill, each of which may retry with backoff, so a
+  # rate-limited month could otherwise hold one of five queue slots for hours
+  # with nothing able to cancel it. Thirty minutes is far above any measured
+  # read (a 57-page packet is ~2 minutes) and far below "forever".
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(30)
+
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"dump_id" => dump_id}} = job) do
     case Nila.Repo.fetch(Dump, dump_id) do
@@ -327,6 +335,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
     attrs =
       audit
       |> audit_attrs()
+      |> merge_metadata(attempt, audit)
       |> Map.put(:completed_at, DateTime.utc_now())
       |> Map.put(:duration_ms, elapsed_ms(started_native))
 
@@ -337,10 +346,12 @@ defmodule Nila.Gst.Intake.DumpWorker do
   end
 
   defp finish_attempt(attempt, {:failed, reason}, result, started_native) do
+    audit = Map.get(result, :audit, %{})
+
     attrs =
-      result
-      |> Map.get(:audit, %{})
+      audit
       |> audit_attrs()
+      |> merge_metadata(attempt, audit)
       |> Map.put(:completed_at, DateTime.utc_now())
       |> Map.put(:duration_ms, elapsed_ms(started_native))
       |> Map.put(:error, inspect(reason, limit: 20, printable_limit: 2_000))
@@ -360,6 +371,19 @@ defmodule Nila.Gst.Intake.DumpWorker do
     do: %{result | audit: Map.drop(audit, [:raw_response])}
 
   defp drop_raw_response(result), do: result
+
+  # What a call *learned* is only known when it finishes, and it belongs on the
+  # same row as what it was asked to do: the extractor returns it as
+  # `audit.metadata` and it is folded into the metadata the attempt opened with.
+  defp merge_metadata(attrs, attempt, audit) do
+    case Map.get(audit, :metadata) do
+      metadata when is_map(metadata) and metadata != %{} ->
+        Map.put(attrs, :request_metadata, Map.merge(attempt.request_metadata || %{}, metadata))
+
+      _none ->
+        attrs
+    end
+  end
 
   defp audit_attrs(audit) do
     Map.take(audit, [

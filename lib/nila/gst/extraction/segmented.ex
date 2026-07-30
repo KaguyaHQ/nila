@@ -58,8 +58,26 @@ defmodule Nila.Gst.Extraction.Segmented do
     - The invoice may be internally inconsistent — its own printed total may \
     disagree with its lines. Copy what is printed anyway; a later check names \
     the discrepancy.
+    #{kind_rules(kind)}\
     """
   end
+
+  # The windowed sales prompt carried two clauses this stage must not lose. A
+  # cancelled invoice still occupies its number, and a return that omits it
+  # reports a gap in the series it cannot explain. And an intra-state bill that
+  # prints CGST and SGST as stacked sub-rows under each item will, if those are
+  # read as two items, be filed at half its rate — the documented invoice-27
+  # failure in `Nila.Gst.Sales.Gstr1`.
+  defp kind_rules(:sales) do
+    """
+    - Include cancelled invoices. A cancelled number is still a number the \
+    series has to account for.
+    - CGST and SGST printed as stacked sub-rows under one item are that item's \
+    tax, not two items. Never split them, and never split a total row.
+    """
+  end
+
+  defp kind_rules(:purchase), do: ""
 
   @doc """
   Extracts and verifies every invoice segment.
@@ -78,7 +96,7 @@ defmodule Nila.Gst.Extraction.Segmented do
     results =
       invoice_segments
       |> Task.async_stream(
-        fn segment -> {segment, extract_segment(kind, transcription, segment, opts)} end,
+        fn segment -> {segment, contained(kind, transcription, segment, opts)} end,
         max_concurrency: Keyword.get(opts, :max_concurrency, @max_concurrency),
         timeout: :infinity
       )
@@ -126,6 +144,20 @@ defmodule Nila.Gst.Extraction.Segmented do
         _key, left, _right -> left
       end)
     end)
+  end
+
+  # A raise inside an `async_stream` child reaches the caller as an exit, and no
+  # `try/rescue` up the stack catches an exit — the audit row would stay open and
+  # the dump would sit in `extracting` forever. Contained here, one malformed
+  # response costs one bill, which the ledger then reports.
+  defp contained(kind, transcription, segment, opts) do
+    try do
+      extract_segment(kind, transcription, segment, opts)
+    rescue
+      error -> {:error, {:segment_crashed, Exception.message(error)}}
+    catch
+      thrown, value -> {:error, {:segment_crashed, inspect({thrown, value})}}
+    end
   end
 
   @doc "One segment: call, map, verify."

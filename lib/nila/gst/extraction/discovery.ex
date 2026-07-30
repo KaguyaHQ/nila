@@ -48,6 +48,7 @@ defmodule Nila.Gst.Extraction.Discovery do
   alias Nila.Gst.Extraction.Discovery.Features
   alias Nila.Gst.Extraction.Discovery.PageLabels
   alias Nila.Gst.Extraction.Providers.MistralChat
+  alias Nila.Gst.Extraction.Segmented
   alias Nila.Gst.Extraction.Transcription
 
   # A pathological page (a 400-row annexure) should not dominate the prompt; the
@@ -154,10 +155,10 @@ defmodule Nila.Gst.Extraction.Discovery do
   end
 
   @doc "Decodes a whole-dump decider response and runs the guards over it."
-  def map_response(%Transcription{} = transcription, response, client_gstin \\ nil) do
+  def map_response(%Transcription{} = transcription, response, opts \\ []) do
     with {:ok, content, usage} <- MistralChat.decode(response) do
       segments = content["segments"] |> List.wrap() |> Enum.map(&normalize/1)
-      {segments, violations} = guard(transcription, segments, client_gstin)
+      {segments, violations} = guard(transcription, segments, opts)
       {:ok, %{segments: segments, violations: violations, usage: usage}}
     end
   end
@@ -175,16 +176,16 @@ defmodule Nila.Gst.Extraction.Discovery do
     case Keyword.get(opts, :shape, :per_page) do
       :whole_dump ->
         with {:ok, response} <- request_raw(transcription, opts) do
-          map_response(transcription, response, opts[:client_gstin])
+          map_response(transcription, response, opts)
         end
 
       :per_page ->
         with {:ok, responses} <- PageLabels.request_all(transcription, opts),
              {:ok, labels} <- PageLabels.map_responses(responses) do
-          {segments, violations} =
-            guard(transcription, PageLabels.stitch(labels), opts[:client_gstin])
+          {segments, violations} = guard(transcription, PageLabels.stitch(labels), opts)
 
-          {:ok, %{segments: segments, violations: violations, usage: %{}}}
+          usage = labels |> Enum.map(&Map.get(&1, :usage)) |> Segmented.sum_usage()
+          {:ok, %{segments: segments, violations: violations, usage: usage}}
         end
     end
   end
@@ -220,10 +221,24 @@ defmodule Nila.Gst.Extraction.Discovery do
   Both decider shapes end here, so a change to a guard changes both at once and
   neither can quietly acquire a rule the other lacks.
 
-  `client_gstin` is the client's own number, told to us in production and
-  inferred from the packet when nobody has — see `client_gstin/1`.
+  Options: `:client_gstin`, the client's own number — told to us in production
+  and inferred from the packet when nobody has (see `client_gstin/1`) — and
+  `:kind`, which decides whether a counterparty GSTIN proves anything. On a
+  purchase pile the counterparty is the supplier and two of them prove two
+  bills; on a sales pile the counterparty is the customer, one bill can print
+  two of them (bill-to and ship-to), and the party that *is* constant is the
+  client. So the party guards apply to purchase only, and sales is cut on
+  printed document numbers alone.
   """
-  def guard(transcription, segments, client_gstin \\ nil) do
+  def guard(transcription, segments, opts \\ [])
+
+  def guard(transcription, segments, client_gstin)
+      when is_binary(client_gstin) or is_nil(client_gstin),
+      do: guard(transcription, segments, client_gstin: client_gstin)
+
+  def guard(transcription, segments, opts) when is_list(opts) do
+    client_gstin = Keyword.get(opts, :client_gstin)
+    kind = Keyword.get(opts, :kind, :purchase)
     known = Transcription.numbers(transcription) |> MapSet.new()
 
     {claimed, seen} =
@@ -242,10 +257,10 @@ defmodule Nila.Gst.Extraction.Discovery do
       # extract, but its double-claim is carried out as a violation below rather
       # than dropped with it.
       |> Enum.reject(&(&1.pages == []))
-      |> Enum.flat_map(&split_on_evidence(&1, transcription, client))
+      |> Enum.flat_map(&split_on_evidence(&1, transcription, client, kind))
       |> Enum.map(&ground(&1, transcription))
-      |> Enum.map(&one_seller(&1, transcription, client))
-      |> Enum.map(&confirm_kind(&1, transcription, client))
+      |> Enum.map(&one_seller(&1, transcription, client, kind))
+      |> Enum.map(&confirm_kind(&1, transcription, client, kind))
       |> Enum.sort_by(&List.first(&1.pages))
 
     {segments, violations(segments, missing, double_claimed(claimed))}
@@ -331,14 +346,15 @@ defmodule Nila.Gst.Extraction.Discovery do
   reported. (Over-splitting is not symmetrical — nothing on a continuation page
   proves it belongs to the page before it — so that stays a report.)
   """
-  def split_on_evidence(segment, transcription, client)
+  def split_on_evidence(segment, transcription, client, kind \\ :purchase)
 
-  def split_on_evidence(%{pages: [_single]} = segment, _transcription, _client), do: [segment]
+  def split_on_evidence(%{pages: [_single]} = segment, _transcription, _client, _kind),
+    do: [segment]
 
-  def split_on_evidence(segment, transcription, client) do
+  def split_on_evidence(segment, transcription, client, kind) do
     groups =
       segment.pages
-      |> Enum.map(&{&1, identity(transcription, &1, client)})
+      |> Enum.map(&{&1, identity(transcription, &1, client, kind)})
       |> Enum.reduce([], fn {page, identity}, groups ->
         case groups do
           [%{identity: current} = group | rest] ->
@@ -368,14 +384,24 @@ defmodule Nila.Gst.Extraction.Discovery do
     end
   end
 
-  defp identity(transcription, page, client) do
+  defp identity(transcription, page, client, kind) do
     features = page_features(transcription, page)
 
     %{
-      seller: features.gstins_valid |> Enum.reject(&(&1 == client)) |> List.first(),
+      seller: counterparty(features, client, kind),
       number: features.invoice_no
     }
   end
+
+  # On a purchase page the one GSTIN that is not the client's is the supplier,
+  # and an invoice has exactly one. On a sales page it is the customer, and a
+  # single invoice may print two of them — bill-to and ship-to — so it proves
+  # nothing about where one bill ends.
+  defp counterparty(features, client, :purchase) do
+    features.gstins_valid |> Enum.reject(&(&1 == client)) |> List.first()
+  end
+
+  defp counterparty(_features, _client, :sales), do: nil
 
   defp conflict?(current, identity) do
     differs?(current.seller, identity.seller) or differs?(current.number, identity.number)
@@ -465,20 +491,34 @@ defmodule Nila.Gst.Extraction.Discovery do
       end)
       |> Enum.frequencies()
 
-    case Enum.max_by(counts, fn {_gstin, count} -> count end, fn -> nil end) do
-      {gstin, count} when count * 2 > length(pages) -> gstin
-      _no_majority -> nil
+    # A majority is not enough on its own: a client who bills one dominant
+    # customer prints both GSTINs on every page, and `max_by` would settle that
+    # tie by map order. Guessing wrong here is expensive — the repair oracle
+    # would snap the client's own damaged number to the other party's — so a tie
+    # returns nothing and the packet is read without the oracle.
+    case counts |> Enum.sort_by(fn {_gstin, count} -> -count end) |> Enum.take(2) do
+      [{gstin, count}] when count * 2 > length(pages) ->
+        gstin
+
+      [{gstin, count}, {_other, second}] when count * 2 > length(pages) and count > second ->
+        gstin
+
+      _no_clear_majority ->
+        nil
     end
   end
 
-  defp one_seller(segment, transcription, client) do
+  defp one_seller(segment, transcription, client, kind) do
     scans = Enum.map(segment.pages, &page_features(transcription, &1))
 
     sellers =
-      scans
-      |> Enum.flat_map(& &1.gstins_valid)
-      |> Enum.reject(&(&1 == client))
-      |> Enum.uniq()
+      case kind do
+        :purchase ->
+          scans |> Enum.flat_map(& &1.gstins_valid) |> Enum.reject(&(&1 == client)) |> Enum.uniq()
+
+        :sales ->
+          []
+      end
 
     # Two bills from the *same* supplier defeat the seller check, and two
     # consecutive bills from one supplier is the commonest thing in a packet.
@@ -517,16 +557,11 @@ defmodule Nila.Gst.Extraction.Discovery do
   #
   # The three genuine non-invoices in that packet (Porter trip screenshots with
   # ₹0.00 CGST and no supplier GSTIN) carry their marker and pass unchanged.
-  defp confirm_kind(%{kind: :invoice} = segment, _transcription, _client), do: segment
+  defp confirm_kind(%{kind: :invoice} = segment, _transcription, _client, _kind), do: segment
 
-  defp confirm_kind(segment, transcription, client) do
+  defp confirm_kind(segment, transcription, client, kind) do
     scans = Enum.map(segment.pages, &page_features(transcription, &1))
-
-    invoice_evidence? =
-      Enum.any?(scans, fn features ->
-        sellers = Enum.reject(features.gstins_valid, &(&1 == client))
-        sellers != [] and features.tax_words? and (features.total_row? or features.words?)
-      end)
+    invoice_evidence? = Enum.any?(scans, &invoice_evidence?(&1, client, kind))
 
     marker? = Enum.any?(scans, & &1.non_invoice_marker)
 
@@ -542,6 +577,25 @@ defmodule Nila.Gst.Extraction.Discovery do
         |> Map.put(:kind, :unreadable)
         |> add_issue(true, {:non_invoice_unconfirmed, segment.kind})
     end
+  end
+
+  # What counts as proof that a page really is a bill, which is the one thing
+  # allowed to overturn a `non_invoice` verdict.
+  #
+  # On a purchase page it is a supplier: someone who charges GST is registered,
+  # so a valid GSTIN that is not the client's, next to tax words and a total, is
+  # a bill. On a sales page that test is inert — the counterparty is the
+  # customer, and most B2C customers have no GSTIN at all — so it would quietly
+  # stop rescuing exactly the bills a return must not lose. Tax words and a
+  # printed total are what a sales bill has and a challan, quotation or packing
+  # slip does not.
+  defp invoice_evidence?(features, client, :purchase) do
+    sellers = Enum.reject(features.gstins_valid, &(&1 == client))
+    sellers != [] and features.tax_words? and (features.total_row? or features.words?)
+  end
+
+  defp invoice_evidence?(features, _client, :sales) do
+    features.tax_words? and (features.total_row? or features.words?)
   end
 
   @doc "A violation as a line of English, with page numbers that print as numbers."

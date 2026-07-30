@@ -3,6 +3,7 @@ defmodule Nila.Gst.Extraction.DiscoveryTest do
 
   alias Nila.Gst.Extraction.Discovery
   alias Nila.Gst.Extraction.Discovery.Features
+  alias Nila.Gst.Extraction.Discovery.PageLabels
   alias Nila.Gst.Extraction.Transcription
 
   defp transcription(pages) do
@@ -113,6 +114,53 @@ defmodule Nila.Gst.Extraction.DiscoveryTest do
 
       assert Enum.map(segments, & &1.kind) == [:invoice, :unreadable]
       assert {:unconfirmed_non_invoice_pages, [[2]]} in violations
+    end
+
+    test "on a sales packet a bill with no customer GSTIN is still rescued" do
+      # The rescue used to be "a valid GSTIN that is not the client's", which on
+      # a purchase packet is the supplier and on a sales packet is the customer
+      # — absent on every B2C bill. A page carrying an e-way bill number matches
+      # the non-invoice marker, so without a working rescue the sale would be
+      # counted as accounted for and vanish from the return with no flag.
+      t =
+        transcription([
+          {1, "TAX INVOICE 5\nGSTIN 33AAKCS8613A1ZM\nCGST 9 SGST 9\nGrand total 118.00"},
+          {2, "TAX INVOICE 6\nE-Way Bill No. 3312\nCGST 18 SGST 18\nGrand total 236.00"}
+        ])
+
+      labels = [
+        %{page: 1, label: :start, invoice_no: "5", reason: nil},
+        %{page: 2, label: :non_invoice, invoice_no: nil, reason: nil}
+      ]
+
+      segments = PageLabels.stitch(labels)
+
+      {sales, _violations} = Discovery.guard(t, segments, kind: :sales)
+      assert Enum.map(sales, & &1.kind) == [:invoice, :invoice]
+
+      # The same page in a purchase pile has a supplier GSTIN to prove it, which
+      # is why the corpus never caught this.
+      {purchase, _violations} = Discovery.guard(t, segments, kind: :purchase)
+      assert Enum.map(purchase, & &1.kind) == [:invoice, :non_invoice]
+    end
+
+    test "on a sales packet two customer GSTINs do not split one bill" do
+      # Bill-to and ship-to are the same document. On a purchase packet two
+      # valid non-client GSTINs are two suppliers and therefore two bills; on a
+      # sales packet they are two addresses on one.
+      t =
+        transcription([
+          {1, "TAX INVOICE 7\nBill to GSTIN 33AAKCS8613A1ZM\nTaxable 100"},
+          {2, "Ship to GSTIN 32AAMFD7558A1ZL\nTotal 118.00"}
+        ])
+
+      segment = [%{pages: [1, 2], kind: :invoice, invoice_no: "7", reason: nil, issues: []}]
+
+      {[sales], _violations} = Discovery.guard(t, segment, kind: :sales)
+      assert sales.pages == [1, 2]
+
+      {purchase, _violations} = Discovery.guard(t, segment, kind: :purchase)
+      assert Enum.map(purchase, & &1.pages) == [[1], [2]]
     end
 
     test "a clean segmentation raises no violations" do

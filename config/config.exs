@@ -72,6 +72,10 @@ config :nila, Oban,
   queues: [documents: 5, workflows: 10, reminders: 5, approvals: 5, chase: 5],
   plugins: [
     Oban.Plugins.Pruner,
+    # A node that dies mid-read leaves its job `executing` forever otherwise,
+    # and a document read is the longest-running job here — minutes of provider
+    # calls — so it is the one most likely to be interrupted by a deploy.
+    Oban.Plugins.Lifeline,
     {Oban.Plugins.Cron,
      crontab: [
        {"30 3 * * *", Nila.Gst.Chase.Scheduler}
