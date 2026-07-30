@@ -80,6 +80,22 @@ defmodule NilaWeb.Gst.MonthLive do
   defp fetch_or_nil({:ok, value}), do: value
   defp fetch_or_nil({:error, :not_found}), do: nil
 
+  # Not "resolve the issues" — these cannot be resolved by a reviewer, only by
+  # the return learning the table the document belongs in. Say which document,
+  # and say the return cannot hold it.
+  defp blocked_message(codes) do
+    "This month holds " <>
+      Enum.map_join(codes, ", ", &blocked_document/1) <>
+      ", which this return has no section for. Filing it as a regular invoice would be wrong, so it cannot be signed."
+  end
+
+  defp blocked_document("credit_note_unsupported"), do: "a credit note"
+  defp blocked_document("debit_note_unsupported"), do: "a debit note"
+  defp blocked_document("export_supply_unsupported"), do: "an export or SEZ supply"
+  defp blocked_document("outward_reverse_charge_unsupported"), do: "a reverse-charge supply"
+  defp blocked_document("b2c_supply_unsupported"), do: "a bill with no buyer GSTIN"
+  defp blocked_document(code), do: code
+
   defp reload(socket) do
     %{client: client, period: period} = socket.assigns
     org_id = socket.assigns.current_scope.current_org.id
@@ -399,6 +415,9 @@ defmodule NilaWeb.Gst.MonthLive do
 
       {:error, :already_signed} ->
         {:noreply, put_flash(socket, :error, "This GSTR-1 is already signed off.")}
+
+      {:error, {:blocking_issues, codes}} ->
+        {:noreply, put_flash(socket, :error, blocked_message(codes))}
     end
   end
 

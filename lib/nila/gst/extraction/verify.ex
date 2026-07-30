@@ -255,6 +255,32 @@ defmodule Nila.Gst.Extraction.Verify do
     Regex.match?(@rcm_positive, text) and not Regex.match?(@rcm_negative, text)
   end
 
+  @credit_note ~r/\bcredit\s+note\b/i
+  @debit_note ~r/\bdebit\s+note\b/i
+  @export ~r/\b(export\s+invoice|letter\s+of\s+undertaking|\bLUT\b|special\s+economic\s+zone|\bSEZ\b|supply\s+meant\s+for\s+export)\b|\b(USD|EUR|GBP|AED|SGD)\s*[\d.,]/i
+
+  @doc """
+  What kind of document the page says it is, read off the page and nothing else.
+
+  These are the shapes `Nila.Gst.Sales.Gstr1.derive/2` has no table for — a
+  credit note has no `cdnr`, an export has no `exp`, an outward reverse-charge
+  supply is filed `rchrg: "N"` regardless. Deriving one of them anyway files a
+  number that is wrong in a way no arithmetic check can see: a ₹50,000 credit
+  note becomes a ₹50,000 sale, and the liability is out by ₹100,000.
+
+  So they are detected here, where the text is, and refused at sign-off. Nothing
+  in six filed months across both clients is any of these; the day one arrives,
+  a human is told rather than a return being quietly built around it.
+  """
+  def document_markers(text) when is_binary(text) do
+    %{
+      "credit_note" => Regex.match?(@credit_note, text),
+      "debit_note" => Regex.match?(@debit_note, text),
+      "export" => Regex.match?(@export, text),
+      "reverse_charge" => reverse_charge?(text)
+    }
+  end
+
   defp gstin_checks(data) do
     [
       {"seller.gstin", get_in(data, ["seller", "gstin"])},

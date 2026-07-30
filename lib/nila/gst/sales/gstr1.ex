@@ -109,13 +109,55 @@ defmodule Nila.Gst.Sales.Gstr1 do
         money(value(data, ["printed_total_taxable", "total_net_amount"])),
       "printed_total_tax" => money(value(data, ["printed_total_tax", "total_tax_amount"])),
       "printed_grand_total" => money(value(data, ["printed_grand_total", "total_gross_amount"])),
-      "confidence" => non_empty_map(raw["confidence"]) || build_confidence(raw)
+      "confidence" => non_empty_map(raw["confidence"]) || build_confidence(raw),
+      "document" => raw["document"] || %{}
     }
   end
 
   def validation_issues(invoices) do
     invoice_issues = Enum.flat_map(invoices, &invoice_issues/1)
     sequence_issues(invoices) ++ invoice_issues
+  end
+
+  @doc """
+  Issues that must be answered before a GSTR-1 can be signed, not merely read.
+
+  `derive/2` builds `b2b`, `hsn` and `doc_issue` and nothing else, which is
+  exactly what both clients have filed in every month of the corpus. A document
+  that belongs in a table this return does not have would still be derived — as
+  a *regular outward supply*, because that is the only shape on offer. A credit
+  note would be filed as a sale of the same value, so the liability moves by
+  twice its amount in the wrong direction; an export or SEZ supply would be
+  filed as taxable; a reverse-charge supply would be filed `rchrg: "N"` and the
+  tax charged to the wrong party.
+
+  None of these can be caught downstream: every one is arithmetically perfect.
+  So the return refuses to be signed while one is present, and the missing table
+  gets built when a real document asks for it rather than from imagination.
+  """
+  def blocking_issues(invoices) do
+    Enum.flat_map(invoices, &unsupported_document_issues/1)
+  end
+
+  defp unsupported_document_issues(invoice) do
+    document = invoice["document"] || %{}
+
+    [
+      {document["credit_note"], "credit_note_unsupported",
+       "this is a credit note, and GSTR-1 derivation has no cdnr table — filing it as a regular invoice would move the liability by twice its value"},
+      {document["debit_note"], "debit_note_unsupported",
+       "this is a debit note, and GSTR-1 derivation has no cdnr table"},
+      {document["export"], "export_supply_unsupported",
+       "this bill carries export, LUT or SEZ wording, and GSTR-1 derivation has no exp table — it would be filed as an ordinary taxable supply"},
+      {document["reverse_charge"], "outward_reverse_charge_unsupported",
+       "this bill says the recipient pays the tax, and derivation files every invoice rchrg \"N\""},
+      {is_nil(invoice["buyer_gstin"]), "b2c_supply_unsupported",
+       "no buyer GSTIN, and GSTR-1 derivation has no b2cs table — it would be grouped under a null ctin in b2b"}
+    ]
+    |> Enum.filter(fn {present?, _code, _message} -> present? == true end)
+    |> Enum.map(fn {_present?, code, message} ->
+      issue(invoice, code, message, ["invoice_number"], "blocking")
+    end)
   end
 
   def flagged_fields(invoices, issues) do

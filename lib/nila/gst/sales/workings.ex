@@ -56,6 +56,7 @@ defmodule Nila.Gst.Sales.Workings do
     issues =
       invoices
       |> Gstr1.validation_issues()
+      |> Enum.concat(Gstr1.blocking_issues(invoices))
       |> Enum.concat(document_issues)
       |> Enum.map(fn issue ->
         status = if MapSet.member?(confirmed_keys, issue_key(issue)), do: "resolved", else: "open"
@@ -86,8 +87,21 @@ defmodule Nila.Gst.Sales.Workings do
 
   @doc "True when no effective issue above `info` level remains open."
   def reviewable?(issues) do
-    Enum.all?(issues, &(&1["status"] == "resolved" or &1["level"] == "info"))
+    Enum.all?(issues, fn issue ->
+      not blocking?(issue) and (issue["status"] == "resolved" or issue["level"] == "info")
+    end)
   end
+
+  @doc """
+  Whether an issue can be answered by a human at all.
+
+  Every other issue is a question about the numbers, and confirming it is a real
+  answer: the reviewer looked, and the bill really does say that. A blocking
+  issue is different in kind — it says the return has no table for this
+  document, so `Gstr1.derive/2` will file it as something it is not. Confirming
+  that changes nothing about what gets filed, so confirmation must not clear it.
+  """
+  def blocking?(issue), do: issue["level"] == "blocking"
 
   # Latest correction per (invoice, field) wins, and invoice-number corrections
   # apply last: `Gstr1.apply_corrections/3` matches invoices by their *current*

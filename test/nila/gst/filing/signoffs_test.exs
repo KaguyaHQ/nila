@@ -258,6 +258,29 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       assert {:error, :already_signed} = Signoffs.sign_off_gstr1(reviewed, scope)
     end
 
+    test "a document the return has no table for cannot be signed", %{
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      reviewed = make_reviewed(sales_month, scope.user.id)
+
+      # Reviewed first, then the marker: this is exactly the path the sign-off
+      # check exists for — a month can reach `reviewed` before a rule exists,
+      # and signing is the act that makes the number final.
+      invoices =
+        Enum.map(reviewed.invoices, &Map.put(&1, "document", %{"credit_note" => true}))
+
+      {:ok, reviewed} =
+        reviewed
+        |> Nila.Gst.Sales.Month.changeset(%{invoices: invoices})
+        |> Nila.Repo.update()
+
+      assert {:error, {:blocking_issues, ["credit_note_unsupported"]}} =
+               Signoffs.sign_off_gstr1(reviewed, scope)
+
+      assert {:error, :not_found} = Signoffs.latest_gstr1_signoff(reviewed.id)
+    end
+
     test "a signed sales month is a wall for new decisions", %{
       sales_month: sales_month,
       owner_scope: scope

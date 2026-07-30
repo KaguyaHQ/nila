@@ -435,4 +435,64 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       }
     })
   end
+
+  describe "blocking_issues/1 — documents this return has no table for" do
+    # Six filed GSTR-1s across both clients contain b2b, hsn and doc_issue and
+    # nothing else; doc_issue declares only series type 1. None of these
+    # documents has ever arrived. When one does, it must stop the return rather
+    # than be derived as the only shape on offer — a regular outward supply.
+    defp sales_invoice(overrides) do
+      Map.merge(
+        %{
+          "invoice_number" => "112/2025-26",
+          "buyer_gstin" => "06AABCE4949G1ZN",
+          "line_items" => [],
+          "document" => %{}
+        },
+        overrides
+      )
+    end
+
+    test "a credit note blocks, because filing it as a sale moves the liability twice" do
+      invoice = sales_invoice(%{"document" => %{"credit_note" => true}})
+
+      assert [issue] = Gstr1.blocking_issues([invoice])
+      assert issue["code"] == "credit_note_unsupported"
+      assert issue["level"] == "blocking"
+      assert issue["invoice"] == "112/2025-26"
+    end
+
+    test "an export, an outward reverse charge and a missing buyer GSTIN each block" do
+      export = sales_invoice(%{"document" => %{"export" => true}})
+      rcm = sales_invoice(%{"document" => %{"reverse_charge" => true}})
+      b2c = sales_invoice(%{"buyer_gstin" => nil})
+
+      codes =
+        [export, rcm, b2c] |> Gstr1.blocking_issues() |> Enum.map(& &1["code"]) |> Enum.sort()
+
+      assert codes == [
+               "b2c_supply_unsupported",
+               "export_supply_unsupported",
+               "outward_reverse_charge_unsupported"
+             ]
+    end
+
+    test "an ordinary B2B invoice blocks nothing" do
+      assert Gstr1.blocking_issues([sales_invoice(%{})]) == []
+    end
+
+    test "a blocking issue cannot be cleared by confirming it" do
+      # Every other issue is a question about the numbers, and a reviewer
+      # confirming it is a real answer. This one says the return has no section
+      # for the document, which confirmation does not change.
+      confirmed = %{
+        "level" => "blocking",
+        "status" => "resolved",
+        "code" => "credit_note_unsupported"
+      }
+
+      refute Nila.Gst.Sales.Workings.reviewable?([confirmed])
+      assert Nila.Gst.Sales.Workings.reviewable?([%{"level" => nil, "status" => "resolved"}])
+    end
+  end
 end

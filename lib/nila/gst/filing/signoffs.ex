@@ -36,6 +36,7 @@ defmodule Nila.Gst.Filing.Signoffs do
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Month, as: SalesMonth
+  alias Nila.Gst.Sales.Workings, as: SalesWorkings
 
   alias Nila.Repo
 
@@ -106,7 +107,9 @@ defmodule Nila.Gst.Filing.Signoffs do
   stays maker-owned, and "signed" means a live signoff row exists. Returns
   `{:error, :not_allowed}` without the `sign_off` capability,
   `{:error, :not_reviewed}` before the maker gate,
-  `{:error, :already_signed}` when a live signature exists.
+  `{:error, :already_signed}` when a live signature exists, and
+  `{:error, {:blocking_issues, codes}}` when the month holds a document the
+  return has no table for (see `Nila.Gst.Sales.Gstr1.blocking_issues/1`).
   """
   def sign_off_gstr1(%SalesMonth{} = month, scope) do
     if Policy.can?(scope, :sign_off) do
@@ -125,26 +128,35 @@ defmodule Nila.Gst.Filing.Signoffs do
             {:error, :not_reviewed}
 
           true ->
-            workings = SalesResolutions.workings(month)
-
-            snapshot = %{
-              "invoices" => workings.invoices,
-              "issues" => workings.issues,
-              "derived" => workings.derived
-            }
-
-            {:ok,
-             %Signoff{
-               org_id: month.org_id,
-               sales_month_id: month.id,
-               signed_by_id: scope.user.id
-             }
-             |> Signoff.changeset(%{artifact: "gstr1", snapshot: snapshot})
-             |> Repo.insert!()}
+            sign_reviewed_gstr1(month, scope)
         end
       end)
     else
       {:error, :not_allowed}
+    end
+  end
+
+  # Checked here as well as at `SalesResolutions.mark_reviewed/1`, because this
+  # is the act that makes a number final, and a month may have reached
+  # `reviewed` before a rule existed.
+  defp sign_reviewed_gstr1(month, scope) do
+    workings = SalesResolutions.workings(month)
+
+    case Enum.filter(workings.issues, &SalesWorkings.blocking?/1) do
+      [] ->
+        snapshot = %{
+          "invoices" => workings.invoices,
+          "issues" => workings.issues,
+          "derived" => workings.derived
+        }
+
+        {:ok,
+         %Signoff{org_id: month.org_id, sales_month_id: month.id, signed_by_id: scope.user.id}
+         |> Signoff.changeset(%{artifact: "gstr1", snapshot: snapshot})
+         |> Repo.insert!()}
+
+      blocking ->
+        {:error, {:blocking_issues, blocking |> Enum.map(& &1["code"]) |> Enum.uniq()}}
     end
   end
 

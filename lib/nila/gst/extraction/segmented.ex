@@ -254,6 +254,9 @@ defmodule Nila.Gst.Extraction.Segmented do
              )
          },
          "repairs" => repairs,
+         # What the page says it is, for the shapes the return has no table
+         # for — see `Nila.Gst.Extraction.Verify.document_markers/1`.
+         "document" => Verify.document_markers(text),
          # Per-invoice, because that is the unit the call was made in and the
          # unit a cost per bill is quoted in.
          "usage" => sum_usage(usage),
