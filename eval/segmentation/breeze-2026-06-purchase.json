@@ -1,36 +1,220 @@
 {
   "document": "breeze-2026-06-purchase",
   "pages": 28,
-  "adjudicated_by": "eye, against the rendered scans",
-  "note": "Every document in this packet is one page long. Page 11 prints 'Tax Invoice(Page 2)' but is self-contained — its own header, number, totals and amount in words — and the page 1 it refers to is not in the packet; page 10 is a different supplier. Pages 15-17 are Porter trip-detail screenshots with CGST and SGST of 0.00 and no supplier GSTIN: no tax, no ITC, not invoices. Pages 18-19 are Porter 'Invoice/Consignment note' documents charging GST under reverse charge, with the operator's GSTIN in the footer: invoices. Page 20 is titled 'TAX INVOICE CUM DELIVERY CHALLAN' and is an invoice. Page 8 is a handwritten IKON Refrigeration bill, No. 696, with SGST and a supplier GSTIN: an invoice.",
+  "established_by": "Adjacent-page supplier GSTINs, plus six scans read by eye. Of the 27 adjacent page pairs, 19 name two different GSTINs that each pass their check digit, so neither page of those pairs can be a continuation of the other — a fact in the transcription, independent of any reading of the packet. That leaves 8 pairs where one bill spanning two pages is even possible, and each is resolved below. The boundaries here are therefore closer to proven than inferred; the kind labels are weaker (see kind_confidence).",
+  "ambiguous_pairs_resolved": {
+    "15-16, 16-17": "No supplier GSTIN on any of the three. Page 15 read from the scan: a Porter trip-detail screenshot showing CGST 0.00 and SGST 0.00. Pages 16 and 17 carry the same 'Trip details' header block.",
+    "17-18": "Page 18 read from the scan: a complete one-page Porter 'Invoice/Consignment note', its own number CRN1648270398, charging GST under reverse charge, operator GSTIN 33AAGCR8772D1Z9 in the footer.",
+    "18-19": "Same supplier, but two different document numbers — CRN1648270398 and CRN2045693940 — each printed on its own page. Two bills.",
+    "21-22, 22-23": "Page 22's supplier GSTIN fails its check digit as scanned (32ABSP14532L1ZG, the read the pipeline now repairs), so the adjacency test cannot speak. Page 22 read from the scan: Alleppey Techno Care, marked 'Page 1 of 1'.",
+    "24-25": "Same supplier (CITY CENTRE, 33AHNPM1246J1ZA), but CC-TV/0729/26-27 and CC-TV/0738/26-27, each printed on its own page. Two bills."
+  },
+  "kind_confidence": "Weaker than the boundaries, and the weakness is one-directional: pages 16, 17 and 26 are labelled from their OCR headers alone. A wrong 'non_invoice' here would flatter the pipeline, since the page would be scored as correctly skipped.",
+  "read_from_scan": [
+    3,
+    8,
+    11,
+    15,
+    18,
+    22
+  ],
+  "note": "Every document in this packet is one page long. Page 11 prints 'Tax Invoice(Page 2)' but is self-contained — its own header, number, totals and amount in words — and the page 1 it refers to is not in the packet; page 10 is a different supplier. Pages 15-17 are Porter trip-detail screenshots with zero GST and no supplier GSTIN: no tax, no ITC, not invoices. Pages 18-19 are Porter consignment notes charging GST under reverse charge: invoices. Page 20 is titled 'TAX INVOICE CUM DELIVERY CHALLAN' and is an invoice. Page 8 is a handwritten IKON Refrigeration bill, No. 696, with SGST and a supplier GSTIN: an invoice.",
   "segments": [
-    { "pages": [1], "kind": "invoice" },
-    { "pages": [2], "kind": "invoice" },
-    { "pages": [3], "kind": "invoice" },
-    { "pages": [4], "kind": "invoice" },
-    { "pages": [5], "kind": "invoice" },
-    { "pages": [6], "kind": "invoice" },
-    { "pages": [7], "kind": "invoice" },
-    { "pages": [8], "kind": "invoice" },
-    { "pages": [9], "kind": "invoice" },
-    { "pages": [10], "kind": "invoice" },
-    { "pages": [11], "kind": "invoice" },
-    { "pages": [12], "kind": "invoice" },
-    { "pages": [13], "kind": "invoice" },
-    { "pages": [14], "kind": "invoice" },
-    { "pages": [15], "kind": "non_invoice" },
-    { "pages": [16], "kind": "non_invoice" },
-    { "pages": [17], "kind": "non_invoice" },
-    { "pages": [18], "kind": "invoice" },
-    { "pages": [19], "kind": "invoice" },
-    { "pages": [20], "kind": "invoice" },
-    { "pages": [21], "kind": "invoice" },
-    { "pages": [22], "kind": "invoice" },
-    { "pages": [23], "kind": "invoice" },
-    { "pages": [24], "kind": "invoice" },
-    { "pages": [25], "kind": "invoice" },
-    { "pages": [26], "kind": "invoice" },
-    { "pages": [27], "kind": "invoice" },
-    { "pages": [28], "kind": "invoice" }
+    {
+      "pages": [
+        1
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        2
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        3
+      ],
+      "kind": "invoice",
+      "source": "scan"
+    },
+    {
+      "pages": [
+        4
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        5
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        6
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        7
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        8
+      ],
+      "kind": "invoice",
+      "source": "scan"
+    },
+    {
+      "pages": [
+        9
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        10
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        11
+      ],
+      "kind": "invoice",
+      "source": "scan"
+    },
+    {
+      "pages": [
+        12
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        13
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        14
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        15
+      ],
+      "kind": "non_invoice",
+      "source": "scan"
+    },
+    {
+      "pages": [
+        16
+      ],
+      "kind": "non_invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        17
+      ],
+      "kind": "non_invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        18
+      ],
+      "kind": "invoice",
+      "source": "scan"
+    },
+    {
+      "pages": [
+        19
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        20
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        21
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        22
+      ],
+      "kind": "invoice",
+      "source": "scan"
+    },
+    {
+      "pages": [
+        23
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        24
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        25
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        26
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        27
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    },
+    {
+      "pages": [
+        28
+      ],
+      "kind": "invoice",
+      "source": "adjacent_gstin"
+    }
   ]
 }
