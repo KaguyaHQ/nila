@@ -74,7 +74,16 @@ defmodule Nila.Gst.Extraction.Verify do
       |> Enum.map(&{&1, data[&1]})
       |> Enum.reject(fn {_field, value} -> is_nil(value) end)
       |> Enum.map(fn {field, value} ->
-        check(:grounding, field, printed?(value, haystack), %{value: value})
+        cond do
+          printed?(value, haystack) ->
+            check(:grounding, field, true, %{value: value})
+
+          derived_total_tax?(field, value, data, haystack) ->
+            check(:grounding, field, true, %{value: value, derived_from: "cgst + sgst + igst"})
+
+          true ->
+            check(:grounding, field, false, %{value: value})
+        end
       end)
 
     identifiers =
@@ -99,6 +108,25 @@ defmodule Nila.Gst.Extraction.Verify do
 
     money ++ identifiers
   end
+
+  # Many bills print CGST and SGST and no combined figure, so a total tax that is
+  # the sum of its own printed halves is a derivation, not an invention —
+  # breeze 2026-06 pages 13 and 21 print 289.83 and 109.80 twice over and no
+  # total. Grounding exists to catch values with no support on the page, so it
+  # accepts this one narrowly: total tax only, only from components that are
+  # themselves grounded, and the derivation is recorded on the check rather than
+  # waved through. Every other printed_* field still has to be on the page —
+  # notably the taxable value, which is where the fabrication was found.
+  defp derived_total_tax?("printed_total_tax", value, data, haystack) do
+    components = ["printed_cgst", "printed_sgst", "printed_igst"]
+    present = Enum.filter(components, &is_number(data[&1]))
+
+    present != [] and
+      Enum.all?(present, &printed?(data[&1], haystack)) and
+      close?(Enum.reduce(present, 0.0, fn field, acc -> acc + num(data[field]) end), value)
+  end
+
+  defp derived_total_tax?(_field, _value, _data, _haystack), do: false
 
   @doc """
   Whether a money value is printed in the given text.

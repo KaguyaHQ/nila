@@ -162,4 +162,55 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     assert %{status: :verified} = Verify.invoice(repaired, text, repairs)
     assert %{status: :flagged} = Verify.invoice(repaired, text)
   end
+
+  describe "derived total tax" do
+    test "a total tax that is the sum of its own printed halves grounds" do
+      # breeze 2026-06 page 13: the bill prints CGST 289.83 and SGST 289.83 and
+      # no combined figure. Reporting 579.66 is a derivation from two grounded
+      # values, not an invention, and grounding exists to catch inventions.
+      halves =
+        invoice(%{
+          "printed_cgst" => 289.83,
+          "printed_sgst" => 289.83,
+          "printed_total_tax" => 579.66,
+          "printed_total_taxable" => 3220.34,
+          "printed_grand_total" => 3800.0,
+          "line_items" => [%{"taxable_value" => 3220.34, "cgst_rate" => 9.0, "sgst_rate" => 9.0}]
+        })
+
+      text = """
+      TAX INVOICE BRZ/26/020
+      GSTIN 33AAKCS8613A1ZM
+      Taxable 3,220.34  CGST 289.83  SGST 289.83
+      Grand total 3,800.00
+      """
+
+      assert %{status: :verified} = Verify.invoice(halves, text)
+    end
+
+    test "a total tax matching nothing on the page is still ungrounded" do
+      invented =
+        invoice(%{
+          "printed_cgst" => 289.83,
+          "printed_sgst" => 289.83,
+          "printed_total_tax" => 999.0
+        })
+
+      text = "Taxable 64,552.00 CGST 289.83 SGST 289.83 Grand total 76,171.36"
+
+      assert %{flags: flags} = Verify.invoice(invented, text)
+      assert Enum.any?(flags, &match?({:value_not_on_page, _}, &1))
+    end
+
+    test "the taxable value is never derivable — it is where fabrication was found" do
+      # 62,552 is what the model returned for a bill printing 64,552. No
+      # arithmetic on grounded components may excuse it.
+      fabricated =
+        invoice(%{"printed_total_taxable" => 62_552.0, "printed_grand_total" => 74_171.36})
+
+      assert %{status: :flagged, flags: flags} = Verify.invoice(fabricated, page())
+      assert [{:value_not_on_page, ungrounded}] = flags
+      assert "printed_total_taxable" in ungrounded
+    end
+  end
 end
