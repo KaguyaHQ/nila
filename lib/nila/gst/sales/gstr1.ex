@@ -720,10 +720,19 @@ defmodule Nila.Gst.Sales.Gstr1 do
     }
   end
 
+  # The HSN summary reports the code the bill prints, at the length it prints it.
+  #
+  # This used to truncate to four digits, which was fitted to one client whose
+  # filing software does that: breeze's bills print `998719` and their returns
+  # carry `9987`. Caltech's software does not, so every caltech HSN row was
+  # guaranteed to mismatch — we filed `2903` against a portal holding `29037100`.
+  # Truncating is permitted below ₹5cr turnover, never more correct, and it tells
+  # a reviewer less. A client whose CA insists on the shorter form is a per-client
+  # filing preference, not an engine rule.
   defp derive_hsn(invoices) do
     invoices
     |> Enum.flat_map(& &1["line_items"])
-    |> Enum.group_by(fn line -> {hsn4(line["hsn_sac"]), line_rate(line)} end)
+    |> Enum.group_by(fn line -> {hsn_code(line["hsn_sac"]), line_rate(line)} end)
     |> Enum.map(fn {{hsn, rate}, lines} ->
       intra_tax =
         computed_bucket_tax(Enum.filter(lines, &(tax_mode(&1) == :intrastate)), rate, :intrastate)
@@ -883,8 +892,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end
   end
 
-  defp hsn4(nil), do: nil
-  defp hsn4(hsn), do: hsn |> to_string() |> String.replace(~r/\D/, "") |> String.slice(0, 4)
+  defp hsn_code(nil), do: nil
+  defp hsn_code(hsn), do: hsn |> to_string() |> String.replace(~r/\D/, "")
 
   # Dates are parsed at the boundary, so every kind of dump carries the same
   # type downstream and a check written once covers all of them. An unparseable
