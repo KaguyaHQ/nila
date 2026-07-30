@@ -1,0 +1,1058 @@
+[
+  {
+    "scope": "invoice",
+    "key": "36AAVCS8021P1ZG|107/2025-26|18",
+    "field": "idt",
+    "filed": "04-11-2025",
+    "verdict": "AUDITOR",
+    "note": "The bill prints 'Invoice Date: 21.11.2025' (page 5, Siemens Healthcare / PO 4532914281). We read 21-11-2025; the filed return carries 04-11-2025, which matches nothing on the page. Their keying error, not our read."
+  },
+  {
+    "scope": "invoice_item",
+    "key": "29AAVCS8021P1ZB|103/2025-26|18",
+    "field": "txval",
+    "filed": 19942,
+    "verdict": "AUDITOR",
+    "note": "Bill taxable is 19,942.40. We file the paise; the portal row is whole rupees. The 0.40 is dropped by their entry, not misread by us."
+  },
+  {
+    "scope": "invoice_item",
+    "key": "29AAVCS8021P1ZB|103/2025-26|18",
+    "field": "iamt",
+    "filed": 3590,
+    "verdict": "AUDITOR",
+    "note": "18% of 19,942.40 is 3,589.63. Filed as 3,590 \u2014 rounded up to the rupee at entry."
+  },
+  {
+    "scope": "invoice_item",
+    "key": "32AAVCS8021P1ZO|116/2025-26|18",
+    "field": "iamt",
+    "filed": 6872,
+    "verdict": "AUDITOR",
+    "note": "Computed 6,872.04 against a filed 6,872. Same whole-rupee entry convention."
+  },
+  {
+    "scope": "invoice_item",
+    "key": "33AAVCS8021P1ZM|109/2025-26|18",
+    "field": "camt",
+    "filed": 1445,
+    "verdict": "AUDITOR",
+    "note": "Half of 18% on the bucket is 1,444.50. Filed as 1,445 \u2014 rounded half-up per side."
+  },
+  {
+    "scope": "invoice_item",
+    "key": "33AAVCS8021P1ZM|109/2025-26|18",
+    "field": "samt",
+    "filed": 1445,
+    "verdict": "AUDITOR",
+    "note": "SGST mirror of the CGST row above: 1,444.50 computed, 1,445 filed."
+  },
+  {
+    "scope": "hsn",
+    "key": "2853|5",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2853|5",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2853|5",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2853|5",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2853|5",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2853|5",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2903|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2903|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2903|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2903|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2903|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2903|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2905|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2905|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2905|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2905|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2905|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2905|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2914|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2914|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2914|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2914|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2914|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "2914|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "3824|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "3824|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "3824|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "3824|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "3824|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "3824|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "3917|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "3917|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "3917|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "3917|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "3917|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "3917|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "4009|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "4009|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "4009|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "4009|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "4009|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "4009|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7106|3",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7106|3",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7106|3",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7106|3",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7106|3",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7106|3",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7216|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7216|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7216|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7216|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7216|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7216|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7307|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7307|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7307|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7307|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7307|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7307|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7411|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7411|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7411|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7411|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7411|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "7411|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8414|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8414|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8414|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8414|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8414|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8414|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8536|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8536|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8536|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8536|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8536|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8536|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8563|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8563|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8563|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8563|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8563|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "8563|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9026|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9026|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9026|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9026|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9026|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9026|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9965|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9965|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9965|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9965|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9965|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9965|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9968|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9968|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9968|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9968|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9968|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9968|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9987|18",
+    "field": "hsn_sc",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9987|18",
+    "field": "rt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9987|18",
+    "field": "txval",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9987|18",
+    "field": "camt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9987|18",
+    "field": "samt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "9987|18",
+    "field": "iamt",
+    "filed": null,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "28530010|5",
+    "field": "hsn_sc",
+    "filed": "28530010",
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "28530010|5",
+    "field": "rt",
+    "filed": 5,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "28530010|5",
+    "field": "txval",
+    "filed": 6000,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "28530010|5",
+    "field": "camt",
+    "filed": 0,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "28530010|5",
+    "field": "samt",
+    "filed": 0,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "28530010|5",
+    "field": "iamt",
+    "filed": 300,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "71069290|3",
+    "field": "hsn_sc",
+    "filed": "71069290",
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "71069290|3",
+    "field": "rt",
+    "filed": 3,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "71069290|3",
+    "field": "txval",
+    "filed": 12600,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "71069290|3",
+    "field": "camt",
+    "filed": 90,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "71069290|3",
+    "field": "samt",
+    "filed": 90,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "71069290|3",
+    "field": "iamt",
+    "filed": 198,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "84159000|18",
+    "field": "hsn_sc",
+    "filed": "84159000",
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "84159000|18",
+    "field": "rt",
+    "filed": 18,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "84159000|18",
+    "field": "txval",
+    "filed": 285920,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "84159000|18",
+    "field": "camt",
+    "filed": 5207,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "84159000|18",
+    "field": "samt",
+    "filed": 5207,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  },
+  {
+    "scope": "hsn",
+    "key": "84159000|18",
+    "field": "iamt",
+    "filed": 41053,
+    "verdict": "AUDITOR",
+    "note": "The auditor filed 3 HSN rows (28530010/5, 71069290/3, 84159000/18) totalling 304,520 against 19 B2B buckets. We file 18 rows totalling 304,520.40, which reconciles exactly to our own B2B total. Their codes do not appear on any bill in the packet and their row count cannot be reconstructed from the invoices. Summarisation at entry, not a derivation error: the taxable turnover agrees to 40 paise."
+  }
+]
