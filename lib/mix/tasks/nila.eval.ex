@@ -8,17 +8,23 @@ defmodule Mix.Tasks.Nila.Eval do
 
       mix nila.eval bridge                    # reproduce pre-lift baselines
       mix nila.eval bridge --header production # same, with the production header
-      mix nila.eval report <client> <period>  # score a month, write run artifacts
-      mix nila.eval report --all
+      mix nila.eval extract <name>            # run the production extractor, cache it
+      mix nila.eval score <name>              # score a cached extraction
+      mix nila.eval score --all
+      mix nila.eval report <client> <period>  # score archived Llama artifacts
 
   `bridge` is the faithfulness control: it re-scores the archived page artifacts
   and asserts the numbers the retired script produced. Run it under both headers
   — `filed` proves the lift into `lib/` changed nothing, `production` proves the
   header swap is score-neutral.
 
-  `report` scores a month and writes `fields.jsonl` + `report.md` under
-  `tmp/eval/runs/<run_id>/`. Until the Mistral sweep lands it reads the archived
-  page artifacts, so the instrument is usable before a single API call.
+  `extract` calls the provider once per window and writes a new attempt under
+  `tmp/eval/extractions/`; attempts are never overwritten. `score` replays the
+  newest attempt through mapping, merging, normalizing, deriving and diffing —
+  all of which run at score time, so re-scoring after a rule change costs no API
+  calls.
+
+  `report` is the pre-sweep path over the archived Llama artifacts.
   """
 
   use Mix.Task
@@ -34,10 +40,66 @@ defmodule Mix.Tasks.Nila.Eval do
 
     case positional do
       ["bridge"] -> bridge(opts)
+      ["extract", name] -> extract(name)
+      ["score", name] -> score_months([name])
+      ["score"] -> score_all(opts)
       ["report", client, period] -> report_months([{client, period}])
       ["report"] -> report_all(opts)
       [] -> Mix.shell().info(@moduledoc)
       other -> Mix.raise("unknown command #{inspect(Enum.join(other, " "))}")
+    end
+  end
+
+  defp extract(name) do
+    Mix.shell().info("extracting #{name}")
+
+    report = fn
+      {:plan, count} ->
+        Mix.shell().info("  #{count} window(s)")
+
+      {:window, window, done, total} ->
+        Mix.shell().info("  #{done}/#{total}  #{inspect(window)}")
+    end
+
+    case Nila.Eval.Extraction.run(name, on_window: report) do
+      {:ok, dir} -> Mix.shell().info("\ncached → #{dir}")
+      {:error, reason} -> Mix.raise("extraction failed: #{inspect(reason, limit: 8)}")
+    end
+  end
+
+  defp score_all(opts) do
+    opts[:all] || Mix.raise("mix nila.eval score needs <name>, or --all for every month")
+    score_months(Eval.evaluable())
+  end
+
+  defp score_months(names) do
+    run_id = Eval.run_id()
+    Mix.shell().info("run #{run_id}\n")
+
+    Enum.each(names, fn name ->
+      case Eval.score(name, run_id) do
+        {:ok, month} ->
+          Mix.shell().info("  #{String.pad_trailing(name, 26)} #{summary(month)}")
+          warn_unaccounted(month)
+
+        {:error, reason} ->
+          Mix.shell().error("  #{String.pad_trailing(name, 26)} #{inspect(reason, limit: 6)}")
+      end
+    end)
+  end
+
+  defp summary(month) do
+    "#{month.raw["score"]}%  #{length(month.mismatches)} mismatches across " <>
+      "#{length(month.by_invoice)} invoices  → #{month.report_path}"
+  end
+
+  # A page no artifact claimed is the failure windowing exists to make loud, so
+  # it is said out loud here too rather than only in the run record.
+  defp warn_unaccounted(month) do
+    case month.provenance["unaccounted_pages"] do
+      [] -> :ok
+      nil -> :ok
+      pages -> Mix.shell().error("        unaccounted pages: #{inspect(pages)}")
     end
   end
 

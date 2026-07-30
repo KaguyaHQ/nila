@@ -330,7 +330,23 @@ defmodule Nila.Gst.Extraction.Windowed do
   # Merge: reassemble the packet, then account for every page
   # ---------------------------------------------------------------------------
 
-  defp assemble(window_results, page_count) do
+  @doc """
+  Reassembles one packet from per-window provider results.
+
+  `window_results` are `%{window: Range.t() | :whole_document, result: provider_result}`
+  in document order; `page_count` is the document's page count, or `:unknown`
+  when `pdfinfo` could not read it. Returns the extractor contract plus
+  `:unaccounted_pages` — every physical page not claimed by some artifact.
+
+  Public because it is pure and expensive to reach otherwise: every merge rule
+  that decides which of two overlapping reads of the same invoice survives
+  (`dedupe/1`, `echo_clusters/1`, `collapse/1`, `interior?/3`) lives behind it,
+  and reaching them through `extract/3` costs a live provider call. `Nila.Eval`
+  re-runs this over cached response bodies for the same reason: nothing pure is
+  ever cached, so a change to any merge rule is visible in the next score
+  without re-reading a single page.
+  """
+  def assemble(window_results, page_count) do
     covered_pages = ledger_page_count(window_results, page_count)
 
     artifacts =

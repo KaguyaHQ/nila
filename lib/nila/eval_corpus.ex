@@ -255,7 +255,8 @@ defmodule Nila.EvalCorpus do
     )
   end
 
-  defp document!(name) do
+  @doc "Manifest entry for a corpus document, by name."
+  def document!(name) do
     Enum.find(documents(), &(&1["name"] == name)) ||
       raise ArgumentError,
             "unknown corpus document #{inspect(name)} — see bench/corpus.json (mix nila.eval_corpus status)"

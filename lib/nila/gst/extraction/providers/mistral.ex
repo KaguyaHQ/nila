@@ -257,6 +257,25 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
     |> maybe_put_pages(pages)
   end
 
+  @doc """
+  The literals this provider sends, hashed — model, prompt, and schema.
+
+  An extraction cache keyed on the document alone would serve a stale read after
+  a prompt edit; keyed on a hand-bumped `@version` it would serve one after the
+  edit somebody forgot to bump. So the cache key is derived from the request
+  itself. Deliberately not a hash of the module: an unrelated edit to a private
+  helper would invalidate every cached extraction in the corpus.
+  """
+  def fingerprint(kind) when kind in [:purchase, :sales] do
+    %{
+      model: @model,
+      prompt: sha256(annotation_prompt(kind)),
+      schema: kind |> annotation_schema() |> Jason.encode!() |> sha256()
+    }
+  end
+
+  defp sha256(value), do: :crypto.hash(:sha256, value) |> Base.encode16(case: :lower)
+
   def map_response(kind, response, page_numbers \\ nil)
 
   def map_response(kind, %{body: body} = response, page_numbers) when is_binary(body) do
@@ -292,6 +311,25 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
 
       _ ->
         {:error, :no_invoices_extracted, audit}
+    end
+  end
+
+  @doc """
+  The provider call without the response mapping: `{:ok, %{status, headers, body}}`.
+
+  `extract/3` is this plus `map_response/3`. They are separable because the
+  mapping is pure and the call is not — `Nila.Eval` caches the response bytes and
+  re-runs the mapping on every score, so a change to how a response is
+  interpreted is never hidden behind a cache hit.
+  """
+  def request_raw(kind, bytes, opts \\ []) when kind in [:purchase, :sales] do
+    filename = Keyword.get(opts, :filename, default_filename(kind))
+    content_type = Keyword.get(opts, :content_type, content_type(filename))
+
+    if content_type in @supported_content_types do
+      request(kind, bytes, content_type, Keyword.get(opts, :pages), Keyword.get(opts, :document))
+    else
+      {:error, {:unsupported_content_type, content_type}}
     end
   end
 
