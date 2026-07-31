@@ -2,8 +2,7 @@
 
 The single design reference: brand, product principles, and the **moonlight**
 visual system. Read this before editing `.heex` or components. It complements
-`AGENTS.md` (Elixir/Phoenix rules). Layout architecture (shell, cockpits) lives
-in [`layout.md`](./layout.md).
+`AGENTS.md` (Elixir/Phoenix rules).
 
 ## Brand
 
@@ -96,6 +95,18 @@ and an editorial serif over a light sans. No purple.
 - **HEEx / Phoenix LiveView 1.1** — markup in `lib/nila_web`.
 
 There is **no dark mode** — light only.
+
+### Layout
+
+`Layouts.app/1` owns the product shell: desktop rail, mobile header fallback,
+page header, and responsive outer gutters. Product pages compose inside it and
+never recreate that chrome or add a second page gutter. `Layouts.settings/1`
+adds the settings navigation within the same shell.
+
+Shared components own their internal geometry; LiveViews and domain components
+own screen-specific composition. Prefer the existing table, card, fold, modal,
+and page-header primitives over inventing a generic cockpit abstraction.
+Structural rhythm and density are defined under [Spacing](#spacing).
 
 ### Color
 

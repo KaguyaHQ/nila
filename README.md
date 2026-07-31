@@ -43,7 +43,7 @@ through one workings projection so nothing drifts.
 ## Local setup
 
 ```bash
-docker compose up -d postgres
+# dev.exs requires local PostgreSQL on localhost:5432.
 mix setup
 mix phx.server
 ```

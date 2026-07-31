@@ -23,7 +23,7 @@ a new artifact type, or is it just a form?" Build the loop.
 ## Commands
 
 ```bash
-docker compose up -d postgres
+# dev.exs requires local PostgreSQL on localhost:5432.
 mix setup
 mix phx.server
 mix test

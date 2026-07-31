@@ -100,8 +100,8 @@ trigger workflow steps and audited state transitions.
 ## Web layer
 
 - `lib/nila_web/` — controllers, LiveViews, components.
-- `Layouts.app/1` hosts the global shell (left rail, page header) per
-  `docs/design/layout.md`.
+- `Layouts.app/1` owns the global shell, responsive gutters, left rail, and
+  page header; `Layouts.settings/1` adds settings navigation within that shell.
 - `NilaWeb.Gst.MonthLive` (`/gst/:client_id/:period`) is the product surface: the
   client-month workbench — a state strip (who the month waits on), the GSTR-1
   section (invoices, issues, review/sign-off/filed arc), the purchase register
@@ -115,6 +115,5 @@ trigger workflow steps and audited state transitions.
 
 - `decisions.md` — system-level decisions (Postgres, Oban, monolith, the
   R2 storage adapter design).
-- `design/DESIGN.md` — brand, principles, and the moonlight system;
-  `design/layout.md` — shell and cockpit layout.
+- `design/DESIGN.md` — brand, layout contracts, principles, and the moonlight system.
 - `prd.md` — product intent: why/who, the GST wedge, goals and non-goals.
