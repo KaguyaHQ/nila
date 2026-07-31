@@ -50,7 +50,7 @@ defmodule NilaWeb.Components.List do
         @active &&
           "bg-primary/10 border-l-primary border-primary/30 shadow-moon-lg text-primary -translate-y-px",
         !@active &&
-          "bg-base-100 border-base-300 border-l-base-300 hover:bg-base-200 hover:border-l-primary/40 hover:border-primary/30 hover:text-base-content text-base-content/75",
+          "bg-base-100 border-base-300 border-l-base-300 hover:bg-base-200 hover:border-l-primary/40 hover:border-primary/30 hover:text-ink text-ink-muted",
         @class
       ]}
       {@rest}

@@ -55,7 +55,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           {format_money(Register.row_tax(row), prefix: "₹")}
         </:col>
         <:col :let={row} label="Outcome">
-          <span class="text-base-content/60">{settled_outcome(row)}</span>
+          <span class="text-ink-subtle">{settled_outcome(row)}</span>
         </:col>
       </.data_table>
     </.fold>
@@ -84,7 +84,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       open={MapSet.member?(@open_folds, "month-register")}
     >
       <:summary>
-        <.icon name="hero-table-cells" class="text-base-content/40 size-4 shrink-0" />
+        <.icon name="hero-table-cells" class="text-ink-faint size-4 shrink-0" />
         <span class="flex-1">
           All {@stats.invoices} {if @stats.invoices == 1, do: "invoice", else: "invoices"}, the full register
         </span>
@@ -97,8 +97,8 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             id={"gst-document-flag-#{index}"}
             class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-2.5"
           >
-            <span class="text-base-content/60 text-fine font-medium">{issue_label(flag["code"])}</span>
-            <span class="text-base-content/70 text-small min-w-0 flex-1">{flag["reason"]}</span>
+            <span class="text-fine text-ink-subtle font-medium">{issue_label(flag["code"])}</span>
+            <span class="text-ink-muted text-small min-w-0 flex-1">{flag["reason"]}</span>
           </div>
         </div>
 
@@ -150,7 +150,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             <.icon
               :if={Register.open_row?(row)}
               name="hero-arrow-right-mini"
-              class="text-base-content/40 size-4"
+              class="text-ink-faint size-4"
             />
           </:col>
           <:empty>The register is empty for this month.</:empty>
@@ -203,7 +203,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
     if Register.open_row?(row) do
       "border-l-2 border-l-warning bg-warning/[0.04]"
     else
-      "text-base-content/70"
+      "text-ink-muted"
     end
   end
 end

@@ -37,7 +37,7 @@ defmodule NilaWeb.Components.Page do
         </h1>
         <p
           :if={@inner_block != []}
-          class="text-base-content/70 text-body max-w-2xl font-light"
+          class="text-body text-ink-muted max-w-2xl font-light"
         >
           {render_slot(@inner_block)}
         </p>
@@ -61,7 +61,7 @@ defmodule NilaWeb.Components.Page do
         <h1 class="text-h4 font-semibold">
           {render_slot(@inner_block)}
         </h1>
-        <p :if={@subtitle != []} class="text-base-content/70 text-small">
+        <p :if={@subtitle != []} class="text-ink-muted text-small">
           {render_slot(@subtitle)}
         </p>
       </div>
@@ -87,7 +87,7 @@ defmodule NilaWeb.Components.Page do
         </h1>
         <p
           :if={@inner_block != []}
-          class="text-base-content/70 text-body max-w-2xl font-light"
+          class="text-body text-ink-muted max-w-2xl font-light"
         >
           {render_slot(@inner_block)}
         </p>
@@ -118,7 +118,7 @@ defmodule NilaWeb.Components.Page do
       >
         <div>
           <h3 :if={@title} class="text-base-content text-small font-semibold">{@title}</h3>
-          <p :if={@description} class="text-base-content/70 text-small mt-1">
+          <p :if={@description} class="text-ink-muted text-small mt-1">
             {@description}
           </p>
         </div>

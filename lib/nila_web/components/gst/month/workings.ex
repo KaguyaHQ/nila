@@ -65,7 +65,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       <p
         :if={@diff && @mismatches != []}
         id="gstr1-diff-summary"
-        class="text-base-content/70 text-small flex items-center gap-2"
+        class="text-ink-muted text-small flex items-center gap-2"
       >
         <.icon name="hero-exclamation-triangle-mini" class="text-warning size-4 shrink-0" />
         {diff_summary_line(@diff, @mismatches)}
@@ -102,12 +102,12 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
             />
           </:col>
           <:col :let={row} label="GSTIN">
-            <span :if={row.kind == :node} class="text-base-content/60 font-mono">
+            <span :if={row.kind == :node} class="text-ink-subtle font-mono">
               {row.gstin || "—"}
             </span>
           </:col>
           <:col :let={row} label="Invoices" align="right">
-            <span :if={row.kind == :node} class="text-base-content/60">{row.count}</span>
+            <span :if={row.kind == :node} class="text-ink-subtle">{row.count}</span>
           </:col>
           <:col :let={row} label="Taxable" align="right">
             <.amount_cell row={row} value={row[:taxable]} />
@@ -138,7 +138,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
             <.contrib_cell :if={row.kind == :contrib} row={row} />
           </:col>
           <:col :let={row} label="Invoices" align="right">
-            <span :if={row.kind == :node} class="text-base-content/60">{row.count}</span>
+            <span :if={row.kind == :node} class="text-ink-subtle">{row.count}</span>
           </:col>
           <:col :let={row} label="Taxable" align="right">
             <.amount_cell row={row} value={row[:taxable]} />
@@ -176,12 +176,12 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
             />
           </:col>
           <:col :let={row} label="Rate" align="right">
-            <span :if={row.kind == :node} class="text-base-content/60">
+            <span :if={row.kind == :node} class="text-ink-subtle">
               {Helpers.percent(row.rate)}
             </span>
           </:col>
           <:col :let={row} label="Invoices" align="right">
-            <span :if={row.kind == :node} class="text-base-content/60">{row.count}</span>
+            <span :if={row.kind == :node} class="text-ink-subtle">{row.count}</span>
           </:col>
           <:col :let={row} label="Taxable" align="right">
             <.amount_cell row={row} value={row[:taxable]} />
@@ -289,10 +289,10 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         name="hero-exclamation-triangle-mini"
         class={[
           "size-4 shrink-0",
-          (MapSet.member?(@accepted, @target) && "text-base-content/40") || "text-warning"
+          (MapSet.member?(@accepted, @target) && "text-ink-faint") || "text-warning"
         ]}
       />
-      <span class="text-base-content/70">
+      <span class="text-ink-muted">
         {diff_claim(@row, @context)}
       </span>
       <.button
@@ -442,7 +442,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
 
   defp section_label(assigns) do
     ~H"""
-    <div class="text-base-content/60 text-label font-semibold uppercase">
+    <div class="text-ink-subtle text-label font-semibold uppercase">
       {render_slot(@inner_block)}
     </div>
     """
@@ -455,7 +455,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     <.icon
       name="hero-chevron-right-mini"
       class={[
-        "text-base-content/40 size-4 shrink-0 transition-transform",
+        "text-ink-faint size-4 shrink-0 transition-transform",
         @open && "rotate-90"
       ]}
     />
@@ -472,7 +472,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     ~H"""
     <div class="flex max-w-80 items-baseline gap-2 pl-6">
       <span class="text-primary shrink-0 font-mono">{@row.inum}</span>
-      <span :if={@row.label not in [nil, ""]} class="text-base-content/60 truncate" title={@row.label}>
+      <span :if={@row.label not in [nil, ""]} class="text-ink-subtle truncate" title={@row.label}>
         {@row.label}
       </span>
     </div>
@@ -486,7 +486,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     ~H"""
     <span
       :if={@row.kind != :diff and is_number(@value)}
-      class={if @row.kind == :node, do: "text-base-content font-medium", else: "text-base-content/70"}
+      class={if @row.kind == :node, do: "text-ink font-medium", else: "text-ink-muted"}
     >
       {Helpers.amount(@value)}
     </span>

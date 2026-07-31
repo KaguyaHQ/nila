@@ -41,7 +41,7 @@ defmodule NilaWeb.UserRegistrationLive do
             <.logo class="text-base-content h-7 w-auto" />
           </.link>
           <h1 class="text-h4 mt-8 font-semibold">Create your firm</h1>
-          <p class="text-base-content/70 text-body mt-2">
+          <p class="text-body text-ink-muted mt-2">
             Start with your firm. You can invite the team later.
           </p>
         </div>
@@ -79,7 +79,7 @@ defmodule NilaWeb.UserRegistrationLive do
           </.button>
         </.form>
 
-        <p class="text-base-content/70 text-body mt-5">
+        <p class="text-body text-ink-muted mt-5">
           Already have an account?
           <.link navigate={~p"/users/log_in"} class="text-primary font-semibold">
             Sign in

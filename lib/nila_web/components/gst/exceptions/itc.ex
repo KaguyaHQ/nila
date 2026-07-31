@@ -12,7 +12,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
       id="gst-itc-panel"
       class="border-base-300 rounded-box flex items-center justify-between border px-4 py-3"
     >
-      <span class="text-base-content/60 text-small">Claimable ITC (2B ceiling, no blocked credits)</span>
+      <span class="text-ink-muted text-small">Claimable ITC (2B ceiling, no blocked credits)</span>
       <span class="text-base-content text-body font-mono font-semibold">
         {itc_money(@itc["claimable_paise"])}
       </span>
@@ -25,8 +25,8 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
     <div id="gst-itc-panel" class="border-base-300 rounded-box border">
       <div class="border-base-300 flex items-center justify-between border-b px-4 py-3">
         <div>
-          <div class="text-base-content/60 text-label font-medium uppercase">Claimable ITC</div>
-          <div class="text-base-content/50 text-fine mt-0.5">
+          <div class="text-ink-subtle text-label font-medium uppercase">Claimable ITC</div>
+          <div class="text-fine text-ink-subtle mt-0.5">
             2B ceiling {itc_money(@itc["ceiling_paise"])} − blocked {itc_money(@itc["blocked_paise"])}
           </div>
         </div>
@@ -41,7 +41,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           id={"itc-block-#{b["block_id"]}"}
           class="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5"
         >
-          <span class="text-base-content/40 text-fine w-40 shrink-0 uppercase">
+          <span class="text-fine text-ink-subtle w-40 shrink-0 uppercase">
             {issue_label(b["code"])}{if b["section"], do: " · #{b["section"]}"}
           </span>
           <span class="text-base-content text-small min-w-0 flex-1 truncate">
@@ -50,7 +50,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           <span class={[
             "text-small w-24 text-right font-mono",
             b["state"] == "blocked" && "text-error",
-            b["state"] != "blocked" && "text-base-content/50"
+            b["state"] != "blocked" && "text-ink-subtle"
           ]}>
             −{itc_money(b["tax_paise"])}
           </span>
@@ -83,7 +83,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
             >Undo</.button>
           </span>
           <span :if={b["state"] == "allowed"} class="flex items-center gap-1.5">
-            <span class="text-base-content/50 text-fine font-medium">Credit kept</span>
+            <span class="text-fine text-ink-subtle font-medium">Credit kept</span>
             <.button
               :if={not @signed_off}
               variant="ghost"

@@ -36,7 +36,7 @@ defmodule NilaWeb.UserConfirmationLive do
             <h2 class="text-base-content text-h4 font-semibold">
               {if @current_scope.user.confirmed_at, do: "Email verified", else: "Check your inbox"}
             </h2>
-            <p class="text-base-content/60 text-body mt-1">
+            <p class="text-body text-ink-muted mt-1">
               {if @current_scope.user.confirmed_at do
                 "#{@current_scope.user.email} is verified."
               else

@@ -52,7 +52,7 @@ defmodule NilaWeb.Components.Card do
       class={["bg-base-100 border-base-300 rounded-box shadow-moon border px-4 py-3", @class]}
       {@rest}
     >
-      <div class="text-base-content/60 text-label font-medium uppercase">{@label}</div>
+      <div class="text-ink-subtle text-label font-medium uppercase">{@label}</div>
       <div
         id={@value_id}
         class={[
@@ -65,7 +65,7 @@ defmodule NilaWeb.Components.Card do
       >
         {render_slot(@inner_block)}
       </div>
-      <div :if={@caption != []} class="text-base-content/55 text-fine mt-2">
+      <div :if={@caption != []} class="text-fine text-ink-subtle mt-2">
         {render_slot(@caption)}
       </div>
     </div>

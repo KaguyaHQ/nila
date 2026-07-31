@@ -78,13 +78,13 @@ defmodule NilaWeb.ClientsLive do
           <:col :let={client} label="Type">{client.type}</:col>
           <:col :let={client} label="Latest month">
             <span :if={client.month}>{period_label(client.month.period)}</span>
-            <span :if={!client.month} class="text-base-content/45">no months yet</span>
+            <span :if={!client.month} class="text-ink-subtle">no months yet</span>
           </:col>
           <:col :let={client} label="Status">
             <.badge :if={client.month} variant={state_variant(client.month.state)}>
               {month_state_label(client.month.state)}
             </.badge>
-            <span :if={!client.month} class="text-base-content/45">—</span>
+            <span :if={!client.month} class="text-ink-faint">—</span>
           </:col>
           <:col :let={client} label="Needs a decision" align="right">
             <.badge :if={client.need_decision && client.need_decision > 0} variant="warning">
@@ -92,7 +92,7 @@ defmodule NilaWeb.ClientsLive do
             </.badge>
             <span
               :if={!client.need_decision || client.need_decision == 0}
-              class="text-base-content/45"
+              class="text-ink-faint"
             >
               —
             </span>
@@ -101,7 +101,7 @@ defmodule NilaWeb.ClientsLive do
             <.link
               navigate={~p"/clients/#{client.id}/edit"}
               id={"client-edit-#{client.id}"}
-              class="hover:text-base-content text-base-content/60 text-fine"
+              class="hover:text-ink text-fine text-ink-subtle"
               onclick="event.stopPropagation()"
             >
               Edit

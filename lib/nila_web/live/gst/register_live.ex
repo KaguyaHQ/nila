@@ -43,7 +43,7 @@ defmodule NilaWeb.Gst.RegisterLive do
 
         <.card :if={@grid.periods == []} id="register-empty" class="py-10 text-center">
           <div class="mx-auto max-w-md space-y-4">
-            <p class="text-base-content/70 text-body font-light">
+            <p class="text-body text-ink-muted font-light">
               No GST months yet — bring in a client's documents and this view fills itself.
             </p>
             <.button navigate={~p"/gst/upload"} id="register-bring-documents">
@@ -62,7 +62,7 @@ defmodule NilaWeb.Gst.RegisterLive do
         >
           <table id="register-table" class="text-small min-w-full border-separate border-spacing-0">
             <thead>
-              <tr class="bg-base-200/80 text-base-content/60 text-label uppercase">
+              <tr class="bg-base-200/80 text-ink-subtle text-label uppercase">
                 <th class="bg-base-200 border-base-300 sticky left-0 z-20 min-w-52 border-b px-4 py-3 text-left font-semibold">
                   Client
                 </th>
@@ -93,7 +93,7 @@ defmodule NilaWeb.Gst.RegisterLive do
                 <td
                   :if={@grid.periods == []}
                   id={"register-cell-#{row.client_id}-none"}
-                  class="border-base-300 group-hover/register-row:bg-base-200/50 text-base-content/35 border-b p-4 text-center transition"
+                  class="border-base-300 group-hover/register-row:bg-base-200/50 text-ink-faint border-b p-4 text-center transition"
                 >
                   —
                 </td>
@@ -119,7 +119,7 @@ defmodule NilaWeb.Gst.RegisterLive do
                       <.badge :if={cell.state == :open} variant="neutral">open</.badge>
                     </.link>
                   <% else %>
-                    <span class="text-base-content/35">—</span>
+                    <span class="text-ink-faint">—</span>
                   <% end %>
                 </td>
               </tr>

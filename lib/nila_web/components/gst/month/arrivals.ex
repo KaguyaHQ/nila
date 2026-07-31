@@ -31,7 +31,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
       open={MapSet.member?(@open_folds, "month-paper-trail")}
     >
       <:summary>
-        <.icon name="hero-inbox-arrow-down" class="text-base-content/40 size-4 shrink-0" />
+        <.icon name="hero-inbox-arrow-down" class="text-ink-faint size-4 shrink-0" />
         <span class="flex-1">{trail_line(assigns)}</span>
       </:summary>
 
@@ -46,8 +46,8 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
               :if={dump.status in ~w(received extracting)}
               class="loading loading-spinner loading-xs text-moon"
             ></span>
-            <span class="text-base-content/60 text-fine font-medium">{dump_kind_title(dump.kind)}</span>
-            <span class="text-base-content/70 text-small min-w-0 flex-1">
+            <span class="text-fine text-ink-subtle font-medium">{dump_kind_title(dump.kind)}</span>
+            <span class="text-ink-muted text-small min-w-0 flex-1">
               <%= cond do %>
                 <% dump.status in ~w(received extracting) -> %>
                   Extracting. The month reworks itself when it lands.
@@ -98,7 +98,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
           <div
             :for={dump <- @dumps}
             id={"month-arrived-#{dump.id}"}
-            class="text-base-content/70 text-small flex flex-wrap items-center gap-x-2 gap-y-1"
+            class="text-ink-muted text-small flex flex-wrap items-center gap-x-2 gap-y-1"
           >
             <span class={
               (MapSet.member?(@superseded_2b_ids, dump.id) or dump.status == "discarded") &&
@@ -114,7 +114,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
             <span
               :if={answer_line(dump)}
               id={"month-arrived-answer-#{dump.id}"}
-              class="text-base-content/70 text-small"
+              class="text-ink-muted text-small"
             >
               {answer_line(dump)}
             </span>

@@ -187,7 +187,7 @@ defmodule NilaWeb.Components.Input do
           aria-label="Show password"
           aria-controls={@id}
           aria-pressed="false"
-          class="focus:ring-primary/40 hover:text-base-content rounded-r-field text-base-content/55 absolute inset-y-0 right-0 z-10 inline-flex w-11 items-center justify-center transition focus:ring-2 focus:outline-none"
+          class="focus:ring-primary/40 hover:text-ink rounded-r-field text-ink-subtle absolute inset-y-0 right-0 z-10 inline-flex w-11 items-center justify-center transition focus:ring-2 focus:outline-none"
           phx-hook=".PasswordVisibility"
           data-password-input={@id}
         >
@@ -257,7 +257,7 @@ defmodule NilaWeb.Components.Input do
             the explicit value arg of render_change/render_submit (the sanctioned path
             for hook-set hidden fields), since the masking hook can't run server-side. --%>
       <input type="hidden" name={@name} value={@iso} data-date-value />
-      <p :if={@hint && @errors == []} class="text-base-content/50 text-fine mt-1">{@hint}</p>
+      <p :if={@hint && @errors == []} class="text-fine text-ink-subtle mt-1">{@hint}</p>
       <.error :for={msg <- @errors}>{msg}</.error>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".DateField">
         export default {
@@ -332,7 +332,7 @@ defmodule NilaWeb.Components.Input do
           {@rest}
         />
       </label>
-      <p :if={@hint && @errors == []} class="text-base-content/50 text-fine mt-1">{@hint}</p>
+      <p :if={@hint && @errors == []} class="text-fine text-ink-subtle mt-1">{@hint}</p>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """

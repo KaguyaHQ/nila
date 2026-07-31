@@ -91,7 +91,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
           <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h3 class="text-base-content text-body font-semibold">Add Gmail account</h3>
-              <p class="text-base-content/70 text-small mt-1">
+              <p class="text-ink-muted text-small mt-1">
                 Name the inbox before starting OAuth.
               </p>
             </div>
@@ -125,7 +125,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
           <div class="flex flex-col gap-4">
             <div>
               <h3 class="text-base-content text-body font-semibold">Add Microsoft 365 mailbox</h3>
-              <p class="text-base-content/70 text-small mt-1">
+              <p class="text-ink-muted text-small mt-1">
                 Nila sends from a shared mailbox once the firm's Microsoft admin approves.
                 Restrict the app to this mailbox in Exchange, or it can send as any mailbox
                 in the tenant.
@@ -174,7 +174,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
         <.settings_panel title="Connected accounts" class="overflow-hidden" body_class="-mx-5 -mb-5">
           <div id="settings-connection-list" class="divide-base-300 divide-y">
             <div :if={@connections == []} id="settings-connections-empty" class="px-5 py-8">
-              <p class="text-base-content/70 text-small">No connectors yet.</p>
+              <p class="text-ink-muted text-small">No connectors yet.</p>
             </div>
 
             <article
@@ -192,10 +192,10 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                 <h4 class="text-base-content text-small mt-2 truncate font-semibold">
                   {Connection.display_label(connection)}
                 </h4>
-                <p class="text-base-content/70 text-small mt-1 truncate">
+                <p class="text-ink-muted text-small mt-1 truncate">
                   {connection.external_account_id}
                 </p>
-                <p class="text-base-content/60 text-micro mt-2">
+                <p class="text-ink-subtle text-micro mt-2">
                   Last sync: {last_sync_label(connection.last_synced_at)}
                 </p>
                 <p :if={connection.last_error} class="text-error text-fine mt-2">

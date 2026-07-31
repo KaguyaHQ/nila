@@ -40,7 +40,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
           <.badge :if={r.deadline} variant={days_left_variant(r.deadline.days_left)}>
             {r.deadline.return} · {days_left_label(r.deadline.days_left)}
           </.badge>
-          <span :if={!r.deadline} class="text-base-content/45">filed</span>
+          <span :if={!r.deadline} class="text-ink-subtle">filed</span>
         </:col>
         <:col :let={r} label="Where it stands">
           <span
@@ -50,7 +50,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
           >
             <span class="loading loading-spinner loading-xs"></span> extracting…
           </span>
-          <span :if={section == :waiting_on_client} class="text-base-content/70 text-fine">
+          <span :if={section == :waiting_on_client} class="text-fine text-ink-muted">
             {slots_label(r.slots)}
           </span>
           <span :if={section != :waiting_on_client and work_label(r)} class="text-small">
@@ -58,7 +58,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
           </span>
           <span
             :if={section != :waiting_on_client and !work_label(r)}
-            class="text-base-content/45"
+            class="text-ink-faint"
           >
             —
           </span>
@@ -68,7 +68,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
             :if={last_ask_label(r.last_ask_at, @today)}
             type="button"
             id={"last-ask-#{r.client_id}-#{r.period}"}
-            class="hover:text-moon text-base-content/70 text-fine cursor-pointer underline decoration-dotted underline-offset-2"
+            class="hover:text-moon text-fine text-ink-muted cursor-pointer underline decoration-dotted underline-offset-2"
             phx-click={
               JS.push("open-chase-history",
                 value: %{"client-id" => to_string(r.client_id), "period" => r.period}
@@ -77,7 +77,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
           >
             {last_ask_label(r.last_ask_at, @today)}
           </button>
-          <span :if={!last_ask_label(r.last_ask_at, @today)} class="text-base-content/45">
+          <span :if={!last_ask_label(r.last_ask_at, @today)} class="text-ink-faint">
             —
           </span>
         </:col>
@@ -87,7 +87,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
               :if={r.ask_count > 0}
               type="button"
               id={"automated-chase-#{r.client_id}-#{r.period}"}
-              class="hover:text-moon text-base-content/70 text-fine cursor-pointer underline decoration-dotted underline-offset-2"
+              class="hover:text-moon text-fine text-ink-muted cursor-pointer underline decoration-dotted underline-offset-2"
               phx-click={
                 JS.push("open-chase-history",
                   value: %{"client-id" => to_string(r.client_id), "period" => r.period}
@@ -99,7 +99,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
             <span
               :if={r.ask_count == 0}
               id={"automated-chase-#{r.client_id}-#{r.period}"}
-              class="text-base-content/70 text-fine"
+              class="text-fine text-ink-muted"
             >
               {automated_ask_label(r, @today)}
             </span>
@@ -130,7 +130,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
           >
             Draft ask
           </.button>
-          <span :if={r.chase_channel == "none" and !r.draft} class="text-base-content/45">
+          <span :if={r.chase_channel == "none" and !r.draft} class="text-ink-faint">
             —
           </span>
         </:col>

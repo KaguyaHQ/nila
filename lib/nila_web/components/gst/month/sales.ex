@@ -89,7 +89,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               strings stacked is what makes a page read like a journal. So the
               detail is CSS-folded away the moment the section opens. --%>
         <span class="flex-1 truncate">
-          GSTR-1<span class="text-base-content/70 text-small font-normal group-open/fold:hidden">
+          GSTR-1<span class="text-ink-muted text-small font-normal group-open/fold:hidden">
             · {sales_summary_line(assigns)}
           </span>
         </span>
@@ -100,7 +100,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           :if={@invoices != []}
           id="gstr1-account"
           class={[
-            "text-base-content/70 text-small",
+            "text-ink-muted text-small",
             Workings.ripple_class(@rippled, @ripple_seq, "gstr1-account")
           ]}
         >
@@ -124,7 +124,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             }>
               {issue_label(issue["code"])}
             </.badge>
-            <span class="text-base-content/70 text-small line-clamp-2 min-w-0 flex-1">{issue[
+            <span class="text-ink-muted text-small line-clamp-2 min-w-0 flex-1">{issue[
               "message"
             ]}</span>
             <.button
@@ -267,7 +267,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         </span>
       </:col>
       <:col :let={invoice} label="Buyer GSTIN">
-        <span class="text-base-content/70 font-mono">{invoice["buyer_gstin"] || "—"}</span>
+        <span class="text-ink-muted font-mono">{invoice["buyer_gstin"] || "—"}</span>
       </:col>
       <:col :let={invoice} label="Taxable" align="right">
         {rupees(Gstr1.extracted_totals(invoice).taxable)}

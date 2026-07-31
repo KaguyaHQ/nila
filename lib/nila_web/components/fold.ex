@@ -27,7 +27,7 @@ defmodule NilaWeb.Components.Fold do
   attr :open, :boolean, default: false
   attr :on_toggle, :string, default: "toggle-fold"
   attr :class, :any, default: nil
-  attr :summary_class, :any, default: "text-base-content/70 text-small"
+  attr :summary_class, :any, default: "text-ink-muted text-small"
   attr :rest, :global
 
   slot :summary, required: true
@@ -38,7 +38,7 @@ defmodule NilaWeb.Components.Fold do
     <details id={@id} open={@open} class={["group/fold scroll-mt-28", @class]} {@rest}>
       <summary
         class={[
-          "hover:text-base-content flex cursor-pointer list-none items-center gap-2",
+          "hover:text-ink flex cursor-pointer list-none items-center gap-2",
           @summary_class
         ]}
         phx-click={JS.push(@on_toggle, value: %{fold: @id})}
@@ -46,7 +46,7 @@ defmodule NilaWeb.Components.Fold do
         {render_slot(@summary)}
         <.icon
           name="hero-chevron-down-mini"
-          class="text-base-content/40 size-4 shrink-0 transition-transform group-open/fold:rotate-180"
+          class="text-ink-faint size-4 shrink-0 transition-transform group-open/fold:rotate-180"
         />
       </summary>
       {render_slot(@inner_block)}

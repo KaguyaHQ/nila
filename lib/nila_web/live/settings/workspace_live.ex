@@ -111,7 +111,7 @@ defmodule NilaWeb.Settings.WorkspaceLive do
           </.settings_panel>
         <% else %>
           <.settings_panel class="p-6">
-            <p class="text-base-content/70 text-small">
+            <p class="text-ink-muted text-small">
               Create a firm before configuring its details.
             </p>
           </.settings_panel>
@@ -144,7 +144,7 @@ defmodule NilaWeb.Settings.WorkspaceLive do
   defp form_section(assigns) do
     ~H"""
     <section class="space-y-4">
-      <h4 class="text-base-content/50 text-label font-semibold uppercase">
+      <h4 class="text-ink-subtle text-label font-semibold uppercase">
         {@title}
       </h4>
       {render_slot(@inner_block)}

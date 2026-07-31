@@ -743,7 +743,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
             has to clear before reaching the one thing to do. --%>
       <div
         :if={@verdict.quiet != [] or @verdict.deadline}
-        class="text-base-content/70 text-small flex flex-wrap items-center gap-x-4 gap-y-1"
+        class="text-ink-muted text-small flex flex-wrap items-center gap-x-4 gap-y-1"
       >
         <span :for={line <- @verdict.quiet} id={"month-quiet-#{line_id(line)}"}>{line}</span>
         <span :if={@verdict.deadline} id="month-deadline" class={deadline_class(@verdict.deadline)}>
@@ -754,7 +754,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       <p
         :if={Map.get(@verdict, :busy)}
         id="month-busy"
-        class="text-base-content/70 text-small flex items-center gap-2"
+        class="text-ink-muted text-small flex items-center gap-2"
       >
         <span class="loading loading-sm loading-spinner text-moon"></span>
         This page updates itself as each pile lands.
@@ -820,7 +820,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp deadline_class(%{days_left: days}) when days < 0, do: "text-error font-medium"
   defp deadline_class(%{days_left: days}) when days <= 5, do: "text-warning font-medium"
-  defp deadline_class(_deadline), do: "text-base-content/70"
+  defp deadline_class(_deadline), do: "text-ink-muted"
 
   defp deadline_label(%{days_left: days, due: due}) when days < -30,
     do: "overdue since #{Formatters.format_display_date(due)}"

@@ -507,13 +507,13 @@ defmodule NilaWeb.Gst.ExceptionsLive do
             <span
               :if={@progress.total > 0}
               id="gst-exceptions-progress"
-              class="text-base-content/60 text-small"
+              class="text-ink-subtle text-small"
             >
               {@progress.done} of {@progress.total} resolved
             </span>
             <.link
               navigate={~p"/gst/#{@month.client_id}/#{@month.period}"}
-              class="hover:text-base-content text-base-content/60 text-small"
+              class="hover:text-ink text-ink-subtle text-small"
             >← Full register</.link>
           </div>
         </div>

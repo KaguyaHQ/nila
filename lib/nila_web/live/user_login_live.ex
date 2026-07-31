@@ -14,7 +14,7 @@ defmodule NilaWeb.UserLoginLive do
             <.logo class="text-base-content h-7 w-auto" />
           </.link>
           <h1 class="text-h4 mt-8 font-semibold">Sign in</h1>
-          <p class="text-base-content/70 text-small mt-2">Use your work email and password.</p>
+          <p class="text-ink-muted text-small mt-2">Use your work email and password.</p>
         </div>
 
         <.form for={@form} id="login-form" action={~p"/users/log_in"} class="space-y-4">
@@ -33,7 +33,7 @@ defmodule NilaWeb.UserLoginLive do
             Forgot your password?
           </.link>
 
-          <label class="text-base-content/70 text-small flex items-center gap-2">
+          <label class="text-ink-muted text-small flex items-center gap-2">
             <input type="checkbox" name="user[remember_me]" value="true" class="rounded" />
             Keep me signed in
           </label>
@@ -43,7 +43,7 @@ defmodule NilaWeb.UserLoginLive do
           </.button>
         </.form>
 
-        <p class="text-base-content/70 text-small mt-5">
+        <p class="text-ink-muted text-small mt-5">
           New to Nila?
           <.link navigate={~p"/users/sign_up"} class="text-primary font-semibold">
             Create a firm
@@ -51,7 +51,7 @@ defmodule NilaWeb.UserLoginLive do
         </p>
 
         <section :if={@users != []} class="border-base-300 mt-8 border-t pt-5">
-          <p class="text-base-content/60 text-label font-semibold uppercase">
+          <p class="text-ink-subtle text-label font-semibold uppercase">
             Quick login
           </p>
           <div class="mt-3 flex flex-wrap gap-2">
@@ -60,7 +60,7 @@ defmodule NilaWeb.UserLoginLive do
               <input type="hidden" name="email" value={user.email} />
               <button
                 type="submit"
-                class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 shadow-moon text-base-content/75 text-fine rounded-full border px-3 py-1.5 font-semibold transition"
+                class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 shadow-moon text-fine text-ink-muted rounded-full border px-3 py-1.5 font-semibold transition"
               >
                 {user.name}
               </button>

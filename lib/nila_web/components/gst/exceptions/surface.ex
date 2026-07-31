@@ -19,7 +19,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
     >
       <.icon name="hero-check-circle" class="text-success mx-auto size-10" />
       <p class="text-base-content text-body mt-3 font-medium">No exceptions</p>
-      <p class="text-base-content/60 text-small mt-1">
+      <p class="text-ink-muted text-small mt-1">
         The engine matched every invoice confidently — nothing needs a human decision.
       </p>
     </div>
@@ -51,7 +51,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             <span class="flex items-baseline gap-2">
               <span class={[
                 "text-small min-w-0 flex-1 truncate font-medium",
-                item.resolved && "text-base-content/50",
+                item.resolved && "text-ink-subtle",
                 not item.resolved && "text-base-content"
               ]}>
                 {item.vendor}
@@ -61,13 +61,13 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
                 id={"queue-tax-#{item.id}"}
                 class={[
                   "text-fine shrink-0 font-mono",
-                  (item.resolved && "text-base-content/40") || "text-base-content/70"
+                  (item.resolved && "text-ink-subtle") || "text-ink-muted"
                 ]}
               >
                 {format_money(item.tax_paise, prefix: "₹")}
               </span>
             </span>
-            <span class="text-base-content/50 text-fine truncate">
+            <span class="text-fine text-ink-subtle truncate">
               {if item.resolved,
                 do: item.outcome,
                 else: "#{item.invoice_number || "no invoice no"} · #{short_type(item.type)}"}
@@ -95,7 +95,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
 
   def detail(%{selected: nil} = assigns) do
     ~H"""
-    <p class="text-base-content/60 text-small">Select an exception from the queue.</p>
+    <p class="text-ink-muted text-small">Select an exception from the queue.</p>
     """
   end
 
@@ -109,7 +109,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             {format_money(@selected.tax_paise, prefix: "₹")} tax at stake
           </span>
         </h3>
-        <p class="text-base-content/70 text-small mt-1">{@selected.reason}</p>
+        <p class="text-ink-muted text-small mt-1">{@selected.reason}</p>
         <p :if={asked_label(@selected.asked_at)} class="text-fine text-moon mt-1 font-medium">
           {asked_label(@selected.asked_at)}
         </p>
@@ -287,16 +287,16 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       class="border-base-300 divide-base-300 rounded-box divide-y border"
     >
       <div class="grid grid-cols-[6rem_1fr_1.5rem_1fr] items-center gap-2 px-3 py-2">
-        <span class="text-base-content/50 text-fine">Candidate {@index}</span>
-        <span class="text-base-content/60 text-label font-medium uppercase">Your books</span>
+        <span class="text-fine text-ink-subtle">Candidate {@index}</span>
+        <span class="text-ink-subtle text-label font-medium uppercase">Your books</span>
         <span></span>
-        <span class="text-base-content/60 text-label font-medium uppercase">GSTR-2B</span>
+        <span class="text-ink-subtle text-label font-medium uppercase">GSTR-2B</span>
       </div>
       <div
         :for={{label, bv, gv, agree?} <- @diff}
         class="grid grid-cols-[6rem_1fr_1.5rem_1fr] items-center gap-2 px-3 py-2"
       >
-        <span class="text-base-content/50 text-fine uppercase">{label}</span>
+        <span class="text-fine text-ink-subtle uppercase">{label}</span>
         <span class="text-base-content text-small font-mono">{fmt(bv)}</span>
         <span class="flex justify-center">
           <.icon :if={agree?} name="hero-check-mini" class="text-success size-4" />
@@ -337,11 +337,11 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
 
     ~H"""
     <div id="gst-exception-gstr2b" class="border-base-300 divide-base-300 rounded-box divide-y border">
-      <div class="text-base-content/60 text-label px-3 py-2 font-medium uppercase">
+      <div class="text-ink-subtle text-label px-3 py-2 font-medium uppercase">
         Reported in GSTR-2B
       </div>
       <div :for={{label, value} <- @fields} class="flex items-center gap-4 px-3 py-2">
-        <span class="text-base-content/50 text-fine w-24 uppercase">{label}</span>
+        <span class="text-fine text-ink-subtle w-24 uppercase">{label}</span>
         <span class="text-base-content text-small font-mono">{fmt(value)}</span>
       </div>
     </div>

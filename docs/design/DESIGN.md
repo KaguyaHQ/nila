@@ -118,13 +118,26 @@ The palette is teal-blue, **no purple** — night over water. Chroma is kept low
 on purpose; calm reads as desaturated. The warm sand is the one deliberate
 warmth held inside the cool — reserve it for a genuine accent, never decoration.
 
-**Four ink levels, one rule each — no others.** `base-content` for values,
-headings and anything a decision is made on. `/70` for all secondary prose (the
-last level that passes AA at body sizes). `/60` for uppercase labels only —
-tracking and caps do the work opacity can't. `/40` for non-text only: chevrons,
-fold icons, hairlines. `/45`, `/50`, `/55`, `/75`, `/80` are not levels; a page
-using eight opacities is expressing distinctions no reader can see, and the
-hierarchy it wanted belongs to size and weight.
+#### Ink scale
+
+Four named utilities define text emphasis. They use the same alpha-over-base
+mechanism as Tailwind's color opacity modifiers, preserving how ink composites
+on tinted surfaces.
+
+| Utility | Alpha | Role |
+| --- | --- | --- |
+| `text-ink` | 100% | Primary content: headings, table numbers, and anything read as the data. Usually inherited; use it to re-assert full ink inside a muted parent. |
+| `text-ink-muted` | 70% | Supporting prose: full sentences, account lines, and descriptions. This is the floor for sentences. |
+| `text-ink-subtle` | 60% | Labels and metadata: column headers, fold summaries, eyebrows, timestamps, and field labels. Short strings, not prose. |
+| `text-ink-faint` | 40% | Non-text glyphs only: chevrons, decorative icons, disabled affordances, and placeholder-grade marks. Never words. |
+
+**Sentences live at `text-ink` or `text-ink-muted`.** `text-ink-subtle` may
+label; it may not narrate. **`text-ink-faint` never carries words.** If a word
+wants to be faint, it is either subtle or it should not be on the screen.
+
+Raw `text-base-content/NN` is banned. A new emphasis level requires editing the
+scale in `app.css` and this reference, not typing a number. Variant prefixes
+compose as usual: `hover:text-ink`, `group-open:text-ink-subtle`, and so on.
 
 **Dimming.** An overlay that keeps its page readable underneath uses
 `base-content` at low opacity (`<.modal>`: `/40`). One that replaces the page to

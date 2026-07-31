@@ -415,7 +415,7 @@ defmodule NilaWeb.Gst.UploadLive do
                   prompt="Select a client"
                   options={@clients}
                 />
-                <p class="text-base-content/60 text-fine mt-1">
+                <p class="text-fine text-ink-muted mt-1">
                   Client not listed?
                   <.link
                     navigate={~p"/clients/new"}
@@ -463,7 +463,7 @@ defmodule NilaWeb.Gst.UploadLive do
             <p class="text-base-content text-h4 truncate font-semibold">
               {client_name(@clients, @pending.client_id) || "This client"}
             </p>
-            <p class="text-base-content/60 text-fine shrink-0">{period_label(@pending.period)}</p>
+            <p class="text-fine text-ink-subtle shrink-0">{period_label(@pending.period)}</p>
           </div>
 
           <div
@@ -543,7 +543,7 @@ defmodule NilaWeb.Gst.UploadLive do
                 value={progress_value(job.progress)}
                 max={progress_max(job.progress)}
               ></progress>
-              <p class="text-base-content/60 text-fine tabular-nums">
+              <p class="text-fine text-ink-subtle tabular-nums">
                 {progress_caption(job.progress)}
               </p>
               <p :if={job.retrying} class="text-fine text-warning">
@@ -552,7 +552,7 @@ defmodule NilaWeb.Gst.UploadLive do
             </div>
           </div>
 
-          <p :if={working?(@jobs)} class="text-base-content/60 text-small">
+          <p :if={working?(@jobs)} class="text-ink-muted text-small">
             You can leave this open — each pile lands on the month as it finishes.
           </p>
 

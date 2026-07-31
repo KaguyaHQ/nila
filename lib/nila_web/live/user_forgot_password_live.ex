@@ -32,7 +32,7 @@ defmodule NilaWeb.UserForgotPasswordLive do
             <.logo class="text-base-content h-7 w-auto" />
           </.link>
           <h1 class="text-h4 mt-8 font-semibold">Reset your password</h1>
-          <p class="text-base-content/70 text-body mt-2">
+          <p class="text-body text-ink-muted mt-2">
             Enter your work email and we'll send reset instructions if the account exists.
           </p>
         </div>

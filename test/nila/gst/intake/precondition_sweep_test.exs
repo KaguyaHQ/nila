@@ -267,6 +267,71 @@ defmodule Nila.Gst.Intake.PreconditionSweepTest do
     assert Register.stats(month(context, "2026-04").summary).invoices == 4
   end
 
+  # An answer covers the questions that were put to the reviewer, not every
+  # question anyone will ever write. Otherwise the dumps a human touched — the
+  # load-bearing ones — become the only dumps no later check can reach.
+  test "a dump kept for one question is still asked a later one", context do
+    bills = april_bills(4)
+
+    kept = bring_in(context, "2026-06", bills)
+    assert :ok = run(kept)
+
+    # The only question that existed that day.
+    assert reload(context, kept).meta["precondition"]["kinds"] == ["period_mismatch"]
+
+    {:ok, kept} =
+      Preconditions.keep(reload(context, kept), "Availing these credits in June", context.user.id)
+
+    assert :ok = run(kept)
+    assert reload(context, kept).status == "extracted"
+
+    # A second copy of the same bills lands in April, and nobody vets it.
+    twin = bring_in(context, "2026-04", bills)
+    assert :ok = run(twin)
+    _twin = as_if_never_asked(context, twin)
+
+    assert %{flagged: flagged} = PreconditionSweep.run(context.org.id)
+    assert kept.id in flagged
+
+    kept = reload(context, kept)
+    assert kept.status == "needs_confirmation"
+    assert kept.meta["precondition"]["kind"] == "cross_month_duplicate"
+
+    # The dates answer still stands. Only the question nobody asked is asked.
+    assert kept.meta["precondition"]["kinds"] == ["cross_month_duplicate"]
+    assert kept.meta["precondition_answer"]["reason"] == "Availing these credits in June"
+  end
+
+  # The fallback for an answer recorded before kinds were. Re-asking a dump
+  # whose answer cannot be scoped would re-open a settled question rather than
+  # close a gap, so silence stays wholesale where that is all we know.
+  test "a keep answer with no recorded kinds still silences everything", context do
+    bills = april_bills(4)
+
+    kept = bring_in(context, "2026-06", bills)
+    assert :ok = run(kept)
+
+    {:ok, kept} =
+      Preconditions.keep(reload(context, kept), "Availing these credits in June", context.user.id)
+
+    {:ok, kept} =
+      kept
+      |> Dump.changeset(%{
+        meta: update_in(kept.meta, ["precondition_answer"], &Map.delete(&1, "kinds"))
+      })
+      |> Repo.update()
+
+    assert :ok = run(kept)
+
+    twin = bring_in(context, "2026-04", bills)
+    assert :ok = run(twin)
+    _twin = as_if_never_asked(context, twin)
+
+    assert %{flagged: flagged} = PreconditionSweep.run(context.org.id)
+    refute kept.id in flagged
+    assert reload(context, kept).status == "extracted"
+  end
+
   test "both halves of a duplicate pair land in question, each month rebuilt once", context do
     bills = april_bills(4)
 

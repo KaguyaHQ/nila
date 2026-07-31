@@ -39,6 +39,12 @@ defmodule Nila.Gst.Intake.Preconditions do
       packet dropped in the purchase slot — and it reports what was observed
       ("14 bills, 8 2B entries, nothing matched"), never a cause it cannot know.
 
+  An answer is scoped to the kinds it was given to (`answered_kinds/1`), not to
+  the dump. A reviewer who explained why April's credits are availed in June
+  answered the dates question; a duplicate check shipping the week after was
+  never in front of them, and reading their answer as covering it would exempt
+  the dumps a human touched from every check written afterwards.
+
   Both packet checks read the dump's own extracted invoices, so they cost the
   extraction they follow. That is worth saying out loud: we pay for the read,
   then refuse to build a month on it. The alternative — asking before reading —
@@ -97,7 +103,7 @@ defmodule Nila.Gst.Intake.Preconditions do
   # rather than being waved through, and the test that walks `Dump.kinds/0`
   # catches it before a worker ever does.
   def check(%Dump{kind: kind} = dump) when kind in ~w(purchase sales gstr2b filed_gstr1) do
-    if answered?(dump), do: nil, else: findings(dump)
+    if answered_kinds(dump) == :all, do: nil, else: findings(dump)
   end
 
   defp findings(%Dump{kind: "gstr2b"} = dump),
@@ -125,7 +131,9 @@ defmodule Nila.Gst.Intake.Preconditions do
   end
 
   defp merge(findings, dump, invoices) do
-    case Enum.filter(findings, & &1) do
+    answered = answered(dump)
+
+    case findings |> Enum.filter(& &1) |> Enum.reject(&(&1["kind"] in answered)) do
       [] ->
         nil
 
@@ -325,12 +333,32 @@ defmodule Nila.Gst.Intake.Preconditions do
     })
   end
 
-  # A dump the reviewer already answered is not asked again — that is the whole
-  # difference between a question and a nag. A "move" is deliberately not an
-  # answer to the destination's question: the packet lands there like any other
-  # arrival, and if it is wrong there too it says so.
-  defp answered?(%Dump{} = dump) do
-    match?(%{"answer" => "keep"}, Dumps.precondition_answer(dump))
+  # A question the reviewer already answered is not asked again — that is the
+  # whole difference between a question and a nag. It is scoped to the kinds
+  # that were actually put to them, which is what the answer records: a reviewer
+  # who explained why April's credits are availed in June answered *that*, and
+  # a duplicate check shipping the following week was never in front of them.
+  # Silencing it too would exempt exactly the dumps a human touched from every
+  # check written afterwards — the same "vetted under rules that no longer
+  # exist" hole `Nila.Gst.Intake.PreconditionSweep` exists to close, and
+  # `settled?/2` below has always read `kinds` this way.
+  #
+  # `:all` is the honest reading of an answer recorded before kinds were, and of
+  # a "move" — see `move/3`, where the packet lands at its destination as an
+  # ordinary arrival and is asked everything again.
+  defp answered_kinds(%Dump{} = dump) do
+    case Dumps.precondition_answer(dump) do
+      %{"answer" => "keep", "kinds" => kinds} when is_list(kinds) -> kinds
+      %{"answer" => "keep"} -> :all
+      _unanswered -> []
+    end
+  end
+
+  defp answered(%Dump{} = dump) do
+    case answered_kinds(dump) do
+      :all -> @kinds
+      kinds -> kinds
+    end
   end
 
   # The pairing question belongs to the month, not to the arrival that happened

@@ -60,7 +60,7 @@ defmodule NilaWeb.UserResetPasswordLive do
 
         <div :if={@user} id="reset-password-valid">
           <h1 class="text-h4 font-semibold">Choose a new password</h1>
-          <p class="text-base-content/70 text-body mt-2">
+          <p class="text-body text-ink-muted mt-2">
             Use at least 8 characters. You'll sign in again after the reset.
           </p>
 
@@ -92,12 +92,12 @@ defmodule NilaWeb.UserResetPasswordLive do
 
         <div :if={is_nil(@user)} id="reset-password-invalid">
           <h1 class="text-h4 font-semibold">This reset link is no longer valid</h1>
-          <p class="text-base-content/70 text-body mt-2">
+          <p class="text-body text-ink-muted mt-2">
             It may have expired or already been used. Request a fresh reset link.
           </p>
           <.link
             navigate={~p"/users/reset_password"}
-            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-base-content/75 text-small mt-6 inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
+            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-ink-muted text-small mt-6 inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
           >
             Request a new link
           </.link>

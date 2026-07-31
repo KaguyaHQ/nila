@@ -106,11 +106,11 @@ defmodule NilaWeb.Layouts do
               <div class="flex items-center justify-between gap-4">
                 <nav
                   aria-label="Breadcrumb"
-                  class="text-base-content/60 text-small flex min-w-0 items-center gap-1.5"
+                  class="text-ink-subtle text-small flex min-w-0 items-center gap-1.5"
                 >
-                  <span class="text-base-content/75 font-medium">Nila</span>
-                  <span :if={@page_title} class="text-base-content/30">/</span>
-                  <span :if={@page_title} class="text-base-content truncate font-medium">
+                  <span class="text-ink-muted font-medium">Nila</span>
+                  <span :if={@page_title} class="text-ink-faint opacity-75">/</span>
+                  <span :if={@page_title} class="text-ink truncate font-medium">
                     {@page_title}
                   </span>
                 </nav>
@@ -162,7 +162,7 @@ defmodule NilaWeb.Layouts do
             aria-label="Settings sections"
           >
             <div class="flex gap-2 lg:flex-col">
-              <span class="text-base-content/40 text-label hidden px-3 pb-1 font-semibold uppercase lg:block">
+              <span class="text-ink-subtle text-label hidden px-3 pb-1 font-semibold uppercase lg:block">
                 Account
               </span>
               <.settings_link
@@ -182,7 +182,7 @@ defmodule NilaWeb.Layouts do
               :if={Nila.Accounts.Policy.can?(@current_scope, :manage_settings)}
               class="flex gap-2 lg:mt-5 lg:flex-col"
             >
-              <span class="text-base-content/40 text-label hidden px-3 pb-1 font-semibold uppercase lg:block">
+              <span class="text-ink-subtle text-label hidden px-3 pb-1 font-semibold uppercase lg:block">
                 Firm
               </span>
               <.settings_link
@@ -274,7 +274,7 @@ defmodule NilaWeb.Layouts do
         "rounded-field text-small flex h-10 shrink-0 items-center gap-3 px-3 transition",
         if(@active,
           do: "bg-primary/15 text-primary font-semibold",
-          else: "hover:bg-base-200 hover:text-base-content text-base-content/65 font-medium"
+          else: "hover:bg-base-200 hover:text-ink text-ink-subtle font-medium"
         )
       ]}
       aria-current={if(@active, do: "page", else: nil)}
@@ -327,11 +327,11 @@ defmodule NilaWeb.Layouts do
       <summary
         :if={@placement == :header}
         id={"#{@id_prefix}-account-trigger"}
-        class="bg-base-200 focus:ring-primary/20 hover:bg-base-300 hover:text-base-content rounded-field text-base-content/75 text-small flex h-9 min-w-0 cursor-pointer list-none items-center gap-2 px-2.5 transition focus:ring-2 focus:outline-none [&::-webkit-details-marker]:hidden"
+        class="bg-base-200 focus:ring-primary/20 hover:bg-base-300 hover:text-ink rounded-field text-ink-muted text-small flex h-9 min-w-0 cursor-pointer list-none items-center gap-2 px-2.5 transition focus:ring-2 focus:outline-none [&::-webkit-details-marker]:hidden"
         aria-label="Open account menu"
         title={@current_scope.user.name}
       >
-        <span class="bg-base-100 text-base-content/70 text-micro grid size-6 shrink-0 place-items-center rounded-full font-semibold">
+        <span class="bg-base-100 text-ink-muted text-micro grid size-6 shrink-0 place-items-center rounded-full font-semibold">
           {user_initials(@current_scope.user)}
         </span>
         <span class="hidden max-w-36 truncate font-medium sm:block">
@@ -339,7 +339,7 @@ defmodule NilaWeb.Layouts do
         </span>
         <.icon
           name="hero-chevron-down"
-          class="text-base-content/45 size-4 transition group-open/account:rotate-180"
+          class="text-ink-faint size-4 transition group-open/account:rotate-180"
         />
       </summary>
 
@@ -351,9 +351,9 @@ defmodule NilaWeb.Layouts do
         <.link
           navigate={~p"/settings/profile"}
           id={"#{@id_prefix}-settings-link"}
-          class="focus:ring-primary/20 hover:bg-base-200 hover:text-base-content rounded-field text-base-content/70 text-small flex h-10 items-center gap-2.5 px-2.5 font-medium transition focus:ring-2 focus:outline-none"
+          class="focus:ring-primary/20 hover:bg-base-200 hover:text-ink rounded-field text-ink-muted text-small flex h-10 items-center gap-2.5 px-2.5 font-medium transition focus:ring-2 focus:outline-none"
         >
-          <.icon name="hero-cog-6-tooth" class="text-base-content/55 size-4" />
+          <.icon name="hero-cog-6-tooth" class="text-ink-subtle size-4" />
           <span>Settings</span>
         </.link>
 
@@ -363,7 +363,7 @@ defmodule NilaWeb.Layouts do
           href={~p"/users/log_out"}
           method="delete"
           id={"#{@id_prefix}-sign-out-link"}
-          class="focus:ring-error/20 hover:bg-error/10 hover:text-error rounded-field text-base-content/70 text-small flex h-10 items-center gap-2.5 px-2.5 font-medium transition focus:ring-2 focus:outline-none"
+          class="focus:ring-error/20 hover:bg-error/10 hover:text-error rounded-field text-ink-muted text-small flex h-10 items-center gap-2.5 px-2.5 font-medium transition focus:ring-2 focus:outline-none"
         >
           <.icon name="hero-arrow-right-start-on-rectangle" class="size-4" />
           <span>Sign out</span>

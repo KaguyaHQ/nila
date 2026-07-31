@@ -52,7 +52,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         >
           <:extra_step>
             <li class="text-small flex flex-wrap items-center gap-2">
-              <span class="text-base-content/70 font-mono">1.</span>
+              <span class="text-ink-muted font-mono">1.</span>
               <span class="text-base-content flex-1">Download the portal JSON</span>
               <.button
                 id="gstr1-guide-download-json"
@@ -87,7 +87,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
       <.fold :if={@gstr3b} id="month-3b" open={MapSet.member?(@open_folds, "month-3b")}>
         <:summary>
-          <.icon name="hero-document-text" class="text-base-content/40 size-4 shrink-0" />
+          <.icon name="hero-document-text" class="text-ink-faint size-4 shrink-0" />
           <span class="flex-1">The assembled GSTR-3B</span>
         </:summary>
         <.gstr3b_panel gstr3b={@gstr3b} />
@@ -116,14 +116,14 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     <p
       :if={is_nil(@signoff) and @blocked_reason}
       id={@blocked_id}
-      class="text-base-content/70 text-small"
+      class="text-ink-muted text-small"
     >
       {@return} signature waits: {@blocked_reason}
     </p>
 
     <p
       :if={is_nil(@signoff) and is_nil(@blocked_reason)}
-      class="text-base-content/70 text-small"
+      class="text-ink-muted text-small"
     >
       {@return} is ready for a signature.
     </p>
@@ -155,7 +155,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       <ol :if={is_nil(@month.filed_at)} class="space-y-2 pl-7">
         {render_slot(@extra_step)}
         <li class="text-small flex items-center gap-2">
-          <span class="text-base-content/70 font-mono">{if @extra_step != [], do: "2.", else: "1."}</span>
+          <span class="text-ink-muted font-mono">{if @extra_step != [], do: "2.", else: "1."}</span>
           <span class="text-base-content flex-1">File it at gst.gov.in</span>
           <a
             href="https://www.gst.gov.in/"
@@ -172,7 +172,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             phx-submit={@filed_event}
             class="text-small flex flex-wrap items-center gap-2"
           >
-            <span class="text-base-content/70 font-mono">{if @extra_step != [], do: "3.", else: "2."}</span>
+            <span class="text-ink-muted font-mono">{if @extra_step != [], do: "3.", else: "2."}</span>
             <span class="text-base-content flex-1">Paste the ARN here</span>
             <.input
               type="text"
@@ -221,13 +221,13 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     ~H"""
     <div id="gst-3b-panel" class="border-base-300 rounded-box mt-3 border">
       <div class="border-base-300 flex items-center justify-between border-b px-4 py-3">
-        <div class="text-base-content/70 text-small">
+        <div class="text-ink-muted text-small">
           {if liability_missing?(@gstr3b),
             do: "ITC side assembled. Outward liability needs the month's sales bills.",
             else: "Assembled from the worked sales month and the 2B reconciliation."}
         </div>
         <div :if={!liability_missing?(@gstr3b)} class="text-right">
-          <div class="text-base-content/60 text-label font-semibold uppercase">Cash payable</div>
+          <div class="text-ink-subtle text-label font-semibold uppercase">Cash payable</div>
           <%!-- The only figure in the whole flow that leaves the client's bank
                 account, so it is set as a figure — display face, tabular — not
                 as body text in a third typeface. --%>
@@ -242,23 +242,23 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
       <div class="grid gap-x-6 gap-y-2 px-4 py-3 sm:grid-cols-2">
         <div :if={!liability_missing?(@gstr3b)} class="space-y-1.5">
-          <div class="text-base-content/60 text-label font-semibold uppercase">
+          <div class="text-ink-subtle text-label font-semibold uppercase">
             3.1 Outward liability
           </div>
           <.gstr3b_line label="(a) Taxable supplies" heads={@gstr3b["liability_31"]["a"]} />
           <.gstr3b_line label="(d) Reverse charge" heads={@gstr3b["liability_31"]["d"]} />
         </div>
         <div :if={liability_missing?(@gstr3b)} class="space-y-1.5">
-          <div class="text-base-content/60 text-label font-semibold uppercase">
+          <div class="text-ink-subtle text-label font-semibold uppercase">
             3.1 Outward liability
           </div>
-          <p class="text-base-content/70 text-small">
+          <p class="text-ink-muted text-small">
             No worked sales month for this period yet. Upload the sales bills to derive the GSTR-1 and complete the return.
           </p>
           <.gstr3b_line label="(d) Reverse charge" heads={@gstr3b["liability_31"]["d"]} />
         </div>
         <div class="space-y-1.5">
-          <div class="text-base-content/60 text-label font-semibold uppercase">4. Eligible ITC</div>
+          <div class="text-ink-subtle text-label font-semibold uppercase">4. Eligible ITC</div>
           <.gstr3b_line label="A(3) Reverse charge credit" heads={@gstr3b["itc"]["rcm_4a3"]} />
           <.gstr3b_line label="A(5) All other ITC" heads={@gstr3b["itc"]["all_other_itc_4a5"]} />
           <.gstr3b_line label="B Reversed (confirmed blocks)" heads={sum_4b(@gstr3b["itc"])} negative />
@@ -279,14 +279,14 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     <div class="flex items-baseline justify-between gap-3">
       <span class={[
         "text-small",
-        (@strong && "text-base-content font-medium") || "text-base-content/70"
+        (@strong && "text-ink font-medium") || "text-ink-muted"
       ]}>
         {@label}
       </span>
       <span class={[
         "text-small font-mono",
         @negative && "text-error",
-        !@negative && ((@strong && "text-base-content font-semibold") || "text-base-content/70")
+        !@negative && ((@strong && "text-ink font-semibold") || "text-ink-muted")
       ]}>
         {if @negative, do: "−"}{money_paise(heads_total(@heads))}
       </span>

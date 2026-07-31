@@ -253,6 +253,24 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Ink scale — the four text-emphasis levels. Sentences live at ink or
+   ink-muted; subtle labels, never narrates; faint never carries words.
+   Raw text-base-content/NN is banned app-wide: a new level means editing
+   this scale, not typing a number. Same alpha-over-base mechanism as
+   text-base-content/NN, so these composite identically on tinted surfaces. */
+@utility text-ink {
+  color: var(--color-base-content);
+}
+@utility text-ink-muted {
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+}
+@utility text-ink-subtle {
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+@utility text-ink-faint {
+  color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+}
+
 /* ── Ledger (marketing identity) ──────────────────────────────────────
    The public pages are set as a leaf from an account book: warm paper, true
    ink, feint blue ruling, and the double red margin rule. These tokens exist
@@ -281,6 +299,12 @@ body {
   --color-ink: oklch(23% 0.045 233);
   --color-feint: oklch(89.5% 0.02 233);
   --color-redink: oklch(50% 0.17 22);
+}
+
+/* The ledger already owns `text-ink`; scope base content to its paper shell so
+   the product ink utility preserves the ledger's darker, pixel-identical ink. */
+.bg-paper {
+  --color-base-content: var(--color-ink);
 }
 
 /* Moonlight ground: a pale cool sea-blue wash with a soft pool of light up top,

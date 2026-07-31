@@ -158,14 +158,14 @@ defmodule NilaWeb.Settings.UsersLive do
               {member.user.name}
               <span
                 :if={member.user_id == @current_scope.user.id}
-                class="text-base-content/50 text-fine ml-1 font-normal"
+                class="text-fine text-ink-subtle ml-1 font-normal"
               >
                 (you)
               </span>
             </span>
           </:col>
           <:col :let={member} label="Email">
-            <span class="text-base-content/70">{member.user.email}</span>
+            <span class="text-ink-muted">{member.user.email}</span>
           </:col>
           <:col :let={member} label="Role">
             <form
@@ -188,7 +188,7 @@ defmodule NilaWeb.Settings.UsersLive do
                   {label}
                 </option>
               </select>
-              <span class="text-base-content/50 text-fine max-w-56">
+              <span class="text-fine text-ink-muted max-w-56">
                 {Policy.role_description(member.role)}
               </span>
             </form>
@@ -213,7 +213,7 @@ defmodule NilaWeb.Settings.UsersLive do
                 type="button"
                 phx-click="toggle_active"
                 phx-value-user_id={member.user_id}
-                class="hover:text-base-content text-base-content/70 text-fine font-semibold transition"
+                class="hover:text-ink text-fine text-ink-muted font-semibold transition"
               >
                 {if member.user.active, do: "Disable", else: "Enable"}
               </button>
@@ -239,7 +239,7 @@ defmodule NilaWeb.Settings.UsersLive do
             label="Role"
             options={Policy.assignable_roles()}
           />
-          <p class="text-base-content/60 text-fine">
+          <p class="text-fine text-ink-muted">
             They'll get an email with a link to set a password and join. Owners and
             admins manage the firm; operators run the day-to-day work and approvals;
             viewers can only read and export.

@@ -40,7 +40,7 @@ defmodule NilaWeb.UserInviteLive do
 
         <div :if={@user} id="invite-accept">
           <h1 class="text-h4 font-semibold">Welcome, {@user.name}</h1>
-          <p class="text-base-content/70 text-body mt-2">
+          <p class="text-body text-ink-muted mt-2">
             Set a password to join the firm and sign in.
           </p>
 
@@ -73,13 +73,13 @@ defmodule NilaWeb.UserInviteLive do
 
         <div :if={is_nil(@user)} id="invite-invalid">
           <h1 class="text-h4 font-semibold">This invite link is no longer valid</h1>
-          <p class="text-base-content/70 text-body mt-2">
+          <p class="text-body text-ink-muted mt-2">
             It may have expired or already been used. Ask an owner to send a fresh
             invitation.
           </p>
           <.link
             navigate={~p"/users/log_in"}
-            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-base-content/75 text-small mt-6 inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
+            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-ink-muted text-small mt-6 inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
           >
             Go to sign in
           </.link>

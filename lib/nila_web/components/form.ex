@@ -92,11 +92,11 @@ defmodule NilaWeb.Components.Form do
           "border border-dashed px-4 py-8 text-center transition-colors"
         ]}
       >
-        <.icon name="hero-arrow-up-tray" class="text-base-content/40 size-6" />
-        <span class="text-base-content/80 text-small">
+        <.icon name="hero-arrow-up-tray" class="text-ink-faint size-6" />
+        <span class="text-ink-muted text-small">
           <span class="text-primary font-semibold">Choose a file</span> or drag it here
         </span>
-        <span :if={@hint} class="text-base-content/50 text-fine">{@hint}</span>
+        <span :if={@hint} class="text-fine text-ink-muted">{@hint}</span>
       </label>
 
       <div
@@ -106,14 +106,14 @@ defmodule NilaWeb.Components.Form do
         <.icon name="hero-document" class="text-primary size-5 shrink-0" />
         <div class="min-w-0 flex-1">
           <p class="text-base-content text-small truncate font-medium">{entry.client_name}</p>
-          <p class="text-base-content/55 text-fine">{humanize_bytes(entry.client_size)}</p>
+          <p class="text-fine text-ink-subtle">{humanize_bytes(entry.client_size)}</p>
         </div>
         <button
           type="button"
           phx-click={@on_cancel}
           phx-value-ref={entry.ref}
           aria-label={"Remove #{entry.client_name}"}
-          class="hover:bg-error/10 hover:text-error rounded-field text-base-content/50 p-1 transition-colors"
+          class="hover:bg-error/10 hover:text-error rounded-field text-ink-subtle p-1 transition-colors"
         >
           <.icon name="hero-x-mark" class="size-5" />
         </button>

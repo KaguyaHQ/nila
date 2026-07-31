@@ -48,7 +48,7 @@ defmodule NilaWeb.Components.Modal do
           <button
             type="button"
             phx-click={@on_close}
-            class="hover:bg-base-200 hover:text-base-content rounded-field text-base-content/60 p-1 transition"
+            class="hover:bg-base-200 hover:text-ink rounded-field text-ink-subtle p-1 transition"
           >
             <.icon name="hero-x-mark" class="size-4" />
           </button>

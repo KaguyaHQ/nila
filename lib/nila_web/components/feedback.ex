@@ -19,7 +19,7 @@ defmodule NilaWeb.Components.Feedback do
           "grid size-6 shrink-0 place-items-center rounded-full border",
           state == :done && "bg-success border-success text-success-content",
           state == :active && "border-base-content/40 text-base-content",
-          state == :pending && "border-base-content/20 text-base-content/40"
+          state == :pending && "border-base-content/20 text-ink-faint"
         ]}>
           <.icon :if={state == :done} name="hero-check" class="size-4" />
           <.icon :if={state == :active} name="hero-arrow-path" class="size-4 animate-spin" />
@@ -27,7 +27,7 @@ defmodule NilaWeb.Components.Feedback do
         </span>
         <span class={[
           "font-medium",
-          state == :pending && "text-base-content/40",
+          state == :pending && "text-ink-subtle",
           state != :pending && "text-base-content"
         ]}>
           {label}
@@ -87,11 +87,11 @@ defmodule NilaWeb.Components.Feedback do
   defp stage_marker_class(:current),
     do: "border-primary bg-primary/10 text-primary ring-2 ring-primary/20"
 
-  defp stage_marker_class(_upcoming), do: "border-base-300 bg-base-100 text-base-content/40"
+  defp stage_marker_class(_upcoming), do: "border-base-300 bg-base-100 text-ink-subtle"
 
-  defp stage_label_class(:done), do: "text-base-content/70"
+  defp stage_label_class(:done), do: "text-ink-muted"
   defp stage_label_class(:current), do: "font-semibold text-base-content"
-  defp stage_label_class(_upcoming), do: "text-base-content/40"
+  defp stage_label_class(_upcoming), do: "text-ink-subtle"
 
   @doc """
   Renders a muted placeholder for a value that is genuinely absent (a quiet
@@ -104,7 +104,7 @@ defmodule NilaWeb.Components.Feedback do
   """
   def empty_cell(assigns \\ %{}) do
     ~H"""
-    <span class="text-base-content/30">-</span>
+    <span class="text-ink-faint opacity-75">-</span>
     """
   end
 end

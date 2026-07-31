@@ -43,7 +43,7 @@ defmodule NilaWeb.Components.Evidence do
     ~H"""
     <div id={@id} class="space-y-2">
       <div class="flex items-baseline justify-between gap-2">
-        <span class="text-base-content/60 text-label font-medium uppercase">{@label}</span>
+        <span class="text-ink-subtle text-label font-medium uppercase">{@label}</span>
         <.page_nav
           :if={@count > 1}
           id={"#{@id}-nav"}
@@ -65,7 +65,7 @@ defmodule NilaWeb.Components.Evidence do
         <span class="absolute inset-0 flex items-center justify-center">
           <.icon
             name="hero-document-text"
-            class="text-base-content/15 size-8 motion-safe:animate-pulse"
+            class="text-ink-faint size-8 opacity-37.5 motion-safe:animate-pulse"
           />
         </span>
         <img
@@ -76,7 +76,7 @@ defmodule NilaWeb.Components.Evidence do
         />
       </button>
 
-      <p class="text-base-content/50 text-micro">Click to read it full screen.</p>
+      <p class="text-ink-muted text-micro">Click to read it full screen.</p>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".EvidenceFrame">
         export default {
@@ -213,13 +213,13 @@ defmodule NilaWeb.Components.Evidence do
   def evidence_unavailable(assigns) do
     ~H"""
     <div id={@id} class="space-y-2">
-      <span class="text-base-content/60 text-label font-medium uppercase">{@label}</span>
+      <span class="text-ink-subtle text-label font-medium uppercase">{@label}</span>
       <div class="border-base-300 rounded-box space-y-3 border border-dashed p-4">
         <p class="text-base-content text-small flex items-start gap-2 font-medium">
           <.icon name="hero-exclamation-triangle" class="text-warning mt-0.5 size-4 shrink-0" />
           <span>The pages of this bill couldn't be rendered.</span>
         </p>
-        <p class="text-base-content/70 text-small">
+        <p class="text-ink-muted text-small">
           {@source} was read, so the numbers are here — but there's no scanned copy to check
           them against. Open the original before you decide this one.
         </p>
@@ -273,10 +273,10 @@ defmodule NilaWeb.Components.Evidence do
   end
 
   defp nav_tone("dark"), do: "text-base-100/60 hover:text-base-100"
-  defp nav_tone("light"), do: "text-base-content/60 hover:text-base-content"
+  defp nav_tone("light"), do: "text-ink-subtle hover:text-ink"
 
   defp count_tone("dark"), do: "text-base-100/60"
-  defp count_tone("light"), do: "text-base-content/50"
+  defp count_tone("light"), do: "text-ink-subtle"
 
   defp page_alt(label, _page, 1), do: label
   defp page_alt(label, page, count), do: "#{label}, page #{page + 1} of #{count}"
