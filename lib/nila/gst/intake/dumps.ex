@@ -297,6 +297,30 @@ defmodule Nila.Gst.Intake.Dumps do
     |> Repo.update!()
   end
 
+  @doc """
+  The question stopped standing on its own — derivable again, with no answer
+  recorded, because nobody answered it.
+
+  A precondition is a claim about the world around the dump, not about the dump:
+  `cross_month_duplicate` names a sibling, and once that sibling is moved,
+  discarded, or itself put in question, the finding outlives its reason. Nothing
+  re-reads it, so a re-check is the only thing that can retire it — and a
+  re-check that derived the month while leaving the dump questioned would build
+  the month from everything *except* the packet whose question had just been
+  dropped.
+
+  Distinct from `confirm_kept/2` on purpose: that one records a human saying
+  "it belongs here anyway", which is what a signature stands on. Writing an
+  answer here would forge one.
+  """
+  def clear_precondition(%Dump{status: "needs_confirmation"} = dump) do
+    dump
+    |> Dump.changeset(%{status: "extracted", meta: Map.delete(meta(dump), "precondition")})
+    |> Repo.update!()
+  end
+
+  def clear_precondition(%Dump{} = dump), do: dump
+
   @doc "Answered: the packet belongs here after all. Derivable again."
   def confirm_kept(%Dump{} = dump, answer),
     do:

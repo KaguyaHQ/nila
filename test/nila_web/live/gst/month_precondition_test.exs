@@ -58,6 +58,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
       "modal_period" => "2026-04",
       "outside_periods" => ["2026-01", "2026-02", "2026-03", "2026-04"],
       "duplicate_of" => %{"period" => "2026-04", "count" => 14},
+      "severity" => "error",
       "period" => @period
     }
   end
@@ -119,6 +120,66 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
            )
 
     refute has_element?(view, "#month-headline.text-error")
+  end
+
+  test "a duplicate of a filed month says what it cost, in alarm", context do
+    _dump = in_question(context)
+
+    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+
+    assert has_element?(
+             view,
+             "#month-headline",
+             "Apr 2026 is filed, so those are already declared."
+           )
+
+    assert has_element?(view, "#month-headline.text-error")
+  end
+
+  # The grade the old flat error got wrong: two unfiled drafts holding the same
+  # packet is a question about which one is misplaced, and red is a claim about
+  # a consequence that has not happened.
+  test "a duplicate of an unfiled month asks instead of scolding", context do
+    _dump =
+      in_question(context, %{
+        "kind" => "cross_month_duplicate",
+        "kinds" => ["cross_month_duplicate"],
+        "total" => 14,
+        "duplicate_of" => %{"period" => "2026-04", "count" => 14},
+        "severity" => "question",
+        "period" => @period
+      })
+
+    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+
+    assert has_element?(
+             view,
+             "#month-headline",
+             "Apr 2026 is not filed, so nothing has been declared twice yet"
+           )
+
+    assert has_element?(view, "#month-headline", "one of the two copies is in the wrong month")
+    refute has_element?(view, "#month-headline.text-error")
+  end
+
+  # A finding written before the grade was derived knows nothing about the other
+  # month, so the headline says nothing about it either.
+  test "a finding with no severity keeps the red and invents no reason", context do
+    _dump =
+      in_question(context, %{
+        "kind" => "cross_month_duplicate",
+        "kinds" => ["cross_month_duplicate"],
+        "total" => 14,
+        "duplicate_of" => %{"period" => "2026-04", "count" => 14},
+        "period" => @period
+      })
+
+    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+
+    assert has_element?(view, "#month-headline", "already in Apr 2026")
+    assert has_element?(view, "#month-headline.text-error")
+    refute render(view) =~ "is filed, so those are already declared"
+    refute render(view) =~ "is not filed"
   end
 
   test "choosing an answer reveals what that answer needs, and only then a door", context do

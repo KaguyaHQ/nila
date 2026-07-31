@@ -177,7 +177,7 @@ defmodule Nila.Gst.Intake.PreconditionsTest do
   # b. The same bill in two months — the error
   # ---------------------------------------------------------------------------
 
-  test "a packet already booked in April is an error, whatever its dates", context do
+  test "a packet already booked in April is caught, whatever its dates", context do
     bills = april_bills(4)
 
     assert :ok = run(bring_in(context, "2026-04", bills))
@@ -193,6 +193,29 @@ defmodule Nila.Gst.Intake.PreconditionsTest do
     finding = resent.meta["precondition"]
     assert finding["kind"] == "cross_month_duplicate"
     assert finding["duplicate_of"] == %{"period" => "2026-04", "count" => 4}
+
+    # April is worked, not filed. Nothing has been declared twice, so the packet
+    # is asked which month it belongs to — not told it broke the law.
+    assert finding["severity"] == "question"
+  end
+
+  test "the same packet against a filed month is an error", context do
+    bills = april_bills(4)
+
+    assert :ok = run(bring_in(context, "2026-04", bills))
+    {:ok, april} = ClientMonths.get_by_period(context.org.id, context.client.id, "2026-04")
+    {:ok, _signoff} = Signoffs.sign_off(april, context.scope)
+    {:ok, _filed} = Signoffs.mark_filed(april, context.scope)
+
+    resent = bring_in(context, "2026-05", bills)
+    assert :ok = run(resent)
+
+    finding = reload(context, resent).meta["precondition"]
+    assert finding["kind"] == "cross_month_duplicate"
+
+    # The credit went out on a return. This is the reading that makes the grade
+    # true, and it is the only one that does.
+    assert finding["severity"] == "error"
   end
 
   test "the same bill number under another client is not a duplicate", context do

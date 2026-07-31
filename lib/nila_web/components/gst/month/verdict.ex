@@ -271,19 +271,30 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   #
   # Tone follows severity, not volume. Dates outside the period are a question —
   # availing an April credit in June is legal and late bills are ordinary — so
-  # the copy states what it saw and never scolds. The same invoice in two months
-  # is an error, and only that turns the headline red.
+  # the copy states what it saw and never scolds. A duplicate turns the headline
+  # red only when the finding graded itself an error, which
+  # `Nila.Gst.Intake.Preconditions` does only when the other month is filed: two
+  # unfiled drafts holding the same packet is a question about which one is
+  # wrong, and red is a claim about consequence we would not be able to back.
   defp question(facts, dump) do
     finding = Dumps.precondition(dump) || %{}
 
     %{
-      tone: if(finding["kind"] == "cross_month_duplicate", do: :alarm, else: :calm),
+      tone: question_tone(finding),
       headline: question_headline(finding, facts, subject_noun(dump.kind)),
       door: nil,
       question: %{dump: dump, finding: finding},
       dump: dump
     }
   end
+
+  # Only an explicit "question" stands the alarm down. A finding recorded before
+  # severity was derived carries no key, and reading that silence as the calmer
+  # grade would quietly downgrade every duplicate already on the board.
+  defp question_tone(%{"kind" => "cross_month_duplicate"} = finding),
+    do: if(finding["severity"] == "question", do: :calm, else: :alarm)
+
+  defp question_tone(_finding), do: :calm
 
   # A packet of bills you received and a packet of invoices you raised are not
   # the same noun, and the sentence is the whole surface here. Enumerated for
@@ -322,16 +333,43 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp mismatch_sentence(_finding, _facts, _first?, _noun), do: nil
 
   defp duplicate_sentence(
-         %{"duplicate_of" => %{"period" => period, "count" => count}, "total" => total},
+         %{"duplicate_of" => %{"period" => period, "count" => count}, "total" => total} = finding,
          _facts,
          first?,
          noun
        ) do
-    "#{bill_subject(count, total, first?, noun)} #{are(count)} already in " <>
-      "#{Formatters.period_label(period)} — same invoice numbers, same dates."
+    sentence =
+      "#{bill_subject(count, total, first?, noun)} #{are(count)} already in " <>
+        "#{Formatters.period_label(period)} — same invoice numbers, same dates."
+
+    case duplicate_grade(finding, period) do
+      nil -> sentence
+      grade -> sentence <> " " <> grade
+    end
   end
 
   defp duplicate_sentence(_finding, _facts, _first?, _noun), do: nil
+
+  # What the duplicate *costs* is a different sentence from what it is, and the
+  # reviewer needs it to know whether they are fixing a filing or picking
+  # between two drafts. Neither sentence names a culprit: which of the two
+  # copies is the wrong one is precisely what is being asked.
+  #
+  # A finding recorded before severity was derived gets no grade sentence at
+  # all. It keeps the red of the old flat error — conservative, and the tone is
+  # a judgement we are allowed to hold — but "Apr 2026 is filed" is a claim
+  # about a row nobody read, and inventing it to fill the slot is how a headline
+  # stops being checkable.
+  defp duplicate_grade(%{"severity" => "question"}, period) do
+    "#{Formatters.period_label(period)} is not filed, so nothing has been declared twice yet — " <>
+      "but one of the two copies is in the wrong month."
+  end
+
+  defp duplicate_grade(%{"severity" => "error"}, period) do
+    "#{Formatters.period_label(period)} is filed, so those are already declared."
+  end
+
+  defp duplicate_grade(_finding, _period), do: nil
 
   # What was observed, never a cause the engine cannot know. The same move as
   # the unaccounted-pages ledger one layer down: the engine reporting on the

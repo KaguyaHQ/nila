@@ -73,10 +73,17 @@ defmodule Nila.Gst.Intake.DumpWorker do
   # question about whether this is the right work at all, and questions are
   # answered once — before they can turn into a pile of exceptions that are
   # each individually unanswerable.
+  #
+  # `clear_precondition/1` is a no-op on the arrival path and load-bearing on
+  # the re-check path: a questioned dump re-enqueued after its sibling moved
+  # has to *leave* `needs_confirmation` before `settle/1` runs, or derivation
+  # rebuilds the month from every effective dump except the one whose question
+  # just stopped standing — a silently emptied month, from a re-check that
+  # reported success.
   defp do_perform(dump, worker_attempt) do
     with {:ok, dump} <- extract(dump, worker_attempt) do
       case Preconditions.check(dump) do
-        nil -> settle(dump)
+        nil -> dump |> Dumps.clear_precondition() |> settle()
         finding -> ask(dump, finding)
       end
     end
@@ -130,24 +137,53 @@ defmodule Nila.Gst.Intake.DumpWorker do
     :ok
   end
 
-  defp lock_month(%Dump{kind: kind} = dump) when kind in ~w(sales filed_gstr1) do
-    Nila.Repo.one(
-      from m in SalesMonth,
-        where:
-          m.org_id == ^dump.org_id and m.client_id == ^dump.client_id and
-            m.period == ^dump.period,
-        lock: "FOR UPDATE"
-    )
+  # Re-derives this dump's month from whatever is *currently* effective, without
+  # touching the dump's own status.
+  #
+  # `settle/1` is the arrival path: it decides what the dump becomes. This is the
+  # departure path — a dump that just left the effective set (questioned by
+  # `Nila.Gst.Intake.PreconditionSweep`) leaves a month still holding its
+  # invoices, and that month has to be rebuilt from the remainder. The dump is
+  # passed only for the `(org, client, period, kind)` it names; its own invoices
+  # are excluded by `Dumps.effective/4` the moment its status leaves `extracted`.
+  #
+  # Same lock and same wall as `settle/1`: a month whose side is signed or filed
+  # is reported, never rebuilt behind the signature.
+  @doc false
+  def rederive(%Dump{} = dump) do
+    Nila.Repo.transact(fn ->
+      case wall_status(dump, lock_month(dump)) do
+        :open ->
+          derive(dump)
+          {:ok, :derived}
+
+        walled ->
+          {:ok, walled}
+      end
+    end)
   end
 
-  defp lock_month(%Dump{} = dump) do
-    Nila.Repo.one(
-      from m in PurchaseMonth,
-        where:
-          m.org_id == ^dump.org_id and m.client_id == ^dump.client_id and
-            m.period == ^dump.period,
-        lock: "FOR UPDATE"
-    )
+  # Whether this dump's month is open, `:held` behind a live signature, or
+  # `:after_filing`. Read without a lock — a caller deciding whether it is even
+  # worth opening a transaction, not one about to write.
+  @doc false
+  def wall_state(%Dump{} = dump), do: wall_status(dump, Nila.Repo.one(month_query(dump)))
+
+  defp lock_month(%Dump{} = dump),
+    do: Nila.Repo.one(from m in month_query(dump), lock: "FOR UPDATE")
+
+  defp month_query(%Dump{kind: kind} = dump) when kind in ~w(sales filed_gstr1) do
+    from m in SalesMonth,
+      where:
+        m.org_id == ^dump.org_id and m.client_id == ^dump.client_id and
+          m.period == ^dump.period
+  end
+
+  defp month_query(%Dump{} = dump) do
+    from m in PurchaseMonth,
+      where:
+        m.org_id == ^dump.org_id and m.client_id == ^dump.client_id and
+          m.period == ^dump.period
   end
 
   # ---------------------------------------------------------------------------

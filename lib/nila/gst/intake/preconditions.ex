@@ -20,11 +20,17 @@ defmodule Nila.Gst.Intake.Preconditions do
       bills are ordinary. The threshold (more than half the packet, and at least
       three bills) exists so one straggler from last month never trips it.
     * `cross_month_duplicate` — invoices already booked in another month of the
-      same client, same number, same date. An **error**: the same invoice in two
-      months double-claims the credit, and no reading of the law makes that
-      fine. Keyed with `Nila.Fuzzy.normalize/1`, the same normalization
-      `Purchase.Flags` uses within a packet, and scoped to the client — two
-      clients legitimately hold the same vendor's bill number.
+      same client, same number, same date. Keyed with `Nila.Fuzzy.normalize/1`,
+      the same normalization `Purchase.Flags` uses within a packet, and scoped
+      to the client — two clients legitimately hold the same vendor's bill
+      number. Its severity is **derived, not assumed** (`"severity"` on the
+      finding). The old grade was a flat error, on the reasoning that the same
+      invoice in two months double-claims the credit — but that is only true
+      once the other month has been *filed*. Against an unfiled draft nothing
+      has been claimed and nothing is wrong yet; two drafts hold the same
+      packet and one of them is in the wrong place, which is a **question** of
+      exactly the same kind as `period_mismatch`. Against a filed month it is
+      an **error**, and no reading of the law makes that fine.
     * `zero_overlap` — books side non-empty, 2B side non-empty, matched count
       exactly zero. Deliberately threshold-free: a match *rate* is a constant
       that has to be recalibrated as the corpus grows, while two populated sets
@@ -79,8 +85,13 @@ defmodule Nila.Gst.Intake.Preconditions do
         "modal_period" => "2026-04",
         "outside_periods" => ["2026-01", "2026-02", "2026-03", "2026-04"],
         "duplicate_of" => %{"period" => "2026-04", "count" => 14},
+        "severity" => "error",
         "observed" => %{"books" => 14, "gstr2b" => 8, "matched" => 0}
       }
+
+  `"severity"` is written only by `cross_month_duplicate`, the one check whose
+  grade is not a property of its own kind. A finding without the key predates
+  the derivation and is read as the error it was recorded as.
   """
   # Every kind in `Dump.kinds/0`, listed on purpose. A fourth kind raises here
   # rather than being waved through, and the test that walks `Dump.kinds/0`
@@ -195,11 +206,26 @@ defmodule Nila.Gst.Intake.Preconditions do
         [{period, count} | _rest] ->
           %{
             "kind" => "cross_month_duplicate",
-            "duplicate_of" => %{"period" => period, "count" => count}
+            "duplicate_of" => %{"period" => period, "count" => count},
+            "severity" => severity(dump, period)
           }
       end
     end
   end
+
+  # The grade is a fact about the *other* month, so it is read from that month
+  # rather than asserted from the shape of the match. Filed means the return
+  # went out holding these invoices; anything else — worked, reviewed, signed,
+  # not yet created — means nothing has been declared and the two copies are
+  # still both drafts.
+  defp severity(%Dump{kind: "sales"} = dump, period),
+    do: grade(SalesMonths.get_by_period(dump.org_id, dump.client_id, period))
+
+  defp severity(%Dump{} = dump, period),
+    do: grade(PurchaseMonths.get_by_period(dump.org_id, dump.client_id, period))
+
+  defp grade({:ok, %{filed_at: filed_at}}) when not is_nil(filed_at), do: "error"
+  defp grade(_unfiled), do: "question"
 
   defp invoice_keys(invoices) do
     for %{"invoice_date" => %Date{} = date} = invoice <- invoices,
