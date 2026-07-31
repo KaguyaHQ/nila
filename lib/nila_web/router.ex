@@ -50,6 +50,7 @@ defmodule NilaWeb.Router do
 
     get "/privacy", PageController, :privacy
     get "/terms", PageController, :terms
+    get "/data-deletion", PageController, :data_deletion
     get "/contact", PageController, :contact
   end
 

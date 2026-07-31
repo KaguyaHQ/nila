@@ -13,6 +13,10 @@ defmodule NilaWeb.PageController do
     render(conn, :terms)
   end
 
+  def data_deletion(conn, _params) do
+    render(conn, :data_deletion)
+  end
+
   def contact(conn, _params) do
     render(conn, :contact)
   end
