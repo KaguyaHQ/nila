@@ -15,10 +15,10 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
     <div
       :if={@queue == []}
       id="gst-exceptions-empty"
-      class="border-base-300 rounded-box border border-dashed p-12 text-center"
+      class="border-base-300 rounded-box border border-dashed px-4 py-12 text-center"
     >
       <.icon name="hero-check-circle" class="text-success mx-auto size-10" />
-      <p class="text-base-content text-body mt-3 font-medium">No exceptions</p>
+      <p class="mt-related text-base-content text-body font-medium">No exceptions</p>
       <p class="text-ink-muted text-small mt-1">
         The engine matched every invoice confidently — nothing needs a human decision.
       </p>
@@ -36,7 +36,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           phx-click="select"
           phx-value-id={item.id}
           class={[
-            "flex w-full items-start gap-2 px-3 py-2.5 text-left transition",
+            "flex w-full items-start gap-2 px-3 py-2 text-left transition",
             item.id == @selected_id && "bg-base-200",
             item.id != @selected_id && "hover:bg-base-200/50"
           ]}
@@ -47,7 +47,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             class="text-success mt-0.5 size-4 shrink-0"
           />
           <span :if={not item.resolved} class="bg-warning mt-1.5 size-2 shrink-0 rounded-full" />
-          <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span class="flex min-w-0 flex-1 flex-col gap-1">
             <span class="flex items-baseline gap-2">
               <span class={[
                 "text-small min-w-0 flex-1 truncate font-medium",
@@ -76,7 +76,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         </button>
       </div>
 
-      <div id="gst-exception-detail" class="border-base-300 rounded-box border p-5">
+      <div id="gst-exception-detail" class="border-base-300 rounded-box border p-6">
         <.detail
           selected={@selected}
           signed_off={@signed_off}
@@ -101,7 +101,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
 
   def detail(assigns) do
     ~H"""
-    <div class="space-y-5">
+    <div class="space-y-section">
       <div>
         <h3 class="text-base-content text-body flex flex-wrap items-baseline gap-x-3 font-semibold">
           <span>{@selected.invoice_number || "—"} · {@selected.vendor}</span>
@@ -120,7 +120,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       ✓/✗ column below the fold and make the reviewer scroll between the two
       things they are comparing. --%>
       <div class={[
-        "grid gap-5",
+        "gap-block grid",
         (facts?(@selected) and evidence?(@selected)) && "lg:grid-cols-[1fr_15rem]"
       ]}>
         <div :if={facts?(@selected)} class="min-w-0 space-y-3">
@@ -172,7 +172,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       <div
         :if={@selected.resolved}
         id="gst-exception-outcome"
-        class="border-base-300 flex flex-wrap items-center gap-3 border-t pt-4"
+        class="border-base-300 pt-block flex flex-wrap items-center gap-3 border-t"
       >
         <span class="text-small text-success flex items-center gap-1.5 font-medium">
           <.icon name="hero-check-circle-mini" class="size-4" /> {@selected.outcome}
@@ -190,7 +190,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
 
       <div
         :if={@selected.action == :ambiguous and not @selected.resolved and not @signed_off}
-        class="border-base-300 flex border-t pt-4"
+        class="border-base-300 pt-block flex border-t"
       >
         <.button
           id="gst-reject-all-candidates"
@@ -206,7 +206,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           @selected.kind == :books and @selected.action in [:pair, :unmatched] and
             not @selected.resolved and not @signed_off
         }
-        class="border-base-300 flex flex-wrap gap-2 border-t pt-4"
+        class="border-base-300 pt-block flex flex-wrap gap-2 border-t"
       >
         <%= if @correcting && @correcting.id == @selected.id do %>
           <.correction_form selected={@selected} />
@@ -251,7 +251,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
 
       <div
         :if={@selected.action == :gstr2b and not @selected.resolved and not @signed_off}
-        class="border-base-300 flex flex-wrap gap-2 border-t pt-4"
+        class="border-base-300 pt-block flex flex-wrap gap-2 border-t"
       >
         <.button
           id="gst-ask-client"

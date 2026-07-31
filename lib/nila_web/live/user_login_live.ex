@@ -8,16 +8,18 @@ defmodule NilaWeb.UserLoginLive do
     <Layouts.flash_group flash={@flash} />
 
     <main class="bg-base-200 text-base-content min-h-screen">
-      <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-12">
-        <div class="mb-8">
+      <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <div class="mb-section">
           <.link navigate={~p"/"} class="inline-flex items-center">
             <.logo class="text-base-content h-7 w-auto" />
           </.link>
-          <h1 class="text-h4 mt-8 font-semibold">Sign in</h1>
-          <p class="text-ink-muted text-small mt-2">Use your work email and password.</p>
+          <div class="mt-section space-y-related">
+            <h1 class="text-h4 font-semibold">Sign in</h1>
+            <p class="text-ink-muted text-small">Use your work email and password.</p>
+          </div>
         </div>
 
-        <.form for={@form} id="login-form" action={~p"/users/log_in"} class="space-y-4">
+        <.form for={@form} id="login-form" action={~p"/users/log_in"} class="space-y-block">
           <.input field={@form[:email]} type="email" label="Work email" required />
           <.input
             field={@form[:password]}
@@ -43,24 +45,27 @@ defmodule NilaWeb.UserLoginLive do
           </.button>
         </.form>
 
-        <p class="text-ink-muted text-small mt-5">
+        <p class="mt-block text-ink-muted text-small">
           New to Nila?
           <.link navigate={~p"/users/sign_up"} class="text-primary font-semibold">
             Create a firm
           </.link>
         </p>
 
-        <section :if={@users != []} class="border-base-300 mt-8 border-t pt-5">
+        <section
+          :if={@users != []}
+          class="border-base-300 mt-section pt-block space-y-related border-t"
+        >
           <p class="text-ink-subtle text-label font-semibold uppercase">
             Quick login
           </p>
-          <div class="mt-3 flex flex-wrap gap-2">
+          <div class="flex flex-wrap gap-2">
             <.form :for={user <- @users} for={%{}} action={~p"/users/log_in"} class="inline">
               <input type="hidden" name="dev_login" value="true" />
               <input type="hidden" name="email" value={user.email} />
               <button
                 type="submit"
-                class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 shadow-moon text-fine text-ink-muted rounded-full border px-3 py-1.5 font-semibold transition"
+                class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 text-fine text-ink-muted rounded-full border px-3 py-2 font-semibold transition"
               >
                 {user.name}
               </button>

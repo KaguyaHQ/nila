@@ -30,7 +30,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     <section
       :if={@purchase_month || @sales_month}
       id="month-exit"
-      class="border-base-300 space-y-4 border-t pt-6"
+      class="border-base-300 pt-section space-y-block border-t"
     >
       <h2 class="text-eyebrow text-moon font-semibold uppercase">Signatures and filing</h2>
 
@@ -90,7 +90,9 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <.icon name="hero-document-text" class="text-ink-faint size-4 shrink-0" />
           <span class="flex-1">The assembled GSTR-3B</span>
         </:summary>
-        <.gstr3b_panel gstr3b={@gstr3b} />
+        <div class="mt-block">
+          <.gstr3b_panel gstr3b={@gstr3b} />
+        </div>
       </.fold>
     </section>
     """
@@ -152,7 +154,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         </.button>
       </div>
 
-      <ol :if={is_nil(@month.filed_at)} class="space-y-2 pl-7">
+      <ol :if={is_nil(@month.filed_at)} class="space-y-related pl-8">
         {render_slot(@extra_step)}
         <li class="text-small flex items-center gap-2">
           <span class="text-ink-muted font-mono">{if @extra_step != [], do: "2.", else: "1."}</span>
@@ -219,7 +221,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
   defp gstr3b_panel(assigns) do
     ~H"""
-    <div id="gst-3b-panel" class="border-base-300 rounded-box mt-3 border">
+    <div id="gst-3b-panel" class="border-base-300 rounded-box border">
       <div class="border-base-300 flex items-center justify-between border-b px-4 py-3">
         <div class="text-ink-muted text-small">
           {if liability_missing?(@gstr3b),

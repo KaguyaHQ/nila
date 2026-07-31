@@ -497,7 +497,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <div id="gst-exceptions" class="mx-auto max-w-7xl space-y-4">
+      <div id="gst-exceptions" class="space-y-section mx-auto max-w-7xl">
         <div class="flex items-center justify-between">
           <.page_header eyebrow="GST · Exceptions" title={"#{@month.client.name} · #{@month.period}"}>
             The pile that needs a decision. Each is one tap from its scanned bill — decide it,

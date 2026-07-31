@@ -5,7 +5,7 @@ defmodule NilaWeb.Components.Table do
   use Phoenix.Component
 
   @doc """
-  Renders a moonlight data table: hairline rows on a soft-shadowed surface.
+  Renders a moonlight data table: hairline rows on a bordered surface.
 
   The single table component for the app. Works with a plain list or a LiveView
   stream. Pass `row_click` (a function of the row item returning a JS command) to
@@ -39,11 +39,6 @@ defmodule NilaWeb.Components.Table do
     doc:
       "tighter rows, for working-sheet material read in bulk (the GSTR-1 workings)\n    rather than a worklist of rows that each want a decision"
 
-  attr :flat, :boolean,
-    default: false,
-    doc:
-      "no shadow, for reference material — elevation is for tables that hold a\n    decision, and six shadowed surfaces in one section rank nothing"
-
   attr :sticky_header, :string,
     default: nil,
     doc:
@@ -75,7 +70,6 @@ defmodule NilaWeb.Components.Table do
     ~H"""
     <div class={[
       "bg-base-100 border-base-300 rounded-box overflow-x-auto border",
-      !@flat && "shadow-moon",
       @sticky_header && "xl:overflow-x-visible",
       @class
     ]}>
@@ -100,7 +94,7 @@ defmodule NilaWeb.Components.Table do
             </th>
           </tr>
         </thead>
-        <tbody id={@id} phx-update={@stream? && "stream"} class="divide-base-200 divide-y">
+        <tbody id={@id} phx-update={@stream? && "stream"} class="divide-base-300 divide-y">
           <%!-- The click command is computed once and drives everything: the
                 pointer, the hover, the keyboard. A row_click that returns nil
                 for some rows (the workings' diff rows) must not leave those rows
@@ -123,7 +117,7 @@ defmodule NilaWeb.Components.Table do
               :for={col <- @col}
               class={[
                 "align-top",
-                (@dense && "px-3 py-1.5") || "px-4 py-3.5",
+                (@dense && "px-3 py-1.5") || "px-4 py-3",
                 col[:align] == "right" && "text-right tabular-nums",
                 col[:class]
               ]}

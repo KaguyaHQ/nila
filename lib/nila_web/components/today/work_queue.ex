@@ -10,8 +10,8 @@ defmodule NilaWeb.Components.Today.WorkQueue do
 
   def work_queue(assigns) do
     ~H"""
-    <.card :if={@sections == []} id="today-empty" class="py-10 text-center">
-      <div class="mx-auto max-w-sm space-y-4">
+    <.card :if={@sections == []} id="today-empty" class="py-12 text-center">
+      <div class="space-y-block mx-auto max-w-sm">
         <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
         <.button navigate={~p"/clients/new"} id="today-add-first-client">
           Add your first client
@@ -19,8 +19,8 @@ defmodule NilaWeb.Components.Today.WorkQueue do
       </div>
     </.card>
 
-    <section :for={{section, rows} <- @sections} id={"today-#{section}"} class="space-y-3">
-      <h2 class="flex items-center gap-2.5">
+    <section :for={{section, rows} <- @sections} id={"today-#{section}"} class="space-y-related">
+      <h2 class="flex items-center gap-2">
         <span class="text-base-content text-small font-semibold">
           {WorkQueue.section_title(section)}
         </span>

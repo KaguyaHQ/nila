@@ -25,7 +25,7 @@ defmodule NilaWeb.Components.Today.Modals do
       on_close="close-draft"
       class="max-w-2xl"
     >
-      <div class="space-y-4">
+      <div class="space-y-block">
         <pre
           id="chase-draft-body"
           class="bg-base-200/40 border-base-300 rounded-box text-base-content text-small overflow-x-auto border p-4 font-sans whitespace-pre-wrap"

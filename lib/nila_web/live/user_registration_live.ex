@@ -35,15 +35,17 @@ defmodule NilaWeb.UserRegistrationLive do
     <Layouts.flash_group flash={@flash} />
 
     <main class="bg-base-200 text-base-content min-h-screen">
-      <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-12">
-        <div class="mb-8">
+      <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <div class="mb-section">
           <.link navigate={~p"/"} class="inline-flex items-center">
             <.logo class="text-base-content h-7 w-auto" />
           </.link>
-          <h1 class="text-h4 mt-8 font-semibold">Create your firm</h1>
-          <p class="text-body text-ink-muted mt-2">
-            Start with your firm. You can invite the team later.
-          </p>
+          <div class="mt-section space-y-related">
+            <h1 class="text-h4 font-semibold">Create your firm</h1>
+            <p class="text-body text-ink-muted">
+              Start with your firm. You can invite the team later.
+            </p>
+          </div>
         </div>
 
         <.form
@@ -53,7 +55,7 @@ defmodule NilaWeb.UserRegistrationLive do
           phx-change="validate"
           phx-submit="save"
           phx-trigger-action={@submit?}
-          class="space-y-4"
+          class="space-y-block"
         >
           <input type="hidden" name="signup_session_token" value={@session_token} />
           <.input field={@form[:name]} label="Full name" required />
@@ -79,7 +81,7 @@ defmodule NilaWeb.UserRegistrationLive do
           </.button>
         </.form>
 
-        <p class="text-body text-ink-muted mt-5">
+        <p class="mt-block text-body text-ink-muted">
           Already have an account?
           <.link navigate={~p"/users/log_in"} class="text-primary font-semibold">
             Sign in

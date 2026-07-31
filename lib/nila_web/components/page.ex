@@ -27,8 +27,8 @@ defmodule NilaWeb.Components.Page do
 
   def page_header(assigns) do
     ~H"""
-    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-      <div class="space-y-2">
+    <div class="gap-block flex flex-col lg:flex-row lg:items-end lg:justify-between">
+      <div class="space-y-related">
         <p :if={@eyebrow} class="text-eyebrow text-moon font-semibold uppercase">
           {@eyebrow}
         </p>
@@ -56,7 +56,7 @@ defmodule NilaWeb.Components.Page do
 
   def header(assigns) do
     ~H"""
-    <header class={[@actions != [] && "flex items-center justify-between gap-6", "pb-4"]}>
+    <header class={[@actions != [] && "gap-section flex items-center justify-between", "pb-block"]}>
       <div>
         <h1 class="text-h4 font-semibold">
           {render_slot(@inner_block)}
@@ -79,8 +79,8 @@ defmodule NilaWeb.Components.Page do
 
   def settings_header(assigns) do
     ~H"""
-    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-      <div class="space-y-2">
+    <div class="gap-block flex flex-col lg:flex-row lg:items-end lg:justify-between">
+      <div class="space-y-related">
         <p class="text-eyebrow text-moon font-semibold uppercase">Settings</p>
         <h1 class="font-display text-base-content text-h2 font-normal">
           {@title}
@@ -114,7 +114,7 @@ defmodule NilaWeb.Components.Page do
     <.card class={@class} {@rest}>
       <div
         :if={@title || @description || @actions != []}
-        class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+        class="mb-block flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
       >
         <div>
           <h3 :if={@title} class="text-base-content text-small font-semibold">{@title}</h3>

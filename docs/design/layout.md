@@ -45,6 +45,19 @@ Superhuman/Front-style list-detail cockpits for queue-shaped work.**
   scrollable work items left, selected item plus actions right.
 - Default route after login is `/today`.
 
+## Layout rhythm
+
+The shell owns responsive product gutters: 16px on mobile, 24px from `sm`, and
+32px from `lg` (`px-4 sm:px-6 lg:px-8`). Pages never add a second outer gutter.
+Ordinary record/config pages separate sections by 24px; the Today and GST month
+workbenches use 32px only between their major regions.
+
+Density follows the surface mode, not a user-facing toggle. Record tables and
+queue lists use compact rows (`px-3 py-2`, with denser working-sheet rows owned
+by `data_table dense`). Review, correction, signing, cards, and modals use the
+standard recipe (`px-4 py-3` rows, `p-6` surfaces). Structural relationship
+names and primitive rules live in [`DESIGN.md`](./DESIGN.md#spacing).
+
 ## Surface split
 
 | Surface                      | Mode   | UI style            |

@@ -30,7 +30,7 @@ defmodule NilaWeb.Components.Gst.Month.Precondition do
     ~H"""
     <section
       id="month-precondition"
-      class="bg-warning/[0.04] border-warning/40 rounded-box space-y-4 border p-5"
+      class="bg-warning/[0.04] border-warning/40 rounded-box space-y-block border p-6"
     >
       <p class="text-ink-muted text-small">
         {arrival_line(@dump)} Nothing is built from it until you say what it is.
@@ -54,11 +54,11 @@ defmodule NilaWeb.Components.Gst.Month.Precondition do
         for={to_form(%{}, as: :precondition)}
         id="month-precondition-form"
         phx-submit="precondition-answer"
-        class="space-y-3"
+        class="space-y-block"
       >
         <.input type="hidden" name="answer" id="month-precondition-answer" value={@choice} />
 
-        <div :if={@choice == "move"} class="space-y-2">
+        <div :if={@choice == "move"} class="space-y-related">
           <.input
             type="select"
             name="period"
@@ -74,7 +74,7 @@ defmodule NilaWeb.Components.Gst.Month.Precondition do
           </p>
         </div>
 
-        <div :if={@choice == "keep"} class="space-y-2">
+        <div :if={@choice == "keep"} class="space-y-related">
           <.input
             type="text"
             name="reason"

@@ -53,7 +53,7 @@ defmodule NilaWeb.Settings.WorkspaceLive do
       current_scope={@current_scope}
       active_section={@settings_section}
     >
-      <div id="settings-workspace" class="space-y-6">
+      <div id="settings-workspace" class="space-y-section">
         <.settings_header title="Firm">
           Your firm's identity on the returns you file for clients: legal name, GSTIN,
           registered address, and contact details.
@@ -66,7 +66,7 @@ defmodule NilaWeb.Settings.WorkspaceLive do
               id="settings-firm-form"
               phx-change="validate_firm"
               phx-submit="save_firm"
-              class="space-y-6"
+              class="space-y-section"
             >
               <.form_section title="Identity">
                 <div class="grid gap-4 md:grid-cols-2">
@@ -110,7 +110,7 @@ defmodule NilaWeb.Settings.WorkspaceLive do
             </.form>
           </.settings_panel>
         <% else %>
-          <.settings_panel class="p-6">
+          <.settings_panel>
             <p class="text-ink-muted text-small">
               Create a firm before configuring its details.
             </p>
@@ -143,7 +143,7 @@ defmodule NilaWeb.Settings.WorkspaceLive do
 
   defp form_section(assigns) do
     ~H"""
-    <section class="space-y-4">
+    <section class="space-y-block">
       <h4 class="text-ink-subtle text-label font-semibold uppercase">
         {@title}
       </h4>

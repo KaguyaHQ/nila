@@ -39,7 +39,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
         <div
           :for={b <- @itc["blocks"]}
           id={"itc-block-#{b["block_id"]}"}
-          class="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5"
+          class="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3"
         >
           <span class="text-fine text-ink-subtle w-40 shrink-0 uppercase">
             {issue_label(b["code"])}{if b["section"], do: " · #{b["section"]}"}

@@ -5,13 +5,13 @@ defmodule NilaWeb.Components.Card do
   use Phoenix.Component
 
   @doc """
-  Renders a moonlight content card: a soft-shadowed surface with a 1px hairline
-  border and `rounded-box` corners. Pass `class` to adjust padding/layout and
+  Renders a moonlight content card: a bordered surface with `rounded-box`
+  corners. Pass `class` to adjust padding/layout and
   any global attrs (e.g. `id`) flow through.
 
   ## Examples
 
-      <.card id="work-order-header" class="space-y-4">…</.card>
+      <.card id="work-order-header" class="space-y-block">…</.card>
   """
   attr :class, :any, default: nil
   attr :rest, :global
@@ -19,7 +19,7 @@ defmodule NilaWeb.Components.Card do
 
   def card(assigns) do
     ~H"""
-    <div class={["bg-base-100 border-base-300 rounded-box shadow-moon border p-5", @class]} {@rest}>
+    <div class={["bg-base-100 border-base-300 rounded-box border p-6", @class]} {@rest}>
       {render_slot(@inner_block)}
     </div>
     """
@@ -49,7 +49,7 @@ defmodule NilaWeb.Components.Card do
   def stat_card(assigns) do
     ~H"""
     <div
-      class={["bg-base-100 border-base-300 rounded-box shadow-moon border px-4 py-3", @class]}
+      class={["bg-base-100 border-base-300 rounded-box border px-4 py-3", @class]}
       {@rest}
     >
       <div class="text-ink-subtle text-label font-medium uppercase">{@label}</div>

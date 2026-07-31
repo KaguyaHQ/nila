@@ -41,7 +41,7 @@ defmodule NilaWeb.Components.Evidence do
     assigns = assign(assigns, :count, length(assigns.images))
 
     ~H"""
-    <div id={@id} class="space-y-2">
+    <div id={@id} class="space-y-related">
       <div class="flex items-baseline justify-between gap-2">
         <span class="text-ink-subtle text-label font-medium uppercase">{@label}</span>
         <.page_nav
@@ -212,7 +212,7 @@ defmodule NilaWeb.Components.Evidence do
 
   def evidence_unavailable(assigns) do
     ~H"""
-    <div id={@id} class="space-y-2">
+    <div id={@id} class="space-y-related">
       <span class="text-ink-subtle text-label font-medium uppercase">{@label}</span>
       <div class="border-base-300 rounded-box space-y-3 border border-dashed p-4">
         <p class="text-base-content text-small flex items-start gap-2 font-medium">
@@ -250,7 +250,7 @@ defmodule NilaWeb.Components.Evidence do
         phx-key="ArrowLeft"
         disabled={@page == 0}
         aria-label="Previous page"
-        class={["rounded-field p-0.5 transition disabled:opacity-30", nav_tone(@tone)]}
+        class={["rounded-field p-1 transition disabled:opacity-30", nav_tone(@tone)]}
       >
         <.icon name="hero-chevron-left-mini" class="size-4" />
       </button>
@@ -264,7 +264,7 @@ defmodule NilaWeb.Components.Evidence do
         phx-key="ArrowRight"
         disabled={@page == @count - 1}
         aria-label="Next page"
-        class={["rounded-field p-0.5 transition disabled:opacity-30", nav_tone(@tone)]}
+        class={["rounded-field p-1 transition disabled:opacity-30", nav_tone(@tone)]}
       >
         <.icon name="hero-chevron-right-mini" class="size-4" />
       </button>

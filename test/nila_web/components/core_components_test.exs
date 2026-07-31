@@ -46,7 +46,8 @@ defmodule NilaWeb.CoreComponentsTest do
     assert html =~ "Work Orders shown"
     assert html =~ ~s(id="work-orders-count")
     assert html =~ "42"
-    assert html =~ "shadow-moon"
+    assert html =~ "border-base-300"
+    refute html =~ "shadow-"
   end
 
   test "badge renders a soft pill in the given semantic variant" do

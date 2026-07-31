@@ -54,7 +54,7 @@ defmodule NilaWeb.ClientsLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <div id="clients-page" class="mx-auto max-w-5xl space-y-6">
+      <div id="clients-page" class="space-y-section mx-auto max-w-5xl">
         <.page_header eyebrow="Clients" title="Clients">
           Every business the firm files for, with where their GST work stands.
           <:actions>
@@ -108,7 +108,7 @@ defmodule NilaWeb.ClientsLive do
             </.link>
           </:col>
           <:empty>
-            <div id="clients-empty" class="space-y-4 py-4">
+            <div id="clients-empty" class="space-y-block">
               <p>No clients yet.</p>
               <.button navigate={~p"/clients/new"} id="clients-add-first">
                 Add your first client

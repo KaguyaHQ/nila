@@ -28,7 +28,7 @@ defmodule NilaWeb.Settings.SecurityLive do
       current_scope={@current_scope}
       active_section={@settings_section}
     >
-      <div id="settings-security" class="space-y-6">
+      <div id="settings-security" class="space-y-section">
         <.settings_header title="Security">
           Manage how you sign in to Nila.
         </.settings_header>
@@ -42,7 +42,7 @@ defmodule NilaWeb.Settings.SecurityLive do
             id="change-password-form"
             action={~p"/settings/security/password"}
             phx-change="validate_password"
-            class="space-y-4"
+            class="space-y-block"
           >
             <.input
               field={@password_form[:current_password]}

@@ -86,14 +86,14 @@ defmodule NilaWeb.Settings.ProfileLive do
       current_scope={@current_scope}
       active_section={@settings_section}
     >
-      <div id="settings-profile" class="space-y-6">
+      <div id="settings-profile" class="space-y-section">
         <.settings_header title="Profile">
           Your personal account details for this firm.
         </.settings_header>
 
-        <.settings_panel>
+        <.settings_panel body_class="space-y-block">
           <div class="flex items-center gap-4">
-            <div class="bg-primary rounded-field shadow-moon text-body text-primary-content grid size-14 shrink-0 place-items-center font-semibold">
+            <div class="bg-primary rounded-field text-body text-primary-content grid size-14 shrink-0 place-items-center font-semibold">
               {user_initials(@current_scope.user)}
             </div>
             <div class="min-w-0">
@@ -106,20 +106,20 @@ defmodule NilaWeb.Settings.ProfileLive do
             </div>
           </div>
 
-          <dl class="border-base-300 mt-5 grid gap-4 border-t pt-5 sm:grid-cols-2">
-            <div>
+          <dl class="border-base-300 pt-block grid gap-4 border-t sm:grid-cols-2">
+            <div class="space-y-related">
               <dt class="text-ink-subtle text-label font-medium uppercase">
                 Firm
               </dt>
-              <dd id="profile-workspace" class="text-base-content text-small mt-1 font-semibold">
+              <dd id="profile-workspace" class="text-base-content text-small font-semibold">
                 {workspace_name(@current_scope)}
               </dd>
             </div>
-            <div>
+            <div class="space-y-related">
               <dt class="text-ink-subtle text-label font-medium uppercase">
                 Role
               </dt>
-              <dd id="profile-role" class="text-base-content text-small mt-1 font-semibold">
+              <dd id="profile-role" class="text-base-content text-small font-semibold">
                 {role_label(@current_scope)}
               </dd>
             </div>
@@ -132,7 +132,7 @@ defmodule NilaWeb.Settings.ProfileLive do
             id="change-name-form"
             phx-change="validate_name"
             phx-submit="update_name"
-            class="space-y-4"
+            class="space-y-block"
           >
             <.input field={@name_form[:name]} label="Name" required />
             <.button>
@@ -150,7 +150,7 @@ defmodule NilaWeb.Settings.ProfileLive do
             id="change-email-form"
             phx-change="validate_email"
             phx-submit="update_email"
-            class="space-y-4"
+            class="space-y-block"
           >
             <.input field={@email_form[:email]} type="email" label="New email" required />
             <.input

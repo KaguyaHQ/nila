@@ -95,7 +95,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         </span>
       </:summary>
 
-      <div class="mt-4 space-y-4">
+      <div class="mt-block space-y-block">
         <p
           :if={@invoices != []}
           id="gstr1-account"
@@ -111,7 +111,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           >{gap_phrase(@series.missing)}</a>{account_tail(assigns)}
         </p>
 
-        <div :if={@month_issues != []} id="gstr1-month-issues" class="space-y-2">
+        <div :if={@month_issues != []} id="gstr1-month-issues" class="space-y-related">
           <div
             :for={issue <- @month_issues}
             id={"gstr1-month-issue-#{issue["code"]}"}
@@ -165,7 +165,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           <:summary>
             <span class="flex-1">{workings_summary_line(assigns)}</span>
           </:summary>
-          <div class="mt-3">
+          <div class="mt-block">
             <Workings.workings_body
               derived={@derived}
               invoices={@invoices}
@@ -187,7 +187,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           <:summary>
             <span class="flex-1">{length(@verified)} verified</span>
           </:summary>
-          <div class="mt-2">
+          <div class="mt-block">
             <.invoice_table id="gstr1-invoices-verified" rows={@verified} visited={@visited} />
           </div>
         </.fold>
@@ -200,13 +200,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               and clean while purchase still owns the door. The portal JSON is
               not here at all — that is the first step after a signature, and the
               exit block owns it. --%>
-        <div
-          :if={
-            @sales_month.state == "reviewed" or
-              (@sales_month.state == "worked" and @reviewable and not @review_door_taken)
-          }
-          class="pt-1"
-        >
+        <div :if={
+          @sales_month.state == "reviewed" or
+            (@sales_month.state == "worked" and @reviewable and not @review_door_taken)
+        }>
           <span :if={@sales_month.state == "reviewed"} id="gstr1-reviewed-badge">
             <.badge variant="success">Reviewed</.badge>
           </span>

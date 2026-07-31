@@ -35,12 +35,12 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
         <span class="flex-1">{trail_line(assigns)}</span>
       </:summary>
 
-      <div class="mt-4 space-y-4">
-        <div :if={@attention_dumps != []} id="month-dumps" class="space-y-2">
+      <div class="mt-block space-y-block">
+        <div :if={@attention_dumps != []} id="month-dumps" class="space-y-related">
           <div
             :for={dump <- @attention_dumps}
             id={"month-dump-#{dump.id}"}
-            class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-2.5"
+            class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
             <span
               :if={dump.status in ~w(received extracting)}

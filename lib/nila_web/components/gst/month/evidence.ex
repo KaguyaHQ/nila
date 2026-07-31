@@ -37,7 +37,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       on_close="close-evidence"
       class="max-w-4xl"
     >
-      <div class="grid gap-5 lg:grid-cols-[1fr_20rem]">
+      <div class="gap-block grid lg:grid-cols-[1fr_20rem]">
         <div id="gst-evidence-images" class="space-y-3">
           <img
             :for={url <- @selected_row["image_urls"]}
@@ -53,7 +53,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           </div>
         </div>
 
-        <div id="gst-evidence-why" class="space-y-4">
+        <div id="gst-evidence-why" class="space-y-block">
           <div>
             <div class="text-ink-subtle text-label font-semibold uppercase">Vendor</div>
             <div class="text-base-content text-small mt-1 font-medium">
@@ -71,7 +71,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <div class="text-ink-subtle text-label font-semibold uppercase">Next action</div>
             <p class="text-base-content text-small mt-1">{@selected_row["next_action"]}</p>
           </div>
-          <div :if={@selected_row["flags"] not in [nil, []]} class="space-y-2">
+          <div :if={@selected_row["flags"] not in [nil, []]} class="space-y-related">
             <div class="text-ink-subtle text-label font-semibold uppercase">Flags</div>
             <div
               :for={flag <- @selected_row["flags"]}
@@ -80,7 +80,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               <.badge variant={if flag["severity"] == "error", do: "error", else: "warning"}>
                 {issue_label(flag["code"])}
               </.badge>
-              <p class="text-ink-muted text-small mt-2">{flag["reason"]}</p>
+              <p class="mt-related text-ink-muted text-small">{flag["reason"]}</p>
             </div>
           </div>
         </div>
@@ -143,7 +143,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       on_close="close-evidence"
       class="h-[90vh] max-w-384"
     >
-      <div class="grid h-full min-h-0 gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+      <div class="gap-block grid h-full min-h-0 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <div id="gstr1-evidence-images" class="min-h-0 space-y-3 overflow-y-auto">
           <img
             :for={url <- @selected_invoice["image_urls"]}
@@ -159,7 +159,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           </div>
         </div>
 
-        <div class="min-h-0 space-y-4 overflow-y-auto">
+        <div class="space-y-block min-h-0 overflow-y-auto">
           <div>
             <div class="text-ink-subtle text-label font-semibold uppercase">Buyer</div>
             <div class="text-base-content text-small mt-1 font-medium">
@@ -170,7 +170,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             </div>
           </div>
 
-          <div :if={@read_rows != []} class="space-y-2">
+          <div :if={@read_rows != []} class="space-y-related">
             <div class="text-ink-subtle text-label font-semibold uppercase">Extracted read</div>
             <.data_table
               id="gstr1-line-items"
@@ -216,7 +216,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             </.data_table>
           </div>
 
-          <div :if={@failed_checks != []} id="gstr1-checks" class="space-y-2">
+          <div :if={@failed_checks != []} id="gstr1-checks" class="space-y-related">
             <div class="text-ink-subtle text-label font-semibold uppercase">
               What didn't check out
             </div>
@@ -236,7 +236,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <% end %>
           </div>
 
-          <div :if={@other_issues != []} class="space-y-2">
+          <div :if={@other_issues != []} class="space-y-related">
             <div class="text-ink-subtle text-label font-semibold uppercase">Issues</div>
             <.issue_card :for={issue <- @other_issues} issue={issue} r1_signoff={@r1_signoff} />
           </div>
@@ -244,7 +244,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           <div
             :if={Gstr1.correctable_fields(@flagged, @selected_invoice["pristine_inum"]) != []}
             id="gstr1-corrections"
-            class="space-y-2"
+            class="space-y-related"
           >
             <div class="text-ink-subtle text-label font-semibold uppercase">Flagged fields</div>
             <%= for field <- Gstr1.correctable_fields(@flagged, @selected_invoice["pristine_inum"]) do %>
@@ -297,8 +297,8 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       }>
         {issue_label(@issue["code"])}
       </.badge>
-      <p class="text-ink-muted text-small mt-2 line-clamp-2">{@issue["message"]}</p>
-      <div class="mt-2">
+      <p class="mt-related text-ink-muted text-small line-clamp-2">{@issue["message"]}</p>
+      <div class="mt-related">
         <.button
           :if={@issue["status"] == "open" and is_nil(@r1_signoff)}
           variant="outline"

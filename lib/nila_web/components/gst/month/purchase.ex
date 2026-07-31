@@ -37,12 +37,11 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
       <.data_table
         id="month-settled-rows"
-        class="mt-3"
+        class="mt-block"
         rows={@settled_rows}
         row_id={fn row -> "month-settled-#{row["dom_id"]}" end}
         row_click={fn row -> JS.push("select-row", value: %{dom_id: row["dom_id"]}) end}
         min_width="min-w-[680px]"
-        flat
       >
         <:col :let={row} label="Inv No">
           <span class="font-medium">{row["invoice_number"] || "—"}</span>
@@ -90,12 +89,12 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         </span>
       </:summary>
 
-      <div class="mt-4 space-y-4">
-        <div :if={@document_flags != []} id="gst-document-flags" class="space-y-2">
+      <div class="mt-block space-y-block">
+        <div :if={@document_flags != []} id="gst-document-flags" class="space-y-related">
           <div
             :for={{flag, index} <- Enum.with_index(@document_flags)}
             id={"gst-document-flag-#{index}"}
-            class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-2.5"
+            class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
             <span class="text-fine text-ink-subtle font-medium">{issue_label(flag["code"])}</span>
             <span class="text-ink-muted text-small min-w-0 flex-1">{flag["reason"]}</span>
@@ -109,7 +108,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           row_click={&row_click(&1, @client, @period)}
           row_class={&row_accent/1}
           min_width="min-w-[880px]"
-          flat
         >
           <:col :let={row} label="Inv No">
             <div class="flex items-center gap-2">

@@ -723,7 +723,7 @@ defmodule NilaWeb.Gst.MonthLive do
             then the paper trail, then the exit. Everything below the door is
             folded, because anything that is not the verdict, an undecided
             item, or the exit has not earned a reader's attention. --%>
-      <div id="month-page" class="mx-auto max-w-5xl space-y-8">
+      <div id="month-page" class="space-y-region mx-auto max-w-5xl">
         <Verdict.verdict verdict={@verdict} client={@client} period={@period} />
 
         <%!-- The question takes the door's place, never a place beside it: a
@@ -737,7 +737,7 @@ defmodule NilaWeb.Gst.MonthLive do
           period_options={@move_options || []}
         />
 
-        <div class="space-y-6">
+        <div class="space-y-section">
           <Purchase.settled stats={@stats} rows={@rows} open_folds={@open_folds} />
 
           <Sales.sales_section

@@ -15,7 +15,7 @@ defmodule NilaWeb.Components.ChaseHistory do
 
   def chase_history(assigns) do
     ~H"""
-    <div id="chase-history" class="space-y-4">
+    <div id="chase-history" class="space-y-block">
       <div
         :for={ask <- @asks}
         id={"chase-ask-#{ask.id}"}
@@ -28,7 +28,7 @@ defmodule NilaWeb.Components.ChaseHistory do
             {format_display_datetime_with_time(ask.inserted_at)} · sent by {sender_name(ask)}
           </span>
         </div>
-        <pre class="bg-base-200/40 border-base-300 rounded-box text-base-content text-small mt-3 overflow-x-auto border p-4 font-sans whitespace-pre-wrap">{ask.body}</pre>
+        <pre class="bg-base-200/40 border-base-300 mt-related rounded-box text-base-content text-small overflow-x-auto border p-4 font-sans whitespace-pre-wrap">{ask.body}</pre>
       </div>
     </div>
     """

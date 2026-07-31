@@ -389,14 +389,14 @@ defmodule NilaWeb.Gst.UploadLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <div id="gst-upload-page" class="mx-auto max-w-2xl space-y-6">
+      <div id="gst-upload-page" class="space-y-section mx-auto max-w-2xl">
         <.page_header eyebrow="Intake" title="Bring in documents">
           Drop whatever arrived — sales bills, purchase bills, the 2B, or any mix.
           Nila extracts it, adds it to the month's pile, and reworks the month.
         </.page_header>
 
-        <.card :if={@clients == [] and @jobs == %{}} id="gst-upload-empty" class="py-10 text-center">
-          <div class="space-y-4">
+        <.card :if={@clients == [] and @jobs == %{}} id="gst-upload-empty" class="py-12 text-center">
+          <div class="space-y-block">
             <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
             <.button navigate={~p"/clients/new"} id="gst-upload-add-first-client">
               Add your first client
@@ -405,60 +405,64 @@ defmodule NilaWeb.Gst.UploadLive do
         </.card>
 
         <.card :if={@clients != [] and @jobs == %{}}>
-          <.form for={@form} id="gst-upload-form" phx-change="validate" phx-submit="submit">
-            <div class="space-y-5">
-              <div>
-                <.input
-                  field={@form[:client_id]}
-                  type="select"
-                  label="Client"
-                  prompt="Select a client"
-                  options={@clients}
-                />
-                <p class="text-fine text-ink-muted mt-1">
-                  Client not listed?
-                  <.link
-                    navigate={~p"/clients/new"}
-                    id="gst-upload-add-client"
-                    class="text-moon font-semibold"
-                  >
-                    Add one
-                  </.link>
-                </p>
-              </div>
-
+          <.form
+            for={@form}
+            id="gst-upload-form"
+            phx-change="validate"
+            phx-submit="submit"
+            class="space-y-block"
+          >
+            <div>
               <.input
-                field={@form[:period]}
+                field={@form[:client_id]}
                 type="select"
-                label="Period"
-                options={@period_options}
+                label="Client"
+                prompt="Select a client"
+                options={@clients}
               />
-
-              <.file_drop
-                :for={kind <- @kinds}
-                id={"gst-upload-#{kind.name}"}
-                upload={@uploads[kind.name]}
-                label={kind.label}
-                hint={kind.hint}
-                on_cancel="cancel-upload"
-              />
-
-              <p :if={@error} id="gst-upload-error" class="text-error text-small">
-                {@error}
+              <p class="text-fine text-ink-muted mt-1">
+                Client not listed?
+                <.link
+                  navigate={~p"/clients/new"}
+                  id="gst-upload-add-client"
+                  class="text-moon font-semibold"
+                >
+                  Add one
+                </.link>
               </p>
-
-              <.button type="submit" id="gst-upload-submit" class="w-full">
-                Bring it in
-              </.button>
             </div>
+
+            <.input
+              field={@form[:period]}
+              type="select"
+              label="Period"
+              options={@period_options}
+            />
+
+            <.file_drop
+              :for={kind <- @kinds}
+              id={"gst-upload-#{kind.name}"}
+              upload={@uploads[kind.name]}
+              label={kind.label}
+              hint={kind.hint}
+              on_cancel="cancel-upload"
+            />
+
+            <p :if={@error} id="gst-upload-error" class="text-error text-small">
+              {@error}
+            </p>
+
+            <.button type="submit" id="gst-upload-submit" class="w-full">
+              Bring it in
+            </.button>
           </.form>
         </.card>
 
-        <.card :if={@jobs != %{}} id="gst-upload-progress" class="space-y-5">
+        <.card :if={@jobs != %{}} id="gst-upload-progress" class="space-y-block">
           <div
             :if={@pending}
             id="gst-upload-progress-header"
-            class="border-base-300 flex items-baseline justify-between gap-4 border-b pb-4"
+            class="border-base-300 pb-block flex items-baseline justify-between gap-4 border-b"
           >
             <p class="text-base-content text-h4 truncate font-semibold">
               {client_name(@clients, @pending.client_id) || "This client"}
@@ -469,7 +473,7 @@ defmodule NilaWeb.Gst.UploadLive do
           <div
             :for={{dump_id, job} <- Enum.sort(@jobs)}
             id={"gst-dump-#{dump_id}"}
-            class="space-y-2"
+            class="space-y-related"
           >
             <div class="flex items-start gap-3">
               <span
@@ -530,7 +534,7 @@ defmodule NilaWeb.Gst.UploadLive do
                   phx-click="try-again"
                   variant="soft"
                   size="xs"
-                  class="mt-2"
+                  class="mt-related"
                 >
                   Try again
                 </.button>

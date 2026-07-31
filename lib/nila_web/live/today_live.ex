@@ -267,7 +267,7 @@ defmodule NilaWeb.TodayLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <div id="today-page" class="mx-auto max-w-6xl space-y-8">
+      <div id="today-page" class="space-y-region mx-auto max-w-6xl">
         <.page_header eyebrow="Today" title="Today">
           Every client's month, led by who it's waiting on.
           <:actions>

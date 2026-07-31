@@ -81,7 +81,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
       current_scope={@current_scope}
       active_section={@settings_section}
     >
-      <div id="settings-connectors" class="space-y-6">
+      <div id="settings-connectors" class="space-y-section">
         <.settings_header title="Connectors">
           Connect the inboxes and channels documents arrive on. Labels show up in
           operational views so the team can tell the firm's intake channels apart.
@@ -89,9 +89,9 @@ defmodule NilaWeb.Settings.ConnectorsLive do
 
         <.settings_panel>
           <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
+            <div class="space-y-related">
               <h3 class="text-base-content text-body font-semibold">Add Gmail account</h3>
-              <p class="text-ink-muted text-small mt-1">
+              <p class="text-ink-muted text-small">
                 Name the inbox before starting OAuth.
               </p>
             </div>
@@ -100,7 +100,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
               id="settings-add-gmail-form"
               method="get"
               action={~p"/integrations/gmail/connect"}
-              class="grid gap-3 sm:grid-cols-[240px_auto]"
+              class="grid items-end gap-3 sm:grid-cols-[240px_auto]"
             >
               <.input
                 field={@gmail_form[:label]}
@@ -113,7 +113,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                 type="submit"
                 id="settings-add-gmail"
                 size="sm"
-                class="btn-soft mt-6"
+                class="btn-soft"
               >
                 <.icon name="hero-plus" class="size-4" /> Add Gmail
               </.button>
@@ -123,9 +123,9 @@ defmodule NilaWeb.Settings.ConnectorsLive do
 
         <.settings_panel>
           <div class="flex flex-col gap-4">
-            <div>
+            <div class="space-y-related">
               <h3 class="text-base-content text-body font-semibold">Add Microsoft 365 mailbox</h3>
-              <p class="text-ink-muted text-small mt-1">
+              <p class="text-ink-muted text-small">
                 Nila sends from a shared mailbox once the firm's Microsoft admin approves.
                 Restrict the app to this mailbox in Exchange, or it can send as any mailbox
                 in the tenant.
@@ -136,29 +136,31 @@ defmodule NilaWeb.Settings.ConnectorsLive do
               id="settings-add-microsoft-form"
               method="get"
               action={~p"/integrations/microsoft/connect"}
-              class="grid gap-3 sm:grid-cols-3"
+              class="space-y-block"
             >
-              <.input
-                field={@microsoft_form[:tenant_id]}
-                id="settings-add-microsoft-tenant"
-                label="Directory (tenant) ID"
-                placeholder="00000000-0000-0000-0000-000000000000"
-                class="border-base-300 rounded-field text-small w-full border px-3 py-2"
-              />
-              <.input
-                field={@microsoft_form[:mailbox]}
-                id="settings-add-microsoft-mailbox"
-                label="Send from"
-                placeholder="mail@firm.com"
-                class="border-base-300 rounded-field text-small w-full border px-3 py-2"
-              />
-              <.input
-                field={@microsoft_form[:label]}
-                id="settings-add-microsoft-label"
-                label="Label"
-                placeholder="Firm mailbox"
-                class="border-base-300 rounded-field text-small w-full border px-3 py-2"
-              />
+              <div class="grid gap-4 sm:grid-cols-3">
+                <.input
+                  field={@microsoft_form[:tenant_id]}
+                  id="settings-add-microsoft-tenant"
+                  label="Directory (tenant) ID"
+                  placeholder="00000000-0000-0000-0000-000000000000"
+                  class="border-base-300 rounded-field text-small w-full border px-3 py-2"
+                />
+                <.input
+                  field={@microsoft_form[:mailbox]}
+                  id="settings-add-microsoft-mailbox"
+                  label="Send from"
+                  placeholder="mail@firm.com"
+                  class="border-base-300 rounded-field text-small w-full border px-3 py-2"
+                />
+                <.input
+                  field={@microsoft_form[:label]}
+                  id="settings-add-microsoft-label"
+                  label="Label"
+                  placeholder="Firm mailbox"
+                  class="border-base-300 rounded-field text-small w-full border px-3 py-2"
+                />
+              </div>
               <.button
                 type="submit"
                 id="settings-add-microsoft"
@@ -171,16 +173,16 @@ defmodule NilaWeb.Settings.ConnectorsLive do
           </div>
         </.settings_panel>
 
-        <.settings_panel title="Connected accounts" class="overflow-hidden" body_class="-mx-5 -mb-5">
+        <.settings_panel title="Connected accounts" class="overflow-hidden" body_class="-mx-6 -mb-6">
           <div id="settings-connection-list" class="divide-base-300 divide-y">
-            <div :if={@connections == []} id="settings-connections-empty" class="px-5 py-8">
+            <div :if={@connections == []} id="settings-connections-empty" class="px-4 py-12">
               <p class="text-ink-muted text-small">No connectors yet.</p>
             </div>
 
             <article
               :for={connection <- @connections}
               id={"settings-connection-#{connection.id}"}
-              class="grid gap-4 px-5 py-4 xl:grid-cols-[1fr_380px]"
+              class="grid gap-4 px-4 py-3 xl:grid-cols-[1fr_380px]"
             >
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
@@ -203,7 +205,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                 </p>
               </div>
 
-              <div class="space-y-3">
+              <div class="space-y-related">
                 <.form
                   for={to_form(connection_form_data(connection), as: :connection)}
                   id={"settings-connection-form-#{connection.id}"}

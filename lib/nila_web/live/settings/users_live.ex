@@ -135,7 +135,7 @@ defmodule NilaWeb.Settings.UsersLive do
       current_scope={@current_scope}
       active_section={@settings_section}
     >
-      <div id="settings-users" class="space-y-6">
+      <div id="settings-users" class="space-y-section">
         <.page_header eyebrow="Settings" title="Users">
           Everyone who works at this firm. Owners and admins manage access;
           operators run the day-to-day; viewers read and export.
@@ -229,7 +229,7 @@ defmodule NilaWeb.Settings.UsersLive do
           id="invite-form"
           phx-change="validate_invite"
           phx-submit="send_invite"
-          class="space-y-4"
+          class="space-y-block"
         >
           <.input field={@invite_form[:name]} label="Name" required />
           <.input field={@invite_form[:email]} type="email" label="Work email" required />
@@ -244,7 +244,7 @@ defmodule NilaWeb.Settings.UsersLive do
             admins manage the firm; operators run the day-to-day work and approvals;
             viewers can only read and export.
           </p>
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <.button
               type="button"
               phx-click="close_invite"

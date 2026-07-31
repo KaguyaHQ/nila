@@ -25,18 +25,18 @@ defmodule NilaWeb.UserConfirmationLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <div id="verify-email-page" class="mx-auto max-w-xl space-y-6">
+      <div id="verify-email-page" class="space-y-section mx-auto max-w-xl">
         <.page_header eyebrow="Account" title="Verify your email">
           Confirm your work email before you rely on this firm for filings,
           approvals, and integrations.
         </.page_header>
 
-        <.card class="space-y-5">
-          <div>
+        <.card class="space-y-block">
+          <div class="space-y-related">
             <h2 class="text-base-content text-h4 font-semibold">
               {if @current_scope.user.confirmed_at, do: "Email verified", else: "Check your inbox"}
             </h2>
-            <p class="text-body text-ink-muted mt-1">
+            <p class="text-body text-ink-muted">
               {if @current_scope.user.confirmed_at do
                 "#{@current_scope.user.email} is verified."
               else

@@ -51,25 +51,27 @@ defmodule NilaWeb.UserResetPasswordLive do
     <Layouts.flash_group flash={@flash} />
 
     <main class="bg-base-200 text-base-content min-h-screen">
-      <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-12">
-        <div class="mb-8">
+      <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <div class="mb-section">
           <.link navigate={~p"/"} class="inline-flex items-center">
             <.logo class="text-base-content h-7 w-auto" />
           </.link>
         </div>
 
-        <div :if={@user} id="reset-password-valid">
-          <h1 class="text-h4 font-semibold">Choose a new password</h1>
-          <p class="text-body text-ink-muted mt-2">
-            Use at least 8 characters. You'll sign in again after the reset.
-          </p>
+        <div :if={@user} id="reset-password-valid" class="space-y-section">
+          <div class="space-y-related">
+            <h1 class="text-h4 font-semibold">Choose a new password</h1>
+            <p class="text-body text-ink-muted">
+              Use at least 8 characters. You'll sign in again after the reset.
+            </p>
+          </div>
 
           <.form
             for={@form}
             id="reset-password-form"
             phx-change="validate"
             phx-submit="reset_password"
-            class="mt-6 space-y-4"
+            class="space-y-block"
           >
             <.input
               field={@form[:password]}
@@ -90,14 +92,16 @@ defmodule NilaWeb.UserResetPasswordLive do
           </.form>
         </div>
 
-        <div :if={is_nil(@user)} id="reset-password-invalid">
-          <h1 class="text-h4 font-semibold">This reset link is no longer valid</h1>
-          <p class="text-body text-ink-muted mt-2">
-            It may have expired or already been used. Request a fresh reset link.
-          </p>
+        <div :if={is_nil(@user)} id="reset-password-invalid" class="space-y-section">
+          <div class="space-y-related">
+            <h1 class="text-h4 font-semibold">This reset link is no longer valid</h1>
+            <p class="text-body text-ink-muted">
+              It may have expired or already been used. Request a fresh reset link.
+            </p>
+          </div>
           <.link
             navigate={~p"/users/reset_password"}
-            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-ink-muted text-small mt-6 inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
+            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-ink-muted text-small inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
           >
             Request a new link
           </.link>

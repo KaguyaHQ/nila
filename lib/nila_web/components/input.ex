@@ -97,7 +97,7 @@ defmodule NilaWeb.Components.Input do
       end)
 
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="fieldset">
       <label for={@id}>
         <input
           type="hidden"
@@ -125,7 +125,7 @@ defmodule NilaWeb.Components.Input do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="fieldset">
       <label for={@id}>
         <span :if={@label} class="label mb-1">{@label}</span>
         <select
@@ -146,7 +146,7 @@ defmodule NilaWeb.Components.Input do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="fieldset">
       <label for={@id}>
         <span :if={@label} class="label mb-1">{@label}</span>
         <textarea
@@ -166,7 +166,7 @@ defmodule NilaWeb.Components.Input do
 
   def input(%{type: "password"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="fieldset">
       <label :if={@label} for={@id} class="label mb-1">{@label}</label>
       <div class="relative">
         <input
@@ -233,7 +233,7 @@ defmodule NilaWeb.Components.Input do
     assigns = assign(assigns, iso: iso, display: date_display(iso))
 
     ~H"""
-    <div class="fieldset mb-2" id={"#{@id}-field"} phx-hook=".DateField">
+    <div class="fieldset" id={"#{@id}-field"} phx-hook=".DateField">
       <label for={@id}>
         <span :if={@label} class="label mb-1">{@label}</span>
         <input
@@ -317,7 +317,7 @@ defmodule NilaWeb.Components.Input do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="fieldset">
       <label for={@id}>
         <span :if={@label} class="label mb-1">{@label}</span>
         <input

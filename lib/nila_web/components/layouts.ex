@@ -45,7 +45,7 @@ defmodule NilaWeb.Layouts do
     >
       <div id="rail-collapse-state" phx-hook="RailCollapse" phx-update="ignore" class="hidden"></div>
 
-      <aside class="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col px-3 py-4 transition-[width] duration-200 group-data-[rail-collapsed=true]/app:w-16 lg:flex print:hidden">
+      <aside class="duration-calm fixed inset-y-0 left-0 z-40 hidden w-64 flex-col px-3 py-4 transition-[width] group-data-[rail-collapsed=true]/app:w-16 lg:flex print:hidden">
         <div class="flex items-center justify-between gap-2 px-1 group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:gap-0 group-data-[rail-collapsed=true]/app:px-0">
           <.link
             navigate={~p"/today"}
@@ -65,7 +65,7 @@ defmodule NilaWeb.Layouts do
           </button>
         </div>
 
-        <nav class="mt-5 flex flex-1 flex-col gap-6 overflow-y-auto">
+        <nav class="gap-section mt-section flex flex-1 flex-col overflow-y-auto">
           <div class="space-y-1">
             <.rail_link
               href={~p"/today"}
@@ -94,15 +94,15 @@ defmodule NilaWeb.Layouts do
           </div>
         </nav>
 
-        <div :if={@current_scope} class="border-base-100/10 mt-4 border-t pt-3">
+        <div :if={@current_scope} class="border-base-100/10 mt-block border-t pt-3">
           <.account_menu current_scope={@current_scope} placement={:rail} id_prefix="layout" />
         </div>
       </aside>
 
-      <div class="lg:pl-64 lg:transition-[padding] lg:duration-200 group-data-[rail-collapsed=true]/app:lg:pl-16">
+      <div class="lg:duration-calm lg:pl-64 lg:transition-[padding] group-data-[rail-collapsed=true]/app:lg:pl-16">
         <div class="h-screen lg:p-3">
-          <div class="bg-base-200 lg:rounded-box lg:shadow-moon-lg text-base-content flex h-full flex-col overflow-hidden lg:ring-1 lg:ring-white/40">
-            <header class="bg-base-100/80 border-base-300 z-30 shrink-0 border-b px-4 py-2.5 backdrop-blur sm:px-6 lg:px-8 print:hidden">
+          <div class="bg-base-200 lg:rounded-box text-base-content flex h-full flex-col overflow-hidden lg:ring-1 lg:ring-white/40">
+            <header class="bg-base-100/80 border-base-300 z-30 shrink-0 border-b px-4 py-3 backdrop-blur sm:px-6 lg:px-8 print:hidden">
               <div class="flex items-center justify-between gap-4">
                 <nav
                   aria-label="Breadcrumb"
@@ -154,7 +154,7 @@ defmodule NilaWeb.Layouts do
   def settings(assigns) do
     ~H"""
     <Layouts.app flash={@flash} page_title={@page_title} current_scope={@current_scope}>
-      <div id="settings-cockpit" class="flex flex-col gap-6 lg:flex-row">
+      <div id="settings-cockpit" class="gap-section flex flex-col lg:flex-row">
         <aside class="shrink-0 lg:w-64">
           <nav
             id="settings-nav"
@@ -180,7 +180,7 @@ defmodule NilaWeb.Layouts do
             </div>
             <div
               :if={Nila.Accounts.Policy.can?(@current_scope, :manage_settings)}
-              class="flex gap-2 lg:mt-5 lg:flex-col"
+              class="lg:mt-block flex gap-2 lg:flex-col"
             >
               <span class="text-ink-subtle text-label hidden px-3 pb-1 font-semibold uppercase lg:block">
                 Firm
@@ -230,8 +230,7 @@ defmodule NilaWeb.Layouts do
       class={[
         "rounded-field text-small flex h-10 items-center gap-3 px-3 transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0",
         if(@active,
-          do:
-            "bg-base-100/15 text-base-100 font-semibold shadow-[inset_0_1px_0_rgb(255_255_255/0.08)]",
+          do: "bg-base-100/15 text-base-100 font-semibold ring-1 ring-white/8 ring-inset",
           else: "hover:bg-base-100/10 hover:text-base-100 text-base-100/65 font-medium"
         )
       ]}
@@ -327,7 +326,7 @@ defmodule NilaWeb.Layouts do
       <summary
         :if={@placement == :header}
         id={"#{@id_prefix}-account-trigger"}
-        class="bg-base-200 focus:ring-primary/20 hover:bg-base-300 hover:text-ink rounded-field text-ink-muted text-small flex h-9 min-w-0 cursor-pointer list-none items-center gap-2 px-2.5 transition focus:ring-2 focus:outline-none [&::-webkit-details-marker]:hidden"
+        class="bg-base-200 focus:ring-primary/20 hover:bg-base-300 hover:text-ink rounded-field text-ink-muted text-small flex h-9 min-w-0 cursor-pointer list-none items-center gap-2 px-3 transition focus:ring-2 focus:outline-none [&::-webkit-details-marker]:hidden"
         aria-label="Open account menu"
         title={@current_scope.user.name}
       >
@@ -351,7 +350,7 @@ defmodule NilaWeb.Layouts do
         <.link
           navigate={~p"/settings/profile"}
           id={"#{@id_prefix}-settings-link"}
-          class="focus:ring-primary/20 hover:bg-base-200 hover:text-ink rounded-field text-ink-muted text-small flex h-10 items-center gap-2.5 px-2.5 font-medium transition focus:ring-2 focus:outline-none"
+          class="focus:ring-primary/20 hover:bg-base-200 hover:text-ink rounded-field text-ink-muted text-small flex h-10 items-center gap-2 px-3 font-medium transition focus:ring-2 focus:outline-none"
         >
           <.icon name="hero-cog-6-tooth" class="text-ink-subtle size-4" />
           <span>Settings</span>
@@ -363,7 +362,7 @@ defmodule NilaWeb.Layouts do
           href={~p"/users/log_out"}
           method="delete"
           id={"#{@id_prefix}-sign-out-link"}
-          class="focus:ring-error/20 hover:bg-error/10 hover:text-error rounded-field text-ink-muted text-small flex h-10 items-center gap-2.5 px-2.5 font-medium transition focus:ring-2 focus:outline-none"
+          class="focus:ring-error/20 hover:bg-error/10 hover:text-error rounded-field text-ink-muted text-small flex h-10 items-center gap-2 px-3 font-medium transition focus:ring-2 focus:outline-none"
         >
           <.icon name="hero-arrow-right-start-on-rectangle" class="size-4" />
           <span>Sign out</span>

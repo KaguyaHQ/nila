@@ -31,25 +31,27 @@ defmodule NilaWeb.UserInviteLive do
     <Layouts.flash_group flash={@flash} />
 
     <main class="bg-base-200 text-base-content min-h-screen">
-      <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-12">
-        <div class="mb-8">
+      <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <div class="mb-section">
           <.link navigate={~p"/"} class="inline-flex items-center">
             <.logo class="text-base-content h-7 w-auto" />
           </.link>
         </div>
 
-        <div :if={@user} id="invite-accept">
-          <h1 class="text-h4 font-semibold">Welcome, {@user.name}</h1>
-          <p class="text-body text-ink-muted mt-2">
-            Set a password to join the firm and sign in.
-          </p>
+        <div :if={@user} id="invite-accept" class="space-y-section">
+          <div class="space-y-related">
+            <h1 class="text-h4 font-semibold">Welcome, {@user.name}</h1>
+            <p class="text-body text-ink-muted">
+              Set a password to join the firm and sign in.
+            </p>
+          </div>
 
           <.form
             for={@form}
             id="invite-form"
             action={~p"/users/invite/#{@token}"}
             phx-change="validate"
-            class="mt-6 space-y-4"
+            class="space-y-block"
           >
             <.input
               field={@form[:password]}
@@ -71,15 +73,17 @@ defmodule NilaWeb.UserInviteLive do
           </.form>
         </div>
 
-        <div :if={is_nil(@user)} id="invite-invalid">
-          <h1 class="text-h4 font-semibold">This invite link is no longer valid</h1>
-          <p class="text-body text-ink-muted mt-2">
-            It may have expired or already been used. Ask an owner to send a fresh
-            invitation.
-          </p>
+        <div :if={is_nil(@user)} id="invite-invalid" class="space-y-section">
+          <div class="space-y-related">
+            <h1 class="text-h4 font-semibold">This invite link is no longer valid</h1>
+            <p class="text-body text-ink-muted">
+              It may have expired or already been used. Ask an owner to send a fresh
+              invitation.
+            </p>
+          </div>
           <.link
             navigate={~p"/users/log_in"}
-            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-ink-muted text-small mt-6 inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
+            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-ink-muted text-small inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
           >
             Go to sign in
           </.link>

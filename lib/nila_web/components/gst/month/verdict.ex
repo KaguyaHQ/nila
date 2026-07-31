@@ -717,8 +717,8 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   def verdict(assigns) do
     ~H"""
-    <section id="month-verdict" class="space-y-4">
-      <div class="space-y-2">
+    <section id="month-verdict" class="space-y-block">
+      <div class="space-y-related">
         <p class="text-eyebrow text-moon font-semibold uppercase">Client month</p>
         <h1 class="font-display text-base-content text-h2 font-normal">
           {@client.name} · {Formatters.period_label(@period)}

@@ -76,7 +76,7 @@ defmodule NilaWeb.Components.Form do
 
   def file_drop(assigns) do
     ~H"""
-    <div class="fieldset mb-2" id={@id}>
+    <div class="fieldset" id={@id}>
       <span class="label mb-1">{@label}</span>
 
       <.live_file_input upload={@upload} class="sr-only" />
@@ -101,7 +101,7 @@ defmodule NilaWeb.Components.Form do
 
       <div
         :for={entry <- @upload.entries}
-        class="bg-base-200/50 border-base-300 rounded-box flex items-center gap-3 border px-3 py-2.5"
+        class="bg-base-200/50 border-base-300 rounded-box flex items-center gap-3 border px-3 py-2"
       >
         <.icon name="hero-document" class="text-primary size-5 shrink-0" />
         <div class="min-w-0 flex-1">

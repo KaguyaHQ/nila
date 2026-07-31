@@ -8,7 +8,7 @@ defmodule NilaWeb.Components.Today.Arrivals do
 
   def new_arrivals(assigns) do
     ~H"""
-    <section :if={@groups != []} id="pending-arrivals" class="space-y-2">
+    <section :if={@groups != []} id="pending-arrivals" class="space-y-related">
       <h2 class="text-base-content text-small font-semibold">New arrivals</h2>
       <.card class="divide-base-300 divide-y p-0">
         <button
@@ -52,7 +52,7 @@ defmodule NilaWeb.Components.Today.Arrivals do
         phx-change="validate-arrival"
         phx-submit="route-arrivals"
       >
-        <div class="space-y-4">
+        <div class="space-y-block">
           <div class="bg-base-200/40 rounded-box px-3 py-2">
             <p class="text-fine text-ink-subtle">
               From {display_sender(@group)} over {source_label(@group.source)}

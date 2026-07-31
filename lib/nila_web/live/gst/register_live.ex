@@ -36,13 +36,13 @@ defmodule NilaWeb.Gst.RegisterLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <div id="register-page" class="mx-auto max-w-6xl space-y-6">
+      <div id="register-page" class="space-y-section mx-auto max-w-6xl">
         <.page_header eyebrow="GST" title="GST months">
           The firm's recent client-periods — open, partly filed, or filed.
         </.page_header>
 
-        <.card :if={@grid.periods == []} id="register-empty" class="py-10 text-center">
-          <div class="mx-auto max-w-md space-y-4">
+        <.card :if={@grid.periods == []} id="register-empty" class="py-12 text-center">
+          <div class="space-y-block mx-auto max-w-md">
             <p class="text-body text-ink-muted font-light">
               No GST months yet — bring in a client's documents and this view fills itself.
             </p>
@@ -58,7 +58,7 @@ defmodule NilaWeb.Gst.RegisterLive do
         <div
           :if={@grid.rows != []}
           id="register-table-wrap"
-          class="bg-base-100 border-base-300 rounded-box shadow-moon overflow-x-auto border"
+          class="bg-base-100 border-base-300 rounded-box overflow-x-auto border"
         >
           <table id="register-table" class="text-small min-w-full border-separate border-spacing-0">
             <thead>
@@ -87,13 +87,13 @@ defmodule NilaWeb.Gst.RegisterLive do
                 id={"register-row-#{row.client_id}"}
                 class="group/register-row last:[&>td]:border-b-0 last:[&>th]:border-b-0"
               >
-                <th class="bg-base-100 border-base-300 group-hover/register-row:bg-base-200/50 sticky left-0 z-10 border-b p-4 text-left font-medium transition">
+                <th class="bg-base-100 border-base-300 group-hover/register-row:bg-base-200/50 sticky left-0 z-10 border-b px-4 py-3 text-left font-medium transition">
                   {row.client_name}
                 </th>
                 <td
                   :if={@grid.periods == []}
                   id={"register-cell-#{row.client_id}-none"}
-                  class="border-base-300 group-hover/register-row:bg-base-200/50 text-ink-faint border-b p-4 text-center transition"
+                  class="border-base-300 group-hover/register-row:bg-base-200/50 text-ink-faint border-b px-4 py-3 text-center transition"
                 >
                   —
                 </td>
@@ -107,7 +107,7 @@ defmodule NilaWeb.Gst.RegisterLive do
                       navigate={~p"/gst/#{row.client_id}/#{period}"}
                       id={"register-link-#{row.client_id}-#{period}"}
                       title={cell_title(cell)}
-                      class="hover:bg-base-200/70 flex min-h-14 items-center justify-center px-3 py-4 transition"
+                      class="hover:bg-base-200/70 flex min-h-14 items-center justify-center px-4 py-3 transition"
                     >
                       <.badge :if={cell.state == :filed} variant="success" class="gap-1">
                         <.icon name="hero-check-mini" class="size-3.5" /> filed

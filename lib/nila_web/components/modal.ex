@@ -39,11 +39,11 @@ defmodule NilaWeb.Components.Modal do
         aria-modal="true"
         aria-labelledby={"#{@id}-title"}
         class={[
-          "bg-base-100 border-base-300 rounded-box shadow-moon-lg flex max-h-[90vh] w-full flex-col border p-5",
+          "bg-base-100 border-base-300 rounded-box shadow-moon-lg flex max-h-[90vh] w-full flex-col border p-6",
           @class
         ]}
       >
-        <header class="mb-4 flex shrink-0 items-center justify-between">
+        <header class="mb-block flex shrink-0 items-center justify-between">
           <h3 id={"#{@id}-title"} class="text-base-content text-body font-semibold">{@title}</h3>
           <button
             type="button"
@@ -70,8 +70,7 @@ defmodule NilaWeb.Components.Modal do
       to: selector,
       time: 300,
       transition:
-        {"transition-all ease-out duration-300",
-         "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95",
+        {"transition-all duration-calm", "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95",
          "opacity-100 translate-y-0 sm:scale-100"}
     )
   end
@@ -79,9 +78,9 @@ defmodule NilaWeb.Components.Modal do
   def hide(js \\ %JS{}, selector) do
     JS.hide(js,
       to: selector,
-      time: 200,
+      time: 150,
       transition:
-        {"transition-all ease-in duration-200", "opacity-100 translate-y-0 sm:scale-100",
+        {"transition-all duration-fast", "opacity-100 translate-y-0 sm:scale-100",
          "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"}
     )
   end

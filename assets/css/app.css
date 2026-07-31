@@ -151,6 +151,28 @@
     serif;
 }
 
+/* Structural spacing. Named roles are for composition boundaries; numeric
+   primitives remain inside components for padding, controls, and optical gaps.
+   Tailwind exposes these across its spacing utilities (`space-y-block`,
+   `gap-section`, `mt-related`, etc.). */
+@theme {
+  --spacing-related: 0.5rem;
+  --spacing-block: 1rem;
+  --spacing-section: 1.5rem;
+  --spacing-region: 2rem;
+}
+
+/* Product motion. Bare transitions are fast by default; deliberate spatial
+   movement opts into `duration-calm`. Finite transitions share one curve.
+   Named attention effects such as the workings ripple keep their own duration. */
+@theme {
+  --transition-duration-fast: 150ms;
+  --transition-duration-calm: 300ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --default-transition-duration: var(--transition-duration-fast);
+  --default-transition-timing-function: var(--ease-standard);
+}
+
 /* Type scale. One ramp, named by role, with line-height and tracking bundled
    into each step so markup never repeats them. Display steps are fluid (clamp)
    and pair with `font-display`; body/label steps are fixed and use the sans.
@@ -353,7 +375,9 @@ body {
   color: transparent;
 }
 
-/* Soft, layered elevation in the midnight-ink hue — moonlight, not a hard drop. */
+/* Floating elevation in the midnight-ink hue — moonlight, not a hard drop.
+   Use `shadow-moon` for dropdowns/popovers/toasts and `shadow-moon-lg` for modals.
+   In-flow cards, tables, panels, controls, and selected rows never cast shadows. */
 .shadow-moon {
   box-shadow:
     0 1px 2px oklch(30% 0.055 233 / 0.05),
@@ -410,10 +434,10 @@ body {
   }
 }
 .workings-ripple-0 {
-  animation: workings-ripple-0 1.4s ease-out 1;
+  animation: workings-ripple-0 1.4s var(--ease-standard) 1;
 }
 .workings-ripple-1 {
-  animation: workings-ripple-1 1.4s ease-out 1;
+  animation: workings-ripple-1 1.4s var(--ease-standard) 1;
 }
 @media (prefers-reduced-motion: reduce) {
   .workings-ripple-0,

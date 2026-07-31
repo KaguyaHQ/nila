@@ -144,6 +144,82 @@ compose as usual: `hover:text-ink`, `group-open:text-ink-subtle`, and so on.
 show a document uses `scrim` — `base-content` is a real blue, and at full
 opacity it tints the paper inside it.
 
+#### Ruling
+
+**Ordinary product ruling is a 1px `base-300` hairline.** This includes card and
+control outlines, table rules, separators, and dividers. Do not soften ruling
+with `base-200` or synthesize another line color from `base-content/NN`.
+
+Semantic status borders (`success`, `warning`, `error`, `primary`), interactive
+hover and drag-target borders, dark-ground ruling such as the navigation rail's
+`base-100/10`, and structural accent bars are not ordinary ruling and keep their
+semantic color or weight. Marketing ledger rules remain on `ink`, `feint`, and
+`redink`. `mix nila.style_guard` enforces the product ruling rule.
+
+#### Elevation
+
+**A shadow means the surface is floating above the page.** Use `shadow-moon` for
+dropdowns, popovers, and toasts; use `shadow-moon-lg` for modals. These are the
+only two shadow utilities in the product; do not mint ad-hoc `shadow-*` values.
+
+Anything in normal document flow — cards, stat tiles, tables, panels, chips,
+avatars, and selected rows — uses a `base-300` hairline, a semantic tint, or an
+inset ring instead, never a shadow. Six shadowed reference surfaces rank
+nothing; unequal spacing and restrained fills must create their grouping.
+
+#### Spacing
+
+Structural rhythm has four named roles. The names describe the relationship,
+not the container or direction; use them with `space-y-*`, `gap-*`, or a
+structural margin when a parent cannot own the gap.
+
+| Role | Utility suffix | Value | Carries |
+| --- | --- | --- | --- |
+| Related | `related` | 8px | Pieces of one thought: label + help, heading + list |
+| Block | `block` | 16px | Fields and sibling blocks inside one component |
+| Section | `section` | 24px | Distinct panels, folds, and ordinary page sections |
+| Region | `region` | 32px | Major workbench regions only |
+
+**The parent owns spacing between siblings.** Components own their internal
+geometry; callers own the gap around the component. Outer gaps must be larger
+than inner gaps: related < block < section < region. Prefer `gap-*` or
+`space-y-*` over stacking child margins. Responsive spacing changes at page or
+region boundaries, not inside rows and controls.
+
+Numeric primitives remain legitimate inside components: 4, 8, 12, 16, 24, 32,
+and 48px, with 2px and 6px reserved for optical micro-alignment. Compact rows
+use `px-3 py-2`; standard rows use `px-4 py-3`; standard cards and modals use
+`p-6`. Product page gutters are `px-4 sm:px-6 lg:px-8`. Worklists and working
+sheets use compact geometry; review, correction, and signing surfaces use
+standard geometry. This is a recipe choice owned by the shared component, not a
+screen-level density toggle.
+
+Raw numeric `space-y-2/4/6/8`, arbitrary spacing (`p-[…]`, `gap-[…]`, etc.),
+and off-scale numeric spacing are banned in product markup. Name structural
+rhythm and keep optical exceptions inside components. `mix nila.style_guard`
+enforces the closed scale.
+
+#### Motion
+
+Product transitions have two speeds and one standard easing curve. Bare
+`transition`, `transition-colors`, and `transition-transform` use the fast
+system default; write `duration-calm` only for deliberate spatial movement.
+
+| Role | Utility | Duration | Use |
+| --- | --- | --- | --- |
+| Fast | default / `duration-fast` | 150ms | Hover, focus, folds, chevrons, selection, floating-surface exit |
+| Calm | `duration-calm` | 300ms | Modal entrance and navigation-rail geometry |
+
+Both use `ease-standard`, the default `cubic-bezier(0.4, 0, 0.2, 1)`. Named
+attention effects are separate from transitions: the 1.4s workings ripple must
+remain visible long enough to identify recalculated nodes. Continuous spinner
+and pulse animations retain their physical timing. Marketing's `moon-rise` is
+also outside the product transition scale.
+
+Numeric `duration-*` and raw `ease-in` / `ease-out` / `ease-in-out` utilities
+are banned in product markup. Reduced-motion behavior is mandatory and lives in
+`app.css`. `mix nila.style_guard` enforces the named transition vocabulary.
+
 ## Typography
 
 One ramp, named by role. Every size, line-height, and letter-spacing lives in

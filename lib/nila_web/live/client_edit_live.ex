@@ -68,44 +68,48 @@ defmodule NilaWeb.ClientEditLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <div id="client-edit-page" class="mx-auto max-w-2xl space-y-6">
+      <div id="client-edit-page" class="space-y-section mx-auto max-w-2xl">
         <.page_header eyebrow="Clients" title="Edit client">
           A first-class party you file GST for. Name and type are required; GSTIN and PAN
           are validated when provided.
         </.page_header>
 
         <.card>
-          <.form for={@form} id="client-form" phx-change="validate" phx-submit="save">
-            <div class="space-y-5">
-              <.input field={@form[:name]} label="Name" required />
-              <.input
-                field={@form[:type]}
-                type="select"
-                label="Type"
-                prompt="Select a type"
-                options={type_options()}
-              />
-              <.input field={@form[:gstin]} label="GSTIN" />
-              <.input field={@form[:pan]} label="PAN" />
-              <.input field={@form[:phone]} label="Phone" />
-              <.input field={@form[:email]} type="email" label="Email" />
-              <.input
-                field={@form[:chase_channel]}
-                type="select"
-                label="How should Nila ask for documents?"
-                options={chase_channel_options()}
-              />
+          <.form
+            for={@form}
+            id="client-form"
+            phx-change="validate"
+            phx-submit="save"
+            class="space-y-block"
+          >
+            <.input field={@form[:name]} label="Name" required />
+            <.input
+              field={@form[:type]}
+              type="select"
+              label="Type"
+              prompt="Select a type"
+              options={type_options()}
+            />
+            <.input field={@form[:gstin]} label="GSTIN" />
+            <.input field={@form[:pan]} label="PAN" />
+            <.input field={@form[:phone]} label="Phone" />
+            <.input field={@form[:email]} type="email" label="Email" />
+            <.input
+              field={@form[:chase_channel]}
+              type="select"
+              label="How should Nila ask for documents?"
+              options={chase_channel_options()}
+            />
 
-              <div class="flex items-center gap-3">
-                <.button type="submit" id="client-submit">Save changes</.button>
-                <.link
-                  navigate={~p"/clients"}
-                  id="client-cancel"
-                  class="text-ink-muted text-small font-semibold"
-                >
-                  Cancel
-                </.link>
-              </div>
+            <div class="flex items-center gap-3">
+              <.button type="submit" id="client-submit">Save changes</.button>
+              <.link
+                navigate={~p"/clients"}
+                id="client-cancel"
+                class="text-ink-muted text-small font-semibold"
+              >
+                Cancel
+              </.link>
             </div>
           </.form>
         </.card>

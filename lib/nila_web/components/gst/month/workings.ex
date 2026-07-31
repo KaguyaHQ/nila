@@ -57,7 +57,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       |> assign(:hsn_rows, hsn_rows(assigns))
 
     ~H"""
-    <div id="gstr1-workings" class="space-y-4">
+    <div id="gstr1-workings" class="space-y-block">
       <%!-- Differences lit, agreements silent. "All 45 compared fields match" is
             a trust meter — the product narrating its own diligence back at a CA
             who did not ask for a score. When the filed return agrees, the
@@ -81,7 +81,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           row_click={&row_click/1}
           min_width="min-w-[620px]"
           dense
-          flat
         >
           <:col :let={row} label="Party">
             <%!-- Extraction sometimes lands a whole postal address in the buyer
@@ -128,7 +127,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           row_click={&row_click/1}
           min_width="min-w-[520px]"
           dense
-          flat
         >
           <:col :let={row} label="Rate">
             <div :if={row.kind == :node} class="flex items-center gap-2">
@@ -159,7 +157,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           row_click={&row_click/1}
           min_width="min-w-[620px]"
           dense
-          flat
         >
           <:col :let={row} label="HSN/SAC">
             <div :if={row.kind == :node} class="flex items-center gap-2">
@@ -194,7 +191,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
 
       <div :if={@docs != []} id="gstr1-workings-docs" class="space-y-1.5">
         <.section_label>Documents issued</.section_label>
-        <.data_table id="gstr1-workings-docs-rows" rows={@docs} min_width="min-w-[520px]" dense flat>
+        <.data_table id="gstr1-workings-docs-rows" rows={@docs} min_width="min-w-[520px]" dense>
           <:col :let={doc} label="From"><span class="font-mono">{doc["from"]}</span></:col>
           <:col :let={doc} label="To"><span class="font-mono">{doc["to"]}</span></:col>
           <:col :let={doc} label="Numbers" align="right">{doc["totnum"]}</:col>
@@ -209,7 +206,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         />
       </div>
 
-      <div :if={@unclaimed != []} id="gstr1-diff-unclaimed" class="space-y-2">
+      <div :if={@unclaimed != []} id="gstr1-diff-unclaimed" class="space-y-related">
         <.section_label>Only one side holds these</.section_label>
         <.diff_row
           :for={row <- @unclaimed}

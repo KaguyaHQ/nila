@@ -46,9 +46,9 @@ defmodule NilaWeb.Components.List do
     <button
       type={@type}
       class={[
-        "rounded-field text-small w-full border border-l-4 px-3 py-2 text-left transition-all duration-200",
+        "rounded-field text-small w-full border border-l-4 px-3 py-2 text-left transition-all",
         @active &&
-          "bg-primary/10 border-l-primary border-primary/30 shadow-moon-lg text-primary -translate-y-px",
+          "bg-primary/10 border-l-primary border-primary/30 text-primary",
         !@active &&
           "bg-base-100 border-base-300 border-l-base-300 hover:bg-base-200 hover:border-l-primary/40 hover:border-primary/30 hover:text-ink text-ink-muted",
         @class

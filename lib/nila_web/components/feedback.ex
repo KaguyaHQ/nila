@@ -18,8 +18,8 @@ defmodule NilaWeb.Components.Feedback do
         <span class={[
           "grid size-6 shrink-0 place-items-center rounded-full border",
           state == :done && "bg-success border-success text-success-content",
-          state == :active && "border-base-content/40 text-base-content",
-          state == :pending && "border-base-content/20 text-ink-faint"
+          state == :active && "border-base-300 text-base-content",
+          state == :pending && "border-base-300 text-ink-faint"
         ]}>
           <.icon :if={state == :done} name="hero-check" class="size-4" />
           <.icon :if={state == :active} name="hero-arrow-path" class="size-4 animate-spin" />
