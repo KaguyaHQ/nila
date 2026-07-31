@@ -2,7 +2,9 @@
 
 The single design reference: brand, product principles, and the **moonlight**
 visual system. Read this before editing `.heex` or components. It complements
-`AGENTS.md` (Elixir/Phoenix rules).
+`AGENTS.md` (Elixir/Phoenix rules). The founder's recorded taste — the standard
+this system is judged against — lives in `TASTE.md` beside this file; read it
+before any aesthetic call.
 
 ## Brand
 
@@ -117,7 +119,10 @@ never hard-code hex.
 | Token | Value | Role |
 | --- | --- | --- |
 | `primary` | sea blue `#316177` → `oklch(47% 0.06 232)` | Primary actions, links, accents |
+| `secondary` | low-chroma slate `oklch(50% 0.018 258)` | Alternate semantic badges |
 | `accent` | warm sand `#d3c0aa` → `oklch(80% 0.035 78)` | The lone warm note — the amber window. Use sparingly. |
+| `neutral` | dark sea ink `oklch(33% 0.06 233)` | Quiet status and neutral controls |
+| `info` | clear sea blue `oklch(55% 0.09 235)` | Informational status and feedback |
 | `base-100` | white | Page & card background |
 | `base-200` | cool near-white | Subtle section fills |
 | `base-300` | cool light gray | Borders, hairlines |
@@ -175,8 +180,8 @@ only two shadow utilities in the product; do not mint ad-hoc `shadow-*` values.
 
 Anything in normal document flow — cards, stat tiles, tables, panels, chips,
 avatars, and selected rows — uses a `base-300` hairline, a semantic tint, or an
-inset ring instead, never a shadow. Six shadowed reference surfaces rank
-nothing; unequal spacing and restrained fills must create their grouping.
+inset ring instead, never a shadow. Use spacing, fills, and semantic tints to
+differentiate in-flow surfaces.
 
 #### Spacing
 
@@ -242,13 +247,14 @@ the scale — markup names a role, never a pixel. Tokens are defined in
 | Face | Token | Stack | Used for |
 | --- | --- | --- | --- |
 | Display | `font-display` | **Newsreader** (editorial serif) | Hero, headings, and money figures. Sits at `font-normal` (400) — the serif reads contemplative when it isn't pushed bold. |
-| Body | `font-sans` (default) | **DM Sans** | Everything else: reading copy, UI, labels. |
+| Body | `font-sans` (default) | **Switzer** | Everything else: reading copy, UI, labels. |
 
-Both load via Google Fonts in `root.html.heex`. Display is the voice; sans is
-the workhorse. Don't introduce a third face.
+Both are self-hosted from `priv/static/fonts` and declared with `@font-face` in
+`assets/css/app.css`. Display is the voice; sans is the workhorse. Don't
+introduce a third face or a runtime font CDN.
 
 **Weight is the signature.** Lean light: display headings `font-display
-font-normal tracking-tight`; sub-section headings (inside cards) DM Sans
+font-normal tracking-tight`; sub-section headings (inside cards) Switzer
 `font-semibold tracking-tight`; body copy `font-light`; labels, table data,
 badges, buttons `font-medium` / `font-semibold`.
 
@@ -306,39 +312,12 @@ routinely pair with a type class — figures are the exception that proves the r
 - **One face per job.** Serif for display and figures, sans for everything else.
 - **`font-normal` on the serif.** Weight comes from size, not ink.
 
-### Migrating legacy markup
-
-Older interior pages still carry arbitrary `text-[Npx]` with hand-tuned
-leading/tracking, and legacy slate colors. When you touch one of those screens,
-map each size to its nearest step and delete the redundant leading/tracking —
-drift to fix on contact, not a pattern to copy. Default mappings (prefer intent
-when a site clearly differs):
-
-| Raw Tailwind | Role |
-| --- | --- |
-| `text-base` | `text-body` (paragraph); `text-h4` only if a real heading |
-| `text-sm` | `text-small` (dense UI); `text-body` only for genuine reading copy |
-| `text-xs` | `text-fine` (inline labels/hints/badges); `text-micro` for timestamps/metadata |
-| `text-lg` | `text-h4` (heading) or `text-lead` (intro copy) |
-| `text-xl` | `text-h4` |
-| `text-2xl` | `text-h4` (card/auth heading) or `text-h3` (page title) |
-| `text-3xl` | `text-h3` |
-| `text-4xl` | `text-h2` |
-| `text-5xl` | `text-statement` (hero) or `text-h2` |
-| `text-[10px]` / `text-[11px]` | `text-micro` |
-| uppercase kicker + `tracking-[0.2em]` / `.text-moon` | `text-eyebrow` (drop the tracking) |
-| uppercase micro-label + `tracking-wide`-ish | `text-label` (drop the tracking) |
-
-A **compact title** authored at `text-sm`/`text-base` stays compact — its
-`font-semibold` carries the heading. Only `text-lg`+ titles climb the display
-ramp. Money/KPI **figures** keep their size bucket (a `text-4xl` figure becomes
-`text-h2`/`text-h3`, not `text-h4`) and retain `tabular-nums`/`leading-none`.
-
 ## Radius & borders
 
 Set in the theme: fields/buttons `0.5rem`, cards (`rounded-box`) `0.875rem`,
-borders `1px`. Use `rounded-box` for cards and `rounded-field` for small chips.
-Borders are 1px `base-300` hairlines — quiet, never heavy.
+borders `1px`. Use `rounded-box` for card-like containers and `rounded-field`
+for interactive elements such as buttons, links, toggles, and pills. Borders
+are 1px `base-300` hairlines — quiet, never heavy.
 
 ## Signature utilities
 
@@ -349,29 +328,33 @@ gradients or shadows.** The look comes from restraint.
 | --- | --- |
 | `.moonlight` | The hero ground: a pale cool wash with a soft pool of light up top, fading to near-white. Pair with **ink** text, not white. |
 | `.moonlight-soft` | An even quieter wash for section backgrounds. |
+| `.moonlight-night` | The app shell's deep midnight-sea ground. Pair with `text-base-100`, never ink. |
 | `.text-moon` | Low-chroma sea-blue clipped to text — eyebrows, figures, accents. It whispers. |
-| `.shadow-moon` | Soft layered elevation in the night-ink hue. Default card shadow. |
-| `.shadow-moon-lg` | Heavier lift for floating/primary surfaces. |
+| `.shadow-moon` | Floating dropdown, popover, or toast elevation only. |
+| `.shadow-moon-lg` | Modal elevation only. |
 
 ## Patterns
 
-- **Cards**: `rounded-box border border-base-300 bg-base-100 p-5 shadow-moon`.
-- **Hero**: a `.moonlight` ground with **ink** (`text-base-content`) headline —
-  light text on light. Content cards below overlap it (`-mt-28`) for depth.
-- **Primary button**: daisyUI `btn btn-primary` (sea blue) + `shadow-moon`.
+- **Cards**: `<.card>` owns `rounded-box border border-base-300 bg-base-100 p-6`.
+  Callers add internal layout, never elevation or replacement geometry.
+- **Stat tiles**: `<.stat_card>` owns compact `px-4 py-3` geometry; label, value,
+  and caption structure; and an optional `figure` mode for large serif tabular KPIs.
+- **Primary button**: `<.button>` with its default `primary` variant. Buttons
+  remain in flow and do not cast shadows.
 - **Sticky header**: translucent `bg-base-100/80 backdrop-blur` + 1px bottom border.
-- **Status**: `badge badge-primary badge-soft` for soft pills.
-- **Tables**: `<.data_table>` is the only table. `dense` for working-sheet
-  material read in bulk; `flat` (no shadow) for reference tables — elevation
-  ranks a table as holding a decision, and six shadowed surfaces in one section
-  rank nothing. Right-aligned columns get `tabular-nums` automatically.
+- **Status**: `<.badge>` with the semantic variant matching the business state.
+- **Tables**: `<.data_table>` is the only table. Standard rows use `px-4 py-3`;
+  `dense` is reserved for working-sheet material read in bulk. Tables are
+  bordered in-flow surfaces and never cast shadows. Right-aligned columns get
+  `tabular-nums` automatically.
 - **Disclosures**: `<.fold>`, never a bare `<details>`. A browser-toggled
   `<details>` does not survive a LiveView patch — morphdom syncs `open` away, so
   a section the reader opened slams shut the next time anything arrives. The
   component takes `open` from server state and pushes `toggle-fold`.
 - **Two expand marks, one meaning each.** A trailing chevron-down that rotates
   180° means a *section* folds. A leading chevron-right that rotates 90° means a
-  *row* expands in place. Never mix them in one surface.
+  *row* expands in place. Never mix them in one surface. Row expansion remains
+  domain-owned; there is no shared row-expansion component.
 
 ## Don't
 
@@ -381,5 +364,6 @@ gradients or shadows.** The look comes from restraint.
 - Don't pair `leading-*`/`tracking-*` with a `text-{role}` (exceptions:
   `leading-none`/`tabular-nums` on figures).
 - Don't reach for heavy headings (`font-bold` on display type) — stay light.
-- Don't add bespoke gradients/shadows — use the utilities above.
+- Don't add bespoke gradients. Shadows are reserved for the floating surfaces
+  named under Elevation.
 - Don't add a dark theme or `tailwind.config.js`.

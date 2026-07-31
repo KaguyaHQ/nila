@@ -11,11 +11,9 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
     * **Type scale** — raw Tailwind sizes (`text-sm`, `text-xs`, `text-4xl`, …),
       arbitrary `text-[…]`, `tracking-[…]`, and `leading-[…]`. The role scale in
-      `docs/design/typography.md` bundles size + line-height + tracking, so markup
-      names a role (`text-small`, `text-eyebrow`), never a pixel. Files still
-      carrying legacy raw sizes are listed in `@type_scale_allowlist`; that ledger
-      shrinks to zero as the design-token sweep lands. A file not on the list that
-      introduces a raw size fails the build, so adoption can't regress.
+      `docs/design/DESIGN.md#typography` bundles size + line-height + tracking, so
+      markup names a role (`text-small`, `text-eyebrow`), never a pixel. Raw sizes
+      have been eliminated; the empty allowlist keeps them from returning.
 
     * **Spacing scale** — arbitrary and off-scale product spacing, plus raw
       numeric structural stacks. Components keep a small primitive scale for
@@ -50,7 +48,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
   # Escape hatch for files allowed to keep raw text sizes. The design-token sweep
   # drove this to empty: every `lib/nila_web` screen now names a role from
-  # docs/design/typography.md. Keep it empty. DO NOT add a file here to silence a
+  # docs/design/DESIGN.md#typography. Keep it empty. DO NOT add a file here to silence a
   # new violation — convert it to the role scale instead. The only legitimate
   # entry would be a genuinely print-specific stylesheet measured in pt, which
   # lives in CSS, not markup.
@@ -87,7 +85,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     motion = @motion_globs |> expand() |> Enum.flat_map(&motion_violations/1)
 
     report(legacy, "legacy hardcoded classes")
-    report(type_scale, "raw type sizes — name a role from docs/design/typography.md")
+    report(type_scale, "raw type sizes — name a role from docs/design/DESIGN.md#typography")
     report(spacing, "off-scale spacing — use the closed primitives and structural roles")
     report(ruling, "off-system ruling — use the base-300 hairline")
     report(motion, "off-system motion — use the named fast/calm transition vocabulary")

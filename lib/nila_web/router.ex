@@ -52,6 +52,10 @@ defmodule NilaWeb.Router do
     get "/terms", PageController, :terms
     get "/data-deletion", PageController, :data_deletion
     get "/contact", PageController, :contact
+
+    # Moonlight v2 proving ground — reachable while signed in on purpose, so
+    # the new style can be judged side by side with the product.
+    get "/landing", PageController, :landing
   end
 
   # Public marketing site — served to logged-out visitors.

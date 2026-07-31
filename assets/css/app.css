@@ -177,7 +177,7 @@
    into each step so markup never repeats them. Display steps are fluid (clamp)
    and pair with `font-display`; body/label steps are fixed and use the sans.
    Never reach for an arbitrary `text-[13.5px]` — pick the nearest step. The
-   scale is documented in docs/design/typography.md. */
+   scale is documented in docs/design/DESIGN.md#typography. */
 @theme {
   /* Display & headings — fluid, serif. Pair with `font-display`. */
   --text-hero: clamp(3.25rem, 1.9rem + 6vw, 5.25rem);
@@ -389,8 +389,8 @@ body {
     0 18px 48px oklch(30% 0.055 233 / 0.13);
 }
 
-/* Calm entrance: a slow, eased rise from below — moonlight settling into place,
-   not a bounce. Pair with `[animation-delay:Nms]` in markup to stagger a group.
+/* Marketing-only calm entrance: a slow, eased rise from below — moonlight
+   settling into place, not a bounce. Pair with `[animation-delay:Nms]` in markup to stagger a group.
    Honors reduced-motion: the content is simply present, never hidden. */
 @keyframes moon-rise {
   from {
@@ -411,6 +411,72 @@ body {
     opacity: 1;
     animation: none;
   }
+}
+
+/* ── Moonlight v2 — the /landing proving ground ──────────────────────────
+   An experiment judged against docs/design/TASTE.md: delicate type in large
+   space, near-zero borders, ink pulled toward neutral so blue is reserved for
+   meaning, and one authored moment of light — a moonlit night dissolving into
+   a pale room. Scoped to `.landing`; if it produces "damn", the deltas get
+   promoted into the moonlight theme proper. Nothing here may leak into
+   product markup. */
+
+/* The room. Ink is pulled toward neutral (chroma 0.055 → 0.02) so the page
+   stops swimming in blue and blue can mean something again. The ink-scale
+   utilities read this variable, so everything inside neutralises at once. */
+.landing {
+  --color-base-content: oklch(25% 0.02 240);
+  background-color: oklch(99.2% 0.003 240);
+}
+
+/* The night. Deep midnight-sea — never achromatic black — with a lunar bloom
+   up top, a whisper of the amber window low-left, and a dawn horizon that
+   dissolves the night into the page color so the finished month below sits in
+   first light. The final stop must equal the .landing background exactly or
+   the seam shows. */
+.landing-night {
+  background-color: oklch(26% 0.052 243);
+  background-image:
+    radial-gradient(46% 30% at 50% 16%, oklch(80% 0.05 235 / 0.28), transparent 70%),
+    radial-gradient(130% 85% at 50% -12%, oklch(58% 0.06 238 / 0.35), transparent 65%),
+    radial-gradient(48% 38% at 10% 96%, oklch(76% 0.06 78 / 0.14), transparent 60%),
+    linear-gradient(
+      180deg,
+      oklch(23% 0.048 246) 0%,
+      oklch(27% 0.053 243) 42%,
+      oklch(37% 0.055 240) 64%,
+      oklch(58% 0.045 238) 80%,
+      oklch(85% 0.018 238) 92%,
+      oklch(99.2% 0.003 240) 100%
+    );
+}
+
+/* The moon itself: a soft luminous disc with a wide halo, drawn in light, not
+   lines. Rendered as an in-flow div (aria-hidden) so the hero composition owns
+   its place. */
+.landing-moon {
+  background-image: radial-gradient(
+    closest-side,
+    oklch(98% 0.008 235) 0%,
+    oklch(95% 0.015 235 / 0.95) 22%,
+    oklch(88% 0.035 235 / 0.4) 38%,
+    oklch(80% 0.05 235 / 0.12) 55%,
+    transparent 72%
+  );
+}
+
+/* The lift under the one floating artifact — moonlight falling on it from
+   above, pooling beneath. Landing-only; product elevation stays shadow-moon. */
+.landing-lift {
+  box-shadow:
+    0 1px 2px oklch(25% 0.05 240 / 0.08),
+    0 12px 32px oklch(25% 0.05 240 / 0.1),
+    0 40px 90px oklch(25% 0.05 240 / 0.16);
+}
+
+/* Soft-fill tile: structure from fill and air, not a border. */
+.landing-tile {
+  background-color: color-mix(in oklab, var(--color-base-content) 4.5%, transparent);
 }
 
 /* Correction ripple: the workings nodes a re-derivation changed glow once,

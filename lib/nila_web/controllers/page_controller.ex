@@ -5,6 +5,10 @@ defmodule NilaWeb.PageController do
     render(conn, :home)
   end
 
+  def landing(conn, _params) do
+    render(conn, :landing, page_title: "Nila — it works while you sleep")
+  end
+
   def privacy(conn, _params) do
     render(conn, :privacy)
   end
