@@ -1,0 +1,17 @@
+<%!-- A 500 means we broke, and a joke about the reader's books reads as
+      flippancy when the fault is ours. Same shell, one calm line, no verdict. --%>
+<.shell page_title="500 · Nila">
+  <div class="space-y-block">
+    <.numeral>500</.numeral>
+    <h1 class="font-display text-base-content text-h3 font-normal">
+      Something broke on our side.
+    </h1>
+    <p class="text-body text-ink-muted">
+      Your books are untouched — this is on us, and it's been logged.
+    </p>
+  </div>
+
+  <div class="flex flex-wrap items-center gap-3">
+    <.button href={~p"/today"}>Back to today</.button>
+  </div>
+</.shell>

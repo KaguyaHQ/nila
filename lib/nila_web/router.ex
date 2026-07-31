@@ -176,6 +176,10 @@ defmodule NilaWeb.Router do
 
       live_dashboard "/dashboard", metrics: NilaWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
+
+      # The error pages, previewable — `debug_errors: true` means a real 404 in
+      # dev renders the Plug debugger instead of ours.
+      get "/errors/:status", NilaWeb.ErrorPreviewController, :show
     end
   end
 
