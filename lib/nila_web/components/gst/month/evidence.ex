@@ -47,7 +47,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           />
           <div
             :if={@selected_row["image_urls"] == []}
-            class="border-base-300 rounded-box text-ink-muted text-small flex h-40 items-center justify-center border border-dashed"
+            class="border-base-300 rounded-box text-body text-ink-muted flex h-40 items-center justify-center border border-dashed"
           >
             No scanned bill — this line appears in GSTR-2B only.
           </div>
@@ -56,7 +56,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         <div id="gst-evidence-why" class="space-y-block">
           <div>
             <div class="text-ink-subtle text-label font-semibold uppercase">Vendor</div>
-            <div class="text-base-content text-small mt-1 font-medium">
+            <div class="text-base-content text-body mt-1 font-medium">
               {@selected_row["vendor_name"]}
             </div>
             <div :if={@selected_row["vendor_gstin"]} class="text-fine text-ink-subtle mt-0.5">
@@ -65,11 +65,11 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           </div>
           <div :if={@selected_row["recon_note"]}>
             <div class="text-ink-subtle text-label font-semibold uppercase">Recon note</div>
-            <p class="text-base-content text-small mt-1">{@selected_row["recon_note"]}</p>
+            <p class="text-base-content text-body mt-1">{@selected_row["recon_note"]}</p>
           </div>
           <div :if={@selected_row["next_action"]}>
             <div class="text-ink-subtle text-label font-semibold uppercase">Next action</div>
-            <p class="text-base-content text-small mt-1">{@selected_row["next_action"]}</p>
+            <p class="text-base-content text-body mt-1">{@selected_row["next_action"]}</p>
           </div>
           <div :if={@selected_row["flags"] not in [nil, []]} class="space-y-related">
             <div class="text-ink-subtle text-label font-semibold uppercase">Flags</div>
@@ -80,7 +80,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               <.badge variant={if flag["severity"] == "error", do: "error", else: "warning"}>
                 {issue_label(flag["code"])}
               </.badge>
-              <p class="mt-related text-ink-muted text-small">{flag["reason"]}</p>
+              <p class="mt-related text-body text-ink-muted">{flag["reason"]}</p>
             </div>
           </div>
         </div>
@@ -145,6 +145,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
     >
       <div class="gap-block grid h-full min-h-0 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <div id="gstr1-evidence-images" class="min-h-0 space-y-3 overflow-y-auto">
+          <p class="text-ink-subtle text-label font-semibold uppercase">Original document</p>
           <img
             :for={url <- @selected_invoice["image_urls"]}
             src={url}
@@ -153,7 +154,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           />
           <div
             :if={@selected_invoice["image_urls"] == []}
-            class="border-base-300 rounded-box text-ink-muted text-small flex h-40 items-center justify-center border border-dashed"
+            class="border-base-300 rounded-box text-body text-ink-muted flex h-40 items-center justify-center border border-dashed"
           >
             No page image for this invoice.
           </div>
@@ -162,7 +163,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         <div class="space-y-block min-h-0 overflow-y-auto">
           <div>
             <div class="text-ink-subtle text-label font-semibold uppercase">Buyer</div>
-            <div class="text-base-content text-small mt-1 font-medium">
+            <div class="text-base-content text-body mt-1 font-medium">
               {@selected_invoice["buyer_name"] || "—"}
             </div>
             <div class="text-fine text-ink-subtle mt-0.5 font-mono">
@@ -171,7 +172,9 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           </div>
 
           <div :if={@read_rows != []} class="space-y-related">
-            <div class="text-ink-subtle text-label font-semibold uppercase">Extracted read</div>
+            <div class="text-ink-subtle text-label font-semibold uppercase">
+              Extracted from the original
+            </div>
             <.data_table
               id="gstr1-line-items"
               rows={@read_rows}
@@ -228,7 +231,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               />
               <div
                 :if={is_nil(@check_issues[check_key(check)])}
-                class="text-ink-muted text-small flex items-center gap-2"
+                class="text-body text-ink-muted flex items-center gap-2"
               >
                 <.icon name="hero-x-mark-mini" class="text-error size-4 shrink-0" />
                 <span>{check_claim(check)}</span>
@@ -246,7 +249,9 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             id="gstr1-corrections"
             class="space-y-related"
           >
-            <div class="text-ink-subtle text-label font-semibold uppercase">Flagged fields</div>
+            <div class="text-ink-subtle text-label font-semibold uppercase">
+              Fields flagged for correction
+            </div>
             <%= for field <- Gstr1.correctable_fields(@flagged, @selected_invoice["pristine_inum"]) do %>
               <%= if @correcting && @correcting.field == field do %>
                 <form phx-submit="save_correct" class="flex items-end gap-2">
@@ -274,9 +279,6 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 </div>
               <% end %>
             <% end %>
-            <p class="text-ink-muted text-small">
-              Only fields Nila flagged are correctable — fixing anything else would be a silent error.
-            </p>
           </div>
         </div>
       </div>
@@ -297,7 +299,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       }>
         {issue_label(@issue["code"])}
       </.badge>
-      <p class="mt-related text-ink-muted text-small line-clamp-2">{@issue["message"]}</p>
+      <p class="mt-related text-body text-ink-muted line-clamp-2">{@issue["message"]}</p>
       <div class="mt-related">
         <.button
           :if={@issue["status"] == "open" and is_nil(@r1_signoff)}

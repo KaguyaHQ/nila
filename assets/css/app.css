@@ -202,13 +202,16 @@
   --text-h4--letter-spacing: -0.025em;
 
   /* Body & UI — fixed, sans. */
-  --text-lead: 1.0625rem; /* 17px — hero/section intros */
+  --text-lead: 1.125rem; /* 18px — hero/section intros */
   --text-lead--line-height: 1.65;
 
-  --text-body: 0.9375rem; /* 15px — default reading copy */
-  --text-body--line-height: 1.7;
+  --text-body: 1rem; /* 16px — default reading copy and workflow sentences */
+  --text-body--line-height: 1.65;
 
-  --text-small: 0.8125rem; /* 13px — dense copy, list rows */
+  --text-table: 0.875rem; /* 14px — financial tables and dense working sheets */
+  --text-table--line-height: 1.5;
+
+  --text-small: 0.8125rem; /* 13px — metadata, timestamps, compact annotations */
   --text-small--line-height: 1.6;
 
   --text-fine: 0.75rem; /* 12px — metadata, timestamps */
@@ -222,7 +225,7 @@
   --text-eyebrow--line-height: 1;
   --text-eyebrow--letter-spacing: 0.2em;
 
-  --text-label: 0.6875rem; /* 11px — UI micro-labels */
+  --text-label: 0.75rem; /* 12px — UI and table labels */
   --text-label--line-height: 1;
   --text-label--letter-spacing: 0.14em;
 }

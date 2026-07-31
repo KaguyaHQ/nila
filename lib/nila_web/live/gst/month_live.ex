@@ -126,6 +126,8 @@ defmodule NilaWeb.Gst.MonthLive do
 
     socket
     |> assign(:dumps, dumps)
+    |> assign(:sales_dumps, Enum.filter(dumps, &(&1.kind in ~w(sales filed_gstr1))))
+    |> assign(:purchase_dumps, Enum.filter(dumps, &(&1.kind in ~w(purchase gstr2b))))
     |> assign(:precondition_dump, in_question)
     |> assign(
       :move_options,
@@ -216,7 +218,6 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:gstr1_diff, nil)
     |> assign(:accepted_diffs, MapSet.new())
     |> assign(:open_issue_count, 0)
-    |> assign(:open_issue_invoice, nil)
     |> assign(:reviewable, false)
   end
 
@@ -261,7 +262,6 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:gstr1_diff, filed && derived && Gstr1Diff.rows(derived, filed))
     |> assign(:accepted_diffs, SalesResolutions.accepted_differences(sales))
     |> assign(:open_issue_count, Enum.count(issues, &(&1["status"] == "open")))
-    |> assign(:open_issue_invoice, first_open_invoice(month_issues, invoice_issues))
     |> assign(:reviewable, SalesWorkings.reviewable?(issues))
   end
 
@@ -269,22 +269,6 @@ defmodule NilaWeb.Gst.MonthLive do
   # every month that never loaded one, and an empty map is not a return.
   defp filed_gstr1(%{filed_gstr1: filed}) when is_map(filed) and filed != %{}, do: filed
   defp filed_gstr1(_sales), do: nil
-
-  # An invoice-level issue has no representation on the page beyond an "n open"
-  # cell, so the verdict's door has to carry the reviewer into the invoice's
-  # modal — that is where the confirm button lives. A month-level issue renders
-  # as a card inside the sales section, so for those the door stays an anchor
-  # and this is nil.
-  defp first_open_invoice(month_issues, invoice_issues) do
-    if Enum.any?(month_issues, &(&1["status"] == "open")) do
-      nil
-    else
-      case Enum.find(invoice_issues, &(&1["status"] == "open")) do
-        nil -> nil
-        issue -> issue["invoice"]
-      end
-    end
-  end
 
   # `"image"` is the invoice's own answer to "which page was this read from" and
   # the only one worth trusting. Guessing a basename from `"page"` — as this did
@@ -331,8 +315,6 @@ defmodule NilaWeb.Gst.MonthLive do
       purchase_month: purchase,
       sales_month: sales,
       open_issue_count: socket.assigns.open_issue_count,
-      open_issue_invoice: socket.assigns.open_issue_invoice,
-      reviewable: socket.assigns.reviewable,
       r1_signoff: r1_signoff,
       gstr3b_signoff: gstr3b_signoff,
       can_sign_off: socket.assigns.can_sign_off,
@@ -347,18 +329,6 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:tracks, tracks)
     |> assign(:blocking_state, WorkQueue.fold_state(tracks))
     |> assign(:verdict, Verdict.resolve(facts))
-    |> seed_folds()
-  end
-
-  # Which sections stand open is server state — a browser-toggled `<details>`
-  # does not survive a LiveView patch, so a fold opened by the reader would slam
-  # shut the moment a pile landed. Seed once, then leave every disclosure under
-  # the reader's control. Return workings are not a disclosure: verification is
-  # the page's job, so they remain visible.
-  defp seed_folds(socket) do
-    if Map.has_key?(socket.assigns, :open_folds),
-      do: socket,
-      else: assign(socket, :open_folds, MapSet.new())
   end
 
   @impl true
@@ -393,9 +363,6 @@ defmodule NilaWeb.Gst.MonthLive do
   # so a re-render somewhere else on the page cannot collapse them.
   def handle_event("toggle-workings-node", %{"node" => node}, socket),
     do: {:noreply, update(socket, :expanded_nodes, &toggle(&1, node))}
-
-  def handle_event("toggle-fold", %{"fold" => fold}, socket),
-    do: {:noreply, update(socket, :open_folds, &toggle(&1, fold))}
 
   def handle_event("close-evidence", _params, socket),
     do: {:noreply, assign(socket, selected_row: nil, selected_inum: nil, correcting: nil)}
@@ -713,17 +680,9 @@ defmodule NilaWeb.Gst.MonthLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <%!-- The eye path, top to bottom, progressively quieter: the verdict and
-            its one door, then what the engine settled, then the working
-            surface for whichever track is live, then the register appendix,
-            then the paper trail, then the exit. Everything below the door is
-            folded, because anything that is not the verdict, an undecided
-            item, or the exit has not earned a reader's attention. --%>
-      <div id="month-page" class="space-y-region mx-auto max-w-5xl">
+      <div id="month-page" class="space-y-region mx-auto max-w-7xl">
         <Verdict.verdict verdict={@verdict} client={@client} period={@period} />
 
-        <%!-- The question takes the door's place, never a place beside it: a
-              month cannot be worked while its inputs are in question. --%>
         <Precondition.question
           :if={@verdict[:question]}
           dump={@verdict.question.dump}
@@ -733,17 +692,44 @@ defmodule NilaWeb.Gst.MonthLive do
           period_options={@move_options || []}
         />
 
-        <div class="space-y-section">
-          <Purchase.settled stats={@stats} rows={@rows} open_folds={@open_folds} />
+        <Arrivals.chase_history_link asks={@asks} />
 
+        <div
+          :if={
+            (is_nil(@sales_month) and @sales_dumps != []) or
+              (is_nil(@purchase_month) and @purchase_dumps != [])
+          }
+          class="space-y-block"
+        >
+          <Arrivals.source_record
+            :if={is_nil(@sales_month)}
+            id="month-sales-sources"
+            dumps={@sales_dumps}
+            superseded_2b_ids={@superseded_2b_ids}
+            client={@client}
+            period={@period}
+            open_period={@open_period}
+            r1_signoff={@r1_signoff}
+            gstr3b_signoff={@gstr3b_signoff}
+          />
+          <Arrivals.source_record
+            :if={is_nil(@purchase_month)}
+            id="month-purchase-sources"
+            dumps={@purchase_dumps}
+            superseded_2b_ids={@superseded_2b_ids}
+            client={@client}
+            period={@period}
+            open_period={@open_period}
+            r1_signoff={@r1_signoff}
+            gstr3b_signoff={@gstr3b_signoff}
+          />
+        </div>
+
+        <main id="month-evidence" class="space-y-canvas min-w-0">
           <Sales.sales_section
             sales_month={@sales_month}
             invoices={@invoices}
             open_issue_count={@open_issue_count}
-            reviewable={@reviewable}
-            review_door_taken={
-              is_map(@verdict[:door]) and @verdict.door.id == "month-door-mark-reviewed"
-            }
             r1_signoff={@r1_signoff}
             month_issues={@month_issues}
             issues_by_invoice={@issues_by_invoice}
@@ -755,9 +741,29 @@ defmodule NilaWeb.Gst.MonthLive do
             rippled={@rippled}
             ripple_seq={@ripple_seq}
             expanded_nodes={@expanded_nodes}
-            open_folds={@open_folds}
-            open={@tracks.sales == :open}
-          />
+          >
+            <:source>
+              <Arrivals.source_record
+                id="month-sales-sources"
+                dumps={@sales_dumps}
+                superseded_2b_ids={@superseded_2b_ids}
+                client={@client}
+                period={@period}
+                open_period={@open_period}
+                r1_signoff={@r1_signoff}
+                gstr3b_signoff={@gstr3b_signoff}
+              />
+            </:source>
+            <:actions>
+              <Filing.gstr1_actions
+                sales_month={@sales_month}
+                r1_signoff={@r1_signoff}
+                open_issue_count={@open_issue_count}
+                reviewable={@reviewable}
+                can_sign_off={@can_sign_off}
+              />
+            </:actions>
+          </Sales.sales_section>
 
           <Purchase.register
             purchase_month={@purchase_month}
@@ -766,34 +772,32 @@ defmodule NilaWeb.Gst.MonthLive do
             rows={@rows}
             client={@client}
             period={@period}
-            open_folds={@open_folds}
-          />
+          >
+            <:source>
+              <Arrivals.source_record
+                id="month-purchase-sources"
+                dumps={@purchase_dumps}
+                superseded_2b_ids={@superseded_2b_ids}
+                client={@client}
+                period={@period}
+                open_period={@open_period}
+                r1_signoff={@r1_signoff}
+                gstr3b_signoff={@gstr3b_signoff}
+              />
+            </:source>
+          </Purchase.register>
 
-          <Arrivals.paper_trail
-            attention_dumps={@attention_dumps}
-            dumps={@dumps}
-            asks={@asks}
-            superseded_2b_ids={@superseded_2b_ids}
-            client={@client}
-            period={@period}
-            open_period={@open_period}
-            r1_signoff={@r1_signoff}
+          <Filing.gstr3b_evidence gstr3b={@gstr3b} />
+          <Filing.gstr3b_actions
+            :if={@purchase_month}
+            purchase_month={@purchase_month}
+            sales_month={@sales_month}
+            stats={@stats}
             gstr3b_signoff={@gstr3b_signoff}
-            open_folds={@open_folds}
+            r1_signoff={@r1_signoff}
+            can_sign_off={@can_sign_off}
           />
-        </div>
-
-        <Filing.exit_block
-          purchase_month={@purchase_month}
-          sales_month={@sales_month}
-          stats={@stats}
-          gstr3b={@gstr3b}
-          gstr3b_signoff={@gstr3b_signoff}
-          r1_signoff={@r1_signoff}
-          open_issue_count={@open_issue_count}
-          can_sign_off={@can_sign_off}
-          open_folds={@open_folds}
-        />
+        </main>
       </div>
 
       <Evidence.evidence_modals

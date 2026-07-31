@@ -2,64 +2,11 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   use NilaWeb, :html
 
   @moduledoc """
-  What the engine settled, and the register appendix.
-
-  Neither of these is the working surface. Open decisions are worked in the
-  exceptions queue, so this module's whole job is to be *foldable*: one line
-  for the settled bills, one disclosure for the full register. Looking at
-  correct things is waste, and rendering 23 rows at the same weight as the
-  door is what buried the door last time.
+  Purchase reconciliation evidence. Open rows retain their route to the
+  exceptions queue; settled rows retain their source-evidence modal.
   """
 
   alias Nila.Gst.Purchase.Register
-
-  attr :stats, :any, default: nil
-  attr :rows, :list, required: true
-  attr :open_folds, :any, default: MapSet.new()
-
-  @doc """
-  The settled line: everything the engine closed without a human, folded to a
-  sentence with its rupee weight. Expandable, because trust needs a path.
-  """
-  def settled(assigns) do
-    assigns = assign(assigns, :settled_rows, Enum.reject(assigns.rows, &Register.open_row?/1))
-
-    ~H"""
-    <.fold
-      :if={@settled_rows != []}
-      id="month-settled"
-      open={MapSet.member?(@open_folds, "month-settled")}
-    >
-      <:summary>
-        <.icon name="hero-check-circle-mini" class="text-success size-4 shrink-0" />
-        <span id="month-settled-line" class="flex-1">{settled_line(@settled_rows, @stats)}</span>
-      </:summary>
-
-      <.data_table
-        id="month-settled-rows"
-        class="mt-block"
-        rows={@settled_rows}
-        row_id={fn row -> "month-settled-#{row["dom_id"]}" end}
-        row_click={fn row -> JS.push("select-row", value: %{dom_id: row["dom_id"]}) end}
-        min_width="min-w-[680px]"
-      >
-        <:col :let={row} label="Inv No">
-          <span class="font-medium">{row["invoice_number"] || "—"}</span>
-        </:col>
-        <:col :let={row} label="Vendor">{row["vendor_name"]}</:col>
-        <:col :let={row} label="Taxable" align="right">
-          {format_money(row["taxable_paise"], prefix: "₹")}
-        </:col>
-        <:col :let={row} label="Tax" align="right">
-          {format_money(Register.row_tax(row), prefix: "₹")}
-        </:col>
-        <:col :let={row} label="Outcome">
-          <span class="text-ink-subtle">{settled_outcome(row)}</span>
-        </:col>
-      </.data_table>
-    </.fold>
-    """
-  end
 
   attr :purchase_month, :any, default: nil
   attr :stats, :any, default: nil
@@ -67,29 +14,26 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   attr :rows, :list, required: true
   attr :client, :map, required: true
   attr :period, :string, required: true
-  attr :open_folds, :any, default: MapSet.new()
+  slot :source
 
-  @doc """
-  The register appendix: every invoice, in the deliverable's row shape, behind
-  a disclosure. Reference material, not the working surface. Clicking a row
-  that still needs a decision lands in the queue on that item, so the natural
-  click is the correct one.
-  """
+  @doc "The complete purchase register, always visible as month evidence."
   def register(assigns) do
     ~H"""
-    <.fold
-      :if={@purchase_month}
-      id="month-register"
-      open={MapSet.member?(@open_folds, "month-register")}
-    >
-      <:summary>
-        <.icon name="hero-table-cells" class="text-ink-faint size-4 shrink-0" />
-        <span class="flex-1">
-          All {@stats.invoices} {if @stats.invoices == 1, do: "invoice", else: "invoices"}, the full register
-        </span>
-      </:summary>
+    <section :if={@purchase_month} id="month-register" class="space-y-section">
+      <div class="space-y-block">
+        <div class="gap-related flex flex-wrap items-end justify-between">
+          <div>
+            <p class="text-eyebrow text-moon font-semibold uppercase">Purchase evidence</p>
+            <h2 class="text-base-content text-h4 font-semibold">Purchase reconciliation</h2>
+          </div>
+          <p class="text-ink-muted text-small">
+            {@stats.invoices} {if @stats.invoices == 1, do: "invoice", else: "invoices"} · complete register
+          </p>
+        </div>
+        {render_slot(@source)}
+      </div>
 
-      <div class="mt-block space-y-block">
+      <div class="space-y-block">
         <div :if={@document_flags != []} id="gst-document-flags" class="space-y-related">
           <div
             :for={{flag, index} <- Enum.with_index(@document_flags)}
@@ -97,7 +41,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
             <span class="text-fine text-ink-subtle font-medium">{issue_label(flag["code"])}</span>
-            <span class="text-ink-muted text-small min-w-0 flex-1">{flag["reason"]}</span>
+            <span class="text-body text-ink-muted min-w-0 flex-1">{flag["reason"]}</span>
           </div>
         </div>
 
@@ -135,7 +79,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           <:col :let={row} label="Note" class="max-w-sm">
             <span
               :if={Register.open_row?(row) or row["flags"] not in [nil, []]}
-              class="text-base-content text-small block truncate"
+              class="text-base-content block truncate"
             >
               {row["verdict"]}
             </span>
@@ -154,7 +98,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           <:empty>The register is empty for this month.</:empty>
         </.data_table>
       </div>
-    </.fold>
+    </section>
     """
   end
 
@@ -168,26 +112,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       JS.push("select-row", value: %{dom_id: row["dom_id"]})
     end
   end
-
-  defp settled_line(rows, stats) do
-    matched = Enum.count(rows, &(&1["bucket"] == "matched"))
-    accepted = length(rows) - matched
-    tax = stats && stats.matched_tax_paise
-
-    [
-      matched > 0 &&
-        "#{matched} #{if matched == 1, do: "bill", else: "bills"} matched to 2B, values agree" <>
-          if(tax && tax > 0, do: ". #{format_money(tax, prefix: "₹")} ITC", else: ""),
-      accepted > 0 && "#{accepted} accepted without a 2B match"
-    ]
-    |> Enum.filter(& &1)
-    |> Enum.join(". ")
-    |> Kernel.<>(".")
-  end
-
-  defp settled_outcome(%{"accepted_reason" => "await_2b"}), do: "Kept, awaiting the vendor's 2B"
-  defp settled_outcome(%{"accepted_reason" => "not_claimable"}), do: "Not claimed this month"
-  defp settled_outcome(row), do: row["verdict"] || row["bucket_label"]
 
   defp bucket_variant("matched"), do: "success"
   defp bucket_variant("needs_human"), do: "warning"

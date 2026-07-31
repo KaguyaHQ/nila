@@ -32,7 +32,7 @@ defmodule NilaWeb.Components.Gst.Month.Precondition do
       id="month-precondition"
       class="bg-warning/[0.04] border-warning/40 rounded-box space-y-block border p-6"
     >
-      <p class="text-ink-muted text-small">
+      <p class="text-body text-ink-muted">
         {arrival_line(@dump)} Nothing is built from it until you say what it is.
       </p>
 
@@ -68,7 +68,7 @@ defmodule NilaWeb.Components.Gst.Month.Precondition do
             prompt="Pick the month"
             options={@period_options}
           />
-          <p class="text-ink-muted text-small">
+          <p class="text-body text-ink-muted">
             The packet is not read again. If that month is already signed, it waits there
             for a senior — the same as any late arrival.
           </p>
@@ -83,12 +83,12 @@ defmodule NilaWeb.Components.Gst.Month.Precondition do
             value=""
             placeholder={reason_placeholder(@dump.kind)}
           />
-          <p class="text-ink-muted text-small">
+          <p class="text-body text-ink-muted">
             Recorded on the arrival. It is what the signature stands on if anyone asks later.
           </p>
         </div>
 
-        <p :if={@choice == "discard"} id="month-precondition-discard-note" class="text-small">
+        <p :if={@choice == "discard"} id="month-precondition-discard-note" class="text-body">
           The packet is kept on the paper trail and never booked into any month. Bring it in
           again if that turns out to be wrong.
         </p>

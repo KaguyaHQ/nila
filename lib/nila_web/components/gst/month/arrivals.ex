@@ -1,147 +1,104 @@
 defmodule NilaWeb.Components.Gst.Month.Arrivals do
   use NilaWeb, :html
 
-  @moduledoc """
-  The paper trail: what arrived, when, from whom, and anything a pile is stuck
-  on.
+  @moduledoc "Source arrivals, processing state, originals, and chase provenance."
 
-  Folded and grey. It is the audit answer to "where did this come from",
-  which nobody asks until they ask, and it used to sit in prime real estate
-  with a struck-through line as the third thing on the page. When a pile is
-  genuinely stuck the verdict says so and its door points here, so the
-  interruption is announced once, at the top, in words.
-  """
-
-  attr :attention_dumps, :list, required: true
+  attr :id, :string, required: true
   attr :dumps, :list, required: true
-  attr :asks, :list, required: true
   attr :superseded_2b_ids, :any, required: true
   attr :client, :map, required: true
   attr :period, :string, required: true
   attr :open_period, :string, required: true
   attr :r1_signoff, :any, default: nil
   attr :gstr3b_signoff, :any, default: nil
-  attr :open_folds, :any, default: MapSet.new()
 
-  def paper_trail(assigns) do
+  def source_record(assigns) do
     ~H"""
-    <.fold
-      :if={@dumps != []}
-      id="month-paper-trail"
-      open={MapSet.member?(@open_folds, "month-paper-trail")}
-    >
-      <:summary>
-        <.icon name="hero-inbox-arrow-down" class="text-ink-faint size-4 shrink-0" />
-        <span class="flex-1">{trail_line(assigns)}</span>
-      </:summary>
-
-      <div class="mt-block space-y-block">
-        <div :if={@attention_dumps != []} id="month-dumps" class="space-y-related">
-          <div
-            :for={dump <- @attention_dumps}
-            id={"month-dump-#{dump.id}"}
-            class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
-          >
+    <div :if={@dumps != []} id={@id} class="border-base-300 divide-base-300 divide-y border-y">
+      <article
+        :for={dump <- @dumps}
+        id={"month-arrived-#{dump.id}"}
+        class="gap-block grid items-center py-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+      >
+        <div class={[
+          "min-w-0 space-y-1",
+          (MapSet.member?(@superseded_2b_ids, dump.id) or dump.status == "discarded") &&
+            "line-through opacity-70"
+        ]}>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-base-content text-table font-semibold">{dump_kind_title(dump.kind)}</span>
             <span
               :if={dump.status in ~w(received extracting)}
               class="loading loading-spinner loading-xs text-moon"
             ></span>
-            <span class="text-fine text-ink-subtle font-medium">{dump_kind_title(dump.kind)}</span>
-            <span class="text-ink-muted text-small min-w-0 flex-1">
-              <%= cond do %>
-                <% dump.status in ~w(received extracting) -> %>
-                  Extracting. The month reworks itself when it lands.
-                <% dump.status == "failed" -> %>
-                  Extraction failed. Check the file and bring it in again.
-                <% dump.status == "held" -> %>
-                  Arrived after the return was signed. Reopen the signature to include it.
-                <% dump.status == "after_filing" -> %>
-                  Arrived after this month was filed. A filed return cannot change, so this belongs in a later month's return.
-                <% dump.status == "needs_confirmation" -> %>
-                  Read, but what it holds does not answer to this month. Nothing is built from it until the question above is answered.
-                <% true -> %>
-                  {dump.status}
-              <% end %>
-            </span>
-            <.button
-              :if={dump.status == "after_filing"}
-              navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@open_period}"}
-              id={"month-dump-open-period-#{dump.id}"}
-              variant="outline"
-              size="xs"
-            >
-              Bring it into the open month
-            </.button>
-            <.button
-              :if={dump.status == "held" and dump_releasable?(assigns, dump)}
-              id={"month-dump-release-#{dump.id}"}
-              variant="outline"
-              size="xs"
-              phx-click="release-dump"
-              phx-value-dump-id={dump.id}
-            >
-              Rework the month with it
-            </.button>
+            <.badge :if={MapSet.member?(@superseded_2b_ids, dump.id)} variant="neutral">
+              Replaced
+            </.badge>
+            <.badge :if={dump.status == "discarded"} variant="neutral">Discarded</.badge>
           </div>
+          <p class="text-fine text-ink-subtle">{arrived_line(dump)}</p>
+          <p
+            :if={answer_line(dump)}
+            id={"month-arrived-answer-#{dump.id}"}
+            class="text-fine text-ink-muted"
+          >
+            {answer_line(dump)}
+          </p>
+          <p :if={attention_line(dump)} id={"month-dump-#{dump.id}"} class="text-ink-muted text-table">
+            {attention_line(dump)}
+          </p>
         </div>
 
-        <div id="month-arrived" class="space-y-1.5">
-          <button
-            :if={@asks != []}
-            type="button"
-            id="month-chase-history-link"
-            phx-click="open-chase-history"
-            class="text-fine text-moon font-semibold"
+        <div class="flex flex-wrap items-center gap-2">
+          <.button
+            :for={{_key, index} <- Enum.with_index(dump.file_keys)}
+            href={~p"/gst/#{@client.id}/#{@period}/original/#{dump.id}/#{index}"}
+            id={"month-arrived-file-#{dump.id}-#{index}"}
+            variant="outline"
+            size="xs"
           >
-            Asked {length(@asks)}×, see what we sent
-          </button>
-          <div
-            :for={dump <- @dumps}
-            id={"month-arrived-#{dump.id}"}
-            class="text-ink-muted text-small flex flex-wrap items-center gap-x-2 gap-y-1"
+            <.icon name="hero-arrow-down-tray" class="size-4" />
+            {original_label(length(dump.file_keys), index)}
+          </.button>
+          <.button
+            :if={dump.status == "after_filing"}
+            navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@open_period}"}
+            id={"month-dump-open-period-#{dump.id}"}
+            variant="outline"
+            size="xs"
           >
-            <span class={
-              (MapSet.member?(@superseded_2b_ids, dump.id) or dump.status == "discarded") &&
-                "line-through opacity-70"
-            }>
-              {arrived_line(dump)}
-            </span>
-            <span :if={MapSet.member?(@superseded_2b_ids, dump.id)} class="text-fine">(replaced)</span>
-            <%!-- The answer to a precondition question outlives the question. "We
-                  knew, and here is why we booked it anyway" is the sentence a
-                  signature stands on, so it lives in the paper trail rather than
-                  disappearing with the flag it cleared. --%>
-            <span
-              :if={answer_line(dump)}
-              id={"month-arrived-answer-#{dump.id}"}
-              class="text-ink-muted text-small"
-            >
-              {answer_line(dump)}
-            </span>
-            <.link
-              :for={{_key, index} <- Enum.with_index(dump.file_keys)}
-              href={~p"/gst/#{@client.id}/#{@period}/original/#{dump.id}/#{index}"}
-              id={"month-arrived-file-#{dump.id}-#{index}"}
-              class="text-fine text-moon inline-flex items-center gap-1 font-semibold"
-            >
-              <.icon name="hero-arrow-down-tray" class="size-3.5" />
-              {if length(dump.file_keys) > 1, do: "file #{index + 1}", else: "file"}
-            </.link>
-          </div>
+            Bring into open month
+          </.button>
+          <.button
+            :if={dump.status == "held" and dump_releasable?(assigns, dump)}
+            id={"month-dump-release-#{dump.id}"}
+            variant="outline"
+            size="xs"
+            phx-click="release-dump"
+            phx-value-dump-id={dump.id}
+          >
+            Rework month with it
+          </.button>
         </div>
-      </div>
-    </.fold>
+      </article>
+    </div>
     """
   end
 
-  defp trail_line(assigns) do
-    count = length(assigns.dumps)
-    arrivals = "#{count} #{if count == 1, do: "arrival", else: "arrivals"}"
+  attr :asks, :list, required: true
 
-    case length(assigns.attention_dumps) do
-      0 -> "Paper trail: #{arrivals}."
-      n -> "Paper trail: #{arrivals}, #{n} needing attention."
-    end
+  def chase_history_link(assigns) do
+    ~H"""
+    <button
+      :if={@asks != []}
+      type="button"
+      id="month-chase-history-link"
+      phx-click="open-chase-history"
+      class="text-fine text-moon font-semibold"
+    >
+      Requests sent: {length(@asks)} · view history
+    </button>
+    """
   end
 
   defp dump_kind_title("sales"), do: "Sales bills"
@@ -151,11 +108,10 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
 
   defp arrived_line(dump) do
     [
-      dump_kind_title(dump.kind),
       file_count_label(length(dump.file_keys)),
       format_display_datetime(dump.inserted_at),
       dump.brought_in_by && "brought in by #{dump.brought_in_by.name}",
-      dump.source && "over #{source_label(dump.source)}"
+      dump.source && "via #{source_label(dump.source)}"
     ]
     |> Enum.filter(& &1)
     |> Enum.join(" · ")
@@ -170,6 +126,25 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
     end
   end
 
+  defp attention_line(%{status: status}) when status in ~w(received extracting),
+    do: "Extracting. The month updates when it lands."
+
+  defp attention_line(%{status: "failed"}),
+    do: "Extraction failed. Check the original and bring it in again."
+
+  defp attention_line(%{status: "held"}),
+    do: "Added after signature. Reopen the signature to include it."
+
+  defp attention_line(%{status: "after_filing"}),
+    do: "Added after filing. Move it to an open month."
+
+  defp attention_line(%{status: "needs_confirmation"}),
+    do: "Waiting for the month question above to be answered."
+
+  defp attention_line(_dump), do: nil
+
+  defp original_label(1, _index), do: "Download original"
+  defp original_label(_count, index), do: "Download #{index + 1}"
   defp file_count_label(1), do: "1 file"
   defp file_count_label(n), do: "#{n} files"
   defp source_label("whatsapp"), do: "WhatsApp"

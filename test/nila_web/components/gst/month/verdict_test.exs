@@ -23,8 +23,6 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       purchase_month: nil,
       sales_month: nil,
       open_issue_count: 0,
-      open_issue_invoice: nil,
-      reviewable: false,
       r1_signoff: nil,
       gstr3b_signoff: nil,
       can_sign_off: true,
@@ -251,47 +249,30 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
         )
 
       assert verdict.headline == "Purchases clear, ₹58,400 ITC. GSTR-1 has 3 issues to check."
-      assert door_id(verdict) == "month-door-sales-issues"
+      assert is_nil(verdict.door)
       assert verdict.deadline.return == "GSTR-1"
     end
 
-    test "sales issues that live on invoices: the door opens the invoice, not the section" do
+    test "sales issues stay in the visible register instead of creating a dispatcher door" do
       verdict =
         Verdict.resolve(
           facts(
             tracks: %{sales: :open, purchase: :clear},
             stats: stats(0, 0, 5_840_000),
-            open_issue_count: 1,
-            open_issue_invoice: "20/2026-27"
+            open_issue_count: 2
           )
         )
 
-      assert verdict.door.kind == :click
-      assert verdict.door.event == "select-invoice"
-      assert verdict.door.value == %{"inum" => "20/2026-27"}
+      assert verdict.headline =~ "2 issues to check"
+      assert is_nil(verdict.door)
     end
 
-    test "a month-level sales issue keeps the anchor: its card is in the section" do
+    test "sales drafted and clean: the header yields the review gesture to the register" do
       verdict =
-        Verdict.resolve(
-          facts(
-            tracks: %{sales: :open, purchase: :clear},
-            stats: stats(0, 0, 5_840_000),
-            open_issue_count: 1
-          )
-        )
+        Verdict.resolve(facts(tracks: %{sales: :open, purchase: :clear}, can_sign_off: false))
 
-      assert verdict.door.kind == :anchor
-      assert verdict.door.to == "#month-sales"
-    end
-
-    test "sales drafted and clean: the maker's door is the review, not a signature" do
-      verdict =
-        Verdict.resolve(
-          facts(tracks: %{sales: :open, purchase: :clear}, reviewable: true, can_sign_off: false)
-        )
-
-      assert door_id(verdict) == "month-door-mark-reviewed"
+      assert verdict.headline =~ "mark it reviewed below"
+      assert is_nil(verdict.door)
     end
 
     test "both worked and unsigned: the senior signs in filing order" do
@@ -307,7 +288,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
         )
 
       assert verdict.headline == "Clean. ₹58,400 ITC, ₹1,23,000 payable."
-      assert door_id(verdict) == "month-door-sign-r1"
+      assert is_nil(verdict.door)
     end
 
     # At the 3B signature the payable is the fact the senior is putting their
@@ -323,14 +304,14 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
         )
 
       assert verdict.headline == "₹1,23,000 payable. Worked and clean."
-      assert door_id(verdict) == "month-door-sign-3b"
+      assert is_nil(verdict.door)
     end
 
     test "the GSTR-3B signs only once the GSTR-1 is out of the way" do
       for sales <- [:signed, :filed] do
         verdict = Verdict.resolve(facts(tracks: %{sales: sales, purchase: :clear}))
 
-        expected = if sales == :signed, do: "month-door-file-sales", else: "month-door-sign-3b"
+        expected = if sales == :signed, do: "month-door-file-sales", else: nil
         assert door_id(verdict) == expected
       end
     end

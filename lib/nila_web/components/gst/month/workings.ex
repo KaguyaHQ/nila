@@ -65,7 +65,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       <p
         :if={@diff && @mismatches != []}
         id="gstr1-diff-summary"
-        class="text-ink-muted text-small flex items-center gap-2"
+        class="text-body text-ink-muted flex items-center gap-2"
       >
         <.icon name="hero-exclamation-triangle-mini" class="text-warning size-4 shrink-0" />
         {diff_summary_line(@diff, @mismatches)}
@@ -281,7 +281,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     assigns = assign(assigns, :target, diff_target(assigns.row))
 
     ~H"""
-    <div class={["text-small flex flex-wrap items-center gap-x-2 gap-y-1", @class]}>
+    <div class={["text-body flex flex-wrap items-center gap-x-2 gap-y-1", @class]}>
       <.icon
         name="hero-exclamation-triangle-mini"
         class={[

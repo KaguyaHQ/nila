@@ -387,7 +387,7 @@ badges, buttons `font-medium` / `font-semibold`.
 ### The scale
 
 Tailwind v4 generates a `text-{role}` utility from each step, with line-height
-and tracking **bundled in** — `text-body` already carries its `1.7` leading,
+and tracking **bundled in** — `text-body` already carries its `1.65` leading,
 `text-eyebrow` its `0.2em` tracking. You almost never write `leading-*` or
 `tracking-*` next to a type class.
 
@@ -401,13 +401,14 @@ responsive variants** (`sm:text-*`).
 | Heading 2 | `text-h2` | 2.25 → 3rem | Section headings. |
 | Heading 3 | `text-h3` | 1.875 → 2.5rem | Sub-section / card-cluster headings. |
 | Heading 4 | `text-h4` | 1.25rem (fixed) | Card titles, list-item headings. |
-| Lead | `text-lead` | 17px | Hero sub, section intros. |
-| Body | `text-body` | 15px | Default reading copy. |
-| Small | `text-small` | 13px | Dense copy, list rows, mockup titles. |
-| Fine | `text-fine` | 12px | Metadata, timestamps, table meta. |
-| Micro | `text-micro` | 11px | Captions, footnotes, smallest readable text. |
+| Lead | `text-lead` | 18px | Hero sub, section intros. |
+| Body | `text-body` | 16px | Default reading copy and workflow sentences. |
+| Table | `text-table` | 14px | Financial tables and dense working sheets. |
+| Small | `text-small` | 13px | Metadata, timestamps, compact annotations. |
+| Fine | `text-fine` | 12px | Captions and secondary table metadata. |
+| Micro | `text-micro` | 11px | Footnotes and the smallest readable text. |
 | Eyebrow | `text-eyebrow` | 11px · 0.2em | Uppercase section kickers. Pair with `.text-moon`. |
-| Label | `text-label` | 11px · 0.14em | Uppercase UI micro-labels in product chrome. |
+| Label | `text-label` | 12px · 0.14em | Uppercase UI and table labels. |
 
 Display roles (`hero`…`h3`) pair with `font-display`; eyebrow/label expect
 `uppercase font-semibold` alongside — the token only owns size, line-height,
@@ -429,7 +430,9 @@ routinely pair with a type class — figures are the exception that proves the r
 ### Type rules
 
 - **Name the role, not the pixel.** Never `text-[13.5px]`. If nothing fits, fix
-  the scale, don't add a one-off. `mix nila.style_guard` fails the build on raw
+  the scale, don't add a one-off. Full sentences use `text-body`; `text-small`
+  is metadata, not a quieter body size. Tables use `text-table`, owned by
+  `<.data_table>`, rather than inheriting the metadata token. `mix nila.style_guard` fails the build on raw
   sizes (`text-sm`, `text-[Npx]`, stray `tracking-[…]`/`leading-[…]`) in
   `lib/nila_web`.
 - **No `leading-*` / `tracking-*` next to a type class** (already bundled);
@@ -473,10 +476,16 @@ gradients or shadows.** The look comes from restraint.
   `dense` is reserved for working-sheet material read in bulk. Tables are
   bordered in-flow surfaces and never cast shadows. Right-aligned columns get
   `tabular-nums` automatically.
+- **Workpaper ownership**: sources sit with the evidence they produced; review,
+  signature, and filing controls follow the return they attest. The page header
+  owns month-level state, and evidence rows own their issues. Never collect
+  those concerns into a detached support rail or duplicate issue queue.
 - **Disclosures**: `<.fold>`, never a bare `<details>`. A browser-toggled
   `<details>` does not survive a LiveView patch — morphdom syncs `open` away, so
   a section the reader opened slams shut the next time anything arrives. The
-  component takes `open` from server state and pushes `toggle-fold`.
+  component takes `open` from server state and pushes `toggle-fold`. A fold is
+  still not permission to hide verification material: the client-month
+  workbench keeps its registers, workings, and source evidence on the glass.
 - **Two expand marks, one meaning each.** A trailing chevron-down that rotates
   180° means a *section* folds. A leading chevron-right that rotates 90° means a
   *row* expands in place. Never mix them in one surface. Row expansion remains

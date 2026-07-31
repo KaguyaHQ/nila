@@ -2,33 +2,11 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   use NilaWeb, :html
 
   @moduledoc """
-  The month's verdict and its single door.
+  Resolves the two GST tracks into a compact month status and contextual action.
 
-  The page this replaced rendered the data model: six conditional CTAs, a
-  four-dot spine, a deadline chip, and 23 register rows all at the same visual
-  volume, and the owner of the product could not find the primary action. The
-  rule here is the opposite one. **At any moment the month is in exactly one
-  state, and each state has exactly one next action.** Everything else on the
-  page is folded context.
-
-  The month is a pair (`WorkQueue.track_states/1`), so this module owns the
-  precedence that turns a pair into one door:
-
-    0. A packet awaiting confirmation outranks everything: a month cannot be
-       worked while its inputs are in question. The question takes the verdict's
-       position and the verdict's weight — it is not a fifth CTA in a strip.
-    1. An interrupted pile (failed / held / arrived-after-filing) wins, because
-       decisions taken on half the documents are worth nothing.
-    2. A signed-but-unfiled return wins next. Filing is the step nobody may
-       miss, and a signed return cannot change anyway.
-    3. Otherwise the highest-precedence track with live work, purchases before
-       sales: the 2B window is the harder deadline, the rupee exposure is
-       larger, and purchase decisions are clearable *now* by the person on the
-       page, while missing sales bills are waiting on someone else.
-    4. Whatever a track's role cannot act on is not live work for that viewer
-       (a junior never gets a sign door).
-
-  Every other pending track becomes one quiet line, never a second button.
+  The workbench keeps the complete evidence visible regardless of lifecycle;
+  this component only states what is blocking or due and offers the one action
+  that belongs with that status.
   """
 
   alias Nila.Formatters
@@ -63,8 +41,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
             id: "month-door-failed-pile",
             label: "See what happened",
             kind: :anchor,
-            to: "#month-paper-trail",
-            open: "month-paper-trail"
+            to: source_anchor(dump.kind)
           },
           dump: dump
         }
@@ -177,21 +154,13 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       %{
         tone: :calm,
         headline: sales_issues_headline(facts, count),
-        door: sales_issue_door(facts, count)
+        door: nil
       }
     else
       %{
         tone: :calm,
-        headline: "GSTR-1 drafted and clean. Mark it reviewed to pass it to a senior.",
-        door:
-          facts.reviewable &&
-            %{
-              id: "month-door-mark-reviewed",
-              label: "Mark the GSTR-1 reviewed",
-              kind: :click,
-              event: "mark_reviewed",
-              value: %{}
-            }
+        headline: "GSTR-1 drafted and clean. Review the register, then mark it reviewed below.",
+        door: nil
       }
     end
   end
@@ -201,12 +170,10 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp settled_door_and_headline(%{can_sign_off: true, tracks: tracks} = facts)
        when tracks.sales == :clear
        when tracks.purchase == :clear and tracks.sales in [:signed, :filed] do
-    {event, label, id} = sign_target(facts)
-
     %{
       tone: :calm,
       headline: ready_headline(facts),
-      door: %{id: id, label: label, kind: :click, event: event, value: %{}}
+      door: nil
     }
   end
 
@@ -419,8 +386,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
         id: "month-door-file-#{track}",
         label: "File it and record the ARN",
         kind: :anchor,
-        to: anchor_for(track),
-        open: "month-exit"
+        to: anchor_for(track)
       },
       filing_track: track
     }
@@ -451,12 +417,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   end
 
   defp cash_payable(_facts), do: nil
-
-  defp sign_target(%{tracks: %{sales: sales}}) when sales in [:signed, :filed],
-    do: {"3b-sign-off", "Sign the GSTR-3B", "month-door-sign-3b"}
-
-  defp sign_target(%{tracks: %{sales: :clear}}),
-    do: {"r1-sign-off", "Sign the GSTR-1", "month-door-sign-r1"}
 
   # Headlines lead with rupees whenever rupees exist. A screen without a money
   # rollup is not a position, it is homework.
@@ -502,37 +462,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     |> Formatters.format_display_date()
   end
 
-  # A door has to land on the control that does the work. An invoice-level
-  # issue's confirm button lives in that invoice's modal and nowhere else — the
-  # table only shows an "n open" cell — so the door opens the modal directly.
-  # An anchor would be a no-op here anyway whenever the sales section is
-  # already unfolded, which is exactly when the sales track owns the door.
-  # Month-level issues do render as cards inside the section, so those keep the
-  # anchor and the unfold.
-  # Named, not counted: the headline just said how many there are, and a door
-  # that repeats the count says nothing about where it goes. Naming the invoice
-  # also settles what the reader is meant to click — the door starts the work,
-  # the rows below are the rest of the list.
-  defp sales_issue_door(%{open_issue_invoice: inum}, _count) when is_binary(inum) do
-    %{
-      id: "month-door-sales-issues",
-      label: "Check invoice #{inum}",
-      kind: :click,
-      event: "select-invoice",
-      value: %{"inum" => inum}
-    }
-  end
-
-  defp sales_issue_door(_facts, count) do
-    %{
-      id: "month-door-sales-issues",
-      label: "Check the #{pluralise(count, "issue")}",
-      kind: :anchor,
-      to: "#month-sales",
-      open: "month-sales"
-    }
-  end
-
   defp sales_issues_headline(%{tracks: %{purchase: :absent}}, count),
     do: "GSTR-1 drafted. #{count} #{pluralise(count, "issue")} to check."
 
@@ -552,7 +481,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       else: "Clean. #{money_clause(facts)}"
   end
 
-  defp signing_3b?(facts), do: match?({"3b-sign-off", _, _}, sign_target(facts))
+  defp signing_3b?(%{tracks: %{sales: sales}}), do: sales in [:signed, :filed]
 
   defp money_clause(%{gstr3b: gstr3b}) when is_map(gstr3b) do
     itc = heads_total(get_in(gstr3b, ["itc", "net_itc_4c"]))
@@ -630,9 +559,8 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp line_for(:sales, :absent, _facts), do: "Sales bills not in, so the GSTR-1 waits."
 
-  # No count here. A quiet line reports state; the count belongs to whichever
-  # element the reader can act on, and the GSTR-1 fold three elements below
-  # already carries it.
+  # No count here. The visible GSTR-1 register carries the actionable issue
+  # state in each invoice row.
   defp line_for(:sales, :open, %{open_issue_count: n}) when n > 0,
     do: "GSTR-1 drafted, issues still to check."
 
@@ -681,6 +609,8 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp anchor_for(:sales), do: "#month-exit-gstr1"
   defp anchor_for(:purchase), do: "#month-exit-gstr3b"
+  defp source_anchor(kind) when kind in ~w(sales filed_gstr1), do: "#month-sales-sources"
+  defp source_anchor(kind) when kind in ~w(purchase gstr2b), do: "#month-purchase-sources"
 
   defp upload_path(facts, period),
     do: ~p"/gst/upload?client_id=#{facts.client.id}&period=#{period}"
@@ -706,59 +636,58 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp pluralise(_count, word, nil), do: word <> "s"
   defp pluralise(_count, _word, plural), do: plural
 
-  @doc """
-  The verdict block: what the month is, what it is worth, and the one thing to
-  do about it. The only display-size text and the only saturated control on the
-  page both live here.
-  """
+  @doc "A compact identity and status header for the month workbench."
   attr :verdict, :map, required: true
   attr :client, :map, required: true
   attr :period, :string, required: true
 
   def verdict(assigns) do
     ~H"""
-    <section id="month-verdict" class="space-y-block">
-      <div class="space-y-related">
-        <p class="text-eyebrow text-moon font-semibold uppercase">Client month</p>
-        <h1 class="font-display text-base-content text-h2 font-normal">
-          {@client.name} · {Formatters.period_label(@period)}
-        </h1>
-        <p
-          id="month-headline"
-          class={[
-            "text-lead max-w-2xl",
-            (@verdict.tone == :alarm && "text-error") || "text-base-content"
-          ]}
-        >
-          {@verdict.headline}
-        </p>
-      </div>
+    <section id="month-verdict" class="border-base-300 pb-section border-b">
+      <div class="gap-block flex flex-col lg:flex-row lg:items-start lg:justify-between">
+        <div class="space-y-related min-w-0">
+          <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h1 class="font-display text-base-content text-h4 font-normal">{@client.name}</h1>
+            <span class="text-ink-subtle text-small font-medium">
+              {Formatters.period_label(@period)}
+            </span>
+          </div>
+          <p
+            id="month-headline"
+            class={[
+              "text-body max-w-3xl font-medium",
+              (@verdict.tone == :alarm && "text-error") || "text-base-content"
+            ]}
+          >
+            {@verdict.headline}
+          </p>
+          <div
+            :if={@verdict.quiet != [] or @verdict.deadline}
+            class="text-body text-ink-muted flex flex-wrap items-center gap-x-4 gap-y-1"
+          >
+            <span :for={line <- @verdict.quiet} id={"month-quiet-#{line_id(line)}"}>{line}</span>
+            <span
+              :if={@verdict.deadline}
+              id="month-deadline"
+              class={deadline_class(@verdict.deadline)}
+            >
+              {@verdict.deadline.return} · {deadline_label(@verdict.deadline)}
+            </span>
+          </div>
+          <p
+            :if={Map.get(@verdict, :busy)}
+            id="month-busy"
+            class="text-body text-ink-muted flex items-center gap-2"
+          >
+            <span class="loading loading-sm loading-spinner text-moon"></span>
+            This page updates itself as each pile lands.
+          </p>
+        </div>
 
-      <div :if={@verdict.door}>
-        <.door door={@verdict.door} />
+        <div :if={@verdict.door} class="shrink-0">
+          <.door door={@verdict.door} />
+        </div>
       </div>
-
-      <%!-- Under the door, not between it and the headline. These lines are the
-            other track's weather and the calendar — real, but nothing the reader
-            has to clear before reaching the one thing to do. --%>
-      <div
-        :if={@verdict.quiet != [] or @verdict.deadline}
-        class="text-ink-muted text-small flex flex-wrap items-center gap-x-4 gap-y-1"
-      >
-        <span :for={line <- @verdict.quiet} id={"month-quiet-#{line_id(line)}"}>{line}</span>
-        <span :if={@verdict.deadline} id="month-deadline" class={deadline_class(@verdict.deadline)}>
-          {@verdict.deadline.return} · {deadline_label(@verdict.deadline)}
-        </span>
-      </div>
-
-      <p
-        :if={Map.get(@verdict, :busy)}
-        id="month-busy"
-        class="text-ink-muted text-small flex items-center gap-2"
-      >
-        <span class="loading loading-sm loading-spinner text-moon"></span>
-        This page updates itself as each pile lands.
-      </p>
     </section>
     """
   end
@@ -767,7 +696,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp door(%{door: %{kind: :navigate}} = assigns) do
     ~H"""
-    <.button id={@door.id} navigate={@door.to} variant="primary" size="lg" class="gap-2">
+    <.button id={@door.id} navigate={@door.to} variant="outline" size="sm" class="gap-2">
       {@door.label} <.icon name="hero-arrow-right-mini" class="size-4" />
     </.button>
     """
@@ -778,10 +707,9 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     <.button
       id={@door.id}
       href={@door.to}
-      variant="primary"
-      size="lg"
+      variant="outline"
+      size="sm"
       class="gap-2"
-      phx-click={open_details(@door)}
     >
       {@door.label} <.icon name="hero-arrow-right-mini" class="size-4" />
     </.button>
@@ -792,8 +720,8 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     ~H"""
     <.button
       id={@door.id}
-      variant="primary"
-      size="lg"
+      variant="outline"
+      size="sm"
       class="gap-2"
       phx-click={@door.event}
       {door_values(@door)}
@@ -802,11 +730,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     </.button>
     """
   end
-
-  # An anchor door whose target is folded has to unfold it, or the button
-  # scrolls to a closed disclosure and the reviewer sees nothing happen.
-  defp open_details(%{open: id}), do: JS.set_attribute({"open", "true"}, to: "##{id}")
-  defp open_details(_door), do: %JS{}
 
   defp door_values(%{value: value}) when is_map(value) do
     Map.new(value, fn {key, val} -> {:"phx-value-#{key}", val} end)
@@ -822,10 +745,12 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp deadline_class(%{days_left: days}) when days <= 5, do: "text-warning font-medium"
   defp deadline_class(_deadline), do: "text-ink-muted"
 
-  defp deadline_label(%{days_left: days, due: due}) when days < -30,
-    do: "overdue since #{Formatters.format_display_date(due)}"
+  defp deadline_label(%{days_left: days, due: due}) when days < 0,
+    do: "due #{Formatters.format_display_date(due)} · #{-days} days overdue"
 
-  defp deadline_label(%{days_left: days}) when days < 0, do: "#{-days}d overdue"
-  defp deadline_label(%{days_left: 0}), do: "due today"
-  defp deadline_label(%{days_left: days}), do: "#{days}d left"
+  defp deadline_label(%{days_left: 0, due: due}),
+    do: "due today, #{Formatters.format_display_date(due)}"
+
+  defp deadline_label(%{days_left: days, due: due}),
+    do: "due #{Formatters.format_display_date(due)} · #{days}d left"
 end

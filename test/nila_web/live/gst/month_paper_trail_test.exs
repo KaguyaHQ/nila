@@ -148,11 +148,16 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
     assert has_element?(view, "#month-arrived-#{dump.id}", "Purchase bills")
     assert has_element?(view, "#month-arrived-#{dump.id}", "1 file")
     assert has_element?(view, "#month-arrived-#{dump.id}", "brought in by Test User")
-    assert has_element?(view, "#month-arrived-#{dump.id}", "over WhatsApp")
+    assert has_element?(view, "#month-arrived-#{dump.id}", "via WhatsApp")
+    assert has_element?(view, "#month-register #month-purchase-sources")
+    refute has_element?(view, "#month-support")
+    refute render(view) =~ "arrival retained"
+    refute render(view) =~ "Source arrivals"
 
     assert has_element?(
              view,
-             "#month-arrived-file-#{dump.id}-0[href='/gst/#{client.id}/#{@period}/original/#{dump.id}/0']"
+             "#month-arrived-file-#{dump.id}-0[href='/gst/#{client.id}/#{@period}/original/#{dump.id}/0']",
+             "Download original"
            )
 
     refute has_element?(view, "#month-dump-#{dump.id}")
@@ -168,10 +173,10 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#month-arrived-#{old.id}", "(replaced)")
+    assert has_element?(view, "#month-arrived-#{old.id}", "Replaced")
     assert has_element?(view, "#month-arrived-#{old.id} .line-through")
     assert has_element?(view, "#month-arrived-#{new.id}")
-    refute has_element?(view, "#month-arrived-#{new.id}", "(replaced)")
+    refute has_element?(view, "#month-arrived-#{new.id}", "Replaced")
   end
 
   test "a month with no dumps renders no Arrived shell", %{conn: conn, client: client} do
@@ -213,7 +218,7 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
       )
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
-    assert has_element?(view, "#month-chase-history-link", "Asked 2×, see what we sent")
+    assert has_element?(view, "#month-chase-history-link", "Requests sent: 2 · view history")
 
     view |> element("#month-chase-history-link") |> render_click()
 
