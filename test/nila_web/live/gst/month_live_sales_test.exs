@@ -234,23 +234,21 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert row =~ "10,200.00"
   end
 
-  test "the return folds while issues are open, and a fold survives a re-render", %{
+  test "the return workings remain visible while issues are open and after a re-render", %{
     conn: conn,
     client: client
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    # Issues are open, so the reader's job is the worklist: the return is one
-    # tap away rather than four tables under it.
-    refute has_element?(view, "#gstr1-return[open]")
-    assert view |> element("#gstr1-return summary") |> render() =~ "The return"
+    assert has_element?(view, "#gstr1-return", "Return workings")
+    assert has_element?(view, "#gstr1-workings-b2b")
+    assert has_element?(view, "#gstr1-workings-rates")
+    assert has_element?(view, "#gstr1-workings-hsn")
+    assert has_element?(view, "#gstr1-workings-docs")
 
-    view |> element("#gstr1-return summary") |> render_click()
-    assert has_element?(view, "#gstr1-return[open]")
-
-    # A browser-toggled <details> would be reset by this patch.
     confirm_all_open_issues(view)
-    assert has_element?(view, "#gstr1-return[open]")
+
+    assert has_element?(view, "#gstr1-workings-hsn")
   end
 
   test "an opened bucket survives an unrelated re-render", %{conn: conn, client: client} do

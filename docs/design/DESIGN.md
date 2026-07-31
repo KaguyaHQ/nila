@@ -1,7 +1,7 @@
 # DESIGN.md — Nila
 
-The single design reference: brand, product principles, and the **moonlight**
-visual system. Read this before editing `.heex` or components. It complements
+The single design reference: brand, product principles, **composition**, and the
+**moonlight** visual system. Read this before editing `.heex` or components. It complements
 `AGENTS.md` (Elixir/Phoenix rules). The founder's recorded taste — the standard
 this system is judged against — lives in `TASTE.md` beside this file; read it
 before any aesthetic call.
@@ -38,9 +38,11 @@ Nila drafts, the human reviews, the CA signs. Every screen answers to that loop.
   is; nothing commits business state without a human tap on the uncertain ones.
 - **Prevent the error at creation.** A misclassified line or a wrong tax split
   should be caught in the review pane, not discovered in a filed return.
-- **Nothing is filler; remove before adding.** Show the number that matters,
-  defer the rest. When a screen feels unclear, subtract first. Grouping and
-  hierarchy should explain the screen, not instructional copy.
+- **Put the work on the glass; subtract what doesn't support the judgement.**
+  Show the material the reader has to weigh and defer what they don't. When a
+  screen feels unclear the fault is as often missing hierarchy as excess
+  content — establish what the eye lands on first before removing anything.
+  Grouping and hierarchy should explain the screen, not instructional copy.
 - **Visual weight matches consequence.** A draft looks like a draft;
   an irreversible action looks like a last resort, never an equal option next
   to a safe one.
@@ -50,8 +52,128 @@ Nila drafts, the human reviews, the CA signs. Every screen answers to that loop.
 - **Speak the operator's language.** Labels are words they'd say out loud, not
   software jargon. Numbers are the product: tabular figures aligned down the
   column, Indian digit grouping always (₹12,50,000).
-- **Calm is the aesthetic.** Their world is overload; relief is the deliverable.
-  Beauty is how we win the tie, never the reason we win.
+- **Calm is the aesthetic; pleasure is the test.** Their world is overload and
+  relief is the deliverable — but a screen that is merely inoffensive has
+  failed. The reviewer should want to look at it. Calm describes how the page
+  behaves, and is never a licence for the page to be empty.
+
+## Composition
+
+Everything below this section is **materials** — color, size, weight, spacing,
+radius, motion. Materials are not a screen. A page can name every token
+correctly and still be a stack of boxes nobody wants to look at, and no rule in
+the rest of this file will catch it. This section is the half that decides
+whether the screen was designed.
+
+**The material has to be on the glass, because looking is the task.** A product
+screen is not a dispatcher handing out an action. A reviewer opens one to reach
+conviction — that the month ties, that nothing is missing, that the figure is
+safe to put a name to — and the signature is the last gesture, not the purpose.
+Whatever they need in order to be convinced belongs where the eye reaches it
+without a click.
+
+### One focal assertion per surface
+
+Every surface — page, card, panel — has one dominant assertion or relationship,
+and it is the thing the reader came to verify. It may be a figure, a pair that
+must agree, a residual, a document, or a decision. Rank by consequence, never
+by what the element *is*:
+
+> the assertion or relationship > its consequence or residual > its labels
+
+On a wide verification workbench, the page title is chrome. `Breeze Tech · May
+2026` at `text-h2` above the figures being signed at `text-lead` inverts the
+screen: the grandest gesture is spent telling the reader where they already
+know they are. Keep that title at `text-h4` or `text-lead` and give the display
+step to the work when it earns it. Two values that must agree are one focal
+relationship, not two competing surfaces.
+
+### Show the shape, not only the sentence
+
+A screen on which every element is prose has no glance state — a reviewer
+asking "is this fileable?" has to read the whole page to find out. Draw a
+relationship when its shape is faster to verify than aligned figures alone,
+but keep the exact values and assertion visible. Visual encoding supplements
+precision; it never replaces labels, numbers, or accessible text.
+
+| Relationship | Visual form | Exact reading retained |
+| --- | --- | --- |
+| **Coverage** — how much of a whole is settled | Filled mass against its remainder | "247 of 252 purchase lines matched" |
+| **A pair that must agree** — books vs 2B | Two figures set adjacent with the residual between them | Both figures and the residual |
+| **A run that must be unbroken** — invoice series, months | The sequence drawn with its gaps visible | Range and named gaps |
+| **Parts of a total** — tax heads, ITC buckets | Proportion only when it clarifies consequence | Every aligned amount |
+
+Domain visual components are first-class and live in
+`lib/nila_web/components/` like any other. Build one when a relationship
+repeats; do not ship the sentence because no primitive existed.
+
+### Fold summaries are assertions, not inventories
+
+A closed fold is a claim that the reader need not look inside. State what kind
+of evidence supports that claim rather than presenting every equality as an
+independent check:
+
+- **Tie-out** — independently derived values agree; show both and the residual.
+- **Derived identity** — one artifact was produced from another, such as
+  "GSTR-3B outward derived from this GSTR-1." It is provenance, not corroboration.
+- **Coverage** — "247 matched · ₹12,40,318 reconciled" while unresolved rows
+  remain outside the fold.
+- **Inventory** — "The return · 2 parties · 1 rate · 3 HSN codes" does not
+  justify hiding anything.
+
+An inventory describes contents, which is precisely what a reader who trusts
+the fold does not need. An assertion is what lets them not open it. **Fold what
+has been verified; never fold what is unresolved.** Never claim a tie-out unless
+Nila has two genuinely independent values to compare.
+
+### An empty region does not render
+
+A heading over an absence is worse than nothing: it spends a labelled region of
+the page explaining why the region is empty. If a section has nothing to show
+it is not on the page, and its state belongs in the one line that owns state.
+
+The anti-pattern, in full:
+
+> **SIGNATURES AND FILING**
+> GSTR-1 signature waits: the GSTR-1 still has issues to check
+
+### More than one plane
+
+A wide verification workbench should use more than one density when supporting
+state exists: the surface being verified, and a quieter rail or margin carrying
+deadline, provenance, or consequence. A single centred `max-w-5xl` column on a
+wide canvas can produce a document whose unused width reads as abandonment. Air
+is the space *between* things; space after the last thing is just empty. Do not
+invent a second plane for focused forms, authentication, upload, or mobile.
+
+### One authored moment
+
+Persistent chrome may carry one quiet brand ground, such as the midnight-sea
+rail framing Nila's pale workspace. Each screen may add at most one
+page-specific element that is drawn rather than assembled — a gradient ground,
+a luminous surface, a bespoke mark — and it belongs to whatever the screen is
+about. The shell establishes the room; the work remains its brightest object.
+
+This is a licence, not a requirement. If a second page-specific moment appears,
+one of them is decoration.
+
+### Rhythm and air
+
+Origin-scale separation between major subjects begins at 64px. `region` (32px)
+is the current ceiling, which is why pages read as evenly packed rather than
+composed. The scale gains one step:
+
+| Role | Utility suffix | Value | Carries |
+| --- | --- | --- | --- |
+| Canvas | `canvas` | 64px | Between subjects the reader treats as separate questions |
+
+Named steps are invisible to `mix nila.style_guard`'s numeric spacing check, so
+`pt-canvas` and `space-y-canvas` need no linter change — only
+`--spacing-canvas: 4rem` in `app.css`. Prefer responsive use such as
+`gap-region lg:gap-canvas` when mobile does not need the full separation.
+
+And vary it. Four regions at an identical gap is a list, and tells the reader
+nothing about which boundaries matter.
 
 ## The ledger (marketing pages only)
 
@@ -107,8 +229,11 @@ adds the settings navigation within the same shell.
 
 Shared components own their internal geometry; LiveViews and domain components
 own screen-specific composition. Prefer the existing table, card, fold, modal,
-and page-header primitives over inventing a generic cockpit abstraction.
-Structural rhythm and density are defined under [Spacing](#spacing).
+and page-header primitives over inventing a *generic* cockpit abstraction — but
+a component that draws one specific relationship (a reconciliation, a coverage
+proportion, an unbroken series) is not a generic abstraction, and belongs in
+`components/`. See [Composition](#composition). Structural rhythm and density
+are defined under [Spacing](#spacing).
 
 ### Color
 
@@ -195,10 +320,11 @@ structural margin when a parent cannot own the gap.
 | Block | `block` | 16px | Fields and sibling blocks inside one component |
 | Section | `section` | 24px | Distinct panels, folds, and ordinary page sections |
 | Region | `region` | 32px | Major workbench regions only |
+| Canvas | `canvas` | 64px | Between subjects the reader treats as separate questions. See [Composition](#composition) |
 
 **The parent owns spacing between siblings.** Components own their internal
 geometry; callers own the gap around the component. Outer gaps must be larger
-than inner gaps: related < block < section < region. Prefer `gap-*` or
+than inner gaps: related < block < section < region < canvas. Prefer `gap-*` or
 `space-y-*` over stacking child margins. Responsive spacing changes at page or
 region boundaries, not inside rows and controls.
 
@@ -364,6 +490,8 @@ gradients or shadows.** The look comes from restraint.
 - Don't pair `leading-*`/`tracking-*` with a `text-{role}` (exceptions:
   `leading-none`/`tabular-nums` on figures).
 - Don't reach for heavy headings (`font-bold` on display type) — stay light.
-- Don't add bespoke gradients. Shadows are reserved for the floating surfaces
-  named under Elevation.
+- Don't scatter bespoke gradients — persistent chrome may keep one quiet brand
+  ground, and each screen gets at most one page-specific authored moment for the
+  work (see [Composition](#composition)). Everywhere else, reuse the signature
+  utilities. Shadows are reserved for the floating surfaces named under Elevation.
 - Don't add a dark theme or `tailwind.config.js`.

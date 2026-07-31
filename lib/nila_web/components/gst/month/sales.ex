@@ -156,28 +156,22 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               costs a parse. The rows are the count. --%>
         <.invoice_table :if={@need_you != []} id="gstr1-invoices" rows={@need_you} visited={@visited} />
 
-        <%!-- Level 2 of the pyramid, one tap from level 1. While issues are open
-              the reader's job is the worklist above, and four tables of correct
-              arithmetic under it is the largest ink mass on the page competing
-              with the smallest. Once nothing is open, checking the return *is*
-              the job, so it stands open. --%>
-        <.fold :if={@derived} id="gstr1-return" open={MapSet.member?(@open_folds, "gstr1-return")}>
-          <:summary>
-            <span class="flex-1">{workings_summary_line(assigns)}</span>
-          </:summary>
-          <div class="mt-block">
-            <Workings.workings_body
-              derived={@derived}
-              invoices={@invoices}
-              diff={@diff}
-              accepted={@accepted_diffs}
-              locked={@r1_signoff != nil}
-              rippled={@rippled}
-              ripple_seq={@ripple_seq}
-              expanded={@expanded_nodes}
-            />
+        <section :if={@derived} id="gstr1-return" class="space-y-block">
+          <div class="space-y-related">
+            <h3 class="text-base-content text-body font-semibold">Return workings</h3>
+            <p class="text-ink-muted text-small">{workings_summary_line(assigns)}</p>
           </div>
-        </.fold>
+          <Workings.workings_body
+            derived={@derived}
+            invoices={@invoices}
+            diff={@diff}
+            accepted={@accepted_diffs}
+            locked={@r1_signoff != nil}
+            rippled={@rippled}
+            ripple_seq={@ripple_seq}
+            expanded={@expanded_nodes}
+          />
+        </section>
 
         <.fold
           :if={@verified != []}

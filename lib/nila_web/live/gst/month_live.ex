@@ -352,17 +352,13 @@ defmodule NilaWeb.Gst.MonthLive do
 
   # Which sections stand open is server state — a browser-toggled `<details>`
   # does not survive a LiveView patch, so a fold opened by the reader would slam
-  # shut the moment a pile landed. Seeded once from the month's shape (the
-  # return stands open only when checking it is the job, which is when nothing
-  # else is) and owned by the reader from then on: the page never re-decides a
-  # fold the reader has since moved.
+  # shut the moment a pile landed. Seed once, then leave every disclosure under
+  # the reader's control. Return workings are not a disclosure: verification is
+  # the page's job, so they remain visible.
   defp seed_folds(socket) do
-    if Map.has_key?(socket.assigns, :open_folds) do
-      socket
-    else
-      folds = if socket.assigns.open_issue_count == 0, do: ["gstr1-return"], else: []
-      assign(socket, :open_folds, MapSet.new(folds))
-    end
+    if Map.has_key?(socket.assigns, :open_folds),
+      do: socket,
+      else: assign(socket, :open_folds, MapSet.new())
   end
 
   @impl true

@@ -104,3 +104,16 @@ counts: it **mandates borders around everything**; **every word is tinted
 blue** so nothing is; the **spacing ceiling (32px) outlaws Origin-level air**;
 and it is **a rulebook of bans with no composition theory** — nothing says
 "one focal figure per surface," so a page can obey every rule and stay flat.
+
+## 2026-07-31 — Origin reference corrected
+
+The earlier entry misremembered the benchmark. Origin uses hairlines around
+most major cards; they succeed because they stay subordinate to composition,
+not because they are absent. Origin is also dense at the canvas level. Its
+restraint is per element — delicate type, clear hierarchy, and air inside and
+between subjects — not "half the content."
+
+The proving ground is the real client-month verification surface, not
+`/landing`. A CA opens it to verify reconciliations and workings before signing;
+the product succeeds when that conviction is available on the glass without a
+discovery click.

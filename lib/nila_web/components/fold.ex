@@ -46,7 +46,7 @@ defmodule NilaWeb.Components.Fold do
         {render_slot(@summary)}
         <.icon
           name="hero-chevron-down-mini"
-          class="text-ink-faint size-4 shrink-0 transition-transform group-open/fold:rotate-180"
+          class="fold-chevron text-ink-faint size-4 shrink-0 transition-transform"
         />
       </summary>
       {render_slot(@inner_block)}

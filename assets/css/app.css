@@ -160,6 +160,7 @@
   --spacing-block: 1rem;
   --spacing-section: 1.5rem;
   --spacing-region: 2rem;
+  --spacing-canvas: 4rem;
 }
 
 /* Product motion. Bare transitions are fast by default; deliberate spatial
@@ -273,6 +274,10 @@
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+details[open] > summary .fold-chevron {
+  transform: rotate(180deg);
 }
 
 /* Ink scale — the four text-emphasis levels. Sentences live at ink or
