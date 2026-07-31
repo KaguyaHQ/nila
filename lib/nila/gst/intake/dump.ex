@@ -5,9 +5,9 @@ defmodule Nila.Gst.Intake.Dump do
   dumps, so each arrival is a first-class record of what came in, when, from
   whom, and whether extraction survived it.
 
-  `kind` is human-declared at intake (`sales` | `purchase` | `gstr2b`) — the
-  accountant knows what they're holding, and a mis-classified dump would
-  quietly poison two returns. `source` records the channel that carried the
+  `kind` is human-declared at intake (`sales` | `purchase` | `gstr2b` |
+  `filed_gstr1`) — the accountant knows what they're holding, and a
+  mis-classified dump would quietly poison two returns. `source` records the channel that carried the
   arrival (`whatsapp` | `email`) when the dump was routed from one; direct
   uploads leave it nil. `invoices` holds the dump's own normalized
   extraction output (invoice ids and image paths namespaced by dump, so
@@ -28,7 +28,7 @@ defmodule Nila.Gst.Intake.Dump do
   """
   use Nila.Schema
 
-  @kinds ~w(sales purchase gstr2b)
+  @kinds ~w(sales purchase gstr2b filed_gstr1)
   @statuses ~w(received extracting extracted failed held after_filing needs_confirmation discarded)
 
   def kinds, do: @kinds

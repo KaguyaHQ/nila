@@ -87,14 +87,56 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       </div>
     </.modal>
 
-    <.modal
+    <.invoice_modal
       :if={@selected_invoice}
+      selected_invoice={@selected_invoice}
+      issues_by_invoice={@issues_by_invoice}
+      r1_signoff={@r1_signoff}
+      flagged={@flagged}
+      correcting={@correcting}
+    />
+    """
+  end
+
+  attr :selected_invoice, :map, required: true
+  attr :issues_by_invoice, :map, required: true
+  attr :r1_signoff, :any, default: nil
+  attr :flagged, :any, required: true
+  attr :correcting, :any, default: nil
+
+  # The trust atom: the scan on the left, the full extracted read and its
+  # arithmetic beside it, every check an outcome the validation layer already
+  # judged — this panel renders verdicts, it never computes one. A failed check
+  # is its validation issue rendered in place, so ✓ and an open issue can never
+  # disagree about the same fact.
+  defp invoice_modal(assigns) do
+    checks = Gstr1.invoice_checks(assigns.selected_invoice)
+    issues = Helpers.invoice_issues(assigns.issues_by_invoice, assigns.selected_invoice)
+
+    check_issues =
+      checks
+      |> Enum.reject(& &1["passed"])
+      |> Map.new(fn check ->
+        {check_key(check),
+         Enum.find(issues, &(&1["code"] == check["code"] and &1["fields"] == check["fields"]))}
+      end)
+
+    in_place = check_issues |> Map.values() |> Enum.reject(&is_nil/1)
+
+    assigns =
+      assigns
+      |> assign(:checks, checks)
+      |> assign(:check_issues, check_issues)
+      |> assign(:other_issues, issues -- in_place)
+
+    ~H"""
+    <.modal
       id="gstr1-evidence-modal"
       title={@selected_invoice["invoice_number"] || "Invoice"}
       on_close="close-evidence"
-      class="max-w-4xl"
+      class="max-w-6xl"
     >
-      <div class="grid gap-5 lg:grid-cols-[1fr_20rem]">
+      <div class="grid gap-5 lg:grid-cols-[1fr_26rem]">
         <div id="gstr1-evidence-images" class="space-y-3">
           <img
             :for={url <- @selected_invoice["image_urls"]}
@@ -121,45 +163,57 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             </div>
           </div>
 
-          <div
-            :if={Helpers.invoice_issues(@issues_by_invoice, @selected_invoice) != []}
-            class="space-y-2"
-          >
-            <div class="text-base-content/60 text-label font-medium uppercase">Issues</div>
-            <div
-              :for={issue <- Helpers.invoice_issues(@issues_by_invoice, @selected_invoice)}
-              class="bg-base-200/40 border-base-300 rounded-box border p-3"
-            >
-              <.badge variant={
-                if issue["status"] == "resolved",
-                  do: "success",
-                  else: Helpers.severity_variant(issue["level"])
-              }>
-                {issue_label(issue["code"])}
-              </.badge>
-              <p class="text-base-content/80 text-small mt-2 line-clamp-2">{issue["message"]}</p>
-              <div class="mt-2">
-                <.button
-                  :if={issue["status"] == "open" and is_nil(@r1_signoff)}
-                  variant="outline"
-                  size="xs"
-                  phx-click="confirm_issue"
-                  phx-value-target={SalesWorkings.issue_key(issue)}
-                >
-                  Checked against the bill — it's fine
-                </.button>
-                <span :if={issue["status"] == "resolved"} class="flex items-center gap-1.5">
-                  <span class="text-fine text-success font-medium">Confirmed</span>
-                  <.button
-                    :if={is_nil(@r1_signoff)}
-                    variant="ghost"
-                    size="xs"
-                    phx-click="undo"
-                    phx-value-target={SalesWorkings.issue_key(issue)}
-                  >Undo</.button>
-                </span>
+          <div :if={@selected_invoice["line_items"] not in [nil, []]} class="space-y-2">
+            <div class="text-base-content/60 text-label font-medium uppercase">Extracted read</div>
+            <.data_table id="gstr1-line-items" rows={@selected_invoice["line_items"]}>
+              <:col :let={line} label="Item">
+                <span class="text-fine">{line["description"] || "—"}</span>
+              </:col>
+              <:col :let={line} label="HSN">
+                <span class="text-fine font-mono">{line["hsn_sac"] || "—"}</span>
+              </:col>
+              <:col :let={line} label="Rate" align="right">
+                <span class="text-fine">{line_rate_label(line)}</span>
+              </:col>
+              <:col :let={line} label="Taxable" align="right">
+                <span class="text-fine">{amount(line["taxable_value"])}</span>
+              </:col>
+              <:col :let={line} label="Tax" align="right">
+                <span class="text-fine">{line_tax_label(line)}</span>
+              </:col>
+            </.data_table>
+          </div>
+
+          <div :if={@checks != []} id="gstr1-checks" class="space-y-2">
+            <div class="text-base-content/60 text-label font-medium uppercase">Checks</div>
+            <%= for check <- @checks do %>
+              <div
+                :if={check["passed"]}
+                class="text-base-content/70 text-small flex items-center gap-2"
+              >
+                <.icon name="hero-check-mini" class="text-success size-4 shrink-0" />
+                <span>{check_claim(check)}</span>
               </div>
-            </div>
+              <%= if !check["passed"] do %>
+                <.issue_card
+                  :if={@check_issues[check_key(check)]}
+                  issue={@check_issues[check_key(check)]}
+                  r1_signoff={@r1_signoff}
+                />
+                <div
+                  :if={is_nil(@check_issues[check_key(check)])}
+                  class="text-base-content/70 text-small flex items-center gap-2"
+                >
+                  <.icon name="hero-x-mark-mini" class="text-error size-4 shrink-0" />
+                  <span>{check_claim(check)}</span>
+                </div>
+              <% end %>
+            <% end %>
+          </div>
+
+          <div :if={@other_issues != []} class="space-y-2">
+            <div class="text-base-content/60 text-label font-medium uppercase">Issues</div>
+            <.issue_card :for={issue <- @other_issues} issue={issue} r1_signoff={@r1_signoff} />
           </div>
 
           <div
@@ -203,6 +257,95 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       </div>
     </.modal>
     """
+  end
+
+  attr :issue, :map, required: true
+  attr :r1_signoff, :any, default: nil
+
+  defp issue_card(assigns) do
+    ~H"""
+    <div class="bg-base-200/40 border-base-300 rounded-box border p-3">
+      <.badge variant={
+        if @issue["status"] == "resolved",
+          do: "success",
+          else: Helpers.severity_variant(@issue["level"])
+      }>
+        {issue_label(@issue["code"])}
+      </.badge>
+      <p class="text-base-content/80 text-small mt-2 line-clamp-2">{@issue["message"]}</p>
+      <div class="mt-2">
+        <.button
+          :if={@issue["status"] == "open" and is_nil(@r1_signoff)}
+          variant="outline"
+          size="xs"
+          phx-click="confirm_issue"
+          phx-value-target={SalesWorkings.issue_key(@issue)}
+        >
+          Checked against the bill — it's fine
+        </.button>
+        <span :if={@issue["status"] == "resolved"} class="flex items-center gap-1.5">
+          <span class="text-fine text-success font-medium">Confirmed</span>
+          <.button
+            :if={is_nil(@r1_signoff)}
+            variant="ghost"
+            size="xs"
+            phx-click="undo"
+            phx-value-target={SalesWorkings.issue_key(@issue)}
+          >Undo</.button>
+        </span>
+      </div>
+    </div>
+    """
+  end
+
+  defp check_key(check), do: {check["code"], check["fields"]}
+
+  # One line per verified claim, in the arithmetic the bill itself printed.
+  defp check_claim(%{"code" => "line_arithmetic"} = check) do
+    ops = check["operands"]
+
+    "L#{check["line"]}: #{amount(ops["taxable"])} × #{percent(ops["rate"])} = #{amount(ops["actual"])}"
+  end
+
+  defp check_claim(%{"code" => "cgst_sgst_unequal"} = check) do
+    ops = check["operands"]
+    "L#{check["line"]}: CGST #{amount(ops["cgst"])} = SGST #{amount(ops["sgst"])}"
+  end
+
+  defp check_claim(%{"code" => code} = check) do
+    ops = check["operands"]
+    "#{total_label(code)}: lines #{amount(ops["derived"])} = printed #{amount(ops["printed"])}"
+  end
+
+  defp total_label("printed_taxable_mismatch"), do: "taxable"
+  defp total_label("printed_tax_mismatch"), do: "tax"
+  defp total_label("grand_total_mismatch"), do: "grand total"
+
+  defp amount(value), do: Helpers.amount(value)
+  defp percent(rate), do: Helpers.percent(rate)
+
+  defp line_rate_label(line) do
+    rate =
+      [line["cgst_rate"], line["sgst_rate"], line["igst_rate"]]
+      |> Enum.map(&if(is_number(&1), do: &1, else: 0))
+      |> Enum.sum()
+
+    if rate == 0, do: "—", else: percent(rate)
+  end
+
+  # The split is shown as the bill prints it — two halves or one IGST — so the
+  # reader compares figure to figure, not a sum they'd have to do in their head.
+  defp line_tax_label(line) do
+    cond do
+      is_number(line["igst_amount"]) ->
+        amount(line["igst_amount"])
+
+      is_number(line["cgst_amount"]) or is_number(line["sgst_amount"]) ->
+        "#{amount(line["cgst_amount"])} + #{amount(line["sgst_amount"])}"
+
+      true ->
+        "—"
+    end
   end
 
   defp evidence_title(row) do

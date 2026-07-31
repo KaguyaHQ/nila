@@ -365,6 +365,39 @@ body {
   }
 }
 
+/* Correction ripple: the workings nodes a re-derivation changed glow once,
+   then settle — no value animation, the highlight is the entire effect. Two
+   identical keyframes alternate by name so a second correction restarts the
+   glow on a node that is already at rest. */
+@keyframes workings-ripple-0 {
+  from {
+    background-color: color-mix(in oklab, var(--color-warning) 22%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@keyframes workings-ripple-1 {
+  from {
+    background-color: color-mix(in oklab, var(--color-warning) 22%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.workings-ripple-0 {
+  animation: workings-ripple-0 1.4s ease-out 1;
+}
+.workings-ripple-1 {
+  animation: workings-ripple-1 1.4s ease-out 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .workings-ripple-0,
+  .workings-ripple-1 {
+    animation: none;
+  }
+}
+
 @media print {
   @page {
     size: A4 portrait;

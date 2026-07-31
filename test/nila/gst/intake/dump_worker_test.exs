@@ -312,6 +312,47 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     assert duplicate_flags != []
   end
 
+  test "a filed GSTR-1 lands on the month, survives re-derives, replaces on re-upload", %{
+    org: org,
+    user: user,
+    client: client
+  } do
+    # The filed JSON can arrive first: the month starts as the comparison
+    # target with no bills yet.
+    assert :ok = run(bring_in(org, client, user, "filed_gstr1", filed_gstr1_json("v1")))
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    assert month.invoices == []
+    assert month.filed_gstr1["gstin"] == "33AEWPH4158J1Z3"
+    assert month.filed_gstr1["marker"] == "v1"
+
+    # Bills arriving later rebuild the month without dropping the filed return.
+    assert :ok = run(bring_in(org, client, user, "sales", "%PDF-1.4 fake"))
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    assert length(month.invoices) == 3
+    assert month.filed_gstr1["marker"] == "v1"
+
+    # A re-upload replaces the snapshot — there is only ever one filed return.
+    assert :ok = run(bring_in(org, client, user, "filed_gstr1", filed_gstr1_json("v2")))
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    assert month.filed_gstr1["marker"] == "v2"
+    assert length(month.invoices) == 3
+  end
+
+  test "a 2B declared as the filed GSTR-1 fails the shape check, not the month", %{
+    org: org,
+    user: user,
+    client: client
+  } do
+    dump = bring_in(org, client, user, "filed_gstr1", gstr2b_json())
+
+    assert {:error, :not_a_filed_gstr1} = run(dump)
+
+    {:ok, dump} = Dumps.fetch(org.id, dump.id)
+    assert dump.status == "failed"
+    assert {:error, :not_found} = SalesMonths.get_by_period(org.id, client.id, @period)
+  end
+
   test "a broken file marks the dump failed and the month untouched", %{
     org: org,
     user: user,
@@ -353,6 +394,17 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
 
   defp empty_gstr2b_json do
     Jason.encode!(%{"data" => %{"docdata" => %{"b2b" => []}}})
+  end
+
+  # A minimal portal-shaped GSTR-1 download. `marker` proves which upload the
+  # month currently holds.
+  defp filed_gstr1_json(marker) do
+    Jason.encode!(%{
+      "gstin" => "33AEWPH4158J1Z3",
+      "fp" => "102025",
+      "marker" => marker,
+      "b2b" => []
+    })
   end
 
   defp supplier(ctin, trdnm, invoices),

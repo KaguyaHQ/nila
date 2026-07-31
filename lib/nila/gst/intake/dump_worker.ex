@@ -130,7 +130,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
     :ok
   end
 
-  defp lock_month(%Dump{kind: "sales"} = dump) do
+  defp lock_month(%Dump{kind: kind} = dump) when kind in ~w(sales filed_gstr1) do
     Nila.Repo.one(
       from m in SalesMonth,
         where:
@@ -181,6 +181,20 @@ defmodule Nila.Gst.Intake.DumpWorker do
     end
   end
 
+  # The portal's own GSTR-1 download — already structured, so "extraction" is a
+  # decode plus a shape check that refuses a 2B (whose gstin sits nested under
+  # "data") declared as the filed return.
+  defp extract_kind(%Dump{kind: "filed_gstr1"} = dump, _worker_attempt) do
+    with {:ok, key} <- one_source_key(dump),
+         {:ok, bytes} <- Storage.get(key) do
+      case Jason.decode(bytes) do
+        {:ok, %{"gstin" => gstin} = filed} when is_binary(gstin) -> {:ok, [filed], %{}}
+        {:ok, _other} -> {:error, :not_a_filed_gstr1}
+        {:error, _} -> {:error, :invalid_json}
+      end
+    end
+  end
+
   defp extract_kind(%Dump{kind: "purchase"} = dump, worker_attempt) do
     with {:ok, %{pages: pages, images: images} = result} <-
            extract_source(dump, purchase_extractor(), worker_attempt) do
@@ -224,7 +238,20 @@ defmodule Nila.Gst.Intake.DumpWorker do
        %{
          "unaccounted_pages" => unaccounted_pages(result),
          "evidence_unavailable" => evidence_unavailable?(result)
-       }}
+       }
+       |> put_source_page_count(result)}
+    end
+  end
+
+  # The page count lives on the extraction attempt's audit, but the account a
+  # reviewer reads ("15 pages read → 15 invoices") sums per month, so it is
+  # copied onto the dump the month is derived from
+  # (`Nila.Gst.Intake.Dumps.source_page_count/4`). A dump that predates this
+  # leaves the key absent and the pages clause unsaid rather than guessed.
+  defp put_source_page_count(meta, result) do
+    case get_in(result, [:audit, :source_page_count]) do
+      count when is_integer(count) and count > 0 -> Map.put(meta, "source_page_count", count)
+      _unknown -> meta
     end
   end
 
@@ -431,11 +458,12 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
   defp wall_status(_dump, nil), do: :open
 
-  defp wall_status(%Dump{kind: "sales"}, %SalesMonth{filed_at: filed_at})
-       when not is_nil(filed_at),
+  defp wall_status(%Dump{kind: kind}, %SalesMonth{filed_at: filed_at})
+       when kind in ~w(sales filed_gstr1) and not is_nil(filed_at),
        do: :after_filing
 
-  defp wall_status(%Dump{kind: "sales"}, %SalesMonth{} = month) do
+  defp wall_status(%Dump{kind: kind}, %SalesMonth{} = month)
+       when kind in ~w(sales filed_gstr1) do
     if match?({:ok, _}, Signoffs.latest_gstr1_signoff(month.id)), do: :held, else: :open
   end
 
@@ -452,7 +480,10 @@ defmodule Nila.Gst.Intake.DumpWorker do
   # the new pristine base, and survive because prior dumps' ids never moved.
   # ---------------------------------------------------------------------------
 
-  defp derive(%Dump{kind: "sales"} = dump) do
+  # A filed-return dump rebuilds the same sales month: the filed JSON is just
+  # another projection of the dump pile, so re-deriving after any arrival
+  # keeps `filed_gstr1` (latest filed dump wins) and the bills in step.
+  defp derive(%Dump{kind: kind} = dump) when kind in ~w(sales filed_gstr1) do
     progress(dump, :deriving)
     invoices = Dumps.union_invoices(dump.org_id, dump.client_id, dump.period, "sales")
 
@@ -472,6 +503,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
         invoices: invoices,
         derived_gstr1: derived,
         issues: issues,
+        filed_gstr1: Dumps.filed_gstr1(dump.org_id, dump.client_id, dump.period),
         summary: %{"invoice_count" => length(invoices), "issue_count" => length(issues)}
       })
 

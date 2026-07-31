@@ -38,8 +38,8 @@ defmodule Nila.Gst.Sales.Workings do
     effective = Replay.drop_reopened(resolutions, "target")
     decisions = Replay.decisions(resolutions, "target")
 
-    {corrections, confirmations} =
-      Enum.split_with(effective, &(&1["verb"] == "correct_field"))
+    corrections = Enum.filter(effective, &(&1["verb"] == "correct_field"))
+    confirmations = Enum.filter(effective, &(&1["verb"] == "confirm_issue"))
 
     corrections = effective_corrections(corrections)
     flagged = Gstr1.flagged_fields(invoices, Gstr1.validation_issues(invoices))

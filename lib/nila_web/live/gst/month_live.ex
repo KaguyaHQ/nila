@@ -17,6 +17,7 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias Nila.Gst.WorkQueue
+  alias Nila.Eval.Gstr1Diff
 
   alias NilaWeb.Components.Gst.Month.{
     Arrivals,
@@ -25,7 +26,8 @@ defmodule NilaWeb.Gst.MonthLive do
     Precondition,
     Purchase,
     Sales,
-    Verdict
+    Verdict,
+    Workings
   }
 
   alias NilaWeb.Gst.PeriodOptions
@@ -69,6 +71,9 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:page_title, "#{client.name} · #{period_label(period)}")
       |> assign(:selected_row, nil)
       |> assign(:selected_inum, nil)
+      |> assign(:visited_inums, MapSet.new())
+      |> assign(:rippled, MapSet.new())
+      |> assign(:ripple_seq, 0)
       |> assign(:correcting, nil)
       |> assign(:show_chase_history, false)
       |> assign(:precondition_choice, nil)
@@ -126,6 +131,7 @@ defmodule NilaWeb.Gst.MonthLive do
       in_question && PeriodOptions.for_client(org_id, client.id, except: period)
     )
     |> assign(:gstr2b_in, Enum.any?(dumps, &(&1.kind == "gstr2b" and &1.status == "extracted")))
+    |> assign(:sales_pages_read, Dumps.source_page_count(org_id, client.id, period, "sales"))
     |> assign(:superseded_2b_ids, superseded_2b_ids(dumps))
     |> assign(:asks, Chase.list_asks(org_id, client.id, period))
     |> assign(:open_period, Calendar.closeable_period(Date.utc_today()))
@@ -205,6 +211,9 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:issues_by_invoice, %{})
     |> assign(:month_issues, [])
     |> assign(:flagged, MapSet.new())
+    |> assign(:derived_gstr1, nil)
+    |> assign(:gstr1_diff, nil)
+    |> assign(:accepted_diffs, MapSet.new())
     |> assign(:open_issue_count, 0)
     |> assign(:open_issue_invoice, nil)
     |> assign(:reviewable, false)
@@ -213,17 +222,18 @@ defmodule NilaWeb.Gst.MonthLive do
   defp assign_sales(socket, sales) do
     signoff = fetch_or_nil(Signoffs.latest_gstr1_signoff(sales.id))
 
-    {effective_invoices, issues, flagged} =
+    {effective_invoices, issues, flagged, derived} =
       case signoff do
         nil when sales.invoices == [] ->
-          {[], [], MapSet.new()}
+          {[], [], MapSet.new(), nil}
 
         nil ->
           workings = SalesResolutions.workings(sales)
-          {workings.invoices, workings.issues, workings.flagged}
+          {workings.invoices, workings.issues, workings.flagged, workings.derived}
 
         signoff ->
-          {signoff.snapshot["invoices"], signoff.snapshot["issues"], MapSet.new()}
+          {signoff.snapshot["invoices"], signoff.snapshot["issues"], MapSet.new(),
+           signoff.snapshot["derived"]}
       end
 
     invoices =
@@ -237,6 +247,8 @@ defmodule NilaWeb.Gst.MonthLive do
 
     {month_issues, invoice_issues} = Enum.split_with(issues, &is_nil(&1["invoice"]))
 
+    filed = filed_gstr1(sales)
+
     socket
     |> assign(:sales_month, sales)
     |> assign(:r1_signoff, signoff)
@@ -244,10 +256,18 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:issues_by_invoice, Enum.group_by(invoice_issues, & &1["invoice"]))
     |> assign(:month_issues, month_issues)
     |> assign(:flagged, flagged)
+    |> assign(:derived_gstr1, derived)
+    |> assign(:gstr1_diff, filed && derived && Gstr1Diff.rows(derived, filed))
+    |> assign(:accepted_diffs, SalesResolutions.accepted_differences(sales))
     |> assign(:open_issue_count, Enum.count(issues, &(&1["status"] == "open")))
     |> assign(:open_issue_invoice, first_open_invoice(month_issues, invoice_issues))
     |> assign(:reviewable, SalesWorkings.reviewable?(issues))
   end
+
+  # Present only when a portal download actually landed — the column is nil on
+  # every month that never loaded one, and an empty map is not a return.
+  defp filed_gstr1(%{filed_gstr1: filed}) when is_map(filed) and filed != %{}, do: filed
+  defp filed_gstr1(_sales), do: nil
 
   # An invoice-level issue has no representation on the page beyond an "n open"
   # cell, so the verdict's door has to carry the reviewer into the invoice's
@@ -340,8 +360,16 @@ defmodule NilaWeb.Gst.MonthLive do
     {:noreply, assign(socket, selected_row: row, selected_inum: nil)}
   end
 
+  # Opening an invoice marks its row read for this session only — a quiet
+  # read/unread mark, never a persisted aggregate or a meter.
   def handle_event("select-invoice", %{"inum" => inum}, socket) do
-    {:noreply, assign(socket, selected_inum: inum, selected_row: nil, correcting: nil)}
+    {:noreply,
+     assign(socket,
+       selected_inum: inum,
+       selected_row: nil,
+       correcting: nil,
+       visited_inums: MapSet.put(socket.assigns.visited_inums, inum)
+     )}
   end
 
   def handle_event("close-evidence", _params, socket),
@@ -358,6 +386,9 @@ defmodule NilaWeb.Gst.MonthLive do
 
   def handle_event("undo", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "reopen", "target" => target})
+
+  def handle_event("accept_difference", %{"target" => target}, socket),
+    do: record(socket, %{"verb" => "accept_difference", "target" => target})
 
   def handle_event("start_correct", %{"field" => field}, socket) do
     invoice = selected_invoice(socket.assigns)
@@ -615,11 +646,27 @@ defmodule NilaWeb.Gst.MonthLive do
            socket.assigns.current_scope.user.id
          ) do
       {:ok, _} ->
-        {:noreply, socket |> reload() |> assign(:correcting, nil)}
+        old_derived = socket.assigns.derived_gstr1
+        {:noreply, socket |> reload() |> assign(:correcting, nil) |> ripple(old_derived)}
 
       {:error, :signed_off} ->
         {:noreply,
          put_flash(socket, :error, "This GSTR-1 is signed off — a senior must reopen it first.")}
+    end
+  end
+
+  # The ripple sequence alternates the animation class so a second correction
+  # restarts the glow on a node already at rest; it only advances when
+  # something actually changed, so confirming an issue disturbs nothing.
+  defp ripple(socket, old_derived) do
+    changed = Workings.changed_nodes(old_derived, socket.assigns.derived_gstr1)
+
+    if MapSet.size(changed) == 0 do
+      assign(socket, :rippled, changed)
+    else
+      socket
+      |> assign(:rippled, changed)
+      |> assign(:ripple_seq, socket.assigns.ripple_seq + 1)
     end
   end
 
@@ -672,6 +719,13 @@ defmodule NilaWeb.Gst.MonthLive do
             r1_signoff={@r1_signoff}
             month_issues={@month_issues}
             issues_by_invoice={@issues_by_invoice}
+            pages_read={@sales_pages_read}
+            visited={@visited_inums}
+            derived={@derived_gstr1}
+            diff={@gstr1_diff}
+            accepted_diffs={@accepted_diffs}
+            rippled={@rippled}
+            ripple_seq={@ripple_seq}
             open={@tracks.sales == :open}
           />
 

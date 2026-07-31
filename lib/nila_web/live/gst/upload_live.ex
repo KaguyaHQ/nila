@@ -45,6 +45,13 @@ defmodule NilaWeb.Gst.UploadLive do
       kind: "gstr2b",
       label: "GSTR-2B (JSON)",
       hint: "From the portal, available ~the 14th. A new one replaces the old"
+    },
+    %{
+      name: :filed_gstr1,
+      kind: "filed_gstr1",
+      label: "Filed GSTR-1 (JSON, from the portal)",
+      hint:
+        "What was actually filed — the month then shows derived vs filed. A new one replaces the old"
     }
   ]
 
@@ -66,6 +73,11 @@ defmodule NilaWeb.Gst.UploadLive do
       |> allow_upload(:sales, accept: ~w(.pdf), max_entries: 1, max_file_size: @max_pdf_bytes)
       |> allow_upload(:purchase, accept: ~w(.pdf), max_entries: 1, max_file_size: @max_pdf_bytes)
       |> allow_upload(:gstr2b, accept: ~w(.json), max_entries: 1, max_file_size: 20_000_000)
+      |> allow_upload(:filed_gstr1,
+        accept: ~w(.json),
+        max_entries: 1,
+        max_file_size: 20_000_000
+      )
 
     {:ok, assign(socket, :error, nil)}
   end
@@ -99,7 +111,9 @@ defmodule NilaWeb.Gst.UploadLive do
   end
 
   def handle_event("cancel-upload", %{"ref" => ref}, socket) do
-    name = Enum.find([:sales, :purchase, :gstr2b], :sales, &entry_in?(socket, &1, ref))
+    name =
+      Enum.find([:sales, :purchase, :gstr2b, :filed_gstr1], :sales, &entry_in?(socket, &1, ref))
+
     {:noreply, cancel_upload(socket, name, ref)}
   end
 
@@ -154,7 +168,7 @@ defmodule NilaWeb.Gst.UploadLive do
   end
 
   defp attached_piles(socket) do
-    case Enum.filter([:sales, :purchase, :gstr2b], &(entries(socket, &1) != [])) do
+    case Enum.filter([:sales, :purchase, :gstr2b, :filed_gstr1], &(entries(socket, &1) != [])) do
       [] -> {:error, "Drop at least one pile — sales bills, purchase bills, or the 2B."}
       piles -> {:ok, piles}
     end
@@ -267,12 +281,13 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp list_clients(_socket), do: []
 
-  defp upload_content_type("gstr2b"), do: "application/json"
+  defp upload_content_type(kind) when kind in ~w(gstr2b filed_gstr1), do: "application/json"
   defp upload_content_type(_kind), do: "application/pdf"
 
   defp kind_title("sales"), do: "Sales bills"
   defp kind_title("purchase"), do: "Purchase bills"
   defp kind_title("gstr2b"), do: "GSTR-2B"
+  defp kind_title("filed_gstr1"), do: "Filed GSTR-1"
 
   defp job_label(:queued), do: "Queued"
   defp job_label(:extracting), do: "Reading the bills"

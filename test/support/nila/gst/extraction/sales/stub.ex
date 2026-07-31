@@ -23,7 +23,9 @@ defmodule Nila.Gst.Extraction.Sales.Stub do
     on_progress.(:reading)
     on_progress.(:extracting)
 
-    {:ok, %{pages: pages(), images: images()}}
+    # The audit mirrors the production pipeline's shape so the worker's
+    # page-count plumbing (dump.meta → the account block) runs in tests.
+    {:ok, %{pages: pages(), images: images(), audit: %{source_page_count: length(pages())}}}
   end
 
   defp images do

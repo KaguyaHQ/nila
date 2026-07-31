@@ -137,17 +137,29 @@ defmodule Nila.Gst.Intake.Dumps do
 
   @doc """
   The effective dump set for deriving a month: every extracted bill dump of
-  `kind`, arrival order. For `"gstr2b"` the latest extracted dump alone — a
-  2B snapshot replaces its predecessors.
+  `kind`, arrival order. For `"gstr2b"` and `"filed_gstr1"` the latest
+  extracted dump alone — a portal snapshot replaces its predecessors.
   """
-  def effective(org_id, client_id, period, "gstr2b") do
+  def effective(org_id, client_id, period, kind) when kind in ~w(gstr2b filed_gstr1) do
     org_id
-    |> extracted(client_id, period, "gstr2b")
+    |> extracted(client_id, period, kind)
     |> Enum.take(-1)
   end
 
   def effective(org_id, client_id, period, kind) when kind in ~w(sales purchase) do
     extracted(org_id, client_id, period, kind)
+  end
+
+  @doc """
+  The return the portal actually holds for this month, or nil: the latest
+  extracted `filed_gstr1` dump's parsed JSON. A re-upload replaces its
+  predecessors — the 2B rule — because there is only ever one filed return.
+  """
+  def filed_gstr1(org_id, client_id, period) do
+    case effective(org_id, client_id, period, "filed_gstr1") do
+      [dump] -> List.first(dump.invoices)
+      [] -> nil
+    end
   end
 
   @doc """
@@ -202,6 +214,22 @@ defmodule Nila.Gst.Intake.Dumps do
           []
       end
     end)
+  end
+
+  @doc """
+  Physical pages read across the effective `kind` dumps, or `nil` when any of
+  them predates the count being recorded on `meta` — the month's account omits
+  its pages clause rather than guessing low.
+  """
+  def source_page_count(org_id, client_id, period, kind) do
+    case effective(org_id, client_id, period, kind) do
+      [] ->
+        nil
+
+      dumps ->
+        counts = Enum.map(dumps, &Map.get(&1.meta || %{}, "source_page_count"))
+        if Enum.all?(counts, &is_integer/1), do: Enum.sum(counts)
+    end
   end
 
   @doc """

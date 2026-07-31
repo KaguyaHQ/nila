@@ -63,6 +63,7 @@ defmodule Nila.Formatters do
     "rounding_variance" => "Rounding difference",
     "bucket_tax_mismatch" => "Tax doesn't match the rate",
     "line_arithmetic" => "Line doesn't multiply out",
+    "cgst_sgst_unequal" => "CGST and SGST aren't equal halves",
     "lopsided_tax_split" => "CGST and SGST split unevenly",
     "tax_split_mismatch" => "Wrong tax type for the state",
     "personal_expense_17_5" => "Personal / 17(5)",

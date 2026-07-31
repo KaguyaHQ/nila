@@ -300,19 +300,170 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp invoice_issues(invoice) do
-    line_issues =
-      invoice["line_items"]
-      |> Enum.with_index(1)
-      |> Enum.flat_map(fn {line, index} -> line_issues(invoice, line, index) end)
+    check_issues =
+      invoice
+      |> invoice_checks()
+      |> Enum.reject(& &1["passed"])
+      |> Enum.map(&check_issue(invoice, &1))
 
     invoice_number_issues(invoice) ++
       invoice_date_issues(invoice) ++
-      arithmetic_issues(invoice) ++
+      check_issues ++
       gstin_issues(invoice) ++
       consistency_issues(invoice) ++
       lopsided_split_issues(invoice) ++
-      furniture_row_issues(invoice) ++ bucket_rounding_issues(invoice) ++ line_issues
+      furniture_row_issues(invoice) ++ bucket_rounding_issues(invoice)
   end
+
+  @doc """
+  Arithmetic check outcomes for one invoice — passed and failed alike, each with
+  the operands a screen can print (`15,200 × 18% = 2,736 ✓`).
+
+  This is the sole judge of these checks: `validation_issues/1` raises exactly
+  the failing subset (`check_issue/2`), and the invoice modal renders outcomes
+  without computing anything, so a ✓ can never sit beside an open issue for the
+  same check, nor a ✗ beside silence. A check only exists where the bill makes a
+  claim — a furniture row with no values, or an absent printed total, yields no
+  outcome rather than a vacuous pass.
+  """
+  def invoice_checks(invoice) do
+    line_arithmetic_checks(invoice) ++
+      split_equality_checks(invoice) ++ printed_total_checks(invoice)
+  end
+
+  defp line_arithmetic_checks(invoice) do
+    invoice["line_items"]
+    |> Enum.with_index(1)
+    |> Enum.flat_map(fn {line, index} ->
+      taxable = num(line["taxable_value"])
+      tax = num(line["cgst_amount"]) + num(line["sgst_amount"]) + num(line["igst_amount"])
+      rate = num(line["cgst_rate"]) + num(line["sgst_rate"]) + num(line["igst_rate"])
+
+      if taxable == 0 and tax == 0 and rate == 0 do
+        []
+      else
+        [
+          %{
+            "code" => "line_arithmetic",
+            "line" => index,
+            "operands" => %{
+              "taxable" => taxable,
+              "rate" => rate,
+              "expected" => taxable * rate / 100,
+              "actual" => tax
+            },
+            "passed" => close?(tax, taxable * rate / 100, @money_tolerance),
+            "fields" => [
+              "line_items[#{index - 1}].taxable_value",
+              "line_items[#{index - 1}].cgst_amount",
+              "line_items[#{index - 1}].sgst_amount",
+              "line_items[#{index - 1}].igst_amount"
+            ]
+          }
+        ]
+      end
+    end)
+  end
+
+  # CGST and SGST are equal halves of one levy by construction; a line whose
+  # halves differ passed no other check (`line_arithmetic` sums them, so a
+  # high-low pair can still multiply out) and is exactly the kind of quiet
+  # extraction error the modal exists to surface.
+  defp split_equality_checks(invoice) do
+    invoice["line_items"]
+    |> Enum.with_index(1)
+    |> Enum.flat_map(fn {line, index} ->
+      if is_number(line["cgst_amount"]) and is_number(line["sgst_amount"]) do
+        [
+          %{
+            "code" => "cgst_sgst_unequal",
+            "line" => index,
+            "operands" => %{
+              "cgst" => num(line["cgst_amount"]),
+              "sgst" => num(line["sgst_amount"])
+            },
+            "passed" =>
+              close?(num(line["cgst_amount"]), num(line["sgst_amount"]), @money_tolerance),
+            "fields" => [
+              "line_items[#{index - 1}].cgst_amount",
+              "line_items[#{index - 1}].sgst_amount"
+            ]
+          }
+        ]
+      else
+        []
+      end
+    end)
+  end
+
+  defp printed_total_checks(invoice) do
+    taxable = invoice_taxable(invoice)
+    tax = invoice_tax(invoice)
+
+    [
+      {"printed_taxable_mismatch", invoice["printed_total_taxable"], taxable,
+       ["printed_total_taxable", "line_items"]},
+      {"printed_tax_mismatch", invoice["printed_total_tax"], tax,
+       ["printed_total_tax", "line_items"]},
+      {"grand_total_mismatch", invoice["printed_grand_total"], taxable + tax,
+       ["printed_grand_total", "line_items"]}
+    ]
+    |> Enum.flat_map(fn
+      {_code, nil, _derived, _fields} ->
+        []
+
+      {code, printed, derived, fields} ->
+        [
+          %{
+            "code" => code,
+            "operands" => %{"printed" => num(printed), "derived" => derived},
+            "passed" => close?(num(printed), derived, @money_tolerance),
+            "fields" => fields
+          }
+        ]
+    end)
+  end
+
+  defp check_issue(invoice, %{"code" => "line_arithmetic"} = check) do
+    %{"line" => index, "operands" => ops, "fields" => fields} = check
+
+    issue(
+      invoice,
+      "line_arithmetic",
+      "line #{index} tax #{ops["actual"]} does not match #{ops["taxable"]} × #{ops["rate"]}% = #{round2(ops["expected"])}",
+      fields
+    )
+  end
+
+  defp check_issue(invoice, %{"code" => "cgst_sgst_unequal"} = check) do
+    %{"line" => index, "operands" => ops, "fields" => fields} = check
+
+    issue(
+      invoice,
+      "cgst_sgst_unequal",
+      "line #{index} CGST #{ops["cgst"]} and SGST #{ops["sgst"]} are not equal halves of the tax",
+      fields
+    )
+  end
+
+  defp check_issue(invoice, %{"code" => code} = check) do
+    %{"operands" => ops, "fields" => fields} = check
+
+    issue(
+      invoice,
+      code,
+      "#{total_claim(code)}: printed #{round2(ops["printed"])}, derived #{round2(ops["derived"])}",
+      fields
+    )
+  end
+
+  defp total_claim("printed_taxable_mismatch"),
+    do: "printed taxable total does not match line taxable sum"
+
+  defp total_claim("printed_tax_mismatch"), do: "printed tax total does not match line tax sum"
+
+  defp total_claim("grand_total_mismatch"),
+    do: "printed grand total does not match line taxable + tax"
 
   # The date is the one field that reaches the portal with nothing downstream
   # comparing it, so without this it files whatever the model printed.
@@ -517,31 +668,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   defp rounding_variance_bound(lines), do: 0.005 * length(lines) + 0.000001
 
-  defp line_issues(invoice, line, index) do
-    taxable = num(line["taxable_value"])
-    tax = num(line["cgst_amount"]) + num(line["sgst_amount"]) + num(line["igst_amount"])
-    rate = num(line["cgst_rate"]) + num(line["sgst_rate"]) + num(line["igst_rate"])
-    expected_tax = taxable * rate / 100
-
-    if close?(tax, expected_tax, @money_tolerance) do
-      []
-    else
-      [
-        issue(
-          invoice,
-          "line_arithmetic",
-          "line #{index} tax #{tax} does not match #{taxable} × #{rate}% = #{round2(expected_tax)}",
-          [
-            "line_items[#{index - 1}].taxable_value",
-            "line_items[#{index - 1}].cgst_amount",
-            "line_items[#{index - 1}].sgst_amount",
-            "line_items[#{index - 1}].igst_amount"
-          ]
-        )
-      ]
-    end
-  end
-
   # A real intra-state line always carries both CGST and SGST. Lines with
   # exactly one of them (and no IGST) mean the extractor split one printed
   # row's stacked tax sub-rows into separate line items — the invoice-27
@@ -568,40 +694,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
         )
       ]
     end
-  end
-
-  defp arithmetic_issues(invoice) do
-    taxable = invoice_taxable(invoice)
-    tax = invoice_tax(invoice)
-    grand = taxable + tax
-
-    [
-      maybe_issue(
-        invoice,
-        "printed_taxable_mismatch",
-        invoice["printed_total_taxable"],
-        taxable,
-        "printed taxable total does not match line taxable sum",
-        ["printed_total_taxable", "line_items"]
-      ),
-      maybe_issue(
-        invoice,
-        "printed_tax_mismatch",
-        invoice["printed_total_tax"],
-        tax,
-        "printed tax total does not match line tax sum",
-        ["printed_total_tax", "line_items"]
-      ),
-      maybe_issue(
-        invoice,
-        "grand_total_mismatch",
-        invoice["printed_grand_total"],
-        grand,
-        "printed grand total does not match line taxable + tax",
-        ["printed_grand_total", "line_items"]
-      )
-    ]
-    |> Enum.reject(&is_nil/1)
   end
 
   defp gstin_issues(invoice) do
@@ -662,7 +754,18 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end
   end
 
-  defp sequence_issues(invoices) do
+  @doc """
+  The invoice-number series as extraction read it: `from`/`to` bound the run,
+  `missing` names the gaps and `duplicates` the numbers issued twice, each
+  carrying the series suffix, ready to print. `nil` when no invoice number
+  parses — the same months for which `derive/2` files an empty `doc_det`.
+
+  The account block and the fold's summary line render this, and
+  `sequence_gaps` is raised from the same reading, so the sentence a reviewer
+  is shown and the issue that demands his decision can never name different
+  gaps.
+  """
+  def series_account(invoices) do
     parsed =
       invoices
       |> Enum.map(&parse_invoice_number(&1["invoice_number"]))
@@ -670,44 +773,39 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
     case parsed do
       [] ->
-        []
+        nil
 
       parsed ->
         numbers = Enum.map(parsed, & &1.number)
+        suffix = parsed |> hd() |> Map.fetch!(:suffix)
         min = Enum.min(numbers)
         max = Enum.max(numbers)
-        missing = Enum.to_list(min..max) -- numbers
 
-        if missing == [] do
-          []
-        else
-          suffix = parsed |> hd() |> Map.fetch!(:suffix)
-
-          [
-            %{
-              "invoice" => nil,
-              "code" => "sequence_gaps",
-              "message" =>
-                "missing/cancelled inferred from sequence: #{Enum.map_join(missing, ", ", &"#{&1}#{suffix}")} — confirm cancellation records",
-              "fields" => ["doc_issue"]
-            }
-          ]
-        end
+        %{
+          from: "#{min}#{suffix}",
+          to: "#{max}#{suffix}",
+          missing: Enum.map(Enum.to_list(min..max) -- numbers, &"#{&1}#{suffix}"),
+          duplicates:
+            (numbers -- Enum.uniq(numbers)) |> Enum.uniq() |> Enum.map(&"#{&1}#{suffix}")
+        }
     end
   end
 
-  defp maybe_issue(_invoice, _code, nil, _expected, _message, _fields), do: nil
+  defp sequence_issues(invoices) do
+    case series_account(invoices) do
+      %{missing: [_ | _] = missing} ->
+        [
+          %{
+            "invoice" => nil,
+            "code" => "sequence_gaps",
+            "message" =>
+              "missing/cancelled inferred from sequence: #{Enum.join(missing, ", ")} — confirm cancellation records",
+            "fields" => ["doc_issue"]
+          }
+        ]
 
-  defp maybe_issue(invoice, code, actual, expected, message, fields) do
-    if close?(num(actual), expected, @money_tolerance) do
-      nil
-    else
-      issue(
-        invoice,
-        code,
-        "#{message}: printed #{round2(num(actual))}, derived #{round2(expected)}",
-        fields
-      )
+      _complete_or_unparseable ->
+        []
     end
   end
 
@@ -771,11 +869,22 @@ defmodule Nila.Gst.Sales.Gstr1 do
   # Truncating is permitted below ₹5cr turnover, never more correct, and it tells
   # a reviewer less. A client whose CA insists on the shorter form is a per-client
   # filing preference, not an engine rule.
-  defp derive_hsn(invoices) do
+  @doc """
+  The HSN summary with its contributors: the portal's `hsn_b2b` rows, each also
+  carrying `"inums"` — the invoices whose lines built the row. The workings
+  screen expands a row into exactly these, and `derive/2` files these same rows
+  minus the key, so the aggregate a reviewer opens and the JSON the portal
+  receives are one grouping, not two that happen to agree.
+  """
+  def hsn_summary(invoices) do
     invoices
-    |> Enum.flat_map(& &1["line_items"])
-    |> Enum.group_by(fn line -> {hsn_code(line["hsn_sac"]), line_rate(line)} end)
-    |> Enum.map(fn {{hsn, rate}, lines} ->
+    |> Enum.flat_map(fn invoice ->
+      Enum.map(invoice["line_items"] || [], &{invoice["invoice_number"], &1})
+    end)
+    |> Enum.group_by(fn {_inum, line} -> {hsn_code(line["hsn_sac"]), line_rate(line)} end)
+    |> Enum.map(fn {{hsn, rate}, tagged} ->
+      lines = Enum.map(tagged, &elem(&1, 1))
+
       intra_tax =
         computed_bucket_tax(Enum.filter(lines, &(tax_mode(&1) == :intrastate)), rate, :intrastate)
 
@@ -790,12 +899,50 @@ defmodule Nila.Gst.Sales.Gstr1 do
         "txval" => round2(sum(lines, "taxable_value")),
         "camt" => intra_tax.camt,
         "samt" => intra_tax.samt,
-        "iamt" => inter_tax.iamt
+        "iamt" => inter_tax.iamt,
+        "inums" => tagged |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
       }
     end)
     |> Enum.sort_by(& &1["hsn_sc"])
     |> Enum.with_index(1)
     |> Enum.map(fn {row, index} -> Map.put(row, "num", index) end)
+  end
+
+  defp derive_hsn(invoices) do
+    invoices |> hsn_summary() |> Enum.map(&Map.delete(&1, "inums"))
+  end
+
+  @doc """
+  Taxable and tax by rate across the month, summed off the derived `b2b` — the
+  buckets are the very `itm_det`s the portal receives, never regrouped from the
+  invoices — with `"inums"` naming each bucket's contributors for the workings
+  screen to open.
+  """
+  def rate_summary(derived) do
+    derived["b2b"]
+    |> List.wrap()
+    |> Enum.flat_map(fn party ->
+      Enum.flat_map(party["inv"] || [], fn inv ->
+        Enum.map(inv["itms"] || [], fn itm -> {inv["inum"], itm["itm_det"] || %{}} end)
+      end)
+    end)
+    |> Enum.group_by(fn {_inum, det} -> det["rt"] end)
+    |> Enum.map(fn {rate, tagged} ->
+      dets = Enum.map(tagged, &elem(&1, 1))
+
+      %{
+        "rate" => rate,
+        "taxable" => round2(dets |> Enum.map(&num(&1["txval"])) |> Enum.sum()),
+        "tax" =>
+          round2(
+            dets
+            |> Enum.map(&(num(&1["camt"]) + num(&1["samt"]) + num(&1["iamt"])))
+            |> Enum.sum()
+          ),
+        "inums" => tagged |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+      }
+    end)
+    |> Enum.sort_by(& &1["rate"])
   end
 
   defp derive_doc_issue(invoices) do

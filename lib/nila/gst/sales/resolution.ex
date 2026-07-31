@@ -18,12 +18,17 @@ defmodule Nila.Gst.Sales.Resolution do
     * `confirm_issue` — the human reviewed the issue against the scan and the
       extraction stands: a sequence gap is a real cancellation, a printed-total
       mismatch is the paper's arithmetic error, a furniture row is genuine.
+    * `accept_difference` — the filed return disagrees with the derived one on
+      this field and ours is right; target is the `Nila.Eval.Gstr1Diff` row key
+      (`"scope|key|field"`), payload optionally carries the reviewer's reason.
+      The AUDITOR verdict as a product verb: the confession sheet on rebuilt
+      months rides on these rows.
     * `reopen`        — undo: discards this target's prior decisions so it
       returns to the engine's default.
   """
   use Nila.Schema
 
-  @verbs ~w(correct_field confirm_issue reopen)
+  @verbs ~w(correct_field confirm_issue accept_difference reopen)
 
   def verbs, do: @verbs
 

@@ -146,6 +146,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
   defp dump_kind_title("sales"), do: "Sales bills"
   defp dump_kind_title("purchase"), do: "Purchase bills"
   defp dump_kind_title("gstr2b"), do: "GSTR-2B"
+  defp dump_kind_title("filed_gstr1"), do: "Filed GSTR-1"
 
   defp arrived_line(dump) do
     [

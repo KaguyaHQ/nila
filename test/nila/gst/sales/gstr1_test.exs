@@ -190,6 +190,136 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     end
   end
 
+  describe "invoice_checks/1 — outcomes with issues as the failing subset" do
+    test "a clean invoice passes its checks with the operands to print" do
+      invoice = seq_invoice("20/2026-27")
+
+      checks = Gstr1.invoice_checks(invoice)
+
+      line = Enum.find(checks, &(&1["code"] == "line_arithmetic"))
+      assert line["passed"] == true
+      assert line["operands"]["taxable"] == 1000
+      assert line["operands"]["rate"] == 18
+      assert line["operands"]["actual"] == 180
+
+      split = Enum.find(checks, &(&1["code"] == "cgst_sgst_unequal"))
+      assert split["passed"] == true
+    end
+
+    test "the failing subset is exactly the arithmetic issues raised" do
+      invoice =
+        Gstr1.normalize_invoice(%{
+          "data" => %{
+            "invoice_number" => "20/2026-27",
+            "invoice_date" => "04.05.2026",
+            "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
+            "buyer" => %{"gstin" => "33AABCP9487A1ZG"},
+            "line_items" => [
+              %{
+                "taxable_value" => 1000,
+                "cgst_rate" => 9,
+                "cgst_amount" => 90,
+                "sgst_rate" => 9,
+                "sgst_amount" => 90
+              }
+            ],
+            "printed_total_taxable" => 1000,
+            "printed_total_tax" => 180,
+            "printed_grand_total" => 9999
+          }
+        })
+
+      failed =
+        invoice
+        |> Gstr1.invoice_checks()
+        |> Enum.reject(& &1["passed"])
+        |> MapSet.new(&{&1["code"], &1["fields"]})
+
+      check_codes =
+        ~w(line_arithmetic cgst_sgst_unequal printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch)
+
+      raised =
+        [invoice]
+        |> Gstr1.validation_issues()
+        |> Enum.filter(&(&1["code"] in check_codes))
+        |> MapSet.new(&{&1["code"], &1["fields"]})
+
+      assert failed == raised
+
+      assert MapSet.member?(
+               failed,
+               {"grand_total_mismatch", ["printed_grand_total", "line_items"]}
+             )
+    end
+
+    test "unequal halves fail even when their sum still multiplies out" do
+      invoice = %{
+        "invoice_number" => "20/2026-27",
+        "line_items" => [
+          %{
+            "taxable_value" => 1000,
+            "cgst_rate" => 9,
+            "cgst_amount" => 100,
+            "sgst_rate" => 9,
+            "sgst_amount" => 80
+          }
+        ]
+      }
+
+      checks = Gstr1.invoice_checks(invoice)
+
+      assert %{"passed" => true} = Enum.find(checks, &(&1["code"] == "line_arithmetic"))
+      assert %{"passed" => false} = Enum.find(checks, &(&1["code"] == "cgst_sgst_unequal"))
+
+      codes = Gstr1.validation_issues([invoice]) |> Enum.map(& &1["code"])
+      assert "cgst_sgst_unequal" in codes
+    end
+
+    test "a row claiming nothing and an absent printed total yield no outcome" do
+      invoice = %{
+        "invoice_number" => "20/2026-27",
+        "line_items" => [%{"description" => "page furniture"}]
+      }
+
+      assert Gstr1.invoice_checks(invoice) == []
+    end
+  end
+
+  describe "series_account/1 — the account's series statement" do
+    test "bounds the run and names gaps and duplicates with the series suffix" do
+      invoices = for n <- [20, 21, 21, 23], do: seq_invoice("#{n}/2026-27")
+
+      account = Gstr1.series_account(invoices)
+
+      assert account.from == "20/2026-27"
+      assert account.to == "23/2026-27"
+      assert account.missing == ["22/2026-27"]
+      assert account.duplicates == ["21/2026-27"]
+    end
+
+    test "a complete series has nothing to confess" do
+      invoices = for n <- [20, 21, 22], do: seq_invoice("#{n}/2026-27")
+
+      assert %{missing: [], duplicates: []} = Gstr1.series_account(invoices)
+    end
+
+    test "no parseable invoice numbers means no statement, not a crash" do
+      assert Gstr1.series_account([]) == nil
+      assert Gstr1.series_account([seq_invoice(nil)]) == nil
+    end
+
+    test "names exactly the gaps the sequence_gaps issue is raised from" do
+      invoices = for n <- [20, 23], do: seq_invoice("#{n}/2026-27")
+
+      %{missing: missing} = Gstr1.series_account(invoices)
+
+      [issue] = Enum.filter(Gstr1.validation_issues(invoices), &(&1["code"] == "sequence_gaps"))
+
+      assert missing == ["21/2026-27", "22/2026-27"]
+      assert issue["message"] =~ Enum.join(missing, ", ")
+    end
+  end
+
   describe "apply_corrections/3 — silent-error discipline" do
     setup do
       invoice = seq_invoice("20/2026-27")
@@ -375,6 +505,56 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       # amount legitimately moves its bucket too. That is why an HSN mismatch
       # cannot be attributed to an invoice by itself.
       assert hsn_rows != []
+    end
+  end
+
+  describe "hsn_summary/1 and rate_summary/1 — one grouping for workings and portal" do
+    setup do
+      invoices = [
+        month_invoice("1", "33AABCP9487A1ZG", 1000, 18),
+        month_invoice("2", "33AABCP9487A1ZG", 2000, 18),
+        month_invoice("3", "29AAVCS8021P1ZB", 5000, 5)
+      ]
+
+      %{invoices: invoices, header: Gstr1.production_header("33AEWPH4158J1Z3", "2026-05")}
+    end
+
+    test "hsn rows carry the invoices that built them", %{invoices: invoices} do
+      summary = Gstr1.hsn_summary(invoices)
+
+      eighteen = Enum.find(summary, &(&1["rt"] == 18))
+      five = Enum.find(summary, &(&1["rt"] == 5))
+
+      assert eighteen["txval"] == 3000.0
+      assert eighteen["inums"] == ["1", "2"]
+      assert five["txval"] == 5000.0
+      assert five["inums"] == ["3"]
+    end
+
+    test "derive/2 files exactly these rows minus the contributor key", %{
+      invoices: invoices,
+      header: header
+    } do
+      derived = Gstr1.derive(invoices, header)
+      stripped = invoices |> Gstr1.hsn_summary() |> Enum.map(&Map.delete(&1, "inums"))
+
+      assert derived["hsn"]["hsn_b2b"] == stripped
+    end
+
+    test "rate_summary sums the derived b2b buckets and names contributors", %{
+      invoices: invoices,
+      header: header
+    } do
+      derived = Gstr1.derive(invoices, header)
+
+      assert [five, eighteen] = Gstr1.rate_summary(derived)
+
+      assert %{"rate" => 5, "taxable" => 5000.0, "tax" => 250.0, "inums" => ["3"]} = five
+
+      assert eighteen["rate"] == 18
+      assert eighteen["taxable"] == 3000.0
+      assert eighteen["tax"] == 540.0
+      assert Enum.sort(eighteen["inums"]) == ["1", "2"]
     end
   end
 

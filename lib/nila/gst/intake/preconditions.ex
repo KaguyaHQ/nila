@@ -85,12 +85,16 @@ defmodule Nila.Gst.Intake.Preconditions do
   # Every kind in `Dump.kinds/0`, listed on purpose. A fourth kind raises here
   # rather than being waved through, and the test that walks `Dump.kinds/0`
   # catches it before a worker ever does.
-  def check(%Dump{kind: kind} = dump) when kind in ~w(purchase sales gstr2b) do
+  def check(%Dump{kind: kind} = dump) when kind in ~w(purchase sales gstr2b filed_gstr1) do
     if answered?(dump), do: nil, else: findings(dump)
   end
 
   defp findings(%Dump{kind: "gstr2b"} = dump),
     do: merge([zero_overlap(dump)], dump, dump.invoices)
+
+  # A filed return is declared, structured, and shape-checked at extraction;
+  # there is no bill pile to interrogate, so no questions to ask.
+  defp findings(%Dump{kind: "filed_gstr1"}), do: nil
 
   defp findings(%Dump{kind: "sales"} = dump) do
     invoices = Enum.map(dump.invoices, &Dumps.rehydrate/1)

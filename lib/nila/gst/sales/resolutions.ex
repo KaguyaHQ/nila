@@ -15,6 +15,7 @@ defmodule Nila.Gst.Sales.Resolutions do
 
   alias Nila.Clients
   alias Nila.Gst.Filing.Signoffs
+  alias Nila.Gst.Replay
   alias Nila.Gst.Sales.{Gstr1, Month, Resolution, Workings}
   alias Nila.Repo
 
@@ -70,6 +71,21 @@ defmodule Nila.Gst.Sales.Resolutions do
   def workings(%Month{} = month) do
     resolutions = month.id |> list() |> Enum.map(&resolution_map/1)
     Workings.materialize(month.invoices, resolutions, header(month), document_issues(month))
+  end
+
+  @doc """
+  Diff-row targets (`"scope|key|field"`, the `Nila.Eval.Gstr1Diff` row key)
+  whose difference a reviewer has accepted — filed differs, ours is right.
+  Read directly off the append-only store, not through `workings/1`, so a
+  signed month rendered from its snapshot still shows its confession sheet.
+  """
+  def accepted_differences(%Month{} = month) do
+    month.id
+    |> list()
+    |> Enum.map(&resolution_map/1)
+    |> Replay.decisions("target")
+    |> Enum.filter(fn {_target, verb} -> verb == "accept_difference" end)
+    |> MapSet.new(fn {target, _verb} -> target end)
   end
 
   # Issues about the packet rather than any invoice — the extraction ledger's

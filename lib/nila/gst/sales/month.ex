@@ -20,6 +20,7 @@ defmodule Nila.Gst.Sales.Month do
     field :derived_gstr1, :map, default: %{}
     field :issues, {:array, :map}, default: []
     field :summary, :map, default: %{}
+    field :filed_gstr1, :map
     field :filed_at, :utc_datetime_usec
     field :filing_arn, :string
 
@@ -32,7 +33,16 @@ defmodule Nila.Gst.Sales.Month do
 
   def changeset(sales_month, attrs) do
     sales_month
-    |> cast(attrs, [:period, :state, :invoices, :derived_gstr1, :issues, :summary, :filing_arn])
+    |> cast(attrs, [
+      :period,
+      :state,
+      :invoices,
+      :derived_gstr1,
+      :issues,
+      :summary,
+      :filed_gstr1,
+      :filing_arn
+    ])
     |> validate_required([:org_id, :client_id, :period, :state])
     |> validate_inclusion(:state, @states)
     |> unique_constraint([:client_id, :period])
