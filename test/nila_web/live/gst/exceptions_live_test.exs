@@ -550,7 +550,7 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
     put_recon!(org, client, period, [books], recon)
 
     {:ok, month_view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
-    assert has_element?(month_view, "#month-door-decisions", "Work the 1 decision")
+    assert has_element?(month_view, "#month-door-decisions", "Work the decision")
 
     {:ok, today, _html} = live(conn, ~p"/today")
     assert has_element?(today, "#today-row-#{client.id}-#{period}", "1 to decide")

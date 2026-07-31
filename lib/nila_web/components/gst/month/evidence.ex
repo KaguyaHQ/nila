@@ -55,7 +55,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
         <div id="gst-evidence-why" class="space-y-4">
           <div>
-            <div class="text-base-content/60 text-label font-medium uppercase">Vendor</div>
+            <div class="text-base-content/60 text-label font-semibold uppercase">Vendor</div>
             <div class="text-base-content text-small mt-1 font-medium">
               {@selected_row["vendor_name"]}
             </div>
@@ -64,15 +64,15 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             </div>
           </div>
           <div :if={@selected_row["recon_note"]}>
-            <div class="text-base-content/60 text-label font-medium uppercase">Recon note</div>
+            <div class="text-base-content/60 text-label font-semibold uppercase">Recon note</div>
             <p class="text-base-content text-small mt-1">{@selected_row["recon_note"]}</p>
           </div>
           <div :if={@selected_row["next_action"]}>
-            <div class="text-base-content/60 text-label font-medium uppercase">Next action</div>
+            <div class="text-base-content/60 text-label font-semibold uppercase">Next action</div>
             <p class="text-base-content text-small mt-1">{@selected_row["next_action"]}</p>
           </div>
           <div :if={@selected_row["flags"] not in [nil, []]} class="space-y-2">
-            <div class="text-base-content/60 text-label font-medium uppercase">Flags</div>
+            <div class="text-base-content/60 text-label font-semibold uppercase">Flags</div>
             <div
               :for={flag <- @selected_row["flags"]}
               class="bg-base-200/40 border-base-300 rounded-box border p-3"
@@ -80,7 +80,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               <.badge variant={if flag["severity"] == "error", do: "error", else: "warning"}>
                 {issue_label(flag["code"])}
               </.badge>
-              <p class="text-base-content/80 text-small mt-2">{flag["reason"]}</p>
+              <p class="text-base-content/70 text-small mt-2">{flag["reason"]}</p>
             </div>
           </div>
         </div>
@@ -104,11 +104,17 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :flagged, :any, required: true
   attr :correcting, :any, default: nil
 
-  # The trust atom: the scan on the left, the full extracted read and its
-  # arithmetic beside it, every check an outcome the validation layer already
+  # The trust atom: the scan big enough to read on the left, the full extracted
+  # read beside it, and every check an outcome the validation layer already
   # judged — this panel renders verdicts, it never computes one. A failed check
   # is its validation issue rendered in place, so ✓ and an open issue can never
   # disagree about the same fact.
+  #
+  # The arithmetic is the row: taxable, rate and tax stand in their columns, so
+  # the ✓ at the end says "these multiply out" and the claim in longhand rides
+  # the tick's tooltip. Printing every passed claim as its own line was fourteen
+  # lines of wallpaper for a seven-line bill — the eye wants seven glances down
+  # one column, then the totals row, and it is done.
   defp invoice_modal(assigns) do
     checks = Gstr1.invoice_checks(assigns.selected_invoice)
     issues = Helpers.invoice_issues(assigns.issues_by_invoice, assigns.selected_invoice)
@@ -125,19 +131,20 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
     assigns =
       assigns
-      |> assign(:checks, checks)
+      |> assign(:failed_checks, Enum.reject(checks, & &1["passed"]))
       |> assign(:check_issues, check_issues)
       |> assign(:other_issues, issues -- in_place)
+      |> assign(:read_rows, read_rows(assigns.selected_invoice, checks))
 
     ~H"""
     <.modal
       id="gstr1-evidence-modal"
       title={@selected_invoice["invoice_number"] || "Invoice"}
       on_close="close-evidence"
-      class="max-w-6xl"
+      class="h-[90vh] max-w-384"
     >
-      <div class="grid gap-5 lg:grid-cols-[1fr_26rem]">
-        <div id="gstr1-evidence-images" class="space-y-3">
+      <div class="grid h-full min-h-0 gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        <div id="gstr1-evidence-images" class="min-h-0 space-y-3 overflow-y-auto">
           <img
             :for={url <- @selected_invoice["image_urls"]}
             src={url}
@@ -152,9 +159,9 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           </div>
         </div>
 
-        <div class="space-y-4">
+        <div class="min-h-0 space-y-4 overflow-y-auto">
           <div>
-            <div class="text-base-content/60 text-label font-medium uppercase">Buyer</div>
+            <div class="text-base-content/60 text-label font-semibold uppercase">Buyer</div>
             <div class="text-base-content text-small mt-1 font-medium">
               {@selected_invoice["buyer_name"] || "—"}
             </div>
@@ -163,56 +170,74 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             </div>
           </div>
 
-          <div :if={@selected_invoice["line_items"] not in [nil, []]} class="space-y-2">
-            <div class="text-base-content/60 text-label font-medium uppercase">Extracted read</div>
-            <.data_table id="gstr1-line-items" rows={@selected_invoice["line_items"]}>
-              <:col :let={line} label="Item">
-                <span class="text-fine">{line["description"] || "—"}</span>
+          <div :if={@read_rows != []} class="space-y-2">
+            <div class="text-base-content/60 text-label font-semibold uppercase">Extracted read</div>
+            <.data_table
+              id="gstr1-line-items"
+              rows={@read_rows}
+              row_class={fn row -> row.kind == :total && "bg-base-200/40 font-medium" end}
+              dense
+            >
+              <:col :let={row} label="Item">
+                <span :if={row.kind == :total} class="text-base-content">Lines sum</span>
+                <span
+                  :if={row.kind == :line}
+                  class="block max-w-56 truncate"
+                  title={row.line["description"]}
+                >
+                  {row.line["description"] || "—"}
+                </span>
               </:col>
-              <:col :let={line} label="HSN">
-                <span class="text-fine font-mono">{line["hsn_sac"] || "—"}</span>
+              <:col :let={row} label="HSN">
+                <span :if={row.kind == :line} class="font-mono">{row.line["hsn_sac"] || "—"}</span>
               </:col>
-              <:col :let={line} label="Rate" align="right">
-                <span class="text-fine">{line_rate_label(line)}</span>
+              <:col :let={row} label="Rate" align="right">
+                <span :if={row.kind == :line}>{line_rate_label(row.line)}</span>
               </:col>
-              <:col :let={line} label="Taxable" align="right">
-                <span class="text-fine">{amount(line["taxable_value"])}</span>
+              <:col :let={row} label="Taxable" align="right" class="whitespace-nowrap">
+                {amount(
+                  if row.kind == :total, do: row.totals.taxable, else: row.line["taxable_value"]
+                )}
               </:col>
-              <:col :let={line} label="Tax" align="right">
-                <span class="text-fine">{line_tax_label(line)}</span>
+              <:col :let={row} label="Tax" align="right" class="whitespace-nowrap">
+                <span :if={row.kind == :total}>{amount(row.totals.tax)}</span>
+                <span :if={row.kind == :line}>{line_tax_label(row.line)}</span>
+              </:col>
+              <%!-- The tick is the outcome; its tooltip is the arithmetic in
+                    longhand, for the reader who wants the claim spelled out. --%>
+              <:col :let={row} label="Check" align="right">
+                <span :if={row.verdict} class="inline-flex" title={row.verdict.claim}>
+                  <.icon
+                    name={if row.verdict.passed, do: "hero-check-mini", else: "hero-x-mark-mini"}
+                    class={["size-4 shrink-0", (row.verdict.passed && "text-success") || "text-error"]}
+                  />
+                </span>
               </:col>
             </.data_table>
           </div>
 
-          <div :if={@checks != []} id="gstr1-checks" class="space-y-2">
-            <div class="text-base-content/60 text-label font-medium uppercase">Checks</div>
-            <%= for check <- @checks do %>
+          <div :if={@failed_checks != []} id="gstr1-checks" class="space-y-2">
+            <div class="text-base-content/60 text-label font-semibold uppercase">
+              What didn't check out
+            </div>
+            <%= for check <- @failed_checks do %>
+              <.issue_card
+                :if={@check_issues[check_key(check)]}
+                issue={@check_issues[check_key(check)]}
+                r1_signoff={@r1_signoff}
+              />
               <div
-                :if={check["passed"]}
+                :if={is_nil(@check_issues[check_key(check)])}
                 class="text-base-content/70 text-small flex items-center gap-2"
               >
-                <.icon name="hero-check-mini" class="text-success size-4 shrink-0" />
+                <.icon name="hero-x-mark-mini" class="text-error size-4 shrink-0" />
                 <span>{check_claim(check)}</span>
               </div>
-              <%= if !check["passed"] do %>
-                <.issue_card
-                  :if={@check_issues[check_key(check)]}
-                  issue={@check_issues[check_key(check)]}
-                  r1_signoff={@r1_signoff}
-                />
-                <div
-                  :if={is_nil(@check_issues[check_key(check)])}
-                  class="text-base-content/70 text-small flex items-center gap-2"
-                >
-                  <.icon name="hero-x-mark-mini" class="text-error size-4 shrink-0" />
-                  <span>{check_claim(check)}</span>
-                </div>
-              <% end %>
             <% end %>
           </div>
 
           <div :if={@other_issues != []} class="space-y-2">
-            <div class="text-base-content/60 text-label font-medium uppercase">Issues</div>
+            <div class="text-base-content/60 text-label font-semibold uppercase">Issues</div>
             <.issue_card :for={issue <- @other_issues} issue={issue} r1_signoff={@r1_signoff} />
           </div>
 
@@ -221,7 +246,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             id="gstr1-corrections"
             class="space-y-2"
           >
-            <div class="text-base-content/60 text-label font-medium uppercase">Flagged fields</div>
+            <div class="text-base-content/60 text-label font-semibold uppercase">Flagged fields</div>
             <%= for field <- Gstr1.correctable_fields(@flagged, @selected_invoice["pristine_inum"]) do %>
               <%= if @correcting && @correcting.field == field do %>
                 <form phx-submit="save_correct" class="flex items-end gap-2">
@@ -249,7 +274,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 </div>
               <% end %>
             <% end %>
-            <p class="text-base-content/50 text-fine">
+            <p class="text-base-content/70 text-small">
               Only fields Nila flagged are correctable — fixing anything else would be a silent error.
             </p>
           </div>
@@ -272,7 +297,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       }>
         {issue_label(@issue["code"])}
       </.badge>
-      <p class="text-base-content/80 text-small mt-2 line-clamp-2">{@issue["message"]}</p>
+      <p class="text-base-content/70 text-small mt-2 line-clamp-2">{@issue["message"]}</p>
       <div class="mt-2">
         <.button
           :if={@issue["status"] == "open" and is_nil(@r1_signoff)}
@@ -296,6 +321,43 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       </div>
     </div>
     """
+  end
+
+  # Each extracted line, then the totals row that answers the question the eye
+  # asks last: do these add up to what the bill printed? Verdicts are the
+  # validation layer's, grouped onto the row whose numbers they judge — a line
+  # with no judgeable arithmetic (all zeroes) simply carries no tick.
+  defp read_rows(invoice, checks) do
+    lines = List.wrap(invoice["line_items"])
+
+    if lines == [] do
+      []
+    else
+      rows =
+        lines
+        |> Enum.with_index(1)
+        |> Enum.map(fn {line, index} ->
+          %{
+            kind: :line,
+            line: line,
+            verdict: verdict(Enum.filter(checks, &(&1["line"] == index)))
+          }
+        end)
+
+      totals = Enum.filter(checks, &is_nil(&1["line"]))
+
+      rows ++
+        [%{kind: :total, totals: Gstr1.extracted_totals(invoice), verdict: verdict(totals)}]
+    end
+  end
+
+  defp verdict([]), do: nil
+
+  defp verdict(checks) do
+    %{
+      passed: Enum.all?(checks, & &1["passed"]),
+      claim: Enum.map_join(checks, " · ", &check_claim/1)
+    }
   end
 
   defp check_key(check), do: {check["code"], check["fields"]}

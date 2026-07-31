@@ -871,10 +871,12 @@ defmodule Nila.Gst.Sales.Gstr1 do
   # filing preference, not an engine rule.
   @doc """
   The HSN summary with its contributors: the portal's `hsn_b2b` rows, each also
-  carrying `"inums"` — the invoices whose lines built the row. The workings
-  screen expands a row into exactly these, and `derive/2` files these same rows
-  minus the key, so the aggregate a reviewer opens and the JSON the portal
-  receives are one grouping, not two that happen to agree.
+  carrying `"contribs"` — the invoices whose lines built the row, with what each
+  one put into it. The workings screen expands a row into exactly these, and
+  `derive/2` files these same rows minus the key, so the aggregate a reviewer
+  opens and the JSON the portal receives are one grouping, not two that happen
+  to agree. A contributor's tax runs through the same `computed_bucket_tax` as
+  the row's, so an expansion cannot use arithmetic the aggregate didn't.
   """
   def hsn_summary(invoices) do
     invoices
@@ -884,12 +886,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
     |> Enum.group_by(fn {_inum, line} -> {hsn_code(line["hsn_sac"]), line_rate(line)} end)
     |> Enum.map(fn {{hsn, rate}, tagged} ->
       lines = Enum.map(tagged, &elem(&1, 1))
-
-      intra_tax =
-        computed_bucket_tax(Enum.filter(lines, &(tax_mode(&1) == :intrastate)), rate, :intrastate)
-
-      inter_tax =
-        computed_bucket_tax(Enum.filter(lines, &(tax_mode(&1) == :interstate)), rate, :interstate)
+      intra_tax = mode_tax(lines, rate, :intrastate)
+      inter_tax = mode_tax(lines, rate, :interstate)
 
       %{
         "hsn_sc" => hsn,
@@ -900,7 +898,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
         "camt" => intra_tax.camt,
         "samt" => intra_tax.samt,
         "iamt" => inter_tax.iamt,
-        "inums" => tagged |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+        "contribs" => hsn_contribs(tagged, rate)
       }
     end)
     |> Enum.sort_by(& &1["hsn_sc"])
@@ -908,15 +906,34 @@ defmodule Nila.Gst.Sales.Gstr1 do
     |> Enum.map(fn {row, index} -> Map.put(row, "num", index) end)
   end
 
+  defp hsn_contribs(tagged, rate) do
+    lines_by_inum = Enum.group_by(tagged, &elem(&1, 0), &elem(&1, 1))
+
+    for inum <- tagged |> Enum.map(&elem(&1, 0)) |> Enum.uniq() do
+      lines = lines_by_inum[inum]
+      intra = mode_tax(lines, rate, :intrastate)
+      inter = mode_tax(lines, rate, :interstate)
+
+      %{
+        "inum" => inum,
+        "txval" => round2(sum(lines, "taxable_value")),
+        "tax" => round2(intra.camt + intra.samt + inter.iamt)
+      }
+    end
+  end
+
+  defp mode_tax(lines, rate, mode),
+    do: lines |> Enum.filter(&(tax_mode(&1) == mode)) |> computed_bucket_tax(rate, mode)
+
   defp derive_hsn(invoices) do
-    invoices |> hsn_summary() |> Enum.map(&Map.delete(&1, "inums"))
+    invoices |> hsn_summary() |> Enum.map(&Map.delete(&1, "contribs"))
   end
 
   @doc """
   Taxable and tax by rate across the month, summed off the derived `b2b` — the
   buckets are the very `itm_det`s the portal receives, never regrouped from the
-  invoices — with `"inums"` naming each bucket's contributors for the workings
-  screen to open.
+  invoices — with `"contribs"` naming each bucket's contributors, and what each
+  invoice put into the bucket, for the workings screen to open.
   """
   def rate_summary(derived) do
     derived["b2b"]
@@ -932,18 +949,32 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
       %{
         "rate" => rate,
-        "taxable" => round2(dets |> Enum.map(&num(&1["txval"])) |> Enum.sum()),
-        "tax" =>
-          round2(
-            dets
-            |> Enum.map(&(num(&1["camt"]) + num(&1["samt"]) + num(&1["iamt"])))
-            |> Enum.sum()
-          ),
-        "inums" => tagged |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+        "taxable" => round2(det_taxable(dets)),
+        "tax" => round2(det_tax(dets)),
+        "contribs" => rate_contribs(tagged)
       }
     end)
     |> Enum.sort_by(& &1["rate"])
   end
+
+  defp rate_contribs(tagged) do
+    dets_by_inum = Enum.group_by(tagged, &elem(&1, 0), &elem(&1, 1))
+
+    for inum <- tagged |> Enum.map(&elem(&1, 0)) |> Enum.uniq() do
+      dets = dets_by_inum[inum]
+
+      %{
+        "inum" => inum,
+        "txval" => round2(det_taxable(dets)),
+        "tax" => round2(det_tax(dets))
+      }
+    end
+  end
+
+  defp det_taxable(dets), do: dets |> Enum.map(&num(&1["txval"])) |> Enum.sum()
+
+  defp det_tax(dets),
+    do: dets |> Enum.map(&(num(&1["camt"]) + num(&1["samt"]) + num(&1["iamt"]))) |> Enum.sum()
 
   defp derive_doc_issue(invoices) do
     invoices

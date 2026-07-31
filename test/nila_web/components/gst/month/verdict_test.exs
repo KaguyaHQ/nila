@@ -219,7 +219,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
         )
 
       assert door_id(verdict) == "month-door-decisions"
-      assert verdict.quiet == ["GSTR-1: 3 issues waiting."]
+      assert verdict.quiet == ["GSTR-1 drafted, issues still to check."]
     end
 
     test "sales filed, purchases open: the 11th-to-20th window every client sits in" do

@@ -72,6 +72,7 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:selected_row, nil)
       |> assign(:selected_inum, nil)
       |> assign(:visited_inums, MapSet.new())
+      |> assign(:expanded_nodes, MapSet.new())
       |> assign(:rippled, MapSet.new())
       |> assign(:ripple_seq, 0)
       |> assign(:correcting, nil)
@@ -302,6 +303,10 @@ defmodule NilaWeb.Gst.MonthLive do
   # The month is a pair of tracks, and exactly one of them owns the page's one
   # door. Deriving the pair here (from the same WorkQueue projection Today
   # folds) is what stops this page from inventing a second answer.
+  defp toggle(set, member) do
+    if MapSet.member?(set, member), do: MapSet.delete(set, member), else: MapSet.put(set, member)
+  end
+
   defp assign_verdict(socket, purchase, sales) do
     %{stats: stats, r1_signoff: r1_signoff, gstr3b_signoff: gstr3b_signoff} = socket.assigns
     today = Date.utc_today()
@@ -342,6 +347,22 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:tracks, tracks)
     |> assign(:blocking_state, WorkQueue.fold_state(tracks))
     |> assign(:verdict, Verdict.resolve(facts))
+    |> seed_folds()
+  end
+
+  # Which sections stand open is server state — a browser-toggled `<details>`
+  # does not survive a LiveView patch, so a fold opened by the reader would slam
+  # shut the moment a pile landed. Seeded once from the month's shape (the
+  # return stands open only when checking it is the job, which is when nothing
+  # else is) and owned by the reader from then on: the page never re-decides a
+  # fold the reader has since moved.
+  defp seed_folds(socket) do
+    if Map.has_key?(socket.assigns, :open_folds) do
+      socket
+    else
+      folds = if socket.assigns.open_issue_count == 0, do: ["gstr1-return"], else: []
+      assign(socket, :open_folds, MapSet.new(folds))
+    end
   end
 
   @impl true
@@ -371,6 +392,14 @@ defmodule NilaWeb.Gst.MonthLive do
        visited_inums: MapSet.put(socket.assigns.visited_inums, inum)
      )}
   end
+
+  # Which workings buckets are open lives here rather than in an inline style,
+  # so a re-render somewhere else on the page cannot collapse them.
+  def handle_event("toggle-workings-node", %{"node" => node}, socket),
+    do: {:noreply, update(socket, :expanded_nodes, &toggle(&1, node))}
+
+  def handle_event("toggle-fold", %{"fold" => fold}, socket),
+    do: {:noreply, update(socket, :open_folds, &toggle(&1, fold))}
 
   def handle_event("close-evidence", _params, socket),
     do: {:noreply, assign(socket, selected_row: nil, selected_inum: nil, correcting: nil)}
@@ -708,14 +737,17 @@ defmodule NilaWeb.Gst.MonthLive do
           period_options={@move_options || []}
         />
 
-        <div class="space-y-3">
-          <Purchase.settled stats={@stats} rows={@rows} />
+        <div class="space-y-6">
+          <Purchase.settled stats={@stats} rows={@rows} open_folds={@open_folds} />
 
           <Sales.sales_section
             sales_month={@sales_month}
             invoices={@invoices}
             open_issue_count={@open_issue_count}
             reviewable={@reviewable}
+            review_door_taken={
+              is_map(@verdict[:door]) and @verdict.door.id == "month-door-mark-reviewed"
+            }
             r1_signoff={@r1_signoff}
             month_issues={@month_issues}
             issues_by_invoice={@issues_by_invoice}
@@ -726,6 +758,8 @@ defmodule NilaWeb.Gst.MonthLive do
             accepted_diffs={@accepted_diffs}
             rippled={@rippled}
             ripple_seq={@ripple_seq}
+            expanded_nodes={@expanded_nodes}
+            open_folds={@open_folds}
             open={@tracks.sales == :open}
           />
 
@@ -736,6 +770,7 @@ defmodule NilaWeb.Gst.MonthLive do
             rows={@rows}
             client={@client}
             period={@period}
+            open_folds={@open_folds}
           />
 
           <Arrivals.paper_trail
@@ -748,6 +783,7 @@ defmodule NilaWeb.Gst.MonthLive do
             open_period={@open_period}
             r1_signoff={@r1_signoff}
             gstr3b_signoff={@gstr3b_signoff}
+            open_folds={@open_folds}
           />
         </div>
 
@@ -760,6 +796,7 @@ defmodule NilaWeb.Gst.MonthLive do
           r1_signoff={@r1_signoff}
           open_issue_count={@open_issue_count}
           can_sign_off={@can_sign_off}
+          open_folds={@open_folds}
         />
       </div>
 

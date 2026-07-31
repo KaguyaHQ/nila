@@ -163,7 +163,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       headline: decisions_headline(facts, count),
       door: %{
         id: "month-door-decisions",
-        label: "Work the #{count} #{pluralise(count, "decision")}",
+        label: "Work the #{pluralise(count, "decision")}",
         kind: :navigate,
         to: ~p"/gst/#{facts.client.id}/#{facts.period}/exceptions"
       }
@@ -471,10 +471,14 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   # already unfolded, which is exactly when the sales track owns the door.
   # Month-level issues do render as cards inside the section, so those keep the
   # anchor and the unfold.
-  defp sales_issue_door(%{open_issue_invoice: inum}, count) when is_binary(inum) do
+  # Named, not counted: the headline just said how many there are, and a door
+  # that repeats the count says nothing about where it goes. Naming the invoice
+  # also settles what the reader is meant to click — the door starts the work,
+  # the rows below are the rest of the list.
+  defp sales_issue_door(%{open_issue_invoice: inum}, _count) when is_binary(inum) do
     %{
       id: "month-door-sales-issues",
-      label: "Check the #{count} #{pluralise(count, "issue")}",
+      label: "Check invoice #{inum}",
       kind: :click,
       event: "select-invoice",
       value: %{"inum" => inum}
@@ -484,7 +488,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp sales_issue_door(_facts, count) do
     %{
       id: "month-door-sales-issues",
-      label: "Check the #{count} #{pluralise(count, "issue")}",
+      label: "Check the #{pluralise(count, "issue")}",
       kind: :anchor,
       to: "#month-sales",
       open: "month-sales"
@@ -588,8 +592,11 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp line_for(:sales, :absent, _facts), do: "Sales bills not in, so the GSTR-1 waits."
 
+  # No count here. A quiet line reports state; the count belongs to whichever
+  # element the reader can act on, and the GSTR-1 fold three elements below
+  # already carries it.
   defp line_for(:sales, :open, %{open_issue_count: n}) when n > 0,
-    do: "GSTR-1: #{n} #{pluralise(n, "issue")} waiting."
+    do: "GSTR-1 drafted, issues still to check."
 
   defp line_for(:sales, :open, _facts), do: "GSTR-1 drafted, not yet reviewed."
   defp line_for(:sales, :clear, _facts), do: "GSTR-1 worked and clean, waiting on a signature."
@@ -672,7 +679,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   def verdict(assigns) do
     ~H"""
-    <section id="month-verdict" class="space-y-5">
+    <section id="month-verdict" class="space-y-4">
       <div class="space-y-2">
         <p class="text-eyebrow text-moon font-semibold uppercase">Client month</p>
         <h1 class="font-display text-base-content text-h2 font-normal">
@@ -689,9 +696,16 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
         </p>
       </div>
 
+      <div :if={@verdict.door}>
+        <.door door={@verdict.door} />
+      </div>
+
+      <%!-- Under the door, not between it and the headline. These lines are the
+            other track's weather and the calendar — real, but nothing the reader
+            has to clear before reaching the one thing to do. --%>
       <div
         :if={@verdict.quiet != [] or @verdict.deadline}
-        class="text-base-content/55 text-small flex flex-wrap items-center gap-x-4 gap-y-1"
+        class="text-base-content/70 text-small flex flex-wrap items-center gap-x-4 gap-y-1"
       >
         <span :for={line <- @verdict.quiet} id={"month-quiet-#{line_id(line)}"}>{line}</span>
         <span :if={@verdict.deadline} id="month-deadline" class={deadline_class(@verdict.deadline)}>
@@ -699,14 +713,10 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
         </span>
       </div>
 
-      <div :if={@verdict.door} class="pt-1">
-        <.door door={@verdict.door} />
-      </div>
-
       <p
         :if={Map.get(@verdict, :busy)}
         id="month-busy"
-        class="text-base-content/55 text-small flex items-center gap-2"
+        class="text-base-content/70 text-small flex items-center gap-2"
       >
         <span class="loading loading-sm loading-spinner text-moon"></span>
         This page updates itself as each pile lands.
@@ -772,7 +782,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp deadline_class(%{days_left: days}) when days < 0, do: "text-error font-medium"
   defp deadline_class(%{days_left: days}) when days <= 5, do: "text-warning font-medium"
-  defp deadline_class(_deadline), do: "text-base-content/55"
+  defp deadline_class(_deadline), do: "text-base-content/70"
 
   defp deadline_label(%{days_left: days, due: due}) when days < -30,
     do: "overdue since #{Formatters.format_display_date(due)}"

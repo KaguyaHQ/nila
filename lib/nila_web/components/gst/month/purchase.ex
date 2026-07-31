@@ -15,6 +15,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
   attr :stats, :any, default: nil
   attr :rows, :list, required: true
+  attr :open_folds, :any, default: MapSet.new()
 
   @doc """
   The settled line: everything the engine closed without a human, folded to a
@@ -24,15 +25,15 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
     assigns = assign(assigns, :settled_rows, Enum.reject(assigns.rows, &Register.open_row?/1))
 
     ~H"""
-    <details :if={@settled_rows != []} id="month-settled" class="group">
-      <summary class="hover:text-base-content text-base-content/70 text-small flex cursor-pointer list-none items-center gap-2">
+    <.fold
+      :if={@settled_rows != []}
+      id="month-settled"
+      open={MapSet.member?(@open_folds, "month-settled")}
+    >
+      <:summary>
         <.icon name="hero-check-circle-mini" class="text-success size-4 shrink-0" />
         <span id="month-settled-line" class="flex-1">{settled_line(@settled_rows, @stats)}</span>
-        <.icon
-          name="hero-chevron-down-mini"
-          class="text-base-content/40 size-4 shrink-0 transition-transform group-open:rotate-180"
-        />
-      </summary>
+      </:summary>
 
       <.data_table
         id="month-settled-rows"
@@ -41,6 +42,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         row_id={fn row -> "month-settled-#{row["dom_id"]}" end}
         row_click={fn row -> JS.push("select-row", value: %{dom_id: row["dom_id"]}) end}
         min_width="min-w-[680px]"
+        flat
       >
         <:col :let={row} label="Inv No">
           <span class="font-medium">{row["invoice_number"] || "—"}</span>
@@ -56,7 +58,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           <span class="text-base-content/60">{settled_outcome(row)}</span>
         </:col>
       </.data_table>
-    </details>
+    </.fold>
     """
   end
 
@@ -66,6 +68,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   attr :rows, :list, required: true
   attr :client, :map, required: true
   attr :period, :string, required: true
+  attr :open_folds, :any, default: MapSet.new()
 
   @doc """
   The register appendix: every invoice, in the deliverable's row shape, behind
@@ -75,19 +78,19 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   """
   def register(assigns) do
     ~H"""
-    <details :if={@purchase_month} id="month-register" class="group scroll-mt-28">
-      <summary class="hover:text-base-content text-base-content/70 text-small flex cursor-pointer list-none items-center gap-2">
+    <.fold
+      :if={@purchase_month}
+      id="month-register"
+      open={MapSet.member?(@open_folds, "month-register")}
+    >
+      <:summary>
         <.icon name="hero-table-cells" class="text-base-content/40 size-4 shrink-0" />
         <span class="flex-1">
           All {@stats.invoices} {if @stats.invoices == 1, do: "invoice", else: "invoices"}, the full register
         </span>
-        <.icon
-          name="hero-chevron-down-mini"
-          class="text-base-content/40 size-4 shrink-0 transition-transform group-open:rotate-180"
-        />
-      </summary>
+      </:summary>
 
-      <div class="mt-3 space-y-3">
+      <div class="mt-4 space-y-4">
         <div :if={@document_flags != []} id="gst-document-flags" class="space-y-2">
           <div
             :for={{flag, index} <- Enum.with_index(@document_flags)}
@@ -106,6 +109,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           row_click={&row_click(&1, @client, @period)}
           row_class={&row_accent/1}
           min_width="min-w-[880px]"
+          flat
         >
           <:col :let={row} label="Inv No">
             <div class="flex items-center gap-2">
@@ -138,9 +142,21 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               {row["verdict"]}
             </span>
           </:col>
+          <%!-- Adjacent rows do different things on click: an open row leaves for
+                the exceptions queue, a settled one opens its evidence here. The
+                ⚠ and the accent mean severity, not destination, so the row that
+                leaves says so. --%>
+          <:col :let={row} label="" align="right">
+            <.icon
+              :if={Register.open_row?(row)}
+              name="hero-arrow-right-mini"
+              class="text-base-content/40 size-4"
+            />
+          </:col>
+          <:empty>The register is empty for this month.</:empty>
         </.data_table>
       </div>
-    </details>
+    </.fold>
     """
   end
 
@@ -185,9 +201,9 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   # loud as a ₹107 scooter bill.
   defp row_accent(row) do
     if Register.open_row?(row) do
-      "border-l-2 border-l-warning bg-warning/[0.03]"
+      "border-l-2 border-l-warning bg-warning/[0.04]"
     else
-      "text-base-content/75"
+      "text-base-content/70"
     end
   end
 end

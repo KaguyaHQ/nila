@@ -34,6 +34,16 @@ defmodule NilaWeb.Components.Table do
   attr :empty?, :any, default: nil, doc: "force the empty state (required for streams)"
   attr :min_width, :string, default: nil, doc: "e.g. min-w-[760px] for horizontal scroll"
 
+  attr :dense, :boolean,
+    default: false,
+    doc:
+      "tighter rows, for working-sheet material read in bulk (the GSTR-1 workings)\n    rather than a worklist of rows that each want a decision"
+
+  attr :flat, :boolean,
+    default: false,
+    doc:
+      "no shadow, for reference material — elevation is for tables that hold a\n    decision, and six shadowed surfaces in one section rank nothing"
+
   attr :sticky_header, :string,
     default: nil,
     doc:
@@ -64,7 +74,8 @@ defmodule NilaWeb.Components.Table do
 
     ~H"""
     <div class={[
-      "bg-base-100 border-base-300 rounded-box shadow-moon overflow-x-auto border",
+      "bg-base-100 border-base-300 rounded-box overflow-x-auto border",
+      !@flat && "shadow-moon",
       @sticky_header && "xl:overflow-x-visible",
       @class
     ]}>
@@ -79,26 +90,43 @@ defmodule NilaWeb.Components.Table do
           <tr>
             <th
               :for={col <- @col}
-              class={["px-4 py-3 font-medium", col[:align] == "right" && "text-right"]}
+              class={[
+                "font-semibold",
+                (@dense && "px-3 py-2") || "px-4 py-3",
+                col[:align] == "right" && "text-right tabular-nums"
+              ]}
             >
               {col[:label]}
             </th>
           </tr>
         </thead>
         <tbody id={@id} phx-update={@stream? && "stream"} class="divide-base-200 divide-y">
+          <%!-- The click command is computed once and drives everything: the
+                pointer, the hover, the keyboard. A row_click that returns nil
+                for some rows (the workings' diff rows) must not leave those rows
+                wearing a cursor that promises a click they don't have. --%>
           <tr
             :for={row <- @rows}
             id={@row_id && @row_id.(row)}
             class={[
               "transition-colors",
-              @row_click && "hover:bg-base-200/60 cursor-pointer",
+              row_command(@row_click, @row_item, row) && "hover:bg-base-200/60 cursor-pointer",
               @row_class && @row_class.(@row_item.(row))
             ]}
-            phx-click={@row_click && @row_click.(@row_item.(row))}
+            phx-click={row_command(@row_click, @row_item, row)}
+            phx-keydown={row_command(@row_click, @row_item, row)}
+            phx-key={row_command(@row_click, @row_item, row) && "Enter"}
+            tabindex={row_command(@row_click, @row_item, row) && "0"}
+            role={row_command(@row_click, @row_item, row) && "button"}
           >
             <td
               :for={col <- @col}
-              class={["px-4 py-3.5 align-top", col[:align] == "right" && "text-right", col[:class]]}
+              class={[
+                "align-top",
+                (@dense && "px-3 py-1.5") || "px-4 py-3.5",
+                col[:align] == "right" && "text-right tabular-nums",
+                col[:class]
+              ]}
             >
               {render_slot(col, @row_item.(row))}
             </td>
@@ -108,6 +136,9 @@ defmodule NilaWeb.Components.Table do
     </div>
     """
   end
+
+  defp row_command(nil, _row_item, _row), do: nil
+  defp row_command(row_click, row_item, row), do: row_click.(row_item.(row))
 
   @doc """
   Renders an extracted purchase-order line-items table.

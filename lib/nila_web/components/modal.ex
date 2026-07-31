@@ -11,7 +11,9 @@ defmodule NilaWeb.Components.Modal do
   @doc """
   Renders a centered modal over an ink scrim. `on_close` is the `phx-click`
   event fired by the header close button; the caller controls visibility (use
-  `:if`). `class` sets the panel width (defaults to `max-w-lg`).
+  `:if`). `class` sets the panel width (defaults to `max-w-lg`) and may also set
+  a height (`h-[90vh]`) when the content wants to fill the panel and manage its
+  own scrolling.
 
   ## Examples
 
@@ -33,13 +35,16 @@ defmodule NilaWeb.Components.Modal do
         phx-click-away={@on_close}
         phx-window-keydown={@on_close}
         phx-key="escape"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={"#{@id}-title"}
         class={[
-          "bg-base-100 border-base-300 rounded-box shadow-moon-lg max-h-[90vh] w-full overflow-y-auto border p-5",
+          "bg-base-100 border-base-300 rounded-box shadow-moon-lg flex max-h-[90vh] w-full flex-col border p-5",
           @class
         ]}
       >
-        <header class="mb-4 flex items-center justify-between">
-          <h3 class="text-base-content text-body font-semibold">{@title}</h3>
+        <header class="mb-4 flex shrink-0 items-center justify-between">
+          <h3 id={"#{@id}-title"} class="text-base-content text-body font-semibold">{@title}</h3>
           <button
             type="button"
             phx-click={@on_close}
@@ -48,7 +53,11 @@ defmodule NilaWeb.Components.Modal do
             <.icon name="hero-x-mark" class="size-4" />
           </button>
         </header>
-        {render_slot(@inner_block)}
+        <%!-- The body owns the scrolling, not the panel: a modal given a height
+              (`class="h-[90vh]"`) can then hand `h-full` to its content, so an
+              inspection surface can scroll its two halves independently instead
+              of scrolling as one long page. --%>
+        <div class="min-h-0 flex-1 overflow-y-auto">{render_slot(@inner_block)}</div>
       </.focus_wrap>
     </div>
     """

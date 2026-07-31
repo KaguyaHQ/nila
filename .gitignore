@@ -51,3 +51,6 @@ docs/.scratchpad/
 # Extractor data files — not tracked. Regenerable JSON comes from extract.py;
 # the paste-sourced *_ac_addon.json lives in the DB, re-key from source if lost.
 /priv/repo/import/*.json
+
+# Browser-automation scratch output (playwright-cli snapshots, console logs).
+.playwright-cli/

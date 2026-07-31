@@ -519,16 +519,30 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       %{invoices: invoices, header: Gstr1.production_header("33AEWPH4158J1Z3", "2026-05")}
     end
 
-    test "hsn rows carry the invoices that built them", %{invoices: invoices} do
+    test "hsn rows carry the invoices that built them, with each one's share", %{
+      invoices: invoices
+    } do
       summary = Gstr1.hsn_summary(invoices)
 
       eighteen = Enum.find(summary, &(&1["rt"] == 18))
       five = Enum.find(summary, &(&1["rt"] == 5))
 
       assert eighteen["txval"] == 3000.0
-      assert eighteen["inums"] == ["1", "2"]
+      assert Enum.map(eighteen["contribs"], & &1["inum"]) == ["1", "2"]
       assert five["txval"] == 5000.0
-      assert five["inums"] == ["3"]
+      assert five["contribs"] == [%{"inum" => "3", "txval" => 5000.0, "tax" => 250.0}]
+    end
+
+    test "a bucket's contributors account for the bucket", %{invoices: invoices} do
+      for row <- Gstr1.hsn_summary(invoices) do
+        contribs = row["contribs"]
+
+        assert_in_delta Enum.sum(Enum.map(contribs, & &1["txval"])), row["txval"], 0.01
+
+        assert_in_delta Enum.sum(Enum.map(contribs, & &1["tax"])),
+                        row["camt"] + row["samt"] + row["iamt"],
+                        0.01
+      end
     end
 
     test "derive/2 files exactly these rows minus the contributor key", %{
@@ -536,7 +550,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       header: header
     } do
       derived = Gstr1.derive(invoices, header)
-      stripped = invoices |> Gstr1.hsn_summary() |> Enum.map(&Map.delete(&1, "inums"))
+      stripped = invoices |> Gstr1.hsn_summary() |> Enum.map(&Map.delete(&1, "contribs"))
 
       assert derived["hsn"]["hsn_b2b"] == stripped
     end
@@ -549,12 +563,13 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
       assert [five, eighteen] = Gstr1.rate_summary(derived)
 
-      assert %{"rate" => 5, "taxable" => 5000.0, "tax" => 250.0, "inums" => ["3"]} = five
+      assert %{"rate" => 5, "taxable" => 5000.0, "tax" => 250.0} = five
+      assert five["contribs"] == [%{"inum" => "3", "txval" => 5000.0, "tax" => 250.0}]
 
       assert eighteen["rate"] == 18
       assert eighteen["taxable"] == 3000.0
       assert eighteen["tax"] == 540.0
-      assert Enum.sort(eighteen["inums"]) == ["1", "2"]
+      assert eighteen["contribs"] |> Enum.map(& &1["inum"]) |> Enum.sort() == ["1", "2"]
     end
   end
 

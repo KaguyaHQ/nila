@@ -9,11 +9,21 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   Renders the materialized projection (`derived_gstr1` out of
   `Nila.Gst.Sales.Workings.materialize/4`, or a sign-off snapshot) — never the
   pristine month. Every aggregate opens to the invoices that built it, each
-  linking into the invoice modal, and the contributor keys come from the same
+  linking into the invoice modal, and the contributor rows come from the same
   derivation functions that build the portal JSON (`Gstr1.hsn_summary/1`,
   `Gstr1.rate_summary/1`) — this module never regroups anything, so a number
   here and the JSON beside it cannot disagree. Empty subsections are omitted
   outright: a month with no B2B shows no B2B heading.
+
+  This is appendix-grade material: a working sheet is dense rows a CA scans in
+  seconds, so every subsection is one `.data_table` and a row expands in place
+  into its contributors — sixteen HSN codes are sixteen lines, not sixteen
+  cards. Card treatment is for things that need a decision; the return needs
+  reading. Which buckets are open is server state (`expanded`): a client-side
+  `JS.toggle` writes an inline `display`, and the next patch — an issue
+  confirmed, a difference accepted, a pile landing on the PubSub — syncs it
+  away and re-collapses everything the reviewer had open. One round trip per
+  expansion is cheaper than losing your place because something else moved.
   """
 
   alias Nila.Eval.Gstr1Diff
@@ -27,6 +37,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   attr :locked, :boolean, default: false
   attr :rippled, :any, default: MapSet.new()
   attr :ripple_seq, :integer, default: 0
+  attr :expanded, :any, default: MapSet.new()
 
   def workings_body(assigns) do
     assigns =
@@ -36,159 +47,160 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       |> assign(:hsn, Gstr1.hsn_summary(assigns.invoices))
       |> assign(:docs, doc_rows(assigns.derived))
       |> assign(:names, names_by_gstin(assigns.invoices))
+      |> assign(:buyers, buyers_by_inum(assigns.invoices))
       |> assign_diff()
+
+    assigns =
+      assigns
+      |> assign(:party_rows, party_rows(assigns))
+      |> assign(:rate_rows, rate_rows(assigns))
+      |> assign(:hsn_rows, hsn_rows(assigns))
 
     ~H"""
     <div id="gstr1-workings" class="space-y-4">
+      <%!-- Differences lit, agreements silent. "All 45 compared fields match" is
+            a trust meter — the product narrating its own diligence back at a CA
+            who did not ask for a score. When the filed return agrees, the
+            overlay says nothing, which is the claim. --%>
       <p
-        :if={@diff}
+        :if={@diff && @mismatches != []}
         id="gstr1-diff-summary"
         class="text-base-content/70 text-small flex items-center gap-2"
       >
-        <.icon
-          name={
-            if @mismatches == [],
-              do: "hero-check-circle-mini",
-              else: "hero-exclamation-triangle-mini"
-          }
-          class={["size-4 shrink-0", (@mismatches == [] && "text-success") || "text-warning"]}
-        />
+        <.icon name="hero-exclamation-triangle-mini" class="text-warning size-4 shrink-0" />
         {diff_summary_line(@diff, @mismatches)}
       </p>
 
-      <div :if={@b2b != []} id="gstr1-workings-b2b" class="space-y-2">
-        <div class="text-base-content/60 text-label font-medium uppercase">B2B — party-wise</div>
-        <details
-          :for={party <- @b2b}
-          id={party_node_id(party["ctin"])}
-          class={[
-            "border-base-300 group/party rounded-box border",
-            ripple_class(@rippled, @ripple_seq, party_node_id(party["ctin"]))
-          ]}
+      <div :if={@b2b != []} id="gstr1-workings-b2b" class="space-y-1.5">
+        <.section_label>B2B — party-wise</.section_label>
+        <.data_table
+          id="gstr1-workings-b2b-rows"
+          rows={@party_rows}
+          row_id={& &1.id}
+          row_class={fn row -> row_class(row, @rippled, @ripple_seq, @expanded) end}
+          row_click={&row_click/1}
+          min_width="min-w-[620px]"
+          dense
+          flat
         >
-          <summary class="hover:bg-base-200/40 text-small flex cursor-pointer list-none items-center gap-3 px-4 py-2.5">
-            <span class="min-w-0 flex-1 truncate">
-              <span class="text-base-content font-medium">{party_name(@names, party)}</span>
-              <span
-                :if={@names[party["ctin"]] && party["ctin"]}
-                class="text-base-content/50 text-fine ml-2 font-mono"
-              >
-                {party["ctin"]}
-              </span>
-            </span>
-            <span class="text-base-content/60 shrink-0">{count_label(party["inv"], "invoice")}</span>
-            <span class="text-base-content shrink-0 font-medium">
-              {Helpers.rupees(party_totals(party).taxable)}
-            </span>
-            <.icon
-              name="hero-chevron-right-mini"
-              class="text-base-content/40 size-4 shrink-0 transition-transform group-open/party:rotate-90"
-            />
-          </summary>
-          <div class="border-base-300 text-small space-y-1 border-t px-4 py-2.5">
-            <div :for={inv <- party["inv"]} class="space-y-1">
-              <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-                <.invoice_link inum={inv["inum"]} />
-                <span class="text-base-content/60">{inv["idt"]}</span>
-                <span class="text-base-content/70 min-w-0 flex-1">{bucket_label(inv)}</span>
-                <span class="text-base-content/80">{Helpers.rupees(inv["val"])}</span>
-              </div>
-              <.diff_row
-                :for={row <- @diff_by_inum[inv["inum"]] || []}
-                row={row}
-                accepted={@accepted}
-                locked={@locked}
-                class="pl-4"
-              />
+          <:col :let={row} label="Party">
+            <%!-- Extraction sometimes lands a whole postal address in the buyer
+                  name; a text column that sizes to its content pushes the money
+                  off the right edge, so the name truncates and the full string
+                  stays one hover away. --%>
+            <div :if={row.kind == :node} class="flex max-w-80 items-center gap-2">
+              <.chevron open={MapSet.member?(@expanded, row.id)} />
+              <span class="text-base-content truncate font-medium" title={row.name}>{row.name}</span>
             </div>
-            <div class="border-base-300 text-base-content/60 mt-1.5 flex justify-between gap-3 border-t pt-1.5">
-              <span>party total</span>
-              <span>
-                {Helpers.amount(party_totals(party).taxable)} taxable + {Helpers.amount(
-                  party_totals(party).tax
-                )} tax
-              </span>
-            </div>
-          </div>
-        </details>
-      </div>
-
-      <div :if={@rates != []} id="gstr1-workings-rates" class="space-y-2">
-        <div class="text-base-content/60 text-label font-medium uppercase">Rate summary</div>
-        <details
-          :for={bucket <- @rates}
-          id={rate_node_id(bucket["rate"])}
-          class={[
-            "border-base-300 group/rate rounded-box border",
-            ripple_class(@rippled, @ripple_seq, rate_node_id(bucket["rate"]))
-          ]}
-        >
-          <summary class="hover:bg-base-200/40 text-small flex cursor-pointer list-none items-center gap-3 px-4 py-2.5">
-            <span class="text-base-content w-12 shrink-0 font-medium">
-              {Helpers.percent(bucket["rate"])}
-            </span>
-            <span class="text-base-content/70 min-w-0 flex-1">
-              {Helpers.amount(bucket["taxable"])} taxable + {Helpers.amount(bucket["tax"])} tax
-            </span>
-            <span class="text-base-content/60 shrink-0">
-              {count_label(bucket["inums"], "invoice")}
-            </span>
-            <.icon
-              name="hero-chevron-right-mini"
-              class="text-base-content/40 size-4 shrink-0 transition-transform group-open/rate:rotate-90"
-            />
-          </summary>
-          <div class="border-base-300 border-t px-4 py-2.5">
-            <.contributors inums={bucket["inums"]} />
-          </div>
-        </details>
-      </div>
-
-      <div :if={@hsn != []} id="gstr1-workings-hsn" class="space-y-2">
-        <div class="text-base-content/60 text-label font-medium uppercase">HSN summary</div>
-        <details
-          :for={row <- @hsn}
-          id={hsn_node_id(row)}
-          class={[
-            "border-base-300 group/hsn rounded-box border",
-            ripple_class(@rippled, @ripple_seq, hsn_node_id(row))
-          ]}
-        >
-          <summary class="hover:bg-base-200/40 text-small flex cursor-pointer list-none items-center gap-3 px-4 py-2.5">
-            <span class="text-base-content w-24 shrink-0 font-mono font-medium">
-              {row["hsn_sc"] || "—"}
-            </span>
-            <span class="text-base-content/60 w-12 shrink-0">{Helpers.percent(row["rt"])}</span>
-            <span class="text-base-content/70 min-w-0 flex-1">
-              {Helpers.amount(row["txval"])} taxable + {Helpers.amount(hsn_tax(row))} tax
-            </span>
-            <.icon
-              name="hero-chevron-right-mini"
-              class="text-base-content/40 size-4 shrink-0 transition-transform group-open/hsn:rotate-90"
-            />
-          </summary>
-          <div class="border-base-300 space-y-1 border-t px-4 py-2.5">
-            <.contributors inums={row["inums"]} />
+            <.contrib_cell :if={row.kind == :contrib} row={row} />
             <.diff_row
-              :for={diff <- hsn_claims(@hsn_mismatches, row)}
-              row={diff}
+              :if={row.kind == :diff}
+              row={row.diff}
               accepted={@accepted}
               locked={@locked}
+              class="pl-6"
             />
-          </div>
-        </details>
+          </:col>
+          <:col :let={row} label="GSTIN">
+            <span :if={row.kind == :node} class="text-base-content/60 font-mono">
+              {row.gstin || "—"}
+            </span>
+          </:col>
+          <:col :let={row} label="Invoices" align="right">
+            <span :if={row.kind == :node} class="text-base-content/60">{row.count}</span>
+          </:col>
+          <:col :let={row} label="Taxable" align="right">
+            <.amount_cell row={row} value={row[:taxable]} />
+          </:col>
+          <:col :let={row} label="Tax" align="right">
+            <.amount_cell row={row} value={row[:tax]} />
+          </:col>
+        </.data_table>
       </div>
 
-      <div :if={@docs != []} id="gstr1-workings-docs" class="space-y-2">
-        <div class="text-base-content/60 text-label font-medium uppercase">Documents issued</div>
-        <div
-          :for={doc <- @docs}
-          class="border-base-300 rounded-box text-base-content/70 text-small border px-4 py-2.5"
+      <div :if={@rates != []} id="gstr1-workings-rates" class="space-y-1.5">
+        <.section_label>Rate summary</.section_label>
+        <.data_table
+          id="gstr1-workings-rates-rows"
+          rows={@rate_rows}
+          row_id={& &1.id}
+          row_class={fn row -> row_class(row, @rippled, @ripple_seq, @expanded) end}
+          row_click={&row_click/1}
+          min_width="min-w-[520px]"
+          dense
+          flat
         >
-          {doc["from"]} – {doc["to"]} · {doc["totnum"]} numbers · {doc["cancel"]} cancelled · {doc[
-            "net_issue"
-          ]} issued
-        </div>
+          <:col :let={row} label="Rate">
+            <div :if={row.kind == :node} class="flex items-center gap-2">
+              <.chevron open={MapSet.member?(@expanded, row.id)} />
+              <span class="text-base-content font-medium">{Helpers.percent(row.rate)}</span>
+            </div>
+            <.contrib_cell :if={row.kind == :contrib} row={row} />
+          </:col>
+          <:col :let={row} label="Invoices" align="right">
+            <span :if={row.kind == :node} class="text-base-content/60">{row.count}</span>
+          </:col>
+          <:col :let={row} label="Taxable" align="right">
+            <.amount_cell row={row} value={row[:taxable]} />
+          </:col>
+          <:col :let={row} label="Tax" align="right">
+            <.amount_cell row={row} value={row[:tax]} />
+          </:col>
+        </.data_table>
+      </div>
+
+      <div :if={@hsn != []} id="gstr1-workings-hsn" class="space-y-1.5">
+        <.section_label>HSN summary</.section_label>
+        <.data_table
+          id="gstr1-workings-hsn-rows"
+          rows={@hsn_rows}
+          row_id={& &1.id}
+          row_class={fn row -> row_class(row, @rippled, @ripple_seq, @expanded) end}
+          row_click={&row_click/1}
+          min_width="min-w-[620px]"
+          dense
+          flat
+        >
+          <:col :let={row} label="HSN/SAC">
+            <div :if={row.kind == :node} class="flex items-center gap-2">
+              <.chevron open={MapSet.member?(@expanded, row.id)} />
+              <span class="text-base-content font-mono font-medium">{row.hsn || "—"}</span>
+            </div>
+            <.contrib_cell :if={row.kind == :contrib} row={row} />
+            <.diff_row
+              :if={row.kind == :diff}
+              row={row.diff}
+              accepted={@accepted}
+              locked={@locked}
+              class="pl-6"
+            />
+          </:col>
+          <:col :let={row} label="Rate" align="right">
+            <span :if={row.kind == :node} class="text-base-content/60">
+              {Helpers.percent(row.rate)}
+            </span>
+          </:col>
+          <:col :let={row} label="Invoices" align="right">
+            <span :if={row.kind == :node} class="text-base-content/60">{row.count}</span>
+          </:col>
+          <:col :let={row} label="Taxable" align="right">
+            <.amount_cell row={row} value={row[:taxable]} />
+          </:col>
+          <:col :let={row} label="Tax" align="right">
+            <.amount_cell row={row} value={row[:tax]} />
+          </:col>
+        </.data_table>
+      </div>
+
+      <div :if={@docs != []} id="gstr1-workings-docs" class="space-y-1.5">
+        <.section_label>Documents issued</.section_label>
+        <.data_table id="gstr1-workings-docs-rows" rows={@docs} min_width="min-w-[520px]" dense flat>
+          <:col :let={doc} label="From"><span class="font-mono">{doc["from"]}</span></:col>
+          <:col :let={doc} label="To"><span class="font-mono">{doc["to"]}</span></:col>
+          <:col :let={doc} label="Numbers" align="right">{doc["totnum"]}</:col>
+          <:col :let={doc} label="Cancelled" align="right">{doc["cancel"]}</:col>
+          <:col :let={doc} label="Issued" align="right">{doc["net_issue"]}</:col>
+        </.data_table>
         <.diff_row
           :for={row <- @doc_mismatches}
           row={row}
@@ -198,9 +210,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       </div>
 
       <div :if={@unclaimed != []} id="gstr1-diff-unclaimed" class="space-y-2">
-        <div class="text-base-content/60 text-label font-medium uppercase">
-          Only one side holds these
-        </div>
+        <.section_label>Only one side holds these</.section_label>
         <.diff_row
           :for={row <- @unclaimed}
           row={row}
@@ -252,10 +262,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     |> assign(:hsn_mismatches, hsn_mismatches)
     |> assign(:doc_mismatches, Enum.filter(mismatches, &(&1["scope"] == "doc_issue")))
     |> assign(:unclaimed, unclaimed)
-  end
-
-  defp diff_summary_line(diff, []) do
-    "Against the filed return: all #{length(diff)} compared fields match"
   end
 
   defp diff_summary_line(diff, mismatches) do
@@ -413,12 +419,12 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     end)
   end
 
-  defp party_node_id(ctin), do: "gstr1-workings-party-#{ctin || "nogstin"}"
+  defp party_node_id(ctin), do: dom_id("gstr1-workings-party-#{ctin || "nogstin"}")
 
-  defp rate_node_id(rate), do: "gstr1-workings-rate-#{trim_rate(rate)}"
+  defp rate_node_id(rate), do: dom_id("gstr1-workings-rate-#{trim_rate(rate)}")
 
   defp hsn_node_id(row),
-    do: "gstr1-workings-hsn-#{row["hsn_sc"] || "none"}-#{trim_rate(row["rt"])}"
+    do: dom_id("gstr1-workings-hsn-#{row["hsn_sc"] || "none"}-#{trim_rate(row["rt"])}")
 
   defp trim_rate(rate) when is_number(rate) do
     if rate == trunc(rate), do: trunc(rate), else: rate
@@ -426,37 +432,214 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
 
   defp trim_rate(rate), do: rate
 
-  attr :inums, :list, required: true
+  # These ids are interpolated into CSS selectors by the expand toggle, so they
+  # have to survive `querySelectorAll`. A 0.25% rate (cgst 0.125 + sgst 0.125 —
+  # a real GST rate) or a GSTIN-less party would otherwise put a `.` in the id,
+  # make the selector invalid, and the row would silently do nothing on click.
+  defp dom_id(raw), do: String.replace(raw, ~r/[^A-Za-z0-9]+/, "-")
 
-  defp contributors(assigns) do
+  slot :inner_block, required: true
+
+  defp section_label(assigns) do
     ~H"""
-    <div class="text-small flex flex-wrap gap-x-3 gap-y-1">
-      <.invoice_link :for={inum <- @inums} inum={inum} />
+    <div class="text-base-content/60 text-label font-semibold uppercase">
+      {render_slot(@inner_block)}
     </div>
     """
   end
 
-  attr :inum, :string, required: true
+  attr :open, :boolean, default: false
 
-  # Level 2 → level 3 of the pyramid: every contributor opens the invoice's
-  # modal, where the scan and the arithmetic sit side by side.
-  defp invoice_link(assigns) do
+  defp chevron(assigns) do
     ~H"""
-    <button
-      type="button"
-      phx-click="select-invoice"
-      phx-value-inum={@inum}
-      class="text-primary font-mono hover:underline"
-    >
-      {@inum}
-    </button>
+    <.icon
+      name="hero-chevron-right-mini"
+      class={[
+        "text-base-content/40 size-4 shrink-0 transition-transform",
+        @open && "rotate-90"
+      ]}
+    />
     """
   end
+
+  attr :row, :map, required: true
+
+  # Level 2 → level 3 of the pyramid: a contributor row is the invoice, and
+  # clicking it opens the modal where the scan and the arithmetic sit side by
+  # side. Indented under its aggregate, carrying what it put into that
+  # aggregate — never a bare number floating under a heading.
+  defp contrib_cell(assigns) do
+    ~H"""
+    <div class="flex max-w-80 items-baseline gap-2 pl-6">
+      <span class="text-primary shrink-0 font-mono">{@row.inum}</span>
+      <span :if={@row.label not in [nil, ""]} class="text-base-content/60 truncate" title={@row.label}>
+        {@row.label}
+      </span>
+    </div>
+    """
+  end
+
+  attr :row, :map, required: true
+  attr :value, :any, required: true
+
+  defp amount_cell(assigns) do
+    ~H"""
+    <span
+      :if={@row.kind != :diff and is_number(@value)}
+      class={if @row.kind == :node, do: "text-base-content font-medium", else: "text-base-content/70"}
+    >
+      {Helpers.amount(@value)}
+    </span>
+    """
+  end
+
+  # Contributor rows ship with the page and hide until their aggregate is
+  # opened. Which buckets are open is server state, not an inline style: a
+  # `JS.toggle` writes `display` onto the node, and the next patch — confirming
+  # an issue, accepting a difference, a pile landing on the PubSub — syncs that
+  # attribute away and silently re-collapses every bucket the reviewer opened.
+  # Losing his place because something else on the page moved is worse than the
+  # round trip, and this way the expansion is testable.
+  defp row_class(%{kind: :node} = row, rippled, seq, _expanded),
+    do: ripple_class(rippled, seq, row.id) || ""
+
+  defp row_class(row, _rippled, _seq, expanded) do
+    [
+      "bg-base-200/30 contrib-of-#{row.parent}",
+      if(MapSet.member?(expanded, row.parent), do: "", else: "hidden")
+    ]
+  end
+
+  defp row_click(%{kind: :node} = row),
+    do: JS.push("toggle-workings-node", value: %{node: row.id})
+
+  defp row_click(%{kind: :contrib} = row),
+    do: JS.push("select-invoice", value: %{inum: row.inum})
+
+  defp row_click(%{kind: :diff}), do: nil
+
+  defp party_rows(assigns) do
+    Enum.flat_map(assigns.b2b, fn party ->
+      id = party_node_id(party["ctin"])
+      totals = party_totals(party)
+
+      node = %{
+        kind: :node,
+        id: id,
+        name: assigns.names[party["ctin"]] || "Name not read",
+        gstin: party["ctin"],
+        count: length(party["inv"] || []),
+        taxable: totals.taxable,
+        tax: totals.tax
+      }
+
+      invoices =
+        Enum.flat_map(party["inv"] || [], fn inv ->
+          inv_totals = invoice_totals(inv)
+          row_id = contrib_id(id, inv["inum"])
+
+          [
+            %{
+              kind: :contrib,
+              id: row_id,
+              parent: id,
+              inum: inv["inum"],
+              label: invoice_label(inv),
+              taxable: inv_totals.taxable,
+              tax: inv_totals.tax
+            }
+            | diff_rows(assigns.diff_by_inum[inv["inum"]] || [], id, row_id)
+          ]
+        end)
+
+      [node | invoices]
+    end)
+  end
+
+  defp rate_rows(assigns) do
+    Enum.flat_map(assigns.rates, fn bucket ->
+      id = rate_node_id(bucket["rate"])
+      contribs = List.wrap(bucket["contribs"])
+
+      node = %{
+        kind: :node,
+        id: id,
+        rate: bucket["rate"],
+        count: length(contribs),
+        taxable: bucket["taxable"],
+        tax: bucket["tax"]
+      }
+
+      [node | contrib_rows(contribs, id, assigns.buyers)]
+    end)
+  end
+
+  defp hsn_rows(assigns) do
+    Enum.flat_map(assigns.hsn, fn row ->
+      id = hsn_node_id(row)
+      contribs = List.wrap(row["contribs"])
+
+      node = %{
+        kind: :node,
+        id: id,
+        hsn: row["hsn_sc"],
+        rate: row["rt"],
+        count: length(contribs),
+        taxable: row["txval"],
+        tax: hsn_tax(row)
+      }
+
+      [node | contrib_rows(contribs, id, assigns.buyers)] ++
+        diff_rows(hsn_claims(assigns.hsn_mismatches, row), id, id)
+    end)
+  end
+
+  defp contrib_rows(contribs, parent, buyers) do
+    for contrib <- contribs do
+      %{
+        kind: :contrib,
+        id: contrib_id(parent, contrib["inum"]),
+        parent: parent,
+        inum: contrib["inum"],
+        label: buyers[contrib["inum"]],
+        taxable: contrib["txval"],
+        tax: contrib["tax"]
+      }
+    end
+  end
+
+  defp diff_rows(rows, parent, prefix) do
+    for {row, index} <- Enum.with_index(rows) do
+      %{kind: :diff, id: "#{prefix}-diff-#{index}", parent: parent, diff: row}
+    end
+  end
+
+  defp contrib_id(parent, inum), do: dom_id("#{parent}-inv-#{inum}")
 
   # Display sums of the very numbers the portal receives — reading the derived
   # JSON, never re-deriving from the invoices.
   defp party_totals(party) do
-    dets = for inv <- party["inv"] || [], itm <- inv["itms"] || [], do: itm["itm_det"] || %{}
+    Enum.reduce(party["inv"] || [], %{taxable: 0, tax: 0}, fn inv, acc ->
+      totals = invoice_totals(inv)
+      %{taxable: acc.taxable + totals.taxable, tax: acc.tax + totals.tax}
+    end)
+  end
+
+  defp invoice_label(inv) do
+    [inv["idt"], bucket_label(inv)]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" · ")
+  end
+
+  defp bucket_label(inv) do
+    Enum.map_join(inv["itms"] || [], " · ", fn itm ->
+      det = itm["itm_det"] || %{}
+      "#{Helpers.percent(det["rt"])} on #{Helpers.amount(det["txval"])}"
+    end)
+  end
+
+  defp invoice_totals(inv) do
+    dets = for itm <- inv["itms"] || [], do: itm["itm_det"] || %{}
 
     %{
       taxable: dets |> Enum.map(&(&1["txval"] || 0)) |> Enum.sum(),
@@ -465,17 +648,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         |> Enum.map(&((&1["camt"] || 0) + (&1["samt"] || 0) + (&1["iamt"] || 0)))
         |> Enum.sum()
     }
-  end
-
-  defp party_name(names, party) do
-    names[party["ctin"]] || party["ctin"] || "No GSTIN"
-  end
-
-  defp bucket_label(inv) do
-    Enum.map_join(inv["itms"] || [], " · ", fn itm ->
-      det = itm["itm_det"] || %{}
-      "#{Helpers.percent(det["rt"])} on #{Helpers.amount(det["txval"])}"
-    end)
   end
 
   defp hsn_tax(row), do: (row["camt"] || 0) + (row["samt"] || 0) + (row["iamt"] || 0)
@@ -487,9 +659,11 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     |> Enum.flat_map(&(&1["docs"] || []))
   end
 
-  defp count_label(list, word) do
-    count = length(list || [])
-    "#{count} #{if count == 1, do: word, else: word <> "s"}"
+  # The rate and HSN aggregates know their contributors by invoice number; the
+  # buyer is the label that makes a row recognisable, and it comes off the
+  # invoice, not off any regrouping.
+  defp buyers_by_inum(invoices) do
+    Map.new(invoices, &{&1["invoice_number"], &1["buyer_name"]})
   end
 
   defp names_by_gstin(invoices) do

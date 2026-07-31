@@ -118,8 +118,13 @@ The palette is teal-blue, **no purple** — night over water. Chroma is kept low
 on purpose; calm reads as desaturated. The warm sand is the one deliberate
 warmth held inside the cool — reserve it for a genuine accent, never decoration.
 
-Body text on white uses `base-content`; secondary text uses
-`text-base-content/70`, muted labels `text-base-content/60`.
+**Four ink levels, one rule each — no others.** `base-content` for values,
+headings and anything a decision is made on. `/70` for all secondary prose (the
+last level that passes AA at body sizes). `/60` for uppercase labels only —
+tracking and caps do the work opacity can't. `/40` for non-text only: chevrons,
+fold icons, hairlines. `/45`, `/50`, `/55`, `/75`, `/80` are not levels; a page
+using eight opacities is expressing distinctions no reader can see, and the
+hierarchy it wanted belongs to size and weight.
 
 **Dimming.** An overlay that keeps its page readable underneath uses
 `base-content` at low opacity (`<.modal>`: `/40`). One that replaces the page to
@@ -256,6 +261,17 @@ gradients or shadows.** The look comes from restraint.
 - **Primary button**: daisyUI `btn btn-primary` (sea blue) + `shadow-moon`.
 - **Sticky header**: translucent `bg-base-100/80 backdrop-blur` + 1px bottom border.
 - **Status**: `badge badge-primary badge-soft` for soft pills.
+- **Tables**: `<.data_table>` is the only table. `dense` for working-sheet
+  material read in bulk; `flat` (no shadow) for reference tables — elevation
+  ranks a table as holding a decision, and six shadowed surfaces in one section
+  rank nothing. Right-aligned columns get `tabular-nums` automatically.
+- **Disclosures**: `<.fold>`, never a bare `<details>`. A browser-toggled
+  `<details>` does not survive a LiveView patch — morphdom syncs `open` away, so
+  a section the reader opened slams shut the next time anything arrives. The
+  component takes `open` from server state and pushes `toggle-fold`.
+- **Two expand marks, one meaning each.** A trailing chevron-down that rotates
+  180° means a *section* folds. A leading chevron-right that rotates 90° means a
+  *row* expands in place. Never mix them in one surface.
 
 ## Don't
 

@@ -68,7 +68,7 @@ defmodule NilaWeb.Components.Gst.Month.Precondition do
             prompt="Pick the month"
             options={@period_options}
           />
-          <p class="text-base-content/55 text-fine">
+          <p class="text-base-content/70 text-small">
             The packet is not read again. If that month is already signed, it waits there
             for a senior — the same as any late arrival.
           </p>
@@ -83,7 +83,7 @@ defmodule NilaWeb.Components.Gst.Month.Precondition do
             value=""
             placeholder={reason_placeholder(@dump.kind)}
           />
-          <p class="text-base-content/55 text-fine">
+          <p class="text-base-content/70 text-small">
             Recorded on the arrival. It is what the signature stands on if anyone asks later.
           </p>
         </div>

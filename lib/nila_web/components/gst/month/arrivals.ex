@@ -21,20 +21,21 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
   attr :open_period, :string, required: true
   attr :r1_signoff, :any, default: nil
   attr :gstr3b_signoff, :any, default: nil
+  attr :open_folds, :any, default: MapSet.new()
 
   def paper_trail(assigns) do
     ~H"""
-    <details :if={@dumps != []} id="month-paper-trail" class="group scroll-mt-28">
-      <summary class="hover:text-base-content text-base-content/55 text-small flex cursor-pointer list-none items-center gap-2">
+    <.fold
+      :if={@dumps != []}
+      id="month-paper-trail"
+      open={MapSet.member?(@open_folds, "month-paper-trail")}
+    >
+      <:summary>
         <.icon name="hero-inbox-arrow-down" class="text-base-content/40 size-4 shrink-0" />
         <span class="flex-1">{trail_line(assigns)}</span>
-        <.icon
-          name="hero-chevron-down-mini"
-          class="text-base-content/40 size-4 shrink-0 transition-transform group-open:rotate-180"
-        />
-      </summary>
+      </:summary>
 
-      <div class="mt-3 space-y-3">
+      <div class="mt-4 space-y-4">
         <div :if={@attention_dumps != []} id="month-dumps" class="space-y-2">
           <div
             :for={dump <- @attention_dumps}
@@ -97,7 +98,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
           <div
             :for={dump <- @dumps}
             id={"month-arrived-#{dump.id}"}
-            class="text-base-content/55 text-small flex flex-wrap items-center gap-x-2 gap-y-1"
+            class="text-base-content/70 text-small flex flex-wrap items-center gap-x-2 gap-y-1"
           >
             <span class={
               (MapSet.member?(@superseded_2b_ids, dump.id) or dump.status == "discarded") &&
@@ -113,7 +114,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
             <span
               :if={answer_line(dump)}
               id={"month-arrived-answer-#{dump.id}"}
-              class="text-base-content/70 text-fine"
+              class="text-base-content/70 text-small"
             >
               {answer_line(dump)}
             </span>
@@ -129,7 +130,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
           </div>
         </div>
       </div>
-    </details>
+    </.fold>
     """
   end
 

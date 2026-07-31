@@ -36,7 +36,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     assert has_element?(view, "#month-page")
     assert has_element?(view, "#month-headline", "of it rides on 21 decisions")
-    assert has_element?(view, "#month-door-decisions", "Work the 21 decisions")
+    assert has_element?(view, "#month-door-decisions", "Work the decisions")
 
     # The losing track is one quiet line, never a second button.
     assert render(view) =~ "Sales bills not in, so the GSTR-1 waits."
@@ -279,7 +279,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     refute has_element?(view, "#month-door-sign-3b")
-    assert has_element?(view, "#gst-signoff-blocked", "21 purchases to decide")
+    assert has_element?(view, "#gst-signoff-blocked", "the purchases are not all decided")
     assert has_element?(view, "#gst-signoff-blocked", "the sales bills")
 
     {:ok, _sales} =

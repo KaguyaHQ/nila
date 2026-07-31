@@ -12,8 +12,14 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
   The unfolded body opens with the account — what came in and what it became,
   gaps confessed before anyone asks — then the work: month issues, the invoices
-  that need a human, and the verified rest collapsed to a count. In the tables,
-  silence means verified; only open work gets ink.
+  that need a human, the workings, and the verified rest collapsed to a count.
+  In the tables, silence means verified; only open work gets ink.
+
+  That law is easy to keep inside a table and easy to break around one. Each
+  count is told exactly once — the verdict and its door say how many issues
+  there are, so the fold hides its own summary when it opens and no caption
+  counts the rows again. The portal JSON is not here either: it is the first
+  step after a signature, and the exit block owns it.
   """
 
   alias Nila.Gst.Sales.Gstr1
@@ -25,6 +31,11 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   attr :invoices, :list, required: true
   attr :open_issue_count, :integer, required: true
   attr :reviewable, :boolean, required: true
+
+  attr :review_door_taken, :boolean,
+    default: false,
+    doc: "the verdict's door is already \"Mark the GSTR-1 reviewed\""
+
   attr :r1_signoff, :any, default: nil
   attr :month_issues, :list, required: true
   attr :issues_by_invoice, :map, required: true
@@ -35,6 +46,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   attr :accepted_diffs, :any, default: MapSet.new()
   attr :rippled, :any, default: MapSet.new()
   attr :ripple_seq, :integer, default: 0
+  attr :expanded_nodes, :any, default: MapSet.new()
+  attr :open_folds, :any, default: MapSet.new()
   attr :open, :boolean, default: false
 
   def sales_section(assigns) do
@@ -49,8 +62,17 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       |> assign(:totals, month_totals(assigns.invoices))
 
     ~H"""
-    <details :if={@sales_month} id="month-sales" open={@open} class="group scroll-mt-28">
-      <summary class="hover:text-base-content text-base-content/70 text-small flex cursor-pointer list-none items-center gap-2">
+    <%!-- Of the four folds stacked on this page this is the only one that is
+          work; settled, register and paper trail are appendices. So this one
+          alone is set as a heading — a reader looking for the GSTR-1 should
+          find it without reading four identical grey lines to tell them apart. --%>
+    <.fold
+      :if={@sales_month}
+      id="month-sales"
+      open={@open}
+      summary_class="text-base-content text-body font-semibold"
+    >
+      <:summary>
         <.icon
           name={
             if @open_issue_count > 0,
@@ -62,14 +84,18 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             (@open_issue_count > 0 && "text-warning") || "text-success"
           ]}
         />
-        <span class="flex-1 truncate">{sales_summary_line(assigns)}</span>
-        <.icon
-          name="hero-chevron-down-mini"
-          class="text-base-content/40 size-4 shrink-0 transition-transform group-open:rotate-180"
-        />
-      </summary>
+        <%!-- Closed, the fold has to carry the month; open, the account line
+              below it says the same thing at more length, and two near-identical
+              strings stacked is what makes a page read like a journal. So the
+              detail is CSS-folded away the moment the section opens. --%>
+        <span class="flex-1 truncate">
+          GSTR-1<span class="text-base-content/70 text-small font-normal group-open/fold:hidden">
+            · {sales_summary_line(assigns)}
+          </span>
+        </span>
+      </:summary>
 
-      <div class="mt-3 space-y-3">
+      <div class="mt-4 space-y-4">
         <p
           :if={@invoices != []}
           id="gstr1-account"
@@ -85,29 +111,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           >{gap_phrase(@series.missing)}</a>{account_tail(assigns)}
         </p>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <span :if={@sales_month.state == "reviewed"} id="gstr1-reviewed-badge">
-            <.badge variant="success">Reviewed</.badge>
-          </span>
-          <.button
-            :if={@sales_month.state == "worked" and @reviewable}
-            id="gstr1-mark-reviewed"
-            phx-click="mark_reviewed"
-            variant="outline"
-            size="sm"
-          >
-            <.icon name="hero-check-circle" class="size-4" /> Mark reviewed
-          </.button>
-          <.button
-            id="gstr1-download-json"
-            href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/return.json"}
-            variant="outline"
-            size="sm"
-          >
-            <.icon name="hero-arrow-down-tray" class="size-4" /> Portal JSON
-          </.button>
-        </div>
-
         <div :if={@month_issues != []} id="gstr1-month-issues" class="space-y-2">
           <div
             :for={issue <- @month_issues}
@@ -121,7 +124,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             }>
               {issue_label(issue["code"])}
             </.badge>
-            <span class="text-base-content/80 text-small line-clamp-2 min-w-0 flex-1">{issue[
+            <span class="text-base-content/70 text-small line-clamp-2 min-w-0 flex-1">{issue[
               "message"
             ]}</span>
             <.button
@@ -148,54 +151,82 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           </div>
         </div>
 
-        <div :if={@need_you != []} class="space-y-2">
-          <p class="text-base-content/70 text-small">
-            {length(@need_you)} need you
-          </p>
-          <.invoice_table
-            id="gstr1-invoices"
-            rows={@need_you}
-            issues_by_invoice={@issues_by_invoice}
-            visited={@visited}
-          />
-        </div>
+        <%!-- No caption counting these rows: the verdict said the count, the
+              door said it, the fold said it. A fourth telling buys nothing and
+              costs a parse. The rows are the count. --%>
+        <.invoice_table :if={@need_you != []} id="gstr1-invoices" rows={@need_you} visited={@visited} />
 
-        <Workings.workings_body
-          :if={@derived}
-          derived={@derived}
-          invoices={@invoices}
-          diff={@diff}
-          accepted={@accepted_diffs}
-          locked={@r1_signoff != nil}
-          rippled={@rippled}
-          ripple_seq={@ripple_seq}
-        />
-
-        <details :if={@verified != []} id="gstr1-verified" class="group/verified">
-          <summary class="hover:text-base-content text-base-content/60 text-small flex cursor-pointer list-none items-center gap-1.5">
-            <.icon
-              name="hero-chevron-right-mini"
-              class="size-4 shrink-0 transition-transform group-open/verified:rotate-90"
-            />
-            {length(@verified)} verified
-          </summary>
-          <div class="mt-2">
-            <.invoice_table
-              id="gstr1-invoices-verified"
-              rows={@verified}
-              issues_by_invoice={@issues_by_invoice}
-              visited={@visited}
+        <%!-- Level 2 of the pyramid, one tap from level 1. While issues are open
+              the reader's job is the worklist above, and four tables of correct
+              arithmetic under it is the largest ink mass on the page competing
+              with the smallest. Once nothing is open, checking the return *is*
+              the job, so it stands open. --%>
+        <.fold :if={@derived} id="gstr1-return" open={MapSet.member?(@open_folds, "gstr1-return")}>
+          <:summary>
+            <span class="flex-1">{workings_summary_line(assigns)}</span>
+          </:summary>
+          <div class="mt-3">
+            <Workings.workings_body
+              derived={@derived}
+              invoices={@invoices}
+              diff={@diff}
+              accepted={@accepted_diffs}
+              locked={@r1_signoff != nil}
+              rippled={@rippled}
+              ripple_seq={@ripple_seq}
+              expanded={@expanded_nodes}
             />
           </div>
-        </details>
+        </.fold>
+
+        <.fold
+          :if={@verified != []}
+          id="gstr1-verified"
+          open={MapSet.member?(@open_folds, "gstr1-verified")}
+        >
+          <:summary>
+            <span class="flex-1">{length(@verified)} verified</span>
+          </:summary>
+          <div class="mt-2">
+            <.invoice_table id="gstr1-invoices-verified" rows={@verified} visited={@visited} />
+          </div>
+        </.fold>
+
+        <%!-- The done gesture sits after the work, not above it — and only when
+              the verdict has not already taken it. Whenever the sales track owns
+              the door, "Mark the GSTR-1 reviewed" *is* the door, and a second
+              outline copy a screen below it is the page asking its own question
+              twice. It survives for the case the door can't cover: sales worked
+              and clean while purchase still owns the door. The portal JSON is
+              not here at all — that is the first step after a signature, and the
+              exit block owns it. --%>
+        <div
+          :if={
+            @sales_month.state == "reviewed" or
+              (@sales_month.state == "worked" and @reviewable and not @review_door_taken)
+          }
+          class="pt-1"
+        >
+          <span :if={@sales_month.state == "reviewed"} id="gstr1-reviewed-badge">
+            <.badge variant="success">Reviewed</.badge>
+          </span>
+          <.button
+            :if={@sales_month.state == "worked" and @reviewable}
+            id="gstr1-mark-reviewed"
+            phx-click="mark_reviewed"
+            variant="outline"
+            size="sm"
+          >
+            <.icon name="hero-check-circle" class="size-4" /> Mark reviewed
+          </.button>
+        </div>
       </div>
-    </details>
+    </.fold>
     """
   end
 
   attr :id, :string, required: true
   attr :rows, :list, required: true
-  attr :issues_by_invoice, :map, required: true
   attr :visited, :any, default: MapSet.new()
 
   defp invoice_table(assigns) do
@@ -209,30 +240,34 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       }
       min_width="min-w-[720px]"
     >
+      <%!-- No warning glyph per row: every row in this table needs you, and a
+            mark that never varies distinguishes nothing. The invoice number is
+            the affordance instead — the same blue mono it wears as a contributor
+            in the workings, so "invoice number opens the invoice" is one mark to
+            learn and it appears wherever the click does. Read rows go quiet,
+            mail-style: the weight is the mark, not a glyph. --%>
       <:col :let={invoice} label="Inv No">
-        <div class="flex items-center gap-2">
-          <.icon
-            :if={open_issues(@issues_by_invoice, invoice) > 0}
-            name="hero-exclamation-triangle-mini"
-            class="text-warning size-4 shrink-0"
-          />
-          <%!-- Read rows go quiet, mail-style — the mark is the weight itself,
-                not a glyph to decorate every row with. --%>
-          <span class={
-            if MapSet.member?(@visited, invoice["invoice_number"]),
-              do: "text-base-content/60",
-              else: "font-medium"
-          }>
-            {invoice["invoice_number"] || "—"}
-          </span>
-        </div>
+        <span class={[
+          "font-mono",
+          (MapSet.member?(@visited, invoice["invoice_number"]) && "text-primary/60") ||
+            "text-primary font-medium"
+        ]}>
+          {invoice["invoice_number"] || "—"}
+        </span>
       </:col>
       <:col :let={invoice} label="Date">
         {Nila.Formatters.format_display_date(invoice["invoice_date"])}
       </:col>
-      <:col :let={invoice} label="Buyer">{invoice["buyer_name"] || "—"}</:col>
+      <%!-- Extracted buyer names carry the whole registered address. Capped and
+            truncated, or one row is three lines tall and the money leaves the
+            screen; the full string stays on hover. --%>
+      <:col :let={invoice} label="Buyer">
+        <span class="block max-w-64 truncate" title={invoice["buyer_name"]}>
+          {invoice["buyer_name"] || "—"}
+        </span>
+      </:col>
       <:col :let={invoice} label="Buyer GSTIN">
-        <span class="text-fine font-mono">{invoice["buyer_gstin"] || "—"}</span>
+        <span class="text-base-content/70 font-mono">{invoice["buyer_gstin"] || "—"}</span>
       </:col>
       <:col :let={invoice} label="Taxable" align="right">
         {rupees(Gstr1.extracted_totals(invoice).taxable)}
@@ -240,18 +275,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <:col :let={invoice} label="Tax" align="right">
         {rupees(Gstr1.extracted_totals(invoice).tax)}
       </:col>
-      <:col :let={invoice} label="Issues">
-        <span :if={open_issues(@issues_by_invoice, invoice) > 0} class="text-small text-warning">
-          {open_issues(@issues_by_invoice, invoice)} open
-        </span>
-        <span
-          :if={
-            open_issues(@issues_by_invoice, invoice) == 0 and
-              Helpers.invoice_issues(@issues_by_invoice, invoice) != []
-          }
-          class="text-small text-success"
-        >resolved</span>
-      </:col>
+      <%!-- No "Issues" column. Every row above the verified fold has open issues
+            and every row below it has none, so the column read "1 open" or
+            "resolved" all the way down — a label for a fact the table's own
+            shape already states. --%>
     </.data_table>
     """
   end
@@ -270,8 +297,31 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       ]
       |> Enum.reject(&is_nil/1)
 
-    "GSTR-1: " <> Enum.join(parts, " · ")
+    Enum.join(parts, " · ")
   end
+
+  # What the fold is hiding, in the shape it will be read in: the return's own
+  # sections, sized. Never a match score — the diff speaks for itself inside.
+  defp workings_summary_line(assigns) do
+    derived = assigns.derived
+
+    parts =
+      [
+        count_clause(length(derived["b2b"] || []), "party", "parties"),
+        count_clause(length(Gstr1.rate_summary(derived)), "rate", "rates"),
+        count_clause(length(Gstr1.hsn_summary(assigns.invoices)), "HSN code", "HSN codes")
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    case parts do
+      [] -> "The return"
+      parts -> "The return · " <> Enum.join(parts, " · ")
+    end
+  end
+
+  defp count_clause(0, _one, _many), do: nil
+  defp count_clause(1, one, _many), do: "1 #{one}"
+  defp count_clause(n, _one, many), do: "#{n} #{many}"
 
   defp series_clause(nil), do: nil
   defp series_clause(%{missing: []} = series), do: "series #{series.from} – #{series.to}"

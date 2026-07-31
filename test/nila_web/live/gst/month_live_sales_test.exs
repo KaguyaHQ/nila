@@ -32,7 +32,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#month-page")
     assert has_element?(view, "#month-sales")
     assert has_element?(view, "#gstr1-inv-20\\/2025-26")
-    assert has_element?(view, "#month-door-sales-issues", "Check the")
+    assert has_element?(view, "#month-door-sales-issues", "Check invoice 20/2025-26")
     assert render(view) =~ "to check"
   end
 
@@ -197,7 +197,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     row = view |> element("#gstr1-inv-21\\/2025-26") |> render()
     refute row =~ "font-medium"
-    assert row =~ "text-base-content/60"
+    assert row =~ "text-primary/60"
   end
 
   test "the workings body shows the derived return in working-sheet shape", %{
@@ -218,18 +218,67 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert hsn =~ "9987"
 
     docs = view |> element("#gstr1-workings-docs") |> render()
-    assert docs =~ "20/2025-26 – 22/2025-26"
-    assert docs =~ "3 numbers"
+    assert docs =~ "20/2025-26"
+    assert docs =~ "22/2025-26"
   end
 
-  test "a contributor link opens the invoice modal it names", %{conn: conn, client: client} do
+  test "an aggregate's contributor rows name their invoices and carry their share", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    row = view |> element("#gstr1-workings-rate-18-inv-22-2025-26") |> render()
+    assert row =~ "22/2025-26"
+    assert row =~ "SIEMENS HEALTHCARE"
+    assert row =~ "10,200.00"
+  end
+
+  test "the return folds while issues are open, and a fold survives a re-render", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    # Issues are open, so the reader's job is the worklist: the return is one
+    # tap away rather than four tables under it.
+    refute has_element?(view, "#gstr1-return[open]")
+    assert view |> element("#gstr1-return summary") |> render() =~ "The return"
+
+    view |> element("#gstr1-return summary") |> render_click()
+    assert has_element?(view, "#gstr1-return[open]")
+
+    # A browser-toggled <details> would be reset by this patch.
+    confirm_all_open_issues(view)
+    assert has_element?(view, "#gstr1-return[open]")
+  end
+
+  test "an opened bucket survives an unrelated re-render", %{conn: conn, client: client} do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    contrib = "#gstr1-workings-rate-18-inv-22-2025-26"
+    assert view |> element(contrib) |> render() =~ "hidden"
+
+    view |> element("#gstr1-workings-rate-18") |> render_click()
+    refute view |> element(contrib) |> render() =~ "hidden"
+
+    # Confirming an issue re-renders the whole section. Expansion is server
+    # state, so the bucket the reviewer opened is still open.
+    confirm_all_open_issues(view)
+    refute view |> element(contrib) |> render() =~ "hidden"
+
+    view |> element("#gstr1-workings-rate-18") |> render_click()
+    assert view |> element(contrib) |> render() =~ "hidden"
+  end
+
+  test "a contributor row opens the invoice modal it names", %{conn: conn, client: client} do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     refute has_element?(view, "#gstr1-evidence-modal")
 
     # The same inum appears in several subsections; scope to one.
     view
-    |> element("#gstr1-workings-rates button[phx-value-inum='22/2025-26']")
+    |> element("#gstr1-workings-rate-18-inv-22-2025-26")
     |> render_click()
 
     assert has_element?(view, "#gstr1-evidence-modal")
@@ -240,7 +289,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
-    view |> element("#gstr1-mark-reviewed") |> render_click()
+    view |> element("#month-door-mark-reviewed") |> render_click()
     view |> element("#month-door-sign-r1") |> render_click()
 
     assert has_element?(view, "#gstr1-workings-b2b")
@@ -352,7 +401,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     # A signed month still shows the overlay — from the snapshot — but the
     # wall hides the verbs.
     confirm_all_open_issues(view)
-    view |> element("#gstr1-mark-reviewed") |> render_click()
+    view |> element("#month-door-mark-reviewed") |> render_click()
     view |> element("#month-door-sign-r1") |> render_click()
 
     assert has_element?(view, "#gstr1-diff-summary")
@@ -467,12 +516,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    refute has_element?(view, "#gstr1-mark-reviewed")
+    refute has_element?(view, "#month-door-mark-reviewed")
 
     confirm_all_open_issues(view)
 
-    assert has_element?(view, "#gstr1-mark-reviewed")
-    view |> element("#gstr1-mark-reviewed") |> render_click()
+    assert has_element?(view, "#month-door-mark-reviewed")
+    view |> element("#month-door-mark-reviewed") |> render_click()
 
     assert has_element?(view, "#gstr1-reviewed-badge")
     assert has_element?(view, "#month-door-sign-r1", "Sign the GSTR-1")
@@ -508,7 +557,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
-    view |> element("#gstr1-mark-reviewed") |> render_click()
+    view |> element("#month-door-mark-reviewed") |> render_click()
 
     assert has_element?(view, "#month-door-sign-r1")
     view |> element("#month-door-sign-r1") |> render_click()
@@ -516,7 +565,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#month-exit-gstr1")
     assert has_element?(view, "#month-door-file-sales[href='#month-exit-gstr1']")
     assert has_element?(view, "#gstr1-guide-download-json", "Download JSON")
-    assert has_element?(view, "#gstr1-download-json.btn-outline")
+    refute has_element?(view, "#gstr1-download-json")
     assert has_element?(view, "#month-exit-gstr1 a[target='_blank'][rel='noopener']")
     assert has_element?(view, "#gstr1-filed-arn")
     refute has_element?(view, "#month-door-sign-r1")
@@ -535,7 +584,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
-    view |> element("#gstr1-mark-reviewed") |> render_click()
+    view |> element("#month-door-mark-reviewed") |> render_click()
     view |> element("#month-door-sign-r1") |> render_click()
 
     view
@@ -556,7 +605,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
-    view |> element("#gstr1-mark-reviewed") |> render_click()
+    view |> element("#month-door-mark-reviewed") |> render_click()
 
     refute has_element?(view, "#month-door-sign-r1")
   end
@@ -599,7 +648,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
-    view |> element("#gstr1-mark-reviewed") |> render_click()
+    view |> element("#month-door-mark-reviewed") |> render_click()
     view |> element("#month-door-sign-r1") |> render_click()
 
     straggler = work_dump!(org, client, @period, "sales", "%PDF-1.4 late")
