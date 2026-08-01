@@ -3,6 +3,7 @@ defmodule Nila.Gst.Intake.PreconditionsTest do
   use Oban.Testing, repo: Nila.Repo
 
   import Nila.AccountsFixtures
+  import Nila.GstFixtures, only: [confirm_sales_complete!: 3]
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
@@ -204,6 +205,7 @@ defmodule Nila.Gst.Intake.PreconditionsTest do
 
     assert :ok = run(bring_in(context, "2026-04", bills))
     {:ok, april} = ClientMonths.get_by_period(context.org.id, context.client.id, "2026-04")
+    confirm_sales_complete!(context.org, context.client, "2026-04")
     {:ok, _signoff} = Signoffs.sign_off(april, context.scope)
     {:ok, _filed} = Signoffs.mark_filed(april, context.scope)
 
@@ -316,6 +318,7 @@ defmodule Nila.Gst.Intake.PreconditionsTest do
   test "moving into a signed month lands held, the already-built outcome", context do
     assert :ok = run(bring_in(context, "2026-04", april_bills(4)))
     {:ok, april} = ClientMonths.get_by_period(context.org.id, context.client.id, "2026-04")
+    confirm_sales_complete!(context.org, context.client, "2026-04")
     {:ok, _signoff} = Signoffs.sign_off(april, context.scope)
 
     dump =

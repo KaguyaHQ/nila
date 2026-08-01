@@ -67,6 +67,7 @@ defmodule Nila.Gst.WorkQueueTest do
     end)
 
     {:ok, _} = SalesResolutions.mark_reviewed(sales_month)
+    confirm_sales_complete!(org, client, @period)
 
     month
   end

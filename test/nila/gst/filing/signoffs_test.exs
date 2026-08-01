@@ -7,7 +7,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
   alias Nila.Accounts.Scope
   alias Nila.Clients
   alias Nila.Gst.Filing.Signoffs
-  alias Nila.Gst.Intake.Dumps
+  alias Nila.Gst.Intake.{Confirmations, Dumps}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Purchase.Reconciliation, as: Recon
@@ -56,11 +56,15 @@ defmodule Nila.Gst.Filing.SignoffsTest do
         summary: Register.summary(rows)
       })
 
-    %{
-      org: org,
-      month: month,
-      owner_scope: %Scope{user: owner, current_org: org, membership: owner_membership}
-    }
+    owner_scope = %Scope{user: owner, current_org: org, membership: owner_membership}
+
+    {:ok, _confirmation} =
+      Confirmations.record_client(%{org_id: org.id}, client.id, @period, %{
+        decision: "client_yes",
+        channel: "manual"
+      })
+
+    %{org: org, client: client, month: month, owner_scope: owner_scope}
   end
 
   defp held_dump!(month, user_id, kind) do
@@ -126,6 +130,52 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     assert signoff.snapshot["gstr3b"] == expected.gstr3b
   end
 
+  test "GSTR-3B rejects open completeness and accepts an attributed override", %{
+    month: month,
+    client: client,
+    owner_scope: scope
+  } do
+    {:ok, open_month} =
+      ClientMonths.upsert(%{
+        org_id: month.org_id,
+        client_id: month.client_id,
+        period: "2025-11",
+        state: "worked",
+        register_rows: month.register_rows,
+        recon: month.recon,
+        summary: month.summary
+      })
+
+    assert {:error, {:sales_intake_incomplete, :open}} =
+             Signoffs.sign_off(open_month, scope)
+
+    assert {:ok, _override} =
+             Confirmations.record_override(scope, client.id, "2025-11", %{
+               reason: "Client's records are known to be complete"
+             })
+
+    assert {:ok, _signoff} = Signoffs.sign_off(open_month, scope)
+  end
+
+  test "GSTR-3B rejects the latest client-no decision", %{
+    month: month,
+    owner_scope: scope
+  } do
+    assert {:ok, _no} =
+             Confirmations.record_client(
+               %{org_id: month.org_id},
+               month.client_id,
+               month.period,
+               %{
+                 decision: "client_no",
+                 channel: "manual"
+               }
+             )
+
+    assert {:error, {:sales_intake_incomplete, :client_no}} =
+             Signoffs.sign_off(month, scope)
+  end
+
   test "the operator (member) cannot self-certify", %{month: month, org: org} do
     member = user_fixture()
     {:ok, membership} = Nila.Orgs.add_user(org, member.id, "member")
@@ -138,8 +188,17 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     assert month.state == "worked"
   end
 
-  test "signing an already-reviewed month errors", %{month: month, owner_scope: scope} do
+  test "signing an already-reviewed month errors even if later intake is stale", %{
+    month: month,
+    owner_scope: scope
+  } do
     assert {:ok, _} = Signoffs.sign_off(month, scope)
+
+    {:ok, _late} =
+      Dumps.record(
+        %{org_id: month.org_id, client_id: month.client_id},
+        %{period: month.period, kind: "sales"}
+      )
 
     {:ok, reviewed} = ClientMonths.get_by_period(month.org_id, month.client_id, month.period)
     assert {:error, :already_signed} = Signoffs.sign_off(reviewed, scope)
@@ -214,6 +273,12 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
       work_dump!(org, client, @period, "sales", "%PDF-1.4 fake bytes")
 
+      {:ok, _confirmation} =
+        Confirmations.record_client(%{org_id: org.id}, client.id, @period, %{
+          decision: "client_yes",
+          channel: "manual"
+        })
+
       {:ok, sales_month} = SalesMonths.get_by_period(org.id, client.id, @period)
       %{sales_month: sales_month}
     end
@@ -236,6 +301,45 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
     test "requires the maker gate", %{sales_month: sales_month, owner_scope: scope} do
       assert {:error, :not_reviewed} = Signoffs.sign_off_gstr1(sales_month, scope)
+    end
+
+    test "maker review remains available while completeness is open", %{
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      {:ok, open_month} =
+        SalesMonths.upsert(%{
+          org_id: sales_month.org_id,
+          client_id: sales_month.client_id,
+          period: "2025-11",
+          state: "worked",
+          invoices: sales_month.invoices,
+          derived_gstr1: sales_month.derived_gstr1,
+          issues: sales_month.issues,
+          summary: sales_month.summary
+        })
+
+      reviewed = make_reviewed(open_month, scope.user.id)
+      assert reviewed.state == "reviewed"
+
+      assert {:error, {:sales_intake_incomplete, :open}} =
+               Signoffs.sign_off_gstr1(reviewed, scope)
+    end
+
+    test "GSTR-1 rejects a confirmation made stale by late active sales intake", %{
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      reviewed = make_reviewed(sales_month, scope.user.id)
+
+      {:ok, _late} =
+        Dumps.record(
+          %{org_id: reviewed.org_id, client_id: reviewed.client_id},
+          %{period: reviewed.period, kind: "sales"}
+        )
+
+      assert {:error, {:sales_intake_incomplete, :stale}} =
+               Signoffs.sign_off_gstr1(reviewed, scope)
     end
 
     test "signs a reviewed sales month with a frozen outward snapshot", %{
