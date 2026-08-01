@@ -330,6 +330,7 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
   } do
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
     scope = Nila.Accounts.Scope.for_user(user)
+    confirm_sales_complete!(org, client, @period)
     {:ok, _} = Signoffs.sign_off(month, scope)
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/exceptions")

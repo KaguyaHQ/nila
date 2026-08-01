@@ -5,7 +5,7 @@ defmodule Nila.GstFixtures do
   """
   use Oban.Testing, repo: Nila.Repo
 
-  alias Nila.Gst.Intake.{DumpWorker, Dumps}
+  alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps}
   alias Nila.Storage
 
   @doc """
@@ -24,6 +24,17 @@ defmodule Nila.GstFixtures do
 
     :ok = perform_job(DumpWorker, %{"dump_id" => dump.id})
     dump
+  end
+
+  @doc "Records an explicit client-yes event after the test's sales intake is complete."
+  def confirm_sales_complete!(org, client, period) do
+    {:ok, confirmation} =
+      Confirmations.record_client(%{org_id: org.id}, client.id, period, %{
+        decision: "client_yes",
+        channel: "manual"
+      })
+
+    confirmation
   end
 
   @doc """

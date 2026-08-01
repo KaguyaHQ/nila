@@ -2,6 +2,7 @@ defmodule Nila.Gst.Purchase.ResolutionsTest do
   use Nila.DataCase, async: true
 
   import Nila.AccountsFixtures
+  import Nila.GstFixtures, only: [confirm_sales_complete!: 3]
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
@@ -148,6 +149,7 @@ defmodule Nila.Gst.Purchase.ResolutionsTest do
   end
 
   test "a live purchase signoff rejects new decisions", context do
+    confirm_sales_complete!(context.org, context.client, @period)
     assert {:ok, _signoff} = Signoffs.sign_off(context.month, context.scope)
 
     assert {:error, :signed_off} =
