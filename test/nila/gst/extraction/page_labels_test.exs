@@ -79,10 +79,12 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabelsTest do
         [_system, user] = Jason.decode!(body)["messages"]
 
         assert user["content"] =~ "JUDGE THIS PAGE — page 3"
-        assert user["content"] =~ "context — page 1"
-        assert user["content"] =~ "context — page 5"
-        # Context is bounded: page 6 is outside the window whatever the dump size,
-        # which is why a 57-page packet costs no more per decision than a 5-page one.
+        assert user["content"] =~ "context — page 2"
+        assert user["content"] =~ "context — page 4"
+        refute user["content"] =~ "page 1 body"
+        refute user["content"] =~ "page 5 body"
+        # Context is bounded, so a 57-page packet costs no more per decision
+        # than a 3-page one.
         refute user["content"] =~ "page 6 body"
 
         Req.Test.json(conn, %{

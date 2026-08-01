@@ -14,7 +14,7 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
   And the input grows without bound. The corpus already holds 43- and 57-page
   months, so a whole-dump decider is asked to hold more context to make each
   decision precisely as the decisions get more numerous — while the decision
-  itself stays local. Whether page 31 starts a new bill depends on pages 29–32:
+  itself stays local. Whether page 31 starts a new bill depends on pages 30–32:
   a fresh header and number, whether the page before it closed with totals.
   Page 3 cannot inform that and can only distract from it.
 
@@ -34,7 +34,7 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
   alias Nila.Gst.Extraction.Providers.MistralChat
   alias Nila.Gst.Extraction.Transcription
 
-  @neighbours 2
+  @neighbours 1
   @page_char_limit 4_000
   @max_concurrency 4
 
