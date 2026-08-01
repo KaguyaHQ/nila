@@ -41,6 +41,56 @@ defmodule Nila.Gst.Sales.ResolutionsTest do
     end)
   end
 
+  test "legacy unsigned month IDs are stable and stored machine truth stays unchanged", %{
+    month: month
+  } do
+    legacy_invoices = Enum.map(month.invoices, &Map.delete(&1, "id"))
+    month = month |> Ecto.Changeset.change(invoices: legacy_invoices) |> Repo.update!()
+
+    first = SalesResolutions.workings(month)
+    second = SalesResolutions.workings(Repo.reload!(month))
+
+    expected =
+      for ordinal <- 1..length(legacy_invoices),
+          do: "sales_month_#{month.id}_inv_#{String.pad_leading(to_string(ordinal), 2, "0")}"
+
+    assert Enum.map(first.source_invoices, & &1["id"]) == expected
+    assert Enum.map(second.source_invoices, & &1["id"]) == expected
+    refute Enum.any?(Repo.reload!(month).invoices, &Map.has_key?(&1, "id"))
+  end
+
+  test "duplicate-copy resolutions require auditable payload", %{month: month, user: user} do
+    assert {:error, changeset} =
+             SalesResolutions.record(
+               month,
+               %{
+                 "verb" => "exclude_duplicate_copy",
+                 "target" => "source-b",
+                 "payload" => %{"retained_source_id" => "source-a"}
+               },
+               user.id
+             )
+
+    assert "must record retained_source_id, reason, and outcome" in errors_on(changeset).payload
+
+    assert {:ok, resolution} =
+             SalesResolutions.record(
+               month,
+               %{
+                 "verb" => "exclude_duplicate_copy",
+                 "target" => "source-b",
+                 "payload" => %{
+                   "retained_source_id" => "source-a",
+                   "reason" => "same source uploaded twice",
+                   "outcome" => "excluded_duplicate_copy"
+                 }
+               },
+               user.id
+             )
+
+    assert resolution.verb == "exclude_duplicate_copy"
+  end
+
   test "workings replays recorded decisions over the stored month", %{
     month: month,
     user: user

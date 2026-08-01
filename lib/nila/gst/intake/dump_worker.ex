@@ -260,11 +260,15 @@ defmodule Nila.Gst.Intake.DumpWorker do
     with {:ok, %{pages: pages, images: images} = result} <-
            extract_source(dump, sales_extractor(), worker_attempt) do
       invoices =
-        Enum.map(pages, fn page ->
-          image = page["image"] && namespace(dump, Path.basename(page["image"]))
+        pages
+        |> Enum.with_index(1)
+        |> Enum.map(fn {artifact, ordinal} ->
+          image = artifact["image"] && namespace(dump, Path.basename(artifact["image"]))
+          source_id = "inv_" <> String.pad_leading(to_string(ordinal), 2, "0")
 
-          page
+          artifact
           |> Gstr1.normalize_invoice()
+          |> Map.put("id", namespace(dump, source_id))
           |> Map.put("image", image)
         end)
 
@@ -526,7 +530,8 @@ defmodule Nila.Gst.Intake.DumpWorker do
     {:ok, client} = Clients.get_client(dump.org_id, dump.client_id)
 
     issues =
-      ledger_issues(dump, "sales") ++ Gstr1.validation_issues(invoices)
+      ledger_issues(dump, "sales") ++
+        Gstr1.validation_issues(invoices) ++ Gstr1.blocking_issues(invoices)
 
     derived = Gstr1.derive(invoices, Gstr1.production_header(client.gstin, dump.period))
 

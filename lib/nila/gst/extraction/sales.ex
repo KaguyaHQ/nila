@@ -1,11 +1,11 @@
 defmodule Nila.Gst.Extraction.Sales do
   @moduledoc """
-  Per-page, one-invoice-per-page extraction for a sales-bills PDF.
+  Sales-invoice extraction for a sales-bills PDF.
 
-  A month's outward invoices are dumped into one PDF (one invoice per page in
-  the scanned packets sent to the auditor), so extraction runs
-  `extraction_target: "per_page"` against the sales-invoice schema and returns
-  one artifact per page that `Nila.Gst.Sales.Gstr1.normalize_invoice/1` consumes.
+  Extraction returns one artifact per discovered invoice. Page attribution is
+  evidence, not identity: one invoice may span pages and multiple invoice
+  artifacts may refer to the same page. `Nila.Gst.Intake.DumpWorker` assigns
+  stable source identity from dump ID plus artifact ordinal before persistence.
 
   The outward mirror of `Nila.Gst.Extraction.Purchase`: the implementation is
   selected via `Application.get_env(:nila, :sales_extractor,
@@ -16,11 +16,11 @@ defmodule Nila.Gst.Extraction.Sales do
   A successful `extract/2` returns:
 
       {:ok, %{
-        pages: [page_artifact],           # string-keyed maps for Gstr1
+        pages: [invoice_artifact],        # string-keyed maps for Gstr1
         images: %{"page_01.png" => bytes} # rendered page images, by basename
       }}
 
-  Each `page_artifact` carries `"page"`, `"image"` (`"images/page_NN.png"`),
+  Each `invoice_artifact` carries `"page"`, `"image"` (`"images/page_NN.png"`),
   `"data"` (the extracted fields), and `"confidence"`.
   """
 

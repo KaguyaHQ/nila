@@ -160,6 +160,152 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     assert SalesWorkings.reviewable?(reviewed.issues)
   end
 
+  test "legacy invoices receive stable contextual source IDs without mutating machine truth" do
+    pristine = invoices()
+
+    first =
+      SalesWorkings.materialize(pristine, [], @header, [], source_namespace: "sales_month_42")
+
+    second =
+      SalesWorkings.materialize(pristine, [], @header, [], source_namespace: "sales_month_42")
+
+    assert Enum.map(first.source_invoices, & &1["id"]) ==
+             ~w(sales_month_42_inv_01 sales_month_42_inv_02 sales_month_42_inv_03)
+
+    assert Enum.map(second.source_invoices, & &1["id"]) ==
+             Enum.map(first.source_invoices, & &1["id"])
+
+    refute Enum.any?(pristine, &Map.has_key?(&1, "id"))
+  end
+
+  test "duplicate-number blocker identifies every source and cannot be confirmed away" do
+    duplicate =
+      invoices()
+      |> Enum.at(1)
+      |> Map.put("id", "source-b")
+
+    original = Map.put(duplicate, "id", "source-a")
+    result = SalesWorkings.materialize([original, duplicate], [], @header)
+
+    issue = Enum.find(result.issues, &(&1["code"] == "duplicate_invoice_number"))
+    assert issue["source_ids"] == ["source-a", "source-b"]
+    assert issue["target"] =~ "duplicate_invoice_number|21/2025-26|"
+    assert issue["status"] == "open"
+    refute SalesWorkings.reviewable?(result.issues)
+
+    confirmed =
+      SalesWorkings.materialize(
+        [original, duplicate],
+        [%{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(issue)}],
+        @header
+      )
+
+    issue = Enum.find(confirmed.issues, &(&1["code"] == "duplicate_invoice_number"))
+    assert issue["status"] == "open"
+  end
+
+  test "source-targeted correction changes one duplicate while a legacy target changes neither" do
+    [invoice | _] = invoices()
+    duplicates = [Map.put(invoice, "id", "source-a"), Map.put(invoice, "id", "source-b")]
+
+    legacy = [
+      %{
+        "verb" => "correct_field",
+        "target" => "20/2025-26",
+        "payload" => %{"field" => "invoice_number", "from" => "20/2025-26", "to" => "19/2025-26"}
+      }
+    ]
+
+    legacy_result = SalesWorkings.materialize(duplicates, legacy, @header)
+
+    assert Enum.map(legacy_result.active_invoices, & &1["invoice_number"]) == [
+             "20/2025-26",
+             "20/2025-26"
+           ]
+
+    assert length(legacy_result.silent_errors) == 1
+
+    targeted = put_in(legacy, [Access.at(0), "target"], "source-b")
+    targeted_result = SalesWorkings.materialize(duplicates, targeted, @header)
+
+    assert Enum.map(targeted_result.active_invoices, &{&1["id"], &1["invoice_number"]}) == [
+             {"source-a", "20/2025-26"},
+             {"source-b", "19/2025-26"}
+           ]
+
+    refute Enum.any?(targeted_result.issues, &(&1["code"] == "duplicate_invoice_number"))
+  end
+
+  test "legacy issue confirmations replay only for a unique invoice number" do
+    [invoice | _] = invoices()
+    unique = Map.put(invoice, "id", "source-a")
+    target = "20/2025-26:grand_total_mismatch"
+    confirmation = %{"verb" => "confirm_issue", "target" => target}
+
+    unique_result = SalesWorkings.materialize([unique], [confirmation], @header)
+    issue = Enum.find(unique_result.issues, &(&1["code"] == "grand_total_mismatch"))
+    assert issue["status"] == "resolved"
+
+    duplicates = [unique, Map.put(unique, "id", "source-b")]
+    duplicate_result = SalesWorkings.materialize(duplicates, [confirmation], @header)
+
+    assert duplicate_result.issues
+           |> Enum.filter(&(&1["code"] == "grand_total_mismatch"))
+           |> Enum.all?(&(&1["status"] == "open"))
+  end
+
+  test "excluding two copies from a group of three preserves all sources and reopen restores one" do
+    invoice = invoices() |> Enum.at(1)
+
+    sources =
+      for id <- ~w(source-a source-b source-c), do: Map.put(invoice, "id", id)
+
+    exclusions =
+      for id <- ~w(source-b source-c) do
+        %{
+          "verb" => "exclude_duplicate_copy",
+          "target" => id,
+          "payload" => %{
+            "retained_source_id" => "source-a",
+            "reason" => "same scan uploaded twice",
+            "outcome" => "excluded_duplicate_copy"
+          }
+        }
+      end
+
+    excluded = SalesWorkings.materialize(sources, exclusions, @header)
+
+    assert length(excluded.source_invoices) == 3
+    assert Enum.map(excluded.active_invoices, & &1["id"]) == ["source-a"]
+    assert Enum.map(excluded.duplicate_copies, & &1["id"]) == ["source-b", "source-c"]
+
+    assert Enum.all?(excluded.duplicate_copies, fn copy ->
+             copy["duplicate_copy"] == %{
+               "excluded" => true,
+               "retained_source_id" => "source-a",
+               "reason" => "same scan uploaded twice",
+               "outcome" => "excluded_duplicate_copy"
+             }
+           end)
+
+    refute Enum.any?(excluded.issues, &(&1["code"] == "duplicate_invoice_number"))
+
+    reopened =
+      SalesWorkings.materialize(
+        sources,
+        exclusions ++ [%{"verb" => "reopen", "target" => "source-c", "payload" => %{}}],
+        @header
+      )
+
+    assert Enum.map(reopened.active_invoices, & &1["id"]) == ["source-a", "source-c"]
+    assert Enum.map(reopened.duplicate_copies, & &1["id"]) == ["source-b"]
+
+    assert Enum.any?(reopened.issues, fn issue ->
+             issue["code"] == "duplicate_invoice_number" and
+               issue["source_ids"] == ["source-a", "source-c"]
+           end)
+  end
+
   test "latest correction per field wins; invoice renumbering applies last" do
     # A low-confidence read flags the invoice number, making it correctable.
     invoices =

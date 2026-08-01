@@ -337,6 +337,46 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert length(silent) == 1
     end
 
+    test "a source-targeted correction changes only that duplicate" do
+      duplicates = [
+        seq_invoice("20/2026-27") |> Map.put("id", "source-a"),
+        seq_invoice("20/2026-27") |> Map.put("id", "source-b")
+      ]
+
+      flagged = MapSet.new([{"source-b", "invoice_number"}])
+
+      correction = %{
+        "source_id" => "source-b",
+        "field" => "invoice_number",
+        "value" => "21/2026-27"
+      }
+
+      {final, [^correction], [], _} = Gstr1.apply_corrections(duplicates, [correction], flagged)
+
+      assert Enum.map(final, &{&1["id"], &1["invoice_number"]}) == [
+               {"source-a", "20/2026-27"},
+               {"source-b", "21/2026-27"}
+             ]
+    end
+
+    test "a legacy correction does not fan out across duplicate numbers" do
+      duplicates = [
+        seq_invoice("20/2026-27") |> Map.put("id", "source-a"),
+        seq_invoice("20/2026-27") |> Map.put("id", "source-b")
+      ]
+
+      correction = %{
+        "invoice" => "20/2026-27",
+        "field" => "invoice_number",
+        "value" => "21/2026-27"
+      }
+
+      flagged = MapSet.new([{"source-a", "invoice_number"}, {"source-b", "invoice_number"}])
+
+      {final, [], [^correction], _} = Gstr1.apply_corrections(duplicates, [correction], flagged)
+      assert Enum.map(final, & &1["invoice_number"]) == ["20/2026-27", "20/2026-27"]
+    end
+
     test "a correction to a flagged field is legitimate", %{invoice: invoice} do
       flagged =
         Gstr1.flagged_fields([invoice], [
@@ -671,9 +711,21 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     end
 
     test "an export, an outward reverse charge and a missing buyer GSTIN each block" do
-      export = sales_invoice(%{"document" => %{"export" => true}})
-      rcm = sales_invoice(%{"document" => %{"reverse_charge" => true}})
-      b2c = sales_invoice(%{"buyer_gstin" => nil})
+      export = sales_invoice(%{"id" => "source-a", "document" => %{"export" => true}})
+
+      rcm =
+        sales_invoice(%{
+          "id" => "source-b",
+          "invoice_number" => "113/2025-26",
+          "document" => %{"reverse_charge" => true}
+        })
+
+      b2c =
+        sales_invoice(%{
+          "id" => "source-c",
+          "invoice_number" => "114/2025-26",
+          "buyer_gstin" => nil
+        })
 
       codes =
         [export, rcm, b2c] |> Gstr1.blocking_issues() |> Enum.map(& &1["code"]) |> Enum.sort()
@@ -685,8 +737,24 @@ defmodule Nila.Gst.Sales.Gstr1Test do
              ]
     end
 
-    test "an ordinary B2B invoice blocks nothing" do
-      assert Gstr1.blocking_issues([sales_invoice(%{})]) == []
+    test "an ordinary uniquely numbered B2B invoice blocks nothing" do
+      assert Gstr1.blocking_issues([sales_invoice(%{"id" => "source-a"})]) == []
+    end
+
+    test "duplicate invoice numbers block with an explicit source-group target" do
+      invoices = [
+        sales_invoice(%{"id" => "source-b"}),
+        sales_invoice(%{"id" => "source-a"}),
+        sales_invoice(%{"id" => "source-c", "invoice_number" => "113/2025-26"})
+      ]
+
+      assert [issue] = Gstr1.duplicate_number_issues(invoices)
+      assert issue["invoice"] == "112/2025-26"
+      assert issue["source_ids"] == ["source-a", "source-b"]
+      assert issue["level"] == "blocking"
+
+      assert issue["target"] ==
+               "duplicate_invoice_number|112/2025-26|source-a,source-b"
     end
 
     test "a blocking issue cannot be cleared by confirming it" do

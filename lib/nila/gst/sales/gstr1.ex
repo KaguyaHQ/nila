@@ -43,13 +43,13 @@ defmodule Nila.Gst.Sales.Gstr1 do
   )
   @numeric_correction_field ~r/^(printed_total_taxable|printed_total_tax|printed_grand_total)$|\.(taxable_value|quantity|unit_price|[csi]gst_(rate|amount))$/
 
-  @doc "Returns the flagged scalar fields that may be corrected for an invoice."
-  def correctable_fields(flagged, pristine_invoice_number) do
+  @doc "Returns the flagged scalar fields that may be corrected for a source invoice."
+  def correctable_fields(flagged, pristine_source_id) do
     flagged
-    |> Enum.filter(fn {invoice_number, field} ->
-      invoice_number == pristine_invoice_number and correctable_field?(field)
+    |> Enum.filter(fn {source_id, field} ->
+      source_id == pristine_source_id and correctable_field?(field)
     end)
-    |> Enum.map(fn {_invoice_number, field} -> field end)
+    |> Enum.map(fn {_source_id, field} -> field end)
     |> Enum.sort()
   end
 
@@ -65,12 +65,12 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   def correctable_field?(_field), do: false
 
-  @doc "Whether a flagged correction is authorized for an invoice and field path."
-  def correction_allowed?(flagged, invoice_number, field) do
+  @doc "Whether a flagged correction is authorized for a source invoice and field path."
+  def correction_allowed?(flagged, source_id, field) do
     correctable_field?(field) and
-      (MapSet.member?(flagged, {invoice_number, field}) or
+      (MapSet.member?(flagged, {source_id, field}) or
          Enum.any?(flagged, fn
-           {^invoice_number, flagged_field}
+           {^source_id, flagged_field}
            when is_binary(flagged_field) and is_binary(field) ->
              String.starts_with?(field, flagged_field <> "[") or
                String.starts_with?(field, flagged_field <> ".")
@@ -79,6 +79,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
              false
          end))
   end
+
+  @doc "Stable source identity when present, otherwise the legacy invoice-number identity."
+  def source_id(invoice), do: invoice["id"] || invoice["invoice_number"]
 
   @doc "Reads a scalar invoice field, including `line_items[index].field` paths."
   def field_value(invoice, field_path) do
@@ -170,7 +173,29 @@ defmodule Nila.Gst.Sales.Gstr1 do
   gets built when a real document asks for it rather than from imagination.
   """
   def blocking_issues(invoices) do
-    Enum.flat_map(invoices, &unsupported_document_issues/1)
+    Enum.flat_map(invoices, &unsupported_document_issues/1) ++ duplicate_number_issues(invoices)
+  end
+
+  @doc "One blocking issue per duplicate active invoice-number group."
+  def duplicate_number_issues(invoices) do
+    invoices
+    |> Enum.filter(&(is_binary(&1["invoice_number"]) and String.trim(&1["invoice_number"]) != ""))
+    |> Enum.group_by(& &1["invoice_number"])
+    |> Enum.filter(fn {_invoice_number, members} -> length(members) > 1 end)
+    |> Enum.map(fn {invoice_number, members} ->
+      source_ids = members |> Enum.map(&source_id/1) |> Enum.sort()
+
+      %{
+        "invoice" => invoice_number,
+        "source_ids" => source_ids,
+        "code" => "duplicate_invoice_number",
+        "level" => "blocking",
+        "message" =>
+          "invoice number #{invoice_number} belongs to #{length(source_ids)} active source rows; correct a misread number or exclude only a confirmed duplicate copy",
+        "fields" => ["invoice_number"],
+        "target" => "duplicate_invoice_number|#{invoice_number}|#{Enum.join(source_ids, ",")}"
+      }
+    end)
   end
 
   defp unsupported_document_issues(invoice) do
@@ -199,23 +224,25 @@ defmodule Nila.Gst.Sales.Gstr1 do
       invoices
       |> Enum.flat_map(fn invoice ->
         confidence = invoice["confidence"] || %{}
-        invoice_number = invoice["invoice_number"]
+        source_id = source_id(invoice)
 
         confidence
         |> flatten_confidence()
         |> Enum.filter(fn {_field, value} ->
           is_number(value) and value < @confidence_threshold
         end)
-        |> Enum.map(fn {field, _value} -> %{"invoice" => invoice_number, "field" => field} end)
+        |> Enum.map(fn {field, _value} -> %{"source_id" => source_id, "field" => field} end)
       end)
 
     validation =
       issues
       |> Enum.reject(&(&1["level"] == "info"))
       |> Enum.flat_map(fn issue ->
-        Enum.map(issue["fields"] || [], fn field ->
-          %{"invoice" => issue["invoice"], "field" => field}
-        end)
+        source_ids = issue["source_ids"] || [issue["source_id"] || issue["invoice"]]
+
+        for source_id <- source_ids,
+            field <- issue["fields"] || [],
+            do: %{"source_id" => source_id, "field" => field}
       end)
 
     MapSet.new(low_conf ++ validation, &flag_key/1)
@@ -236,18 +263,18 @@ defmodule Nila.Gst.Sales.Gstr1 do
   def apply_corrections(invoices, corrections, flagged) when is_list(corrections) do
     Enum.reduce(corrections, {invoices, [], [], flagged}, fn correction,
                                                              {acc, flagged_ok, silent, flags} ->
-      invoice_number = correction["invoice"] || correction["inum"]
+      target = correction_target(acc, correction)
 
       updated =
         Enum.map(acc, fn invoice ->
-          if invoice["invoice_number"] == invoice_number do
+          if target && source_id(invoice) == target do
             put_field(invoice, correction["field"], correction["value"])
           else
             invoice
           end
         end)
 
-      if correction_allowed?(flags, invoice_number, correction["field"]) do
+      if target && correction_allowed?(flags, target, correction["field"]) do
         {updated, [correction | flagged_ok], silent, flags}
       else
         {updated, flagged_ok, [correction | silent], flags}
@@ -825,6 +852,16 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end
   end
 
+  defp correction_target(invoices, %{"source_id" => source_id}) when is_binary(source_id) do
+    if Enum.any?(invoices, &(source_id(&1) == source_id)), do: source_id
+  end
+
+  defp correction_target(invoices, correction) do
+    invoice_number = correction["invoice"] || correction["inum"]
+    matches = Enum.filter(invoices, &(&1["invoice_number"] == invoice_number))
+    if length(matches) == 1, do: matches |> hd() |> source_id()
+  end
+
   defp sequence_issues(invoices) do
     case series_account(invoices) do
       %{missing: [_ | _] = missing} ->
@@ -846,6 +883,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   defp issue(invoice, code, message, fields, level \\ nil) do
     %{
       "invoice" => invoice["invoice_number"],
+      "source_id" => source_id(invoice),
       "code" => code,
       "message" => message,
       "fields" => fields
@@ -1298,6 +1336,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end)
   end
 
+  defp flag_key(%{"source_id" => source_id, "field" => field}), do: {source_id, field}
   defp flag_key(%{"invoice" => invoice, "field" => field}), do: {invoice, field}
   defp flag_key(%{"inum" => invoice, "field" => field}), do: {invoice, field}
 end

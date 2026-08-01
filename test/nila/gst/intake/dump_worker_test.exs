@@ -84,6 +84,13 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     assert dump.status == "extracted"
     assert length(dump.invoices) == 3
 
+    source_ids = ["d#{dump.id}_inv_01", "d#{dump.id}_inv_02", "d#{dump.id}_inv_03"]
+    assert Enum.map(dump.invoices, & &1["id"]) == source_ids
+
+    assert :ok = run(dump)
+    {:ok, recomputed} = Dumps.fetch(org.id, dump.id)
+    assert Enum.map(recomputed.invoices, & &1["id"]) == source_ids
+
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
     assert month.state == "worked"
     assert length(month.invoices) == 3
@@ -164,6 +171,11 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
 
     assert confirmed == nil or confirmed["status"] == "resolved"
     assert resolved != []
+
+    duplicate_groups = Enum.filter(replayed.issues, &(&1["code"] == "duplicate_invoice_number"))
+    assert length(duplicate_groups) == 3
+    assert Enum.all?(duplicate_groups, &(length(&1["source_ids"]) == 2))
+    assert Enum.all?(duplicate_groups, &(length(Enum.uniq(&1["source_ids"])) == 2))
   end
 
   test "a sales dump on a signed GSTR-1 is held; release derives it in", %{

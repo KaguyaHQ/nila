@@ -81,7 +81,14 @@ defmodule Nila.Gst.Sales.Resolutions do
   """
   def workings(%Month{} = month) do
     resolutions = month.id |> list() |> Enum.map(&resolution_map/1)
-    Workings.materialize(month.invoices, resolutions, header(month), document_issues(month))
+
+    Workings.materialize(
+      month.invoices,
+      resolutions,
+      header(month),
+      document_issues(month),
+      source_namespace: "sales_month_#{month.id}"
+    )
   end
 
   @doc """

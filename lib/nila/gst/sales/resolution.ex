@@ -6,8 +6,10 @@ defmodule Nila.Gst.Sales.Resolution do
   `Nila.Gst.Purchase.Resolution` — sales exceptions are validation issues on extracted
   invoices, not 2B pair-matching, so the verbs and target differ.
 
-  `target` is the invoice number for `correct_field`, or the issue key
-  (`SalesWorkings.issue_key/1`) for issue confirmations.
+  `target` is the pristine source ID for `correct_field` and duplicate-copy
+  exclusion, or the issue key (`SalesWorkings.issue_key/1`) for confirmations.
+  Legacy invoice-number targets remain replayable only when they identify one
+  source row.
 
   Verbs:
 
@@ -23,12 +25,14 @@ defmodule Nila.Gst.Sales.Resolution do
       (`"scope|key|field"`), payload optionally carries the reviewer's reason.
       The AUDITOR verdict as a product verb: the confession sheet on rebuilt
       months rides on these rows.
+    * `exclude_duplicate_copy` — excludes one confirmed duplicate source copy;
+      payload records `retained_source_id`, `reason`, and `outcome`.
     * `reopen`        — undo: discards this target's prior decisions so it
       returns to the engine's default.
   """
   use Nila.Schema
 
-  @verbs ~w(correct_field confirm_issue accept_difference reopen)
+  @verbs ~w(correct_field confirm_issue accept_difference exclude_duplicate_copy reopen)
 
   def verbs, do: @verbs
 
@@ -49,5 +53,22 @@ defmodule Nila.Gst.Sales.Resolution do
     |> cast(attrs, [:verb, :target, :payload])
     |> validate_required([:sales_month_id, :org_id, :verb, :target])
     |> validate_inclusion(:verb, @verbs)
+    |> validate_duplicate_copy_payload()
   end
+
+  defp validate_duplicate_copy_payload(changeset) do
+    if get_field(changeset, :verb) == "exclude_duplicate_copy" do
+      payload = get_field(changeset, :payload) || %{}
+
+      if Enum.all?(~w(retained_source_id reason outcome), &present?(payload[&1])) do
+        changeset
+      else
+        add_error(changeset, :payload, "must record retained_source_id, reason, and outcome")
+      end
+    else
+      changeset
+    end
+  end
+
+  defp present?(value), do: is_binary(value) and String.trim(value) != ""
 end
