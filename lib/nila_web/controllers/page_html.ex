@@ -8,6 +8,13 @@ defmodule NilaWeb.PageHTML do
 
   embed_templates "page_html/*"
 
+  @whatsapp_url "https://wa.me/918148183716?text=" <>
+                  URI.encode_www_form(
+                    "Hi, I run a CA firm and would like to test Nila with one filed month."
+                  )
+
+  def whatsapp_url, do: @whatsapp_url
+
   @doc """
   The marketing chrome — the ledger header and footer that frame every public
   page. Every public page wraps its body in this, so the paper, the red margin
@@ -39,10 +46,12 @@ defmodule NilaWeb.PageHTML do
                 Log in
               </.link>
               <.link
-                href="mailto:hello@nila.tax?subject=Put%20Nila%20to%20the%20test"
+                href={whatsapp_url()}
+                target="_blank"
+                rel="noopener noreferrer"
                 class="bg-ink rounded-field text-paper text-small inline-flex h-9 items-center px-4 font-semibold transition hover:opacity-85"
               >
-                Put us to the test
+                Arrange a test
               </.link>
             </div>
           </div>
