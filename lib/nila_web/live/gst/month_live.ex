@@ -8,11 +8,12 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Accounts.Policy
   alias Nila.Clients
   alias Nila.Gst.Chase
+  alias Nila.Gst.Chase.CompletenessSender
   alias Nila.Gst.Filing.{Calendar, Signoffs}
-  alias Nila.Gst.Intake.{DumpWorker, Dumps, Preconditions}
+  alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps, Preconditions}
   alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
-  alias Nila.Gst.Sales.Gstr1
+  alias Nila.Gst.Sales.{Account, Gstr1}
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
@@ -78,6 +79,10 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:rippled, MapSet.new())
       |> assign(:ripple_seq, 0)
       |> assign(:correcting, nil)
+      |> assign(:focused_issue, nil)
+      |> assign(:duplicate_review_target, nil)
+      |> assign(:show_completeness_override, false)
+      |> assign(:completeness_override_form, to_form(%{"reason" => ""}, as: :override))
       |> assign(:show_chase_history, false)
       |> assign(:precondition_choice, nil)
       |> assign(:can_sign_off, Policy.can?(socket.assigns.current_scope, :sign_off))
@@ -105,11 +110,19 @@ defmodule NilaWeb.Gst.MonthLive do
 
   defp valid_invoice_number(_invoices, nil), do: nil
 
-  defp valid_invoice_number(invoices, inum) do
-    if Enum.any?(invoices, fn invoice ->
-         invoice["invoice_number"] == inum or invoice["pristine_inum"] == inum
-       end),
-       do: inum
+  defp valid_invoice_number(invoices, identifier) do
+    case Enum.find(invoices, &(&1["id"] == identifier)) do
+      %{} = invoice ->
+        invoice["id"]
+
+      nil ->
+        case Enum.filter(invoices, fn invoice ->
+               invoice["invoice_number"] == identifier or invoice["pristine_inum"] == identifier
+             end) do
+          [invoice] -> invoice["id"] || identifier
+          _ambiguous_or_missing -> nil
+        end
+    end
   end
 
   defp fetch_or_nil({:ok, value}), do: value
@@ -131,6 +144,10 @@ defmodule NilaWeb.Gst.MonthLive do
   defp blocked_document("b2c_supply_unsupported"), do: "a bill with no buyer GSTIN"
   defp blocked_document(code), do: code
 
+  defp completeness_error(:open), do: "not confirmed"
+  defp completeness_error(:client_no), do: "still open"
+  defp completeness_error(:stale), do: "stale after later or unresolved intake"
+
   defp reload(socket) do
     %{client: client, period: period} = socket.assigns
     org_id = socket.assigns.current_scope.current_org.id
@@ -142,8 +159,8 @@ defmodule NilaWeb.Gst.MonthLive do
   defp assign_month(socket, purchase, sales) do
     socket
     |> assign_purchase(purchase)
-    |> assign_sales(sales)
     |> assign_dumps()
+    |> assign_sales(sales)
     |> assign_verdict(purchase, sales)
   end
 
@@ -240,6 +257,7 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:sales_month, nil)
     |> assign(:r1_signoff, nil)
     |> assign(:invoices, [])
+    |> assign(:active_invoices, [])
     |> assign(:issues_by_invoice, %{})
     |> assign(:month_issues, [])
     |> assign(:flagged, MapSet.new())
@@ -247,6 +265,9 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:gstr1_diff, nil)
     |> assign(:accepted_diffs, MapSet.new())
     |> assign(:sales_decisions, %{})
+    |> assign(:sales_account, nil)
+    |> assign(:sales_completeness, :open)
+    |> assign(:sales_confirmation, nil)
     |> assign(:open_issue_count, 0)
     |> assign(:reviewable, false)
   end
@@ -254,30 +275,60 @@ defmodule NilaWeb.Gst.MonthLive do
   defp assign_sales(socket, sales) do
     signoff = fetch_or_nil(Signoffs.latest_gstr1_signoff(sales.id))
 
-    {effective_invoices, issues, flagged, derived} =
+    workings =
       case signoff do
         nil when sales.invoices == [] ->
-          {[], [], MapSet.new(), nil}
+          %{
+            source_invoices: [],
+            active_invoices: [],
+            printed_active_invoices: [],
+            issues: [],
+            flagged: MapSet.new(),
+            derived: nil
+          }
 
         nil ->
-          workings = SalesResolutions.workings(sales)
-          {workings.invoices, workings.issues, workings.flagged, workings.derived}
+          SalesResolutions.workings(sales)
 
         signoff ->
-          {signoff.snapshot["invoices"], signoff.snapshot["issues"], MapSet.new(),
-           signoff.snapshot["derived"]}
+          source = signoff.snapshot["invoices"]
+          active = Enum.reject(source, &Map.has_key?(&1, "duplicate_copy"))
+
+          %{
+            source_invoices: source,
+            active_invoices: active,
+            printed_active_invoices: signoff.snapshot["printed_invoices"] || active,
+            issues: signoff.snapshot["issues"],
+            flagged: MapSet.new(),
+            derived: signoff.snapshot["derived"]
+          }
       end
+
+    source_invoices = workings.source_invoices
+    active_invoices = workings.active_invoices
+    issues = workings.issues
+    flagged = workings.flagged
+    derived = workings.derived
 
     invoices =
       sales.invoices
-      |> Enum.zip(effective_invoices)
+      |> Enum.zip(source_invoices)
       |> Enum.map(fn {pristine, effective} ->
         effective
         |> Map.put("pristine_inum", pristine["invoice_number"])
         |> Map.put("image_urls", sales_image_urls(effective, sales))
       end)
 
-    {month_issues, invoice_issues} = Enum.split_with(issues, &is_nil(&1["invoice"]))
+    {month_issues, invoice_issues} = Enum.split_with(issues, &is_nil(&1["source_id"]))
+    org_id = sales.org_id
+    completeness = Confirmations.status(org_id, sales.client_id, sales.period)
+    confirmation = fetch_or_nil(Confirmations.latest(org_id, sales.client_id, sales.period))
+
+    account =
+      Account.summarize(workings, %{
+        files: length(Dumps.effective(org_id, sales.client_id, sales.period, "sales")),
+        pages_read: socket.assigns.sales_pages_read
+      })
 
     filed = filed_gstr1(sales)
 
@@ -285,14 +336,18 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:sales_month, sales)
     |> assign(:r1_signoff, signoff)
     |> assign(:invoices, invoices)
-    |> assign(:issues_by_invoice, Enum.group_by(invoice_issues, & &1["invoice"]))
+    |> assign(:active_invoices, active_invoices)
+    |> assign(:issues_by_invoice, Enum.group_by(invoice_issues, & &1["source_id"]))
     |> assign(:month_issues, month_issues)
     |> assign(:flagged, flagged)
     |> assign(:derived_gstr1, derived)
     |> assign(:gstr1_diff, filed && derived && Gstr1Diff.rows(derived, filed))
     |> assign(:accepted_diffs, SalesResolutions.accepted_differences(sales))
     |> assign(:sales_decisions, SalesResolutions.latest_decisions(sales.id))
-    |> assign(:open_issue_count, Enum.count(issues, &(&1["status"] == "open")))
+    |> assign(:sales_account, account)
+    |> assign(:sales_completeness, completeness)
+    |> assign(:sales_confirmation, confirmation)
+    |> assign(:open_issue_count, account.issues.required_count)
     |> assign(:reviewable, SalesWorkings.reviewable?(issues))
   end
 
@@ -336,7 +391,8 @@ defmodule NilaWeb.Gst.MonthLive do
         r1_signed: r1_signoff != nil,
         r1_filed: sales != nil and sales.filed_at != nil,
         gstr3b_signed: gstr3b_signoff != nil,
-        gstr3b_filed: purchase != nil and purchase.filed_at != nil
+        gstr3b_filed: purchase != nil and purchase.filed_at != nil,
+        sales_complete: socket.assigns.sales_completeness == :complete
       })
 
     facts = %{
@@ -385,11 +441,55 @@ defmodule NilaWeb.Gst.MonthLive do
       nil ->
         {:noreply, socket}
 
-      inum ->
+      source_id ->
         {:noreply,
          socket
-         |> assign(:visited_inums, MapSet.put(socket.assigns.visited_inums, inum))
+         |> assign(:focused_issue, nil)
+         |> assign(:visited_inums, MapSet.put(socket.assigns.visited_inums, source_id))
          |> push_patch(to: month_path(socket, inum))}
+    end
+  end
+
+  def handle_event(
+        "review-sales-issue",
+        %{"source" => source_id, "target" => target},
+        socket
+      ) do
+    case valid_invoice_number(socket.assigns.invoices, source_id) do
+      nil ->
+        {:noreply, socket}
+
+      source_id ->
+        {:noreply,
+         socket
+         |> assign(:focused_issue, target)
+         |> assign(:duplicate_review_target, nil)
+         |> assign(:visited_inums, MapSet.put(socket.assigns.visited_inums, source_id))
+         |> push_patch(to: month_path(socket, source_id))}
+    end
+  end
+
+  def handle_event("open-duplicate-review", %{"target" => target}, socket),
+    do: {:noreply, assign(socket, :duplicate_review_target, target)}
+
+  def handle_event("close-duplicate-review", _params, socket),
+    do: {:noreply, assign(socket, :duplicate_review_target, nil)}
+
+  def handle_event("resolve-duplicate-copies", %{"source" => retained_source_id}, socket) do
+    case SalesResolutions.exclude_duplicate_copies(
+           socket.assigns.sales_month,
+           retained_source_id,
+           socket.assigns.current_scope.user.id
+         ) do
+      {:ok, _resolutions} ->
+        {:noreply,
+         socket
+         |> assign(:duplicate_review_target, nil)
+         |> reload()
+         |> put_flash(:info, "Duplicate source copies excluded from the GSTR-1 draft.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Those sources are no longer one duplicate group.")}
     end
   end
 
@@ -405,11 +505,78 @@ defmodule NilaWeb.Gst.MonthLive do
   def handle_event("toggle-workings-node", %{"node" => node}, socket),
     do: {:noreply, update(socket, :expanded_nodes, &toggle(&1, node))}
 
+  def handle_event("review-hsn-issue", %{"code" => code}, socket) do
+    nodes = Workings.hsn_node_ids(socket.assigns.active_invoices, code)
+
+    {:noreply,
+     update(socket, :expanded_nodes, fn expanded ->
+       MapSet.union(expanded, MapSet.new(nodes))
+     end)}
+  end
+
   def handle_event("close-evidence", _params, socket),
     do: {:noreply, assign(socket, selected_row: nil, correcting: nil)}
 
   def handle_event("close-invoice-review", _params, socket),
-    do: {:noreply, push_patch(socket, to: month_path(socket), replace: true)}
+    do:
+      {:noreply,
+       socket
+       |> assign(:focused_issue, nil)
+       |> push_patch(to: month_path(socket), replace: true)}
+
+  def handle_event("open-completeness-override", _params, socket),
+    do:
+      {:noreply,
+       assign(socket,
+         show_completeness_override: true,
+         completeness_override_form: to_form(%{"reason" => ""}, as: :override)
+       )}
+
+  def handle_event("close-completeness-override", _params, socket),
+    do: {:noreply, assign(socket, :show_completeness_override, false)}
+
+  def handle_event("send-completeness-request", _params, socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+
+    case CompletenessSender.enqueue_now(org_id, socket.assigns.client.id, socket.assigns.period) do
+      {:ok, _job} ->
+        {:noreply,
+         socket
+         |> assign(:show_completeness_override, false)
+         |> put_flash(:info, "WhatsApp confirmation request queued.")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "The WhatsApp request could not be queued.")}
+    end
+  end
+
+  def handle_event("save-completeness-override", %{"override" => params}, socket) do
+    case Confirmations.record_override(
+           socket.assigns.current_scope,
+           socket.assigns.client.id,
+           socket.assigns.period,
+           params
+         ) do
+      {:ok, _confirmation} ->
+        {:noreply,
+         socket
+         |> assign(:show_completeness_override, false)
+         |> reload()
+         |> put_flash(:info, "Sales collection completeness overridden with an audit reason.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply,
+         assign(
+           socket,
+           :completeness_override_form,
+           to_form(%{changeset | action: :insert}, as: :override)
+         )}
+
+      {:error, :not_allowed} ->
+        {:noreply,
+         put_flash(socket, :error, "You don't have permission to override completeness.")}
+    end
+  end
 
   def handle_event("open-chase-history", _params, socket),
     do: {:noreply, assign(socket, :show_chase_history, true)}
@@ -476,7 +643,7 @@ defmodule NilaWeb.Gst.MonthLive do
     else
       record(socket, %{
         "verb" => "correct_field",
-        "target" => invoice["pristine_inum"],
+        "target" => invoice["id"] || invoice["pristine_inum"],
         "payload" => %{
           "field" => field,
           "from" => from,
@@ -486,29 +653,27 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
-  def handle_event("mark_reviewed", _params, socket) do
-    case SalesResolutions.mark_reviewed(socket.assigns.sales_month) do
-      {:ok, _} ->
-        {:noreply, socket |> reload() |> put_flash(:info, "Sales month marked reviewed.")}
-
-      {:error, :open_issues} ->
-        {:noreply, put_flash(socket, :error, "Open issues remain — resolve them first.")}
-    end
-  end
-
   def handle_event("r1-sign-off", _params, socket) do
     case Signoffs.sign_off_gstr1(socket.assigns.sales_month, socket.assigns.current_scope) do
       {:ok, _} ->
-        {:noreply, socket |> reload() |> put_flash(:info, "GSTR-1 signed off.")}
+        {:noreply, socket |> reload() |> put_flash(:info, "GSTR-1 approved.")}
 
       {:error, :not_allowed} ->
-        {:noreply, put_flash(socket, :error, "You don't have permission to sign off.")}
+        {:noreply, put_flash(socket, :error, "You don't have permission to approve.")}
 
       {:error, :not_reviewed} ->
-        {:noreply, put_flash(socket, :error, "Mark the month reviewed first.")}
+        {:noreply, put_flash(socket, :error, "Open checks remain — resolve them first.")}
 
       {:error, :already_signed} ->
-        {:noreply, put_flash(socket, :error, "This GSTR-1 is already signed off.")}
+        {:noreply, put_flash(socket, :error, "This GSTR-1 is already approved.")}
+
+      {:error, {:sales_intake_incomplete, status}} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Sales collection is #{completeness_error(status)} — get a current client confirmation or record a senior override."
+         )}
 
       {:error, {:blocking_issues, codes}} ->
         {:noreply, put_flash(socket, :error, blocked_message(codes))}
@@ -521,7 +686,7 @@ defmodule NilaWeb.Gst.MonthLive do
         {:noreply,
          socket
          |> reload()
-         |> put_flash(:info, "Signature reopened — the month can be worked again.")}
+         |> put_flash(:info, "Approval reopened — the month can be worked again.")}
 
       {:error, :not_allowed} ->
         {:noreply, put_flash(socket, :error, "You don't have permission to reopen.")}
@@ -558,6 +723,14 @@ defmodule NilaWeb.Gst.MonthLive do
 
       {:error, :already_signed} ->
         {:noreply, put_flash(socket, :error, "This month is already signed off.")}
+
+      {:error, {:sales_intake_incomplete, status}} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Sales collection is #{completeness_error(status)} — GSTR-3B cannot be signed yet."
+         )}
     end
   end
 
@@ -736,7 +909,8 @@ defmodule NilaWeb.Gst.MonthLive do
   defp selected_invoice(%{selected_inum: nil}), do: nil
 
   defp selected_invoice(assigns) do
-    Enum.find(assigns.invoices, &(&1["invoice_number"] == assigns.selected_inum)) ||
+    Enum.find(assigns.invoices, &(&1["id"] == assigns.selected_inum)) ||
+      Enum.find(assigns.invoices, &(&1["invoice_number"] == assigns.selected_inum)) ||
       Enum.find(assigns.invoices, &(&1["pristine_inum"] == assigns.selected_inum))
   end
 
@@ -745,7 +919,7 @@ defmodule NilaWeb.Gst.MonthLive do
   defp review_navigation(assigns, selected) do
     index =
       Enum.find_index(assigns.invoices, fn invoice ->
-        invoice["pristine_inum"] == selected["pristine_inum"]
+        invoice["id"] == selected["id"]
       end)
 
     previous =
@@ -760,9 +934,15 @@ defmodule NilaWeb.Gst.MonthLive do
       |> Enum.find(&invoice_unresolved?(assigns.issues_by_invoice, &1))
 
     %{
-      previous: previous && previous["invoice_number"],
-      next: next && next["invoice_number"]
+      previous: previous && invoice_identifier(assigns.invoices, previous),
+      next: next && invoice_identifier(assigns.invoices, next)
     }
+  end
+
+  defp invoice_identifier(invoices, invoice) do
+    if Enum.count(invoices, &(&1["invoice_number"] == invoice["invoice_number"])) == 1,
+      do: invoice["invoice_number"],
+      else: invoice["id"]
   end
 
   defp invoice_unresolved?(issues_by_invoice, invoice) do
@@ -783,9 +963,15 @@ defmodule NilaWeb.Gst.MonthLive do
   def render(assigns) do
     selected_invoice = selected_invoice(assigns)
 
+    duplicate_issue =
+      Enum.find(assigns.month_issues, fn issue ->
+        SalesWorkings.issue_key(issue) == assigns.duplicate_review_target
+      end)
+
     assigns =
       assigns
       |> assign(:selected_invoice, selected_invoice)
+      |> assign(:duplicate_issue, duplicate_issue)
       |> assign(:review_navigation, review_navigation(assigns, selected_invoice))
 
     ~H"""
@@ -844,7 +1030,11 @@ defmodule NilaWeb.Gst.MonthLive do
           <Sales.sales_section
             sales_month={@sales_month}
             invoices={@invoices}
+            active_invoices={@active_invoices}
             open_issue_count={@open_issue_count}
+            account={@sales_account}
+            completeness={@sales_completeness}
+            confirmation={@sales_confirmation}
             r1_signoff={@r1_signoff}
             month_issues={@month_issues}
             issues_by_invoice={@issues_by_invoice}
@@ -876,6 +1066,7 @@ defmodule NilaWeb.Gst.MonthLive do
                 r1_signoff={@r1_signoff}
                 open_issue_count={@open_issue_count}
                 reviewable={@reviewable}
+                completeness={@sales_completeness}
                 can_sign_off={@can_sign_off}
               />
             </:actions>
@@ -923,6 +1114,11 @@ defmodule NilaWeb.Gst.MonthLive do
         asks={@asks}
         selected_row={@selected_row}
         selected_invoice={@selected_invoice}
+        source_invoices={@invoices}
+        duplicate_issue={@duplicate_issue}
+        focused_issue={@focused_issue}
+        show_completeness_override={@show_completeness_override}
+        completeness_override_form={@completeness_override_form}
         issues_by_invoice={@issues_by_invoice}
         decisions={@sales_decisions}
         review_navigation={@review_navigation}

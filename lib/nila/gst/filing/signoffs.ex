@@ -30,7 +30,7 @@ defmodule Nila.Gst.Filing.Signoffs do
   alias Nila.Accounts.Policy
 
   alias Nila.Gst.Filing.Signoff
-  alias Nila.Gst.Intake.Dumps
+  alias Nila.Gst.Intake.{Confirmations, Dumps}
   alias Nila.Gst.Purchase.Resolutions
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
@@ -46,7 +46,9 @@ defmodule Nila.Gst.Filing.Signoffs do
   month to `reviewed`, in one transaction.
 
   Returns `{:error, :not_allowed}` without the `sign_off` capability,
-  `{:error, :already_signed}` when the month is not in `worked`.
+  `{:error, :already_signed}` when the month is not in `worked`, and
+  `{:error, {:sales_intake_incomplete, status}}` until sales collection is
+  confirmed and current.
   """
   def sign_off(%PurchaseMonth{} = month, scope) do
     if Policy.can?(scope, :sign_off) do
@@ -66,29 +68,31 @@ defmodule Nila.Gst.Filing.Signoffs do
             {:error, :already_signed}
 
           true ->
-            workings = Resolutions.workings(month)
+            with :ok <- require_sales_intake_complete(month) do
+              workings = Resolutions.workings(month)
 
-            snapshot = %{
-              "summary" => workings.summary,
-              "itc" => workings.itc,
-              "gstr3b" => workings.gstr3b,
-              "rows" => workings.rows
-            }
-
-            signoff =
-              %Signoff{
-                org_id: month.org_id,
-                client_month_id: month.id,
-                signed_by_id: scope.user.id
+              snapshot = %{
+                "summary" => workings.summary,
+                "itc" => workings.itc,
+                "gstr3b" => workings.gstr3b,
+                "rows" => workings.rows
               }
-              |> Signoff.changeset(%{artifact: "gstr3b", snapshot: snapshot})
-              |> Repo.insert!()
 
-            month
-            |> PurchaseMonth.changeset(%{state: "reviewed"})
-            |> Repo.update!()
+              signoff =
+                %Signoff{
+                  org_id: month.org_id,
+                  client_month_id: month.id,
+                  signed_by_id: scope.user.id
+                }
+                |> Signoff.changeset(%{artifact: "gstr3b", snapshot: snapshot})
+                |> Repo.insert!()
 
-            {:ok, signoff}
+              month
+              |> PurchaseMonth.changeset(%{state: "reviewed"})
+              |> Repo.update!()
+
+              {:ok, signoff}
+            end
         end
       end)
     else
@@ -101,14 +105,15 @@ defmodule Nila.Gst.Filing.Signoffs do
   corrections applied, issues as decided, the portal-shaped derivation) and
   transitions the sales month to `reviewed`, in one transaction.
 
-  The maker gate comes first: the sales month must already be `reviewed`
-  (`SalesResolutions.mark_reviewed/1`) — the checker signs what the maker
-  finished. The signature is its own fact, not a state: the month's state
-  stays maker-owned, and "signed" means a live signoff row exists. Returns
+  The approval transaction re-checks the effective issues and completeness,
+  marks the worked month reviewed, and freezes the approved draft under the
+  checker’s identity. The signature is its own durable fact, and "approved"
+  means a live signoff row exists. Returns
   `{:error, :not_allowed}` without the `sign_off` capability,
   `{:error, :not_reviewed}` before the maker gate,
-  `{:error, :already_signed}` when a live signature exists, and
-  `{:error, {:blocking_issues, codes}}` when the month holds a document the
+  `{:error, :already_signed}` when a live signature exists,
+  `{:error, {:sales_intake_incomplete, status}}` until sales collection is
+  confirmed and current, and `{:error, {:blocking_issues, codes}}` when the month holds a document the
   return has no table for (see `Nila.Gst.Sales.Gstr1.blocking_issues/1`).
   """
   def sign_off_gstr1(%SalesMonth{} = month, scope) do
@@ -124,11 +129,21 @@ defmodule Nila.Gst.Filing.Signoffs do
           match?({:ok, _}, latest_gstr1_signoff(month.id)) ->
             {:error, :already_signed}
 
-          month.state != "reviewed" ->
-            {:error, :not_reviewed}
-
           true ->
-            sign_reviewed_gstr1(month, scope)
+            workings = SalesResolutions.workings(month)
+            blocking = Enum.filter(workings.issues, &SalesWorkings.blocking?/1)
+
+            if blocking == [] do
+              with true <- SalesWorkings.reviewable?(workings.issues),
+                   :ok <- require_sales_intake_complete(month) do
+                approve_gstr1(month, scope, workings)
+              else
+                false -> {:error, :not_reviewed}
+                {:error, _reason} = error -> error
+              end
+            else
+              {:error, {:blocking_issues, blocking |> Enum.map(& &1["code"]) |> Enum.uniq()}}
+            end
         end
       end)
     else
@@ -136,28 +151,38 @@ defmodule Nila.Gst.Filing.Signoffs do
     end
   end
 
-  # Checked here as well as at `SalesResolutions.mark_reviewed/1`, because this
-  # is the act that makes a number final, and a month may have reached
-  # `reviewed` before a rule existed.
-  defp sign_reviewed_gstr1(month, scope) do
-    workings = SalesResolutions.workings(month)
-
-    case Enum.filter(workings.issues, &SalesWorkings.blocking?/1) do
-      [] ->
-        snapshot = %{
-          "invoices" => workings.invoices,
-          "issues" => workings.issues,
-          "derived" => workings.derived
-        }
-
-        {:ok,
-         %Signoff{org_id: month.org_id, sales_month_id: month.id, signed_by_id: scope.user.id}
-         |> Signoff.changeset(%{artifact: "gstr1", snapshot: snapshot})
-         |> Repo.insert!()}
-
-      blocking ->
-        {:error, {:blocking_issues, blocking |> Enum.map(& &1["code"]) |> Enum.uniq()}}
+  defp require_sales_intake_complete(month) do
+    case Confirmations.status(month.org_id, month.client_id, month.period) do
+      :complete -> :ok
+      status -> {:error, {:sales_intake_incomplete, status}}
     end
+  end
+
+  defp approve_gstr1(month, scope, workings) do
+    draft = %{
+      "invoices" => workings.invoices,
+      "printed_invoices" => workings.printed_active_invoices,
+      "issues" => workings.issues,
+      "derived" => workings.derived
+    }
+
+    snapshot = Map.put(draft, "draft_version", draft_version(draft))
+
+    month
+    |> SalesMonth.changeset(%{state: "reviewed"})
+    |> Repo.update!()
+
+    {:ok,
+     %Signoff{org_id: month.org_id, sales_month_id: month.id, signed_by_id: scope.user.id}
+     |> Signoff.changeset(%{artifact: "gstr1", snapshot: snapshot})
+     |> Repo.insert!()}
+  end
+
+  defp draft_version(draft) do
+    draft
+    |> Jason.encode!()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
   end
 
   @doc """

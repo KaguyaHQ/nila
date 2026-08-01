@@ -267,11 +267,11 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       assert is_nil(verdict.door)
     end
 
-    test "sales drafted and clean: the header yields the review gesture to the register" do
+    test "sales drafted and clean: the header yields the approval gesture to the register" do
       verdict =
         Verdict.resolve(facts(tracks: %{sales: :open, purchase: :clear}, can_sign_off: false))
 
-      assert verdict.headline =~ "mark it reviewed below"
+      assert verdict.headline =~ "approve it below"
       assert is_nil(verdict.door)
     end
 

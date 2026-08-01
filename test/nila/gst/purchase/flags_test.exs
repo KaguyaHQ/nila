@@ -1,7 +1,10 @@
 defmodule Nila.Gst.Purchase.FlagsTest do
   use ExUnit.Case, async: true
 
+  alias Nila.Gst.Hsn.{Entry, Release}
   alias Nila.Gst.Purchase.Flags
+  alias Nila.Gst.Rates.Release, as: RateRelease
+  alias Nila.Gst.Rates.Rule, as: RateRule
 
   # Valid checksummed GSTINs (Tamil Nadu 33, Maharashtra 27).
   @tn_vendor_gstin "33AAACR5055K1ZE"
@@ -287,6 +290,113 @@ defmodule Nila.Gst.Purchase.FlagsTest do
       flags = Flags.evaluate(invoice(%{}), @entity_ctx, vendor_dir)
 
       refute "name_gstin_mismatch" in codes(flags)
+    end
+  end
+
+  describe "HSN/SAC directory validity" do
+    test "flags prefix-only and unknown codes while accepting an exact official row" do
+      directory = %{
+        release: %Release{id: 7},
+        entries: %{
+          "847330" => %Entry{
+            code: "847330",
+            kind: "hsn",
+            digits: 6,
+            description: "Parts and accessories"
+          }
+        },
+        prefixes: MapSet.new(~w(8 84 847 8473 84733))
+      }
+
+      ctx = Map.put(@entity_ctx, "hsn_directory", directory)
+
+      assert invoice(%{}) |> Flags.evaluate(ctx) |> only("invalid_hsn_sac") == []
+
+      incomplete =
+        invoice(%{
+          "line_items" => [
+            %{"description" => "Dock", "hsn_sac" => "84733", "taxable_paise" => 10_000_00}
+          ]
+        })
+
+      assert [_flag] = incomplete |> Flags.evaluate(ctx) |> only("incomplete_hsn_sac")
+
+      invalid =
+        invoice(%{
+          "line_items" => [
+            %{
+              "description" => "Dock",
+              "hsn_sac" => "84739999",
+              "taxable_paise" => 10_000_00
+            }
+          ]
+        })
+
+      assert [_flag] = invalid |> Flags.evaluate(ctx) |> only("invalid_hsn_sac")
+    end
+  end
+
+  describe "statutory candidate rate" do
+    test "routes a printed HSN/rate mismatch into purchase review" do
+      hsn_directory = %{
+        release: %Release{id: 7},
+        entries: %{
+          "71069290" => %Entry{
+            code: "71069290",
+            kind: "hsn",
+            digits: 8,
+            description: "Other silver"
+          }
+        },
+        prefixes: MapSet.new(~w(7 71 710 7106 71069 710692 7106929))
+      }
+
+      rate_directory = %{
+        release: %RateRelease{
+          id: 8,
+          notification_number: "9/2025-Integrated Tax (Rate)",
+          effective_from: ~D[2025-09-22]
+        },
+        rules: [
+          %RateRule{
+            serial_number: 3,
+            schedule: "IV",
+            total_rate: Decimal.new("3"),
+            raw_code_expression: "7106",
+            raw_description: "Silver",
+            parsed_scope: %{
+              "includes" => ["7106"],
+              "excludes" => [],
+              "ranges" => [],
+              "any_chapter" => false
+            },
+            parser_confidence: "automatic"
+          }
+        ]
+      }
+
+      ctx =
+        @entity_ctx
+        |> Map.put("hsn_directory", hsn_directory)
+        |> Map.put("rate_directory", rate_directory)
+
+      silver =
+        invoice(%{
+          "line_items" => [
+            %{
+              "description" => "Silver rod",
+              "hsn_sac" => "71069290",
+              "taxable_paise" => 10_000_00,
+              "cgst_rate" => 9,
+              "sgst_rate" => 9,
+              "igst_rate" => nil
+            }
+          ]
+        })
+
+      assert [flag] = silver |> Flags.evaluate(ctx) |> only("statutory_rate_mismatch")
+      assert flag["reason"] =~ "statutory candidate 3%"
+      assert flag["severity"] == "review"
     end
   end
 

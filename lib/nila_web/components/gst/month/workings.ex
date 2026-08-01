@@ -48,6 +48,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       |> assign(:docs, doc_rows(assigns.derived))
       |> assign(:names, names_by_gstin(assigns.invoices))
       |> assign(:buyers, buyers_by_inum(assigns.invoices))
+      |> assign(:invoice_refs, invoice_refs_by_inum(assigns.invoices))
       |> assign_diff()
 
     assigns =
@@ -171,6 +172,15 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               locked={@locked}
               class="pl-6"
             />
+          </:col>
+          <:col :let={row} label="Description">
+            <span
+              :if={row.kind == :node}
+              class="text-ink-subtle block max-w-72 truncate"
+              title={row.description}
+            >
+              {row.description || "Official description unavailable"}
+            </span>
           </:col>
           <:col :let={row} label="Rate" align="right">
             <span :if={row.kind == :node} class="text-ink-subtle">
@@ -420,6 +430,13 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
 
   defp rate_node_id(rate), do: dom_id("gstr1-workings-rate-#{trim_rate(rate)}")
 
+  def hsn_node_ids(invoices, code) do
+    invoices
+    |> Gstr1.hsn_summary()
+    |> Enum.filter(&(&1["hsn_sc"] == code))
+    |> Enum.map(&hsn_node_id/1)
+  end
+
   defp hsn_node_id(row),
     do: dom_id("gstr1-workings-hsn-#{row["hsn_sc"] || "none"}-#{trim_rate(row["rt"])}")
 
@@ -511,7 +528,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     do: JS.push("toggle-workings-node", value: %{node: row.id})
 
   defp row_click(%{kind: :contrib} = row),
-    do: JS.push("select-invoice", value: %{inum: row.inum})
+    do: JS.push("select-invoice", value: %{inum: row.ref})
 
   defp row_click(%{kind: :diff}), do: nil
 
@@ -531,9 +548,12 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       }
 
       invoices =
-        Enum.flat_map(party["inv"] || [], fn inv ->
+        party["inv"]
+        |> List.wrap()
+        |> map_with_inum_occurrence(fn inv, occurrence ->
           inv_totals = invoice_totals(inv)
-          row_id = contrib_id(id, inv["inum"])
+          ref = invoice_ref(assigns.invoice_refs, inv["inum"], occurrence)
+          row_id = contrib_id(id, ref)
 
           [
             %{
@@ -541,6 +561,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               id: row_id,
               parent: id,
               inum: inv["inum"],
+              ref: ref,
               label: invoice_label(inv),
               taxable: inv_totals.taxable,
               tax: inv_totals.tax
@@ -548,6 +569,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
             | diff_rows(assigns.diff_by_inum[inv["inum"]] || [], id, row_id)
           ]
         end)
+        |> List.flatten()
 
       [node | invoices]
     end)
@@ -567,7 +589,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         tax: bucket["tax"]
       }
 
-      [node | contrib_rows(contribs, id, assigns.buyers)]
+      [node | contrib_rows(contribs, id, assigns.buyers, assigns.invoice_refs)]
     end)
   end
 
@@ -580,28 +602,50 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         kind: :node,
         id: id,
         hsn: row["hsn_sc"],
+        description: row["description"],
         rate: row["rt"],
         count: length(contribs),
         taxable: row["txval"],
         tax: hsn_tax(row)
       }
 
-      [node | contrib_rows(contribs, id, assigns.buyers)] ++
+      [node | contrib_rows(contribs, id, assigns.buyers, assigns.invoice_refs)] ++
         diff_rows(hsn_claims(assigns.hsn_mismatches, row), id, id)
     end)
   end
 
-  defp contrib_rows(contribs, parent, buyers) do
-    for contrib <- contribs do
+  defp contrib_rows(contribs, parent, buyers, invoice_refs) do
+    map_with_inum_occurrence(contribs, fn contrib, occurrence ->
+      ref = invoice_ref(invoice_refs, contrib["inum"], occurrence)
+
       %{
         kind: :contrib,
-        id: contrib_id(parent, contrib["inum"]),
+        id: contrib_id(parent, ref),
         parent: parent,
         inum: contrib["inum"],
+        ref: ref,
         label: buyers[contrib["inum"]],
         taxable: contrib["txval"],
         tax: contrib["tax"]
       }
+    end)
+  end
+
+  defp map_with_inum_occurrence(items, mapper) do
+    {rows, _counts} =
+      Enum.map_reduce(items, %{}, fn item, counts ->
+        inum = item["inum"]
+        occurrence = Map.get(counts, inum, 0)
+        {mapper.(item, occurrence), Map.put(counts, inum, occurrence + 1)}
+      end)
+
+    rows
+  end
+
+  defp invoice_ref(invoice_refs, inum, occurrence) do
+    case Map.get(invoice_refs, inum, []) do
+      [_single] -> inum
+      refs -> Enum.at(refs, occurrence, inum)
     end
   end
 
@@ -661,6 +705,10 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   # invoice, not off any regrouping.
   defp buyers_by_inum(invoices) do
     Map.new(invoices, &{&1["invoice_number"], &1["buyer_name"]})
+  end
+
+  defp invoice_refs_by_inum(invoices) do
+    Enum.group_by(invoices, & &1["invoice_number"], & &1["id"])
   end
 
   defp names_by_gstin(invoices) do

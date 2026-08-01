@@ -74,8 +74,20 @@ defmodule Nila.Gst.Purchase.Months do
 
     client_month
     |> Month.changeset(attrs)
+    |> maybe_put_hsn_release(attrs)
+    |> maybe_put_rate_release(attrs)
     |> Repo.insert_or_update()
   end
+
+  defp maybe_put_hsn_release(changeset, %{hsn_master_release_id: release_id}),
+    do: Ecto.Changeset.put_change(changeset, :hsn_master_release_id, release_id)
+
+  defp maybe_put_hsn_release(changeset, _attrs), do: changeset
+
+  defp maybe_put_rate_release(changeset, %{gst_rate_release_id: release_id}),
+    do: Ecto.Changeset.put_change(changeset, :gst_rate_release_id, release_id)
+
+  defp maybe_put_rate_release(changeset, _attrs), do: changeset
 
   @doc """
   Tenant-scoped storage key for one scanned bill. The key is derived from the

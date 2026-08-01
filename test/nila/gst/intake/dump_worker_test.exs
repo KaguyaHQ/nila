@@ -3,6 +3,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
   use Oban.Testing, repo: Nila.Repo
 
   import Nila.AccountsFixtures
+  import Nila.GstFixtures, only: [confirm_sales_complete!: 3]
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
@@ -67,6 +68,10 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     end)
 
     {:ok, reviewed} = SalesResolutions.mark_reviewed(month)
+
+    {:ok, client} = Clients.get_client(month.org_id, month.client_id)
+    _confirmation = confirm_sales_complete!(scope.current_org, client, month.period)
+
     {:ok, signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
     {reviewed, signoff}
   end
@@ -83,6 +88,13 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     {:ok, dump} = Dumps.fetch(org.id, dump.id)
     assert dump.status == "extracted"
     assert length(dump.invoices) == 3
+
+    source_ids = ["d#{dump.id}_inv_01", "d#{dump.id}_inv_02", "d#{dump.id}_inv_03"]
+    assert Enum.map(dump.invoices, & &1["id"]) == source_ids
+
+    assert :ok = run(dump)
+    {:ok, recomputed} = Dumps.fetch(org.id, dump.id)
+    assert Enum.map(recomputed.invoices, & &1["id"]) == source_ids
 
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
     assert month.state == "worked"
@@ -164,6 +176,11 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
 
     assert confirmed == nil or confirmed["status"] == "resolved"
     assert resolved != []
+
+    duplicate_groups = Enum.filter(replayed.issues, &(&1["code"] == "duplicate_invoice_number"))
+    assert length(duplicate_groups) == 3
+    assert Enum.all?(duplicate_groups, &(length(&1["source_ids"]) == 2))
+    assert Enum.all?(duplicate_groups, &(length(Enum.uniq(&1["source_ids"])) == 2))
   end
 
   test "a sales dump on a signed GSTR-1 is held; release derives it in", %{
@@ -236,6 +253,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     first = bring_in(org, client, user, "purchase", "%PDF-1.4 fake")
     assert :ok = run(first)
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    confirm_sales_complete!(org, client, @period)
     {:ok, _signoff} = Signoffs.sign_off(month, scope)
     assert {:ok, _filed} = Signoffs.mark_filed(month, scope)
 

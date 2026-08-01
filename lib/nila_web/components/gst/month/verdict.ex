@@ -159,10 +159,19 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     else
       %{
         tone: :calm,
-        headline: "GSTR-1 drafted and clean. Review the register, then mark it reviewed below.",
+        headline: "GSTR-1 drafted and clean. Review the register, then approve it below.",
         door: nil
       }
     end
+  end
+
+  defp settled_door_and_headline(%{tracks: %{sales: :awaiting_confirmation}}) do
+    %{
+      tone: :calm,
+      headline:
+        "GSTR-1 review is complete. Filing readiness waits for the client's current sales-document confirmation.",
+      door: nil
+    }
   end
 
   # 5. Worked clean and signable now. The senior's door; the junior has none,

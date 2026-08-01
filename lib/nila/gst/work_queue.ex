@@ -33,7 +33,7 @@ defmodule Nila.Gst.WorkQueue do
 
   alias Nila.Gst.Chase
   alias Nila.Gst.Filing.{Calendar, Signoffs}
-  alias Nila.Gst.Intake.Dumps
+  alias Nila.Gst.Intake.{Confirmations, Dumps}
   alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
@@ -102,6 +102,7 @@ defmodule Nila.Gst.WorkQueue do
 
     need_decision = purchase_need_decision(purchase)
     sales_open = sales_open_issues(sales)
+    sales_complete = sales && Confirmations.complete?(sales.org_id, sales.client_id, sales.period)
 
     r1_signed = sales != nil and match?({:ok, _}, Signoffs.latest_gstr1_signoff(sales.id))
     r1_filed = sales != nil and sales.filed_at != nil
@@ -118,7 +119,8 @@ defmodule Nila.Gst.WorkQueue do
         r1_signed: r1_signed,
         r1_filed: r1_filed,
         gstr3b_signed: gstr3b_signed,
-        gstr3b_filed: gstr3b_filed
+        gstr3b_filed: gstr3b_filed,
+        sales_complete: sales_complete
       })
 
     deadline = deadline(period, today, r1_filed, gstr3b_filed)
@@ -179,26 +181,18 @@ defmodule Nila.Gst.WorkQueue do
   at work that cannot be done correctly, and any answer given is guessing that
   the real 2B will contradict on the 14th.
   """
-  def track_states(
-        %{
-          purchase: _,
-          sales: _,
-          need_decision: _,
-          gstr2b_in: _,
-          gstr2b_available: _,
-          r1_signed: _,
-          r1_filed: _,
-          gstr3b_signed: _,
-          gstr3b_filed: _
-        } = facts
-      ) do
+  def track_states(facts) when is_map(facts) do
     %{sales: sales_track(facts), purchase: purchase_track(facts)}
   end
 
   defp sales_track(%{sales: nil}), do: :absent
   defp sales_track(%{r1_filed: true}), do: :filed
   defp sales_track(%{r1_signed: true}), do: :signed
-  defp sales_track(%{sales: %{state: "reviewed"}}), do: :clear
+
+  defp sales_track(%{sales: %{state: "reviewed"}} = facts) do
+    if Map.get(facts, :sales_complete, true), do: :clear, else: :awaiting_confirmation
+  end
+
   defp sales_track(_facts), do: :open
 
   defp purchase_track(%{purchase: nil}), do: :absent
@@ -232,7 +226,7 @@ defmodule Nila.Gst.WorkQueue do
       Enum.all?(tracks, &(&1 == :filed)) -> :done
       Enum.any?(tracks, &(&1 == :signed)) -> :to_file
       Enum.any?(tracks, &(&1 in [:open, :need_2b])) -> :needs_you
-      Enum.any?(tracks, &(&1 == :absent)) -> :waiting_on_client
+      Enum.any?(tracks, &(&1 in [:absent, :awaiting_confirmation])) -> :waiting_on_client
       Enum.any?(tracks, &(&1 == :clear)) -> :waiting_on_senior
       true -> :waiting_on_portal
     end

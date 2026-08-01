@@ -36,8 +36,8 @@ defmodule Nila.Gst.Chase.Sender do
     with {:ok, client} <- Clients.get_client(org_id, client_id),
          true <- client.chase_channel == channel and channel != "none",
          org <- Orgs.get_org!(org_id),
-         {:ok, _delivery} <- deliver(channel, org, client, args),
-         {:ok, _ask} <- record_ask(args) do
+         {:ok, delivery} <- deliver(channel, org, client, args),
+         {:ok, _ask} <- record_ask(args, delivery) do
       Logger.info("GST chase sent",
         org_id: org_id,
         client_id: client_id,
@@ -93,17 +93,22 @@ defmodule Nila.Gst.Chase.Sender do
     end
   end
 
-  defp record_ask(args) do
+  defp record_ask(args, delivery) do
     Chase.record_ask(
       %{org_id: args["org_id"], client_id: args["client_id"]},
       %{
         kind: args["kind"],
         period: args["period"],
         body: args["body"],
-        channel: args["channel"]
+        channel: args["channel"],
+        provider_ref: provider_ref(delivery)
       }
     )
   end
+
+  defp provider_ref(%{"messages" => [%{"id" => id} | _]}), do: id
+  defp provider_ref(%{"id" => id}), do: id
+  defp provider_ref(_delivery), do: nil
 
   defp month_label(<<year::binary-size(4), "-", month::binary-size(2)>>) do
     Date.new!(String.to_integer(year), String.to_integer(month), 1)

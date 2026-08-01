@@ -155,6 +155,9 @@ defmodule Nila.Gst.Purchase.Books do
       "discount_rate" => line["discount_rate"],
       "discount_paise" => paise_or_nil(line["discount_amount"]),
       "taxable_paise" => paise(line["taxable_value"]),
+      "cgst_rate" => line["cgst_rate"],
+      "sgst_rate" => line["sgst_rate"],
+      "igst_rate" => line["igst_rate"],
       "tax_paise" => %{
         "cgst" => paise(line["cgst_amount"]),
         "sgst" => paise(line["sgst_amount"]),

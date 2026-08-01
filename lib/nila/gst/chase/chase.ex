@@ -84,6 +84,16 @@ defmodule Nila.Gst.Chase do
     """
   end
 
+  def draft(:sales_completeness, %Org{} = org, client, period) do
+    """
+    Dear #{client.name},
+
+    For #{month_label(period)}, have you sent all sales invoices, credit/debit notes, and cancellation details?
+
+    #{signature(org)}\
+    """
+  end
+
   @doc """
   `:missing_bills` chases the specific gaps from `gaps/1`: each 2B-only bill
   is listed with vendor, invoice number, and amount; sequence gaps in the
@@ -118,6 +128,15 @@ defmodule Nila.Gst.Chase do
     %Delivery{org_id: org_id, client_id: client_id, sent_by_id: scope[:sent_by_id]}
     |> Delivery.changeset(attrs)
     |> Repo.insert()
+  end
+
+  @doc "Fetches one machine-addressable ask inside an organization."
+  def fetch_ask_by_ref(org_id, ask_ref) do
+    Repo.fetch_one(
+      from a in Delivery,
+        where: a.org_id == ^org_id and a.ask_ref == ^ask_ref,
+        limit: 1
+    )
   end
 
   @doc """

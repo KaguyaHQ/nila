@@ -18,6 +18,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     %{user: user, org: org} = user_with_org_fixture()
     client = client_fixture(org)
     client_month = seed_month(org, client)
+    confirm_sales_complete!(org, client, @period)
 
     %{
       conn: log_in_user(conn, user),
@@ -293,6 +294,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
         client_id: client.id,
         period: @period,
         state: "reviewed",
+        cess_evaluated: true,
         invoices: []
       })
 
@@ -430,7 +432,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
         org_id: org.id,
         client_id: client.id,
         period: @period,
-        state: "reviewed"
+        state: "reviewed",
+        cess_evaluated: true
       })
 
     scope = Nila.Accounts.Scope.for_user(user)
@@ -468,7 +471,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
         org_id: org.id,
         client_id: client.id,
         period: @period,
-        state: "reviewed"
+        state: "reviewed",
+        cess_evaluated: true
       })
 
     scope = Nila.Accounts.Scope.for_user(user)
@@ -511,7 +515,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
         org_id: org.id,
         client_id: client.id,
         period: @period,
-        state: "reviewed"
+        state: "reviewed",
+        cess_evaluated: true
       })
 
     scope = Nila.Accounts.Scope.for_user(user)

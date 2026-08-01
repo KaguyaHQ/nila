@@ -10,6 +10,24 @@ defmodule Nila.Integrations.WhatsAppStub do
   @impl true
   def send_message(_connection, recipient, draft, template_name) do
     send(self(), {:whatsapp_send_message, recipient, draft, template_name})
-    {:ok, %{message_id: "wamid.test"}}
+    {:ok, %{"messages" => [%{"id" => "wamid.test"}]}}
+  end
+
+  @impl true
+  def send_completeness_request(
+        _connection,
+        recipient,
+        period_label,
+        template_name,
+        yes_payload,
+        no_payload
+      ) do
+    send(
+      self(),
+      {:whatsapp_completeness_request, recipient, period_label, template_name, yes_payload,
+       no_payload}
+    )
+
+    {:ok, %{"messages" => [%{"id" => "wamid.completeness"}]}}
   end
 end

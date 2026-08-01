@@ -15,6 +15,9 @@ defmodule Nila.Gst.Sales.Resolutions do
 
   alias Nila.Clients
   alias Nila.Gst.Filing.Signoffs
+  alias Nila.Gst.Hsn.Directory
+  alias Nila.Gst.RateHistory
+  alias Nila.Gst.Rates.Directory, as: RateDirectory
   alias Nila.Gst.Replay
   alias Nila.Gst.Sales.{Gstr1, Month, Resolution, Workings}
   alias Nila.Repo
@@ -53,6 +56,7 @@ defmodule Nila.Gst.Sales.Resolutions do
       month = lock_month(month)
 
       with :ok <- refuse_signed(month),
+           :ok <- reject_direct_duplicate_exclusion(attrs),
            {:ok, resolution} <-
              %Resolution{
                org_id: month.org_id,
@@ -65,6 +69,70 @@ defmodule Nila.Gst.Sales.Resolutions do
         {:ok, resolution}
       end
     end)
+  end
+
+  @doc "Marks every other member of one duplicate-number group as source copies."
+  def exclude_duplicate_copies(%Month{} = month, retained_source_id, decided_by_id) do
+    Repo.transact(fn ->
+      month = lock_month(month)
+
+      with :ok <- refuse_signed(month),
+           {:ok, copies} <- duplicate_copies_for(workings(month), retained_source_id) do
+        resolutions =
+          Enum.map(copies, fn copy ->
+            %Resolution{
+              org_id: month.org_id,
+              sales_month_id: month.id,
+              decided_by_id: decided_by_id
+            }
+            |> Resolution.changeset(%{
+              "verb" => "exclude_duplicate_copy",
+              "target" => "duplicate_copy|#{copy["id"]}",
+              "payload" => %{
+                "excluded_source_id" => copy["id"],
+                "retained_source_id" => retained_source_id,
+                "reason" => "Reviewer confirmed both sources are copies of the same invoice",
+                "outcome" => "same_invoice_uploaded_twice"
+              }
+            })
+            |> Repo.insert!()
+          end)
+
+        reopen_review(month)
+        {:ok, resolutions}
+      end
+    end)
+  end
+
+  @doc "Restores one source previously excluded as a duplicate copy."
+  def restore_duplicate_copy(%Month{} = month, source_id, decided_by_id) do
+    if Enum.any?(workings(month).duplicate_copies, &(&1["id"] == source_id)) do
+      record(
+        month,
+        %{"verb" => "reopen", "target" => "duplicate_copy|#{source_id}"},
+        decided_by_id
+      )
+    else
+      {:error, :not_duplicate_copy}
+    end
+  end
+
+  defp duplicate_copies_for(workings, retained_source_id) do
+    with %{} = retained <-
+           Enum.find(workings.active_invoices, &(&1["id"] == retained_source_id)),
+         number when is_binary(number) and number != "" <- retained["invoice_number"],
+         members <- Enum.filter(workings.active_invoices, &(&1["invoice_number"] == number)),
+         true <- length(members) > 1 do
+      {:ok, Enum.reject(members, &(&1["id"] == retained_source_id))}
+    else
+      _invalid -> {:error, :not_duplicate_group}
+    end
+  end
+
+  defp reject_direct_duplicate_exclusion(attrs) do
+    if (attrs["verb"] || attrs[:verb]) == "exclude_duplicate_copy",
+      do: {:error, :use_duplicate_resolution},
+      else: :ok
   end
 
   defp refuse_signed(%Month{} = month) do
@@ -81,8 +149,47 @@ defmodule Nila.Gst.Sales.Resolutions do
   """
   def workings(%Month{} = month) do
     resolutions = month.id |> list() |> Enum.map(&resolution_map/1)
-    Workings.materialize(month.invoices, resolutions, header(month), document_issues(month))
+
+    Workings.materialize(
+      month.invoices,
+      resolutions,
+      header(month),
+      document_issues(month),
+      source_namespace: "sales_month_#{month.id}",
+      compliance: compliance(month),
+      cess_evaluated: month.cess_evaluated
+    )
   end
+
+  defp compliance(%Month{} = month) do
+    directory =
+      case month.hsn_master_release_id do
+        nil -> Directory.active()
+        release_id -> Directory.load(release_id)
+      end
+
+    rate_directory =
+      case month.gst_rate_release_id do
+        nil -> RateDirectory.active()
+        release_id -> RateDirectory.load(release_id)
+      end
+
+    %{
+      rate_history: RateHistory.prior_observations(month.org_id, month.client_id, month.period)
+    }
+    |> maybe_put_directory(directory)
+    |> maybe_put_rate_directory(rate_directory)
+  end
+
+  defp maybe_put_directory(compliance, {:ok, directory}),
+    do: Map.put(compliance, :directory, directory)
+
+  defp maybe_put_directory(compliance, {:error, :not_found}), do: compliance
+
+  defp maybe_put_rate_directory(compliance, {:ok, directory}),
+    do: Map.put(compliance, :rate_directory, directory)
+
+  defp maybe_put_rate_directory(compliance, {:error, :not_found}), do: compliance
 
   @doc """
   Diff-row targets (`"scope|key|field"`, the `Nila.Eval.Gstr1Diff` row key)
