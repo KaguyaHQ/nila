@@ -210,6 +210,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert_patch(view, ~p"/gst/#{client.id}/#{@period}?invoice=20%2F2025-26")
     assert has_element?(view, "#gstr1-evidence-modal")
     assert has_element?(view, "#gstr1-checks button", "Use extracted lines")
+
+    assert has_element?(
+             view,
+             "#gstr1-rate-validation-scope",
+             "imported taxable-goods rate candidates are checked independently"
+           )
   end
 
   test "the invoice review URL survives refresh and close returns to the register", %{

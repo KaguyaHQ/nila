@@ -18,6 +18,9 @@ defmodule Nila.Gst.Sales.Workings do
   target wins (append-only store, so ordering is by insertion).
   """
 
+  alias Nila.Gst.Hsn.Validation
+  alias Nila.Gst.RateHistory
+  alias Nila.Gst.Rates.Validation, as: RateValidation
   alias Nila.Gst.Replay
   alias Nila.Gst.Sales.Gstr1
 
@@ -35,9 +38,19 @@ defmodule Nila.Gst.Sales.Workings do
   effective correction resolutions in apply order, and `flagged` the
   `Gstr1.flagged_fields/2` set on pristine source identity.
   """
-  def materialize(invoices, resolutions, header, document_issues \\ [], opts \\ []) do
+  def materialize(invoices, resolutions, header, document_issues \\ [], opts \\ [])
+
+  def materialize(invoices, resolutions, header, document_issues, %{} = compliance) do
+    materialize(invoices, resolutions, header, document_issues, compliance: compliance)
+  end
+
+  def materialize(invoices, resolutions, header, document_issues, opts) when is_list(opts) do
+    compliance = Keyword.get(opts, :compliance, %{})
+
     pristine_source_invoices =
-      ensure_source_ids(invoices, Keyword.get(opts, :source_namespace, "legacy"))
+      invoices
+      |> ensure_source_ids(Keyword.get(opts, :source_namespace, "legacy"))
+      |> annotate_compliance(compliance)
 
     effective = Replay.drop_reopened(resolutions, "target")
     decisions = Replay.decisions(resolutions, "target")
@@ -50,7 +63,8 @@ defmodule Nila.Gst.Sales.Workings do
 
     correction_issues =
       Gstr1.validation_issues(pristine_source_invoices) ++
-        Gstr1.duplicate_number_issues(pristine_source_invoices)
+        Gstr1.duplicate_number_issues(pristine_source_invoices) ++
+        compliance_issues(pristine_source_invoices, compliance)
 
     source_flagged = Gstr1.flagged_fields(pristine_source_invoices, correction_issues)
 
@@ -62,12 +76,15 @@ defmodule Nila.Gst.Sales.Workings do
     {corrected, _applied, [], _flags} =
       Gstr1.apply_corrections(pristine_source_invoices, legit, source_flagged)
 
+    corrected = annotate_compliance(corrected, compliance)
+
     exclusions = Enum.filter(effective, &(&1["verb"] == "exclude_duplicate_copy"))
     {source_invoices, active_invoices, duplicate_copies} = apply_exclusions(corrected, exclusions)
 
     raw_issues =
       active_invoices
       |> Gstr1.validation_issues()
+      |> Enum.concat(compliance_issues(active_invoices, compliance))
       |> Enum.concat(Gstr1.blocking_issues(active_invoices))
       |> Enum.concat(document_issues)
 
@@ -111,6 +128,32 @@ defmodule Nila.Gst.Sales.Workings do
         "#{namespace}_inv_#{String.pad_leading(to_string(ordinal), 2, "0")}"
       )
     end)
+  end
+
+  defp annotate_compliance(invoices, compliance) do
+    invoices
+    |> annotate_hsn(compliance)
+    |> annotate_rates(compliance)
+  end
+
+  defp annotate_hsn(invoices, %{directory: directory}),
+    do: Validation.annotate_invoices(invoices, directory)
+
+  defp annotate_hsn(invoices, _compliance), do: invoices
+
+  defp annotate_rates(invoices, %{rate_directory: directory}),
+    do: RateValidation.annotate_invoices(invoices, directory)
+
+  defp annotate_rates(invoices, _compliance), do: invoices
+
+  defp compliance_issues(invoices, compliance) do
+    hsn_issues = if compliance[:directory], do: Validation.sales_issues(invoices), else: []
+
+    statutory_issues =
+      if compliance[:rate_directory], do: RateValidation.sales_issues(invoices), else: []
+
+    history_issues = RateHistory.issues(invoices, compliance[:rate_history] || [])
+    hsn_issues ++ statutory_issues ++ history_issues
   end
 
   @doc """

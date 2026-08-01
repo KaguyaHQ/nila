@@ -16,7 +16,9 @@ defmodule Nila.Gst.Purchase.Resolutions do
   alias Nila.Clients
 
   alias Nila.Gst.Filing.{Gstr3b, ItcPosition, Signoffs}
+  alias Nila.Gst.Hsn.Directory
   alias Nila.Gst.Purchase.{Flags, Month, Register, Resolution, TaxpayerContext, Workings}
+  alias Nila.Gst.Rates.Directory, as: RateDirectory
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Months, as: SalesMonths
 
@@ -177,9 +179,33 @@ defmodule Nila.Gst.Purchase.Resolutions do
 
   defp flags_for(%Month{} = month, invoices) do
     {:ok, client} = Clients.get_client(month.org_id, month.client_id)
-    entity_ctx = TaxpayerContext.for_client(client)
+
+    entity_ctx =
+      client
+      |> TaxpayerContext.for_client()
+      |> maybe_put_hsn_directory(month.hsn_master_release_id)
+      |> maybe_put_rate_directory(month.gst_rate_release_id)
+
     vendor_dir = vendor_dir(month.recon)
     Flags.evaluate_all(invoices, entity_ctx, vendor_dir)
+  end
+
+  defp maybe_put_hsn_directory(entity_ctx, release_id) do
+    directory = if release_id, do: Directory.load(release_id), else: Directory.active()
+
+    case directory do
+      {:ok, directory} -> Map.put(entity_ctx, "hsn_directory", directory)
+      {:error, :not_found} -> entity_ctx
+    end
+  end
+
+  defp maybe_put_rate_directory(entity_ctx, release_id) do
+    directory = if release_id, do: RateDirectory.load(release_id), else: RateDirectory.active()
+
+    case directory do
+      {:ok, directory} -> Map.put(entity_ctx, "rate_directory", directory)
+      {:error, :not_found} -> entity_ctx
+    end
   end
 
   defp vendor_dir(recon) do

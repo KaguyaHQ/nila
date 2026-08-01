@@ -386,11 +386,29 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   {row.line["description"] || "—"}
                 </span>
               </:col>
-              <:col :let={row} label="HSN">
-                <span :if={row.kind == :line} class="font-mono">{row.line["hsn_sac"] || "—"}</span>
+              <:col :let={row} label="HSN / SAC">
+                <div :if={row.kind == :line} class="max-w-44">
+                  <span class="font-mono">{row.line["hsn_sac"] || "—"}</span>
+                  <span
+                    :if={row.line["hsn_description"]}
+                    class="text-fine text-ink-subtle block truncate"
+                    title={row.line["hsn_description"]}
+                  >
+                    {row.line["hsn_description"]}
+                  </span>
+                </div>
               </:col>
               <:col :let={row} label="Rate" align="right">
-                <span :if={row.kind == :line}>{line_rate_label(row.line)}</span>
+                <div :if={row.kind == :line}>
+                  <span>{line_rate_label(row.line)}</span>
+                  <span
+                    :if={rate_candidate_label(row.line)}
+                    class="text-fine text-ink-subtle block whitespace-nowrap"
+                    title={rate_candidate_source(row.line)}
+                  >
+                    {rate_candidate_label(row.line)}
+                  </span>
+                </div>
               </:col>
               <:col :let={row} label="Taxable" align="right" class="whitespace-nowrap">
                 {amount(
@@ -412,6 +430,9 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 </span>
               </:col>
             </.data_table>
+            <p id="gstr1-rate-validation-scope" class="mt-related text-fine text-ink-subtle">
+              HSN/SAC existence, tax arithmetic, and imported taxable-goods rate candidates are checked independently. Exemptions and description-dependent conditions still require review.
+            </p>
           </div>
 
           <div :if={@failed_checks != []} id="gstr1-checks" class="space-y-related">
@@ -824,6 +845,24 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       |> Enum.sum()
 
     if rate == 0, do: "—", else: percent(rate)
+  end
+
+  defp rate_candidate_label(line) do
+    case get_in(line, ["rate_validation", "candidate_rates"]) do
+      [_ | _] = rates -> "Candidate " <> Enum.map_join(rates, "/", &percent/1)
+      _ -> nil
+    end
+  end
+
+  defp rate_candidate_source(line) do
+    case get_in(line, ["rate_validation", "candidates"]) do
+      [candidate | _] ->
+        "#{candidate["notification_number"]}, Schedule #{candidate["schedule"]}, " <>
+          "entry #{candidate["serial_number"]}"
+
+      _ ->
+        nil
+    end
   end
 
   # The split is shown as the bill prints it — two halves or one IGST — so the
