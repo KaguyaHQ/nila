@@ -5,6 +5,7 @@ defmodule Nila.Gst.Sales.ResolutionsTest do
   import Nila.GstFixtures
 
   alias Nila.Clients
+  alias Nila.Gst.Rates.{Release, Rule}
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
@@ -39,6 +40,69 @@ defmodule Nila.Gst.Sales.ResolutionsTest do
           user.id
         )
     end)
+  end
+
+  test "workings reloads the rate release pinned on the month", %{month: month} do
+    now = DateTime.utc_now()
+
+    release =
+      %Release{}
+      |> Release.changeset(%{
+        notification_number: "9/2025-Integrated Tax (Rate)",
+        tax_type: "integrated",
+        source_name: "notification.pdf",
+        file_sha256: Base.encode16(:crypto.strong_rand_bytes(32)),
+        published_on: ~D[2025-09-17],
+        effective_from: ~D[2025-09-22],
+        observed_at: now
+      })
+      |> Repo.insert!()
+
+    Repo.insert!(%Rule{
+      release_id: release.id,
+      serial_number: 3,
+      schedule: "IV",
+      total_rate: Decimal.new("3"),
+      raw_code_expression: "7106",
+      raw_description: "Silver",
+      parsed_scope: %{
+        "includes" => ["7106"],
+        "excludes" => [],
+        "ranges" => [],
+        "any_chapter" => false
+      },
+      parser_confidence: "automatic"
+    })
+
+    [invoice | rest] = month.invoices
+
+    invoice =
+      invoice
+      |> put_in(["invoice_date"], ~D[2025-10-08])
+      |> put_in(["line_items", Access.at(0), "description"], "Silver rod")
+      |> put_in(["line_items", Access.at(0), "hsn_sac"], "71069290")
+      |> put_in(["line_items", Access.at(0), "hsn_kind"], "hsn")
+      |> put_in(["line_items", Access.at(0), "cgst_rate"], 9)
+      |> put_in(["line_items", Access.at(0), "sgst_rate"], 9)
+
+    {:ok, month} =
+      SalesMonths.upsert(%{
+        org_id: month.org_id,
+        client_id: month.client_id,
+        period: month.period,
+        invoices: [invoice | rest],
+        gst_rate_release_id: release.id
+      })
+
+    workings = SalesResolutions.workings(month)
+    assert Enum.any?(workings.issues, &(&1["code"] == "statutory_rate_mismatch"))
+
+    assert get_in(hd(workings.invoices), [
+             "line_items",
+             Access.at(0),
+             "rate_validation",
+             "release_id"
+           ]) == release.id
   end
 
   test "workings replays recorded decisions over the stored month", %{

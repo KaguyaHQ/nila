@@ -15,6 +15,8 @@ defmodule Nila.Gst.Purchase.Flags do
 
   alias Nila.Formatters
   alias Nila.Fuzzy
+  alias Nila.Gst.Hsn.Validation
+  alias Nila.Gst.Rates.Validation, as: RateValidation
   alias Nila.Gst.StateCodes
   alias Nila.Gstin
 
@@ -62,6 +64,8 @@ defmodule Nila.Gst.Purchase.Flags do
       &check_gstin_presence_and_validity/3,
       &check_gstin_state_vs_tax/3,
       &check_name_vs_directory/3,
+      &check_hsn_validity/3,
+      &check_statutory_rate/3,
       &check_hsn_plausibility/3,
       &check_personal_expense/3,
       &check_tax_arithmetic/3
@@ -516,6 +520,32 @@ defmodule Nila.Gst.Purchase.Flags do
       end
     else
       _ -> []
+    end
+  end
+
+  defp check_hsn_validity(invoice, entity_ctx, _vendor_dir) do
+    case entity_ctx["hsn_directory"] do
+      nil ->
+        []
+
+      directory ->
+        invoice
+        |> then(&Validation.annotate_invoices([&1], directory))
+        |> hd()
+        |> Validation.purchase_flags()
+    end
+  end
+
+  defp check_statutory_rate(invoice, entity_ctx, _vendor_dir) do
+    with %{} = hsn_directory <- entity_ctx["hsn_directory"],
+         %{} = rate_directory <- entity_ctx["rate_directory"] do
+      invoice
+      |> then(&Validation.annotate_invoices([&1], hsn_directory))
+      |> RateValidation.annotate_invoices(rate_directory)
+      |> hd()
+      |> RateValidation.purchase_flags()
+    else
+      _not_configured -> []
     end
   end
 

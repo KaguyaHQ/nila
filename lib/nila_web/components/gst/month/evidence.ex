@@ -165,7 +165,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               disabled={is_nil(@review_navigation.previous)}
               class="hover:text-ink text-ink-subtle text-small justify-self-start transition disabled:opacity-30"
             >
-              ← Previous unresolved
+              ← Previous flagged invoice
             </button>
             <div class="flex flex-wrap items-center justify-center gap-2 text-center">
               <h3 id={title_id} class="text-base-content text-body font-semibold">
@@ -182,17 +182,18 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               disabled={is_nil(@review_navigation.next)}
               class="hover:text-ink text-ink-subtle text-small justify-self-end transition disabled:opacity-30"
             >
-              Next unresolved →
+              Next flagged invoice →
             </button>
           </div>
           <div :if={@open_issues != []} class="flex flex-wrap justify-center gap-2">
             <button
-              :for={issue <- @open_issues}
+              :for={{issue, index} <- Enum.with_index(@open_issues, 1)}
               type="button"
               data-review-target={issue_focus_target(issue)}
-              class="bg-warning/10 hover:bg-warning/20 rounded-field text-base-content text-fine px-2 py-1 font-medium transition-colors"
+              class="bg-warning/10 hover:bg-warning/20 rounded-field text-base-content text-fine flex items-center gap-1.5 px-2 py-1 font-medium transition-colors"
             >
-              {issue_label(issue["code"])}
+              <span class="bg-warning/15 rounded-full px-1.5 tabular-nums">{index}</span>
+              {issue_chip_label(issue)}
             </button>
           </div>
         </div>
@@ -257,11 +258,29 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   {row.line["description"] || "—"}
                 </span>
               </:col>
-              <:col :let={row} label="HSN">
-                <span :if={row.kind == :line} class="font-mono">{row.line["hsn_sac"] || "—"}</span>
+              <:col :let={row} label="HSN / SAC">
+                <div :if={row.kind == :line} class="max-w-44">
+                  <span class="font-mono">{row.line["hsn_sac"] || "—"}</span>
+                  <span
+                    :if={row.line["hsn_description"]}
+                    class="text-fine text-ink-subtle block truncate"
+                    title={row.line["hsn_description"]}
+                  >
+                    {row.line["hsn_description"]}
+                  </span>
+                </div>
               </:col>
               <:col :let={row} label="Rate" align="right">
-                <span :if={row.kind == :line}>{line_rate_label(row.line)}</span>
+                <div :if={row.kind == :line}>
+                  <span>{line_rate_label(row.line)}</span>
+                  <span
+                    :if={rate_candidate_label(row.line)}
+                    class="text-fine text-ink-subtle block whitespace-nowrap"
+                    title={rate_candidate_source(row.line)}
+                  >
+                    {rate_candidate_label(row.line)}
+                  </span>
+                </div>
               </:col>
               <:col :let={row} label="Taxable" align="right" class="whitespace-nowrap">
                 {amount(
@@ -283,6 +302,9 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 </span>
               </:col>
             </.data_table>
+            <p id="gstr1-rate-validation-scope" class="mt-related text-fine text-ink-subtle">
+              HSN/SAC existence, tax arithmetic, and imported taxable-goods rate candidates are checked independently. Exemptions and description-dependent conditions still require review.
+            </p>
           </div>
 
           <div :if={@failed_checks != []} id="gstr1-checks" class="space-y-related">
@@ -545,8 +567,19 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   end
 
   defp unresolved_label([]), do: "No unresolved checks"
-  defp unresolved_label([_issue]), do: "1 unresolved"
-  defp unresolved_label(issues), do: "#{length(issues)} unresolved"
+  defp unresolved_label([_issue]), do: "1 unresolved check"
+  defp unresolved_label(issues), do: "#{length(issues)} unresolved checks"
+
+  defp issue_chip_label(%{"code" => "rounding_variance", "message" => message}) do
+    cond do
+      String.starts_with?(message, "camt ") -> "CGST rounding difference"
+      String.starts_with?(message, "samt ") -> "SGST rounding difference"
+      String.starts_with?(message, "iamt ") -> "IGST rounding difference"
+      true -> issue_label("rounding_variance")
+    end
+  end
+
+  defp issue_chip_label(issue), do: issue_label(issue["code"])
 
   defp issue_dom_id(issue) do
     location =
@@ -678,6 +711,24 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       |> Enum.sum()
 
     if rate == 0, do: "—", else: percent(rate)
+  end
+
+  defp rate_candidate_label(line) do
+    case get_in(line, ["rate_validation", "candidate_rates"]) do
+      [_ | _] = rates -> "Candidate " <> Enum.map_join(rates, "/", &percent/1)
+      _ -> nil
+    end
+  end
+
+  defp rate_candidate_source(line) do
+    case get_in(line, ["rate_validation", "candidates"]) do
+      [candidate | _] ->
+        "#{candidate["notification_number"]}, Schedule #{candidate["schedule"]}, " <>
+          "entry #{candidate["serial_number"]}"
+
+      _ ->
+        nil
+    end
   end
 
   # The split is shown as the bill prints it — two halves or one IGST — so the

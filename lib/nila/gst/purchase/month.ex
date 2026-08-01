@@ -17,6 +17,8 @@ defmodule Nila.Gst.Purchase.Month do
 
     belongs_to :org, Nila.Orgs.Org
     belongs_to :client, Nila.Clients.Client
+    belongs_to :hsn_master_release, Nila.Gst.Hsn.Release
+    belongs_to :gst_rate_release, Nila.Gst.Rates.Release
     belongs_to :filed_by, Nila.Accounts.User
 
     timestamps()

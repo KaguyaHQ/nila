@@ -22,6 +22,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
       })
 
     work_dump!(org, client, @period, "sales", "%PDF-1.4 fake bytes", user.id)
+    confirm_sales_complete!(org, client, @period)
 
     %{conn: log_in_user(conn, user), org: org, client: client, user: user}
   end
@@ -153,6 +154,13 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert_patch(view, ~p"/gst/#{client.id}/#{@period}?invoice=20%2F2025-26")
     assert has_element?(view, "#gstr1-evidence-modal")
+
+    assert has_element?(
+             view,
+             "#gstr1-rate-validation-scope",
+             "imported taxable-goods rate candidates are checked independently"
+           )
+
     assert has_element?(view, "button[phx-value-target='20/2025-26:grand_total_mismatch']")
   end
 
@@ -164,8 +172,18 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, review_path)
 
     assert has_element?(view, "#gstr1-evidence-modal")
+    assert has_element?(view, "#gstr1-review-header", "1 unresolved check")
     assert has_element?(view, "#gstr1-review-header", "Filing blocked")
+
+    assert has_element?(
+             view,
+             "#gstr1-review-previous[disabled]",
+             "Previous flagged invoice"
+           )
+
+    assert has_element?(view, "#gstr1-review-next[disabled]", "Next flagged invoice")
     assert has_element?(view, "[data-review-target='gstr1-line-total']")
+    assert has_element?(view, "[data-review-target='gstr1-line-total'] span", "1")
 
     view
     |> element("#gstr1-evidence-modal button[phx-click='close-invoice-review']")
@@ -176,7 +194,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert view |> element("#gstr1-inv-20\\/2025-26") |> render() =~ "bg-primary/[0.04]"
   end
 
-  test "previous and next unresolved stay inside the route-backed review queue", %{
+  test "previous and next flagged invoice stay inside the route-backed review queue", %{
     conn: conn,
     org: org,
     client: client
@@ -207,13 +225,81 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}?invoice=20%2F2025-26")
 
-    assert has_element?(view, "#gstr1-review-next[phx-value-inum='21/2025-26']:not([disabled])")
+    assert has_element?(
+             view,
+             "#gstr1-review-next[phx-value-inum='21/2025-26']:not([disabled])",
+             "Next flagged invoice"
+           )
 
     view |> element("#gstr1-review-next") |> render_click()
 
     assert_patch(view, ~p"/gst/#{client.id}/#{@period}?invoice=21%2F2025-26")
     assert has_element?(view, "#gstr1-evidence-modal-title", "21/2025-26")
     assert has_element?(view, "#gstr1-review-previous[phx-value-inum='20/2025-26']")
+  end
+
+  test "same-kind issue chips are distinct and point to their own evidence", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Sales.Gstr1
+    alias Nila.Gst.Sales.Months, as: SalesMonths
+
+    period = "2025-12"
+
+    line = %{
+      "description" => "Service",
+      "taxable_value" => 1.06,
+      "cgst_rate" => 9,
+      "cgst_amount" => 0.10,
+      "sgst_rate" => 9,
+      "sgst_amount" => 0.10
+    }
+
+    invoice =
+      Gstr1.normalize_invoice(%{
+        "data" => %{
+          "invoice_number" => "44/2026-27",
+          "invoice_date" => "04.12.2025",
+          "seller" => %{"gstin" => client.gstin},
+          "buyer" => %{"name" => "Philips India", "gstin" => "33AABCP9487A1ZG"},
+          "line_items" => List.duplicate(line, 4)
+        }
+      })
+
+    invoices = [invoice]
+    issues = Gstr1.validation_issues(invoices)
+
+    assert Enum.count(issues, &(&1["code"] == "rounding_variance")) == 2
+
+    {:ok, _month} =
+      SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: period,
+        state: "worked",
+        invoices: invoices,
+        issues: issues,
+        derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, period))
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}?invoice=44%2F2026-27")
+
+    assert has_element?(view, "#gstr1-review-header", "2 unresolved checks")
+    assert has_element?(view, "#gstr1-review-header", "CGST rounding difference")
+    assert has_element?(view, "#gstr1-review-header", "SGST rounding difference")
+
+    targets =
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#gstr1-review-header button[data-review-target]")
+      |> LazyHTML.attribute("data-review-target")
+
+    assert length(targets) == 2
+    assert length(Enum.uniq(targets)) == 2
+    Enum.each(targets, &assert(has_element?(view, "##{&1}")))
   end
 
   test "clicking an invoice shows its issues in the evidence modal", %{

@@ -30,13 +30,18 @@ defmodule Nila.Gst.Intake.DumpWorker do
   import Ecto.Query, only: [from: 2]
 
   alias Nila.Gst.Filing.{Gstr2b, Signoffs}
+  alias Nila.Gst.Hsn.{Directory, Validation}
   alias Nila.Gst.Intake.{Dump, Dumps, ExtractionAttempts, Preconditions}
   alias Nila.Gst.Purchase.{Books, Flags, Reconciliation, Register, TaxpayerContext}
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
+  alias Nila.Gst.RateHistory
+  alias Nila.Gst.Rates.Directory, as: RateDirectory
+  alias Nila.Gst.Rates.Validation, as: RateValidation
   alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.Sales.Month, as: SalesMonth
   alias Nila.Gst.Sales.Months, as: SalesMonths
+  alias Nila.Gst.Sales.Workings, as: SalesWorkings
 
   alias Nila.Storage
 
@@ -524,11 +529,26 @@ defmodule Nila.Gst.Intake.DumpWorker do
     invoices = Dumps.union_invoices(dump.org_id, dump.client_id, dump.period, "sales")
 
     {:ok, client} = Clients.get_client(dump.org_id, dump.client_id)
+    directory = active_hsn_directory()
+    rate_directory = active_rate_directory()
 
-    issues =
-      ledger_issues(dump, "sales") ++ Gstr1.validation_issues(invoices)
+    compliance =
+      %{
+        rate_history: RateHistory.prior_observations(dump.org_id, dump.client_id, dump.period)
+      }
+      |> maybe_put_directory(directory)
+      |> maybe_put_rate_directory(rate_directory)
 
-    derived = Gstr1.derive(invoices, Gstr1.production_header(client.gstin, dump.period))
+    workings =
+      SalesWorkings.materialize(
+        invoices,
+        [],
+        Gstr1.production_header(client.gstin, dump.period),
+        ledger_issues(dump, "sales"),
+        compliance
+      )
+
+    issues = Enum.map(workings.issues, &Map.delete(&1, "status"))
 
     {:ok, _} =
       SalesMonths.upsert(%{
@@ -536,9 +556,11 @@ defmodule Nila.Gst.Intake.DumpWorker do
         client_id: dump.client_id,
         period: dump.period,
         state: "worked",
-        invoices: invoices,
-        derived_gstr1: derived,
+        invoices: workings.invoices,
+        derived_gstr1: workings.derived,
         issues: issues,
+        hsn_master_release_id: release_id(directory),
+        gst_rate_release_id: release_id(rate_directory),
         filed_gstr1: Dumps.filed_gstr1(dump.org_id, dump.client_id, dump.period),
         summary: %{"invoice_count" => length(invoices), "issue_count" => length(issues)}
       })
@@ -549,6 +571,13 @@ defmodule Nila.Gst.Intake.DumpWorker do
   defp derive(%Dump{} = dump) do
     progress(dump, :reconciling)
     invoices = Dumps.union_invoices(dump.org_id, dump.client_id, dump.period, "purchase")
+    directory = active_hsn_directory()
+    rate_directory = active_rate_directory()
+
+    invoices =
+      invoices
+      |> annotate_hsn(directory)
+      |> annotate_rates(rate_directory)
 
     gstr2b =
       dump.org_id
@@ -557,7 +586,13 @@ defmodule Nila.Gst.Intake.DumpWorker do
       |> Enum.map(&Dumps.rehydrate/1)
 
     {:ok, client} = Clients.get_client(dump.org_id, dump.client_id)
-    entity_ctx = TaxpayerContext.for_client(client)
+
+    entity_ctx =
+      client
+      |> TaxpayerContext.for_client()
+      |> maybe_put_purchase_directory(directory)
+      |> maybe_put_purchase_rate_directory(rate_directory)
+
     vendor_dir = Map.new(gstr2b, fn g -> {g["vendor_gstin"], g["vendor_name"]} end)
 
     recon = Reconciliation.reconcile(invoices, gstr2b)
@@ -576,11 +611,56 @@ defmodule Nila.Gst.Intake.DumpWorker do
         state: "worked",
         register_rows: rows,
         recon: recon,
+        hsn_master_release_id: release_id(directory),
+        gst_rate_release_id: release_id(rate_directory),
         summary: Map.put(Register.summary(rows), "document_flags", document_flags)
       })
 
     :ok
   end
+
+  defp active_hsn_directory do
+    case Directory.active() do
+      {:ok, directory} -> directory
+      {:error, :not_found} -> nil
+    end
+  end
+
+  defp active_rate_directory do
+    case RateDirectory.active() do
+      {:ok, directory} -> directory
+      {:error, :not_found} -> nil
+    end
+  end
+
+  defp annotate_hsn(invoices, nil), do: invoices
+  defp annotate_hsn(invoices, directory), do: Validation.annotate_invoices(invoices, directory)
+
+  defp annotate_rates(invoices, nil), do: invoices
+
+  defp annotate_rates(invoices, directory),
+    do: RateValidation.annotate_invoices(invoices, directory)
+
+  defp maybe_put_directory(compliance, nil), do: compliance
+  defp maybe_put_directory(compliance, directory), do: Map.put(compliance, :directory, directory)
+
+  defp maybe_put_rate_directory(compliance, nil), do: compliance
+
+  defp maybe_put_rate_directory(compliance, directory),
+    do: Map.put(compliance, :rate_directory, directory)
+
+  defp maybe_put_purchase_directory(entity_ctx, nil), do: entity_ctx
+
+  defp maybe_put_purchase_directory(entity_ctx, directory),
+    do: Map.put(entity_ctx, "hsn_directory", directory)
+
+  defp maybe_put_purchase_rate_directory(entity_ctx, nil), do: entity_ctx
+
+  defp maybe_put_purchase_rate_directory(entity_ctx, directory),
+    do: Map.put(entity_ctx, "rate_directory", directory)
+
+  defp release_id(nil), do: nil
+  defp release_id(directory), do: directory.release.id
 
   # The sales side already renders month-level issues (`"invoice" => nil`), so
   # the ledger lands there rather than in a second surface.

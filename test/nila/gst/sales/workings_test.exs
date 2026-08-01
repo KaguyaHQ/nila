@@ -1,6 +1,10 @@
 defmodule Nila.Gst.Sales.WorkingsTest do
   use ExUnit.Case, async: true
 
+  alias Nila.Gst.Hsn.Entry
+  alias Nila.Gst.Hsn.Release, as: HsnRelease
+  alias Nila.Gst.Rates.Release, as: RateRelease
+  alias Nila.Gst.Rates.Rule, as: RateRule
   alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
 
@@ -55,6 +59,85 @@ defmodule Nila.Gst.Sales.WorkingsTest do
 
   defp open_codes(result) do
     result.issues |> Enum.filter(&(&1["status"] == "open")) |> Enum.map(& &1["code"])
+  end
+
+  test "HSN compliance annotates exact codes and blocks review on an invalid code" do
+    directory = %{
+      release: %HsnRelease{id: 9},
+      entries: %{
+        "8415" => %Entry{
+          code: "8415",
+          kind: "hsn",
+          digits: 4,
+          description: "Air-conditioning machines"
+        }
+      },
+      prefixes: MapSet.new(~w(8 84 841))
+    }
+
+    [first | rest] = invoices()
+    first = put_in(first, ["line_items", Access.at(0), "hsn_sac"], "84159999")
+
+    result =
+      SalesWorkings.materialize([first | rest], [], @header, [], %{directory: directory})
+
+    assert "invalid_hsn_sac" in open_codes(result)
+    refute SalesWorkings.reviewable?(result.issues)
+
+    valid = Enum.find(result.invoices, &(&1["invoice_number"] == "21/2025-26"))
+
+    assert get_in(valid, ["line_items", Access.at(0), "hsn_description"]) ==
+             "Air-conditioning machines"
+  end
+
+  test "statutory candidate mismatch enters the normal resolvable review queue" do
+    hsn_directory = %{
+      release: %HsnRelease{id: 9},
+      entries: %{
+        "8415" => %Entry{code: "8415", kind: "hsn", digits: 4, description: "Machines"}
+      },
+      prefixes: MapSet.new(~w(8 84 841))
+    }
+
+    rate_directory = %{
+      release: %RateRelease{
+        id: 10,
+        notification_number: "9/2025-Integrated Tax (Rate)",
+        effective_from: ~D[2025-09-22]
+      },
+      rules: [
+        %RateRule{
+          serial_number: 1,
+          schedule: "I",
+          total_rate: Decimal.new("5"),
+          raw_code_expression: "8415",
+          raw_description: "Machines",
+          parsed_scope: %{
+            "includes" => ["8415"],
+            "excludes" => [],
+            "ranges" => [],
+            "any_chapter" => false
+          },
+          parser_confidence: "automatic"
+        }
+      ]
+    }
+
+    result =
+      SalesWorkings.materialize(invoices(), [], @header, [], %{
+        directory: hsn_directory,
+        rate_directory: rate_directory
+      })
+
+    assert "statutory_rate_mismatch" in open_codes(result)
+    refute SalesWorkings.reviewable?(result.issues)
+
+    assert get_in(hd(result.invoices), [
+             "line_items",
+             Access.at(0),
+             "rate_validation",
+             "status"
+           ]) == "incompatible"
   end
 
   test "no resolutions reproduces the engine's issues, all open" do

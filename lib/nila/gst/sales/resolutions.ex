@@ -15,6 +15,9 @@ defmodule Nila.Gst.Sales.Resolutions do
 
   alias Nila.Clients
   alias Nila.Gst.Filing.Signoffs
+  alias Nila.Gst.Hsn.Directory
+  alias Nila.Gst.RateHistory
+  alias Nila.Gst.Rates.Directory, as: RateDirectory
   alias Nila.Gst.Replay
   alias Nila.Gst.Sales.{Gstr1, Month, Resolution, Workings}
   alias Nila.Repo
@@ -81,8 +84,45 @@ defmodule Nila.Gst.Sales.Resolutions do
   """
   def workings(%Month{} = month) do
     resolutions = month.id |> list() |> Enum.map(&resolution_map/1)
-    Workings.materialize(month.invoices, resolutions, header(month), document_issues(month))
+
+    Workings.materialize(
+      month.invoices,
+      resolutions,
+      header(month),
+      document_issues(month),
+      compliance(month)
+    )
   end
+
+  defp compliance(%Month{} = month) do
+    directory =
+      case month.hsn_master_release_id do
+        nil -> Directory.active()
+        release_id -> Directory.load(release_id)
+      end
+
+    rate_directory =
+      case month.gst_rate_release_id do
+        nil -> RateDirectory.active()
+        release_id -> RateDirectory.load(release_id)
+      end
+
+    %{
+      rate_history: RateHistory.prior_observations(month.org_id, month.client_id, month.period)
+    }
+    |> maybe_put_directory(directory)
+    |> maybe_put_rate_directory(rate_directory)
+  end
+
+  defp maybe_put_directory(compliance, {:ok, directory}),
+    do: Map.put(compliance, :directory, directory)
+
+  defp maybe_put_directory(compliance, {:error, :not_found}), do: compliance
+
+  defp maybe_put_rate_directory(compliance, {:ok, directory}),
+    do: Map.put(compliance, :rate_directory, directory)
+
+  defp maybe_put_rate_directory(compliance, {:error, :not_found}), do: compliance
 
   @doc """
   Diff-row targets (`"scope|key|field"`, the `Nila.Eval.Gstr1Diff` row key)

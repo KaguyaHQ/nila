@@ -18,6 +18,9 @@ defmodule Nila.Gst.Sales.Workings do
   target wins (append-only store, so ordering is by insertion).
   """
 
+  alias Nila.Gst.Hsn.Validation
+  alias Nila.Gst.RateHistory
+  alias Nila.Gst.Rates.Validation, as: RateValidation
   alias Nila.Gst.Replay
   alias Nila.Gst.Sales.Gstr1
 
@@ -34,7 +37,7 @@ defmodule Nila.Gst.Sales.Workings do
   `Gstr1.flagged_fields/2` set on the pristine invoices (what a human may
   legitimately correct).
   """
-  def materialize(invoices, resolutions, header, document_issues \\ []) do
+  def materialize(invoices, resolutions, header, document_issues \\ [], compliance \\ %{}) do
     effective = Replay.drop_reopened(resolutions, "target")
     decisions = Replay.decisions(resolutions, "target")
 
@@ -42,7 +45,12 @@ defmodule Nila.Gst.Sales.Workings do
     confirmations = Enum.filter(effective, &(&1["verb"] == "confirm_issue"))
 
     corrections = effective_corrections(corrections)
-    flagged = Gstr1.flagged_fields(invoices, Gstr1.validation_issues(invoices))
+    invoices = annotate_compliance(invoices, compliance)
+
+    pristine_issues =
+      Gstr1.validation_issues(invoices) ++ compliance_issues(invoices, compliance)
+
+    flagged = Gstr1.flagged_fields(invoices, pristine_issues)
 
     {legit, silent_errors} =
       corrections
@@ -50,12 +58,14 @@ defmodule Nila.Gst.Sales.Workings do
       |> Enum.split_with(&Gstr1.correction_allowed?(flagged, &1["invoice"], &1["field"]))
 
     {invoices, _applied, [], _flags} = Gstr1.apply_corrections(invoices, legit, flagged)
+    invoices = annotate_compliance(invoices, compliance)
 
     confirmed_keys = MapSet.new(confirmations, & &1["target"])
 
     issues =
       invoices
       |> Gstr1.validation_issues()
+      |> Enum.concat(compliance_issues(invoices, compliance))
       |> Enum.concat(Gstr1.blocking_issues(invoices))
       |> Enum.concat(document_issues)
       |> Enum.map(fn issue ->
@@ -72,6 +82,32 @@ defmodule Nila.Gst.Sales.Workings do
       flagged: flagged,
       silent_errors: silent_errors
     }
+  end
+
+  defp annotate_compliance(invoices, compliance) do
+    invoices
+    |> annotate_hsn(compliance)
+    |> annotate_rates(compliance)
+  end
+
+  defp annotate_hsn(invoices, %{directory: directory}),
+    do: Validation.annotate_invoices(invoices, directory)
+
+  defp annotate_hsn(invoices, _compliance), do: invoices
+
+  defp annotate_rates(invoices, %{rate_directory: directory}),
+    do: RateValidation.annotate_invoices(invoices, directory)
+
+  defp annotate_rates(invoices, _compliance), do: invoices
+
+  defp compliance_issues(invoices, compliance) do
+    hsn_issues = if compliance[:directory], do: Validation.sales_issues(invoices), else: []
+
+    statutory_issues =
+      if compliance[:rate_directory], do: RateValidation.sales_issues(invoices), else: []
+
+    history_issues = RateHistory.issues(invoices, compliance[:rate_history] || [])
+    hsn_issues ++ statutory_issues ++ history_issues
   end
 
   @doc """
