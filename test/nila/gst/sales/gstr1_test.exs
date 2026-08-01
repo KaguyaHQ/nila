@@ -348,6 +348,16 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert length(ok) == 1
       assert silent == []
     end
+
+    test "OCR metadata cannot authorize a correction", %{invoice: invoice} do
+      flagged = MapSet.new([{"20/2026-27", "ocr_minimum"}])
+      correction = %{"invoice" => "20/2026-27", "field" => "ocr_minimum", "value" => 0.99}
+
+      {_final, ok, silent, _} = Gstr1.apply_corrections([invoice], [correction], flagged)
+
+      assert ok == []
+      assert silent == [correction]
+    end
   end
 
   describe "derive/2 — empty domain" do
@@ -377,6 +387,9 @@ defmodule Nila.Gst.Sales.Gstr1Test do
           {"INV-1", "line_items"},
           {"INV-1", "doc_issue"},
           {"INV-1", "line_items[0].confidence"},
+          {"INV-1", "ocr_minimum"},
+          {"INV-1", "ocr_average"},
+          {"INV-1", "unknown_metadata"},
           {"INV-2", "buyer_name"}
         ])
 

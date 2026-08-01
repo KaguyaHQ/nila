@@ -33,17 +33,51 @@ defmodule Nila.Gst.Sales.Gstr1 do
   @confidence_threshold 0.90
   @money_tolerance 0.5
   @diff_tolerance 0.01
+  @correctable_invoice_fields ~w(
+    invoice_number invoice_date seller_name seller_gstin buyer_name buyer_gstin
+    printed_total_taxable printed_total_tax printed_grand_total
+  )
+  @correctable_line_fields ~w(
+    description hsn_sac quantity uom unit_price taxable_value
+    cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount
+  )
   @numeric_correction_field ~r/^(printed_total_taxable|printed_total_tax|printed_grand_total)$|\.(taxable_value|quantity|unit_price|[csi]gst_(rate|amount))$/
 
   @doc "Returns the flagged scalar fields that may be corrected for an invoice."
   def correctable_fields(flagged, pristine_invoice_number) do
     flagged
     |> Enum.filter(fn {invoice_number, field} ->
-      invoice_number == pristine_invoice_number and field not in ["line_items", "doc_issue"] and
-        not String.contains?(field, "confidence")
+      invoice_number == pristine_invoice_number and correctable_field?(field)
     end)
     |> Enum.map(fn {_invoice_number, field} -> field end)
     |> Enum.sort()
+  end
+
+  @doc "Whether a path names a business field the review flow may edit."
+  def correctable_field?(field) when field in @correctable_invoice_fields, do: true
+
+  def correctable_field?(field) when is_binary(field) do
+    case Regex.run(~r/^line_items\[\d+\]\.(.+)$/, field) do
+      [_, line_field] -> line_field in @correctable_line_fields
+      _ -> false
+    end
+  end
+
+  def correctable_field?(_field), do: false
+
+  @doc "Whether a flagged correction is authorized for an invoice and field path."
+  def correction_allowed?(flagged, invoice_number, field) do
+    correctable_field?(field) and
+      (MapSet.member?(flagged, {invoice_number, field}) or
+         Enum.any?(flagged, fn
+           {^invoice_number, flagged_field}
+           when is_binary(flagged_field) and is_binary(field) ->
+             String.starts_with?(field, flagged_field <> "[") or
+               String.starts_with?(field, flagged_field <> ".")
+
+           _ ->
+             false
+         end))
   end
 
   @doc "Reads a scalar invoice field, including `line_items[index].field` paths."
@@ -213,7 +247,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
           end
         end)
 
-      if correction_flagged?(flags, correction) do
+      if correction_allowed?(flags, invoice_number, correction["field"]) do
         {updated, [correction | flagged_ok], silent, flags}
       else
         {updated, flagged_ok, [correction | silent], flags}
@@ -1262,21 +1296,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
     |> Enum.flat_map(fn {value, index} ->
       if is_map(value), do: flatten_confidence(value, "#{prefix}[#{index}]"), else: []
     end)
-  end
-
-  defp correction_flagged?(flags, correction) do
-    invoice = correction["invoice"] || correction["inum"]
-    field = correction["field"]
-
-    MapSet.member?(flags, {invoice, field}) ||
-      Enum.any?(flags, fn
-        {^invoice, flagged_field} when is_binary(flagged_field) and is_binary(field) ->
-          field == flagged_field or String.starts_with?(field, flagged_field <> "[") or
-            String.starts_with?(field, flagged_field <> ".")
-
-        _ ->
-          false
-      end)
   end
 
   defp flag_key(%{"invoice" => invoice, "field" => field}), do: {invoice, field}

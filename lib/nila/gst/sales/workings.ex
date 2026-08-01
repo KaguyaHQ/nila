@@ -47,7 +47,7 @@ defmodule Nila.Gst.Sales.Workings do
     {legit, silent_errors} =
       corrections
       |> Enum.map(&correction_map/1)
-      |> Enum.split_with(&MapSet.member?(flagged, {&1["invoice"], &1["field"]}))
+      |> Enum.split_with(&Gstr1.correction_allowed?(flagged, &1["invoice"], &1["field"]))
 
     {invoices, _applied, [], _flags} = Gstr1.apply_corrections(invoices, legit, flagged)
 

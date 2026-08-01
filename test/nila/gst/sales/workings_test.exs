@@ -101,6 +101,32 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     assert clean["buyer_name"] == "PONMANI AND CO"
   end
 
+  test "low OCR metadata is flagged but cannot be corrected" do
+    invoices =
+      Enum.map(invoices(), fn
+        %{"invoice_number" => "21/2025-26"} = invoice ->
+          Map.put(invoice, "confidence", %{"ocr_minimum" => 0.42})
+
+        invoice ->
+          invoice
+      end)
+
+    resolutions = [
+      %{
+        "verb" => "correct_field",
+        "target" => "21/2025-26",
+        "payload" => %{"field" => "ocr_minimum", "from" => nil, "to" => 0.99}
+      }
+    ]
+
+    result = SalesWorkings.materialize(invoices, resolutions, @header)
+
+    assert MapSet.member?(result.flagged, {"21/2025-26", "ocr_minimum"})
+    assert [%{"field" => "ocr_minimum"}] = result.silent_errors
+    clean = Enum.find(result.invoices, &(&1["invoice_number"] == "21/2025-26"))
+    refute Map.has_key?(clean, "ocr_minimum")
+  end
+
   test "confirm_issue marks the issue resolved; reopen restores it" do
     result = SalesWorkings.materialize(invoices(), [], @header)
     gap = Enum.find(result.issues, &(&1["code"] == "sequence_gaps"))
