@@ -30,6 +30,7 @@ defmodule Nila.Release do
     {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
   end
 
+  @doc "Bootstraps a direct password-based owner account for operations and development."
   def create_owner(attrs) when is_map(attrs) do
     start_app()
 
@@ -41,6 +42,22 @@ defmodule Nila.Release do
       end
     end)
   end
+
+  @doc "Provisions a customer firm and emails its first owner a setup invitation."
+  def invite_firm(attrs) when is_map(attrs) do
+    start_app()
+
+    Accounts.provision_firm(
+      %{name: attrs |> fetch_attr!(:firm) |> String.trim()},
+      %{
+        name: attrs |> fetch_attr!(:name) |> String.trim(),
+        email: attrs |> fetch_attr!(:email) |> String.trim()
+      },
+      &invite_url/1
+    )
+  end
+
+  defp invite_url(token), do: NilaWeb.Endpoint.url() <> "/users/invite/" <> token
 
   defp get_or_create_user(attrs) do
     email = fetch_attr!(attrs, :email) |> String.trim() |> String.downcase()

@@ -46,9 +46,9 @@ defmodule NilaWeb.UserLoginLive do
         </.form>
 
         <p class="mt-block text-ink-muted text-small">
-          New to Nila?
-          <.link navigate={~p"/users/sign_up"} class="text-primary font-semibold">
-            Create a firm
+          Interested in Nila?
+          <.link navigate={~p"/contact"} class="text-primary font-semibold">
+            Arrange a test
           </.link>
         </p>
 

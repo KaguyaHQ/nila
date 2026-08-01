@@ -60,11 +60,10 @@ defmodule NilaWeb.Router do
     pipe_through [:browser, :redirect_if_authenticated]
 
     get "/", PageController, :home
-    post "/users/sign_up", UserRegistrationController, :create
+    get "/users/sign_up", PageController, :signup_redirect
 
     live_session :redirect_if_authenticated,
       on_mount: [{NilaWeb.UserAuth, :redirect_if_authenticated}] do
-      live "/users/sign_up", UserRegistrationLive, :new
       live "/users/log_in", UserLoginLive, :new
       live "/users/reset_password", UserForgotPasswordLive, :new
       live "/users/reset_password/:token", UserResetPasswordLive, :edit

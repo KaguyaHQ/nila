@@ -26,11 +26,12 @@ defmodule NilaWeb.UserLoginLiveTest do
     assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Invalid email or password."
   end
 
-  test "renders a password visibility toggle and signup link", %{conn: conn} do
+  test "renders a password visibility toggle and contact link", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/users/log_in")
 
     assert has_element?(view, "#user_password[type=password][autocomplete='current-password']")
-    assert has_element?(view, "a[href='/users/sign_up']", "Create a firm")
+    assert has_element?(view, "a[href='/contact']", "Arrange a test")
+    refute has_element?(view, "a[href='/users/sign_up']")
 
     assert has_element?(
              view,

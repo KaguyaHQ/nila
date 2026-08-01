@@ -40,9 +40,10 @@ defmodule NilaWeb.UserInviteLive do
 
         <div :if={@user} id="invite-accept" class="space-y-section">
           <div class="space-y-related">
-            <h1 class="text-h4 font-semibold">Welcome, {@user.name}</h1>
+            <h1 class="text-h4 font-semibold">Set up your Nila workspace</h1>
             <p class="text-body text-ink-muted">
-              Set a password to join the firm and sign in.
+              Welcome, {@user.name}. Your firm has invited you to Nila. Create your password to
+              continue.
             </p>
           </div>
 

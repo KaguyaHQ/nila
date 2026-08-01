@@ -28,6 +28,7 @@ defmodule NilaWeb.UserInviteControllerTest do
 
       {:ok, _view, html} = live(conn, ~p"/users/invite/#{token}")
 
+      assert html =~ "Set up your Nila workspace"
       assert html =~ "Welcome, Jaimathi"
       assert html =~ "Create a password"
     end

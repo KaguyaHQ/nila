@@ -12,6 +12,12 @@ defmodule NilaWeb.PageController do
     render(conn, :home, page_title: "Nila — it works while you sleep")
   end
 
+  def signup_redirect(conn, _params) do
+    conn
+    |> put_flash(:info, "Nila is currently invite-only. Arrange a test to get started.")
+    |> redirect(to: ~p"/contact")
+  end
+
   def privacy(conn, _params) do
     render(conn, :privacy, page_title: "Privacy policy")
   end

@@ -200,43 +200,42 @@ defmodule Nila.Accounts do
     |> Repo.update()
   end
 
-  ## Self-serve registration
+  ## Firm provisioning
 
-  @registration_with_org_types %{
-    name: :string,
-    email: :string,
-    password: :string,
-    password_confirmation: :string,
-    org_name: :string
-  }
+  @doc """
+  Creates a firm and its first owner, then sends a one-time workspace invitation.
 
-  def change_user_registration_with_org(attrs \\ %{}) do
-    {%{}, @registration_with_org_types}
-    |> Ecto.Changeset.cast(attrs, Map.keys(@registration_with_org_types))
-    |> Ecto.Changeset.validate_required([:name, :email, :password, :org_name])
-    |> Ecto.Changeset.update_change(:email, &String.downcase(String.trim(&1)))
-    |> Ecto.Changeset.update_change(:org_name, &String.trim/1)
-    |> Ecto.Changeset.validate_format(:email, ~r/^[^\s]+@[^\s]+$/)
-    |> Ecto.Changeset.validate_length(:password, min: 8, max: 72)
-    |> Ecto.Changeset.validate_confirmation(:password, message: "does not match password")
-  end
+  The firm, passwordless user, owner membership, and invite token are committed
+  atomically. Email is sent only after the transaction commits.
+  """
+  def provision_firm(org_attrs, owner_attrs, url_fun)
+      when is_map(org_attrs) and is_map(owner_attrs) and is_function(url_fun, 1) do
+    org_changeset = Orgs.change_org(%Org{}, org_attrs)
+    owner_changeset = change_owner_invite(owner_attrs)
 
-  def register_user_with_org(attrs) do
-    changeset = change_user_registration_with_org(attrs)
+    cond do
+      not org_changeset.valid? ->
+        {:error, org_changeset}
 
-    if changeset.valid? do
-      signup = Ecto.Changeset.apply_changes(changeset)
+      not owner_changeset.valid? ->
+        {:error, owner_changeset}
 
-      Repo.transact(fn ->
-        with {:ok, user} <-
-               User.registration_changeset(%User{}, signup, confirm: false) |> Repo.insert(),
-             {:ok, org} <- Orgs.create_org(%{name: signup.org_name}),
-             {:ok, membership} <- Orgs.add_user(org, user.id, "owner") do
-          {:ok, %{user: user, org: org, membership: membership}}
-        end
-      end)
-    else
-      {:error, changeset}
+      true ->
+        %{name: owner_name, email: owner_email} = Ecto.Changeset.apply_changes(owner_changeset)
+
+        result =
+          Repo.transact(fn ->
+            with {:ok, org} <- Repo.insert(org_changeset),
+                 {:ok, user} <- create_user(%{name: owner_name, email: owner_email}),
+                 {:ok, membership} <- Orgs.add_user(org, user.id, "owner") do
+              {encoded_token, user_token} = UserToken.build_invite_token(user)
+              Repo.insert!(user_token)
+
+              {:ok, %{user: user, org: org, membership: membership, encoded_token: encoded_token}}
+            end
+          end)
+
+        deliver_firm_invitation(result, url_fun)
     end
   end
 
@@ -266,17 +265,31 @@ defmodule Nila.Accounts do
   ## Invitations
 
   @invite_types %{name: :string, email: :string, role: :string}
+  @owner_invite_types Map.delete(@invite_types, :role)
 
   @doc """
   Builds the schemaless changeset behind the "invite user" form.
   """
   def change_invite(attrs \\ %{}) do
     {%{role: "member"}, @invite_types}
-    |> Ecto.Changeset.cast(attrs, [:name, :email, :role])
-    |> Ecto.Changeset.validate_required([:name, :email, :role])
-    |> Ecto.Changeset.update_change(:email, &String.downcase(String.trim(&1)))
-    |> Ecto.Changeset.validate_format(:email, ~r/^[^\s]+@[^\s]+$/)
+    |> Ecto.Changeset.cast(attrs, Map.keys(@invite_types))
+    |> validate_invited_user()
+    |> Ecto.Changeset.validate_required([:role])
     |> Ecto.Changeset.validate_inclusion(:role, ~w(owner admin member viewer))
+  end
+
+  defp change_owner_invite(attrs) do
+    {%{}, @owner_invite_types}
+    |> Ecto.Changeset.cast(attrs, Map.keys(@owner_invite_types))
+    |> validate_invited_user()
+  end
+
+  defp validate_invited_user(changeset) do
+    changeset
+    |> Ecto.Changeset.update_change(:name, &String.trim/1)
+    |> Ecto.Changeset.update_change(:email, &String.downcase(String.trim(&1)))
+    |> Ecto.Changeset.validate_required([:name, :email])
+    |> Ecto.Changeset.validate_format(:email, ~r/^[^\s]+@[^\s]+$/)
   end
 
   @doc """
@@ -348,6 +361,21 @@ defmodule Nila.Accounts do
       end
     end)
   end
+
+  defp deliver_firm_invitation({:ok, provisioned}, url_fun) do
+    invite_url = url_fun.(provisioned.encoded_token)
+
+    case UserNotifier.deliver_invitation(provisioned.user, provisioned.org, invite_url) do
+      {:ok, _email} ->
+        {:ok, Map.delete(provisioned, :encoded_token)}
+
+      {:error, reason} ->
+        details = provisioned |> Map.delete(:encoded_token) |> Map.put(:invite_url, invite_url)
+        {:error, {:email_delivery_failed, details, reason}}
+    end
+  end
+
+  defp deliver_firm_invitation(error, _url_fun), do: error
 
   defp get_or_create_user(email, name) do
     case get_user_by_email(email) do

@@ -45,6 +45,18 @@ defmodule NilaWeb.PageControllerTest do
     assert html =~ "hello@nila.tax"
   end
 
+  test "GET /users/sign_up redirects to the contact funnel", %{conn: conn} do
+    conn = get(conn, ~p"/users/sign_up")
+
+    assert redirected_to(conn) == ~p"/contact"
+    assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "invite-only"
+  end
+
+  test "POST /users/sign_up is not routed", %{conn: conn} do
+    conn = post(conn, "/users/sign_up", %{})
+    assert response(conn, 404)
+  end
+
   test "POST /contact/callback emails a callback request", %{conn: conn} do
     conn =
       post(conn, ~p"/contact/callback", %{
