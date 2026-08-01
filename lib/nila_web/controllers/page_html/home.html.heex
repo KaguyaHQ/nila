@@ -9,7 +9,12 @@
     <.public_header inverted class="absolute inset-x-0 top-0 z-20" />
 
     <div class="relative z-10 mx-auto max-w-3xl px-6 pt-32 text-center sm:pt-36">
-      <div class="landing-moon moon-rise mx-auto size-40 sm:size-48" aria-hidden="true"></div>
+      <div
+        class="moon-rise mx-auto flex h-28 items-center justify-center sm:h-32"
+        aria-hidden="true"
+      >
+        <div class="landing-moon"></div>
+      </div>
 
       <h1 class="font-display moon-rise text-base-100 text-h2 mt-8 font-normal [animation-delay:220ms]">
         It’s done. Review.
@@ -33,7 +38,10 @@
           <.icon name="nila-whatsapp" class="size-4 shrink-0" /> Arrange a test on WhatsApp
         </.link>
         <p class="text-fine mt-4">
-          <.link navigate={~p"/contact"} class="hover:text-base-100 text-base-100/60 transition">
+          <.link
+            navigate={~p"/contact"}
+            class="decoration-base-100/30 hover:decoration-base-100/60 hover:text-base-100 text-base-100/60 underline underline-offset-4 transition"
+          >
             Prefer email or a callback?
           </.link>
         </p>

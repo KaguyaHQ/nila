@@ -423,18 +423,91 @@ details[open] > summary .fold-chevron {
     );
 }
 
-/* The moon itself: a soft luminous disc with a wide halo, drawn in light, not
-   lines. Rendered as an in-flow div (aria-hidden) so the hero composition owns
-   its place. */
+/* A pearl moon rather than a blur: a visible disc with restrained mottling,
+   a shaded lower-right edge, and two scales of light around it. */
 .landing-moon {
+  position: relative;
+  isolation: isolate;
+  width: 4.375rem;
+  height: 4.375rem;
+  border-radius: 999px;
+  background-image:
+    radial-gradient(
+      ellipse 8% 5% at 26% 36%,
+      oklch(38% 0.035 235 / 0.048) 0 45%,
+      transparent 100%
+    ),
+    radial-gradient(
+      ellipse 13% 9% at 69% 43%,
+      oklch(38% 0.035 235 / 0.054) 0 42%,
+      transparent 100%
+    ),
+    radial-gradient(
+      ellipse 15% 11% at 41% 72%,
+      oklch(38% 0.035 235 / 0.06) 0 40%,
+      transparent 100%
+    ),
+    radial-gradient(
+      ellipse 7% 10% at 78% 72%,
+      oklch(38% 0.035 235 / 0.042) 0 38%,
+      transparent 100%
+    ),
+    radial-gradient(
+      circle at 31% 28%,
+      oklch(99% 0.004 235) 0%,
+      oklch(96% 0.012 235) 34%,
+      oklch(88% 0.025 235) 72%,
+      oklch(78% 0.04 235) 100%
+    );
+  box-shadow:
+    inset -11px -13px 22px oklch(22% 0.055 243 / 0.24),
+    0 0 16px oklch(96% 0.025 235 / 0.62),
+    0 0 48px oklch(84% 0.06 232 / 0.3),
+    0 0 110px oklch(76% 0.07 232 / 0.13);
+  animation: moon-float 10s ease-in-out infinite;
+  transform: translateY(8px);
+}
+.landing-moon::before {
+  position: absolute;
+  inset: 0;
+  border: 1px solid oklch(99% 0.006 235 / 0.28);
+  border-radius: inherit;
+  background-image: radial-gradient(circle at 30% 24%, oklch(100% 0 0 / 0.22), transparent 42%);
+  content: "";
+}
+.landing-moon::after {
+  position: absolute;
+  z-index: -1;
+  inset: -4.75rem;
+  border-radius: 999px;
   background-image: radial-gradient(
-    closest-side,
-    oklch(98% 0.008 235) 0%,
-    oklch(95% 0.015 235 / 0.95) 22%,
-    oklch(88% 0.035 235 / 0.4) 38%,
-    oklch(80% 0.05 235 / 0.12) 55%,
-    transparent 72%
+    circle,
+    oklch(86% 0.055 232 / 0.13),
+    oklch(82% 0.06 232 / 0.04) 42%,
+    transparent 70%
   );
+  content: "";
+  filter: blur(8px);
+}
+@media (min-width: 40rem) {
+  .landing-moon {
+    width: 4.625rem;
+    height: 4.625rem;
+  }
+}
+@keyframes moon-float {
+  0%,
+  100% {
+    transform: translateY(8px);
+  }
+  50% {
+    transform: translateY(5px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-moon {
+    animation: none;
+  }
 }
 
 /* The lift under the one floating artifact — moonlight falling on it from
@@ -443,7 +516,7 @@ details[open] > summary .fold-chevron {
   box-shadow:
     0 1px 2px oklch(25% 0.05 240 / 0.08),
     0 12px 32px oklch(25% 0.05 240 / 0.1),
-    0 40px 90px oklch(25% 0.05 240 / 0.16);
+    0 40px 90px oklch(25% 0.05 240 / 0.12);
 }
 
 /* Soft-fill tile: structure from fill and air, not a border. */
