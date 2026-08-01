@@ -15,98 +15,78 @@ defmodule NilaWeb.PageHTML do
 
   def whatsapp_url, do: @whatsapp_url
 
-  @doc """
-  The marketing chrome — the ledger header and footer that frame every public
-  page. Every public page wraps its body in this, so the paper, the red margin
-  rule, and the heavy double borders are defined once and cannot drift apart.
-
-  The `tagline` slot sits left of the header links on `md` and up; pages that
-  don't set it just get the links.
-  """
-  slot :tagline, doc: "one line of positioning, shown in the header on wide screens"
+  attr :flash, :map, required: true
   slot :inner_block, required: true
 
   def page_shell(assigns) do
     ~H"""
-    <div class="bg-paper text-ink min-h-screen">
-      <div class="mx-auto max-w-6xl px-4 sm:px-6">
-        <header class="border-ink border-b-4 border-double">
-          <div class="flex h-16 items-center justify-between">
-            <a href="/" class="flex items-center">
-              <.logo class="text-ink h-7 w-auto" />
-            </a>
-            <div class="flex items-center gap-5">
-              <p :if={@tagline != []} class="text-fine text-ink/55 hidden md:block">
-                {render_slot(@tagline)}
-              </p>
-              <.link
-                navigate={~p"/users/log_in"}
-                class="hover:text-ink text-ink/70 text-small font-medium transition"
-              >
-                Log in
-              </.link>
-              <.link
-                href={whatsapp_url()}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="bg-ink rounded-field text-paper text-small inline-flex h-9 items-center px-4 font-semibold transition hover:opacity-85"
-              >
-                Arrange a test
-              </.link>
-            </div>
-          </div>
-        </header>
-
-        <div class="relative">
-          <div
-            aria-hidden="true"
-            class="border-redink/50 absolute inset-y-0 left-3 w-1 border-x sm:left-4 lg:left-40"
-          >
-          </div>
-
-          {render_slot(@inner_block)}
-        </div>
-
-        <.page_footer />
-      </div>
+    <Layouts.flash_group flash={@flash} />
+    <div class="landing text-ink min-h-screen">
+      <.public_header />
+      {render_slot(@inner_block)}
+      <.page_footer />
     </div>
     """
   end
 
-  @doc """
-  The shared marketing footer, with the legal and contact links.
-  """
+  attr :inverted, :boolean, default: false
+  attr :class, :any, default: nil
+
+  def public_header(assigns) do
+    ~H"""
+    <header class={@class}>
+      <div class="mx-auto flex h-20 max-w-5xl items-center justify-between px-6">
+        <.link navigate={~p"/"} class="inline-flex items-center">
+          <.logo class={["h-6 w-auto", @inverted && "text-base-100/90", !@inverted && "text-ink"]} />
+        </.link>
+        <.link
+          navigate={~p"/users/log_in"}
+          class={[
+            "text-small font-medium transition",
+            @inverted && "hover:text-base-100 text-base-100/60",
+            !@inverted && "hover:text-ink text-ink-subtle"
+          ]}
+        >
+          Log in
+        </.link>
+      </div>
+    </header>
+    """
+  end
+
+  attr :eyebrow, :string, required: true
+  attr :title, :string, required: true
+  attr :updated, :string, required: true
+  slot :inner_block, required: true
+
+  def legal_page(assigns) do
+    ~H"""
+    <main class="mx-auto max-w-5xl px-6 pt-16 pb-28 sm:pt-24 sm:pb-36">
+      <header class="max-w-3xl">
+        <p class="text-eyebrow text-ink-subtle font-semibold uppercase">{@eyebrow}</p>
+        <h1 class="font-display text-statement mt-6 font-normal text-balance">{@title}</h1>
+        <p class="text-fine text-ink-subtle mt-5">Last updated {@updated}</p>
+      </header>
+      <article class="mt-12 max-w-3xl space-y-10">
+        {render_slot(@inner_block)}
+      </article>
+    </main>
+    """
+  end
+
   def page_footer(assigns) do
     ~H"""
-    <footer class="border-ink border-t-4 border-double">
-      <div class="flex flex-col gap-4 py-8 sm:flex-row sm:items-center sm:justify-between">
-        <a href="/" class="inline-flex items-center">
-          <.logo class="text-ink h-6 w-auto" />
-        </a>
-        <nav class="text-small flex flex-wrap items-center gap-x-6 gap-y-2 font-medium">
-          <.link
-            navigate={~p"/contact"}
-            class="hover:text-ink text-ink/75 transition"
-          >
-            Contact
-          </.link>
-          <.link
-            navigate={~p"/privacy"}
-            class="hover:text-ink text-ink/75 transition"
-          >
-            Privacy
-          </.link>
-          <.link
-            navigate={~p"/terms"}
-            class="hover:text-ink text-ink/75 transition"
-          >
-            Terms
-          </.link>
+    <footer class="mx-auto max-w-5xl px-6 pb-10">
+      <div class="border-base-300/60 flex flex-col items-center gap-4 border-t pt-8 sm:flex-row sm:justify-between">
+        <.link navigate={~p"/"} class="inline-flex items-center">
+          <.logo class="text-ink-subtle h-5 w-auto" />
+        </.link>
+        <nav class="text-fine text-ink-subtle flex items-center gap-6">
+          <.link navigate={~p"/contact"} class="hover:text-ink transition">Contact</.link>
+          <.link navigate={~p"/privacy"} class="hover:text-ink transition">Privacy</.link>
+          <.link navigate={~p"/terms"} class="hover:text-ink transition">Terms</.link>
         </nav>
-      </div>
-      <div class="text-ink/50 text-micro flex flex-col gap-2 pb-8 sm:flex-row sm:items-center sm:justify-between">
-        <p>© 2026 Nila</p>
-        <p>Operated by Kaguya Media Private Limited · Chennai, India</p>
+        <p class="text-ink-subtle text-micro">© 2026 Nila · Kaguya Media Private Limited</p>
       </div>
     </footer>
     """

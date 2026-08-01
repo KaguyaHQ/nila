@@ -13,15 +13,15 @@ defmodule NilaWeb.PageController do
   end
 
   def privacy(conn, _params) do
-    render(conn, :privacy)
+    render(conn, :privacy, page_title: "Privacy policy")
   end
 
   def terms(conn, _params) do
-    render(conn, :terms)
+    render(conn, :terms, page_title: "Terms of service")
   end
 
   def data_deletion(conn, _params) do
-    render(conn, :data_deletion)
+    render(conn, :data_deletion, page_title: "Request data deletion")
   end
 
   def contact(conn, _params) do

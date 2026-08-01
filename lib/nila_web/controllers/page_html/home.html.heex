@@ -6,19 +6,7 @@
 <div class="landing text-ink min-h-screen">
   <%!-- ── The night ─────────────────────────────────────────────────────── --%>
   <section class="landing-night relative overflow-hidden">
-    <header class="absolute inset-x-0 top-0 z-20">
-      <div class="mx-auto flex h-20 max-w-5xl items-center justify-between px-6">
-        <a href="/" class="inline-flex items-center">
-          <.logo class="text-base-100/90 h-6 w-auto" />
-        </a>
-        <.link
-          navigate={~p"/users/log_in"}
-          class="hover:text-base-100 text-base-100/60 text-small font-medium transition"
-        >
-          Log in
-        </.link>
-      </div>
-    </header>
+    <.public_header inverted class="absolute inset-x-0 top-0 z-20" />
 
     <div class="relative z-10 mx-auto max-w-3xl px-6 pt-32 text-center sm:pt-36">
       <div class="landing-moon moon-rise mx-auto size-40 sm:size-48" aria-hidden="true"></div>
@@ -40,9 +28,9 @@
           href={whatsapp_url()}
           target="_blank"
           rel="noopener noreferrer"
-          class="bg-base-100 rounded-field text-ink text-small inline-flex h-12 items-center px-7 font-semibold transition hover:opacity-90"
+          class="bg-base-100 rounded-field text-ink text-small inline-flex h-12 items-center gap-2 px-7 font-semibold transition hover:opacity-90"
         >
-          Arrange a test on WhatsApp
+          <.icon name="nila-whatsapp" class="size-4 shrink-0" /> Arrange a test on WhatsApp
         </.link>
         <p class="text-fine mt-4">
           <.link navigate={~p"/contact"} class="hover:text-base-100 text-base-100/60 transition">
@@ -237,9 +225,9 @@
         href={whatsapp_url()}
         target="_blank"
         rel="noopener noreferrer"
-        class="bg-base-content rounded-field text-base-100 text-small inline-flex h-12 items-center px-7 font-semibold transition hover:opacity-85"
+        class="bg-base-content rounded-field text-base-100 text-small inline-flex h-12 items-center gap-2 px-7 font-semibold transition hover:opacity-85"
       >
-        Arrange a test on WhatsApp
+        <.icon name="nila-whatsapp" class="size-4 shrink-0" /> Arrange a test on WhatsApp
       </.link>
     </div>
     <p class="text-fine text-ink-subtle mt-6">
@@ -249,17 +237,5 @@
     </p>
   </section>
 
-  <footer class="mx-auto max-w-5xl px-6 pb-10">
-    <div class="border-base-300/60 flex flex-col items-center gap-4 border-t pt-8 sm:flex-row sm:justify-between">
-      <a href="/" class="inline-flex items-center">
-        <.logo class="text-ink-subtle h-5 w-auto" />
-      </a>
-      <nav class="text-fine text-ink-subtle flex items-center gap-6">
-        <.link navigate={~p"/contact"} class="hover:text-ink transition">Contact</.link>
-        <.link navigate={~p"/privacy"} class="hover:text-ink transition">Privacy</.link>
-        <.link navigate={~p"/terms"} class="hover:text-ink transition">Terms</.link>
-      </nav>
-      <p class="text-ink-subtle text-micro">© 2026 Nila · Kaguya Media Private Limited</p>
-    </div>
-  </footer>
+  <.page_footer />
 </div>

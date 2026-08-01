@@ -1,20 +1,4 @@
-<Layouts.flash_group flash={@flash} />
-
-<div class="landing text-ink min-h-screen">
-  <header>
-    <div class="mx-auto flex h-20 max-w-5xl items-center justify-between px-6">
-      <.link navigate={~p"/"} class="inline-flex items-center">
-        <.logo class="text-ink h-6 w-auto" />
-      </.link>
-      <.link
-        navigate={~p"/users/log_in"}
-        class="hover:text-ink text-ink-subtle text-small font-medium transition"
-      >
-        Log in
-      </.link>
-    </div>
-  </header>
-
+<.page_shell flash={@flash}>
   <main class="mx-auto max-w-5xl px-6 pt-16 pb-28 sm:pt-24 sm:pb-36">
     <section class="max-w-3xl">
       <p class="text-eyebrow text-ink-subtle font-semibold uppercase">Put Nila to the test</p>
@@ -40,9 +24,9 @@
             href={whatsapp_url()}
             target="_blank"
             rel="noopener noreferrer"
-            class="bg-base-100 rounded-field text-ink text-small inline-flex h-12 items-center px-7 font-semibold transition hover:opacity-90"
+            class="bg-base-100 rounded-field text-ink text-small inline-flex h-12 items-center gap-2 px-7 font-semibold transition hover:opacity-90"
           >
-            Arrange on WhatsApp
+            <.icon name="nila-whatsapp" class="size-4 shrink-0" /> Arrange on WhatsApp
           </.link>
         </div>
         <p class="text-base-100/45 text-fine mt-auto pt-8">
@@ -107,17 +91,4 @@
       </p>
     </section>
   </main>
-
-  <footer class="mx-auto max-w-5xl px-6 pb-10">
-    <div class="border-base-300/60 flex flex-col items-center gap-4 border-t pt-8 sm:flex-row sm:justify-between">
-      <.link navigate={~p"/"} class="inline-flex items-center">
-        <.logo class="text-ink-subtle h-5 w-auto" />
-      </.link>
-      <nav class="text-fine text-ink-subtle flex items-center gap-6">
-        <.link navigate={~p"/privacy"} class="hover:text-ink transition">Privacy</.link>
-        <.link navigate={~p"/terms"} class="hover:text-ink transition">Terms</.link>
-      </nav>
-      <p class="text-ink-subtle text-micro">© 2026 Nila · Kaguya Media Private Limited</p>
-    </div>
-  </footer>
-</div>
+</.page_shell>

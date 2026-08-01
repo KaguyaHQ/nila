@@ -301,42 +301,6 @@ details[open] > summary .fold-chevron {
   color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
 }
 
-/* ── Ledger (marketing identity) ──────────────────────────────────────
-   The public pages are set as a leaf from an account book: warm paper, true
-   ink, feint blue ruling, and the double red margin rule. These tokens exist
-   for that identity only — product surfaces stay on the moonlight theme.
-
-   Every value is cut from a hue the moonlight theme already uses, so crossing
-   from marketing into the product is a change of setting, not of brand. The
-   ledger keeps its own contrast and its own zero-radius rules; it just stops
-   being a second palette.
-
-     paper   hue 78, the `accent` sand — the page's warmth is the brand's one
-             sanctioned warm note, not an unrelated cream. Chroma is held at
-             0.005, half the accent's presence elsewhere: `accent` is specified
-             for sparing use, and a tint that reads as a considered accent on a
-             badge reads as cream when it covers the whole page.
-     ink     hue 233 at 23% L — `base-content` (30% 0.055 233) pressed darker
-             for ink on paper. Product text and ledger ink are one color at
-             two pressures.
-     feint   hue 233, chroma held well above `base-300`'s 0.008: feint blue
-             ruling has to read as blue, that is the whole device.
-     redink  hue 22 and chroma 0.17 — `error` exactly, held at 50% L instead
-             of 60% because the margin rule and the `text-micro` flags need
-             the contrast against paper. */
-@theme {
-  --color-paper: oklch(97.6% 0.005 78);
-  --color-ink: oklch(23% 0.045 233);
-  --color-feint: oklch(89.5% 0.02 233);
-  --color-redink: oklch(50% 0.17 22);
-}
-
-/* The ledger already owns `text-ink`; scope base content to its paper shell so
-   the product ink utility preserves the ledger's darker, pixel-identical ink. */
-.bg-paper {
-  --color-base-content: var(--color-ink);
-}
-
 /* Moonlight ground: a pale cool sea-blue wash with a soft pool of light up top,
    fading to near-white, plus one faint warm-sand glow low on the right — the
    amber window in a blue night. Use for the hero. Pair with "ink" text. */
