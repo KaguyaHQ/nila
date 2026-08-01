@@ -22,7 +22,7 @@ defmodule Nila.Gst.Intake.EvidenceBackfill do
   late arrival — `held`, not overwritten.
   """
 
-  alias Nila.Gst.Extraction.Windowed
+  alias Nila.Gst.Extraction.Evidence
   alias Nila.Gst.Intake.{Dump, Dumps, DumpWorker}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Sales.Months, as: SalesMonths
@@ -107,7 +107,7 @@ defmodule Nila.Gst.Intake.EvidenceBackfill do
   defp read_source(%Dump{id: id}), do: {:error, {:no_source_file, id}}
 
   defp render(%Dump{file_keys: [key | _rest]}, bytes),
-    do: Windowed.render_pages(bytes, filename: Path.basename(key))
+    do: Evidence.render_pages(bytes, filename: Path.basename(key))
 
   # The same namespacing a fresh extraction applies, and it has to be the same:
   # these basenames are what the evidence controller resolves back to a key.
@@ -146,7 +146,7 @@ defmodule Nila.Gst.Intake.EvidenceBackfill do
   end
 
   defp basename_if_rendered(page, dump, images) do
-    basename = Windowed.page_basename(page)
+    basename = Evidence.page_basename(page)
     if is_map_key(images, basename), do: namespace(dump, basename)
   end
 

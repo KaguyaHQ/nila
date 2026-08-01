@@ -3,10 +3,10 @@ defmodule Nila.Gst.Extraction.Discovery do
   Cuts a transcribed packet into segments — one per bill — before anything is
   extracted.
 
-  This is the stage the windowed pipeline never had. There, the unit of
-  extraction was a fixed 8-page window and the unit of correctness was one
+  This is the stage the former chunked reader never had. There, the unit of
+  extraction was a fixed 8-page chunk and the unit of correctness was one
   invoice, so a single call had to hold several bills at once and spend one
-  output budget across all of them; a dense multi-invoice window truncated
+  output budget across all of them; a dense multi-invoice chunk truncated
   systematically, dropping real line items while returning HTTP 200. Deciding
   boundaries *first* makes the two units the same, and a per-invoice call can
   no more run out of budget than the invoice can run out of rows.
@@ -20,7 +20,7 @@ defmodule Nila.Gst.Extraction.Discovery do
 
     * **conservation** — every physical page lands in exactly one segment. A page
       the model forgets becomes an `:unreadable` segment and a violation, never
-      silence. This is the same ledger discipline the windowed path used, kept
+      silence. This is the same ledger discipline the former reader used, kept
       because it is the only reason a dropped page is ever noticed.
     * **contiguity** — a segment's pages are a contiguous run. Scanned packets do
       not interleave, so a non-contiguous segment is a model error by

@@ -2,9 +2,9 @@ defmodule Nila.Gst.Extraction.Transcription do
   @moduledoc """
   One canonical text per physical page of a document.
 
-  The windowed pipeline never had this: overlapping windows OCR'd the same page
-  twice and the two reads disagreed (breeze 2026-06, pages 8, 13, 19 and 20 —
-  page 20 came back a delivery challan in one window and a tax invoice in the
+  The former chunked reader never had this: overlapping chunks OCR'd the same
+  page twice and the reads disagreed (breeze 2026-06, pages 8, 13, 19 and 20 —
+  page 20 came back a delivery challan in one chunk and a tax invoice in the
   other). Everything downstream of a disagreement is arguing about a page that
   has two texts, so the segmented pipeline reads each page exactly once and
   every later stage — segmentation, extraction, grounding — quotes this
@@ -45,9 +45,8 @@ defmodule Nila.Gst.Extraction.Transcription do
   def from_decoded(_decoded), do: {:error, :missing_pages}
 
   # `index` is the document-absolute 0-based page number even when the request
-  # asked for a subset, so a transport batch needs no re-basing. (The windowed
-  # path could not assume this: its annotation numbers pages relative to the
-  # window, and reconciling the two numberings is a whole function there.)
+  # asked for a subset, so a transport batch needs no re-basing. The former
+  # fused annotation path had to reconcile a second relative page numbering.
   defp number(%{"index" => index}) when is_integer(index), do: index + 1
 
   defp build_page(page) do

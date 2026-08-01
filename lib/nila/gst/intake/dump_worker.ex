@@ -299,9 +299,9 @@ defmodule Nila.Gst.Intake.DumpWorker do
   # packet that simply had nothing to show.
   defp evidence_unavailable?(result), do: not is_nil(Map.get(result, :evidence_error))
 
-  # A windowed extractor makes one provider call per page window, so the audit
-  # row is per call, not per dump: it takes the attempt-persisting wrapper and
-  # applies it around each one, tagging the row with the window's page range.
+  # The segmented extractor makes provider calls for three distinct stages, so
+  # the audit row is per stage rather than per dump. The attempt-persisting
+  # wrapper records each stage with its own metadata and result.
   defp extract_source(dump, extractor, worker_attempt) do
     with {:ok, key} <- one_source_key(dump),
          {:ok, bytes} <- Storage.get(key) do
@@ -310,10 +310,10 @@ defmodule Nila.Gst.Intake.DumpWorker do
         # The client's own GSTIN is a fact we hold, so the read is told it
         # rather than left to infer it from the packet.
         client_gstin: client_gstin(dump),
-        on_progress: fn _stage -> :ok end,
-        on_window: fn
-          {:progress, window} -> progress(dump, {:extracting, window})
+        on_progress: fn
+          {:progress, extraction} -> progress(dump, {:extracting, extraction})
           {:retrying, pages} -> progress(dump, {:extracting_retry, pages})
+          _coarse_stage -> :ok
         end
       ]
 

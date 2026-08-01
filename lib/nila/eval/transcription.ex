@@ -7,11 +7,10 @@ defmodule Nila.Eval.Transcription do
   grounding — reads this cache, which means a prompt or guard change costs no OCR
   and every stage is scored against exactly the text the others saw.
 
-  Attempts are never overwritten, for the same reason
-  `Nila.Eval.Extraction` never overwrites: OCR is not deterministic either. The
-  windowed runs proved it — the same page read in two overlapping windows came
-  back with different text, and once in the corpus with a different *document
-  type*. `latest/1` is what the pipeline reads; older attempts stay on disk as
+  Attempts are never overwritten because OCR is not deterministic either.
+  Repeated reads proved that the same page can come back with different text,
+  and once in the corpus with a different *document type*. `latest/1` is what
+  the pipeline reads; older attempts stay on disk as
   the record of what was true when a score was taken.
   """
 

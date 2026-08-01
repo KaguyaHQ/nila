@@ -12,19 +12,13 @@ defmodule Mix.Tasks.Nila.Eval do
 
       mix nila.eval transcribe <name>          # pure OCR, no annotation, cached
       mix nila.eval segment <name> [--runs 5] [--shape per_page|whole_dump]
-      mix nila.eval extract <name> --pipeline segmented
-      mix nila.eval score <name> --pipeline segmented
 
-  The `--pipeline segmented` variants run the transcribe → discover → extract →
-  verify path against the same corpus, writing their own attempts, so the two
-  pipelines are compared on numbers rather than on argument. Production stays
-  windowed until those numbers say otherwise.
+  `extract` runs the production transcribe → discover → extract → verify path
+  and writes a new attempt under `tmp/eval/segmented/`. Attempts are never
+  overwritten because the model is non-deterministic and an overwritten attempt
+  is a rewritten history.
 
-  `extract` calls the provider once per window and writes a new attempt under
-  `tmp/eval/extractions/`; attempts are never overwritten, because the model is
-  non-deterministic and an overwritten attempt is a rewritten history.
-
-  `score` replays the cached response bytes through mapping, merging,
+  `score` replays the cached response bytes through mapping, verification,
   normalizing, deriving and diffing — all of which run at score time, so
   re-scoring after a rule change costs no API calls and no pure edit can hide
   behind a cache hit. It writes `fields.jsonl` and `report.md` under
@@ -44,28 +38,19 @@ defmodule Mix.Tasks.Nila.Eval do
   def run(args) do
     Mix.Task.run("app.start")
 
-    {opts, positional, _invalid} =
-      OptionParser.parse(args,
-        strict: [all: :boolean, pipeline: :string, runs: :integer, shape: :string]
-      )
+    {opts, positional, invalid} =
+      OptionParser.parse(args, strict: [all: :boolean, runs: :integer, shape: :string])
+
+    if invalid != [], do: Mix.raise("invalid options #{inspect(invalid)}")
 
     case positional do
-      ["extract", name] -> extract(name, pipeline(opts), opts)
+      ["extract", name] -> extract(name, opts)
       ["transcribe", name] -> transcribe(name)
       ["segment", name] -> segment(name, opts)
-      ["score", name] -> score_months([name], pipeline(opts))
+      ["score", name] -> score_months([name])
       ["score"] -> score_all(opts)
       [] -> Mix.shell().info(@moduledoc)
       other -> Mix.raise("unknown command #{inspect(Enum.join(other, " "))}")
-    end
-  end
-
-  defp pipeline(opts) do
-    case opts[:pipeline] do
-      nil -> :windowed
-      "windowed" -> :windowed
-      "segmented" -> :segmented
-      other -> Mix.raise("unknown --pipeline #{inspect(other)} (windowed | segmented)")
     end
   end
 
@@ -192,26 +177,8 @@ defmodule Mix.Tasks.Nila.Eval do
   defp issues(%{issues: []}), do: ""
   defp issues(%{issues: issues}), do: "  " <> inspect(issues, limit: 5, charlists: :as_lists)
 
-  defp extract(name, :segmented, opts), do: extract_segmented(name, shape(opts))
-
-  defp extract(name, :windowed, _opts) do
-    Mix.shell().info("extracting #{name}")
-
-    report = fn
-      {:plan, count} ->
-        Mix.shell().info("  #{count} window(s)")
-
-      {:window, window, done, total} ->
-        Mix.shell().info("  #{done}/#{total}  #{inspect(window)}")
-    end
-
-    case Nila.Eval.Extraction.run(name, on_window: report) do
-      {:ok, dir} -> Mix.shell().info("\ncached → #{dir}")
-      {:error, reason} -> Mix.raise("extraction failed: #{inspect(reason, limit: 8)}")
-    end
-  end
-
-  defp extract_segmented(name, shape) do
+  defp extract(name, opts) do
+    shape = shape(opts)
     Mix.shell().info("extracting #{name} (segmented, #{shape})")
 
     report = fn
@@ -240,15 +207,15 @@ defmodule Mix.Tasks.Nila.Eval do
 
   defp score_all(opts) do
     opts[:all] || Mix.raise("mix nila.eval score needs <name>, or --all for every month")
-    score_months(Eval.evaluable(), pipeline(opts))
+    score_months(Eval.evaluable())
   end
 
-  defp score_months(names, pipeline) do
+  defp score_months(names) do
     run_id = Eval.run_id()
-    Mix.shell().info("run #{run_id} (#{pipeline})\n")
+    Mix.shell().info("run #{run_id} (segmented)\n")
 
     Enum.each(names, fn name ->
-      case Eval.score(name, run_id, pipeline: pipeline) do
+      case Eval.score(name, run_id) do
         {:ok, month} ->
           Mix.shell().info("  #{String.pad_trailing(name, 26)} #{summary(month)}")
           warn_unaccounted(month)
@@ -267,8 +234,8 @@ defmodule Mix.Tasks.Nila.Eval do
   defp adjusted(%{adjusted: nil}), do: ""
   defp adjusted(%{adjusted: adjusted}), do: " raw / #{adjusted["score"]}% adjusted"
 
-  # A page no artifact claimed is the failure windowing exists to make loud, so
-  # it is said out loud here too rather than only in the run record.
+  # A page no artifact claimed is an extraction gap, so it is said out loud
+  # here rather than only in the run record.
   defp warn_unaccounted(month) do
     case month.provenance["unaccounted_pages"] do
       pages when is_list(pages) and pages != [] ->

@@ -2,14 +2,13 @@ defmodule Nila.Gst.Extraction.Pipeline do
   @moduledoc """
   Reads a packet by cutting it into bills first and extracting one bill at a time.
 
-  This is the production read. It replaces the windowed one
-  (`Nila.Gst.Extraction.Windowed`, kept for its page rendering and for months
-  already read through it) because windows were a transport decision doing a
-  semantic job: `/v1/ocr` fuses transcription and annotation into a single call,
-  only the annotation half has a per-call output budget, and a dense window spent
+  This is the production read. It replaces the former window-based reader
+  because page chunks were a transport decision doing a semantic job:
+  `/v1/ocr` fuses transcription and annotation into a single call,
+  only the annotation half has a per-call output budget, and a dense chunk spent
   one budget across several bills. The same 10-row invoice came back complete
-  read alone and 8 rows long read inside an 8-page window — with HTTP 200 either
-  way. Shrinking the window shrank the odds; it could not remove them, because
+  read alone and 8 rows long inside an 8-page chunk — with HTTP 200 either way.
+  Shrinking the chunk reduced the odds; it could not remove them, because
   the unit of extraction was never the unit of correctness.
 
   Three stages, each with its own failure and its own measurement:
@@ -24,8 +23,8 @@ defmodule Nila.Gst.Extraction.Pipeline do
 
   ## A bill that will not read
 
-  The windowed path failed the whole month if any window failed, because a
-  window held several bills and nobody could say which ones were lost. Here the
+  The former chunked path failed the whole month if any chunk failed, because a
+  chunk held several bills and nobody could say which ones were lost. Here the
   loss is nameable: a segment that fails to extract leaves its pages in
   `:unaccounted_pages`, which the flags layer raises as `pages_unaccounted` for a
   human to read off the scan. Failing 54 good bills over the 55th is not more
@@ -42,16 +41,16 @@ defmodule Nila.Gst.Extraction.Pipeline do
   """
 
   alias Nila.Gst.Extraction.Discovery
+  alias Nila.Gst.Extraction.Evidence
   alias Nila.Gst.Extraction.Providers.Mistral
   alias Nila.Gst.Extraction.Providers.MistralChat
   alias Nila.Gst.Extraction.Segmented
   alias Nila.Gst.Extraction.Transcription
-  alias Nila.Gst.Extraction.Windowed
 
   require Logger
 
   @typedoc """
-  One `:on_window` report. `stage` names which of the three is running, because
+  One `:on_progress` report. `stage` names which of the three is running, because
   the honest unit changes with it: pages while the packet is being labelled,
   bills while they are being read.
   """
@@ -67,25 +66,23 @@ defmodule Nila.Gst.Extraction.Pipeline do
           | %{stage: :reading, done: non_neg_integer(), total: non_neg_integer()}
 
   @doc """
-  Packet in, verified invoices out, in `Nila.Gst.Extraction.Windowed.assemble/2`'s
-  shape so normalization, the workbench and the eval read either pipeline.
+  Packet in, verified invoices out, in the shared extraction-result shape used
+  by normalization, the workbench and eval.
 
   Options: `:filename` (content type and evidence rendering), `:client_gstin`
   (the client's own number — repairs their own side of a bill and is discounted
   when counting a segment's counterparties), `:per_call` (wraps each stage for
-  the audit row) and `:on_window` (progress).
+  the audit row) and `:on_progress` (progress).
   """
   def extract(kind, bytes, opts \\ []) when kind in [:purchase, :sales] and is_binary(bytes) do
     hooks = %{
       per_call: Keyword.get(opts, :per_call) || (&call_through/2),
-      on_window: Keyword.get(opts, :on_window) || (&ignore_progress/1)
+      on_progress: Keyword.get(opts, :on_progress) || (&ignore_progress/1)
     }
 
     # `:pages` and `:page_numbers` would transcribe a subset while the evidence
-    # renderer still rasterizes the whole packet — the windowed path dropped
-    # them for the same reason.
-    provider_opts =
-      Keyword.drop(opts, [:per_call, :on_window, :on_progress, :pages, :page_numbers])
+    # renderer still rasterizes the whole packet, so they stop at this boundary.
+    provider_opts = Keyword.drop(opts, [:per_call, :on_progress, :pages, :page_numbers])
 
     with {:ok, transcription} <- transcribe(bytes, provider_opts, hooks) do
       # Told to us in production, inferred from the packet otherwise, and
@@ -96,7 +93,7 @@ defmodule Nila.Gst.Extraction.Pipeline do
 
       with {:ok, discovery} <- discover(kind, transcription, provider_opts, hooks),
            {:ok, result} <- read_segments(kind, transcription, discovery, provider_opts, hooks) do
-        {:ok, Windowed.attach_evidence(result, bytes, provider_opts)}
+        {:ok, Evidence.attach(result, bytes, provider_opts)}
       else
         # A stage reports its audit alongside the reason so the attempt row can
         # be closed with it; the caller asked for invoices and gets one shape.
@@ -126,8 +123,8 @@ defmodule Nila.Gst.Extraction.Pipeline do
 
   # One retry, and only for what a retry can fix. Mistral caches OCR on identical
   # document bytes, so a resend after a client timeout lands in seconds — the
-  # windowed path measured this and relied on it, and dropping the retry with the
-  # windows would have turned one slow response into a failed month.
+  # former reader measured this and relied on it; the segmented path keeps that
+  # recovery rather than turning one slow response into a failed month.
   defp attempt_transcription(bytes, opts, hooks, try_number) do
     result = hooks.per_call.(%{stage: "transcription"}, fn -> transcription_call(bytes, opts) end)
 
@@ -136,7 +133,7 @@ defmodule Nila.Gst.Extraction.Pipeline do
       Logger.warning("segmented_extraction.transcription_retry reason=#{inspect(reason(result))}")
       # The page count is not known until the scan comes back, so the retry
       # narrates the whole packet rather than a range.
-      hooks.on_window.({:retrying, "all"})
+      hooks.on_progress.({:retrying, "all"})
       attempt_transcription(bytes, opts, hooks, try_number + 1)
     else
       _no_retry -> result
@@ -361,7 +358,7 @@ defmodule Nila.Gst.Extraction.Pipeline do
 
   # ---- plumbing ----
 
-  defp report(%{on_window: on_window}, progress), do: on_window.({:progress, progress})
+  defp report(%{on_progress: on_progress}, progress), do: on_progress.({:progress, progress})
 
   defp call_through(_metadata, call), do: call.()
 

@@ -18,17 +18,14 @@ is explicit via `GST_OCR_PROVIDER`, with no automatic fallback.
   ~15 pages**: it silently **drops** real invoices and **duplicates** others, while
   still returning HTTP 200 with well-formed JSON. This is the dangerous failure —
   plausible and silent.
-- **The fix is chunking**, not a provider change: small page windows keep the
-  annotation step inside the context length where it stays reliable. Chunk + verify
-  page coverage so any residual drop is loud, never silent.
+- **The fix is segment-then-extract**: transcribe once, discover bill boundaries,
+  extract one bill per call, and verify every returned value against that bill's
+  text. The extraction unit is therefore the correctness unit.
 - **Timeouts are recoverable, not fatal**: Mistral caches OCR on identical
-  *requests* (same bytes AND same parameters), so a retry after a client timeout
-  returns in seconds. Retry on timeout; don't fail the dump. **Caveat learned
-  later**: windowed subset requests do NOT hit this cache across runs — assume
-  every window pays cold OCR (§Evidence 5).
-- **Windowed extraction passes acceptance**: on the 57-page canary the windowed
-  path recovers the dropped invoice, extracts 47–48 unique (vs 34), hallucinates
-  nothing, and flags genuinely problematic pages for review (§Evidence 5–6).
+  requests, so a retry after a client timeout returns in seconds. Retry once;
+  don't fail the dump on transient transport errors.
+- **Every physical page is accounted for**: an extracted invoice or confirmed
+  non-invoice claims it; anything else becomes an explicit review gap.
 
 ## What the request actually does
 
@@ -38,8 +35,7 @@ One Mistral `/v1/ocr` call runs **two** different systems:
    per-page and indifferent to packet size. This is why `pages_processed` always
    matches the real page count and the page markdown contains the text.
 2. **Annotation layer** — a language model reads *all* the OCR text at once and must
-   emit one structured JSON array holding every invoice (schema in
-   `Nila.Gst.Extraction.Providers.Mistral.annotation_schema/1`). This is the part
+   emit one structured JSON array holding every invoice. This is the part
    that breaks on long input.
 
 The strict JSON schema constrains the **shape** of each invoice object, not the
@@ -83,9 +79,9 @@ evidence check (`resolve_source_pages`) and the page ledger are the guards.
 
 ## Evidence
 
-All runs against real auditor packets, Mistral `mistral-ocr-4-0` (sandbox API,
-not billed), purchase and sales schemas. Reusable probe scripts in
-`scripts/ocr_probes/` (see its README); raw artifacts under `tmp/mistral_*_probe/`.
+All runs used real auditor packets and Mistral `mistral-ocr-4-0` (sandbox API,
+not billed), across purchase and sales schemas. The measurements below are the
+historical evidence that led to the segmented production design.
 
 ### 1. Recall on small/medium packets — clean
 
@@ -153,7 +149,7 @@ threshold (somewhere between 15 and 57 pages).
 
 ### 5. Windowed acceptance on the same 57-page packet — passes
 
-`Nila.Gst.Extraction.Windowed` (8-page windows, overlap 2, concurrent), same PDF:
+The former 8-page chunked prototype (overlap 2, concurrent), on the same PDF:
 
 ```
                     whole call          windowed
@@ -203,7 +199,7 @@ both shapes.
 > measurements are still true. See `Nila.Gst.Extraction.Discovery` for why the
 > per-page decider beat a whole-dump one.
 
-## Design mandate — shipped as `Nila.Gst.Extraction.Windowed`
+## Historical chunked design
 
 Grounded in the evidence above, not theory:
 
@@ -243,49 +239,28 @@ or an image, is still one whole-document call — small packets are proven clean
 ## Status
 
 - [x] **Segment-then-extract shipped and switched on** (2026-07-30):
-      `Nila.Gst.Extraction.Pipeline` is what `Purchase.MistralOCR` and
-      `Sales.MistralOCR` call. Windowed is kept for page rendering and for months
-      already read through it. The open items below belong to the windowed path
-      and are answered by construction in the new one — grounding is no longer a
-      candidate check but the rule every printed field passes
-      (`Nila.Gst.Extraction.Verify`).
-- [x] Provider behaviour characterised (this document).
-- [x] Whole-packet degradation reproduced and root-caused.
-- [x] Chunker (windows + overlap + dedupe + retry + skipped-page ledger) — built as
-      `Nila.Gst.Extraction.Windowed`, covered offline in
-      `test/nila/gst/extraction/windowed_test.exs`.
-- [x] Live acceptance against the 57-page canary — passed (Evidence 5). Verified
-      again on a fresh 28-page packet (Evidence 6).
-- [x] Eval packets moved out of git into the private `nila-eval-corpus` R2 bucket;
-      `eval/corpus.json` is the registry (sha256 + ground-truth mapping),
-      `mix nila.eval_corpus` pulls/pushes. Probes resolve packets by corpus name.
-- [ ] Hallucination check — every extracted invoice_number must appear in the
-      window's page markdown (exact search of a known string); absent ⇒ review
-      flag. The symmetric miss-direction guard (harvest candidates from markdown)
-      was **measured and rejected**: invoice numbers in this corpus share no regex
-      shape (`045`, `1018`, `825/25-26`, `TI-AN-25-26-1339`), ~⅓ sit in bare
-      table cells with no label anchor — label-anchored ≈ 62% recall, shape-based
-      ≈ ~57 junk candidates/packet. The hole it would cover (partial drop on a
-      multi-invoice page inside a window) has not occurred in any measured packet;
-      single-invoice-page drops produce zero artifacts and the ledger catches them
-      (page 41, Evidence 5). Revisit only on real-packet evidence — details in
-      `docs/.plans/2026-07-26-windowed-extraction.md` §4.
+      `Nila.Gst.Extraction.Pipeline` is the sole production reader.
+- [x] Evidence rendering lives independently in `Nila.Gst.Extraction.Evidence`.
+- [x] Every extracted value is grounded through `Nila.Gst.Extraction.Verify`.
+- [x] Provider behaviour was characterised and whole-packet degradation was
+      reproduced and root-caused (this document).
+- [x] Eval packets live in the private `nila-eval-corpus` R2 bucket;
+      `eval/corpus.json` is the registry and segmented attempts are the only
+      extraction attempts scored by `mix nila.eval`.
 - [ ] Suspicious-table crop/retry for handwritten nested totals (separate failure;
       see the `84418` case — full-page decoder omits a nested footer the model reads
       correctly when cropped).
 
 ## Experiment log
 
-Append new probes here so the record stays extensible. Keep raw output under
-`tmp/` and the script under `scripts/`.
-
-Retained probes live in `scripts/ocr_probes/`. Two spent one-offs were removed once
+These historical probes were removed after their findings were captured here.
+Two earlier one-offs were also removed once
 their results were captured here: a timing probe (annotation is *not* the latency
 cost — plain OCR ≈ OCR+features ≈ full annotation, ~1–1.4s/1p) and a nov-resend probe
 (the 15p timeout was tail variance, not a pathological doc — warm cache returned all
 15 in 3.1s).
 
-| Date       | Probe (`scripts/ocr_probes/`)  | Question                                  | Result                                                        |
+| Date       | Historical probe               | Question                                  | Result                                                        |
 |------------|--------------------------------|-------------------------------------------|---------------------------------------------------------------|
 | 2026-07-23 | `omission.exs`                 | Does whole-PDF drop invoices ≤15p?        | No silent omission at ≤15p; one recoverable timeout.          |
 | 2026-07-23 | `cold_latency_curve.exs`       | Cold latency vs. size?                     | ~linear, ~2s + ~3.5s/page.                                    |

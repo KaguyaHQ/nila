@@ -20,9 +20,9 @@ defmodule NilaWeb.Gst.UploadLive do
   alias Nila.Storage
   alias NilaWeb.Gst.PeriodOptions
 
-  # Mistral's own document limit, and the reason `Nila.Gst.Extraction.Windowed`
-  # uploads a packet once instead of inlining it per window: base64's 4/3
-  # expansion would put anything over ~37.5 MB past this ceiling, and the drop
+  # Mistral's own document limit. Base64's 4/3 expansion would put anything
+  # over ~37.5 MB past this ceiling, so the segmented pipeline uploads large
+  # packets once instead of inlining them. The drop
   # zone is where a too-large pile should be refused — not a minute later, from
   # inside extraction, as a provider size error.
   @max_pdf_bytes 50_000_000

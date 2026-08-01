@@ -4,6 +4,7 @@ defmodule Nila.Gst.Extraction.PipelineTest do
   alias Nila.Gst.Extraction.Pipeline
   alias Nila.Gst.Extraction.Providers.Mistral
   alias Nila.Gst.Extraction.Providers.MistralChat
+  alias Nila.PdfFixtures
 
   defp ocr_response(pages) do
     %{
@@ -71,9 +72,10 @@ defmodule Nila.Gst.Extraction.PipelineTest do
     )
   end
 
+  @tag :capture_log
   test "a transcription that times out is asked again before the dump is failed" do
     # Mistral caches OCR on identical bytes, so the resend lands in seconds. The
-    # windowed path relied on this; dropping the retry along with the windows
+    # former reader relied on this; dropping the retry during the cutover
     # would have turned one slow response into a failed month.
     {:ok, counter} = Agent.start_link(fn -> 0 end)
 
@@ -86,13 +88,20 @@ defmodule Nila.Gst.Extraction.PipelineTest do
 
     stub_chat(&label/2, &invoice/2)
 
-    assert {:ok, %{pages: [artifact]}} =
-             Pipeline.extract(:purchase, "%PDF-1.7", filename: "packet.pdf")
+    test_pid = self()
 
+    assert {:ok, %{pages: [artifact]}} =
+             Pipeline.extract(:purchase, PdfFixtures.pdf(1),
+               filename: "packet.pdf",
+               on_progress: &send(test_pid, &1)
+             )
+
+    assert_receive {:retrying, "all"}
     assert artifact["data"]["invoice_number"] == "INV-1"
     assert Agent.get(counter, & &1) == 2
   end
 
+  @tag :capture_log
   test "a transport failure with no per-call wrapper returns an error, never a raised case" do
     Req.Test.stub(Mistral, fn conn -> Req.Test.transport_error(conn, :econnrefused) end)
 
@@ -137,13 +146,37 @@ defmodule Nila.Gst.Extraction.PipelineTest do
     )
 
     assert {:ok, result} =
-             Pipeline.extract(:purchase, "%PDF-1.7", filename: "packet.pdf", max_retries: 0)
+             Pipeline.extract(:purchase, PdfFixtures.pdf(2),
+               filename: "packet.pdf",
+               max_retries: 0
+             )
 
     assert [artifact] = result.pages
     assert artifact["source_pages"] == [1]
     # Page 2 is reported, which is the whole point: it is not silently dropped
     # and it did not take the other page down with it.
     assert result.unaccounted_pages == [2]
+  end
+
+  test "reports segmented stages through on_progress" do
+    Req.Test.stub(Mistral, fn conn ->
+      Req.Test.json(conn, ocr_response([{1, bill("INV-1")}]))
+    end)
+
+    stub_chat(&label/2, &invoice/2)
+    test_pid = self()
+
+    assert {:ok, _result} =
+             Pipeline.extract(:purchase, PdfFixtures.pdf(1),
+               filename: "packet.pdf",
+               on_progress: &send(test_pid, &1)
+             )
+
+    assert_receive {:progress, %{stage: :transcribing, done: 0, total: 1}}
+    assert_receive {:progress, %{stage: :segmenting, done: 0, total: 1}}
+    assert_receive {:progress, %{stage: :segmenting, done: 1, total: 1}}
+    assert_receive {:progress, %{stage: :reading, done: 0, total: 1}}
+    assert_receive {:progress, %{stage: :reading, done: 1, total: 1}}
   end
 
   test "the audit carries what each stage learned, per stage" do
@@ -164,7 +197,10 @@ defmodule Nila.Gst.Extraction.PipelineTest do
     end
 
     assert {:ok, _result} =
-             Pipeline.extract(:purchase, "%PDF-1.7", filename: "packet.pdf", per_call: per_call)
+             Pipeline.extract(:purchase, PdfFixtures.pdf(1),
+               filename: "packet.pdf",
+               per_call: per_call
+             )
 
     recorded = Agent.get(calls, & &1)
 

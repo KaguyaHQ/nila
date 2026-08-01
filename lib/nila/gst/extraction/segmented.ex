@@ -2,10 +2,10 @@ defmodule Nila.Gst.Extraction.Segmented do
   @moduledoc """
   Extracts one invoice per segment, from text, and verifies each one.
 
-  The unit of extraction is the unit of correctness. A window held several bills
-  and spent one output budget across all of them, so a dense packet truncated —
-  the same 10-row invoice came back complete when read alone and 8 rows long
-  when read inside an 8-page window. Here every call carries exactly one bill,
+  The unit of extraction is the unit of correctness. A page chunk held several
+  bills and spent one output budget across all of them, so a dense packet
+  truncated — the same 10-row invoice came back complete when read alone and 8
+  rows long inside an 8-page chunk. Here every call carries exactly one bill,
   so there is nothing for a budget to be split between.
 
   Because the input is text, its size is known before the call. A segment whose
@@ -16,8 +16,8 @@ defmodule Nila.Gst.Extraction.Segmented do
 
   Page attribution is a fact here, not an inference: the pages handed to the
   call are the pages the invoice came from. `resolve_source_pages/2` and its
-  evidence scoring exist in the windowed provider only because a whole-window
-  annotation had to guess which of eight pages each invoice belonged to.
+  evidence scoring existed in the former fused provider only because a
+  multi-invoice annotation had to guess which pages each invoice belonged to.
   """
 
   alias Nila.Gst.Extraction.Discovery.Features
@@ -34,7 +34,7 @@ defmodule Nila.Gst.Extraction.Segmented do
   def row_limit, do: @row_limit
 
   @doc "The single-invoice schema this stage is constrained to."
-  def schema(kind), do: Mistral.invoice_schema(kind, source_pages: false)
+  def schema(kind), do: Mistral.invoice_schema(kind)
 
   @doc "The instruction block for one invoice."
   def prompt(kind) do
@@ -62,7 +62,7 @@ defmodule Nila.Gst.Extraction.Segmented do
     """
   end
 
-  # The windowed sales prompt carried two clauses this stage must not lose. A
+  # The former sales prompt carried two clauses this stage must not lose. A
   # cancelled invoice still occupies its number, and a return that omits it
   # reports a gap in the series it cannot explain. And an intra-state bill that
   # prints CGST and SGST as stacked sub-rows under each item will, if those are
@@ -82,8 +82,8 @@ defmodule Nila.Gst.Extraction.Segmented do
   @doc """
   Extracts and verifies every invoice segment.
 
-  Returns the same shape `Nila.Gst.Extraction.Windowed.assemble/2` returns, so
-  scoring, normalization and the workbench read either pipeline unchanged.
+  Returns the extraction-result shape consumed by scoring, normalization and
+  the workbench.
 
   `:on_segment` is called with `{done, total}` as each segment lands, so a
   caller can narrate a long read.
@@ -399,9 +399,8 @@ defmodule Nila.Gst.Extraction.Segmented do
 
   defp encode_flag({name, detail}), do: %{"flag" => to_string(name), "detail" => inspect(detail)}
 
-  # A page in no invoice artifact is reported, exactly as the windowed ledger
-  # reported it — except a page the decider called non-invoice is accounted for,
-  # not missing.
+  # A page in no invoice artifact is reported by the ledger, except when the
+  # decider confirmed it as a non-invoice and therefore accounted for it.
   defp unaccounted_pages(transcription, segments, artifacts) do
     claimed =
       artifacts

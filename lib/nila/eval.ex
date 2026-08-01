@@ -19,7 +19,6 @@ defmodule Nila.Eval do
   """
 
   alias Nila.Eval.Adjudications
-  alias Nila.Eval.Extraction
   alias Nila.Eval.Gstr1Diff
   alias Nila.Eval.Report
   alias Nila.EvalCorpus
@@ -83,18 +82,17 @@ defmodule Nila.Eval do
   deriving and diffing all run now. A rule change is therefore re-scored with no
   API call, and no cache hit can attribute a number to code that no longer runs.
   """
-  def score(name, run_id, opts \\ []) do
+  def score(name, run_id) do
     doc = EvalCorpus.document!(name)
-    pipeline = Keyword.get(opts, :pipeline, :windowed)
 
-    with {:ok, attempt} <- latest_attempt(pipeline, name),
-         {:ok, assembled} <- replay(pipeline, attempt) do
+    with {:ok, attempt} <- Nila.Eval.Segmented.latest_attempt(name),
+         {:ok, assembled} <- Nila.Eval.Segmented.replay(attempt) do
       invoices = Enum.map(assembled.pages, &Gstr1.normalize_invoice/1)
       meta = attempt |> Path.join("meta.json") |> File.read!() |> Jason.decode!()
 
       provenance = %{
         "run_id" => run_id,
-        "pipeline" => to_string(pipeline),
+        "pipeline" => "segmented",
         "extractor" => meta["provider"],
         "model" => meta["model"],
         "prompt_fingerprint" => get_in(meta, ["fingerprint", "prompt"]),
@@ -106,17 +104,6 @@ defmodule Nila.Eval do
       {:ok, score_month(doc["client"], doc["period"], invoices, provenance)}
     end
   end
-
-  # Both pipelines answer the same two questions — what is the newest cached
-  # attempt, and what does replaying it assemble to — so a month can be scored
-  # either way without the scorer knowing which one produced the invoices. That
-  # is the whole point of the switch: the cutover decision is a number, not an
-  # argument.
-  defp latest_attempt(:windowed, name), do: Extraction.latest_attempt(name)
-  defp latest_attempt(:segmented, name), do: Nila.Eval.Segmented.latest_attempt(name)
-
-  defp replay(:windowed, attempt), do: Extraction.replay(attempt)
-  defp replay(:segmented, attempt), do: Nila.Eval.Segmented.replay(attempt)
 
   @doc "Corpus documents that can be scored: sales-side, with a filed return."
   def evaluable do

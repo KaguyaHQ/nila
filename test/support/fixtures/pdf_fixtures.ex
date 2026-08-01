@@ -1,8 +1,7 @@
 defmodule Nila.PdfFixtures do
   @moduledoc """
-  Minimal, structurally valid PDFs for tests that only care about page count —
-  `Nila.Gst.Extraction.Windowed` reads it with `pdfinfo` before planning
-  windows, so the bytes must be a PDF poppler will actually open.
+  Minimal, structurally valid PDFs for tests that need Poppler to count or
+  render pages without carrying real invoice fixtures.
   """
 
   @doc "A valid PDF of `page_count` blank pages."

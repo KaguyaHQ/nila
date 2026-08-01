@@ -3,8 +3,8 @@ defmodule Nila.Eval.Segmented do
   Runs the segmented pipeline over a corpus document and caches what each call
   returned.
 
-  Same discipline as `Nila.Eval.Extraction`: only response bytes are cached, at
-  the network boundary, and every pure step downstream runs at score time. So
+  Only response bytes are cached at the network boundary, and every pure step
+  downstream runs at score time. So
   tightening a guard, the stitcher or a verifier re-scores the whole corpus for
   free, and no number can be attributed to code that no longer runs.
 
