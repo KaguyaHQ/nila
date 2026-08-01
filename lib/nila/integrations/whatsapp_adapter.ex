@@ -9,4 +9,13 @@ defmodule Nila.Integrations.WhatsAppAdapter do
   @callback fetch_media(String.t(), String.t()) :: {:ok, binary()} | {:error, term()}
   @callback send_message(%Connection{}, String.t(), String.t(), String.t()) ::
               {:ok, map()} | {:error, term()}
+
+  @callback send_completeness_request(
+              %Connection{},
+              String.t(),
+              String.t(),
+              String.t(),
+              String.t(),
+              String.t()
+            ) :: {:ok, map()} | {:error, term()}
 end

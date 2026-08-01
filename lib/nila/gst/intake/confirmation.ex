@@ -9,7 +9,7 @@ defmodule Nila.Gst.Intake.Confirmation do
 
   @client_decisions ~w(client_yes client_no)
   @decisions @client_decisions ++ ~w(senior_override)
-  @channels ~w(manual whatsapp email)
+  @channels ~w(manual whatsapp)
 
   def decisions, do: @decisions
   def channels, do: @channels
@@ -33,6 +33,8 @@ defmodule Nila.Gst.Intake.Confirmation do
     confirmation
     |> base_changeset(attrs)
     |> validate_inclusion(:decision, @client_decisions)
+    |> validate_inclusion(:channel, ["whatsapp"])
+    |> validate_required([:source_ref, :actor_phone])
   end
 
   def override_changeset(confirmation, attrs) do

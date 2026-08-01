@@ -29,6 +29,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
   import Ecto.Query, only: [from: 2]
 
+  alias Nila.Gst.Chase.CompletenessSender
   alias Nila.Gst.Filing.{Gstr2b, Signoffs}
   alias Nila.Gst.Intake.{Dump, Dumps, ExtractionAttempts, Preconditions}
   alias Nila.Gst.Purchase.{Books, Flags, Reconciliation, Register, TaxpayerContext}
@@ -129,9 +130,15 @@ defmodule Nila.Gst.Intake.DumpWorker do
       end)
 
     case outcome do
-      :after_filing -> progress(dump, :after_filing)
-      :held -> progress(dump, :held)
-      :done -> progress(dump, {:done, dump.client_id, dump.period})
+      :after_filing ->
+        progress(dump, :after_filing)
+
+      :held ->
+        progress(dump, :held)
+
+      :done ->
+        progress(dump, {:done, dump.client_id, dump.period})
+        if dump.kind == "sales", do: CompletenessSender.enqueue(dump)
     end
 
     :ok

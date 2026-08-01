@@ -26,7 +26,8 @@ defmodule Nila.Gst.Filing.SignoffsTest do
         org_id: org.id,
         name: "Breeze Tech",
         type: "company",
-        gstin: @gstin
+        gstin: @gstin,
+        phone: "9876543210"
       })
 
     books = %{
@@ -58,11 +59,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
     owner_scope = %Scope{user: owner, current_org: org, membership: owner_membership}
 
-    {:ok, _confirmation} =
-      Confirmations.record_client(%{org_id: org.id}, client.id, @period, %{
-        decision: "client_yes",
-        channel: "manual"
-      })
+    _confirmation = confirm_sales_complete!(org, client, @period)
 
     %{org: org, client: client, month: month, owner_scope: owner_scope}
   end
@@ -159,6 +156,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
   test "GSTR-3B rejects the latest client-no decision", %{
     month: month,
+    client: client,
     owner_scope: scope
   } do
     assert {:ok, _no} =
@@ -168,7 +166,9 @@ defmodule Nila.Gst.Filing.SignoffsTest do
                month.period,
                %{
                  decision: "client_no",
-                 channel: "manual"
+                 channel: "whatsapp",
+                 source_ref: "wamid.client-no",
+                 actor_phone: client.phone
                }
              )
 
@@ -246,9 +246,8 @@ defmodule Nila.Gst.Filing.SignoffsTest do
   } do
     purchase = held_dump!(month, scope.user.id, "purchase")
     gstr2b = held_dump!(month, scope.user.id, "gstr2b")
-    sales = held_dump!(month, scope.user.id, "sales")
-
     assert {:ok, _} = Signoffs.sign_off(month, scope)
+    sales = held_dump!(month, scope.user.id, "sales")
     assert {:ok, _} = Signoffs.mark_filed(month, scope)
 
     assert {:ok, %{status: "after_filing"}} = Dumps.fetch(month.org_id, purchase.id)
@@ -273,11 +272,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
       work_dump!(org, client, @period, "sales", "%PDF-1.4 fake bytes")
 
-      {:ok, _confirmation} =
-        Confirmations.record_client(%{org_id: org.id}, client.id, @period, %{
-          decision: "client_yes",
-          channel: "manual"
-        })
+      _confirmation = confirm_sales_complete!(org, client, @period)
 
       {:ok, sales_month} = SalesMonths.get_by_period(org.id, client.id, @period)
       %{sales_month: sales_month}

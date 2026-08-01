@@ -264,11 +264,12 @@ defmodule Nila.Gst.Sales.WorkingsTest do
       for id <- ~w(source-b source-c) do
         %{
           "verb" => "exclude_duplicate_copy",
-          "target" => id,
+          "target" => "duplicate_copy|#{id}",
           "payload" => %{
+            "excluded_source_id" => id,
             "retained_source_id" => "source-a",
             "reason" => "same scan uploaded twice",
-            "outcome" => "excluded_duplicate_copy"
+            "outcome" => "same_invoice_uploaded_twice"
           }
         }
       end
@@ -282,9 +283,10 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     assert Enum.all?(excluded.duplicate_copies, fn copy ->
              copy["duplicate_copy"] == %{
                "excluded" => true,
+               "excluded_source_id" => copy["id"],
                "retained_source_id" => "source-a",
                "reason" => "same scan uploaded twice",
-               "outcome" => "excluded_duplicate_copy"
+               "outcome" => "same_invoice_uploaded_twice"
              }
            end)
 
@@ -293,7 +295,8 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     reopened =
       SalesWorkings.materialize(
         sources,
-        exclusions ++ [%{"verb" => "reopen", "target" => "source-c", "payload" => %{}}],
+        exclusions ++
+          [%{"verb" => "reopen", "target" => "duplicate_copy|source-c", "payload" => %{}}],
         @header
       )
 

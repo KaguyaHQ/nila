@@ -5,7 +5,7 @@ defmodule Nila.Gst.Intake.ConfirmationsTest do
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
-  alias Nila.Gst.Intake.{Confirmation, Confirmations, Dumps}
+  alias Nila.Gst.Intake.{Confirmation, Confirmations, Dump, Dumps}
   alias Nila.Repo
 
   @period "2025-10"
@@ -156,12 +156,50 @@ defmodule Nila.Gst.Intake.ConfirmationsTest do
     assert :complete == status(context)
   end
 
+  test "a packet still processing or questioned blocks readiness even after confirmation",
+       context do
+    for status <- ~w(received extracting failed held needs_confirmation) do
+      {:ok, dump} =
+        Dumps.record(
+          %{org_id: context.org.id, client_id: context.client.id},
+          %{period: @period, kind: "sales"}
+        )
+
+      dump |> Dump.changeset(%{status: status}) |> Repo.update!()
+
+      assert {:ok, _} =
+               record_client(context, %{
+                 decision: "client_yes",
+                 channel: "whatsapp",
+                 source_ref: "wamid.#{status}"
+               })
+
+      assert :stale == status(context)
+      dump |> Dump.changeset(%{status: "discarded"}) |> Repo.update!()
+    end
+  end
+
+  test "WhatsApp client events reject a sender other than the client's phone", context do
+    assert {:error, :sender_mismatch} =
+             Confirmations.record_client(
+               %{org_id: context.org.id},
+               context.client.id,
+               @period,
+               %{
+                 decision: "client_yes",
+                 channel: "whatsapp",
+                 source_ref: "wamid.wrong-sender",
+                 actor_phone: "919999999999"
+               }
+             )
+  end
+
   test "purchase and portal snapshot dumps do not stale sales completeness", context do
     assert {:ok, _} =
              record_client(context, %{
                decision: "client_yes",
-               channel: "email",
-               source_ref: "email.confirmation"
+               channel: "whatsapp",
+               source_ref: "wamid.non-sales"
              })
 
     for kind <- ~w(purchase gstr2b filed_gstr1) do
@@ -176,6 +214,8 @@ defmodule Nila.Gst.Intake.ConfirmationsTest do
   end
 
   defp record_client(context, attrs) do
+    attrs = Map.put_new(attrs, :actor_phone, context.client.phone)
+
     Confirmations.record_client(
       %{org_id: context.org.id},
       context.client.id,

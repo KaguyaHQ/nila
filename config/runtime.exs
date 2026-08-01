@@ -143,6 +143,14 @@ if config_env() in [:prod, :dev] do
   if template = env!("WHATSAPP_CHASE_TEMPLATE", :string, nil) do
     config :nila, whatsapp_chase_template: template
   end
+
+  if template = env!("WHATSAPP_COMPLETENESS_TEMPLATE", :string, nil) do
+    config :nila, whatsapp_completeness_template: template
+  end
+
+  if secret = env!("WHATSAPP_COMPLETENESS_SECRET", :string, nil) do
+    config :nila, whatsapp_completeness_secret: secret
+  end
 end
 
 if config_env() in [:prod, :dev] do

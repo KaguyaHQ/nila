@@ -119,7 +119,9 @@ defmodule Nila.Gst.Sales.Workings do
   their code. Legacy number-based targets are translated only for a uniquely
   identified pristine source row during materialization.
   """
-  def issue_key(%{"target" => target}) when is_binary(target), do: target
+  def issue_key(%{"code" => "duplicate_invoice_number", "target" => target})
+      when is_binary(target),
+      do: target
 
   def issue_key(%{"source_id" => source_id, "code" => code}) when is_binary(source_id),
     do: "#{source_id}:#{code}"
@@ -189,10 +191,11 @@ defmodule Nila.Gst.Sales.Workings do
     candidates =
       exclusions
       |> Enum.reverse()
-      |> Enum.uniq_by(& &1["target"])
+      |> Enum.uniq_by(&get_in(&1, ["payload", "excluded_source_id"]))
       |> Enum.reduce(%{}, fn resolution, acc ->
-        excluded = by_id[resolution["target"]]
+        excluded_id = get_in(resolution, ["payload", "excluded_source_id"])
         retained_id = get_in(resolution, ["payload", "retained_source_id"])
+        excluded = by_id[excluded_id]
         retained = by_id[retained_id]
 
         if excluded && retained && excluded["id"] != retained["id"] &&
@@ -220,7 +223,7 @@ defmodule Nila.Gst.Sales.Workings do
           resolution ->
             duplicate_copy =
               resolution["payload"]
-              |> Map.take(["retained_source_id", "reason", "outcome"])
+              |> Map.take(["excluded_source_id", "retained_source_id", "reason", "outcome"])
               |> Map.put("excluded", true)
 
             Map.put(invoice, "duplicate_copy", duplicate_copy)

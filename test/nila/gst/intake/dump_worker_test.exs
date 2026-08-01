@@ -8,7 +8,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
   alias Nila.Accounts.Scope
   alias Nila.Clients
   alias Nila.Gst.Filing.Signoffs
-  alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps}
+  alias Nila.Gst.Intake.{DumpWorker, Dumps}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Gst.Purchase.Resolutions
   alias Nila.Gst.Sales.Months, as: SalesMonths
@@ -69,11 +69,8 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
 
     {:ok, reviewed} = SalesResolutions.mark_reviewed(month)
 
-    {:ok, _confirmation} =
-      Confirmations.record_client(%{org_id: month.org_id}, month.client_id, month.period, %{
-        decision: "client_yes",
-        channel: "manual"
-      })
+    {:ok, client} = Clients.get_client(month.org_id, month.client_id)
+    _confirmation = confirm_sales_complete!(scope.current_org, client, month.period)
 
     {:ok, signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
     {reviewed, signoff}

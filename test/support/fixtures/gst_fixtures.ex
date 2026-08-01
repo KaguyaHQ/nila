@@ -6,7 +6,7 @@ defmodule Nila.GstFixtures do
   use Oban.Testing, repo: Nila.Repo
 
   alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps}
-  alias Nila.Storage
+  alias Nila.{Repo, Storage}
 
   @doc """
   Brings in one dump (`kind`: "sales" | "purchase" | "gstr2b") for
@@ -28,11 +28,25 @@ defmodule Nila.GstFixtures do
 
   @doc "Records an explicit client-yes event after the test's sales intake is complete."
   def confirm_sales_complete!(org, client, period) do
+    client =
+      if client.phone do
+        client
+      else
+        client |> Ecto.Changeset.change(phone: "919876543210") |> Repo.update!()
+      end
+
     {:ok, confirmation} =
-      Confirmations.record_client(%{org_id: org.id}, client.id, period, %{
-        decision: "client_yes",
-        channel: "manual"
-      })
+      Confirmations.record_client(
+        %{org_id: org.id},
+        client.id,
+        period,
+        %{
+          decision: "client_yes",
+          channel: "whatsapp",
+          source_ref: "fixture:#{System.unique_integer([:positive])}",
+          actor_phone: client.phone
+        }
+      )
 
     confirmation
   end

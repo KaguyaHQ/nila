@@ -11,6 +11,7 @@ defmodule Nila.Gst.Intake.Confirmations do
 
   alias Nila.Accounts.Policy
   alias Nila.Clients
+  alias Nila.Clients.Client
   alias Nila.Gst.Intake.{Confirmation, Dumps}
   alias Nila.Repo
 
@@ -22,8 +23,11 @@ defmodule Nila.Gst.Intake.Confirmations do
   non-nil `(org, channel, source_ref)` is idempotent.
   """
   def record_client(%{org_id: org_id}, client_id, period, attrs) do
+    attrs = stringify_keys(attrs)
+
     Repo.transact(fn ->
       with {:ok, client} <- Clients.get_client(org_id, client_id),
+           :ok <- verify_client_actor(client, attrs),
            {:ok, confirmation} <-
              client
              |> client_confirmation(period, attrs)
@@ -85,24 +89,29 @@ defmodule Nila.Gst.Intake.Confirmations do
     do: status(org_id, client_id, period) in @complete_statuses
 
   @doc """
-  A confirmation is stale when a sales dump inserted later is still active or
-  effective. Failed, held, discarded, post-filing, purchase, GSTR-2B, and filed
-  GSTR-1 dumps are excluded by the existing dump-set semantics.
+  A confirmation is stale while any supplied sales packet is unresolved or
+  failed, or when an effective sales packet arrived after the confirmation.
+  Discarded and post-filing packets do not alter the live draft.
   """
   def stale?(%Confirmation{} = confirmation) do
-    confirmation.org_id
-    |> sales_dumps(confirmation.client_id, confirmation.period)
-    |> Enum.any?(&(DateTime.compare(&1.inserted_at, confirmation.inserted_at) == :gt))
+    dumps = Dumps.list(confirmation.org_id, confirmation.client_id, confirmation.period)
+
+    Enum.any?(dumps, fn dump ->
+      dump.kind == "sales" and
+        (dump.status in ~w(received extracting failed held needs_confirmation) or
+           (dump.status == "extracted" and
+              DateTime.compare(dump.inserted_at, confirmation.inserted_at) == :gt))
+    end)
   end
 
-  defp sales_dumps(org_id, client_id, period) do
-    active =
-      org_id
-      |> Dumps.active(client_id, period)
-      |> Enum.filter(&(&1.kind == "sales"))
-
-    active ++ Dumps.effective(org_id, client_id, period, "sales")
+  defp verify_client_actor(client, %{"channel" => "whatsapp", "actor_phone" => phone}) do
+    if Client.normalize_phone(phone) == Client.normalize_phone(client.phone) and
+         not is_nil(client.phone),
+       do: :ok,
+       else: {:error, :sender_mismatch}
   end
+
+  defp verify_client_actor(_client, _attrs), do: {:error, :unsupported_client_channel}
 
   defp client_confirmation(client, period, attrs) do
     attrs =

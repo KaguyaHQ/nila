@@ -9,6 +9,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :r1_signoff, :any, default: nil
   attr :open_issue_count, :integer, required: true
   attr :reviewable, :boolean, required: true
+  attr :completeness, :atom, required: true
   attr :can_sign_off, :boolean, required: true
 
   def gstr1_actions(assigns) do
@@ -29,7 +30,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       </.button>
 
       <.button
-        :if={is_nil(@r1_signoff) and @sales_month.state == "reviewed" and @can_sign_off}
+        :if={
+          is_nil(@r1_signoff) and @sales_month.state == "reviewed" and @can_sign_off and
+            @completeness == :complete
+        }
         id="month-door-sign-r1"
         variant="primary"
         size="sm"
@@ -39,11 +43,35 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       </.button>
 
       <p
-        :if={is_nil(@r1_signoff) and @sales_month.state == "reviewed" and not @can_sign_off}
+        :if={
+          is_nil(@r1_signoff) and @sales_month.state == "reviewed" and not @can_sign_off and
+            @completeness == :complete
+        }
         class="text-ink-muted text-table"
       >
         Ready for a senior to sign GSTR-1.
       </p>
+
+      <div
+        :if={
+          is_nil(@r1_signoff) and @sales_month.state == "reviewed" and
+            @completeness != :complete
+        }
+        class="flex flex-wrap items-center gap-3"
+      >
+        <p class="text-ink-muted text-table">
+          Review is complete. Filing readiness waits for current client confirmation.
+        </p>
+        <.button
+          :if={@can_sign_off}
+          id="gstr1-override-completeness"
+          variant="outline"
+          size="xs"
+          phx-click="open-completeness-override"
+        >
+          Senior override
+        </.button>
+      </div>
 
       <.signed_return
         :if={@r1_signoff}

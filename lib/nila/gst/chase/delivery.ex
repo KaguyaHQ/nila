@@ -14,7 +14,7 @@ defmodule Nila.Gst.Chase.Delivery do
   """
   use Nila.Schema
 
-  @kinds ~w(month_open missing_bills)
+  @kinds ~w(month_open missing_bills sales_completeness)
   @channels ~w(manual whatsapp email)
 
   def kinds, do: @kinds
@@ -25,6 +25,8 @@ defmodule Nila.Gst.Chase.Delivery do
     field :kind, :string
     field :body, :string
     field :channel, :string, default: "manual"
+    field :ask_ref, Ecto.UUID
+    field :provider_ref, :string
 
     belongs_to :org, Nila.Orgs.Org
     belongs_to :client, Nila.Clients.Client
@@ -35,11 +37,12 @@ defmodule Nila.Gst.Chase.Delivery do
 
   def changeset(chase_ask, attrs) do
     chase_ask
-    |> cast(attrs, [:kind, :period, :body, :channel])
+    |> cast(attrs, [:kind, :period, :body, :channel, :ask_ref, :provider_ref])
     |> validate_required([:org_id, :client_id, :kind, :period, :body, :channel])
     |> validate_inclusion(:kind, @kinds)
     |> validate_inclusion(:channel, @channels)
     |> validate_manual_sender()
+    |> unique_constraint(:ask_ref, name: :gst_chase_asks_ask_ref_index)
   end
 
   defp validate_manual_sender(changeset) do

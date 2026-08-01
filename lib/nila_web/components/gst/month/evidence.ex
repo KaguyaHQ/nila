@@ -13,6 +13,11 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :asks, :list, required: true
   attr :selected_row, :any, default: nil
   attr :selected_invoice, :any, default: nil
+  attr :source_invoices, :list, default: []
+  attr :duplicate_issue, :any, default: nil
+  attr :focused_issue, :string, default: nil
+  attr :show_completeness_override, :boolean, default: false
+  attr :completeness_override_form, :any, default: nil
   attr :issues_by_invoice, :map, required: true
   attr :decisions, :map, default: %{}
   attr :review_navigation, :map, default: %{previous: nil, next: nil}
@@ -89,10 +94,48 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       </div>
     </.modal>
 
+    <.duplicate_review_modal
+      :if={@duplicate_issue}
+      issue={@duplicate_issue}
+      invoices={@source_invoices}
+    />
+
+    <.modal
+      :if={@show_completeness_override}
+      id="gstr1-completeness-override-modal"
+      title="Override sales collection confirmation"
+      on_close="close-completeness-override"
+      class="max-w-xl"
+    >
+      <.form
+        for={@completeness_override_form}
+        id="gstr1-completeness-override-form"
+        phx-submit="save-completeness-override"
+        class="space-y-block"
+      >
+        <p class="text-body text-ink-muted">
+          Use this only when the firm has independent evidence that every sales invoice, credit/debit note, and cancellation detail for the period was supplied.
+        </p>
+        <.input
+          field={@completeness_override_form[:reason]}
+          type="textarea"
+          label="Reason for override"
+          placeholder="State the evidence relied on"
+        />
+        <div class="flex justify-end gap-2">
+          <.button type="button" variant="ghost" phx-click="close-completeness-override">
+            Cancel
+          </.button>
+          <.button type="submit" variant="primary">Record override</.button>
+        </div>
+      </.form>
+    </.modal>
+
     <.invoice_modal
       :if={@selected_invoice}
       selected_invoice={@selected_invoice}
       issues_by_invoice={@issues_by_invoice}
+      focused_issue={@focused_issue}
       decisions={@decisions}
       review_navigation={@review_navigation}
       r1_signoff={@r1_signoff}
@@ -102,8 +145,90 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
     """
   end
 
+  attr :issue, :map, required: true
+  attr :invoices, :list, required: true
+
+  defp duplicate_review_modal(assigns) do
+    members = Enum.filter(assigns.invoices, &(&1["id"] in assigns.issue["source_ids"]))
+    assigns = assign(assigns, :members, members)
+
+    ~H"""
+    <.modal
+      id="gstr1-duplicate-review-modal"
+      title={"Duplicate invoice #{@issue["invoice"]}"}
+      on_close="close-duplicate-review"
+      class="max-w-6xl"
+      scrim_class="bg-scrim/70"
+    >
+      <div class="space-y-block">
+        <p class="text-body text-ink-muted">
+          Compare every source. Retain one only when these are copies of the same invoice. If OCR misread a number, open that source and correct the extraction instead.
+        </p>
+        <div class="grid gap-4 lg:grid-cols-2">
+          <article
+            :for={invoice <- @members}
+            id={"gstr1-duplicate-source-#{invoice["id"]}"}
+            class="border-base-300 rounded-box space-y-block border p-4"
+          >
+            <img
+              :if={List.first(invoice["image_urls"])}
+              src={List.first(invoice["image_urls"])}
+              alt={"Source document for invoice #{invoice["invoice_number"]}"}
+              class="border-base-300 rounded-box max-h-80 w-full border object-contain"
+            />
+            <dl class="text-small grid gap-3 sm:grid-cols-2">
+              <div>
+                <dt class="text-ink-subtle">Source ID</dt>
+                <dd class="text-base-content font-mono">{invoice["id"]}</dd>
+              </div>
+              <div>
+                <dt class="text-ink-subtle">Invoice date</dt>
+                <dd class="text-base-content">{format_display_date(invoice["invoice_date"])}</dd>
+              </div>
+              <div>
+                <dt class="text-ink-subtle">Buyer</dt>
+                <dd class="text-base-content">{invoice["buyer_name"] || "—"}</dd>
+              </div>
+              <div>
+                <dt class="text-ink-subtle">Taxable + tax</dt>
+                <dd class="text-base-content tabular-nums">
+                  {Helpers.rupees(Gstr1.extracted_totals(invoice).taxable)} + {Helpers.rupees(
+                    Gstr1.extracted_totals(invoice).tax
+                  )}
+                </dd>
+              </div>
+            </dl>
+            <div class="flex flex-wrap gap-2">
+              <.button
+                variant="primary"
+                size="xs"
+                phx-click="resolve-duplicate-copies"
+                phx-value-source={invoice["id"]}
+              >
+                Retain this; exclude {length(@members) - 1} other {if length(@members) == 2,
+                  do: "copy",
+                  else: "copies"}
+              </.button>
+              <.button
+                variant="outline"
+                size="xs"
+                phx-click="review-sales-issue"
+                phx-value-source={invoice["id"]}
+                phx-value-target={SalesWorkings.issue_key(@issue)}
+              >
+                Open to correct number
+              </.button>
+            </div>
+          </article>
+        </div>
+      </div>
+    </.modal>
+    """
+  end
+
   attr :selected_invoice, :map, required: true
   attr :issues_by_invoice, :map, required: true
+  attr :focused_issue, :string, default: nil
   attr :decisions, :map, required: true
   attr :review_navigation, :map, required: true
   attr :r1_signoff, :any, default: nil
@@ -136,6 +261,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
     in_place = check_issues |> Map.values() |> Enum.reject(&is_nil/1)
 
     open_issues = Enum.filter(issues, &(&1["status"] == "open"))
+    focused_issue = Enum.find(issues, &(SalesWorkings.issue_key(&1) == assigns.focused_issue))
 
     assigns =
       assigns
@@ -143,6 +269,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       |> assign(:check_issues, check_issues)
       |> assign(:other_issues, issues -- in_place)
       |> assign(:open_issues, open_issues)
+      |> assign(:initial_focus, focused_issue && issue_focus_target(focused_issue))
       |> assign(:review_state, review_state(open_issues))
       |> assign(:read_rows, read_rows(assigns.selected_invoice, checks))
 
@@ -165,7 +292,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               disabled={is_nil(@review_navigation.previous)}
               class="hover:text-ink text-ink-subtle text-small justify-self-start transition disabled:opacity-30"
             >
-              ← Previous unresolved
+              ← Previous flagged invoice
             </button>
             <div class="flex flex-wrap items-center justify-center gap-2 text-center">
               <h3 id={title_id} class="text-base-content text-body font-semibold">
@@ -182,17 +309,18 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               disabled={is_nil(@review_navigation.next)}
               class="hover:text-ink text-ink-subtle text-small justify-self-end transition disabled:opacity-30"
             >
-              Next unresolved →
+              Next flagged invoice →
             </button>
           </div>
           <div :if={@open_issues != []} class="flex flex-wrap justify-center gap-2">
             <button
-              :for={issue <- @open_issues}
+              :for={{issue, index} <- Enum.with_index(@open_issues, 1)}
               type="button"
               data-review-target={issue_focus_target(issue)}
-              class="bg-warning/10 hover:bg-warning/20 rounded-field text-base-content text-fine px-2 py-1 font-medium transition-colors"
+              class="bg-warning/10 hover:bg-warning/20 rounded-field text-base-content text-fine flex items-center gap-1.5 px-2 py-1 font-medium transition-colors"
             >
-              {issue_label(issue["code"])}
+              <span class="bg-warning/15 rounded-full px-1.5 tabular-nums">{index}</span>
+              {issue_chip_label(issue)}
             </button>
           </div>
         </div>
@@ -203,6 +331,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         phx-hook=".InvoiceReview"
         data-previous={@review_navigation.previous}
         data-next={@review_navigation.next}
+        data-initial-focus={@initial_focus}
         class="gap-block grid h-full min-h-0 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]"
       >
         <div id="gstr1-evidence-images" class="min-h-0 space-y-3 overflow-y-auto">
@@ -368,14 +497,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 const trigger = event.target.closest("[data-review-target]")
                 const dialog = this.el.closest("[role='dialog']")
                 if (!trigger || !dialog || !dialog.contains(trigger)) return
-                const target = document.getElementById(trigger.dataset.reviewTarget)
-                if (!target) return
-                target.scrollIntoView({ behavior: "smooth", block: "center" })
-                if (this.focused) this.unfocus(this.focused)
-                this.focused = target
-                target.classList.add("ring-2", "ring-warning", "ring-inset")
-                window.clearTimeout(this.focusTimer)
-                this.focusTimer = window.setTimeout(() => this.unfocus(target), 1800)
+                this.focusTarget(trigger.dataset.reviewTarget)
               }
               this.onKeydown = (event) => {
                 const tag = event.target.tagName
@@ -388,11 +510,24 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               }
               window.addEventListener("click", this.onClick)
               window.addEventListener("keydown", this.onKeydown)
+              if (this.el.dataset.initialFocus) {
+                window.requestAnimationFrame(() => this.focusTarget(this.el.dataset.initialFocus))
+              }
             },
             destroyed() {
               window.removeEventListener("click", this.onClick)
               window.removeEventListener("keydown", this.onKeydown)
               window.clearTimeout(this.focusTimer)
+            },
+            focusTarget(id) {
+              const target = document.getElementById(id)
+              if (!target) return
+              target.scrollIntoView({ behavior: "smooth", block: "center" })
+              if (this.focused) this.unfocus(this.focused)
+              this.focused = target
+              target.classList.add("ring-2", "ring-warning", "ring-inset")
+              window.clearTimeout(this.focusTimer)
+              this.focusTimer = window.setTimeout(() => this.unfocus(target), 1800)
             },
             unfocus(target) {
               target.classList.remove("ring-2", "ring-warning", "ring-inset")
@@ -545,8 +680,19 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   end
 
   defp unresolved_label([]), do: "No unresolved checks"
-  defp unresolved_label([_issue]), do: "1 unresolved"
-  defp unresolved_label(issues), do: "#{length(issues)} unresolved"
+  defp unresolved_label([_issue]), do: "1 unresolved check"
+  defp unresolved_label(issues), do: "#{length(issues)} unresolved checks"
+
+  defp issue_chip_label(%{"code" => "rounding_variance", "message" => message}) do
+    cond do
+      String.starts_with?(message, "camt ") -> "CGST rounding difference"
+      String.starts_with?(message, "samt ") -> "SGST rounding difference"
+      String.starts_with?(message, "iamt ") -> "IGST rounding difference"
+      true -> issue_label("rounding_variance")
+    end
+  end
+
+  defp issue_chip_label(issue), do: issue_label(issue["code"])
 
   defp issue_dom_id(issue) do
     location =
@@ -580,7 +726,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   end
 
   defp issue_correctable?(issue, flagged, invoice) do
-    candidates = Gstr1.correctable_fields(flagged, invoice["pristine_inum"])
+    candidates = Gstr1.correctable_fields(flagged, invoice["id"] || invoice["pristine_inum"])
 
     Enum.any?(List.wrap(issue["fields"]), fn issue_field ->
       Enum.any?(candidates, fn candidate ->

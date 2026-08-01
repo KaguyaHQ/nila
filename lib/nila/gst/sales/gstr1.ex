@@ -238,6 +238,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
       issues
       |> Enum.reject(&(&1["level"] == "info"))
       |> Enum.flat_map(fn issue ->
+        # `source_ids` means the named fields apply equally to every member of
+        # one source group; today only duplicate-number issues carry it.
         source_ids = issue["source_ids"] || [issue["source_id"] || issue["invoice"]]
 
         for source_id <- source_ids,
@@ -857,9 +859,14 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp correction_target(invoices, correction) do
-    invoice_number = correction["invoice"] || correction["inum"]
-    matches = Enum.filter(invoices, &(&1["invoice_number"] == invoice_number))
-    if length(matches) == 1, do: matches |> hd() |> source_id()
+    case correction["invoice"] || correction["inum"] do
+      invoice_number when is_binary(invoice_number) ->
+        matches = Enum.filter(invoices, &(&1["invoice_number"] == invoice_number))
+        if length(matches) == 1, do: matches |> hd() |> source_id()
+
+      _missing ->
+        nil
+    end
   end
 
   defp sequence_issues(invoices) do

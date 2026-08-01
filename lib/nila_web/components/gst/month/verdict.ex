@@ -165,6 +165,15 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     end
   end
 
+  defp settled_door_and_headline(%{tracks: %{sales: :awaiting_confirmation}}) do
+    %{
+      tone: :calm,
+      headline:
+        "GSTR-1 review is complete. Filing readiness waits for the client's current sales-document confirmation.",
+      door: nil
+    }
+  end
+
   # 5. Worked clean and signable now. The senior's door; the junior has none,
   #    so for them the page falls through to whatever is still missing.
   defp settled_door_and_headline(%{can_sign_off: true, tracks: tracks} = facts)

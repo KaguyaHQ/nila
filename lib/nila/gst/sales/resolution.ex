@@ -26,7 +26,8 @@ defmodule Nila.Gst.Sales.Resolution do
       The AUDITOR verdict as a product verb: the confession sheet on rebuilt
       months rides on these rows.
     * `exclude_duplicate_copy` — excludes one confirmed duplicate source copy;
-      payload records `retained_source_id`, `reason`, and `outcome`.
+      its namespaced target keeps undo separate from field corrections, and the
+      payload records both source IDs, the reason, and the outcome.
     * `reopen`        — undo: discards this target's prior decisions so it
       returns to the engine's default.
   """
@@ -60,10 +61,19 @@ defmodule Nila.Gst.Sales.Resolution do
     if get_field(changeset, :verb) == "exclude_duplicate_copy" do
       payload = get_field(changeset, :payload) || %{}
 
-      if Enum.all?(~w(retained_source_id reason outcome), &present?(payload[&1])) do
+      if Enum.all?(
+           ~w(excluded_source_id retained_source_id reason outcome),
+           &present?(payload[&1])
+         ) and
+           payload["outcome"] == "same_invoice_uploaded_twice" and
+           String.starts_with?(get_field(changeset, :target) || "", "duplicate_copy|") do
         changeset
       else
-        add_error(changeset, :payload, "must record retained_source_id, reason, and outcome")
+        add_error(
+          changeset,
+          :payload,
+          "must record both source IDs and the same-invoice duplicate outcome"
+        )
       end
     else
       changeset

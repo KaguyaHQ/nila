@@ -8,9 +8,10 @@ defmodule Nila.IntegrationsIngestTest do
   import Nila.AccountsFixtures
 
   alias Nila.Clients
-  alias Nila.Gst.Intake.Arrivals
+  alias Nila.Gst.Chase
+  alias Nila.Gst.Intake.{Arrivals, Confirmations, Messages}
   alias Nila.Integrations
-  alias Nila.Integrations.{GmailSyncWorker, WhatsAppIngestWorker}
+  alias Nila.Integrations.{GmailSyncWorker, WhatsAppIngestWorker, WhatsAppReply}
 
   setup do
     gmail_adapter = Application.get_env(:nila, :gmail_adapter)
@@ -64,6 +65,57 @@ defmodule Nila.IntegrationsIngestTest do
     assert is_nil(unknown.client_id)
     assert unknown.sender == "919999999999"
     assert unknown.source == "whatsapp"
+  end
+
+  test "WhatsApp button replies record period completeness and text remains evidence", %{
+    org: org
+  } do
+    Application.put_env(:nila, :whatsapp_adapter, Nila.Integrations.WhatsAppStub)
+    connection = connection!(org, "whatsapp", "phone-number-123")
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Ravi Traders",
+        type: "company",
+        phone: "9876543210"
+      })
+
+    ask_ref = Ecto.UUID.generate()
+
+    {:ok, _ask} =
+      Chase.record_ask(%{org_id: org.id, client_id: client.id}, %{
+        kind: "sales_completeness",
+        period: "2026-06",
+        body: "Have you sent everything for June 2026?",
+        channel: "whatsapp",
+        ask_ref: ask_ref,
+        provider_ref: "wamid.question"
+      })
+
+    {:ok, reply_payload} = WhatsAppReply.sign(ask_ref, "client_yes")
+
+    assert :ok =
+             perform_job(WhatsAppIngestWorker, %{
+               "connection_id" => connection.id,
+               "payload" => whatsapp_button_payload("919876543210", reply_payload)
+             })
+
+    assert Confirmations.status(org.id, client.id, "2026-06") == :complete
+
+    assert :ok =
+             perform_job(WhatsAppIngestWorker, %{
+               "connection_id" => connection.id,
+               "payload" =>
+                 whatsapp_text_payload(
+                   "919876543210",
+                   "Two invoices are cancelled",
+                   "wamid.question"
+                 )
+             })
+
+    assert [message] = Messages.list(org.id, client.id, "2026-06")
+    assert message.body == "Two invoices are cancelled"
   end
 
   test "Gmail attachments from a client are attributed and stranger mail is held", %{org: org} do
@@ -131,7 +183,36 @@ defmodule Nila.IntegrationsIngestTest do
     connection
   end
 
+  defp whatsapp_button_payload(sender, reply_payload) do
+    whatsapp_message(%{
+      "id" => "wamid.completeness-reply",
+      "from" => sender,
+      "button" => %{"payload" => reply_payload, "text" => "Yes, everything sent"}
+    })
+  end
+
+  defp whatsapp_text_payload(sender, body, context_ref) do
+    whatsapp_message(%{
+      "id" => "wamid.text-reply",
+      "from" => sender,
+      "context" => %{"id" => context_ref},
+      "text" => %{"body" => body}
+    })
+  end
+
   defp whatsapp_payload(sender, filename) do
+    whatsapp_message(%{
+      "id" => "wamid.#{filename}",
+      "from" => sender,
+      "document" => %{
+        "id" => "media-#{filename}",
+        "filename" => filename,
+        "mime_type" => "application/pdf"
+      }
+    })
+  end
+
+  defp whatsapp_message(message) do
     %{
       "entry" => [
         %{
@@ -139,15 +220,7 @@ defmodule Nila.IntegrationsIngestTest do
             %{
               "value" => %{
                 "messages" => [
-                  %{
-                    "id" => "wamid.#{filename}",
-                    "from" => sender,
-                    "document" => %{
-                      "id" => "media-#{filename}",
-                      "filename" => filename,
-                      "mime_type" => "application/pdf"
-                    }
-                  }
+                  message
                 ]
               }
             }

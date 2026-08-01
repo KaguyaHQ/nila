@@ -59,36 +59,64 @@ defmodule Nila.Gst.Sales.ResolutionsTest do
     refute Enum.any?(Repo.reload!(month).invoices, &Map.has_key?(&1, "id"))
   end
 
-  test "duplicate-copy resolutions require auditable payload", %{month: month, user: user} do
-    assert {:error, changeset} =
+  test "duplicate-copy resolution is validated against the active source group", %{
+    month: month,
+    user: user
+  } do
+    assert {:error, :use_duplicate_resolution} =
              SalesResolutions.record(
                month,
-               %{
-                 "verb" => "exclude_duplicate_copy",
-                 "target" => "source-b",
-                 "payload" => %{"retained_source_id" => "source-a"}
-               },
+               %{"verb" => "exclude_duplicate_copy", "target" => "arbitrary"},
                user.id
              )
 
-    assert "must record retained_source_id, reason, and outcome" in errors_on(changeset).payload
+    [retained | rest] = month.invoices
+    copy = Map.put(retained, "id", "duplicate-copy")
 
-    assert {:ok, resolution} =
+    month =
+      month
+      |> Ecto.Changeset.change(invoices: [retained, copy | rest])
+      |> Repo.update!()
+
+    corrected_total = copy["printed_grand_total"] + 1
+
+    assert {:ok, _correction} =
              SalesResolutions.record(
                month,
                %{
-                 "verb" => "exclude_duplicate_copy",
-                 "target" => "source-b",
+                 "verb" => "correct_field",
+                 "target" => "duplicate-copy",
                  "payload" => %{
-                   "retained_source_id" => "source-a",
-                   "reason" => "same source uploaded twice",
-                   "outcome" => "excluded_duplicate_copy"
+                   "field" => "printed_grand_total",
+                   "from" => copy["printed_grand_total"],
+                   "to" => corrected_total
                  }
                },
                user.id
              )
 
-    assert resolution.verb == "exclude_duplicate_copy"
+    assert {:ok, [resolution]} =
+             SalesResolutions.exclude_duplicate_copies(month, retained["id"], user.id)
+
+    assert resolution.target == "duplicate_copy|duplicate-copy"
+    assert resolution.payload["excluded_source_id"] == "duplicate-copy"
+    assert resolution.payload["outcome"] == "same_invoice_uploaded_twice"
+
+    workings = SalesResolutions.workings(month)
+    assert Enum.map(workings.duplicate_copies, & &1["id"]) == ["duplicate-copy"]
+    refute Enum.any?(workings.issues, &(&1["code"] == "duplicate_invoice_number"))
+
+    assert {:ok, _} =
+             SalesResolutions.restore_duplicate_copy(month, "duplicate-copy", user.id)
+
+    restored = SalesResolutions.workings(month)
+
+    assert Enum.any?(restored.issues, fn issue ->
+             issue["code"] == "duplicate_invoice_number"
+           end)
+
+    restored_copy = Enum.find(restored.active_invoices, &(&1["id"] == "duplicate-copy"))
+    assert restored_copy["printed_grand_total"] == corrected_total
   end
 
   test "workings replays recorded decisions over the stored month", %{
