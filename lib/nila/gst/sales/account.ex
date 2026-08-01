@@ -1,12 +1,18 @@
 defmodule Nila.Gst.Sales.Account do
   @moduledoc "Pure source-to-draft control account for one effective GSTR-1 month."
 
-  alias Nila.Gst.Sales.Gstr1
+  alias Nila.Gst.Sales.{Gstr1, Workings}
 
   @tax_heads ~w(igst cgst sgst)
+  @components [:taxable, :igst, :cgst, :sgst, :tax]
 
-  def summarize(source_invoices, active_invoices, issues, derived, source) do
-    extracted_totals = extracted_totals(active_invoices)
+  def summarize(workings, source) when is_map(workings) do
+    source_invoices = workings.source_invoices
+    active_invoices = workings.active_invoices
+    printed_invoices = Map.get(workings, :printed_active_invoices, active_invoices)
+    issues = workings.issues
+    derived = workings.derived
+    printed_totals = extracted_totals(printed_invoices)
     draft_totals = draft_totals(derived)
     required = Enum.filter(issues, &required?/1)
 
@@ -19,15 +25,26 @@ defmodule Nila.Gst.Sales.Account do
         documents: length(source_invoices),
         active_documents: length(active_invoices),
         duplicate_copies: length(source_invoices) - length(active_invoices),
-        unique_invoice_numbers: unique_invoice_numbers(active_invoices),
+        unresolved_duplicates: unresolved_duplicates(active_invoices),
+        unique_invoice_numbers: unique_invoice_numbers(source_invoices),
         series: Gstr1.series_account(active_invoices),
-        totals: extracted_totals
+        totals: extracted_totals(active_invoices)
+      },
+      printed: %{
+        documents: length(printed_invoices),
+        totals: printed_totals
       },
       draft: %{
         documents: draft_document_count(derived),
         totals: draft_totals
       },
-      differences: totals_difference(draft_totals, extracted_totals),
+      differences: totals_difference(draft_totals, printed_totals),
+      causes: issue_causes(issues, source_invoices),
+      cess:
+        if(Enum.any?(issues, &(&1["code"] == "cess_not_evaluated")),
+          do: :not_evaluated,
+          else: :checked_none
+        ),
       issues: %{
         required: required,
         required_count: length(required),
@@ -35,6 +52,77 @@ defmodule Nila.Gst.Sales.Account do
       }
     }
   end
+
+  def summarize(source_invoices, active_invoices, issues, derived, source) do
+    summarize(
+      %{
+        source_invoices: source_invoices,
+        active_invoices: active_invoices,
+        printed_active_invoices: active_invoices,
+        issues: issues,
+        derived: derived
+      },
+      source
+    )
+  end
+
+  defp unresolved_duplicates(invoices) do
+    invoices
+    |> Enum.map(& &1["invoice_number"])
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.frequencies()
+    |> Enum.reduce(0, fn {_number, count}, total -> total + max(count - 1, 0) end)
+  end
+
+  defp issue_causes(issues, source_invoices) do
+    numbers_by_id = Map.new(source_invoices, &{&1["id"], &1["invoice_number"]})
+
+    Enum.reduce(issues, Map.new(@components, &{&1, []}), fn issue, causes ->
+      components = issue_components(issue)
+      source_ids = List.wrap(issue["source_id"] || issue["source_ids"])
+
+      cause = %{
+        source_id: List.first(source_ids),
+        source_ids: source_ids,
+        invoices:
+          source_ids
+          |> Enum.map(&Map.get(numbers_by_id, &1))
+          |> Enum.reject(&is_nil/1)
+          |> then(fn numbers ->
+            if numbers == [], do: List.wrap(issue["invoice"]), else: numbers
+          end)
+          |> Enum.uniq(),
+        target: Workings.issue_key(issue)
+      }
+
+      Enum.reduce(components, causes, fn component, acc ->
+        Map.update!(acc, component, fn existing ->
+          if cause.invoices == [],
+            do: existing,
+            else: Enum.uniq_by(existing ++ [cause], & &1.target)
+        end)
+      end)
+    end)
+  end
+
+  defp issue_components(issue) do
+    fields = List.wrap(issue["fields"])
+
+    components =
+      Enum.filter(@components, fn
+        :taxable -> Enum.any?(fields, &String.contains?(&1, "taxable"))
+        :tax -> Enum.any?(fields, &tax_field?/1)
+        component -> Enum.any?(fields, &String.contains?(&1, Atom.to_string(component)))
+      end)
+
+    if components == [] and
+         issue["code"] in ~w(line_arithmetic grand_total_mismatch bucket_tax_mismatch tax_split_mismatch lopsided_tax_split cgst_sgst_unequal),
+       do: [:igst, :cgst, :sgst, :tax],
+       else: components
+  end
+
+  defp tax_field?(field),
+    do: Enum.any?(~w(igst cgst sgst total_tax grand_total), &String.contains?(field, &1))
 
   defp required?(issue),
     do: issue["status"] == "open" and issue["level"] != "info"

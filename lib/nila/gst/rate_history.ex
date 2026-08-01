@@ -19,24 +19,21 @@ defmodule Nila.Gst.RateHistory do
   end
 
   def issues(invoices, historical_observations \\ []) do
-    current = observations(invoices, nil)
-    groups = Enum.group_by(historical_observations ++ current, & &1.key)
+    historical_groups = Enum.group_by(historical_observations, & &1.key)
 
-    current
-    |> Enum.group_by(& &1.invoice)
-    |> Enum.flat_map(fn {invoice_number, invoice_observations} ->
+    invoices
+    |> observations(nil)
+    |> Enum.group_by(& &1.source_id)
+    |> Enum.flat_map(fn {_source_id, invoice_observations} ->
       conflicts =
         Enum.filter(invoice_observations, fn observation ->
-          groups[observation.key]
-          |> Enum.map(& &1.rate)
-          |> Enum.uniq()
-          |> length() > 1
+          Enum.any?(historical_groups[observation.key] || [], &(&1.rate != observation.rate))
         end)
 
       if conflicts == [] do
         []
       else
-        [conflict_issue(invoice_number, conflicts, groups)]
+        [conflict_issue(hd(invoice_observations), conflicts, historical_groups)]
       end
     end)
   end
@@ -57,6 +54,7 @@ defmodule Nila.Gst.RateHistory do
               code: code,
               rate: rate,
               invoice: invoice["invoice_number"],
+              source_id: invoice["id"],
               period: period,
               line_index: index
             }
@@ -68,7 +66,7 @@ defmodule Nila.Gst.RateHistory do
     end)
   end
 
-  defp conflict_issue(invoice_number, conflicts, groups) do
+  defp conflict_issue(invoice, conflicts, groups) do
     details =
       Enum.map_join(conflicts, " ", fn observation ->
         alternatives =
@@ -99,11 +97,21 @@ defmodule Nila.Gst.RateHistory do
       end)
 
     %{
-      "invoice" => invoice_number,
+      "invoice" => invoice.invoice,
+      "source_id" => invoice.source_id,
       "code" => "rate_history_conflict",
+      "level" => "warning",
       "message" =>
         details <>
           " Confirm the applicable rate; this history check alone does not establish the legally applicable rate.",
+      "hsn_code" => hd(conflicts).code,
+      "hsn_rates" =>
+        conflicts
+        |> Enum.flat_map(fn observation ->
+          [observation.rate | Enum.map(groups[observation.key] || [], & &1.rate)]
+        end)
+        |> Enum.uniq()
+        |> Enum.sort(),
       "fields" =>
         Enum.flat_map(conflicts, fn observation ->
           index = observation.line_index

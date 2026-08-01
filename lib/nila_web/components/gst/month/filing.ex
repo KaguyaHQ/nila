@@ -19,59 +19,36 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       id="month-exit-gstr1"
       class="border-base-300 pt-block scroll-mt-28 border-t"
     >
-      <.button
-        :if={is_nil(@r1_signoff) and @sales_month.state == "worked"}
-        id="month-door-mark-reviewed"
-        variant="primary"
-        size="sm"
-        phx-click="mark_reviewed"
-      >
-        Mark GSTR-1 reviewed
-      </.button>
-
-      <.button
-        :if={
-          is_nil(@r1_signoff) and @sales_month.state == "reviewed" and @can_sign_off and
-            @completeness == :complete
-        }
-        id="month-door-sign-r1"
-        variant="primary"
-        size="sm"
-        phx-click="r1-sign-off"
-      >
-        Sign the GSTR-1
-      </.button>
-
-      <p
-        :if={
-          is_nil(@r1_signoff) and @sales_month.state == "reviewed" and not @can_sign_off and
-            @completeness == :complete
-        }
-        class="text-ink-muted text-table"
-      >
-        Ready for a senior to sign GSTR-1.
-      </p>
-
       <div
-        :if={
-          is_nil(@r1_signoff) and @sales_month.state == "reviewed" and
-            @completeness != :complete
-        }
-        class="flex flex-wrap items-center gap-3"
+        :if={is_nil(@r1_signoff) and @reviewable and @completeness == :complete}
+        class="space-y-related"
       >
-        <p class="text-ink-muted text-table">
-          Review is complete. Filing readiness waits for current client confirmation.
-        </p>
+        <div class="text-base-content text-body font-medium">GSTR-1 ready for approval</div>
+        <ul class="text-ink-muted text-small space-y-1">
+          <li>All checks resolved</li>
+          <li>All supplied sales documents accounted for</li>
+          <li>Table 12 reconciled</li>
+        </ul>
         <.button
           :if={@can_sign_off}
-          id="gstr1-override-completeness"
-          variant="outline"
-          size="xs"
-          phx-click="open-completeness-override"
+          id="month-door-sign-r1"
+          variant="primary"
+          size="sm"
+          phx-click="r1-sign-off"
         >
-          Senior override
+          Approve GSTR-1
         </.button>
+        <p :if={not @can_sign_off} class="text-ink-muted text-table">
+          Ready for a senior to approve GSTR-1.
+        </p>
       </div>
+
+      <p
+        :if={is_nil(@r1_signoff) and @reviewable and @completeness != :complete}
+        class="text-ink-muted text-table"
+      >
+        All review checks are resolved. Approval waits for current client confirmation.
+      </p>
 
       <.signed_return
         :if={@r1_signoff}
@@ -96,7 +73,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               variant="outline"
               size="xs"
             >
-              Download portal JSON
+              Download GST JSON
             </.button>
           </div>
         </:extra_step>
@@ -186,21 +163,31 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     <div class="space-y-block">
       <div class="flex flex-wrap items-center gap-2">
         <span class="text-base-content text-table font-semibold">{@return}</span>
-        <.badge variant={if @month.filed_at, do: "neutral", else: "info"}>
-          {if @month.filed_at, do: "Filed", else: "Signed"}
+        <.badge variant={if @month.filed_at, do: "neutral", else: "success"}>
+          {if @month.filed_at, do: "Filed", else: approval_label(@return)}
         </.badge>
       </div>
 
       <dl class="gap-block text-fine grid sm:grid-cols-4">
         <div>
-          <dt class="text-ink-subtle text-label font-semibold uppercase">Signed by</dt>
+          <dt class="text-ink-subtle text-label font-semibold uppercase">
+            {if @return == "GSTR-1", do: "Approved by", else: "Signed by"}
+          </dt>
           <dd class="text-base-content font-medium">
             {(@signoff.signed_by && @signoff.signed_by.name) || "—"}
           </dd>
         </div>
         <div>
-          <dt class="text-ink-subtle text-label font-semibold uppercase">Signed</dt>
+          <dt class="text-ink-subtle text-label font-semibold uppercase">
+            {if @return == "GSTR-1", do: "Approved", else: "Signed"}
+          </dt>
           <dd class="text-ink-muted">{format_display_datetime(@signoff.inserted_at)}</dd>
+        </div>
+        <div :if={@return == "GSTR-1" and @signoff.snapshot["draft_version"]}>
+          <dt class="text-ink-subtle text-label font-semibold uppercase">Draft version</dt>
+          <dd class="text-base-content font-mono">
+            {String.slice(@signoff.snapshot["draft_version"], 0, 12)}
+          </dd>
         </div>
         <div :if={@month.filed_at} id={@filed_note_id}>
           <dt class="text-ink-subtle text-label font-semibold uppercase">Filed</dt>
@@ -220,7 +207,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         phx-click={@reopen_event}
         data-confirm={@reopen_confirm}
       >
-        Reopen signature
+        {if @return == "GSTR-1", do: "Reopen approval", else: "Reopen signature"}
       </.button>
 
       <div :if={is_nil(@month.filed_at)} class="gap-section grid items-start lg:grid-cols-3">
@@ -254,10 +241,11 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   end
 
   defp gstr1_actionable?(assigns) do
-    not is_nil(assigns.r1_signoff) or
-      (assigns.open_issue_count == 0 and
-         (assigns.sales_month.state == "reviewed" or assigns.reviewable))
+    not is_nil(assigns.r1_signoff) or assigns.reviewable
   end
+
+  defp approval_label("GSTR-1"), do: "Approved"
+  defp approval_label(_return), do: "Signed"
 
   defp gstr3b_ready?(assigns) do
     assigns.stats.need_decision == 0 and not is_nil(assigns.r1_signoff) and

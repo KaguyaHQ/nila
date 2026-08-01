@@ -1,6 +1,7 @@
 defmodule Nila.Gst.RateHistoryTest do
   use ExUnit.Case, async: true
 
+  alias Nila.Gst.Hsn.Validation
   alias Nila.Gst.RateHistory
   alias Nila.Gst.Sales.{Gstr1, Workings}
 
@@ -12,15 +13,11 @@ defmodule Nila.Gst.RateHistoryTest do
       invoice("135/2025-26", 3, 600)
     ]
 
-    issues = RateHistory.issues(invoices)
+    [issue] = Validation.summary_issues(invoices)
 
-    assert length(issues) == 2
-
-    issue_133 = Enum.find(issues, &(&1["invoice"] == "133/2025-26"))
-    assert issue_133["code"] == "rate_history_conflict"
-    assert issue_133["message"] =~ "71069290 at 18%"
-    assert issue_133["message"] =~ "3% on invoice 135/2025-26"
-    assert issue_133["message"] =~ "history check alone does not establish"
+    assert issue["code"] == "hsn_multiple_rates"
+    assert issue["message"] =~ "HSN/SAC 71069290 appears at 3% and 18%"
+    assert issue["message"] =~ "133/2025-26, 135/2025-26"
 
     result = Workings.materialize(invoices, [], @header, [], %{rate_history: []})
     refute Workings.reviewable?(result.issues)
@@ -38,16 +35,16 @@ defmodule Nila.Gst.RateHistoryTest do
     assert issue["message"] =~ "invoice 90/2025-26 (2025-09)"
   end
 
-  test "describes conflicting lines on one invoice without a circular invoice reference" do
+  test "summarizes conflicting lines on one invoice as one HSN check" do
     invoice =
       invoice("133/2025-26", 18, 2_400)
       |> Map.update!("line_items", fn lines ->
         lines ++ invoice("other", 3, 600)["line_items"]
       end)
 
-    [issue] = RateHistory.issues([invoice])
-    assert issue["message"] =~ "elsewhere on this invoice"
-    refute issue["message"] =~ "on invoice 133/2025-26"
+    [issue] = Validation.summary_issues([invoice])
+    assert issue["message"] =~ "HSN/SAC 71069290 appears at 3% and 18%"
+    assert issue["message"] =~ "across invoices 133/2025-26"
   end
 
   defp invoice(number, rate, taxable) do

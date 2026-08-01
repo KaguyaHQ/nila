@@ -586,6 +586,22 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert five["contribs"] == [%{"inum" => "3", "txval" => 5000.0, "tax" => 250.0}]
     end
 
+    test "official HSN descriptions stay on the review summary, not portal JSON", %{
+      invoices: invoices,
+      header: header
+    } do
+      invoices =
+        update_in(invoices, [Access.at(0), "line_items", Access.at(0)], fn line ->
+          Map.put(line, "hsn_description", "Other professional services")
+        end)
+
+      summary = Enum.find(Gstr1.hsn_summary(invoices), & &1["description"])
+      assert summary["description"] == "Other professional services"
+
+      derived = Gstr1.derive(invoices, header)
+      refute Enum.any?(derived["hsn"]["hsn_b2b"], &Map.has_key?(&1, "description"))
+    end
+
     test "a bucket's contributors account for the bucket", %{invoices: invoices} do
       for row <- Gstr1.hsn_summary(invoices) do
         contribs = row["contribs"]
@@ -603,7 +619,9 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       header: header
     } do
       derived = Gstr1.derive(invoices, header)
-      stripped = invoices |> Gstr1.hsn_summary() |> Enum.map(&Map.delete(&1, "contribs"))
+
+      stripped =
+        invoices |> Gstr1.hsn_summary() |> Enum.map(&Map.drop(&1, ["contribs", "description"]))
 
       assert derived["hsn"]["hsn_b2b"] == stripped
     end

@@ -278,9 +278,11 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       %{sales_month: sales_month}
     end
 
-    defp make_reviewed(sales_month, user_id) do
+    defp resolve_open_issues(sales_month, user_id) do
       SalesResolutions.workings(sales_month).issues
-      |> Enum.filter(&(&1["status"] == "open" and &1["level"] != "info"))
+      |> Enum.filter(fn issue ->
+        issue["status"] == "open" and issue["level"] not in ["info", "blocking"]
+      end)
       |> Enum.each(fn issue ->
         {:ok, _} =
           SalesResolutions.record(
@@ -290,6 +292,11 @@ defmodule Nila.Gst.Filing.SignoffsTest do
           )
       end)
 
+      Nila.Repo.reload!(sales_month)
+    end
+
+    defp make_reviewed(sales_month, user_id) do
+      sales_month = resolve_open_issues(sales_month, user_id)
       {:ok, reviewed} = SalesResolutions.mark_reviewed(sales_month)
       reviewed
     end
@@ -308,6 +315,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
           client_id: sales_month.client_id,
           period: "2025-11",
           state: "worked",
+          cess_evaluated: sales_month.cess_evaluated,
           invoices: sales_month.invoices,
           derived_gstr1: sales_month.derived_gstr1,
           issues: sales_month.issues,
@@ -337,24 +345,49 @@ defmodule Nila.Gst.Filing.SignoffsTest do
                Signoffs.sign_off_gstr1(reviewed, scope)
     end
 
-    test "signs a reviewed sales month with a frozen outward snapshot", %{
+    test "approval directly freezes a reviewed draft with reviewer, time, and version", %{
       sales_month: sales_month,
       owner_scope: scope
     } do
-      reviewed = make_reviewed(sales_month, scope.user.id)
+      resolved = resolve_open_issues(sales_month, scope.user.id)
+      assert resolved.state == "worked"
 
-      assert {:ok, signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
+      assert {:ok, signoff} = Signoffs.sign_off_gstr1(resolved, scope)
       assert signoff.artifact == "gstr1"
       assert signoff.sales_month_id == sales_month.id
+      assert signoff.signed_by_id == scope.user.id
+      assert signoff.inserted_at
 
-      for key <- ~w(invoices issues derived) do
+      for key <- ~w(invoices printed_invoices issues derived draft_version) do
         assert Map.has_key?(signoff.snapshot, key), "snapshot missing #{key}"
       end
+
+      assert String.length(signoff.snapshot["draft_version"]) == 64
+
+      assert {:ok, %{state: "reviewed"}} =
+               SalesMonths.get_by_period(
+                 sales_month.org_id,
+                 sales_month.client_id,
+                 sales_month.period
+               )
 
       assert {:ok, latest} = Signoffs.latest_gstr1_signoff(sales_month.id)
       assert latest.id == signoff.id
 
-      assert {:error, :already_signed} = Signoffs.sign_off_gstr1(reviewed, scope)
+      assert {:error, :already_signed} = Signoffs.sign_off_gstr1(resolved, scope)
+    end
+
+    test "cess must be evaluated before approval", %{
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      resolved = resolve_open_issues(sales_month, scope.user.id)
+
+      unresolved_cess =
+        resolved |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
+
+      assert {:error, {:blocking_issues, ["cess_not_evaluated"]}} =
+               Signoffs.sign_off_gstr1(unresolved_cess, scope)
     end
 
     test "a document the return has no table for cannot be signed", %{

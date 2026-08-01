@@ -159,7 +159,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     else
       %{
         tone: :calm,
-        headline: "GSTR-1 drafted and clean. Review the register, then mark it reviewed below.",
+        headline: "GSTR-1 drafted and clean. Review the register, then approve it below.",
         door: nil
       }
     end

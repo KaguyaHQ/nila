@@ -11,16 +11,25 @@ defmodule Nila.Gst.Chase.CompletenessSender do
   @quiet_seconds 300
 
   def enqueue(dump) do
-    ask_ref = Ecto.UUID.generate()
+    enqueue(
+      %{org_id: dump.org_id, client_id: dump.client_id, period: dump.period},
+      @quiet_seconds
+    )
+  end
 
+  def enqueue_now(org_id, client_id, period) do
+    enqueue(%{org_id: org_id, client_id: client_id, period: period}, 0)
+  end
+
+  defp enqueue(scope, schedule_in) do
     %{
-      org_id: dump.org_id,
-      client_id: dump.client_id,
-      period: dump.period,
-      ask_ref: ask_ref
+      org_id: scope.org_id,
+      client_id: scope.client_id,
+      period: scope.period,
+      ask_ref: Ecto.UUID.generate()
     }
     |> new(
-      schedule_in: @quiet_seconds,
+      schedule_in: schedule_in,
       unique: [
         period: @quiet_seconds * 2,
         fields: [:worker, :args],

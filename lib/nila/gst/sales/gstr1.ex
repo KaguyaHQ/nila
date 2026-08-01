@@ -977,6 +977,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
         "camt" => intra_tax.camt,
         "samt" => intra_tax.samt,
         "iamt" => inter_tax.iamt,
+        "description" => official_hsn_description(lines),
         "contribs" => hsn_contribs(tagged, rate)
       }
     end)
@@ -1001,11 +1002,20 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end
   end
 
+  defp official_hsn_description(lines) do
+    lines
+    |> Enum.map(& &1["hsn_description"])
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.frequencies()
+    |> Enum.max_by(fn {_description, count} -> count end, fn -> {nil, 0} end)
+    |> elem(0)
+  end
+
   defp mode_tax(lines, rate, mode),
     do: lines |> Enum.filter(&(tax_mode(&1) == mode)) |> computed_bucket_tax(rate, mode)
 
   defp derive_hsn(invoices) do
-    invoices |> hsn_summary() |> Enum.map(&Map.delete(&1, "contribs"))
+    invoices |> hsn_summary() |> Enum.map(&Map.drop(&1, ["contribs", "description"]))
   end
 
   @doc """

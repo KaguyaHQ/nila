@@ -294,6 +294,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
         client_id: client.id,
         period: @period,
         state: "reviewed",
+        cess_evaluated: true,
         invoices: []
       })
 
@@ -431,7 +432,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
         org_id: org.id,
         client_id: client.id,
         period: @period,
-        state: "reviewed"
+        state: "reviewed",
+        cess_evaluated: true
       })
 
     scope = Nila.Accounts.Scope.for_user(user)
@@ -469,7 +471,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
         org_id: org.id,
         client_id: client.id,
         period: @period,
-        state: "reviewed"
+        state: "reviewed",
+        cess_evaluated: true
       })
 
     scope = Nila.Accounts.Scope.for_user(user)
@@ -512,7 +515,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
         org_id: org.id,
         client_id: client.id,
         period: @period,
-        state: "reviewed"
+        state: "reviewed",
+        cess_evaluated: true
       })
 
     scope = Nila.Accounts.Scope.for_user(user)

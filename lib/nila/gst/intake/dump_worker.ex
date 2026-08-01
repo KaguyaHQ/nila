@@ -291,7 +291,8 @@ defmodule Nila.Gst.Intake.DumpWorker do
          "unaccounted_pages" => unaccounted_pages(result),
          "evidence_unavailable" => evidence_unavailable?(result)
        }
-       |> put_source_page_count(result)}
+       |> put_source_page_count(result)
+       |> put_cess_evaluation(result)}
     end
   end
 
@@ -305,6 +306,12 @@ defmodule Nila.Gst.Intake.DumpWorker do
       count when is_integer(count) and count > 0 -> Map.put(meta, "source_page_count", count)
       _unknown -> meta
     end
+  end
+
+  defp put_cess_evaluation(meta, result) do
+    if get_in(result, [:audit, :cess_evaluated]) == true,
+      do: Map.put(meta, "cess_evaluated", true),
+      else: meta
   end
 
   defp unaccounted_pages(result), do: Map.get(result, :unaccounted_pages) || []
@@ -556,7 +563,8 @@ defmodule Nila.Gst.Intake.DumpWorker do
         [],
         Gstr1.production_header(client.gstin, dump.period),
         ledger_issues(dump, "sales"),
-        compliance: compliance
+        compliance: compliance,
+        cess_evaluated: sales_cess_evaluated?(dump)
       )
 
     issues = Enum.map(workings.issues, &Map.delete(&1, "status"))
@@ -570,6 +578,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
         invoices: workings.invoices,
         derived_gstr1: workings.derived,
         issues: issues,
+        cess_evaluated: sales_cess_evaluated?(dump),
         hsn_master_release_id: release_id(directory),
         gst_rate_release_id: release_id(rate_directory),
         filed_gstr1: Dumps.filed_gstr1(dump.org_id, dump.client_id, dump.period),
@@ -672,6 +681,11 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
   defp release_id(nil), do: nil
   defp release_id(directory), do: directory.release.id
+
+  defp sales_cess_evaluated?(dump) do
+    dumps = Dumps.effective(dump.org_id, dump.client_id, dump.period, "sales")
+    dumps != [] and Enum.all?(dumps, &(&1.meta["cess_evaluated"] == true))
+  end
 
   # The sales side already renders month-level issues (`"invoice" => nil`), so
   # the ledger lands there rather than in a second surface.

@@ -150,6 +150,14 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     refute SalesWorkings.reviewable?(result.issues)
   end
 
+  test "cess not evaluated is an unresolvable approval blocker" do
+    result = SalesWorkings.materialize(invoices(), [], @header, [], cess_evaluated: false)
+    issue = Enum.find(result.issues, &(&1["code"] == "cess_not_evaluated"))
+
+    assert issue["level"] == "blocking"
+    refute SalesWorkings.reviewable?(result.issues)
+  end
+
   test "a flagged correction is applied and re-derives" do
     resolutions = [
       %{
@@ -163,6 +171,8 @@ defmodule Nila.Gst.Sales.WorkingsTest do
 
     refute "grand_total_mismatch" in open_codes(result)
     assert result.silent_errors == []
+    printed = Enum.find(result.printed_active_invoices, &(&1["invoice_number"] == "20/2025-26"))
+    assert printed["printed_grand_total"] == 2_75_000.0
 
     [%{"inv" => derived_invoices}] = result.derived["b2b"]
     assert length(derived_invoices) == 3

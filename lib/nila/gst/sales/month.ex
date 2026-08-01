@@ -23,6 +23,7 @@ defmodule Nila.Gst.Sales.Month do
     field :filed_gstr1, :map
     field :filed_at, :utc_datetime_usec
     field :filing_arn, :string
+    field :cess_evaluated, :boolean, default: false
 
     belongs_to :org, Nila.Orgs.Org
     belongs_to :client, Nila.Clients.Client
@@ -43,7 +44,8 @@ defmodule Nila.Gst.Sales.Month do
       :issues,
       :summary,
       :filed_gstr1,
-      :filing_arn
+      :filing_arn,
+      :cess_evaluated
     ])
     |> validate_required([:org_id, :client_id, :period, :state])
     |> validate_inclusion(:state, @states)

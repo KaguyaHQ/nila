@@ -73,6 +73,9 @@ defmodule Nila.Formatters do
     "missing_hsn_sac" => "HSN / SAC missing",
     "incomplete_hsn_sac" => "HSN / SAC is incomplete",
     "invalid_hsn_sac" => "HSN / SAC doesn't exist",
+    "hsn_multiple_rates" => "HSN / SAC appears at multiple rates",
+    "hsn_new_code" => "New HSN / SAC for this client",
+    "hsn_inferred_code" => "HSN / SAC was inferred",
     "rate_history_conflict" => "Rate changed for this item",
     "statutory_rate_mismatch" => "HSN and rate don't match",
     "statutory_rate_review" => "HSN rate needs interpretation",
@@ -81,6 +84,7 @@ defmodule Nila.Formatters do
     "tax_arithmetic_off" => "Tax doesn't add up",
     "implausible_invoice_number" => "Invoice number looks wrong",
     "pages_unaccounted" => "Pages with no invoice",
+    "cess_not_evaluated" => "Cess was not evaluated",
     "low_ocr_confidence" => "Blurry scan, check the total",
     "source_attribution_uncertain" => "Not sure which page this is from",
     "subtotal_breakdown_uncertain" => "Line items don't add up"

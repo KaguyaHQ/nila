@@ -52,7 +52,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert completeness =~ "Source files received"
     assert completeness =~ "Invoice pages read"
-    assert completeness =~ "Invoices extracted"
+    assert completeness =~ "Documents extracted"
     assert completeness =~ "Unique invoice numbers"
     assert has_element?(view, "#gstr1-reconciliation", "Taxable value")
     assert has_element?(view, "#gstr1-reconciliation", "Output tax")
@@ -137,7 +137,119 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#gstr1-checks-before-filing", "Missing invoice numbers")
     assert has_element?(view, "#gstr1-checks-before-filing", "32/2025-26")
     assert has_element?(view, "#gstr1-completeness", "Sequence gaps")
-    assert has_element?(view, "#gstr1-completeness", "Not recorded")
+    refute has_element?(view, "#gstr1-completeness", "Invoice pages read")
+  end
+
+  test "cess that extraction did not evaluate is a real approval blocker", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Sales.Months, as: SalesMonths
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
+    confirm_sales_complete!(org, client, @period)
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    confirm_all_open_issues(view)
+
+    assert has_element?(view, "#gstr1-checks-before-filing", "cess was not evaluated")
+    assert has_element?(view, "#gstr1-completeness", "Not evaluated · filing blocked")
+    refute has_element?(view, "#month-door-sign-r1")
+  end
+
+  test "Table 12 flags multiple rates, shows official descriptions, and expands affected rows", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Hsn.{Entry, Release}
+    alias Nila.Gst.Sales.{Gstr1, Months}
+
+    release =
+      %Release{}
+      |> Release.changeset(%{
+        source_name: "GST portal HSN master",
+        file_sha256: Base.encode16(:crypto.strong_rand_bytes(32)),
+        status: "active",
+        observed_at: DateTime.utc_now(),
+        activated_at: DateTime.utc_now()
+      })
+      |> Nila.Repo.insert!()
+
+    Nila.Repo.insert!(%Entry{
+      release_id: release.id,
+      code: "71069290",
+      description: "Other semi-manufactured forms of silver",
+      kind: "hsn",
+      digits: 8,
+      has_children: false
+    })
+
+    period = "2025-12"
+
+    invoices =
+      for {number, rate} <- [{"137/2025-26", 3}, {"142/2025-26", 18}] do
+        half_rate = rate / 2
+
+        Gstr1.normalize_invoice(%{
+          "data" => %{
+            "invoice_number" => number,
+            "invoice_date" => "04.12.2025",
+            "seller" => %{"gstin" => client.gstin},
+            "buyer" => %{"name" => "Silver Buyer", "gstin" => "33AABCP9487A1ZG"},
+            "line_items" => [
+              %{
+                "description" => "Silver rod",
+                "hsn_sac" => "71069290",
+                "taxable_value" => 10_000,
+                "cgst_rate" => half_rate,
+                "cgst_amount" => 10_000 * half_rate / 100,
+                "sgst_rate" => half_rate,
+                "sgst_amount" => 10_000 * half_rate / 100
+              }
+            ]
+          }
+        })
+      end
+
+    {:ok, _month} =
+      Months.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: period,
+        state: "worked",
+        cess_evaluated: true,
+        invoices: invoices,
+        derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, period)),
+        issues: Gstr1.validation_issues(invoices)
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+
+    assert has_element?(view, "#gstr1-hsn-signoff", "HSN/SAC 71069290 appears at 3% and 18%")
+    assert has_element?(view, "#gstr1-workings-hsn", "Other semi-manufactured forms of silver")
+
+    refute has_element?(view, "#gstr1-workings-hsn-71069290-3 .rotate-90")
+
+    issue_id = :erlang.phash2("hsn_multiple_rates|71069290")
+
+    refute has_element?(view, "#gstr1-hsn-issue-#{issue_id}", "Confirm from records")
+
+    view
+    |> element("#gstr1-hsn-issue-#{issue_id} a", "Review")
+    |> render_click()
+
+    assert has_element?(view, "#gstr1-workings-hsn-71069290-3 .rotate-90")
+    assert has_element?(view, "#gstr1-workings-hsn-71069290-18 .rotate-90")
+    assert has_element?(view, "#gstr1-hsn-issue-#{issue_id}", "Confirm from records")
+
+    view
+    |> element("#gstr1-hsn-issue-#{issue_id} button", "Confirm from records")
+    |> render_click()
+
+    refute has_element?(view, "#gstr1-hsn-issue-#{issue_id}")
   end
 
   test "duplicate review compares every source and excludes only the extra copies", %{
@@ -187,7 +299,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     refute has_element?(view, "#gstr1-duplicate-review-modal")
     refute has_element?(view, "button[phx-click='open-duplicate-review']")
-    assert has_element?(view, "#gstr1-completeness", "Duplicate copies excluded")
+    assert has_element?(view, "#gstr1-completeness", "Duplicate documents excluded")
     assert has_element?(view, "#gstr1-completeness", "2")
     assert has_element?(view, "#gstr1-reconciliation", "Documents")
     assert has_element?(view, "#gstr1-reconciliation", "3")
@@ -525,7 +637,6 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
-    view |> element("#month-door-mark-reviewed") |> render_click()
     view |> element("#month-door-sign-r1") |> render_click()
 
     assert has_element?(view, "#gstr1-workings-b2b")
@@ -641,10 +752,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     view |> element("button[phx-click='accept_difference']") |> render_click()
 
-    # A signed month still shows the overlay — from the snapshot — but the
+    # An approved month still shows the overlay — from the snapshot — but the
     # wall hides the verbs.
     confirm_all_open_issues(view)
-    view |> element("#month-door-mark-reviewed") |> render_click()
     view |> element("#month-door-sign-r1") |> render_click()
 
     assert has_element?(view, "#gstr1-diff-summary")
@@ -739,6 +849,13 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert view |> element("#gstr1-workings-hsn-8415-18") |> render() =~ "workings-ripple"
     assert view |> element("#gstr1-verdict") |> render() =~ "workings-ripple"
 
+    reconciliation = view |> element("#gstr1-completeness") |> render()
+    assert reconciliation =~ "As printed"
+    assert reconciliation =~ "Proposed after fixes"
+    assert reconciliation =~ "₹3,000.00"
+    assert reconciliation =~ "₹3,500.00"
+    assert reconciliation =~ "Caused by invoice 40/2025-26"
+
     # The other party's numbers did not move, so its node stays quiet.
     refute view |> element("#gstr1-workings-party-33AAVCS8021P1ZM") |> render() =~
              "workings-ripple"
@@ -755,23 +872,17 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     refute render(view) =~ "workings-ripple"
   end
 
-  test "mark reviewed appears once issues are cleared and flips the state", %{
+  test "resolved checks make missing client confirmation actionable", %{
     conn: conn,
     client: client
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    refute has_element?(view, "#month-door-mark-reviewed")
-
     confirm_all_open_issues(view)
 
     assert has_element?(view, "#gstr1-invoices #gstr1-inv-20\\/2025-26", "Confirmed")
-    assert has_element?(view, "#month-sales #month-exit-gstr1 #month-door-mark-reviewed")
-    refute has_element?(view, "#month-verdict #month-door-mark-reviewed")
-    view |> element("#month-door-mark-reviewed") |> render_click()
-
     refute has_element?(view, "#month-door-sign-r1")
-    assert has_element?(view, "#gstr1-override-completeness", "Senior override")
+    assert has_element?(view, "#gstr1-record-confirmation", "Record client confirmation")
     assert has_element?(view, "#gstr1-completeness", "Awaiting client confirmation")
   end
 
@@ -782,8 +893,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
-    view |> element("#month-door-mark-reviewed") |> render_click()
-    view |> element("#gstr1-override-completeness") |> render_click()
+    view |> element("#gstr1-record-confirmation") |> render_click()
 
     view
     |> element("#gstr1-completeness-override-form")
@@ -799,6 +909,31 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert has_element?(view, "#gstr1-completeness", "Overridden by")
     assert has_element?(view, "#month-door-sign-r1")
+  end
+
+  test "client confirmation action queues a period-specific WhatsApp request", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, client} =
+      Clients.update_client(client, %{
+        phone: "9876543210",
+        chase_channel: "whatsapp"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    confirm_all_open_issues(view)
+
+    view |> element("#gstr1-record-confirmation") |> render_click()
+    assert has_element?(view, "#gstr1-send-completeness-request")
+    view |> element("#gstr1-send-completeness-request") |> render_click()
+
+    assert_enqueued(
+      worker: Nila.Gst.Chase.CompletenessSender,
+      args: %{"client_id" => client.id, "period" => @period}
+    )
+
+    assert render(view) =~ "WhatsApp confirmation request queued"
   end
 
   defp confirm_all_open_issues(view) do
@@ -843,16 +978,17 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
-    view |> element("#month-door-mark-reviewed") |> render_click()
 
-    assert has_element?(view, "#month-door-sign-r1")
+    assert has_element?(view, "#month-door-sign-r1", "Approve GSTR-1")
     view |> element("#month-door-sign-r1") |> render_click()
 
     assert has_element?(view, "#month-exit-gstr1")
     assert has_element?(view, "#gstr1-invoices #gstr1-inv-20\\/2025-26")
     assert has_element?(view, "#gstr1-workings-b2b")
     assert has_element?(view, "#month-door-file-sales[href='#month-exit-gstr1']")
-    assert has_element?(view, "#gstr1-guide-download-json", "Download portal JSON")
+    assert has_element?(view, "#gstr1-guide-download-json", "Download GST JSON")
+    assert has_element?(view, "#month-exit-gstr1", "Approved by")
+    assert has_element?(view, "#month-exit-gstr1", "Draft version")
     refute has_element?(view, "#gstr1-download-json")
     assert has_element?(view, "#month-exit-gstr1 a[target='_blank'][rel='noopener']")
     assert has_element?(view, "#gstr1-filed-arn")
@@ -861,7 +997,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     view |> element("#gstr1-reopen-signoff") |> render_click()
 
-    refute has_element?(view, "#month-exit-gstr1", "signed off by")
+    refute has_element?(view, "#month-exit-gstr1", "Approved by")
     assert has_element?(view, "#month-door-sign-r1")
   end
 
@@ -874,7 +1010,6 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
-    view |> element("#month-door-mark-reviewed") |> render_click()
     view |> element("#month-door-sign-r1") |> render_click()
 
     view
@@ -898,9 +1033,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
-    view |> element("#month-door-mark-reviewed") |> render_click()
 
     refute has_element?(view, "#month-door-sign-r1")
+    assert has_element?(view, "#month-exit-gstr1", "Ready for a senior to approve")
   end
 
   test "an in-flight dump appears and clears through the month subscription", %{
@@ -942,7 +1077,6 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     confirm_all_open_issues(view)
-    view |> element("#month-door-mark-reviewed") |> render_click()
     view |> element("#month-door-sign-r1") |> render_click()
 
     straggler = work_dump!(org, client, @period, "sales", "%PDF-1.4 late")

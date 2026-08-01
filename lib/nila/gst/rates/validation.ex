@@ -24,8 +24,12 @@ defmodule Nila.Gst.Rates.Validation do
             [
               %{
                 "invoice" => invoice["invoice_number"],
+                "source_id" => invoice["id"],
                 "code" => issue_code(status),
+                "level" => "warning",
                 "message" => message(line, index, validation),
+                "hsn_code" => line["hsn_sac"],
+                "hsn_rates" => validation["candidate_rates"],
                 "fields" => [
                   "line_items[#{index - 1}].hsn_sac",
                   "line_items[#{index - 1}].cgst_rate",

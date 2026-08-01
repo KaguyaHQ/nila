@@ -46,6 +46,7 @@ defmodule Nila.Gst.Sales.Workings do
 
   def materialize(invoices, resolutions, header, document_issues, opts) when is_list(opts) do
     compliance = Keyword.get(opts, :compliance, %{})
+    cess_evaluated = Keyword.get(opts, :cess_evaluated, true)
 
     pristine_source_invoices =
       invoices
@@ -81,11 +82,15 @@ defmodule Nila.Gst.Sales.Workings do
     exclusions = Enum.filter(effective, &(&1["verb"] == "exclude_duplicate_copy"))
     {source_invoices, active_invoices, duplicate_copies} = apply_exclusions(corrected, exclusions)
 
+    {printed_invoices, printed_active_invoices, _printed_copies} =
+      apply_exclusions(pristine_source_invoices, exclusions)
+
     raw_issues =
       active_invoices
       |> Gstr1.validation_issues()
       |> Enum.concat(compliance_issues(active_invoices, compliance))
       |> Enum.concat(Gstr1.blocking_issues(active_invoices))
+      |> Enum.concat(cess_issues(cess_evaluated))
       |> Enum.concat(document_issues)
 
     confirmations = Enum.filter(effective, &(&1["verb"] == "confirm_issue"))
@@ -107,6 +112,8 @@ defmodule Nila.Gst.Sales.Workings do
       invoices: source_invoices,
       source_invoices: source_invoices,
       active_invoices: active_invoices,
+      printed_invoices: printed_invoices,
+      printed_active_invoices: printed_active_invoices,
       duplicate_copies: duplicate_copies,
       issues: issues,
       derived: Gstr1.derive(active_invoices, header),
@@ -146,14 +153,31 @@ defmodule Nila.Gst.Sales.Workings do
 
   defp annotate_rates(invoices, _compliance), do: invoices
 
+  defp cess_issues(true), do: []
+
+  defp cess_issues(false) do
+    [
+      %{
+        "invoice" => nil,
+        "code" => "cess_not_evaluated",
+        "level" => "blocking",
+        "message" =>
+          "cess was not evaluated by extraction; approval is blocked until the source documents are checked for cess",
+        "fields" => []
+      }
+    ]
+  end
+
   defp compliance_issues(invoices, compliance) do
     hsn_issues = if compliance[:directory], do: Validation.sales_issues(invoices), else: []
 
     statutory_issues =
       if compliance[:rate_directory], do: RateValidation.sales_issues(invoices), else: []
 
-    history_issues = RateHistory.issues(invoices, compliance[:rate_history] || [])
-    hsn_issues ++ statutory_issues ++ history_issues
+    history = compliance[:rate_history] || []
+    summary_issues = Validation.summary_issues(invoices, history)
+    history_issues = RateHistory.issues(invoices, history)
+    hsn_issues ++ statutory_issues ++ summary_issues ++ history_issues
   end
 
   @doc """
@@ -169,8 +193,10 @@ defmodule Nila.Gst.Sales.Workings do
   def issue_key(%{"source_id" => source_id, "code" => code}) when is_binary(source_id),
     do: "#{source_id}:#{code}"
 
+  def issue_key(%{"invoice" => nil, "target" => target}) when is_binary(target), do: target
   def issue_key(%{"invoice" => nil, "code" => code}), do: code
   def issue_key(%{"invoice" => invoice, "code" => code}), do: "#{invoice}:#{code}"
+  def issue_key(%{"code" => code}), do: code
 
   @doc "True when no effective issue above `info` level remains open."
   def reviewable?(issues) do

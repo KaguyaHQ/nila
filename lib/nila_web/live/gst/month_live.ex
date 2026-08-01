@@ -8,6 +8,7 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Accounts.Policy
   alias Nila.Clients
   alias Nila.Gst.Chase
+  alias Nila.Gst.Chase.CompletenessSender
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps, Preconditions}
   alias Nila.Gst.Purchase.{Register, Resolutions}
@@ -274,22 +275,40 @@ defmodule NilaWeb.Gst.MonthLive do
   defp assign_sales(socket, sales) do
     signoff = fetch_or_nil(Signoffs.latest_gstr1_signoff(sales.id))
 
-    {source_invoices, active_invoices, issues, flagged, derived} =
+    workings =
       case signoff do
         nil when sales.invoices == [] ->
-          {[], [], [], MapSet.new(), nil}
+          %{
+            source_invoices: [],
+            active_invoices: [],
+            printed_active_invoices: [],
+            issues: [],
+            flagged: MapSet.new(),
+            derived: nil
+          }
 
         nil ->
-          workings = SalesResolutions.workings(sales)
-
-          {workings.source_invoices, workings.active_invoices, workings.issues, workings.flagged,
-           workings.derived}
+          SalesResolutions.workings(sales)
 
         signoff ->
           source = signoff.snapshot["invoices"]
           active = Enum.reject(source, &Map.has_key?(&1, "duplicate_copy"))
-          {source, active, signoff.snapshot["issues"], MapSet.new(), signoff.snapshot["derived"]}
+
+          %{
+            source_invoices: source,
+            active_invoices: active,
+            printed_active_invoices: signoff.snapshot["printed_invoices"] || active,
+            issues: signoff.snapshot["issues"],
+            flagged: MapSet.new(),
+            derived: signoff.snapshot["derived"]
+          }
       end
+
+    source_invoices = workings.source_invoices
+    active_invoices = workings.active_invoices
+    issues = workings.issues
+    flagged = workings.flagged
+    derived = workings.derived
 
     invoices =
       sales.invoices
@@ -306,7 +325,7 @@ defmodule NilaWeb.Gst.MonthLive do
     confirmation = fetch_or_nil(Confirmations.latest(org_id, sales.client_id, sales.period))
 
     account =
-      Account.summarize(source_invoices, active_invoices, issues, derived, %{
+      Account.summarize(workings, %{
         files: length(Dumps.effective(org_id, sales.client_id, sales.period, "sales")),
         pages_read: socket.assigns.sales_pages_read
       })
@@ -486,6 +505,15 @@ defmodule NilaWeb.Gst.MonthLive do
   def handle_event("toggle-workings-node", %{"node" => node}, socket),
     do: {:noreply, update(socket, :expanded_nodes, &toggle(&1, node))}
 
+  def handle_event("review-hsn-issue", %{"code" => code}, socket) do
+    nodes = Workings.hsn_node_ids(socket.assigns.active_invoices, code)
+
+    {:noreply,
+     update(socket, :expanded_nodes, fn expanded ->
+       MapSet.union(expanded, MapSet.new(nodes))
+     end)}
+  end
+
   def handle_event("close-evidence", _params, socket),
     do: {:noreply, assign(socket, selected_row: nil, correcting: nil)}
 
@@ -506,6 +534,21 @@ defmodule NilaWeb.Gst.MonthLive do
 
   def handle_event("close-completeness-override", _params, socket),
     do: {:noreply, assign(socket, :show_completeness_override, false)}
+
+  def handle_event("send-completeness-request", _params, socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+
+    case CompletenessSender.enqueue_now(org_id, socket.assigns.client.id, socket.assigns.period) do
+      {:ok, _job} ->
+        {:noreply,
+         socket
+         |> assign(:show_completeness_override, false)
+         |> put_flash(:info, "WhatsApp confirmation request queued.")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "The WhatsApp request could not be queued.")}
+    end
+  end
 
   def handle_event("save-completeness-override", %{"override" => params}, socket) do
     case Confirmations.record_override(
@@ -610,29 +653,19 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
-  def handle_event("mark_reviewed", _params, socket) do
-    case SalesResolutions.mark_reviewed(socket.assigns.sales_month) do
-      {:ok, _} ->
-        {:noreply, socket |> reload() |> put_flash(:info, "Sales month marked reviewed.")}
-
-      {:error, :open_issues} ->
-        {:noreply, put_flash(socket, :error, "Open issues remain — resolve them first.")}
-    end
-  end
-
   def handle_event("r1-sign-off", _params, socket) do
     case Signoffs.sign_off_gstr1(socket.assigns.sales_month, socket.assigns.current_scope) do
       {:ok, _} ->
-        {:noreply, socket |> reload() |> put_flash(:info, "GSTR-1 signed off.")}
+        {:noreply, socket |> reload() |> put_flash(:info, "GSTR-1 approved.")}
 
       {:error, :not_allowed} ->
-        {:noreply, put_flash(socket, :error, "You don't have permission to sign off.")}
+        {:noreply, put_flash(socket, :error, "You don't have permission to approve.")}
 
       {:error, :not_reviewed} ->
-        {:noreply, put_flash(socket, :error, "Mark the month reviewed first.")}
+        {:noreply, put_flash(socket, :error, "Open checks remain — resolve them first.")}
 
       {:error, :already_signed} ->
-        {:noreply, put_flash(socket, :error, "This GSTR-1 is already signed off.")}
+        {:noreply, put_flash(socket, :error, "This GSTR-1 is already approved.")}
 
       {:error, {:sales_intake_incomplete, status}} ->
         {:noreply,
@@ -653,7 +686,7 @@ defmodule NilaWeb.Gst.MonthLive do
         {:noreply,
          socket
          |> reload()
-         |> put_flash(:info, "Signature reopened — the month can be worked again.")}
+         |> put_flash(:info, "Approval reopened — the month can be worked again.")}
 
       {:error, :not_allowed} ->
         {:noreply, put_flash(socket, :error, "You don't have permission to reopen.")}

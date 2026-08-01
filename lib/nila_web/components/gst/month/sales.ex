@@ -44,7 +44,11 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       |> assign(:series, assigns.account.extraction.series)
       |> assign(:required_issues, assigns.account.issues.required)
       |> assign(:verdict, verdict_state(assigns))
+      |> assign(:draft_label, draft_label(assigns))
       |> assign(:reconciliation_rows, reconciliation_rows(assigns.account))
+      |> assign(:hsn_summary, Gstr1.hsn_summary(assigns.active_invoices))
+      |> assign(:hsn_issues, hsn_issues(assigns.account.issues.required))
+      |> then(&assign(&1, :hsn_totals, hsn_totals(&1.hsn_summary)))
 
     ~H"""
     <section :if={@sales_month} id="month-sales" class="space-y-section scroll-mt-28">
@@ -126,7 +130,17 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               <p class="text-body text-ink-muted">{issue["message"]}</p>
             </div>
             <.button
-              :if={issue["code"] == "duplicate_invoice_number"}
+              :if={is_binary(issue["hsn_code"])}
+              href="#gstr1-workings-hsn"
+              variant="outline"
+              size="xs"
+              phx-click="review-hsn-issue"
+              phx-value-code={issue["hsn_code"]}
+            >
+              Review HSN rows
+            </.button>
+            <.button
+              :if={!is_binary(issue["hsn_code"]) and issue["code"] == "duplicate_invoice_number"}
               variant="outline"
               size="xs"
               phx-click="open-duplicate-review"
@@ -135,7 +149,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               Review copies
             </.button>
             <.button
-              :if={is_binary(issue["source_id"])}
+              :if={!is_binary(issue["hsn_code"]) and is_binary(issue["source_id"])}
               variant="outline"
               size="xs"
               phx-click="review-sales-issue"
@@ -145,7 +159,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               Review
             </.button>
             <.button
-              :if={is_nil(issue["source_id"]) and issue["level"] != "blocking"}
+              :if={
+                !is_binary(issue["hsn_code"]) and is_nil(issue["source_id"]) and
+                  issue["level"] != "blocking"
+              }
               variant="outline"
               size="xs"
               phx-click="confirm_issue"
@@ -160,42 +177,140 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <section id="gstr1-completeness" class="space-y-block">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h3 class="text-base-content text-body font-semibold">Completeness and reconciliation</h3>
-          <.badge variant={completeness_variant(@completeness)}>
-            {completeness_label(@completeness)}
-          </.badge>
+          <div class="flex flex-wrap items-center gap-2">
+            <.badge variant={completeness_variant(@completeness)}>
+              {completeness_label(@completeness)}
+            </.badge>
+            <.button
+              :if={@completeness != :complete and is_nil(@r1_signoff)}
+              id="gstr1-record-confirmation"
+              variant="outline"
+              size="xs"
+              phx-click="open-completeness-override"
+            >
+              Record client confirmation
+            </.button>
+          </div>
         </div>
 
         <div class="border-base-300 rounded-box grid gap-4 border p-4 sm:grid-cols-2 lg:grid-cols-4">
           <.control_stat label="Source files received" value={@account.source.files} />
           <.control_stat
+            :if={@account.source.pages_read}
             label="Invoice pages read"
-            value={@account.source.pages_read || "Not recorded"}
+            value={@account.source.pages_read}
           />
-          <.control_stat label="Invoices extracted" value={@account.extraction.documents} />
+          <.control_stat label="Documents extracted" value={@account.extraction.documents} />
           <.control_stat
             label="Unique invoice numbers"
             value={@account.extraction.unique_invoice_numbers}
           />
-          <.control_stat label="Active draft documents" value={@account.draft.documents} />
+          <.control_stat
+            label="Duplicate documents unresolved"
+            value={@account.extraction.unresolved_duplicates}
+          />
+          <.control_stat label="Documents included in draft" value={@account.draft.documents} />
           <.control_stat
             label="Sequence gaps"
             value={if(@series, do: length(@series.missing), else: "Not checked")}
           />
           <.control_stat
-            label="Duplicate copies excluded"
+            :if={@account.extraction.duplicate_copies > 0}
+            label="Duplicate documents excluded"
             value={@account.extraction.duplicate_copies}
           />
-          <.control_stat label="Cess" value="Not captured" />
+          <.control_stat label="Cess" value={cess_label(@account.cess)} />
         </div>
 
         <.data_table id="gstr1-reconciliation" rows={@reconciliation_rows} dense>
-          <:col :let={row} label="Control">{row.label}</:col>
-          <:col :let={row} label="Source register" align="right">{row.extracted}</:col>
-          <:col :let={row} label="GSTR-1 draft" align="right">{row.draft}</:col>
-          <:col :let={row} label="Difference" align="right">
-            <span class={row.changed && "text-warning font-medium"}>{row.difference}</span>
+          <:col :let={row} label="Component">{row.label}</:col>
+          <:col :let={row} label="As printed" align="right">{row.printed}</:col>
+          <:col :let={row} label={@draft_label} align="right">{row.proposed}</:col>
+          <:col :let={row} label="Review">
+            <div :if={row.changed} class="flex flex-wrap items-center gap-2">
+              <span class="text-ink-muted text-small">
+                {cause_label(row.causes)}
+              </span>
+              <.button
+                :if={first_reviewable_cause(row.causes)}
+                variant="ghost"
+                size="xs"
+                phx-click="review-sales-issue"
+                phx-value-source={first_reviewable_cause(row.causes).source_id}
+                phx-value-target={first_reviewable_cause(row.causes).target}
+              >
+                Review
+              </.button>
+            </div>
           </:col>
         </.data_table>
+
+        <section id="gstr1-hsn-signoff" class="border-base-300 rounded-box space-y-block border p-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h4 class="text-base-content text-body font-semibold">Table 12 · HSN summary</h4>
+            <.badge variant={if @hsn_issues == [], do: "success", else: "warning"}>
+              {if @hsn_issues == [],
+                do: "Reconciled",
+                else: "#{length(@hsn_issues)} #{plural(length(@hsn_issues), "check")}"}
+            </.badge>
+          </div>
+          <dl class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <.control_stat
+              label="HSN/rate combinations"
+              value={length(@hsn_summary)}
+            />
+            <.control_stat label="Taxable value" value={rupees(@hsn_totals.taxable)} />
+            <.control_stat label="Output tax" value={rupees(@hsn_totals.tax)} />
+            <.control_stat
+              label="Difference from invoice register"
+              value={rupees(@hsn_totals.tax - @account.extraction.totals.tax)}
+            />
+          </dl>
+          <div :if={@hsn_issues != []} class="space-y-related">
+            <div
+              :for={issue <- @hsn_issues}
+              id={"gstr1-hsn-issue-#{:erlang.phash2(SalesWorkings.issue_key(issue))}"}
+              class="border-base-300 flex flex-wrap items-center gap-3 border-t pt-3"
+            >
+              <p class="text-base-content text-small min-w-0 flex-1">{issue["message"]}</p>
+              <.button
+                :if={!hsn_reviewed?(issue, @active_invoices, @expanded_nodes)}
+                href="#gstr1-workings-hsn"
+                variant="outline"
+                size="xs"
+                phx-click="review-hsn-issue"
+                phx-value-code={issue["hsn_code"]}
+              >
+                Review
+              </.button>
+              <.button
+                :if={
+                  hsn_reviewed?(issue, @active_invoices, @expanded_nodes) and
+                    is_nil(issue["source_id"]) and issue["level"] != "blocking"
+                }
+                variant="outline"
+                size="xs"
+                phx-click="confirm_issue"
+                phx-value-target={SalesWorkings.issue_key(issue)}
+              >
+                Confirm from records
+              </.button>
+              <.button
+                :if={
+                  hsn_reviewed?(issue, @active_invoices, @expanded_nodes) and
+                    is_binary(issue["source_id"])
+                }
+                variant="outline"
+                size="xs"
+                phx-click="review-sales-issue"
+                phx-value-source={issue["source_id"]}
+                phx-value-target={SalesWorkings.issue_key(issue)}
+              >
+                Review invoice
+              </.button>
+            </div>
+          </div>
+        </section>
 
         <p class="text-ink-muted text-small">{confirmation_note(@confirmation, @completeness)}</p>
       </section>
@@ -341,10 +456,18 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
   defp verdict_state(%{r1_signoff: %{}, sales_month: %{filed_at: filed_at}})
        when not is_nil(filed_at),
-       do: %{variant: "neutral", label: "Filed", copy: "The signed return is on the GST portal."}
+       do: %{
+         variant: "neutral",
+         label: "Filed",
+         copy: "The approved return is on the GST portal."
+       }
 
   defp verdict_state(%{r1_signoff: %{}}),
-    do: %{variant: "info", label: "Signed", copy: "Signed and waiting to be filed on the portal."}
+    do: %{
+      variant: "success",
+      label: "Approved",
+      copy: "The approved draft is frozen and ready for portal filing."
+    }
 
   defp verdict_state(%{account: %{issues: %{required_count: count}}}) when count > 0,
     do: %{
@@ -355,24 +478,25 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
   defp verdict_state(%{completeness: completeness}) when completeness != :complete,
     do: %{
-      variant: "warning",
-      label: "Collection open",
-      copy: "Invoice work may continue, but filing waits for current client completeness."
-    }
-
-  defp verdict_state(%{sales_month: %{state: "reviewed"}}),
-    do: %{
-      variant: "success",
-      label: "Ready to sign",
-      copy: "Review is complete and collection is confirmed."
+      variant: "error",
+      label: "Blocked",
+      copy: "Approval waits for current client confirmation."
     }
 
   defp verdict_state(_assigns),
     do: %{
-      variant: "info",
-      label: "Ready for review",
-      copy: "No filing blockers remain in the draft."
+      variant: "success",
+      label: "Ready for approval",
+      copy: "All checks are resolved and supplied sales documents are accounted for."
     }
+
+  defp draft_label(%{r1_signoff: %{}}), do: "Approved draft"
+
+  defp draft_label(%{account: %{issues: %{required: issues}}, completeness: :complete}) do
+    if SalesWorkings.reviewable?(issues), do: "Draft for approval", else: "Proposed after fixes"
+  end
+
+  defp draft_label(_assigns), do: "Proposed after fixes"
 
   defp completeness_variant(:complete), do: "success"
   defp completeness_variant(:client_no), do: "warning"
@@ -409,9 +533,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
     [
       reconciliation_row(
         "Documents",
-        account.extraction.active_documents,
+        account.printed.documents,
         account.draft.documents,
-        account.draft.documents - account.extraction.active_documents,
+        account.draft.documents - account.printed.documents,
+        [],
         :count
       ),
       money_row("Taxable value", account, :taxable),
@@ -425,32 +550,69 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp money_row(label, account, key) do
     reconciliation_row(
       label,
-      account.extraction.totals[key],
+      account.printed.totals[key],
       account.draft.totals[key],
       account.differences[key],
+      account.causes[key],
       :money
     )
   end
 
-  defp reconciliation_row(label, extracted, draft, difference, :count) do
+  defp reconciliation_row(label, printed, proposed, difference, causes, :count) do
     %{
       label: label,
-      extracted: extracted,
-      draft: draft,
-      difference: difference,
-      changed: difference != 0
+      printed: printed,
+      proposed: proposed,
+      changed: difference != 0,
+      causes: causes
     }
   end
 
-  defp reconciliation_row(label, extracted, draft, difference, :money) do
+  defp reconciliation_row(label, printed, proposed, difference, causes, :money) do
     %{
       label: label,
-      extracted: Helpers.rupees(extracted),
-      draft: Helpers.rupees(draft),
-      difference: Helpers.rupees(difference),
-      changed: abs(difference) >= 0.01
+      printed: Helpers.rupees(printed),
+      proposed: Helpers.rupees(proposed),
+      changed: abs(difference) >= 0.01,
+      causes: causes
     }
   end
+
+  defp cause_label([]), do: "Review the affected filing checks"
+
+  defp cause_label(causes) do
+    invoices = causes |> Enum.flat_map(& &1.invoices) |> Enum.uniq()
+    "Caused by #{plural(length(invoices), "invoice")} #{Enum.join(invoices, ", ")}"
+  end
+
+  defp first_reviewable_cause(causes),
+    do: Enum.find(causes, &is_binary(&1.source_id))
+
+  defp hsn_issues(issues) do
+    Enum.filter(issues, fn issue ->
+      is_binary(issue["hsn_code"]) and
+        issue["code"] in ~w(hsn_multiple_rates hsn_new_code hsn_inferred_code rate_history_conflict statutory_rate_mismatch statutory_rate_review invalid_hsn_sac incomplete_hsn_sac)
+    end)
+  end
+
+  defp hsn_reviewed?(issue, invoices, expanded_nodes) do
+    case Workings.hsn_node_ids(invoices, issue["hsn_code"]) do
+      [] -> false
+      nodes -> Enum.all?(nodes, &MapSet.member?(expanded_nodes, &1))
+    end
+  end
+
+  defp hsn_totals(rows) do
+    Enum.reduce(rows, %{taxable: 0.0, tax: 0.0}, fn row, totals ->
+      %{
+        taxable: totals.taxable + (row["txval"] || 0),
+        tax: totals.tax + (row["iamt"] || 0) + (row["camt"] || 0) + (row["samt"] || 0)
+      }
+    end)
+  end
+
+  defp cess_label(:checked_none), do: "Checked · none found"
+  defp cess_label(:not_evaluated), do: "Not evaluated · filing blocked"
 
   defp issues_clause(0), do: "Ready"
   defp issues_clause(1), do: "1 check"

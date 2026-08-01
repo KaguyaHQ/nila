@@ -105,10 +105,10 @@ defmodule Nila.Gst.Filing.Signoffs do
   corrections applied, issues as decided, the portal-shaped derivation) and
   transitions the sales month to `reviewed`, in one transaction.
 
-  The maker gate comes first: the sales month must already be `reviewed`
-  (`SalesResolutions.mark_reviewed/1`) — the checker signs what the maker
-  finished. The signature is its own fact, not a state: the month's state
-  stays maker-owned, and "signed" means a live signoff row exists. Returns
+  The approval transaction re-checks the effective issues and completeness,
+  marks the worked month reviewed, and freezes the approved draft under the
+  checker’s identity. The signature is its own durable fact, and "approved"
+  means a live signoff row exists. Returns
   `{:error, :not_allowed}` without the `sign_off` capability,
   `{:error, :not_reviewed}` before the maker gate,
   `{:error, :already_signed}` when a live signature exists,
@@ -129,12 +129,20 @@ defmodule Nila.Gst.Filing.Signoffs do
           match?({:ok, _}, latest_gstr1_signoff(month.id)) ->
             {:error, :already_signed}
 
-          month.state != "reviewed" ->
-            {:error, :not_reviewed}
-
           true ->
-            with :ok <- require_sales_intake_complete(month) do
-              sign_reviewed_gstr1(month, scope)
+            workings = SalesResolutions.workings(month)
+            blocking = Enum.filter(workings.issues, &SalesWorkings.blocking?/1)
+
+            if blocking == [] do
+              with true <- SalesWorkings.reviewable?(workings.issues),
+                   :ok <- require_sales_intake_complete(month) do
+                approve_gstr1(month, scope, workings)
+              else
+                false -> {:error, :not_reviewed}
+                {:error, _reason} = error -> error
+              end
+            else
+              {:error, {:blocking_issues, blocking |> Enum.map(& &1["code"]) |> Enum.uniq()}}
             end
         end
       end)
@@ -150,28 +158,31 @@ defmodule Nila.Gst.Filing.Signoffs do
     end
   end
 
-  # Checked here as well as at `SalesResolutions.mark_reviewed/1`, because this
-  # is the act that makes a number final, and a month may have reached
-  # `reviewed` before a rule existed.
-  defp sign_reviewed_gstr1(month, scope) do
-    workings = SalesResolutions.workings(month)
+  defp approve_gstr1(month, scope, workings) do
+    draft = %{
+      "invoices" => workings.invoices,
+      "printed_invoices" => workings.printed_active_invoices,
+      "issues" => workings.issues,
+      "derived" => workings.derived
+    }
 
-    case Enum.filter(workings.issues, &SalesWorkings.blocking?/1) do
-      [] ->
-        snapshot = %{
-          "invoices" => workings.invoices,
-          "issues" => workings.issues,
-          "derived" => workings.derived
-        }
+    snapshot = Map.put(draft, "draft_version", draft_version(draft))
 
-        {:ok,
-         %Signoff{org_id: month.org_id, sales_month_id: month.id, signed_by_id: scope.user.id}
-         |> Signoff.changeset(%{artifact: "gstr1", snapshot: snapshot})
-         |> Repo.insert!()}
+    month
+    |> SalesMonth.changeset(%{state: "reviewed"})
+    |> Repo.update!()
 
-      blocking ->
-        {:error, {:blocking_issues, blocking |> Enum.map(& &1["code"]) |> Enum.uniq()}}
-    end
+    {:ok,
+     %Signoff{org_id: month.org_id, sales_month_id: month.id, signed_by_id: scope.user.id}
+     |> Signoff.changeset(%{artifact: "gstr1", snapshot: snapshot})
+     |> Repo.insert!()}
+  end
+
+  defp draft_version(draft) do
+    draft
+    |> Jason.encode!()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
   end
 
   @doc """

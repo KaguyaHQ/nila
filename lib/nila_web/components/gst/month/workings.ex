@@ -173,6 +173,15 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               class="pl-6"
             />
           </:col>
+          <:col :let={row} label="Description">
+            <span
+              :if={row.kind == :node}
+              class="text-ink-subtle block max-w-72 truncate"
+              title={row.description}
+            >
+              {row.description || "Official description unavailable"}
+            </span>
+          </:col>
           <:col :let={row} label="Rate" align="right">
             <span :if={row.kind == :node} class="text-ink-subtle">
               {Helpers.percent(row.rate)}
@@ -421,6 +430,13 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
 
   defp rate_node_id(rate), do: dom_id("gstr1-workings-rate-#{trim_rate(rate)}")
 
+  def hsn_node_ids(invoices, code) do
+    invoices
+    |> Gstr1.hsn_summary()
+    |> Enum.filter(&(&1["hsn_sc"] == code))
+    |> Enum.map(&hsn_node_id/1)
+  end
+
   defp hsn_node_id(row),
     do: dom_id("gstr1-workings-hsn-#{row["hsn_sc"] || "none"}-#{trim_rate(row["rt"])}")
 
@@ -586,6 +602,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         kind: :node,
         id: id,
         hsn: row["hsn_sc"],
+        description: row["description"],
         rate: row["rt"],
         count: length(contribs),
         taxable: row["txval"],

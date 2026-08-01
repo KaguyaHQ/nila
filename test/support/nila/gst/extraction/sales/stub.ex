@@ -25,7 +25,12 @@ defmodule Nila.Gst.Extraction.Sales.Stub do
 
     # The audit mirrors the production pipeline's shape so the worker's
     # page-count plumbing (dump.meta → the account block) runs in tests.
-    {:ok, %{pages: pages(), images: images(), audit: %{source_page_count: length(pages())}}}
+    {:ok,
+     %{
+       pages: pages(),
+       images: images(),
+       audit: %{source_page_count: length(pages()), cess_evaluated: true}
+     }}
   end
 
   defp images do
