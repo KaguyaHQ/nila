@@ -41,12 +41,12 @@ defmodule Nila.EvalTest do
       %{invoices: [invoice], header: Gstr1.production_header("33AEWPH4158J1Z3", "2026-05")}
     end
 
-    test "a correction to a flagged field is applied and re-derived", %{
+    test "a correction to a flagged scalar field is applied and re-derived", %{
       invoices: invoices,
       header: header
     } do
-      # The printed total disagrees with the line sum, so the engine flags both
-      # the total and `line_items` — which is what makes them correctable.
+      # The printed total disagrees with the line sum, so the engine flags
+      # `line_items`, authorizing corrections to its scalar sub-paths.
       flagged = Gstr1.flagged_fields(invoices, Gstr1.validation_issues(invoices))
       assert MapSet.member?(flagged, {"1", "line_items"})
 
@@ -54,8 +54,9 @@ defmodule Nila.EvalTest do
         "verb" => "correct_field",
         "target" => "1",
         "payload" => %{
-          "field" => "line_items",
-          "to" => [%{"taxable_value" => 1000, "cgst_rate" => 9, "cgst_amount" => 90}]
+          "field" => "line_items[0].taxable_value",
+          "from" => 900,
+          "to" => 1000
         }
       }
 
@@ -65,19 +66,17 @@ defmodule Nila.EvalTest do
       assert [%{"line_items" => [%{"taxable_value" => 1000}]}] = worked.invoices
     end
 
-    # `Gstr1.apply_corrections/3` treats a flag on `line_items` as covering
-    # `line_items[0].taxable_value` (prefix match, gstr1.ex:1035), but
-    # `materialize/4` filters on exact flag membership first, so the indexed
-    # path never reaches it. A fix must therefore name a field that is itself
-    # flagged — pinned because it decides how an OCR_MISREAD is written.
-    test "an indexed sub-path of a flagged field is still silent", %{
+    test "an aggregate flagged field cannot replace the line items", %{
       invoices: invoices,
       header: header
     } do
       fix = %{
         "verb" => "correct_field",
         "target" => "1",
-        "payload" => %{"field" => "line_items[0].taxable_value", "from" => 900, "to" => 1000}
+        "payload" => %{
+          "field" => "line_items",
+          "to" => [%{"taxable_value" => 1000, "cgst_rate" => 9, "cgst_amount" => 90}]
+        }
       }
 
       worked = Workings.materialize(invoices, [fix], header)
@@ -94,16 +93,9 @@ defmodule Nila.EvalTest do
         "verb" => "correct_field",
         "target" => "1",
         "payload" => %{
-          "field" => "line_items",
-          "to" => [
-            %{
-              "taxable_value" => 1000,
-              "cgst_rate" => 9,
-              "cgst_amount" => 90,
-              "sgst_rate" => 9,
-              "sgst_amount" => 90
-            }
-          ]
+          "field" => "line_items[0].taxable_value",
+          "from" => 900,
+          "to" => 1000
         }
       }
 
