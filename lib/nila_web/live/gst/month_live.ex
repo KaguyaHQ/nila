@@ -23,6 +23,7 @@ defmodule NilaWeb.Gst.MonthLive do
     Arrivals,
     Evidence,
     Filing,
+    Helpers,
     Precondition,
     Purchase,
     Sales,
@@ -71,6 +72,7 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:page_title, "#{client.name} · #{period_label(period)}")
       |> assign(:selected_row, nil)
       |> assign(:selected_inum, nil)
+      |> assign(:last_reviewed_inum, nil)
       |> assign(:visited_inums, MapSet.new())
       |> assign(:expanded_nodes, MapSet.new())
       |> assign(:rippled, MapSet.new())
@@ -81,6 +83,33 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:can_sign_off, Policy.can?(socket.assigns.current_scope, :sign_off))
       |> assign_month(purchase, sales)
     end
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    inum = valid_invoice_number(socket.assigns.invoices, params["invoice"])
+
+    {:noreply,
+     assign(socket,
+       selected_inum: inum,
+       selected_row: nil,
+       correcting: nil,
+       last_reviewed_inum: inum || socket.assigns.last_reviewed_inum,
+       visited_inums:
+         if(inum,
+           do: MapSet.put(socket.assigns.visited_inums, inum),
+           else: socket.assigns.visited_inums
+         )
+     )}
+  end
+
+  defp valid_invoice_number(_invoices, nil), do: nil
+
+  defp valid_invoice_number(invoices, inum) do
+    if Enum.any?(invoices, fn invoice ->
+         invoice["invoice_number"] == inum or invoice["pristine_inum"] == inum
+       end),
+       do: inum
   end
 
   defp fetch_or_nil({:ok, value}), do: value
@@ -217,6 +246,7 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:derived_gstr1, nil)
     |> assign(:gstr1_diff, nil)
     |> assign(:accepted_diffs, MapSet.new())
+    |> assign(:sales_decisions, %{})
     |> assign(:open_issue_count, 0)
     |> assign(:reviewable, false)
   end
@@ -261,6 +291,7 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:derived_gstr1, derived)
     |> assign(:gstr1_diff, filed && derived && Gstr1Diff.rows(derived, filed))
     |> assign(:accepted_diffs, SalesResolutions.accepted_differences(sales))
+    |> assign(:sales_decisions, SalesResolutions.latest_decisions(sales.id))
     |> assign(:open_issue_count, Enum.count(issues, &(&1["status"] == "open")))
     |> assign(:reviewable, SalesWorkings.reviewable?(issues))
   end
@@ -350,13 +381,23 @@ defmodule NilaWeb.Gst.MonthLive do
   # Opening an invoice marks its row read for this session only — a quiet
   # read/unread mark, never a persisted aggregate or a meter.
   def handle_event("select-invoice", %{"inum" => inum}, socket) do
-    {:noreply,
-     assign(socket,
-       selected_inum: inum,
-       selected_row: nil,
-       correcting: nil,
-       visited_inums: MapSet.put(socket.assigns.visited_inums, inum)
-     )}
+    case valid_invoice_number(socket.assigns.invoices, inum) do
+      nil ->
+        {:noreply, socket}
+
+      inum ->
+        {:noreply,
+         socket
+         |> assign(:visited_inums, MapSet.put(socket.assigns.visited_inums, inum))
+         |> push_patch(to: month_path(socket, inum))}
+    end
+  end
+
+  def handle_event("navigate-invoice-review", %{"inum" => inum}, socket) do
+    case valid_invoice_number(socket.assigns.invoices, inum) do
+      nil -> {:noreply, socket}
+      inum -> {:noreply, push_patch(socket, to: month_path(socket, inum), replace: true)}
+    end
   end
 
   # Which workings buckets are open lives here rather than in an inline style,
@@ -365,7 +406,10 @@ defmodule NilaWeb.Gst.MonthLive do
     do: {:noreply, update(socket, :expanded_nodes, &toggle(&1, node))}
 
   def handle_event("close-evidence", _params, socket),
-    do: {:noreply, assign(socket, selected_row: nil, selected_inum: nil, correcting: nil)}
+    do: {:noreply, assign(socket, selected_row: nil, correcting: nil)}
+
+  def handle_event("close-invoice-review", _params, socket),
+    do: {:noreply, push_patch(socket, to: month_path(socket), replace: true)}
 
   def handle_event("open-chase-history", _params, socket),
     do: {:noreply, assign(socket, :show_chase_history, true)}
@@ -375,6 +419,33 @@ defmodule NilaWeb.Gst.MonthLive do
 
   def handle_event("confirm_issue", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "confirm_issue", "target" => target})
+
+  def handle_event(
+        "resolve-invoice-issue",
+        %{"target" => target, "decision" => "use_extracted_lines"},
+        socket
+      ) do
+    issue =
+      socket.assigns
+      |> selected_invoice()
+      |> then(fn invoice ->
+        invoice && Helpers.invoice_issues(socket.assigns.issues_by_invoice, invoice)
+      end)
+      |> List.wrap()
+      |> Enum.find(&(SalesWorkings.issue_key(&1) == target))
+
+    if issue && not SalesWorkings.blocking?(issue) do
+      record(socket, %{
+        "verb" => "confirm_issue",
+        "target" => target,
+        "payload" => %{"decision" => "use_extracted_lines"}
+      })
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("resolve-invoice-issue", _params, socket), do: {:noreply, socket}
 
   def handle_event("undo", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "reopen", "target" => target})
@@ -669,9 +740,53 @@ defmodule NilaWeb.Gst.MonthLive do
       Enum.find(assigns.invoices, &(&1["pristine_inum"] == assigns.selected_inum))
   end
 
+  defp review_navigation(_assigns, nil), do: %{previous: nil, next: nil}
+
+  defp review_navigation(assigns, selected) do
+    index =
+      Enum.find_index(assigns.invoices, fn invoice ->
+        invoice["pristine_inum"] == selected["pristine_inum"]
+      end)
+
+    previous =
+      assigns.invoices
+      |> Enum.take(index || 0)
+      |> Enum.reverse()
+      |> Enum.find(&invoice_unresolved?(assigns.issues_by_invoice, &1))
+
+    next =
+      assigns.invoices
+      |> Enum.drop((index || -1) + 1)
+      |> Enum.find(&invoice_unresolved?(assigns.issues_by_invoice, &1))
+
+    %{
+      previous: previous && previous["invoice_number"],
+      next: next && next["invoice_number"]
+    }
+  end
+
+  defp invoice_unresolved?(issues_by_invoice, invoice) do
+    issues_by_invoice
+    |> Helpers.invoice_issues(invoice)
+    |> Enum.any?(&(&1["status"] == "open"))
+  end
+
+  defp month_path(socket, inum \\ nil) do
+    %{client: client, period: period} = socket.assigns
+
+    if inum,
+      do: ~p"/gst/#{client.id}/#{period}?invoice=#{inum}",
+      else: ~p"/gst/#{client.id}/#{period}"
+  end
+
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :selected_invoice, selected_invoice(assigns))
+    selected_invoice = selected_invoice(assigns)
+
+    assigns =
+      assigns
+      |> assign(:selected_invoice, selected_invoice)
+      |> assign(:review_navigation, review_navigation(assigns, selected_invoice))
 
     ~H"""
     <Layouts.app
@@ -735,6 +850,7 @@ defmodule NilaWeb.Gst.MonthLive do
             issues_by_invoice={@issues_by_invoice}
             pages_read={@sales_pages_read}
             visited={@visited_inums}
+            reviewed_invoice={@last_reviewed_inum}
             derived={@derived_gstr1}
             diff={@gstr1_diff}
             accepted_diffs={@accepted_diffs}
@@ -808,6 +924,8 @@ defmodule NilaWeb.Gst.MonthLive do
         selected_row={@selected_row}
         selected_invoice={@selected_invoice}
         issues_by_invoice={@issues_by_invoice}
+        decisions={@sales_decisions}
+        review_navigation={@review_navigation}
         r1_signoff={@r1_signoff}
         flagged={@flagged}
         correcting={@correcting}

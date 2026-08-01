@@ -151,8 +151,69 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
+    assert_patch(view, ~p"/gst/#{client.id}/#{@period}?invoice=20%2F2025-26")
     assert has_element?(view, "#gstr1-evidence-modal")
     assert has_element?(view, "button[phx-value-target='20/2025-26:grand_total_mismatch']")
+  end
+
+  test "the invoice review URL survives refresh and close returns to the register", %{
+    conn: conn,
+    client: client
+  } do
+    review_path = ~p"/gst/#{client.id}/#{@period}?invoice=20%2F2025-26"
+    {:ok, view, _html} = live(conn, review_path)
+
+    assert has_element?(view, "#gstr1-evidence-modal")
+    assert has_element?(view, "#gstr1-review-header", "Filing blocked")
+    assert has_element?(view, "[data-review-target='gstr1-line-total']")
+
+    view
+    |> element("#gstr1-evidence-modal button[phx-click='close-invoice-review']")
+    |> render_click()
+
+    assert_patch(view, ~p"/gst/#{client.id}/#{@period}")
+    refute has_element?(view, "#gstr1-evidence-modal")
+    assert view |> element("#gstr1-inv-20\\/2025-26") |> render() =~ "bg-primary/[0.04]"
+  end
+
+  test "previous and next unresolved stay inside the route-backed review queue", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Sales.Gstr1
+    alias Nila.Gst.Sales.Months, as: SalesMonths
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+
+    invoices =
+      Enum.map(month.invoices, fn
+        %{"invoice_number" => "21/2025-26"} = invoice ->
+          Map.put(invoice, "printed_grand_total", 1)
+
+        invoice ->
+          invoice
+      end)
+
+    {:ok, _month} =
+      SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        invoices: invoices,
+        issues: Gstr1.validation_issues(invoices),
+        derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, @period))
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}?invoice=20%2F2025-26")
+
+    assert has_element?(view, "#gstr1-review-next[phx-value-inum='21/2025-26']:not([disabled])")
+
+    view |> element("#gstr1-review-next") |> render_click()
+
+    assert_patch(view, ~p"/gst/#{client.id}/#{@period}?invoice=21%2F2025-26")
+    assert has_element?(view, "#gstr1-evidence-modal-title", "21/2025-26")
+    assert has_element?(view, "#gstr1-review-previous[phx-value-inum='20/2025-26']")
   end
 
   test "clicking an invoice shows its issues in the evidence modal", %{
@@ -164,8 +225,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
     assert has_element?(view, "#gstr1-evidence-modal")
-    assert has_element?(view, "#gstr1-evidence-modal p.line-clamp-2")
+    assert has_element?(view, "#gstr1-evidence-modal [id^='gstr1-issue-'] p")
     assert render(view) =~ "Bill total doesn&#39;t tally"
+    assert has_element?(view, "#gstr1-checks dt", "Printed bill total")
+    assert has_element?(view, "#gstr1-checks dt", "Extracted lines total")
   end
 
   test "the invoice modal shows the extracted read beside validation-judged checks", %{
@@ -207,7 +270,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
            )
 
     modal = view |> element("#gstr1-evidence-modal") |> render()
-    assert length(String.split(modal, "Bill total doesn&#39;t tally")) == 2
+    # One compact header shortcut and one issue card; the issue is not repeated
+    # in a detached section below the checks.
+    assert length(String.split(modal, "Bill total doesn&#39;t tally")) == 3
   end
 
   test "opening an invoice marks its row read for the session", %{conn: conn, client: client} do
@@ -216,7 +281,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert view |> element("#gstr1-inv-21\\/2025-26") |> render() =~ "font-medium"
 
     view |> element("#gstr1-inv-21\\/2025-26") |> render_click()
-    view |> element("#gstr1-evidence-modal button[phx-click='close-evidence']") |> render_click()
+
+    view
+    |> element("#gstr1-evidence-modal button[phx-click='close-invoice-review']")
+    |> render_click()
 
     row = view |> element("#gstr1-inv-21\\/2025-26") |> render()
     refute row =~ "font-medium"
@@ -317,22 +385,30 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert view |> element("#gstr1-workings-b2b") |> render() =~ "PONMANI AND CO"
   end
 
-  test "confirming an issue resolves it; undo reopens it", %{conn: conn, client: client} do
+  test "confirming an issue resolves it; undo reopens it", %{
+    conn: conn,
+    client: client,
+    user: user
+  } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
     view
-    |> element("button[phx-value-target='20/2025-26:grand_total_mismatch']", "Checked")
+    |> element(
+      "button[phx-value-target='20/2025-26:grand_total_mismatch']",
+      "Use extracted lines"
+    )
     |> render_click()
 
-    assert render(view) =~ "Confirmed"
+    assert render(view) =~ "Resolved by #{user.name}"
+    assert render(view) =~ "Accepted extracted line total"
 
     view
     |> element("button[phx-value-target='20/2025-26:grand_total_mismatch']", "Undo")
     |> render_click()
 
-    refute render(view) =~ "Confirmed"
+    refute render(view) =~ "Resolved by #{user.name}"
   end
 
   test "correcting a flagged field re-derives and clears the issue", %{
@@ -564,7 +640,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
       while_confirmable(view)
 
       view
-      |> element("#gstr1-evidence-modal button[phx-click='close-evidence']")
+      |> element("#gstr1-evidence-modal button[phx-click='close-invoice-review']")
       |> render_click()
     end
 
@@ -572,9 +648,20 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
   end
 
   defp while_confirmable(view) do
-    if has_element?(view, "button[phx-click='confirm_issue']") do
-      view |> element("button[phx-click='confirm_issue']:first-of-type") |> render_click()
-      while_confirmable(view)
+    cond do
+      has_element?(view, "button[phx-click='resolve-invoice-issue']") ->
+        view
+        |> element("button[phx-click='resolve-invoice-issue']:first-of-type")
+        |> render_click()
+
+        while_confirmable(view)
+
+      has_element?(view, "button[phx-click='confirm_issue']") ->
+        view |> element("button[phx-click='confirm_issue']:first-of-type") |> render_click()
+        while_confirmable(view)
+
+      true ->
+        :ok
     end
   end
 

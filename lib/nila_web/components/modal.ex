@@ -25,11 +25,16 @@ defmodule NilaWeb.Components.Modal do
   attr :title, :string, required: true
   attr :on_close, :string, required: true
   attr :class, :any, default: "max-w-lg"
+  attr :scrim_class, :any, default: "bg-base-content/40"
+  slot :header
   slot :inner_block, required: true
 
   def modal(assigns) do
     ~H"""
-    <div id={@id} class="bg-base-content/40 fixed inset-0 z-50 flex items-center justify-center px-4">
+    <div
+      id={@id}
+      class={[@scrim_class, "fixed inset-0 z-50 flex items-center justify-center px-4"]}
+    >
       <.focus_wrap
         id={"#{@id}-focus-wrap"}
         phx-click-away={@on_close}
@@ -43,12 +48,17 @@ defmodule NilaWeb.Components.Modal do
           @class
         ]}
       >
-        <header class="mb-block flex shrink-0 items-center justify-between">
-          <h3 id={"#{@id}-title"} class="text-base-content text-body font-semibold">{@title}</h3>
+        <header class="mb-block flex shrink-0 items-start justify-between gap-4">
+          <%= if @header == [] do %>
+            <h3 id={"#{@id}-title"} class="text-base-content text-body font-semibold">{@title}</h3>
+          <% else %>
+            <div class="min-w-0 flex-1">{render_slot(@header, "#{@id}-title")}</div>
+          <% end %>
           <button
             type="button"
             phx-click={@on_close}
-            class="hover:bg-base-200 hover:text-ink rounded-field text-ink-subtle p-1 transition"
+            aria-label={"Close #{@title}"}
+            class="hover:bg-base-200 hover:text-ink rounded-field text-ink-subtle shrink-0 p-1 transition"
           >
             <.icon name="hero-x-mark" class="size-4" />
           </button>

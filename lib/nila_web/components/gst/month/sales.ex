@@ -19,6 +19,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   attr :issues_by_invoice, :map, required: true
   attr :pages_read, :integer, default: nil
   attr :visited, :any, default: MapSet.new()
+  attr :reviewed_invoice, :string, default: nil
   attr :derived, :any, default: nil
   attr :diff, :any, default: nil
   attr :accepted_diffs, :any, default: MapSet.new()
@@ -132,6 +133,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           id="gstr1-invoices"
           rows={@invoices}
           visited={@visited}
+          reviewed_invoice={@reviewed_invoice}
           issues_by_invoice={@issues_by_invoice}
         />
       </section>
@@ -158,6 +160,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   attr :id, :string, required: true
   attr :rows, :list, required: true
   attr :visited, :any, default: MapSet.new()
+  attr :reviewed_invoice, :string, default: nil
   attr :issues_by_invoice, :map, required: true
 
   defp invoice_table(assigns) do
@@ -168,6 +171,12 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       row_id={fn invoice -> "gstr1-inv-#{invoice["invoice_number"]}" end}
       row_click={
         fn invoice -> JS.push("select-invoice", value: %{inum: invoice["invoice_number"]}) end
+      }
+      row_class={
+        fn invoice ->
+          (invoice["invoice_number"] == @reviewed_invoice or
+             invoice["pristine_inum"] == @reviewed_invoice) && "bg-primary/[0.04]"
+        end
       }
       min_width="min-w-[760px]"
     >

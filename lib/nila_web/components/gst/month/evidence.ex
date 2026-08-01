@@ -14,6 +14,8 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :selected_row, :any, default: nil
   attr :selected_invoice, :any, default: nil
   attr :issues_by_invoice, :map, required: true
+  attr :decisions, :map, default: %{}
+  attr :review_navigation, :map, default: %{previous: nil, next: nil}
   attr :r1_signoff, :any, default: nil
   attr :flagged, :any, required: true
   attr :correcting, :any, default: nil
@@ -91,6 +93,8 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       :if={@selected_invoice}
       selected_invoice={@selected_invoice}
       issues_by_invoice={@issues_by_invoice}
+      decisions={@decisions}
+      review_navigation={@review_navigation}
       r1_signoff={@r1_signoff}
       flagged={@flagged}
       correcting={@correcting}
@@ -100,6 +104,8 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
   attr :selected_invoice, :map, required: true
   attr :issues_by_invoice, :map, required: true
+  attr :decisions, :map, required: true
+  attr :review_navigation, :map, required: true
   attr :r1_signoff, :any, default: nil
   attr :flagged, :any, required: true
   attr :correcting, :any, default: nil
@@ -129,21 +135,76 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
     in_place = check_issues |> Map.values() |> Enum.reject(&is_nil/1)
 
+    open_issues = Enum.filter(issues, &(&1["status"] == "open"))
+
     assigns =
       assigns
       |> assign(:failed_checks, Enum.reject(checks, & &1["passed"]))
       |> assign(:check_issues, check_issues)
       |> assign(:other_issues, issues -- in_place)
+      |> assign(:open_issues, open_issues)
+      |> assign(:review_state, review_state(open_issues))
       |> assign(:read_rows, read_rows(assigns.selected_invoice, checks))
 
     ~H"""
     <.modal
       id="gstr1-evidence-modal"
       title={@selected_invoice["invoice_number"] || "Invoice"}
-      on_close="close-evidence"
+      on_close="close-invoice-review"
+      scrim_class="bg-scrim/70"
       class="h-[90vh] max-w-384"
     >
-      <div class="gap-block grid h-full min-h-0 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+      <:header :let={title_id}>
+        <div id="gstr1-review-header" class="space-y-related">
+          <div class="grid items-center gap-3 lg:grid-cols-[1fr_auto_1fr]">
+            <button
+              type="button"
+              id="gstr1-review-previous"
+              phx-click={@review_navigation.previous && "navigate-invoice-review"}
+              phx-value-inum={@review_navigation.previous}
+              disabled={is_nil(@review_navigation.previous)}
+              class="hover:text-ink text-ink-subtle text-small justify-self-start transition disabled:opacity-30"
+            >
+              ← Previous unresolved
+            </button>
+            <div class="flex flex-wrap items-center justify-center gap-2 text-center">
+              <h3 id={title_id} class="text-base-content text-body font-semibold">
+                {@selected_invoice["invoice_number"] || "Invoice"}
+              </h3>
+              <span class="text-ink-subtle text-small">{unresolved_label(@open_issues)}</span>
+              <.badge variant={@review_state.variant}>{@review_state.label}</.badge>
+            </div>
+            <button
+              type="button"
+              id="gstr1-review-next"
+              phx-click={@review_navigation.next && "navigate-invoice-review"}
+              phx-value-inum={@review_navigation.next}
+              disabled={is_nil(@review_navigation.next)}
+              class="hover:text-ink text-ink-subtle text-small justify-self-end transition disabled:opacity-30"
+            >
+              Next unresolved →
+            </button>
+          </div>
+          <div :if={@open_issues != []} class="flex flex-wrap justify-center gap-2">
+            <button
+              :for={issue <- @open_issues}
+              type="button"
+              data-review-target={issue_focus_target(issue)}
+              class="bg-warning/10 hover:bg-warning/20 rounded-field text-base-content text-fine px-2 py-1 font-medium transition-colors"
+            >
+              {issue_label(issue["code"])}
+            </button>
+          </div>
+        </div>
+      </:header>
+
+      <div
+        id="gstr1-review-workflow"
+        phx-hook=".InvoiceReview"
+        data-previous={@review_navigation.previous}
+        data-next={@review_navigation.next}
+        class="gap-block grid h-full min-h-0 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]"
+      >
         <div id="gstr1-evidence-images" class="min-h-0 space-y-3 overflow-y-auto">
           <p class="text-ink-subtle text-label font-semibold uppercase">Original document</p>
           <img
@@ -160,8 +221,8 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           </div>
         </div>
 
-        <div class="space-y-block min-h-0 overflow-y-auto">
-          <div>
+        <div id="gstr1-review-details" class="space-y-block min-h-0 overflow-y-auto">
+          <div id="gstr1-review-buyer" class="scroll-mt-4">
             <div class="text-ink-subtle text-label font-semibold uppercase">Buyer</div>
             <div class="text-base-content text-body mt-1 font-medium">
               {@selected_invoice["buyer_name"] || "—"}
@@ -178,7 +239,12 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <.data_table
               id="gstr1-line-items"
               rows={@read_rows}
-              row_class={fn row -> row.kind == :total && "bg-base-200/40 font-medium" end}
+              row_id={& &1.dom_id}
+              row_class={
+                fn row ->
+                  ["scroll-mt-4", row.kind == :total && "bg-base-200/40 font-medium"]
+                end
+              }
               dense
             >
               <:col :let={row} label="Item">
@@ -226,7 +292,13 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <%= for check <- @failed_checks do %>
               <.issue_card
                 :if={@check_issues[check_key(check)]}
+                id={issue_dom_id(@check_issues[check_key(check)])}
                 issue={@check_issues[check_key(check)]}
+                check={check}
+                decisions={@decisions}
+                can_correct={
+                  issue_correctable?(@check_issues[check_key(check)], @flagged, @selected_invoice)
+                }
                 r1_signoff={@r1_signoff}
               />
               <div
@@ -241,7 +313,14 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
           <div :if={@other_issues != []} class="space-y-related">
             <div class="text-ink-subtle text-label font-semibold uppercase">Issues</div>
-            <.issue_card :for={issue <- @other_issues} issue={issue} r1_signoff={@r1_signoff} />
+            <.issue_card
+              :for={issue <- @other_issues}
+              id={issue_dom_id(issue)}
+              issue={issue}
+              decisions={@decisions}
+              can_correct={issue_correctable?(issue, @flagged, @selected_invoice)}
+              r1_signoff={@r1_signoff}
+            />
           </div>
 
           <div
@@ -281,17 +360,69 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <% end %>
           </div>
         </div>
+
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".InvoiceReview">
+          export default {
+            mounted() {
+              this.onClick = (event) => {
+                const trigger = event.target.closest("[data-review-target]")
+                const dialog = this.el.closest("[role='dialog']")
+                if (!trigger || !dialog || !dialog.contains(trigger)) return
+                const target = document.getElementById(trigger.dataset.reviewTarget)
+                if (!target) return
+                target.scrollIntoView({ behavior: "smooth", block: "center" })
+                if (this.focused) this.unfocus(this.focused)
+                this.focused = target
+                target.classList.add("ring-2", "ring-warning", "ring-inset")
+                window.clearTimeout(this.focusTimer)
+                this.focusTimer = window.setTimeout(() => this.unfocus(target), 1800)
+              }
+              this.onKeydown = (event) => {
+                const tag = event.target.tagName
+                if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || event.target.isContentEditable) return
+                const inum = event.key === "ArrowLeft" ? this.el.dataset.previous :
+                  event.key === "ArrowRight" ? this.el.dataset.next : null
+                if (!inum) return
+                event.preventDefault()
+                this.pushEvent("navigate-invoice-review", { inum })
+              }
+              window.addEventListener("click", this.onClick)
+              window.addEventListener("keydown", this.onKeydown)
+            },
+            destroyed() {
+              window.removeEventListener("click", this.onClick)
+              window.removeEventListener("keydown", this.onKeydown)
+              window.clearTimeout(this.focusTimer)
+            },
+            unfocus(target) {
+              target.classList.remove("ring-2", "ring-warning", "ring-inset")
+              if (this.focused === target) this.focused = null
+            }
+          }
+        </script>
       </div>
     </.modal>
     """
   end
 
+  attr :id, :string, required: true
   attr :issue, :map, required: true
+  attr :check, :any, default: nil
+  attr :decisions, :map, required: true
+  attr :can_correct, :boolean, default: false
   attr :r1_signoff, :any, default: nil
 
   defp issue_card(assigns) do
+    assigns =
+      assigns
+      |> assign(:decision, assigns.decisions[SalesWorkings.issue_key(assigns.issue)])
+      |> assign(:mismatch, mismatch_reading(assigns.check))
+
     ~H"""
-    <div class="bg-base-200/40 border-base-300 rounded-box border p-3">
+    <div
+      id={@id}
+      class="bg-base-200/40 border-base-300 rounded-box scroll-mt-4 border p-3 transition-colors"
+    >
       <.badge variant={
         if @issue["status"] == "resolved",
           do: "success",
@@ -299,27 +430,69 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       }>
         {issue_label(@issue["code"])}
       </.badge>
-      <p class="mt-related text-body text-ink-muted line-clamp-2">{@issue["message"]}</p>
-      <div class="mt-related">
+      <p class="mt-related text-body text-ink-muted">{@issue["message"]}</p>
+
+      <dl :if={@mismatch} class="border-base-300 mt-block grid gap-2 border-y py-3 sm:grid-cols-2">
+        <div>
+          <dt class="text-fine text-ink-subtle">{@mismatch.printed_label}</dt>
+          <dd class="font-display text-base-content text-body mt-1 leading-none tabular-nums">
+            {Helpers.rupees(@mismatch.printed)}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-fine text-ink-subtle">{@mismatch.extracted_label}</dt>
+          <dd class="font-display text-base-content text-body mt-1 leading-none tabular-nums">
+            {Helpers.rupees(@mismatch.extracted)}
+          </dd>
+        </div>
+      </dl>
+
+      <div
+        :if={
+          @issue["status"] == "open" and is_nil(@r1_signoff) and
+            not SalesWorkings.blocking?(@issue)
+        }
+        class="mt-block flex flex-wrap gap-2"
+      >
         <.button
-          :if={@issue["status"] == "open" and is_nil(@r1_signoff)}
+          variant="primary"
+          size="sm"
+          phx-click="resolve-invoice-issue"
+          phx-value-target={SalesWorkings.issue_key(@issue)}
+          phx-value-decision="use_extracted_lines"
+        >
+          {resolution_action(@issue)}
+        </.button>
+        <.button
+          :if={@can_correct}
+          type="button"
           variant="outline"
+          size="sm"
+          data-review-target="gstr1-corrections"
+        >
+          Correct extraction
+        </.button>
+      </div>
+
+      <div :if={@issue["status"] == "resolved"} class="mt-block flex items-start gap-3">
+        <.icon name="hero-check-circle" class="text-success mt-0.5 size-4 shrink-0" />
+        <div class="min-w-0 flex-1">
+          <p class="text-base-content text-small font-medium">
+            Resolved by {decision_maker(@decision)}
+          </p>
+          <p class="text-fine text-ink-subtle">
+            {decision_summary(@issue, @decision)} · {decision_time(@decision)}
+          </p>
+        </div>
+        <.button
+          :if={is_nil(@r1_signoff)}
+          variant="ghost"
           size="xs"
-          phx-click="confirm_issue"
+          phx-click="undo"
           phx-value-target={SalesWorkings.issue_key(@issue)}
         >
-          Checked against the bill — it's fine
+          Undo
         </.button>
-        <span :if={@issue["status"] == "resolved"} class="flex items-center gap-1.5">
-          <span class="text-fine text-success font-medium">Confirmed</span>
-          <.button
-            :if={is_nil(@r1_signoff)}
-            variant="ghost"
-            size="xs"
-            phx-click="undo"
-            phx-value-target={SalesWorkings.issue_key(@issue)}
-          >Undo</.button>
-        </span>
       </div>
     </div>
     """
@@ -341,6 +514,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         |> Enum.map(fn {line, index} ->
           %{
             kind: :line,
+            dom_id: "gstr1-line-#{index}",
             line: line,
             verdict: verdict(Enum.filter(checks, &(&1["line"] == index)))
           }
@@ -349,9 +523,118 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       totals = Enum.filter(checks, &is_nil(&1["line"]))
 
       rows ++
-        [%{kind: :total, totals: Gstr1.extracted_totals(invoice), verdict: verdict(totals)}]
+        [
+          %{
+            kind: :total,
+            dom_id: "gstr1-line-total",
+            totals: Gstr1.extracted_totals(invoice),
+            verdict: verdict(totals)
+          }
+        ]
     end
   end
+
+  defp review_state([]), do: %{variant: "success", label: "Review complete"}
+
+  defp review_state(open_issues) do
+    if Enum.any?(open_issues, &(&1["level"] != "info")) do
+      %{variant: "error", label: "Filing blocked"}
+    else
+      %{variant: "warning", label: "Review note"}
+    end
+  end
+
+  defp unresolved_label([]), do: "No unresolved checks"
+  defp unresolved_label([_issue]), do: "1 unresolved"
+  defp unresolved_label(issues), do: "#{length(issues)} unresolved"
+
+  defp issue_dom_id(issue) do
+    location =
+      case issue_line(issue) do
+        nil -> Integer.to_string(:erlang.phash2(issue["message"]))
+        line -> "line-#{line}"
+      end
+
+    "gstr1-issue-#{issue["code"]}-#{location}"
+  end
+
+  defp issue_focus_target(%{"code" => code})
+       when code in ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch),
+       do: "gstr1-line-total"
+
+  defp issue_focus_target(%{"fields" => fields} = issue) do
+    cond do
+      line = issue_line(issue) -> "gstr1-line-#{line}"
+      "buyer_gstin" in List.wrap(fields) -> "gstr1-review-buyer"
+      true -> issue_dom_id(issue)
+    end
+  end
+
+  defp issue_line(issue) do
+    Enum.find_value(List.wrap(issue["fields"]), fn field ->
+      case Regex.run(~r/^line_items\[(\d+)\]/, field) do
+        [_, index] -> String.to_integer(index) + 1
+        _ -> nil
+      end
+    end)
+  end
+
+  defp issue_correctable?(issue, flagged, invoice) do
+    candidates = Gstr1.correctable_fields(flagged, invoice["pristine_inum"])
+
+    Enum.any?(List.wrap(issue["fields"]), fn issue_field ->
+      Enum.any?(candidates, fn candidate ->
+        candidate == issue_field or String.starts_with?(candidate, issue_field <> "[") or
+          String.starts_with?(candidate, issue_field <> ".")
+      end)
+    end)
+  end
+
+  defp mismatch_reading(%{"code" => code, "operands" => operands})
+       when code in ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch) do
+    %{
+      printed_label: printed_total_label(code),
+      printed: operands["printed"],
+      extracted_label: extracted_total_label(code),
+      extracted: operands["derived"]
+    }
+  end
+
+  defp mismatch_reading(_check), do: nil
+
+  defp printed_total_label("printed_taxable_mismatch"), do: "Printed taxable total"
+  defp printed_total_label("printed_tax_mismatch"), do: "Printed tax total"
+  defp printed_total_label("grand_total_mismatch"), do: "Printed bill total"
+
+  defp extracted_total_label("printed_taxable_mismatch"), do: "Extracted line taxable"
+  defp extracted_total_label("printed_tax_mismatch"), do: "Extracted line tax"
+  defp extracted_total_label("grand_total_mismatch"), do: "Extracted lines total"
+
+  defp resolution_action(%{"code" => code})
+       when code in ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch),
+       do: "Use extracted lines"
+
+  defp resolution_action(_issue), do: "Keep extracted value"
+
+  defp decision_maker(%{decided_by: %{name: name}}) when is_binary(name), do: name
+  defp decision_maker(_decision), do: "a reviewer"
+
+  defp decision_summary(
+         %{"code" => code},
+         %{payload: %{"decision" => "use_extracted_lines"}}
+       )
+       when code in ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch),
+       do: "Accepted extracted line total"
+
+  defp decision_summary(_issue, %{payload: %{"decision" => "use_extracted_lines"}}),
+    do: "Kept extracted value"
+
+  defp decision_summary(_issue, _decision), do: "Confirmed against original"
+
+  defp decision_time(%{inserted_at: inserted_at}),
+    do: Nila.Formatters.format_display_datetime_with_time(inserted_at)
+
+  defp decision_time(_decision), do: "Decision recorded"
 
   defp verdict([]), do: nil
 

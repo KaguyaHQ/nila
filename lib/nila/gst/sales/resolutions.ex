@@ -28,6 +28,17 @@ defmodule Nila.Gst.Sales.Resolutions do
     )
   end
 
+  @doc "Latest attributed resolution event for each target."
+  def latest_decisions(sales_month_id) do
+    Repo.all(
+      from r in Resolution,
+        where: r.sales_month_id == ^sales_month_id,
+        order_by: [asc: r.inserted_at, asc: r.id],
+        preload: [:decided_by]
+    )
+    |> Map.new(&{&1.target, &1})
+  end
+
   @doc """
   Records one decision. `org_id` and `sales_month_id` are set on the struct,
   never cast (tenancy is not user-supplied). `decided_by_id` attributes the
