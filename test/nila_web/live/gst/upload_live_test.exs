@@ -23,14 +23,46 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     |> render_submit()
   end
 
-  test "mounts with the intake form and all three drops", %{conn: conn} do
+  defp upload_pdf(view, name, kind) when kind in ~w(sales purchase) do
+    upload =
+      file_input(view, "#gst-upload-form", :documents, [
+        %{name: name, content: "%PDF-1.4 fake bills", type: "application/pdf"}
+      ])
+
+    assert render_upload(upload, name) =~ name
+    ref = hd(upload.entries)["ref"]
+
+    view
+    |> element("#gst-upload-#{kind}-#{ref}")
+    |> render_click()
+
+    ref
+  end
+
+  defp upload_json(view, name, content) do
+    upload =
+      file_input(view, "#gst-upload-form", :documents, [
+        %{name: name, content: content, type: "application/json"}
+      ])
+
+    assert render_upload(upload, name) =~ name
+    hd(upload.entries)["ref"]
+  end
+
+  test "mounts with one shared document drop", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
     assert has_element?(view, "#gst-upload-page")
     assert has_element?(view, "#gst-upload-form")
-    assert has_element?(view, "#gst-upload-sales")
-    assert has_element?(view, "#gst-upload-purchase")
-    assert has_element?(view, "#gst-upload-gstr2b")
+    assert has_element?(view, "#gst-upload-documents")
+
+    assert has_element?(
+             view,
+             "#gst-upload-documents input[type=file][accept='.pdf,.json'][multiple]"
+           )
+
+    refute has_element?(view, "#gst-upload-sales")
+    refute has_element?(view, "#gst-upload-purchase")
     assert has_element?(view, "#gst-upload-submit")
   end
 
@@ -118,16 +150,14 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     refute html =~ ~s(selected="" value="#{other_client.id}")
   end
 
-  test "one pile creates one dump and one job", %{conn: conn, org: org, client: client} do
+  test "one classified PDF creates one dump and one job", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
-    sales =
-      file_input(view, "#gst-upload-form", :sales, [
-        %{name: "sales.pdf", content: "%PDF-1.4 fake sales", type: "application/pdf"}
-      ])
-
-    assert render_upload(sales, "sales.pdf") =~ "sales.pdf"
-
+    upload_pdf(view, "sales.pdf", "sales")
     submit(view, client)
 
     assert has_element?(view, "#gst-upload-progress")
@@ -139,22 +169,104 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert_enqueued(worker: DumpWorker, args: %{dump_id: dump.id})
   end
 
-  test "a mixed drop creates a dump per pile", %{conn: conn, org: org, client: client} do
+  test "a PDF needs an explicit Sales or Purchase choice", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
-    purchase =
-      file_input(view, "#gst-upload-form", :purchase, [
+    upload =
+      file_input(view, "#gst-upload-form", :documents, [
         %{name: "bills.pdf", content: "%PDF-1.4 fake", type: "application/pdf"}
       ])
 
-    gstr2b =
-      file_input(view, "#gst-upload-form", :gstr2b, [
-        %{name: "gstr2b.json", content: ~s({"docdata":{"b2b":[]}}), type: "application/json"}
-      ])
+    render_upload(upload, "bills.pdf")
+    ref = hd(upload.entries)["ref"]
 
-    render_upload(purchase, "bills.pdf")
-    render_upload(gstr2b, "gstr2b.json")
+    assert has_element?(view, "#gst-upload-sales-#{ref}")
+    assert has_element?(view, "#gst-upload-purchase-#{ref}")
 
+    submit(view, client)
+
+    assert has_element?(view, "#gst-upload-error", "Choose Sales or Purchase for bills.pdf.")
+    assert Dumps.list(org.id, client.id, @period) == []
+    refute_enqueued(worker: DumpWorker)
+  end
+
+  test "filed GSTR-1 JSON is identified without asking the operator", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    ref =
+      upload_json(
+        view,
+        "filed-gstr1.json",
+        ~s({"gstin":"33AAACS1234A1Z9","fp":"102025","b2b":[]})
+      )
+
+    assert has_element?(view, "#gst-upload-kind-#{ref}", "Filed GSTR-1")
+    submit(view, client)
+
+    assert [dump] = Dumps.list(org.id, client.id, @period)
+    assert dump.kind == "filed_gstr1"
+    assert_enqueued(worker: DumpWorker, args: %{dump_id: dump.id})
+  end
+
+  test "unrecognized JSON is explained and cannot be submitted", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    ref = upload_json(view, "random.json", ~s({"something":"else"}))
+
+    assert has_element?(
+             view,
+             "#gst-upload-kind-#{ref}",
+             "This is not a recognized GST portal file"
+           )
+
+    submit(view, client)
+
+    assert has_element?(view, "#gst-upload-error", "not a GSTR-2B or filed GSTR-1 portal file")
+    assert Dumps.list(org.id, client.id, @period) == []
+    refute_enqueued(worker: DumpWorker)
+  end
+
+  test "ambiguous portal JSON is refused instead of silently routed", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    ref =
+      upload_json(
+        view,
+        "ambiguous.json",
+        ~s({"gstin":"33AAACS1234A1Z9","fp":"102025","b2b":[],"docdata":{}})
+      )
+
+    assert has_element?(view, "#gst-upload-kind-#{ref}", "matches more than one portal format")
+    submit(view, client)
+
+    assert has_element?(view, "#gst-upload-error", "matches more than one portal format")
+    assert Dumps.list(org.id, client.id, @period) == []
+    refute_enqueued(worker: DumpWorker)
+  end
+
+  test "a mixed drop creates a dump per file", %{conn: conn, org: org, client: client} do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    upload_pdf(view, "bills.pdf", "purchase")
+    json_ref = upload_json(view, "gstr2b.json", ~s({"docdata":{"b2b":[]}}))
+
+    assert has_element?(view, "#gst-upload-kind-#{json_ref}", "GSTR-2B")
     submit(view, client)
 
     kinds = org.id |> Dumps.list(client.id, @period) |> Enum.map(& &1.kind) |> Enum.sort()
@@ -182,12 +294,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
-    sales =
-      file_input(view, "#gst-upload-form", :sales, [
-        %{name: "sales.pdf", content: "%PDF-1.4 fake sales", type: "application/pdf"}
-      ])
-
-    render_upload(sales, "sales.pdf")
+    upload_pdf(view, "sales.pdf", "sales")
     submit(view, client)
 
     [dump] = Dumps.list(org.id, client.id, @period)
@@ -213,12 +320,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
-    purchase =
-      file_input(view, "#gst-upload-form", :purchase, [
-        %{name: "bills.pdf", content: "%PDF-1.4 fake", type: "application/pdf"}
-      ])
-
-    render_upload(purchase, "bills.pdf")
+    upload_pdf(view, "bills.pdf", "purchase")
     submit(view, client)
     [dump] = Dumps.list(org.id, client.id, @period)
 
@@ -271,12 +373,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
   test "a held dump links to the signed month", %{conn: conn, org: org, client: client} do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
-    sales =
-      file_input(view, "#gst-upload-form", :sales, [
-        %{name: "sales.pdf", content: "%PDF-1.4 fake sales", type: "application/pdf"}
-      ])
-
-    render_upload(sales, "sales.pdf")
+    upload_pdf(view, "sales.pdf", "sales")
     submit(view, client)
     [dump] = Dumps.list(org.id, client.id, @period)
 
@@ -297,12 +394,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
-    sales =
-      file_input(view, "#gst-upload-form", :sales, [
-        %{name: "sales.pdf", content: "%PDF-1.4 fake sales", type: "application/pdf"}
-      ])
-
-    render_upload(sales, "sales.pdf")
+    upload_pdf(view, "sales.pdf", "sales")
     submit(view, client)
     [dump] = Dumps.list(org.id, client.id, @period)
 
@@ -330,12 +422,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
-    sales =
-      file_input(view, "#gst-upload-form", :sales, [
-        %{name: "sales.pdf", content: "%PDF-1.4 fake sales", type: "application/pdf"}
-      ])
-
-    render_upload(sales, "sales.pdf")
+    upload_pdf(view, "sales.pdf", "sales")
     submit(view, client)
     [dump] = Dumps.list(org.id, client.id, @period)
 

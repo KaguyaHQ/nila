@@ -2,19 +2,19 @@ defmodule NilaWeb.Gst.UploadLive do
   use NilaWeb, :live_view
 
   @moduledoc """
-  Bring in documents — the intake action. One arrival at a time, the way
-  documents actually reach a firm: sales bills early in the month, 2B when
-  the portal generates it (~14th), purchase bills whenever the client gets
-  around to it, stragglers after the chase. Drop whatever came; each pile
-  becomes a `Nila.Gst.Intake.Dump` and a `DumpWorker` job, and the month re-derives
-  from the union of everything that has arrived.
+  Bring in documents — the intake action. Documents arrive as sales bills, a
+  shoebox of purchases, portal downloads, and stragglers after the chase. The
+  operator drops the files first: bill PDFs are then labelled Sales or Purchase,
+  while portal JSON is identified from its structure. Each file becomes a
+  `Nila.Gst.Intake.Dump` and a `DumpWorker` job, and the month re-derives from the
+  union of everything that has arrived.
 
   Accepts `?client_id=&period=` so Today rows and the workbench can open it
   pre-scoped to the client-month the documents belong to.
   """
 
   alias Nila.Clients
-  alias Nila.Gst.Filing.Calendar
+  alias Nila.Gst.Filing.{Calendar, PortalDocument}
   alias Nila.Gst.Intake.{Dumps, DumpWorker}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Storage
@@ -26,34 +26,8 @@ defmodule NilaWeb.Gst.UploadLive do
   # zone is where a too-large pile should be refused — not a minute later, from
   # inside extraction, as a provider size error.
   @max_pdf_bytes 50_000_000
-
-  @kinds [
-    %{
-      name: :sales,
-      kind: "sales",
-      label: "Sales bills (PDF)",
-      hint: "The client's own invoices — needed for GSTR-1, due the 11th"
-    },
-    %{
-      name: :purchase,
-      kind: "purchase",
-      label: "Purchase bills (PDF)",
-      hint: "The shoebox — reconciled against 2B for ITC"
-    },
-    %{
-      name: :gstr2b,
-      kind: "gstr2b",
-      label: "GSTR-2B (JSON)",
-      hint: "From the portal, available ~the 14th. A new one replaces the old"
-    },
-    %{
-      name: :filed_gstr1,
-      kind: "filed_gstr1",
-      label: "Filed GSTR-1 (JSON, from the portal)",
-      hint:
-        "What was actually filed — the month then shows derived vs filed. A new one replaces the old"
-    }
-  ]
+  @max_json_bytes 20_000_000
+  @max_upload_entries 10
 
   @impl true
   def mount(params, _session, socket) do
@@ -65,18 +39,18 @@ defmodule NilaWeb.Gst.UploadLive do
       socket
       |> assign(:page_title, "Bring in documents")
       |> assign(:clients, list_clients(socket))
-      |> assign(:kinds, @kinds)
       |> assign(:form, to_form(prefilled, as: :intake))
       |> assign_period_options(prefilled["client_id"])
+      |> assign(:entry_kinds, %{})
       |> assign(:jobs, %{})
       |> assign(:pending, nil)
-      |> allow_upload(:sales, accept: ~w(.pdf), max_entries: 1, max_file_size: @max_pdf_bytes)
-      |> allow_upload(:purchase, accept: ~w(.pdf), max_entries: 1, max_file_size: @max_pdf_bytes)
-      |> allow_upload(:gstr2b, accept: ~w(.json), max_entries: 1, max_file_size: 20_000_000)
-      |> allow_upload(:filed_gstr1,
-        accept: ~w(.json),
-        max_entries: 1,
-        max_file_size: 20_000_000
+      |> allow_upload(:documents,
+        accept: ~w(.pdf .json),
+        max_entries: @max_upload_entries,
+        max_file_size: @max_pdf_bytes,
+        auto_upload: true,
+        progress: &handle_upload_progress/3,
+        validator: &validate_document_entry/1
       )
 
     {:ok, assign(socket, :error, nil)}
@@ -111,22 +85,38 @@ defmodule NilaWeb.Gst.UploadLive do
   end
 
   def handle_event("cancel-upload", %{"ref" => ref}, socket) do
-    name =
-      Enum.find([:sales, :purchase, :gstr2b, :filed_gstr1], :sales, &entry_in?(socket, &1, ref))
-
-    {:noreply, cancel_upload(socket, name, ref)}
+    {:noreply,
+     socket
+     |> cancel_upload(:documents, ref)
+     |> assign(:entry_kinds, Map.delete(socket.assigns.entry_kinds, ref))}
   end
+
+  def handle_event("choose-kind", %{"ref" => ref, "kind" => kind}, socket)
+      when kind in ~w(sales purchase) do
+    entry = Enum.find(socket.assigns.uploads.documents.entries, &(&1.ref == ref))
+
+    entry_kinds =
+      if entry && entry_extension(entry) == ".pdf" do
+        Map.put(socket.assigns.entry_kinds, ref, {:ok, kind})
+      else
+        socket.assigns.entry_kinds
+      end
+
+    {:noreply, assign(socket, :entry_kinds, entry_kinds)}
+  end
+
+  def handle_event("choose-kind", _params, socket), do: {:noreply, socket}
 
   def handle_event("submit", %{"intake" => params}, socket) do
     org = socket.assigns.current_scope.current_org
 
     with {:ok, client_id} <- fetch_client(org, params["client_id"]),
          {:ok, period} <- fetch_period(params["period"]),
-         {:ok, piles} <- attached_piles(socket) do
+         {:ok, entry_kinds} <- ready_entries(socket) do
       jobs =
-        Map.new(piles, fn name ->
-          dump = create_dump(socket, org.id, client_id, period, name)
-
+        socket
+        |> create_dumps(org.id, client_id, period, entry_kinds)
+        |> Map.new(fn dump ->
           {dump.id,
            %{
              kind: dump.kind,
@@ -140,6 +130,7 @@ defmodule NilaWeb.Gst.UploadLive do
 
       {:noreply,
        socket
+       |> assign(:entry_kinds, %{})
        |> assign(:jobs, jobs)
        |> assign(:error, nil)
        |> assign(:pending, %{client_id: client_id, period: period})}
@@ -159,6 +150,7 @@ defmodule NilaWeb.Gst.UploadLive do
 
     {:noreply,
      socket
+     |> assign(:entry_kinds, %{})
      |> assign(:jobs, %{})
      |> assign(
        :form,
@@ -167,40 +159,108 @@ defmodule NilaWeb.Gst.UploadLive do
      |> assign_period_options(client_id)}
   end
 
-  defp attached_piles(socket) do
-    case Enum.filter([:sales, :purchase, :gstr2b, :filed_gstr1], &(entries(socket, &1) != [])) do
-      [] -> {:error, "Drop at least one pile — sales bills, purchase bills, or the 2B."}
-      piles -> {:ok, piles}
+  defp handle_upload_progress(:documents, %{done?: true} = entry, socket) do
+    entry_kinds =
+      if entry_extension(entry) == ".json" do
+        classification =
+          consume_uploaded_entry(socket, entry, fn %{path: path} ->
+            {:postpone, path |> File.read!() |> PortalDocument.classify()}
+          end)
+
+        Map.put(socket.assigns.entry_kinds, entry.ref, classification)
+      else
+        socket.assigns.entry_kinds
+      end
+
+    {:noreply, assign(socket, :entry_kinds, entry_kinds)}
+  end
+
+  defp handle_upload_progress(:documents, _entry, socket), do: {:noreply, socket}
+
+  defp validate_document_entry(entry) do
+    if entry_extension(entry) == ".json" and entry.client_size > @max_json_bytes,
+      do: {:error, :json_too_large},
+      else: :ok
+  end
+
+  defp ready_entries(socket) do
+    upload = socket.assigns.uploads.documents
+
+    cond do
+      upload.entries == [] ->
+        {:error, "Drop at least one file."}
+
+      upload_errors(upload) != [] or
+          Enum.any?(upload.entries, &(upload_errors(upload, &1) != [])) ->
+        {:error, "Remove the files with errors before bringing them in."}
+
+      Enum.any?(upload.entries, &(not &1.done?)) ->
+        {:error, "Wait for every file to finish uploading."}
+
+      entry = Enum.find(upload.entries, &(not ready_entry?(&1, socket.assigns.entry_kinds))) ->
+        {:error, entry_readiness_error(entry, socket.assigns.entry_kinds)}
+
+      true ->
+        {:ok, socket.assigns.entry_kinds}
     end
   end
 
-  defp entries(socket, name), do: socket.assigns.uploads[name].entries
+  defp ready_entry?(entry, entry_kinds) do
+    case {entry_extension(entry), Map.get(entry_kinds, entry.ref)} do
+      {".pdf", {:ok, kind}} when kind in ~w(sales purchase) -> true
+      {".json", {:ok, kind}} when kind in ~w(gstr2b filed_gstr1) -> true
+      _ -> false
+    end
+  end
 
-  defp create_dump(socket, org_id, client_id, period, name) do
-    kind = Enum.find(@kinds, &(&1.name == name)).kind
+  defp entry_readiness_error(entry, entry_kinds) do
+    case {entry_extension(entry), Map.get(entry_kinds, entry.ref)} do
+      {".pdf", _state} ->
+        "Choose Sales or Purchase for #{entry.client_name}."
+
+      {".json", {:error, :invalid_json}} ->
+        "#{entry.client_name} is not valid JSON."
+
+      {".json", {:error, :ambiguous_structure}} ->
+        "#{entry.client_name} matches more than one portal format. Remove it and check the download."
+
+      {".json", nil} ->
+        "Nila could not finish identifying #{entry.client_name}. Remove it and try again."
+
+      {".json", _state} ->
+        "#{entry.client_name} is not a GSTR-2B or filed GSTR-1 portal file."
+    end
+  end
+
+  defp create_dumps(socket, org_id, client_id, period, entry_kinds) do
     scope = socket.assigns.current_scope
 
-    [key] =
-      consume_uploaded_entries(socket, name, fn %{path: path}, entry ->
-        bytes = File.read!(path)
-        ext = entry.client_name |> Path.extname() |> String.downcase()
+    socket
+    |> consume_uploaded_entries(:documents, fn %{path: path}, entry ->
+      {:ok, kind} = Map.fetch!(entry_kinds, entry.ref)
+      bytes = File.read!(path)
+      ext = entry_extension(entry)
 
-        key =
-          "orgs/#{org_id}/clients/#{client_id}/#{period}/dumps/#{Ecto.UUID.generate()}/original#{ext}"
+      key =
+        "orgs/#{org_id}/clients/#{client_id}/#{period}/dumps/#{Ecto.UUID.generate()}/original#{ext}"
 
-        {:ok, _} = Storage.put(key, bytes, content_type: upload_content_type(kind))
-        {:ok, key}
-      end)
+      {:ok, _} = Storage.put(key, bytes, content_type: upload_content_type(kind))
+      {:ok, {kind, key}}
+    end)
+    |> Enum.map(fn {kind, key} ->
+      {:ok, dump} =
+        Dumps.record(
+          %{org_id: org_id, client_id: client_id, brought_in_by_id: scope.user.id},
+          %{period: period, kind: kind, file_keys: [key]}
+        )
 
-    {:ok, dump} =
-      Dumps.record(
-        %{org_id: org_id, client_id: client_id, brought_in_by_id: scope.user.id},
-        %{period: period, kind: kind, file_keys: [key]}
-      )
-
-    {:ok, _job} = Oban.insert(DumpWorker.new(%{dump_id: dump.id}))
-    dump
+      {:ok, _job} = Oban.insert(DumpWorker.new(%{dump_id: dump.id}))
+      dump
+    end)
   end
+
+  defp entry_extension(entry),
+    do: entry.client_name |> Path.extname() |> String.downcase()
 
   @impl true
   def handle_info({:gst_dump_progress, dump_id, _client_id, _period, _kind, message}, socket) do
@@ -232,10 +292,6 @@ defmodule NilaWeb.Gst.UploadLive do
   # of work, and a bar frozen at "48 of 57 pages" would read as stuck.
   defp apply_progress(job, stage) when is_atom(stage),
     do: %{job | status: stage, progress: nil, retrying: nil}
-
-  defp entry_in?(socket, name, ref) do
-    Enum.any?(socket.assigns.uploads[name].entries, &(&1.ref == ref))
-  end
 
   defp fetch_client(org, client_id) do
     case org && client_id && client_id != "" && Clients.get_client(org.id, client_id) do
@@ -283,6 +339,21 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp upload_content_type(kind) when kind in ~w(gstr2b filed_gstr1), do: "application/json"
   defp upload_content_type(_kind), do: "application/pdf"
+
+  defp entry_kind_state(entry_kinds, entry) do
+    case {entry_extension(entry), entry.done?, Map.get(entry_kinds, entry.ref)} do
+      {".pdf", _done?, {:ok, kind}} -> {:pdf, kind}
+      {".pdf", _done?, _state} -> {:pdf, nil}
+      {".json", false, _state} -> :identifying
+      {".json", true, {:ok, kind}} -> {:identified, kind}
+      {".json", true, {:error, reason}} -> {:error, reason}
+      {".json", true, nil} -> :identifying
+    end
+  end
+
+  defp portal_error_label(:invalid_json), do: "This is not valid JSON"
+  defp portal_error_label(:ambiguous_structure), do: "This matches more than one portal format"
+  defp portal_error_label(_reason), do: "This is not a recognized GST portal file"
 
   defp kind_title("sales"), do: "Sales bills"
   defp kind_title("purchase"), do: "Purchase bills"
@@ -440,13 +511,66 @@ defmodule NilaWeb.Gst.UploadLive do
             />
 
             <.file_drop
-              :for={kind <- @kinds}
-              id={"gst-upload-#{kind.name}"}
-              upload={@uploads[kind.name]}
-              label={kind.label}
-              hint={kind.hint}
+              id="gst-upload-documents"
+              upload={@uploads.documents}
+              label="Documents"
+              hint="PDF bills or GST portal JSON · up to 10 files"
               on_cancel="cancel-upload"
-            />
+            >
+              <:entry :let={entry}>
+                <%= case entry_kind_state(@entry_kinds, entry) do %>
+                  <% {:pdf, selected} -> %>
+                    <div
+                      id={"gst-upload-kind-#{entry.ref}"}
+                      class="flex flex-wrap items-center justify-between gap-2"
+                    >
+                      <p class="text-fine text-ink-muted">Which side are these bills for?</p>
+                      <div class="flex items-center gap-1.5">
+                        <.button
+                          type="button"
+                          id={"gst-upload-sales-#{entry.ref}"}
+                          phx-click="choose-kind"
+                          phx-value-ref={entry.ref}
+                          phx-value-kind="sales"
+                          variant={if(selected == "sales", do: "primary", else: "outline")}
+                          size="xs"
+                        >
+                          Sales
+                        </.button>
+                        <.button
+                          type="button"
+                          id={"gst-upload-purchase-#{entry.ref}"}
+                          phx-click="choose-kind"
+                          phx-value-ref={entry.ref}
+                          phx-value-kind="purchase"
+                          variant={if(selected == "purchase", do: "primary", else: "outline")}
+                          size="xs"
+                        >
+                          Purchase
+                        </.button>
+                      </div>
+                    </div>
+                  <% :identifying -> %>
+                    <p class="text-fine text-ink-muted">Identifying the portal file…</p>
+                  <% {:identified, kind} -> %>
+                    <div
+                      id={"gst-upload-kind-#{entry.ref}"}
+                      class="text-fine text-success flex items-center gap-1.5"
+                    >
+                      <.icon name="hero-check-circle" class="size-4" />
+                      {kind_title(kind)} · detected from the portal structure
+                    </div>
+                  <% {:error, reason} -> %>
+                    <div
+                      id={"gst-upload-kind-#{entry.ref}"}
+                      class="text-error text-fine flex items-center gap-1.5"
+                    >
+                      <.icon name="hero-exclamation-circle" class="size-4" />
+                      {portal_error_label(reason)}
+                    </div>
+                <% end %>
+              </:entry>
+            </.file_drop>
 
             <p :if={@error} id="gst-upload-error" class="text-error text-small">
               {@error}

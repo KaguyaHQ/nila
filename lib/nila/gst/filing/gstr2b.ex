@@ -59,6 +59,10 @@ defmodule Nila.Gst.Filing.Gstr2b do
 
   def parse(_), do: {:error, :unrecognized_structure}
 
+  @doc false
+  def recognized?(%{} = document), do: is_map(docdata(document))
+  def recognized?(_document), do: false
+
   defp docdata(%{"data" => %{"docdata" => %{} = docdata}}), do: docdata
   defp docdata(%{"docdata" => %{} = docdata}), do: docdata
   defp docdata(_), do: nil

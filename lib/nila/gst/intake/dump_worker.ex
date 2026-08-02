@@ -30,7 +30,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   import Ecto.Query, only: [from: 2]
 
   alias Nila.Gst.Chase.CompletenessSender
-  alias Nila.Gst.Filing.{Gstr2b, Signoffs}
+  alias Nila.Gst.Filing.{Gstr2b, PortalDocument, Signoffs}
   alias Nila.Gst.Hsn.{Directory, Validation}
   alias Nila.Gst.Intake.{Dump, Dumps, ExtractionAttempts, Preconditions}
   alias Nila.Gst.Purchase.{Books, Flags, Reconciliation, Register, TaxpayerContext}
@@ -234,12 +234,9 @@ defmodule Nila.Gst.Intake.DumpWorker do
   # "data") declared as the filed return.
   defp extract_kind(%Dump{kind: "filed_gstr1"} = dump, _worker_attempt) do
     with {:ok, key} <- one_source_key(dump),
-         {:ok, bytes} <- Storage.get(key) do
-      case Jason.decode(bytes) do
-        {:ok, %{"gstin" => gstin} = filed} when is_binary(gstin) -> {:ok, [filed], %{}}
-        {:ok, _other} -> {:error, :not_a_filed_gstr1}
-        {:error, _} -> {:error, :invalid_json}
-      end
+         {:ok, bytes} <- Storage.get(key),
+         {:ok, filed} <- PortalDocument.parse_filed_gstr1(bytes) do
+      {:ok, [filed], %{}}
     end
   end
 

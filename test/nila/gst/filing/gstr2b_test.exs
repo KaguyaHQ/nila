@@ -122,6 +122,12 @@ defmodule Nila.Gst.Filing.Gstr2bTest do
     assert inv["pos"] == nil
   end
 
+  test "recognizes both portal wrapper shapes without normalizing them" do
+    assert Gstr2b.recognized?(portal_doc([]))
+    assert Gstr2b.recognized?(%{"docdata" => %{}})
+    refute Gstr2b.recognized?(%{"something" => "else"})
+  end
+
   test "rejects undecodable JSON and unrecognized structures" do
     assert {:error, :invalid_json} = Gstr2b.parse("{nope")
     assert {:error, :unrecognized_structure} = Gstr2b.parse(%{"something" => "else"})

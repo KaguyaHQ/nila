@@ -52,27 +52,17 @@ defmodule NilaWeb.Components.Form do
   @doc """
   Moonlight file dropzone for a LiveView `allow_upload` config.
 
-  Renders a styled drag-and-drop target that hides the native file widget: an
-  empty state invites a drop or click, and once a file is picked it collapses to
-  a chip showing the name, size, and a remove button. Upload errors (too large,
-  wrong type, too many) surface inline. Pass `on_cancel` as the `phx-click`
-  event name the LiveView handles to drop a selected entry.
-
-  ## Examples
-
-      <.file_drop
-        id="gst-upload-bills"
-        upload={@uploads.bills}
-        label="Purchase bills (PDF)"
-        hint="One PDF, up to 50 MB"
-        on_cancel="cancel-upload"
-      />
+  The target remains available while files are selected so multi-entry uploads
+  can be built over several drops. Use the `entry` slot for workflow-specific
+  controls beneath each file; upload errors remain owned by this component.
   """
   attr :id, :string, required: true
   attr :upload, Phoenix.LiveView.UploadConfig, required: true
   attr :label, :string, required: true
   attr :hint, :string, default: nil
+  attr :prompt, :string, default: "Choose files"
   attr :on_cancel, :string, required: true
+  slot :entry
 
   def file_drop(assigns) do
     ~H"""
@@ -82,41 +72,61 @@ defmodule NilaWeb.Components.Form do
       <.live_file_input upload={@upload} class="sr-only" />
 
       <label
-        :if={@upload.entries == []}
         for={@upload.ref}
         phx-drop-target={@upload.ref}
         class={[
           "border-base-300 hover:bg-base-200/60 hover:border-primary/50",
           "[&.phx-drop-target-active]:bg-primary/5 [&.phx-drop-target-active]:border-primary",
           "rounded-box flex cursor-pointer flex-col items-center justify-center gap-2",
-          "border border-dashed px-4 py-8 text-center transition-colors"
+          "border border-dashed px-4 text-center transition-colors",
+          if(@upload.entries == [], do: "py-region", else: "py-block")
         ]}
       >
         <.icon name="hero-arrow-up-tray" class="text-ink-faint size-6" />
         <span class="text-ink-muted text-small">
-          <span class="text-primary font-semibold">Choose a file</span> or drag it here
+          <span class="text-primary font-semibold">{@prompt}</span> or drag them here
         </span>
         <span :if={@hint} class="text-fine text-ink-muted">{@hint}</span>
       </label>
 
-      <div
-        :for={entry <- @upload.entries}
-        class="bg-base-200/50 border-base-300 rounded-box flex items-center gap-3 border px-3 py-2"
-      >
-        <.icon name="hero-document" class="text-primary size-5 shrink-0" />
-        <div class="min-w-0 flex-1">
-          <p class="text-base-content text-small truncate font-medium">{entry.client_name}</p>
-          <p class="text-fine text-ink-subtle">{humanize_bytes(entry.client_size)}</p>
-        </div>
-        <button
-          type="button"
-          phx-click={@on_cancel}
-          phx-value-ref={entry.ref}
-          aria-label={"Remove #{entry.client_name}"}
-          class="hover:bg-error/10 hover:text-error rounded-field text-ink-subtle p-1 transition-colors"
+      <div :if={@upload.entries != []} class="mt-related space-y-related">
+        <div
+          :for={entry <- @upload.entries}
+          id={"#{@id}-entry-#{entry.ref}"}
+          class="bg-base-200/50 border-base-300 py-related rounded-box border px-3"
         >
-          <.icon name="hero-x-mark" class="size-5" />
-        </button>
+          <div class="flex items-center gap-3">
+            <.icon name="hero-document" class="text-primary size-5 shrink-0" />
+            <div class="min-w-0 flex-1">
+              <p class="text-base-content text-small truncate font-medium">{entry.client_name}</p>
+              <p class="text-fine text-ink-subtle">
+                {humanize_bytes(entry.client_size)}
+                <span :if={entry.valid? and entry.progress < 100}> · {entry.progress}% uploaded</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              phx-click={@on_cancel}
+              phx-value-ref={entry.ref}
+              aria-label={"Remove #{entry.client_name}"}
+              class="hover:bg-error/10 hover:text-error rounded-field text-ink-subtle p-1 transition-colors"
+            >
+              <.icon name="hero-x-mark" class="size-5" />
+            </button>
+          </div>
+
+          <div :if={@entry != [] and entry.valid?} class="mt-related pl-8">
+            {render_slot(@entry, entry)}
+          </div>
+
+          <p
+            :for={err <- upload_errors(@upload, entry)}
+            class="text-error text-small mt-1.5 flex items-center gap-2"
+          >
+            <.icon name="hero-exclamation-circle" class="size-5" />
+            {upload_error_message(err)}
+          </p>
+        </div>
       </div>
 
       <p
@@ -131,8 +141,9 @@ defmodule NilaWeb.Components.Form do
   end
 
   defp upload_error_message(:too_large), do: "That file is too large."
-  defp upload_error_message(:too_many_files), do: "Only one file here."
-  defp upload_error_message(:not_accepted), do: "That file type isn't accepted."
+  defp upload_error_message(:json_too_large), do: "Portal JSON files must be under 20 MB."
+  defp upload_error_message(:too_many_files), do: "Too many files at once."
+  defp upload_error_message(:not_accepted), do: "Only PDF and JSON files are accepted."
   defp upload_error_message(_), do: "Something went wrong with that file."
 
   defp humanize_bytes(bytes) when is_integer(bytes) and bytes < 1_024, do: "#{bytes} B"
