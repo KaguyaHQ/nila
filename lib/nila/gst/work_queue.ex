@@ -100,7 +100,8 @@ defmodule Nila.Gst.WorkQueue do
     purchase = months[:purchase]
     sales = months[:sales]
 
-    need_decision = purchase_need_decision(purchase)
+    purchase_stats = purchase_stats(purchase)
+    need_decision = purchase_stats.need_decision
     sales_open = sales_open_issues(sales)
     sales_complete = sales && Confirmations.complete?(sales.org_id, sales.client_id, sales.period)
 
@@ -114,6 +115,7 @@ defmodule Nila.Gst.WorkQueue do
         purchase: purchase,
         sales: sales,
         need_decision: need_decision,
+        awaiting_bills: purchase_stats.awaiting_bills,
         gstr2b_in: gstr2b_in?,
         gstr2b_available: Calendar.status(period, today).gstr2b_available?,
         r1_signed: r1_signed,
@@ -136,8 +138,9 @@ defmodule Nila.Gst.WorkQueue do
       section: section,
       deadline: deadline,
       days_left: deadline && deadline.days_left,
-      invoices: purchase_invoices(purchase),
+      invoices: purchase_stats.invoices,
       need_decision: need_decision,
+      awaiting_bills: purchase_stats.awaiting_bills,
       sales_open: sales_open,
       slots: slots,
       processing?: processing?,
@@ -169,6 +172,9 @@ defmodule Nila.Gst.WorkQueue do
       brought it in. Live work, and it blocks every decision behind it.
     * `:open` — live work for the person on the page (decisions to make,
       issues to check, a draft the maker hasn't finished).
+    * `:awaiting_bills` — reconciled as far as the supplied documents allow;
+      the portal reported supplies whose bills never arrived. Waiting on the
+      client, not on the reviewer.
     * `:clear` — worked clean, waiting on a signature.
     * `:signed` — signed but not on the portal. The filing gap.
     * `:filed` — done.
@@ -201,6 +207,9 @@ defmodule Nila.Gst.WorkQueue do
   defp purchase_track(%{gstr2b_in: false, gstr2b_available: false}), do: :awaiting_2b
   defp purchase_track(%{gstr2b_in: false}), do: :need_2b
   defp purchase_track(%{need_decision: need}) when need > 0, do: :open
+  # Nothing left to judge, but the portal reported bills nobody supplied. That
+  # is a chase, not review work, and it names the client rather than the senior.
+  defp purchase_track(%{awaiting_bills: awaiting}) when awaiting > 0, do: :awaiting_bills
   defp purchase_track(_facts), do: :clear
 
   @doc """
@@ -223,12 +232,23 @@ defmodule Nila.Gst.WorkQueue do
     tracks = [sales, purchase]
 
     cond do
-      Enum.all?(tracks, &(&1 == :filed)) -> :done
-      Enum.any?(tracks, &(&1 == :signed)) -> :to_file
-      Enum.any?(tracks, &(&1 in [:open, :need_2b])) -> :needs_you
-      Enum.any?(tracks, &(&1 in [:absent, :awaiting_confirmation])) -> :waiting_on_client
-      Enum.any?(tracks, &(&1 == :clear)) -> :waiting_on_senior
-      true -> :waiting_on_portal
+      Enum.all?(tracks, &(&1 == :filed)) ->
+        :done
+
+      Enum.any?(tracks, &(&1 == :signed)) ->
+        :to_file
+
+      Enum.any?(tracks, &(&1 in [:open, :need_2b])) ->
+        :needs_you
+
+      Enum.any?(tracks, &(&1 in [:absent, :awaiting_confirmation, :awaiting_bills])) ->
+        :waiting_on_client
+
+      Enum.any?(tracks, &(&1 == :clear)) ->
+        :waiting_on_senior
+
+      true ->
+        :waiting_on_portal
     end
   end
 
@@ -276,15 +296,15 @@ defmodule Nila.Gst.WorkQueue do
     end
   end
 
-  defp purchase_need_decision(nil), do: 0
+  # One `workings/1` per row: it replays every resolution to re-derive the
+  # register, so asking it twice for two counts off the same summary is a
+  # second full recomputation for nothing.
+  defp purchase_stats(nil), do: %{need_decision: 0, awaiting_bills: 0, invoices: 0}
 
-  defp purchase_need_decision(purchase) do
-    purchase |> Resolutions.workings() |> then(&Register.need_decision(&1.summary))
+  defp purchase_stats(purchase) do
+    resolved = purchase |> Resolutions.workings() |> then(&Register.stats(&1.summary))
+    %{resolved | invoices: Register.stats(purchase.summary).invoices}
   end
-
-  defp purchase_invoices(nil), do: 0
-
-  defp purchase_invoices(purchase), do: Register.stats(purchase.summary).invoices
 
   defp sales_open_issues(nil), do: 0
   defp sales_open_issues(%{invoices: []}), do: 0

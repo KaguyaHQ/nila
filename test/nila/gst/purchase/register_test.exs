@@ -20,30 +20,66 @@ defmodule Nila.Gst.Purchase.RegisterTest do
       }
 
       assert Register.stats(summary) == %{
-               invoices: 14,
+               rows: 14,
+               invoices: 9,
+               gstr2b_only: 5,
                matched: 3,
-               need_decision: 9,
+               open: 9,
+               need_decision: 4,
+               awaiting_bills: 5,
                taxable_paise: 500_000,
                total_tax_paise: 160_000,
                matched_tax_paise: 90_000,
-               open_tax_paise: 45_000
+               open_tax_paise: 45_000,
+               settled_tax_paise: 115_000,
+               awaiting_bills_tax_paise: 0,
+               decision_tax_paise: 45_000
              }
 
-      assert Register.need_decision(summary) == 9
+      # The 5 rows the portal reported and nobody supplied are a chase, not
+      # judgements: there is no bill to open and nothing to compare.
+      assert Register.need_decision(summary) == 4
+      assert Register.open(summary) == 9
+    end
+
+    # `matched` and `open` are not complements: audited-accepted rows are in
+    # neither, so a surface showing those two beside the total teaches a sum
+    # that lands ₹25,000 short of the month. `settled` is the exact complement.
+    test "settled and open partition the month's ITC exactly" do
+      summary = %{
+        "total_tax_paise" => 160_000,
+        "matched_tax_paise" => 90_000,
+        "open_tax_paise" => 45_000
+      }
+
+      stats = Register.stats(summary)
+
+      assert stats.settled_tax_paise + stats.open_tax_paise == stats.total_tax_paise
+      assert stats.settled_tax_paise > stats.matched_tax_paise
     end
 
     test "defaults missing counts and money to zero" do
       assert Register.stats(%{}) == %{
+               rows: 0,
                invoices: 0,
+               gstr2b_only: 0,
                matched: 0,
+               open: 0,
                need_decision: 0,
+               awaiting_bills: 0,
                taxable_paise: 0,
                total_tax_paise: 0,
                matched_tax_paise: 0,
-               open_tax_paise: 0
+               open_tax_paise: 0,
+               settled_tax_paise: 0,
+               awaiting_bills_tax_paise: 0,
+               decision_tax_paise: 0
              }
 
-      assert Register.need_decision(%{"buckets" => %{"in_2b_not_books" => 1}}) == 1
+      summary = %{"buckets" => %{"in_2b_not_books" => 1}}
+      assert Register.need_decision(summary) == 0
+      assert Register.stats(summary).awaiting_bills == 1
+      assert Register.open(summary) == 1
     end
 
     # Every summary written before `total_tax_paise` existed is still on disk.
@@ -71,7 +107,59 @@ defmodule Nila.Gst.Purchase.RegisterTest do
       # b and d are open; a is matched and c was accepted with an audited reason.
       assert summary["open_tax_paise"] == 10_000
       assert summary["matched_tax_paise"] == 1_000
-      assert Register.need_decision(summary) == 2
+      assert Register.open(summary) == 2
+
+      # d is 2B-only: its ₹8,000 waits on a document, not on anyone's judgement,
+      # so it leaves the decision count and its money with it.
+      assert summary["awaiting_bills_tax_paise"] == 8_000
+      assert Register.need_decision(summary) == 1
+      assert Register.stats(summary).decision_tax_paise == 2_000
+      assert Register.stats(summary).awaiting_bills == 1
+    end
+
+    # `stats/1` reads aggregates while the surfaces filter rows, so the two can
+    # drift. They did: deriving the split as `min(gstr2b_only, open)` counted
+    # audited 2B-only rows as bills still to chase and took the difference out of
+    # need_decision — with 3 of 5 accepted the page read "5 to collect, 2 to
+    # decide" when the truth was 2 and 5, exactly inverted.
+    test "the count split agrees with the predicates once 2B-only rows are accepted" do
+      rows =
+        for(i <- 1..3, do: row("a#{i}", "in_2b_not_books", "await_2b", 100)) ++
+          for(i <- 1..2, do: row("b#{i}", "in_2b_not_books", nil, 100)) ++
+          for(i <- 1..5, do: row("c#{i}", "needs_human", nil, 100))
+
+      stats = rows |> Register.summary() |> Register.stats()
+
+      assert stats.awaiting_bills == Enum.count(rows, &Register.awaiting_bill?/1)
+      assert stats.need_decision == Enum.count(rows, &Register.decision_row?/1)
+      assert stats.open == Enum.count(rows, &Register.open_row?/1)
+
+      assert stats.awaiting_bills == 2
+      assert stats.need_decision == 5
+      assert stats.need_decision + stats.awaiting_bills == stats.open
+    end
+
+    test "the row predicates partition the open pile exactly" do
+      rows = [
+        row("a", "matched", nil, 1_000),
+        row("b", "needs_human", nil, 2_000),
+        row("c", "in_books_not_2b", "await_2b", 4_000),
+        row("d", "in_2b_not_books", nil, 8_000)
+      ]
+
+      open = Enum.filter(rows, &Register.open_row?/1)
+      decisions = Enum.filter(rows, &Register.decision_row?/1)
+      awaiting = Enum.filter(rows, &Register.awaiting_bill?/1)
+
+      assert length(open) == length(decisions) + length(awaiting)
+      assert Enum.map(decisions, & &1["id"]) == ["b"]
+      assert Enum.map(awaiting, & &1["id"]) == ["d"]
+
+      # An accepted 2B-only row is settled, not a chase — someone already ruled
+      # on it, so it must not reappear as a bill to collect.
+      accepted_2b = row("e", "in_2b_not_books", "await_2b", 500)
+      refute Register.awaiting_bill?(accepted_2b)
+      refute Register.open_row?(accepted_2b)
     end
 
     # The property the month headline leans on: the total is what the two
@@ -106,6 +194,65 @@ defmodule Nila.Gst.Purchase.RegisterTest do
         "igst_paise" => 0,
         "flags" => []
       }
+    end
+  end
+
+  # The label is stored on the row, so a snapshot or a deliverable that renders
+  # it verbatim repeats whatever claim it makes. A matched bill with an invalid
+  # GSTIN is not a clean match, and must not say it is anywhere.
+  describe "rows/3 bucket_label" do
+    test "only flags the 2B cannot answer cost a matched row its clean label" do
+      invoices =
+        for id <- ~w(clean eligibility transcription), do: %{"id" => id, "taxable_paise" => 1_000}
+
+      recon = %{
+        "matched" =>
+          for id <- ~w(clean eligibility transcription) do
+            %{"books" => %{"id" => id}, "match_basis" => ["gstin", "invoice_number", "value"]}
+          end
+      }
+
+      flags = %{
+        "eligibility" => [
+          %{"code" => "invalid_gstin", "severity" => "error", "reason" => "bad gstin"}
+        ],
+        "transcription" => [
+          %{"code" => "low_ocr_confidence", "severity" => "review", "reason" => "faint scan"}
+        ]
+      }
+
+      by_id = invoices |> Register.rows(recon, flags) |> Map.new(&{&1["id"], &1})
+
+      assert by_id["clean"]["bucket_label"] == "Matched to 2B"
+      assert by_id["eligibility"]["bucket_label"] == "Matched · needs review"
+      assert Register.needs_review?(by_id["eligibility"])
+
+      # The portal confirmed this bill field-for-field, which is stronger than a
+      # confidence score's doubt. Quiet pill, but the note still speaks.
+      assert by_id["transcription"]["bucket_label"] == "Matched to 2B"
+      refute Register.needs_review?(by_id["transcription"])
+      assert Register.annotated_row?(by_id["transcription"])
+      refute Register.annotated_row?(by_id["clean"])
+
+      # Wording only: every row is still matched, so ITC and the queue are untouched.
+      for id <- ~w(clean eligibility transcription) do
+        assert by_id[id]["bucket"] == "matched"
+        refute Register.open_row?(by_id[id])
+      end
+    end
+
+    # An unmatched row was never corroborated, so nothing is settled and the
+    # bucket keeps speaking for it.
+    test "needs_review? is a verdict about matched rows only" do
+      unmatched = %{
+        "bucket" => "needs_human",
+        "flags" => [%{"code" => "invalid_gstin"}],
+        "accepted_reason" => nil
+      }
+
+      refute Register.needs_review?(unmatched)
+      assert Register.open_row?(unmatched)
+      assert Register.annotated_row?(unmatched)
     end
   end
 end

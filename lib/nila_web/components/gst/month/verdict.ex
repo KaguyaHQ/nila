@@ -147,6 +147,24 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     }
   end
 
+  # Everything judgeable is judged; what is left is a bill nobody sent. The door
+  # is the chase, and the headline says whose move it is — calling this "N
+  # decisions" pointed a senior at work that has no decision in it.
+  defp settled_door_and_headline(%{tracks: %{purchase: :awaiting_bills}} = facts) do
+    count = facts.stats.awaiting_bills
+
+    %{
+      tone: :calm,
+      headline: awaiting_bills_headline(facts, count),
+      door: %{
+        id: "month-door-request-bills",
+        label: "Request the missing #{pluralise(count, "bill")}",
+        kind: :navigate,
+        to: ~p"/gst/#{facts.client.id}/#{facts.period}/exceptions"
+      }
+    }
+  end
+
   defp settled_door_and_headline(%{tracks: %{sales: :open}} = facts) do
     count = facts.open_issue_count
 
@@ -442,6 +460,14 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       "#{money(stats.open_tax_paise)} of it rides on #{count} #{pluralise(count, "decision")}."
   end
 
+  # Same money shape, but the second figure names a document rather than a
+  # judgement, because no decision on this page can release it.
+  defp awaiting_bills_headline(%{stats: stats}, count) do
+    "#{money(stats.total_tax_paise)} of ITC this month. " <>
+      "#{money(stats.awaiting_bills_tax_paise)} of it needs #{count} " <>
+      "#{pluralise(count, "bill")} the client has not sent."
+  end
+
   # Both 2B headlines lead with what the month *has* rather than with what it
   # is missing, because the bills being in is the reviewer's own work and it
   # is real. What follows is a date, not a task.
@@ -588,6 +614,9 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp line_for(:purchase, :open, %{stats: %{need_decision: n}}) when n > 0,
     do: "Purchases: #{n} #{pluralise(n, "decision")} waiting."
+
+  defp line_for(:purchase, :awaiting_bills, %{stats: %{awaiting_bills: n}}) when n > 0,
+    do: "Purchases: #{n} #{pluralise(n, "bill")} in the 2B but not supplied."
 
   defp line_for(:purchase, :open, _facts), do: "Purchases not yet reconciled."
   defp line_for(:purchase, :clear, _facts), do: "Purchases clear, waiting on a signature."

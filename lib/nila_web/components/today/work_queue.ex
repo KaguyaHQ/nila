@@ -168,6 +168,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
   defp work_label(row) do
     [
       row.need_decision > 0 && "#{row.need_decision} to decide",
+      row.awaiting_bills > 0 && "#{row.awaiting_bills} bills to collect",
       row.sales_open > 0 && "#{row.sales_open} sales issues"
     ]
     |> Enum.filter(& &1)

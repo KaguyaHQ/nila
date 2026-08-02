@@ -253,8 +253,12 @@ defmodule NilaWeb.TodayLiveTest do
        %{conn: conn, org: org, client: client} do
     seed_client_month(org, client, recon_with_2b_gap())
 
+    # The only open row is a bill the portal reported and nobody supplied. That
+    # is a chase, not review work: it names the client, so it must not sit in
+    # the junior's "needs you" pile where nothing he can do would clear it.
     {:ok, view, _html} = live(conn, ~p"/today")
-    assert has_element?(view, "#today-needs_you #today-row-#{client.id}-#{@period}")
+    assert has_element?(view, "#today-waiting_on_client #today-row-#{client.id}-#{@period}")
+    refute has_element?(view, "#today-needs_you #today-row-#{client.id}-#{@period}")
 
     clean_recon =
       recon_with_2b_gap()

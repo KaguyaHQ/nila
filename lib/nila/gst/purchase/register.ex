@@ -10,6 +10,30 @@ defmodule Nila.Gst.Purchase.Register do
 
   alias Nila.Formatters
 
+  # Flags a 2B match does not answer. Eligibility and duplication are verdicts
+  # the portal never renders — it reports that a supply happened, not that the
+  # credit is claimable — and HSN/rate validity is about what is written on the
+  # bill, which a value match does not check. Everything absent from this list
+  # (OCR confidence, arithmetic, subtotal breakdown, an odd-looking invoice
+  # number) is a doubt about reading the bill correctly, and a portal record
+  # agreeing field-for-field is stronger evidence than that doubt.
+  @unresolved_by_match ~w(
+    personal_expense_17_5
+    gstin_state_mismatch
+    duplicate_invoice
+    invalid_gstin
+    missing_gstin
+    name_gstin_mismatch
+    own_gstin_as_vendor
+    invalid_hsn_sac
+    incomplete_hsn_sac
+    missing_hsn_sac
+    hsn_implausible
+    statutory_rate_review
+    statutory_rate_mismatch
+    rate_history_conflict
+  )
+
   @bucket_labels %{
     "matched" => "Matched to 2B",
     "value_mismatch" => "Value differs from 2B",
@@ -60,7 +84,7 @@ defmodule Nila.Gst.Purchase.Register do
           "igst_paise" => tax(inv, "igst"),
           "total_paise" => inv["total_paise"] || 0,
           "bucket" => bucket,
-          "bucket_label" => @bucket_labels[bucket],
+          "bucket_label" => bucket_label(bucket, flags),
           "accepted_reason" => entry && entry["accepted_reason"],
           "verdict" => verdict(bucket, entry, flags),
           "recon_note" => recon_note(bucket, entry),
@@ -82,31 +106,79 @@ defmodule Nila.Gst.Purchase.Register do
   settled tax, `open_tax_paise` is the tax on rows still needing a decision.
   All come straight from `summary/1`; older summaries and pre-money signoff
   snapshots simply read 0.
+
+  `rows` is every register line; `invoices` is only the books ones. A 2B-only
+  line is a bill the books have never seen, so counting it as an invoice told
+  the reviewer the client supplied documents they did not supply.
+  `gstr2b_only` is that difference, and it is a completeness fact in its own
+  right: bills the portal knows about that nobody has sent us.
+
+  `need_decision` and `awaiting_bills` split the open pile by who owns the next
+  move. A 2B-only row is built with no `id` and no images — there is no bill to
+  open, nothing to compare, and no judgement a reviewer could record. Its next
+  move belongs to the client, not the senior. Counting the two together made a
+  collection chase read as accounting judgement and pointed a primary button at
+  work nobody on the page can do.
   """
   def stats(summary) do
     buckets = summary["buckets"] || %{}
-    invoices = buckets |> Map.values() |> Enum.sum()
+    rows = buckets |> Map.values() |> Enum.sum()
+    gstr2b_only = buckets["in_2b_not_books"] || 0
     matched = buckets["matched"] || 0
     matched_tax = summary["matched_tax_paise"] || 0
     open_tax = summary["open_tax_paise"] || 0
 
+    total_tax = summary["total_tax_paise"] || matched_tax + open_tax
+
+    open = rows - matched - (summary["accepted_unmatched"] || 0)
+    # Accepted 2B-only rows have been ruled on, so they are neither a decision
+    # nor a bill to chase. Subtracting them here is what keeps this split equal
+    # to `awaiting_bill?/1` counted over the rows: deriving it as
+    # `min(gstr2b_only, open)` counted audited rows as still-missing bills and
+    # took the difference out of `need_decision`, inverting both numbers.
+    awaiting_bills = gstr2b_only - (summary["accepted_gstr2b_only"] || 0)
+    awaiting_bills_tax = summary["awaiting_bills_tax_paise"] || 0
+
     %{
-      invoices: invoices,
+      rows: rows,
+      invoices: rows - gstr2b_only,
+      gstr2b_only: gstr2b_only,
       matched: matched,
-      need_decision: invoices - matched - (summary["accepted_unmatched"] || 0),
+      open: open,
+      need_decision: open - awaiting_bills,
+      awaiting_bills: awaiting_bills,
       taxable_paise: summary["taxable_paise"] || 0,
       # Summaries written before `total_tax_paise` existed fall back to the two
       # fields they do have. That understates by the accepted rows, but it can
       # never read ₹0 next to a live open figure, which is the one way this
       # number can actively mislead.
-      total_tax_paise: summary["total_tax_paise"] || matched_tax + open_tax,
+      total_tax_paise: total_tax,
       matched_tax_paise: matched_tax,
-      open_tax_paise: open_tax
+      open_tax_paise: open_tax,
+      # The money twin of the count split. `open_tax_paise` stays the whole open
+      # pot so the partition still closes; this names the part of it that no
+      # decision can move, only a bill arriving.
+      awaiting_bills_tax_paise: awaiting_bills_tax,
+      decision_tax_paise: open_tax - awaiting_bills_tax,
+      # `matched` and `open` are not complements — audited-accepted rows are in
+      # neither, so a reader adding the two visible subsets lands short of the
+      # month. `settled` is the exact complement of `open` (the money-side twin
+      # of `open_row?/1`), so a surface can show one whole and two parts that
+      # actually close.
+      settled_tax_paise: total_tax - open_tax
     }
   end
 
-  @doc "Returns how many summary rows still need a human decision."
+  @doc """
+  How many rows still need a human decision.
+
+  Collection rows are excluded: see `stats/1`. `open/1` is the whole open pile
+  when a caller wants both halves.
+  """
   def need_decision(summary), do: stats(summary).need_decision
+
+  @doc "Every row still unsettled — decisions plus bills nobody has supplied."
+  def open(summary), do: stats(summary).open
 
   @doc "Bucket counts plus flag totals for the cover/status page."
   def summary(rows) do
@@ -114,6 +186,10 @@ defmodule Nila.Gst.Purchase.Register do
       "total_invoices" => Enum.count(rows, &(&1["bucket"] != "in_2b_not_books")),
       "buckets" => Enum.frequencies_by(rows, & &1["bucket"]),
       "accepted_unmatched" => Enum.count(rows, &(&1["accepted_reason"] != nil)),
+      # The accepted share of the 2B-only bucket, so `stats/1` can split the
+      # open pile without replaying rows.
+      "accepted_gstr2b_only" =>
+        Enum.count(rows, &(&1["bucket"] == "in_2b_not_books" and &1["accepted_reason"] != nil)),
       "flag_counts" =>
         rows
         |> Enum.flat_map(& &1["flags"])
@@ -142,12 +218,73 @@ defmodule Nila.Gst.Purchase.Register do
         rows
         |> Enum.filter(&open_row?/1)
         |> Enum.map(&row_tax/1)
+        |> Enum.sum(),
+      # The share of the open pot riding on a bill arriving rather than on
+      # anyone's judgement. Same predicate as the count, so the two agree.
+      "awaiting_bills_tax_paise" =>
+        rows
+        |> Enum.filter(&awaiting_bill?/1)
+        |> Enum.map(&row_tax/1)
         |> Enum.sum()
     }
   end
 
-  @doc "Whether a row still needs a human decision (the money-side twin of `need_decision/1`)."
+  @doc "Whether a row is still unsettled — a decision to make, or a bill to collect."
   def open_row?(row), do: row["bucket"] != "matched" and row["accepted_reason"] == nil
+
+  @doc """
+  Whether a row is waiting on a bill nobody supplied rather than on a decision.
+
+  The portal reported a supply and the books have no document for it, so there
+  is nothing to inspect and nothing to judge — the next move is a request to the
+  client.
+  """
+  def awaiting_bill?(row), do: row["bucket"] == "in_2b_not_books" and open_row?(row)
+
+  @doc "Whether a row is an open decision a reviewer can actually record."
+  def decision_row?(row), do: open_row?(row) and not awaiting_bill?(row)
+
+  @doc """
+  Whether a row has anything to say beyond its bucket — an open decision, or a
+  validation flag. Drives whether the note column speaks: a flag is always worth
+  *reading*, even when `needs_review?/1` decides it is not worth alarm.
+  """
+  def annotated_row?(row), do: open_row?(row) or row["flags"] not in [nil, []]
+
+  @doc """
+  Whether a *matched* row still deserves a reviewer's eye.
+
+  A match on GSTIN + invoice number + value is the government's own copy of the
+  bill agreeing with the books on every field the flag could doubt. That settles
+  transcription doubt — how sure the model felt is not evidence against a record
+  the portal independently confirms — so those codes go quiet once matched.
+
+  What a 2B match cannot answer stays loud: the portal reports a supply, it does
+  not rule on whether the credit is claimable (17(5) personal use, a place-of-
+  supply contradiction), whether the same bill was counted twice, or whether the
+  HSN and rate on it are legal. Those are the reviewer's call however cleanly the
+  row matched.
+
+  This mirrors why the ⚠ and the row accent were narrowed to `open_row?/1`:
+  when every flag painted a row, alarm meant nothing.
+  """
+  def needs_review?(row) do
+    row["bucket"] == "matched" and
+      Enum.any?(row["flags"] || [], &(&1["code"] in @unresolved_by_match))
+  end
+
+  # The bucket is a *matching* verdict, and "Matched to 2B" beside a note
+  # reading "GSTIN doesn't check out" is read as "reviewed and safe". The label
+  # is stored, so a surface that renders it verbatim — a signoff snapshot, a
+  # deliverable — would otherwise repeat the clean claim the page no longer
+  # makes.
+  defp bucket_label("matched", flags) do
+    if Enum.any?(flags, &(&1["code"] in @unresolved_by_match)),
+      do: "Matched · needs review",
+      else: @bucket_labels["matched"]
+  end
+
+  defp bucket_label(bucket, _flags), do: @bucket_labels[bucket]
 
   @doc "Total tax on a register row."
   def row_tax(row),

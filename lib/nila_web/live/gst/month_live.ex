@@ -181,6 +181,18 @@ defmodule NilaWeb.Gst.MonthLive do
     )
     |> assign(:gstr2b_in, Enum.any?(dumps, &(&1.kind == "gstr2b" and &1.status == "extracted")))
     |> assign(:sales_pages_read, Dumps.source_page_count(org_id, client.id, period, "sales"))
+    |> assign(
+      :purchase_pages_read,
+      Dumps.source_page_count(org_id, client.id, period, "purchase")
+    )
+    # What the month actually works off. A discarded upload and a 2B that a
+    # later one replaced are history; counting them as files received overstates
+    # what the client supplied.
+    |> assign(
+      :active_purchase_dumps,
+      Dumps.effective(org_id, client.id, period, "purchase") ++
+        Dumps.effective(org_id, client.id, period, "gstr2b")
+    )
     |> assign(:superseded_2b_ids, superseded_2b_ids(dumps))
     |> assign(:asks, Chase.list_asks(org_id, client.id, period))
     |> assign(:open_period, Calendar.closeable_period(Date.utc_today()))
@@ -1079,7 +1091,17 @@ defmodule NilaWeb.Gst.MonthLive do
             rows={@rows}
             client={@client}
             period={@period}
+            gstr3b_signoff={@gstr3b_signoff}
+            source_files={length(@purchase_dumps)}
+            pages_read={@purchase_pages_read}
           >
+            <:assembled>
+              <Filing.gstr3b_evidence
+                gstr3b={@gstr3b}
+                stats={@stats}
+                signed={@gstr3b_signoff != nil}
+              />
+            </:assembled>
             <:source>
               <Arrivals.source_record
                 id="month-purchase-sources"
@@ -1092,18 +1114,17 @@ defmodule NilaWeb.Gst.MonthLive do
                 gstr3b_signoff={@gstr3b_signoff}
               />
             </:source>
+            <:actions>
+              <Filing.gstr3b_actions
+                purchase_month={@purchase_month}
+                sales_month={@sales_month}
+                stats={@stats}
+                gstr3b_signoff={@gstr3b_signoff}
+                r1_signoff={@r1_signoff}
+                can_sign_off={@can_sign_off}
+              />
+            </:actions>
           </Purchase.register>
-
-          <Filing.gstr3b_evidence gstr3b={@gstr3b} />
-          <Filing.gstr3b_actions
-            :if={@purchase_month}
-            purchase_month={@purchase_month}
-            sales_month={@sales_month}
-            stats={@stats}
-            gstr3b_signoff={@gstr3b_signoff}
-            r1_signoff={@r1_signoff}
-            can_sign_off={@can_sign_off}
-          />
         </main>
       </div>
 

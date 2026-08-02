@@ -42,11 +42,27 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
     %{
       invoices: 23,
       matched: 23 - need_decision,
+      open: need_decision,
       need_decision: need_decision,
+      awaiting_bills: 0,
       taxable_paise: 0,
       total_tax_paise: total_tax || matched_tax + open_tax,
       matched_tax_paise: matched_tax,
-      open_tax_paise: open_tax
+      open_tax_paise: open_tax,
+      awaiting_bills_tax_paise: 0,
+      decision_tax_paise: open_tax
+    }
+  end
+
+  # Everything judgeable is judged; what is left is a bill the client never
+  # sent, so the open money rides on a document rather than on a decision.
+  defp awaiting_bills_stats(count, awaiting_tax, matched_tax) do
+    %{
+      stats(0, awaiting_tax, matched_tax)
+      | open: count,
+        awaiting_bills: count,
+        awaiting_bills_tax_paise: awaiting_tax,
+        decision_tax_paise: 0
     }
   end
 
@@ -125,6 +141,39 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       assert door_id(verdict) == "month-door-decisions"
       assert verdict.quiet == ["Sales bills not in, so the GSTR-1 waits."]
       assert verdict.deadline.return == "GSTR-3B"
+    end
+
+    # A 2B-only row has no bill to open and nothing to compare, so there is no
+    # judgement to record. Counting it as a decision pointed a senior at work
+    # that only the client can move.
+    test "bills in the 2B but never supplied are a chase, not decisions" do
+      verdict =
+        Verdict.resolve(
+          facts(
+            tracks: %{sales: :absent, purchase: :awaiting_bills},
+            stats: awaiting_bills_stats(8, 797_522, 0)
+          )
+        )
+
+      assert verdict.headline ==
+               "₹7,975 of ITC this month. ₹7,975 of it needs 8 bills the client has not sent."
+
+      assert door_id(verdict) == "month-door-request-bills"
+      assert verdict.door.label == "Request the missing bills"
+      refute verdict.headline =~ "decision"
+    end
+
+    test "one missing bill reads as one, and still is not a decision" do
+      verdict =
+        Verdict.resolve(
+          facts(
+            tracks: %{sales: :absent, purchase: :awaiting_bills},
+            stats: awaiting_bills_stats(1, 50_000, 900_000)
+          )
+        )
+
+      assert verdict.headline =~ "needs 1 bill the client has not sent."
+      assert verdict.door.label == "Request the missing bill"
     end
 
     # The state every client sits in for the first two weeks of a filing

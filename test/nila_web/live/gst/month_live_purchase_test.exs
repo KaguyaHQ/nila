@@ -8,6 +8,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.Months, as: ClientMonths
+  alias Nila.Gst.Purchase.Register
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Storage
 
@@ -35,8 +36,10 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
+    need_decision = Nila.Gst.Purchase.Register.stats(read_json("summary.json")).need_decision
+
     assert has_element?(view, "#month-page")
-    assert has_element?(view, "#month-headline", "of it rides on 21 decisions")
+    assert has_element?(view, "#month-headline", "of it rides on #{need_decision} decisions")
     assert has_element?(view, "#month-door-decisions", "Work the decisions")
 
     # The losing track is one quiet line, never a second button.
@@ -45,11 +48,20 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     assert has_element?(view, "#month-evidence")
     refute has_element?(view, "#month-support")
-    assert has_element?(view, "#month-register:not(details)", "58 invoices · complete register")
-    refute has_element?(view, "#month-register summary")
 
     rows = read_rows()
-    assert length(rows) == 58
+    stats = Nila.Gst.Purchase.Register.stats(read_json("summary.json"))
+
+    # The header counts books invoices, not rows: a 2B-only row is a bill nobody
+    # supplied, and calling it extracted credits the client with a document they
+    # never sent.
+    assert has_element?(
+             view,
+             "#month-register:not(details)",
+             "#{stats.invoices} invoices extracted · #{stats.gstr2b_only} from 2B only"
+           )
+
+    refute has_element?(view, "#month-register summary")
 
     for {row, index} <- Enum.with_index(rows) do
       assert has_element?(view, "##{dom_id(row, index)}")
@@ -71,6 +83,164 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
              "#month-headline",
              Nila.Formatters.format_money(stats.open_tax_paise, prefix: "₹")
            )
+  end
+
+  test "the purchase track states its own ITC position, not only the month band", %{
+    conn: conn,
+    client: client,
+    org: org
+  } do
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+
+    stats =
+      Nila.Gst.Purchase.Register.stats(Nila.Gst.Purchase.Resolutions.workings(month).summary)
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#gstr3b-verdict", "Blocked")
+
+    # The three figures must close: a reader adding the two parts has to land on
+    # the whole, or the card teaches an arithmetic that is wrong.
+    assert stats.settled_tax_paise + stats.open_tax_paise == stats.total_tax_paise
+
+    for {id, paise} <- [
+          {"#gstr3b-total-itc", stats.total_tax_paise},
+          {"#gstr3b-open-itc", stats.open_tax_paise},
+          {"#gstr3b-settled-itc", stats.settled_tax_paise}
+        ] do
+      assert has_element?(view, id, Nila.Formatters.format_money(paise, prefix: "₹"))
+    end
+
+    assert has_element?(
+             view,
+             "#gstr3b-review-required",
+             "Work the #{stats.need_decision} decisions"
+           )
+  end
+
+  # The whole open pile is bills nobody sent: no decision on this page can
+  # release the credit, so the page must ask for documents instead of pointing a
+  # senior at a queue with nothing decidable in it.
+  test "a month whose only open rows are uncollected bills asks for them", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+
+    collection_only =
+      month.recon
+      |> Map.put("needs_human", [])
+      |> Map.put("in_books_not_2b", [])
+      |> Map.put("value_mismatch", [])
+
+    rows = Nila.Gst.Purchase.Register.rows([], collection_only, %{})
+
+    {:ok, _} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        state: "worked",
+        register_rows: rows,
+        recon: collection_only,
+        summary: Nila.Gst.Purchase.Register.summary(rows)
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    awaiting = length(collection_only["in_2b_not_books"])
+    assert awaiting > 0
+
+    assert has_element?(view, "#gstr3b-verdict", "Waiting for bills")
+    assert has_element?(view, "#gstr3b-request-bills", "Request the #{awaiting} missing bills")
+    refute has_element?(view, "#gstr3b-review-required")
+
+    # The money is named for the document it waits on, not for a judgement.
+    assert has_element?(view, "#gstr3b-verdict", "Awaiting bills")
+    refute render(view) =~ "rides on #{awaiting} decisions"
+
+    # Net ITC is computed off the 2B ceiling, so it counts bills nobody sent.
+    # Saying so stops a claim-ready figure standing alone.
+    assert has_element?(view, "#gst-3b-unsupported", "has no supplied bill behind it")
+    assert has_element?(view, "#month-3b", "GSTR-3B preview")
+  end
+
+  # A bill the portal has but nobody supplied is the sharpest completeness
+  # signal the purchase side has. It used to exist only as rows in the table.
+  test "completeness counts books invoices and 2B-only bills separately", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    rows = read_rows()
+    gstr2b_only = Enum.count(rows, &(&1["bucket"] == "in_2b_not_books"))
+    assert gstr2b_only > 0
+
+    completeness = view |> element("#gstr3b-completeness") |> render()
+
+    assert completeness =~ "In 2B, bill not supplied"
+    assert completeness =~ "Invoices extracted"
+    refute render(view) =~ "complete register"
+  end
+
+  # The pill is a matching verdict, but green beside "GSTIN doesn't check out"
+  # reads as "reviewed and safe". Only a match the flags cannot dispute keeps
+  # the green — and a flag the 2B already answered keeps its note but loses the
+  # alarm, or 41% of the register reads "needs review" and none of it lands.
+  test "a matched row is alarmed only for flags the 2B cannot answer", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    rows_with_index = Enum.with_index(read_rows())
+
+    find = fn predicate -> Enum.find(rows_with_index, fn {row, _} -> predicate.(row) end) end
+
+    {flagged, flagged_index} =
+      find.(&(&1["bucket"] == "matched" and Register.needs_review?(&1)))
+
+    {clean, clean_index} =
+      find.(&(&1["bucket"] == "matched" and (&1["flags"] || []) == []))
+
+    # A matched row whose only flags the 2B already settled: quiet pill, live note.
+    {settled, settled_index} =
+      find.(fn row ->
+        row["bucket"] == "matched" and (row["flags"] || []) != [] and
+          not Register.needs_review?(row)
+      end)
+
+    flagged_html = view |> element("##{dom_id(flagged, flagged_index)}") |> render()
+    assert flagged_html =~ "Matched · needs review"
+
+    clean_html = view |> element("##{dom_id(clean, clean_index)}") |> render()
+    assert clean_html =~ "Matched to 2B"
+    refute clean_html =~ "needs review"
+
+    refute view |> element("##{dom_id(settled, settled_index)}") |> render() =~ "needs review"
+
+    assert has_element?(
+             view,
+             "##{dom_id(settled, settled_index)} .truncate",
+             settled["verdict"]
+           )
+  end
+
+  # The return the track assembles belongs with the position it belongs to, not
+  # after 58 rows of evidence where nobody reaches it.
+  test "the assembled 3B renders inside the purchase track, above the register", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#month-register #month-3b #gst-3b-panel")
+
+    html = render(view)
+    assert index_of(html, "gstr3b-verdict") < index_of(html, "month-3b")
+    assert index_of(html, "month-3b") < index_of(html, "gst-register")
   end
 
   test "the ⚠ and the row accent are spent only on rows needing a decision", %{
@@ -300,11 +470,14 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
 
+    # Every bucket that leaves a row open, not just the three that happened to
+    # be populated when this was written — a value mismatch needs a decision too.
     clean_recon =
       month.recon
       |> Map.put("needs_human", [])
       |> Map.put("in_2b_not_books", [])
       |> Map.put("in_books_not_2b", [])
+      |> Map.put("value_mismatch", [])
 
     {:ok, _} =
       ClientMonths.upsert(%{
@@ -411,12 +584,12 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     assert has_element?(view, "#gst-register")
     assert has_element?(view, "#month-evidence #month-3b #gst-3b-panel")
 
-    frozen_invoices = frozen["summary"]["buckets"] |> Map.values() |> Enum.sum()
+    frozen_stats = Nila.Gst.Purchase.Register.stats(frozen["summary"])
 
     assert has_element?(
              view,
              "#month-register",
-             "#{frozen_invoices} invoices · complete register"
+             "#{frozen_stats.invoices} invoices extracted"
            )
   end
 
@@ -600,6 +773,11 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
   defp dom_id(%{"id" => id}, _index) when is_binary(id), do: "gst-row-#{id}"
   defp dom_id(_row, index), do: "gst-row-idx-#{index}"
+
+  defp index_of(html, id) do
+    [start, _rest] = String.split(html, ~s(id="#{id}"), parts: 2)
+    String.length(start)
+  end
 
   defp doors(view) do
     view

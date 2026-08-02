@@ -132,15 +132,39 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   end
 
   attr :gstr3b, :any, default: nil
+  attr :stats, :any, default: nil
+  attr :signed, :boolean, default: false
 
   def gstr3b_evidence(assigns) do
     ~H"""
     <section :if={@gstr3b} id="month-3b" class="space-y-block">
       <div>
         <p class="text-eyebrow text-moon font-semibold uppercase">Return evidence</p>
-        <h2 class="text-base-content text-h4 font-semibold">Assembled GSTR-3B</h2>
+        <%!-- "Assembled" reads as finished. Until it is signed, this is what the
+              return would say if the month closed now — and while bills are
+              missing, part of it rests on documents nobody has. --%>
+        <h2 class="text-base-content text-h4 font-semibold">
+          {if @signed, do: "Assembled GSTR-3B", else: "GSTR-3B preview"}
+        </h2>
       </div>
       <.gstr3b_panel gstr3b={@gstr3b} />
+      <%!-- Net ITC comes off the 2B ceiling, which counts every 2B invoice
+            including the ones whose bills were never supplied. Stating that
+            beside the total stops a claim-ready figure standing alone. --%>
+      <%!-- Snapshots frozen before this money existed have the count but not the
+            rupees, and "₹0.00 across 5 invoices" contradicts itself. A signed
+            month is immutable, so the note simply stays quiet there. --%>
+      <p
+        :if={(@stats && @stats.awaiting_bills > 0) and @stats.awaiting_bills_tax_paise > 0}
+        id="gst-3b-unsupported"
+        class="text-ink-muted text-ui"
+      >
+        {Nila.Formatters.format_money_with_paise(@stats.awaiting_bills_tax_paise)} of this credit
+        has no supplied bill behind it, across {@stats.awaiting_bills} {if @stats.awaiting_bills ==
+                                                                             1,
+                                                                           do: "invoice",
+                                                                           else: "invoices"} the portal reported. Collect the documents before claiming it.
+      </p>
     </section>
     """
   end
@@ -247,8 +271,12 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   defp approval_label("GSTR-1"), do: "Approved"
   defp approval_label(_return), do: "Signed"
 
+  # `open` rather than `need_decision`: the count was narrowed to judgements the
+  # reviewer can record, and an uncollected bill is still an unsettled row. A
+  # signature offered while credit rests on documents nobody has is the one
+  # thing this gate exists to prevent.
   defp gstr3b_ready?(assigns) do
-    assigns.stats.need_decision == 0 and not is_nil(assigns.r1_signoff) and
+    assigns.stats.open == 0 and not is_nil(assigns.r1_signoff) and
       not is_nil(assigns.sales_month) and not is_nil(assigns.sales_month.filed_at)
   end
 

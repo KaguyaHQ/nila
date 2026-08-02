@@ -82,6 +82,67 @@ defmodule Nila.Gst.WorkQueueTest do
     assert Calendar.closeable_period(~D[2025-12-01]) == "2025-11"
   end
 
+  describe "purchase track: decisions versus collection" do
+    defp purchase_facts(overrides) do
+      # A reviewed sales side, so the fold reflects the purchase track under test
+      # rather than an absent GSTR-1 that is itself a client wait.
+      %{
+        purchase: %{id: 1},
+        sales: %{id: 1, state: "reviewed"},
+        need_decision: 0,
+        awaiting_bills: 0,
+        gstr2b_in: true,
+        gstr2b_available: true,
+        r1_signed: false,
+        r1_filed: false,
+        gstr3b_signed: false,
+        gstr3b_filed: false,
+        sales_complete: true
+      }
+      |> Map.merge(Map.new(overrides))
+    end
+
+    test "rows a reviewer can judge are the reviewer's work" do
+      tracks = Today.track_states(purchase_facts(need_decision: 3))
+
+      assert tracks.purchase == :open
+      assert Today.fold_state(tracks) == :needs_you
+    end
+
+    # A bill the portal reported and nobody supplied has no document to open and
+    # nothing to compare. It names the client, so it must not land in the pile a
+    # junior is told to work.
+    test "bills nobody supplied wait on the client, not the reviewer" do
+      tracks = Today.track_states(purchase_facts(awaiting_bills: 8))
+
+      assert tracks.purchase == :awaiting_bills
+      assert Today.fold_state(tracks) == :waiting_on_client
+    end
+
+    test "a real decision outranks a chase when the month holds both" do
+      tracks = Today.track_states(purchase_facts(need_decision: 2, awaiting_bills: 8))
+
+      assert tracks.purchase == :open
+      assert Today.fold_state(tracks) == :needs_you
+    end
+
+    test "nothing open at all is clear, waiting on a signature" do
+      tracks = Today.track_states(purchase_facts([]))
+
+      assert tracks.purchase == :clear
+      assert Today.fold_state(tracks) == :waiting_on_senior
+    end
+
+    # The 2B gates everything behind it: with no portal side, every books row is
+    # unmatched and the counts underneath mean nothing yet.
+    test "a missing 2B still outranks both" do
+      tracks =
+        Today.track_states(purchase_facts(need_decision: 5, awaiting_bills: 8, gstr2b_in: false))
+
+      assert tracks.purchase == :need_2b
+    end
+  end
+
   test "a signed-unfiled month lands in to_file; filing both returns moves it to done", %{
     org: org,
     client: client,
