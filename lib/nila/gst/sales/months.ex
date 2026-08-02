@@ -28,6 +28,22 @@ defmodule Nila.Gst.Sales.Months do
   end
 
   @doc """
+  The most recent sales month per client for `org_id`, as a map of
+  `client_id => %Month{}`. The outward mirror of
+  `Nila.Gst.Purchase.Months.latest_by_client/1` — list screens need both sides
+  to say where a client's month actually stands.
+  """
+  def latest_by_client(org_id) do
+    Repo.all(
+      from sm in Month,
+        where: sm.org_id == ^org_id,
+        order_by: [asc: sm.client_id, desc: sm.period, desc: sm.inserted_at],
+        distinct: sm.client_id
+    )
+    |> Map.new(&{&1.client_id, &1})
+  end
+
+  @doc """
   Fetches the worked sales month for `client_id` in `period`, scoped to `org_id`.
   Returns `{:error, :not_found}` when it doesn't exist or belongs to another org.
   """

@@ -8,10 +8,26 @@ defmodule NilaWeb.Components.Table do
   Renders a moonlight data table: hairline rows on a bordered surface.
 
   The single table component for the app. Works with a plain list or a LiveView
-  stream. Pass `row_click` (a function of the row item returning a JS command) to
-  make the whole row navigable. Each `:col` takes `label`, `align` ("right"), and
-  `class`. The `:empty` slot renders when there are no rows; for streams pass
-  `empty?` explicitly since a stream's size isn't known at render time.
+  stream. Each `:col` takes `label`, `align` ("right"), and `class`. The `:empty`
+  slot renders when there are no rows; for streams pass `empty?` explicitly since
+  a stream's size isn't known at render time.
+
+  Two ways to make a row live, and the choice is not stylistic:
+
+    * `row_navigate` — a function returning a path. The row becomes a real link
+      (stretched over the row from the first cell), so middle-click, cmd-click,
+      "copy link address", and screen readers all behave. **Use this whenever the
+      row's job is to go somewhere.**
+    * `row_click` — a function returning a JS command, for rows that *do*
+      something instead: toggling a node, selecting a line.
+
+  Nested links (a row's "edit" action) work under `row_navigate` with no
+  escaping: give them `relative z-10` to sit above the stretched link and they
+  keep their own destination. Under `row_click` they cannot — LiveView listens
+  for both `phx-click` and `data-phx-link` on `window`, so the only way to stop
+  the row's command from swallowing a nested link is `stopPropagation`, which
+  also stops LiveView's own navigation and silently downgrades the link to a
+  full page load. That is the trap `row_navigate` exists to close.
 
   ## Examples
 
@@ -30,6 +46,15 @@ defmodule NilaWeb.Components.Table do
   attr :rows, :any, required: true
   attr :row_id, :any, default: nil, doc: "fn row -> dom id; defaults to the stream id"
   attr :row_click, :any, default: nil, doc: "fn item -> JS command, run on row click"
+
+  attr :row_navigate, :any,
+    default: nil,
+    doc: "fn item -> path; makes the row a real link. Prefer over row_click for navigation"
+
+  attr :row_label, :any,
+    default: nil,
+    doc: "fn item -> the row link's accessible name, e.g. fn c -> \"Open \#{c.name}\" end"
+
   attr :row_class, :any, default: nil, doc: "fn item -> extra class string for the <tr>"
   attr :empty?, :any, default: nil, doc: "force the empty state (required for streams)"
   attr :min_width, :string, default: nil, doc: "e.g. min-w-[760px] for horizontal scroll"
@@ -104,7 +129,9 @@ defmodule NilaWeb.Components.Table do
             id={@row_id && @row_id.(row)}
             class={[
               "transition-colors",
-              row_command(@row_click, @row_item, row) && "hover:bg-base-200/60 cursor-pointer",
+              (row_command(@row_click, @row_item, row) || row_href(@row_navigate, @row_item, row)) &&
+                "hover:bg-base-200/60 cursor-pointer",
+              row_href(@row_navigate, @row_item, row) && "relative",
               @row_class && @row_class.(@row_item.(row))
             ]}
             phx-click={row_command(@row_click, @row_item, row)}
@@ -114,7 +141,7 @@ defmodule NilaWeb.Components.Table do
             role={row_command(@row_click, @row_item, row) && "button"}
           >
             <td
-              :for={col <- @col}
+              :for={{col, index} <- Enum.with_index(@col)}
               class={[
                 "align-top",
                 (@dense && "px-3 py-1.5") || "px-4 py-3",
@@ -122,6 +149,16 @@ defmodule NilaWeb.Components.Table do
                 col[:class]
               ]}
             >
+              <%!-- Positioned, so it paints over the cells' ordinary text and
+                    takes their clicks; anything a row wants to keep clickable
+                    raises itself with `relative z-10`. --%>
+              <.link
+                :if={index == 0 && row_href(@row_navigate, @row_item, row)}
+                navigate={row_href(@row_navigate, @row_item, row)}
+                class="absolute inset-0 z-0"
+              >
+                <span class="sr-only">{row_name(@row_label, @row_item, row)}</span>
+              </.link>
               {render_slot(col, @row_item.(row))}
             </td>
           </tr>
@@ -133,6 +170,15 @@ defmodule NilaWeb.Components.Table do
 
   defp row_command(nil, _row_item, _row), do: nil
   defp row_command(row_click, row_item, row), do: row_click.(row_item.(row))
+
+  # `relative` on the <tr> is what makes the stretched link cover the row, so a
+  # row that returns no path must not get it — the link would then stretch over
+  # whichever ancestor is positioned instead.
+  defp row_href(nil, _row_item, _row), do: nil
+  defp row_href(row_navigate, row_item, row), do: row_navigate.(row_item.(row))
+
+  defp row_name(nil, _row_item, _row), do: nil
+  defp row_name(row_label, row_item, row), do: row_label.(row_item.(row))
 
   @doc """
   Renders an extracted purchase-order line-items table.
