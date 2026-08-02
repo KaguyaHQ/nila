@@ -91,7 +91,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
           <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div class="space-y-related">
               <h3 class="text-base-content text-body font-semibold">Add Gmail account</h3>
-              <p class="text-ink-muted text-small">
+              <p class="text-ink-muted text-ui">
                 Name the inbox before starting OAuth.
               </p>
             </div>
@@ -107,7 +107,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                 id="settings-add-gmail-label"
                 label="Label"
                 placeholder="Firm intake"
-                class="border-base-300 rounded-field text-small w-full border px-3 py-2"
+                class="border-base-300 rounded-field text-ui w-full border px-3 py-2"
               />
               <.button
                 type="submit"
@@ -125,7 +125,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
           <div class="flex flex-col gap-4">
             <div class="space-y-related">
               <h3 class="text-base-content text-body font-semibold">Add Microsoft 365 mailbox</h3>
-              <p class="text-ink-muted text-small">
+              <p class="text-ink-muted text-ui">
                 Nila sends from a shared mailbox once the firm's Microsoft admin approves.
                 Restrict the app to this mailbox in Exchange, or it can send as any mailbox
                 in the tenant.
@@ -144,21 +144,21 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                   id="settings-add-microsoft-tenant"
                   label="Directory (tenant) ID"
                   placeholder="00000000-0000-0000-0000-000000000000"
-                  class="border-base-300 rounded-field text-small w-full border px-3 py-2"
+                  class="border-base-300 rounded-field text-ui w-full border px-3 py-2"
                 />
                 <.input
                   field={@microsoft_form[:mailbox]}
                   id="settings-add-microsoft-mailbox"
                   label="Send from"
                   placeholder="mail@firm.com"
-                  class="border-base-300 rounded-field text-small w-full border px-3 py-2"
+                  class="border-base-300 rounded-field text-ui w-full border px-3 py-2"
                 />
                 <.input
                   field={@microsoft_form[:label]}
                   id="settings-add-microsoft-label"
                   label="Label"
                   placeholder="Firm mailbox"
-                  class="border-base-300 rounded-field text-small w-full border px-3 py-2"
+                  class="border-base-300 rounded-field text-ui w-full border px-3 py-2"
                 />
               </div>
               <.button
@@ -176,7 +176,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
         <.settings_panel title="Connected accounts" class="overflow-hidden" body_class="-mx-6 -mb-6">
           <div id="settings-connection-list" class="divide-base-300 divide-y">
             <div :if={@connections == []} id="settings-connections-empty" class="px-4 py-12">
-              <p class="text-ink-muted text-small">No connectors yet.</p>
+              <p class="text-ink-muted text-ui">No connectors yet.</p>
             </div>
 
             <article
@@ -191,16 +191,16 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                     {connection_status(connection)}
                   </.badge>
                 </div>
-                <h4 class="text-base-content text-small mt-2 truncate font-semibold">
+                <h4 class="text-base-content text-ui mt-2 truncate font-semibold">
                   {Connection.display_label(connection)}
                 </h4>
-                <p class="text-ink-muted text-small mt-1 truncate">
+                <p class="text-ink-muted text-ui mt-1 truncate">
                   {connection.external_account_id}
                 </p>
-                <p class="text-ink-subtle text-micro mt-2">
+                <p class="text-ink-subtle text-meta mt-2">
                   Last sync: {last_sync_label(connection.last_synced_at)}
                 </p>
-                <p :if={connection.last_error} class="text-error text-fine mt-2">
+                <p :if={connection.last_error} class="text-error text-meta mt-2">
                   {connection.last_error}
                 </p>
               </div>
@@ -217,7 +217,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                     field={to_form(connection_form_data(connection), as: :connection)[:label]}
                     id={"settings-connection-label-#{connection.id}"}
                     label="Label"
-                    class="border-base-300 rounded-field text-small w-full border px-3 py-2"
+                    class="border-base-300 rounded-field text-ui w-full border px-3 py-2"
                   />
                   <div class="flex flex-wrap items-center gap-2 sm:col-span-2">
                     <.button

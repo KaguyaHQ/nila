@@ -108,7 +108,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       >
         <div class="flex items-center justify-between gap-3">
           <h3 class="text-base-content text-body font-semibold">Checks before filing</h3>
-          <span class="text-error text-small font-medium">
+          <span class="text-error text-ui font-medium">
             {length(@required_issues)} unresolved
           </span>
         </div>
@@ -124,7 +124,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               {issue_label(issue["code"])}
             </.badge>
             <div class="min-w-0 flex-1">
-              <p :if={issue["invoice"]} class="text-base-content text-small font-medium">
+              <p :if={issue["invoice"]} class="text-base-content text-ui font-medium">
                 Invoice {issue["invoice"]}
               </p>
               <p class="text-body text-ink-muted">{issue["message"]}</p>
@@ -228,7 +228,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           <:col :let={row} label={@draft_label} align="right">{row.proposed}</:col>
           <:col :let={row} label="Review">
             <div :if={row.changed} class="flex flex-wrap items-center gap-2">
-              <span class="text-ink-muted text-small">
+              <span class="text-ink-muted text-ui">
                 {cause_label(row.causes)}
               </span>
               <.button
@@ -272,7 +272,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               id={"gstr1-hsn-issue-#{:erlang.phash2(SalesWorkings.issue_key(issue))}"}
               class="border-base-300 flex flex-wrap items-center gap-3 border-t pt-3"
             >
-              <p class="text-base-content text-small min-w-0 flex-1">{issue["message"]}</p>
+              <p class="text-base-content text-ui min-w-0 flex-1">{issue["message"]}</p>
               <.button
                 :if={!hsn_reviewed?(issue, @active_invoices, @expanded_nodes)}
                 href="#gstr1-workings-hsn"
@@ -312,7 +312,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           </div>
         </section>
 
-        <p class="text-ink-muted text-small">{confirmation_note(@confirmation, @completeness)}</p>
+        <p class="text-ink-muted text-ui">{confirmation_note(@confirmation, @completeness)}</p>
       </section>
 
       <section class="space-y-block">

@@ -60,7 +60,7 @@ defmodule NilaWeb.Gst.RegisterLive do
           id="register-table-wrap"
           class="bg-base-100 border-base-300 rounded-box overflow-x-auto border"
         >
-          <table id="register-table" class="text-small min-w-full border-separate border-spacing-0">
+          <table id="register-table" class="text-ui min-w-full border-separate border-spacing-0">
             <thead>
               <tr class="bg-base-200/80 text-ink-subtle text-label uppercase">
                 <th class="bg-base-200 border-base-300 sticky left-0 z-20 min-w-52 border-b px-4 py-3 text-left font-semibold">

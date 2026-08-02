@@ -17,7 +17,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Modal do
       <div class="space-y-block">
         <pre
           id="gst-missing-bill-draft"
-          class="bg-base-200/40 border-base-300 rounded-box text-base-content text-small overflow-x-auto border p-4 font-sans whitespace-pre-wrap"
+          class="bg-base-200/40 border-base-300 rounded-box text-base-content text-ui overflow-x-auto border p-4 font-sans whitespace-pre-wrap"
         >{@draft.body}</pre>
         <div class="flex items-center justify-end gap-2">
           <.button

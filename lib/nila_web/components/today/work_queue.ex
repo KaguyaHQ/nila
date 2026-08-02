@@ -21,7 +21,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
 
     <section :for={{section, rows} <- @sections} id={"today-#{section}"} class="space-y-related">
       <h2 class="flex items-center gap-2">
-        <span class="text-base-content text-small font-semibold">
+        <span class="text-base-content text-ui font-semibold">
           {WorkQueue.section_title(section)}
         </span>
         <.badge variant={section_variant(section)}>{length(rows)}</.badge>
@@ -46,14 +46,14 @@ defmodule NilaWeb.Components.Today.WorkQueue do
           <span
             :if={r.processing?}
             id={"today-processing-#{r.client_id}-#{r.period}"}
-            class="text-fine text-moon mr-2 inline-flex items-center gap-1.5"
+            class="text-meta text-moon mr-2 inline-flex items-center gap-1.5"
           >
             <span class="loading loading-spinner loading-xs"></span> extracting…
           </span>
-          <span :if={section == :waiting_on_client} class="text-fine text-ink-muted">
+          <span :if={section == :waiting_on_client} class="text-ink-muted text-meta">
             {slots_label(r.slots)}
           </span>
-          <span :if={section != :waiting_on_client and work_label(r)} class="text-small">
+          <span :if={section != :waiting_on_client and work_label(r)} class="text-ui">
             {work_label(r)}
           </span>
           <span
@@ -68,7 +68,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
             :if={last_ask_label(r.last_ask_at, @today)}
             type="button"
             id={"last-ask-#{r.client_id}-#{r.period}"}
-            class="hover:text-moon text-fine text-ink-muted cursor-pointer underline decoration-dotted underline-offset-2"
+            class="hover:text-moon text-ink-muted text-meta cursor-pointer underline decoration-dotted underline-offset-2"
             phx-click={
               JS.push("open-chase-history",
                 value: %{"client-id" => to_string(r.client_id), "period" => r.period}
@@ -87,7 +87,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
               :if={r.ask_count > 0}
               type="button"
               id={"automated-chase-#{r.client_id}-#{r.period}"}
-              class="hover:text-moon text-fine text-ink-muted cursor-pointer underline decoration-dotted underline-offset-2"
+              class="hover:text-moon text-ink-muted text-meta cursor-pointer underline decoration-dotted underline-offset-2"
               phx-click={
                 JS.push("open-chase-history",
                   value: %{"client-id" => to_string(r.client_id), "period" => r.period}
@@ -99,7 +99,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
             <span
               :if={r.ask_count == 0}
               id={"automated-chase-#{r.client_id}-#{r.period}"}
-              class="text-fine text-ink-muted"
+              class="text-ink-muted text-meta"
             >
               {automated_ask_label(r, @today)}
             </span>

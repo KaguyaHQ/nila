@@ -257,7 +257,7 @@ defmodule NilaWeb.Components.Input do
             the explicit value arg of render_change/render_submit (the sanctioned path
             for hook-set hidden fields), since the masking hook can't run server-side. --%>
       <input type="hidden" name={@name} value={@iso} data-date-value />
-      <p :if={@hint && @errors == []} class="text-fine text-ink-subtle mt-1">{@hint}</p>
+      <p :if={@hint && @errors == []} class="text-ink-subtle text-meta mt-1">{@hint}</p>
       <.error :for={msg <- @errors}>{msg}</.error>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".DateField">
         export default {
@@ -332,7 +332,7 @@ defmodule NilaWeb.Components.Input do
           {@rest}
         />
       </label>
-      <p :if={@hint && @errors == []} class="text-fine text-ink-subtle mt-1">{@hint}</p>
+      <p :if={@hint && @errors == []} class="text-ink-subtle text-meta mt-1">{@hint}</p>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -350,7 +350,7 @@ defmodule NilaWeb.Components.Input do
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="text-error text-small mt-1.5 flex items-center gap-2">
+    <p class="text-error text-ui mt-1.5 flex items-center gap-2">
       <.icon name="hero-exclamation-circle" class="size-5" />
       {render_slot(@inner_block)}
     </p>

@@ -24,7 +24,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         class="space-y-related"
       >
         <div class="text-base-content text-body font-medium">GSTR-1 ready for approval</div>
-        <ul class="text-ink-muted text-small space-y-1">
+        <ul class="text-ink-muted text-ui space-y-1">
           <li>All checks resolved</li>
           <li>All supplied sales documents accounted for</li>
           <li>Table 12 reconciled</li>
@@ -38,14 +38,14 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         >
           Approve GSTR-1
         </.button>
-        <p :if={not @can_sign_off} class="text-ink-muted text-table">
+        <p :if={not @can_sign_off} class="text-ink-muted text-ui">
           Ready for a senior to approve GSTR-1.
         </p>
       </div>
 
       <p
         :if={is_nil(@r1_signoff) and @reviewable and @completeness != :complete}
-        class="text-ink-muted text-table"
+        class="text-ink-muted text-ui"
       >
         All review checks are resolved. Approval waits for current client confirmation.
       </p>
@@ -108,7 +108,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
       <p
         :if={is_nil(@gstr3b_signoff) and not @can_sign_off}
-        class="text-ink-muted text-table"
+        class="text-ink-muted text-ui"
       >
         Ready for a senior to sign GSTR-3B.
       </p>
@@ -162,13 +162,13 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     ~H"""
     <div class="space-y-block">
       <div class="flex flex-wrap items-center gap-2">
-        <span class="text-base-content text-table font-semibold">{@return}</span>
+        <span class="text-base-content text-ui font-semibold">{@return}</span>
         <.badge variant={if @month.filed_at, do: "neutral", else: "success"}>
           {if @month.filed_at, do: "Filed", else: approval_label(@return)}
         </.badge>
       </div>
 
-      <dl class="gap-block text-fine grid sm:grid-cols-4">
+      <dl class="gap-block text-meta grid sm:grid-cols-4">
         <div>
           <dt class="text-ink-subtle text-label font-semibold uppercase">
             {if @return == "GSTR-1", do: "Approved by", else: "Signed by"}
@@ -218,7 +218,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             href="https://www.gst.gov.in/"
             target="_blank"
             rel="noopener"
-            class="text-moon text-table font-semibold"
+            class="text-moon text-ui font-semibold"
           >
             Open gst.gov.in →
           </a>
@@ -312,13 +312,13 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     ~H"""
     <div class="flex items-baseline justify-between gap-3">
       <span class={[
-        "text-table",
+        "text-ui",
         (@strong && "text-ink font-medium") || "text-ink-muted"
       ]}>
         {@label}
       </span>
       <span class={[
-        "text-table font-mono",
+        "text-ui font-mono",
         @negative && "text-error",
         !@negative && ((@strong && "text-ink font-semibold") || "text-ink-muted")
       ]}>

@@ -66,7 +66,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <div class="text-base-content text-body mt-1 font-medium">
               {@selected_row["vendor_name"]}
             </div>
-            <div :if={@selected_row["vendor_gstin"]} class="text-fine text-ink-subtle mt-0.5">
+            <div :if={@selected_row["vendor_gstin"]} class="text-ink-subtle text-meta mt-0.5">
               {@selected_row["vendor_gstin"]}
             </div>
           </div>
@@ -124,7 +124,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           </.button>
           <p
             :if={@client.chase_channel != "whatsapp" or is_nil(@client.phone)}
-            class="text-small text-warning"
+            class="text-ui text-warning"
           >
             Add a WhatsApp phone and select WhatsApp as this client’s chase channel first.
           </p>
@@ -204,7 +204,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               alt={"Source document for invoice #{invoice["invoice_number"]}"}
               class="border-base-300 rounded-box max-h-80 w-full border object-contain"
             />
-            <dl class="text-small grid gap-3 sm:grid-cols-2">
+            <dl class="text-ui grid gap-3 sm:grid-cols-2">
               <div>
                 <dt class="text-ink-subtle">Source ID</dt>
                 <dd class="text-base-content font-mono">{invoice["id"]}</dd>
@@ -318,7 +318,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               phx-click={@review_navigation.previous && "navigate-invoice-review"}
               phx-value-inum={@review_navigation.previous}
               disabled={is_nil(@review_navigation.previous)}
-              class="hover:text-ink text-ink-subtle text-small justify-self-start transition disabled:opacity-30"
+              class="hover:text-ink text-ink-subtle text-ui justify-self-start transition disabled:opacity-30"
             >
               ← Previous flagged invoice
             </button>
@@ -326,7 +326,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               <h3 id={title_id} class="text-base-content text-body font-semibold">
                 {@selected_invoice["invoice_number"] || "Invoice"}
               </h3>
-              <span class="text-ink-subtle text-small">{unresolved_label(@open_issues)}</span>
+              <span class="text-ink-subtle text-ui">{unresolved_label(@open_issues)}</span>
               <.badge variant={@review_state.variant}>{@review_state.label}</.badge>
             </div>
             <button
@@ -335,7 +335,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               phx-click={@review_navigation.next && "navigate-invoice-review"}
               phx-value-inum={@review_navigation.next}
               disabled={is_nil(@review_navigation.next)}
-              class="hover:text-ink text-ink-subtle text-small justify-self-end transition disabled:opacity-30"
+              class="hover:text-ink text-ink-subtle text-ui justify-self-end transition disabled:opacity-30"
             >
               Next flagged invoice →
             </button>
@@ -345,7 +345,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               :for={{issue, index} <- Enum.with_index(@open_issues, 1)}
               type="button"
               data-review-target={issue_focus_target(issue)}
-              class="bg-warning/10 hover:bg-warning/20 rounded-field text-base-content text-fine flex items-center gap-1.5 px-2 py-1 font-medium transition-colors"
+              class="bg-warning/10 hover:bg-warning/20 rounded-field text-base-content text-meta flex items-center gap-1.5 px-2 py-1 font-medium transition-colors"
             >
               <span class="bg-warning/15 rounded-full px-1.5 tabular-nums">{index}</span>
               {issue_chip_label(issue)}
@@ -384,7 +384,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <div class="text-base-content text-body mt-1 font-medium">
               {@selected_invoice["buyer_name"] || "—"}
             </div>
-            <div class="text-fine text-ink-subtle mt-0.5 font-mono">
+            <div class="text-ink-subtle text-meta mt-0.5 font-mono">
               {@selected_invoice["buyer_gstin"] || "—"}
             </div>
           </div>
@@ -419,7 +419,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   <span class="font-mono">{row.line["hsn_sac"] || "—"}</span>
                   <span
                     :if={row.line["hsn_description"]}
-                    class="text-fine text-ink-subtle block truncate"
+                    class="text-ink-subtle text-meta block truncate"
                     title={row.line["hsn_description"]}
                   >
                     {row.line["hsn_description"]}
@@ -431,7 +431,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   <span>{line_rate_label(row.line)}</span>
                   <span
                     :if={rate_candidate_label(row.line)}
-                    class="text-fine text-ink-subtle block whitespace-nowrap"
+                    class="text-ink-subtle text-meta block whitespace-nowrap"
                     title={rate_candidate_source(row.line)}
                   >
                     {rate_candidate_label(row.line)}
@@ -458,7 +458,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 </span>
               </:col>
             </.data_table>
-            <p id="gstr1-rate-validation-scope" class="mt-related text-fine text-ink-subtle">
+            <p id="gstr1-rate-validation-scope" class="mt-related text-ink-subtle text-meta">
               HSN/SAC existence, tax arithmetic, and imported taxable-goods rate candidates are checked independently. Exemptions and description-dependent conditions still require review.
             </p>
           </div>
@@ -527,7 +527,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 </form>
               <% else %>
                 <div class="flex items-center justify-between gap-2">
-                  <span class="text-ink-muted text-small min-w-0 truncate font-mono">
+                  <span class="text-ink-muted text-ui min-w-0 truncate font-mono">
                     {field} = {to_string(Gstr1.field_value(@selected_invoice, field))}
                   </span>
                   <.button variant="ghost" size="xs" phx-click="start_correct" phx-value-field={field}>
@@ -618,13 +618,13 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
       <dl :if={@mismatch} class="border-base-300 mt-block grid gap-2 border-y py-3 sm:grid-cols-2">
         <div>
-          <dt class="text-fine text-ink-subtle">{@mismatch.printed_label}</dt>
+          <dt class="text-ink-subtle text-meta">{@mismatch.printed_label}</dt>
           <dd class="font-display text-base-content text-body mt-1 leading-none tabular-nums">
             {Helpers.rupees(@mismatch.printed)}
           </dd>
         </div>
         <div>
-          <dt class="text-fine text-ink-subtle">{@mismatch.extracted_label}</dt>
+          <dt class="text-ink-subtle text-meta">{@mismatch.extracted_label}</dt>
           <dd class="font-display text-base-content text-body mt-1 leading-none tabular-nums">
             {Helpers.rupees(@mismatch.extracted)}
           </dd>
@@ -661,10 +661,10 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       <div :if={@issue["status"] == "resolved"} class="mt-block flex items-start gap-3">
         <.icon name="hero-check-circle" class="text-success mt-0.5 size-4 shrink-0" />
         <div class="min-w-0 flex-1">
-          <p class="text-base-content text-small font-medium">
+          <p class="text-base-content text-ui font-medium">
             Resolved by {decision_maker(@decision)}
           </p>
-          <p class="text-fine text-ink-subtle">
+          <p class="text-ink-subtle text-meta">
             {decision_summary(@issue, @decision)} · {decision_time(@decision)}
           </p>
         </div>

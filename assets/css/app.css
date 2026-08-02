@@ -201,33 +201,32 @@
   --text-h4--line-height: 1.35;
   --text-h4--letter-spacing: -0.025em;
 
-  /* Body & UI — fixed, sans. */
-  --text-lead: 1.125rem; /* 18px — hero/section intros */
-  --text-lead--line-height: 1.65;
+  /* Body & UI — fixed, sans. 16px to read, 14px to work, 12px for context. */
+  --text-lead: 1.125rem; /* 18px — page intros and prominent explanations */
+  --text-lead--line-height: 1.75rem;
 
-  --text-body: 1rem; /* 16px — default reading copy and workflow sentences */
-  --text-body--line-height: 1.65;
+  --text-body: 1rem; /* 16px — prose, guidance, modal explanations */
+  --text-body--line-height: 1.5rem;
 
-  --text-table: 0.875rem; /* 14px — financial tables and dense working sheets */
-  --text-table--line-height: 1.5;
+  --text-ui: 0.875rem; /* 14px — app UI, forms, tables, buttons, navigation */
+  --text-ui--line-height: 1.25rem;
 
-  --text-small: 0.8125rem; /* 13px — metadata, timestamps, compact annotations */
-  --text-small--line-height: 1.6;
+  /* Context the reader does not need to finish the task at hand: when and
+     where the work arrived. Importance to the task decides this, never the
+     datatype — an invoice number or a mismatch status is `ui`, not `meta`. */
+  --text-meta: 0.75rem; /* 12px — timestamps, provenance, tertiary context */
+  --text-meta--line-height: 1rem;
 
-  --text-fine: 0.75rem; /* 12px — metadata, timestamps */
-  --text-fine--line-height: 1.5;
+  /* Same size as meta, different job: weight and tracking separate schema from
+     data. Column headers and compact group labels — not ordinary form labels,
+     which are sentence-case `ui`. */
+  --text-label: 0.75rem; /* 12px — column headers and compact group labels */
+  --text-label--line-height: 1rem;
+  --text-label--letter-spacing: 0.04em;
 
-  --text-micro: 0.6875rem; /* 11px — captions, footnotes */
-  --text-micro--line-height: 1.4;
-
-  /* Uppercase labels — tracking bundled. */
-  --text-eyebrow: 0.6875rem; /* 11px — section kickers */
-  --text-eyebrow--line-height: 1;
-  --text-eyebrow--letter-spacing: 0.2em;
-
-  --text-label: 0.75rem; /* 12px — UI and table labels */
-  --text-label--line-height: 1;
-  --text-label--letter-spacing: 0.14em;
+  --text-eyebrow: 0.6875rem; /* 11px — uppercase marketing kickers only */
+  --text-eyebrow--line-height: 1rem;
+  --text-eyebrow--letter-spacing: 0.18em;
 }
 
 /* Add variants based on LiveView classes */

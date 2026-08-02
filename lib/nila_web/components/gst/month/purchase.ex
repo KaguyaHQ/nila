@@ -26,7 +26,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             <p class="text-eyebrow text-moon font-semibold uppercase">Purchase evidence</p>
             <h2 class="text-base-content text-h4 font-semibold">Purchase reconciliation</h2>
           </div>
-          <p class="text-ink-muted text-small">
+          <p class="text-ink-muted text-ui">
             {@stats.invoices} {if @stats.invoices == 1, do: "invoice", else: "invoices"} · complete register
           </p>
         </div>
@@ -40,7 +40,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             id={"gst-document-flag-#{index}"}
             class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
-            <span class="text-fine text-ink-subtle font-medium">{issue_label(flag["code"])}</span>
+            <span class="text-ink-subtle text-meta font-medium">{issue_label(flag["code"])}</span>
             <span class="text-body text-ink-muted min-w-0 flex-1">{flag["reason"]}</span>
           </div>
         </div>

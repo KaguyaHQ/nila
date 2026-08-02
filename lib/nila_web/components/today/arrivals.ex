@@ -9,7 +9,7 @@ defmodule NilaWeb.Components.Today.Arrivals do
   def new_arrivals(assigns) do
     ~H"""
     <section :if={@groups != []} id="pending-arrivals" class="space-y-related">
-      <h2 class="text-base-content text-small font-semibold">New arrivals</h2>
+      <h2 class="text-base-content text-ui font-semibold">New arrivals</h2>
       <.card class="divide-base-300 divide-y p-0">
         <button
           :for={group <- @groups}
@@ -20,10 +20,10 @@ defmodule NilaWeb.Components.Today.Arrivals do
           class="hover:bg-base-200/50 flex w-full items-center gap-3 px-4 py-3 text-left transition"
         >
           <.icon name="hero-inbox-arrow-down" class="text-moon size-5 shrink-0" />
-          <span class="text-base-content text-small flex-1 font-medium">
+          <span class="text-base-content text-ui flex-1 font-medium">
             {arrival_label(group)}
           </span>
-          <span class="text-fine text-ink-subtle">
+          <span class="text-ink-subtle text-meta">
             {arrival_age(group.received_at, @now)}
           </span>
           <.icon name="hero-chevron-right" class="text-ink-faint size-4" />
@@ -54,10 +54,10 @@ defmodule NilaWeb.Components.Today.Arrivals do
       >
         <div class="space-y-block">
           <div class="bg-base-200/40 rounded-box px-3 py-2">
-            <p class="text-fine text-ink-subtle">
+            <p class="text-ink-subtle text-meta">
               From {display_sender(@group)} over {source_label(@group.source)}
             </p>
-            <p :for={arrival <- @group.arrivals} class="text-base-content text-small mt-1">
+            <p :for={arrival <- @group.arrivals} class="text-base-content text-ui mt-1">
               {arrival.filename}
             </p>
           </div>
@@ -84,7 +84,7 @@ defmodule NilaWeb.Components.Today.Arrivals do
             options={arrival_kind_options()}
           />
 
-          <p :if={@error} id="arrival-sort-error" class="text-error text-small">
+          <p :if={@error} id="arrival-sort-error" class="text-error text-ui">
             {@error}
           </p>
 

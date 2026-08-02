@@ -61,7 +61,7 @@ defmodule NilaWeb.Components.Page do
         <h1 class="text-h4 font-semibold">
           {render_slot(@inner_block)}
         </h1>
-        <p :if={@subtitle != []} class="text-ink-muted text-small">
+        <p :if={@subtitle != []} class="text-ink-muted text-ui">
           {render_slot(@subtitle)}
         </p>
       </div>
@@ -117,8 +117,8 @@ defmodule NilaWeb.Components.Page do
         class="mb-block flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
       >
         <div>
-          <h3 :if={@title} class="text-base-content text-small font-semibold">{@title}</h3>
-          <p :if={@description} class="text-ink-muted text-small mt-1">
+          <h3 :if={@title} class="text-base-content text-ui font-semibold">{@title}</h3>
+          <p :if={@description} class="text-ink-muted text-ui mt-1">
             {@description}
           </p>
         </div>

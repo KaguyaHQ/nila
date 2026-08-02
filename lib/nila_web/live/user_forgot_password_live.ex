@@ -53,7 +53,7 @@ defmodule NilaWeb.UserForgotPasswordLive do
 
         <.link
           navigate={~p"/users/log_in"}
-          class="mt-block text-primary text-small inline-flex font-semibold"
+          class="mt-block text-primary text-ui inline-flex font-semibold"
         >
           Back to sign in
         </.link>

@@ -101,7 +101,7 @@ defmodule NilaWeb.UserResetPasswordLive do
           </div>
           <.link
             navigate={~p"/users/reset_password"}
-            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-ink-muted text-small inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
+            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-ink-muted text-ui inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
           >
             Request a new link
           </.link>

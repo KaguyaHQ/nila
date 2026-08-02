@@ -10,9 +10,10 @@ defmodule Mix.Tasks.Nila.StyleGuard do
       of moonlight semantic tokens. Zero tolerance, everywhere.
 
     * **Type scale** — raw Tailwind sizes (`text-sm`, `text-xs`, `text-4xl`, …),
-      arbitrary `text-[…]`, `tracking-[…]`, and `leading-[…]`. The role scale in
+      arbitrary `text-[…]`, `tracking-[…]`, and `leading-[…]`, plus the retired
+      `text-table` / `text-small` / `text-fine` / `text-micro` steps. The role scale in
       `docs/design/DESIGN.md#typography` bundles size + line-height + tracking, so
-      markup names a role (`text-small`, `text-eyebrow`), never a pixel. Raw sizes
+      markup names a role (`text-ui`, `text-meta`), never a pixel. Raw sizes
       have been eliminated; the empty allowlist keeps them from returning.
 
     * **Spacing scale** — arbitrary and off-scale product spacing, plus raw
@@ -44,7 +45,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   # (the `-` after `base` is a word boundary, so a naive `\btext-base\b` would
   # flag every color use). `leading-none` / `tabular-nums` on figures stay legal;
   # only the arbitrary `leading-[…]` form is caught.
-  @type_scale_pattern ~r/\btext-(xs|sm|lg|xl|[2-9]xl)\b|\btext-base(?![-\w])|\btext-\[|\btracking-\[|\bleading-\[/
+  @type_scale_pattern ~r/\btext-(xs|sm|lg|xl|[2-9]xl)\b|\btext-base(?![-\w])|\btext-\[|\btracking-\[|\bleading-\[|\btext-(table|small|fine|micro)\b/
 
   # Escape hatch for files allowed to keep raw text sizes. The design-token sweep
   # drove this to empty: every `lib/nila_web` screen now names a role from

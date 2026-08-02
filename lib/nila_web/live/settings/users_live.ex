@@ -158,7 +158,7 @@ defmodule NilaWeb.Settings.UsersLive do
               {member.user.name}
               <span
                 :if={member.user_id == @current_scope.user.id}
-                class="text-fine text-ink-subtle ml-1 font-normal"
+                class="text-ink-subtle text-meta ml-1 font-normal"
               >
                 (you)
               </span>
@@ -188,7 +188,7 @@ defmodule NilaWeb.Settings.UsersLive do
                   {label}
                 </option>
               </select>
-              <span class="text-fine text-ink-muted max-w-56">
+              <span class="text-ink-muted text-meta max-w-56">
                 {Policy.role_description(member.role)}
               </span>
             </form>
@@ -204,7 +204,7 @@ defmodule NilaWeb.Settings.UsersLive do
                 type="button"
                 phx-click="resend_invite"
                 phx-value-user_id={member.user_id}
-                class="text-fine text-primary font-semibold transition hover:underline"
+                class="text-meta text-primary font-semibold transition hover:underline"
               >
                 Resend invite
               </button>
@@ -213,7 +213,7 @@ defmodule NilaWeb.Settings.UsersLive do
                 type="button"
                 phx-click="toggle_active"
                 phx-value-user_id={member.user_id}
-                class="hover:text-ink text-fine text-ink-muted font-semibold transition"
+                class="hover:text-ink text-ink-muted text-meta font-semibold transition"
               >
                 {if member.user.active, do: "Disable", else: "Enable"}
               </button>
@@ -239,7 +239,7 @@ defmodule NilaWeb.Settings.UsersLive do
             label="Role"
             options={Policy.assignable_roles()}
           />
-          <p class="text-fine text-ink-muted">
+          <p class="text-ink-muted text-meta">
             They'll get an email with a link to set a password and join. Owners and
             admins manage the firm; operators run the day-to-day work and approvals;
             viewers can only read and export.

@@ -193,7 +193,7 @@ changes the room, not the palette:
 | `paper` | `oklch(97.6% 0.005 78)` | `accent` (hue 78) at half chroma — the page's warmth is the brand's one sanctioned warm note, kept to a whisper because a tint that reads as an accent on a badge reads as cream across a whole page |
 | `ink` | `oklch(23% 0.045 233)` | `base-content` (`30% 0.055 233`) pressed darker for ink on paper |
 | `feint` | `oklch(89.5% 0.02 233)` | `base-300`'s hue, chroma held higher — feint blue ruling has to read blue |
-| `redink` | `oklch(50% 0.17 22)` | `error` exactly, at 50% L not 60% — the margin rule and `text-micro` flags need the contrast on paper |
+| `redink` | `oklch(50% 0.17 22)` | `error` exactly, at 50% L not 60% — the margin rule and `text-meta` flags need the contrast on paper |
 
 What the ledger keeps as its own is **structure, not color**: zero radius on
 rules and tables, 4px double borders, the red margin rule, ruled rows. Only the
@@ -387,9 +387,12 @@ badges, buttons `font-medium` / `font-semibold`.
 ### The scale
 
 Tailwind v4 generates a `text-{role}` utility from each step, with line-height
-and tracking **bundled in** — `text-body` already carries its `1.65` leading,
-`text-eyebrow` its `0.2em` tracking. You almost never write `leading-*` or
+and tracking **bundled in** — `text-body` already carries its leading,
+`text-eyebrow` its `0.18em` tracking. You almost never write `leading-*` or
 `tracking-*` next to a type class.
+
+The small end is deliberately blunt: **16px to read, 14px to work, 12px for
+context.** Three sizes, three jobs, no 1px judgment calls.
 
 Display steps use `clamp()`, so they scale with the viewport and need **no
 responsive variants** (`sm:text-*`).
@@ -403,12 +406,10 @@ responsive variants** (`sm:text-*`).
 | Heading 4 | `text-h4` | 1.25rem (fixed) | Card titles, list-item headings. |
 | Lead | `text-lead` | 18px | Hero sub, section intros. |
 | Body | `text-body` | 16px | Default reading copy and workflow sentences. |
-| Table | `text-table` | 14px | Financial tables and dense working sheets. |
-| Small | `text-small` | 13px | Metadata, timestamps, compact annotations. |
-| Fine | `text-fine` | 12px | Captions and secondary table metadata. |
-| Micro | `text-micro` | 11px | Footnotes and the smallest readable text. |
-| Eyebrow | `text-eyebrow` | 11px · 0.2em | Uppercase section kickers. Pair with `.text-moon`. |
-| Label | `text-label` | 12px · 0.14em | Uppercase UI and table labels. |
+| UI | `text-ui` | 14px | App UI, forms, tables, buttons, navigation — the working default. |
+| Meta | `text-meta` | 12px | Timestamps, provenance, tertiary context. |
+| Label | `text-label` | 12px · 0.04em | Column headers and compact group labels. |
+| Eyebrow | `text-eyebrow` | 11px · 0.18em | Uppercase marketing kickers. Pair with `.text-moon`. |
 
 Display roles (`hero`…`h3`) pair with `font-display`; eyebrow/label expect
 `uppercase font-semibold` alongside — the token only owns size, line-height,
@@ -430,11 +431,19 @@ routinely pair with a type class — figures are the exception that proves the r
 ### Type rules
 
 - **Name the role, not the pixel.** Never `text-[13.5px]`. If nothing fits, fix
-  the scale, don't add a one-off. Full sentences use `text-body`; `text-small`
-  is metadata, not a quieter body size. Tables use `text-table`, owned by
-  `<.data_table>`, rather than inheriting the metadata token. `mix nila.style_guard` fails the build on raw
-  sizes (`text-sm`, `text-[Npx]`, stray `tracking-[…]`/`leading-[…]`) in
-  `lib/nila_web`.
+  the scale, don't add a one-off. Reading copy and explanations use `text-body`;
+  everything the operator works in is `text-ui`. `mix nila.style_guard` fails the
+  build on raw sizes (`text-sm`, `text-[Npx]`, stray `tracking-[…]`/`leading-[…]`)
+  and on the retired `text-table`/`text-small`/`text-fine`/`text-micro` steps.
+- **`meta` is decided by importance, never by datatype.** An invoice number,
+  GSTIN, or mismatch status is what the accountant came to check — that is
+  `text-ui`. `text-meta` is for context that explains where or when the work
+  arrived: "uploaded 12 minutes ago", "extracted from page 4", "source: WhatsApp".
+- **`label` is schema, not data.** 12px semibold with light tracking for column
+  headers and `<dt>`-style group labels. Ordinary form labels are sentence-case
+  `text-ui` — uppercase tracking on "Invoice Number" is just shouting.
+- **`tabular-nums` is targeted, not ambient.** Put it on amounts, dates, counts,
+  and IDs that line up in a column. "Uploaded via WhatsApp" gains nothing.
 - **No `leading-*` / `tracking-*` next to a type class** (already bundled);
   exceptions above.
 - **No `sm:text-*` on display roles** — the `clamp()` is the responsive behavior.

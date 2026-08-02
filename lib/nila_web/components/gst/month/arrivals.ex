@@ -26,7 +26,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
             "line-through opacity-70"
         ]}>
           <div class="flex flex-wrap items-center gap-2">
-            <span class="text-base-content text-table font-semibold">{dump_kind_title(dump.kind)}</span>
+            <span class="text-base-content text-ui font-semibold">{dump_kind_title(dump.kind)}</span>
             <span
               :if={dump.status in ~w(received extracting)}
               class="loading loading-spinner loading-xs text-moon"
@@ -36,15 +36,15 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
             </.badge>
             <.badge :if={dump.status == "discarded"} variant="neutral">Discarded</.badge>
           </div>
-          <p class="text-fine text-ink-subtle">{arrived_line(dump)}</p>
+          <p class="text-ink-subtle text-meta">{arrived_line(dump)}</p>
           <p
             :if={answer_line(dump)}
             id={"month-arrived-answer-#{dump.id}"}
-            class="text-fine text-ink-muted"
+            class="text-ink-muted text-meta"
           >
             {answer_line(dump)}
           </p>
-          <p :if={attention_line(dump)} id={"month-dump-#{dump.id}"} class="text-ink-muted text-table">
+          <p :if={attention_line(dump)} id={"month-dump-#{dump.id}"} class="text-ink-muted text-ui">
             {attention_line(dump)}
           </p>
         </div>
@@ -94,7 +94,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
       type="button"
       id="month-chase-history-link"
       phx-click="open-chase-history"
-      class="text-fine text-moon font-semibold"
+      class="text-meta text-moon font-semibold"
     >
       Requests sent: {length(@asks)} · view history
     </button>

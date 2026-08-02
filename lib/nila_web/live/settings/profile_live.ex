@@ -100,7 +100,7 @@ defmodule NilaWeb.Settings.ProfileLive do
               <h2 id="profile-name" class="text-base-content text-h4 truncate font-semibold">
                 {@current_scope.user.name}
               </h2>
-              <p id="profile-email" class="text-ink-subtle text-small truncate">
+              <p id="profile-email" class="text-ink-subtle text-ui truncate">
                 {@current_scope.user.email}
               </p>
             </div>
@@ -111,7 +111,7 @@ defmodule NilaWeb.Settings.ProfileLive do
               <dt class="text-ink-subtle text-label font-medium uppercase">
                 Firm
               </dt>
-              <dd id="profile-workspace" class="text-base-content text-small font-semibold">
+              <dd id="profile-workspace" class="text-base-content text-ui font-semibold">
                 {workspace_name(@current_scope)}
               </dd>
             </div>
@@ -119,7 +119,7 @@ defmodule NilaWeb.Settings.ProfileLive do
               <dt class="text-ink-subtle text-label font-medium uppercase">
                 Role
               </dt>
-              <dd id="profile-role" class="text-base-content text-small font-semibold">
+              <dd id="profile-role" class="text-base-content text-ui font-semibold">
                 {role_label(@current_scope)}
               </dd>
             </div>

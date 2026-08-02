@@ -15,7 +15,7 @@ defmodule NilaWeb.UserLoginLive do
           </.link>
           <div class="mt-section space-y-related">
             <h1 class="text-h4 font-semibold">Sign in</h1>
-            <p class="text-ink-muted text-small">Use your work email and password.</p>
+            <p class="text-ink-muted text-ui">Use your work email and password.</p>
           </div>
         </div>
 
@@ -30,12 +30,12 @@ defmodule NilaWeb.UserLoginLive do
           />
           <.link
             navigate={~p"/users/reset_password"}
-            class="hover:text-primary/80 text-primary text-small inline-flex font-semibold transition"
+            class="hover:text-primary/80 text-primary text-ui inline-flex font-semibold transition"
           >
             Forgot your password?
           </.link>
 
-          <label class="text-ink-muted text-small flex items-center gap-2">
+          <label class="text-ink-muted text-ui flex items-center gap-2">
             <input type="checkbox" name="user[remember_me]" value="true" class="rounded" />
             Keep me signed in
           </label>
@@ -45,7 +45,7 @@ defmodule NilaWeb.UserLoginLive do
           </.button>
         </.form>
 
-        <p class="mt-block text-ink-muted text-small">
+        <p class="mt-block text-ink-muted text-ui">
           Interested in Nila?
           <.link navigate={~p"/contact"} class="text-primary font-semibold">
             Arrange a test
@@ -65,7 +65,7 @@ defmodule NilaWeb.UserLoginLive do
               <input type="hidden" name="email" value={user.email} />
               <button
                 type="submit"
-                class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 text-fine text-ink-muted rounded-full border px-3 py-2 font-semibold transition"
+                class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 text-ink-muted text-meta rounded-full border px-3 py-2 font-semibold transition"
               >
                 {user.name}
               </button>

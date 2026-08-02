@@ -111,7 +111,7 @@ defmodule NilaWeb.Settings.WorkspaceLive do
           </.settings_panel>
         <% else %>
           <.settings_panel>
-            <p class="text-ink-muted text-small">
+            <p class="text-ink-muted text-ui">
               Create a firm before configuring its details.
             </p>
           </.settings_panel>

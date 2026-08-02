@@ -23,8 +23,8 @@ defmodule NilaWeb.Components.ChaseHistory do
       >
         <div class="flex flex-wrap items-center gap-2">
           <.badge variant={channel_variant(ask.channel)}>{channel_label(ask.channel)}</.badge>
-          <span class="text-base-content text-small font-medium">{kind_label(ask.kind)}</span>
-          <span class="text-fine text-ink-subtle">
+          <span class="text-base-content text-ui font-medium">{kind_label(ask.kind)}</span>
+          <span class="text-ink-subtle text-meta">
             {format_display_datetime_with_time(ask.inserted_at)} · sent by {sender_name(ask)}
           </span>
         </div>

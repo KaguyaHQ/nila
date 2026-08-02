@@ -507,13 +507,13 @@ defmodule NilaWeb.Gst.ExceptionsLive do
             <span
               :if={@progress.total > 0}
               id="gst-exceptions-progress"
-              class="text-ink-subtle text-small"
+              class="text-ink-subtle text-ui"
             >
               {@progress.done} of {@progress.total} resolved
             </span>
             <.link
               navigate={~p"/gst/#{@month.client_id}/#{@month.period}"}
-              class="hover:text-ink text-ink-subtle text-small"
+              class="hover:text-ink text-ink-subtle text-ui"
             >← Full register</.link>
           </div>
         </div>
@@ -524,7 +524,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
           class="bg-success/[0.04] border-success/40 rounded-box flex items-center gap-2 border px-4 py-3"
         >
           <.icon name="hero-check-circle" class="text-success size-5 shrink-0" />
-          <p class="text-base-content text-small">
+          <p class="text-base-content text-ui">
             Every exception is resolved — the register is review-ready. Anything look wrong? Undo it below.
           </p>
         </div>

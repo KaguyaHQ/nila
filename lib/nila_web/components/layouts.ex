@@ -106,7 +106,7 @@ defmodule NilaWeb.Layouts do
               <div class="flex items-center justify-between gap-4">
                 <nav
                   aria-label="Breadcrumb"
-                  class="text-ink-subtle text-small flex min-w-0 items-center gap-1.5"
+                  class="text-ink-subtle text-ui flex min-w-0 items-center gap-1.5"
                 >
                   <span class="text-ink-muted font-medium">Nila</span>
                   <span :if={@page_title} class="text-ink-faint opacity-75">/</span>
@@ -228,7 +228,7 @@ defmodule NilaWeb.Layouts do
     <.link
       navigate={@href}
       class={[
-        "rounded-field text-small flex h-10 items-center gap-3 px-3 transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0",
+        "rounded-field text-ui flex h-10 items-center gap-3 px-3 transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0",
         if(@active,
           do: "bg-base-100/15 text-base-100 font-semibold ring-1 ring-white/8 ring-inset",
           else: "hover:bg-base-100/10 hover:text-base-100 text-base-100/65 font-medium"
@@ -243,7 +243,7 @@ defmodule NilaWeb.Layouts do
       </span>
       <span
         :if={@count}
-        class="bg-base-100/15 text-base-100 text-fine rounded-full px-2 py-0.5 font-semibold group-data-[rail-collapsed=true]/app:hidden"
+        class="bg-base-100/15 text-base-100 text-meta rounded-full px-2 py-0.5 font-semibold group-data-[rail-collapsed=true]/app:hidden"
       >
         {@count}
       </span>
@@ -270,7 +270,7 @@ defmodule NilaWeb.Layouts do
     <.link
       navigate={@href}
       class={[
-        "rounded-field text-small flex h-10 shrink-0 items-center gap-3 px-3 transition",
+        "rounded-field text-ui flex h-10 shrink-0 items-center gap-3 px-3 transition",
         if(@active,
           do: "bg-primary/15 text-primary font-semibold",
           else: "hover:bg-base-200 hover:text-ink text-ink-subtle font-medium"
@@ -302,18 +302,18 @@ defmodule NilaWeb.Layouts do
       <summary
         :if={@placement == :rail}
         id={"#{@id_prefix}-account-trigger"}
-        class="focus:ring-base-100/25 hover:bg-base-100/10 rounded-field text-base-100/75 text-small flex h-12 cursor-pointer list-none items-center gap-3 px-2 transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0 focus:ring-2 focus:outline-none [&::-webkit-details-marker]:hidden"
+        class="focus:ring-base-100/25 hover:bg-base-100/10 rounded-field text-base-100/75 text-ui flex h-12 cursor-pointer list-none items-center gap-3 px-2 transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0 focus:ring-2 focus:outline-none [&::-webkit-details-marker]:hidden"
         aria-label="Open account menu"
         title={@current_scope.user.name}
       >
-        <span class="bg-base-100/15 text-base-100/80 text-micro grid size-8 shrink-0 place-items-center rounded-full font-semibold">
+        <span class="bg-base-100/15 text-base-100/80 text-meta grid size-8 shrink-0 place-items-center rounded-full font-semibold">
           {user_initials(@current_scope.user)}
         </span>
         <span class="min-w-0 flex-1 text-left group-data-[rail-collapsed=true]/app:hidden">
-          <span class="text-base-100 text-small block truncate font-semibold">
+          <span class="text-base-100 text-ui block truncate font-semibold">
             {@current_scope.user.name}
           </span>
-          <span class="text-base-100/55 text-fine block truncate">
+          <span class="text-base-100/55 text-meta block truncate">
             {workspace_name(@current_scope)}
           </span>
         </span>
@@ -326,11 +326,11 @@ defmodule NilaWeb.Layouts do
       <summary
         :if={@placement == :header}
         id={"#{@id_prefix}-account-trigger"}
-        class="bg-base-200 focus:ring-primary/20 hover:bg-base-300 hover:text-ink rounded-field text-ink-muted text-small flex h-9 min-w-0 cursor-pointer list-none items-center gap-2 px-3 transition focus:ring-2 focus:outline-none [&::-webkit-details-marker]:hidden"
+        class="bg-base-200 focus:ring-primary/20 hover:bg-base-300 hover:text-ink rounded-field text-ink-muted text-ui flex h-9 min-w-0 cursor-pointer list-none items-center gap-2 px-3 transition focus:ring-2 focus:outline-none [&::-webkit-details-marker]:hidden"
         aria-label="Open account menu"
         title={@current_scope.user.name}
       >
-        <span class="bg-base-100 text-ink-muted text-micro grid size-6 shrink-0 place-items-center rounded-full font-semibold">
+        <span class="bg-base-100 text-ink-muted text-meta grid size-6 shrink-0 place-items-center rounded-full font-semibold">
           {user_initials(@current_scope.user)}
         </span>
         <span class="hidden max-w-36 truncate font-medium sm:block">
@@ -350,7 +350,7 @@ defmodule NilaWeb.Layouts do
         <.link
           navigate={~p"/settings/profile"}
           id={"#{@id_prefix}-settings-link"}
-          class="focus:ring-primary/20 hover:bg-base-200 hover:text-ink rounded-field text-ink-muted text-small flex h-10 items-center gap-2 px-3 font-medium transition focus:ring-2 focus:outline-none"
+          class="focus:ring-primary/20 hover:bg-base-200 hover:text-ink rounded-field text-ink-muted text-ui flex h-10 items-center gap-2 px-3 font-medium transition focus:ring-2 focus:outline-none"
         >
           <.icon name="hero-cog-6-tooth" class="text-ink-subtle size-4" />
           <span>Settings</span>
@@ -362,7 +362,7 @@ defmodule NilaWeb.Layouts do
           href={~p"/users/log_out"}
           method="delete"
           id={"#{@id_prefix}-sign-out-link"}
-          class="focus:ring-error/20 hover:bg-error/10 hover:text-error rounded-field text-ink-muted text-small flex h-10 items-center gap-2 px-3 font-medium transition focus:ring-2 focus:outline-none"
+          class="focus:ring-error/20 hover:bg-error/10 hover:text-error rounded-field text-ink-muted text-ui flex h-10 items-center gap-2 px-3 font-medium transition focus:ring-2 focus:outline-none"
         >
           <.icon name="hero-arrow-right-start-on-rectangle" class="size-4" />
           <span>Sign out</span>

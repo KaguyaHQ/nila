@@ -76,7 +76,7 @@ defmodule NilaWeb.Components.Evidence do
         />
       </button>
 
-      <p class="text-ink-muted text-micro">Click to read it full screen.</p>
+      <p class="text-ink-muted text-meta">Click to read it full screen.</p>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".EvidenceFrame">
         export default {
@@ -121,7 +121,7 @@ defmodule NilaWeb.Components.Evidence do
       phx-key="escape"
     >
       <div class="flex shrink-0 items-center justify-between gap-4 px-4 py-3">
-        <span class="text-base-100 text-small min-w-0 truncate font-medium">{@title}</span>
+        <span class="text-base-100 text-ui min-w-0 truncate font-medium">{@title}</span>
         <div class="flex shrink-0 items-center gap-4">
           <.page_nav
             :if={@count > 1}
@@ -161,7 +161,7 @@ defmodule NilaWeb.Components.Evidence do
         />
       </div>
 
-      <p class="text-base-100/50 text-micro shrink-0 px-4 py-3 text-center">
+      <p class="text-base-100/50 text-meta shrink-0 px-4 py-3 text-center">
         Click the bill to zoom · click outside it or press Esc to close
       </p>
 
@@ -215,11 +215,11 @@ defmodule NilaWeb.Components.Evidence do
     <div id={@id} class="space-y-related">
       <span class="text-ink-subtle text-label font-medium uppercase">{@label}</span>
       <div class="border-base-300 rounded-box space-y-3 border border-dashed p-4">
-        <p class="text-base-content text-small flex items-start gap-2 font-medium">
+        <p class="text-base-content text-ui flex items-start gap-2 font-medium">
           <.icon name="hero-exclamation-triangle" class="text-warning mt-0.5 size-4 shrink-0" />
           <span>The pages of this bill couldn't be rendered.</span>
         </p>
-        <p class="text-ink-muted text-small">
+        <p class="text-ink-muted text-ui">
           {@source} was read, so the numbers are here — but there's no scanned copy to check
           them against. Open the original before you decide this one.
         </p>
@@ -254,7 +254,7 @@ defmodule NilaWeb.Components.Evidence do
       >
         <.icon name="hero-chevron-left-mini" class="size-4" />
       </button>
-      <span class={["text-fine tabular-nums", count_tone(@tone)]}>{@page + 1}/{@count}</span>
+      <span class={["text-meta tabular-nums", count_tone(@tone)]}>{@page + 1}/{@count}</span>
       <button
         type="button"
         id={"#{@id}-next"}

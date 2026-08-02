@@ -19,7 +19,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
     >
       <.icon name="hero-check-circle" class="text-success mx-auto size-10" />
       <p class="mt-related text-base-content text-body font-medium">No exceptions</p>
-      <p class="text-ink-muted text-small mt-1">
+      <p class="text-ink-muted text-ui mt-1">
         The engine matched every invoice confidently — nothing needs a human decision.
       </p>
     </div>
@@ -50,7 +50,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           <span class="flex min-w-0 flex-1 flex-col gap-1">
             <span class="flex items-baseline gap-2">
               <span class={[
-                "text-small min-w-0 flex-1 truncate font-medium",
+                "text-ui min-w-0 flex-1 truncate font-medium",
                 item.resolved && "text-ink-subtle",
                 not item.resolved && "text-base-content"
               ]}>
@@ -60,14 +60,14 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
                 :if={item.tax_paise > 0}
                 id={"queue-tax-#{item.id}"}
                 class={[
-                  "text-fine shrink-0 font-mono",
+                  "text-meta shrink-0 font-mono",
                   (item.resolved && "text-ink-subtle") || "text-ink-muted"
                 ]}
               >
                 {format_money(item.tax_paise, prefix: "₹")}
               </span>
             </span>
-            <span class="text-fine text-ink-subtle truncate">
+            <span class="text-ink-subtle text-meta truncate">
               {if item.resolved,
                 do: item.outcome,
                 else: "#{item.invoice_number || "no invoice no"} · #{short_type(item.type)}"}
@@ -95,7 +95,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
 
   def detail(%{selected: nil} = assigns) do
     ~H"""
-    <p class="text-ink-muted text-small">Select an exception from the queue.</p>
+    <p class="text-ink-muted text-ui">Select an exception from the queue.</p>
     """
   end
 
@@ -105,12 +105,12 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       <div>
         <h3 class="text-base-content text-body flex flex-wrap items-baseline gap-x-3 font-semibold">
           <span>{@selected.invoice_number || "—"} · {@selected.vendor}</span>
-          <span :if={@selected.tax_paise > 0} id="gst-exception-tax" class="text-small font-mono">
+          <span :if={@selected.tax_paise > 0} id="gst-exception-tax" class="text-ui font-mono">
             {format_money(@selected.tax_paise, prefix: "₹")} tax at stake
           </span>
         </h3>
-        <p class="text-ink-muted text-small mt-1">{@selected.reason}</p>
-        <p :if={asked_label(@selected.asked_at)} class="text-fine text-moon mt-1 font-medium">
+        <p class="text-ink-muted text-ui mt-1">{@selected.reason}</p>
+        <p :if={asked_label(@selected.asked_at)} class="text-meta text-moon mt-1 font-medium">
           {asked_label(@selected.asked_at)}
         </p>
       </div>
@@ -174,7 +174,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         id="gst-exception-outcome"
         class="border-base-300 pt-block flex flex-wrap items-center gap-3 border-t"
       >
-        <span class="text-small text-success flex items-center gap-1.5 font-medium">
+        <span class="text-success text-ui flex items-center gap-1.5 font-medium">
           <.icon name="hero-check-circle-mini" class="size-4" /> {@selected.outcome}
         </span>
         <.button
@@ -287,7 +287,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       class="border-base-300 divide-base-300 rounded-box divide-y border"
     >
       <div class="grid grid-cols-[6rem_1fr_1.5rem_1fr] items-center gap-2 px-3 py-2">
-        <span class="text-fine text-ink-subtle">Candidate {@index}</span>
+        <span class="text-ink-subtle text-meta">Candidate {@index}</span>
         <span class="text-ink-subtle text-label font-medium uppercase">Your books</span>
         <span></span>
         <span class="text-ink-subtle text-label font-medium uppercase">GSTR-2B</span>
@@ -296,14 +296,14 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         :for={{label, bv, gv, agree?} <- @diff}
         class="grid grid-cols-[6rem_1fr_1.5rem_1fr] items-center gap-2 px-3 py-2"
       >
-        <span class="text-fine text-ink-subtle uppercase">{label}</span>
-        <span class="text-base-content text-small font-mono">{fmt(bv)}</span>
+        <span class="text-ink-subtle text-meta uppercase">{label}</span>
+        <span class="text-base-content text-ui font-mono">{fmt(bv)}</span>
         <span class="flex justify-center">
           <.icon :if={agree?} name="hero-check-mini" class="text-success size-4" />
           <.icon :if={!agree?} name="hero-x-mark-mini" class="text-error size-4" />
         </span>
         <span class={[
-          "text-small font-mono",
+          "text-ui font-mono",
           agree? && "text-base-content",
           !agree? && "text-error"
         ]}>
@@ -341,8 +341,8 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         Reported in GSTR-2B
       </div>
       <div :for={{label, value} <- @fields} class="flex items-center gap-4 px-3 py-2">
-        <span class="text-fine text-ink-subtle w-24 uppercase">{label}</span>
-        <span class="text-base-content text-small font-mono">{fmt(value)}</span>
+        <span class="text-ink-subtle text-meta w-24 uppercase">{label}</span>
+        <span class="text-base-content text-ui font-mono">{fmt(value)}</span>
       </div>
     </div>
     """

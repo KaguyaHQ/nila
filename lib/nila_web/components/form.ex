@@ -83,10 +83,10 @@ defmodule NilaWeb.Components.Form do
         ]}
       >
         <.icon name="hero-arrow-up-tray" class="text-ink-faint size-6" />
-        <span class="text-ink-muted text-small">
+        <span class="text-ink-muted text-ui">
           <span class="text-primary font-semibold">{@prompt}</span> or drag them here
         </span>
-        <span :if={@hint} class="text-fine text-ink-muted">{@hint}</span>
+        <span :if={@hint} class="text-ink-muted text-meta">{@hint}</span>
       </label>
 
       <div :if={@upload.entries != []} class="mt-related space-y-related">
@@ -98,8 +98,8 @@ defmodule NilaWeb.Components.Form do
           <div class="flex items-center gap-3">
             <.icon name="hero-document" class="text-primary size-5 shrink-0" />
             <div class="min-w-0 flex-1">
-              <p class="text-base-content text-small truncate font-medium">{entry.client_name}</p>
-              <p class="text-fine text-ink-subtle">
+              <p class="text-base-content text-ui truncate font-medium">{entry.client_name}</p>
+              <p class="text-ink-subtle text-meta">
                 {humanize_bytes(entry.client_size)}
                 <span :if={entry.valid? and entry.progress < 100}> · {entry.progress}% uploaded</span>
               </p>
@@ -121,7 +121,7 @@ defmodule NilaWeb.Components.Form do
 
           <p
             :for={err <- upload_errors(@upload, entry)}
-            class="text-error text-small mt-1.5 flex items-center gap-2"
+            class="text-error text-ui mt-1.5 flex items-center gap-2"
           >
             <.icon name="hero-exclamation-circle" class="size-5" />
             {upload_error_message(err)}
@@ -131,7 +131,7 @@ defmodule NilaWeb.Components.Form do
 
       <p
         :for={err <- upload_errors(@upload)}
-        class="text-error text-small mt-1.5 flex items-center gap-2"
+        class="text-error text-ui mt-1.5 flex items-center gap-2"
       >
         <.icon name="hero-exclamation-circle" class="size-5" />
         {upload_error_message(err)}

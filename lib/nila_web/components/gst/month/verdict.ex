@@ -657,7 +657,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
         <div class="space-y-related min-w-0">
           <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h1 class="font-display text-base-content text-h4 font-normal">{@client.name}</h1>
-            <span class="text-ink-subtle text-small font-medium">
+            <span class="text-ink-subtle text-ui font-medium">
               {Formatters.period_label(@period)}
             </span>
           </div>

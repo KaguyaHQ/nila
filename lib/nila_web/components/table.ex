@@ -76,7 +76,7 @@ defmodule NilaWeb.Components.Table do
       <div :if={@is_empty?} class="text-body text-ink-muted px-4 py-12 text-center">
         {render_slot(@empty)}
       </div>
-      <table :if={!@is_empty?} class={["text-table w-full text-left", @min_width]}>
+      <table :if={!@is_empty?} class={["text-ui w-full text-left", @min_width]}>
         <thead class={[
           "bg-base-200 text-ink-subtle text-label uppercase",
           @sticky_header && ["xl:sticky xl:z-10", @sticky_header]

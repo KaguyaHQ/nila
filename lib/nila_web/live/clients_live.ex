@@ -101,7 +101,7 @@ defmodule NilaWeb.ClientsLive do
             <.link
               navigate={~p"/clients/#{client.id}/edit"}
               id={"client-edit-#{client.id}"}
-              class="hover:text-ink text-fine text-ink-subtle"
+              class="hover:text-ink text-ink-subtle text-meta"
               onclick="event.stopPropagation()"
             >
               Edit

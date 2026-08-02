@@ -27,7 +27,7 @@ defmodule NilaWeb.Components.Fold do
   attr :open, :boolean, default: false
   attr :on_toggle, :string, default: "toggle-fold"
   attr :class, :any, default: nil
-  attr :summary_class, :any, default: "text-ink-muted text-small"
+  attr :summary_class, :any, default: "text-ink-muted text-ui"
   attr :rest, :global
 
   slot :summary, required: true

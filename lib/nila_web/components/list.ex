@@ -46,7 +46,7 @@ defmodule NilaWeb.Components.List do
     <button
       type={@type}
       class={[
-        "rounded-field text-small w-full border border-l-4 px-3 py-2 text-left transition-all",
+        "rounded-field text-ui w-full border border-l-4 px-3 py-2 text-left transition-all",
         @active &&
           "bg-primary/10 border-l-primary border-primary/30 text-primary",
         !@active &&
@@ -56,7 +56,7 @@ defmodule NilaWeb.Components.List do
       {@rest}
     >
       <span class="block truncate font-medium">{render_slot(@title)}</span>
-      <span :if={@subtitle != []} class="text-fine mt-0.5 block truncate opacity-70">
+      <span :if={@subtitle != []} class="text-meta mt-0.5 block truncate opacity-70">
         {render_slot(@subtitle)}
       </span>
     </button>
@@ -81,7 +81,7 @@ defmodule NilaWeb.Components.List do
 
   ## Examples
 
-      <div class="rounded-box bg-primary px-3 py-1.5 text-small text-primary-content">
+      <div class="rounded-box bg-primary px-3 py-1.5 text-ui text-primary-content">
         <.preserve_newlines text={@message} />
       </div>
   """

@@ -106,7 +106,7 @@ defmodule NilaWeb.ClientEditLive do
               <.link
                 navigate={~p"/clients"}
                 id="client-cancel"
-                class="text-ink-muted text-small font-semibold"
+                class="text-ink-muted text-ui font-semibold"
               >
                 Cancel
               </.link>
