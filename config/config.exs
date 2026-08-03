@@ -15,6 +15,7 @@ config :nila,
   gmail_adapter: Nila.Integrations.Gmail,
   microsoft_adapter: Nila.Integrations.Microsoft,
   whatsapp_adapter: Nila.Integrations.WhatsApp,
+  whatsapp_signup_adapter: Nila.Integrations.WhatsAppSignup,
   whatsapp_chase_template: nil,
   whatsapp_completeness_template: nil,
   whatsapp_completeness_secret: nil
@@ -70,9 +71,17 @@ config :nila, NilaWeb.Webhooks.WhatsAppController,
   verify_token: System.get_env("WHATSAPP_VERIFY_TOKEN") || "dev-whatsapp-verify-token"
 
 config :nila, Nila.Integrations.WhatsApp,
-  graph_url: "https://graph.facebook.com/v20.0",
+  graph_url: "https://graph.facebook.com/v26.0",
   receive_timeout: 30_000,
   max_media_bytes: 25_000_000
+
+config :nila, Nila.Integrations.WhatsAppSignup,
+  app_id: nil,
+  app_secret: nil,
+  config_id: nil,
+  allowed_business_id: nil,
+  graph_url: "https://graph.facebook.com/v26.0",
+  receive_timeout: 30_000
 
 config :nila, Oban,
   repo: Nila.Repo,

@@ -28,6 +28,7 @@ import {SubmitOnEnter} from "./hooks/submit_on_enter"
 import {CommandPalette} from "./hooks/command_palette"
 import {QuoteLineGrid} from "./hooks/quote_line_grid"
 import {QuoteDraftGuard} from "./hooks/quote_draft_guard"
+import {WhatsAppEmbeddedSignup} from "./hooks/whatsapp_embedded_signup"
 
 const ElapsedTimer = {
   mounted() {
@@ -90,7 +91,16 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ElapsedTimer, RailCollapse, SubmitOnEnter, CommandPalette, QuoteLineGrid, QuoteDraftGuard},
+  hooks: {
+    ...colocatedHooks,
+    ElapsedTimer,
+    RailCollapse,
+    SubmitOnEnter,
+    CommandPalette,
+    QuoteLineGrid,
+    QuoteDraftGuard,
+    WhatsAppEmbeddedSignup,
+  },
 })
 
 // Server-pushed file downloads (e.g. marking a quote sent hands back its PDF).

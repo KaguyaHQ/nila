@@ -273,7 +273,7 @@ defmodule Nila.Integrations.WhatsApp do
 
   defp graph_url do
     Application.get_env(:nila, __MODULE__, [])
-    |> Keyword.get(:graph_url, "https://graph.facebook.com/v20.0")
+    |> Keyword.get(:graph_url, "https://graph.facebook.com/v26.0")
     |> String.trim_trailing("/")
   end
 

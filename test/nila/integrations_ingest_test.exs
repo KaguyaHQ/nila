@@ -68,7 +68,9 @@ defmodule Nila.IntegrationsIngestTest do
     assert is_nil(unknown.client_id)
     assert unknown.sender == "919999999999"
     assert unknown.source == "whatsapp"
-    assert Integrations.get_connection!(connection.id).last_status == "connected"
+    refreshed_connection = Integrations.get_connection!(connection.id)
+    assert refreshed_connection.last_status == "connected"
+    assert refreshed_connection.last_synced_at
   end
 
   test "WhatsApp button replies record period completeness and text remains evidence", %{

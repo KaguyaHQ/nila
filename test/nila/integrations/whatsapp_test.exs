@@ -93,7 +93,7 @@ defmodule Nila.Integrations.WhatsAppTest do
 
   test "fetches media through the configured Req adapter" do
     Req.Test.expect(WhatsApp, fn conn ->
-      assert conn.request_path == "/v20.0/media-1"
+      assert conn.request_path == "/v26.0/media-1"
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer token"]
       Req.Test.json(conn, %{"url" => "https://lookaside.example/media-1"})
     end)
@@ -137,7 +137,7 @@ defmodule Nila.Integrations.WhatsAppTest do
     }
 
     Req.Test.expect(WhatsApp, fn conn ->
-      assert conn.request_path == "/v20.0/phone-number-123/messages"
+      assert conn.request_path == "/v26.0/phone-number-123/messages"
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       payload = Jason.decode!(body)
 

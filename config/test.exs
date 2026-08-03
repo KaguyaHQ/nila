@@ -26,6 +26,7 @@ config :nila, Nila.Mailer, adapter: Swoosh.Adapters.Test
 config :nila, Oban, testing: :manual, queues: false, plugins: false
 
 config :nila,
+  whatsapp_signup_adapter: Nila.Integrations.WhatsAppSignupStub,
   whatsapp_chase_template: "nila_document_chase",
   whatsapp_completeness_template: "nila_sales_completeness",
   whatsapp_completeness_secret: "test-whatsapp-completeness-secret-32-bytes",
@@ -33,9 +34,17 @@ config :nila,
   sales_extractor: Nila.Gst.Extraction.Sales.Stub
 
 config :nila, Nila.Integrations.WhatsApp,
-  graph_url: "https://graph.facebook.com/v20.0/",
+  graph_url: "https://graph.facebook.com/v26.0/",
   max_media_bytes: 16,
   req_options: [plug: {Req.Test, Nila.Integrations.WhatsApp}]
+
+config :nila, Nila.Integrations.WhatsAppSignup,
+  app_id: "123456789",
+  app_secret: "test-whatsapp-app-secret",
+  config_id: "987654321",
+  allowed_business_id: "111111111",
+  graph_url: "https://graph.facebook.com/v26.0/",
+  req_options: [plug: {Req.Test, Nila.Integrations.WhatsAppSignup}]
 
 config :nila, Nila.Integrations.Gmail, req_options: [plug: {Req.Test, Nila.Integrations.Gmail}]
 

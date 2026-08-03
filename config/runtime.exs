@@ -30,7 +30,9 @@ end
 
 config :nila, NilaWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
-config :phoenix, :filter_parameters, ["password", "api_key", "authorization", "bearer"]
+config :phoenix,
+       :filter_parameters,
+       ~w(password api_key authorization authorization_code access_token client_secret bearer pin)
 
 # OpenAI-compatible assistant. Provider-agnostic env names so swapping providers
 # (StepFun, OpenAI, Groq, OpenRouter, …) is a secret change, not a code change.
@@ -132,6 +134,7 @@ end
 # secrets are required together. Development remains opt-in.
 case config_env() do
   :prod ->
+    app_secret = env!("WHATSAPP_APP_SECRET", :string!)
     completeness_secret = env!("WHATSAPP_COMPLETENESS_SECRET", :string!)
 
     if byte_size(completeness_secret) < 32 do
@@ -144,10 +147,18 @@ case config_env() do
       whatsapp_completeness_secret: completeness_secret
 
     config :nila, NilaWeb.Webhooks.WhatsAppController,
-      app_secret: env!("WHATSAPP_APP_SECRET", :string!),
+      app_secret: app_secret,
       verify_token: env!("WHATSAPP_VERIFY_TOKEN", :string!)
 
   :dev ->
+    if app_secret = env!("WHATSAPP_APP_SECRET", :string, nil) do
+      config :nila, NilaWeb.Webhooks.WhatsAppController, app_secret: app_secret
+    end
+
+    if verify_token = env!("WHATSAPP_VERIFY_TOKEN", :string, nil) do
+      config :nila, NilaWeb.Webhooks.WhatsAppController, verify_token: verify_token
+    end
+
     if template = env!("WHATSAPP_CHASE_TEMPLATE", :string, nil) do
       config :nila, whatsapp_chase_template: template
     end
@@ -164,8 +175,38 @@ case config_env() do
     :ok
 end
 
+if config_env() in [:prod, :dev] do
+  signup_config =
+    [
+      app_id: env!("WHATSAPP_APP_ID", :string, nil),
+      app_secret: env!("WHATSAPP_APP_SECRET", :string, nil),
+      config_id: env!("WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID", :string, nil),
+      allowed_business_id: env!("WHATSAPP_EMBEDDED_SIGNUP_ALLOWED_BUSINESS_ID", :string, nil)
+    ]
+
+  signup_requested =
+    signup_config
+    |> Keyword.take([:app_id, :config_id, :allowed_business_id])
+    |> Enum.any?(fn {_key, value} -> is_binary(value) and value != "" end)
+
+  if signup_requested do
+    case Enum.find(signup_config, fn {_key, value} -> value in [nil, ""] end) do
+      nil -> config :nila, Nila.Integrations.WhatsAppSignup, signup_config
+      {key, _value} -> raise "WhatsApp Embedded Signup requires #{key}"
+    end
+  end
+end
+
 if graph_url = env!("WHATSAPP_GRAPH_URL", :string, nil) do
+  graph_uri = URI.parse(graph_url)
+
+  unless graph_uri.scheme == "https" and is_binary(graph_uri.host) and
+           is_binary(graph_uri.path) and graph_uri.path =~ ~r|^/v\d+\.\d+/?$| do
+    raise "WHATSAPP_GRAPH_URL must be an HTTPS Graph base URL ending in /vN.N"
+  end
+
   config :nila, Nila.Integrations.WhatsApp, graph_url: graph_url
+  config :nila, Nila.Integrations.WhatsAppSignup, graph_url: graph_url
 end
 
 # Transactional email (invites, etc.) via Resend, using Swoosh's built-in

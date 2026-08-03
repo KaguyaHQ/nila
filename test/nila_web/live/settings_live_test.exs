@@ -70,10 +70,103 @@ defmodule NilaWeb.SettingsLiveTest do
       assert firm.city == "Chennai"
     end
 
-    test "renders the connectors stub", %{conn: conn} do
+    test "renders Meta Embedded Signup on the connectors screen", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings/connectors")
 
-      assert has_element?(view, "#settings-connectors")
+      assert has_element?(view, "#settings-connectors[phx-hook='WhatsAppEmbeddedSignup']")
+      assert has_element?(view, "#settings-connect-whatsapp[data-whatsapp-launch]")
+    end
+
+    test "connects WhatsApp once with a signed, one-use transaction", %{conn: conn, org: org} do
+      {:ok, view, _html} = live(conn, ~p"/settings/connectors")
+      transaction = whatsapp_transaction(view)
+
+      payload = %{
+        "authorization_code" => "valid-code",
+        "transaction" => transaction,
+        "session" => %{
+          "business_id" => "111111111",
+          "waba_id" => "222222222",
+          "phone_number_id" => "333333333"
+        }
+      }
+
+      render_hook(view, "whatsapp_signup_complete", payload)
+      assert_reply(view, %{ok: true})
+
+      assert [connection] = Integrations.list_connections(org.id)
+      assert connection.provider == "whatsapp"
+      assert connection.external_account_id == "333333333"
+      assert connection.settings["waba_id"] == "222222222"
+
+      render_hook(view, "whatsapp_signup_complete", payload)
+      assert_reply(view, %{ok: false})
+      assert [_connection] = Integrations.list_connections(org.id)
+    end
+
+    test "rejects a forged WhatsApp signup transaction", %{conn: conn, org: org} do
+      {:ok, view, _html} = live(conn, ~p"/settings/connectors")
+      original_transaction = whatsapp_transaction(view)
+
+      render_hook(view, "whatsapp_signup_complete", %{
+        "authorization_code" => "valid-code",
+        "transaction" => "forged",
+        "session" => %{
+          "business_id" => "111111111",
+          "waba_id" => "222222222",
+          "phone_number_id" => "333333333"
+        }
+      })
+
+      assert_reply(view, %{ok: false})
+      refute whatsapp_transaction(view) == original_transaction
+      assert Integrations.list_connections(org.id) == []
+    end
+
+    test "WhatsApp disconnect requires fresh Meta signup and hides mailbox sync", %{
+      conn: conn,
+      org: org
+    } do
+      {:ok, connection} =
+        Integrations.complete_whatsapp_signup(org.id, "valid-code", %{
+          "business_id" => "111111111",
+          "waba_id" => "222222222",
+          "phone_number_id" => "333333333"
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/settings/connectors")
+
+      refute has_element?(view, "#settings-sync-connection-#{connection.id}")
+      assert has_element?(view, "#settings-verify-connection-#{connection.id}")
+
+      view |> element("#settings-verify-connection-#{connection.id}") |> render_click()
+      assert Repo.get!(Integrations.Connection, connection.id).last_status == "connected"
+
+      view |> element("#settings-disconnect-connection-#{connection.id}") |> render_click()
+      disconnected = Repo.get!(Integrations.Connection, connection.id)
+      assert disconnected.status == "disconnected"
+      assert disconnected.credentials == %{}
+
+      assert has_element?(
+               view,
+               "#settings-reconnect-connection-#{connection.id}[data-whatsapp-launch]"
+             )
+
+      render_hook(view, "whatsapp_signup_complete", %{
+        "authorization_code" => "valid-code",
+        "connection_id" => Integer.to_string(connection.id),
+        "transaction" => whatsapp_transaction(view),
+        "session" => %{
+          "business_id" => "111111111",
+          "waba_id" => "222222222",
+          "phone_number_id" => "444444444"
+        }
+      })
+
+      assert_reply(view, %{ok: false})
+      assert [same_connection] = Integrations.list_connections(org.id)
+      assert same_connection.id == connection.id
+      assert same_connection.status == "disconnected"
     end
 
     test "manages connector labels, entities, disconnect, reconnect, and sync", %{
@@ -116,6 +209,14 @@ defmodule NilaWeb.SettingsLiveTest do
       view |> element("#settings-reconnect-connection-#{connection.id}") |> render_click()
       assert Repo.get!(Integrations.Connection, connection.id).status == "active"
     end
+  end
+
+  defp whatsapp_transaction(view) do
+    [transaction] =
+      ~r/data-transaction="([^"]+)"/
+      |> Regex.run(render(view), capture: :all_but_first)
+
+    transaction
   end
 
   test "redirects unauthenticated settings visits to login", %{conn: conn} do

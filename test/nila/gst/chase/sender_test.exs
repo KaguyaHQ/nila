@@ -27,7 +27,7 @@ defmodule Nila.Gst.Chase.SenderTest do
       })
 
     Req.Test.expect(Nila.Integrations.WhatsApp, fn conn ->
-      assert conn.request_path == "/v20.0/#{connection.external_account_id}/messages"
+      assert conn.request_path == "/v26.0/#{connection.external_account_id}/messages"
       {:ok, bytes, conn} = Plug.Conn.read_body(conn)
       payload = Jason.decode!(bytes)
 

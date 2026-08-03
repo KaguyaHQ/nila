@@ -41,6 +41,7 @@ defmodule Nila.Integrations do
     with true <- is_integer(org_id) and is_binary(phone_number_id) and is_binary(access_token),
          {:ok, _org} <- Repo.fetch(Org, org_id),
          :ok <- whatsapp_account_available(org_id, phone_number_id) do
+      existing = whatsapp_connection(org_id, phone_number_id)
       now = DateTime.utc_now()
 
       upsert_connection(%{
@@ -51,16 +52,52 @@ defmodule Nila.Integrations do
         last_status_at: now,
         last_error: nil,
         disconnected_at: nil,
-        label: label || "WhatsApp #{phone_number_id}",
+        label: label || existing_label(existing) || "WhatsApp #{phone_number_id}",
         external_account_id: phone_number_id,
-        credentials: %{"access_token" => access_token},
-        settings: %{}
+        credentials: whatsapp_credentials(existing, attrs, access_token),
+        settings: whatsapp_settings(existing, attrs)
       })
     else
       false -> {:error, :invalid_whatsapp_connection}
       error -> error
     end
   end
+
+  def complete_whatsapp_signup(org_id, authorization_code, session)
+      when is_integer(org_id) and is_binary(authorization_code) and is_map(session) do
+    phone_number_id = attr(session, :phone_number_id)
+
+    with {:ok, _org} <- Repo.fetch(Org, org_id),
+         true <- is_binary(phone_number_id),
+         :ok <- whatsapp_account_available(org_id, phone_number_id),
+         {:ok, signup} <- whatsapp_signup_adapter().complete_signup(authorization_code, session) do
+      signup
+      |> Map.put(:org_id, org_id)
+      |> Map.put_new(:label, signup.display_phone_number || signup.verified_name)
+      |> provision_whatsapp()
+    else
+      false -> {:error, :invalid_whatsapp_connection}
+      error -> error
+    end
+  end
+
+  def verify_whatsapp_connection(%Connection{provider: "whatsapp"} = connection) do
+    with {:ok, metadata} <- whatsapp_signup_adapter().verify_connection(connection) do
+      now = DateTime.utc_now()
+
+      connection
+      |> Connection.changeset(%{
+        settings: Map.merge(connection.settings || %{}, metadata),
+        status: "active",
+        last_status: "connected",
+        last_status_at: now,
+        last_error: nil
+      })
+      |> Repo.update()
+    end
+  end
+
+  def verify_whatsapp_connection(%Connection{}), do: {:error, :not_whatsapp_connection}
 
   def first_active_connection(org_id, provider) when is_binary(provider),
     do: first_active_connection(org_id, [provider])
@@ -209,6 +246,20 @@ defmodule Nila.Integrations do
     |> Repo.update()
   end
 
+  def disconnect(%Connection{provider: "whatsapp"} = connection) do
+    now = DateTime.utc_now()
+
+    connection
+    |> Connection.changeset(%{
+      credentials: %{},
+      status: "disconnected",
+      disconnected_at: now,
+      last_status: "revoked",
+      last_status_at: now
+    })
+    |> Repo.update()
+  end
+
   def disconnect(%Connection{} = connection) do
     now = DateTime.utc_now()
 
@@ -221,6 +272,8 @@ defmodule Nila.Integrations do
     |> Repo.update()
   end
 
+  def reconnect(%Connection{provider: "whatsapp"}), do: {:error, :reauthorization_required}
+
   def reconnect(%Connection{} = connection) do
     now = DateTime.utc_now()
 
@@ -232,6 +285,12 @@ defmodule Nila.Integrations do
       last_status_at: now,
       last_error: nil
     })
+    |> Repo.update()
+  end
+
+  def mark_received(%Connection{} = connection, received_at \\ DateTime.utc_now()) do
+    connection
+    |> Connection.changeset(%{last_synced_at: DateTime.truncate(received_at, :second)})
     |> Repo.update()
   end
 
@@ -267,6 +326,58 @@ defmodule Nila.Integrations do
 
   def token_fresh?(_credentials), do: false
 
+  defp whatsapp_connection(org_id, phone_number_id) do
+    Repo.get_by(Connection,
+      org_id: org_id,
+      provider: "whatsapp",
+      external_account_id: phone_number_id
+    )
+  end
+
+  defp existing_label(nil), do: nil
+  defp existing_label(connection), do: connection.label
+
+  defp whatsapp_credentials(existing, attrs, access_token) do
+    credentials = if existing, do: existing.credentials || %{}, else: %{}
+
+    credentials
+    |> Map.put("access_token", access_token)
+    |> put_or_delete("token_type", attr(attrs, :token_type))
+    |> put_or_delete("expires_at", attr(attrs, :expires_at))
+    |> put_if_present("two_step_pin", attr(attrs, :two_step_pin))
+  end
+
+  defp whatsapp_settings(existing, attrs) do
+    settings = if existing, do: existing.settings || %{}, else: %{}
+
+    Enum.reduce(
+      [
+        business_id: "business_id",
+        waba_id: "waba_id",
+        waba_name: "waba_name",
+        display_phone_number: "display_phone_number",
+        verified_name: "verified_name",
+        phone_status: "phone_status",
+        code_verification_status: "code_verification_status",
+        quality_rating: "quality_rating",
+        account_review_status: "account_review_status",
+        business_verification_status: "business_verification_status",
+        webhook_subscribed: "webhook_subscribed",
+        registered: "registered"
+      ],
+      settings,
+      fn {attr_key, setting_key}, acc ->
+        put_if_present(acc, setting_key, attr(attrs, attr_key))
+      end
+    )
+  end
+
+  defp put_or_delete(map, key, value) when value in [nil, ""], do: Map.delete(map, key)
+  defp put_or_delete(map, key, value), do: Map.put(map, key, value)
+
+  defp put_if_present(map, _key, nil), do: map
+  defp put_if_present(map, key, value), do: Map.put(map, key, value)
+
   defp whatsapp_account_available(org_id, phone_number_id) do
     connection =
       Repo.one(
@@ -284,7 +395,12 @@ defmodule Nila.Integrations do
     end
   end
 
-  defp attr(attrs, key), do: Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
+  defp attr(attrs, key) do
+    case Map.fetch(attrs, key) do
+      {:ok, value} -> value
+      :error -> Map.get(attrs, Atom.to_string(key))
+    end
+  end
 
   defp normalize_required(value) when is_binary(value) do
     case String.trim(value) do
@@ -296,6 +412,10 @@ defmodule Nila.Integrations do
   defp normalize_required(_value), do: nil
 
   defp normalize_optional(value), do: normalize_required(value)
+
+  defp whatsapp_signup_adapter do
+    Application.get_env(:nila, :whatsapp_signup_adapter, Nila.Integrations.WhatsAppSignup)
+  end
 
   defp error_message(error) when is_binary(error), do: error
   defp error_message(%{message: message}) when is_binary(message), do: message

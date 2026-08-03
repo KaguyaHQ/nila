@@ -16,6 +16,7 @@ defmodule Nila.Integrations.WhatsAppEventWorker do
 
     case handle_event(event, connection) do
       :ok ->
+        _ = Integrations.mark_received(connection)
         mark_connected_after_success(event, connection)
         :ok
 

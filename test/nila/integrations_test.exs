@@ -95,6 +95,57 @@ defmodule Nila.IntegrationsTest do
     assert Repo.aggregate(Nila.Integrations.Connection, :count) == 1
   end
 
+  test "Embedded Signup stores verified WhatsApp metadata and supports clean reauthorization", %{
+    org: org
+  } do
+    session = %{
+      "business_id" => "111111111",
+      "waba_id" => "222222222",
+      "phone_number_id" => "333333333"
+    }
+
+    assert {:ok, connection} =
+             Integrations.complete_whatsapp_signup(org.id, "valid-code", session)
+
+    assert connection.credentials == %{
+             "access_token" => "embedded-signup-token",
+             "expires_at" => "2027-01-01T00:00:00Z",
+             "token_type" => "bearer",
+             "two_step_pin" => "581063"
+           }
+
+    assert connection.settings["business_id"] == "111111111"
+    assert connection.settings["waba_id"] == "222222222"
+    assert connection.settings["webhook_subscribed"]
+    assert connection.settings["registered"]
+
+    %{rows: [[stored_credentials]]} =
+      Ecto.Adapters.SQL.query!(
+        Repo,
+        "select credentials from integration_connections where id = $1",
+        [connection.id]
+      )
+
+    refute stored_credentials =~ "embedded-signup-token"
+    refute stored_credentials =~ "581063"
+
+    assert {:ok, disconnected} = Integrations.disconnect(connection)
+    assert disconnected.status == "disconnected"
+    assert disconnected.last_status == "revoked"
+    assert disconnected.credentials == %{}
+    assert {:error, :reauthorization_required} = Integrations.reconnect(disconnected)
+
+    assert {:ok, reconnected} =
+             Integrations.complete_whatsapp_signup(org.id, "valid-code", session)
+
+    assert reconnected.id == connection.id
+    assert reconnected.status == "active"
+    assert reconnected.credentials["access_token"] == "embedded-signup-token"
+
+    assert {:ok, verified} = Integrations.verify_whatsapp_connection(reconnected)
+    assert verified.settings["readiness_checked_at"] == "2026-08-03T00:00:00Z"
+  end
+
   test "one WhatsApp phone-number ID cannot bind to two organisations", %{org: org} do
     other_org = Nila.AccountsFixtures.org_fixture()
 
