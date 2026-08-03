@@ -479,7 +479,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert_patch(view, ~p"/gst/#{client.id}/#{@period}?invoice=20%2F2025-26")
     assert has_element?(view, "#gstr1-evidence-modal")
-    assert has_element?(view, "#gstr1-checks button", "File the extracted lines")
+    assert has_element?(view, "#gstr1-checks button", "Accept the extracted lines")
 
     assert has_element?(
              view,
@@ -752,7 +752,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     # The failing grand-total check renders the confirmable issue inside the
     # checks block — one judge, one rendering.
-    assert has_element?(view, "#gstr1-checks button", "File the extracted lines")
+    assert has_element?(view, "#gstr1-checks button", "Accept the extracted lines")
 
     modal = view |> element("#gstr1-evidence-modal") |> render()
     # One compact header shortcut and one issue card; the issue is not repeated
@@ -926,7 +926,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
     view
-    |> element("button[phx-click='resolve-invoice-issue']", "File the extracted lines")
+    |> element("button[phx-click='resolve-invoice-issue']", "Accept the extracted lines")
     |> render_click()
 
     assert render(view) =~ "Resolved by #{user.name}"
@@ -937,6 +937,33 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     |> render_click()
 
     refute render(view) =~ "Resolved by #{user.name}"
+  end
+
+  test "the three tax figures are named apart, and the action states what it files", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    # The register reads the extraction and says so; the workings read the
+    # recomputation and say so. "Tax" alone named all three. Column labels live
+    # in the <thead>, which sits outside the <tbody> the id is on — so these
+    # assert against the enclosing sections.
+    assert has_element?(view, "#gstr1-register th", "Sum of extracted lines")
+    assert has_element?(view, "#gstr1-register-basis", "per-rate recomputation")
+    assert has_element?(view, "#gstr1-workings-basis", "what this return files")
+    assert has_element?(view, "#gstr1-workings-b2b th", "Proposed GSTR-1")
+    refute has_element?(view, "#gstr1-workings-b2b th", "GSTR-1 tax")
+
+    view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
+
+    # The modal's mismatch card compares two readings of the document, and
+    # neither of them is filed — so the card says what accepting actually puts
+    # in the return.
+    modal = view |> element("#gstr1-evidence-modal") |> render()
+    assert modal =~ "Files "
+    assert modal =~ "tax on "
+    assert modal =~ "taxable"
   end
 
   test "correcting a flagged field re-derives and clears the issue", %{

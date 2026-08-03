@@ -392,6 +392,14 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           reviewed_invoice={@reviewed_invoice}
           issues_by_invoice={@issues_by_invoice}
         />
+        <%!-- The register reads the extraction; the return files a
+              recomputation. Naming both "Tax" is what let a reviewer approve
+              one figure believing it was the other. --%>
+        <p id="gstr1-register-basis" class="text-ink-subtle text-meta">
+          These are the lines as extracted. The return files a per-rate recomputation of them,
+          shown under Return workings — the two differ by a few paise, because CGST and SGST are
+          aggregated and rounded once per rate bucket rather than per line.
+        </p>
       </section>
 
       <section :if={@derived} id="gstr1-return" class="space-y-block">
@@ -481,7 +489,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <%!-- This invoice's tax reads three ways on this page: what the bill
             printed, the sum of the extracted lines, and the per-rate figure that
             reaches the return. All three were labelled "Tax". --%>
-      <:col :let={invoice} label="Extracted tax" align="right">
+      <:col :let={invoice} label="Sum of extracted lines" align="right">
         {rupees(Gstr1.extracted_totals(invoice).tax)}
       </:col>
       <:col :let={invoice} label="Status">

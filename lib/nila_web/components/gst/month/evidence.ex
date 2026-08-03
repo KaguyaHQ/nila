@@ -5,6 +5,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
   alias Nila.Gst.Issues
   alias Nila.Gst.Sales.Gstr1
+  alias Nila.Gst.Sales.Values
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias NilaWeb.Components.Gst.Month.Helpers
 
@@ -25,6 +26,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :r1_signoff, :any, default: nil
   attr :flagged, :any, required: true
   attr :correcting, :any, default: nil
+  attr :derived, :any, default: nil
 
   def evidence_modals(assigns) do
     ~H"""
@@ -170,6 +172,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       r1_signoff={@r1_signoff}
       flagged={@flagged}
       correcting={@correcting}
+      derived={@derived}
     />
     """
   end
@@ -263,6 +266,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :r1_signoff, :any, default: nil
   attr :flagged, :any, required: true
   attr :correcting, :any, default: nil
+  attr :derived, :any, default: nil
 
   # The trust atom: the scan big enough to read on the left, the full extracted
   # read beside it, and every check an outcome the validation layer already
@@ -301,6 +305,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       |> assign(:initial_focus, focused_issue && issue_focus_target(focused_issue))
       |> assign(:review_state, review_state(open_issues))
       |> assign(:read_rows, read_rows(assigns.selected_invoice, checks))
+      |> assign(:values, Values.for_invoice(assigns.selected_invoice, assigns.derived))
 
     ~H"""
     <.modal
@@ -409,6 +414,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   id={issue_dom_id(@check_issues[check_key(check)])}
                   issue={@check_issues[check_key(check)]}
                   check={check}
+                  values={@values}
                   decisions={@decisions}
                   can_correct={
                     issue_correctable?(@check_issues[check_key(check)], @flagged, @selected_invoice)
@@ -431,6 +437,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 :for={issue <- @other_issues}
                 id={issue_dom_id(issue)}
                 issue={issue}
+                values={@values}
                 decisions={@decisions}
                 can_correct={issue_correctable?(issue, @flagged, @selected_invoice)}
                 r1_signoff={@r1_signoff}
@@ -609,6 +616,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :id, :string, required: true
   attr :issue, :map, required: true
   attr :check, :any, default: nil
+  attr :values, :any, default: nil
   attr :decisions, :map, required: true
   attr :can_correct, :boolean, default: false
   attr :r1_signoff, :any, default: nil
@@ -618,6 +626,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       assigns
       |> assign(:decision, assigns.decisions[SalesWorkings.issue_key(assigns.issue)])
       |> assign(:mismatch, mismatch_reading(assigns.check))
+      |> assign(:filed_effect, filed_effect(assigns.issue, assigns.values))
 
     ~H"""
     <div
@@ -657,6 +666,17 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           </dd>
         </div>
       </dl>
+
+      <%!-- Neither figure above is filed. The return recomputes per rate bucket,
+            so an action offering "use the line total" would name a number the
+            engine cannot put in the JSON. This says what the click does. --%>
+      <p
+        :if={@filed_effect}
+        id={"#{@id}-filed-effect"}
+        class="mt-related text-ink-subtle text-meta"
+      >
+        {@filed_effect}
+      </p>
 
       <%!-- Settled by Nila, not by anyone here: an `info` check has already been
             explained and neither `required?` nor `reviewable?` reads it, so a
@@ -885,12 +905,36 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   defp extracted_total_label("grand_total_mismatch"), do: "Sum of extracted lines"
 
   # The action says which figure reaches the filing, because that is the whole
-  # consequence of the click.
+  # consequence of the click. It cannot name the line total: `derive_invoice/2`
+  # recomputes tax per rate bucket, so the sum of the extracted lines is never
+  # what gets filed. "Accept" is honest about electing a basis rather than
+  # picking a number.
   defp resolution_action(%{"code" => code})
        when code in ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch),
-       do: "File the extracted lines"
+       do: "Accept the extracted lines"
 
   defp resolution_action(_issue), do: "Keep extracted value"
+
+  # What accepting actually files, in the figure the portal receives. Silent
+  # when the invoice is not in the return (excluded, or held out by a blocker)
+  # and when the recomputation lands on the extracted sum exactly — there is no
+  # second number to warn about.
+  defp filed_effect(%{"code" => code}, %{filed: filed} = values)
+       when code in ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch) and
+              not is_nil(filed) do
+    %{tax: tax_delta, taxable: taxable_delta} = values.extracted_vs_filed
+    files = "Files #{Helpers.rupees(filed.tax)} tax on #{Helpers.rupees(filed.taxable)} taxable"
+
+    if tax_delta == 0 and taxable_delta == 0 do
+      files <> "."
+    else
+      files <>
+        " — the return aggregates and rounds each rate bucket once, so it differs from the " <>
+        "line sum above by #{Helpers.rupees(abs(tax_delta))}."
+    end
+  end
+
+  defp filed_effect(_issue, _values), do: nil
 
   defp decision_maker(%{decided_by: %{name: name}}) when is_binary(name), do: name
   defp decision_maker(_decision), do: "a reviewer"

@@ -1169,6 +1169,7 @@ defmodule NilaWeb.Gst.MonthLive do
         r1_signoff={@r1_signoff}
         flagged={@flagged}
         correcting={@correcting}
+        derived={@derived_gstr1}
       />
     </Layouts.app>
     """

@@ -353,6 +353,42 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     assert length(derived_invoices) == 3
   end
 
+  test "a resolution's stated effect equals the actual change in what is filed" do
+    # The proposal engine will claim "this files X". That claim is only worth
+    # anything if it is measured against `derive/2` rather than predicted
+    # alongside it — a second implementation is a second answer.
+    alias Nila.Gst.Sales.Values
+
+    before = SalesWorkings.materialize(invoices(), [], @header)
+
+    resolutions = [
+      %{
+        "verb" => "correct_field",
+        "target" => "20/2025-26",
+        "payload" => %{
+          "field" => "line_items[0].taxable_value",
+          "from" => 55_552.0,
+          "to" => 60_000.0
+        }
+      }
+    ]
+
+    later = SalesWorkings.materialize(invoices(), resolutions, @header)
+    effect = Values.effect(before.derived, later.derived)
+
+    # The correction moved one line's taxable value by 4,448, so the return's
+    # taxable moves by exactly that and the tax by 18% of it, split two ways.
+    assert effect.change.taxable == 4448.0
+    assert effect.change.tax == 800.64
+    assert effect.change.cgst == 400.32
+    assert effect.change.sgst == 400.32
+
+    # And the effect is a reading of the two returns, not a third computation:
+    # after minus before, in the figures the portal receives.
+    assert effect.after.taxable - effect.before.taxable == effect.change.taxable
+    assert Values.filed_totals(later.derived).tax == effect.after.tax
+  end
+
   test "a correction to an unflagged field is a silent error, not applied" do
     resolutions = [
       %{
