@@ -2,7 +2,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
   use NilaWeb, :live_view
 
   alias Nila.Integrations
-  alias Nila.Integrations.{Connection, GmailSyncWorker, WhatsAppSignup}
+  alias Nila.Integrations.{Connection, WhatsAppSignup}
 
   @whatsapp_signup_salt "whatsapp_embedded_signup"
   @signup_max_age 300
@@ -126,20 +126,6 @@ defmodule NilaWeb.Settings.ConnectorsLive do
     else
       _error ->
         {:noreply, put_flash(socket, :error, "WhatsApp readiness check failed.")}
-    end
-  end
-
-  @impl true
-  def handle_event("sync_now", %{"id" => id}, socket) do
-    with {:ok, %{provider: "gmail"} = connection} <- fetch_current_org_connection(socket, id),
-         {:ok, _job} <- %{connection_id: connection.id} |> GmailSyncWorker.new() |> Oban.insert() do
-      {:noreply, put_flash(socket, :info, "Mailbox sync queued.")}
-    else
-      {:ok, _connection} ->
-        {:noreply, put_flash(socket, :error, "Manual sync is not available for this connector.")}
-
-      _error ->
-        {:noreply, put_flash(socket, :error, "Could not queue sync.")}
     end
   end
 
@@ -348,17 +334,6 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                       size="sm"
                     >
                       <.icon name="hero-check" class="size-4" /> Save
-                    </.button>
-                    <.button
-                      :if={connection.provider == "gmail"}
-                      type="button"
-                      id={"settings-sync-connection-#{connection.id}"}
-                      phx-click="sync_now"
-                      phx-value-id={connection.id}
-                      variant="soft"
-                      size="sm"
-                    >
-                      <.icon name="hero-arrow-path" class="size-4" /> Sync
                     </.button>
                     <.button
                       :if={connection.provider == "whatsapp" && connection.status == "active"}

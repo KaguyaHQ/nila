@@ -20,9 +20,6 @@ defmodule Nila.Integrations.GmailStub do
   def ensure_token(connection), do: {:ok, connection}
 
   @impl true
-  def sync(_connection), do: {:ok, Process.get(:gmail_attachments, [])}
-
-  @impl true
   def send_message(_connection, recipient, message) do
     message = Map.put(message, :to, recipient)
     send(self(), {:gmail_send_message, message})

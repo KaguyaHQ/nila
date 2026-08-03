@@ -1,7 +1,7 @@
 defmodule Nila.IntegrationsIngestTest do
-  # Sync on purpose: these tests swap the :gmail_adapter / :whatsapp_adapter
-  # application env, which is global. Running async would let one test's stub
-  # leak into another's.
+  # Sync on purpose: these tests swap the :whatsapp_adapter application env,
+  # which is global. Running async would let one test's stub leak into
+  # another's.
   use Nila.DataCase, async: false
   use Oban.Testing, repo: Nila.Repo
 
@@ -11,15 +11,13 @@ defmodule Nila.IntegrationsIngestTest do
   alias Nila.Gst.Chase
   alias Nila.Gst.Intake.{Arrivals, Confirmations, Messages}
   alias Nila.Integrations
-  alias Nila.Integrations.{GmailSyncWorker, WhatsAppIngestWorker, WhatsAppReply}
+  alias Nila.Integrations.{WhatsAppIngestWorker, WhatsAppReply}
 
   setup do
-    gmail_adapter = Application.get_env(:nila, :gmail_adapter)
     whatsapp_adapter = Application.get_env(:nila, :whatsapp_adapter)
     completeness_secret = Application.get_env(:nila, :whatsapp_completeness_secret)
 
     on_exit(fn ->
-      Application.put_env(:nila, :gmail_adapter, gmail_adapter)
       Application.put_env(:nila, :whatsapp_adapter, whatsapp_adapter)
       Application.put_env(:nila, :whatsapp_completeness_secret, completeness_secret)
     end)
@@ -177,55 +175,6 @@ defmodule Nila.IntegrationsIngestTest do
            )
 
     assert Integrations.get_connection!(connection.id).last_status == "error"
-  end
-
-  test "Gmail attachments from a client are attributed and stranger mail is held", %{org: org} do
-    Application.put_env(:nila, :gmail_adapter, Nila.Integrations.GmailStub)
-    connection = connection!(org, "gmail", "firm@example.com")
-
-    {:ok, client} =
-      Clients.create_client(%{
-        org_id: org.id,
-        name: "Ravi Traders",
-        type: "company",
-        email: "ravi@example.com"
-      })
-
-    Process.put(:gmail_attachments, [
-      %{
-        filename: "known.pdf",
-        bytes: "%PDF-1.4 known",
-        content_type: "application/pdf",
-        sender: "ravi@example.com"
-      },
-      %{
-        filename: "stranger.pdf",
-        bytes: "%PDF-1.4 stranger",
-        content_type: "application/pdf",
-        sender: "stranger@example.com"
-      },
-      %{
-        filename: "missing-sender.pdf",
-        bytes: "%PDF-1.4 missing sender",
-        content_type: "application/pdf",
-        sender: nil
-      }
-    ])
-
-    assert :ok = perform_job(GmailSyncWorker, %{"connection_id" => connection.id})
-
-    arrivals = Arrivals.pending_for_org(org.id)
-    assert length(arrivals) == 2
-
-    known = Enum.find(arrivals, &(&1.filename == "known.pdf"))
-    assert known.client_id == client.id
-    assert known.sender == "ravi@example.com"
-    assert known.source == "email"
-
-    stranger = Enum.find(arrivals, &(&1.filename == "stranger.pdf"))
-    assert is_nil(stranger.client_id)
-    assert stranger.sender == "stranger@example.com"
-    assert stranger.source == "email"
   end
 
   defp connection!(org, provider, external_account_id) do

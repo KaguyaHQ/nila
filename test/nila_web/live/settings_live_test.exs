@@ -196,13 +196,6 @@ defmodule NilaWeb.SettingsLiveTest do
 
       assert Repo.get!(Integrations.Connection, connection.id).label == "GRN tracking"
 
-      view |> element("#settings-sync-connection-#{connection.id}") |> render_click()
-
-      assert [%Oban.Job{worker: "Nila.Integrations.GmailSyncWorker"} = job] =
-               Repo.all(Oban.Job)
-
-      assert job.args["connection_id"] == connection.id
-
       view |> element("#settings-disconnect-connection-#{connection.id}") |> render_click()
       assert Repo.get!(Integrations.Connection, connection.id).status == "disconnected"
 

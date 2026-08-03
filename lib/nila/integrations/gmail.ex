@@ -3,7 +3,12 @@ defmodule Nila.Integrations.Gmail do
   @behaviour Nila.Integrations.MailAdapter
 
   @moduledoc """
-  Gmail adapter for attachment sync and outbound messages.
+  Gmail adapter for outbound mail from a firm's own mailbox.
+
+  Send-only on purpose. Replies come back by address — the chase sets a
+  per-client Reply-To that Nila receives — so nothing here reads a mailbox.
+  That keeps the app out of `gmail.readonly`, a restricted scope whose annual
+  third-party assessment would buy only what the routing already gives us.
   """
 
   alias Nila.Integrations
@@ -11,7 +16,7 @@ defmodule Nila.Integrations.Gmail do
   @accounts_url "https://accounts.google.com/o/oauth2/v2/auth"
   @token_url "https://oauth2.googleapis.com/token"
   @api_url "https://gmail.googleapis.com/gmail/v1"
-  @scope "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send"
+  @scope "https://www.googleapis.com/auth/gmail.send"
 
   @impl true
   def authorize_url(opts) do
@@ -77,17 +82,6 @@ defmodule Nila.Integrations.Gmail do
   end
 
   @impl true
-  def sync(connection) do
-    access_token = Map.fetch!(connection.credentials, "access_token")
-    query = gmail_query(connection)
-
-    with {:ok, message_ids} <- list_message_ids(access_token, query),
-         {:ok, attachments} <- fetch_messages(access_token, message_ids) do
-      normalize(%{"attachments" => attachments}, source: :gmail)
-    end
-  end
-
-  @impl true
   def send_message(connection, recipient, message) when is_binary(recipient),
     do: send_message(connection, Map.put(message, :to, recipient))
 
@@ -110,39 +104,6 @@ defmodule Nila.Integrations.Gmail do
         {:error, reason}
     end
   end
-
-  def fetch_thread_replies(connection, thread_refs) when is_list(thread_refs) do
-    access_token = Map.fetch!(connection.credentials, "access_token")
-
-    thread_refs
-    |> Task.async_stream(&fetch_thread(access_token, &1), timeout: :infinity)
-    |> Enum.reduce_while([], fn
-      {:ok, {:ok, replies}}, acc -> {:cont, replies ++ acc}
-      {:ok, {:error, reason}}, _acc -> {:halt, {:error, reason}}
-      {:exit, reason}, _acc -> {:halt, {:error, reason}}
-    end)
-    |> case do
-      {:error, reason} -> {:error, reason}
-      replies -> {:ok, Enum.reverse(replies)}
-    end
-  end
-
-  def normalize(%{"attachments" => attachments}, _opts) when is_list(attachments) do
-    normalized =
-      Enum.map(attachments, fn attachment ->
-        %{
-          filename: Map.fetch!(attachment, "filename"),
-          bytes: Map.fetch!(attachment, "bytes"),
-          content_type: Map.get(attachment, "content_type", "application/octet-stream"),
-          sender: Map.get(attachment, "sender"),
-          source_ref: Map.get(attachment, "source_ref")
-        }
-      end)
-
-    {:ok, normalized}
-  end
-
-  def normalize(_raw, _opts), do: {:error, :invalid_payload}
 
   defp request_token(form) do
     case Req.post(@token_url, [form: form] ++ req_options()) do
@@ -264,68 +225,6 @@ defmodule Nila.Integrations.Gmail do
   defp maybe_put_thread(body, ""), do: body
   defp maybe_put_thread(body, thread_id), do: Map.put(body, "threadId", thread_id)
 
-  defp fetch_thread(access_token, thread_ref) do
-    url = "#{@api_url}/users/me/threads/#{thread_ref}"
-
-    case Req.get(url, auth: {:bearer, access_token}, params: [format: "full"]) do
-      {:ok, %{status: status, body: %{"messages" => messages}}} when status in 200..299 ->
-        {:ok, Enum.map(messages, &normalize_reply(thread_ref, &1))}
-
-      {:ok, %{status: status, body: body}} ->
-        {:error, {:gmail_thread_error, status, body}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp normalize_reply(thread_ref, message) do
-    parts = collect_parts(message["payload"])
-
-    %{
-      thread_ref: thread_ref,
-      message_id: message["id"],
-      from: header(message, "From"),
-      text: text_from_parts(parts),
-      attachments: parts |> Enum.filter(&attachment_part?/1) |> Enum.map(& &1["filename"])
-    }
-  end
-
-  defp header(message, name) do
-    message
-    |> get_in(["payload", "headers"])
-    |> List.wrap()
-    |> Enum.find_value(fn
-      %{"name" => ^name, "value" => value} ->
-        value
-
-      %{"name" => header_name, "value" => value} ->
-        if String.downcase(header_name) == String.downcase(name), do: value
-
-      _header ->
-        nil
-    end)
-  end
-
-  defp text_from_parts(parts) do
-    parts
-    |> Enum.find_value(fn
-      %{"mimeType" => "text/plain", "body" => %{"data" => data}} -> decode_body(data)
-      _part -> nil
-    end)
-    |> case do
-      nil -> ""
-      text -> text
-    end
-  end
-
-  defp decode_body(data) do
-    case Base.url_decode64(data, padding: false) do
-      {:ok, text} -> text
-      :error -> ""
-    end
-  end
-
   defp put_expiry(%{"expires_in" => expires_in} = body) do
     expires_at =
       DateTime.utc_now()
@@ -336,122 +235,6 @@ defmodule Nila.Integrations.Gmail do
   end
 
   defp put_expiry(body), do: body
-
-  defp list_message_ids(access_token, query) do
-    url = "#{@api_url}/users/me/messages"
-
-    case Req.get(url, auth: {:bearer, access_token}, params: [q: query]) do
-      {:ok, %{status: status, body: %{"messages" => messages}}} when status in 200..299 ->
-        {:ok, Enum.map(messages, & &1["id"])}
-
-      {:ok, %{status: status, body: body}} when status in 200..299 ->
-        {:ok, Map.get(body, "messages", [])}
-
-      {:ok, %{status: status, body: body}} ->
-        {:error, {:gmail_list_error, status, body}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp fetch_messages(access_token, message_ids) do
-    attachments =
-      message_ids
-      |> Task.async_stream(&fetch_message_attachments(access_token, &1), timeout: :infinity)
-      |> Enum.reduce_while([], fn
-        {:ok, {:ok, items}}, acc -> {:cont, items ++ acc}
-        {:ok, {:error, reason}}, _acc -> {:halt, {:error, reason}}
-        {:exit, reason}, _acc -> {:halt, {:error, reason}}
-      end)
-
-    case attachments do
-      {:error, reason} -> {:error, reason}
-      items -> {:ok, Enum.reverse(items)}
-    end
-  end
-
-  defp fetch_message_attachments(access_token, message_id) do
-    url = "#{@api_url}/users/me/messages/#{message_id}"
-
-    with {:ok, %{status: status, body: body}} when status in 200..299 <-
-           Req.get(url, auth: {:bearer, access_token}, params: [format: "full"]) do
-      parts = collect_parts(body["payload"])
-
-      sender = body |> header("From") |> sender_email()
-
-      parts
-      |> Enum.filter(&attachment_part?/1)
-      |> Task.async_stream(&fetch_attachment(access_token, message_id, &1, sender),
-        timeout: :infinity
-      )
-      |> Enum.reduce_while({:ok, []}, fn
-        {:ok, {:ok, item}}, {:ok, acc} -> {:cont, {:ok, [item | acc]}}
-        {:ok, {:error, reason}}, _acc -> {:halt, {:error, reason}}
-        {:exit, reason}, _acc -> {:halt, {:error, reason}}
-      end)
-      |> case do
-        {:ok, items} -> {:ok, Enum.reverse(items)}
-        error -> error
-      end
-    else
-      {:ok, %{status: status, body: body}} -> {:error, {:gmail_message_error, status, body}}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp fetch_attachment(access_token, message_id, part, sender) do
-    attachment_id = get_in(part, ["body", "attachmentId"])
-    url = "#{@api_url}/users/me/messages/#{message_id}/attachments/#{attachment_id}"
-
-    with {:ok, %{status: status, body: %{"data" => data}}} when status in 200..299 <-
-           Req.get(url, auth: {:bearer, access_token}),
-         {:ok, bytes} <- Base.url_decode64(data, padding: false) do
-      {:ok,
-       %{
-         "filename" => part["filename"],
-         "bytes" => bytes,
-         "content_type" => part["mimeType"],
-         "sender" => sender,
-         "source_ref" => "gmail:#{message_id}:#{attachment_id}"
-       }}
-    else
-      {:ok, %{status: status, body: body}} -> {:error, {:gmail_attachment_error, status, body}}
-      :error -> {:error, :invalid_attachment_data}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp collect_parts(nil), do: []
-
-  defp collect_parts(%{"parts" => parts} = part),
-    do: [part | Enum.flat_map(parts, &collect_parts/1)]
-
-  defp collect_parts(part), do: [part]
-
-  defp attachment_part?(%{"filename" => filename, "body" => %{"attachmentId" => attachment_id}}) do
-    filename not in [nil, ""] and attachment_id not in [nil, ""]
-  end
-
-  defp attachment_part?(_part), do: false
-
-  defp sender_email(nil), do: nil
-
-  defp sender_email(value) do
-    case Regex.run(~r/<([^>]+)>/, value) do
-      [_, email] -> String.downcase(String.trim(email))
-      _ -> value |> String.trim() |> String.downcase()
-    end
-  end
-
-  defp gmail_query(connection) do
-    base_query = get_in(connection.settings || %{}, ["query"]) || "has:attachment"
-
-    case connection.last_synced_at do
-      nil -> base_query
-      synced_at -> "#{base_query} after:#{Date.to_iso8601(DateTime.to_date(synced_at))}"
-    end
-  end
 
   defp req_options,
     do: Application.get_env(:nila, __MODULE__, []) |> Keyword.get(:req_options, [])
