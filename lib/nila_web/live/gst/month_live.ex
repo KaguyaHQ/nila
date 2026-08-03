@@ -11,6 +11,7 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Chase.CompletenessSender
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps, Preconditions}
+  alias Nila.Gst.Issues
   alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Sales.{Account, Gstr1}
@@ -142,6 +143,7 @@ defmodule NilaWeb.Gst.MonthLive do
   defp blocked_document("export_supply_unsupported"), do: "an export or SEZ supply"
   defp blocked_document("outward_reverse_charge_unsupported"), do: "a reverse-charge supply"
   defp blocked_document("b2c_supply_unsupported"), do: "a bill with no buyer GSTIN"
+  defp blocked_document("cess_unsupported"), do: "a cess-bearing supply"
   defp blocked_document(code), do: code
 
   defp completeness_error(:open), do: "not confirmed"
@@ -310,7 +312,7 @@ defmodule NilaWeb.Gst.MonthLive do
             source_invoices: source,
             active_invoices: active,
             printed_active_invoices: signoff.snapshot["printed_invoices"] || active,
-            issues: signoff.snapshot["issues"],
+            issues: Issues.normalize_all(signoff.snapshot["issues"]),
             flagged: MapSet.new(),
             derived: signoff.snapshot["derived"]
           }
@@ -595,6 +597,18 @@ defmodule NilaWeb.Gst.MonthLive do
 
   def handle_event("close-chase-history", _params, socket),
     do: {:noreply, assign(socket, :show_chase_history, false)}
+
+  # The cess question is answered either way through this one verb: the reviewer
+  # looked, and that is the durable fact. Which answer he gave rides as payload,
+  # and "cess applies" is what uncovers the blocking capability gap.
+  def handle_event("confirm_issue", %{"target" => target, "answer" => answer}, socket)
+      when answer in ~w(no_cess cess_applies),
+      do:
+        record(socket, %{
+          "verb" => "confirm_issue",
+          "target" => target,
+          "payload" => %{"answer" => answer}
+        })
 
   def handle_event("confirm_issue", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "confirm_issue", "target" => target})

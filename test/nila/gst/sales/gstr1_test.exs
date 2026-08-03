@@ -786,7 +786,10 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       }
 
       refute Nila.Gst.Sales.Workings.reviewable?([confirmed])
-      assert Nila.Gst.Sales.Workings.reviewable?([%{"level" => nil, "status" => "resolved"}])
+
+      assert Nila.Gst.Sales.Workings.reviewable?([
+               %{"level" => "required", "status" => "resolved", "code" => "grand_total_mismatch"}
+             ])
     end
   end
 end

@@ -6,9 +6,13 @@ defmodule NilaWeb.Components.Gst.Month.Helpers do
   end
 
   # A blocking issue is not a louder warning — it is the one thing on the page a
-  # reviewer cannot answer, so it reads as an error and stays open.
+  # reviewer cannot answer, so it reads as an error and stays open. An advisory
+  # asserts nothing is wrong and never gates, so it must not wear the same badge
+  # as work that withholds the filing.
   def severity_variant("blocking"), do: "error"
   def severity_variant("error"), do: "error"
+  def severity_variant("advisory"), do: "neutral"
+  def severity_variant("info"), do: "neutral"
   def severity_variant(_), do: "warning"
 
   def rupees(value) when is_number(value),

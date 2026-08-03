@@ -1,6 +1,7 @@
 defmodule Nila.Gst.Sales.Account do
   @moduledoc "Pure source-to-draft control account for one effective GSTR-1 month."
 
+  alias Nila.Gst.Issues
   alias Nila.Gst.Sales.{Gstr1, Workings}
 
   @tax_heads ~w(igst cgst sgst)
@@ -15,6 +16,7 @@ defmodule Nila.Gst.Sales.Account do
     printed_totals = extracted_totals(printed_invoices)
     draft_totals = draft_totals(derived)
     required = Enum.filter(issues, &required?/1)
+    advisory = Enum.filter(issues, &advisory?/1)
 
     %{
       source: %{
@@ -40,14 +42,13 @@ defmodule Nila.Gst.Sales.Account do
       },
       differences: totals_difference(draft_totals, printed_totals),
       causes: issue_causes(issues, source_invoices),
-      cess:
-        if(Enum.any?(issues, &(&1["code"] == "cess_not_evaluated")),
-          do: :not_evaluated,
-          else: :checked_none
-        ),
+      cess: cess_state(issues),
       issues: %{
         required: required,
         required_count: length(required),
+        advisory: advisory,
+        advisory_count: length(advisory),
+        by_kind: Issues.by_kind(required),
         informational_count: Enum.count(issues, &informational?/1)
       }
     }
@@ -124,11 +125,27 @@ defmodule Nila.Gst.Sales.Account do
   defp tax_field?(field),
     do: Enum.any?(~w(igst cgst sgst total_tax grand_total), &String.contains?(field, &1))
 
-  defp required?(issue),
-    do: issue["status"] == "open" and issue["level"] != "info"
+  # Three states, because the reviewer's answer is part of the account: nobody
+  # has checked, someone checked and found none, or someone found cess this
+  # return cannot carry.
+  defp cess_state(issues) do
+    open = Enum.filter(issues, &(&1["status"] == "open"))
+
+    cond do
+      Enum.any?(open, &(&1["code"] == "cess_unsupported")) -> :unsupported
+      Enum.any?(open, &(&1["code"] == "cess_not_evaluated")) -> :not_evaluated
+      true -> :checked_none
+    end
+  end
+
+  # What withholds approval, and only that: `blocking` and `required`. An
+  # advisory is visible context, so it is counted separately and never gates.
+  defp required?(issue), do: issue["status"] == "open" and Issues.gating?(issue)
+
+  defp advisory?(issue), do: issue["status"] == "open" and Issues.advisory?(issue)
 
   defp informational?(issue),
-    do: issue["status"] == "open" and issue["level"] == "info"
+    do: issue["status"] == "open" and Issues.level(issue) == "info"
 
   defp unique_invoice_numbers(invoices) do
     invoices

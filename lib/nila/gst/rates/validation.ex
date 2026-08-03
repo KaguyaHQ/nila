@@ -1,6 +1,7 @@
 defmodule Nila.Gst.Rates.Validation do
   @moduledoc "Matches HSN goods to effective-dated candidates; SAC and description-only Any Chapter rules remain unchecked."
 
+  alias Nila.Gst.Issues
   alias Nila.Gst.RateHistory
 
   @rate_tolerance 0.05
@@ -26,7 +27,7 @@ defmodule Nila.Gst.Rates.Validation do
                 "invoice" => invoice["invoice_number"],
                 "source_id" => invoice["id"],
                 "code" => issue_code(status),
-                "level" => "warning",
+                "level" => Issues.level_for(issue_code(status)),
                 "message" => message(line, index, validation),
                 "hsn_code" => line["hsn_sac"],
                 "hsn_rates" => validation["candidate_rates"],

@@ -34,6 +34,7 @@ defmodule Nila.Gst.WorkQueue do
   alias Nila.Gst.Chase
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.{Confirmations, Dumps}
+  alias Nila.Gst.Issues
   alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
@@ -311,7 +312,7 @@ defmodule Nila.Gst.WorkQueue do
 
   defp sales_open_issues(sales) do
     SalesResolutions.workings(sales).issues
-    |> Enum.count(&(&1["status"] == "open" and &1["level"] != "info"))
+    |> Enum.count(&(&1["status"] == "open" and Issues.gating?(&1)))
   end
 
   # The right ask for where the month stands: dumps still missing -> the

@@ -82,6 +82,37 @@ defmodule Nila.Gst.Sales.AccountTest do
     assert account.issues.informational_count == 1
   end
 
+  test "advisories are counted apart from what gates approval, and named by kind" do
+    issues = [
+      %{"code" => "hsn_new_code", "status" => "open", "level" => "advisory"},
+      %{"code" => "hsn_new_code", "status" => "open", "level" => "advisory"},
+      %{"code" => "grand_total_mismatch", "status" => "open", "level" => "required"},
+      %{"code" => "cess_not_evaluated", "status" => "open", "level" => "required"},
+      %{"code" => "invalid_hsn_sac", "status" => "open", "level" => "required"},
+      %{"code" => "rounding_variance", "status" => "open", "level" => "info"}
+    ]
+
+    account = Account.summarize([], [], issues, nil, %{files: 1, pages_read: nil})
+
+    assert account.issues.required_count == 3
+    assert account.issues.advisory_count == 2
+    assert account.issues.informational_count == 1
+    assert account.issues.by_kind == %{decision: 1, confirmation: 1, correction: 1}
+  end
+
+  test "a legacy snapshot's warning levels are counted by what the code means today" do
+    issues = [
+      %{"code" => "hsn_new_code", "status" => "open", "level" => "warning"},
+      %{"code" => "invalid_hsn_sac", "status" => "open", "level" => "warning"},
+      %{"code" => "grand_total_mismatch", "status" => "open"}
+    ]
+
+    account = Account.summarize([], [], issues, nil, %{files: 1, pages_read: nil})
+
+    assert account.issues.required_count == 2
+    assert account.issues.advisory_count == 1
+  end
+
   test "does not invent source page counts or cess for an empty draft" do
     account = Account.summarize([], [], [], nil, %{files: 1, pages_read: nil})
 

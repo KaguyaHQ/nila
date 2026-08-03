@@ -3,6 +3,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
   @moduledoc "Evidence and correction modals for the GST month workbench."
 
+  alias Nila.Gst.Issues
   alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias NilaWeb.Components.Gst.Month.Helpers
@@ -721,7 +722,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   defp review_state([]), do: %{variant: "success", label: "Review complete"}
 
   defp review_state(open_issues) do
-    if Enum.any?(open_issues, &(&1["level"] != "info")) do
+    if Enum.any?(open_issues, &Issues.gating?/1) do
       %{variant: "error", label: "Filing blocked"}
     else
       %{variant: "warning", label: "Review note"}

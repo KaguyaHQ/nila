@@ -6,6 +6,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   return evidence. Lifecycle never hides or replaces this material.
   """
 
+  alias Nila.Gst.Issues
   alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias NilaWeb.Components.Gst.Month.Helpers
@@ -148,6 +149,29 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             >
               Review copies
             </.button>
+            <%!-- Two exits, because a yes-only answer to "does cess apply" is a dead end. --%>
+            <div :if={issue["code"] == "cess_not_evaluated"} class="flex flex-wrap gap-2">
+              <.button
+                id="gstr1-cess-none"
+                variant="outline"
+                size="xs"
+                phx-click="confirm_issue"
+                phx-value-target={SalesWorkings.issue_key(issue)}
+                phx-value-answer="no_cess"
+              >
+                No cess applies
+              </.button>
+              <.button
+                id="gstr1-cess-applies"
+                variant="outline"
+                size="xs"
+                phx-click="confirm_issue"
+                phx-value-target={SalesWorkings.issue_key(issue)}
+                phx-value-answer="cess_applies"
+              >
+                Cess applies
+              </.button>
+            </div>
             <.button
               :if={!is_binary(issue["hsn_code"]) and is_binary(issue["source_id"])}
               variant="outline"
@@ -161,7 +185,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             <.button
               :if={
                 !is_binary(issue["hsn_code"]) and is_nil(issue["source_id"]) and
-                  issue["level"] != "blocking"
+                  issue["code"] != "cess_not_evaluated" and
+                  Issues.resolution_kind(issue) == :confirmation
               }
               variant="outline"
               size="xs"
@@ -432,7 +457,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
   defp invoice_state(issues_by_invoice, invoice) do
     issues = Helpers.invoice_issues(issues_by_invoice, invoice)
-    open = Enum.count(issues, &(&1["status"] == "open" and &1["level"] != "info"))
+    open = Enum.count(issues, &(&1["status"] == "open" and Issues.gating?(&1)))
 
     cond do
       Map.has_key?(invoice, "duplicate_copy") -> %{variant: "neutral", label: "Duplicate copy"}
@@ -612,7 +637,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   end
 
   defp cess_label(:checked_none), do: "Checked · none found"
-  defp cess_label(:not_evaluated), do: "Not evaluated · filing blocked"
+  defp cess_label(:not_evaluated), do: "Not checked · awaiting your answer"
+  defp cess_label(:unsupported), do: "Applies · this return cannot carry it"
 
   defp issues_clause(0), do: "Ready"
   defp issues_clause(1), do: "1 check"

@@ -4,6 +4,7 @@ defmodule Nila.Gst.RateHistory do
   import Ecto.Query, only: [from: 2]
 
   alias Nila.Fuzzy
+  alias Nila.Gst.Issues
   alias Nila.Gst.Sales.Month
   alias Nila.Repo
 
@@ -100,7 +101,7 @@ defmodule Nila.Gst.RateHistory do
       "invoice" => invoice.invoice,
       "source_id" => invoice.source_id,
       "code" => "rate_history_conflict",
-      "level" => "warning",
+      "level" => Issues.level_for("rate_history_conflict"),
       "message" =>
         details <>
           " Confirm the applicable rate; this history check alone does not establish the legally applicable rate.",

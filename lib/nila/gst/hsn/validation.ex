@@ -2,6 +2,7 @@ defmodule Nila.Gst.Hsn.Validation do
   @moduledoc "Pure HSN/SAC annotation and invoice validation against one master release."
 
   alias Nila.Gst.Hsn.Directory
+  alias Nila.Gst.Issues
   alias Nila.Gst.RateHistory
 
   def annotate_invoices(invoices, directory) do
@@ -60,7 +61,7 @@ defmodule Nila.Gst.Hsn.Validation do
       "invoice" => invoice["invoice_number"],
       "source_id" => invoice["id"],
       "code" => issue_code(status),
-      "level" => "warning",
+      "level" => Issues.level_for(issue_code(status)),
       "message" => reason(line, index, status),
       "fields" => ["line_items[#{index - 1}].hsn_sac"],
       "hsn_code" => line["hsn_sac"]
@@ -123,7 +124,7 @@ defmodule Nila.Gst.Hsn.Validation do
             "invoice" => nil,
             "source_ids" => source_ids,
             "code" => "hsn_multiple_rates",
-            "level" => "warning",
+            "level" => Issues.level_for("hsn_multiple_rates"),
             "message" =>
               "HSN/SAC #{code} appears at #{Enum.map_join(rates, " and ", &rate_label/1)} across invoices #{Enum.join(invoice_numbers, ", ")}",
             "fields" => ["line_items"],
@@ -152,7 +153,7 @@ defmodule Nila.Gst.Hsn.Validation do
         "invoice" => nil,
         "source_ids" => observations |> Enum.map(& &1.source_id) |> Enum.uniq(),
         "code" => "hsn_new_code",
-        "level" => "warning",
+        "level" => Issues.level_for("hsn_new_code"),
         "message" => "HSN/SAC #{code} has not appeared in this client's prior 12 sales months",
         "fields" => ["line_items"],
         "hsn_code" => code,
@@ -173,7 +174,7 @@ defmodule Nila.Gst.Hsn.Validation do
           "invoice" => invoice["invoice_number"],
           "source_id" => invoice["id"],
           "code" => "hsn_inferred_code",
-          "level" => "warning",
+          "level" => Issues.level_for("hsn_inferred_code"),
           "message" =>
             "HSN/SAC #{line["hsn_sac"]} was inferred rather than read from the source document",
           "fields" => ["line_items"],

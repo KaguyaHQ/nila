@@ -27,6 +27,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   tooling, not product — the product never scores itself — so it lives in
   `Nila.Eval.Gstr1Diff`, not here.
   """
+  alias Nila.Gst.Issues
   alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Purchase.Flags
 
@@ -189,7 +190,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
         "invoice" => invoice_number,
         "source_ids" => source_ids,
         "code" => "duplicate_invoice_number",
-        "level" => "blocking",
+        "level" => Issues.level_for("duplicate_invoice_number"),
         "message" =>
           "invoice number #{invoice_number} belongs to #{length(source_ids)} active source rows; correct a misread number or exclude only a confirmed duplicate copy",
         "fields" => ["invoice_number"],
@@ -215,7 +216,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
     ]
     |> Enum.filter(fn {present?, _code, _message} -> present? == true end)
     |> Enum.map(fn {_present?, code, message} ->
-      issue(invoice, code, message, ["invoice_number"], "blocking")
+      issue(invoice, code, message, ["invoice_number"], Issues.level_for(code))
     end)
   end
 
@@ -236,7 +237,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
     validation =
       issues
-      |> Enum.reject(&(&1["level"] == "info"))
+      |> Enum.reject(&(Issues.level(&1) == "info"))
       |> Enum.flat_map(fn issue ->
         # `source_ids` means the named fields apply equally to every member of
         # one source group; today only duplicate-number issues carry it.
@@ -494,7 +495,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
       invoice,
       "line_arithmetic",
       "line #{index} tax #{ops["actual"]} does not match #{ops["taxable"]} × #{ops["rate"]}% = #{round2(ops["expected"])}",
-      fields
+      fields,
+      Issues.level_for("line_arithmetic")
     )
   end
 
@@ -505,7 +507,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
       invoice,
       "cgst_sgst_unequal",
       "line #{index} CGST #{ops["cgst"]} and SGST #{ops["sgst"]} are not equal halves of the tax",
-      fields
+      fields,
+      Issues.level_for("cgst_sgst_unequal")
     )
   end
 
@@ -516,7 +519,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
       invoice,
       code,
       "#{total_claim(code)}: printed #{round2(ops["printed"])}, derived #{round2(ops["derived"])}",
-      fields
+      fields,
+      Issues.level_for(code)
     )
   end
 
@@ -555,7 +559,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
             invoice,
             "unreadable_invoice_date",
             "the invoice carries values but no invoice date was extracted — read it off the bill",
-            ["invoice_date"]
+            ["invoice_date"],
+            Issues.level_for("unreadable_invoice_date")
           )
         ]
 
@@ -569,7 +574,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
             "unreadable_invoice_date",
             "the invoice date reads #{inspect(printed)}, which is not a date — correct it " <>
               "before filing",
-            ["invoice_date"]
+            ["invoice_date"],
+            Issues.level_for("unreadable_invoice_date")
           )
         ]
     end
@@ -593,7 +599,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
             invoice,
             "implausible_invoice_number",
             "invoice number #{invoice["invoice_number"]} looks like a phone number — verify it against the bill",
-            ["invoice_number"]
+            ["invoice_number"],
+            Issues.level_for("implausible_invoice_number")
           )
         ]
 
@@ -603,7 +610,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
             invoice,
             "implausible_invoice_number",
             "invoice number #{invoice["invoice_number"]} looks like a date — verify it against the bill",
-            ["invoice_number"]
+            ["invoice_number"],
+            Issues.level_for("implausible_invoice_number")
           )
         ]
 
@@ -613,7 +621,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
             invoice,
             "implausible_invoice_number",
             "the invoice carries values but no invoice number was extracted — verify it against the bill",
-            ["invoice_number"]
+            ["invoice_number"],
+            Issues.level_for("implausible_invoice_number")
           )
         ]
     end
@@ -651,7 +660,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
           invoice,
           "furniture_row_with_values",
           "furniture rows #{Enum.join(furniture_rows, ", ")} carry taxable/tax values — keep for review, do not silently drop",
-          ["line_items"]
+          ["line_items"],
+          Issues.level_for("furniture_row_with_values")
         )
       ]
     end
@@ -713,7 +723,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
             "rounding_variance",
             "#{field} line-tax sum #{round2(extracted)} differs from bucket taxable × #{rate}% #{round2(computed)} by #{delta}, within per-line rounding bound",
             ["line_items"],
-            "info"
+            Issues.level_for("rounding_variance")
           )
         ]
 
@@ -723,7 +733,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
             invoice,
             "bucket_tax_mismatch",
             "#{field} line-tax sum #{round2(extracted)} differs from bucket taxable × #{rate}% #{round2(computed)} by #{delta}, beyond per-line rounding bound",
-            ["line_items"]
+            ["line_items"],
+            Issues.level_for("bucket_tax_mismatch")
           )
         ]
     end
@@ -753,7 +764,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
           invoice,
           "lopsided_tax_split",
           "lines #{Enum.join(lopsided, ", ")} carry only one of CGST/SGST — stacked tax sub-rows were likely split into separate line items",
-          ["line_items"]
+          ["line_items"],
+          Issues.level_for("lopsided_tax_split")
         )
       ]
     end
@@ -769,9 +781,13 @@ defmodule Nila.Gst.Sales.Gstr1 do
         []
       else
         [
-          issue(invoice, "invalid_gstin", "#{field} #{inspect(gstin)} fails GSTIN checksum", [
-            field
-          ])
+          issue(
+            invoice,
+            "invalid_gstin",
+            "#{field} #{inspect(gstin)} fails GSTIN checksum",
+            [field],
+            Issues.level_for("invalid_gstin")
+          )
         ]
       end
     end)
@@ -798,7 +814,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
             invoice,
             "tax_split_mismatch",
             "buyer state #{buyer_state} differs from seller state #{seller_state}, but tax is CGST/SGST",
-            ["buyer_gstin", "line_items"]
+            ["buyer_gstin", "line_items"],
+            Issues.level_for("tax_split_mismatch")
           )
         ]
 
@@ -808,7 +825,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
             invoice,
             "tax_split_mismatch",
             "buyer state #{buyer_state} equals seller state #{seller_state}, but tax is IGST",
-            ["buyer_gstin", "line_items"]
+            ["buyer_gstin", "line_items"],
+            Issues.level_for("tax_split_mismatch")
           )
         ]
 
@@ -876,6 +894,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
           %{
             "invoice" => nil,
             "code" => "sequence_gaps",
+            "level" => Issues.level_for("sequence_gaps"),
             "message" =>
               "missing/cancelled inferred from sequence: #{Enum.join(missing, ", ")} — confirm cancellation records",
             "fields" => ["doc_issue"]
@@ -887,19 +906,20 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end
   end
 
-  defp issue(invoice, code, message, fields, level \\ nil) do
+  # `level` is positional and required. A default of any value reinstates the
+  # defect this replaced: a newly added check silently becomes filing-gating
+  # because its author forgot to classify it. Compile-time arity is the
+  # enforcement; `Nila.Gst.Issues` is where the classification is decided.
+  defp issue(invoice, code, message, fields, level) do
     %{
       "invoice" => invoice["invoice_number"],
       "source_id" => source_id(invoice),
       "code" => code,
       "message" => message,
-      "fields" => fields
+      "fields" => fields,
+      "level" => level
     }
-    |> maybe_put_level(level)
   end
-
-  defp maybe_put_level(issue, nil), do: issue
-  defp maybe_put_level(issue, level), do: Map.put(issue, "level", level)
 
   defp derive_invoice(invoice, seller_state) do
     buyer_state = state_code(invoice["buyer_gstin"])

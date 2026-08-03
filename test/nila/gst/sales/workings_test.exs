@@ -150,12 +150,187 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     refute SalesWorkings.reviewable?(result.issues)
   end
 
-  test "cess not evaluated is an unresolvable approval blocker" do
+  test "an unseen HSN code is context, and does not withhold the filing" do
+    directory = %{
+      release: %HsnRelease{id: 9},
+      entries: %{
+        "8415" => %Entry{code: "8415", kind: "hsn", digits: 4, description: "Machines"}
+      },
+      prefixes: MapSet.new(~w(8 84 841))
+    }
+
+    # A month whose codes this client has never filed before, and nothing else
+    # wrong: no check asserts an error, so novelty alone must not gate.
+    history = [%{code: "9999", rate: 18.0, description: "something else", key: {"9999", "x"}}]
+
+    result =
+      SalesWorkings.materialize(invoices(), [], @header, [], %{
+        directory: directory,
+        rate_history: history
+      })
+
+    novelty = Enum.filter(result.issues, &(&1["code"] == "hsn_new_code"))
+
+    assert novelty != []
+    assert Enum.all?(novelty, &(&1["level"] == "advisory"))
+    refute Enum.any?(novelty, &Nila.Gst.Issues.gating?/1)
+
+    confirmations =
+      result.issues
+      |> Enum.filter(&(&1["status"] == "open" and Nila.Gst.Issues.gating?(&1)))
+      |> Enum.map(&%{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(&1)})
+
+    answered =
+      SalesWorkings.materialize(invoices(), confirmations, @header, [], %{
+        directory: directory,
+        rate_history: history
+      })
+
+    assert "hsn_new_code" in open_codes(answered)
+    assert SalesWorkings.reviewable?(answered.issues)
+  end
+
+  test "cess not evaluated is a question the reviewer can answer" do
     result = SalesWorkings.materialize(invoices(), [], @header, [], cess_evaluated: false)
     issue = Enum.find(result.issues, &(&1["code"] == "cess_not_evaluated"))
 
-    assert issue["level"] == "blocking"
+    assert issue["level"] == "required"
+    assert Nila.Gst.Issues.resolution_kind(issue) == :confirmation
+    assert issue["message"] =~ "Cess has not been checked on 3 sales invoices"
     refute SalesWorkings.reviewable?(result.issues)
+  end
+
+  test "confirming no cess applies clears the question" do
+    target = cess_target(invoices())
+
+    resolutions =
+      confirm_all_but_cess() ++
+        [
+          %{
+            "verb" => "confirm_issue",
+            "target" => target,
+            "payload" => %{"answer" => "no_cess"}
+          }
+        ]
+
+    result =
+      SalesWorkings.materialize(invoices(), resolutions, @header, [], cess_evaluated: false)
+
+    refute "cess_not_evaluated" in open_codes(result)
+    refute "cess_unsupported" in open_codes(result)
+    assert SalesWorkings.reviewable?(result.issues)
+  end
+
+  test "answering that cess applies uncovers a blocking capability gap" do
+    target = cess_target(invoices())
+
+    resolutions =
+      confirm_all_but_cess() ++
+        [
+          %{
+            "verb" => "confirm_issue",
+            "target" => target,
+            "payload" => %{"answer" => "cess_applies"}
+          }
+        ]
+
+    result =
+      SalesWorkings.materialize(invoices(), resolutions, @header, [], cess_evaluated: false)
+
+    blocker = Enum.find(result.issues, &(&1["code"] == "cess_unsupported"))
+
+    # The question is answered; what the answer uncovered is not confirmable.
+    refute "cess_not_evaluated" in open_codes(result)
+    assert blocker["level"] == "blocking"
+    assert blocker["status"] == "open"
+    assert SalesWorkings.blocking?(blocker)
+    refute SalesWorkings.reviewable?(result.issues)
+  end
+
+  test "reopening the cess target discards the answer and the derived blocker" do
+    target = cess_target(invoices())
+
+    resolutions = [
+      %{
+        "verb" => "confirm_issue",
+        "target" => target,
+        "payload" => %{"answer" => "cess_applies"}
+      },
+      %{"verb" => "reopen", "target" => target}
+    ]
+
+    result =
+      SalesWorkings.materialize(invoices(), resolutions, @header, [], cess_evaluated: false)
+
+    assert "cess_not_evaluated" in open_codes(result)
+    refute Enum.any?(result.issues, &(&1["code"] == "cess_unsupported"))
+  end
+
+  test "a later invoice invalidates a cess answer given over the earlier set" do
+    answered_set = invoices()
+
+    resolutions = [
+      %{
+        "verb" => "confirm_issue",
+        "target" => cess_target(answered_set),
+        "payload" => %{"answer" => "no_cess"}
+      }
+    ]
+
+    ninth =
+      Gstr1.normalize_invoice(raw(4, "24/2025-26", [line("Compressor", 8_000.0)], 9_440.0))
+
+    later =
+      SalesWorkings.materialize(answered_set ++ [ninth], resolutions, @header, [],
+        cess_evaluated: false
+      )
+
+    assert "cess_not_evaluated" in open_codes(later)
+
+    assert Enum.find(later.issues, &(&1["code"] == "cess_not_evaluated"))["message"] =~
+             "4 sales invoices"
+  end
+
+  test "replacing an invoice invalidates a cess answer, even at the same source ID" do
+    answered_set = invoices()
+
+    resolutions = [
+      %{
+        "verb" => "confirm_issue",
+        "target" => cess_target(answered_set),
+        "payload" => %{"answer" => "no_cess"}
+      }
+    ]
+
+    # Source IDs are positional, so a re-extraction that swaps the third bill
+    # hands the replacement the same ID the answered one had.
+    replaced =
+      List.replace_at(
+        answered_set,
+        2,
+        Gstr1.normalize_invoice(raw(3, "99/2025-26", [line("Chiller", 4_000.0)], 4_720.0))
+      )
+
+    result =
+      SalesWorkings.materialize(replaced, resolutions, @header, [], cess_evaluated: false)
+
+    assert "cess_not_evaluated" in open_codes(result)
+  end
+
+  # The target as a surface reads it: off the issue the engine raised, never
+  # recomputed — a caller that rebuilt the key would not notice it drifting.
+  defp cess_target(invoices) do
+    SalesWorkings.materialize(invoices, [], @header, [], cess_evaluated: false).issues
+    |> Enum.find(&(&1["code"] == "cess_not_evaluated"))
+    |> Map.fetch!("target")
+  end
+
+  # Everything the fixture raises other than the cess question, so a test about
+  # cess reads `reviewable?` for the cess answer alone.
+  defp confirm_all_but_cess do
+    SalesWorkings.materialize(invoices(), [], @header, [], cess_evaluated: false).issues
+    |> Enum.filter(&(&1["status"] == "open" and &1["code"] != "cess_not_evaluated"))
+    |> Enum.map(&%{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(&1)})
   end
 
   test "a flagged correction is applied and re-derives" do

@@ -342,7 +342,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     defp resolve_open_issues(sales_month, user_id) do
       SalesResolutions.workings(sales_month).issues
       |> Enum.filter(fn issue ->
-        issue["status"] == "open" and issue["level"] not in ["info", "blocking"]
+        issue["status"] == "open" and issue["level"] == "required"
       end)
       |> Enum.each(fn issue ->
         {:ok, _} =
@@ -438,17 +438,98 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       assert {:error, :already_signed} = Signoffs.sign_off_gstr1(resolved, scope)
     end
 
-    test "cess must be evaluated before approval", %{
+    test "an unanswered cess question withholds approval", %{
       sales_month: sales_month,
       owner_scope: scope
     } do
-      resolved = resolve_open_issues(sales_month, scope.user.id)
-
       unresolved_cess =
-        resolved |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
+        sales_month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
 
-      assert {:error, {:blocking_issues, ["cess_not_evaluated"]}} =
-               Signoffs.sign_off_gstr1(unresolved_cess, scope)
+      resolved = resolve_open_issues(unresolved_cess, scope.user.id)
+
+      # Every other check is answered; the cess question alone holds the month.
+      assert {:error, :open_issues} = SalesResolutions.mark_reviewed(resolved)
+      assert {:error, :not_reviewed} = Signoffs.sign_off_gstr1(resolved, scope)
+
+      cess =
+        SalesResolutions.workings(resolved).issues
+        |> Enum.find(&(&1["code"] == "cess_not_evaluated"))
+
+      assert cess["status"] == "open"
+      assert cess["level"] == "required"
+    end
+
+    test "answering that no cess applies makes approval reachable", %{
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      unresolved_cess =
+        sales_month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
+
+      answered = answer_cess(unresolved_cess, scope.user.id, "no_cess")
+      reviewed = make_reviewed(answered, scope.user.id)
+
+      assert {:ok, signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
+
+      # The signature records which answer was given, against which invoice set.
+      confirmed =
+        Enum.find(signoff.snapshot["issues"], &(&1["code"] == "cess_not_evaluated"))
+
+      assert confirmed["status"] == "resolved"
+      assert confirmed["target"] =~ "cess_not_evaluated|"
+    end
+
+    test "answering that cess applies blocks approval with no confirm affordance", %{
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      unresolved_cess =
+        sales_month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
+
+      answered = answer_cess(unresolved_cess, scope.user.id, "cess_applies")
+      resolved = resolve_open_issues(answered, scope.user.id)
+
+      assert {:error, {:blocking_issues, ["cess_unsupported"]}} =
+               Signoffs.sign_off_gstr1(resolved, scope)
+
+      blocker =
+        SalesResolutions.workings(resolved).issues
+        |> Enum.find(&(&1["code"] == "cess_unsupported"))
+
+      # Confirming it is refused by the engine, not merely absent from the UI.
+      {:ok, _} =
+        SalesResolutions.record(
+          resolved,
+          %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(blocker)},
+          scope.user.id
+        )
+
+      still_blocked =
+        resolved
+        |> Nila.Repo.reload!()
+        |> SalesResolutions.workings()
+        |> then(&Enum.find(&1.issues, fn issue -> issue["code"] == "cess_unsupported" end))
+
+      assert still_blocked["status"] == "open"
+    end
+
+    defp answer_cess(sales_month, user_id, answer) do
+      cess =
+        SalesResolutions.workings(sales_month).issues
+        |> Enum.find(&(&1["code"] == "cess_not_evaluated"))
+
+      {:ok, _} =
+        SalesResolutions.record(
+          sales_month,
+          %{
+            "verb" => "confirm_issue",
+            "target" => SalesWorkings.issue_key(cess),
+            "payload" => %{"answer" => answer}
+          },
+          user_id
+        )
+
+      Nila.Repo.reload!(sales_month)
     end
 
     test "a document the return has no table for cannot be signed", %{

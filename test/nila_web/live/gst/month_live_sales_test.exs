@@ -140,7 +140,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     refute has_element?(view, "#gstr1-completeness", "Invoice pages read")
   end
 
-  test "cess that extraction did not evaluate is a real approval blocker", %{
+  test "the unanswered cess question holds the month and offers two exits", %{
     conn: conn,
     org: org,
     client: client
@@ -152,10 +152,51 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     confirm_sales_complete!(org, client, @period)
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#gstr1-checks-before-filing", "Cess has not been checked")
+    assert has_element?(view, "#gstr1-completeness", "Not checked · awaiting your answer")
+    assert has_element?(view, "#gstr1-cess-none")
+    assert has_element?(view, "#gstr1-cess-applies")
+    refute has_element?(view, "#month-door-sign-r1")
+  end
+
+  test "answering that no cess applies makes approval reachable", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Sales.Months, as: SalesMonths
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
+    confirm_sales_complete!(org, client, @period)
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    view |> element("#gstr1-cess-none") |> render_click()
     confirm_all_open_issues(view)
 
-    assert has_element?(view, "#gstr1-checks-before-filing", "cess was not evaluated")
-    assert has_element?(view, "#gstr1-completeness", "Not evaluated · filing blocked")
+    assert has_element?(view, "#gstr1-completeness", "Checked · none found")
+    assert has_element?(view, "#month-door-sign-r1")
+  end
+
+  test "answering that cess applies states the capability gap and blocks", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Sales.Months, as: SalesMonths
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
+    confirm_sales_complete!(org, client, @period)
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    view |> element("#gstr1-cess-applies") |> render_click()
+    confirm_all_open_issues(view)
+
+    assert has_element?(view, "#gstr1-checks-before-filing", "carries no cess")
+    assert has_element?(view, "#gstr1-completeness", "Applies · this return cannot carry it")
+    refute has_element?(view, "#gstr1-cess-none")
     refute has_element?(view, "#month-door-sign-r1")
   end
 
@@ -641,6 +682,48 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert has_element?(view, "#gstr1-workings-b2b")
     assert view |> element("#gstr1-workings-b2b") |> render() =~ "PONMANI AND CO"
+  end
+
+  test "a month signed before levels were mandatory renders as it did then", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Filing.Signoffs
+    alias Nila.Gst.Sales.Months, as: SalesMonths
+
+    confirm_sales_complete!(org, client, @period)
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    confirm_all_open_issues(view)
+    view |> element("#month-door-sign-r1") |> render_click()
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+    {:ok, signoff} = Signoffs.latest_gstr1_signoff(month.id)
+
+    # Rewind the frozen issues to the pre-classification shape: `"warning"` for
+    # compliance checks and no level at all for arithmetic ones. Signed history
+    # is never migrated, so the read path has to carry it.
+    legacy =
+      Enum.map(signoff.snapshot["issues"], fn issue ->
+        case issue["level"] do
+          "required" -> Map.put(issue, "level", "warning")
+          "advisory" -> Map.put(issue, "level", "warning")
+          _settled_or_blocking -> Map.delete(issue, "level")
+        end
+      end)
+
+    signoff
+    |> Ecto.Changeset.change(snapshot: Map.put(signoff.snapshot, "issues", legacy))
+    |> Nila.Repo.update!()
+
+    {:ok, legacy_view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    # Everything was resolved before signing, so no legacy level may resurrect a
+    # check, and the approved draft still renders.
+    assert has_element?(legacy_view, "#gstr1-verdict", "Approved")
+    refute has_element?(legacy_view, "#gstr1-checks-before-filing")
+    assert legacy_view |> element("#gstr1-workings-b2b") |> render() =~ "PONMANI AND CO"
   end
 
   test "confirming an issue resolves it; undo reopens it", %{

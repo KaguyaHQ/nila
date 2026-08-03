@@ -33,6 +33,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   alias Nila.Gst.Filing.{Gstr2b, PortalDocument, Signoffs}
   alias Nila.Gst.Hsn.{Directory, Validation}
   alias Nila.Gst.Intake.{Dump, Dumps, ExtractionAttempts, Preconditions}
+  alias Nila.Gst.Issues
   alias Nila.Gst.Purchase.{Books, Flags, Reconciliation, Register, TaxpayerContext}
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
@@ -694,7 +695,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
         %{
           "invoice" => nil,
           "code" => "pages_unaccounted",
-          "level" => "warning",
+          "level" => Issues.level_for("pages_unaccounted"),
           "message" =>
             "pages #{Enum.join(pages, ", ")} of #{source} produced no invoice. Open the " <>
               "original and confirm no bill was missed.",
@@ -709,7 +710,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
         %{
           "invoice" => nil,
           "code" => "evidence_unavailable",
-          "level" => "warning",
+          "level" => Issues.level_for("evidence_unavailable"),
           "message" =>
             "#{source} was read, but its pages could not be rendered, so no scanned bill " <>
               "shows beside these invoices. Check them against the original before signing.",
