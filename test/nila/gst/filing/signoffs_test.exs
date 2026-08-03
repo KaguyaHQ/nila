@@ -99,7 +99,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     assert signoff.client_month_id == month.id
     assert signoff.signed_by_id == scope.user.id
 
-    for key <- ~w(summary itc gstr3b rows) do
+    for key <- ~w(summary itc gstr3b rows review) do
       assert Map.has_key?(signoff.snapshot, key), "snapshot missing #{key}"
     end
 
@@ -139,6 +139,12 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     assert signoff.snapshot["summary"] == expected.summary
     assert signoff.snapshot["itc"] == expected.itc
     assert signoff.snapshot["gstr3b"] == expected.gstr3b
+    assert signoff.snapshot["review"]["decisions"] == expected.decisions
+    assert signoff.snapshot["review"]["accepted_reasons"] == expected.accepted_reasons
+    assert signoff.snapshot["review"]["gstr2b_decisions"] == expected.gstr2b_decisions
+
+    assert signoff.snapshot["review"]["document_attestation"] ==
+             stringify_keys(expected.document_attestation)
   end
 
   # The GSTR-1 side has refused an unreviewed signature since it was written;
@@ -871,4 +877,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
                )
     end
   end
+
+  defp stringify_keys(nil), do: nil
+  defp stringify_keys(map), do: Map.new(map, fn {key, value} -> {to_string(key), value} end)
 end

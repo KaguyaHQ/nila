@@ -26,8 +26,8 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       </p>
     </div>
 
-    <div :if={@queue != []} class="grid gap-4 lg:grid-cols-[20rem_1fr]">
-      <div id="gst-exception-queue" class="space-y-block">
+    <div :if={@queue != []} class="grid h-full min-h-0 gap-4 lg:grid-cols-[20rem_1fr]">
+      <div id="gst-exception-queue" class="space-y-block min-h-0 overflow-y-auto pr-1">
         <%!-- Each kind of work carries its own count and its own money, because
               a reviewer's decisions and a client's missing bills are not one
               backlog with one number. --%>
@@ -102,7 +102,10 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         </div>
       </div>
 
-      <div id="gst-exception-detail" class="border-base-300 rounded-box border p-6">
+      <div
+        id="gst-exception-detail"
+        class="border-base-300 rounded-box min-h-0 overflow-y-auto border p-6"
+      >
         <.detail
           selected={@selected}
           signed_off={@signed_off}
@@ -124,6 +127,139 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   def detail(%{selected: nil} = assigns) do
     ~H"""
     <p class="text-ink-muted text-ui">Select an exception from the queue.</p>
+    """
+  end
+
+  def detail(%{selected: %{kind: :itc}} = assigns) do
+    ~H"""
+    <div id="gst-itc-decision" class="space-y-section">
+      <div>
+        <div class="flex flex-wrap items-center gap-2">
+          <.badge variant="warning">{issue_label(@selected.type)}</.badge>
+          <span :if={@selected.itc_block["section"]} class="text-ink-subtle text-meta">
+            {@selected.itc_block["section"]}
+          </span>
+        </div>
+        <h3 class="mt-related text-base-content text-body font-semibold">
+          {@selected.invoice_number || "—"} · {@selected.vendor}
+        </h3>
+        <p class="text-ink-muted text-ui mt-1">{@selected.reason}</p>
+      </div>
+
+      <dl class="border-base-300 divide-base-300 rounded-box divide-y border">
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <dt class="text-ink-muted text-ui">Credit at stake</dt>
+          <dd class="text-base-content font-mono">
+            {format_money(@selected.tax_paise, prefix: "₹")}
+          </dd>
+        </div>
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <dt class="text-ink-muted text-ui">Nila's conclusion</dt>
+          <dd class="text-base-content text-ui font-medium">Block this credit</dd>
+        </div>
+      </dl>
+
+      <div
+        :if={not @selected.resolved and not @signed_off}
+        class="border-base-300 pt-block flex flex-wrap gap-2 border-t"
+      >
+        <.button
+          id="gst-itc-block"
+          variant="error"
+          size="sm"
+          phx-click="block_itc"
+          phx-target={@target}
+          phx-value-block-id={@selected.itc_block["block_id"]}
+        >Block credit</.button>
+        <.button
+          id="gst-itc-allow"
+          variant="outline"
+          size="sm"
+          phx-click="allow_itc"
+          phx-target={@target}
+          phx-value-block-id={@selected.itc_block["block_id"]}
+        >Keep credit</.button>
+      </div>
+
+      <div :if={@selected.resolved} class="border-base-300 pt-block flex items-center gap-3 border-t">
+        <span class="text-success text-ui font-medium">{@selected.outcome}</span>
+        <.button
+          :if={not @signed_off}
+          variant="ghost"
+          size="sm"
+          phx-click="reopen_block"
+          phx-target={@target}
+          phx-value-block-id={@selected.itc_block["block_id"]}
+        >Undo</.button>
+      </div>
+    </div>
+    """
+  end
+
+  def detail(%{selected: %{kind: :attestation}} = assigns) do
+    ~H"""
+    <div id="gst-itc-attestation" class="space-y-section">
+      <div>
+        <h3 class="text-base-content text-body font-semibold">
+          Does the client hold the tax invoices?
+        </h3>
+        <p class="text-ink-muted text-ui mt-1">
+          {@selected.attestation.count} supplies in GSTR-2B have no bill on file, carrying
+          <span class="text-base-content font-mono font-medium">
+            {format_money(@selected.tax_paise, prefix: "₹")}
+          </span>
+          of credit. Confirm possession before filing.
+        </p>
+      </div>
+
+      <div
+        :if={not @selected.resolved and not @signed_off}
+        class="border-base-300 pt-block flex flex-wrap gap-2 border-t"
+      >
+        <.button
+          id="gst-attest-held"
+          variant="primary"
+          size="sm"
+          phx-click="attest_documents"
+          phx-target={@target}
+          phx-value-answer="held"
+        >Client holds them</.button>
+        <.button
+          id="gst-attest-not-held"
+          variant="outline"
+          size="sm"
+          phx-click="attest_documents"
+          phx-target={@target}
+          phx-value-answer="not_held"
+        >Not held — withhold {format_money(@selected.tax_paise, prefix: "₹")}</.button>
+        <.button
+          id="gst-attest-unknown"
+          variant="ghost"
+          size="sm"
+          phx-click="attest_documents"
+          phx-target={@target}
+          phx-value-answer="unknown"
+        >Unknown — ask the client</.button>
+      </div>
+
+      <div :if={@selected.verb} class="border-base-300 pt-block flex items-center gap-3 border-t">
+        <span class={[
+          "text-ui font-medium",
+          @selected.resolved && "text-success",
+          not @selected.resolved && "text-warning"
+        ]}>
+          {@selected.outcome || "Still unanswered"}
+        </span>
+        <.button
+          :if={not @signed_off}
+          id="gst-attest-undo"
+          variant="ghost"
+          size="sm"
+          phx-click="reopen_attestation"
+          phx-target={@target}
+        >Undo</.button>
+      </div>
+    </div>
     """
   end
 

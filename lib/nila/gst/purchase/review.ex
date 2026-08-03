@@ -7,13 +7,13 @@ defmodule Nila.Gst.Purchase.Review do
   @sections [
     %{
       key: :decisions,
-      kind: :books,
+      kinds: [:books, :itc, :attestation],
       title: "Decisions",
       blurb: "Your call. Review the bill against the portal evidence and freeze the conclusion."
     },
     %{
       key: :collection,
-      kind: :gstr2b,
+      kinds: [:gstr2b],
       title: "Bills to collect",
       blurb: "The portal reported these supplies, but no document was supplied."
     }
@@ -47,7 +47,7 @@ defmodule Nila.Gst.Purchase.Review do
           end)
       end)
 
-    items =
+    reconciliation_items =
       (workings.groups ++ effective ++ dismissed)
       |> Enum.uniq_by(& &1.key)
       |> Enum.flat_map(fn
@@ -61,13 +61,17 @@ defmodule Nila.Gst.Purchase.Review do
           [decision_item(group, workings, month, gaps)]
       end)
 
+    itc_items = Enum.map(workings.itc["blocks"] || [], &itc_item(&1, workings.rows, month))
+    attestation_items = attestation_items(workings.document_attestation)
+    items = reconciliation_items ++ itc_items ++ attestation_items
+
     needs_you =
       items
       |> Enum.reject(& &1.resolved)
       |> Enum.sort_by(& &1.tax_paise, :desc)
 
     all = Enum.sort_by(items, &register_order(&1, workings.rows))
-    decisions = Enum.filter(items, &(&1.kind == :books and &1.review_origin?))
+    decisions = Enum.filter(items, &(&1.kind != :gstr2b and &1.review_origin?))
 
     %{
       needs_you: needs_you,
@@ -94,7 +98,7 @@ defmodule Nila.Gst.Purchase.Review do
     scoped = items(review, scope)
 
     Enum.flat_map(@sections, fn section ->
-      case Enum.filter(scoped, &(&1.kind == section.kind)) do
+      case Enum.filter(scoped, &(&1.kind in section.kinds)) do
         [] ->
           []
 
@@ -151,7 +155,7 @@ defmodule Nila.Gst.Purchase.Review do
 
     scoped
     |> Enum.drop(index + 1)
-    |> Enum.find(&(&1.kind == :books and (scope == :all or not &1.resolved)))
+    |> Enum.find(&(&1.kind != :gstr2b and (scope == :all or not &1.resolved)))
   end
 
   def pair_payload(item, books_id, ref, decision) do
@@ -283,6 +287,98 @@ defmodule Nila.Gst.Purchase.Review do
     }
   end
 
+  @doc "Counts every unresolved human judgement in the purchase lane."
+  def open_decision_count(workings) do
+    reconciliation = Enum.count(workings.groups, &(&1.state == :needs_decision))
+    blocks = Enum.count(workings.itc["blocks"] || [], &(&1["state"] == "recommended"))
+    attestation = if attestation_open?(workings.document_attestation), do: 1, else: 0
+    reconciliation + blocks + attestation
+  end
+
+  defp itc_item(block, rows, month) do
+    row =
+      Enum.find(rows, fn row ->
+        row["invoice_number"] == block["invoice_number"] and row["vendor_name"] == block["vendor"]
+      end)
+
+    state = block["state"]
+
+    %{
+      id: "itc-#{block["block_id"]}",
+      group_key: "itc-#{block["block_id"]}",
+      member_ids: [],
+      kind: :itc,
+      type: block["code"],
+      vendor: block["vendor"],
+      invoice_number: block["invoice_number"],
+      reason: block["reason"],
+      books: nil,
+      books_members: [],
+      gstr2b: nil,
+      counterparts: [],
+      candidates: [],
+      member_images: %{},
+      member_evidence_gaps: %{},
+      images: image_urls(row || %{}, month),
+      evidence_gap: nil,
+      tax_paise: block["tax_paise"] || 0,
+      action: :itc,
+      verb: state,
+      resolved: state != "recommended",
+      review_origin?: true,
+      outcome: itc_outcome(state),
+      asked_at: nil,
+      itc_block: block
+    }
+  end
+
+  defp attestation_items(nil), do: []
+
+  defp attestation_items(attestation) do
+    resolved = attestation.answer in ~w(held not_held)
+
+    [
+      %{
+        id: "attestation-#{attestation.target}",
+        group_key: "attestation-#{attestation.target}",
+        member_ids: [],
+        kind: :attestation,
+        type: "documents_held",
+        vendor: "Document possession",
+        invoice_number: nil,
+        reason: "Confirm whether the client holds the tax invoices behind the 2B-only supplies.",
+        books: nil,
+        books_members: [],
+        gstr2b: nil,
+        counterparts: [],
+        candidates: [],
+        member_images: %{},
+        member_evidence_gaps: %{},
+        images: [],
+        evidence_gap: nil,
+        tax_paise: attestation.tax_paise,
+        action: :attestation,
+        verb: attestation.answer,
+        resolved: resolved,
+        review_origin?: true,
+        outcome: attestation_outcome(attestation.answer),
+        asked_at: nil,
+        attestation: attestation
+      }
+    ]
+  end
+
+  defp attestation_open?(nil), do: false
+  defp attestation_open?(attestation), do: attestation.answer not in ~w(held not_held)
+
+  defp itc_outcome("blocked"), do: "Credit blocked"
+  defp itc_outcome("allowed"), do: "Credit kept"
+  defp itc_outcome(_state), do: nil
+
+  defp attestation_outcome("held"), do: "Client holds the tax invoices"
+  defp attestation_outcome("not_held"), do: "Credit withheld until documents are held"
+  defp attestation_outcome(_answer), do: nil
+
   defp valid_scope("needs_you", _), do: :needs_you
   defp valid_scope("all", _), do: :all
   defp valid_scope(:needs_you, _), do: :needs_you
@@ -303,7 +399,9 @@ defmodule Nila.Gst.Purchase.Review do
     Enum.find_index(rows, fn row ->
       MapSet.member?(ids, row["id"]) or
         (item.kind == :gstr2b and row["bucket"] == "in_2b_not_books" and
-           Reconciliation.gstr2b_ref(row) == item.gstr2b_ref)
+           Reconciliation.gstr2b_ref(row) == item.gstr2b_ref) or
+        (item.kind == :itc and row["invoice_number"] == item.invoice_number and
+           row["vendor_name"] == item.vendor)
     end) || 1_000_000
   end
 

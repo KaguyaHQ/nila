@@ -17,7 +17,18 @@ defmodule Nila.Gst.Purchase.Resolutions do
 
   alias Nila.Gst.Filing.{Gstr3b, ItcPosition, Signoffs}
   alias Nila.Gst.Hsn.Directory
-  alias Nila.Gst.Purchase.{Flags, Groups, Month, Register, Resolution, TaxpayerContext, Workings}
+
+  alias Nila.Gst.Purchase.{
+    Flags,
+    Groups,
+    Month,
+    Register,
+    Resolution,
+    Review,
+    TaxpayerContext,
+    Workings
+  }
+
   alias Nila.Gst.Rates.Directory, as: RateDirectory
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Months, as: SalesMonths
@@ -128,6 +139,18 @@ defmodule Nila.Gst.Purchase.Resolutions do
       |> ItcPosition.compute(rows, Workings.itc_decisions(resolutions))
       |> ItcPosition.apply_attestation(attestation)
 
+    summary =
+      month
+      |> summary(rows, groups)
+      |> Map.put(
+        "lane_decisions",
+        Review.open_decision_count(%{
+          groups: groups,
+          itc: itc,
+          document_attestation: attestation
+        })
+      )
+
     %{
       recon: recon,
       baseline: Workings.materialize(month.recon, []),
@@ -139,7 +162,7 @@ defmodule Nila.Gst.Purchase.Resolutions do
       gstr3b: gstr3b(month, recon, itc),
       groups: groups,
       rows: rows,
-      summary: summary(month, rows, groups)
+      summary: summary
     }
   end
 

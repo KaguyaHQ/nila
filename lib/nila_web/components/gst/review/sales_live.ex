@@ -9,7 +9,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
 
   @impl true
   def update(assigns, socket) do
-    workings = Resolutions.workings(assigns.month)
+    workings = assigns.workings
     review = Review.build(workings)
     route = Map.put(assigns.route, :focus, assigns.route[:focus])
     selected_item = Review.lookup(review.all, route.item)
@@ -39,7 +39,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
      |> assign(:selected_id, selected_id)
      |> assign(:selected_invoice, selected_invoice)
      |> assign(:issues_by_invoice, Enum.group_by(workings.issues, & &1["source_id"]))
-     |> assign(:decisions, Resolutions.latest_decisions(assigns.month.id))
+     |> assign(:decisions, assigns.decisions)
      |> assign(:correcting, correcting)
      |> assign(:correction_form, correction_form(correcting))
      |> assign(:evidence_open, evidence_open)
@@ -121,14 +121,15 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
            socket.assigns.current_scope.user.id
          ) do
       {:ok, _resolution} ->
-        send(self(), {:sales_review_refresh, item.source_id})
-        socket = refresh(socket)
+        workings = Resolutions.workings(socket.assigns.month)
 
-        {:noreply,
-         push_patch(socket,
-           to: review_path(socket, item, :needs_you),
-           replace: true
-         )}
+        send(
+          self(),
+          {:sales_review_refresh, socket.assigns.month, workings,
+           %{item: item.source_id, scope: :needs_you, focus: nil}}
+        )
+
+        {:noreply, socket}
 
       {:error, :signed_off} ->
         {:noreply, put_flash(socket, :error, locked_message(socket))}
@@ -208,8 +209,18 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
            socket.assigns.current_scope.user.id
          ) do
       {:ok, _resolution} ->
-        send(self(), {:sales_review_refresh, socket.assigns.selected_id})
-        socket = refresh(socket)
+        workings = Resolutions.workings(socket.assigns.month)
+
+        send(
+          self(),
+          {:sales_review_refresh, socket.assigns.month, workings,
+           %{
+             item: socket.assigns.selected_id,
+             scope: socket.assigns.route.scope,
+             focus: socket.assigns.route.focus
+           }}
+        )
+
         {:noreply, assign(socket, correcting: nil, correction_form: nil)}
 
       {:error, :signed_off} ->
@@ -218,18 +229,6 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "That invoice action could not be recorded.")}
     end
-  end
-
-  defp refresh(socket) do
-    assigns = %{
-      month: socket.assigns.month,
-      route: socket.assigns.route,
-      current_scope: socket.assigns.current_scope,
-      signoff: socket.assigns.signoff
-    }
-
-    {:ok, socket} = update(assigns, socket)
-    socket
   end
 
   defp find_issue(socket, target) do

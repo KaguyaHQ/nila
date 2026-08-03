@@ -35,6 +35,41 @@ defmodule Nila.Gst.Purchase.ReviewTest do
     assert Review.next(review, :needs_you, first_item.id).id == second_item.id
   end
 
+  test "ITC treatment and document possession are first-class decisions" do
+    invoice = books("clean", "CLEAN-1")
+    recon = Reconciliation.reconcile([invoice], [gstr2b("CLEAN-1")])
+
+    workings =
+      recon
+      |> workings()
+      |> Map.put(:itc, %{
+        "blocks" => [
+          %{
+            "block_id" => "duplicate|clean",
+            "code" => "duplicate_invoice",
+            "section" => "s.17(5)",
+            "vendor" => "Vendor",
+            "invoice_number" => "CLEAN-1",
+            "tax_paise" => 18_000,
+            "reason" => "The bill appears twice.",
+            "state" => "recommended"
+          }
+        ]
+      })
+      |> Map.put(:document_attestation, %{
+        target: "documents_held|one",
+        answer: nil,
+        count: 1,
+        tax_paise: 18_000
+      })
+
+    review = Review.project(workings, month: %{client_id: 1, period: "2026-08"})
+
+    assert review.progress == %{done: 0, total: 2}
+    assert Enum.map(review.needs_you, & &1.kind) == [:itc, :attestation]
+    assert Review.open_decision_count(workings) == 2
+  end
+
   test "group evidence gap is taken from any member, not only the first" do
     first = books("a", "SAME", %{"images" => []})
     second = books("d9_b", "SAME", %{"images" => []})
@@ -59,7 +94,9 @@ defmodule Nila.Gst.Purchase.ReviewTest do
       accepted_reasons: %{},
       gstr2b_decisions: %{},
       groups: Groups.build(recon),
-      rows: Workings.books_invoices(recon)
+      rows: Workings.books_invoices(recon),
+      itc: %{"blocks" => []},
+      document_attestation: nil
     }
   end
 

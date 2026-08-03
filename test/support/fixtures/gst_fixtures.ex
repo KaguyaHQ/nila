@@ -142,13 +142,38 @@ defmodule Nila.GstFixtures do
         # `value_mismatch` is absent on purpose: those rows are already paired,
         # the return takes the 2B figure, and no verb settles them because no
         # answer would change the filing.
-        attrs =
+        recon_attrs =
           for bucket <- ~w(needs_human in_books_not_2b in_2b_not_books),
               entry <- workings.recon[bucket] || [] do
             settle_attrs(bucket, entry)
           end
 
-        {:ok, result} = Resolutions.record_many_and_refresh(month, attrs, user_id)
+        block_attrs =
+          for block <- workings.itc["blocks"] || [], block["state"] == "recommended" do
+            %{"verb" => "allow_itc", "payload" => %{"block_id" => block["block_id"]}}
+          end
+
+        attestation_attrs =
+          case workings.document_attestation do
+            %{answer: answer} = attestation when answer not in ~w(held not_held) ->
+              [
+                %{
+                  "verb" => "attest_documents",
+                  "payload" => %{"target" => attestation.target, "answer" => "held"}
+                }
+              ]
+
+            _settled ->
+              []
+          end
+
+        {:ok, result} =
+          Resolutions.record_many_and_refresh(
+            month,
+            recon_attrs ++ block_attrs ++ attestation_attrs,
+            user_id
+          )
+
         settle_register!(result.month, user_id, passes - 1)
     end
   end

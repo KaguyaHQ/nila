@@ -157,7 +157,7 @@ defmodule Nila.Gst.Purchase.Register do
     value_disputes = buckets["value_mismatch"] || 0
     value_dispute_tax = summary["value_dispute_tax_paise"] || 0
     decision_rows = summary["decision_rows"] || open - awaiting_bills - value_disputes
-    need_decision = summary["decision_groups"] || decision_rows
+    need_decision = summary["lane_decisions"] || summary["decision_groups"] || decision_rows
     legacy_decision_tax = open_tax - awaiting_bills_tax - value_dispute_tax
     decision_tax = summary["decision_tax_paise"] || legacy_decision_tax
     decision_row_tax = summary["decision_row_tax_paise"] || legacy_decision_tax

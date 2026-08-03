@@ -12,7 +12,7 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps, Preconditions}
   alias Nila.Gst.Issues
-  alias Nila.Gst.Purchase.{Reconciliation, Register, Resolutions, Review}
+  alias Nila.Gst.Purchase.{Groups, Reconciliation, Register, Resolutions, Review}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Sales.Account
   alias Nila.Gst.Sales.Review, as: SalesReview
@@ -97,7 +97,7 @@ defmodule NilaWeb.Gst.MonthLive do
         %{assigns: %{live_action: :review, purchase_month: month}} = socket
       )
       when not is_nil(month) do
-    review = Review.project(Resolutions.workings(month), month: month)
+    review = Review.project(socket.assigns.purchase_workings, month: month)
     route = Review.route_state(review, params["item"], params["scope"])
 
     {:noreply,
@@ -113,7 +113,7 @@ defmodule NilaWeb.Gst.MonthLive do
         %{assigns: %{live_action: :review, sales_month: month}} = socket
       )
       when not is_nil(month) do
-    review = SalesReview.build(SalesResolutions.workings(month))
+    review = SalesReview.build(socket.assigns.sales_workings)
     route = SalesReview.route_state(review, params["item"], params["scope"])
     selected = SalesReview.lookup(review.all, route.item)
     focus = valid_review_focus(selected, params["focus"])
@@ -149,7 +149,7 @@ defmodule NilaWeb.Gst.MonthLive do
       )
       when not is_nil(month) do
     source_id = valid_invoice_number(socket.assigns.invoices, identifier)
-    review = SalesReview.build(SalesResolutions.workings(month))
+    review = SalesReview.build(socket.assigns.sales_workings)
     route = SalesReview.route_state(review, source_id, nil) |> Map.put(:focus, nil)
 
     {:noreply, push_patch(socket, to: sales_review_path(socket, route), replace: true)}
@@ -291,9 +291,12 @@ defmodule NilaWeb.Gst.MonthLive do
     |> MapSet.new(& &1.id)
   end
 
-  defp assign_purchase(socket, nil) do
+  defp assign_purchase(socket, purchase, workings \\ nil)
+
+  defp assign_purchase(socket, nil, _workings) do
     socket
     |> assign(:purchase_month, nil)
+    |> assign(:purchase_workings, nil)
     |> assign(:gstr3b_signoff, nil)
     |> assign(:rows, [])
     |> assign(:stats, nil)
@@ -302,30 +305,66 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:itc, nil)
   end
 
-  defp assign_purchase(socket, purchase) do
+  defp assign_purchase(socket, purchase, provided_workings) do
     signoff = fetch_or_nil(Signoffs.latest_signoff(purchase.id))
+    live_workings = provided_workings || Resolutions.workings(purchase)
 
-    {rows, summary, gstr3b, itc} =
+    workings =
       case signoff do
-        nil ->
-          workings = Resolutions.workings(purchase)
-          {workings.rows, workings.summary, workings.gstr3b, workings.itc}
-
-        signoff ->
-          {signoff.snapshot["rows"], signoff.snapshot["summary"], signoff.snapshot["gstr3b"],
-           signoff.snapshot["itc"]}
+        nil -> live_workings
+        signoff -> signed_purchase_workings(signoff.snapshot, live_workings)
       end
-
-    groups = Resolutions.workings(purchase).groups
 
     socket
     |> assign(:purchase_month, purchase)
+    |> assign(:purchase_workings, workings)
     |> assign(:gstr3b_signoff, signoff)
-    |> assign(:rows, build_rows(rows, purchase, groups))
-    |> assign(:stats, Register.stats(summary))
-    |> assign(:document_flags, summary["document_flags"] || [])
-    |> assign(:gstr3b, gstr3b)
-    |> assign(:itc, itc)
+    |> assign(:rows, build_rows(workings.rows, purchase, workings.groups))
+    |> assign(:stats, Register.stats(workings.summary))
+    |> assign(:document_flags, workings.summary["document_flags"] || [])
+    |> assign(:gstr3b, workings.gstr3b)
+    |> assign(:itc, workings.itc)
+  end
+
+  defp signed_purchase_workings(snapshot, fallback) do
+    case snapshot["review"] do
+      %{} = review ->
+        recon = review["recon"] || %{}
+
+        %{
+          baseline: review["baseline"] || %{},
+          recon: recon,
+          groups: Groups.build(recon),
+          decisions: review["decisions"] || %{},
+          accepted_reasons: review["accepted_reasons"] || %{},
+          gstr2b_decisions: review["gstr2b_decisions"] || %{},
+          document_attestation: restore_attestation(review["document_attestation"]),
+          rows: snapshot["rows"],
+          summary: snapshot["summary"],
+          gstr3b: snapshot["gstr3b"],
+          itc: snapshot["itc"]
+        }
+
+      _legacy ->
+        %{
+          fallback
+          | rows: snapshot["rows"],
+            summary: snapshot["summary"],
+            gstr3b: snapshot["gstr3b"],
+            itc: snapshot["itc"]
+        }
+    end
+  end
+
+  defp restore_attestation(nil), do: nil
+
+  defp restore_attestation(attestation) do
+    %{
+      target: attestation["target"] || attestation[:target],
+      answer: attestation["answer"] || attestation[:answer],
+      count: attestation["count"] || attestation[:count],
+      tax_paise: attestation["tax_paise"] || attestation[:tax_paise]
+    }
   end
 
   defp build_rows(rows, purchase, groups) do
@@ -371,9 +410,13 @@ defmodule NilaWeb.Gst.MonthLive do
   defp row_dom_id(%{"id" => id}, _index) when is_binary(id), do: "gst-row-#{id}"
   defp row_dom_id(_row, index), do: "gst-row-idx-#{index}"
 
-  defp assign_sales(socket, nil) do
+  defp assign_sales(socket, sales, workings \\ nil)
+
+  defp assign_sales(socket, nil, _workings) do
     socket
     |> assign(:sales_month, nil)
+    |> assign(:sales_workings, nil)
+    |> assign(:sales_decisions, %{})
     |> assign(:r1_signoff, nil)
     |> assign(:invoices, [])
     |> assign(:active_invoices, [])
@@ -390,37 +433,38 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:reviewable, false)
   end
 
-  defp assign_sales(socket, sales) do
+  defp assign_sales(socket, sales, provided_workings) do
     signoff = fetch_or_nil(Signoffs.latest_gstr1_signoff(sales.id))
 
     workings =
-      case signoff do
-        nil when sales.invoices == [] ->
-          %{
-            source_invoices: [],
-            active_invoices: [],
-            printed_active_invoices: [],
-            issues: [],
-            flagged: MapSet.new(),
-            derived: nil
-          }
+      provided_workings ||
+        case signoff do
+          nil when sales.invoices == [] ->
+            %{
+              source_invoices: [],
+              active_invoices: [],
+              printed_active_invoices: [],
+              issues: [],
+              flagged: MapSet.new(),
+              derived: nil
+            }
 
-        nil ->
-          SalesResolutions.workings(sales)
+          nil ->
+            SalesResolutions.workings(sales)
 
-        signoff ->
-          source = signoff.snapshot["invoices"]
-          active = Enum.reject(source, &Map.has_key?(&1, "duplicate_copy"))
+          signoff ->
+            source = signoff.snapshot["invoices"]
+            active = Enum.reject(source, &Map.has_key?(&1, "duplicate_copy"))
 
-          %{
-            source_invoices: source,
-            active_invoices: active,
-            printed_active_invoices: signoff.snapshot["printed_invoices"],
-            issues: Issues.normalize_all(signoff.snapshot["issues"]),
-            flagged: MapSet.new(),
-            derived: signoff.snapshot["derived"]
-          }
-      end
+            %{
+              source_invoices: source,
+              active_invoices: active,
+              printed_active_invoices: signoff.snapshot["printed_invoices"],
+              issues: Issues.normalize_all(signoff.snapshot["issues"]),
+              flagged: MapSet.new(),
+              derived: signoff.snapshot["derived"]
+            }
+        end
 
     source_invoices = workings.source_invoices
     active_invoices = workings.active_invoices
@@ -452,6 +496,8 @@ defmodule NilaWeb.Gst.MonthLive do
 
     socket
     |> assign(:sales_month, sales)
+    |> assign(:sales_workings, workings)
+    |> assign(:sales_decisions, SalesResolutions.latest_decisions(sales.id))
     |> assign(:r1_signoff, signoff)
     |> assign(:invoices, invoices)
     |> assign(:active_invoices, active_invoices)
@@ -543,21 +589,43 @@ defmodule NilaWeb.Gst.MonthLive do
     {:noreply, reload(socket)}
   end
 
-  def handle_info({:purchase_review_refresh, _item_id}, socket), do: {:noreply, reload(socket)}
+  def handle_info({:purchase_review_refresh, item_id, month, workings}, socket) do
+    current = socket.assigns.purchase_review_route
 
-  def handle_info({:sales_review_refresh, _source_id}, socket) do
+    socket =
+      socket
+      |> assign_purchase(month, workings)
+      |> assign_verdict(month, socket.assigns.sales_month)
+
+    review = Review.project(socket.assigns.purchase_workings, month: month)
+    route = Review.route_state(review, item_id, current.scope)
+    socket = assign(socket, :purchase_review_route, route)
+
+    if route == current do
+      {:noreply, socket}
+    else
+      {:noreply, push_patch(socket, to: purchase_review_path(socket, route), replace: true)}
+    end
+  end
+
+  def handle_info({:sales_review_refresh, month, workings, requested}, socket) do
     old_derived = socket.assigns.derived_gstr1
-    socket = socket |> reload() |> ripple(old_derived)
+
+    socket =
+      socket
+      |> assign_sales(month, workings)
+      |> assign_verdict(socket.assigns.purchase_month, month)
+      |> ripple(old_derived)
 
     case socket.assigns.sales_review_route do
       nil ->
         {:noreply, socket}
 
       current ->
-        review = SalesReview.build(SalesResolutions.workings(socket.assigns.sales_month))
-        route = SalesReview.route_state(review, current.item, current.scope)
+        review = SalesReview.build(socket.assigns.sales_workings)
+        route = SalesReview.route_state(review, requested.item, requested.scope)
         selected = SalesReview.lookup(review.all, route.item)
-        route = Map.put(route, :focus, valid_review_focus(selected, current.focus))
+        route = Map.put(route, :focus, valid_review_focus(selected, requested.focus))
         socket = assign(socket, :sales_review_route, route)
 
         if route == current do
@@ -578,7 +646,7 @@ defmodule NilaWeb.Gst.MonthLive do
         {:noreply, socket}
 
       source_id ->
-        review = SalesReview.build(SalesResolutions.workings(socket.assigns.sales_month))
+        review = SalesReview.build(socket.assigns.sales_workings)
         route = SalesReview.route_state(review, source_id, nil) |> Map.put(:focus, nil)
         {:noreply, push_patch(socket, to: sales_review_path(socket, route))}
     end
@@ -1002,6 +1070,11 @@ defmodule NilaWeb.Gst.MonthLive do
     ~p"/gst/#{client.id}/#{period}"
   end
 
+  defp purchase_review_path(socket, route) do
+    params = %{"item" => route.item, "scope" => to_string(route.scope)}
+    month_path(socket) <> "/review/purchase?" <> URI.encode_query(params)
+  end
+
   defp sales_review_path(socket, route) do
     params =
       %{"item" => route.item, "scope" => to_string(route.scope), "focus" => route[:focus]}
@@ -1175,6 +1248,7 @@ defmodule NilaWeb.Gst.MonthLive do
         month={@purchase_month}
         current_scope={@current_scope}
         route={@purchase_review_route}
+        workings={@purchase_workings}
         signed_off={@gstr3b_signoff != nil}
       />
 
@@ -1185,6 +1259,8 @@ defmodule NilaWeb.Gst.MonthLive do
         month={@sales_month}
         current_scope={@current_scope}
         route={@sales_review_route}
+        workings={@sales_workings}
+        decisions={@sales_decisions}
         signoff={@r1_signoff}
       />
 

@@ -4,12 +4,12 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
   alias Nila.Gst.Chase
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.{Review, Resolutions}
-  alias NilaWeb.Components.Gst.Exceptions.{Itc, Modal, Surface}
+  alias NilaWeb.Components.Gst.Exceptions.{Modal, Surface}
 
   @impl true
   def update(assigns, socket) do
     month = assigns.month
-    workings = Resolutions.workings(month)
+    workings = assigns.workings
 
     review =
       Review.project(workings,
@@ -254,7 +254,7 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
         %{kind: "missing_bills", period: month.period, body: draft.body, channel: "manual"}
       )
 
-    send(self(), {:purchase_review_refresh, draft.item_id})
+    send(self(), {:purchase_review_refresh, draft.item_id, month, socket.assigns.workings})
     {:noreply, socket |> assign(:draft, nil) |> put_flash(:info, "Ask logged.")}
   end
 
@@ -292,8 +292,8 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
            attrs,
            socket.assigns.current_scope.user.id
          ) do
-      {:ok, _result} ->
-        send(self(), {:purchase_review_refresh, id})
+      {:ok, result} ->
+        send(self(), {:purchase_review_refresh, id, result.month, result.workings})
         {:noreply, after_fun.(socket)}
 
       {:error, :signed_off} ->
@@ -381,11 +381,6 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
                 class={["btn btn-sm join-item", @route.scope == scope && "btn-active"]}
               >{label}</button>
             </div>
-          </div>
-        </:header>
-
-        <div class="space-y-block">
-          <div class="flex justify-end">
             <.button
               id="purchase-review-next"
               variant="outline"
@@ -395,29 +390,18 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
               disabled={is_nil(@next_item)}
             >Next <.icon name="hero-arrow-right-mini" class="size-4" /></.button>
           </div>
-          <Itc.itc_panel
-            itc={@workings.itc}
-            stats={Nila.Gst.Purchase.Register.stats(@workings.summary)}
-            signed_off={@signed_off}
-            show_bridge={false}
-            target={@myself}
-          />
-          <Itc.document_attestation
-            attestation={@workings.document_attestation}
-            signed_off={@signed_off}
-            target={@myself}
-          />
-          <Surface.exception_surface
-            queue={@queue}
-            groups={@groups}
-            selected_id={@selected_id}
-            selected={@selected}
-            signed_off={@signed_off}
-            correcting={@correcting}
-            evidence_page={@evidence_page}
-            target={@myself}
-          />
-        </div>
+        </:header>
+
+        <Surface.exception_surface
+          queue={@queue}
+          groups={@groups}
+          selected_id={@selected_id}
+          selected={@selected}
+          signed_off={@signed_off}
+          correcting={@correcting}
+          evidence_page={@evidence_page}
+          target={@myself}
+        />
       </.modal>
 
       <.evidence_overlay

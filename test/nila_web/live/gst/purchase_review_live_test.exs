@@ -42,10 +42,10 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     assert elem(:binary.match(members, "gst-exception-books-member-freezelinks-2"), 0) <
              elem(:binary.match(members, "gst-exception-books-member-freezelinks-1"), 0)
 
-    assert has_element?(view, "#purchase-review-progress", "0 of 1 decisions")
+    assert has_element?(view, "#purchase-review-progress", "0 of 2 decisions")
 
     view |> element("#purchase-review-scope button", "All") |> render_click()
-    assert has_element?(view, "#purchase-review-progress", "0 of 1 decisions")
+    assert has_element?(view, "#purchase-review-progress", "0 of 2 decisions")
     assert length(Resolutions.list(month.id)) == 0
   end
 
@@ -114,6 +114,7 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     month = put_month!(context, [], [counterpart])
     {:ok, view, _html} = live(context.conn, review_path(context.client))
 
+    view |> element("[id^=queue-attestation-]") |> render_click()
     view |> element("#gst-attest-held") |> render_click()
     assert Enum.any?(Resolutions.list(month.id), &(&1.verb == "attest_documents"))
 

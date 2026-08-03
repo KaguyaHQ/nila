@@ -305,10 +305,9 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
            )
   end
 
-  # The whole open pile is bills nobody sent: no decision on this page can
-  # release the credit, so the page must ask for documents instead of pointing a
-  # senior at a queue with nothing decidable in it.
-  test "a month whose only open rows are uncollected bills asks for them", %{
+  # The register waits on bills, while the return still needs one explicit
+  # possession decision before it can claim the reported credit.
+  test "a month whose only open rows are uncollected bills asks for possession", %{
     conn: conn,
     org: org,
     client: client
@@ -339,13 +338,11 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     awaiting = length(collection_only["in_2b_not_books"])
     assert awaiting > 0
 
-    assert has_element?(view, "#gstr3b-verdict", "Waiting for bills")
-    assert has_element?(view, "#gstr3b-request-bills", "Request the #{awaiting} missing bills")
-    refute has_element?(view, "#gstr3b-review-required")
+    assert has_element?(view, "#gstr3b-verdict", "Needs 1 decision")
+    assert has_element?(view, "#gstr3b-review-required", "Work the 1 decision")
+    refute has_element?(view, "#gstr3b-request-bills")
 
-    # The money is named for the document it waits on, not for a judgement.
-    assert has_element?(view, "#gstr3b-verdict", "Awaiting bills")
-    refute render(view) =~ "rides on #{awaiting} decisions"
+    assert has_element?(view, "#gstr3b-verdict", "Riding on decisions")
 
     # Net ITC is computed off the 2B ceiling, so it counts bills nobody sent.
     # Saying so stops a claim-ready figure standing alone.
