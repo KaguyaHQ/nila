@@ -35,7 +35,8 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                settled_tax_paise: 115_000,
                awaiting_bills_tax_paise: 0,
                value_dispute_tax_paise: 0,
-               decision_tax_paise: 45_000
+               decision_tax_paise: 45_000,
+               open_money_split_known?: false
              }
 
       # The 5 rows the portal reported and nobody supplied are a chase, not
@@ -77,7 +78,8 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                settled_tax_paise: 0,
                awaiting_bills_tax_paise: 0,
                value_dispute_tax_paise: 0,
-               decision_tax_paise: 0
+               decision_tax_paise: 0,
+               open_money_split_known?: true
              }
 
       summary = %{"buckets" => %{"in_2b_not_books" => 1}}
@@ -148,6 +150,39 @@ defmodule Nila.Gst.Purchase.RegisterTest do
     # takes the 2B figure whether or not anyone opens the row — the delta is a
     # finding and a vendor to chase, not a fork in the filing. It must not block
     # a signature, and it must not stop saying what it found.
+    # `decision_tax_paise` is a subtraction, so a snapshot frozen before the two
+    # subsets existed yields a plausible positive number rather than an obvious
+    # ₹0 — nothing downstream can tell it apart from a month that genuinely has
+    # no disputes. The only signal is absent-versus-zero, and `stats/1` collapses
+    # it, so the answer has to be taken while the raw summary is still in hand.
+    test "a pre-change snapshot reports that its open-money split is unknown" do
+      counts = %{
+        "buckets" => %{"matched" => 3, "value_mismatch" => 2, "needs_human" => 1},
+        "total_tax_paise" => 100_000,
+        "matched_tax_paise" => 40_000,
+        "open_tax_paise" => 60_000
+      }
+
+      legacy = Register.stats(counts)
+      modern = Register.stats(Map.put(counts, "value_dispute_tax_paise", 15_000))
+
+      refute legacy.open_money_split_known?
+      assert modern.open_money_split_known?
+
+      # Indistinguishable downstream: both look like a month with no disputes,
+      # and a `> 0` guard would render the overstatement either way.
+      assert legacy.value_dispute_tax_paise == 0
+      assert legacy.decision_tax_paise == 60_000
+      assert legacy.decision_tax_paise > 0
+
+      # The counts are right retroactively — the buckets always existed.
+      assert legacy.value_disputes == 2
+      assert legacy.need_decision + legacy.awaiting_bills + legacy.value_disputes == legacy.open
+
+      # No open money at all: nothing to misattribute, so nothing is unknown.
+      assert Register.stats(%{}).open_money_split_known?
+    end
+
     test "a value dispute is open money but not an answerable decision" do
       dispute = %{
         "id" => "vm",

@@ -129,6 +129,9 @@ defmodule Nila.Gst.Purchase.Register do
 
   All three stay open (`open_row?/1`), because the money behind them is not
   settled and the register must keep saying so.
+
+  The rupee split of that open money is only meaningful when
+  `open_money_split_known?` is true — see the note on `decision_tax_paise`.
   """
   def stats(summary) do
     buckets = summary["buckets"] || %{}
@@ -150,6 +153,17 @@ defmodule Nila.Gst.Purchase.Register do
     awaiting_bills_tax = summary["awaiting_bills_tax_paise"] || 0
     value_disputes = buckets["value_mismatch"] || 0
     value_dispute_tax = summary["value_dispute_tax_paise"] || 0
+    # Whether the split of the open money is trustworthy, which is not the same
+    # question as whether it is zero. A snapshot frozen before these fields
+    # existed reads 0 for both subsets, and `decision_tax_paise` then absorbs
+    # them silently — it is a subtraction, so it yields a plausible positive
+    # number rather than an obvious ₹0. Only the difference between an absent
+    # key and a zero one can tell those apart, and it is gone one line later, so
+    # it is recorded here while it still exists.
+    split_known? =
+      Map.has_key?(summary, "awaiting_bills_tax_paise") or
+        Map.has_key?(summary, "value_dispute_tax_paise") or
+        open_tax == 0
 
     %{
       rows: rows,
@@ -173,14 +187,13 @@ defmodule Nila.Gst.Purchase.Register do
       # decision can move, only a bill arriving.
       awaiting_bills_tax_paise: awaiting_bills_tax,
       value_dispute_tax_paise: value_dispute_tax,
-      # Both partitions still close on a snapshot frozen before these fields
-      # existed, and the counts are right there because the buckets always
-      # were. The money is not: the two missing subsets read 0, so
-      # `decision_tax_paise` absorbs them and overstates for an old month that
-      # held mismatches or uncollected bills. Same shape as the
-      # `total_tax_paise` fallback above — a signed month is immutable, so it is
-      # a reading of history, never a live figure.
+      # Both partitions still close on a pre-change snapshot, and the counts are
+      # right there because the buckets always existed. The money is not: read
+      # `open_money_split_known?` before showing any of these three as a
+      # breakdown. A signed month is immutable, so this is a reading of history
+      # rather than a live figure.
       decision_tax_paise: open_tax - awaiting_bills_tax - value_dispute_tax,
+      open_money_split_known?: split_known?,
       # `matched` and `open` are not complements — audited-accepted rows are in
       # neither, so a reader adding the two visible subsets lands short of the
       # month. `settled` is the exact complement of `open` (the money-side twin
