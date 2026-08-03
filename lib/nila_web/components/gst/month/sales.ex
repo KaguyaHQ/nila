@@ -8,6 +8,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
   alias Nila.Gst.Issues
   alias Nila.Gst.Sales.Gstr1
+  alias Nila.Gst.Sales.Values
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias NilaWeb.Components.Gst.Month.Helpers
   alias NilaWeb.Components.Gst.Month.Workings
@@ -471,6 +472,49 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         {render_slot(@source)}
       </section>
 
+      <%!-- The object being approved, which this page never actually showed.
+            One row, because `derive/2` emits b2b, hsn and doc_issue and nothing
+            else — printing "Credit/debit notes: none" would be an assertion
+            nobody made and the engine cannot check. --%>
+      <section :if={@derived} id="gstr1-filing-summary" class="space-y-block">
+        <h3 class="text-base-content text-body font-semibold">What this return files</h3>
+        <.data_table
+          id="gstr1-filing-summary-rows"
+          rows={filing_summary_rows(@account, @derived)}
+          row_id={&"gstr1-filing-#{&1.key}"}
+          min_width="min-w-[640px]"
+          dense
+        >
+          <:col :let={row} label="Section">
+            <span class="text-base-content font-medium">{row.label}</span>
+          </:col>
+          <:col :let={row} label="Documents" align="right">{row.documents}</:col>
+          <:col :let={row} label="Taxable" align="right">{Helpers.rupees(row.taxable)}</:col>
+          <:col :let={row} label="IGST" align="right">{Helpers.rupees(row.igst)}</:col>
+          <:col :let={row} label="CGST" align="right">{Helpers.rupees(row.cgst)}</:col>
+          <:col :let={row} label="SGST" align="right">{Helpers.rupees(row.sgst)}</:col>
+          <:col :let={row} label="Status">
+            <span class={["text-meta", row.blocked? && "text-error"]}>{row.status}</span>
+          </:col>
+        </.data_table>
+        <%!-- Before anyone answers, the capability statement is all this page
+              can honestly say. Once they have, it names what was actually
+              confirmed absent — an assertion with a person behind it, not a
+              claim the engine invented from an empty table. --%>
+        <p
+          :if={@completeness_questions == []}
+          id="gstr1-filing-confirmed-absent"
+          class="text-ink-subtle text-meta"
+        >
+          Confirmed absent this month: credit and debit notes, exports, SEZ supplies, B2C supplies,
+          cancellations, and any further invoice series.
+        </p>
+        <p id="gstr1-filing-capability" class="text-ink-subtle text-meta">
+          This return files B2B invoices. A credit note, export, SEZ, reverse-charge or B2C bill
+          stops the month rather than being filed as an ordinary invoice.
+        </p>
+      </section>
+
       <section id="gstr1-register" class="space-y-block">
         <h3 class="text-base-content text-body font-semibold">Invoice register</h3>
         <.invoice_table
@@ -741,6 +785,35 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp confirmation_note(confirmation, _status),
     do:
       "Client confirmed all sales documents were sent via WhatsApp · #{format_display_datetime(confirmation.inserted_at)}"
+
+  # One row per section the return actually builds. The status is the work still
+  # standing against it, in the same vocabulary the rest of the page uses.
+  defp filing_summary_rows(account, derived) do
+    totals = Values.filed_totals(derived)
+    by_kind = account.issues.by_kind
+
+    [
+      %{
+        key: "b2b",
+        label: "B2B regular",
+        documents: account.draft.documents,
+        taxable: totals.taxable,
+        igst: totals.igst,
+        cgst: totals.cgst,
+        sgst: totals.sgst,
+        blocked?: Map.get(by_kind, :blocked, 0) > 0,
+        status: filing_status(account)
+      }
+    ]
+  end
+
+  defp filing_status(account) do
+    cond do
+      Map.get(account.issues.by_kind, :blocked, 0) > 0 -> "Held by a blocker"
+      account.issues.required_count > 0 -> Helpers.work_clause(account.issues.by_kind)
+      true -> "Ready"
+    end
+  end
 
   defp reconciliation_rows(account) do
     [

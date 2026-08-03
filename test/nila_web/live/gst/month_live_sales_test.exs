@@ -302,6 +302,33 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     refute has_element?(view, "#month-door-sign-r1")
   end
 
+  test "the month shows the object being approved, and claims nothing it cannot check", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    confirm_sales_complete!(org, client, @period)
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#gstr1-filing-summary", "What this return files")
+    assert has_element?(view, "#gstr1-filing-b2b", "B2B regular")
+
+    # One row, because `derive/2` builds b2b, hsn and doc_issue and nothing
+    # else. Printing "Credit notes: none" here would be an assertion nobody has
+    # made and the engine cannot check.
+    assert has_element?(view, "#gstr1-filing-capability", "stops the month")
+    refute has_element?(view, "#gstr1-filing-confirmed-absent")
+
+    # It reports the work standing against the filing, not a bare "blocked".
+    assert has_element?(view, "#gstr1-filing-b2b", "1 decision")
+
+    # Only once a human has actually answered does the page say what is absent.
+    confirm_all_open_issues(view)
+
+    assert has_element?(view, "#gstr1-filing-confirmed-absent", "Confirmed absent this month")
+    assert has_element?(view, "#gstr1-filing-b2b", "Ready")
+  end
+
   describe "what the pile cannot say about itself" do
     test "a month is not approvable until somebody answers for its completeness", %{
       conn: conn,

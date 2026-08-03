@@ -18,6 +18,7 @@ defmodule Nila.Gst.Sales.Workings do
   target wins (append-only store, so ordering is by insertion).
   """
 
+  alias Nila.Gst.Hsn.DescriptionSignal
   alias Nila.Gst.Hsn.Validation
   alias Nila.Gst.Issues
   alias Nila.Gst.RateHistory
@@ -146,8 +147,14 @@ defmodule Nila.Gst.Sales.Workings do
     |> annotate_rates(compliance)
   end
 
-  defp annotate_hsn(invoices, %{directory: directory}),
-    do: Validation.annotate_invoices(invoices, directory)
+  defp annotate_hsn(invoices, %{directory: directory}) do
+    invoices
+    |> Validation.annotate_invoices(directory)
+    # Shadow only: measured, never rendered. See `DescriptionSignal` for why the
+    # staging matters — a false description conflict at `required` would
+    # withhold a filing over a naming style.
+    |> DescriptionSignal.observe(%{track: :sales})
+  end
 
   defp annotate_hsn(invoices, _compliance), do: invoices
 
