@@ -17,6 +17,21 @@ Browser → Cloudflare (TLS + cache) → Caddy (edge-ops stack) ──edge──
 - **DB**: dedicated `postgres:16` container, private `internal` network, volume `nila_pgdata`
 - **Server files**: `/home/deploy/nila/` (`docker-compose.yml`, `deploy.sh`, `.env`)
 
+All operator commands use the `nila-prod` SSH alias so SSH selects the deploy
+user's dedicated key. Configure it once in `~/.ssh/config`:
+
+```sshconfig
+Host nila-prod
+    HostName 46.224.237.179
+    User deploy
+    IdentityFile ~/.ssh/hetzner_deploy
+    IdentitiesOnly yes
+```
+
+Use `ssh nila-prod`, not `ssh deploy@46.224.237.179`; the raw address bypasses
+the alias-specific identity and fails unless `-i ~/.ssh/hetzner_deploy` is
+supplied explicitly.
+
 ---
 
 ## One-time bootstrap
@@ -34,7 +49,7 @@ Add the same secrets the kaguya repo uses (Settings → Secrets → Actions):
 ### 2. Create the shared `edge` network (once per box)
 
 ```bash
-ssh deploy@46.224.237.179 'docker network create edge || true'
+ssh nila-prod 'docker network create edge || true'
 ```
 
 > The edge-ops Caddy and the Nila app both attach to this. It already exists if
@@ -43,11 +58,11 @@ ssh deploy@46.224.237.179 'docker network create edge || true'
 ### 3. Seed Nila's server directory + secrets
 
 ```bash
-ssh deploy@46.224.237.179 'mkdir -p /home/deploy/nila'
+ssh nila-prod 'mkdir -p /home/deploy/nila'
 
 # Copy the env template, then fill in real secrets on the server
-scp hetzner/.env.example "deploy@46.224.237.179:/home/deploy/nila/.env"
-ssh deploy@46.224.237.179 'nano /home/deploy/nila/.env'
+scp hetzner/.env.example nila-prod:/home/deploy/nila/.env
+ssh nila-prod 'nano /home/deploy/nila/.env'
 ```
 
 Generate the secrets locally and paste them in:
@@ -65,7 +80,7 @@ The server must also be logged in to GHCR to pull the private image (already
 done for the edge-ops stack on this box; re-run if needed):
 
 ```bash
-echo <GHCR_PAT> | ssh deploy@46.224.237.179 'docker login ghcr.io -u <github-user> --password-stdin'
+echo <GHCR_PAT> | ssh nila-prod 'docker login ghcr.io -u <github-user> --password-stdin'
 ```
 
 ### 4. Roll out the shared-Caddy changes (edge-ops repo)
@@ -112,15 +127,15 @@ curl -s https://nila.tax/health        # {"status":"healthy","db":"ok","oban":"o
 ### Status / logs
 
 ```bash
-ssh deploy@46.224.237.179 'cd /home/deploy/nila && docker compose ps'
-ssh deploy@46.224.237.179 'cd /home/deploy/nila && docker compose logs nila --tail=100'
-ssh deploy@46.224.237.179 'cd /home/deploy/nila && docker compose logs -f nila'
+ssh nila-prod 'cd /home/deploy/nila && docker compose ps'
+ssh nila-prod 'cd /home/deploy/nila && docker compose logs nila --tail=100'
+ssh nila-prod 'cd /home/deploy/nila && docker compose logs -f nila'
 ```
 
 ### Run migrations manually
 
 ```bash
-ssh deploy@46.224.237.179 'cd /home/deploy/nila && docker compose run --rm nila /app/bin/migrate'
+ssh nila-prod 'cd /home/deploy/nila && docker compose run --rm nila /app/bin/migrate'
 ```
 
 ### IEx console on the running node
@@ -131,20 +146,12 @@ ssh deploy@46.224.237.179 'cd /home/deploy/nila && docker compose run --rm nila 
 
 Exit with `Ctrl-G q Enter` (not `Ctrl-C` — that interrupts the live node).
 
-The script needs this block in `~/.ssh/config`:
-
-```sshconfig
-Host kaguya-prod nila-prod
-    HostName 46.224.237.179
-    User deploy
-    IdentityFile ~/.ssh/hetzner_deploy
-    IdentitiesOnly yes
-```
-
-Without the wrapper, the raw form is:
+The script uses the `nila-prod` alias configured at the top of this document.
+Without the alias, the explicit raw form must name the identity file:
 
 ```bash
-ssh -t deploy@46.224.237.179 'cd /home/deploy/nila && docker compose exec nila /app/bin/nila remote'
+ssh -i ~/.ssh/hetzner_deploy -t deploy@46.224.237.179 \
+  'cd /home/deploy/nila && docker compose exec nila /app/bin/nila remote'
 ```
 
 ### Update env vars
@@ -152,13 +159,13 @@ ssh -t deploy@46.224.237.179 'cd /home/deploy/nila && docker compose exec nila /
 Edit `/home/deploy/nila/.env`, then:
 
 ```bash
-ssh deploy@46.224.237.179 'cd /home/deploy/nila && docker compose up -d nila'
+ssh nila-prod 'cd /home/deploy/nila && docker compose up -d nila'
 ```
 
 ### Database backup (you own this — it's a self-hosted container)
 
 ```bash
-ssh deploy@46.224.237.179 \
+ssh nila-prod \
   'cd /home/deploy/nila && docker compose exec -T nila-postgres pg_dump -U nila nila_prod' \
   | gzip > "nila_$(date +%F).sql.gz"
 ```
