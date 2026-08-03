@@ -14,19 +14,10 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :client, :map, required: true
   attr :period, :string, required: true
   attr :asks, :list, required: true
-  attr :selected_invoice, :any, default: nil
   attr :source_invoices, :list, default: []
   attr :duplicate_issue, :any, default: nil
-  attr :focused_issue, :string, default: nil
   attr :show_completeness_override, :boolean, default: false
   attr :completeness_override_form, :any, default: nil
-  attr :issues_by_invoice, :map, required: true
-  attr :decisions, :map, default: %{}
-  attr :review_navigation, :map, default: %{previous: nil, next: nil}
-  attr :r1_signoff, :any, default: nil
-  attr :flagged, :any, required: true
-  attr :correcting, :any, default: nil
-  attr :derived, :any, default: nil
 
   def evidence_modals(assigns) do
     ~H"""
@@ -44,6 +35,8 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       :if={@duplicate_issue}
       issue={@duplicate_issue}
       invoices={@source_invoices}
+      client={@client}
+      period={@period}
     />
 
     <.modal
@@ -104,24 +97,13 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         </.form>
       </div>
     </.modal>
-
-    <.invoice_modal
-      :if={@selected_invoice}
-      selected_invoice={@selected_invoice}
-      issues_by_invoice={@issues_by_invoice}
-      focused_issue={@focused_issue}
-      decisions={@decisions}
-      review_navigation={@review_navigation}
-      r1_signoff={@r1_signoff}
-      flagged={@flagged}
-      correcting={@correcting}
-      derived={@derived}
-    />
     """
   end
 
   attr :issue, :map, required: true
   attr :invoices, :list, required: true
+  attr :client, :map, required: true
+  attr :period, :string, required: true
 
   defp duplicate_review_modal(assigns) do
     members = Enum.filter(assigns.invoices, &(&1["id"] in assigns.issue["source_ids"]))
@@ -187,9 +169,14 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               <.button
                 variant="outline"
                 size="xs"
-                phx-click="review-sales-issue"
-                phx-value-source={invoice["id"]}
-                phx-value-target={SalesWorkings.issue_key(@issue)}
+                patch={
+                  sales_review_path(
+                    @client,
+                    @period,
+                    invoice["id"],
+                    SalesWorkings.issue_key(@issue)
+                  )
+                }
               >
                 Open to correct number
               </.button>
@@ -210,6 +197,10 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :flagged, :any, required: true
   attr :correcting, :any, default: nil
   attr :derived, :any, default: nil
+  attr :target, :any, required: true
+  attr :event_target, :string, required: true
+  attr :evidence_page, :integer, default: 0
+  attr :correction_form, :any, default: nil
 
   # The trust atom: the scan big enough to read on the left, the full extracted
   # read beside it, and every check an outcome the validation layer already
@@ -222,7 +213,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   # the tick's tooltip. Printing every passed claim as its own line was fourteen
   # lines of wallpaper for a seven-line bill — the eye wants seven glances down
   # one column, then the totals row, and it is done.
-  defp invoice_modal(assigns) do
+  def invoice_detail(assigns) do
     checks = Gstr1.invoice_checks(assigns.selected_invoice)
     issues = Helpers.invoice_issues(assigns.issues_by_invoice, assigns.selected_invoice)
 
@@ -256,57 +247,51 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       |> assign(:all_checks, checks)
 
     ~H"""
-    <.modal
-      id="gstr1-evidence-modal"
-      title={@selected_invoice["invoice_number"] || "Invoice"}
-      on_close="close-invoice-review"
-      scrim_class="bg-scrim/70"
-      class="h-[90vh] max-w-384"
-    >
-      <:header :let={title_id}>
-        <div id="gstr1-review-header" class="space-y-related">
-          <div class="grid items-center gap-3 lg:grid-cols-[1fr_auto_1fr]">
-            <button
-              type="button"
-              id="gstr1-review-previous"
-              phx-click={@review_navigation.previous && "navigate-invoice-review"}
-              phx-value-inum={@review_navigation.previous}
-              disabled={is_nil(@review_navigation.previous)}
-              class="hover:text-ink text-ink-subtle text-ui justify-self-start transition disabled:opacity-30"
-            >
-              ← Previous flagged invoice
-            </button>
-            <div class="flex flex-wrap items-center justify-center gap-2 text-center">
-              <h3 id={title_id} class="text-base-content text-body font-semibold">
-                {@selected_invoice["invoice_number"] || "Invoice"}
-              </h3>
-              <span class="text-ink-subtle text-ui">{unresolved_label(@open_issues)}</span>
-              <.badge variant={@review_state.variant}>{@review_state.label}</.badge>
-            </div>
-            <button
-              type="button"
-              id="gstr1-review-next"
-              phx-click={@review_navigation.next && "navigate-invoice-review"}
-              phx-value-inum={@review_navigation.next}
-              disabled={is_nil(@review_navigation.next)}
-              class="hover:text-ink text-ink-subtle text-ui justify-self-end transition disabled:opacity-30"
-            >
-              Next flagged invoice →
-            </button>
+    <div id="gstr1-evidence-modal" class="space-y-block h-full min-h-0">
+      <div id="gstr1-review-header" class="space-y-related">
+        <div class="grid items-center gap-3 lg:grid-cols-[1fr_auto_1fr]">
+          <button
+            type="button"
+            id="gstr1-review-previous"
+            phx-click="navigate-invoice-review"
+            phx-value-direction="previous"
+            phx-target={@target}
+            disabled={is_nil(@review_navigation.previous)}
+            class="hover:text-ink text-ink-subtle text-ui justify-self-start transition disabled:opacity-30"
+          >
+            ← Previous
+          </button>
+          <div class="flex flex-wrap items-center justify-center gap-2 text-center">
+            <h3 id="gstr1-evidence-modal-title" class="text-base-content text-body font-semibold">
+              {@selected_invoice["invoice_number"] || "Invoice"}
+            </h3>
+            <span class="text-ink-subtle text-ui">{unresolved_label(@open_issues)}</span>
+            <.badge variant={@review_state.variant}>{@review_state.label}</.badge>
           </div>
-          <div :if={@open_issues != []} class="flex flex-wrap justify-center gap-2">
-            <button
-              :for={{issue, index} <- Enum.with_index(@open_issues, 1)}
-              type="button"
-              data-review-target={issue_focus_target(issue)}
-              class="bg-warning/10 hover:bg-warning/20 rounded-field text-base-content text-meta flex items-center gap-1.5 px-2 py-1 font-medium transition-colors"
-            >
-              <span class="bg-warning/15 rounded-full px-1.5 tabular-nums">{index}</span>
-              {issue_chip_label(issue)}
-            </button>
-          </div>
+          <button
+            type="button"
+            id="gstr1-review-next"
+            phx-click="navigate-invoice-review"
+            phx-value-direction="next"
+            phx-target={@target}
+            disabled={is_nil(@review_navigation.next)}
+            class="hover:text-ink text-ink-subtle text-ui justify-self-end transition disabled:opacity-30"
+          >
+            Next →
+          </button>
         </div>
-      </:header>
+        <div :if={@open_issues != []} class="flex flex-wrap justify-center gap-2">
+          <button
+            :for={{issue, index} <- Enum.with_index(@open_issues, 1)}
+            type="button"
+            data-review-target={issue_focus_target(issue)}
+            class="bg-warning/10 hover:bg-warning/20 rounded-field text-base-content text-meta flex items-center gap-1.5 px-2 py-1 font-medium transition-colors"
+          >
+            <span class="bg-warning/15 rounded-full px-1.5 tabular-nums">{index}</span>
+            {issue_chip_label(issue)}
+          </button>
+        </div>
+      </div>
 
       <div
         id="gstr1-review-workflow"
@@ -314,15 +299,19 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         data-previous={@review_navigation.previous}
         data-next={@review_navigation.next}
         data-initial-focus={@initial_focus}
-        class="gap-block grid h-full min-h-0 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]"
+        data-event-target={@event_target}
+        class="gap-block grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]"
       >
-        <div id="gstr1-evidence-images" class="min-h-0 space-y-3 overflow-y-auto">
-          <p class="text-ink-subtle text-label font-semibold uppercase">Original document</p>
-          <img
-            :for={url <- @selected_invoice["image_urls"]}
-            src={url}
-            alt="Scanned sales bill"
-            class="border-base-300 rounded-box w-full border"
+        <div id="gstr1-evidence-images" class="min-h-0 overflow-y-auto">
+          <.evidence_frame
+            :if={@selected_invoice["image_urls"] != []}
+            id="gstr1-evidence-frame"
+            images={@selected_invoice["image_urls"]}
+            page={@evidence_page}
+            label="Original document"
+            on_open="open-evidence"
+            on_page="evidence-page"
+            target={@target}
           />
           <div
             :if={@selected_invoice["image_urls"] == []}
@@ -369,6 +358,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                     issue_correctable?(@check_issues[check_key(check)], @flagged, @selected_invoice)
                   }
                   r1_signoff={@r1_signoff}
+                  target={@target}
                 />
                 <div
                   :if={is_nil(@check_issues[check_key(check)])}
@@ -391,6 +381,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 decisions={@decisions}
                 can_correct={issue_correctable?(issue, @flagged, @selected_invoice)}
                 r1_signoff={@r1_signoff}
+                target={@target}
               />
             </div>
           </div>
@@ -497,28 +488,38 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             </div>
             <%= for field <- Gstr1.correctable_fields(@flagged, @selected_invoice["id"] || @selected_invoice["pristine_inum"]) do %>
               <%= if @correcting && @correcting.field == field do %>
-                <form phx-submit="save_correct" class="flex items-end gap-2">
-                  <.input type="hidden" name="field" id="gstr1-correct-field" value={field} />
+                <.form
+                  for={@correction_form}
+                  id="gstr1-correction-form"
+                  phx-submit="save_correct"
+                  phx-target={@target}
+                  class="flex items-end gap-2"
+                >
+                  <.input field={@correction_form[:field]} type="hidden" />
                   <div class="flex-1">
-                    <.input
-                      type="text"
-                      name="value"
-                      value={@correcting.value}
-                      label={field}
-                      id="gstr1-correct-value"
-                    />
+                    <.input field={@correction_form[:value]} type="text" label={field} />
                   </div>
                   <.button type="submit" variant="primary" size="sm">Save</.button>
-                  <.button type="button" variant="ghost" size="sm" phx-click="cancel_correct">Cancel</.button>
-                </form>
+                  <.button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    phx-click="cancel_correct"
+                    phx-target={@target}
+                  >Cancel</.button>
+                </.form>
               <% else %>
                 <div class="flex items-center justify-between gap-2">
                   <span class="text-ink-muted text-ui min-w-0 truncate font-mono">
                     {field} = {to_string(Gstr1.field_value(@selected_invoice, field))}
                   </span>
-                  <.button variant="ghost" size="xs" phx-click="start_correct" phx-value-field={field}>
-                    Correct
-                  </.button>
+                  <.button
+                    variant="ghost"
+                    size="xs"
+                    phx-click="start_correct"
+                    phx-value-field={field}
+                    phx-target={@target}
+                  >Correct</.button>
                 </div>
               <% end %>
             <% end %>
@@ -537,11 +538,12 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               this.onKeydown = (event) => {
                 const tag = event.target.tagName
                 if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || event.target.isContentEditable) return
-                const inum = event.key === "ArrowLeft" ? this.el.dataset.previous :
-                  event.key === "ArrowRight" ? this.el.dataset.next : null
-                if (!inum) return
+                const direction = event.key === "ArrowLeft" ? "previous" :
+                  event.key === "ArrowRight" ? "next" : null
+                const item = direction && this.el.dataset[direction]
+                if (!item) return
                 event.preventDefault()
-                this.pushEvent("navigate-invoice-review", { inum })
+                this.pushEventTo(this.el.dataset.eventTarget, "navigate-invoice-review", { direction })
               }
               window.addEventListener("click", this.onClick)
               window.addEventListener("keydown", this.onKeydown)
@@ -571,7 +573,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           }
         </script>
       </div>
-    </.modal>
+    </div>
     """
   end
 
@@ -583,6 +585,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :decisions, :map, required: true
   attr :can_correct, :boolean, default: false
   attr :r1_signoff, :any, default: nil
+  attr :target, :any, required: true
 
   defp issue_card(assigns) do
     assigns =
@@ -694,6 +697,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           variant="primary"
           size="sm"
           phx-click="resolve-invoice-issue"
+          phx-target={@target}
           phx-value-target={SalesWorkings.issue_key(@issue)}
           phx-value-decision={(@proposal && @proposal.decision) || "use_extracted_lines"}
         >
@@ -725,6 +729,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           variant="ghost"
           size="xs"
           phx-click="undo"
+          phx-target={@target}
           phx-value-target={SalesWorkings.issue_key(@issue)}
         >
           Undo
@@ -1012,6 +1017,11 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   defp total_label("printed_taxable_mismatch"), do: "taxable"
   defp total_label("printed_tax_mismatch"), do: "tax"
   defp total_label("grand_total_mismatch"), do: "grand total"
+
+  defp sales_review_path(client, period, source_id, focus) do
+    query = URI.encode_query(%{"item" => source_id, "scope" => "needs_you", "focus" => focus})
+    "/gst/#{client.id}/#{period}/review/sales?" <> query
+  end
 
   defp amount(value), do: Helpers.amount(value)
   defp percent(rate), do: Helpers.percent(rate)

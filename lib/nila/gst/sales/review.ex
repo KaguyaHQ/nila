@@ -4,7 +4,7 @@ defmodule Nila.Gst.Sales.Review do
 
   The rail stays invoice-centric: `all` contains every active source invoice
   that has a derived filing treatment, while `needs_you` contains only invoices
-  carrying an open decision issue. Progress counts unique decision targets, not
+  carrying open actionable work. Progress counts unique issue targets, not
   invoices, and therefore does not change when the visible scope changes.
   Month-level work is reported separately rather than represented as fake rail
   rows.
@@ -27,15 +27,15 @@ defmodule Nila.Gst.Sales.Review do
         end
       end)
 
-    decision_issues =
+    actionable_issues =
       issues
-      |> Enum.filter(&(Issues.resolution_kind(&1) == :decision))
+      |> Enum.filter(&actionable?/1)
       |> Enum.filter(&(issue_source_ids(&1, invoices) != []))
 
-    all_targets = MapSet.new(decision_issues, &Workings.issue_key/1)
+    all_targets = MapSet.new(actionable_issues, &Workings.issue_key/1)
 
     open_targets =
-      decision_issues
+      actionable_issues
       |> Enum.filter(&(&1["status"] == "open"))
       |> MapSet.new(&Workings.issue_key/1)
 
@@ -54,7 +54,7 @@ defmodule Nila.Gst.Sales.Review do
 
     %{
       all: items,
-      needs_you: Enum.filter(items, &(&1.open_decision_targets != [])),
+      needs_you: Enum.filter(items, &(&1.open_actionable_targets != [])),
       progress: progress,
       month_issue_count: month_issue_count
     }
@@ -64,11 +64,30 @@ defmodule Nila.Gst.Sales.Review do
   def scope(review, scope) when scope in [:needs_you, "needs_you"], do: review.needs_you
   def scope(review, scope) when scope in [:all, "all"], do: review.all
 
+  @doc "Canonicalizes an item and scope for the route-backed review surface."
+  def route_state(review, source_id, scope_name) do
+    selected =
+      lookup(review.all, source_id) || List.first(review.needs_you) || List.first(review.all)
+
+    scope_name = valid_scope(scope_name, selected)
+    scoped = scope(review, scope_name)
+    {scope_name, scoped} = fallback_empty_scope(review, scope_name, scoped)
+
+    selected =
+      lookup(scoped, source_id) || (selected && lookup(scoped, selected.source_id)) ||
+        List.first(scoped)
+
+    %{scope: scope_name, item: selected && selected.source_id}
+  end
+
   @doc "Selects a requested item in the scope, or its first item when absent."
   def select(review, scope_name, source_id \\ nil) do
     items = scope(review, scope_name)
-    Enum.find(items, &(&1.source_id == source_id)) || List.first(items)
+    lookup(items, source_id) || List.first(items)
   end
+
+  @doc "Finds an invoice rail item by stable source ID."
+  def lookup(items, source_id), do: Enum.find(items, &(&1.source_id == source_id))
 
   @doc "Returns the previous item in the current scope without wrapping."
   def previous(review, scope_name, source_id),
@@ -118,13 +137,11 @@ defmodule Nila.Gst.Sales.Review do
     invoice_issues =
       Enum.filter(issues, &(invoice["id"] in issue_source_ids(&1, invoices)))
 
-    decision_issues =
-      Enum.filter(invoice_issues, &(Issues.resolution_kind(&1) == :decision))
+    actionable_issues = Enum.filter(invoice_issues, &actionable?/1)
+    actionable_targets = actionable_issues |> Enum.map(&Workings.issue_key/1) |> Enum.uniq()
 
-    decision_targets = decision_issues |> Enum.map(&Workings.issue_key/1) |> Enum.uniq()
-
-    open_decision_targets =
-      decision_issues
+    open_actionable_targets =
+      actionable_issues
       |> Enum.filter(&(&1["status"] == "open"))
       |> Enum.map(&Workings.issue_key/1)
       |> Enum.uniq()
@@ -135,12 +152,23 @@ defmodule Nila.Gst.Sales.Review do
       invoice: invoice,
       treatment: treatment,
       issues: invoice_issues,
-      decision_issues: decision_issues,
-      decision_targets: decision_targets,
-      open_decision_targets: open_decision_targets,
-      state: item_state(decision_targets, open_decision_targets)
+      actionable_issues: actionable_issues,
+      actionable_targets: actionable_targets,
+      open_actionable_targets: open_actionable_targets,
+      state: item_state(actionable_targets, open_actionable_targets)
     }
   end
+
+  defp actionable?(issue),
+    do: Issues.resolution_kind(issue) in [:decision, :correction, :confirmation]
+
+  defp valid_scope(scope, _selected) when scope in [:needs_you, "needs_you"], do: :needs_you
+  defp valid_scope(scope, _selected) when scope in [:all, "all"], do: :all
+  defp valid_scope(_scope, %{open_actionable_targets: [_ | _]}), do: :needs_you
+  defp valid_scope(_scope, _selected), do: :all
+
+  defp fallback_empty_scope(review, :needs_you, []), do: {:all, review.all}
+  defp fallback_empty_scope(_review, scope_name, scoped), do: {scope_name, scoped}
 
   defp item_state([], []), do: :unreviewed
   defp item_state(_targets, [_ | _]), do: :needs_you

@@ -3,41 +3,58 @@ defmodule Nila.Gst.Sales.ReviewTest do
 
   alias Nila.Gst.Sales.Review
 
-  test "builds invoice scopes in source-register order and counts decision targets" do
+  test "builds invoice scopes in register order and counts every actionable target" do
     review = Review.build(workings())
 
     assert Enum.map(review.all, & &1.source_id) == ~w(source-c source-a source-b)
-    assert Enum.map(review.needs_you, & &1.source_id) == ["source-a"]
+    assert Enum.map(review.needs_you, & &1.source_id) == ~w(source-c source-a)
 
     challenged = Enum.find(review.all, &(&1.source_id == "source-a"))
 
-    assert challenged.open_decision_targets == [
+    assert challenged.open_actionable_targets == [
              "source-a:printed_tax_mismatch",
-             "treatment|source-a"
+             "treatment|source-a",
+             "source-a:hsn_inferred_code"
            ]
 
     assert challenged.state == :needs_you
 
     assert Enum.find(review.all, &(&1.source_id == "source-b")).state == :settled
-    assert Enum.find(review.all, &(&1.source_id == "source-c")).state == :unreviewed
+    assert Enum.find(review.all, &(&1.source_id == "source-c")).state == :needs_you
 
-    assert review.progress == %{completed: 1, open: 2, total: 3}
+    assert review.progress == %{completed: 1, open: 4, total: 5}
     assert review.month_issue_count == 1
   end
 
   test "scope selection and navigation do not wrap and do not alter progress" do
     review = Review.build(workings())
 
-    assert Review.select(review, :needs_you).source_id == "source-a"
+    assert Review.select(review, :needs_you).source_id == "source-c"
     assert Review.select(review, :all, "source-b").source_id == "source-b"
-    assert Review.select(review, :needs_you, "source-b").source_id == "source-a"
+    assert Review.select(review, :needs_you, "source-b").source_id == "source-c"
 
     assert Review.previous(review, :all, "source-c") == nil
     assert Review.next(review, :all, "source-c").source_id == "source-a"
     assert Review.previous(review, :all, "source-b").source_id == "source-a"
     assert Review.next(review, :all, "source-b") == nil
-    assert Review.previous(review, :needs_you, "source-a") == nil
+    assert Review.previous(review, :needs_you, "source-c") == nil
+    assert Review.next(review, :needs_you, "source-c").source_id == "source-a"
+    assert Review.previous(review, :needs_you, "source-a").source_id == "source-c"
     assert Review.next(review, :needs_you, "source-a") == nil
+
+    assert Review.route_state(review, "source-a", nil) == %{scope: :needs_you, item: "source-a"}
+    assert Review.route_state(review, "source-b", nil) == %{scope: :all, item: "source-b"}
+    assert Review.route_state(review, "unknown", nil) == %{scope: :needs_you, item: "source-c"}
+
+    clean_workings =
+      update_in(workings().issues, fn issues ->
+        Enum.map(issues, &Map.put(&1, "status", "resolved"))
+      end)
+
+    assert Review.route_state(Review.build(clean_workings), nil, :needs_you) == %{
+             scope: :all,
+             item: "source-c"
+           }
 
     assert review.progress == Review.build(workings()).progress
   end
@@ -82,6 +99,7 @@ defmodule Nila.Gst.Sales.ReviewTest do
         },
         issue("source-b", "grand_total_mismatch", "resolved"),
         issue("source-c", "invalid_gstin", "open"),
+        issue("source-a", "hsn_inferred_code", "open"),
         %{
           "invoice" => nil,
           "code" => "completeness_unconfirmed",

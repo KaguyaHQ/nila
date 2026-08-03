@@ -713,9 +713,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
   test "the invoice row owns issue review without a detached next-issue action", %{
     conn: conn,
+    org: org,
     client: client
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, month} = Nila.Gst.Sales.Months.get_by_period(org.id, client.id, @period)
+    [invoice | _] = Nila.Gst.Sales.Resolutions.workings(month).active_invoices
 
     refute has_element?(view, "#month-door-sales-issues")
     refute has_element?(view, "#month-door-review-issue")
@@ -723,7 +726,11 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
-    assert_patch(view, ~p"/gst/#{client.id}/#{@period}?invoice=20%2F2025-26")
+    assert_patch(
+      view,
+      "/gst/#{client.id}/#{@period}/review/sales?item=#{invoice["id"]}&scope=needs_you"
+    )
+
     assert has_element?(view, "#gstr1-evidence-modal")
     assert has_element?(view, "#gstr1-checks button", "Accept the extracted lines")
 
@@ -734,7 +741,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
            )
   end
 
-  test "opening an invoice adds one history entry; navigating and closing add none", %{
+  test "opening, adjacent navigation, and Done patch without unmounting MonthLive", %{
     conn: conn,
     org: org,
     client: client
@@ -742,7 +749,6 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     alias Nila.Gst.Sales.Gstr1
     alias Nila.Gst.Sales.Months, as: SalesMonths
 
-    # Two flagged invoices, so previous/next actually have somewhere to go.
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
 
     invoices =
@@ -754,7 +760,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
           invoice
       end)
 
-    {:ok, _} =
+    {:ok, updated} =
       SalesMonths.upsert(%{
         org_id: org.id,
         client_id: client.id,
@@ -764,64 +770,59 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
         derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, @period))
       })
 
+    [first, second | _] = Nila.Gst.Sales.Resolutions.workings(updated).active_invoices
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    month_pid = view.pid
 
-    # Opening is a place the reader can Back out of, so it pushes.
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
-    assert patch_kind(view) == :push
 
-    # Walking the queue does not: twelve invoices would otherwise leave twelve
-    # entries between the reader and the month he came from.
+    assert_patch(
+      view,
+      "/gst/#{client.id}/#{@period}/review/sales?item=#{first["id"]}&scope=needs_you"
+    )
+
     view |> element("#gstr1-review-next") |> render_click()
-    assert patch_kind(view) == :replace
+
+    assert_patch(
+      view,
+      "/gst/#{client.id}/#{@period}/review/sales?item=#{second["id"]}&scope=needs_you"
+    )
 
     view |> element("#gstr1-review-previous") |> render_click()
-    assert patch_kind(view) == :replace
 
-    # Closing replaces too, so Back from the closed modal cannot reopen it.
-    view
-    |> element("#gstr1-evidence-modal button[phx-click='close-invoice-review']")
-    |> render_click()
+    assert_patch(
+      view,
+      "/gst/#{client.id}/#{@period}/review/sales?item=#{first["id"]}&scope=needs_you"
+    )
 
-    assert patch_kind(view) == :replace
+    view |> element("#sales-review button[phx-click='done']") |> render_click()
+    assert_patch(view, ~p"/gst/#{client.id}/#{@period}")
+    assert view.pid == month_pid
     refute has_element?(view, "#gstr1-evidence-modal")
   end
 
-  # `assert_patch/1` reports the path but not whether it pushed or replaced, and
-  # push-vs-replace is the whole question here. Reads the same proxy message
-  # `assert_patch/1` consumes (`client_proxy.ex` `send_patch/3`), one field
-  # further in — an undocumented shape, so a LiveView upgrade that restructures
-  # it will fail here rather than silently pass.
-  defp patch_kind(view) do
-    %{proxy: {ref, topic, _}} = view
-    assert_receive {^ref, {:patch, ^topic, %{kind: kind}}}
-    kind
-  end
-
-  test "the invoice review URL survives refresh and close returns to the register", %{
+  test "the invoice review URL survives refresh and Done returns to the register", %{
     conn: conn,
+    org: org,
     client: client
   } do
-    review_path = ~p"/gst/#{client.id}/#{@period}?invoice=20%2F2025-26"
+    {:ok, month} = Nila.Gst.Sales.Months.get_by_period(org.id, client.id, @period)
+    [invoice | _] = Nila.Gst.Sales.Resolutions.workings(month).active_invoices
+
+    review_path =
+      "/gst/#{client.id}/#{@period}/review/sales?item=#{invoice["id"]}&scope=needs_you"
+
     {:ok, view, _html} = live(conn, review_path)
 
     assert has_element?(view, "#gstr1-evidence-modal")
     assert has_element?(view, "#gstr1-review-header", "1 to answer")
     assert has_element?(view, "#gstr1-review-header", "Filing blocked")
-
-    assert has_element?(
-             view,
-             "#gstr1-review-previous[disabled]",
-             "Previous flagged invoice"
-           )
-
-    assert has_element?(view, "#gstr1-review-next[disabled]", "Next flagged invoice")
+    assert has_element?(view, "#gstr1-review-previous[disabled]", "Previous")
+    assert has_element?(view, "#gstr1-review-next[disabled]", "Next")
     assert has_element?(view, "[data-review-target='gstr1-line-total']")
     assert has_element?(view, "[data-review-target='gstr1-line-total'] span", "1")
 
-    view
-    |> element("#gstr1-evidence-modal button[phx-click='close-invoice-review']")
-    |> render_click()
+    view |> element("#sales-review button[phx-click='done']") |> render_click()
 
     assert_patch(view, ~p"/gst/#{client.id}/#{@period}")
     refute has_element?(view, "#gstr1-evidence-modal")
@@ -862,19 +863,24 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
       |> Enum.find(&(&1["invoice_number"] == "21/2025-26"))
       |> Map.fetch!("id")
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}?invoice=20%2F2025-26")
+    first_id =
+      updated_month.invoices
+      |> Enum.find(&(&1["invoice_number"] == "20/2025-26"))
+      |> Map.fetch!("id")
 
-    assert has_element?(
-             view,
-             "#gstr1-review-next[phx-value-inum='21/2025-26']:not([disabled])",
-             "Next flagged invoice"
-           )
+    path = "/gst/#{client.id}/#{@period}/review/sales?item=#{first_id}&scope=needs_you"
+    {:ok, view, _html} = live(conn, path)
 
+    assert has_element?(view, "#gstr1-review-next:not([disabled])", "Next")
     view |> element("#gstr1-review-next") |> render_click()
 
-    assert_patch(view, ~p"/gst/#{client.id}/#{@period}?invoice=#{next_id}")
+    assert_patch(
+      view,
+      "/gst/#{client.id}/#{@period}/review/sales?item=#{next_id}&scope=needs_you"
+    )
+
     assert has_element?(view, "#gstr1-evidence-modal-title", "21/2025-26")
-    assert has_element?(view, "#gstr1-review-previous[phx-value-inum='20/2025-26']")
+    assert has_element?(view, "#gstr1-review-previous:not([disabled])")
   end
 
   test "same-kind issue chips are distinct and point to their own evidence", %{
@@ -912,7 +918,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert Enum.count(issues, &(&1["code"] == "rounding_variance")) == 2
 
-    {:ok, _month} =
+    {:ok, review_month} =
       SalesMonths.upsert(%{
         org_id: org.id,
         client_id: client.id,
@@ -923,7 +929,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
         derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, period))
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}?invoice=44%2F2026-27")
+    [review_invoice] = Nila.Gst.Sales.Resolutions.workings(review_month).active_invoices
+
+    path =
+      "/gst/#{client.id}/#{period}/review/sales?item=#{review_invoice["id"]}&scope=all"
+
+    {:ok, view, _html} = live(conn, path)
 
     # Both are `info` — Nila settled them itself — so the modal counts what the
     # register counts, and neither offers an action that would change nothing.
@@ -1012,10 +1023,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert view |> element("#gstr1-inv-21\\/2025-26") |> render() =~ "font-medium"
 
     view |> element("#gstr1-inv-21\\/2025-26") |> render_click()
-
-    view
-    |> element("#gstr1-evidence-modal button[phx-click='close-invoice-review']")
-    |> render_click()
+    view |> element("#sales-review button[phx-click='done']") |> render_click()
 
     row = view |> element("#gstr1-inv-21\\/2025-26") |> render()
     refute row =~ "font-medium"
@@ -1164,9 +1172,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
   test "confirming an issue resolves it; undo reopens it", %{
     conn: conn,
+    org: org,
     client: client,
     user: user
   } do
+    {:ok, month} = Nila.Gst.Sales.Months.get_by_period(org.id, client.id, @period)
+    [invoice | _] = Nila.Gst.Sales.Resolutions.workings(month).active_invoices
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
@@ -1175,14 +1186,19 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     |> element("button[phx-click='resolve-invoice-issue']", "Accept the extracted lines")
     |> render_click()
 
-    assert render(view) =~ "Resolved by #{user.name}"
-    assert render(view) =~ "Accepted extracted line total"
+    resolved_path =
+      "/gst/#{client.id}/#{@period}/review/sales?item=#{invoice["id"]}&scope=all"
 
-    view
+    {:ok, resolved, _html} = live(conn, resolved_path)
+    assert render(resolved) =~ "Resolved by #{user.name}"
+    assert render(resolved) =~ "Accepted extracted line total"
+
+    resolved
     |> element("#gstr1-checks button[phx-click='undo']", "Undo")
     |> render_click()
 
-    refute render(view) =~ "Resolved by #{user.name}"
+    {:ok, reopened, _html} = live(conn, resolved_path)
+    refute render(reopened) =~ "Resolved by #{user.name}"
   end
 
   test "Nila states a position, its basis, and what it files — and freezes it", %{
@@ -1280,7 +1296,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     view
     |> element("form[phx-submit='save_correct']")
-    |> render_submit(%{"field" => "printed_grand_total", "value" => "76171.36"})
+    |> render_submit(%{
+      "correction" => %{"field" => "printed_grand_total", "value" => "76171.36"}
+    })
 
     refute render(view) =~ "Bill total doesn&#39;t tally"
   end
@@ -1438,7 +1456,11 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     view
     |> element("form[phx-submit='save_correct']")
-    |> render_submit(%{"field" => "line_items[0].taxable_value", "value" => "1500"})
+    |> render_submit(%{
+      "correction" => %{"field" => "line_items[0].taxable_value", "value" => "1500"}
+    })
+
+    _ = :sys.get_state(view.pid)
 
     # The nodes the re-derivation changed glow: party, rate bucket, HSN row,
     # and the month total in the account.
@@ -1537,14 +1559,14 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
   end
 
   defp confirm_all_open_issues(view) do
-    # Month-level issues confirm from the strip; invoice issues from the modal.
+    # Month-level issues stay on the working paper; invoice issues live in SalesLive.
     for invoice <- ["20/2025-26"] do
       view |> element("#gstr1-inv-#{String.replace(invoice, "/", "\\/")}") |> render_click()
 
       while_confirmable(view)
 
       view
-      |> element("#gstr1-evidence-modal button[phx-click='close-invoice-review']")
+      |> element("#sales-review button[phx-click='done']")
       |> render_click()
     end
 
@@ -1559,7 +1581,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
       while_confirmable(view)
 
       view
-      |> element("#gstr1-evidence-modal button[phx-click='close-invoice-review']")
+      |> element("#sales-review button[phx-click='done']")
       |> render_click()
     end
 
