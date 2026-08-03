@@ -14,8 +14,14 @@ defmodule Nila.Gst.Proposals do
     * `action`   — what the button does, in the reviewer's language.
     * `basis`    — why Nila thinks so, stated as an *observation* it made, never
       as an inference about someone else's behaviour.
-    * `effect`   — what it changes in the figures that actually reach the portal,
-      read out of `derive/2` rather than predicted alongside it.
+    * `effect`   — a versioned account of the money the proposal speaks about,
+      with an explicit semantic kind and every amount stored as integer paise.
+
+  Effects share one envelope, not one meaning. `filing_result` is the amount a
+  sales treatment puts in the return; `claim_exposure` is credit sitting behind
+  purchase evidence that still has to arrive. Naming the kind prevents a future
+  audit reader from presenting exposure as a filing delta merely because both
+  carry a field called `tax`.
 
   ## `nil` is a legitimate return
 
@@ -53,6 +59,7 @@ defmodule Nila.Gst.Proposals do
   """
 
   @rule_version "2026-08-03"
+  @effect_schema_version 1
 
   @arithmetic_codes ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch)
 
@@ -80,13 +87,14 @@ defmodule Nila.Gst.Proposals do
         # bookkeeping: every line's own arithmetic checks out and only the
         # footer disagrees.
         basis: basis(code),
-        effect: %{
-          taxable: filed.taxable,
-          tax: filed.tax,
-          igst: filed.igst,
-          cgst: filed.cgst,
-          sgst: filed.sgst
-        }
+        effect:
+          effect("filing_result", %{
+            taxable_paise: rupees_to_paise(filed.taxable),
+            tax_paise: rupees_to_paise(filed.tax),
+            igst_paise: rupees_to_paise(filed.igst),
+            cgst_paise: rupees_to_paise(filed.cgst),
+            sgst_paise: rupees_to_paise(filed.sgst)
+          })
       }
     else
       _no_basis -> nil
@@ -111,7 +119,7 @@ defmodule Nila.Gst.Proposals do
       action: "Request the #{count} missing #{noun(count, "bill")} from the client",
       basis:
         "The portal reported #{count} #{noun(count, "supply")} the books have no document for.",
-      effect: %{tax_paise: tax_paise}
+      effect: effect("claim_exposure", %{tax_paise: tax_paise})
     }
   end
 
@@ -132,7 +140,7 @@ defmodule Nila.Gst.Proposals do
       "decision" => proposal.decision,
       "action" => proposal.action,
       "basis" => proposal.basis,
-      "effect" => stringify(proposal.effect),
+      "effect" => freeze_effect(proposal.effect),
       "shown_at" => DateTime.utc_now()
     }
   end
@@ -159,10 +167,36 @@ defmodule Nila.Gst.Proposals do
   defp basis("grand_total_mismatch"),
     do: "Every line's arithmetic checks out; only the printed bill total disagrees."
 
+  defp effect(kind, amounts) do
+    %{
+      schema_version: @effect_schema_version,
+      kind: kind,
+      amounts:
+        Map.merge(
+          %{
+            taxable_paise: nil,
+            tax_paise: nil,
+            igst_paise: nil,
+            cgst_paise: nil,
+            sgst_paise: nil
+          },
+          amounts
+        )
+    }
+  end
+
+  defp freeze_effect(effect) do
+    %{
+      "schema_version" => effect.schema_version,
+      "kind" => effect.kind,
+      "amounts" => Map.new(effect.amounts, fn {key, value} -> {to_string(key), value} end)
+    }
+  end
+
+  defp rupees_to_paise(rupees) when is_number(rupees), do: round(rupees * 100)
+
   defp noun(1, "bill"), do: "bill"
   defp noun(_n, "bill"), do: "bills"
   defp noun(1, "supply"), do: "supply"
   defp noun(_n, "supply"), do: "supplies"
-
-  defp stringify(effect), do: Map.new(effect, fn {k, v} -> {to_string(k), v} end)
 end

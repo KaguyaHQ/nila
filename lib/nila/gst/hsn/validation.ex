@@ -121,7 +121,6 @@ defmodule Nila.Gst.Hsn.Validation do
     %{
       "invoice_id" => invoice["id"],
       "code" => issue_code(status),
-      "severity" => "review",
       "reason" => reason(line, index, status),
       "section" => nil,
       "fields" => ["line_items"],

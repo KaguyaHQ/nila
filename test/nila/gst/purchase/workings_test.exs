@@ -274,7 +274,6 @@ defmodule Nila.Gst.Purchase.WorkingsTest do
       "page_01" => [
         %{
           "code" => "implausible_invoice_number",
-          "severity" => "warning",
           "reason" => "The extracted invoice number looks like a phone number."
         }
       ]

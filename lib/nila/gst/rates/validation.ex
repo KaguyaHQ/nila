@@ -59,7 +59,6 @@ defmodule Nila.Gst.Rates.Validation do
             %{
               "invoice_id" => invoice["id"],
               "code" => issue_code(status),
-              "severity" => "review",
               "reason" => message(line, index, validation),
               "section" => nil,
               "fields" => ["line_items"],

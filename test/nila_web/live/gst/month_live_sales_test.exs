@@ -1281,7 +1281,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert frozen["action"] == "Accept the extracted lines"
     assert frozen["rule_version"]
     assert frozen["basis"] =~ "only the printed bill total disagrees"
-    assert frozen["effect"]["tax"]
+    assert frozen["effect"]["schema_version"] == 1
+    assert frozen["effect"]["kind"] == "filing_result"
+    assert frozen["effect"]["amounts"]["tax_paise"] > 0
   end
 
   test "the three tax figures are named apart, and the action states what it files", %{

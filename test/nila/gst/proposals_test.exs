@@ -52,10 +52,12 @@ defmodule Nila.Gst.ProposalsTest do
       assert proposal.basis =~ "Every line's arithmetic checks out"
       assert proposal.decision == "use_extracted_lines"
 
-      # The effect is what reaches the portal, not the sum of the lines.
-      assert proposal.effect.tax == values.filed.tax
-      assert proposal.effect.taxable == values.filed.taxable
-      assert proposal.effect.cgst == 900.0
+      # The effect names its meaning and stores what reaches the portal in paise.
+      assert proposal.effect.schema_version == 1
+      assert proposal.effect.kind == "filing_result"
+      assert proposal.effect.amounts.tax_paise == round(values.filed.tax * 100)
+      assert proposal.effect.amounts.taxable_paise == round(values.filed.taxable * 100)
+      assert proposal.effect.amounts.cgst_paise == 90_000
     end
 
     test "no proposal when a line is also failing — the basis would be false" do
@@ -113,7 +115,9 @@ defmodule Nila.Gst.ProposalsTest do
 
       assert proposal.action == "Request the 9 missing bills from the client"
       assert proposal.basis =~ "portal reported 9 supplies"
-      assert proposal.effect.tax_paise == 61_200
+      assert proposal.effect.kind == "claim_exposure"
+      assert proposal.effect.amounts.tax_paise == 61_200
+      assert proposal.effect.amounts.taxable_paise == nil
     end
 
     test "one bill reads as one bill" do
@@ -142,7 +146,9 @@ defmodule Nila.Gst.ProposalsTest do
       assert frozen["rule_version"]
       assert frozen["action"] == "Accept the extracted lines"
       assert frozen["decision"] == "use_extracted_lines"
-      assert frozen["effect"]["tax"] == 1800.0
+      assert frozen["effect"]["schema_version"] == 1
+      assert frozen["effect"]["kind"] == "filing_result"
+      assert frozen["effect"]["amounts"]["tax_paise"] == 180_000
       assert %DateTime{} = frozen["shown_at"]
     end
 

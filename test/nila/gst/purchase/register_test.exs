@@ -424,12 +424,8 @@ defmodule Nila.Gst.Purchase.RegisterTest do
       }
 
       flags = %{
-        "eligibility" => [
-          %{"code" => "invalid_gstin", "severity" => "error", "reason" => "bad gstin"}
-        ],
-        "transcription" => [
-          %{"code" => "low_ocr_confidence", "severity" => "review", "reason" => "faint scan"}
-        ]
+        "eligibility" => [%{"code" => "invalid_gstin", "reason" => "bad gstin"}],
+        "transcription" => [%{"code" => "low_ocr_confidence", "reason" => "faint scan"}]
       }
 
       by_id = invoices |> Register.rows(recon, flags) |> Map.new(&{&1["id"], &1})

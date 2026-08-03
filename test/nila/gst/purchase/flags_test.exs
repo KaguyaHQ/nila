@@ -82,7 +82,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
           |> Flags.evaluate(@entity_ctx)
           |> only("source_attribution_uncertain")
 
-        assert flag["severity"] == "review"
         assert flag["fields"] == ["source_attribution"]
       end
     end
@@ -100,12 +99,10 @@ defmodule Nila.Gst.Purchase.FlagsTest do
 
   describe "arithmetic provenance" do
     test "routes a final-only printed reconciliation to review" do
-      [flag] =
+      [_flag] =
         invoice(%{"arithmetic_basis" => "printed_final_reconciled"})
         |> Flags.evaluate(@entity_ctx)
         |> only("subtotal_breakdown_uncertain")
-
-      assert flag["severity"] == "review"
     end
   end
 
@@ -118,7 +115,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
 
       assert Map.keys(flagged) == ["scan_5"]
       [flag] = flagged["scan_5"]
-      assert flag["severity"] == "review"
       assert flag["reason"] =~ "62.0%"
       assert flag["reason"] =~ "below the rest of this packet"
       assert flag["fields"] == ["confidence"]
@@ -160,7 +156,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
           |> Flags.evaluate(@entity_ctx)
           |> only("implausible_invoice_number")
 
-        assert flag["severity"] == "warning"
         assert flag["fields"] == ["invoice_number"]
       end
     end
@@ -217,7 +212,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
       [flag] =
         invoice(%{"vendor_gstin" => bad}) |> Flags.evaluate(@entity_ctx) |> only("invalid_gstin")
 
-      assert flag["severity"] == "error"
       assert flag["reason"] =~ bad
       assert flag["fields"] == ["vendor_gstin"]
     end
@@ -230,7 +224,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
         |> Flags.evaluate(@entity_ctx)
         |> only("own_gstin_as_vendor")
 
-      assert flag["severity"] == "error"
       assert flag["reason"] =~ @entity_gstin
     end
 
@@ -240,7 +233,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
         |> Flags.evaluate(@entity_ctx)
         |> only("own_gstin_as_vendor")
 
-      assert flag["severity"] == "error"
       assert flag["reason"] =~ "near-match"
     end
   end
@@ -252,7 +244,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
         |> Flags.evaluate(@entity_ctx)
         |> only("gstin_state_mismatch")
 
-      assert flag["severity"] == "warning"
       assert flag["section"] == "IGST Act s.10"
       assert flag["reason"] =~ @mh_vendor_gstin
       assert flag["reason"] =~ "Maharashtra"
@@ -264,7 +255,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
         |> Flags.evaluate(@entity_ctx)
         |> only("gstin_state_mismatch")
 
-      assert flag["severity"] == "warning"
       assert flag["reason"] =~ "IGST"
     end
 
@@ -291,7 +281,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
       [flag] =
         invoice(%{}) |> Flags.evaluate(@entity_ctx, vendor_dir) |> only("name_gstin_mismatch")
 
-      assert flag["severity"] == "review"
       assert flag["reason"] =~ "Redington Distribution Pvt Ltd"
       assert flag["reason"] =~ "Sundaram Textiles Private Limited"
     end
@@ -414,7 +403,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
 
       assert [flag] = silver |> Flags.evaluate(ctx) |> only("statutory_rate_mismatch")
       assert flag["reason"] =~ "statutory candidate 3%"
-      assert flag["severity"] == "review"
     end
   end
 
@@ -433,7 +421,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
 
       [flag] = inv |> Flags.evaluate(@entity_ctx) |> only("hsn_implausible")
 
-      assert flag["severity"] == "review"
       assert flag["reason"] =~ "Ceramic floor tiles"
       assert flag["reason"] =~ "690721"
     end
@@ -486,7 +473,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
 
       [flag] = inv |> Flags.evaluate(@entity_ctx) |> only("personal_expense_17_5")
 
-      assert flag["severity"] == "review"
       assert flag["section"] == "CGST Act 17(5)(g)"
       assert flag["reason"] =~ "₹42,000.00"
       assert flag["reason"] =~ "Refrigerator"
@@ -532,7 +518,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
 
       [flag] = inv |> Flags.evaluate(@entity_ctx) |> only("personal_expense_17_5")
 
-      assert flag["severity"] == "review"
       assert flag["section"] == "CGST Act 17(5)(g)"
       assert flag["reason"] =~ "Anna Nagar"
     end
@@ -568,8 +553,7 @@ defmodule Nila.Gst.Purchase.FlagsTest do
     test "genuinely different city still flags" do
       inv = invoice(%{"delivery_address" => "14 Gandhi Road, Visakhapatnam 530001"})
 
-      [flag] = inv |> Flags.evaluate(@entity_ctx) |> only("personal_expense_17_5")
-      assert flag["severity"] == "review"
+      assert [_flag] = inv |> Flags.evaluate(@entity_ctx) |> only("personal_expense_17_5")
     end
 
     test "paint product named BEAUTY SHEEN does not match health/beauty services (October regression)" do
@@ -614,7 +598,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
       [fa] = only(flags["inv_14"], "duplicate_invoice")
       [fb] = only(flags["inv_46"], "duplicate_invoice")
 
-      assert fa["severity"] == "warning"
       assert fa["reason"] =~ "pages 15, 48"
       assert fa["reason"] =~ "inv_46"
       assert fa["reason"] =~ "₹1,800.00"
@@ -646,7 +629,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
         |> Flags.evaluate(@entity_ctx)
         |> only("missing_gstin")
 
-      assert flag["severity"] == "review"
       assert flag["reason"] =~ "₹11,800.00"
       assert flag["reason"] =~ "Redington"
     end
@@ -668,7 +650,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
 
       [flag] = inv |> Flags.evaluate(@entity_ctx) |> only("tax_arithmetic_off")
 
-      assert flag["severity"] == "warning"
       assert flag["reason"] =~ "₹9,500.00"
       assert flag["reason"] =~ "₹10,000.00"
     end
@@ -678,7 +659,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
 
       [flag] = inv |> Flags.evaluate(@entity_ctx) |> only("tax_arithmetic_off")
 
-      assert flag["severity"] == "warning"
       assert flag["reason"] =~ "₹900.00"
       assert flag["reason"] =~ "₹850.00"
     end
@@ -703,26 +683,6 @@ defmodule Nila.Gst.Purchase.FlagsTest do
 
       assert result["inv_clean"] == []
       assert [%{"code" => "missing_gstin"}] = result["inv_dirty"]
-    end
-  end
-
-  describe "confession_rows/1" do
-    test "selects only review flags and formats routed-to-human rows" do
-      flags =
-        invoice(%{
-          "vendor_gstin" => nil,
-          "tax_paise" => %{"cgst" => 900_00, "sgst" => 850_00, "igst" => 0}
-        })
-        |> Flags.evaluate(@entity_ctx)
-
-      assert "tax_arithmetic_off" in codes(flags)
-
-      [row] = Flags.confession_rows(flags)
-
-      assert row["invoice_id"] == "inv_1"
-      assert row["summary"] =~ "could not classify"
-      assert row["summary"] =~ "routed to human"
-      assert row["why"] =~ "No vendor GSTIN"
     end
   end
 end

@@ -57,7 +57,7 @@ defmodule Nila.Gst.Purchase.Register do
         "verdict" => short operator-language table text,
         "recon_note" => full engine reasoning or match detail,
         "next_action" => drafted follow-up or nil,
-        "flags" => [%{"code", "severity", "reason"}],
+        "flags" => [%{"code", "reason", "section"}],
         "flag_summary" => "code, code" or nil
       }
   """
@@ -90,7 +90,7 @@ defmodule Nila.Gst.Purchase.Register do
           "verdict" => verdict(bucket, entry, flags),
           "recon_note" => recon_note(bucket, entry),
           "next_action" => entry && entry["next_action"],
-          "flags" => Enum.map(flags, &Map.take(&1, ["code", "severity", "reason", "section"])),
+          "flags" => Enum.map(flags, &Map.take(&1, ["code", "reason", "section"])),
           "flag_summary" => flag_summary(flags)
         }
       end)

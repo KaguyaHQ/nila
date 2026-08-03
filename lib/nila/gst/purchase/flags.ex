@@ -2,15 +2,11 @@ defmodule Nila.Gst.Purchase.Flags do
   @moduledoc """
   Purchase-invoice validation flags: pure rules over extracted invoice maps.
 
-  Design rule: **confident detection, confessed judgment.** Every flag is sharp
-  and specific about *what it saw* (amounts, GSTINs, markers that fired) but it
-  is a suggestion routed to a human — reasons never claim an ITC eligibility
-  decision, they name the evidence and the statutory hook and stop there.
-
-  Severities: `"error"` (structurally wrong, e.g. bad checksum), `"warning"`
-  (numbers disagree with each other), `"review"` (a judgment call only a human
-  can make). `confession_rows/1` surfaces the review tier as explicit
-  "could not classify — routed to human" rows for the CA partner.
+  Every flag is sharp and specific about *what it saw* (amounts, GSTINs,
+  markers that fired) but it is a suggestion routed to a human — reasons never
+  claim an ITC eligibility decision, they name the evidence and the statutory
+  hook and stop there. Whether a flag changes ITC or needs a decision is derived
+  from its code by the workings pipeline; flags carry no presentation rank.
   """
 
   alias Nila.Formatters
@@ -143,7 +139,6 @@ defmodule Nila.Gst.Purchase.Flags do
     flag(
       invoice,
       "low_ocr_confidence",
-      "review",
       "OCR minimum word confidence is #{Float.round(ocr_minimum(invoice) * 100, 1)}% — " <>
         "well below the rest of this packet. Inspect the original for omitted or " <>
         "misread handwritten values.",
@@ -168,7 +163,6 @@ defmodule Nila.Gst.Purchase.Flags do
       %{
         "invoice_id" => nil,
         "code" => "pages_unaccounted",
-        "severity" => "review",
         "reason" =>
           "#{page_label(pages)} of #{source} produced no invoice. The text was read, " <>
             "but nothing was extracted from #{pronoun(pages)}. Open the original and " <>
@@ -194,7 +188,6 @@ defmodule Nila.Gst.Purchase.Flags do
       %{
         "invoice_id" => nil,
         "code" => "evidence_unavailable",
-        "severity" => "review",
         "reason" =>
           "#{source} was read, but its pages could not be rendered, so no scanned bill " <>
             "shows beside the invoices it produced. Check them against the original PDF " <>
@@ -228,7 +221,6 @@ defmodule Nila.Gst.Purchase.Flags do
         flag(
           inv,
           "duplicate_invoice",
-          "warning",
           "Invoice #{inv["invoice_number"]} from #{inv["vendor_name"]} appears " <>
             "#{length(group)} times in this month's bills (pages #{Enum.join(pages, ", ")}) — " <>
             "likely the same bill scanned twice. Booking both would claim ITC of " <>
@@ -270,18 +262,6 @@ defmodule Nila.Gst.Purchase.Flags do
     end
   end
 
-  def confession_rows(flags) do
-    flags
-    |> Enum.filter(&(&1["severity"] == "review"))
-    |> Enum.map(fn flag ->
-      %{
-        "invoice_id" => flag["invoice_id"],
-        "summary" => "could not classify (#{flag["code"]}) — routed to human",
-        "why" => flag["reason"]
-      }
-    end)
-  end
-
   defp check_source_attribution(%{"source_attribution" => attribution} = invoice, _ctx, _dir)
        when is_map(attribution) do
     if attribution["status"] == "verified" do
@@ -291,7 +271,6 @@ defmodule Nila.Gst.Purchase.Flags do
         flag(
           invoice,
           "source_attribution_uncertain",
-          "review",
           source_attribution_reason(attribution),
           nil,
           ["source_attribution"],
@@ -324,7 +303,6 @@ defmodule Nila.Gst.Purchase.Flags do
       flag(
         invoice,
         "subtotal_breakdown_uncertain",
-        "review",
         "Taxable value, tax and grand total reconcile, but the printed subtotal/discount breakdown does not — confirm the source invoice.",
         nil,
         ["taxable_paise", "tax_paise", "total_paise"],
@@ -347,7 +325,6 @@ defmodule Nila.Gst.Purchase.Flags do
         flag(
           invoice,
           "zero_value_row",
-          "warning",
           "No taxable value and no tax were read off this document — it is probably not an invoice, or the extraction failed. Check the scan before counting it in the register.",
           nil,
           ["taxable_paise", "total_paise"],
@@ -365,7 +342,6 @@ defmodule Nila.Gst.Purchase.Flags do
         flag(
           invoice,
           smell_code(smell),
-          "warning",
           invoice_number_reason(smell, invoice["invoice_number"]),
           nil,
           ["invoice_number"],
@@ -410,7 +386,6 @@ defmodule Nila.Gst.Purchase.Flags do
           flag(
             invoice,
             "missing_gstin",
-            "review",
             "No vendor GSTIN extracted for \"#{invoice["vendor_name"]}\" invoice " <>
               "#{invoice["invoice_number"]} — B2C purchase or an extraction miss; " <>
               "ITC on #{rupees(invoice["total_paise"])} may be at risk. Needs a human look.",
@@ -425,7 +400,6 @@ defmodule Nila.Gst.Purchase.Flags do
           flag(
             invoice,
             "own_gstin_as_vendor",
-            "error",
             "Vendor GSTIN #{gstin} is this entity's own GSTIN — a purchase cannot " <>
               "name the buyer as its own supplier.",
             nil,
@@ -439,7 +413,6 @@ defmodule Nila.Gst.Purchase.Flags do
           flag(
             invoice,
             "own_gstin_as_vendor",
-            "error",
             "Vendor GSTIN #{gstin} is a near-match to this entity's own GSTIN #{own} — " <>
               "the extractor likely picked up the buyer's GSTIN off the bill instead of " <>
               "the vendor's (the bill may not print a vendor GSTIN). Treat the vendor " <>
@@ -455,7 +428,6 @@ defmodule Nila.Gst.Purchase.Flags do
           flag(
             invoice,
             "invalid_gstin",
-            "error",
             "Vendor GSTIN #{gstin} fails the GSTIN structure/check-digit test — " <>
               "likely an extraction error or a typo on the invoice.",
             nil,
@@ -488,7 +460,6 @@ defmodule Nila.Gst.Purchase.Flags do
           flag(
             invoice,
             "gstin_state_mismatch",
-            "warning",
             "Vendor GSTIN #{gstin} is registered in #{vendor_state} (state code " <>
               "#{vendor_code}) while this entity is in state #{entity_code} — an " <>
               "inter-state supply would carry IGST, but the invoice charges CGST " <>
@@ -505,7 +476,6 @@ defmodule Nila.Gst.Purchase.Flags do
           flag(
             invoice,
             "gstin_state_mismatch",
-            "warning",
             "Vendor GSTIN #{gstin} shares this entity's state (code #{vendor_code}, " <>
               "#{vendor_state}) — an intra-state supply would carry CGST/SGST, but " <>
               "the invoice charges IGST #{rupees(igst)}. Place of supply may differ; " <>
@@ -535,7 +505,6 @@ defmodule Nila.Gst.Purchase.Flags do
           flag(
             invoice,
             "name_gstin_mismatch",
-            "review",
             "Invoice names the vendor \"#{invoice_name}\" but GSTR-2B records GSTIN " <>
               "#{gstin} as \"#{trade_name}\" (similarity #{Float.round(score, 2)}). " <>
               "Could be a trade-vs-legal name split, or the wrong GSTIN — a human " <>
@@ -591,7 +560,6 @@ defmodule Nila.Gst.Purchase.Flags do
         flag(
           invoice,
           "hsn_implausible",
-          "review",
           "Line \"#{line["description"]}\" carries HSN/SAC #{hsn}, which starts with " <>
             "none of this business's usual prefixes (#{Enum.join(prefixes, ", ")}). " <>
             "Could be a genuine one-off purchase — a human should confirm.",
@@ -621,7 +589,6 @@ defmodule Nila.Gst.Purchase.Flags do
         flag(
           invoice,
           "personal_expense_17_5",
-          "review",
           "#{rupees(line["taxable_paise"])} line \"#{line["description"]}\" from " <>
             "#{invoice["vendor_name"]} matches blocked-credit pattern \"#{label}\"" <>
             evidence <>
@@ -642,7 +609,6 @@ defmodule Nila.Gst.Purchase.Flags do
           flag(
             invoice,
             "personal_expense_17_5",
-            "review",
             "#{rupees(invoice["total_paise"])} invoice #{invoice["invoice_number"]} from " <>
               "#{invoice["vendor_name"]}: the #{address_evidence} — possible " <>
               "17(5)(g) personal consumption. Routed for human review, not a verdict.",
@@ -671,7 +637,6 @@ defmodule Nila.Gst.Purchase.Flags do
           flag(
             invoice,
             "tax_arithmetic_off",
-            "warning",
             "Line taxable values total #{rupees(line_sum)} but the invoice states " <>
               "taxable #{rupees(taxable)} — off by #{rupees(abs(line_sum - taxable))}.",
             nil,
@@ -689,7 +654,6 @@ defmodule Nila.Gst.Purchase.Flags do
           flag(
             invoice,
             "tax_arithmetic_off",
-            "warning",
             "CGST #{rupees(cgst)} and SGST #{rupees(sgst)} differ on an intra-state " <>
               "invoice — the two halves should be equal to the paise.",
             nil,
@@ -784,11 +748,10 @@ defmodule Nila.Gst.Purchase.Flags do
 
   defp rupees(paise), do: Formatters.format_money_with_paise(paise || 0)
 
-  defp flag(invoice, code, severity, reason, section, fields, confidence) do
+  defp flag(invoice, code, reason, section, fields, confidence) do
     %{
       "invoice_id" => invoice["id"],
       "code" => code,
-      "severity" => severity,
       "reason" => reason,
       "section" => section,
       "fields" => fields,

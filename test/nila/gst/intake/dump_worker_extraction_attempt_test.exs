@@ -187,7 +187,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
 
     assert [flag] = month.summary["document_flags"]
     assert flag["code"] == "pages_unaccounted"
-    assert flag["severity"] == "review"
+    refute Map.has_key?(flag, "severity")
     assert flag["reason"] =~ "Page 14 of packet.pdf"
   end
 
@@ -247,7 +247,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
 
     assert [flag] = month.summary["document_flags"]
     assert flag["code"] == "evidence_unavailable"
-    assert flag["severity"] == "review"
+    refute Map.has_key?(flag, "severity")
     assert flag["reason"] =~ "unrenderable.pdf"
   end
 
