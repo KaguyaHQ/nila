@@ -109,8 +109,8 @@ defmodule Nila.Gst.Issues do
   reserved for it downstream, but nothing in `@classification` ever mapped to it
   — so a sales issue could never be "waiting on the client", and the promise
   read as a feature to anyone reading the code. The purchase track has a real
-  collection queue (`ExceptionsLive`); if the sales side needs one, it gets
-  built there and mapped here, not declared in a docstring.
+  collection queue in the purchase review surface; if the sales side needs
+  one, it gets built there and mapped here, not declared in a docstring.
   """
   def resolution_kind(%{"code" => code}), do: resolution_kind(code)
 

@@ -153,6 +153,14 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               {elem(exit, 1)}
             </.button>
             <.button
+              :if={elem(exit, 0) == :patch}
+              patch={elem(exit, 2)}
+              variant="outline"
+              size="xs"
+            >
+              {elem(exit, 1)}
+            </.button>
+            <.button
               :if={elem(exit, 0) == :click}
               phx-click={elem(exit, 2)}
               variant="outline"
@@ -347,15 +355,15 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   # inside a section that does not render without a sales month.
   defp gstr3b_blockers(assigns) do
     %{client_id: client_id, period: period} = assigns.purchase_month
-    exceptions = ~p"/gst/#{client_id}/#{period}/exceptions"
+    purchase_review = ~p"/gst/#{client_id}/#{period}/review/purchase?scope=needs_you"
 
     [
       {"decisions", assigns.stats.need_decision > 0,
        "#{assigns.stats.need_decision} purchase #{plural(assigns.stats.need_decision, "decision")} still open.",
-       {:navigate, "Work the exceptions", exceptions}},
+       {:patch, "Work the decisions", purchase_review}},
       {"attestation", assigns.documents_attested == "unknown",
        "Nobody has confirmed whether the client holds tax invoices for the supplies the portal reported (s.16(2)(a)).",
-       {:navigate, "Answer it", exceptions}},
+       {:patch, "Answer it", purchase_review}},
       {"no-sales", is_nil(assigns.sales_month),
        "This client-month has no sales side. The 3B takes its outward liability from the GSTR-1, so the sales month has to be worked and filed first — including a month with no sales at all.",
        {:navigate, "Bring in sales bills",

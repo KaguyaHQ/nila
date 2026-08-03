@@ -10,6 +10,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   attr :signed_off, :boolean, required: true
   attr :correcting, :any, default: nil
   attr :evidence_page, :integer, default: 0
+  attr :target, :any, default: nil
 
   def exception_surface(assigns) do
     ~H"""
@@ -56,6 +57,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
               type="button"
               id={"queue-#{item.id}"}
               phx-click="select"
+              phx-target={@target}
               phx-value-id={item.id}
               class={[
                 "flex w-full items-start gap-2 px-3 py-2 text-left transition",
@@ -106,6 +108,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           signed_off={@signed_off}
           correcting={@correcting}
           evidence_page={@evidence_page}
+          target={@target}
         />
       </div>
     </div>
@@ -116,6 +119,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   attr :signed_off, :boolean, required: true
   attr :correcting, :any, default: nil
   attr :evidence_page, :integer, default: 0
+  attr :target, :any, default: nil
 
   def detail(%{selected: nil} = assigns) do
     ~H"""
@@ -144,6 +148,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         >
           <div
             :for={books <- @selected.books_members}
+            id={"gst-exception-books-member-#{books["id"]}"}
             class="flex items-baseline justify-between gap-3 px-3 py-2"
           >
             <span class="text-base-content text-ui font-medium">{books["vendor_name"]}</span>
@@ -171,6 +176,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
               show_pick={
                 @selected.action == :ambiguous and not @selected.resolved and not @signed_off
               }
+              target={@target}
             />
           </div>
 
@@ -191,6 +197,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             page={@evidence_page}
             on_open="open-evidence"
             on_page="evidence-page"
+            target={@target}
           />
         </div>
 
@@ -219,10 +226,22 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           variant="ghost"
           size="sm"
           phx-click="undo"
+          phx-target={@target}
           phx-value-id={@selected.id}
         >
           <.icon name="hero-arrow-uturn-left-mini" class="size-4" /> Undo
         </.button>
+        <.button
+          :if={@selected.candidates != []}
+          id="gst-challenge-match"
+          variant="outline"
+          size="sm"
+          phx-click="challenge"
+          phx-target={@target}
+          phx-value-id={@selected.id}
+          disabled={@signed_off}
+          title={@signed_off && "Unlock the signed month first; filed returns require an amendment."}
+        >Challenge this match</.button>
       </div>
 
       <div
@@ -234,6 +253,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           variant="outline"
           size="sm"
           phx-click="reject_all"
+          phx-target={@target}
           phx-value-id={@selected.id}
         >None of these</.button>
       </div>
@@ -245,14 +265,15 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         }
         class="border-base-300 pt-block flex flex-wrap gap-2 border-t"
       >
-        <%= if @correcting && @correcting.id == @selected.id do %>
-          <.correction_form selected={@selected} />
+        <%= if @correcting && @correcting.id in @selected.member_ids do %>
+          <.correction_form selected={@selected} target={@target} />
         <% else %>
           <.button
             :if={@selected.action == :pair}
             variant="success"
             size="sm"
             phx-click="confirm_pair"
+            phx-target={@target}
             phx-value-id={@selected.id}
           >Confirm — same bill</.button>
           <.button
@@ -260,6 +281,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             variant="outline"
             size="sm"
             phx-click="reject_pair"
+            phx-target={@target}
             phx-value-id={@selected.id}
           >Reject — not the same</.button>
           <.button
@@ -268,6 +290,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             variant="outline"
             size="sm"
             phx-click="accept_unmatched"
+            phx-target={@target}
             phx-value-id={@selected.id}
             phx-value-reason="await_2b"
           >Vendor hasn't filed it yet</.button>
@@ -277,10 +300,17 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             variant="outline"
             size="sm"
             phx-click="accept_unmatched"
+            phx-target={@target}
             phx-value-id={@selected.id}
             phx-value-reason="not_claimable"
           >Not claimable this month</.button>
-          <.button variant="ghost" size="sm" phx-click="start_correct" phx-value-id={@selected.id}>
+          <.button
+            variant="ghost"
+            size="sm"
+            phx-click="start_correct"
+            phx-target={@target}
+            phx-value-id={@selected.id}
+          >
             Correct the number
           </.button>
         <% end %>
@@ -295,6 +325,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           variant="primary"
           size="sm"
           phx-click="open-ask"
+          phx-target={@target}
           phx-value-id={@selected.id}
         >Ask the client for the bill</.button>
         <%!-- Dismissing removes the entry from `in_2b_not_books`, which drops
@@ -306,6 +337,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           variant="outline"
           size="sm"
           phx-click="dismiss_2b"
+          phx-target={@target}
           phx-value-id={@selected.id}
           data-confirm={dismiss_confirm(@selected)}
         >
@@ -322,6 +354,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   attr :index, :integer, required: true
   attr :selected_id, :string, required: true
   attr :show_pick, :boolean, required: true
+  attr :target, :any, default: nil
 
   def candidate_card(assigns) do
     assigns = assign(assigns, :diff, field_diff(assigns.books, assigns.candidate.gstr2b))
@@ -360,6 +393,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           variant="success"
           size="sm"
           phx-click="confirm_pair"
+          phx-target={@target}
           phx-value-id={@selected_id}
           phx-value-ref={@candidate.ref}
         >This one</.button>
@@ -394,11 +428,12 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   end
 
   attr :selected, :map, required: true
+  attr :target, :any, default: nil
 
   def correction_form(assigns) do
     ~H"""
-    <form phx-submit="save_correct" class="flex w-full items-end gap-2">
-      <.input type="hidden" name="id" id="correct-id" value={@selected.id} />
+    <form phx-submit="save_correct" phx-target={@target} class="flex w-full items-end gap-2">
+      <.input type="hidden" name="id" id="correct-id" value={@selected.books["id"]} />
       <div class="flex-1">
         <.input
           type="text"
@@ -409,7 +444,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         />
       </div>
       <.button type="submit" variant="primary" size="sm">Save & re-match</.button>
-      <.button type="button" variant="ghost" size="sm" phx-click="cancel_correct">Cancel</.button>
+      <.button type="button" variant="ghost" size="sm" phx-click="cancel_correct" phx-target={@target}>Cancel</.button>
     </form>
     """
   end

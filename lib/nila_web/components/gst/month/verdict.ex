@@ -141,8 +141,8 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       door: %{
         id: "month-door-decisions",
         label: "Work the #{pluralise(count, "decision")}",
-        kind: :navigate,
-        to: ~p"/gst/#{facts.client.id}/#{facts.period}/exceptions"
+        kind: :patch,
+        to: ~p"/gst/#{facts.client.id}/#{facts.period}/review/purchase?scope=needs_you"
       }
     }
   end
@@ -159,8 +159,8 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       door: %{
         id: "month-door-request-bills",
         label: "Request the missing #{pluralise(count, "bill")}",
-        kind: :navigate,
-        to: ~p"/gst/#{facts.client.id}/#{facts.period}/exceptions"
+        kind: :patch,
+        to: ~p"/gst/#{facts.client.id}/#{facts.period}/review/purchase?scope=needs_you"
       }
     }
   end
@@ -756,6 +756,14 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp door(%{door: %{kind: :navigate}} = assigns) do
     ~H"""
     <.button id={@door.id} navigate={@door.to} variant="outline" size="sm" class="gap-2">
+      {@door.label} <.icon name="hero-arrow-right-mini" class="size-4" />
+    </.button>
+    """
+  end
+
+  defp door(%{door: %{kind: :patch}} = assigns) do
+    ~H"""
+    <.button id={@door.id} patch={@door.to} variant="outline" size="sm" class="gap-2">
       {@door.label} <.icon name="hero-arrow-right-mini" class="size-4" />
     </.button>
     """

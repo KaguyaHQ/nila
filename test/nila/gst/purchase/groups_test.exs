@@ -156,6 +156,28 @@ defmodule Nila.Gst.Purchase.GroupsTest do
       assert group.tax_paise == 180_000
     end
 
+    test "reject_pair removes the edge and splits books from its counterpart" do
+      books = books("b1")
+      counterpart = gstr2b("G-1")
+      baseline = Reconciliation.reconcile([books], [counterpart])
+      ref = Reconciliation.gstr2b_ref(counterpart)
+
+      effective =
+        Workings.materialize(baseline, [
+          %{
+            "verb" => "reject_pair",
+            "books_id" => books["id"],
+            "gstr2b_ref" => ref,
+            "payload" => %{}
+          }
+        ])
+
+      groups = Groups.build(effective)
+      assert Enum.count(groups, &(&1.state == :needs_decision)) == 1
+      assert Enum.count(groups, &(&1.state == :awaiting_bill)) == 1
+      assert Enum.all?(groups, &(&1.edges == []))
+    end
+
     test "a confirmation splits a contested component into settled and unresolved groups" do
       first = books("freezelinks-1")
       second = books("freezelinks-2")

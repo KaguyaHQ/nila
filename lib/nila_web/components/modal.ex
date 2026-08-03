@@ -43,6 +43,7 @@ defmodule NilaWeb.Components.Modal do
   attr :variant, :string, values: ~w(modal workbench), default: "modal"
   attr :close_label, :string, default: nil
   attr :close_on_escape, :boolean, default: true
+  attr :target, :any, default: nil
   attr :class, :any, default: nil
   attr :scrim_class, :any, default: "bg-base-content/40"
   slot :header
@@ -63,6 +64,7 @@ defmodule NilaWeb.Components.Modal do
         phx-click-away={@variant == "modal" && @on_close}
         phx-window-keydown={@close_on_escape && @on_close}
         phx-key={@close_on_escape && "escape"}
+        phx-target={@target}
         role="dialog"
         aria-modal="true"
         aria-labelledby={"#{@id}-title"}
@@ -83,6 +85,7 @@ defmodule NilaWeb.Components.Modal do
           <button
             type="button"
             phx-click={@on_close}
+            phx-target={@target}
             aria-label={@close_label || "Close #{@title}"}
             class={[
               "hover:bg-base-200 hover:text-ink rounded-field text-ink-subtle shrink-0 transition",

@@ -12,7 +12,7 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps, Preconditions}
   alias Nila.Gst.Issues
-  alias Nila.Gst.Purchase.{Reconciliation, Register, Resolutions}
+  alias Nila.Gst.Purchase.{Reconciliation, Register, Resolutions, Review}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Proposals
   alias Nila.Gst.Sales.{Account, Gstr1, Values}
@@ -34,6 +34,7 @@ defmodule NilaWeb.Gst.MonthLive do
     Workings
   }
 
+  alias NilaWeb.Components.Gst.Review.PurchaseLive
   alias NilaWeb.Gst.PeriodOptions
 
   @impl true
@@ -73,8 +74,8 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:client, client)
       |> assign(:period, period)
       |> assign(:page_title, "#{client.name} · #{period_label(period)}")
-      |> assign(:selected_row, nil)
       |> assign(:selected_inum, nil)
+      |> assign(:purchase_review_route, nil)
       |> assign(:last_reviewed_inum, nil)
       |> assign(:visited_inums, MapSet.new())
       |> assign(:expanded_nodes, MapSet.new())
@@ -93,13 +94,33 @@ defmodule NilaWeb.Gst.MonthLive do
   end
 
   @impl true
+  def handle_params(
+        %{"lane" => "purchase"} = params,
+        _uri,
+        %{assigns: %{live_action: :review, purchase_month: month}} = socket
+      )
+      when not is_nil(month) do
+    review = Review.project(Resolutions.workings(month), month: month)
+    route = Review.route_state(review, params["item"], params["scope"])
+
+    {:noreply,
+     assign(socket,
+       purchase_review_route: route,
+       selected_inum: nil
+     )}
+  end
+
+  def handle_params(_params, _uri, %{assigns: %{live_action: :review}} = socket) do
+    {:noreply, push_patch(socket, to: month_path(socket))}
+  end
+
   def handle_params(params, _uri, socket) do
     inum = valid_invoice_number(socket.assigns.invoices, params["invoice"])
 
     {:noreply,
      assign(socket,
+       purchase_review_route: nil,
        selected_inum: inum,
-       selected_row: nil,
        correcting: nil,
        last_reviewed_inum: inum || socket.assigns.last_reviewed_inum,
        visited_inums:
@@ -251,17 +272,19 @@ defmodule NilaWeb.Gst.MonthLive do
            signoff.snapshot["itc"]}
       end
 
+    groups = Resolutions.workings(purchase).groups
+
     socket
     |> assign(:purchase_month, purchase)
     |> assign(:gstr3b_signoff, signoff)
-    |> assign(:rows, build_rows(rows, purchase))
+    |> assign(:rows, build_rows(rows, purchase, groups))
     |> assign(:stats, Register.stats(summary))
     |> assign(:document_flags, summary["document_flags"] || [])
     |> assign(:gstr3b, gstr3b)
     |> assign(:itc, itc)
   end
 
-  defp build_rows(rows, purchase) do
+  defp build_rows(rows, purchase, groups) do
     rows
     |> Enum.with_index()
     |> Enum.map(fn {row, index} ->
@@ -274,8 +297,31 @@ defmodule NilaWeb.Gst.MonthLive do
 
       row
       |> Map.put("image_urls", urls)
+      |> Map.put("review_item", review_item(row, groups))
       |> Map.put("dom_id", row_dom_id(row, index))
     end)
+  end
+
+  defp review_item(%{"id" => id}, _groups) when is_binary(id), do: id
+
+  defp review_item(%{"gstr2b" => counterpart}, groups) when is_map(counterpart),
+    do: counterpart_group_key(counterpart, groups)
+
+  defp review_item(%{"bucket" => "in_2b_not_books"} = row, groups),
+    do: counterpart_group_key(row, groups)
+
+  defp review_item(_row, _groups), do: nil
+
+  defp counterpart_group_key(counterpart, groups) do
+    ref = Reconciliation.gstr2b_ref(counterpart)
+
+    group =
+      Enum.find(
+        groups,
+        &Enum.any?(&1.counterparts, fn g -> Reconciliation.gstr2b_ref(g) == ref end)
+      )
+
+    group && group.key
   end
 
   defp row_dom_id(%{"id" => id}, _index) when is_binary(id), do: "gst-row-#{id}"
@@ -455,16 +501,13 @@ defmodule NilaWeb.Gst.MonthLive do
     {:noreply, reload(socket)}
   end
 
-  def handle_info(_message, socket), do: {:noreply, socket}
+  def handle_info({:purchase_review_refresh, _item_id}, socket), do: {:noreply, reload(socket)}
 
-  @impl true
-  def handle_event("select-row", %{"dom_id" => dom_id}, socket) do
-    row = Enum.find(socket.assigns.rows, &(&1["dom_id"] == dom_id))
-    {:noreply, assign(socket, selected_row: row, selected_inum: nil)}
-  end
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   # Opening an invoice marks its row read for this session only — a quiet
   # read/unread mark, never a persisted aggregate or a meter.
+  @impl true
   def handle_event("select-invoice", %{"inum" => inum}, socket) do
     case valid_invoice_number(socket.assigns.invoices, inum) do
       nil ->
@@ -542,9 +585,6 @@ defmodule NilaWeb.Gst.MonthLive do
        MapSet.union(expanded, MapSet.new(nodes))
      end)}
   end
-
-  def handle_event("close-evidence", _params, socket),
-    do: {:noreply, assign(socket, selected_row: nil, correcting: nil)}
 
   def handle_event("close-invoice-review", _params, socket),
     do:
@@ -1219,12 +1259,21 @@ defmodule NilaWeb.Gst.MonthLive do
         </main>
       </div>
 
+      <.live_component
+        :if={(@live_action == :review and @purchase_review_route) && @purchase_month}
+        module={PurchaseLive}
+        id="purchase-review-live"
+        month={@purchase_month}
+        current_scope={@current_scope}
+        route={@purchase_review_route}
+        signed_off={@gstr3b_signoff != nil}
+      />
+
       <Evidence.evidence_modals
         show_chase_history={@show_chase_history}
         client={@client}
         period={@period}
         asks={@asks}
-        selected_row={@selected_row}
         selected_invoice={@selected_invoice}
         source_invoices={@invoices}
         duplicate_issue={@duplicate_issue}

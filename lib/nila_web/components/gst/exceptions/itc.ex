@@ -206,6 +206,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
   """
   attr :attestation, :any, required: true
   attr :signed_off, :boolean, default: false
+  attr :target, :any, default: nil
 
   def document_attestation(assigns) do
     ~H"""
@@ -235,6 +236,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           size="sm"
           id="gst-attest-held"
           phx-click="attest_documents"
+          phx-target={@target}
           phx-value-answer="held"
         >
           Client holds them
@@ -244,6 +246,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           size="sm"
           id="gst-attest-not-held"
           phx-click="attest_documents"
+          phx-target={@target}
           phx-value-answer="not_held"
         >
           Not held — withhold {itc_money(@attestation.tax_paise)}
@@ -255,6 +258,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           size="sm"
           id="gst-attest-unknown"
           phx-click="attest_documents"
+          phx-target={@target}
           phx-value-answer="unknown"
         >
           Unknown — ask the client
@@ -274,6 +278,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           size="xs"
           id="gst-attest-undo"
           phx-click="reopen_attestation"
+          phx-target={@target}
         >
           Undo
         </.button>
@@ -298,11 +303,13 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
   attr :itc, :map, required: true
   attr :signed_off, :boolean, required: true
   attr :stats, :any, default: nil
+  attr :show_bridge, :boolean, default: true
+  attr :target, :any, default: nil
 
   def itc_panel(%{itc: %{"blocks" => []}} = assigns) do
     ~H"""
     <div id="gst-itc-panel" class="space-y-related">
-      <.itc_bridge itc={@itc} stats={@stats} id="gst-itc-bridge" />
+      <.itc_bridge :if={@show_bridge} itc={@itc} stats={@stats} id="gst-itc-bridge" />
       <div
         :if={is_nil(@itc["reported_2b_paise"])}
         class="border-base-300 rounded-box flex items-center justify-between border px-4 py-3"
@@ -323,7 +330,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
             that move one of its terms. The old header asserted
             "2B ceiling − blocked", which was the whole story only when no
             money was pending or unsubstantiated. --%>
-      <.itc_bridge itc={@itc} stats={@stats} id="gst-itc-bridge" />
+      <.itc_bridge :if={@show_bridge} itc={@itc} stats={@stats} id="gst-itc-bridge" />
 
       <div class="border-base-300 rounded-box border">
         <div
@@ -361,6 +368,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
                 variant="error"
                 size="xs"
                 phx-click="block_itc"
+                phx-target={@target}
                 phx-value-block-id={b["block_id"]}
               >
                 Block
@@ -369,6 +377,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
                 variant="ghost"
                 size="xs"
                 phx-click="allow_itc"
+                phx-target={@target}
                 phx-value-block-id={b["block_id"]}
               >
                 Keep credit
@@ -381,6 +390,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
                 variant="ghost"
                 size="xs"
                 phx-click="reopen_block"
+                phx-target={@target}
                 phx-value-block-id={b["block_id"]}
               >Undo</.button>
             </span>
@@ -391,6 +401,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
                 variant="ghost"
                 size="xs"
                 phx-click="reopen_block"
+                phx-target={@target}
                 phx-value-block-id={b["block_id"]}
               >Undo</.button>
             </span>

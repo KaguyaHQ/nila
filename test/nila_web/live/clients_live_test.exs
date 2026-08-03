@@ -40,7 +40,7 @@ defmodule NilaWeb.ClientsLiveTest do
     refute html =~ "no GSTIN"
   end
 
-  test "the decision count links to that month's decision queue", %{conn: conn, org: org} do
+  test "the decision count lands on that month's working paper", %{conn: conn, org: org} do
     client = client_fixture(org)
     purchase_month(org, client, "2025-10", "worked")
     sales_month(org, client, "2025-10", "worked")
@@ -50,7 +50,7 @@ defmodule NilaWeb.ClientsLiveTest do
     assert view
            |> element("#client-decisions-#{client.id}")
            |> render_click()
-           |> follow_redirect(conn, ~p"/gst/#{client.id}/2025-10/exceptions")
+           |> follow_redirect(conn, ~p"/gst/#{client.id}/2025-10")
   end
 
   # The bug this column had: it read the purchase state alone, so a client whose

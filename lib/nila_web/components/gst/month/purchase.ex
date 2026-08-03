@@ -2,8 +2,8 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   use NilaWeb, :html
 
   @moduledoc """
-  Purchase reconciliation evidence. Open rows retain their route to the
-  exceptions queue; settled rows retain their source-evidence modal.
+  Purchase reconciliation evidence. Every register row patches into the
+  route-backed purchase review surface without unmounting the month.
 
   The section states its own ITC position and its own completeness before the
   register, in the same order the sales track states them: what the month is
@@ -47,7 +47,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           <.button
             :if={@stats.need_decision > 0}
             id="gstr3b-review-required"
-            navigate={~p"/gst/#{@client.id}/#{@period}/exceptions"}
+            patch={~p"/gst/#{@client.id}/#{@period}/review/purchase?scope=needs_you"}
             variant="primary"
             size="sm"
           >
@@ -57,7 +57,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           <.button
             :if={@stats.need_decision == 0 and @stats.awaiting_bills > 0}
             id="gstr3b-request-bills"
-            navigate={~p"/gst/#{@client.id}/#{@period}/exceptions"}
+            patch={~p"/gst/#{@client.id}/#{@period}/review/purchase?scope=needs_you"}
             variant="primary"
             size="sm"
           >
@@ -241,17 +241,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               {row["next_action"]}
             </span>
           </:col>
-          <%!-- Adjacent rows do different things on click: an open row leaves for
-                the exceptions queue, a settled one opens its evidence here. The
-                ⚠ and the accent mean severity, not destination, so the row that
-                leaves says so. --%>
-          <:col :let={row} label="" align="right">
-            <.icon
-              :if={Register.open_row?(row)}
-              name="hero-arrow-right-mini"
-              class="text-ink-faint size-4"
-            />
-          </:col>
           <:empty>The register is empty for this month.</:empty>
         </.data_table>
       </div>
@@ -397,15 +386,12 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       copy: "Every purchase bill is settled against the GSTR-2B."
     }
 
-  # The click follows the work. A row that still needs a decision opens the
-  # queue at that item; a settled row opens its evidence, which is all there is
-  # left to want from it.
   defp row_click(row, client, period) do
-    if Register.open_row?(row) and is_binary(row["id"]) do
-      JS.navigate(~p"/gst/#{client.id}/#{period}/exceptions?exception=#{row["id"]}")
-    else
-      JS.push("select-row", value: %{dom_id: row["dom_id"]})
-    end
+    scope = if Register.open_row?(row), do: "needs_you", else: "all"
+
+    JS.patch(
+      ~p"/gst/#{client.id}/#{period}/review/purchase?item=#{row["review_item"]}&scope=#{scope}"
+    )
   end
 
   defp status_variant(%{"bucket" => "matched"} = row) do
