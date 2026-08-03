@@ -683,7 +683,10 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         class="border-base-300 mt-block rounded-box border p-3"
       >
         <div class="text-ink-subtle text-label font-semibold uppercase">Nila's read</div>
-        <p class="text-base-content text-ui mt-1">{@proposal.action}</p>
+        <%!-- The action line used to sit here in prose, above buttons of equal
+              weight, so the reviewer read a sentence and then matched it by eye
+              to one of them. It is now the primary button's own label; what is
+              left here is the reasoning behind it. --%>
         <p class="text-ink-muted text-meta mt-1">{@proposal.basis}</p>
         <p :if={@filed_effect} class="mt-related text-ink-subtle text-meta">{@filed_effect}</p>
       </div>
@@ -722,9 +725,9 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           size="sm"
           phx-click="resolve-invoice-issue"
           phx-value-target={SalesWorkings.issue_key(@issue)}
-          phx-value-decision="use_extracted_lines"
+          phx-value-decision={(@proposal && @proposal.decision) || "use_extracted_lines"}
         >
-          {resolution_action(@issue)}
+          {(@proposal && @proposal.action) || resolution_action(@issue)}
         </.button>
         <.button
           :if={@can_correct}

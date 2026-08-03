@@ -1203,6 +1203,20 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert modal =~ "only the printed bill total disagrees"
     assert modal =~ "Files "
 
+    # And the position is the button, not a sentence above one. Naming the
+    # action in prose and then offering buttons of equal weight makes the
+    # reviewer match the two by eye — a position you have to locate is a
+    # paragraph. The action string appears once, and it is what you click.
+    assert has_element?(
+             view,
+             "button[phx-click='resolve-invoice-issue']",
+             "Accept the extracted lines"
+           )
+
+    refute view
+           |> element("#gstr1-evidence-modal [id$='-proposal']")
+           |> render() =~ "Accept the extracted lines"
+
     view
     |> element("button[phx-click='resolve-invoice-issue']", "Accept the extracted lines")
     |> render_click()

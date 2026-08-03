@@ -1210,6 +1210,21 @@ defmodule Nila.Gst.Sales.Gstr1 do
     %{txval: txval, camt: side_tax, samt: side_tax, iamt: 0}
   end
 
+  # Which government gets paid. Two sources can answer and they do not always
+  # agree: the two GSTINs, and whichever head the supplier actually populated on
+  # the bill. When they disagree, `Values.head_reassignment/2` names it and
+  # `tax_split_mismatch` (or `mixed_tax_heads`) gates the month, so no return is
+  # filed on an unreviewed guess.
+  #
+  # The GSTIN pair wins here, and that is a deliberate default rather than an
+  # accident of ordering. It is an *inference* about place of supply and it is
+  # wrong in real cases — bill-to/ship-to under s.10(1)(b), goods delivered out
+  # of state — but it is the only source available for an invoice whose heads
+  # were never populated, and it is the reading the portal itself applies. The
+  # extracted heads are the supplier's own declaration and are used only when
+  # the states cannot be read at all.
+  #
+  # Changing this changes what gets filed. It is not a refactor.
   defp invoice_tax_mode(lines, seller_state, buyer_state) do
     cond do
       seller_state && buyer_state && seller_state != buyer_state -> :interstate

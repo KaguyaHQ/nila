@@ -352,6 +352,59 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
            )
   end
 
+  test "an open row shows the move it waits on, not just what is wrong", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    rows = read_rows()
+
+    # An `in_books_not_2b` row: open, carrying a follow-up, and settleable from
+    # the queue with one click, so the settled half of this test can be reached.
+    {open, index} =
+      rows
+      |> Enum.with_index()
+      |> Enum.find(fn {row, _i} ->
+        Register.open_row?(row) and row["bucket"] == "in_books_not_2b" and
+          is_binary(row["id"]) and is_binary(row["next_action"])
+      end)
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    # The row already knew the next move; the register printed only the verdict,
+    # so a reviewer deciding whether to leave for the queue read the problem
+    # with the answer one screen away.
+    html = view |> element("##{dom_id(open, index)}") |> render()
+    assert html =~ "#{open["verdict"]}"
+
+    assert has_element?(view, "##{dom_id(open, index)}", String.slice(open["next_action"], 0, 40))
+
+    # And once it is decided the note goes quiet altogether — a move printed
+    # under a settled bill reads as an instruction to redo it. The follow-up
+    # hangs off `annotated_row?`, the same predicate the verdict already uses,
+    # rather than a second rule that could drift from it.
+    {:ok, queue, _html} =
+      live(conn, ~p"/gst/#{client.id}/#{@period}/exceptions?exception=#{open["id"]}")
+
+    queue |> element("#gst-accept-await-2b") |> render_click()
+
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+
+    decided =
+      month
+      |> Nila.Gst.Purchase.Resolutions.workings()
+      |> Map.fetch!(:rows)
+      |> Enum.find(&(&1["id"] == open["id"]))
+
+    refute Register.annotated_row?(decided)
+
+    {:ok, after_decision, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    refute after_decision
+           |> element("##{dom_id(open, index)}")
+           |> render() =~ String.slice(open["next_action"], 0, 40)
+  end
+
   # The return the track assembles belongs with the position it belongs to, not
   # after 58 rows of evidence where nobody reaches it.
   test "the assembled 3B renders inside the purchase track, above the register", %{

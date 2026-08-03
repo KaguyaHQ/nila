@@ -224,9 +224,21 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           <%!-- The note still speaks for any flagged row: an invalid GSTIN on a
                 matched bill is worth reading. What the flag no longer buys is
                 the ⚠ and the accent, which belong to rows that need a decision. --%>
+          <%!-- The verdict names what is wrong; the row also carries the move it
+                waits on, and the register showed only the first. A reviewer
+                deciding whether to leave for the queue was reading the problem
+                with the answer one screen away. Both hang off `annotated_row?`,
+                which already goes quiet once a row is decided — a follow-up
+                printed under a settled bill reads as an instruction to redo it. --%>
           <:col :let={row} label="Note" class="max-w-sm">
             <span :if={Register.annotated_row?(row)} class="text-base-content block truncate">
               {row["verdict"]}
+            </span>
+            <span
+              :if={Register.annotated_row?(row) and row["next_action"]}
+              class="text-ink-subtle text-meta mt-0.5 block truncate"
+            >
+              {row["next_action"]}
             </span>
           </:col>
           <%!-- Adjacent rows do different things on click: an open row leaves for
