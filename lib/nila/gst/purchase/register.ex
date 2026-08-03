@@ -173,6 +173,13 @@ defmodule Nila.Gst.Purchase.Register do
       # decision can move, only a bill arriving.
       awaiting_bills_tax_paise: awaiting_bills_tax,
       value_dispute_tax_paise: value_dispute_tax,
+      # Both partitions still close on a snapshot frozen before these fields
+      # existed, and the counts are right there because the buckets always
+      # were. The money is not: the two missing subsets read 0, so
+      # `decision_tax_paise` absorbs them and overstates for an old month that
+      # held mismatches or uncollected bills. Same shape as the
+      # `total_tax_paise` fallback above — a signed month is immutable, so it is
+      # a reading of history, never a live figure.
       decision_tax_paise: open_tax - awaiting_bills_tax - value_dispute_tax,
       # `matched` and `open` are not complements — audited-accepted rows are in
       # neither, so a reader adding the two visible subsets lands short of the

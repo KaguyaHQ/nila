@@ -71,14 +71,6 @@ defmodule Nila.Gst.Filing.Signoffs do
           true ->
             workings = Resolutions.workings(month)
 
-            # The GSTR-1 side has refused an unreviewed signature since it was
-            # written; this one checked only permission, state and sales
-            # completeness, leaving the register gate in the template. A signed
-            # 3B freezes the ITC snapshot and is what the firm answers for, so
-            # anything that reaches this function directly could certify credit
-            # resting on bills nobody supplied. `open` rather than
-            # `need_decision`: an uncollected bill is unsettled even though no
-            # decision can move it.
             with :ok <- require_settled_register(workings),
                  :ok <- require_sales_intake_complete(month) do
               snapshot = %{
