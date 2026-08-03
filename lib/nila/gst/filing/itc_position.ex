@@ -97,20 +97,31 @@ defmodule Nila.Gst.Filing.ItcPosition do
   """
   def partition(recon, rows, blocked_in_ceiling) do
     reported = ceiling_paise(recon)
-    pending = min(pending_decision_paise(recon, rows), reported)
+    raw_pending = pending_decision_paise(recon, rows)
+    raw_awaiting = awaiting_document_paise(recon, rows)
 
     # A block can only withhold credit the ceiling actually contains. `rows` and
     # `recon` are two projections of the same month and a row can claim a bucket
     # its 2B entry does not back — a stale snapshot, a row rebuilt after recon
     # moved on. Clamping keeps the equation an identity instead of letting the
-    # two drift into an impossible figure, which is the whole point of stating
-    # it as a partition.
+    # two drift into an impossible figure.
+    #
+    # But a clamp that fires silently turns a data inconsistency into a clean
+    # split nobody can question, so each one is reported. A figure that had to
+    # be clamped is a bug upstream, not a number to trust.
+    pending = min(raw_pending, reported)
     blocked = blocked_in_ceiling |> min(reported - pending) |> max(0)
     claimable = reported - blocked - pending
 
     # Substantiation splits the claim, so it cannot exceed it: every rupee
     # awaiting a document is by definition inside the claim.
-    awaiting = min(awaiting_document_paise(recon, rows), claimable)
+    awaiting = min(raw_awaiting, claimable)
+
+    report_clamps(reported, %{
+      pending: {raw_pending, pending},
+      blocked: {blocked_in_ceiling, blocked},
+      awaiting: {raw_awaiting, awaiting}
+    })
 
     %{
       "reported_2b_paise" => reported,
@@ -120,6 +131,19 @@ defmodule Nila.Gst.Filing.ItcPosition do
       "awaiting_document_paise" => awaiting,
       "substantiated_paise" => claimable - awaiting
     }
+  end
+
+  @doc "Emitted whenever a partition term had to be clamped to keep the identity."
+  def clamp_event, do: [:nila, :gst, :itc, :partition_clamped]
+
+  defp report_clamps(reported, terms) do
+    for {term, {raw, clamped}} <- terms, raw != clamped do
+      :telemetry.execute(
+        clamp_event(),
+        %{raw_paise: raw, clamped_paise: clamped, difference_paise: raw - clamped},
+        %{term: term, reported_2b_paise: reported}
+      )
+    end
   end
 
   # 2B-backed money whose bucket still needs a human: an ambiguous match, or a

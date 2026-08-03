@@ -52,22 +52,34 @@ defmodule Nila.Gst.Hsn.DescriptionSignal do
   @stem_length 5
 
   @doc """
-  Scores every line of every invoice and emits telemetry. Returns the invoices
-  unchanged — nothing about this is visible to a reviewer yet.
+  Scores every comparable line and emits **one** measurement for the batch.
+  Returns the invoices unchanged — nothing here is visible to a reviewer yet.
+
+  One event, not one per line: `materialize/5` runs on every page render, and
+  telemetry handlers execute synchronously inside `execute/3`. A hundred-invoice
+  month would otherwise pay a thousand handler calls to measure a signal nobody
+  is allowed to look at. The per-line detail rides in the metadata, so a handler
+  scoring the corpus still has everything it needs.
   """
   def observe(invoices, metadata \\ %{}) do
-    for invoice <- List.wrap(invoices),
-        line <- List.wrap(invoice["line_items"]),
-        result = score_line(line) do
+    scored =
+      for invoice <- List.wrap(invoices),
+          line <- List.wrap(invoice["line_items"]),
+          result = score_line(line) do
+        Map.merge(result, %{code: line["hsn_sac"], invoice: invoice["invoice_number"]})
+      end
+
+    if scored != [] do
+      scores = Enum.map(scored, & &1.score)
+
       :telemetry.execute(
         @event,
-        %{score: result.score, shared: result.shared},
-        Map.merge(metadata, %{
-          code: line["hsn_sac"],
-          printed: result.printed,
-          official: result.official,
-          invoice: invoice["invoice_number"]
-        })
+        %{
+          lines: length(scored),
+          mean_score: Enum.sum(scores) / length(scores),
+          min_score: Enum.min(scores)
+        },
+        Map.put(metadata, :scored, scored)
       )
     end
 

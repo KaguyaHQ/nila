@@ -47,7 +47,7 @@ defmodule Nila.Gst.Hsn.DescriptionSignalTest do
   end
 
   describe "observe/2" do
-    test "emits a measurement per comparable line and returns the invoices untouched" do
+    test "emits one measurement for the batch and returns the invoices untouched" do
       handler = {__MODULE__, :signal, self()}
 
       :telemetry.attach_many(
@@ -74,11 +74,16 @@ defmodule Nila.Gst.Hsn.DescriptionSignalTest do
 
       assert DescriptionSignal.observe(invoices, %{track: :sales}) == invoices
 
-      assert_receive {:signal, _event, %{score: score}, metadata}
-      assert is_float(score)
+      assert_receive {:signal, _event, measurements, metadata}
+
+      # One event for the month, not one per line: this runs on every page
+      # render and telemetry handlers are synchronous.
+      assert measurements.lines == 1
+      assert is_float(measurements.mean_score)
       assert metadata.track == :sales
-      assert metadata.invoice == "S-1"
-      assert metadata.official == "Parts of refrigerating equipment"
+
+      # The per-line detail still travels, so a handler can score the corpus.
+      assert [%{invoice: "S-1", official: "Parts of refrigerating equipment"}] = metadata.scored
 
       refute_receive {:signal, _event, _measurements, _metadata}
     end
@@ -99,6 +104,12 @@ defmodule Nila.Gst.Hsn.DescriptionSignalTest do
       observed = DescriptionSignal.observe(invoices)
 
       assert observed == invoices
+
+      # Nothing to compare means no event at all, rather than an event
+      # reporting a zero nobody measured.
+      assert DescriptionSignal.observe([%{"line_items" => [%{"description" => "Freight"}]}]) ==
+               [%{"line_items" => [%{"description" => "Freight"}]}]
+
       refute Nila.Gst.Issues.known_codes() |> Enum.any?(&(&1 =~ "description_conflict"))
     end
   end

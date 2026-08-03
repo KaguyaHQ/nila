@@ -240,6 +240,49 @@ defmodule Nila.Gst.Filing.ItcPositionTest do
       end
     end
 
+    test "a clamped term is reported, not quietly absorbed" do
+      # `rows` and `recon` are two projections of one month and can disagree.
+      # The clamp keeps the equation an identity, but a clamp that fires
+      # silently turns a data inconsistency into a clean split nobody can
+      # question.
+      handler = {__MODULE__, :clamp, self()}
+
+      :telemetry.attach(
+        handler,
+        ItcPosition.clamp_event(),
+        fn _event, measurements, metadata, pid ->
+          send(pid, {:clamped, measurements, metadata})
+        end,
+        self()
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      # A row claiming a matched bucket with no 2B entry behind it.
+      recon = %{
+        "matched" => [],
+        "value_mismatch" => [],
+        "in_2b_not_books" => [],
+        "needs_human" => [],
+        "in_books_not_2b" => []
+      }
+
+      rows = [
+        row("phantom", %{
+          "bucket" => "matched",
+          "cgst_paise" => 1_000,
+          "sgst_paise" => 1_000,
+          "flags" => [flag("personal_expense_17_5", "17(5)")]
+        })
+      ]
+
+      [%{"block_id" => bid}] = ItcPosition.compute(recon, rows, %{})["blocks"]
+      pos = ItcPosition.compute(recon, rows, %{bid => "block_itc"})
+
+      assert pos["claimable_paise"] == 0
+      assert_receive {:clamped, %{raw_paise: 2_000, clamped_paise: 0}, %{term: :blocked}}
+    end
+
     test "a value mismatch is claimable, not pending — no answer moves the money" do
       recon = %{
         "matched" => [],

@@ -229,18 +229,13 @@ defmodule Nila.Gst.Sales.Workings do
     Enum.flat_map(@completeness_questions, fn q ->
       target = "#{q.key}|#{scope}"
 
-      case completeness_answer(effective, target) do
-        # Answered "no": nothing of this kind exists, and nothing is left to ask.
-        "no" ->
-          []
+      answer = completeness_answer(effective, target)
 
-        # "Yes" leaves the question standing beside the gap it uncovered, and
-        # "unknown" leaves it standing because nobody has actually checked — a
-        # first-class answer that routes to a chase rather than forcing someone
-        # to assert "no" to proceed. `nil` is nobody having been asked.
-        answer ->
-          [completeness_question_issue(q, target, answer) | completeness_gap_issues(q, answer)]
-      end
+      # The question is always raised and `answered?/1` decides whether it
+      # settles. That keeps the given answer on the page — a reviewer must be
+      # able to see what they said and undo it — without an answered question
+      # continuing to gate the month.
+      [completeness_question_issue(q, target, answer) | completeness_gap_issues(q, answer)]
     end)
   end
 
@@ -343,13 +338,18 @@ defmodule Nila.Gst.Sales.Workings do
   defp answered?(%{"target" => "cess_not_evaluated|" <> _digest} = confirmation),
     do: get_in(confirmation, ["payload", "answer"]) in ~w(no_cess cess_applies)
 
-  # Same rule for the completeness questions: only "no" settles one. "Yes"
-  # leaves it standing beside the gap it uncovered, and "unknown" leaves it
-  # standing because nobody has actually checked.
+  # Same rule for the completeness questions, and the same shape as cess: "yes"
+  # and "no" both *answer* it — what "yes" uncovers is a separate blocking issue
+  # that stands on its own. Leaving the question open as well would count one
+  # answered question twice and tell a reviewer they still owe an answer they
+  # have already given.
+  #
+  # "Unknown" does not settle it, because nobody has actually checked. That is a
+  # legitimate answer to give and a legitimate reason to stop.
   defp answered?(%{"target" => target} = confirmation) when is_binary(target) do
     case String.split(target, "|") do
       [key, _scope] when key in @completeness_keys ->
-        get_in(confirmation, ["payload", "answer"]) == "no"
+        get_in(confirmation, ["payload", "answer"]) in ~w(no yes)
 
       _other ->
         true

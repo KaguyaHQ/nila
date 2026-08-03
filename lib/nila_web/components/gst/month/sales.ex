@@ -53,7 +53,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       )
       |> assign(
         :completeness_questions,
-        completeness_questions(assigns.account.issues.required)
+        completeness_questions(assigns.month_issues)
       )
       |> assign(:verdict, verdict_state(assigns))
       |> assign(:draft_label, draft_label(assigns))
@@ -502,12 +502,12 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               confirmed absent — an assertion with a person behind it, not a
               claim the engine invented from an empty table. --%>
         <p
-          :if={@completeness_questions == []}
+          :if={confirmed_absent(@completeness_questions) != []}
           id="gstr1-filing-confirmed-absent"
           class="text-ink-subtle text-meta"
         >
-          Confirmed absent this month: credit and debit notes, exports, SEZ supplies, B2C supplies,
-          cancellations, and any further invoice series.
+          Confirmed absent this month: {confirmed_absent(@completeness_questions)
+          |> Enum.map_join(", ", & &1.noun)}.
         </p>
         <p id="gstr1-filing-capability" class="text-ink-subtle text-meta">
           This return files B2B invoices. A credit note, export, SEZ, reverse-charge or B2C bill
@@ -702,36 +702,37 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   # Every question, in the order the domain asks them, carrying whatever answer
   # has been given. An answered "no" leaves no issue behind, so the answered
   # ones are reconstructed from the question list rather than from the issues.
-  defp completeness_questions(required) do
-    open =
-      required
+  defp completeness_questions(issues) do
+    asked =
+      issues
       |> Enum.filter(&completeness?/1)
       |> Map.new(&{&1["attestation_key"], &1})
 
-    if open == %{} do
-      []
-    else
-      scope =
-        open
-        |> Map.values()
-        |> List.first()
-        |> Map.fetch!("target")
-        |> String.split("|")
-        |> List.last()
+    Enum.flat_map(SalesWorkings.completeness_questions(), fn q ->
+      case asked[q.key] do
+        nil ->
+          []
 
-      Enum.map(SalesWorkings.completeness_questions(), fn q ->
-        issue = open[q.key]
+        issue ->
+          [%{key: q.key, question: q.question, target: issue["target"], answer: issue["answer"]}]
+      end
+    end)
+  end
 
-        %{
-          key: q.key,
-          question: q.question,
-          target: "#{q.key}|#{scope}",
-          # An open issue means unanswered or answered in a way that left it
-          # standing; absent means somebody answered "no".
-          answer: if(issue, do: issue["answer"], else: "no")
-        }
-      end)
-    end
+  # Only what somebody actually said "no" to. A question answered "yes" or left
+  # unknown is not an absence anyone confirmed, and listing it here would put an
+  # assertion in a reviewer's mouth.
+  defp confirmed_absent(questions) do
+    nouns = %{
+      "credit_or_debit_notes" => "credit and debit notes",
+      "exports" => "exports",
+      "sez_supplies" => "SEZ supplies",
+      "b2c_supplies" => "B2C supplies",
+      "cancelled_documents" => "cancellations",
+      "additional_series" => "any further invoice series"
+    }
+
+    for q <- questions, q.answer == "no", do: %{noun: nouns[q.key]}
   end
 
   defp attestation_note(%{answer: "no"}), do: "No"
