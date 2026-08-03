@@ -34,7 +34,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   alias Nila.Gst.Hsn.{Directory, Validation}
   alias Nila.Gst.Intake.{Dump, Dumps, ExtractionAttempts, Preconditions}
   alias Nila.Gst.Issues
-  alias Nila.Gst.Purchase.{Books, Flags, Reconciliation, Register, TaxpayerContext}
+  alias Nila.Gst.Purchase.{Books, Flags, Groups, Reconciliation, Register, TaxpayerContext}
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.RateHistory
@@ -615,6 +615,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
     recon = Reconciliation.reconcile(invoices, gstr2b)
     flags = Flags.evaluate_all(invoices, entity_ctx, vendor_dir)
+    groups = Groups.build(recon)
     rows = Register.rows(invoices, recon, flags)
 
     unaccounted = Dumps.unaccounted_pages(dump.org_id, dump.client_id, dump.period, "purchase")
@@ -631,7 +632,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
         recon: recon,
         hsn_master_release_id: release_id(directory),
         gst_rate_release_id: release_id(rate_directory),
-        summary: Map.put(Register.summary(rows), "document_flags", document_flags)
+        summary: Map.put(Register.summary(rows, groups), "document_flags", document_flags)
       })
 
     :ok

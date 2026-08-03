@@ -1,7 +1,7 @@
 defmodule Nila.Gst.Purchase.RegisterTest do
   use ExUnit.Case, async: true
 
-  alias Nila.Gst.Purchase.Register
+  alias Nila.Gst.Purchase.{Groups, Reconciliation, Register}
 
   describe "stats/1 and need_decision/1" do
     test "count every bucket, including 2B-only rows, and subtract matches and accepted unmatched" do
@@ -26,6 +26,7 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                matched: 3,
                open: 9,
                need_decision: 4,
+               decision_rows: 4,
                awaiting_bills: 5,
                value_disputes: 0,
                taxable_paise: 500_000,
@@ -36,6 +37,7 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                awaiting_bills_tax_paise: 0,
                value_dispute_tax_paise: 0,
                decision_tax_paise: 45_000,
+               decision_row_tax_paise: 45_000,
                unreported_by_vendor_tax_paise: 0,
                unreported_by_vendor_known?: false,
                open_money_split_known?: false,
@@ -72,6 +74,7 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                matched: 0,
                open: 0,
                need_decision: 0,
+               decision_rows: 0,
                awaiting_bills: 0,
                value_disputes: 0,
                taxable_paise: 0,
@@ -82,6 +85,7 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                awaiting_bills_tax_paise: 0,
                value_dispute_tax_paise: 0,
                decision_tax_paise: 0,
+               decision_row_tax_paise: 0,
                unreported_by_vendor_tax_paise: 0,
                unreported_by_vendor_known?: false,
                open_money_split_known?: true,
@@ -207,6 +211,42 @@ defmodule Nila.Gst.Purchase.RegisterTest do
     # audited 2B-only rows as bills still to chase and took the difference out of
     # need_decision — with 3 of 5 accepted the page read "5 to collect, 2 to
     # decide" when the truth was 2 and 5, exactly inverted.
+    test "FREEZELINKS keeps invoice rows but counts the connected question and tax once" do
+      invoice = fn id ->
+        %{
+          "id" => id,
+          "vendor_name" => "Freezelinks",
+          "vendor_gstin" => "33AAACS1234A1Z9",
+          "invoice_number" => "FREEZE-1",
+          "invoice_date" => ~D[2025-10-05],
+          "taxable_paise" => 1_000_000,
+          "tax_paise" => %{"cgst" => 90_000, "sgst" => 90_000, "igst" => 0},
+          "total_paise" => 1_180_000,
+          "pages" => [],
+          "images" => []
+        }
+      end
+
+      counterpart =
+        invoice.("ignored")
+        |> Map.delete("id")
+        |> Map.put("vendor_name", "FREEZELINKS")
+
+      invoices = [invoice.("freezelinks-1"), invoice.("freezelinks-2")]
+      recon = Reconciliation.reconcile(invoices, [counterpart])
+      groups = Groups.build(recon)
+      rows = Register.rows(invoices, recon, %{})
+      stats = rows |> Register.summary(groups) |> Register.stats()
+
+      assert length(rows) == 2
+      refute Enum.any?(rows, &Map.has_key?(&1, "review_group_key"))
+      assert stats.open == 2
+      assert stats.decision_rows == 2
+      assert stats.need_decision == 1
+      assert stats.decision_tax_paise == 180_000
+      assert stats.decision_row_tax_paise == 360_000
+    end
+
     test "the count split agrees with the predicates once 2B-only rows are accepted" do
       rows =
         for(i <- 1..3, do: row("a#{i}", "in_2b_not_books", "await_2b", 100)) ++
@@ -216,12 +256,13 @@ defmodule Nila.Gst.Purchase.RegisterTest do
       stats = rows |> Register.summary() |> Register.stats()
 
       assert stats.awaiting_bills == Enum.count(rows, &Register.awaiting_bill?/1)
-      assert stats.need_decision == Enum.count(rows, &Register.decision_row?/1)
+      assert stats.decision_rows == Enum.count(rows, &Register.decision_row?/1)
+      assert stats.need_decision == stats.decision_rows
       assert stats.open == Enum.count(rows, &Register.open_row?/1)
 
       assert stats.awaiting_bills == 2
       assert stats.need_decision == 5
-      assert stats.need_decision + stats.awaiting_bills == stats.open
+      assert stats.decision_rows + stats.awaiting_bills == stats.open
     end
 
     # A value mismatch is already paired on GSTIN and invoice number; only the
@@ -298,13 +339,14 @@ defmodule Nila.Gst.Purchase.RegisterTest do
 
       stats = rows |> Register.summary() |> Register.stats()
 
-      assert stats.need_decision == Enum.count(rows, &Register.decision_row?/1)
+      assert stats.decision_rows == Enum.count(rows, &Register.decision_row?/1)
+      assert stats.need_decision == stats.decision_rows
       assert stats.awaiting_bills == Enum.count(rows, &Register.awaiting_bill?/1)
       assert stats.value_disputes == Enum.count(rows, &Register.value_dispute?/1)
 
-      assert stats.need_decision + stats.awaiting_bills + stats.value_disputes == stats.open
+      assert stats.decision_rows + stats.awaiting_bills + stats.value_disputes == stats.open
 
-      assert stats.decision_tax_paise + stats.awaiting_bills_tax_paise +
+      assert stats.decision_row_tax_paise + stats.awaiting_bills_tax_paise +
                stats.value_dispute_tax_paise == stats.open_tax_paise
     end
 

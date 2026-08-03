@@ -9,7 +9,7 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
   alias Nila.Gst.Filing.Signoffs
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.Months, as: ClientMonths
-  alias Nila.Gst.Purchase.{Register, Resolutions}
+  alias Nila.Gst.Purchase.{Groups, Register, Resolutions}
   alias Nila.Gst.Purchase.Reconciliation, as: Recon
 
   @period "2025-10"
@@ -63,7 +63,7 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
         state: "worked",
         register_rows: rows,
         recon: recon,
-        summary: Register.summary(rows)
+        summary: Register.summary(rows, Groups.build(recon))
       })
 
     %{conn: log_in_user(conn, user), user: user, org: org, client: client}
@@ -118,7 +118,7 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
         state: "worked",
         register_rows: rows,
         recon: recon,
-        summary: Register.summary(rows)
+        summary: Register.summary(rows, Groups.build(recon))
       })
 
     month
@@ -492,6 +492,39 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
     assert render(view) =~ "CHN-SER-1134"
   end
 
+  test "FREEZELINKS renders one connected decision and maps either register row to it", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    period = "2027-01"
+    first = books(%{"id" => "freezelinks-1", "invoice_number" => "FREEZE-1"})
+    second = books(%{"id" => "freezelinks-2", "invoice_number" => "FREEZE-1"})
+    counterpart = g2b(%{"invoice_number" => "FREEZE-1", "vendor_name" => "FREEZELINKS"})
+    recon = Recon.reconcile([first, second], [counterpart])
+    month = put_recon!(org, client, period, [first, second], recon)
+    workings = Resolutions.workings(month)
+    [group] = Enum.filter(workings.groups, &(&1.state == :needs_decision))
+
+    assert length(workings.rows) == 2
+    assert Register.stats(workings.summary).need_decision == 1
+
+    {:ok, view, _html} =
+      live(
+        conn,
+        ~p"/gst/#{client.id}/#{period}/exceptions?exception=#{second["id"]}"
+      )
+
+    assert has_element?(view, "#queue-#{group.key}.bg-base-200")
+    refute has_element?(view, "#queue-#{first["id"]}")
+    refute has_element?(view, "#queue-#{second["id"]}")
+    assert has_element?(view, "#gst-exception-group-decisions", "1 ·")
+    assert has_element?(view, "#gst-exception-books-members", "FREEZE-1")
+    assert has_element?(view, "#gst-candidate-1")
+    assert has_element?(view, "#gst-candidate-2")
+    assert has_element?(view, "#gst-exceptions", "1 decision")
+  end
+
   test "opening exceptions derives assigns without writing the projection or resolutions", %{
     conn: conn,
     org: org,
@@ -629,7 +662,7 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
         state: "worked",
         register_rows: rows,
         recon: recon,
-        summary: Register.summary(rows)
+        summary: Register.summary(rows, Groups.build(recon))
       })
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/2025-12/exceptions")
@@ -868,7 +901,7 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
         state: "worked",
         register_rows: rows,
         recon: recon,
-        summary: Register.summary(rows)
+        summary: Register.summary(rows, Groups.build(recon))
       })
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/2025-11/exceptions")

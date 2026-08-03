@@ -137,6 +137,19 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         <p :if={asked_label(@selected.asked_at)} class="text-meta text-moon mt-1 font-medium">
           {asked_label(@selected.asked_at)}
         </p>
+        <div
+          :if={length(@selected.books_members) > 1}
+          id="gst-exception-books-members"
+          class="border-base-300 rounded-box mt-3 divide-y border"
+        >
+          <div
+            :for={books <- @selected.books_members}
+            class="flex items-baseline justify-between gap-3 px-3 py-2"
+          >
+            <span class="text-base-content text-ui font-medium">{books["vendor_name"]}</span>
+            <span class="text-ink-muted text-meta font-mono">{books["invoice_number"] || "—"}</span>
+          </div>
+        </div>
       </div>
 
       <%!-- The dispute is the hero: books-vs-2B leads, and the bill sits beside
@@ -152,9 +165,9 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             <.candidate_card
               :for={{candidate, index} <- Enum.with_index(@selected.candidates, 1)}
               candidate={candidate}
-              books={@selected.books}
+              books={candidate.books}
               index={index}
-              selected_id={@selected.id}
+              selected_id={candidate.books_id}
               show_pick={
                 @selected.action == :ambiguous and not @selected.resolved and not @signed_off
               }

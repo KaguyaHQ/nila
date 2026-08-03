@@ -5,7 +5,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
   alias Nila.Gst.Chase
   alias Nila.Gst.Filing.Signoffs
   alias Nila.Gst.Intake.Dumps
-  alias Nila.Gst.Purchase.{Reconciliation, Register, Resolutions}
+  alias Nila.Gst.Purchase.{Groups, Reconciliation, Register, Resolutions}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Gst.Proposals
   alias NilaWeb.Components.Gst.Exceptions.{Itc, Modal, Surface}
@@ -58,8 +58,14 @@ defmodule NilaWeb.Gst.ExceptionsLive do
   # shut. The overlay's own Esc never comes through here, so closing the reader
   # leaves the selection exactly where it was.
   defp select(socket, id) do
+    selected_id =
+      case Enum.find(socket.assigns[:queue] || [], &item_matches?(&1, id)) do
+        nil -> id
+        item -> item.id
+      end
+
     socket
-    |> assign(:selected_id, id)
+    |> assign(:selected_id, selected_id)
     |> assign(:evidence_page, 0)
     |> assign(:evidence_open, false)
   end
@@ -131,57 +137,103 @@ defmodule NilaWeb.Gst.ExceptionsLive do
     asked_at = last_ask_at(month)
     gaps = evidence_gaps(month)
 
-    books_items =
-      (workings.baseline["needs_human"] || []) ++
-        (workings.baseline["in_books_not_2b"] || [])
+    baseline_decision_ids =
+      for bucket <- ["needs_human", "in_books_not_2b"],
+          entry <- workings.baseline[bucket] || [],
+          books = entry["books"],
+          into: MapSet.new(),
+          do: books["id"]
 
-    books_queue = Enum.map(books_items, &exception_item(&1, workings, month, gaps))
+    active_and_decided_groups =
+      Enum.filter(workings.groups, fn group ->
+        group.state != :settled or
+          Enum.any?(group.books, &MapSet.member?(baseline_decision_ids, &1["id"]))
+      end)
 
-    gstr2b_queue =
-      Enum.map(workings.baseline["in_2b_not_books"] || [], fn entry ->
-        gstr2b_item(entry, workings.gstr2b_decisions, asked_at)
+    dismissed_groups =
+      workings.baseline
+      |> Groups.build()
+      |> Enum.filter(fn group ->
+        group.state == :awaiting_bill and
+          Enum.all?(group.counterparts, fn counterpart ->
+            workings.gstr2b_decisions[Reconciliation.gstr2b_ref(counterpart)] == "dismiss_2b"
+          end)
+      end)
+
+    queue_groups = Enum.uniq_by(active_and_decided_groups ++ dismissed_groups, & &1.key)
+
+    queue =
+      Enum.map(queue_groups, fn
+        %{state: :awaiting_bill} = group ->
+          gstr2b_group_item(group, workings, asked_at)
+
+        group ->
+          exception_group_item(group, workings, month, gaps)
       end)
 
     # Biggest exposure first. The queue used to run in extraction order, which
     # spends the reviewer's freshest attention on whatever happened to be
     # scanned first rather than on the ₹48,802 decision.
-    Enum.sort_by(books_queue ++ gstr2b_queue, & &1.tax_paise, :desc)
+    Enum.sort_by(queue, & &1.tax_paise, :desc)
   end
 
-  defp tax_total(nil), do: 0
+  defp exception_group_item(group, workings, month, gaps) do
+    books_members = group.books
+    books = hd(books_members)
+    entry = baseline_books_entry(workings.baseline, books["id"])
+    type = (entry && get_in(entry, ["reason", "code"])) || group.code
 
-  defp tax_total(invoice) do
-    tax = invoice["tax_paise"] || %{}
-    (tax["cgst"] || 0) + (tax["sgst"] || 0) + (tax["igst"] || 0)
-  end
+    candidates =
+      Enum.flat_map(books_members, fn member ->
+        fallback =
+          group.edges
+          |> Enum.filter(&(&1.books_ref == member["id"]))
+          |> Enum.map(fn edge ->
+            Enum.find(group.counterparts, fn counterpart ->
+              Reconciliation.gstr2b_ref(counterpart) == edge.gstr2b_ref
+            end)
+          end)
+          |> Enum.reject(&is_nil/1)
 
-  defp exception_item(entry, workings, month, gaps) do
-    books = entry["books"]
-    type = entry["reason"]["code"]
-    candidates = effective_candidates(workings.recon, books["id"], entry["candidates"] || [])
-    verb = workings.decisions[books["id"]]
-    accepted_reason = workings.accepted_reasons[books["id"]]
-    effective_bucket = effective_books_bucket(workings.recon, books["id"])
+        workings.recon
+        |> effective_candidates(member["id"], fallback)
+        |> candidate_views(member)
+      end)
+      |> Enum.uniq_by(&{&1.books_id, &1.ref})
 
-    resolved =
-      accepted_reason != nil or
-        (verb in ["confirm_pair", "correct_field"] and
-           effective_bucket in ["matched", "value_mismatch"])
+    resolved = group.state == :settled
+
+    verbs =
+      books_members
+      |> Enum.map(fn member -> workings.decisions[member["id"]] end)
+      |> Enum.reject(&is_nil/1)
+
+    accepted =
+      books_members
+      |> Enum.map(fn member -> workings.accepted_reasons[member["id"]] end)
+      |> Enum.reject(&is_nil/1)
+
+    verb = Enum.uniq(verbs) |> List.first()
+    accepted_reason = Enum.uniq(accepted) |> List.first()
 
     %{
-      id: books["id"],
+      id: if(length(books_members) == 1, do: books["id"], else: group.key),
+      group_key: group.key,
+      member_ids: Enum.map(books_members, & &1["id"]),
       kind: :books,
       type: type,
       vendor: books["vendor_name"],
       invoice_number: books["invoice_number"],
-      reason: entry["reason"]["message"],
+      reason: (entry && get_in(entry, ["reason", "message"])) || "Review the possible pairings.",
       books: books,
+      books_members: books_members,
       gstr2b: nil,
-      candidates: candidate_views(candidates),
-      images: image_urls(books, month),
+      counterparts: group.counterparts,
+      candidates: candidates,
+      images: Enum.flat_map(books_members, &image_urls(&1, month)),
       evidence_gap: evidence_gap(books, gaps),
-      tax_paise: tax_total(books),
-      action: books_action(type, candidates),
+      tax_paise: group.tax_paise,
+      action: books_action(type, candidates, length(books_members)),
       verb: verb,
       resolved: resolved,
       outcome: outcome_label(verb, type, accepted_reason),
@@ -189,26 +241,44 @@ defmodule NilaWeb.Gst.ExceptionsLive do
     }
   end
 
-  defp gstr2b_item(entry, decisions, asked_at) do
-    gstr2b = entry["gstr2b"] || entry
+  defp baseline_books_entry(recon, books_id) do
+    Enum.find_value(["needs_human", "in_books_not_2b"], fn bucket ->
+      Enum.find(recon[bucket] || [], &(get_in(&1, ["books", "id"]) == books_id))
+    end)
+  end
+
+  defp gstr2b_group_item(group, workings, asked_at) do
+    gstr2b = hd(group.counterparts)
     ref = Reconciliation.gstr2b_ref(gstr2b)
-    verb = decisions[ref]
+    verb = workings.gstr2b_decisions[ref]
+
+    entry =
+      Enum.find(workings.baseline["in_2b_not_books"] || [], fn baseline_entry ->
+        baseline_entry
+        |> then(&(&1["gstr2b"] || &1))
+        |> Reconciliation.gstr2b_ref()
+        |> Kernel.==(ref)
+      end) || %{}
 
     %{
       id: "g2b-#{ref}",
+      group_key: group.key,
+      member_ids: [],
       kind: :gstr2b,
       type: get_in(entry, ["reason", "code"]) || "missing_in_books",
       vendor: gstr2b["vendor_name"],
       invoice_number: gstr2b["invoice_number"],
       reason: get_in(entry, ["reason", "message"]) || "This GSTR-2B bill is not in the books.",
       books: nil,
+      books_members: [],
       gstr2b: gstr2b,
       gstr2b_ref: ref,
+      counterparts: group.counterparts,
       candidates: [],
       images: [],
       # A 2B-only line never had a bill to render; its emptiness is the finding.
       evidence_gap: nil,
-      tax_paise: tax_total(gstr2b),
+      tax_paise: group.tax_paise,
       action: :gstr2b,
       verb: verb,
       resolved: verb == "dismiss_2b",
@@ -224,21 +294,21 @@ defmodule NilaWeb.Gst.ExceptionsLive do
     end
   end
 
-  defp effective_books_bucket(recon, books_id) do
-    Enum.find_value(~w(matched value_mismatch needs_human in_books_not_2b), fn bucket ->
-      if Enum.any?(recon[bucket] || [], &(get_in(&1, ["books", "id"]) == books_id)), do: bucket
-    end)
-  end
-
-  defp candidate_views(candidates) do
+  defp candidate_views(candidates, books) do
     Enum.map(candidates, fn candidate ->
-      %{gstr2b: candidate, ref: Reconciliation.gstr2b_ref(candidate)}
+      %{
+        books: books,
+        books_id: books["id"],
+        gstr2b: candidate,
+        ref: Reconciliation.gstr2b_ref(candidate)
+      }
     end)
   end
 
-  defp books_action("ambiguous_matches", [_ | _]), do: :ambiguous
+  defp books_action(_type, [_ | _], member_count) when member_count > 1, do: :ambiguous
+  defp books_action("ambiguous_matches", [_ | _], _member_count), do: :ambiguous
 
-  defp books_action(type, [_candidate])
+  defp books_action(type, [_candidate], _member_count)
        when type in [
               "invoice_number_mismatch",
               "relaxed_match_weak_corroboration",
@@ -246,7 +316,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
             ],
        do: :pair
 
-  defp books_action(_type, _candidates), do: :unmatched
+  defp books_action(_type, _candidates, _member_count), do: :unmatched
 
   defp outcome_label("confirm_pair", "ambiguous_matches", _), do: "Matched to the chosen 2B row"
   defp outcome_label("confirm_pair", _, _), do: "Confirmed — same bill"
@@ -366,13 +436,19 @@ defmodule NilaWeb.Gst.ExceptionsLive do
   end
 
   def handle_event("reject_all", %{"id" => id}, socket) do
+    item = find_item(socket, id)
+
     attrs_list =
-      socket
-      |> find_item(id)
+      item
       |> Map.fetch!(:candidates)
       |> Enum.map(fn candidate ->
-        %{"verb" => "reject_pair", "books_id" => id, "gstr2b_ref" => candidate.ref}
+        %{
+          "verb" => "reject_pair",
+          "books_id" => candidate.books_id,
+          "gstr2b_ref" => candidate.ref
+        }
       end)
+      |> Enum.uniq()
 
     case Resolutions.record_many_and_refresh(
            socket.assigns.month,
@@ -380,7 +456,10 @@ defmodule NilaWeb.Gst.ExceptionsLive do
            socket.assigns.current_scope.user.id
          ) do
       {:ok, result} ->
-        {:noreply, socket |> assign_workings(result.month, result.workings) |> select(id)}
+        {:noreply,
+         socket
+         |> assign_workings(result.month, result.workings)
+         |> select(List.first(item.member_ids))}
 
       {:error, :signed_off} ->
         signed_off(socket)
@@ -389,11 +468,28 @@ defmodule NilaWeb.Gst.ExceptionsLive do
 
   def handle_event("accept_unmatched", %{"id" => id, "reason" => reason}, socket)
       when reason in ~w(await_2b not_claimable) do
-    record(socket, %{
-      "verb" => "accept_unmatched",
-      "books_id" => id,
-      "payload" => %{"reason" => reason}
-    })
+    item = find_item(socket, id)
+
+    attrs_list =
+      Enum.map(item.member_ids, fn books_id ->
+        %{
+          "verb" => "accept_unmatched",
+          "books_id" => books_id,
+          "payload" => %{"reason" => reason}
+        }
+      end)
+
+    case Resolutions.record_many_and_refresh(
+           socket.assigns.month,
+           attrs_list,
+           socket.assigns.current_scope.user.id
+         ) do
+      {:ok, result} ->
+        {:noreply, socket |> assign_workings(result.month, result.workings) |> advance(id)}
+
+      {:error, :signed_off} ->
+        signed_off(socket)
+    end
   end
 
   def handle_event("accept_unmatched", _params, socket), do: {:noreply, socket}
@@ -556,12 +652,15 @@ defmodule NilaWeb.Gst.ExceptionsLive do
 
   defp advance(socket, resolved_id) do
     queue = socket.assigns.queue
-    idx = Enum.find_index(queue, &(&1.id == resolved_id)) || 0
+    idx = Enum.find_index(queue, &item_matches?(&1, resolved_id)) || 0
+    current = Enum.find(queue, &item_matches?(&1, resolved_id))
     next = (Enum.drop(queue, idx + 1) ++ Enum.take(queue, idx)) |> Enum.find(&(not &1.resolved))
-    assign(socket, :selected_id, (next && next.id) || resolved_id)
+    assign(socket, :selected_id, (next && next.id) || (current && current.id) || resolved_id)
   end
 
-  defp find_item(socket, id), do: Enum.find(socket.assigns.queue, &(&1.id == id))
+  defp find_item(socket, id), do: Enum.find(socket.assigns.queue, &item_matches?(&1, id))
+
+  defp item_matches?(item, id), do: item.id == id or id in item.member_ids
 
   defp selected_images(socket) do
     case find_item(socket, socket.assigns.selected_id) do
@@ -603,7 +702,11 @@ defmodule NilaWeb.Gst.ExceptionsLive do
   @impl true
   def render(assigns) do
     assigns =
-      assign(assigns, :selected, Enum.find(assigns.queue, &(&1.id == assigns.selected_id)))
+      assign(
+        assigns,
+        :selected,
+        Enum.find(assigns.queue, &item_matches?(&1, assigns.selected_id))
+      )
 
     ~H"""
     <Layouts.app

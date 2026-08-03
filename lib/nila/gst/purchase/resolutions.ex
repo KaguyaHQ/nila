@@ -17,7 +17,7 @@ defmodule Nila.Gst.Purchase.Resolutions do
 
   alias Nila.Gst.Filing.{Gstr3b, ItcPosition, Signoffs}
   alias Nila.Gst.Hsn.Directory
-  alias Nila.Gst.Purchase.{Flags, Month, Register, Resolution, TaxpayerContext, Workings}
+  alias Nila.Gst.Purchase.{Flags, Groups, Month, Register, Resolution, TaxpayerContext, Workings}
   alias Nila.Gst.Rates.Directory, as: RateDirectory
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Months, as: SalesMonths
@@ -119,6 +119,7 @@ defmodule Nila.Gst.Purchase.Resolutions do
 
     invoices = Workings.books_invoices(recon)
     flags = flags_for(month, invoices)
+    groups = Groups.build(recon)
     rows = Register.rows(invoices, recon, flags)
     attestation = Workings.document_attestation(recon, rows, resolutions)
 
@@ -136,16 +137,17 @@ defmodule Nila.Gst.Purchase.Resolutions do
       document_attestation: attestation,
       itc: itc,
       gstr3b: gstr3b(month, recon, itc),
+      groups: groups,
       rows: rows,
-      summary: summary(month, rows)
+      summary: summary(month, rows, groups)
     }
   end
 
   # Rows are re-derived from the resolutions; the extraction ledger's
   # month-level flags are not derivable from them, so they carry over from the
   # summary extraction persisted.
-  defp summary(%Month{} = month, rows) do
-    Map.merge(Register.summary(rows), Map.take(month.summary || %{}, ["document_flags"]))
+  defp summary(%Month{} = month, rows, groups) do
+    Map.merge(Register.summary(rows, groups), Map.take(month.summary || %{}, ["document_flags"]))
   end
 
   # The assembled 3B for the month. Outward liability comes from the client's

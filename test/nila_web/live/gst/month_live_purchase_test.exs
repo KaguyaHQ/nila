@@ -8,7 +8,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.Months, as: ClientMonths
-  alias Nila.Gst.Purchase.Register
+  alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Storage
 
@@ -215,11 +215,13 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
   test "purchases open and sales absent: one door, money in the headline", %{
     conn: conn,
-    client: client
+    client: client,
+    client_month: client_month
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    need_decision = Nila.Gst.Purchase.Register.stats(read_json("summary.json")).need_decision
+    need_decision =
+      client_month |> Resolutions.workings() |> then(&Register.need_decision(&1.summary))
 
     assert has_element?(view, "#month-page")
     assert has_element?(view, "#month-headline", "of it rides on #{need_decision} decisions")
