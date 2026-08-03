@@ -43,6 +43,12 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
               </span>
             </div>
             <p class="text-ink-subtle text-meta">{group.blurb}</p>
+            <%!-- Nila's position on the group, where it has one. A collection
+                  queue's treatment is a request, not a decision, so it belongs
+                  on the group rather than on each row. --%>
+            <p :if={group[:proposal]} class="text-base-content text-meta font-medium">
+              {group.proposal.action}
+            </p>
           </div>
           <div class="divide-base-300 divide-y">
             <button

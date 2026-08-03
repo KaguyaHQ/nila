@@ -743,6 +743,15 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
     # as collection and never enters the progress denominator.
     assert has_element?(view, "#gst-exception-group-collection", "Bills to collect")
     assert has_element?(view, "#gst-exception-group-collection", "There is no scan to open")
+
+    # Nila's position on the group: the treatment for a bill nobody sent is a
+    # request, and the basis is what the portal reported.
+    assert has_element?(
+             view,
+             "#gst-exception-group-collection",
+             "Request the 1 missing bill from the client"
+           )
+
     refute has_element?(view, "#gst-exception-group-decisions")
     refute has_element?(view, "#gst-exceptions-progress")
     assert has_element?(view, "#gst-exceptions", "1 bill to collect")

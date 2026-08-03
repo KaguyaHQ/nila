@@ -5,6 +5,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
   alias Nila.Gst.Issues
   alias Nila.Gst.Sales.Gstr1
+  alias Nila.Gst.Proposals
   alias Nila.Gst.Sales.Values
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias NilaWeb.Components.Gst.Month.Helpers
@@ -306,6 +307,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       |> assign(:review_state, review_state(open_issues))
       |> assign(:read_rows, read_rows(assigns.selected_invoice, checks))
       |> assign(:values, Values.for_invoice(assigns.selected_invoice, assigns.derived))
+      |> assign(:all_checks, checks)
 
     ~H"""
     <.modal
@@ -414,6 +416,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   id={issue_dom_id(@check_issues[check_key(check)])}
                   issue={@check_issues[check_key(check)]}
                   check={check}
+                  checks={@all_checks}
                   values={@values}
                   decisions={@decisions}
                   can_correct={
@@ -437,6 +440,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 :for={issue <- @other_issues}
                 id={issue_dom_id(issue)}
                 issue={issue}
+                checks={@all_checks}
                 values={@values}
                 decisions={@decisions}
                 can_correct={issue_correctable?(issue, @flagged, @selected_invoice)}
@@ -616,6 +620,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :id, :string, required: true
   attr :issue, :map, required: true
   attr :check, :any, default: nil
+  attr :checks, :list, default: []
   attr :values, :any, default: nil
   attr :decisions, :map, required: true
   attr :can_correct, :boolean, default: false
@@ -627,6 +632,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       |> assign(:decision, assigns.decisions[SalesWorkings.issue_key(assigns.issue)])
       |> assign(:mismatch, mismatch_reading(assigns.check))
       |> assign(:filed_effect, filed_effect(assigns.issue, assigns.values))
+      |> assign(:proposal, Proposals.for_issue(assigns.issue, assigns.values, assigns.checks))
 
     ~H"""
     <div
@@ -667,11 +673,26 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         </div>
       </dl>
 
+      <%!-- Nila takes a position instead of only asking. Three parts, never two:
+            what it would do, what it observed to think so, and what that files.
+            The basis is an observation about this document — never an inference
+            about what the client or their supplier did. --%>
+      <div
+        :if={@proposal && @issue["status"] == "open"}
+        id={"#{@id}-proposal"}
+        class="border-base-300 mt-block rounded-box border p-3"
+      >
+        <div class="text-ink-subtle text-label font-semibold uppercase">Nila's read</div>
+        <p class="text-base-content text-ui mt-1">{@proposal.action}</p>
+        <p class="text-ink-muted text-meta mt-1">{@proposal.basis}</p>
+        <p :if={@filed_effect} class="mt-related text-ink-subtle text-meta">{@filed_effect}</p>
+      </div>
+
       <%!-- Neither figure above is filed. The return recomputes per rate bucket,
             so an action offering "use the line total" would name a number the
-            engine cannot put in the JSON. This says what the click does. --%>
+            engine cannot put in the JSON. --%>
       <p
-        :if={@filed_effect}
+        :if={@filed_effect && is_nil(@proposal)}
         id={"#{@id}-filed-effect"}
         class="mt-related text-ink-subtle text-meta"
       >

@@ -1008,6 +1008,43 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     refute render(view) =~ "Resolved by #{user.name}"
   end
 
+  test "Nila states a position, its basis, and what it files — and freezes it", %{
+    conn: conn,
+    client: client,
+    org: org
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
+
+    modal = view |> element("#gstr1-evidence-modal") |> render()
+
+    # Three parts, never two: what Nila would do, what it observed to think so,
+    # and what that puts in the return.
+    assert modal =~ "Nila&#39;s read"
+    assert modal =~ "Accept the extracted lines"
+    assert modal =~ "only the printed bill total disagrees"
+    assert modal =~ "Files "
+
+    view
+    |> element("button[phx-click='resolve-invoice-issue']", "Accept the extracted lines")
+    |> render_click()
+
+    # What the reviewer was shown is now part of the record, so a later rule
+    # change cannot rewrite what this screen claimed Nila advised.
+    {:ok, month} = Nila.Gst.Sales.Months.get_by_period(org.id, client.id, @period)
+
+    frozen =
+      month.id
+      |> Nila.Gst.Sales.Resolutions.list()
+      |> Enum.find_value(& &1.payload["proposal"])
+
+    assert frozen["action"] == "Accept the extracted lines"
+    assert frozen["rule_version"]
+    assert frozen["basis"] =~ "only the printed bill total disagrees"
+    assert frozen["effect"]["tax"]
+  end
+
   test "the three tax figures are named apart, and the action states what it files", %{
     conn: conn,
     client: client

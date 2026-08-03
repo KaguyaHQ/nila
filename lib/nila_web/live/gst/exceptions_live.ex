@@ -6,6 +6,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.{Reconciliation, Register, Resolutions}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
+  alias Nila.Gst.Proposals
   alias NilaWeb.Components.Gst.Exceptions.{Itc, Modal, Surface}
 
   @impl true
@@ -97,11 +98,14 @@ defmodule NilaWeb.Gst.ExceptionsLive do
           []
 
         items ->
+          tax_paise = items |> Enum.map(& &1.tax_paise) |> Enum.sum()
+
           [
             Map.merge(group, %{
               items: items,
               count: length(items),
-              tax_paise: items |> Enum.map(& &1.tax_paise) |> Enum.sum()
+              tax_paise: tax_paise,
+              proposal: group_proposal(group.key, length(items), tax_paise)
             })
           ]
       end
@@ -247,6 +251,15 @@ defmodule NilaWeb.Gst.ExceptionsLive do
   # Progress reads decisions alone. Counting the collection queue in the
   # denominator reported a reviewer as 0/12 done when nine of the twelve were
   # never his to move.
+  # The only group Nila can state a treatment for: the portal reported supplies
+  # the books have no document for, which is an observation, and the treatment
+  # is a request rather than a judgement about what to file. A decision queue
+  # gets no group-level proposal — each row is its own question.
+  defp group_proposal(:collection, count, tax_paise),
+    do: Proposals.for_missing_bill(count, tax_paise)
+
+  defp group_proposal(_key, _count, _tax_paise), do: nil
+
   defp progress(queue) do
     decisions = Enum.filter(queue, &(&1.kind == :books))
     %{done: Enum.count(decisions, & &1.resolved), total: length(decisions)}

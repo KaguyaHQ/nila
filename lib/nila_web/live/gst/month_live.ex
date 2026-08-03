@@ -14,7 +14,8 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Issues
   alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
-  alias Nila.Gst.Sales.{Account, Gstr1}
+  alias Nila.Gst.Proposals
+  alias Nila.Gst.Sales.{Account, Gstr1, Values}
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
@@ -631,11 +632,16 @@ defmodule NilaWeb.Gst.MonthLive do
       |> Enum.find(&(SalesWorkings.issue_key(&1) == target))
 
     if issue && not SalesWorkings.blocking?(issue) do
-      record(socket, %{
-        "verb" => "confirm_issue",
-        "target" => target,
-        "payload" => %{"decision" => "use_extracted_lines"}
-      })
+      # What the reviewer was shown becomes part of the record. Derived live so
+      # it always follows current rules, frozen here so a rule change cannot
+      # rewrite what this screen claimed Nila advised at the time.
+      payload =
+        case shown_proposal(socket, issue) do
+          nil -> %{"decision" => "use_extracted_lines"}
+          frozen -> %{"decision" => "use_extracted_lines", "proposal" => frozen}
+        end
+
+      record(socket, %{"verb" => "confirm_issue", "target" => target, "payload" => payload})
     else
       {:noreply, socket}
     end
@@ -920,6 +926,18 @@ defmodule NilaWeb.Gst.MonthLive do
       "" -> nil
       arn -> arn
     end
+  end
+
+  # The proposal as the reviewer saw it, frozen for the record.
+  defp shown_proposal(socket, issue) do
+    invoice = selected_invoice(socket.assigns)
+
+    issue
+    |> Proposals.for_issue(
+      invoice && Values.for_invoice(invoice, socket.assigns.derived_gstr1),
+      (invoice && Gstr1.invoice_checks(invoice)) || []
+    )
+    |> Proposals.freeze()
   end
 
   defp record(socket, attrs) do
