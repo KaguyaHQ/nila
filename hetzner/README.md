@@ -12,9 +12,9 @@ Browser → Cloudflare (TLS + cache) → Caddy (edge-ops stack) ──edge──
                                                                  nila-postgres:5432
 ```
 
-- **Domain**: `nila.tax` (Cloudflare origin cert in `edge-ops/caddy/certs/nila-origin*.pem` — regenerate with `nila.tax` in the SAN, see notes below). `nilahq.com` redirects to `nila.tax` (Caddy, edge-ops repo). Email sends from `nila.tax`.
-- **Image**: `ghcr.io/kaguyahq/nila` (built by `.github/workflows/deploy.yml`)
-- **DB**: dedicated `postgres:16` container, private `internal` network, volume `nila_pgdata`
+- **Domain**: `nila.tax`, proxied through Cloudflare. Caddy uses the edge stack's `certs/nila-tax-origin.pem`, whose SANs are `nila.tax` and `*.nila.tax`. `nilahq.com` redirects to `nila.tax`. Email sends from `nila.tax`.
+- **Image**: `ghcr.io/kaguyahq/nila`; `.github/workflows/deploy.yml` publishes both `latest` and the commit SHA, while Compose deploys `latest`.
+- **DB**: dedicated `postgres:17-alpine` container, private `internal` network, volume `nila_pgdata`.
 - **Server files**: `/home/deploy/nila/` (`docker-compose.yml`, `deploy.sh`, `.env`)
 
 All operator commands use the `nila-prod` SSH alias so SSH selects the deploy
@@ -36,8 +36,8 @@ supplied explicitly.
 
 ## One-time bootstrap
 
-Steps 1–4 are manual the first time; after that, deploys are just
-`./scripts/deploy.sh`.
+Steps 1–4 are manual the first time; after that, pushes to `main` deploy
+automatically.
 
 ### 1. GitHub repo secrets (KaguyaHQ/nila)
 
@@ -70,6 +70,7 @@ Generate the secrets locally and paste them in:
 ```bash
 mix phx.gen.secret                 # → SECRET_KEY_BASE
 openssl rand -base64 32            # → POSTGRES_PASSWORD (also put it in DATABASE_URL)
+openssl rand -base64 48            # → WHATSAPP_COMPLETENESS_SECRET (minimum 32 bytes)
 ```
 
 Make sure `DATABASE_URL` uses the **same** password and points at the
@@ -87,7 +88,8 @@ echo <GHCR_PAT> | ssh nila-prod 'docker login ghcr.io -u <github-user> --passwor
 
 The `edge` network attachment and the `nila.tax` vhost (plus the `nilahq.com` →
 `nila.tax` redirect) live in the **edge-ops** repo (`caddy/Caddyfile`). The
-`nila.tax` origin cert must be present in `caddy/certs/` first. Deploy them once:
+`nila.tax` origin certificate and key must be present as
+`certs/nila-tax-origin.pem` and `certs/nila-tax-origin-key.pem`. Deploy them once:
 
 ```bash
 # from the edge-ops repo
@@ -99,14 +101,17 @@ compose errors out.
 
 ### 5. First Nila deploy
 
+Push `main`; the push automatically runs `.github/workflows/deploy.yml`:
+
 ```bash
 # from the nila repo
-./scripts/deploy.sh
+
+git push origin main
 ```
 
-This builds the image, pushes to GHCR, syncs ops files, runs migrations, and
-starts the stack. DNS for `nila.tax` must point at Cloudflare → the box IP, with
-the origin cert active (proxied / orange-cloud).
+The workflow builds the image, pushes it to GHCR, syncs the two ops files, runs
+migrations, and starts the stack. DNS for `nila.tax` must point at Cloudflare →
+the box IP, with the origin cert active (proxied / orange-cloud).
 
 Verify:
 
@@ -120,8 +125,14 @@ curl -s https://nila.tax/health        # {"status":"healthy","db":"ok","oban":"o
 
 ### Deploy
 
+Every push to `main` deploys automatically. `./scripts/deploy.sh` is the manual
+redeploy path: it dispatches the workflow for the current remote `main` and
+watches the run. The local `HEAD` must already be pushed, and the script requires
+an authenticated `gh` CLI.
+
 ```bash
-./scripts/deploy.sh                     # triggers GitHub Actions, watches the run
+git push origin main                    # normal deploy
+./scripts/deploy.sh                     # manual redeploy of an already-pushed HEAD
 ```
 
 ### Status / logs
@@ -156,11 +167,17 @@ ssh -i ~/.ssh/hetzner_deploy -t deploy@46.224.237.179 \
 
 ### Update env vars
 
-Edit `/home/deploy/nila/.env`, then:
+Edit the server file, then recreate the app container:
 
 ```bash
+ssh -t nila-prod 'nano /home/deploy/nila/.env'
 ssh nila-prod 'cd /home/deploy/nila && docker compose up -d nila'
 ```
+
+That command applies application runtime variables only. Changing `POSTGRES_*`
+does not alter credentials inside an existing database volume; rotate the
+Postgres role explicitly rather than recreating the container and expecting the
+environment to rewrite it.
 
 ### Database backup (you own this — it's a self-hosted container)
 
@@ -170,25 +187,26 @@ ssh nila-prod \
   | gzip > "nila_$(date +%F).sql.gz"
 ```
 
-> TODO: add a cron job on the box (or a small Oban worker) that runs `pg_dump`
-> nightly and ships the dump off-box (e.g. to R2/S3). Until then, backups are
+> This stack configures no automated backup job. Add a host timer or backup
+> service that runs `pg_dump` and ships it off-box; until then, backups are
 > manual.
 
 ---
 
 ## Secrets
 
-Secrets live in exactly one place: `/home/deploy/nila/.env` on the box. The
-deploy pipeline never ships them. `docker-compose.yml` loads the file via
-`env_file:` and `config/runtime.exs` reads each value at boot. Editing the repo
-or your local `.env` does not change prod; you edit the file on the server (see
-"Update env vars" above), then `docker compose up -d nila`.
+Application runtime secrets are sourced from `/home/deploy/nila/.env` on the
+box. The deploy pipeline never ships that file; its separate SSH credentials
+live in GitHub Actions secrets. `docker-compose.yml` loads `.env` via `env_file:`
+and `config/runtime.exs` reads each value at boot. Editing the repo or your local
+`.env` does not change prod; edit the server file and recreate the app container
+as shown above.
 
 ### Handling rules
 
 - Keep a copy of the prod `.env` in a password manager (1Password / Bitwarden).
-  The box is the only live copy, so if it dies you would otherwise have to
-  regenerate `SECRET_KEY_BASE` (logs everyone out) and recover every API and DB
+  Without that recovery copy, losing the box means regenerating
+  `SECRET_KEY_BASE` (which logs everyone out) and recovering every API and DB
   credential by hand.
 - Lock the file down: `chmod 600 /home/deploy/nila/.env`, owned by `deploy`.
 - Never commit the real `.env`. Only `hetzner/.env.example` (placeholders) is
@@ -203,47 +221,54 @@ The app refuses to boot, or compose errors, without these:
 | `SECRET_KEY_BASE` | Signs and encrypts cookies and sessions. Generate with `mix phx.gen.secret`. |
 | `DATABASE_URL` | Ecto connection string. Must use the same password as `POSTGRES_PASSWORD` and point at host `nila-postgres`. |
 | `ASSISTANT_API_KEY` | API key for the OpenAI-compatible assistant. `runtime.exs` raises in prod if missing. |
-| `GST_OCR_PROVIDER` | Explicit GST extractor. Deploy with `mistral`; there is no automatic fallback. |
-| `MISTRAL_API_KEY` | Required by the operational Mistral OCR provider. |
+| `GST_OCR_PROVIDER` | Explicit GST extractor: `mistral` or `llama`. Production currently uses `mistral`; there is no automatic fallback. |
+| `MISTRAL_API_KEY` / `LLAMA_CLOUD_API_KEY` | Set the key for the selected OCR provider. `mistral` requires the former; `llama` requires the latter. |
 | `R2_ENDPOINT` / `R2_BUCKET` | Private Cloudflare R2 account endpoint and bucket name. |
 | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Bucket-scoped R2 Object Read & Write credentials. |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Postgres container credentials, interpolated by compose. |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Postgres container credentials, interpolated by Compose. |
+| `WHATSAPP_APP_SECRET` / `WHATSAPP_VERIFY_TOKEN` | Meta webhook signature secret and verification token. Both are boot-required in prod. |
+| `WHATSAPP_CHASE_TEMPLATE` | Pre-approved Cloud API template for document-chase messages. Boot-required; production currently uses `nila_document_chase`. |
+| `WHATSAPP_COMPLETENESS_TEMPLATE` | Pre-approved Cloud API template for sales-completeness questions. Boot-required; production currently uses `nila_sales_completeness`. |
+| `WHATSAPP_COMPLETENESS_SECRET` | Signs period-specific Yes/No quick replies. Boot-required and must be at least 32 bytes. |
 
 `PHX_SERVER`, `PORT`, and `PHX_HOST` are set in `docker-compose.yml`
 (`environment:`), so they do not belong in `.env`.
 
 ### Optional
 
-Absent means the feature is off or a default applies:
+Unless noted, absence disables the feature or leaves the compiled default:
 
 | Var | Default / effect when unset |
 | --- | --- |
 | `ASSISTANT_BASE_URL` | Defaults to `https://api.stepfun.ai/v1`. Set to switch provider (e.g. NVIDIA `https://integrate.api.nvidia.com/v1`). |
 | `ASSISTANT_MODEL` | Defaults to `step-3.7-flash`. |
-| `ASSISTANT_RECEIVE_TIMEOUT` | Upstream read timeout in ms (default 60000). |
-| `ASSISTANT_EXTRA_HEADERS` | JSON object merged into every assistant request (LLM-gateway routing). |
-| `RESEND_API_KEY` | When set, `Nila.Mailer` switches from the dev mailbox to Resend. **Unset means invite emails are silently dropped in prod** (the mailer is inert), so this is effectively required to onboard teammates. |
-| `MAIL_FROM` / `MAIL_FROM_NAME` | Sender for outgoing mail (default `Nila <onboarding@resend.dev>`). The from-address domain must be verified in Resend; `onboarding@resend.dev` only delivers to your own Resend account email. `nila.tax` is verified — use `MAIL_FROM=noreply@nila.tax`. Only read when `RESEND_API_KEY` is set. |
-| `LLAMA_CLOUD_API_KEY` | Configures the costly LlamaExtract comparison adapter; omit it outside deliberate benchmarks. |
-| `LLAMA_PROJECT_ID` / `LLAMA_BASE_URL` / `LLAMA_TIER` / `LLAMA_VERSION` | LlamaExtract benchmark settings. |
-| `MISTRAL_BASE_URL` | Optional Mistral endpoint override. The model is pinned in code to `mistral-ocr-4-0`. |
-| `INTEGRATION_CREDENTIAL_KEY` | Encrypts stored integration credentials. Falls back to `SECRET_KEY_BASE` if unset; set it explicitly so rotating `SECRET_KEY_BASE` does not lock you out of saved credentials. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GMAIL_REDIRECT_URI` | Gmail integration. Inactive in prod when unset. |
-| `WHATSAPP_APP_SECRET` / `WHATSAPP_VERIFY_TOKEN` | WhatsApp webhook. Inactive in prod when unset. |
-| `WHATSAPP_CHASE_TEMPLATE` | Name of the pre-approved Cloud API template whose single body variable receives Nila's chase draft. Automated WhatsApp asks fail safely without it. |
-| `POOL_SIZE` | DB pool size (default 10). |
+| `ASSISTANT_RECEIVE_TIMEOUT` | Upstream read timeout in ms (default `60000`). |
+| `ASSISTANT_EXTRA_HEADERS` | JSON object merged into every assistant request for gateway routing. Invalid JSON fails boot. |
+| `GST_TEXT_MODEL` | Overrides the segmented pipeline's text model; default is `mistral-small-latest`. |
+| `LLAMA_PROJECT_ID` / `LLAMA_BASE_URL` / `LLAMA_TIER` / `LLAMA_VERSION` | LlamaExtract project and endpoint settings. |
+| `MISTRAL_BASE_URL` | Mistral endpoint override. The OCR model is pinned in code to `mistral-ocr-4-0`. |
+| `RESEND_API_KEY` | Switches `Nila.Mailer` to Resend and configures inbound Resend API access. **Unset means invite emails are silently dropped in prod**, so this is effectively required to onboard teammates. |
+| `MAIL_FROM` / `MAIL_FROM_NAME` | Sender for outgoing mail (default `Nila <onboarding@resend.dev>`). `nila.tax` is verified; production should use `MAIL_FROM=noreply@nila.tax`. Read only when `RESEND_API_KEY` is set. |
+| `INBOUND_EMAIL_DOMAIN` / `INBOUND_EMAIL_SECRET` | Overrides the compiled inbound-address domain and signing secret. Runtime requires the secret when the domain override is set. If both are omitted, the current compiled development defaults remain active—do not mistake omission for disabling inbound. |
+| `RESEND_WEBHOOK_SECRET` | Verifies inbound Resend webhook signatures. Without it the webhook is unconfigured. |
+| `INTEGRATION_CREDENTIAL_KEY` | Encrypts stored integration credentials. Falls back to `SECRET_KEY_BASE`; set it explicitly so rotating session secrets cannot lock saved connectors. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GMAIL_REDIRECT_URI` | Gmail integration. Inactive when unset. |
+| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` / `MICROSOFT_REDIRECT_URI` | Microsoft integration. Inactive when unset. |
+| `WHATSAPP_APP_ID` / `WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID` / `WHATSAPP_EMBEDDED_SIGNUP_ALLOWED_BUSINESS_ID` | Enables Embedded Signup. If any is supplied, all three plus the required app secret must be present or boot fails. |
+| `WHATSAPP_GRAPH_URL` | Overrides Meta's Graph base URL. Must be HTTPS and end in `/vN.N`; default is `https://graph.facebook.com/v26.0`. |
+| `R2_EVAL_ACCESS_KEY_ID` / `R2_EVAL_SECRET_ACCESS_KEY` | Optional credentials for the eval corpus; it reuses `R2_ENDPOINT`. |
+| `POOL_SIZE` | DB pool size (default `10`). |
 | `ECTO_IPV6` | Set `true`/`1` for an IPv6 DB socket. |
-| `DNS_CLUSTER_QUERY` | libcluster DNS query. Unset means no clustering (fine for one box). |
+| `DNS_CLUSTER_QUERY` | libcluster DNS query. Unset means no clustering, which is correct for one app node. |
 
 ---
 
 ## Notes / gotchas
 
 - **`force_ssl` is on** (`config/prod.exs`) with `/health` and `localhost`/
-  `127.0.0.1` excluded, and `rewrite_on: [:x_forwarded_proto]`. Caddy sets
-  `X-Forwarded-Proto: https`, so POSTs are never 301'd (the bug that bit kaguya
-  came from an SSR POST path Nila doesn't have — but keep an eye on it if you
-  add controller-based form POSTs).
+  `127.0.0.1` excluded, and `rewrite_on: [:x_forwarded_proto]`. Caddy must keep
+  setting `X-Forwarded-Proto: https`; otherwise browser POST routes such as login
+  and contact callback can be redirected before Phoenix handles them.
 - **`check_origin`** is `["https://#{PHX_HOST}"]` → `["https://nila.tax"]` (runtime.exs). If you add another
   hostname that should serve the app directly (not redirect), add it there or
   the LiveView socket will refuse the connection.
