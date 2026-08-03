@@ -111,8 +111,18 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       <section id="gstr3b-completeness" class="space-y-block">
         <h3 class="text-base-content text-body font-semibold">Completeness and reconciliation</h3>
 
+        <%!-- "0 files received" beside "12 invoices extracted" is an impossible
+              pair, and printing it flat as fact teaches a reviewer to distrust
+              the whole block. A count that cannot be true is a count we do not
+              have — a month reconciled from an import or a backfill never had a
+              file pass through intake. Say that instead of asserting zero. --%>
         <div class="border-base-300 rounded-box grid gap-4 border p-4 sm:grid-cols-2 lg:grid-cols-4">
-          <.control_stat label="Source files received" value={@source_files} />
+          <.control_stat
+            label="Source files received"
+            value={@source_files}
+            unknown={@source_files == 0 and @stats.invoices > 0}
+            unknown_note="not recorded for this month"
+          />
           <.control_stat :if={@pages_read} label="Bill pages read" value={@pages_read} />
           <.control_stat label="Invoices extracted" value={@stats.invoices} />
           <.control_stat label="Pages with no invoice" value={length(@document_flags)} />
@@ -121,7 +131,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         <%!-- The same bridge the workbench draws. Two screens describing one
               month's ITC in two vocabularies is how a reviewer ends up unsure
               whether the numbers disagree or the words do. --%>
-        <Itc.itc_bridge :if={@itc} itc={@itc} id="gstr3b-itc-bridge" />
+        <Itc.itc_bridge :if={@itc} itc={@itc} stats={@stats} id="gstr3b-itc-bridge" />
 
         <%!-- Nine tiles asked the reader to work out which counts overlapped and
               which were subsets. These three rows partition the register: every
@@ -241,12 +251,22 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
   attr :label, :string, required: true
   attr :value, :any, required: true
+  attr :unknown, :boolean, default: false
+  attr :unknown_note, :string, default: nil
 
   defp control_stat(assigns) do
     ~H"""
     <div>
       <dt class="text-ink-subtle text-label font-semibold uppercase">{@label}</dt>
-      <dd class="text-base-content text-body mt-1 font-medium tabular-nums">{@value}</dd>
+      <dd
+        :if={not @unknown}
+        class="text-base-content text-body mt-1 font-medium tabular-nums"
+      >
+        {@value}
+      </dd>
+      <dd :if={@unknown} class="text-body text-ink-subtle mt-1 font-medium">
+        — <span class="text-meta">{@unknown_note}</span>
+      </dd>
     </div>
     """
   end

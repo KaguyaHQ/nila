@@ -12,7 +12,7 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps, Preconditions}
   alias Nila.Gst.Issues
-  alias Nila.Gst.Purchase.{Register, Resolutions}
+  alias Nila.Gst.Purchase.{Reconciliation, Register, Resolutions}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Proposals
   alias Nila.Gst.Sales.{Account, Gstr1, Values}
@@ -182,7 +182,18 @@ defmodule NilaWeb.Gst.MonthLive do
       :move_options,
       in_question && PeriodOptions.for_client(org_id, client.id, except: period)
     )
-    |> assign(:gstr2b_in, Enum.any?(dumps, &(&1.kind == "gstr2b" and &1.status == "extracted")))
+    # Deliberately not "is there an extracted gstr2b dump": that asks about our
+    # intake plumbing, and a month reconciled by any other route then reads as
+    # "nothing reconciles until the 2B is in" above its own matched rows. The
+    # recon is the evidence. The dump is only a fallback for a 2B that arrived
+    # and produced no matches at all.
+    |> assign(
+      :gstr2b_in,
+      Reconciliation.reconciled_against_2b?(
+        socket.assigns.purchase_month && socket.assigns.purchase_month.recon
+      ) or
+        Enum.any?(dumps, &(&1.kind == "gstr2b" and &1.status == "extracted"))
+    )
     |> assign(:sales_pages_read, Dumps.source_page_count(org_id, client.id, period, "sales"))
     |> assign(
       :purchase_pages_read,

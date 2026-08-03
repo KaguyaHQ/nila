@@ -310,4 +310,39 @@ defmodule Nila.Gst.Purchase.ReconciliationTest do
       refute Map.has_key?(row["gstr2b"], "_ix")
     end
   end
+
+  describe "reconciled_against_2b?/1" do
+    test "reads the recon's own content, not how it got there" do
+      # The page asked the dumps table instead, so a month reconciled by a seed,
+      # a backfill or an older pipeline read "nothing reconciles until the 2B is
+      # in" printed directly above its own matched rows — the truth about our
+      # plumbing, and a lie about the month.
+      for bucket <- ~w(matched value_mismatch in_2b_not_books needs_human) do
+        assert Recon.reconciled_against_2b?(%{bucket => [%{"gstr2b" => %{}}]}),
+               "#{bucket} implies a 2B was seen"
+      end
+    end
+
+    test "books bills nobody matched do not imply a 2B was ever seen" do
+      # `in_books_not_2b` rows exist precisely because no 2B entry backed them.
+      refute Recon.reconciled_against_2b?(%{
+               "in_books_not_2b" => [%{"books" => %{}}],
+               "matched" => [],
+               "in_2b_not_books" => []
+             })
+
+      refute Recon.reconciled_against_2b?(%{})
+      refute Recon.reconciled_against_2b?(nil)
+    end
+
+    test "a real reconciliation reports itself as reconciled" do
+      b = books(%{})
+      g = g2b(%{})
+
+      assert b |> List.wrap() |> Recon.reconcile(List.wrap(g)) |> Recon.reconciled_against_2b?()
+
+      # And books with no 2B at all does not.
+      refute [b] |> Recon.reconcile([]) |> Recon.reconciled_against_2b?()
+    end
+  end
 end

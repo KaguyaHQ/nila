@@ -30,6 +30,128 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     }
   end
 
+  test "the gap between books ITC and the 2B ceiling is a line, not a subtraction", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    period = "2025-07"
+    rows = read_rows()
+
+    # The stored fixture summary predates this field, which is its own correct
+    # behaviour (see below). Recomputing gives a live month.
+    {:ok, _} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: period,
+        state: "worked",
+        register_rows: rows,
+        recon: read_json("recon.json"),
+        summary: Register.summary(rows)
+      })
+
+    stats = rows |> Register.summary() |> Register.stats()
+
+    # The card says "ITC this month" and the bridge says "Reported in GSTR-2B";
+    # they differ by exactly the credit the portal never reported. That gap had
+    # no name, so a reader could only find it by subtracting two totals that
+    # looked like they should agree.
+    assert stats.unreported_by_vendor_tax_paise > 0
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+
+    assert has_element?(view, "#gstr3b-itc-bridge-books-itc", "ITC in your books")
+
+    assert has_element?(
+             view,
+             "#gstr3b-itc-bridge-not-in-2b",
+             "less credit no vendor has reported"
+           )
+
+    # And it says what to do about it, because it is the most actionable figure
+    # on the page: not claimable this month, and each row is a vendor to chase.
+    assert has_element?(view, "#gstr3b-itc-bridge-not-in-2b", "Not claimable this month")
+    assert has_element?(view, "#gstr3b-itc-bridge-reported", "Reported in GSTR-2B")
+  end
+
+  test "a snapshot with no figure for the gap draws no line for it" do
+    # Absent and zero read identically on a summary frozen before the field
+    # existed, so the line stays off rather than asserting a confident ₹0. An
+    # unsigned month recomputes its summary, so this is the signed-snapshot
+    # path and is asserted on the stats directly.
+    stats = Register.stats(read_json("summary.json"))
+
+    refute stats.unreported_by_vendor_known?
+    assert stats.unreported_by_vendor_tax_paise == 0
+  end
+
+  test "a count that cannot be true is not printed as fact", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    # "0 files received" beside "12 invoices extracted" is an impossible pair,
+    # and rendering it flat teaches a reviewer to distrust the whole block.
+    period = "2025-08"
+
+    {:ok, _} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: period,
+        state: "worked",
+        register_rows: read_rows(),
+        recon: read_json("recon.json"),
+        summary: read_json("summary.json")
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+
+    assert has_element?(view, "#gstr3b-completeness", "not recorded for this month")
+
+    # The month that did receive files still states the count.
+    {:ok, seeded, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    refute has_element?(seeded, "#gstr3b-completeness", "not recorded for this month")
+  end
+
+  test "a reconciled month never claims the 2B is missing", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    # The page asked the dumps table whether a 2B had arrived. A month
+    # reconciled by a seed, a backfill, or an import predating the current
+    # pipeline has no dump row — and read "Nothing reconciles until it is in"
+    # printed directly above its own rows badged "Matched to 2B".
+    period = "2025-09"
+
+    {:ok, _} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: period,
+        state: "worked",
+        register_rows: read_rows(),
+        recon: read_json("recon.json"),
+        summary: read_json("summary.json")
+      })
+
+    assert Dumps.list(org.id, client.id, period) == []
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+
+    refute render(view) =~ "Nothing reconciles until it is in"
+    refute has_element?(view, "#month-door-bring-2b")
+    assert has_element?(view, "#gstr3b-reconciliation-matrix")
+
+    # And the headline reports the month's ITC rather than the pre-2B clause,
+    # which uses the open pot as if it were the whole credit.
+    stats = Register.stats(read_json("summary.json"))
+    assert has_element?(view, "#month-headline", "of it rides on")
+    assert stats.matched_tax_paise > 0
+  end
+
   test "purchases open and sales absent: one door, money in the headline", %{
     conn: conn,
     client: client

@@ -337,6 +337,11 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :strong, :boolean, default: false
 
   defp gstr3b_line(assigns) do
+    # Nothing is being taken away at zero, so neither the minus sign nor the
+    # alarm colour is earned. Same rule as the ITC panel: the negative treatment
+    # belongs to the amount, not to the row's role.
+    assigns = assign(assigns, :withheld?, assigns.negative and heads_total(assigns.heads) > 0)
+
     ~H"""
     <div class="flex items-baseline justify-between gap-3">
       <span class={[
@@ -347,10 +352,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       </span>
       <span class={[
         "text-ui font-mono",
-        @negative && "text-error",
-        !@negative && ((@strong && "text-ink font-semibold") || "text-ink-muted")
+        @withheld? && "text-error",
+        !@withheld? && ((@strong && "text-ink font-semibold") || "text-ink-muted")
       ]}>
-        {if @negative, do: "−"}{money_paise(heads_total(@heads))}
+        {if @withheld?, do: "−"}{money_paise(heads_total(@heads))}
       </span>
     </div>
     """

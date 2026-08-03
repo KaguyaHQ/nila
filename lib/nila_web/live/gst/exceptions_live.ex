@@ -631,7 +631,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
           </p>
         </div>
 
-        <Itc.itc_panel itc={@itc} signed_off={@signed_off} />
+        <Itc.itc_panel itc={@itc} stats={@stats} signed_off={@signed_off} />
         <Itc.document_attestation attestation={@attestation} signed_off={@signed_off} />
         <Surface.exception_surface
           queue={@queue}

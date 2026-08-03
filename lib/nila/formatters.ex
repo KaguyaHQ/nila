@@ -84,6 +84,8 @@ defmodule Nila.Formatters do
     "own_gstin_as_vendor" => "Client's own GSTIN as the vendor",
     "tax_arithmetic_off" => "Tax doesn't add up",
     "implausible_invoice_number" => "Invoice number looks wrong",
+    "missing_invoice_number" => "No invoice number on the bill",
+    "zero_value_row" => "No value read off this document",
     "pages_unaccounted" => "Pages with no invoice",
     "cess_not_evaluated" => "Cess was not evaluated",
     "low_ocr_confidence" => "Blurry scan, check the total",

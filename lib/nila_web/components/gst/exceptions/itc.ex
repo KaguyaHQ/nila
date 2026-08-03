@@ -20,9 +20,10 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
   attr :itc, :map, required: true
   attr :id, :string, default: "gst-itc-bridge"
   attr :class, :string, default: nil
+  attr :stats, :any, default: nil
 
   def itc_bridge(assigns) do
-    assigns = assign(assigns, :bridge, bridge_rows(assigns.itc))
+    assigns = assign(assigns, :bridge, bridge_rows(assigns.itc, assigns.stats))
 
     ~H"""
     <div :if={@bridge} id={@id} class={["border-base-300 rounded-box border", @class]}>
@@ -53,13 +54,55 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
   # `nil` for a snapshot frozen before the partition existed. Those months hold
   # a ceiling and a claimable figure but none of the terms between them, and
   # inventing zeroes would draw a bridge whose middle is a guess.
-  defp bridge_rows(itc) when is_map(itc) do
+  defp bridge_rows(itc, stats) when is_map(itc) do
     if Map.has_key?(itc, "reported_2b_paise") do
-      %{lines: lines(itc)}
+      %{lines: opening(stats) ++ lines(itc)}
     end
   end
 
-  defp bridge_rows(_itc), do: nil
+  defp bridge_rows(_itc, _stats), do: nil
+
+  # The month's own ITC, and the credit the portal has never reported, above the
+  # 2B ceiling the rest of the bridge works from.
+  #
+  # Without these two lines the card said "ITC this month" and the bridge said
+  # "Reported in GSTR-2B", the figures differed, and nothing explained why: a
+  # reader had to subtract two totals to discover the gap. It is the sharpest
+  # number on the page — credit the client cannot take this month because a
+  # vendor has not filed — so it is stated rather than left to be derived.
+  defp opening(%{unreported_by_vendor_known?: true} = stats) do
+    gap = stats.total_tax_paise - stats.unreported_by_vendor_tax_paise
+
+    # Only when the two really differ. On a month where every books bill is in
+    # the 2B, "ITC in your books" and "Reported in GSTR-2B" are one number, and
+    # printing it twice with a −₹0 between them is noise.
+    if stats.unreported_by_vendor_tax_paise > 0 and gap >= 0 do
+      [
+        %{
+          key: "books-itc",
+          label: "ITC in your books",
+          note: nil,
+          paise: stats.total_tax_paise,
+          sign: "",
+          total?: false,
+          emphasis: nil
+        },
+        %{
+          key: "not-in-2b",
+          label: "less credit no vendor has reported",
+          note: "Not claimable this month — the vendor has not filed it. Chase them.",
+          paise: stats.unreported_by_vendor_tax_paise,
+          sign: "−",
+          total?: false,
+          emphasis: nil
+        }
+      ]
+    else
+      []
+    end
+  end
+
+  defp opening(_stats), do: []
 
   defp lines(itc) do
     [
@@ -220,11 +263,12 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
 
   attr :itc, :map, required: true
   attr :signed_off, :boolean, required: true
+  attr :stats, :any, default: nil
 
   def itc_panel(%{itc: %{"blocks" => []}} = assigns) do
     ~H"""
     <div id="gst-itc-panel" class="space-y-related">
-      <.itc_bridge itc={@itc} id="gst-itc-bridge" />
+      <.itc_bridge itc={@itc} stats={@stats} id="gst-itc-bridge" />
       <div
         :if={is_nil(@itc["reported_2b_paise"])}
         class="border-base-300 rounded-box flex items-center justify-between border px-4 py-3"
@@ -245,7 +289,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
             that move one of its terms. The old header asserted
             "2B ceiling − blocked", which was the whole story only when no
             money was pending or unsubstantiated. --%>
-      <.itc_bridge itc={@itc} id="gst-itc-bridge" />
+      <.itc_bridge itc={@itc} stats={@stats} id="gst-itc-bridge" />
 
       <div class="border-base-300 rounded-box border">
         <div

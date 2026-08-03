@@ -29,6 +29,7 @@ defmodule Nila.Gst.Purchase.Register do
     incomplete_hsn_sac
     missing_hsn_sac
     hsn_implausible
+    zero_value_row
     statutory_rate_review
     statutory_rate_mismatch
     rate_history_conflict
@@ -187,6 +188,12 @@ defmodule Nila.Gst.Purchase.Register do
       # decision can move, only a bill arriving.
       awaiting_bills_tax_paise: awaiting_bills_tax,
       value_dispute_tax_paise: value_dispute_tax,
+      # Why the month's ITC and the 2B ceiling differ. Absent from a snapshot
+      # frozen before it existed, which reads the same as a genuine zero — so
+      # `unreported_by_vendor_known?` says which, and a surface draws the line
+      # only when the figure means something.
+      unreported_by_vendor_tax_paise: summary["unreported_by_vendor_tax_paise"] || 0,
+      unreported_by_vendor_known?: Map.has_key?(summary, "unreported_by_vendor_tax_paise"),
       # Both partitions still close on a pre-change snapshot, and the counts are
       # right there because the buckets always existed. The money is not: read
       # `open_money_split_known?` before showing any of these three as a
@@ -258,6 +265,18 @@ defmodule Nila.Gst.Purchase.Register do
       "awaiting_bills_tax_paise" =>
         rows
         |> Enum.filter(&awaiting_bill?/1)
+        |> Enum.map(&row_tax/1)
+        |> Enum.sum(),
+      # Books-side credit with nothing in the 2B behind it: bills the portal
+      # never reported at all, plus the books-side value of rows still hunting
+      # for their counterpart. It is the difference between the month's own ITC
+      # and the 2B ceiling, and it had no name — a reader could only find it by
+      # subtracting two totals that looked like they should agree. It is also
+      # the most actionable figure on the page: not claimable this month, and
+      # each row is a vendor who has not filed.
+      "unreported_by_vendor_tax_paise" =>
+        rows
+        |> Enum.filter(&(&1["bucket"] in ["in_books_not_2b", "needs_human"]))
         |> Enum.map(&row_tax/1)
         |> Enum.sum(),
       # Tax on rows paired to a 2B that disagrees on amount. Still open money —

@@ -36,6 +36,8 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                awaiting_bills_tax_paise: 0,
                value_dispute_tax_paise: 0,
                decision_tax_paise: 45_000,
+               unreported_by_vendor_tax_paise: 0,
+               unreported_by_vendor_known?: false,
                open_money_split_known?: false
              }
 
@@ -79,6 +81,8 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                awaiting_bills_tax_paise: 0,
                value_dispute_tax_paise: 0,
                decision_tax_paise: 0,
+               unreported_by_vendor_tax_paise: 0,
+               unreported_by_vendor_known?: false,
                open_money_split_known?: true
              }
 
@@ -86,6 +90,56 @@ defmodule Nila.Gst.Purchase.RegisterTest do
       assert Register.need_decision(summary) == 0
       assert Register.stats(summary).awaiting_bills == 1
       assert Register.open(summary) == 1
+    end
+
+    test "credit the portal never reported is a figure, not a subtraction" do
+      # The month's own ITC and the 2B ceiling differ by exactly this, and it had
+      # no name: a reader could only find it by subtracting two totals that
+      # looked like they should agree. It is also the most actionable number on
+      # the page — not claimable this month, and each row is a vendor to chase.
+      rows = [
+        %{
+          "bucket" => "matched",
+          "cgst_paise" => 5_000,
+          "sgst_paise" => 5_000,
+          "igst_paise" => 0,
+          "taxable_paise" => 100_000,
+          "flags" => []
+        },
+        %{
+          "bucket" => "in_books_not_2b",
+          "cgst_paise" => 163,
+          "sgst_paise" => 164,
+          "igst_paise" => 0,
+          "taxable_paise" => 8_000,
+          "flags" => []
+        },
+        # Still hunting for its 2B counterpart: the books claim this credit and
+        # no 2B entry backs it yet, so it is unreported for the same reason.
+        %{
+          "bucket" => "needs_human",
+          "cgst_paise" => 200,
+          "sgst_paise" => 200,
+          "igst_paise" => 0,
+          "taxable_paise" => 4_000,
+          "flags" => []
+        }
+      ]
+
+      stats = rows |> Register.summary() |> Register.stats()
+
+      assert stats.unreported_by_vendor_known?
+      assert stats.unreported_by_vendor_tax_paise == 727
+
+      # And it closes: the books' ITC less this gap is the 2B ceiling.
+      assert stats.total_tax_paise - stats.unreported_by_vendor_tax_paise == 10_000
+    end
+
+    test "a snapshot frozen before the gap existed says so rather than reading zero" do
+      stats = Register.stats(%{"buckets" => %{"matched" => 1}, "total_tax_paise" => 10_000})
+
+      refute stats.unreported_by_vendor_known?
+      assert stats.unreported_by_vendor_tax_paise == 0
     end
 
     # Every summary written before `total_tax_paise` existed is still on disk.

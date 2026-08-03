@@ -60,6 +60,7 @@ defmodule Nila.Gst.Purchase.Flags do
     [
       &check_source_attribution/3,
       &check_arithmetic_basis/3,
+      &check_zero_value/3,
       &check_invoice_number/3,
       &check_gstin_presence_and_validity/3,
       &check_gstin_state_vs_tax/3,
@@ -334,6 +335,28 @@ defmodule Nila.Gst.Purchase.Flags do
 
   defp check_arithmetic_basis(_invoice, _ctx, _dir), do: []
 
+  # A purchase row with no taxable value and no tax is not a bill — it is a page
+  # the extractor produced nothing from. Rendering it in the register as ₹0 / ₹0
+  # states as fact that a supplier issued a bill for nothing, and it silently
+  # inflates the invoice count a reviewer reconciles against.
+  defp check_zero_value(invoice, _entity_ctx, _vendor_dir) do
+    if invoice_has_values?(invoice) do
+      []
+    else
+      [
+        flag(
+          invoice,
+          "zero_value_row",
+          "warning",
+          "No taxable value and no tax were read off this document — it is probably not an invoice, or the extraction failed. Check the scan before counting it in the register.",
+          nil,
+          ["taxable_paise", "total_paise"],
+          0.9
+        )
+      ]
+    end
+  end
+
   defp check_invoice_number(invoice, _entity_ctx, _vendor_dir) do
     smell = invoice_number_smell(invoice["invoice_number"], invoice_has_values?(invoice))
 
@@ -341,7 +364,7 @@ defmodule Nila.Gst.Purchase.Flags do
       [
         flag(
           invoice,
-          "implausible_invoice_number",
+          smell_code(smell),
           "warning",
           invoice_number_reason(smell, invoice["invoice_number"]),
           nil,
@@ -353,6 +376,13 @@ defmodule Nila.Gst.Purchase.Flags do
       []
     end
   end
+
+  # "Invoice number looks wrong" is a claim about a number that exists. When the
+  # extraction found none at all, that label sits beside an em-dash and asks the
+  # reviewer to re-read a number that is not there. The engine already knows the
+  # difference; only the code collapsed it.
+  defp smell_code(:missing), do: "missing_invoice_number"
+  defp smell_code(_looks_wrong), do: "implausible_invoice_number"
 
   defp invoice_has_values?(invoice) do
     (invoice["taxable_paise"] || 0) != 0 or (invoice["total_paise"] || 0) != 0 or

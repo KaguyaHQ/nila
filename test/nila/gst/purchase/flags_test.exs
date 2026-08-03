@@ -165,12 +165,22 @@ defmodule Nila.Gst.Purchase.FlagsTest do
       end
     end
 
-    test "flags an absent number only when the row carries values" do
-      assert [_flag] =
+    test "an absent number is named as absent, not as looking wrong" do
+      # "Invoice number looks wrong" is a claim about a number that exists. Beside
+      # an em-dash it asks a reviewer to re-read something that is not there.
+      assert [flag] =
                invoice(%{"invoice_number" => nil})
                |> Flags.evaluate(@entity_ctx)
-               |> only("implausible_invoice_number")
+               |> only("missing_invoice_number")
 
+      assert flag["reason"] =~ "no invoice number was extracted"
+
+      assert invoice(%{"invoice_number" => nil})
+             |> Flags.evaluate(@entity_ctx)
+             |> only("implausible_invoice_number") == []
+    end
+
+    test "a row with no values at all is a failed read, not a numberless bill" do
       empty =
         invoice(%{
           "invoice_number" => nil,
@@ -180,7 +190,15 @@ defmodule Nila.Gst.Purchase.FlagsTest do
           "line_items" => []
         })
 
-      assert empty |> Flags.evaluate(@entity_ctx) |> only("implausible_invoice_number") == []
+      flags = Flags.evaluate(empty, @entity_ctx)
+
+      # The missing number is not the finding here — nothing was read off this
+      # document at all, and ₹0 / ₹0 in the register asserts that a supplier
+      # issued a bill for nothing.
+      assert only(flags, "missing_invoice_number") == []
+      assert only(flags, "implausible_invoice_number") == []
+      assert [zero] = only(flags, "zero_value_row")
+      assert zero["reason"] =~ "probably not an invoice"
     end
 
     test "keeps ordinary invoice formats quiet" do

@@ -38,6 +38,28 @@ defmodule Nila.Gst.Purchase.Reconciliation do
   @ix "_ix"
 
   @doc """
+  Whether this month has actually been reconciled against a GSTR-2B.
+
+  Read from the recon's own content, never from whether an intake row exists.
+  A month whose recon was written by any route — a seed, a backfill, an import
+  that predates the current pipeline — still has real 2B-side content, and a
+  page that asks the dumps table instead tells the truth about its plumbing
+  while lying about the month: "nothing reconciles until the 2B is in", printed
+  above six rows matched to the 2B.
+
+  Only the buckets that require a 2B counterpart count. `in_books_not_2b`
+  deliberately does not: those rows exist precisely because no 2B entry backed
+  them, so a month of nothing but unmatched books bills has not seen a 2B.
+  """
+  def reconciled_against_2b?(recon) when is_map(recon) do
+    Enum.any?(~w(matched value_mismatch in_2b_not_books needs_human), fn bucket ->
+      recon |> Map.get(bucket) |> List.wrap() |> Enum.any?()
+    end)
+  end
+
+  def reconciled_against_2b?(_recon), do: false
+
+  @doc """
   Reconciles books invoices against GSTR-2B invoices.
 
   Options:
