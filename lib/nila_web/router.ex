@@ -108,6 +108,7 @@ defmodule NilaWeb.Router do
       live "/clients/:id/edit", ClientEditLive, :edit
       live "/gst/upload", Gst.UploadLive, :new
       live "/gst/:client_id/:period", Gst.MonthLive, :index
+      live "/gst/:client_id/:period/review/:lane", Gst.MonthLive, :review
       live "/gst/:client_id/:period/exceptions", Gst.ExceptionsLive, :index
       live "/settings/profile", Settings.ProfileLive, :edit
       live "/settings/profile/confirm_email/:token", Settings.ProfileLive, :confirm_email

@@ -121,11 +121,11 @@ defmodule NilaWeb.ClientsLive do
             <span :if={!client.state} class="text-ink-faint">—</span>
           </:col>
           <:col :let={client} label="Needs a decision" align="right">
-            <%!-- The count is its own destination: the decision queue, not the
-                  month the row opens. --%>
+            <%!-- The badge lands on the working paper; the reviewer opens the
+                  purchase surface from the month after seeing its context. --%>
             <.link
               :if={client.need_decision && client.need_decision > 0}
-              navigate={~p"/gst/#{client.id}/#{client.period}/exceptions"}
+              navigate={~p"/gst/#{client.id}/#{client.period}"}
               id={"client-decisions-#{client.id}"}
               class="relative z-10"
             >

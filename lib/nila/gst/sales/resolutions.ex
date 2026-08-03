@@ -57,6 +57,7 @@ defmodule Nila.Gst.Sales.Resolutions do
 
       with :ok <- refuse_signed(month),
            :ok <- reject_direct_duplicate_exclusion(attrs),
+           :ok <- validate_treatment_source(month, attrs),
            {:ok, resolution} <-
              %Resolution{
                org_id: month.org_id,
@@ -69,6 +70,25 @@ defmodule Nila.Gst.Sales.Resolutions do
         {:ok, resolution}
       end
     end)
+  end
+
+  @doc """
+  Records a challenge to one invoice's current filing treatment.
+
+  `payload` is the frozen map returned by `Nila.Gst.Sales.Review.treatment_snapshot/2`.
+  The ordinary `record/3` path owns validation, the signed-month wall, append-only
+  persistence, attribution, and review demotion.
+  """
+  def challenge_treatment(%Month{} = month, source_id, payload, decided_by_id) do
+    record(
+      month,
+      %{
+        "verb" => "challenge_treatment",
+        "target" => "treatment|#{source_id}",
+        "payload" => payload
+      },
+      decided_by_id
+    )
   end
 
   @doc "Marks every other member of one duplicate-number group as source copies."
@@ -133,6 +153,22 @@ defmodule Nila.Gst.Sales.Resolutions do
     if (attrs["verb"] || attrs[:verb]) == "exclude_duplicate_copy",
       do: {:error, :use_duplicate_resolution},
       else: :ok
+  end
+
+  defp validate_treatment_source(month, attrs) do
+    verb = attrs["verb"] || attrs[:verb]
+    target = attrs["target"] || attrs[:target]
+    payload = attrs["payload"] || attrs[:payload] || %{}
+    source_id = payload["source_id"] || payload[:source_id]
+
+    if verb == "challenge_treatment" and target == "treatment|#{source_id}" and
+         is_binary(source_id) do
+      if Enum.any?(workings(month).active_invoices, &(&1["id"] == source_id)),
+        do: :ok,
+        else: {:error, :not_active_source}
+    else
+      :ok
+    end
   end
 
   defp refuse_signed(%Month{} = month) do

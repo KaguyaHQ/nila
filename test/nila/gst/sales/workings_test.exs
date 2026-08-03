@@ -5,7 +5,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
   alias Nila.Gst.Hsn.Release, as: HsnRelease
   alias Nila.Gst.Rates.Release, as: RateRelease
   alias Nila.Gst.Rates.Rule, as: RateRule
-  alias Nila.Gst.Sales.Gstr1
+  alias Nila.Gst.Sales.{Gstr1, Review}
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
 
   @header Gstr1.production_header("33AEWPH4158J1Z3", "2025-10")
@@ -545,6 +545,77 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     assert [%{"field" => "ocr_minimum"}] = result.silent_errors
     clean = Enum.find(result.invoices, &(&1["invoice_number"] == "21/2025-26"))
     refute Map.has_key?(clean, "ocr_minimum")
+  end
+
+  test "challenge_treatment materializes one issue, confirmation resolves it, and reopen removes it" do
+    before = SalesWorkings.materialize(invoices(), [], @header)
+    invoice = Enum.find(before.active_invoices, &(&1["invoice_number"] == "21/2025-26"))
+    target = "treatment|#{invoice["id"]}"
+
+    challenge = %{
+      "verb" => "challenge_treatment",
+      "target" => target,
+      "payload" => Review.treatment_snapshot(invoice, before.derived)
+    }
+
+    challenged = SalesWorkings.materialize(invoices(), [challenge], @header)
+    issue = Enum.find(challenged.issues, &(&1["code"] == "treatment_challenged"))
+
+    assert issue["target"] == target
+    assert issue["status"] == "open"
+    assert Nila.Gst.Issues.resolution_kind(issue) == :decision
+    assert Enum.count(challenged.issues, &(&1["code"] == "treatment_challenged")) == 1
+
+    confirmed =
+      SalesWorkings.materialize(
+        invoices(),
+        [challenge, %{"verb" => "confirm_issue", "target" => target}],
+        @header
+      )
+
+    assert Enum.find(confirmed.issues, &(&1["code"] == "treatment_challenged"))["status"] ==
+             "resolved"
+
+    reopened =
+      SalesWorkings.materialize(
+        invoices(),
+        [
+          challenge,
+          %{"verb" => "confirm_issue", "target" => target},
+          %{"verb" => "reopen", "target" => target}
+        ],
+        @header
+      )
+
+    refute Enum.any?(reopened.issues, &(&1["code"] == "treatment_challenged"))
+  end
+
+  test "a correction recomputes but does not silently resolve a treatment challenge" do
+    before = SalesWorkings.materialize(invoices(), [], @header)
+    invoice = Enum.find(before.active_invoices, &(&1["invoice_number"] == "20/2025-26"))
+    target = "treatment|#{invoice["id"]}"
+
+    challenge = %{
+      "verb" => "challenge_treatment",
+      "target" => target,
+      "payload" => Review.treatment_snapshot(invoice, before.derived)
+    }
+
+    correction = %{
+      "verb" => "correct_field",
+      "target" => invoice["id"],
+      "payload" => %{
+        "field" => "printed_grand_total",
+        "from" => 2_75_000.0,
+        "to" => 65_551.36
+      }
+    }
+
+    corrected = SalesWorkings.materialize(invoices(), [challenge, correction], @header)
+    issue = Enum.find(corrected.issues, &(&1["code"] == "treatment_challenged"))
+
+    assert issue["status"] == "open"
+    refute "grand_total_mismatch" in open_codes(corrected)
   end
 
   test "confirm_issue marks the issue resolved; reopen restores it" do

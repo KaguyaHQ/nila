@@ -86,15 +86,23 @@ defmodule Nila.Gst.Filing.Signoffs do
           true ->
             workings = Resolutions.workings(month)
 
-            with :ok <- require_settled_register(workings),
-                 :ok <- require_documents_attested(workings),
+            with :ok <- require_documents_attested(workings),
+                 :ok <- require_settled_register(workings),
                  :ok <- require_sales_intake_complete(month) do
               snapshot = %{
                 "schema_version" => @snapshot_schema_version,
                 "summary" => workings.summary,
                 "itc" => workings.itc,
                 "gstr3b" => workings.gstr3b,
-                "rows" => workings.rows
+                "rows" => workings.rows,
+                "review" => %{
+                  "baseline" => workings.baseline,
+                  "recon" => workings.recon,
+                  "decisions" => workings.decisions,
+                  "accepted_reasons" => workings.accepted_reasons,
+                  "gstr2b_decisions" => workings.gstr2b_decisions,
+                  "document_attestation" => workings.document_attestation
+                }
               }
 
               signoff =

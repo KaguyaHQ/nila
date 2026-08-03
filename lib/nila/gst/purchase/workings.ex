@@ -51,10 +51,12 @@ defmodule Nila.Gst.Purchase.Workings do
 
     books = apply_corrections(books, corrections)
     {confirmed, rejected} = fold_pairs(pairs)
+    challenged = challenged_pairs(book_resolutions)
 
     Reconciliation.reconcile(books, g2b)
     |> apply_confirmations(confirmed)
     |> apply_rejections(rejected)
+    |> apply_challenges(challenged)
     |> apply_acceptances(accepted_reasons(book_resolutions))
     |> apply_dismissals(dismissed_refs(ref_resolutions))
   end
@@ -282,6 +284,19 @@ defmodule Nila.Gst.Purchase.Workings do
     end)
   end
 
+  defp challenged_pairs(resolutions) do
+    resolutions
+    |> Replay.latest("books_id")
+    |> Enum.reduce([], fn
+      {_books_id, %{"verb" => "challenge_pair", "books_id" => books_id, "gstr2b_ref" => ref}},
+      acc ->
+        [{books_id, ref} | acc]
+
+      _, acc ->
+        acc
+    end)
+  end
+
   # Confirmed pairs: pull the books row and its 2B candidate out of whatever
   # bucket they landed in and emit a manual match.
   defp apply_confirmations(recon, confirmed) do
@@ -350,17 +365,99 @@ defmodule Nila.Gst.Purchase.Workings do
     |> Map.update("in_books_not_2b", residuals, &(&1 ++ residuals))
   end
 
-  # A rejected pair drops that 2B candidate from the books row's needs_human
-  # entry. If that empties the candidate list, the row stays in needs_human as
-  # an unmatched review (its books data and reason are intact).
+  # Rejecting an edge must also unwind an automatic match. The books and 2B
+  # members then become separate components instead of silently remaining paired.
   defp apply_rejections(recon, rejected) do
-    Map.update(recon, "needs_human", [], fn entries ->
-      Enum.map(entries, fn e ->
-        bid = get_in(e, ["books", "id"])
+    Enum.reduce(rejected, recon, fn {books_id, ref}, effective ->
+      case paired_entry(effective, books_id, ref) do
+        nil ->
+          counterpart =
+            effective["needs_human"]
+            |> List.wrap()
+            |> Enum.find_value(fn entry ->
+              if get_in(entry, ["books", "id"]) == books_id do
+                Enum.find(entry["candidates"] || [], &(Reconciliation.gstr2b_ref(&1) == ref))
+              end
+            end)
 
-        Map.update(e, "candidates", [], fn cands ->
-          Enum.reject(cands, &MapSet.member?(rejected, {bid, Reconciliation.gstr2b_ref(&1)}))
-        end)
+          effective =
+            Map.update(effective, "needs_human", [], fn entries ->
+              Enum.map(entries, fn entry ->
+                if get_in(entry, ["books", "id"]) == books_id do
+                  Map.update(entry, "candidates", [], fn candidates ->
+                    Enum.reject(candidates, &(Reconciliation.gstr2b_ref(&1) == ref))
+                  end)
+                else
+                  entry
+                end
+              end)
+            end)
+
+          still_candidate? =
+            Enum.any?(effective["needs_human"] || [], fn entry ->
+              Enum.any?(entry["candidates"] || [], &(Reconciliation.gstr2b_ref(&1) == ref))
+            end)
+
+          if counterpart && not still_candidate? do
+            Map.update(
+              effective,
+              "in_2b_not_books",
+              [%{"gstr2b" => counterpart}],
+              &(&1 ++ [%{"gstr2b" => counterpart}])
+            )
+          else
+            effective
+          end
+
+        entry ->
+          effective
+          |> drop_books(books_id)
+          |> drop_gstr2b(ref)
+          |> Map.update(
+            "in_books_not_2b",
+            [Reconciliation.books_residual(entry["books"])],
+            &(&1 ++ [Reconciliation.books_residual(entry["books"])])
+          )
+          |> Map.update(
+            "in_2b_not_books",
+            [%{"gstr2b" => entry["gstr2b"]}],
+            &(&1 ++ [%{"gstr2b" => entry["gstr2b"]}])
+          )
+      end
+    end)
+  end
+
+  defp apply_challenges(recon, challenged) do
+    Enum.reduce(challenged, recon, fn {books_id, ref}, effective ->
+      case paired_entry(effective, books_id, ref) do
+        nil ->
+          effective
+
+        entry ->
+          question = %{
+            "books" => entry["books"],
+            "candidates" => [entry["gstr2b"]],
+            "reason" => %{
+              "code" => "challenged_automatic_match",
+              "message" =>
+                "A reviewer challenged Nila's automatic match. Confirm, reject, or correct it."
+            },
+            "next_action" => "Review the challenged match."
+          }
+
+          effective
+          |> drop_books(books_id)
+          |> drop_gstr2b(ref)
+          |> Map.update("needs_human", [question], &(&1 ++ [question]))
+      end
+    end)
+  end
+
+  defp paired_entry(recon, books_id, ref) do
+    Enum.find_value(["matched", "value_mismatch"], fn bucket ->
+      Enum.find(recon[bucket] || [], fn entry ->
+        get_in(entry, ["books", "id"]) == books_id and
+          Reconciliation.gstr2b_ref(entry["gstr2b"]) == ref
       end)
     end)
   end

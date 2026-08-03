@@ -36,6 +36,7 @@ defmodule NilaWeb.Components.Evidence do
   attr :label, :string, default: "Scanned bill"
   attr :on_open, :string, required: true
   attr :on_page, :string, required: true
+  attr :target, :any, default: nil
 
   def evidence_frame(assigns) do
     assigns = assign(assigns, :count, length(assigns.images))
@@ -50,6 +51,7 @@ defmodule NilaWeb.Components.Evidence do
           page={@page}
           count={@count}
           on_page={@on_page}
+          target={@target}
           tone="light"
         />
       </div>
@@ -58,6 +60,7 @@ defmodule NilaWeb.Components.Evidence do
         type="button"
         id={"#{@id}-open"}
         phx-click={@on_open}
+        phx-target={@target}
         phx-hook=".EvidenceFrame"
         aria-label="Open the scanned bill full screen"
         class="bg-base-200 border-base-300 hover:border-primary/40 rounded-box relative block aspect-[1/1.414] w-full cursor-zoom-in overflow-hidden border transition"
@@ -109,6 +112,7 @@ defmodule NilaWeb.Components.Evidence do
   attr :title, :string, default: nil
   attr :on_close, :string, required: true
   attr :on_page, :string, required: true
+  attr :target, :any, default: nil
 
   def evidence_overlay(assigns) do
     assigns = assign(assigns, :count, length(assigns.images))
@@ -119,6 +123,7 @@ defmodule NilaWeb.Components.Evidence do
       class="bg-scrim/97 fixed inset-0 z-50 flex flex-col"
       phx-window-keydown={@on_close}
       phx-key="escape"
+      phx-target={@target}
     >
       <div class="flex shrink-0 items-center justify-between gap-4 px-4 py-3">
         <span class="text-base-100 text-ui min-w-0 truncate font-medium">{@title}</span>
@@ -129,6 +134,7 @@ defmodule NilaWeb.Components.Evidence do
             page={@page}
             count={@count}
             on_page={@on_page}
+            target={@target}
             tone="dark"
             keys
           />
@@ -136,6 +142,7 @@ defmodule NilaWeb.Components.Evidence do
             type="button"
             id={"#{@id}-close"}
             phx-click={@on_close}
+            phx-target={@target}
             aria-label="Close the scanned bill"
             class="hover:text-base-100 rounded-field text-base-100/60 p-1 transition"
           >
@@ -144,13 +151,20 @@ defmodule NilaWeb.Components.Evidence do
         </div>
       </div>
 
+      <button
+        id={"#{@id}-stage-close"}
+        type="button"
+        class="hidden"
+        phx-click={@on_close}
+        phx-target={@target}
+      >Close reader</button>
       <%!-- The dim area around the bill dismisses, as it does in every image
             viewer a reviewer has ever used; the bill itself zooms. Both live on
             the stage so one listener can tell them apart by target. --%>
       <div
         id={"#{@id}-stage"}
         phx-hook=".EvidenceZoom"
-        data-close-event={@on_close}
+        data-close-id={"#{@id}-stage-close"}
         class="flex flex-1 cursor-zoom-out overflow-auto px-4"
       >
         <img
@@ -174,7 +188,7 @@ defmodule NilaWeb.Components.Evidence do
                 this.level = (this.level + 1) % 3
                 this.apply()
               } else {
-                this.pushEvent(this.el.dataset.closeEvent)
+                document.getElementById(this.el.dataset.closeId)?.click()
               }
             })
           },
@@ -237,6 +251,7 @@ defmodule NilaWeb.Components.Evidence do
   attr :on_page, :string, required: true
   attr :tone, :string, required: true, values: ~w(light dark)
   attr :keys, :boolean, default: false
+  attr :target, :any, default: nil
 
   defp page_nav(assigns) do
     ~H"""
@@ -245,6 +260,7 @@ defmodule NilaWeb.Components.Evidence do
         type="button"
         id={"#{@id}-prev"}
         phx-click={@on_page}
+        phx-target={@target}
         phx-value-page={@page - 1}
         phx-window-keydown={@keys && @on_page}
         phx-key="ArrowLeft"
@@ -259,6 +275,7 @@ defmodule NilaWeb.Components.Evidence do
         type="button"
         id={"#{@id}-next"}
         phx-click={@on_page}
+        phx-target={@target}
         phx-value-page={@page + 1}
         phx-window-keydown={@keys && @on_page}
         phx-key="ArrowRight"

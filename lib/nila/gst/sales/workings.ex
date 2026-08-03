@@ -87,18 +87,25 @@ defmodule Nila.Gst.Sales.Workings do
     {printed_invoices, printed_active_invoices, _printed_copies} =
       apply_exclusions(pristine_source_invoices, exclusions)
 
+    derived = Gstr1.derive(active_invoices, header)
+
     raw_issues =
       active_invoices
       |> Gstr1.validation_issues()
       |> Enum.concat(compliance_issues(active_invoices, compliance))
       |> Enum.concat(Gstr1.blocking_issues(active_invoices))
+      |> Enum.concat(challenge_issues(effective, active_invoices))
       |> Enum.concat(cess_issues(cess_evaluated, active_invoices, effective))
       |> Enum.concat(completeness_issues(active_invoices, effective))
       |> Enum.concat(document_issues)
       |> Issues.normalize_all()
       |> collapse_by_target()
 
-    confirmations = Enum.filter(effective, &(&1["verb"] == "confirm_issue" and answered?(&1)))
+    confirmations =
+      effective
+      |> Replay.latest("target")
+      |> Map.values()
+      |> Enum.filter(&(&1["verb"] == "confirm_issue" and answered?(&1)))
 
     confirmed_keys =
       confirmed_issue_keys(confirmations, raw_issues, pristine_source_invoices)
@@ -123,7 +130,7 @@ defmodule Nila.Gst.Sales.Workings do
       printed_active_invoices: printed_active_invoices,
       duplicate_copies: duplicate_copies,
       issues: issues,
-      derived: Gstr1.derive(active_invoices, header),
+      derived: derived,
       decisions: decisions,
       corrections: corrections,
       flagged: with_legacy_flag_aliases(source_flagged, pristine_source_invoices),
@@ -400,6 +407,37 @@ defmodule Nila.Gst.Sales.Workings do
     "cess_not_evaluated|#{digest}"
   end
 
+  defp challenge_issues(effective, active_invoices) do
+    effective
+    |> Enum.filter(&(&1["verb"] == "challenge_treatment"))
+    |> Enum.reverse()
+    |> Enum.uniq_by(& &1["target"])
+    |> Enum.reverse()
+    |> Enum.flat_map(fn challenge ->
+      source_id = get_in(challenge, ["payload", "source_id"])
+
+      case Enum.find(active_invoices, &(&1["id"] == source_id)) do
+        nil ->
+          []
+
+        invoice ->
+          [
+            %{
+              "invoice" => invoice["invoice_number"],
+              "source_id" => source_id,
+              "code" => "treatment_challenged",
+              "level" => Issues.level_for("treatment_challenged"),
+              "message" =>
+                "Reviewer challenged Nila's GSTR-1 treatment; confirm the current recomputed treatment or correct the source invoice.",
+              "fields" => [],
+              "target" => challenge["target"],
+              "challenged_treatment" => challenge["payload"]
+            }
+          ]
+      end
+    end)
+  end
+
   defp compliance_issues(invoices, compliance) do
     hsn_issues = if compliance[:directory], do: Validation.sales_issues(invoices), else: []
 
@@ -419,6 +457,10 @@ defmodule Nila.Gst.Sales.Workings do
   identified pristine source row during materialization.
   """
   def issue_key(%{"code" => "duplicate_invoice_number", "target" => target})
+      when is_binary(target),
+      do: target
+
+  def issue_key(%{"code" => "treatment_challenged", "target" => target})
       when is_binary(target),
       do: target
 

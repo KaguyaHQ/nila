@@ -4,6 +4,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Modal do
   @moduledoc "Missing-bill modal for the GST exception workbench."
 
   attr :draft, :any, default: nil
+  attr :target, :any, default: nil
 
   def missing_bill_modal(assigns) do
     ~H"""
@@ -12,6 +13,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Modal do
       id="gst-missing-bill-modal"
       title="Ask for the missing bill"
       on_close="close-ask"
+      target={@target}
       class="max-w-2xl"
     >
       <div class="space-y-block">
@@ -34,6 +36,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Modal do
             variant="primary"
             size="sm"
             phx-click="mark-ask-sent"
+            phx-target={@target}
           >Mark as sent</.button>
         </div>
         <script :type={Phoenix.LiveView.ColocatedHook} name=".CopyMissingBillDraft">

@@ -35,7 +35,7 @@ defmodule Nila.Gst.WorkQueue do
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.{Confirmations, Dumps}
   alias Nila.Gst.Issues
-  alias Nila.Gst.Purchase.{Register, Resolutions}
+  alias Nila.Gst.Purchase.{Register, Resolutions, Review}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Months, as: SalesMonths
@@ -303,8 +303,22 @@ defmodule Nila.Gst.WorkQueue do
   defp purchase_stats(nil), do: %{need_decision: 0, awaiting_bills: 0, invoices: 0}
 
   defp purchase_stats(purchase) do
-    resolved = purchase |> Resolutions.workings() |> then(&Register.stats(&1.summary))
-    %{resolved | invoices: Register.stats(purchase.summary).invoices}
+    workings = Resolutions.workings(purchase)
+    resolved = Register.stats(workings.summary)
+
+    # Collection and possession wait on the client even though both stay
+    # visible in the purchase rail and possession still blocks sign-off.
+    reviewer_decisions =
+      workings
+      |> Review.project(month: purchase)
+      |> Map.fetch!(:needs_you)
+      |> Enum.count(&(&1.kind not in [:attestation, :gstr2b]))
+
+    %{
+      resolved
+      | need_decision: reviewer_decisions,
+        invoices: Register.stats(purchase.summary).invoices
+    }
   end
 
   defp sales_open_issues(nil), do: 0

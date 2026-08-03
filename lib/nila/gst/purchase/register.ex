@@ -115,9 +115,10 @@ defmodule Nila.Gst.Purchase.Register do
   `gstr2b_only` is that difference, and it is a completeness fact in its own
   right: bills the portal knows about that nobody has sent us.
 
-  `need_decision`, `awaiting_bills` and `value_disputes` split the open pile by
-  who owns the next move, and a row earns a place in `need_decision` only when a
-  human's answer would change what gets filed.
+  `need_decision` counts connected review groups, while `decision_rows` keeps
+  the invoice-row count used to close the register partition with
+  `awaiting_bills` and `value_disputes`. One contested N↔M question therefore
+  appears once without collapsing its invoice rows.
 
   A 2B-only row is built with no `id` and no images: nothing to open, nothing to
   compare, no judgement to record. Its next move belongs to the client.
@@ -155,6 +156,11 @@ defmodule Nila.Gst.Purchase.Register do
     awaiting_bills_tax = summary["awaiting_bills_tax_paise"] || 0
     value_disputes = buckets["value_mismatch"] || 0
     value_dispute_tax = summary["value_dispute_tax_paise"] || 0
+    decision_rows = summary["decision_rows"] || open - awaiting_bills - value_disputes
+    need_decision = summary["lane_decisions"] || summary["decision_groups"] || decision_rows
+    legacy_decision_tax = open_tax - awaiting_bills_tax - value_dispute_tax
+    decision_tax = summary["decision_tax_paise"] || legacy_decision_tax
+    decision_row_tax = summary["decision_row_tax_paise"] || legacy_decision_tax
     # Whether the split of the open money is trustworthy, which is not the same
     # question as whether it is zero. A snapshot frozen before these fields
     # existed reads 0 for both subsets, and `decision_tax_paise` then absorbs
@@ -188,7 +194,8 @@ defmodule Nila.Gst.Purchase.Register do
       gstr2b_only: gstr2b_only,
       matched: matched,
       open: open,
-      need_decision: open - awaiting_bills - value_disputes,
+      need_decision: need_decision,
+      decision_rows: decision_rows,
       awaiting_bills: awaiting_bills,
       value_disputes: value_disputes,
       taxable_paise: summary["taxable_paise"] || 0,
@@ -210,12 +217,12 @@ defmodule Nila.Gst.Purchase.Register do
       # only when the figure means something.
       unreported_by_vendor_tax_paise: summary["unreported_by_vendor_tax_paise"] || 0,
       unreported_by_vendor_known?: Map.has_key?(summary, "unreported_by_vendor_tax_paise"),
-      # Both partitions still close on a pre-change snapshot, and the counts are
-      # right there because the buckets always existed. The money is not: read
-      # `open_money_split_known?` before showing any of these three as a
-      # breakdown. A signed month is immutable, so this is a reading of history
-      # rather than a live figure.
-      decision_tax_paise: open_tax - awaiting_bills_tax - value_dispute_tax,
+      # Group risk prefers each unique 2B counterpart once. The row twin is
+      # retained because only row money closes against `open_tax_paise`; legacy
+      # snapshots have no graph metadata, so both fall back to the old row-based
+      # subtraction.
+      decision_tax_paise: decision_tax,
+      decision_row_tax_paise: decision_row_tax,
       open_money_split_known?: split_known?,
       # `matched` and `open` are not complements — audited-accepted rows are in
       # neither, so a reader adding the two visible subsets lands short of the
@@ -230,18 +237,21 @@ defmodule Nila.Gst.Purchase.Register do
   end
 
   @doc """
-  How many rows still need a human decision.
+  How many connected review groups still need a human decision.
 
-  Collection rows are excluded: see `stats/1`. `open/1` is the whole open pile
-  when a caller wants both halves.
+  Collection rows are excluded: see `stats/1`. `open/1` remains the row-based
+  open pile for register partitions and legacy snapshots.
   """
   def need_decision(summary), do: stats(summary).need_decision
 
   @doc "Every row still unsettled — decisions plus bills nobody has supplied."
   def open(summary), do: stats(summary).open
 
-  @doc "Bucket counts plus flag totals for the cover/status page."
-  def summary(rows) do
+  @doc "Bucket, flag, row, and derived review-group totals for the cover/status page."
+  def summary(rows, groups \\ nil) do
+    decision_rows = Enum.filter(rows, &decision_row?/1)
+    decision_groups = decision_groups(groups, decision_rows)
+
     %{
       "total_invoices" => Enum.count(rows, &(&1["bucket"] != "in_2b_not_books")),
       "buckets" => Enum.frequencies_by(rows, & &1["bucket"]),
@@ -250,6 +260,8 @@ defmodule Nila.Gst.Purchase.Register do
       # open pile without replaying rows.
       "accepted_gstr2b_only" =>
         Enum.count(rows, &(&1["bucket"] == "in_2b_not_books" and &1["accepted_reason"] != nil)),
+      "decision_groups" => length(decision_groups),
+      "decision_rows" => length(decision_rows),
       "flag_counts" =>
         rows
         |> Enum.flat_map(& &1["flags"])
@@ -271,9 +283,8 @@ defmodule Nila.Gst.Purchase.Register do
         |> Enum.filter(&(&1["bucket"] == "matched"))
         |> Enum.map(&row_tax/1)
         |> Enum.sum(),
-      # The counterpart of need_decision, in rupees: what is still riding on
-      # the undecided rows. Same predicate as the count (unmatched and not
-      # audited-accepted), so the two can never disagree.
+      # The row-based open pot. It deliberately remains invoice-centric even
+      # when several rows belong to one review group.
       "open_tax_paise" =>
         rows
         |> Enum.filter(&open_row?/1)
@@ -286,6 +297,16 @@ defmodule Nila.Gst.Purchase.Register do
         |> Enum.filter(&awaiting_bill?/1)
         |> Enum.map(&row_tax/1)
         |> Enum.sum(),
+      # The review risk: one amount per connected group, using each unique 2B
+      # counterpart once.
+      "decision_tax_paise" =>
+        decision_groups
+        |> Enum.map(fn
+          %{tax_paise: tax_paise} -> tax_paise
+          row -> row_tax(row)
+        end)
+        |> Enum.sum(),
+      "decision_row_tax_paise" => decision_rows |> Enum.map(&row_tax/1) |> Enum.sum(),
       # Books-side credit with nothing in the 2B behind it: bills the portal
       # never reported at all, plus the books-side value of rows still hunting
       # for their counterpart. It is the difference between the month's own ITC
@@ -475,6 +496,11 @@ defmodule Nila.Gst.Purchase.Register do
     sign = if paise > 0, do: "+", else: "-"
     sign <> Nila.Formatters.format_money_with_paise(abs(paise))
   end
+
+  defp decision_groups(nil, decision_rows), do: decision_rows
+
+  defp decision_groups(groups, _decision_rows),
+    do: Enum.filter(groups, &(&1.state == :needs_decision))
 
   defp flag_summary([]), do: nil
   defp flag_summary(flags), do: Enum.map_join(flags, ", ", & &1["code"])

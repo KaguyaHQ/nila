@@ -12,6 +12,7 @@ defmodule Nila.Gst.Purchase.Resolution do
     * `confirm_pair`  — books_id and gstr2b_ref are the same bill; force a match.
     * `reject_pair`   — books_id and gstr2b_ref are NOT the same bill; never
       re-suggest that pairing.
+    * `challenge_pair` — opens one human question against a derived automatic pair.
     * `correct_field` — the extractor misread a books field; payload carries
       `{"field", "from", "to"}`. Re-reconciliation may then match cleanly.
     * `accept_unmatched` — keep an unmatched books bill with an audited reason:
@@ -32,7 +33,7 @@ defmodule Nila.Gst.Purchase.Resolution do
   """
   use Nila.Schema
 
-  @verbs ~w(confirm_pair reject_pair correct_field accept_unmatched dismiss_2b reopen block_itc allow_itc attest_documents)
+  @verbs ~w(confirm_pair reject_pair challenge_pair correct_field accept_unmatched dismiss_2b reopen block_itc allow_itc attest_documents)
 
   def verbs, do: @verbs
 

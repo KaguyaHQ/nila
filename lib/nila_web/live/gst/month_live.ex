@@ -12,10 +12,10 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps, Preconditions}
   alias Nila.Gst.Issues
-  alias Nila.Gst.Purchase.{Reconciliation, Register, Resolutions}
+  alias Nila.Gst.Purchase.{Groups, Reconciliation, Register, Resolutions, Review}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
-  alias Nila.Gst.Proposals
-  alias Nila.Gst.Sales.{Account, Gstr1, Values}
+  alias Nila.Gst.Sales.Account
+  alias Nila.Gst.Sales.Review, as: SalesReview
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
@@ -26,7 +26,6 @@ defmodule NilaWeb.Gst.MonthLive do
     Arrivals,
     Evidence,
     Filing,
-    Helpers,
     Precondition,
     Purchase,
     Sales,
@@ -34,6 +33,7 @@ defmodule NilaWeb.Gst.MonthLive do
     Workings
   }
 
+  alias NilaWeb.Components.Gst.Review.{PurchaseLive, SalesLive}
   alias NilaWeb.Gst.PeriodOptions
 
   @impl true
@@ -73,15 +73,13 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:client, client)
       |> assign(:period, period)
       |> assign(:page_title, "#{client.name} · #{period_label(period)}")
-      |> assign(:selected_row, nil)
-      |> assign(:selected_inum, nil)
+      |> assign(:purchase_review_route, nil)
+      |> assign(:sales_review_route, nil)
       |> assign(:last_reviewed_inum, nil)
       |> assign(:visited_inums, MapSet.new())
       |> assign(:expanded_nodes, MapSet.new())
       |> assign(:rippled, MapSet.new())
       |> assign(:ripple_seq, 0)
-      |> assign(:correcting, nil)
-      |> assign(:focused_issue, nil)
       |> assign(:duplicate_review_target, nil)
       |> assign(:show_completeness_override, false)
       |> assign(:completeness_override_form, to_form(%{"reason" => ""}, as: :override))
@@ -93,21 +91,88 @@ defmodule NilaWeb.Gst.MonthLive do
   end
 
   @impl true
-  def handle_params(params, _uri, socket) do
-    inum = valid_invoice_number(socket.assigns.invoices, params["invoice"])
+  def handle_params(
+        %{"lane" => "purchase"} = params,
+        _uri,
+        %{assigns: %{live_action: :review, purchase_month: month}} = socket
+      )
+      when not is_nil(month) do
+    review = Review.project(socket.assigns.purchase_workings, month: month)
+    route = Review.route_state(review, params["item"], params["scope"])
 
     {:noreply,
      assign(socket,
-       selected_inum: inum,
-       selected_row: nil,
-       correcting: nil,
-       last_reviewed_inum: inum || socket.assigns.last_reviewed_inum,
-       visited_inums:
-         if(inum,
-           do: MapSet.put(socket.assigns.visited_inums, inum),
-           else: socket.assigns.visited_inums
-         )
+       purchase_review_route: route,
+       sales_review_route: nil
      )}
+  end
+
+  def handle_params(
+        %{"lane" => "sales"} = params,
+        _uri,
+        %{assigns: %{live_action: :review, sales_month: month}} = socket
+      )
+      when not is_nil(month) do
+    review = SalesReview.build(socket.assigns.sales_workings)
+    route = SalesReview.route_state(review, params["item"], params["scope"])
+    selected = SalesReview.lookup(review.all, route.item)
+    focus = valid_review_focus(selected, params["focus"])
+    route = Map.put(route, :focus, focus)
+
+    socket =
+      assign(socket,
+        purchase_review_route: nil,
+        sales_review_route: route,
+        last_reviewed_inum: route.item || socket.assigns.last_reviewed_inum,
+        visited_inums:
+          if(route.item,
+            do: MapSet.put(socket.assigns.visited_inums, route.item),
+            else: socket.assigns.visited_inums
+          )
+      )
+
+    if canonical_sales_route?(params, route) do
+      {:noreply, socket}
+    else
+      {:noreply, push_patch(socket, to: sales_review_path(socket, route), replace: true)}
+    end
+  end
+
+  def handle_params(_params, _uri, %{assigns: %{live_action: :review}} = socket) do
+    {:noreply, push_patch(socket, to: month_path(socket))}
+  end
+
+  def handle_params(
+        %{"invoice" => identifier},
+        _uri,
+        %{assigns: %{live_action: :index, sales_month: month}} = socket
+      )
+      when not is_nil(month) do
+    source_id = valid_invoice_number(socket.assigns.invoices, identifier)
+    review = SalesReview.build(socket.assigns.sales_workings)
+    route = SalesReview.route_state(review, source_id, nil) |> Map.put(:focus, nil)
+
+    {:noreply, push_patch(socket, to: sales_review_path(socket, route), replace: true)}
+  end
+
+  def handle_params(_params, _uri, socket) do
+    {:noreply,
+     assign(socket,
+       purchase_review_route: nil,
+       sales_review_route: nil
+     )}
+  end
+
+  defp valid_review_focus(nil, _focus), do: nil
+  defp valid_review_focus(_item, nil), do: nil
+
+  defp valid_review_focus(item, focus) do
+    if Enum.any?(item.issues, &(SalesWorkings.issue_key(&1) == focus)), do: focus
+  end
+
+  defp canonical_sales_route?(params, route) do
+    params["item"] == route.item and params["scope"] == to_string(route.scope) and
+      params["focus"] == route.focus
   end
 
   defp valid_invoice_number(_invoices, nil), do: nil
@@ -226,9 +291,12 @@ defmodule NilaWeb.Gst.MonthLive do
     |> MapSet.new(& &1.id)
   end
 
-  defp assign_purchase(socket, nil) do
+  defp assign_purchase(socket, purchase, workings \\ nil)
+
+  defp assign_purchase(socket, nil, _workings) do
     socket
     |> assign(:purchase_month, nil)
+    |> assign(:purchase_workings, nil)
     |> assign(:gstr3b_signoff, nil)
     |> assign(:rows, [])
     |> assign(:stats, nil)
@@ -237,31 +305,69 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:itc, nil)
   end
 
-  defp assign_purchase(socket, purchase) do
+  defp assign_purchase(socket, purchase, provided_workings) do
     signoff = fetch_or_nil(Signoffs.latest_signoff(purchase.id))
+    live_workings = provided_workings || Resolutions.workings(purchase)
 
-    {rows, summary, gstr3b, itc} =
+    workings =
       case signoff do
-        nil ->
-          workings = Resolutions.workings(purchase)
-          {workings.rows, workings.summary, workings.gstr3b, workings.itc}
-
-        signoff ->
-          {signoff.snapshot["rows"], signoff.snapshot["summary"], signoff.snapshot["gstr3b"],
-           signoff.snapshot["itc"]}
+        nil -> live_workings
+        signoff -> signed_purchase_workings(signoff.snapshot, live_workings)
       end
 
     socket
     |> assign(:purchase_month, purchase)
+    |> assign(:purchase_workings, workings)
     |> assign(:gstr3b_signoff, signoff)
-    |> assign(:rows, build_rows(rows, purchase))
-    |> assign(:stats, Register.stats(summary))
-    |> assign(:document_flags, summary["document_flags"] || [])
-    |> assign(:gstr3b, gstr3b)
-    |> assign(:itc, itc)
+    |> assign(:rows, build_rows(workings.rows, purchase, workings.groups))
+    |> assign(:stats, Register.stats(workings.summary))
+    |> assign(:document_flags, workings.summary["document_flags"] || [])
+    |> assign(:gstr3b, workings.gstr3b)
+    |> assign(:itc, workings.itc)
   end
 
-  defp build_rows(rows, purchase) do
+  defp signed_purchase_workings(snapshot, fallback) do
+    case snapshot["review"] do
+      %{} = review ->
+        recon = review["recon"] || %{}
+
+        %{
+          baseline: review["baseline"] || %{},
+          recon: recon,
+          groups: Groups.build(recon),
+          decisions: review["decisions"] || %{},
+          accepted_reasons: review["accepted_reasons"] || %{},
+          gstr2b_decisions: review["gstr2b_decisions"] || %{},
+          document_attestation: restore_attestation(review["document_attestation"]),
+          rows: snapshot["rows"],
+          summary: snapshot["summary"],
+          gstr3b: snapshot["gstr3b"],
+          itc: snapshot["itc"]
+        }
+
+      _legacy ->
+        %{
+          fallback
+          | rows: snapshot["rows"],
+            summary: snapshot["summary"],
+            gstr3b: snapshot["gstr3b"],
+            itc: snapshot["itc"]
+        }
+    end
+  end
+
+  defp restore_attestation(nil), do: nil
+
+  defp restore_attestation(attestation) do
+    %{
+      target: attestation["target"] || attestation[:target],
+      answer: attestation["answer"] || attestation[:answer],
+      count: attestation["count"] || attestation[:count],
+      tax_paise: attestation["tax_paise"] || attestation[:tax_paise]
+    }
+  end
+
+  defp build_rows(rows, purchase, groups) do
     rows
     |> Enum.with_index()
     |> Enum.map(fn {row, index} ->
@@ -274,16 +380,43 @@ defmodule NilaWeb.Gst.MonthLive do
 
       row
       |> Map.put("image_urls", urls)
+      |> Map.put("review_item", review_item(row, groups))
       |> Map.put("dom_id", row_dom_id(row, index))
     end)
+  end
+
+  defp review_item(%{"id" => id}, _groups) when is_binary(id), do: id
+
+  defp review_item(%{"gstr2b" => counterpart}, groups) when is_map(counterpart),
+    do: counterpart_group_key(counterpart, groups)
+
+  defp review_item(%{"bucket" => "in_2b_not_books"} = row, groups),
+    do: counterpart_group_key(row, groups)
+
+  defp review_item(_row, _groups), do: nil
+
+  defp counterpart_group_key(counterpart, groups) do
+    ref = Reconciliation.gstr2b_ref(counterpart)
+
+    group =
+      Enum.find(
+        groups,
+        &Enum.any?(&1.counterparts, fn g -> Reconciliation.gstr2b_ref(g) == ref end)
+      )
+
+    group && group.key
   end
 
   defp row_dom_id(%{"id" => id}, _index) when is_binary(id), do: "gst-row-#{id}"
   defp row_dom_id(_row, index), do: "gst-row-idx-#{index}"
 
-  defp assign_sales(socket, nil) do
+  defp assign_sales(socket, sales, workings \\ nil)
+
+  defp assign_sales(socket, nil, _workings) do
     socket
     |> assign(:sales_month, nil)
+    |> assign(:sales_workings, nil)
+    |> assign(:sales_decisions, %{})
     |> assign(:r1_signoff, nil)
     |> assign(:invoices, [])
     |> assign(:active_invoices, [])
@@ -293,7 +426,6 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:derived_gstr1, nil)
     |> assign(:gstr1_diff, nil)
     |> assign(:accepted_diffs, MapSet.new())
-    |> assign(:sales_decisions, %{})
     |> assign(:sales_account, nil)
     |> assign(:sales_completeness, :open)
     |> assign(:sales_confirmation, nil)
@@ -301,34 +433,30 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:reviewable, false)
   end
 
-  defp assign_sales(socket, sales) do
+  defp assign_sales(socket, sales, provided_workings) do
     signoff = fetch_or_nil(Signoffs.latest_gstr1_signoff(sales.id))
 
     workings =
-      case signoff do
-        # No short-circuit for an invoice-less month. It used to return a
-        # hand-built empty workings, which agreed with the engine only while the
-        # engine also had nothing to say about an empty pile. Now that a month
-        # with no invoices is asked the six completeness questions, skipping the
-        # engine made the page assert "All checks resolved" and offer an Approve
-        # button over a sign-off the server refuses — with the questions
-        # themselves never rendered, so nothing could clear it.
-        nil ->
-          SalesResolutions.workings(sales)
+      provided_workings ||
+        case signoff do
+          # Invoice-less months still have completeness questions. A hand-built
+          # empty projection would offer approval over a server-side rejection.
+          nil ->
+            SalesResolutions.workings(sales)
 
-        signoff ->
-          source = signoff.snapshot["invoices"]
-          active = Enum.reject(source, &Map.has_key?(&1, "duplicate_copy"))
+          signoff ->
+            source = signoff.snapshot["invoices"]
+            active = Enum.reject(source, &Map.has_key?(&1, "duplicate_copy"))
 
-          %{
-            source_invoices: source,
-            active_invoices: active,
-            printed_active_invoices: signoff.snapshot["printed_invoices"],
-            issues: Issues.normalize_all(signoff.snapshot["issues"]),
-            flagged: MapSet.new(),
-            derived: signoff.snapshot["derived"]
-          }
-      end
+            %{
+              source_invoices: source,
+              active_invoices: active,
+              printed_active_invoices: signoff.snapshot["printed_invoices"],
+              issues: Issues.normalize_all(signoff.snapshot["issues"]),
+              flagged: MapSet.new(),
+              derived: signoff.snapshot["derived"]
+            }
+        end
 
     source_invoices = workings.source_invoices
     active_invoices = workings.active_invoices
@@ -360,6 +488,8 @@ defmodule NilaWeb.Gst.MonthLive do
 
     socket
     |> assign(:sales_month, sales)
+    |> assign(:sales_workings, workings)
+    |> assign(:sales_decisions, SalesResolutions.latest_decisions(sales.id))
     |> assign(:r1_signoff, signoff)
     |> assign(:invoices, invoices)
     |> assign(:active_invoices, active_invoices)
@@ -369,7 +499,6 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:derived_gstr1, derived)
     |> assign(:gstr1_diff, filed && derived && Gstr1Diff.rows(derived, filed))
     |> assign(:accepted_diffs, SalesResolutions.accepted_differences(sales))
-    |> assign(:sales_decisions, SalesResolutions.latest_decisions(sales.id))
     |> assign(:sales_account, account)
     |> assign(:sales_completeness, completeness)
     |> assign(:sales_confirmation, confirmation)
@@ -452,46 +581,66 @@ defmodule NilaWeb.Gst.MonthLive do
     {:noreply, reload(socket)}
   end
 
-  def handle_info(_message, socket), do: {:noreply, socket}
+  def handle_info({:purchase_review_refresh, item_id, month, workings}, socket) do
+    current = socket.assigns.purchase_review_route
 
-  @impl true
-  def handle_event("select-row", %{"dom_id" => dom_id}, socket) do
-    row = Enum.find(socket.assigns.rows, &(&1["dom_id"] == dom_id))
-    {:noreply, assign(socket, selected_row: row, selected_inum: nil)}
-  end
+    socket =
+      socket
+      |> assign_purchase(month, workings)
+      |> assign_verdict(month, socket.assigns.sales_month)
 
-  # Opening an invoice marks its row read for this session only — a quiet
-  # read/unread mark, never a persisted aggregate or a meter.
-  def handle_event("select-invoice", %{"inum" => inum}, socket) do
-    case valid_invoice_number(socket.assigns.invoices, inum) do
-      nil ->
-        {:noreply, socket}
+    review = Review.project(socket.assigns.purchase_workings, month: month)
+    route = Review.route_state(review, item_id, current.scope)
+    socket = assign(socket, :purchase_review_route, route)
 
-      source_id ->
-        {:noreply,
-         socket
-         |> assign(:focused_issue, nil)
-         |> assign(:visited_inums, MapSet.put(socket.assigns.visited_inums, source_id))
-         |> push_patch(to: month_path(socket, inum))}
+    if route == current do
+      {:noreply, socket}
+    else
+      {:noreply, push_patch(socket, to: purchase_review_path(socket, route), replace: true)}
     end
   end
 
-  def handle_event(
-        "review-sales-issue",
-        %{"source" => source_id, "target" => target},
-        socket
-      ) do
-    case valid_invoice_number(socket.assigns.invoices, source_id) do
+  def handle_info({:sales_review_refresh, month, workings, requested}, socket) do
+    old_derived = socket.assigns.derived_gstr1
+
+    socket =
+      socket
+      |> assign_sales(month, workings)
+      |> assign_verdict(socket.assigns.purchase_month, month)
+      |> ripple(old_derived)
+
+    case socket.assigns.sales_review_route do
+      nil ->
+        {:noreply, socket}
+
+      current ->
+        review = SalesReview.build(socket.assigns.sales_workings)
+        route = SalesReview.route_state(review, requested.item, requested.scope)
+        selected = SalesReview.lookup(review.all, route.item)
+        route = Map.put(route, :focus, valid_review_focus(selected, requested.focus))
+        socket = assign(socket, :sales_review_route, route)
+
+        if route == current do
+          {:noreply, socket}
+        else
+          {:noreply, push_patch(socket, to: sales_review_path(socket, route), replace: true)}
+        end
+    end
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  # Contributor rows still use this event; the register itself patches directly.
+  @impl true
+  def handle_event("select-invoice", %{"inum" => identifier}, socket) do
+    case valid_invoice_number(socket.assigns.invoices, identifier) do
       nil ->
         {:noreply, socket}
 
       source_id ->
-        {:noreply,
-         socket
-         |> assign(:focused_issue, target)
-         |> assign(:duplicate_review_target, nil)
-         |> assign(:visited_inums, MapSet.put(socket.assigns.visited_inums, source_id))
-         |> push_patch(to: month_path(socket, source_id))}
+        review = SalesReview.build(socket.assigns.sales_workings)
+        route = SalesReview.route_state(review, source_id, nil) |> Map.put(:focus, nil)
+        {:noreply, push_patch(socket, to: sales_review_path(socket, route))}
     end
   end
 
@@ -519,13 +668,6 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
-  def handle_event("navigate-invoice-review", %{"inum" => inum}, socket) do
-    case valid_invoice_number(socket.assigns.invoices, inum) do
-      nil -> {:noreply, socket}
-      inum -> {:noreply, push_patch(socket, to: month_path(socket, inum), replace: true)}
-    end
-  end
-
   # Which workings buckets are open lives here rather than in an inline style,
   # so a re-render somewhere else on the page cannot collapse them.
   def handle_event("toggle-workings-node", %{"node" => node}, socket),
@@ -546,16 +688,6 @@ defmodule NilaWeb.Gst.MonthLive do
        MapSet.union(expanded, MapSet.new(nodes))
      end)}
   end
-
-  def handle_event("close-evidence", _params, socket),
-    do: {:noreply, assign(socket, selected_row: nil, correcting: nil)}
-
-  def handle_event("close-invoice-review", _params, socket),
-    do:
-      {:noreply,
-       socket
-       |> assign(:focused_issue, nil)
-       |> push_patch(to: month_path(socket), replace: true)}
 
   def handle_event("open-completeness-override", _params, socket),
     do:
@@ -632,38 +764,6 @@ defmodule NilaWeb.Gst.MonthLive do
   def handle_event("confirm_issue", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "confirm_issue", "target" => target})
 
-  def handle_event(
-        "resolve-invoice-issue",
-        %{"target" => target, "decision" => "use_extracted_lines"},
-        socket
-      ) do
-    issue =
-      socket.assigns
-      |> selected_invoice()
-      |> then(fn invoice ->
-        invoice && Helpers.invoice_issues(socket.assigns.issues_by_invoice, invoice)
-      end)
-      |> List.wrap()
-      |> Enum.find(&(SalesWorkings.issue_key(&1) == target))
-
-    if issue && not SalesWorkings.blocking?(issue) do
-      # What the reviewer was shown becomes part of the record. Derived live so
-      # it always follows current rules, frozen here so a rule change cannot
-      # rewrite what this screen claimed Nila advised at the time.
-      payload =
-        case shown_proposal(socket, issue) do
-          nil -> %{"decision" => "use_extracted_lines"}
-          frozen -> %{"decision" => "use_extracted_lines", "proposal" => frozen}
-        end
-
-      record(socket, %{"verb" => "confirm_issue", "target" => target, "payload" => payload})
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_event("resolve-invoice-issue", _params, socket), do: {:noreply, socket}
-
   def handle_event("undo", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "reopen", "target" => target})
 
@@ -678,39 +778,6 @@ defmodule NilaWeb.Gst.MonthLive do
 
   def handle_event("accept_difference", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "accept_difference", "target" => target})
-
-  def handle_event("start_correct", %{"field" => field}, socket) do
-    invoice = selected_invoice(socket.assigns)
-
-    {:noreply,
-     assign(socket, :correcting, %{
-       field: field,
-       value: to_string(Gstr1.field_value(invoice, field))
-     })}
-  end
-
-  def handle_event("cancel_correct", _params, socket),
-    do: {:noreply, assign(socket, :correcting, nil)}
-
-  def handle_event("save_correct", %{"field" => field, "value" => value}, socket) do
-    invoice = selected_invoice(socket.assigns)
-    from = Gstr1.field_value(invoice, field)
-    value = String.trim(value)
-
-    if value == "" or value == to_string(from) do
-      {:noreply, assign(socket, :correcting, nil)}
-    else
-      record(socket, %{
-        "verb" => "correct_field",
-        "target" => invoice["id"] || invoice["pristine_inum"],
-        "payload" => %{
-          "field" => field,
-          "from" => from,
-          "to" => Gstr1.coerce_correction(field, value)
-        }
-      })
-    end
-  end
 
   def handle_event("r1-sign-off", _params, socket) do
     case Signoffs.sign_off_gstr1(socket.assigns.sales_month, socket.assigns.current_scope) do
@@ -976,18 +1043,6 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
-  # The proposal as the reviewer saw it, frozen for the record.
-  defp shown_proposal(socket, issue) do
-    invoice = selected_invoice(socket.assigns)
-
-    issue
-    |> Proposals.for_issue(
-      invoice && Values.for_invoice(invoice, socket.assigns.derived_gstr1),
-      (invoice && Gstr1.invoice_checks(invoice)) || []
-    )
-    |> Proposals.freeze()
-  end
-
   defp record(socket, attrs) do
     case SalesResolutions.record(
            socket.assigns.sales_month,
@@ -996,7 +1051,7 @@ defmodule NilaWeb.Gst.MonthLive do
          ) do
       {:ok, _} ->
         old_derived = socket.assigns.derived_gstr1
-        {:noreply, socket |> reload() |> assign(:correcting, nil) |> ripple(old_derived)}
+        {:noreply, socket |> reload() |> ripple(old_derived)}
 
       {:error, :signed_off} ->
         {:noreply,
@@ -1019,73 +1074,33 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
-  defp selected_invoice(%{selected_inum: nil}), do: nil
-
-  defp selected_invoice(assigns) do
-    Enum.find(assigns.invoices, &(&1["id"] == assigns.selected_inum)) ||
-      Enum.find(assigns.invoices, &(&1["invoice_number"] == assigns.selected_inum)) ||
-      Enum.find(assigns.invoices, &(&1["pristine_inum"] == assigns.selected_inum))
-  end
-
-  defp review_navigation(_assigns, nil), do: %{previous: nil, next: nil}
-
-  defp review_navigation(assigns, selected) do
-    index =
-      Enum.find_index(assigns.invoices, fn invoice ->
-        invoice["id"] == selected["id"]
-      end)
-
-    previous =
-      assigns.invoices
-      |> Enum.take(index || 0)
-      |> Enum.reverse()
-      |> Enum.find(&invoice_unresolved?(assigns.issues_by_invoice, &1))
-
-    next =
-      assigns.invoices
-      |> Enum.drop((index || -1) + 1)
-      |> Enum.find(&invoice_unresolved?(assigns.issues_by_invoice, &1))
-
-    %{
-      previous: previous && invoice_identifier(assigns.invoices, previous),
-      next: next && invoice_identifier(assigns.invoices, next)
-    }
-  end
-
-  defp invoice_identifier(invoices, invoice) do
-    if Enum.count(invoices, &(&1["invoice_number"] == invoice["invoice_number"])) == 1,
-      do: invoice["invoice_number"],
-      else: invoice["id"]
-  end
-
-  defp invoice_unresolved?(issues_by_invoice, invoice) do
-    issues_by_invoice
-    |> Helpers.invoice_issues(invoice)
-    |> Enum.any?(&(&1["status"] == "open"))
-  end
-
-  defp month_path(socket, inum \\ nil) do
+  defp month_path(socket) do
     %{client: client, period: period} = socket.assigns
+    ~p"/gst/#{client.id}/#{period}"
+  end
 
-    if inum,
-      do: ~p"/gst/#{client.id}/#{period}?invoice=#{inum}",
-      else: ~p"/gst/#{client.id}/#{period}"
+  defp purchase_review_path(socket, route) do
+    params = %{"item" => route.item, "scope" => to_string(route.scope)}
+    month_path(socket) <> "/review/purchase?" <> URI.encode_query(params)
+  end
+
+  defp sales_review_path(socket, route) do
+    params =
+      %{"item" => route.item, "scope" => to_string(route.scope), "focus" => route[:focus]}
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
+
+    month_path(socket) <> "/review/sales?" <> URI.encode_query(params)
   end
 
   @impl true
   def render(assigns) do
-    selected_invoice = selected_invoice(assigns)
-
     duplicate_issue =
       Enum.find(assigns.month_issues, fn issue ->
         SalesWorkings.issue_key(issue) == assigns.duplicate_review_target
       end)
 
-    assigns =
-      assigns
-      |> assign(:selected_invoice, selected_invoice)
-      |> assign(:duplicate_issue, duplicate_issue)
-      |> assign(:review_navigation, review_navigation(assigns, selected_invoice))
+    assigns = assign(assigns, :duplicate_issue, duplicate_issue)
 
     ~H"""
     <Layouts.app
@@ -1144,6 +1159,8 @@ defmodule NilaWeb.Gst.MonthLive do
         <main id="month-evidence" class="space-y-canvas min-w-0">
           <Sales.sales_section
             sales_month={@sales_month}
+            client={@client}
+            period={@period}
             invoices={@invoices}
             active_invoices={@active_invoices}
             open_issue_count={@open_issue_count}
@@ -1237,25 +1254,38 @@ defmodule NilaWeb.Gst.MonthLive do
         </main>
       </div>
 
+      <.live_component
+        :if={(@live_action == :review and @purchase_review_route) && @purchase_month}
+        module={PurchaseLive}
+        id="purchase-review-live"
+        month={@purchase_month}
+        current_scope={@current_scope}
+        route={@purchase_review_route}
+        workings={@purchase_workings}
+        signed_off={@gstr3b_signoff != nil}
+      />
+
+      <.live_component
+        :if={(@live_action == :review and @sales_review_route) && @sales_month}
+        module={SalesLive}
+        id="sales-review-live"
+        month={@sales_month}
+        current_scope={@current_scope}
+        route={@sales_review_route}
+        workings={@sales_workings}
+        decisions={@sales_decisions}
+        signoff={@r1_signoff}
+      />
+
       <Evidence.evidence_modals
         show_chase_history={@show_chase_history}
         client={@client}
         period={@period}
         asks={@asks}
-        selected_row={@selected_row}
-        selected_invoice={@selected_invoice}
         source_invoices={@invoices}
         duplicate_issue={@duplicate_issue}
-        focused_issue={@focused_issue}
         show_completeness_override={@show_completeness_override}
         completeness_override_form={@completeness_override_form}
-        issues_by_invoice={@issues_by_invoice}
-        decisions={@sales_decisions}
-        review_navigation={@review_navigation}
-        r1_signoff={@r1_signoff}
-        flagged={@flagged}
-        correcting={@correcting}
-        derived={@derived_gstr1}
       />
     </Layouts.app>
     """

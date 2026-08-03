@@ -6,6 +6,7 @@ defmodule Nila.Gst.Sales.ResolutionsTest do
 
   alias Nila.Clients
   alias Nila.Gst.Rates.{Release, Rule}
+  alias Nila.Gst.Sales.{Review, Resolution}
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
@@ -170,6 +171,65 @@ defmodule Nila.Gst.Sales.ResolutionsTest do
              "rate_validation",
              "release_id"
            ]) == release.id
+  end
+
+  test "records and materializes a frozen treatment challenge", %{month: month, user: user} do
+    before = SalesResolutions.workings(month)
+    invoice = hd(before.active_invoices)
+    snapshot = Review.treatment_snapshot(invoice, before.derived)
+
+    assert {:ok, resolution} =
+             SalesResolutions.challenge_treatment(month, invoice["id"], snapshot, user.id)
+
+    assert resolution.verb == "challenge_treatment"
+    assert resolution.target == "treatment|#{invoice["id"]}"
+    assert resolution.payload == snapshot
+
+    issue =
+      SalesResolutions.workings(month).issues
+      |> Enum.find(&(&1["code"] == "treatment_challenged"))
+
+    assert issue["source_id"] == invoice["id"]
+    assert issue["status"] == "open"
+  end
+
+  test "treatment challenge changeset rejects malformed or mismatched frozen payloads", %{
+    month: month,
+    user: user
+  } do
+    before = SalesResolutions.workings(month)
+    invoice = hd(before.active_invoices)
+    snapshot = Review.treatment_snapshot(invoice, before.derived)
+
+    assert {:error, changeset} =
+             SalesResolutions.challenge_treatment(
+               month,
+               "another-source",
+               Map.put(snapshot, "table", "b2c"),
+               user.id
+             )
+
+    assert "must freeze a complete GSTR-1 treatment matching the target" in errors_on(changeset).payload
+
+    nonexistent = Map.put(snapshot, "source_id", "missing-source")
+
+    assert {:error, :not_active_source} =
+             SalesResolutions.challenge_treatment(
+               month,
+               "missing-source",
+               nonexistent,
+               user.id
+             )
+
+    changeset =
+      %Resolution{org_id: month.org_id, sales_month_id: month.id}
+      |> Resolution.changeset(%{
+        "verb" => "challenge_treatment",
+        "target" => "treatment|#{invoice["id"]}",
+        "payload" => Map.delete(snapshot, "tax_amounts")
+      })
+
+    refute changeset.valid?
   end
 
   test "workings replays recorded decisions over the stored month", %{

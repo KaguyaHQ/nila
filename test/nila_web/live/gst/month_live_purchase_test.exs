@@ -8,7 +8,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.Months, as: ClientMonths
-  alias Nila.Gst.Purchase.Register
+  alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Storage
 
@@ -215,11 +215,13 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
   test "purchases open and sales absent: one door, money in the headline", %{
     conn: conn,
-    client: client
+    client: client,
+    client_month: client_month
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    need_decision = Nila.Gst.Purchase.Register.stats(read_json("summary.json")).need_decision
+    need_decision =
+      client_month |> Resolutions.workings() |> then(&Register.need_decision(&1.summary))
 
     assert has_element?(view, "#month-page")
     assert has_element?(view, "#month-headline", "of it rides on #{need_decision} decisions")
@@ -303,10 +305,9 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
            )
   end
 
-  # The whole open pile is bills nobody sent: no decision on this page can
-  # release the credit, so the page must ask for documents instead of pointing a
-  # senior at a queue with nothing decidable in it.
-  test "a month whose only open rows are uncollected bills asks for them", %{
+  # The register waits on bills, while the return still needs one explicit
+  # possession decision before it can claim the reported credit.
+  test "a month whose only open rows are uncollected bills asks for possession", %{
     conn: conn,
     org: org,
     client: client
@@ -337,13 +338,11 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     awaiting = length(collection_only["in_2b_not_books"])
     assert awaiting > 0
 
-    assert has_element?(view, "#gstr3b-verdict", "Waiting for bills")
-    assert has_element?(view, "#gstr3b-request-bills", "Request the #{awaiting} missing bills")
-    refute has_element?(view, "#gstr3b-review-required")
+    assert has_element?(view, "#gstr3b-verdict", "Needs 1 decision")
+    assert has_element?(view, "#gstr3b-review-required", "Work the 1 decision")
+    refute has_element?(view, "#gstr3b-request-bills")
 
-    # The money is named for the document it waits on, not for a judgement.
-    assert has_element?(view, "#gstr3b-verdict", "Awaiting bills")
-    refute render(view) =~ "rides on #{awaiting} decisions"
+    assert has_element?(view, "#gstr3b-verdict", "Riding on decisions")
 
     # Net ITC is computed off the 2B ceiling, so it counts bills nobody sent.
     # Saying so stops a claim-ready figure standing alone.
@@ -444,10 +443,13 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     # under a settled bill reads as an instruction to redo it. The follow-up
     # hangs off `annotated_row?`, the same predicate the verdict already uses,
     # rather than a second rule that could drift from it.
-    {:ok, queue, _html} =
-      live(conn, ~p"/gst/#{client.id}/#{@period}/exceptions?exception=#{open["id"]}")
+    {:ok, review, _html} =
+      live(
+        conn,
+        ~p"/gst/#{client.id}/#{@period}/review/purchase?item=#{open["id"]}&scope=needs_you"
+      )
 
-    queue |> element("#gst-accept-await-2b") |> render_click()
+    review |> element("#gst-accept-await-2b") |> render_click()
 
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
 
@@ -502,11 +504,12 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     assert row_html =~ "truncate"
   end
 
-  test "clicking an open register row lands in the queue on that item", %{
+  test "clicking an open register row patches the mounted month into purchase review", %{
     conn: conn,
     client: client
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    month_pid = view.pid
 
     {open_row, index} =
       read_rows()
@@ -515,11 +518,19 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
         is_binary(row["id"]) and row["bucket"] != "matched" and row["accepted_reason"] == nil
       end)
 
-    assert view |> element("##{dom_id(open_row, index)}") |> render() =~
-             "/gst/#{client.id}/#{@period}/exceptions?exception=#{open_row["id"]}"
+    view |> element("##{dom_id(open_row, index)}") |> render_click()
+
+    assert_patch(
+      view,
+      ~p"/gst/#{client.id}/#{@period}/review/purchase?item=#{open_row["id"]}&scope=needs_you"
+    )
+
+    assert view.pid == month_pid
+    assert has_element?(view, "#purchase-review")
+    assert has_element?(view, "#month-page")
   end
 
-  test "clicking a row with images shows the bill and reason text", %{
+  test "a settled row opens All with evidence and challenge available", %{
     conn: conn,
     client: client
   } do
@@ -529,25 +540,21 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
       read_rows()
       |> Enum.with_index()
       |> Enum.find(fn {row, _} ->
-        row["images"] not in [nil, []] and row["flags"] not in [nil, []] and
-          row["bucket"] == "matched"
+        row["images"] not in [nil, []] and row["bucket"] == "matched"
       end)
 
-    reason = row["flags"] |> hd() |> Map.get("reason")
-    verdict = row["flags"] |> hd() |> Map.get("code") |> Nila.Formatters.issue_label()
-    selector = "#gst-register ##{dom_id(row, index)}"
+    view |> element("#gst-register ##{dom_id(row, index)}") |> render_click()
 
-    refute has_element?(view, selector, reason)
-    assert has_element?(view, "#{selector} .truncate", verdict)
+    assert_patch(
+      view,
+      ~p"/gst/#{client.id}/#{@period}/review/purchase?item=#{row["id"]}&scope=all"
+    )
 
-    view |> element(selector) |> render_click()
-
-    assert has_element?(view, "#gst-evidence-modal")
-    assert has_element?(view, "#gst-evidence-images img")
-    assert render(view) =~ reason
+    assert has_element?(view, "#gst-exception-evidence-frame img")
+    assert has_element?(view, "#gst-challenge-match", "Challenge this match")
   end
 
-  test "clicking a 2B-only row shows its note without an image", %{
+  test "a 2B-only row opens the separate bills-to-collect section", %{
     conn: conn,
     client: client
   } do
@@ -556,22 +563,13 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     {row, index} =
       read_rows()
       |> Enum.with_index()
-      |> Enum.find(fn {row, _} -> row["images"] in [nil, []] and row["recon_note"] end)
+      |> Enum.find(fn {row, _} -> row["bucket"] == "in_2b_not_books" end)
 
-    selector = "##{dom_id(row, index)}"
-    refute has_element?(view, "#gst-register #{selector}", row["recon_note"])
+    view |> element("##{dom_id(row, index)}") |> render_click()
 
-    assert has_element?(
-             view,
-             "#gst-register #{selector} .truncate",
-             "Ask the client for this bill"
-           )
-
-    view |> element(selector) |> render_click()
-
-    assert has_element?(view, "#gst-evidence-modal")
-    refute has_element?(view, "#gst-evidence-images img")
-    assert render(view) =~ row["recon_note"]
+    assert has_element?(view, "#gst-exception-queue", "Bills to collect")
+    assert has_element?(view, "#gst-ask-client")
+    refute has_element?(view, "#gst-exception-evidence-frame")
   end
 
   test "the 3B panel shows the ITC side and says the liability is missing", %{

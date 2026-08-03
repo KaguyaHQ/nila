@@ -30,11 +30,22 @@ defmodule Nila.Gst.Intake.DumpWorker do
   import Ecto.Query, only: [from: 2]
 
   alias Nila.Gst.Chase.CompletenessSender
-  alias Nila.Gst.Filing.{Gstr2b, PortalDocument, Signoffs}
+  alias Nila.Gst.Filing.{Gstr2b, ItcPosition, PortalDocument, Signoffs}
   alias Nila.Gst.Hsn.{Directory, Validation}
   alias Nila.Gst.Intake.{Dump, Dumps, ExtractionAttempts, Preconditions}
   alias Nila.Gst.Issues
-  alias Nila.Gst.Purchase.{Books, Flags, Reconciliation, Register, TaxpayerContext}
+
+  alias Nila.Gst.Purchase.{
+    Books,
+    Flags,
+    Groups,
+    Reconciliation,
+    Register,
+    Review,
+    TaxpayerContext,
+    Workings
+  }
+
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.RateHistory
@@ -615,7 +626,22 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
     recon = Reconciliation.reconcile(invoices, gstr2b)
     flags = Flags.evaluate_all(invoices, entity_ctx, vendor_dir)
+    groups = Groups.build(recon)
     rows = Register.rows(invoices, recon, flags)
+    attestation = Workings.document_attestation(recon, rows, [])
+    itc = ItcPosition.compute(recon, rows)
+
+    summary =
+      rows
+      |> Register.summary(groups)
+      |> Map.put(
+        "lane_decisions",
+        Review.open_decision_count(%{
+          groups: groups,
+          itc: itc,
+          document_attestation: attestation
+        })
+      )
 
     unaccounted = Dumps.unaccounted_pages(dump.org_id, dump.client_id, dump.period, "purchase")
     evidence_gaps = Dumps.evidence_gaps(dump.org_id, dump.client_id, dump.period, "purchase")
@@ -631,7 +657,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
         recon: recon,
         hsn_master_release_id: release_id(directory),
         gst_rate_release_id: release_id(rate_directory),
-        summary: Map.put(Register.summary(rows), "document_flags", document_flags)
+        summary: Map.put(summary, "document_flags", document_flags)
       })
 
     :ok

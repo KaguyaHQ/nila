@@ -93,10 +93,10 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
     assert has_element?(view, "#month-precondition-choose-discard", "Discard it")
     assert saturated(view) == []
 
-    # And no door into the exceptions queue: a month cannot be worked while its
+    # And no door into purchase review: a month cannot be worked while its
     # inputs are in question.
     refute has_element?(view, "#month-door-decisions")
-    refute render(view) =~ "/exceptions"
+    refute render(view) =~ "/review/purchase"
   end
 
   test "a dates-only question never scolds: no alarm tone", context do

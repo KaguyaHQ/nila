@@ -10,6 +10,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   attr :signed_off, :boolean, required: true
   attr :correcting, :any, default: nil
   attr :evidence_page, :integer, default: 0
+  attr :target, :any, default: nil
 
   def exception_surface(assigns) do
     ~H"""
@@ -25,8 +26,8 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       </p>
     </div>
 
-    <div :if={@queue != []} class="grid gap-4 lg:grid-cols-[20rem_1fr]">
-      <div id="gst-exception-queue" class="space-y-block">
+    <div :if={@queue != []} class="grid h-full min-h-0 gap-4 lg:grid-cols-[20rem_1fr]">
+      <div id="gst-exception-queue" class="space-y-block min-h-0 overflow-y-auto pr-1">
         <%!-- Each kind of work carries its own count and its own money, because
               a reviewer's decisions and a client's missing bills are not one
               backlog with one number. --%>
@@ -56,6 +57,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
               type="button"
               id={"queue-#{item.id}"}
               phx-click="select"
+              phx-target={@target}
               phx-value-id={item.id}
               class={[
                 "flex w-full items-start gap-2 px-3 py-2 text-left transition",
@@ -100,12 +102,16 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         </div>
       </div>
 
-      <div id="gst-exception-detail" class="border-base-300 rounded-box border p-6">
+      <div
+        id="gst-exception-detail"
+        class="border-base-300 rounded-box min-h-0 overflow-y-auto border p-6"
+      >
         <.detail
           selected={@selected}
           signed_off={@signed_off}
           correcting={@correcting}
           evidence_page={@evidence_page}
+          target={@target}
         />
       </div>
     </div>
@@ -116,10 +122,144 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   attr :signed_off, :boolean, required: true
   attr :correcting, :any, default: nil
   attr :evidence_page, :integer, default: 0
+  attr :target, :any, default: nil
 
   def detail(%{selected: nil} = assigns) do
     ~H"""
     <p class="text-ink-muted text-ui">Select an exception from the queue.</p>
+    """
+  end
+
+  def detail(%{selected: %{kind: :itc}} = assigns) do
+    ~H"""
+    <div id="gst-itc-decision" class="space-y-section">
+      <div>
+        <div class="flex flex-wrap items-center gap-2">
+          <.badge variant="warning">{issue_label(@selected.type)}</.badge>
+          <span :if={@selected.itc_block["section"]} class="text-ink-subtle text-meta">
+            {@selected.itc_block["section"]}
+          </span>
+        </div>
+        <h3 class="mt-related text-base-content text-body font-semibold">
+          {@selected.invoice_number || "—"} · {@selected.vendor}
+        </h3>
+        <p class="text-ink-muted text-ui mt-1">{@selected.reason}</p>
+      </div>
+
+      <dl class="border-base-300 divide-base-300 rounded-box divide-y border">
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <dt class="text-ink-muted text-ui">Credit at stake</dt>
+          <dd class="text-base-content font-mono">
+            {format_money(@selected.tax_paise, prefix: "₹")}
+          </dd>
+        </div>
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <dt class="text-ink-muted text-ui">Nila's conclusion</dt>
+          <dd class="text-base-content text-ui font-medium">Block this credit</dd>
+        </div>
+      </dl>
+
+      <div
+        :if={not @selected.resolved and not @signed_off}
+        class="border-base-300 pt-block flex flex-wrap gap-2 border-t"
+      >
+        <.button
+          id="gst-itc-block"
+          variant="error"
+          size="sm"
+          phx-click="block_itc"
+          phx-target={@target}
+          phx-value-block-id={@selected.itc_block["block_id"]}
+        >Block credit</.button>
+        <.button
+          id="gst-itc-allow"
+          variant="outline"
+          size="sm"
+          phx-click="allow_itc"
+          phx-target={@target}
+          phx-value-block-id={@selected.itc_block["block_id"]}
+        >Keep credit</.button>
+      </div>
+
+      <div :if={@selected.resolved} class="border-base-300 pt-block flex items-center gap-3 border-t">
+        <span class="text-success text-ui font-medium">{@selected.outcome}</span>
+        <.button
+          :if={not @signed_off}
+          variant="ghost"
+          size="sm"
+          phx-click="reopen_block"
+          phx-target={@target}
+          phx-value-block-id={@selected.itc_block["block_id"]}
+        >Undo</.button>
+      </div>
+    </div>
+    """
+  end
+
+  def detail(%{selected: %{kind: :attestation}} = assigns) do
+    ~H"""
+    <div id="gst-itc-attestation" class="space-y-section">
+      <div>
+        <h3 class="text-base-content text-body font-semibold">
+          Does the client hold the tax invoices?
+        </h3>
+        <p class="text-ink-muted text-ui mt-1">
+          {@selected.attestation.count} supplies in GSTR-2B have no bill on file, carrying
+          <span class="text-base-content font-mono font-medium">
+            {format_money(@selected.tax_paise, prefix: "₹")}
+          </span>
+          of credit. Confirm possession before filing.
+        </p>
+      </div>
+
+      <div
+        :if={not @selected.resolved and not @signed_off}
+        class="border-base-300 pt-block flex flex-wrap gap-2 border-t"
+      >
+        <.button
+          id="gst-attest-held"
+          variant="primary"
+          size="sm"
+          phx-click="attest_documents"
+          phx-target={@target}
+          phx-value-answer="held"
+        >Client holds them</.button>
+        <.button
+          id="gst-attest-not-held"
+          variant="outline"
+          size="sm"
+          phx-click="attest_documents"
+          phx-target={@target}
+          phx-value-answer="not_held"
+        >Not held — withhold {format_money(@selected.tax_paise, prefix: "₹")}</.button>
+        <.button
+          id="gst-attest-unknown"
+          variant="ghost"
+          size="sm"
+          phx-click="attest_documents"
+          phx-target={@target}
+          phx-value-answer="unknown"
+        >Unknown — ask the client</.button>
+      </div>
+
+      <div :if={@selected.verb} class="border-base-300 pt-block flex items-center gap-3 border-t">
+        <span class={[
+          "text-ui font-medium",
+          @selected.resolved && "text-success",
+          not @selected.resolved && "text-warning"
+        ]}>
+          {@selected.outcome || "Still unanswered"}
+        </span>
+        <.button
+          :if={not @signed_off}
+          id="gst-attest-undo"
+          variant="ghost"
+          size="sm"
+          phx-click="reopen_attestation"
+          phx-target={@target}
+        >Undo</.button>
+      </div>
+    </div>
     """
   end
 
@@ -137,6 +277,20 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         <p :if={asked_label(@selected.asked_at)} class="text-meta text-moon mt-1 font-medium">
           {asked_label(@selected.asked_at)}
         </p>
+        <div
+          :if={length(@selected.books_members) > 1}
+          id="gst-exception-books-members"
+          class="border-base-300 rounded-box mt-3 divide-y border"
+        >
+          <div
+            :for={books <- @selected.books_members}
+            id={"gst-exception-books-member-#{books["id"]}"}
+            class="flex items-baseline justify-between gap-3 px-3 py-2"
+          >
+            <span class="text-base-content text-ui font-medium">{books["vendor_name"]}</span>
+            <span class="text-ink-muted text-meta font-mono">{books["invoice_number"] || "—"}</span>
+          </div>
+        </div>
       </div>
 
       <%!-- The dispute is the hero: books-vs-2B leads, and the bill sits beside
@@ -152,12 +306,13 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             <.candidate_card
               :for={{candidate, index} <- Enum.with_index(@selected.candidates, 1)}
               candidate={candidate}
-              books={@selected.books}
+              books={candidate.books}
               index={index}
-              selected_id={@selected.id}
+              selected_id={candidate.books_id}
               show_pick={
                 @selected.action == :ambiguous and not @selected.resolved and not @signed_off
               }
+              target={@target}
             />
           </div>
 
@@ -178,6 +333,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             page={@evidence_page}
             on_open="open-evidence"
             on_page="evidence-page"
+            target={@target}
           />
         </div>
 
@@ -206,10 +362,22 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           variant="ghost"
           size="sm"
           phx-click="undo"
+          phx-target={@target}
           phx-value-id={@selected.id}
         >
           <.icon name="hero-arrow-uturn-left-mini" class="size-4" /> Undo
         </.button>
+        <.button
+          :if={@selected.candidates != []}
+          id="gst-challenge-match"
+          variant="outline"
+          size="sm"
+          phx-click="challenge"
+          phx-target={@target}
+          phx-value-id={@selected.id}
+          disabled={@signed_off}
+          title={@signed_off && "Unlock the signed month first; filed returns require an amendment."}
+        >Challenge this match</.button>
       </div>
 
       <div
@@ -221,6 +389,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           variant="outline"
           size="sm"
           phx-click="reject_all"
+          phx-target={@target}
           phx-value-id={@selected.id}
         >None of these</.button>
       </div>
@@ -232,14 +401,15 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         }
         class="border-base-300 pt-block flex flex-wrap gap-2 border-t"
       >
-        <%= if @correcting && @correcting.id == @selected.id do %>
-          <.correction_form selected={@selected} />
+        <%= if @correcting && @correcting.id in @selected.member_ids do %>
+          <.correction_form selected={@selected} target={@target} />
         <% else %>
           <.button
             :if={@selected.action == :pair}
             variant="success"
             size="sm"
             phx-click="confirm_pair"
+            phx-target={@target}
             phx-value-id={@selected.id}
           >Confirm — same bill</.button>
           <.button
@@ -247,6 +417,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             variant="outline"
             size="sm"
             phx-click="reject_pair"
+            phx-target={@target}
             phx-value-id={@selected.id}
           >Reject — not the same</.button>
           <%!-- Two buttons that move the same zero rupees read as a trick
@@ -272,6 +443,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             variant="outline"
             size="sm"
             phx-click="accept_unmatched"
+            phx-target={@target}
             phx-value-id={@selected.id}
             phx-value-reason="await_2b"
           >Vendor hasn't filed it yet · claim in a later month</.button>
@@ -281,10 +453,17 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             variant="outline"
             size="sm"
             phx-click="accept_unmatched"
+            phx-target={@target}
             phx-value-id={@selected.id}
             phx-value-reason="not_claimable"
           >Not claimable · close the bill</.button>
-          <.button variant="ghost" size="sm" phx-click="start_correct" phx-value-id={@selected.id}>
+          <.button
+            variant="ghost"
+            size="sm"
+            phx-click="start_correct"
+            phx-target={@target}
+            phx-value-id={@selected.id}
+          >
             Correct the number
           </.button>
         <% end %>
@@ -299,6 +478,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           variant="primary"
           size="sm"
           phx-click="open-ask"
+          phx-target={@target}
           phx-value-id={@selected.id}
         >Ask the client for the bill</.button>
         <%!-- Dismissing removes the entry from `in_2b_not_books`, which drops
@@ -310,6 +490,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           variant="outline"
           size="sm"
           phx-click="dismiss_2b"
+          phx-target={@target}
           phx-value-id={@selected.id}
           data-confirm={dismiss_confirm(@selected)}
         >
@@ -326,6 +507,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   attr :index, :integer, required: true
   attr :selected_id, :string, required: true
   attr :show_pick, :boolean, required: true
+  attr :target, :any, default: nil
 
   def candidate_card(assigns) do
     assigns = assign(assigns, :diff, field_diff(assigns.books, assigns.candidate.gstr2b))
@@ -364,6 +546,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           variant="success"
           size="sm"
           phx-click="confirm_pair"
+          phx-target={@target}
           phx-value-id={@selected_id}
           phx-value-ref={@candidate.ref}
         >This one</.button>
@@ -398,11 +581,12 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   end
 
   attr :selected, :map, required: true
+  attr :target, :any, default: nil
 
   def correction_form(assigns) do
     ~H"""
-    <form phx-submit="save_correct" class="flex w-full items-end gap-2">
-      <.input type="hidden" name="id" id="correct-id" value={@selected.id} />
+    <form phx-submit="save_correct" phx-target={@target} class="flex w-full items-end gap-2">
+      <.input type="hidden" name="id" id="correct-id" value={@selected.books["id"]} />
       <div class="flex-1">
         <.input
           type="text"
@@ -413,7 +597,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         />
       </div>
       <.button type="submit" variant="primary" size="sm">Save & re-match</.button>
-      <.button type="button" variant="ghost" size="sm" phx-click="cancel_correct">Cancel</.button>
+      <.button type="button" variant="ghost" size="sm" phx-click="cancel_correct" phx-target={@target}>Cancel</.button>
     </form>
     """
   end

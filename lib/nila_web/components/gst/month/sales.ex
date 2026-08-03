@@ -14,6 +14,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   alias NilaWeb.Components.Gst.Month.Workings
 
   attr :sales_month, :any, default: nil
+  attr :client, :map, required: true
+  attr :period, :string, required: true
   attr :invoices, :list, required: true
   attr :active_invoices, :list, required: true
   attr :open_issue_count, :integer, required: true
@@ -92,7 +94,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           <.button
             :if={@required_issues != []}
             id="gstr1-review-required"
-            href="#gstr1-checks-before-filing"
+            patch={sales_review_path(@client, @period, nil, :needs_you)}
             variant="primary"
             size="sm"
           >
@@ -277,9 +279,15 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               }
               variant="outline"
               size="xs"
-              phx-click="review-sales-issue"
-              phx-value-source={issue["source_id"]}
-              phx-value-target={SalesWorkings.issue_key(issue)}
+              patch={
+                sales_review_path(
+                  @client,
+                  @period,
+                  issue["source_id"],
+                  :needs_you,
+                  SalesWorkings.issue_key(issue)
+                )
+              }
             >
               Review invoice
             </.button>
@@ -319,9 +327,15 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               :if={!is_binary(issue["hsn_code"]) and is_binary(issue["source_id"])}
               variant="outline"
               size="xs"
-              phx-click="review-sales-issue"
-              phx-value-source={issue["source_id"]}
-              phx-value-target={SalesWorkings.issue_key(issue)}
+              patch={
+                sales_review_path(
+                  @client,
+                  @period,
+                  issue["source_id"],
+                  :needs_you,
+                  SalesWorkings.issue_key(issue)
+                )
+              }
             >
               Review
             </.button>
@@ -453,9 +467,15 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                 :if={first_reviewable_cause(row.causes)}
                 variant="ghost"
                 size="xs"
-                phx-click="review-sales-issue"
-                phx-value-source={first_reviewable_cause(row.causes).source_id}
-                phx-value-target={first_reviewable_cause(row.causes).target}
+                patch={
+                  sales_review_path(
+                    @client,
+                    @period,
+                    first_reviewable_cause(row.causes).source_id,
+                    :needs_you,
+                    first_reviewable_cause(row.causes).target
+                  )
+                }
               >
                 Review
               </.button>
@@ -566,6 +586,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           visited={@visited}
           reviewed_invoice={@reviewed_invoice}
           issues_by_invoice={@issues_by_invoice}
+          client={@client}
+          period={@period}
         />
         <%!-- The register reads the extraction; the return files a
               recomputation. Naming both "Tax" is what let a reviewer approve
@@ -599,6 +621,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   attr :visited, :any, default: MapSet.new()
   attr :reviewed_invoice, :string, default: nil
   attr :issues_by_invoice, :map, required: true
+  attr :client, :map, required: true
+  attr :period, :string, required: true
 
   defp invoice_table(assigns) do
     assigns =
@@ -620,12 +644,14 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       }
       row_click={
         fn invoice ->
-          identifier =
-            if @number_counts[invoice["invoice_number"]] == 1,
-              do: invoice["invoice_number"],
-              else: invoice["id"]
-
-          JS.push("select-invoice", value: %{inum: identifier})
+          JS.patch(
+            sales_review_path(
+              @client,
+              @period,
+              invoice["id"],
+              invoice_scope(@issues_by_invoice, invoice)
+            )
+          )
         end
       }
       row_class={
@@ -1045,6 +1071,27 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp cess_label(:checked_none), do: "Checked · none found"
   defp cess_label(:not_evaluated), do: "Not checked · awaiting your answer"
   defp cess_label(:unsupported), do: "Applies · this return cannot carry it"
+
+  defp sales_review_path(client, period, source_id, scope, focus \\ nil) do
+    params =
+      %{"item" => source_id, "scope" => to_string(scope), "focus" => focus}
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
+
+    "/gst/#{client.id}/#{period}/review/sales?" <> URI.encode_query(params)
+  end
+
+  defp invoice_scope(issues_by_invoice, invoice) do
+    actionable? =
+      issues_by_invoice
+      |> Helpers.invoice_issues(invoice)
+      |> Enum.any?(fn issue ->
+        issue["status"] == "open" and
+          Issues.resolution_kind(issue) in [:decision, :correction, :confirmation]
+      end)
+
+    if actionable?, do: :needs_you, else: :all
+  end
 
   defp issues_clause(0), do: "Ready"
   defp issues_clause(1), do: "1 to answer"
