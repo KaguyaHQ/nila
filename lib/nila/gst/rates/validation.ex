@@ -6,6 +6,10 @@ defmodule Nila.Gst.Rates.Validation do
 
   @rate_tolerance 0.05
 
+  @correction_advice "Confirm whether the HSN or rate needs correction; " <>
+                       "exemptions and description-dependent conditions are not " <>
+                       "automatically resolved."
+
   def annotate_invoices(invoices, directory) do
     Enum.map(invoices, fn invoice ->
       Map.update(invoice, "line_items", [], fn lines ->
@@ -14,35 +18,32 @@ defmodule Nila.Gst.Rates.Validation do
     end)
   end
 
+  # One issue per invoice and status, not per line, for the reason spelled out
+  # in `Hsn.Validation.sales_issues/1`: the resolution target is
+  # `source_id:code` (`Sales.Workings.issue_key/1`), so three flagged lines on
+  # one bill posted three rows a reviewer could only answer once.
+  #
+  # The merge belongs here rather than to the generic `collapse_by_target/1`,
+  # which keeps the first row's map wholesale and unions only message, fields
+  # and lines. Statutory candidates are per code, and the codes differ across
+  # the lines being merged — so that merge left the card offering line 1's
+  # candidate rates beside a message naming lines 1, 3 and 4, which is a
+  # citation against the wrong entry. Here the candidates and the codes are
+  # unioned with the lines that produced them, and each line keeps its own
+  # sentence naming its own code, rate and notification entry.
   def sales_issues(invoices) do
     Enum.flat_map(invoices, fn invoice ->
-      invoice["line_items"]
-      |> List.wrap()
-      |> Enum.with_index(1)
-      |> Enum.flat_map(fn {line, index} ->
-        case line["rate_validation"] do
-          %{"status" => status} = validation when status in ~w(incompatible review) ->
-            [
-              %{
-                "invoice" => invoice["invoice_number"],
-                "source_id" => invoice["id"],
-                "code" => issue_code(status),
-                "level" => Issues.level_for(issue_code(status)),
-                "message" => message(line, index, validation),
-                "hsn_code" => line["hsn_sac"],
-                "hsn_rates" => validation["candidate_rates"],
-                "fields" => [
-                  "line_items[#{index - 1}].hsn_sac",
-                  "line_items[#{index - 1}].cgst_rate",
-                  "line_items[#{index - 1}].sgst_rate",
-                  "line_items[#{index - 1}].igst_rate"
-                ]
-              }
-            ]
+      findings =
+        invoice["line_items"]
+        |> List.wrap()
+        |> Enum.with_index(1)
+        |> Enum.flat_map(&line_finding/1)
 
-          _ ->
-            []
-        end
+      findings
+      |> Enum.map(& &1.status)
+      |> Enum.uniq()
+      |> Enum.map(fn status ->
+        sales_issue(invoice, status, Enum.filter(findings, &(&1.status == status)))
       end)
     end)
   end
@@ -70,6 +71,51 @@ defmodule Nila.Gst.Rates.Validation do
           []
       end
     end)
+  end
+
+  defp line_finding({line, index}) do
+    case line["rate_validation"] do
+      %{"status" => status} = validation when status in ~w(incompatible review) ->
+        [
+          %{
+            status: status,
+            line: index,
+            code: line["hsn_sac"],
+            rates: List.wrap(validation["candidate_rates"]),
+            reason: line_reason(line, index, validation),
+            fields: [
+              "line_items[#{index - 1}].hsn_sac",
+              "line_items[#{index - 1}].cgst_rate",
+              "line_items[#{index - 1}].sgst_rate",
+              "line_items[#{index - 1}].igst_rate"
+            ]
+          }
+        ]
+
+      _ ->
+        []
+    end
+  end
+
+  defp sales_issue(invoice, status, findings) do
+    code = issue_code(status)
+    codes = findings |> Enum.map(& &1.code) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    %{
+      "invoice" => invoice["invoice_number"],
+      "source_id" => invoice["id"],
+      "code" => code,
+      "level" => Issues.level_for(code),
+      "message" => Enum.map_join(findings, " ", & &1.reason) <> " " <> @correction_advice,
+      # `hsn_code` is one code because the callers that take a code take one;
+      # `hsn_codes` is what the merged issue actually covers, and any gate that
+      # asks "has the reviewer seen this" has to read the list.
+      "hsn_code" => List.first(codes),
+      "hsn_codes" => codes,
+      "hsn_rates" => findings |> Enum.flat_map(& &1.rates) |> Enum.uniq() |> Enum.sort(),
+      "lines" => Enum.map(findings, & &1.line),
+      "fields" => findings |> Enum.flat_map(& &1.fields) |> Enum.uniq()
+    }
   end
 
   defp annotate_line(%{"hsn_kind" => "hsn"} = line, invoice_date, directory) do
@@ -177,7 +223,13 @@ defmodule Nila.Gst.Rates.Validation do
 
   defp invoice_date(_value), do: {:error, :missing_date}
 
-  defp message(line, index, validation) do
+  defp message(line, index, validation),
+    do: line_reason(line, index, validation) <> " " <> @correction_advice
+
+  # The finding and the advice are separate because a merged issue states each
+  # line's finding and then says once what to do about all of them; repeating
+  # the caveat per line would bury the lines it is about.
+  defp line_reason(line, index, validation) do
     [candidate | _] = validation["candidates"]
     rates = Enum.map_join(validation["candidate_rates"], ", ", &rate_label/1)
 
@@ -188,8 +240,7 @@ defmodule Nila.Gst.Rates.Validation do
       "#{line["hsn_sac"]} at #{rate_label(validation["printed_rate"])} #{strength} " <>
       "the statutory candidate #{rates}. Based on #{candidate["notification_number"]}, " <>
       "Schedule #{candidate["schedule"]}, entry #{candidate["serial_number"]}, effective " <>
-      "#{candidate["effective_from"]}. Confirm whether the HSN or rate needs correction; " <>
-      "exemptions and description-dependent conditions are not automatically resolved."
+      "#{candidate["effective_from"]}."
   end
 
   defp issue_code("incompatible"), do: "statutory_rate_mismatch"

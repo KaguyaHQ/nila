@@ -11,6 +11,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
   attr :open_period, :string, required: true
   attr :r1_signoff, :any, default: nil
   attr :gstr3b_signoff, :any, default: nil
+  attr :can_sign_off, :boolean, default: false
 
   def source_record(assigns) do
     ~H"""
@@ -83,7 +84,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
                 incomplete, and both sign-offs gate on that, so without this the
                 month could never be filed through the product at all. --%>
           <.button
-            :if={dump.status == "failed"}
+            :if={dump.status == "failed" and @can_sign_off}
             id={"month-dump-abandon-#{dump.id}"}
             variant="outline"
             size="xs"

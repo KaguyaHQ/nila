@@ -250,7 +250,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               variant="outline"
               size="xs"
               phx-click="review-hsn-issue"
-              phx-value-code={issue["hsn_code"]}
+              phx-value-code={Enum.join(hsn_codes(issue), ",")}
             >
               Review HSN rows
             </.button>
@@ -399,8 +399,20 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           </div>
         </div>
 
+        <%!-- The file count is read live off today's dumps while the documents
+              beside it can come out of a frozen snapshot, so "0 files received"
+              can sit next to "12 documents extracted" — a pair that cannot both
+              be true. A count that cannot be true is a count we do not have: a
+              month reconciled from a backfill or an import never had a file
+              pass through intake. Same treatment the purchase track already
+              gives it. --%>
         <div class="border-base-300 rounded-box grid gap-4 border p-4 sm:grid-cols-2 lg:grid-cols-4">
-          <.control_stat label="Source files received" value={@account.source.files} />
+          <.control_stat
+            label="Source files received"
+            value={@account.source.files}
+            unknown={@account.source.files == 0 and @account.extraction.documents > 0}
+            unknown_note="not recorded for this month"
+          />
           <.control_stat
             :if={@account.source.pages_read}
             label="Invoice pages read"
@@ -685,12 +697,22 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   attr :label, :string, required: true
   attr :value, :any, required: true
   attr :note, :string, default: nil
+  attr :unknown, :boolean, default: false
+  attr :unknown_note, :string, default: nil
 
   defp control_stat(assigns) do
     ~H"""
     <div>
       <dt class="text-ink-subtle text-label font-semibold uppercase">{@label}</dt>
-      <dd class="text-base-content text-body mt-1 font-medium tabular-nums">{@value}</dd>
+      <dd
+        :if={not @unknown}
+        class="text-base-content text-body mt-1 font-medium tabular-nums"
+      >
+        {@value}
+      </dd>
+      <dd :if={@unknown} class="text-body text-ink-subtle mt-1 font-medium">
+        — <span class="text-meta">{@unknown_note}</span>
+      </dd>
       <p :if={@note} class="text-ink-subtle text-meta mt-1">{@note}</p>
     </div>
     """
@@ -995,12 +1017,21 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp other_advisories(advisories),
     do: Enum.reject(advisories, &(&1["code"] == "hsn_new_code"))
 
+  # Every code the issue covers, not just the first. Collapsing per-line findings
+  # into one card left this reading `hsn_code` alone, so an invoice with two bad
+  # codes cleared its check once the rows for the first were expanded — the
+  # second was never rendered and nobody looked at it. Before the collapse that
+  # took two separate reviews.
   defp hsn_reviewed?(issue, invoices, expanded_nodes) do
-    case Workings.hsn_node_ids(invoices, issue["hsn_code"]) do
+    case Enum.flat_map(hsn_codes(issue), &Workings.hsn_node_ids(invoices, &1)) do
       [] -> false
       nodes -> Enum.all?(nodes, &MapSet.member?(expanded_nodes, &1))
     end
   end
+
+  # The fallback is load-bearing: `rate_history.ex` and `multiple_rate_issues/1`
+  # emit single-code issues that carry no `hsn_codes` at all.
+  defp hsn_codes(issue), do: issue["hsn_codes"] || List.wrap(issue["hsn_code"])
 
   defp hsn_totals(rows) do
     Enum.reduce(rows, %{taxable: 0.0, tax: 0.0}, fn row, totals ->

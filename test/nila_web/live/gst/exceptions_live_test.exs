@@ -691,6 +691,13 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
     assert has_element?(view, "button", "Correct the number")
     refute render(view) =~ "isn&#39;t wired"
 
+    # Two buttons that move the same zero rupees read as a trick question. The
+    # page has to say that the claim is untouched either way, and that the
+    # whole difference is the follow-up each one records.
+    assert has_element?(view, "#gst-accept-unmatched-note", "Neither changes this month")
+    assert has_element?(view, "#gst-accept-await-2b", "claim in a later month")
+    assert has_element?(view, "#gst-accept-not-claimable", "close the bill")
+
     view |> element("#gst-accept-await-2b") |> render_click()
     assert render(view) =~ "Kept — awaiting vendor&#39;s 2B"
 

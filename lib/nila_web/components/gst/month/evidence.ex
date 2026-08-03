@@ -284,6 +284,8 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
     checks = Gstr1.invoice_checks(assigns.selected_invoice)
     issues = Helpers.invoice_issues(assigns.issues_by_invoice, assigns.selected_invoice)
 
+    failed_checks = Enum.reject(checks, & &1["passed"])
+
     # Pair a failed check to the issue that speaks for it. Exact `fields`
     # equality used to be enough because one failing line raised one issue; now
     # that lines sharing a code collapse into a single issue, its `fields` is
@@ -291,10 +293,23 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
     # the line being one the issue covers, so a merged issue still renders
     # in place beside the line that produced it instead of dropping into the
     # list below.
-    check_issues =
-      checks
-      |> Enum.reject(& &1["passed"])
-      |> Map.new(fn check -> {check_key(check), issue_for_check(issues, check)} end)
+    #
+    # An issue is claimed by the first check it covers and by no other. Every
+    # failing line of a merged issue matches it, and a card per check put the
+    # same text on the page twice under the same DOM id — `issue_dom_id/1`
+    # names the issue, and the issue is one — which is invalid HTML and the id
+    # LiveView patches by. The later checks fall through to their own ✗ line,
+    # so nothing that failed goes unsaid; the question is asked once, where it
+    # was raised, because it can only be answered once.
+    {pairs, _claimed} =
+      Enum.map_reduce(failed_checks, MapSet.new(), fn check, claimed ->
+        case issue_for_check(issues, check) do
+          nil -> {{check_key(check), nil}, claimed}
+          issue -> {{check_key(check), unclaimed(issue, claimed)}, MapSet.put(claimed, issue)}
+        end
+      end)
+
+    check_issues = Map.new(pairs)
 
     in_place = check_issues |> Map.values() |> Enum.reject(&is_nil/1)
 
@@ -303,7 +318,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
     assigns =
       assigns
-      |> assign(:failed_checks, Enum.reject(checks, & &1["passed"]))
+      |> assign(:failed_checks, failed_checks)
       |> assign(:check_issues, check_issues)
       |> assign(:other_issues, issues -- in_place)
       |> assign(:open_issues, open_issues)
@@ -927,6 +942,10 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         _ -> nil
       end
     end)
+  end
+
+  defp unclaimed(issue, claimed) do
+    if MapSet.member?(claimed, issue), do: nil, else: issue
   end
 
   defp issue_for_check(issues, check) do

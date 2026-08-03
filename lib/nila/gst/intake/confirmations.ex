@@ -91,17 +91,51 @@ defmodule Nila.Gst.Intake.Confirmations do
   @doc """
   A confirmation is stale while any supplied sales packet is unresolved or
   failed, or when an effective sales packet arrived after the confirmation.
-  Discarded and post-filing packets do not alter the live draft.
+  Discarded and post-filing packets do not alter the live draft, and neither
+  does a failed packet a later clean extraction has already superseded.
   """
   def stale?(%Confirmation{} = confirmation) do
     dumps = Dumps.list(confirmation.org_id, confirmation.client_id, confirmation.period)
+    superseded = superseded_failures(dumps)
 
     Enum.any?(dumps, fn dump ->
-      dump.kind == "sales" and
+      dump.kind == "sales" and dump.id not in superseded and
         (dump.status in ~w(received extracting failed held needs_confirmation) or
            (dump.status == "extracted" and
               DateTime.compare(dump.inserted_at, confirmation.inserted_at) == :gt))
     end)
+  end
+
+  # A failed packet is a dead end rather than a queue item: extraction produced
+  # nothing, so there is no work inside it for anyone to pick up. The human's
+  # answer to a failure is to bring the original in again, and when that
+  # re-upload extracts cleanly the failure has been answered — asking the senior
+  # to *also* dismiss the corpse is bookkeeping the month should not need. The
+  # other blocking statuses are not superseded this way: `held`,
+  # `needs_confirmation` and the in-flight ones each carry an unanswered
+  # question about their own contents, which a different packet does not answer.
+  #
+  # This does not slip a month past its reviewer. The packet doing the
+  # superseding is itself an effective dump, so if it landed after the
+  # confirmation, the `extracted`-after clause above re-opens the month for a
+  # fresh answer on its own terms.
+  #
+  # Arrival order comes from `Dumps.list/3` (inserted_at, then id), so index
+  # comparison is a total order even for packets recorded in the same tick.
+  defp superseded_failures(dumps) do
+    indexed = Enum.with_index(dumps)
+
+    last_extracted =
+      for {dump, index} <- indexed,
+          dump.status == "extracted",
+          into: %{},
+          do: {dump.kind, index}
+
+    for {dump, index} <- indexed,
+        dump.status == "failed",
+        index < Map.get(last_extracted, dump.kind, -1),
+        into: MapSet.new(),
+        do: dump.id
   end
 
   defp verify_client_actor(client, %{"channel" => "whatsapp", "actor_phone" => phone}) do

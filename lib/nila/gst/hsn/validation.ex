@@ -82,6 +82,7 @@ defmodule Nila.Gst.Hsn.Validation do
 
   defp sales_issue(invoice, status, findings) do
     code = issue_code(status)
+    codes = findings |> Enum.map(& &1.code) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
     %{
       "invoice" => invoice["invoice_number"],
@@ -91,7 +92,15 @@ defmodule Nila.Gst.Hsn.Validation do
       "message" => sales_reason(findings, status),
       "fields" => Enum.map(findings, &"line_items[#{&1.line - 1}].hsn_sac"),
       "lines" => Enum.map(findings, & &1.line),
-      "hsn_code" => Enum.find_value(findings, & &1.code)
+      # Every code the merged issue speaks for, not only the first one found.
+      # The reviewer-side gate expands the workings rows for the code it is
+      # handed and unlocks the answer once they are all open, so an invoice
+      # carrying two bad codes would unlock on the first — the second code's
+      # rows never rendered, and before the collapse that took two reviews.
+      # `hsn_code` stays a single code because the expand event and the novelty
+      # table each take one; the list is what a gate has to read.
+      "hsn_code" => List.first(codes),
+      "hsn_codes" => codes
     }
   end
 
@@ -270,7 +279,8 @@ defmodule Nila.Gst.Hsn.Validation do
       "message" => inferred_message(lines, codes) <> novelty_clause(novel),
       "fields" => ["line_items"],
       "lines" => Enum.map(lines, fn {_line, index} -> index end),
-      "hsn_code" => List.first(codes)
+      "hsn_code" => List.first(codes),
+      "hsn_codes" => codes
     }
   end
 

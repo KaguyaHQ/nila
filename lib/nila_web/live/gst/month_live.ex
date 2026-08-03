@@ -531,8 +531,15 @@ defmodule NilaWeb.Gst.MonthLive do
   def handle_event("toggle-workings-node", %{"node" => node}, socket),
     do: {:noreply, update(socket, :expanded_nodes, &toggle(&1, node))}
 
+  # Comma-joined, because one issue can cover several bad codes since per-line
+  # findings collapse into a single card. Expanding only the first left the
+  # review gate unsatisfiable — or worse, satisfied without the other codes'
+  # rows ever being shown.
   def handle_event("review-hsn-issue", %{"code" => code}, socket) do
-    nodes = Workings.hsn_node_ids(socket.assigns.active_invoices, code)
+    nodes =
+      code
+      |> String.split(",", trim: true)
+      |> Enum.flat_map(&Workings.hsn_node_ids(socket.assigns.active_invoices, &1))
 
     {:noreply,
      update(socket, :expanded_nodes, fn expanded ->
@@ -858,17 +865,27 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
+  # Senior-only, because it clears exactly the block that
+  # `Confirmations.record_override/4` clears — and that is `:sign_off`-only with
+  # a written reason. Leaving this open let any member reach the same outcome in
+  # one click, which is a cheaper route around a control that was made
+  # senior-only on purpose.
   def handle_event("abandon-dump", %{"dump-id" => dump_id}, socket) do
     org_id = socket.assigns.current_scope.current_org.id
 
-    with {:ok, %{status: "failed"} = dump} <- Dumps.fetch(org_id, dump_id),
+    with true <- socket.assigns.can_sign_off,
+         {:ok, %{status: "failed"} = dump} <- Dumps.fetch(org_id, dump_id),
          {:ok, _abandoned} <- Dumps.abandon_failed(dump, socket.assigns.current_scope.user.id) do
       {:noreply,
        socket
        |> reload()
        |> put_flash(:info, "Stopped waiting for that packet. The month can be worked without it.")}
     else
-      _ -> {:noreply, socket}
+      false ->
+        {:noreply, put_flash(socket, :error, "Only a senior can stop waiting for a packet.")}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -1100,6 +1117,7 @@ defmodule NilaWeb.Gst.MonthLive do
         >
           <Arrivals.source_record
             :if={is_nil(@sales_month)}
+            can_sign_off={@can_sign_off}
             id="month-sales-sources"
             dumps={@sales_dumps}
             superseded_2b_ids={@superseded_2b_ids}
@@ -1111,6 +1129,7 @@ defmodule NilaWeb.Gst.MonthLive do
           />
           <Arrivals.source_record
             :if={is_nil(@purchase_month)}
+            can_sign_off={@can_sign_off}
             id="month-purchase-sources"
             dumps={@purchase_dumps}
             superseded_2b_ids={@superseded_2b_ids}
@@ -1146,6 +1165,7 @@ defmodule NilaWeb.Gst.MonthLive do
           >
             <:source>
               <Arrivals.source_record
+                can_sign_off={@can_sign_off}
                 id="month-sales-sources"
                 dumps={@sales_dumps}
                 superseded_2b_ids={@superseded_2b_ids}
@@ -1190,6 +1210,7 @@ defmodule NilaWeb.Gst.MonthLive do
             </:assembled>
             <:source>
               <Arrivals.source_record
+                can_sign_off={@can_sign_off}
                 id="month-purchase-sources"
                 dumps={@purchase_dumps}
                 superseded_2b_ids={@superseded_2b_ids}

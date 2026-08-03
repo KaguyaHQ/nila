@@ -5,7 +5,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
   import Nila.GstFixtures
 
   alias Nila.Clients
-  alias Nila.Gst.Intake.Dumps
+  alias Nila.Gst.Intake.{Dump, Dumps}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
 
   @period "2025-10"
@@ -66,6 +66,38 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#gstr1-reconciliation", "₹0.00")
     assert has_element?(view, "#gstr1-verdict", "₹86,752.00")
     assert has_element?(view, "#gstr1-verdict", "₹15,615.36")
+  end
+
+  test "a source-file count that cannot be true is not printed as fact", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    # The file count is read live off today's dumps while the documents beside
+    # it can come out of a frozen snapshot, so "0 files received" can sit next
+    # to a dozen extracted documents. The purchase track already refuses to
+    # print that pair; so does this one now.
+    {:ok, seeded} = Nila.Gst.Sales.Months.get_by_period(org.id, client.id, @period)
+    period = "2025-08"
+
+    {:ok, _} =
+      Nila.Gst.Sales.Months.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: period,
+        state: "worked",
+        invoices: seeded.invoices,
+        derived_gstr1: seeded.derived_gstr1,
+        issues: seeded.issues,
+        summary: seeded.summary
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+    assert has_element?(view, "#gstr1-completeness", "not recorded for this month")
+
+    # The month whose files did pass through intake still states the count.
+    {:ok, worked, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    refute has_element?(worked, "#gstr1-completeness", "not recorded for this month")
   end
 
   test "every invoice renders once in the visible register with its review state", %{
@@ -1722,6 +1754,70 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert job.args["dump_id"] == straggler.id
   end
 
+  # The failed packet was the one dead end in the product: intake stays
+  # incomplete, both sign-offs gate on that, and nothing moved a dump out of
+  # `failed`. This is the exit, so it is worth a test that walks the whole way
+  # out — blocked month, one click, signable month.
+  test "a failed sales packet blocks the month until a senior stops waiting for it", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    confirm_sales_complete!(org, client, @period)
+
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id},
+        %{period: @period, kind: "sales", file_keys: ["dumps/unreadable.pdf"]}
+      )
+
+    failed = dump |> Dump.changeset(%{status: "failed"}) |> Nila.Repo.update!()
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    confirm_all_open_issues(view)
+
+    assert has_element?(view, "#month-dump-#{failed.id}", "Extraction failed")
+    assert has_element?(view, "#gstr1-completeness", "Confirmation stale")
+    refute has_element?(view, "#month-door-sign-r1")
+
+    view |> element("#month-dump-abandon-#{failed.id}") |> render_click()
+
+    assert render(view) =~ "Stopped waiting for that packet"
+    refute has_element?(view, "#month-dump-abandon-#{failed.id}")
+    assert has_element?(view, "#gstr1-completeness", "Client confirmed")
+    assert has_element?(view, "#month-door-sign-r1")
+
+    assert Nila.Repo.get!(Dump, failed.id).status == "discarded"
+  end
+
+  test "a member cannot stop waiting for a failed packet", %{org: org, client: client} do
+    confirm_sales_complete!(org, client, @period)
+
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id},
+        %{period: @period, kind: "sales", file_keys: ["dumps/unreadable.pdf"]}
+      )
+
+    failed = dump |> Dump.changeset(%{status: "failed"}) |> Nila.Repo.update!()
+
+    member = user_fixture()
+    {:ok, _} = Nila.Orgs.add_user(org, member.id, "member")
+    member_conn = log_in_user(Phoenix.ConnTest.build_conn(), member)
+
+    {:ok, view, _html} = live(member_conn, ~p"/gst/#{client.id}/#{@period}")
+
+    # Abandoning clears exactly the block `Confirmations.record_override/4`
+    # clears, and that is senior-only with a written reason. The control is
+    # hidden, and the event is refused even when the client is driven directly.
+    refute has_element?(view, "#month-dump-abandon-#{failed.id}")
+
+    render_click(view, "abandon-dump", %{"dump-id" => failed.id})
+
+    assert render(view) =~ "Only a senior can stop waiting for a packet."
+    assert Nila.Repo.get!(Dump, failed.id).status == "failed"
+  end
+
   test "downloads the portal-shaped GSTR-1 JSON", %{conn: conn, client: client} do
     conn = get(conn, ~p"/gstr1/#{client.id}/#{@period}/return.json")
 
@@ -1730,6 +1826,127 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert body["gstin"] == "33AEWPH4158J1Z3"
     assert body["fp"] == "102025"
     assert is_list(body["b2b"])
+  end
+
+  # Two lines of one bill fail the same check, so they are one issue against one
+  # resolution target. `check_issues` is keyed per check and both checks resolve
+  # to that issue, so a card per check put the same question on the page twice
+  # under the same DOM id — `issue_dom_id/1` names the issue, and the issue is
+  # one. Duplicate ids are invalid HTML and are what LiveView patches by.
+  test "a merged line issue is one card, and every failing line still gets its ✗", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Sales.Gstr1
+    alias Nila.Gst.Sales.Months, as: SalesMonths
+
+    period = "2025-11"
+
+    # Lines 1 and 3 don't multiply out; line 2 does.
+    invoices = [
+      Gstr1.normalize_invoice(%{
+        "data" => %{
+          "invoice_number" => "41/2025-26",
+          "invoice_date" => "04.11.2025",
+          "seller" => %{"gstin" => client.gstin},
+          "buyer" => %{"name" => "PONMANI AND CO", "gstin" => "33AAVCS8021P1ZB"},
+          "line_items" => [
+            arithmetic_line("Silver rod", 1000, 50),
+            arithmetic_line("Silver wire", 500, 45),
+            arithmetic_line("Silver sheet", 200, 10)
+          ]
+        }
+      })
+    ]
+
+    failed = invoices |> hd() |> Gstr1.invoice_checks() |> Enum.reject(& &1["passed"])
+    assert length(failed) == 2
+
+    {:ok, _} =
+      SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: period,
+        state: "worked",
+        invoices: invoices,
+        issues: Gstr1.validation_issues(invoices),
+        derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, period))
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}?invoice=41%2F2025-26")
+
+    ids =
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#gstr1-checks [id^='gstr1-issue-']")
+      |> LazyHTML.attribute("id")
+
+    assert ids == ["gstr1-issue-line_arithmetic-line-1"]
+    assert ids == Enum.uniq(ids)
+
+    # The card names both lines, and line 3's own ✗ still states its arithmetic
+    # — the question is asked once, nothing that failed goes unsaid.
+    checks = view |> element("#gstr1-checks") |> render()
+    assert checks =~ "line 1 tax 100"
+    assert checks =~ "line 3 tax 20"
+    assert checks =~ "L3: 200.00 × 18% = 20.00"
+  end
+
+  # The panel's HSN gate expands the workings rows for the code an issue carries
+  # and unlocks the answer once they are all open. A merged issue therefore has
+  # to carry every code it covers: holding only the first, reviewing 999999's
+  # rows would clear an invoice whose 888888 rows were never rendered. Before
+  # the collapse that took two separate reviews, and it still has to.
+  test "a two-bad-code invoice cannot be covered by reviewing one of them" do
+    alias Nila.Gst.Hsn.Validation, as: HsnValidation
+    alias NilaWeb.Components.Gst.Month.Workings
+
+    invoices = [
+      %{
+        "id" => "inv_01",
+        "invoice_number" => "50/2025-26",
+        "line_items" => [bad_hsn_line("Bogus", "999999"), bad_hsn_line("Also bogus", "888888")]
+      }
+    ]
+
+    assert [issue] = HsnValidation.sales_issues(invoices)
+    assert issue["hsn_codes"] == ["999999", "888888"]
+
+    reviewed = MapSet.new(Workings.hsn_node_ids(invoices, "999999"))
+
+    required =
+      Enum.flat_map(issue["hsn_codes"], &Workings.hsn_node_ids(invoices, &1))
+
+    assert reviewed != MapSet.new()
+    assert required != []
+    refute Enum.all?(required, &MapSet.member?(reviewed, &1))
+  end
+
+  defp arithmetic_line(description, taxable, half_tax) do
+    %{
+      "description" => description,
+      "hsn_sac" => "7106",
+      "taxable_value" => taxable,
+      "cgst_rate" => 9,
+      "cgst_amount" => half_tax,
+      "sgst_rate" => 9,
+      "sgst_amount" => half_tax
+    }
+  end
+
+  defp bad_hsn_line(description, code) do
+    %{
+      "description" => description,
+      "hsn_sac" => code,
+      "hsn_validation" => %{"status" => "invalid", "code" => code},
+      "taxable_value" => 1000,
+      "cgst_rate" => 9,
+      "cgst_amount" => 90,
+      "sgst_rate" => 9,
+      "sgst_amount" => 90
+    }
   end
 
   test "another org cannot open the month or fetch the JSON", %{client: client} do

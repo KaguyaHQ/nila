@@ -108,6 +108,34 @@ defmodule Nila.Gst.Hsn.ValidationTest do
              "line_items[2].hsn_sac",
              "line_items[3].hsn_sac"
            ]
+
+    # And every code stays reviewable. The collapse merged two bad codes into
+    # one row; carrying only the first would let the row be answered with the
+    # second code's lines never rendered.
+    assert issue["hsn_codes"] == ["999999", "888888"]
+    assert issue["hsn_code"] == "999999"
+  end
+
+  test "an all-missing issue carries no codes, because there are none to review" do
+    invoices = [
+      %{
+        "id" => "inv_01",
+        "invoice_number" => "135/2025-26",
+        "line_items" => [
+          %{"description" => "Nameless", "hsn_sac" => nil},
+          %{"description" => "Also nameless", "hsn_sac" => nil}
+        ]
+      }
+    ]
+
+    assert [issue] =
+             invoices
+             |> Validation.annotate_invoices(@directory)
+             |> Validation.sales_issues()
+
+    assert issue["code"] == "missing_hsn_sac"
+    assert issue["hsn_code"] == nil
+    assert issue["hsn_codes"] == []
   end
 
   test "an inferred code that is also new is asked once, at the level that gates" do

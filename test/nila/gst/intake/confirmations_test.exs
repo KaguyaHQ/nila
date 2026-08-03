@@ -208,6 +208,106 @@ defmodule Nila.Gst.Intake.ConfirmationsTest do
     assert :complete == status(context)
   end
 
+  test "a clean re-upload supersedes the failed packet it replaces", context do
+    {:ok, first} =
+      Dumps.record(
+        %{org_id: context.org.id, client_id: context.client.id},
+        %{period: @period, kind: "sales"}
+      )
+
+    first |> Dump.changeset(%{status: "failed"}) |> Repo.update!()
+
+    # Bringing the original in again is the answer to a failed extraction. Once
+    # it lands, nothing is waiting on the dead packet, so the senior should not
+    # have to dismiss it as well before the month can be confirmed.
+    {:ok, replacement} =
+      Dumps.record(
+        %{org_id: context.org.id, client_id: context.client.id},
+        %{period: @period, kind: "sales"}
+      )
+
+    Dumps.mark_extracted(replacement, [])
+
+    assert {:ok, _} =
+             record_client(context, %{
+               decision: "client_yes",
+               channel: "whatsapp",
+               source_ref: "wamid.after-replacement"
+             })
+
+    assert :complete == status(context)
+
+    # A failure after the last clean extraction is not superseded by it — that
+    # packet is still unaccounted for.
+    {:ok, later} =
+      Dumps.record(
+        %{org_id: context.org.id, client_id: context.client.id},
+        %{period: @period, kind: "sales"}
+      )
+
+    later |> Dump.changeset(%{status: "failed"}) |> Repo.update!()
+    assert :stale == status(context)
+  end
+
+  test "supersession does not swallow a re-upload that lands after the confirmation", context do
+    {:ok, failed} =
+      Dumps.record(
+        %{org_id: context.org.id, client_id: context.client.id},
+        %{period: @period, kind: "sales"}
+      )
+
+    failed |> Dump.changeset(%{status: "failed"}) |> Repo.update!()
+
+    assert {:ok, confirmation} =
+             record_client(context, %{
+               decision: "client_yes",
+               channel: "whatsapp",
+               source_ref: "wamid.before-replacement"
+             })
+
+    {:ok, replacement} =
+      Dumps.record(
+        %{org_id: context.org.id, client_id: context.client.id},
+        %{period: @period, kind: "sales"}
+      )
+
+    Dumps.mark_extracted(replacement, [])
+
+    # The packet that supersedes is itself new sales material the client has not
+    # confirmed. Silencing the failure must not silence that.
+    assert Confirmations.stale?(confirmation)
+    assert :stale == status(context)
+  end
+
+  test "an extraction of another kind supersedes nothing", context do
+    {:ok, failed} =
+      Dumps.record(
+        %{org_id: context.org.id, client_id: context.client.id},
+        %{period: @period, kind: "sales"}
+      )
+
+    failed |> Dump.changeset(%{status: "failed"}) |> Repo.update!()
+
+    # A purchase packet landing cleanly says nothing about the sales bills that
+    # never made it through, so the sales failure still holds the month.
+    {:ok, purchase} =
+      Dumps.record(
+        %{org_id: context.org.id, client_id: context.client.id},
+        %{period: @period, kind: "purchase"}
+      )
+
+    Dumps.mark_extracted(purchase, [])
+
+    assert {:ok, _} =
+             record_client(context, %{
+               decision: "client_yes",
+               channel: "whatsapp",
+               source_ref: "wamid.cross-kind"
+             })
+
+    assert :stale == status(context)
+  end
+
   test "only a failed packet can be abandoned", context do
     {:ok, dump} =
       Dumps.record(

@@ -249,6 +249,23 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             phx-click="reject_pair"
             phx-value-id={@selected.id}
           >Reject — not the same</.button>
+          <%!-- Two buttons that move the same zero rupees read as a trick
+                question, and the reviewer picks one at random. Keeping both is
+                still right: a books bill with no 2B entry was never inside the
+                ceiling, so neither can change this month's claim, and the whole
+                difference is what happens next — one bill is coming back when
+                the vendor files, the other is closed. That difference is real
+                (it is what the register prints as the row's next action, and
+                what a later month reads to pick the bill up again), so the fix
+                is to say it at the click rather than to merge the two. --%>
+          <p
+            :if={@selected.action == :unmatched}
+            id="gst-accept-unmatched-note"
+            class="text-ink-subtle text-meta basis-full"
+          >
+            Neither changes this month's claim — a bill with no 2B entry was never in the
+            ceiling. They differ in what the register then says to do with it.
+          </p>
           <.button
             :if={@selected.action == :unmatched}
             id="gst-accept-await-2b"
@@ -257,7 +274,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             phx-click="accept_unmatched"
             phx-value-id={@selected.id}
             phx-value-reason="await_2b"
-          >Vendor hasn't filed it yet</.button>
+          >Vendor hasn't filed it yet · claim in a later month</.button>
           <.button
             :if={@selected.action == :unmatched}
             id="gst-accept-not-claimable"
@@ -266,7 +283,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             phx-click="accept_unmatched"
             phx-value-id={@selected.id}
             phx-value-reason="not_claimable"
-          >Not claimable this month</.button>
+          >Not claimable · close the bill</.button>
           <.button variant="ghost" size="sm" phx-click="start_correct" phx-value-id={@selected.id}>
             Correct the number
           </.button>
