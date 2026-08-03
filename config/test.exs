@@ -59,7 +59,7 @@ config :nila, Nila.Storage,
 config :nila, Nila.Storage.R2, bucket: "test-bucket"
 
 config :ex_aws,
-  http_client: ExAws.Request.Req,
+  http_client: Nila.Storage.ExAwsClient,
   access_key_id: "test-access-key",
   secret_access_key: "test-secret-key",
   region: "auto",

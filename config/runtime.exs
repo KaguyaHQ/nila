@@ -267,7 +267,7 @@ if config_env() == :prod do
   end
 
   config :ex_aws,
-    http_client: ExAws.Request.Req,
+    http_client: Nila.Storage.ExAwsClient,
     access_key_id: env!("R2_ACCESS_KEY_ID", :string!),
     secret_access_key: env!("R2_SECRET_ACCESS_KEY", :string!),
     region: "auto",
