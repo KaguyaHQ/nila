@@ -230,6 +230,24 @@ if config_env() in [:prod, :dev] do
       from_name = env!("MAIL_FROM_NAME", :string, nil) || "Nila"
       config :nila, :mail_from, {from_name, from_address}
     end
+
+    # Inbound uses the same account as sending, but the receiving domain is
+    # verified separately — Resend tracks send and receive as distinct
+    # capabilities, so a verified sending domain grants nothing here.
+    config :nila, Nila.Integrations.Resend, api_key: resend_key
+  end
+
+  # Replies route by address, so both the domain that receives them and the
+  # secret that signs them must be set for inbound to work at all. The webhook
+  # secret is separate again: it is Resend proving the POST came from them.
+  if inbound_domain = env!("INBOUND_EMAIL_DOMAIN", :string, nil) do
+    config :nila, Nila.Gst.Intake.InboundAddress,
+      domain: inbound_domain,
+      secret: env!("INBOUND_EMAIL_SECRET", :string!)
+  end
+
+  if webhook_secret = env!("RESEND_WEBHOOK_SECRET", :string, nil) do
+    config :nila, NilaWeb.Webhooks.ResendController, signing_secret: webhook_secret
   end
 end
 

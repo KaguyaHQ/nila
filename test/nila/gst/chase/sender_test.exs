@@ -7,6 +7,7 @@ defmodule Nila.Gst.Chase.SenderTest do
   alias Nila.Clients
   alias Nila.Gst.Chase
   alias Nila.Gst.Chase.Sender, as: ChaseSender
+  alias Nila.Gst.Intake.InboundAddress
   alias Nila.Integrations
 
   @period "2026-06"
@@ -113,6 +114,11 @@ defmodule Nila.Gst.Chase.SenderTest do
       assert message =~ "Content-Type: text/plain; charset=UTF-8"
       assert message =~ @draft
 
+      # The reply address is what makes the answer attributable when it comes
+      # back, so it has to be on the wire, not merely computed.
+      {:ok, reply_to} = InboundAddress.build(org.id, client.id, @period)
+      assert message =~ "Reply-To: #{reply_to}"
+
       Req.Test.json(conn, %{"id" => "msg-123", "threadId" => "thread-123"})
     end)
 
@@ -144,6 +150,12 @@ defmodule Nila.Gst.Chase.SenderTest do
 
       assert Enum.map(payload["message"]["toRecipients"], & &1["emailAddress"]["address"]) == [
                "ravi@example.com"
+             ]
+
+      {:ok, reply_to} = InboundAddress.build(org.id, client.id, @period)
+
+      assert Enum.map(payload["message"]["replyTo"], & &1["emailAddress"]["address"]) == [
+               reply_to
              ]
 
       Plug.Conn.send_resp(conn, 202, "")

@@ -30,11 +30,20 @@ defmodule Nila.Gst.Intake.Message do
       :body,
       :received_at
     ])
-    |> update_change(:sender, &Nila.Clients.Client.normalize_phone/1)
+    |> normalize_sender()
     |> update_change(:body, &String.trim/1)
     |> validate_required([:org_id, :channel, :source_ref, :sender, :body, :received_at])
-    |> validate_inclusion(:channel, ["whatsapp"])
+    |> validate_inclusion(:channel, ["whatsapp", "email"])
     |> validate_format(:period, ~r/\A\d{4}-\d{2}\z/, allow_nil: true)
     |> unique_constraint(:source_ref, name: :gst_intake_messages_source_ref_index)
+  end
+
+  # A sender is a phone number or an email depending on the channel it arrived
+  # on, and the two normalize differently.
+  defp normalize_sender(changeset) do
+    case get_field(changeset, :channel) do
+      "email" -> update_change(changeset, :sender, &Nila.Clients.Client.normalize_email/1)
+      _whatsapp -> update_change(changeset, :sender, &Nila.Clients.Client.normalize_phone/1)
+    end
   end
 end

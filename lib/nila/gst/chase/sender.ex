@@ -5,6 +5,7 @@ defmodule Nila.Gst.Chase.Sender do
 
   alias Nila.Clients
   alias Nila.Gst.Chase
+  alias Nila.Gst.Intake.InboundAddress
   alias Nila.Integrations
   alias Nila.Orgs
 
@@ -84,13 +85,25 @@ defmodule Nila.Gst.Chase.Sender do
     with %{} = connection <- Integrations.first_active_email_connection(org.id),
          {:ok, adapter} <- Integrations.fetch_adapter(connection.provider),
          {:ok, connection} <- Integrations.ensure_token(connection) do
-      adapter.send_message(connection, client.email, %{
+      message = %{
         subject: "Documents for #{month_label(args["period"])} GST — #{org.name}",
         body: args["body"]
-      })
+      }
+
+      adapter.send_message(connection, client.email, put_reply_to(message, org, client, args))
     else
       nil -> {:error, :no_email_connection}
       error -> error
+    end
+  end
+
+  # The reply address is what makes an emailed answer attributable. Without it
+  # configured the chase still sends; replies just land wherever the firm's own
+  # From points, which is where they went before inbound existed.
+  defp put_reply_to(message, org, client, args) do
+    case InboundAddress.build(org.id, client.id, args["period"]) do
+      {:ok, address} -> Map.put(message, :reply_to, address)
+      {:error, _reason} -> message
     end
   end
 

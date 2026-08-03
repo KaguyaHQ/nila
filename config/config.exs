@@ -70,6 +70,18 @@ config :nila, NilaWeb.Webhooks.WhatsAppController,
   app_secret: System.get_env("WHATSAPP_APP_SECRET") || "dev-whatsapp-app-secret",
   verify_token: System.get_env("WHATSAPP_VERIFY_TOKEN") || "dev-whatsapp-verify-token"
 
+# Inbound email. Resend receives on a subdomain so its MX record cannot fight
+# the firm's own mail; the reply address is signed with its own secret, which
+# is what stops a stranger posting into a client's month.
+config :nila, NilaWeb.Webhooks.ResendController,
+  signing_secret: System.get_env("RESEND_WEBHOOK_SECRET")
+
+config :nila, Nila.Integrations.Resend, api_key: System.get_env("RESEND_API_KEY")
+
+config :nila, Nila.Gst.Intake.InboundAddress,
+  domain: System.get_env("INBOUND_EMAIL_DOMAIN") || "inbound.nila.tax",
+  secret: System.get_env("INBOUND_EMAIL_SECRET") || "dev-inbound-email-secret"
+
 config :nila, Nila.Integrations.WhatsApp,
   graph_url: "https://graph.facebook.com/v26.0",
   receive_timeout: 30_000,

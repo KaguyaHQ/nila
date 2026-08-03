@@ -108,7 +108,16 @@ defmodule Nila.Integrations.Microsoft do
       "toRecipients" => [address(recipient)]
     }
     |> put_addresses("ccRecipients", setting(connection, "cc"))
-    |> put_addresses("replyTo", List.wrap(setting_value(connection, "reply_to")))
+    |> put_addresses("replyTo", reply_to(message, connection))
+  end
+
+  # A per-message reply address routes an answer back to one client and month,
+  # so it wins over the connection-wide default when the caller sets one.
+  defp reply_to(message, connection) do
+    case Map.get(message, :reply_to) do
+      value when is_binary(value) and value != "" -> [value]
+      _absent -> List.wrap(setting_value(connection, "reply_to"))
+    end
   end
 
   defp put_addresses(message, _key, []), do: message

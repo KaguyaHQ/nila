@@ -148,6 +148,7 @@ defmodule Nila.Integrations.Gmail do
       {"To", Map.fetch!(message, :to)},
       {"Cc", blank_to_nil(Map.get(message, :cc))},
       {"From", blank_to_nil(Map.get(message, :from))},
+      {"Reply-To", blank_to_nil(Map.get(message, :reply_to))},
       {"Subject", Map.fetch!(message, :subject)},
       {"MIME-Version", "1.0"}
     ]

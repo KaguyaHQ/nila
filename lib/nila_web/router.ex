@@ -156,6 +156,7 @@ defmodule NilaWeb.Router do
 
     get "/whatsapp", WhatsAppController, :verify
     post "/whatsapp", WhatsAppController, :ingest
+    post "/resend", ResendController, :ingest
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
