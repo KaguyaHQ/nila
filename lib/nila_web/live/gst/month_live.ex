@@ -306,16 +306,13 @@ defmodule NilaWeb.Gst.MonthLive do
 
     workings =
       case signoff do
-        nil when sales.invoices == [] ->
-          %{
-            source_invoices: [],
-            active_invoices: [],
-            printed_active_invoices: [],
-            issues: [],
-            flagged: MapSet.new(),
-            derived: nil
-          }
-
+        # No short-circuit for an invoice-less month. It used to return a
+        # hand-built empty workings, which agreed with the engine only while the
+        # engine also had nothing to say about an empty pile. Now that a month
+        # with no invoices is asked the six completeness questions, skipping the
+        # engine made the page assert "All checks resolved" and offer an Approve
+        # button over a sign-off the server refuses — with the questions
+        # themselves never rendered, so nothing could clear it.
         nil ->
           SalesResolutions.workings(sales)
 
@@ -1212,7 +1209,7 @@ defmodule NilaWeb.Gst.MonthLive do
                 r1_signoff={@r1_signoff}
                 can_sign_off={@can_sign_off}
                 sales_completeness={@sales_completeness}
-                documents_attested={@itc && @itc["documents_attested"]}
+                itc={@itc}
               />
             </:actions>
           </Purchase.register>

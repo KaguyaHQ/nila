@@ -495,6 +495,9 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   # With no 2B side, nothing can be matched, so the open pot *is* the month's
   # claimable credit. Named for what it is here rather than "riding on N
   # decisions", because there are no decisions yet.
+  defp bills_clause(%{stats: %{invoices: count, itc_money_known?: false}}) when count > 0,
+    do: "#{count} purchase #{pluralise(count, "bill")} in."
+
   defp bills_clause(%{stats: %{invoices: count} = stats}) when count > 0,
     do:
       "#{count} purchase #{pluralise(count, "bill")} in, carrying #{money(stats.open_tax_paise)} of ITC."
@@ -510,6 +513,12 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp sales_issues_headline(%{tracks: %{purchase: :absent}}, count),
     do: "GSTR-1 drafted. #{count} #{pluralise(count, "issue")} to check."
+
+  # Same gate as the other money clauses: a filed 3B whose snapshot predates the
+  # tax fields still carries its bucket counts, so this printed "Purchases
+  # clear, ₹0 ITC" from a month that recorded no ITC figure at all.
+  defp sales_issues_headline(%{stats: %{itc_money_known?: false}}, count),
+    do: "Purchases clear. GSTR-1 has #{count} #{pluralise(count, "issue")} to check."
 
   defp sales_issues_headline(facts, count),
     do:
@@ -539,6 +548,8 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       "#{money(itc)} ITC."
     end
   end
+
+  defp money_clause(%{stats: %{itc_money_known?: false}}), do: ""
 
   defp money_clause(facts), do: "#{money(facts.stats && facts.stats.matched_tax_paise)} ITC."
 

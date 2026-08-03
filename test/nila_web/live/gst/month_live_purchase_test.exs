@@ -774,7 +774,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
   test "a clean worked month points seniors to sign-off and tells members to wait", %{
     conn: conn,
     org: org,
-    client: client
+    client: client,
+    user: user
   } do
     {:ok, _purchase} =
       ClientMonths.upsert(%{
@@ -786,6 +787,20 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
         recon: %{},
         summary: %{"buckets" => %{"matched" => 0}}
       })
+
+    {:ok, sales} =
+      SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        state: "worked"
+      })
+
+    # An invoice-less month is still asked what it cannot see for itself, so it
+    # is not "clean" until somebody has answered. Answering is a resolution, and
+    # recording one puts the month back to "worked" — so the reviewed state is
+    # asserted after the answers, not before.
+    answer_sales_issues!(sales, user.id)
 
     {:ok, _sales} =
       SalesMonths.upsert(%{

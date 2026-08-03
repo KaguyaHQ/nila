@@ -53,12 +53,15 @@ defmodule Nila.Gst.Filing.Gstr3b do
   def assemble(liability, recon, itc) do
     {rcm_txval, rcm_tax} = rcm_position(recon)
     all_other_4a5 = subtract(ItcPosition.ceiling_heads(recon), rcm_tax)
-    reversed_4b1 = blocked_heads(itc, &(&1 in @reversal_4b1))
 
-    reversed_4b2 =
-      itc
-      |> blocked_heads(&(&1 not in @reversal_4b1))
-      |> add(itc["unsubstantiated_withheld_heads"] || @zero)
+    {reversed_4b1, blocked_4b2} =
+      cap_reversals(
+        blocked_heads(itc, &(&1 in @reversal_4b1)),
+        blocked_heads(itc, &(&1 not in @reversal_4b1)),
+        itc
+      )
+
+    reversed_4b2 = add(blocked_4b2, itc["unsubstantiated_withheld_heads"] || @zero)
 
     net_itc_4c =
       rcm_tax
@@ -115,6 +118,29 @@ defmodule Nila.Gst.Filing.Gstr3b do
   end
 
   # -- ITC reversals --------------------------------------------------------
+
+  # `ItcPosition.partition/3` clamps the blocked figure to what the ceiling can
+  # actually hold — a block is staked at the books row's tax, and on a
+  # value-mismatch row the books can exceed the 2B figure the return actually
+  # avails. The return has to honour the same clamp: reversing the unclamped
+  # amount took 4B above 4A, filed a negative 4C, and `setoff/3` then turned
+  # that negative credit into a cash demand out of a month that owed nothing.
+  #
+  # 4B(1) is satisfied first because s.17(5) ineligibility is the harder
+  # statement; whatever room is left goes to 4B(2).
+  defp cap_reversals(reversed_4b1, reversed_4b2, itc) do
+    cap = itc["blocked_in_ceiling_paise"]
+    raw = heads_total(reversed_4b1) + heads_total(reversed_4b2)
+
+    if is_integer(cap) and raw > cap do
+      capped_4b1 = ItcPosition.allocate(reversed_4b1, min(heads_total(reversed_4b1), cap))
+      {capped_4b1, ItcPosition.allocate(reversed_4b2, cap - heads_total(capped_4b1))}
+    else
+      {reversed_4b1, reversed_4b2}
+    end
+  end
+
+  defp heads_total(heads), do: @heads |> Enum.map(&(heads[&1] || 0)) |> Enum.sum()
 
   # Only blocks inside the 2B ceiling can be reversed: 4A(5) availed the ceiling,
   # so a books bill the portal never reported was never availed and there is

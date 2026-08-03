@@ -104,7 +104,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :r1_signoff, :any, default: nil
   attr :can_sign_off, :boolean, required: true
   attr :sales_completeness, :atom, default: :open
-  attr :documents_attested, :any, default: nil
+  attr :itc, :any, default: nil
 
   def gstr3b_actions(assigns) do
     assigns = assign(assigns, :blockers, gstr3b_blockers(assigns))
@@ -132,11 +132,14 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         Ready for a senior to sign GSTR-3B.
       </p>
 
-      <%!-- Every one of these is a server gate in `Signoffs.sign_off/2`. The
-            button used to render on three of the five, so the other two failed
-            at the click with a flash naming a control on a different page and
-            no way to reach it — and a client-month with no sales side at all
-            had no in-product action that could ever satisfy them. --%>
+      <%!-- Three of these are server gates in `Signoffs.sign_off/2` — the
+            register, the s.16(2)(a) attestation and the sales intake — and the
+            button used to render on the register alone, so the other two failed
+            at the click with a flash naming a control on a different page and no
+            way to reach it. The remaining three are this page's own filing
+            order: the 3B takes its outward liability from the GSTR-1, so it
+            waits for one that is approved and filed. The server would accept a
+            signature without them; the sequence is ours. --%>
       <div :if={is_nil(@gstr3b_signoff) and @blockers != []} id="month-exit-gstr3b-blocked">
         <p class="text-base-content text-ui font-medium">
           Before the GSTR-3B can be signed
@@ -341,10 +344,14 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   # visible as findings and in the money, but neither is answerable here, so
   # neither appears.
   #
-  # This has to mirror all five conditions, not the three that happened to be
-  # cheap to check here: the two it omitted both fail at the click, and one of
+  # All three server gates have to be mirrored, not the one that happened to be
+  # cheap to check here: the two omitted both failed at the click, and one of
   # them — sales intake on a month with no sales side — had its only control
   # inside a section that does not render without a sales month.
+  #
+  # Every `:anchor` must point at a section that renders in the state its
+  # blocker describes. `#month-exit-gstr1` does not: it is gated on the GSTR-1
+  # already being reviewable, which is exactly what an unapproved one is not.
   defp gstr3b_blockers(assigns) do
     %{client_id: client_id, period: period} = assigns.purchase_month
     exceptions = ~p"/gst/#{client_id}/#{period}/exceptions"
@@ -353,7 +360,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       {"decisions", assigns.stats.need_decision > 0,
        "#{assigns.stats.need_decision} purchase #{plural(assigns.stats.need_decision, "decision")} still open.",
        {:navigate, "Work the exceptions", exceptions}},
-      {"attestation", assigns.documents_attested == "unknown",
+      {"attestation", attestation_open?(assigns.itc),
        "Nobody has confirmed whether the client holds tax invoices for the supplies the portal reported (s.16(2)(a)).",
        {:navigate, "Answer it", exceptions}},
       {"no-sales", is_nil(assigns.sales_month),
@@ -361,8 +368,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
        {:navigate, "Bring in sales bills",
         ~p"/gst/upload?client_id=#{client_id}&period=#{period}"}},
       {"r1-unsigned", not is_nil(assigns.sales_month) and is_nil(assigns.r1_signoff),
-       "The GSTR-1 has not been approved yet.",
-       {:anchor, "Go to the GSTR-1", "#month-exit-gstr1"}},
+       "The GSTR-1 has not been approved yet.", {:anchor, "Go to the GSTR-1", "#month-sales"}},
       {"r1-unfiled",
        not is_nil(assigns.sales_month) and not is_nil(assigns.r1_signoff) and
          is_nil(assigns.sales_month.filed_at),
@@ -375,6 +381,16 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     |> Enum.filter(fn {_key, active?, _message, _exit} -> active? end)
     |> Enum.map(fn {key, _active?, message, exit} -> {key, message, exit} end)
   end
+
+  # Required and not yet answered. `documents_attested` alone cannot say this:
+  # it is `nil` both when no supply needs attesting and when one does and nobody
+  # has answered, so keying off `"unknown"` left the commonest blocked state —
+  # a fresh month with a 2B-only supply — rendering the sign button over a gate
+  # the server refuses.
+  defp attestation_open?(%{"attestation_required" => true} = itc),
+    do: itc["documents_attested"] not in ~w(held not_held)
+
+  defp attestation_open?(_itc), do: false
 
   defp completeness_phrase(:open), do: "not confirmed"
   defp completeness_phrase(:client_no), do: "still open"

@@ -136,11 +136,17 @@ defmodule Nila.Gst.Filing.ItcPosition do
     }
   end
 
-  # Splits a head-wise figure so it sums to `target` exactly. Normally `target`
-  # already equals the head sum and this is the identity; it only does work in
-  # the clamped case, where the lump was cut to keep the partition an identity
-  # and the heads have to follow it or Table 4 stops tying to the bridge.
-  defp allocate(heads, target) do
+  @doc """
+  Splits a head-wise figure so it sums to `target` exactly.
+
+  Normally `target` already equals the head sum and this is the identity; it
+  only does work in the clamped case, where the lump was cut to keep the
+  partition an identity and the heads have to follow it or Table 4 stops tying
+  to the bridge.
+  """
+  def allocate(heads, target)
+
+  def allocate(heads, target) do
     heads = Map.merge(@zero_heads, heads || %{})
     total = heads |> Map.values() |> Enum.sum()
 
@@ -254,7 +260,15 @@ defmodule Nila.Gst.Filing.ItcPosition do
   checked.
   """
   def apply_attestation(position, attestation)
-  def apply_attestation(position, nil), do: Map.put(position, "documents_attested", nil)
+  # `attestation_required` exists because `documents_attested` cannot carry the
+  # difference between "no supply needs attesting" and "a supply does and nobody
+  # has answered" — both were `nil`. A surface reading only the answer offered
+  # the 3B signature on the second case, where the server refuses it.
+  def apply_attestation(position, nil) do
+    position
+    |> Map.put("documents_attested", nil)
+    |> Map.put("attestation_required", false)
+  end
 
   def apply_attestation(position, %{answer: "not_held"} = attestation) do
     withheld = min(position["awaiting_document_paise"], position["claimable_paise"])
@@ -265,7 +279,8 @@ defmodule Nila.Gst.Filing.ItcPosition do
       "awaiting_document_paise" => 0,
       "unsubstantiated_withheld_paise" => withheld,
       "unsubstantiated_withheld_heads" => allocate(position["awaiting_document_heads"], withheld),
-      "documents_attested" => "not_held"
+      "documents_attested" => "not_held",
+      "attestation_required" => true
     })
     |> Map.put("attestation_target", attestation.target)
   end
@@ -273,6 +288,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
   def apply_attestation(position, attestation) do
     position
     |> Map.put("documents_attested", attestation.answer)
+    |> Map.put("attestation_required", true)
     |> Map.put("attestation_target", attestation.target)
   end
 
@@ -384,9 +400,18 @@ defmodule Nila.Gst.Filing.ItcPosition do
         "tax_paise" => row_tax(keep) * (n - 1),
         "tax_heads" => row_heads(keep, n - 1),
         "reason" => dup_flag["reason"],
-        # The excess copies are only inside the ceiling if the kept row is. A
-        # duplicate pair the portal never reported has no 2B credit to reduce.
-        "in_ceiling" => in_ceiling?(keep)
+        # Never inside the ceiling, even when the kept row is matched. The
+        # ceiling counts 2B entries, and a group of N scans of one bill has at
+        # most one — the portal reported the invoice once. So the excess copies
+        # are credit the 2B never carried, and the over-claim this block exists
+        # to prevent was already prevented by the ceiling.
+        #
+        # Reading it off the kept row instead staked (N-1) copies against a
+        # ceiling holding one, which the partition then had to clamp — and the
+        # return, which does not clamp, reversed the whole excess and filed a
+        # negative 4C that invented a cash demand out of a month with no
+        # outward liability.
+        "in_ceiling" => false
       }
     end)
   end

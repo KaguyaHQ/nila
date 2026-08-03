@@ -705,18 +705,12 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               left here is the reasoning behind it. --%>
         <p class="text-ink-muted text-meta mt-1">{@proposal.basis}</p>
         <%!-- What accepting it does to the numbers. `Proposals.for_issue/3`
-              computes this and freezes it into the audit payload, and the page
-              rendered only the reasoning — so the one figure that says whether
-              the click matters was written to the record and never shown to the
-              person clicking. `filed_effect` says it better where it applies;
-              this is the fallback for every other proposal. --%>
+              returns a proposal only for the three arithmetic codes and only
+              when the filed figures are known — which is exactly when
+              `filed_effect/2` speaks — so every proposal that reaches this
+              block has its money stated. A fallback for the other case was
+              written and was unreachable; it is not kept as decoration. --%>
         <p :if={@filed_effect} class="mt-related text-ink-subtle text-meta">{@filed_effect}</p>
-        <p
-          :if={is_nil(@filed_effect) and proposal_effect(@proposal)}
-          class="mt-related text-ink-subtle text-meta"
-        >
-          {proposal_effect(@proposal)}
-        </p>
       </div>
 
       <%!-- Neither figure above is filed. The return recomputes per rate bucket,
@@ -1012,12 +1006,6 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   end
 
   defp filed_effect(_issue, _values), do: nil
-
-  defp proposal_effect(%{effect: %{taxable: taxable, tax: tax}})
-       when is_number(taxable) and is_number(tax),
-       do: "Files #{Helpers.rupees(tax)} tax on #{Helpers.rupees(taxable)} taxable."
-
-  defp proposal_effect(_proposal), do: nil
 
   defp decision_maker(%{decided_by: %{name: name}}) when is_binary(name), do: name
   defp decision_maker(_decision), do: "a reviewer"

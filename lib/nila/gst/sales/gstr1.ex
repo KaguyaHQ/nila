@@ -539,7 +539,16 @@ defmodule Nila.Gst.Sales.Gstr1 do
     {grand, components} = Enum.split_with(failed, &(&1["code"] == "grand_total_mismatch"))
 
     if components != [] and grand_total_explained?(invoice, grand) do
-      [collapsed_printed_issue(invoice, components, grand)]
+      # The grand total is taxable + tax by definition, so once the components
+      # account for it, it is not a third finding and gets folded in.
+      #
+      # The components themselves are NOT folded into each other. A printed
+      # taxable total and a printed tax total are two different figures and two
+      # different misreadings, and merging them destroys a resolution target:
+      # the survivor took the first component's code, so a confirmation given
+      # about the taxable total silently marked the tax total answered by
+      # somebody who was never asked about it.
+      Enum.map(components, &collapsed_printed_issue(invoice, &1, grand))
     else
       Enum.map(failed, &check_issue(invoice, &1))
     end
@@ -562,12 +571,11 @@ defmodule Nila.Gst.Sales.Gstr1 do
   defp printed_delta(nil, _derived), do: 0
   defp printed_delta(printed, derived), do: num(printed) - derived
 
-  defp collapsed_printed_issue(invoice, components, [grand]) do
+  defp collapsed_printed_issue(invoice, %{"code" => code} = component, [grand]) do
     ops = grand["operands"]
-    code = hd(components)["code"]
 
     message =
-      Enum.map_join(components, "; ", &check_message/1) <>
+      check_message(component) <>
         " — and the printed bill total, which is taxable + tax, is out by exactly that much " <>
         "(printed #{round2(ops["printed"])}, derived #{round2(ops["derived"])})"
 
@@ -575,7 +583,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       invoice,
       code,
       message,
-      (components ++ [grand]) |> Enum.flat_map(& &1["fields"]) |> Enum.uniq(),
+      [component, grand] |> Enum.flat_map(& &1["fields"]) |> Enum.uniq(),
       Issues.level_for(code)
     )
   end
