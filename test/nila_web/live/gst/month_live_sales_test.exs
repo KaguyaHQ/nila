@@ -89,6 +89,75 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert length(row_ids) == 3
   end
 
+  test "a bill carrying both IGST and CGST/SGST is stopped and its cost named", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Sales.Gstr1
+    alias Nila.Gst.Sales.Months, as: SalesMonths
+
+    period = "2025-12"
+
+    # Seller TN, buyer KA — interstate. One line billed IGST, another CGST/SGST.
+    # The totals tally, so every arithmetic check passes and the return files
+    # ₹1,800 IGST; the ₹450 + ₹450 the client charged simply disappears.
+    invoices = [
+      Gstr1.normalize_invoice(%{
+        "data" => %{
+          "invoice_number" => "40/2025-26",
+          "invoice_date" => "04.12.2025",
+          "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
+          "buyer" => %{"name" => "PONMANI AND CO", "gstin" => "29AAVCS8021P1ZB"},
+          "line_items" => [
+            %{"taxable_value" => 5000, "igst_rate" => 18, "igst_amount" => 900},
+            %{
+              "taxable_value" => 5000,
+              "cgst_rate" => 9,
+              "cgst_amount" => 450,
+              "sgst_rate" => 9,
+              "sgst_amount" => 450
+            }
+          ],
+          "printed_total_taxable" => 10_000.0,
+          "printed_total_tax" => 1800.0,
+          "printed_grand_total" => 11_800.0
+        }
+      })
+    ]
+
+    {:ok, _} =
+      SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: period,
+        state: "worked",
+        invoices: invoices,
+        derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, period)),
+        issues: Gstr1.validation_issues(invoices),
+        summary: %{"invoice_count" => 1, "issue_count" => 1}
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+
+    assert has_element?(
+             view,
+             "#gstr1-checks-before-filing",
+             "Both IGST and CGST/SGST on one bill"
+           )
+
+    assert has_element?(view, "#gstr1-required-clause", "1 decision")
+    refute has_element?(view, "#month-door-sign-r1")
+
+    # The modal has to say what it costs, because the totals agree and no other
+    # figure on the page moves.
+    view |> element("#gstr1-inv-40\\/2025-26") |> render_click()
+    modal = view |> element("#gstr1-evidence-modal") |> render()
+
+    assert modal =~ "one supply has one place of supply"
+    assert modal =~ "buyer&#39;s 2B will not match the bill they hold"
+  end
+
   test "a sequence gap is confessed in the summary and account before any card opens", %{
     conn: conn,
     org: org,

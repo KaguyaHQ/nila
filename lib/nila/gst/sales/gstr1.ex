@@ -374,6 +374,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       invoice_date_issues(invoice) ++
       check_issues ++
       gstin_issues(invoice) ++
+      mixed_head_issues(invoice) ++
       consistency_issues(invoice) ++
       lopsided_split_issues(invoice) ++
       furniture_row_issues(invoice) ++ bucket_rounding_issues(invoice)
@@ -793,19 +794,59 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end)
   end
 
+  # One supply has one place of supply, so an invoice cannot carry both IGST and
+  # CGST/SGST. This needs no GSTIN to judge and admits no inference: the
+  # document contradicts itself, whatever the parties' states turn out to be.
+  #
+  # It escapes every other check. `consistency_issues/1` compares the GSTIN pair
+  # against the heads, and both of its branches require one side to be at zero —
+  # a bill carrying both falls through. `lopsided_split_issues/1` catches one of
+  # CGST/SGST, not both modes. And the totals still agree, so
+  # `printed_tax_mismatch` passes. Meanwhile `derive_invoice/2` picks one mode
+  # for the whole invoice and recomputes: a KA→TN bill with ₹900 IGST and ₹450 +
+  # ₹450 files as ₹1,800 IGST, and the CGST/SGST the client actually charged
+  # disappears from the return without a single check firing.
+  #
+  # The filing is arguably right — interstate is all-IGST. The invoice is what
+  # is wrong: tax was collected under a head that will not be remitted, and the
+  # buyer's 2B will not match the paper in their hands.
+  defp mixed_head_issues(invoice) do
+    igst = sum(invoice["line_items"], "igst_amount")
+    split = split_tax(invoice)
+
+    if igst > 0 and split > 0 do
+      [
+        issue(
+          invoice,
+          "mixed_tax_heads",
+          "invoice carries both IGST (#{round2(igst)}) and CGST/SGST (#{round2(split)}) — one supply has one place of supply, so only one head can be correct",
+          ["line_items"],
+          Issues.level_for("mixed_tax_heads")
+        )
+      ]
+    else
+      []
+    end
+  end
+
+  defp split_tax(invoice),
+    do: sum(invoice["line_items"], "cgst_amount") + sum(invoice["line_items"], "sgst_amount")
+
   defp consistency_issues(invoice) do
     seller_state = state_code(invoice["seller_gstin"])
     buyer_state = state_code(invoice["buyer_gstin"])
     interstate? = seller_state && buyer_state && seller_state != buyer_state
-    igst = invoice["line_items"] |> Enum.map(&num(&1["igst_amount"])) |> Enum.sum()
-
-    split =
-      invoice["line_items"]
-      |> Enum.map(&(num(&1["cgst_amount"]) + num(&1["sgst_amount"])))
-      |> Enum.sum()
+    igst = sum(invoice["line_items"], "igst_amount")
+    split = split_tax(invoice)
 
     cond do
       is_nil(seller_state) or is_nil(buyer_state) ->
+        []
+
+      # Both heads present is `mixed_tax_heads`, which says something stronger
+      # and does not depend on the GSTINs being right. Raising both would ask a
+      # reviewer to answer the same malformed invoice twice.
+      igst > 0 and split > 0 ->
         []
 
       interstate? and igst <= 0 and split > 0 ->

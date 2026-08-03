@@ -38,6 +38,7 @@ defmodule Nila.Gst.Issues do
     "grand_total_mismatch" => {"required", :decision},
     "bucket_tax_mismatch" => {"required", :decision},
     "tax_split_mismatch" => {"required", :decision},
+    "mixed_tax_heads" => {"required", :decision},
     "rounding_variance" => {"info", nil},
     "furniture_row_with_values" => {"required", :decision},
     "unreadable_invoice_date" => {"required", :correction},
@@ -72,6 +73,15 @@ defmodule Nila.Gst.Issues do
     "b2c_supply_unsupported" => {"blocking", nil},
     "duplicate_invoice_number" => {"blocking", :decision}
   }
+
+  @doc """
+  Every code this module classifies.
+
+  Exposed so a test can hold the engine's emitted codes against it: `level_for/1`
+  falls back to `required` for an unknown code, which fails safe at runtime but
+  would let an unclassified check ship silently.
+  """
+  def known_codes, do: Map.keys(@classification)
 
   @doc "The level this code is emitted at today. The single source for new checks."
   def level_for(code) do

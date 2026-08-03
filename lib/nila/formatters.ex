@@ -66,6 +66,7 @@ defmodule Nila.Formatters do
     "cgst_sgst_unequal" => "CGST and SGST aren't equal halves",
     "lopsided_tax_split" => "CGST and SGST split unevenly",
     "tax_split_mismatch" => "Wrong tax type for the state",
+    "mixed_tax_heads" => "Both IGST and CGST/SGST on one bill",
     "personal_expense_17_5" => "Personal / 17(5)",
     "duplicate_invoice" => "Billed twice",
     "gstin_state_mismatch" => "Wrong-state GSTIN",

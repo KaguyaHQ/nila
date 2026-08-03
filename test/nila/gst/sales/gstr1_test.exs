@@ -140,6 +140,125 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     inv["idt"]
   end
 
+  describe "validation_issues/1 — an invoice that contradicts itself" do
+    # Seller KA, buyer TN. One line IGST ₹900, another CGST ₹450 + SGST ₹450.
+    defp mixed_head_invoice(seller \\ "29AAVCS8021P1ZB", buyer \\ "33AEWPH4158J1Z3") do
+      Gstr1.normalize_invoice(%{
+        "data" => %{
+          "invoice_number" => "MIX-1",
+          "invoice_date" => "04.05.2026",
+          "seller" => %{"gstin" => seller},
+          "buyer" => %{"gstin" => buyer},
+          "line_items" => [
+            %{"taxable_value" => 5000, "igst_rate" => 18, "igst_amount" => 900},
+            %{
+              "taxable_value" => 5000,
+              "cgst_rate" => 9,
+              "cgst_amount" => 450,
+              "sgst_rate" => 9,
+              "sgst_amount" => 450
+            }
+          ],
+          "printed_total_taxable" => 10_000.0,
+          "printed_total_tax" => 1800.0,
+          "printed_grand_total" => 11_800.0
+        }
+      })
+    end
+
+    test "both heads on one bill is raised, and it gates" do
+      invoice = mixed_head_invoice()
+      issues = Gstr1.validation_issues([invoice])
+
+      assert issue = Enum.find(issues, &(&1["code"] == "mixed_tax_heads"))
+      assert issue["fields"] == ["line_items"]
+      assert issue["message"] =~ "one supply has one place of supply"
+      assert Nila.Gst.Issues.gating?(issue)
+      assert Nila.Gst.Issues.resolution_kind(issue) == :decision
+    end
+
+    # This is why the check has to exist: every other signal reads clean while
+    # ₹900 of tax silently changes head in the return.
+    test "nothing else catches it — the totals agree and the filing looks fine" do
+      invoice = mixed_head_invoice()
+
+      assert Enum.all?(Gstr1.invoice_checks(invoice), & &1["passed"])
+
+      derived = Gstr1.derive([invoice], Gstr1.production_header("29AAVCS8021P1ZB", "2026-05"))
+      values = Nila.Gst.Sales.Values.for_invoice(invoice, derived)
+
+      assert values.extracted_lines.tax == values.filed.tax
+      assert values.filed.igst == 1800.0
+      assert values.filed.cgst == 0.0
+      refute values.head_reassignment
+    end
+
+    test "it does not double up with the GSTIN-versus-heads check" do
+      # `tax_split_mismatch` says the GSTIN pair contradicts the heads. Here the
+      # invoice contradicts itself, which is the stronger claim and does not
+      # depend on the GSTINs being right — asking both would be one malformed
+      # bill answered twice.
+      codes = Gstr1.validation_issues([mixed_head_invoice()]) |> Enum.map(& &1["code"])
+
+      assert "mixed_tax_heads" in codes
+      refute "tax_split_mismatch" in codes
+    end
+
+    test "one head only is left to the GSTIN check" do
+      # Interstate parties, CGST/SGST only: that is `tax_split_mismatch`'s job
+      # and this check must stay quiet.
+      intra_on_interstate =
+        Gstr1.normalize_invoice(%{
+          "data" => %{
+            "invoice_number" => "SPLIT-1",
+            "invoice_date" => "04.05.2026",
+            "seller" => %{"gstin" => "29AAVCS8021P1ZB"},
+            "buyer" => %{"gstin" => "33AEWPH4158J1Z3"},
+            "line_items" => [
+              %{
+                "taxable_value" => 10_000,
+                "cgst_rate" => 9,
+                "cgst_amount" => 900,
+                "sgst_rate" => 9,
+                "sgst_amount" => 900
+              }
+            ]
+          }
+        })
+
+      codes = Gstr1.validation_issues([intra_on_interstate]) |> Enum.map(& &1["code"])
+
+      refute "mixed_tax_heads" in codes
+      assert "tax_split_mismatch" in codes
+    end
+
+    test "an ordinary single-head bill raises neither" do
+      ordinary =
+        Gstr1.normalize_invoice(%{
+          "data" => %{
+            "invoice_number" => "OK-1",
+            "invoice_date" => "04.05.2026",
+            "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
+            "buyer" => %{"gstin" => "33AABCP9487A1ZG"},
+            "line_items" => [
+              %{
+                "taxable_value" => 10_000,
+                "cgst_rate" => 9,
+                "cgst_amount" => 900,
+                "sgst_rate" => 9,
+                "sgst_amount" => 900
+              }
+            ]
+          }
+        })
+
+      codes = Gstr1.validation_issues([ordinary]) |> Enum.map(& &1["code"])
+
+      refute "mixed_tax_heads" in codes
+      refute "tax_split_mismatch" in codes
+    end
+  end
+
   describe "validation_issues/1 — the poison-total canary" do
     test "raises grand_total_mismatch when printed total disagrees with line sums" do
       invoice =

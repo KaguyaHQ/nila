@@ -824,6 +824,16 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
     end
   end
 
+  # The totals agree, so nothing else on the page shows a consequence. Say what
+  # it is: the return can only file one head, so whichever the reviewer decides
+  # is wrong was collected and will not be remitted under the head the buyer
+  # holds paper for.
+  defp issue_body(%{"code" => "mixed_tax_heads", "message" => message}) do
+    message <>
+      ". The return files one head for the whole invoice, so the other is dropped " <>
+      "— the buyer's 2B will not match the bill they hold."
+  end
+
   defp issue_body(issue), do: issue["message"]
 
   defp parse_money(text) do

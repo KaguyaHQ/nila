@@ -3,6 +3,31 @@ defmodule Nila.Gst.IssuesTest do
 
   alias Nila.Gst.Issues
 
+  describe "the classification covers what the engine emits" do
+    # `level_for/1` returns "required" for an unknown code, which fails safe but
+    # is silent. A new check whose author forgot the table would gate approval
+    # with no kind, showing up as a blocker nobody can answer — so the table is
+    # held against the emission sites themselves.
+    test "every code passed to level_for/1 in lib/ is classified" do
+      emitted =
+        "lib/**/*.ex"
+        |> Path.wildcard()
+        |> Enum.flat_map(fn path ->
+          ~r/level_for\("([a-z_0-9]+)"\)/
+          |> Regex.scan(File.read!(path))
+          |> Enum.map(fn [_match, code] -> code end)
+        end)
+        |> Enum.uniq()
+
+      # Guards the scan itself: if this ever reads empty the assertion below
+      # would pass vacuously.
+      assert length(emitted) > 15
+
+      assert MapSet.subset?(MapSet.new(emitted), MapSet.new(Issues.known_codes())),
+             "unclassified: #{inspect(MapSet.difference(MapSet.new(emitted), MapSet.new(Issues.known_codes())))}"
+    end
+  end
+
   describe "the two axes" do
     test "a blocker is a severity and the work is a separate lookup" do
       # Same kind of work, two severities: both are confirmations, and only one
@@ -21,6 +46,14 @@ defmodule Nila.Gst.IssuesTest do
                      statutory_rate_mismatch rate_history_conflict hsn_inferred_code) do
         assert Issues.level_for(code) == "required", "#{code} must still gate approval"
       end
+    end
+
+    test "a self-contradicting invoice is a decision, not a correction" do
+      # Both heads on one bill has no single right answer to look up: which head
+      # is correct depends on where the supply actually happened, which is the
+      # reviewer's call and not an arithmetic fix.
+      assert Issues.level_for("mixed_tax_heads") == "required"
+      assert Issues.resolution_kind("mixed_tax_heads") == :decision
     end
 
     test "gating, advisory and blocking are read off the level" do
