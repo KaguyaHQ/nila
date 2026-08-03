@@ -116,6 +116,13 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           <.control_stat label="Matched to 2B" value={@stats.matched} />
           <.control_stat label="Needs a decision" value={@stats.need_decision} />
           <.control_stat label="Bills to collect" value={@stats.awaiting_bills} />
+          <%!-- Paired to the 2B but disagreeing on amount. The return takes the
+                2B figure, so this is a vendor to chase, not a decision. --%>
+          <.control_stat
+            :if={@stats.value_disputes > 0}
+            label="Value differs from 2B"
+            value={@stats.value_disputes}
+          />
           <%!-- The register showed these as N rows saying "In 2B only" and
                 nowhere as a fact. They are the sharpest completeness signal the
                 purchase side has: the portal knows about a bill nobody sent us. --%>

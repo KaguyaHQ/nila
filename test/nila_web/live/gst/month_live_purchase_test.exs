@@ -569,6 +569,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
   } do
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
     scope = Nila.Accounts.Scope.for_user(user)
+    month = settle_register!(month, user.id)
     {:ok, _} = Signoffs.sign_off(month, scope)
     {:ok, signoff} = Signoffs.latest_signoff(month.id)
 
@@ -610,6 +611,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
       })
 
     scope = Nila.Accounts.Scope.for_user(user)
+    client_month = settle_register!(client_month, user.id)
     assert {:ok, _} = Signoffs.sign_off_gstr1(sales, scope)
     assert {:ok, _} = Signoffs.sign_off(client_month, scope)
     assert {:ok, _} = Signoffs.mark_filed(sales, scope, "R1-ARN")
@@ -649,6 +651,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
       })
 
     scope = Nila.Accounts.Scope.for_user(user)
+    client_month = settle_register!(client_month, user.id)
     assert {:ok, _} = Signoffs.sign_off_gstr1(sales, scope)
     assert {:ok, _} = Signoffs.sign_off(client_month, scope)
 
@@ -693,6 +696,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
       })
 
     scope = Nila.Accounts.Scope.for_user(user)
+    client_month = settle_register!(client_month, user.id)
     assert {:ok, _} = Signoffs.sign_off_gstr1(sales, scope)
     assert {:ok, _} = Signoffs.sign_off(client_month, scope)
     assert {:ok, _} = Signoffs.mark_filed(client_month, scope, "3B-ARN")

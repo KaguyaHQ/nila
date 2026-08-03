@@ -31,7 +31,7 @@ defmodule Nila.Gst.Filing.Signoffs do
 
   alias Nila.Gst.Filing.Signoff
   alias Nila.Gst.Intake.{Confirmations, Dumps}
-  alias Nila.Gst.Purchase.Resolutions
+  alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
@@ -46,7 +46,8 @@ defmodule Nila.Gst.Filing.Signoffs do
   month to `reviewed`, in one transaction.
 
   Returns `{:error, :not_allowed}` without the `sign_off` capability,
-  `{:error, :already_signed}` when the month is not in `worked`, and
+  `{:error, :already_signed}` when the month is not in `worked`,
+  `{:error, :not_reviewed}` while any register row is unsettled, and
   `{:error, {:sales_intake_incomplete, status}}` until sales collection is
   confirmed and current.
   """
@@ -68,9 +69,18 @@ defmodule Nila.Gst.Filing.Signoffs do
             {:error, :already_signed}
 
           true ->
-            with :ok <- require_sales_intake_complete(month) do
-              workings = Resolutions.workings(month)
+            workings = Resolutions.workings(month)
 
+            # The GSTR-1 side has refused an unreviewed signature since it was
+            # written; this one checked only permission, state and sales
+            # completeness, leaving the register gate in the template. A signed
+            # 3B freezes the ITC snapshot and is what the firm answers for, so
+            # anything that reaches this function directly could certify credit
+            # resting on bills nobody supplied. `open` rather than
+            # `need_decision`: an uncollected bill is unsettled even though no
+            # decision can move it.
+            with :ok <- require_settled_register(workings),
+                 :ok <- require_sales_intake_complete(month) do
               snapshot = %{
                 "summary" => workings.summary,
                 "itc" => workings.itc,
@@ -149,6 +159,16 @@ defmodule Nila.Gst.Filing.Signoffs do
     else
       {:error, :not_allowed}
     end
+  end
+
+  # `need_decision`, not `open`: the gate must block on work whose answer
+  # changes the return, and nothing else. A bill the client never sent and an
+  # amount the vendor reported differently are both open money the register
+  # keeps reporting, but neither is a fork in the filing — gating on them would
+  # make the month unsignable by any route through the product, and blocking a
+  # signature on work that changes nothing teaches people to click through.
+  defp require_settled_register(workings) do
+    if Register.need_decision(workings.summary) == 0, do: :ok, else: {:error, :not_reviewed}
   end
 
   defp require_sales_intake_complete(month) do

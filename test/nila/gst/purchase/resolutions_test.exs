@@ -2,7 +2,7 @@ defmodule Nila.Gst.Purchase.ResolutionsTest do
   use Nila.DataCase, async: true
 
   import Nila.AccountsFixtures
-  import Nila.GstFixtures, only: [confirm_sales_complete!: 3]
+  import Nila.GstFixtures, only: [confirm_sales_complete!: 3, settle_register!: 2]
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
@@ -150,7 +150,9 @@ defmodule Nila.Gst.Purchase.ResolutionsTest do
 
   test "a live purchase signoff rejects new decisions", context do
     confirm_sales_complete!(context.org, context.client, @period)
-    assert {:ok, _signoff} = Signoffs.sign_off(context.month, context.scope)
+    month = settle_register!(context.month, context.scope.user.id)
+    settled = Resolutions.list(context.month.id)
+    assert {:ok, _signoff} = Signoffs.sign_off(month, context.scope)
 
     assert {:error, :signed_off} =
              Resolutions.record_and_refresh(
@@ -159,7 +161,9 @@ defmodule Nila.Gst.Purchase.ResolutionsTest do
                context.user.id
              )
 
-    assert Resolutions.list(context.month.id) == []
+    # Nothing new past the signature: the decisions that settled the register
+    # before it are exactly what remains.
+    assert Resolutions.list(context.month.id) == settled
   end
 
   defp json_roundtrip(value), do: value |> Jason.encode!() |> Jason.decode!()

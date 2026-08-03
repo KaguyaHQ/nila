@@ -3,7 +3,7 @@ defmodule Nila.Gst.Intake.PreconditionSweepTest do
   use Oban.Testing, repo: Nila.Repo
 
   import Nila.AccountsFixtures
-  import Nila.GstFixtures, only: [confirm_sales_complete!: 3]
+  import Nila.GstFixtures, only: [confirm_sales_complete!: 3, settle_register!: 2]
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
@@ -194,7 +194,12 @@ defmodule Nila.Gst.Intake.PreconditionSweepTest do
     dump = as_if_never_asked(context, dump)
 
     confirm_sales_complete!(context.org, context.client, "2026-06")
-    {:ok, _signoff} = Signoffs.sign_off(month(context, "2026-06"), context.scope)
+
+    {:ok, _signoff} =
+      context
+      |> month("2026-06")
+      |> settle_register!(context.scope.user.id)
+      |> Signoffs.sign_off(context.scope)
 
     assert %{checked: 1, flagged: [], skipped_wall: [id], rederived: []} =
              PreconditionSweep.run(context.org.id)

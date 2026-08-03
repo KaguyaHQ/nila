@@ -43,7 +43,21 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       "pages" => [1]
     }
 
-    recon = Recon.reconcile([books], [])
+    # Reconciled against the portal's copy of the same bill, so the register is
+    # settled. Signing is what these tests are about, and a month reconciled
+    # against an empty 2B leaves every row unmatched — signable only while the
+    # server had no register gate.
+    gstr2b = %{
+      "vendor_name" => books["vendor_name"],
+      "vendor_gstin" => books["vendor_gstin"],
+      "invoice_number" => books["invoice_number"],
+      "invoice_date" => books["invoice_date"],
+      "taxable_paise" => books["taxable_paise"],
+      "tax_paise" => books["tax_paise"],
+      "total_paise" => books["total_paise"]
+    }
+
+    recon = Recon.reconcile([books], [gstr2b])
     rows = Register.rows([books], recon, %{})
 
     {:ok, month} =
@@ -125,6 +139,53 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     assert signoff.snapshot["summary"] == expected.summary
     assert signoff.snapshot["itc"] == expected.itc
     assert signoff.snapshot["gstr3b"] == expected.gstr3b
+  end
+
+  # The GSTR-1 side has refused an unreviewed signature since it was written;
+  # this one checked only permission, state and sales completeness, leaving the
+  # register gate in the template. A signed 3B freezes the ITC snapshot, so
+  # anything reaching this function directly could certify unreviewed credit.
+  test "GSTR-3B refuses a signature while a decision is still open", %{
+    org: org,
+    client: client,
+    month: month,
+    owner_scope: scope
+  } do
+    books = %{
+      "id" => "page_02",
+      "vendor_name" => "Unknown Traders",
+      "vendor_gstin" => "33AAACS9999A1Z9",
+      "invoice_number" => "9001",
+      "invoice_date" => ~D[2025-10-09],
+      "taxable_paise" => 500_000,
+      "tax_paise" => %{"cgst" => 45_000, "sgst" => 45_000, "igst" => 0},
+      "total_paise" => 590_000,
+      "images" => [],
+      "pages" => [2]
+    }
+
+    # A books row with no 2B counterpart: a real decision, and one the queue
+    # offers verbs for.
+    recon = Recon.reconcile([books], [])
+    rows = Register.rows([books], recon, %{})
+
+    {:ok, unreviewed} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: month.period,
+        state: "worked",
+        register_rows: rows,
+        recon: recon,
+        summary: Register.summary(rows)
+      })
+
+    assert Register.need_decision(unreviewed.summary) > 0
+    assert {:error, :not_reviewed} = Signoffs.sign_off(unreviewed, scope)
+    assert {:error, :not_found} = Signoffs.latest_signoff(unreviewed.id)
+
+    settled = settle_register!(unreviewed, scope.user.id)
+    assert {:ok, _signoff} = Signoffs.sign_off(settled, scope)
   end
 
   test "GSTR-3B rejects open completeness and accepts an attributed override", %{

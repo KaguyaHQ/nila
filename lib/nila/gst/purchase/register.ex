@@ -113,12 +113,22 @@ defmodule Nila.Gst.Purchase.Register do
   `gstr2b_only` is that difference, and it is a completeness fact in its own
   right: bills the portal knows about that nobody has sent us.
 
-  `need_decision` and `awaiting_bills` split the open pile by who owns the next
-  move. A 2B-only row is built with no `id` and no images — there is no bill to
-  open, nothing to compare, and no judgement a reviewer could record. Its next
-  move belongs to the client, not the senior. Counting the two together made a
-  collection chase read as accounting judgement and pointed a primary button at
-  work nobody on the page can do.
+  `need_decision`, `awaiting_bills` and `value_disputes` split the open pile by
+  who owns the next move, and a row earns a place in `need_decision` only when a
+  human's answer would change what gets filed.
+
+  A 2B-only row is built with no `id` and no images: nothing to open, nothing to
+  compare, no judgement to record. Its next move belongs to the client.
+
+  A value mismatch is already paired — the engine matched it on GSTIN and
+  invoice number, and only the amounts differ. ITC is claimable as reflected in
+  the 2B, so the return takes the 2B figure whether or not anyone opens the row.
+  That makes the delta a finding to report and a vendor to chase, not a fork in
+  the return. Blocking a signature on it would be blocking on work that changes
+  nothing.
+
+  All three stay open (`open_row?/1`), because the money behind them is not
+  settled and the register must keep saying so.
   """
   def stats(summary) do
     buckets = summary["buckets"] || %{}
@@ -138,6 +148,8 @@ defmodule Nila.Gst.Purchase.Register do
     # took the difference out of `need_decision`, inverting both numbers.
     awaiting_bills = gstr2b_only - (summary["accepted_gstr2b_only"] || 0)
     awaiting_bills_tax = summary["awaiting_bills_tax_paise"] || 0
+    value_disputes = buckets["value_mismatch"] || 0
+    value_dispute_tax = summary["value_dispute_tax_paise"] || 0
 
     %{
       rows: rows,
@@ -145,8 +157,9 @@ defmodule Nila.Gst.Purchase.Register do
       gstr2b_only: gstr2b_only,
       matched: matched,
       open: open,
-      need_decision: open - awaiting_bills,
+      need_decision: open - awaiting_bills - value_disputes,
       awaiting_bills: awaiting_bills,
+      value_disputes: value_disputes,
       taxable_paise: summary["taxable_paise"] || 0,
       # Summaries written before `total_tax_paise` existed fall back to the two
       # fields they do have. That understates by the accepted rows, but it can
@@ -159,7 +172,8 @@ defmodule Nila.Gst.Purchase.Register do
       # pot so the partition still closes; this names the part of it that no
       # decision can move, only a bill arriving.
       awaiting_bills_tax_paise: awaiting_bills_tax,
-      decision_tax_paise: open_tax - awaiting_bills_tax,
+      value_dispute_tax_paise: value_dispute_tax,
+      decision_tax_paise: open_tax - awaiting_bills_tax - value_dispute_tax,
       # `matched` and `open` are not complements — audited-accepted rows are in
       # neither, so a reader adding the two visible subsets lands short of the
       # month. `settled` is the exact complement of `open` (the money-side twin
@@ -225,6 +239,13 @@ defmodule Nila.Gst.Purchase.Register do
         rows
         |> Enum.filter(&awaiting_bill?/1)
         |> Enum.map(&row_tax/1)
+        |> Enum.sum(),
+      # Tax on rows paired to a 2B that disagrees on amount. Still open money —
+      # the register reports the delta — but not money a decision can move.
+      "value_dispute_tax_paise" =>
+        rows
+        |> Enum.filter(&value_dispute?/1)
+        |> Enum.map(&row_tax/1)
         |> Enum.sum()
     }
   end
@@ -241,8 +262,23 @@ defmodule Nila.Gst.Purchase.Register do
   """
   def awaiting_bill?(row), do: row["bucket"] == "in_2b_not_books" and open_row?(row)
 
-  @doc "Whether a row is an open decision a reviewer can actually record."
-  def decision_row?(row), do: open_row?(row) and not awaiting_bill?(row)
+  @doc """
+  Whether a row's amounts disagree with the 2B it is already paired to.
+
+  The credit follows the 2B either way, so no answer a reviewer gives changes
+  the return. It is a finding to report and a vendor to chase — and if the
+  credit should actually be withheld, that is `block_itc`, which already exists.
+  """
+  def value_dispute?(row), do: row["bucket"] == "value_mismatch" and open_row?(row)
+
+  @doc """
+  Whether a row is an open decision whose answer changes what gets filed.
+
+  The one predicate a signature gate should read: a row nobody's judgement can
+  move must not block the return.
+  """
+  def decision_row?(row),
+    do: open_row?(row) and not awaiting_bill?(row) and not value_dispute?(row)
 
   @doc """
   Whether a row has anything to say beyond its bucket — an open decision, or a

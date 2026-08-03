@@ -331,6 +331,24 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
     scope = Nila.Accounts.Scope.for_user(user)
     confirm_sales_complete!(org, client, @period)
+
+    # Settle the register the way a reviewer would: the month holds one pair
+    # whose invoice numbers differ, and a signature is refused while any row is
+    # unsettled.
+    ref =
+      month.recon
+      |> get_in(["needs_human", Access.at(0), "candidates"])
+      |> hd()
+      |> Recon.gstr2b_ref()
+
+    {:ok, _} =
+      Resolutions.record_and_refresh(
+        month,
+        %{"verb" => "confirm_pair", "books_id" => "page_01", "gstr2b_ref" => ref},
+        user.id
+      )
+
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
     {:ok, _} = Signoffs.sign_off(month, scope)
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/exceptions")
@@ -347,8 +365,10 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
       assert render(view) =~ "Month is signed off"
     end
 
+    # Only the decision that settled the register before signing; the rejected
+    # verbs above wrote nothing.
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
-    assert Resolutions.list(month.id) == []
+    assert Enum.map(Resolutions.list(month.id), & &1.verb) == ["confirm_pair"]
   end
 
   test "renders the queue and the side-by-side diff", %{conn: conn, client: client} do

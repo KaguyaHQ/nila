@@ -6,6 +6,7 @@ defmodule Nila.GstFixtures do
   use Oban.Testing, repo: Nila.Repo
 
   alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps}
+  alias Nila.Gst.Purchase.{Reconciliation, Register, Resolutions}
   alias Nila.{Repo, Storage}
 
   @doc """
@@ -68,5 +69,74 @@ defmodule Nila.GstFixtures do
       )
 
     dump
+  end
+
+  @doc """
+  Settles every open register row on a purchase month, so it can be signed.
+
+  `Signoffs.sign_off/2` refuses a month holding unsettled rows, which is what a
+  test seeding a real reconciliation runs into when its subject is the signature
+  rather than the decisions. This records the audited outcome each open row
+  would get from a reviewer — a confirmed pair where the engine offered a
+  candidate, an accepted unmatched otherwise — rather than faking a clean
+  summary, so the month reaches the signature the way a worked one does.
+  """
+  # Settling rebuckets: confirming a `needs_human` pair can land the row in
+  # `value_mismatch`, and unwinding a pair can push its partner into
+  # `in_books_not_2b`. One pass therefore settles a moving target, so this
+  # repeats until the register stops producing open rows.
+  def settle_register!(month, user_id, passes \\ 5) do
+    workings = Resolutions.workings(month)
+    remaining = Register.need_decision(workings.summary)
+
+    cond do
+      remaining == 0 ->
+        month
+
+      passes == 0 ->
+        raise "settle_register! could not settle #{remaining} row(s): " <>
+                inspect(
+                  for row <- workings.rows,
+                      Register.decision_row?(row),
+                      do: {row["bucket"], row["invoice_number"]}
+                )
+
+      true ->
+        # `value_mismatch` is absent on purpose: those rows are already paired,
+        # the return takes the 2B figure, and no verb settles them because no
+        # answer would change the filing.
+        attrs =
+          for bucket <- ~w(needs_human in_books_not_2b in_2b_not_books),
+              entry <- workings.recon[bucket] || [] do
+            settle_attrs(bucket, entry)
+          end
+
+        {:ok, result} = Resolutions.record_many_and_refresh(month, attrs, user_id)
+        settle_register!(result.month, user_id, passes - 1)
+    end
+  end
+
+  defp settle_attrs("in_2b_not_books", entry) do
+    ref = entry |> Map.get("gstr2b", entry) |> Reconciliation.gstr2b_ref()
+    %{"verb" => "dismiss_2b", "gstr2b_ref" => ref}
+  end
+
+  defp settle_attrs(_bucket, entry) do
+    books_id = get_in(entry, ["books", "id"])
+    pair = List.first(entry["candidates"] || []) || entry["gstr2b"]
+
+    if pair do
+      %{
+        "verb" => "confirm_pair",
+        "books_id" => books_id,
+        "gstr2b_ref" => Reconciliation.gstr2b_ref(pair)
+      }
+    else
+      %{
+        "verb" => "accept_unmatched",
+        "books_id" => books_id,
+        "payload" => %{"reason" => "await_2b"}
+      }
+    end
   end
 end

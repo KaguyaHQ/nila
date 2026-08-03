@@ -27,12 +27,14 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                open: 9,
                need_decision: 4,
                awaiting_bills: 5,
+               value_disputes: 0,
                taxable_paise: 500_000,
                total_tax_paise: 160_000,
                matched_tax_paise: 90_000,
                open_tax_paise: 45_000,
                settled_tax_paise: 115_000,
                awaiting_bills_tax_paise: 0,
+               value_dispute_tax_paise: 0,
                decision_tax_paise: 45_000
              }
 
@@ -67,12 +69,14 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                open: 0,
                need_decision: 0,
                awaiting_bills: 0,
+               value_disputes: 0,
                taxable_paise: 0,
                total_tax_paise: 0,
                matched_tax_paise: 0,
                open_tax_paise: 0,
                settled_tax_paise: 0,
                awaiting_bills_tax_paise: 0,
+               value_dispute_tax_paise: 0,
                decision_tax_paise: 0
              }
 
@@ -137,6 +141,57 @@ defmodule Nila.Gst.Purchase.RegisterTest do
       assert stats.awaiting_bills == 2
       assert stats.need_decision == 5
       assert stats.need_decision + stats.awaiting_bills == stats.open
+    end
+
+    # A value mismatch is already paired on GSTIN and invoice number; only the
+    # amounts differ. ITC is claimable as reflected in the 2B, so the return
+    # takes the 2B figure whether or not anyone opens the row — the delta is a
+    # finding and a vendor to chase, not a fork in the filing. It must not block
+    # a signature, and it must not stop saying what it found.
+    test "a value dispute is open money but not an answerable decision" do
+      dispute = %{
+        "id" => "vm",
+        "bucket" => "value_mismatch",
+        "accepted_reason" => nil,
+        "flags" => [],
+        "cgst_paise" => 89_805,
+        "sgst_paise" => 89_805,
+        "igst_paise" => 0,
+        "taxable_paise" => 0,
+        "verdict" => "differs from 2B: cgst +₹898.05"
+      }
+
+      assert Register.value_dispute?(dispute)
+      refute Register.decision_row?(dispute)
+
+      # Still open: the money is not settled and the register keeps reporting it.
+      assert Register.open_row?(dispute)
+
+      # Carries no flags, so `annotated_row?` is the only thing making the note
+      # speak. Narrowing `open_row?` instead would have silenced exactly the
+      # delta this row exists to report.
+      assert Register.annotated_row?(dispute)
+    end
+
+    test "the open pile splits three ways by who owns the next move" do
+      rows = [
+        row("matched", "matched", nil, 1_000),
+        row("decision", "needs_human", nil, 2_000),
+        row("accepted", "in_books_not_2b", "await_2b", 4_000),
+        row("chase", "in_2b_not_books", nil, 8_000),
+        row("dispute", "value_mismatch", nil, 16_000)
+      ]
+
+      stats = rows |> Register.summary() |> Register.stats()
+
+      assert stats.need_decision == Enum.count(rows, &Register.decision_row?/1)
+      assert stats.awaiting_bills == Enum.count(rows, &Register.awaiting_bill?/1)
+      assert stats.value_disputes == Enum.count(rows, &Register.value_dispute?/1)
+
+      assert stats.need_decision + stats.awaiting_bills + stats.value_disputes == stats.open
+
+      assert stats.decision_tax_paise + stats.awaiting_bills_tax_paise +
+               stats.value_dispute_tax_paise == stats.open_tax_paise
     end
 
     test "the row predicates partition the open pile exactly" do

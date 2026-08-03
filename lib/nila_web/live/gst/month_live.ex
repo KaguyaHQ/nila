@@ -736,6 +736,15 @@ defmodule NilaWeb.Gst.MonthLive do
       {:error, :already_signed} ->
         {:noreply, put_flash(socket, :error, "This month is already signed off.")}
 
+      {:error, :not_reviewed} ->
+        {:noreply,
+         socket
+         |> reload()
+         |> put_flash(
+           :error,
+           "The register still has unsettled rows — work the decisions and collect the missing bills first."
+         )}
+
       {:error, {:sales_intake_incomplete, status}} ->
         {:noreply,
          put_flash(

@@ -271,12 +271,12 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   defp approval_label("GSTR-1"), do: "Approved"
   defp approval_label(_return), do: "Signed"
 
-  # `open` rather than `need_decision`: the count was narrowed to judgements the
-  # reviewer can record, and an uncollected bill is still an unsettled row. A
-  # signature offered while credit rests on documents nobody has is the one
-  # thing this gate exists to prevent.
+  # Mirrors the server gate (`Signoffs.sign_off/2`): offer the signature exactly
+  # when a decision would change what gets filed. Uncollected bills and vendor
+  # amount disputes stay visible as findings and in the money, but neither is
+  # answerable here, so neither withholds the button.
   defp gstr3b_ready?(assigns) do
-    assigns.stats.open == 0 and not is_nil(assigns.r1_signoff) and
+    assigns.stats.need_decision == 0 and not is_nil(assigns.r1_signoff) and
       not is_nil(assigns.sales_month) and not is_nil(assigns.sales_month.filed_at)
   end
 
