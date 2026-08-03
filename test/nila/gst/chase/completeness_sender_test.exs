@@ -27,7 +27,7 @@ defmodule Nila.Gst.Chase.CompletenessSenderTest do
         chase_channel: "whatsapp"
       })
 
-    {:ok, _connection} =
+    {:ok, connection} =
       Integrations.upsert_connection(%{
         org_id: org.id,
         provider: "whatsapp",
@@ -41,11 +41,12 @@ defmodule Nila.Gst.Chase.CompletenessSenderTest do
         %{period: "2026-06", kind: "sales", status: "extracted", invoices: []}
       )
 
-    %{org: org, client: client, dump: dump}
+    %{org: org, client: client, connection: connection, dump: dump}
   end
 
   test "sends one period-bound closeout question after the sales batch", context do
     ask_ref = Ecto.UUID.generate()
+    {:ok, _connection} = Integrations.mark_degraded(context.connection, :previous_failure)
 
     assert :ok =
              perform_job(CompletenessSender, %{
@@ -69,6 +70,10 @@ defmodule Nila.Gst.Chase.CompletenessSenderTest do
     assert {:ok, ask} = Chase.fetch_ask_by_ref(context.org.id, ask_ref)
     assert ask.kind == "sales_completeness"
     assert ask.provider_ref == "wamid.completeness"
+
+    connected = Integrations.get_connection!(context.connection.id)
+    assert connected.last_status == "connected"
+    assert is_nil(connected.last_error)
   end
 
   test "does not ask again once the latest intake is confirmed", context do

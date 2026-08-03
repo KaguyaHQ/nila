@@ -13,6 +13,7 @@ defmodule Nila.Release do
 
   alias Nila.Accounts
   alias Nila.Accounts.User
+  alias Nila.Integrations
   alias Nila.Orgs
   alias Nila.Orgs.{Membership, Org}
   alias Nila.Repo
@@ -55,6 +56,15 @@ defmodule Nila.Release do
       },
       &invite_url/1
     )
+  end
+
+  @doc "Connects a WhatsApp phone-number ID using WHATSAPP_ACCESS_TOKEN."
+  def provision_whatsapp(attrs) when is_map(attrs) do
+    start_app()
+
+    attrs
+    |> Map.put(:access_token, System.fetch_env!("WHATSAPP_ACCESS_TOKEN"))
+    |> Integrations.provision_whatsapp()
   end
 
   defp invite_url(token), do: NilaWeb.Endpoint.url() <> "/users/invite/" <> token

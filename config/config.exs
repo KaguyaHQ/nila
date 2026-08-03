@@ -69,9 +69,21 @@ config :nila, NilaWeb.Webhooks.WhatsAppController,
   app_secret: System.get_env("WHATSAPP_APP_SECRET") || "dev-whatsapp-app-secret",
   verify_token: System.get_env("WHATSAPP_VERIFY_TOKEN") || "dev-whatsapp-verify-token"
 
+config :nila, Nila.Integrations.WhatsApp,
+  graph_url: "https://graph.facebook.com/v20.0",
+  receive_timeout: 30_000,
+  max_media_bytes: 25_000_000
+
 config :nila, Oban,
   repo: Nila.Repo,
-  queues: [documents: 5, workflows: 10, reminders: 5, approvals: 5, chase: 5],
+  queues: [
+    documents: 5,
+    whatsapp: 5,
+    workflows: 10,
+    reminders: 5,
+    approvals: 5,
+    chase: 5
+  ],
   plugins: [
     Oban.Plugins.Pruner,
     # A node that dies mid-read leaves its job `executing` forever otherwise,

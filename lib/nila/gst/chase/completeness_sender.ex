@@ -72,7 +72,7 @@ defmodule Nila.Gst.Chase.CompletenessSender do
          {:ok, yes_payload} <- WhatsAppReply.sign(ask_ref, "client_yes"),
          {:ok, no_payload} <- WhatsAppReply.sign(ask_ref, "client_no"),
          {:ok, response} <-
-           whatsapp_adapter().send_completeness_request(
+           send_whatsapp(
              connection,
              client.phone,
              month_label(period),
@@ -116,6 +116,28 @@ defmodule Nila.Gst.Chase.CompletenessSender do
   defp month_label(<<year::binary-size(4), "-", month::binary-size(2)>>) do
     Date.new!(String.to_integer(year), String.to_integer(month), 1)
     |> Calendar.strftime("%B %Y")
+  end
+
+  defp send_whatsapp(connection, recipient, period, template, yes_payload, no_payload) do
+    result =
+      whatsapp_adapter().send_completeness_request(
+        connection,
+        recipient,
+        period,
+        template,
+        yes_payload,
+        no_payload
+      )
+
+    case result do
+      {:ok, _response} ->
+        _ = Integrations.mark_connected(connection)
+        result
+
+      {:error, reason} ->
+        _ = Integrations.mark_degraded(connection, reason)
+        result
+    end
   end
 
   defp whatsapp_adapter,

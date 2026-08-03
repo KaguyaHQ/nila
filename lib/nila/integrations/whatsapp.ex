@@ -5,8 +5,6 @@ defmodule Nila.Integrations.WhatsApp do
   WhatsApp Cloud API adapter for inbound media and outbound chase templates.
   """
 
-  @graph_url "https://graph.facebook.com/v20.0"
-
   require Logger
 
   @impl true
@@ -72,22 +70,60 @@ defmodule Nila.Integrations.WhatsApp do
   @impl true
   def fetch_media(media_id, token) do
     with {:ok, media_url} <- fetch_media_url(media_id, token),
-         {:ok, response} <- Req.get(media_url, auth: {:bearer, token}),
-         %{status: status, body: bytes} when status in 200..299 <- response do
-      {:ok, bytes}
-    else
-      %{status: status, body: body} -> {:error, {:whatsapp_media_error, status, body}}
-      {:error, reason} -> {:error, reason}
+         {:ok, response} <-
+           Req.get(
+             media_url,
+             request_options(
+               auth: {:bearer, token},
+               raw: true,
+               into: media_collector(max_media_bytes())
+             )
+           ) do
+      media_response(response)
     end
   end
 
   defp fetch_media_url(media_id, token) do
-    case Req.get("#{@graph_url}/#{media_id}", auth: {:bearer, token}) do
+    case Req.get("#{graph_url()}/#{media_id}", request_options(auth: {:bearer, token})) do
       {:ok, %{status: status, body: %{"url" => url}}} when status in 200..299 -> {:ok, url}
       {:ok, %{status: status, body: body}} -> {:error, {:whatsapp_media_url_error, status, body}}
       {:error, reason} -> {:error, reason}
     end
   end
+
+  defp media_collector(max_bytes) do
+    fn {:data, data}, {request, response} ->
+      {size, chunks} =
+        case response.body do
+          {:chunks, size, chunks} -> {size, chunks}
+          _body -> {0, []}
+        end
+
+      size = size + byte_size(data)
+
+      if size > max_bytes do
+        {:halt, {request, %{response | body: {:too_large, size}}}}
+      else
+        {:cont, {request, %{response | body: {:chunks, size, [data | chunks]}}}}
+      end
+    end
+  end
+
+  defp media_response(%{body: {:too_large, size}}),
+    do: {:error, {:whatsapp_media_too_large, size}}
+
+  defp media_response(%{status: status, body: {:chunks, _size, chunks}})
+       when status in 200..299,
+       do: {:ok, chunks |> Enum.reverse() |> IO.iodata_to_binary()}
+
+  defp media_response(%{status: status, body: {:chunks, _size, chunks}}),
+    do:
+      {:error, {:whatsapp_media_error, status, chunks |> Enum.reverse() |> IO.iodata_to_binary()}}
+
+  defp media_response(%{status: status, body: body}) when status in 200..299, do: {:ok, body}
+
+  defp media_response(%{status: status, body: body}),
+    do: {:error, {:whatsapp_media_error, status, body}}
 
   defp messages(payload) do
     payload
@@ -96,12 +132,20 @@ defmodule Nila.Integrations.WhatsApp do
     |> Enum.flat_map(&(get_in(&1, ["value", "messages"]) || []))
   end
 
-  defp message_events(%{"image" => image, "id" => message_id} = message) do
-    [media_attachment(image, message_id, message["from"], "image")]
+  defp message_events(%{
+         "image" => %{"id" => _media_id} = image,
+         "id" => message_id,
+         "from" => sender
+       }) do
+    [media_attachment(image, message_id, sender, "image")]
   end
 
-  defp message_events(%{"document" => document, "id" => message_id} = message) do
-    [media_attachment(document, message_id, message["from"], "document")]
+  defp message_events(%{
+         "document" => %{"id" => _media_id} = document,
+         "id" => message_id,
+         "from" => sender
+       }) do
+    [media_attachment(document, message_id, sender, "document")]
   end
 
   defp message_events(
@@ -160,8 +204,7 @@ defmodule Nila.Integrations.WhatsApp do
 
   defp message_events(_message), do: []
 
-  defp media_attachment(media, message_id, sender, fallback_name) do
-    media_id = Map.fetch!(media, "id")
+  defp media_attachment(%{"id" => media_id} = media, message_id, sender, fallback_name) do
     content_type = Map.get(media, "mime_type", "application/octet-stream")
 
     %{
@@ -196,24 +239,46 @@ defmodule Nila.Integrations.WhatsApp do
   end
 
   defp post_message(connection, body) do
-    token = Map.fetch!(connection.credentials, "access_token")
-    url = "#{@graph_url}/#{connection.external_account_id}/messages"
-    options = [auth: {:bearer, token}, json: body] ++ req_options()
+    with {:ok, token} <- access_token(connection) do
+      url = "#{graph_url()}/#{connection.external_account_id}/messages"
+      options = request_options(auth: {:bearer, token}, json: body)
 
-    case Req.post(url, options) do
-      {:ok, %{status: status, body: response}} when status in 200..299 ->
-        {:ok, response}
+      case Req.post(url, options) do
+        {:ok, %{status: status, body: response}} when status in 200..299 ->
+          {:ok, response}
 
-      {:ok, %{status: status, body: response}} ->
-        {:error, {:whatsapp_send_error, status, response}}
+        {:ok, %{status: status, body: response}} ->
+          {:error, {:whatsapp_send_error, status, response}}
 
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
-  defp req_options,
-    do: Application.get_env(:nila, __MODULE__, []) |> Keyword.get(:req_options, [])
+  defp access_token(%{credentials: %{"access_token" => token}})
+       when is_binary(token) and token != "",
+       do: {:ok, token}
+
+  defp access_token(_connection), do: {:error, :missing_access_token}
+
+  defp request_options(options) do
+    config = Application.get_env(:nila, __MODULE__, [])
+
+    config
+    |> Keyword.get(:req_options, [])
+    |> Keyword.put_new(:receive_timeout, Keyword.get(config, :receive_timeout, 30_000))
+    |> Keyword.merge(options)
+  end
+
+  defp graph_url do
+    Application.get_env(:nila, __MODULE__, [])
+    |> Keyword.get(:graph_url, "https://graph.facebook.com/v20.0")
+    |> String.trim_trailing("/")
+  end
+
+  defp max_media_bytes,
+    do: Application.get_env(:nila, __MODULE__, []) |> Keyword.get(:max_media_bytes, 25_000_000)
 
   defp extension("application/pdf"), do: ".pdf"
   defp extension("image/jpeg"), do: ".jpg"

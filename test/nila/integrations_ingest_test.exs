@@ -16,10 +16,12 @@ defmodule Nila.IntegrationsIngestTest do
   setup do
     gmail_adapter = Application.get_env(:nila, :gmail_adapter)
     whatsapp_adapter = Application.get_env(:nila, :whatsapp_adapter)
+    completeness_secret = Application.get_env(:nila, :whatsapp_completeness_secret)
 
     on_exit(fn ->
       Application.put_env(:nila, :gmail_adapter, gmail_adapter)
       Application.put_env(:nila, :whatsapp_adapter, whatsapp_adapter)
+      Application.put_env(:nila, :whatsapp_completeness_secret, completeness_secret)
     end)
 
     %{org: org_fixture()}
@@ -30,6 +32,7 @@ defmodule Nila.IntegrationsIngestTest do
   } do
     Application.put_env(:nila, :whatsapp_adapter, Nila.Integrations.WhatsAppStub)
     connection = connection!(org, "whatsapp", "phone-number-123")
+    {:ok, _connection} = Integrations.mark_degraded(connection, :previous_failure)
 
     {:ok, client} =
       Clients.create_client(%{
@@ -40,22 +43,22 @@ defmodule Nila.IntegrationsIngestTest do
       })
 
     assert :ok =
-             perform_job(WhatsAppIngestWorker, %{
-               "connection_id" => connection.id,
-               "payload" => whatsapp_payload("919876543210", "known.pdf")
-             })
+             dispatch_whatsapp(
+               connection,
+               whatsapp_payload("919876543210", "known.pdf")
+             )
 
     assert :ok =
-             perform_job(WhatsAppIngestWorker, %{
-               "connection_id" => connection.id,
-               "payload" => whatsapp_payload("919876543210", "known.pdf")
-             })
+             dispatch_whatsapp(
+               connection,
+               whatsapp_payload("919876543210", "known.pdf")
+             )
 
     assert :ok =
-             perform_job(WhatsAppIngestWorker, %{
-               "connection_id" => connection.id,
-               "payload" => whatsapp_payload("919999999999", "unknown.pdf")
-             })
+             dispatch_whatsapp(
+               connection,
+               whatsapp_payload("919999999999", "unknown.pdf")
+             )
 
     arrivals = Arrivals.pending_for_org(org.id)
     assert length(arrivals) == 2
@@ -65,6 +68,7 @@ defmodule Nila.IntegrationsIngestTest do
     assert is_nil(unknown.client_id)
     assert unknown.sender == "919999999999"
     assert unknown.source == "whatsapp"
+    assert Integrations.get_connection!(connection.id).last_status == "connected"
   end
 
   test "WhatsApp button replies record period completeness and text remains evidence", %{
@@ -96,26 +100,81 @@ defmodule Nila.IntegrationsIngestTest do
     {:ok, reply_payload} = WhatsAppReply.sign(ask_ref, "client_yes")
 
     assert :ok =
+             dispatch_whatsapp(
+               connection,
+               whatsapp_button_payload("919876543210", reply_payload)
+             )
+
+    assert Confirmations.status(org.id, client.id, "2026-06") == :complete
+
+    assert :ok =
+             dispatch_whatsapp(
+               connection,
+               whatsapp_text_payload(
+                 "919876543210",
+                 "Two invoices are cancelled",
+                 "wamid.question"
+               )
+             )
+
+    assert [message] = Messages.list(org.id, client.id, "2026-06")
+    assert message.body == "Two invoices are cancelled"
+  end
+
+  test "an operational button-reply failure is retried", %{org: org} do
+    Application.put_env(:nila, :whatsapp_adapter, Nila.Integrations.WhatsAppStub)
+    connection = connection!(org, "whatsapp", "phone-number-123")
+    ask_ref = Ecto.UUID.generate()
+    {:ok, reply_payload} = WhatsAppReply.sign(ask_ref, "client_yes")
+    Application.delete_env(:nila, :whatsapp_completeness_secret)
+
+    assert :ok =
              perform_job(WhatsAppIngestWorker, %{
                "connection_id" => connection.id,
                "payload" => whatsapp_button_payload("919876543210", reply_payload)
              })
 
-    assert Confirmations.status(org.id, client.id, "2026-06") == :complete
+    assert %{failure: 1, success: 0} = Oban.drain_queue(queue: :whatsapp)
+    assert Integrations.get_connection!(connection.id).last_status == "error"
+  end
+
+  test "one failed WhatsApp event does not block siblings", %{org: org} do
+    Application.put_env(:nila, :whatsapp_adapter, Nila.Integrations.WhatsAppStub)
+    connection = connection!(org, "whatsapp", "phone-number-123")
+    Process.put(:whatsapp_media_result, {:error, :media_unavailable})
+
+    payload =
+      whatsapp_messages([
+        %{
+          "id" => "wamid.failed-media",
+          "from" => "919876543210",
+          "document" => %{
+            "id" => "media-failed",
+            "filename" => "failed.pdf",
+            "mime_type" => "application/pdf"
+          }
+        },
+        %{
+          "id" => "wamid.sibling-text",
+          "from" => "919876543210",
+          "text" => %{"body" => "The media upload failed"}
+        }
+      ])
 
     assert :ok =
              perform_job(WhatsAppIngestWorker, %{
                "connection_id" => connection.id,
-               "payload" =>
-                 whatsapp_text_payload(
-                   "919876543210",
-                   "Two invoices are cancelled",
-                   "wamid.question"
-                 )
+               "payload" => payload
              })
 
-    assert [message] = Messages.list(org.id, client.id, "2026-06")
-    assert message.body == "Two invoices are cancelled"
+    assert %{failure: 1, success: 1} = Oban.drain_queue(queue: :whatsapp)
+
+    assert Nila.Repo.get_by(Nila.Gst.Intake.Message,
+             org_id: org.id,
+             source_ref: "whatsapp:wamid.sibling-text"
+           )
+
+    assert Integrations.get_connection!(connection.id).last_status == "error"
   end
 
   test "Gmail attachments from a client are attributed and stranger mail is held", %{org: org} do
@@ -212,16 +271,27 @@ defmodule Nila.IntegrationsIngestTest do
     })
   end
 
-  defp whatsapp_message(message) do
+  defp dispatch_whatsapp(connection, payload) do
+    with :ok <-
+           perform_job(WhatsAppIngestWorker, %{
+             "connection_id" => connection.id,
+             "payload" => payload
+           }),
+         %{failure: 0} <- Oban.drain_queue(queue: :whatsapp) do
+      :ok
+    end
+  end
+
+  defp whatsapp_message(message), do: whatsapp_messages([message])
+
+  defp whatsapp_messages(messages) do
     %{
       "entry" => [
         %{
           "changes" => [
             %{
               "value" => %{
-                "messages" => [
-                  message
-                ]
+                "messages" => messages
               }
             }
           ]

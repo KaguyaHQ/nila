@@ -49,6 +49,10 @@ defmodule Nila.Integrations.Connection do
     |> validate_inclusion(:last_status, @last_statuses)
     |> update_change(:label, &normalize_blank/1)
     |> unique_constraint([:org_id, :provider, :external_account_id])
+    |> unique_constraint(:external_account_id,
+      name: :integration_connections_whatsapp_phone_number_id_index,
+      message: "is already connected to another workspace"
+    )
     |> unique_constraint(:tenant_id,
       name: :integration_connections_provider_tenant_id_index,
       message: "is already connected to another workspace"

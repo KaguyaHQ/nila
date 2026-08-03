@@ -152,13 +152,13 @@ The full month loop, both returns, end to end:
   queue, Register (all-periods filed history), Clients, and intake.
 - **Substrate:** auth + tenancy (orgs / entities / memberships), the
   document→structured **extractor** behind a swappable behaviour, GST jurisdiction
-  logic, the audit log, pluggable storage, and email/WhatsApp ingestion scaffolding.
+  logic, the audit log, pluggable storage, and email/WhatsApp ingestion and chasing.
 - **Frozen** (built for the earlier assistant/generic-workflow direction, kept but not
   the current path): the assistant chatbot (`Nila.Assistant`), the generic workflow
   step-runner (`Nila.Workflows`), and the bank-statement spine (`Nila.Banking` —
   reactivates later for full-bookkeeping clients).
 
-The unbuilt half of the wedge (§3) remains **automated chasing** — today the chase is
-drafts a human copies into WhatsApp and marks sent; Nila chasing relentlessly on its
-own channel is the next milestone. Also deliberately unbuilt: amendments, cross-month
-ITC carry, QRMP, photo intake — pulled by real usage, not pushed.
+Automated chasing is built for consented email and WhatsApp channels, including a
+period-bound WhatsApp completeness question whose signed replies become intake evidence.
+Still deliberately unbuilt: amendments, cross-month ITC carry, QRMP, photo intake —
+pulled by real usage, not pushed.

@@ -128,6 +128,46 @@ if config_env() in [:prod, :dev] do
   end
 end
 
+# WhatsApp is a production intake boundary, so all webhook and outbound reply
+# secrets are required together. Development remains opt-in.
+case config_env() do
+  :prod ->
+    completeness_secret = env!("WHATSAPP_COMPLETENESS_SECRET", :string!)
+
+    if byte_size(completeness_secret) < 32 do
+      raise "WHATSAPP_COMPLETENESS_SECRET must be at least 32 bytes"
+    end
+
+    config :nila,
+      whatsapp_chase_template: env!("WHATSAPP_CHASE_TEMPLATE", :string!),
+      whatsapp_completeness_template: env!("WHATSAPP_COMPLETENESS_TEMPLATE", :string!),
+      whatsapp_completeness_secret: completeness_secret
+
+    config :nila, NilaWeb.Webhooks.WhatsAppController,
+      app_secret: env!("WHATSAPP_APP_SECRET", :string!),
+      verify_token: env!("WHATSAPP_VERIFY_TOKEN", :string!)
+
+  :dev ->
+    if template = env!("WHATSAPP_CHASE_TEMPLATE", :string, nil) do
+      config :nila, whatsapp_chase_template: template
+    end
+
+    if template = env!("WHATSAPP_COMPLETENESS_TEMPLATE", :string, nil) do
+      config :nila, whatsapp_completeness_template: template
+    end
+
+    if secret = env!("WHATSAPP_COMPLETENESS_SECRET", :string, nil) do
+      config :nila, whatsapp_completeness_secret: secret
+    end
+
+  _env ->
+    :ok
+end
+
+if graph_url = env!("WHATSAPP_GRAPH_URL", :string, nil) do
+  config :nila, Nila.Integrations.WhatsApp, graph_url: graph_url
+end
+
 # Transactional email (invites, etc.) via Resend, using Swoosh's built-in
 # adapter over the Req API client. When `RESEND_API_KEY` is set we switch
 # `Nila.Mailer` from the Local dev mailbox to Resend; absent, the Local adapter
@@ -139,20 +179,6 @@ end
 # `MAIL_FROM=noreply@nila.tax`. Resend's shared `onboarding@resend.dev` sender
 # only delivers to your own Resend account email — fine for a smoke test, never
 # for inviting real teammates.
-if config_env() in [:prod, :dev] do
-  if template = env!("WHATSAPP_CHASE_TEMPLATE", :string, nil) do
-    config :nila, whatsapp_chase_template: template
-  end
-
-  if template = env!("WHATSAPP_COMPLETENESS_TEMPLATE", :string, nil) do
-    config :nila, whatsapp_completeness_template: template
-  end
-
-  if secret = env!("WHATSAPP_COMPLETENESS_SECRET", :string, nil) do
-    config :nila, whatsapp_completeness_secret: secret
-  end
-end
-
 if config_env() in [:prod, :dev] do
   if resend_key = env!("RESEND_API_KEY", :string, nil) do
     config :nila, Nila.Mailer,
@@ -237,10 +263,6 @@ if config_env() == :prod do
     client_id: System.get_env("MICROSOFT_CLIENT_ID"),
     client_secret: System.get_env("MICROSOFT_CLIENT_SECRET"),
     redirect_uri: System.get_env("MICROSOFT_REDIRECT_URI")
-
-  config :nila, NilaWeb.Webhooks.WhatsAppController,
-    app_secret: System.get_env("WHATSAPP_APP_SECRET"),
-    verify_token: System.get_env("WHATSAPP_VERIFY_TOKEN")
 
   config :nila, NilaWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],

@@ -15,6 +15,7 @@ defmodule Nila.Gst.Chase.SenderTest do
   test "WhatsApp sends the configured template and records the automated ask" do
     org = org_fixture()
     connection = connection!(org, "whatsapp", "phone-number-123")
+    {:ok, _connection} = Integrations.mark_degraded(connection, :previous_failure)
 
     {:ok, client} =
       Clients.create_client(%{
@@ -52,6 +53,40 @@ defmodule Nila.Gst.Chase.SenderTest do
     assert ask.channel == "whatsapp"
     assert is_nil(ask.sent_by_id)
     assert ask.body == @draft
+
+    connected = Integrations.get_connection!(connection.id)
+    assert connected.last_status == "connected"
+    assert is_nil(connected.last_error)
+  end
+
+  @tag :capture_log
+  test "WhatsApp send failures degrade health without disabling inbound" do
+    org = org_fixture()
+    connection = connection!(org, "whatsapp", "phone-number-123")
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Ravi Traders",
+        type: "company",
+        phone: "9876543210",
+        chase_channel: "whatsapp"
+      })
+
+    Req.Test.expect(Nila.Integrations.WhatsApp, fn conn ->
+      conn
+      |> Plug.Conn.put_status(503)
+      |> Req.Test.json(%{"error" => "unavailable"})
+    end)
+
+    assert {:error, {:whatsapp_send_error, 503, %{"error" => "unavailable"}}} =
+             perform_job(ChaseSender, args(org, client, "whatsapp"))
+
+    degraded = Integrations.get_connection!(connection.id)
+    assert degraded.status == "active"
+    assert degraded.last_status == "error"
+    assert degraded.last_error =~ "whatsapp_send_error"
+    assert Chase.list_asks(org.id, client.id, @period) == []
   end
 
   test "email sends RFC 2822 plain text through Gmail and records the ask" do

@@ -60,6 +60,69 @@ defmodule Nila.IntegrationsTest do
     assert Repo.aggregate(Nila.Integrations.Connection, :count) == 1
   end
 
+  test "provisions and rotates an encrypted WhatsApp connection", %{org: org} do
+    attrs = %{
+      org_id: org.id,
+      phone_number_id: " 123456789 ",
+      access_token: " first-secret ",
+      label: " Firm WhatsApp "
+    }
+
+    assert {:ok, connection} = Integrations.provision_whatsapp(attrs)
+    assert connection.provider == "whatsapp"
+    assert connection.external_account_id == "123456789"
+    assert connection.credentials == %{"access_token" => "first-secret"}
+    assert connection.label == "Firm WhatsApp"
+
+    %{rows: [[stored_credentials]]} =
+      Ecto.Adapters.SQL.query!(
+        Repo,
+        "select credentials from integration_connections where id = $1",
+        [connection.id]
+      )
+
+    refute stored_credentials =~ "first-secret"
+
+    assert {:ok, rotated} =
+             Integrations.provision_whatsapp(%{
+               org_id: org.id,
+               phone_number_id: "123456789",
+               access_token: "second-secret"
+             })
+
+    assert rotated.id == connection.id
+    assert rotated.credentials == %{"access_token" => "second-secret"}
+    assert Repo.aggregate(Nila.Integrations.Connection, :count) == 1
+  end
+
+  test "one WhatsApp phone-number ID cannot bind to two organisations", %{org: org} do
+    other_org = Nila.AccountsFixtures.org_fixture()
+
+    assert {:ok, _connection} =
+             Integrations.provision_whatsapp(%{
+               org_id: org.id,
+               phone_number_id: "123456789",
+               access_token: "first-secret"
+             })
+
+    assert {:error, :whatsapp_account_already_connected} =
+             Integrations.provision_whatsapp(%{
+               org_id: other_org.id,
+               phone_number_id: "123456789",
+               access_token: "second-secret"
+             })
+
+    assert {:error, changeset} =
+             Integrations.upsert_connection(%{
+               org_id: other_org.id,
+               provider: "whatsapp",
+               external_account_id: "123456789",
+               credentials: %{"access_token" => "second-secret"}
+             })
+
+    assert "is already connected to another workspace" in errors_on(changeset).external_account_id
+  end
+
   test "a stale Gmail token is refreshed through the adapter and persisted", %{org: org} do
     assert {:ok, connection} =
              Integrations.upsert_connection(%{

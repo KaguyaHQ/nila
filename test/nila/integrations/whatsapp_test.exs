@@ -91,6 +91,42 @@ defmodule Nila.Integrations.WhatsAppTest do
            }
   end
 
+  test "fetches media through the configured Req adapter" do
+    Req.Test.expect(WhatsApp, fn conn ->
+      assert conn.request_path == "/v20.0/media-1"
+      assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer token"]
+      Req.Test.json(conn, %{"url" => "https://lookaside.example/media-1"})
+    end)
+
+    Req.Test.expect(WhatsApp, fn conn ->
+      assert conn.request_path == "/media-1"
+      assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer token"]
+      Plug.Conn.send_resp(conn, 200, "%PDF-media")
+    end)
+
+    assert {:ok, "%PDF-media"} = WhatsApp.fetch_media("media-1", "token")
+  end
+
+  test "halts media downloads above the configured size limit" do
+    Req.Test.expect(WhatsApp, fn conn ->
+      Req.Test.json(conn, %{"url" => "https://lookaside.example/media-large"})
+    end)
+
+    Req.Test.expect(WhatsApp, fn conn ->
+      Plug.Conn.send_resp(conn, 200, String.duplicate("x", 17))
+    end)
+
+    assert {:error, {:whatsapp_media_too_large, 17}} =
+             WhatsApp.fetch_media("media-large", "token")
+  end
+
+  test "returns an error when outbound credentials are missing" do
+    connection = %Connection{external_account_id: "phone-number-123", credentials: %{}}
+
+    assert {:error, :missing_access_token} =
+             WhatsApp.send_message(connection, "919876543210", "Send the bills", "template")
+  end
+
   test "sends period-specific Yes and No quick replies" do
     yes_payload = "signed-yes"
     no_payload = "signed-no"

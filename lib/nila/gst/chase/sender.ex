@@ -73,7 +73,8 @@ defmodule Nila.Gst.Chase.Sender do
   defp deliver("whatsapp", org, client, args) do
     with %{} = connection <- Integrations.first_active_connection(org.id, "whatsapp"),
          template when is_binary(template) <- Application.get_env(:nila, :whatsapp_chase_template) do
-      whatsapp_adapter().send_message(connection, client.phone, args["body"], template)
+      result = whatsapp_adapter().send_message(connection, client.phone, args["body"], template)
+      track_whatsapp_health(result, connection)
     else
       nil -> {:error, :no_whatsapp_connection_or_template}
     end
@@ -113,6 +114,16 @@ defmodule Nila.Gst.Chase.Sender do
   defp month_label(<<year::binary-size(4), "-", month::binary-size(2)>>) do
     Date.new!(String.to_integer(year), String.to_integer(month), 1)
     |> Elixir.Calendar.strftime("%B %Y")
+  end
+
+  defp track_whatsapp_health({:ok, _response} = result, connection) do
+    _ = Integrations.mark_connected(connection)
+    result
+  end
+
+  defp track_whatsapp_health({:error, reason} = error, connection) do
+    _ = Integrations.mark_degraded(connection, reason)
+    error
   end
 
   defp whatsapp_adapter,

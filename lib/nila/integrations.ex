@@ -9,6 +9,7 @@ defmodule Nila.Integrations do
   import Ecto.Query
 
   alias Nila.Integrations.Connection
+  alias Nila.Orgs.Org
   alias Nila.Repo
 
   def list_connections(org_id) do
@@ -29,6 +30,36 @@ defmodule Nila.Integrations do
       external_account_id: external_account_id,
       status: "active"
     )
+  end
+
+  def provision_whatsapp(attrs) when is_map(attrs) do
+    org_id = attr(attrs, :org_id)
+    phone_number_id = attrs |> attr(:phone_number_id) |> normalize_required()
+    access_token = attrs |> attr(:access_token) |> normalize_required()
+    label = attrs |> attr(:label) |> normalize_optional()
+
+    with true <- is_integer(org_id) and is_binary(phone_number_id) and is_binary(access_token),
+         {:ok, _org} <- Repo.fetch(Org, org_id),
+         :ok <- whatsapp_account_available(org_id, phone_number_id) do
+      now = DateTime.utc_now()
+
+      upsert_connection(%{
+        org_id: org_id,
+        provider: "whatsapp",
+        status: "active",
+        last_status: "connected",
+        last_status_at: now,
+        last_error: nil,
+        disconnected_at: nil,
+        label: label || "WhatsApp #{phone_number_id}",
+        external_account_id: phone_number_id,
+        credentials: %{"access_token" => access_token},
+        settings: %{}
+      })
+    else
+      false -> {:error, :invalid_whatsapp_connection}
+      error -> error
+    end
   end
 
   def first_active_connection(org_id, provider) when is_binary(provider),
@@ -139,6 +170,32 @@ defmodule Nila.Integrations do
     |> Repo.update()
   end
 
+  def mark_connected(%Connection{} = connection, connected_at \\ DateTime.utc_now()) do
+    connected_at = DateTime.truncate(connected_at, :second)
+
+    connection
+    |> Connection.changeset(%{
+      status: "active",
+      last_status: "connected",
+      last_status_at: connected_at,
+      last_error: nil
+    })
+    |> Repo.update()
+  end
+
+  def mark_degraded(%Connection{} = connection, error) do
+    now = DateTime.utc_now()
+
+    connection
+    |> Connection.changeset(%{
+      status: "active",
+      last_status: "error",
+      last_status_at: now,
+      last_error: error_message(error)
+    })
+    |> Repo.update()
+  end
+
   def mark_error(%Connection{} = connection, error, status \\ "error") do
     now = DateTime.utc_now()
 
@@ -209,6 +266,36 @@ defmodule Nila.Integrations do
   end
 
   def token_fresh?(_credentials), do: false
+
+  defp whatsapp_account_available(org_id, phone_number_id) do
+    connection =
+      Repo.one(
+        from connection in Connection,
+          where:
+            connection.provider == "whatsapp" and
+              connection.external_account_id == ^phone_number_id,
+          limit: 1
+      )
+
+    case connection do
+      nil -> :ok
+      %Connection{org_id: ^org_id} -> :ok
+      %Connection{} -> {:error, :whatsapp_account_already_connected}
+    end
+  end
+
+  defp attr(attrs, key), do: Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
+
+  defp normalize_required(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      value -> value
+    end
+  end
+
+  defp normalize_required(_value), do: nil
+
+  defp normalize_optional(value), do: normalize_required(value)
 
   defp error_message(error) when is_binary(error), do: error
   defp error_message(%{message: message}) when is_binary(message), do: message

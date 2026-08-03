@@ -33,6 +33,8 @@ config :nila,
   sales_extractor: Nila.Gst.Extraction.Sales.Stub
 
 config :nila, Nila.Integrations.WhatsApp,
+  graph_url: "https://graph.facebook.com/v20.0/",
+  max_media_bytes: 16,
   req_options: [plug: {Req.Test, Nila.Integrations.WhatsApp}]
 
 config :nila, Nila.Integrations.Gmail, req_options: [plug: {Req.Test, Nila.Integrations.Gmail}]

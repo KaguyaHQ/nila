@@ -79,6 +79,34 @@ put/get/metadata/delete smoke test, export the four variables above and run:
 mix test --include r2_integration test/nila/storage/r2_integration_test.exs
 ```
 
+## WhatsApp provisioning
+
+Configure the Meta webhook as `https://HOST/webhooks/whatsapp` and set
+`WHATSAPP_APP_SECRET` and `WHATSAPP_VERIFY_TOKEN` in the runtime environment. Outbound
+chasing additionally needs `WHATSAPP_CHASE_TEMPLATE`, `WHATSAPP_COMPLETENESS_TEMPLATE`,
+and a 32-byte-or-longer `WHATSAPP_COMPLETENESS_SECRET`.
+
+Connect or rotate a firm's WhatsApp Cloud API phone-number ID without putting the access
+token in the command arguments:
+
+```bash
+export WHATSAPP_ACCESS_TOKEN="..."
+mix nila.whatsapp.connect \
+  --org-id 42 \
+  --phone-number-id 123456789 \
+  --label "Firm WhatsApp"
+```
+
+Production releases do not include Mix. With `WHATSAPP_ACCESS_TOKEN` exported in the
+operator shell, run:
+
+```bash
+bin/nila eval 'IO.inspect(Nila.Release.provision_whatsapp(%{org_id: 42, phone_number_id: "123456789", label: "Firm WhatsApp"}))'
+```
+
+The token is stored through `Nila.EncryptedMap`. A phone-number ID may belong to only one
+Nila organisation.
+
 ## Layout
 
 - `lib/nila/` — business contexts. `gst/` is the core: extraction, recon, flags,
