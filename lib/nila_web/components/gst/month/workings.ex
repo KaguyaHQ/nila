@@ -112,7 +112,10 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:col :let={row} label="Taxable" align="right">
             <.amount_cell row={row} value={row[:taxable]} />
           </:col>
-          <:col :let={row} label="Tax" align="right">
+          <%!-- Every figure in these workings is the derived per-rate bucket, not
+                the sum of extracted lines. They differ by rounding, and calling
+                both "Tax" is why nobody could say which one gets filed. --%>
+          <:col :let={row} label="GSTR-1 tax" align="right">
             <.amount_cell row={row} value={row[:tax]} />
           </:col>
         </.data_table>
@@ -142,7 +145,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:col :let={row} label="Taxable" align="right">
             <.amount_cell row={row} value={row[:taxable]} />
           </:col>
-          <:col :let={row} label="Tax" align="right">
+          <:col :let={row} label="GSTR-1 tax" align="right">
             <.amount_cell row={row} value={row[:tax]} />
           </:col>
         </.data_table>
@@ -193,7 +196,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:col :let={row} label="Taxable" align="right">
             <.amount_cell row={row} value={row[:taxable]} />
           </:col>
-          <:col :let={row} label="Tax" align="right">
+          <:col :let={row} label="GSTR-1 tax" align="right">
             <.amount_cell row={row} value={row[:tax]} />
           </:col>
         </.data_table>

@@ -628,7 +628,14 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
 
     assert has_element?(view, "#queue-g2b-#{ref}")
-    assert has_element?(view, "#gst-exceptions-progress", "0 of 1 resolved")
+
+    # A bill nobody sent is not a decision this reviewer can make, so it groups
+    # as collection and never enters the progress denominator.
+    assert has_element?(view, "#gst-exception-group-collection", "Bills to collect")
+    assert has_element?(view, "#gst-exception-group-collection", "There is no scan to open")
+    refute has_element?(view, "#gst-exception-group-decisions")
+    refute has_element?(view, "#gst-exceptions-progress")
+    assert has_element?(view, "#gst-exceptions", "1 bill to collect")
     assert has_element?(view, "#gst-exception-gstr2b", "Reported in GSTR-2B")
     refute render(view) =~ "isn&#39;t wired"
 

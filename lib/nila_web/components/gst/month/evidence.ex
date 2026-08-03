@@ -390,6 +390,54 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             </div>
           </div>
 
+          <%!-- The decision leads. It used to sit fourth, below a twelve-row line
+                table and below the fold — the reader scrolled past the evidence
+                to find the question the evidence answers. Sticky, so the figures
+                stay on screen while the lines beneath them are read. --%>
+          <div
+            :if={@failed_checks != [] or @other_issues != []}
+            id="gstr1-decisions"
+            class="bg-base-100 space-y-related sticky top-0 z-10 pb-3"
+          >
+            <div :if={@failed_checks != []} id="gstr1-checks" class="space-y-related">
+              <div class="text-ink-subtle text-label font-semibold uppercase">
+                What didn't check out
+              </div>
+              <%= for check <- @failed_checks do %>
+                <.issue_card
+                  :if={@check_issues[check_key(check)]}
+                  id={issue_dom_id(@check_issues[check_key(check)])}
+                  issue={@check_issues[check_key(check)]}
+                  check={check}
+                  decisions={@decisions}
+                  can_correct={
+                    issue_correctable?(@check_issues[check_key(check)], @flagged, @selected_invoice)
+                  }
+                  r1_signoff={@r1_signoff}
+                />
+                <div
+                  :if={is_nil(@check_issues[check_key(check)])}
+                  class="text-body text-ink-muted flex items-center gap-2"
+                >
+                  <.icon name="hero-x-mark-mini" class="text-error size-4 shrink-0" />
+                  <span>{check_claim(check)}</span>
+                </div>
+              <% end %>
+            </div>
+
+            <div :if={@other_issues != []} class="space-y-related">
+              <div class="text-ink-subtle text-label font-semibold uppercase">Issues</div>
+              <.issue_card
+                :for={issue <- @other_issues}
+                id={issue_dom_id(issue)}
+                issue={issue}
+                decisions={@decisions}
+                can_correct={issue_correctable?(issue, @flagged, @selected_invoice)}
+                r1_signoff={@r1_signoff}
+              />
+            </div>
+          </div>
+
           <div :if={@read_rows != []} class="space-y-related">
             <div class="text-ink-subtle text-label font-semibold uppercase">
               Extracted from the original
@@ -444,9 +492,15 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   if row.kind == :total, do: row.totals.taxable, else: row.line["taxable_value"]
                 )}
               </:col>
-              <:col :let={row} label="Tax" align="right" class="whitespace-nowrap">
+              <:col :let={row} label="Extracted tax" align="right" class="whitespace-nowrap">
                 <span :if={row.kind == :total}>{amount(row.totals.tax)}</span>
-                <span :if={row.kind == :line}>{line_tax_label(row.line)}</span>
+                <div :if={row.kind == :line}>
+                  <% reading = line_tax_reading(row.line) %>
+                  <span>{reading.total}</span>
+                  <span :if={reading.split} class="text-ink-subtle text-meta block">
+                    {reading.split}
+                  </span>
+                </div>
               </:col>
               <%!-- The tick is the outcome; its tooltip is the arithmetic in
                     longhand, for the reader who wants the claim spelled out. --%>
@@ -462,44 +516,6 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <p id="gstr1-rate-validation-scope" class="mt-related text-ink-subtle text-meta">
               HSN/SAC existence, tax arithmetic, and imported taxable-goods rate candidates are checked independently. Exemptions and description-dependent conditions still require review.
             </p>
-          </div>
-
-          <div :if={@failed_checks != []} id="gstr1-checks" class="space-y-related">
-            <div class="text-ink-subtle text-label font-semibold uppercase">
-              What didn't check out
-            </div>
-            <%= for check <- @failed_checks do %>
-              <.issue_card
-                :if={@check_issues[check_key(check)]}
-                id={issue_dom_id(@check_issues[check_key(check)])}
-                issue={@check_issues[check_key(check)]}
-                check={check}
-                decisions={@decisions}
-                can_correct={
-                  issue_correctable?(@check_issues[check_key(check)], @flagged, @selected_invoice)
-                }
-                r1_signoff={@r1_signoff}
-              />
-              <div
-                :if={is_nil(@check_issues[check_key(check)])}
-                class="text-body text-ink-muted flex items-center gap-2"
-              >
-                <.icon name="hero-x-mark-mini" class="text-error size-4 shrink-0" />
-                <span>{check_claim(check)}</span>
-              </div>
-            <% end %>
-          </div>
-
-          <div :if={@other_issues != []} class="space-y-related">
-            <div class="text-ink-subtle text-label font-semibold uppercase">Issues</div>
-            <.issue_card
-              :for={issue <- @other_issues}
-              id={issue_dom_id(issue)}
-              issue={issue}
-              decisions={@decisions}
-              can_correct={issue_correctable?(issue, @flagged, @selected_invoice)}
-              r1_signoff={@r1_signoff}
-            />
           </div>
 
           <div
@@ -615,9 +631,13 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       }>
         {issue_label(@issue["code"])}
       </.badge>
-      <p class="mt-related text-body text-ink-muted">{@issue["message"]}</p>
+      <%!-- The engine's message names portal fields ("camt line-tax sum…"). The
+            chip already translates that; the card body says the same thing. --%>
+      <p class="mt-related text-body text-ink-muted">{issue_body(@issue)}</p>
 
-      <dl :if={@mismatch} class="border-base-300 mt-block grid gap-2 border-y py-3 sm:grid-cols-2">
+      <%!-- The difference is the entire reason this card is open, so it is a
+            term of the reading rather than subtraction left to the reader. --%>
+      <dl :if={@mismatch} class="border-base-300 mt-block grid gap-2 border-y py-3 sm:grid-cols-3">
         <div>
           <dt class="text-ink-subtle text-meta">{@mismatch.printed_label}</dt>
           <dd class="font-display text-base-content text-body mt-1 leading-none tabular-nums">
@@ -630,12 +650,29 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             {Helpers.rupees(@mismatch.extracted)}
           </dd>
         </div>
+        <div>
+          <dt class="text-ink-subtle text-meta">Difference</dt>
+          <dd class="font-display text-body text-error mt-1 leading-none tabular-nums">
+            {Helpers.rupees(@mismatch.extracted - @mismatch.printed)}
+          </dd>
+        </div>
       </dl>
+
+      <%!-- Settled by Nila, not by anyone here: an `info` check has already been
+            explained and neither `required?` nor `reviewable?` reads it, so a
+            button on it would change nothing when clicked. --%>
+      <p
+        :if={@issue["status"] == "open" and Issues.level(@issue) == "info"}
+        class="mt-block text-ink-subtle text-meta flex items-center gap-1.5"
+      >
+        <.icon name="hero-check-mini" class="text-success size-4 shrink-0" />
+        {settled_note(@issue)}
+      </p>
 
       <div
         :if={
           @issue["status"] == "open" and is_nil(@r1_signoff) and
-            not SalesWorkings.blocking?(@issue)
+            Issues.gating?(@issue) and not SalesWorkings.blocking?(@issue)
         }
         class="mt-block flex flex-wrap gap-2"
       >
@@ -729,9 +766,50 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
     end
   end
 
-  defp unresolved_label([]), do: "No unresolved checks"
-  defp unresolved_label([_issue]), do: "1 unresolved check"
-  defp unresolved_label(issues), do: "#{length(issues)} unresolved checks"
+  # Counts what the register counts. This used to count every open issue,
+  # including the ones Nila settled itself, so the modal said "3 unresolved
+  # checks" beside a register row reading "1".
+  defp unresolved_label(open_issues) do
+    case Enum.filter(open_issues, &Issues.gating?/1) do
+      [] -> "Nothing left to answer"
+      [_issue] -> "1 to answer"
+      gating -> "#{length(gating)} to answer"
+    end
+  end
+
+  defp settled_note(%{"code" => "rounding_variance"} = issue) do
+    "#{issue_chip_label(issue)} — explained by per-line rounding, accepted."
+  end
+
+  defp settled_note(issue), do: "#{issue_chip_label(issue)} — checked and accepted."
+
+  # The engine's message is written for the engine's own fields. `issue_chip_label`
+  # already translates the rounding family; anything it does not translate is
+  # already in the reviewer's language and passes through.
+  defp issue_body(%{"code" => "rounding_variance", "message" => message} = issue) do
+    case Regex.run(~r/by (-?[\d.]+),/, message) do
+      [_, delta] -> "#{issue_chip_label(issue)} of #{Helpers.rupees(parse_money(delta))}."
+      _ -> issue_chip_label(issue)
+    end
+  end
+
+  defp issue_body(%{"code" => "bucket_tax_mismatch", "message" => message}) do
+    case Regex.run(~r/differs from bucket taxable × ([\d.]+)% .* by (-?[\d.]+),/, message) do
+      [_, rate, delta] ->
+        "The tax on these lines is #{Helpers.rupees(parse_money(delta))} away from " <>
+          "#{Helpers.percent(parse_money(rate))} of what they are taxable on."
+
+      _ ->
+        message
+    end
+  end
+
+  defp issue_body(issue), do: issue["message"]
+
+  defp parse_money(text) do
+    {value, _rest} = Float.parse(text)
+    value
+  end
 
   defp issue_chip_label(%{"code" => "rounding_variance", "message" => message}) do
     cond do
@@ -802,13 +880,15 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   defp printed_total_label("printed_tax_mismatch"), do: "Printed tax total"
   defp printed_total_label("grand_total_mismatch"), do: "Printed bill total"
 
-  defp extracted_total_label("printed_taxable_mismatch"), do: "Extracted line taxable"
-  defp extracted_total_label("printed_tax_mismatch"), do: "Extracted line tax"
-  defp extracted_total_label("grand_total_mismatch"), do: "Extracted lines total"
+  defp extracted_total_label("printed_taxable_mismatch"), do: "Sum of extracted lines"
+  defp extracted_total_label("printed_tax_mismatch"), do: "Sum of extracted line taxes"
+  defp extracted_total_label("grand_total_mismatch"), do: "Sum of extracted lines"
 
+  # The action says which figure reaches the filing, because that is the whole
+  # consequence of the click.
   defp resolution_action(%{"code" => code})
        when code in ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch),
-       do: "Use extracted lines"
+       do: "File the extracted lines"
 
   defp resolution_action(_issue), do: "Keep extracted value"
 
@@ -894,18 +974,26 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
     end
   end
 
-  # The split is shown as the bill prints it — two halves or one IGST — so the
-  # reader compares figure to figure, not a sum they'd have to do in their head.
-  defp line_tax_label(line) do
+  # The total leads and the split sits under it, always visible. `2,166.89 +
+  # 2,166.89` on one line was the widest cell in a table whose pane only scrolls
+  # vertically, and hover-only accounting evidence is inaccessible and easy to
+  # miss — so the split is persistent secondary text, not a tooltip.
+  defp line_tax_reading(line) do
+    cgst = line["cgst_amount"]
+    sgst = line["sgst_amount"]
+
     cond do
       is_number(line["igst_amount"]) ->
-        amount(line["igst_amount"])
+        %{total: amount(line["igst_amount"]), split: "IGST"}
 
-      is_number(line["cgst_amount"]) or is_number(line["sgst_amount"]) ->
-        "#{amount(line["cgst_amount"])} + #{amount(line["sgst_amount"])}"
+      is_number(cgst) or is_number(sgst) ->
+        %{
+          total: amount((cgst || 0) + (sgst || 0)),
+          split: "CGST #{amount(cgst)} · SGST #{amount(sgst)}"
+        }
 
       true ->
-        "—"
+        %{total: "—", split: nil}
     end
   end
 

@@ -136,12 +136,22 @@ defmodule Nila.Gst.Issues do
   @doc "True when reviewer confirmation cannot clear this issue."
   def blocking?(issue), do: level(issue) == "blocking"
 
-  @doc "Counts of the work open across these issues, by kind."
+  @doc """
+  Counts of the work open across these issues, by kind.
+
+  A gating issue with no kind is counted as `:blocked` rather than dropped. Every
+  `blocking` code asks for no work — that is what makes it blocking — but it
+  still withholds the filing, and a count that gates while staying invisible is
+  the exact defect this classification exists to remove.
+  """
   def by_kind(issues) do
-    Enum.reduce(issues, %{decision: 0, confirmation: 0, correction: 0}, fn issue, counts ->
-      case resolution_kind(issue) do
-        nil -> counts
-        kind -> Map.update(counts, kind, 1, &(&1 + 1))
+    empty = %{decision: 0, confirmation: 0, correction: 0, blocked: 0}
+
+    Enum.reduce(issues, empty, fn issue, counts ->
+      case {resolution_kind(issue), gating?(issue)} do
+        {nil, false} -> counts
+        {nil, true} -> Map.update!(counts, :blocked, &(&1 + 1))
+        {kind, _gating} -> Map.update(counts, kind, 1, &(&1 + 1))
       end
     end)
   end

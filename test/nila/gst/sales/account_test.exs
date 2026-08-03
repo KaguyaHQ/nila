@@ -89,15 +89,23 @@ defmodule Nila.Gst.Sales.AccountTest do
       %{"code" => "grand_total_mismatch", "status" => "open", "level" => "required"},
       %{"code" => "cess_not_evaluated", "status" => "open", "level" => "required"},
       %{"code" => "invalid_hsn_sac", "status" => "open", "level" => "required"},
+      %{"code" => "credit_note_unsupported", "status" => "open", "level" => "blocking"},
       %{"code" => "rounding_variance", "status" => "open", "level" => "info"}
     ]
 
     account = Account.summarize([], [], issues, nil, %{files: 1, pages_read: nil})
 
-    assert account.issues.required_count == 3
+    assert account.issues.required_count == 4
     assert account.issues.advisory_count == 2
     assert account.issues.informational_count == 1
-    assert account.issues.by_kind == %{decision: 1, confirmation: 1, correction: 1}
+
+    # The kinds account for everything that gates: the blocker asks for no work
+    # but must not vanish from a count that decides whether the month can be
+    # signed.
+    assert account.issues.by_kind ==
+             %{decision: 1, confirmation: 1, correction: 1, blocked: 1}
+
+    assert Enum.sum(Map.values(account.issues.by_kind)) == account.issues.required_count
   end
 
   test "a legacy snapshot's warning levels are counted by what the code means today" do

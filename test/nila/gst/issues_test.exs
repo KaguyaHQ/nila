@@ -39,7 +39,7 @@ defmodule Nila.Gst.IssuesTest do
       refute Issues.blocking?(required)
     end
 
-    test "by_kind names the work, and ignores issues with none" do
+    test "by_kind names the work, and ignores issues that ask for none" do
       issues = [
         %{"code" => "grand_total_mismatch"},
         %{"code" => "hsn_multiple_rates"},
@@ -48,7 +48,23 @@ defmodule Nila.Gst.IssuesTest do
         %{"code" => "hsn_new_code"}
       ]
 
-      assert Issues.by_kind(issues) == %{decision: 2, confirmation: 1, correction: 1}
+      assert Issues.by_kind(issues) ==
+               %{decision: 2, confirmation: 1, correction: 1, blocked: 0}
+    end
+
+    test "a blocker asks for no work but is still counted" do
+      # Every blocking code has no resolution kind — that is what makes it
+      # blocking. Dropping it here would leave a count that gates the filing
+      # while being invisible in the copy that reports what is open.
+      issues = [
+        %{"code" => "credit_note_unsupported"},
+        %{"code" => "cess_unsupported"},
+        %{"code" => "grand_total_mismatch"},
+        %{"code" => "hsn_new_code"}
+      ]
+
+      assert Issues.by_kind(issues) ==
+               %{decision: 1, confirmation: 0, correction: 0, blocked: 2}
     end
   end
 

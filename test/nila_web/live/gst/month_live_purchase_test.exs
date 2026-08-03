@@ -97,7 +97,9 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#gstr3b-verdict", "Blocked")
+    # The badge names this card's own object — an open reconciliation — not the
+    # GSTR-3B's state, which is what "Blocked" was describing.
+    assert has_element?(view, "#gstr3b-verdict", "Needs #{stats.need_decision} decision")
 
     # The three figures must close: a reader adding the two parts has to land on
     # the whole, or the card teaches an arithmetic that is wrong.

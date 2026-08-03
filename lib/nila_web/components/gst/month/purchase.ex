@@ -249,10 +249,13 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       copy: "The signed reconciliation is frozen and ready for portal filing."
     }
 
+  # The badge names what this card is: a reconciliation with open decisions. It
+  # read "Blocked", which is the GSTR-3B's state, on a card titled "Purchase
+  # reconciliation" — the badge and its object disagreed.
   defp verdict_state(%{stats: %{need_decision: count}}) when count > 0,
     do: %{
       variant: "error",
-      label: "Blocked",
+      label: "Needs #{count} #{plural(count, "decision")}",
       copy:
         "#{count} #{plural(count, "decision")} must be worked before the GSTR-3B can be signed."
     }

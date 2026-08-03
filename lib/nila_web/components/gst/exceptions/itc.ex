@@ -47,12 +47,13 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           <span class="text-base-content text-ui min-w-0 flex-1 truncate">
             {b["vendor"]} · {b["invoice_number"] || "—"}
           </span>
+          <%!-- Nothing is being taken away at zero, so neither the minus sign nor
+                the alarm colour is earned. --%>
           <span class={[
             "text-ui w-24 text-right font-mono",
-            b["state"] == "blocked" && "text-error",
-            b["state"] != "blocked" && "text-ink-subtle"
+            ((b["state"] == "blocked" and withheld?(b)) && "text-error") || "text-ink-subtle"
           ]}>
-            −{itc_money(b["tax_paise"])}
+            {if withheld?(b), do: "−", else: ""}{itc_money(b["tax_paise"])}
           </span>
           <span :if={b["state"] == "recommended" and not @signed_off} class="flex gap-1.5">
             <.button
@@ -99,4 +100,6 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
   end
 
   defp itc_money(paise), do: Nila.Formatters.format_money_with_paise(paise || 0)
+
+  defp withheld?(block), do: (block["tax_paise"] || 0) > 0
 end

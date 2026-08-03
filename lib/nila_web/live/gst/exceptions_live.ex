@@ -4,7 +4,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
   alias Nila.Gst.Chase
   alias Nila.Gst.Filing.Signoffs
   alias Nila.Gst.Intake.Dumps
-  alias Nila.Gst.Purchase.{Reconciliation, Resolutions}
+  alias Nila.Gst.Purchase.{Reconciliation, Register, Resolutions}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias NilaWeb.Components.Gst.Exceptions.{Itc, Modal, Surface}
 
@@ -62,8 +62,49 @@ defmodule NilaWeb.Gst.ExceptionsLive do
     |> assign(:month, month)
     |> assign(:signed_off, signed_off?(month))
     |> assign(:queue, queue)
+    |> assign(:groups, groups(queue))
     |> assign(:progress, progress(queue))
+    |> assign(:stats, Register.stats(workings.summary))
     |> assign(:itc, workings.itc)
+  end
+
+  # Two kinds of work, not one pile. A decision is somebody's judgement about
+  # what gets filed; a 2B-only line is a bill nobody sent, which no judgement
+  # here can produce. Merging them is what made "0 of 12 resolved" a number over
+  # a queue of which nine were the client's job.
+  @group_order [
+    %{
+      key: :decisions,
+      kind: :books,
+      title: "Decisions",
+      blurb:
+        "Your call. Each is one tap from its scanned bill — decide it, and it stays here marked done."
+    },
+    %{
+      key: :collection,
+      kind: :gstr2b,
+      title: "Bills to collect",
+      blurb:
+        "The portal reported these supplies and the books have no document for them. There is no scan to open — the next move is a request to the client."
+    }
+  ]
+
+  defp groups(queue) do
+    Enum.flat_map(@group_order, fn group ->
+      case Enum.filter(queue, &(&1.kind == group.kind)) do
+        [] ->
+          []
+
+        items ->
+          [
+            Map.merge(group, %{
+              items: items,
+              count: length(items),
+              tax_paise: items |> Enum.map(& &1.tax_paise) |> Enum.sum()
+            })
+          ]
+      end
+    end)
   end
 
   defp build_queue(workings, month) do
@@ -202,7 +243,13 @@ defmodule NilaWeb.Gst.ExceptionsLive do
     end
   end
 
-  defp progress(queue), do: %{done: Enum.count(queue, & &1.resolved), total: length(queue)}
+  # Progress reads decisions alone. Counting the collection queue in the
+  # denominator reported a reviewer as 0/12 done when nine of the twelve were
+  # never his to move.
+  defp progress(queue) do
+    decisions = Enum.filter(queue, &(&1.kind == :books))
+    %{done: Enum.count(decisions, & &1.resolved), total: length(decisions)}
+  end
 
   defp image_urls(books, month) do
     Enum.map(books["images"] || [], fn path ->
@@ -478,6 +525,27 @@ defmodule NilaWeb.Gst.ExceptionsLive do
 
   defp blank?(v), do: is_nil(v) or String.trim(to_string(v)) == ""
 
+  # A snapshot frozen before the money split existed reads ₹0 for both subsets,
+  # which is indistinguishable from a real zero. Say the counts and say the
+  # breakdown is unavailable rather than asserting a confident ₹0.
+  defp open_money_clause(%{open_money_split_known?: false} = stats) do
+    "#{stats.need_decision} #{pluralise(stats.need_decision, "decision")} · " <>
+      "#{stats.awaiting_bills} #{pluralise(stats.awaiting_bills, "bill")} to collect " <>
+      "(legacy snapshot: counts only — monetary breakdown unavailable)"
+  end
+
+  defp open_money_clause(stats) do
+    "#{stats.need_decision} #{pluralise(stats.need_decision, "decision")} · " <>
+      "#{money(stats.decision_tax_paise)} · " <>
+      "#{stats.awaiting_bills} #{pluralise(stats.awaiting_bills, "bill")} to collect · " <>
+      "#{money(stats.awaiting_bills_tax_paise)}"
+  end
+
+  defp money(paise), do: Nila.Formatters.format_money(paise || 0)
+
+  defp pluralise(1, noun), do: noun
+  defp pluralise(_count, noun), do: noun <> "s"
+
   defp signed_off?(month) do
     case Signoffs.latest_signoff(month.id) do
       {:ok, _} -> true
@@ -499,9 +567,11 @@ defmodule NilaWeb.Gst.ExceptionsLive do
     >
       <div id="gst-exceptions" class="space-y-section mx-auto max-w-7xl">
         <div class="flex items-center justify-between">
+          <%!-- "Each is one tap from its scanned bill" is false for every 2B-only
+                line, which has no bill by construction. The groups say it per
+                kind; the header states the track. --%>
           <.page_header eyebrow="GST · Exceptions" title={"#{@month.client.name} · #{@month.period}"}>
-            The pile that needs a decision. Each is one tap from its scanned bill — decide it,
-            and it stays here marked done. Undo anytime.
+            {open_money_clause(@stats)}
           </.page_header>
           <div class="flex shrink-0 items-center gap-4">
             <span
@@ -509,7 +579,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
               id="gst-exceptions-progress"
               class="text-ink-subtle text-ui"
             >
-              {@progress.done} of {@progress.total} resolved
+              {@progress.done} of {@progress.total} {pluralise(@progress.total, "decision")} made
             </span>
             <.link
               navigate={~p"/gst/#{@month.client_id}/#{@month.period}"}
@@ -532,6 +602,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
         <Itc.itc_panel itc={@itc} signed_off={@signed_off} />
         <Surface.exception_surface
           queue={@queue}
+          groups={@groups}
           selected_id={@selected_id}
           selected={@selected}
           signed_off={@signed_off}

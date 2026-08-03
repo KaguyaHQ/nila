@@ -49,6 +49,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       |> assign(:reconciliation_rows, reconciliation_rows(assigns.account))
       |> assign(:hsn_summary, Gstr1.hsn_summary(assigns.active_invoices))
       |> assign(:hsn_issues, hsn_issues(assigns.account.issues.required))
+      |> assign(:novelty, novelty(assigns.account.issues.advisory))
+      |> assign(:other_advisories, other_advisories(assigns.account.issues.advisory))
       |> then(&assign(&1, :hsn_totals, hsn_totals(&1.hsn_summary)))
 
     ~H"""
@@ -68,6 +70,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             </div>
             <p class="text-body text-ink-muted">{@verdict.copy}</p>
           </div>
+          <%!-- The card above already asserts the tally; the button says where
+                it goes, not how many again. --%>
           <.button
             :if={@open_issue_count > 0}
             id="gstr1-review-required"
@@ -75,7 +79,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             variant="primary"
             size="sm"
           >
-            Review {@open_issue_count} {plural(@open_issue_count, "check")}
+            Take them one by one
           </.button>
         </div>
         <dl class="gap-block mt-block grid sm:grid-cols-3">
@@ -108,9 +112,9 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         class="space-y-block scroll-mt-28"
       >
         <div class="flex items-center justify-between gap-3">
-          <h3 class="text-base-content text-body font-semibold">Checks before filing</h3>
-          <span class="text-error text-ui font-medium">
-            {length(@required_issues)} unresolved
+          <h3 class="text-base-content text-body font-semibold">Before filing</h3>
+          <span id="gstr1-required-clause" class="text-error text-ui font-medium">
+            {Helpers.work_clause(@account.issues.by_kind)}
           </span>
         </div>
         <div class="space-y-related">
@@ -131,7 +135,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               <p class="text-body text-ink-muted">{issue["message"]}</p>
             </div>
             <.button
-              :if={is_binary(issue["hsn_code"])}
+              :if={
+                is_binary(issue["hsn_code"]) and
+                  not hsn_reviewed?(issue, @active_invoices, @expanded_nodes)
+              }
               href="#gstr1-workings-hsn"
               variant="outline"
               size="xs"
@@ -139,6 +146,35 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               phx-value-code={issue["hsn_code"]}
             >
               Review HSN rows
+            </.button>
+            <%!-- Only after the rows have actually been opened: confirming an
+                  HSN check you have not looked at is not an answer. --%>
+            <.button
+              :if={
+                is_binary(issue["hsn_code"]) and
+                  hsn_reviewed?(issue, @active_invoices, @expanded_nodes) and
+                  is_nil(issue["source_id"])
+              }
+              variant="outline"
+              size="xs"
+              phx-click="confirm_issue"
+              phx-value-target={SalesWorkings.issue_key(issue)}
+            >
+              Confirm from records
+            </.button>
+            <.button
+              :if={
+                is_binary(issue["hsn_code"]) and
+                  hsn_reviewed?(issue, @active_invoices, @expanded_nodes) and
+                  is_binary(issue["source_id"])
+              }
+              variant="outline"
+              size="xs"
+              phx-click="review-sales-issue"
+              phx-value-source={issue["source_id"]}
+              phx-value-target={SalesWorkings.issue_key(issue)}
+            >
+              Review invoice
             </.button>
             <.button
               :if={!is_binary(issue["hsn_code"]) and issue["code"] == "duplicate_invoice_number"}
@@ -197,6 +233,44 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             </.button>
           </article>
         </div>
+      </section>
+
+      <%!-- Context, not outstanding work: one grouped block, no dismissal, and
+            approval never asks whether anyone opened it. Seven rows of
+            low-priority novelty is quieter spam, still spam. --%>
+      <section
+        :if={@novelty != nil or @other_advisories != []}
+        id="gstr1-advisories"
+        class="space-y-related"
+      >
+        <details :if={@novelty} id="gstr1-advisory-hsn-new" class="border-base-300 rounded-box border">
+          <summary class="text-base-content text-ui cursor-pointer px-4 py-3 font-medium">
+            {@novelty.headline}
+            <span class="text-ink-subtle text-meta mt-1 block font-mono font-normal">
+              {Enum.join(@novelty.codes, " · ")}
+            </span>
+          </summary>
+          <.data_table id="gstr1-advisory-hsn-rows" rows={@novelty.rows} dense>
+            <:col :let={row} label="HSN / SAC"><span class="font-mono">{row.code}</span></:col>
+            <:col :let={row} label="Description">{row.description}</:col>
+            <:col :let={row} label="Rate" align="right">{row.rates}</:col>
+            <:col :let={row} label="Taxable value" align="right">{rupees(row.taxable)}</:col>
+            <:col :let={row} label="Invoices">{row.invoices}</:col>
+            <:col :let={row} label="Read from">{row.provenance}</:col>
+          </.data_table>
+          <div class="px-4 py-3">
+            <.button href="#gstr1-hsn-signoff" variant="outline" size="xs">
+              Review HSN summary
+            </.button>
+          </div>
+        </details>
+        <p
+          :for={issue <- @other_advisories}
+          id={"gstr1-advisory-#{:erlang.phash2(SalesWorkings.issue_key(issue))}"}
+          class="border-base-300 rounded-box text-body text-ink-muted border px-4 py-3"
+        >
+          {issue["message"]}
+        </p>
       </section>
 
       <section id="gstr1-completeness" class="space-y-block">
@@ -291,50 +365,14 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               value={rupees(@hsn_totals.tax - @account.extraction.totals.tax)}
             />
           </dl>
-          <div :if={@hsn_issues != []} class="space-y-related">
-            <div
-              :for={issue <- @hsn_issues}
-              id={"gstr1-hsn-issue-#{:erlang.phash2(SalesWorkings.issue_key(issue))}"}
-              class="border-base-300 flex flex-wrap items-center gap-3 border-t pt-3"
-            >
-              <p class="text-base-content text-ui min-w-0 flex-1">{issue["message"]}</p>
-              <.button
-                :if={!hsn_reviewed?(issue, @active_invoices, @expanded_nodes)}
-                href="#gstr1-workings-hsn"
-                variant="outline"
-                size="xs"
-                phx-click="review-hsn-issue"
-                phx-value-code={issue["hsn_code"]}
-              >
-                Review
-              </.button>
-              <.button
-                :if={
-                  hsn_reviewed?(issue, @active_invoices, @expanded_nodes) and
-                    is_nil(issue["source_id"]) and issue["level"] != "blocking"
-                }
-                variant="outline"
-                size="xs"
-                phx-click="confirm_issue"
-                phx-value-target={SalesWorkings.issue_key(issue)}
-              >
-                Confirm from records
-              </.button>
-              <.button
-                :if={
-                  hsn_reviewed?(issue, @active_invoices, @expanded_nodes) and
-                    is_binary(issue["source_id"])
-                }
-                variant="outline"
-                size="xs"
-                phx-click="review-sales-issue"
-                phx-value-source={issue["source_id"]}
-                phx-value-target={SalesWorkings.issue_key(issue)}
-              >
-                Review invoice
-              </.button>
-            </div>
-          </div>
+          <%!-- The issues themselves live in "Before filing", once. This card
+                kept a second copy of the same list ~600px away, with different
+                buttons; its job is the totals and whether they reconcile. --%>
+          <p :if={@hsn_issues != []} class="text-ink-muted text-ui">
+            <.link href="#gstr1-checks-before-filing" class="underline">
+              {length(@hsn_issues)} of the checks before filing {verb(length(@hsn_issues))} these rows
+            </.link>
+          </p>
         </section>
 
         <p class="text-ink-muted text-ui">{confirmation_note(@confirmation, @completeness)}</p>
@@ -440,7 +478,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <:col :let={invoice} label="Taxable" align="right">
         {rupees(Gstr1.extracted_totals(invoice).taxable)}
       </:col>
-      <:col :let={invoice} label="Tax" align="right">
+      <%!-- This invoice's tax reads three ways on this page: what the bill
+            printed, the sum of the extracted lines, and the per-rate figure that
+            reaches the return. All three were labelled "Tax". --%>
+      <:col :let={invoice} label="Extracted tax" align="right">
         {rupees(Gstr1.extracted_totals(invoice).tax)}
       </:col>
       <:col :let={invoice} label="Status">
@@ -494,11 +535,11 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       copy: "The approved draft is frozen and ready for portal filing."
     }
 
-  defp verdict_state(%{account: %{issues: %{required_count: count}}}) when count > 0,
+  defp verdict_state(%{account: %{issues: %{required_count: count} = issues}}) when count > 0,
     do: %{
       variant: "error",
       label: "Blocked",
-      copy: "#{count} #{plural(count, "check")} must be resolved before approval."
+      copy: verdict_copy(issues)
     }
 
   defp verdict_state(%{completeness: completeness}) when completeness != :complete,
@@ -514,6 +555,14 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       label: "Ready for approval",
       copy: "All checks are resolved and supplied sales documents are accounted for."
     }
+
+  defp verdict_copy(%{advisory_count: 0} = issues),
+    do: "#{Helpers.work_clause(issues.by_kind)} before this can be approved."
+
+  defp verdict_copy(issues) do
+    "#{Helpers.work_clause(issues.by_kind, issues.advisory_count)} — the advisories are context, " <>
+      "the rest hold the filing."
+  end
 
   defp draft_label(%{r1_signoff: %{}}), do: "Approved draft"
 
@@ -616,9 +665,43 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp hsn_issues(issues) do
     Enum.filter(issues, fn issue ->
       is_binary(issue["hsn_code"]) and
-        issue["code"] in ~w(hsn_multiple_rates hsn_new_code hsn_inferred_code rate_history_conflict statutory_rate_mismatch statutory_rate_review invalid_hsn_sac incomplete_hsn_sac)
+        issue["code"] in ~w(hsn_multiple_rates hsn_inferred_code rate_history_conflict statutory_rate_mismatch statutory_rate_review invalid_hsn_sac incomplete_hsn_sac)
     end)
   end
+
+  # One block for the whole of "we have not seen these codes before", expandable
+  # to what a reviewer would want if he decided to look: what the code is, at
+  # what rate, on how much, from which bills, and whether anyone read it off one.
+  defp novelty(advisories) do
+    case Enum.filter(advisories, &(&1["code"] == "hsn_new_code")) do
+      [] ->
+        nil
+
+      issues ->
+        codes = issues |> Enum.map(& &1["hsn_code"]) |> Enum.uniq() |> Enum.sort()
+
+        %{
+          headline:
+            "#{length(codes)} HSN/SAC #{plural(length(codes), "code")} #{verb(length(codes))} new for this client",
+          codes: codes,
+          rows: Enum.map(issues, &novelty_row/1)
+        }
+    end
+  end
+
+  defp novelty_row(issue) do
+    %{
+      code: issue["hsn_code"],
+      description: issue["hsn_description"] || "—",
+      rates: issue["hsn_rates"] |> List.wrap() |> Enum.map_join(" / ", &Helpers.percent/1),
+      taxable: issue["hsn_taxable"],
+      invoices: issue["hsn_invoices"] |> List.wrap() |> Enum.join(", "),
+      provenance: if(issue["hsn_inferred"], do: "Inferred", else: "Printed on the bill")
+    }
+  end
+
+  defp other_advisories(advisories),
+    do: Enum.reject(advisories, &(&1["code"] == "hsn_new_code"))
 
   defp hsn_reviewed?(issue, invoices, expanded_nodes) do
     case Workings.hsn_node_ids(invoices, issue["hsn_code"]) do
@@ -641,8 +724,11 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp cess_label(:unsupported), do: "Applies · this return cannot carry it"
 
   defp issues_clause(0), do: "Ready"
-  defp issues_clause(1), do: "1 check"
-  defp issues_clause(n), do: "#{n} checks"
+  defp issues_clause(1), do: "1 to answer"
+  defp issues_clause(n), do: "#{n} to answer"
+
+  defp verb(1), do: "is"
+  defp verb(_count), do: "are"
 
   defp plural(1, word), do: word
   defp plural(_count, word), do: word <> "s"

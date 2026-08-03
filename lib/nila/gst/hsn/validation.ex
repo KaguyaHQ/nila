@@ -158,6 +158,13 @@ defmodule Nila.Gst.Hsn.Validation do
         "fields" => ["line_items"],
         "hsn_code" => code,
         "hsn_rates" => observations |> Enum.map(& &1.rate) |> Enum.uniq() |> Enum.sort(),
+        # What a reviewer would ask for if he decided to look: the portal's own
+        # description, how much rides on the code, which bills carry it, and
+        # whether anyone actually read it off one.
+        "hsn_description" => observations |> Enum.find_value(& &1.description),
+        "hsn_taxable" => observations |> Enum.map(& &1.taxable) |> Enum.sum(),
+        "hsn_invoices" => observations |> Enum.map(& &1.invoice) |> Enum.uniq() |> Enum.sort(),
+        "hsn_inferred" => Enum.any?(observations, & &1.inferred),
         "target" => "hsn_new_code|#{code}"
       }
     end)
@@ -195,6 +202,9 @@ defmodule Nila.Gst.Hsn.Validation do
             %{
               code: code,
               rate: rate,
+              description: line["hsn_description"],
+              taxable: line["taxable_value"] || 0,
+              inferred: line["hsn_inferred"] == true,
               source_id: invoice["id"],
               invoice: invoice["invoice_number"]
             }

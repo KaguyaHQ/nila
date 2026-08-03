@@ -4,6 +4,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   @moduledoc "Queue, detail, and candidate presentation for the GST exception workbench."
 
   attr :queue, :list, required: true
+  attr :groups, :list, required: true
   attr :selected_id, :any, default: nil
   attr :selected, :any, default: nil
   attr :signed_off, :boolean, required: true
@@ -25,55 +26,72 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
     </div>
 
     <div :if={@queue != []} class="grid gap-4 lg:grid-cols-[20rem_1fr]">
-      <div
-        id="gst-exception-queue"
-        class="border-base-300 divide-base-300 rounded-box divide-y border"
-      >
-        <button
-          :for={item <- @queue}
-          type="button"
-          id={"queue-#{item.id}"}
-          phx-click="select"
-          phx-value-id={item.id}
-          class={[
-            "flex w-full items-start gap-2 px-3 py-2 text-left transition",
-            item.id == @selected_id && "bg-base-200",
-            item.id != @selected_id && "hover:bg-base-200/50"
-          ]}
+      <div id="gst-exception-queue" class="space-y-block">
+        <%!-- Each kind of work carries its own count and its own money, because
+              a reviewer's decisions and a client's missing bills are not one
+              backlog with one number. --%>
+        <div
+          :for={group <- @groups}
+          id={"gst-exception-group-#{group.key}"}
+          class="border-base-300 rounded-box border"
         >
-          <.icon
-            :if={item.resolved}
-            name="hero-check-circle-mini"
-            class="text-success mt-0.5 size-4 shrink-0"
-          />
-          <span :if={not item.resolved} class="bg-warning mt-1.5 size-2 shrink-0 rounded-full" />
-          <span class="flex min-w-0 flex-1 flex-col gap-1">
-            <span class="flex items-baseline gap-2">
-              <span class={[
-                "text-ui min-w-0 flex-1 truncate font-medium",
-                item.resolved && "text-ink-subtle",
-                not item.resolved && "text-base-content"
-              ]}>
-                {item.vendor}
+          <div class="border-base-300 space-y-1 border-b px-3 py-2">
+            <div class="flex items-baseline justify-between gap-2">
+              <span class="text-base-content text-ui font-semibold">{group.title}</span>
+              <span class="text-ink-muted text-meta font-mono">
+                {group.count} · {format_money(group.tax_paise, prefix: "₹")}
               </span>
-              <span
-                :if={item.tax_paise > 0}
-                id={"queue-tax-#{item.id}"}
-                class={[
-                  "text-meta shrink-0 font-mono",
-                  (item.resolved && "text-ink-subtle") || "text-ink-muted"
-                ]}
-              >
-                {format_money(item.tax_paise, prefix: "₹")}
+            </div>
+            <p class="text-ink-subtle text-meta">{group.blurb}</p>
+          </div>
+          <div class="divide-base-300 divide-y">
+            <button
+              :for={item <- group.items}
+              type="button"
+              id={"queue-#{item.id}"}
+              phx-click="select"
+              phx-value-id={item.id}
+              class={[
+                "flex w-full items-start gap-2 px-3 py-2 text-left transition",
+                item.id == @selected_id && "bg-base-200",
+                item.id != @selected_id && "hover:bg-base-200/50"
+              ]}
+            >
+              <.icon
+                :if={item.resolved}
+                name="hero-check-circle-mini"
+                class="text-success mt-0.5 size-4 shrink-0"
+              />
+              <span :if={not item.resolved} class="bg-warning mt-1.5 size-2 shrink-0 rounded-full" />
+              <span class="flex min-w-0 flex-1 flex-col gap-1">
+                <span class="flex items-baseline gap-2">
+                  <span class={[
+                    "text-ui min-w-0 flex-1 truncate font-medium",
+                    item.resolved && "text-ink-subtle",
+                    not item.resolved && "text-base-content"
+                  ]}>
+                    {item.vendor}
+                  </span>
+                  <span
+                    :if={item.tax_paise > 0}
+                    id={"queue-tax-#{item.id}"}
+                    class={[
+                      "text-meta shrink-0 font-mono",
+                      (item.resolved && "text-ink-subtle") || "text-ink-muted"
+                    ]}
+                  >
+                    {format_money(item.tax_paise, prefix: "₹")}
+                  </span>
+                </span>
+                <span class="text-ink-subtle text-meta truncate">
+                  {if item.resolved,
+                    do: item.outcome,
+                    else: "#{item.invoice_number || "no invoice no"} · #{short_type(item.type)}"}
+                </span>
               </span>
-            </span>
-            <span class="text-ink-subtle text-meta truncate">
-              {if item.resolved,
-                do: item.outcome,
-                else: "#{item.invoice_number || "no invoice no"} · #{short_type(item.type)}"}
-            </span>
-          </span>
-        </button>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div id="gst-exception-detail" class="border-base-300 rounded-box border p-6">
