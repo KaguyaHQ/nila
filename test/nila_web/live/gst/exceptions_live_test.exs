@@ -188,6 +188,116 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
     refute render(view) =~ "Scanned bill"
   end
 
+  describe "the s.16(2)(a) attestation" do
+    test "unsubstantiated credit is claimed, named, and asked about", %{
+      conn: conn,
+      org: org,
+      client: client
+    } do
+      period = "2026-07"
+      gstr2b = g2b(%{"vendor_name" => "PORTAL VENDOR", "invoice_number" => "P-1"})
+      put_recon!(org, client, period, [], Recon.reconcile([], [gstr2b]))
+
+      {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
+
+      # The bridge shows the money inside the claim rather than deducted from
+      # it: a bill that hasn't reached us says nothing about what the client
+      # holds.
+      assert has_element?(view, "#gst-itc-bridge-reported", "Reported in GSTR-2B")
+      assert has_element?(view, "#gst-itc-bridge-claimable", "Claimable ITC")
+
+      assert has_element?(
+               view,
+               "#gst-itc-bridge-awaiting-document",
+               "client hasn't sent us the bill"
+             )
+
+      assert has_element?(view, "#gst-itc-attestation", "Confirm the client holds tax invoices")
+      assert has_element?(view, "#gst-attest-held")
+      assert has_element?(view, "#gst-attest-not-held")
+      assert has_element?(view, "#gst-attest-unknown")
+    end
+
+    test "confirming possession keeps the credit and records who said so", %{
+      conn: conn,
+      org: org,
+      client: client
+    } do
+      period = "2026-08"
+      gstr2b = g2b(%{"invoice_number" => "P-2", "total_paise" => 2_360_000})
+      put_recon!(org, client, period, [], Recon.reconcile([], [gstr2b]))
+
+      {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
+
+      claimed_before = view |> element("#gst-itc-bridge-claimable") |> render()
+
+      view |> element("#gst-attest-held") |> render_click()
+
+      assert has_element?(view, "#gst-itc-attestation", "Client holds the tax invoices")
+      assert view |> element("#gst-itc-bridge-claimable") |> render() == claimed_before
+
+      # Answered, so it is no longer the open question withholding the month.
+      refute has_element?(view, "#gst-attest-held")
+      assert has_element?(view, "#gst-attest-undo")
+    end
+
+    test "'not held' withholds the credit for the right reason", %{
+      conn: conn,
+      org: org,
+      client: client
+    } do
+      period = "2026-09"
+      gstr2b = g2b(%{"invoice_number" => "P-3"})
+      put_recon!(org, client, period, [], Recon.reconcile([], [gstr2b]))
+
+      {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
+
+      view |> element("#gst-attest-not-held") |> render_click()
+
+      assert has_element?(view, "#gst-itc-attestation", "withheld from the claim")
+
+      # It leaves the claim as its own term, not folded into blocked credits:
+      # a substantiation failure is not an ineligible credit.
+      refute has_element?(view, "#gst-itc-bridge-awaiting-document")
+      assert has_element?(view, "#gst-itc-bridge-claimable", "₹0")
+    end
+
+    test "'unknown' is a real answer that says the month is not settled", %{
+      conn: conn,
+      org: org,
+      client: client
+    } do
+      period = "2026-10"
+      gstr2b = g2b(%{"invoice_number" => "P-4"})
+      put_recon!(org, client, period, [], Recon.reconcile([], [gstr2b]))
+
+      {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
+
+      view |> element("#gst-attest-unknown") |> render_click()
+
+      # Nobody is forced to assert "no" to proceed. The signature gate itself is
+      # asserted in the signoffs test, where the scope lives.
+      assert has_element?(view, "#gst-itc-attestation", "cannot be signed until this is settled")
+      assert has_element?(view, "#gst-attest-undo")
+    end
+
+    test "no unsubstantiated supply means no question to ask", %{
+      conn: conn,
+      org: org,
+      client: client
+    } do
+      period = "2026-12"
+      books = books(%{"id" => "m1", "invoice_number" => "M-1"})
+      gstr2b = g2b(%{"invoice_number" => "M-1"})
+      put_recon!(org, client, period, [books], Recon.reconcile([books], [gstr2b]))
+
+      {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}/exceptions")
+
+      refute has_element?(view, "#gst-itc-attestation")
+      refute has_element?(view, "#gst-itc-bridge-awaiting-document")
+    end
+  end
+
   test "a bill with nothing to compare against still shows the scan above its verbs", %{
     conn: conn,
     org: org,

@@ -34,6 +34,7 @@ defmodule Nila.Gst.Filing.Signoffs do
   alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
+  alias Nila.Gst.Purchase.Workings, as: PurchaseWorkings
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Month, as: SalesMonth
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
@@ -72,6 +73,7 @@ defmodule Nila.Gst.Filing.Signoffs do
             workings = Resolutions.workings(month)
 
             with :ok <- require_settled_register(workings),
+                 :ok <- require_documents_attested(workings),
                  :ok <- require_sales_intake_complete(month) do
               snapshot = %{
                 "summary" => workings.summary,
@@ -161,6 +163,16 @@ defmodule Nila.Gst.Filing.Signoffs do
   # signature on work that changes nothing teaches people to click through.
   defp require_settled_register(workings) do
     if Register.need_decision(workings.summary) == 0, do: :ok, else: {:error, :not_reviewed}
+  end
+
+  # s.16(2)(a) is a condition of the claim, so an unanswered question about it
+  # withholds the signature. "Unknown" is a legitimate answer to give and a
+  # legitimate reason to stop: it routes to a client chase rather than forcing
+  # someone to assert "no" to proceed.
+  defp require_documents_attested(workings) do
+    if PurchaseWorkings.documents_attested?(workings[:document_attestation]),
+      do: :ok,
+      else: {:error, :documents_unattested}
   end
 
   defp require_sales_intake_complete(month) do

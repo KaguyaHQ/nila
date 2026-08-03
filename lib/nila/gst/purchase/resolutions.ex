@@ -120,7 +120,12 @@ defmodule Nila.Gst.Purchase.Resolutions do
     invoices = Workings.books_invoices(recon)
     flags = flags_for(month, invoices)
     rows = Register.rows(invoices, recon, flags)
-    itc = ItcPosition.compute(recon, rows, Workings.itc_decisions(resolutions))
+    attestation = Workings.document_attestation(recon, rows, resolutions)
+
+    itc =
+      recon
+      |> ItcPosition.compute(rows, Workings.itc_decisions(resolutions))
+      |> ItcPosition.apply_attestation(attestation)
 
     %{
       recon: recon,
@@ -128,6 +133,7 @@ defmodule Nila.Gst.Purchase.Resolutions do
       decisions: Workings.decisions(resolutions),
       accepted_reasons: Workings.accepted_reasons(resolutions),
       gstr2b_decisions: Workings.gstr2b_decisions(resolutions),
+      document_attestation: attestation,
       itc: itc,
       gstr3b: gstr3b(month, recon, itc),
       rows: rows,

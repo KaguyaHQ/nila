@@ -13,6 +13,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   """
 
   alias Nila.Gst.Purchase.Register
+  alias NilaWeb.Components.Gst.Exceptions.Itc
 
   attr :purchase_month, :any, default: nil
   attr :stats, :any, default: nil
@@ -23,6 +24,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   attr :gstr3b_signoff, :any, default: nil
   attr :source_files, :integer, default: 0
   attr :pages_read, :integer, default: nil
+  attr :itc, :any, default: nil
   slot :source
   slot :assembled
   slot :actions
@@ -113,22 +115,37 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           <.control_stat label="Source files received" value={@source_files} />
           <.control_stat :if={@pages_read} label="Bill pages read" value={@pages_read} />
           <.control_stat label="Invoices extracted" value={@stats.invoices} />
-          <.control_stat label="Matched to 2B" value={@stats.matched} />
-          <.control_stat label="Needs a decision" value={@stats.need_decision} />
-          <.control_stat label="Bills to collect" value={@stats.awaiting_bills} />
-          <%!-- Paired to the 2B but disagreeing on amount. The return takes the
-                2B figure, so this is a vendor to chase, not a decision. --%>
-          <.control_stat
-            :if={@stats.value_disputes > 0}
-            label="Value differs from 2B"
-            value={@stats.value_disputes}
-          />
-          <%!-- The register showed these as N rows saying "In 2B only" and
-                nowhere as a fact. They are the sharpest completeness signal the
-                purchase side has: the portal knows about a bill nobody sent us. --%>
-          <.control_stat label="In 2B, bill not supplied" value={@stats.gstr2b_only} />
           <.control_stat label="Pages with no invoice" value={length(@document_flags)} />
         </div>
+
+        <%!-- The same bridge the workbench draws. Two screens describing one
+              month's ITC in two vocabularies is how a reviewer ends up unsure
+              whether the numbers disagree or the words do. --%>
+        <Itc.itc_bridge :if={@itc} itc={@itc} id="gstr3b-itc-bridge" />
+
+        <%!-- Nine tiles asked the reader to work out which counts overlapped and
+              which were subsets. These three rows partition the register: every
+              row is in exactly one, they carry the money as well as the count,
+              and each names the move it is waiting on. --%>
+        <.data_table
+          id="gstr3b-reconciliation-matrix"
+          rows={reconciliation_rows(@stats)}
+          row_id={&"gstr3b-recon-#{&1.key}"}
+          min_width="min-w-[560px]"
+          dense
+        >
+          <:col :let={row} label="Position">
+            <span class="text-base-content font-medium">{row.label}</span>
+            <span class="text-ink-subtle text-meta block">{row.note}</span>
+          </:col>
+          <:col :let={row} label="Bills" align="right">{row.count}</:col>
+          <:col :let={row} label="ITC" align="right">
+            {format_money(row.tax_paise, prefix: "₹")}
+          </:col>
+          <:col :let={row} label="Next move">
+            <span class="text-ink-muted">{row.next_move}</span>
+          </:col>
+        </.data_table>
 
         <div :if={@document_flags != []} id="gst-document-flags" class="space-y-related">
           <div
@@ -232,6 +249,48 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       <dd class="text-base-content text-body mt-1 font-medium tabular-nums">{@value}</dd>
     </div>
     """
+  end
+
+  # The register's three terminal positions, each with its count, its money and
+  # the move it waits on. `matched + open` does not close the month on its own —
+  # audited-accepted rows sit in neither — so settled is used as open's exact
+  # complement and the three rows sum to the register.
+  defp reconciliation_rows(stats) do
+    decisions_tax =
+      if stats.open_money_split_known?,
+        do: stats.decision_tax_paise + stats.value_dispute_tax_paise,
+        else: stats.open_tax_paise - stats.awaiting_bills_tax_paise
+
+    [
+      %{
+        key: "settled",
+        label: "Bill and 2B agree",
+        note: "Matched to the portal, or ruled on and closed",
+        count: stats.rows - stats.open,
+        tax_paise: stats.settled_tax_paise,
+        next_move: "Nothing"
+      },
+      %{
+        key: "decisions",
+        label: "Bill supplied, not settled against 2B",
+        note: "Absent from the 2B, ambiguous, or disagreeing on amount",
+        count: stats.open - stats.awaiting_bills,
+        tax_paise: decisions_tax,
+        next_move:
+          if(stats.open - stats.awaiting_bills > 0,
+            do: "Yours to decide",
+            else: "Nothing"
+          )
+      },
+      %{
+        key: "awaiting",
+        label: "In 2B, bill not supplied",
+        note: "The portal reported a supply nobody sent us a document for",
+        count: stats.awaiting_bills,
+        tax_paise: stats.awaiting_bills_tax_paise,
+        next_move: if(stats.awaiting_bills > 0, do: "Ask the client", else: "Nothing")
+      }
+    ]
   end
 
   defp verdict_state(%{gstr3b_signoff: %{}, purchase_month: %{filed_at: filed_at}})

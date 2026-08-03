@@ -222,19 +222,21 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:stats, nil)
     |> assign(:document_flags, [])
     |> assign(:gstr3b, nil)
+    |> assign(:itc, nil)
   end
 
   defp assign_purchase(socket, purchase) do
     signoff = fetch_or_nil(Signoffs.latest_signoff(purchase.id))
 
-    {rows, summary, gstr3b} =
+    {rows, summary, gstr3b, itc} =
       case signoff do
         nil ->
           workings = Resolutions.workings(purchase)
-          {workings.rows, workings.summary, workings.gstr3b}
+          {workings.rows, workings.summary, workings.gstr3b, workings.itc}
 
         signoff ->
-          {signoff.snapshot["rows"], signoff.snapshot["summary"], signoff.snapshot["gstr3b"]}
+          {signoff.snapshot["rows"], signoff.snapshot["summary"], signoff.snapshot["gstr3b"],
+           signoff.snapshot["itc"]}
       end
 
     socket
@@ -244,6 +246,7 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:stats, Register.stats(summary))
     |> assign(:document_flags, summary["document_flags"] || [])
     |> assign(:gstr3b, gstr3b)
+    |> assign(:itc, itc)
   end
 
   defp build_rows(rows, purchase) do
@@ -759,6 +762,15 @@ defmodule NilaWeb.Gst.MonthLive do
            "The register still has unsettled rows — work the decisions and collect the missing bills first."
          )}
 
+      {:error, :documents_unattested} ->
+        {:noreply,
+         socket
+         |> reload()
+         |> put_flash(
+           :error,
+           "Confirm whether the client holds tax invoices for the supplies with no bill on file — the credit cannot be claimed unanswered."
+         )}
+
       {:error, {:sales_intake_incomplete, status}} ->
         {:noreply,
          put_flash(
@@ -1117,6 +1129,7 @@ defmodule NilaWeb.Gst.MonthLive do
             gstr3b_signoff={@gstr3b_signoff}
             source_files={length(@purchase_dumps)}
             pages_read={@purchase_pages_read}
+            itc={@itc}
           >
             <:assembled>
               <Filing.gstr3b_evidence

@@ -108,6 +108,84 @@ defmodule Nila.Gst.Purchase.Workings do
     end)
   end
 
+  @doc """
+  The s.16(2)(a) attestation for the 2B supplies with no bill on file.
+
+  Returns `%{target, answer, count, tax_paise}`, or `nil` when nothing is
+  awaiting a document — there is no question to ask.
+
+  The target is scoped by the supply set it was asked about, so a later 2B
+  import that adds an unsubstantiated supply reopens the question rather than
+  inheriting an answer given about a different set. Same mechanism as the sales
+  cess question, for the same reason.
+  """
+  def document_attestation(recon, rows, resolutions) do
+    awaiting = awaiting_supplies(recon, rows)
+
+    if awaiting != [] do
+      target = attestation_target(awaiting)
+
+      %{
+        target: target,
+        answer: attestation_answer(resolutions, target),
+        count: length(awaiting),
+        tax_paise: awaiting |> Enum.map(&supply_tax/1) |> Enum.sum()
+      }
+    end
+  end
+
+  @doc "Whether the attestation is answered in a way that permits a signature."
+  def documents_attested?(nil), do: true
+  def documents_attested?(%{answer: answer}), do: answer in ~w(held not_held)
+
+  defp awaiting_supplies(recon, rows) do
+    accepted =
+      for row <- rows,
+          row["bucket"] == "in_2b_not_books",
+          row["accepted_reason"] != nil,
+          into: MapSet.new(),
+          do: {row["vendor_gstin"], norm_inum(row["invoice_number"])}
+
+    for entry <- recon["in_2b_not_books"] || [],
+        g = entry["gstr2b"] || entry,
+        not MapSet.member?(accepted, {g["vendor_gstin"], norm_inum(g["invoice_number"])}),
+        do: g
+  end
+
+  defp attestation_target(supplies) do
+    digest =
+      supplies
+      |> Enum.map(&"#{&1["vendor_gstin"]}|#{norm_inum(&1["invoice_number"])}")
+      |> Enum.sort()
+      |> Enum.join("\n")
+      |> then(&:crypto.hash(:sha256, &1))
+      |> Base.encode16(case: :lower)
+      |> binary_part(0, 16)
+
+    "documents_held|#{digest}"
+  end
+
+  defp attestation_answer(resolutions, target) do
+    resolutions
+    |> Enum.filter(fn r ->
+      r["verb"] in ["attest_documents", "reopen"] and
+        get_in(r, ["payload", "target"]) == target
+    end)
+    |> List.last()
+    |> case do
+      %{"verb" => "attest_documents", "payload" => %{"answer" => answer}}
+      when answer in ~w(held not_held unknown) ->
+        answer
+
+      _none_or_reopened ->
+        nil
+    end
+  end
+
+  defp supply_tax(supply), do: (supply["tax_paise"] || %{}) |> Map.values() |> Enum.sum()
+
+  defp norm_inum(inum), do: inum |> to_string() |> String.trim() |> String.upcase()
+
   @doc "The books invoices embedded in a recon, one per books-side bucket entry."
   def books_invoices(recon) do
     for bucket <- @books_buckets,

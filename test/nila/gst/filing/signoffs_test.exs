@@ -188,6 +188,204 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     assert {:ok, _signoff} = Signoffs.sign_off(settled, scope)
   end
 
+  test "GSTR-3B will not claim undocumented credit until somebody answers for it", %{
+    month: month,
+    client: client,
+    org: org,
+    owner_scope: scope
+  } do
+    # The portal reported a supply and no bill was ever supplied. The credit is
+    # claimable — the 2B is the ceiling — but s.16(2)(a) also needs the client to
+    # hold the tax invoice, and that is a fact about their records, not ours.
+    gstr2b = %{
+      "vendor_name" => "PORTAL VENDOR",
+      "vendor_gstin" => "33AAACS9999A1Z9",
+      "invoice_number" => "PV-1",
+      "invoice_date" => ~D[2025-10-11],
+      "taxable_paise" => 200_000,
+      "tax_paise" => %{"cgst" => 18_000, "sgst" => 18_000, "igst" => 0},
+      "total_paise" => 236_000
+    }
+
+    recon = Recon.reconcile([], [gstr2b])
+    rows = Register.rows([], recon, %{})
+
+    {:ok, unattested} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: month.period,
+        state: "worked",
+        register_rows: rows,
+        recon: recon,
+        summary: Register.summary(rows)
+      })
+
+    workings = Resolutions.workings(unattested)
+    attestation = workings.document_attestation
+
+    assert attestation.count == 1
+    assert attestation.tax_paise == 36_000
+    refute attestation.answer
+
+    # Unanswered withholds the signature — nobody claims undocumented credit
+    # silently.
+    assert {:error, :documents_unattested} = Signoffs.sign_off(unattested, scope)
+
+    # "Unknown" is a legitimate answer and a legitimate reason to stop: it
+    # routes to a client chase rather than forcing a false "no".
+    {:ok, %{month: unknown_month}} =
+      Resolutions.record_and_refresh(
+        unattested,
+        %{
+          "verb" => "attest_documents",
+          "payload" => %{"target" => attestation.target, "answer" => "unknown"}
+        },
+        scope.user.id
+      )
+
+    assert {:error, :documents_unattested} = Signoffs.sign_off(unknown_month, scope)
+
+    # Attested: the credit stands, with a name and a timestamp behind it.
+    {:ok, %{month: held_month, workings: held}} =
+      Resolutions.record_and_refresh(
+        unknown_month,
+        %{
+          "verb" => "attest_documents",
+          "payload" => %{"target" => attestation.target, "answer" => "held"}
+        },
+        scope.user.id
+      )
+
+    assert held.itc["claimable_paise"] == 36_000
+    assert held.itc["awaiting_document_paise"] == 36_000
+    assert {:ok, _signoff} = Signoffs.sign_off(held_month, scope)
+  end
+
+  test "answering 'not held' withholds the credit and still signs", %{
+    month: month,
+    client: client,
+    org: org,
+    owner_scope: scope
+  } do
+    gstr2b = %{
+      "vendor_name" => "PORTAL VENDOR",
+      "vendor_gstin" => "33AAACS9999A1Z9",
+      "invoice_number" => "PV-2",
+      "invoice_date" => ~D[2025-10-12],
+      "taxable_paise" => 100_000,
+      "tax_paise" => %{"cgst" => 9_000, "sgst" => 9_000, "igst" => 0},
+      "total_paise" => 118_000
+    }
+
+    recon = Recon.reconcile([], [gstr2b])
+    rows = Register.rows([], recon, %{})
+
+    {:ok, unattested} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: month.period,
+        state: "worked",
+        register_rows: rows,
+        recon: recon,
+        summary: Register.summary(rows)
+      })
+
+    target = Resolutions.workings(unattested).document_attestation.target
+
+    {:ok, %{month: withheld_month, workings: withheld}} =
+      Resolutions.record_and_refresh(
+        unattested,
+        %{
+          "verb" => "attest_documents",
+          "payload" => %{"target" => target, "answer" => "not_held"}
+        },
+        scope.user.id
+      )
+
+    # Out of the claim as its own term, not folded into blocked credits: a
+    # substantiation failure is not an ineligible credit.
+    assert withheld.itc["claimable_paise"] == 0
+    assert withheld.itc["awaiting_document_paise"] == 0
+    assert withheld.itc["unsubstantiated_withheld_paise"] == 18_000
+    assert withheld.itc["blocked_paise"] == 0
+
+    assert {:ok, _signoff} = Signoffs.sign_off(withheld_month, scope)
+  end
+
+  test "a later 2B import reopens an answer given about a different supply set", %{
+    month: month,
+    client: client,
+    org: org,
+    owner_scope: scope
+  } do
+    supply = fn inum ->
+      %{
+        "vendor_name" => "PORTAL VENDOR",
+        "vendor_gstin" => "33AAACS9999A1Z9",
+        "invoice_number" => inum,
+        "invoice_date" => ~D[2025-10-13],
+        "taxable_paise" => 100_000,
+        "tax_paise" => %{"cgst" => 9_000, "sgst" => 9_000, "igst" => 0},
+        "total_paise" => 118_000
+      }
+    end
+
+    recon = Recon.reconcile([], [supply.("A-1")])
+
+    {:ok, first} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: month.period,
+        state: "worked",
+        register_rows: Register.rows([], recon, %{}),
+        recon: recon,
+        summary: Register.summary(Register.rows([], recon, %{}))
+      })
+
+    target = Resolutions.workings(first).document_attestation.target
+
+    {:ok, %{month: answered}} =
+      Resolutions.record_and_refresh(
+        first,
+        %{"verb" => "attest_documents", "payload" => %{"target" => target, "answer" => "held"}},
+        scope.user.id
+      )
+
+    assert {:ok, _} = Signoffs.sign_off(answered, scope)
+
+    # A second supply arrives. The attestation was about one set of bills, so it
+    # cannot speak for a set that now includes one nobody has seen.
+    wider = Recon.reconcile([], [supply.("A-1"), supply.("A-2")])
+    wider_rows = Register.rows([], wider, %{})
+
+    {:ok, reopened} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: "2025-12",
+        state: "worked",
+        register_rows: wider_rows,
+        recon: wider,
+        summary: Register.summary(wider_rows)
+      })
+
+    {:ok, _} =
+      Resolutions.record(
+        reopened,
+        %{"verb" => "attest_documents", "payload" => %{"target" => target, "answer" => "held"}},
+        scope.user.id
+      )
+
+    wider_attestation = Resolutions.workings(reopened).document_attestation
+
+    refute wider_attestation.target == target
+    refute wider_attestation.answer
+    assert wider_attestation.count == 2
+  end
+
   test "GSTR-3B rejects open completeness and accepts an attributed override", %{
     month: month,
     client: client,

@@ -23,10 +23,16 @@ defmodule Nila.Gst.Purchase.Resolution do
       block a credit (personal/17(5), duplicate, state mismatch). Targets a
       `block_id` in `payload["block_id"]`, not a books row — it adjusts the
       claimable ITC, not the recon buckets.
+    * `attest_documents` — answer s.16(2)(a) for the 2B supplies with no bill
+      on file: does the client hold the tax invoices? Targets a
+      `payload["target"]` scoped by the supply set it was asked about, with
+      `payload["answer"]` in `held | not_held | unknown`. It is a statement
+      about the client's records, not about any one row, which is why it
+      targets neither a books row nor a 2B reference.
   """
   use Nila.Schema
 
-  @verbs ~w(confirm_pair reject_pair correct_field accept_unmatched dismiss_2b reopen block_itc allow_itc)
+  @verbs ~w(confirm_pair reject_pair correct_field accept_unmatched dismiss_2b reopen block_itc allow_itc attest_documents)
 
   def verbs, do: @verbs
 

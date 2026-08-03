@@ -46,16 +46,162 @@ defmodule Nila.Gst.Filing.ItcPosition do
   def compute(recon, rows, decisions \\ %{}) do
     ceiling = ceiling_paise(recon)
     blocks = Enum.map(block_candidates(rows), &decide(&1, decisions))
-    blocked = blocks |> Enum.filter(&(&1["state"] == "blocked")) |> sum_tax()
     recommended = blocks |> Enum.reject(&(&1["state"] == "allowed")) |> sum_tax()
 
-    %{
+    # Only blocks that sit on 2B-backed credit can reduce the ceiling. A books
+    # bill the portal never reported contributes nothing to `ceiling_paise`, so
+    # subtracting its block took the month negative: blocking an ₹180 personal
+    # expense on a books-only row produced a claimable ITC of −₹180. It was
+    # never claimable; there is nothing to withhold.
+    blocked_in_ceiling =
+      blocks
+      |> Enum.filter(&(&1["state"] == "blocked" and &1["in_ceiling"]))
+      |> sum_tax()
+
+    blocked = blocks |> Enum.filter(&(&1["state"] == "blocked")) |> sum_tax()
+    partition = partition(recon, rows, blocked_in_ceiling)
+
+    Map.merge(partition, %{
       "ceiling_paise" => ceiling,
       "recommended_paise" => recommended,
       "blocked_paise" => blocked,
-      "claimable_paise" => ceiling - blocked,
+      "blocked_outside_ceiling_paise" => blocked - blocked_in_ceiling,
       "blocks" => blocks
+    })
+  end
+
+  @doc """
+  The 2B ceiling split into terminal financial states, and the claim split by
+  whether the document backing it is in hand.
+
+      reported_2b = claimable + pending_decision + blocked
+      claimable   = substantiated + awaiting_document
+
+  Substantiation is deliberately *not* a fourth state beside `claimable`. Under
+  s.16(2) the conditions are cumulative — (a) possession of the tax invoice and
+  (aa) the supply appearing in the 2B — so a supply the registered person holds
+  no invoice for is genuinely not claimable. But possession is the *client's*,
+  not Nila's document pile: `awaiting_bill?/1` means the bill has not reached
+  *us*, which says nothing about whether the client holds it, and in the common
+  case they do and simply have not forwarded it. Withholding on that signal
+  would swing the filed number on Nila's collection state rather than on the
+  client's legal position. So the money stays in the claim, named, and is
+  attested rather than assumed.
+
+  Where a row could sit in two states, precedence is
+  `blocked` > `pending_decision` > `awaiting_document`, on terminality then
+  actionability: s.17(5) ineligibility is the only one no decision and no
+  document can move, so it absorbs; and between the other two a reviewer can act
+  on a decision today, so ordering it second would bury an answerable row in a
+  queue nobody can work.
+  """
+  def partition(recon, rows, blocked_in_ceiling) do
+    reported = ceiling_paise(recon)
+    pending = min(pending_decision_paise(recon, rows), reported)
+
+    # A block can only withhold credit the ceiling actually contains. `rows` and
+    # `recon` are two projections of the same month and a row can claim a bucket
+    # its 2B entry does not back — a stale snapshot, a row rebuilt after recon
+    # moved on. Clamping keeps the equation an identity instead of letting the
+    # two drift into an impossible figure, which is the whole point of stating
+    # it as a partition.
+    blocked = blocked_in_ceiling |> min(reported - pending) |> max(0)
+    claimable = reported - blocked - pending
+
+    # Substantiation splits the claim, so it cannot exceed it: every rupee
+    # awaiting a document is by definition inside the claim.
+    awaiting = min(awaiting_document_paise(recon, rows), claimable)
+
+    %{
+      "reported_2b_paise" => reported,
+      "claimable_paise" => claimable,
+      "pending_decision_paise" => pending,
+      "blocked_in_ceiling_paise" => blocked,
+      "awaiting_document_paise" => awaiting,
+      "substantiated_paise" => claimable - awaiting
     }
+  end
+
+  # 2B-backed money whose bucket still needs a human: an ambiguous match, or a
+  # 2B row routed to review. Excludes value mismatches — the return takes the 2B
+  # figure either way, so no answer moves the money — and excludes anything
+  # already blocked, which owns its rupees outright.
+  defp pending_decision_paise(recon, rows) do
+    blocked_keys = blocked_row_keys(rows)
+
+    recon
+    |> awaiting_2b_invoices()
+    |> Enum.reject(&MapSet.member?(blocked_keys, invoice_key(&1)))
+    |> Enum.map(&tax_sum/1)
+    |> Enum.sum()
+  end
+
+  # 2B rows the books have no document for. A 2B-only row carries no flags by
+  # construction (`register.ex` `g2b_only_rows/1`), so it cannot also be
+  # blocked; and it is not pending, because no judgement here can produce a bill
+  # nobody sent.
+  defp awaiting_document_paise(recon, rows) do
+    accepted = accepted_2b_only_keys(rows)
+
+    for entry <- recon["in_2b_not_books"] || [],
+        g = entry["gstr2b"] || entry,
+        not MapSet.member?(accepted, invoice_key(g)),
+        reduce: 0 do
+      total -> total + tax_sum(g)
+    end
+  end
+
+  defp blocked_row_keys(rows) do
+    for row <- rows,
+        row["flags"] not in [nil, []],
+        Enum.any?(row["flags"], &(&1["code"] in @full_block)),
+        into: MapSet.new(),
+        do: invoice_key(row)
+  end
+
+  defp accepted_2b_only_keys(rows) do
+    for row <- rows,
+        row["bucket"] == "in_2b_not_books",
+        row["accepted_reason"] != nil,
+        into: MapSet.new(),
+        do: invoice_key(row)
+  end
+
+  defp invoice_key(row), do: {row["vendor_gstin"], norm(row["invoice_number"])}
+
+  @doc """
+  Applies the s.16(2)(a) attestation to a computed position.
+
+  The unsubstantiated money stays in the claim by default — `awaiting_bill?/1`
+  says the bill has not reached Nila, not that the client lacks it. Only an
+  explicit *not held* moves it out, and it leaves as its own term rather than
+  being folded into `blocked`: it is a substantiation failure, not an
+  ineligible credit, and a reviewer reading the bridge should see which.
+
+  `unknown` withholds the signature (`Workings.documents_attested?/1`) but does
+  not move the money — nobody has said the credit is bad, only that nobody has
+  checked.
+  """
+  def apply_attestation(position, attestation)
+  def apply_attestation(position, nil), do: Map.put(position, "documents_attested", nil)
+
+  def apply_attestation(position, %{answer: "not_held"} = attestation) do
+    withheld = min(position["awaiting_document_paise"], position["claimable_paise"])
+
+    position
+    |> Map.merge(%{
+      "claimable_paise" => position["claimable_paise"] - withheld,
+      "awaiting_document_paise" => 0,
+      "unsubstantiated_withheld_paise" => withheld,
+      "documents_attested" => "not_held"
+    })
+    |> Map.put("attestation_target", attestation.target)
+  end
+
+  def apply_attestation(position, attestation) do
+    position
+    |> Map.put("documents_attested", attestation.answer)
+    |> Map.put("attestation_target", attestation.target)
   end
 
   @doc "The stable id a block/allow resolution targets for one flagged row."
@@ -126,12 +272,24 @@ defmodule Nila.Gst.Filing.ItcPosition do
           "invoice_number" => row["invoice_number"],
           "tax_paise" => row_tax(row),
           "tax_heads" => row_heads(row, 1),
-          "reason" => flag["reason"]
+          "reason" => flag["reason"],
+          "in_ceiling" => in_ceiling?(row)
         }
       end
 
     full ++ duplicate_blocks(rows)
   end
+
+  # Whether this row's tax is inside `ceiling_paise/1`. A books bill the portal
+  # never reported is not: there is no credit to withhold, so blocking it must
+  # not move the claimable figure.
+  #
+  # Only `in_books_not_2b` is outside. Anything else — including a row whose
+  # bucket is absent — counts as inside, because the failure modes are not
+  # symmetric: treating 2B-backed credit as outside silently *keeps* a credit
+  # the reviewer explicitly blocked, while the reverse produces the impossible
+  # figure that made this visible in the first place.
+  defp in_ceiling?(row), do: row["bucket"] != "in_books_not_2b"
 
   # One block per duplicate group, keyed on the group's kept row, staking the
   # excess (N-1) copies' tax. The excess is what claiming every copy would
@@ -153,7 +311,10 @@ defmodule Nila.Gst.Filing.ItcPosition do
         "invoice_number" => keep["invoice_number"],
         "tax_paise" => row_tax(keep) * (n - 1),
         "tax_heads" => row_heads(keep, n - 1),
-        "reason" => dup_flag["reason"]
+        "reason" => dup_flag["reason"],
+        # The excess copies are only inside the ceiling if the kept row is. A
+        # duplicate pair the portal never reported has no 2B credit to reduce.
+        "in_ceiling" => in_ceiling?(keep)
       }
     end)
   end

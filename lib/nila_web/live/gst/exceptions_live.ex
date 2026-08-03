@@ -66,6 +66,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
     |> assign(:progress, progress(queue))
     |> assign(:stats, Register.stats(workings.summary))
     |> assign(:itc, workings.itc)
+    |> assign(:attestation, workings[:document_attestation])
   end
 
   # Two kinds of work, not one pile. A decision is somebody's judgement about
@@ -310,7 +311,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
   end
 
   def handle_event(verb, _params, socket)
-      when verb in ~w(confirm_pair reject_pair reject_all accept_unmatched dismiss_2b start_correct save_correct undo block_itc allow_itc reopen_block) and
+      when verb in ~w(confirm_pair reject_pair reject_all accept_unmatched dismiss_2b start_correct save_correct undo block_itc allow_itc reopen_block attest_documents reopen_attestation) and
              socket.assigns.signed_off do
     {:noreply,
      put_flash(
@@ -469,6 +470,24 @@ defmodule NilaWeb.Gst.ExceptionsLive do
     })
   end
 
+  def handle_event("attest_documents", %{"answer" => answer}, socket)
+      when answer in ~w(held not_held unknown) do
+    refresh_without_advancing(socket, %{
+      "verb" => "attest_documents",
+      "payload" => %{
+        "target" => socket.assigns.attestation.target,
+        "answer" => answer
+      }
+    })
+  end
+
+  def handle_event("reopen_attestation", _params, socket) do
+    refresh_without_advancing(socket, %{
+      "verb" => "reopen",
+      "payload" => %{"target" => socket.assigns.attestation.target}
+    })
+  end
+
   defp record(socket, attrs, after_fun \\ & &1) do
     socket = socket |> record_and_assign(attrs) |> after_fun.()
     {:noreply, socket}
@@ -600,6 +619,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
         </div>
 
         <Itc.itc_panel itc={@itc} signed_off={@signed_off} />
+        <Itc.document_attestation attestation={@attestation} signed_off={@signed_off} />
         <Surface.exception_surface
           queue={@queue}
           groups={@groups}
