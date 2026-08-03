@@ -90,6 +90,39 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     assert has_element?(view, "#gst-challenge-match[title*='Unlock']")
   end
 
+  test "correction records from the component and re-runs reconciliation", context do
+    month =
+      put_month!(context, [books("b1", %{"invoice_number" => "1134"})], [gstr2b("CHN-SER-1134")])
+
+    {:ok, view, _html} = live(context.conn, review_path(context.client))
+
+    view |> element("button", "Correct the number") |> render_click()
+
+    view
+    |> form("#gst-exception-detail form", %{"id" => "b1", "value" => "CHN-SER-1134"})
+    |> render_submit()
+
+    assert [resolution] = Resolutions.list(month.id)
+    assert resolution.verb == "correct_field"
+    assert resolution.books_id == "b1"
+    assert get_in(resolution.payload, ["to"]) == "CHN-SER-1134"
+    assert [%{"books" => %{"id" => "b1"}}] = Resolutions.workings(month).recon["matched"]
+  end
+
+  test "missing-bill dismissal and document attestation record from the component", context do
+    counterpart = Map.put(gstr2b("PORTAL-9"), "vendor_gstin", "27AAPFU0939F1ZV")
+    month = put_month!(context, [], [counterpart])
+    {:ok, view, _html} = live(context.conn, review_path(context.client))
+
+    view |> element("#gst-attest-held") |> render_click()
+    assert Enum.any?(Resolutions.list(month.id), &(&1.verb == "attest_documents"))
+
+    view |> element("#gst-dismiss-2b") |> render_click()
+    resolutions = Resolutions.list(month.id)
+    assert Enum.any?(resolutions, &(&1.verb == "dismiss_2b"))
+    assert Enum.all?(resolutions, &(&1.decided_by_id == context.user.id))
+  end
+
   defp put_month!(context, books, counterparts) do
     gstr2b_arrived!(context.org, context.client, @period, counterparts)
     recon = Reconciliation.reconcile(books, counterparts)
