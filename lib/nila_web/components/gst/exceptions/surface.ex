@@ -284,13 +284,21 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           phx-click="open-ask"
           phx-value-id={@selected.id}
         >Ask the client for the bill</.button>
+        <%!-- Dismissing removes the entry from `in_2b_not_books`, which drops
+              the 2B ceiling and therefore the claim by this row's whole tax.
+              It was the quietest click on the purchase side and the only one
+              that silently shrinks the claim, so it names its own cost. --%>
         <.button
           id="gst-dismiss-2b"
           variant="outline"
           size="sm"
           phx-click="dismiss_2b"
           phx-value-id={@selected.id}
-        >Not ours / ignore</.button>
+          data-confirm={dismiss_confirm(@selected)}
+        >
+          Not ours / ignore{if @selected.tax_paise > 0,
+            do: " · −#{format_money(@selected.tax_paise, prefix: "₹")} claim"}
+        </.button>
       </div>
     </div>
     """
@@ -411,6 +419,14 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   defp norm(v), do: v |> to_string() |> String.trim() |> String.upcase()
   defp tax_sum(inv), do: (inv["tax_paise"] || %{}) |> Map.values() |> Enum.sum()
   defp money(paise), do: format_money(paise || 0, prefix: "₹")
+
+  defp dismiss_confirm(%{tax_paise: tax}) when is_integer(tax) and tax > 0 do
+    "Drop this supply from the month? The 2B ceiling falls by " <>
+      "#{format_money(tax, prefix: "₹")} and the claim falls with it."
+  end
+
+  defp dismiss_confirm(_selected),
+    do: "Drop this supply from the month?"
 
   defp asked_label(nil), do: nil
 

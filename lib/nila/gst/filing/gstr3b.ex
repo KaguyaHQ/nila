@@ -19,7 +19,13 @@ defmodule Nila.Gst.Filing.Gstr3b do
     * **Table 4** — 4A(3) RCM credit, 4A(5) all other ITC (the 2B ceiling
       minus RCM), 4B reversals from *human-confirmed* blocks only (Nila
       recommends; the return moves on confirmation): section 17(5) blocks in
-      4B(1), duplicate-excess and state-mismatch in 4B(2). 4C = 4A − 4B.
+      4B(1), duplicate-excess and state-mismatch in 4B(2). Credit the client
+      has attested they hold no tax invoice for (s.16(2)(a)) also reverses in
+      4B(2) — 4A(5) is auto-populated from the 2B on the portal, so the claim
+      is withheld by reversing, not by shrinking what was availed. Only blocks
+      *inside* the ceiling reverse; a books bill the 2B never reported was
+      never availed. 4C = 4A − 4B, and at sign-off 4C ties to the ITC bridge's
+      claimable figure.
     * **6.1** — payment. Whole-rupee rounding (the portal's convention), then
       Rule 88A set-off: IGST credit first against IGST, spillover to CGST then
       SGST; CGST credit to CGST then IGST; SGST credit to SGST then IGST;
@@ -48,7 +54,11 @@ defmodule Nila.Gst.Filing.Gstr3b do
     {rcm_txval, rcm_tax} = rcm_position(recon)
     all_other_4a5 = subtract(ItcPosition.ceiling_heads(recon), rcm_tax)
     reversed_4b1 = blocked_heads(itc, &(&1 in @reversal_4b1))
-    reversed_4b2 = blocked_heads(itc, &(&1 not in @reversal_4b1))
+
+    reversed_4b2 =
+      itc
+      |> blocked_heads(&(&1 not in @reversal_4b1))
+      |> add(itc["unsubstantiated_withheld_heads"] || @zero)
 
     net_itc_4c =
       rcm_tax
@@ -106,9 +116,14 @@ defmodule Nila.Gst.Filing.Gstr3b do
 
   # -- ITC reversals --------------------------------------------------------
 
+  # Only blocks inside the 2B ceiling can be reversed: 4A(5) availed the ceiling,
+  # so a books bill the portal never reported was never availed and there is
+  # nothing to reverse. Reversing it anyway dropped 4C below what 4A availed
+  # while the ITC bridge — which excludes the same blocks (`ItcPosition`) — was
+  # unchanged, so the filed and displayed claims silently disagreed.
   defp blocked_heads(itc, code_filter) do
     itc["blocks"]
-    |> Enum.filter(&(&1["state"] == "blocked" and code_filter.(&1["code"])))
+    |> Enum.filter(&(&1["state"] == "blocked" and &1["in_ceiling"] and code_filter.(&1["code"])))
     |> Enum.map(& &1["tax_heads"])
     |> ItcPosition.sum_heads()
   end

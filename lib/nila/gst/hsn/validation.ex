@@ -13,18 +13,45 @@ defmodule Nila.Gst.Hsn.Validation do
     end)
   end
 
+  # One issue per invoice and status, not per line. The resolution target is
+  # `source_id:code` (`Sales.Workings.issue_key/1`), so five lines carrying the
+  # same unknown code posted five rows against one target — answering any of
+  # them resolved all five. The lines are what a reviewer corrects, so they move
+  # into the message and into `lines` rather than out of the account.
   def sales_issues(invoices) do
     Enum.flat_map(invoices, fn invoice ->
-      invoice["line_items"]
-      |> List.wrap()
-      |> Enum.with_index(1)
-      |> Enum.flat_map(fn {line, index} -> sales_line_issues(invoice, line, index) end)
+      findings =
+        invoice["line_items"]
+        |> List.wrap()
+        |> Enum.with_index(1)
+        |> Enum.flat_map(fn {line, index} -> sales_line_findings(line, index) end)
+
+      findings
+      |> Enum.map(& &1.status)
+      |> Enum.uniq()
+      |> Enum.map(fn status ->
+        sales_issue(invoice, status, Enum.filter(findings, &(&1.status == status)))
+      end)
     end)
   end
 
+  # A code Nila inferred and has never seen before is one fact, and it reached
+  # the reviewer twice: `hsn_inferred_code` at `required` on the line, and
+  # `hsn_new_code` at `advisory` on the code, the latter carrying `hsn_inferred`
+  # to say the same thing again in a field. The required row is the one that
+  # gates, so it absorbs the novelty and the advisory stands down. A new code
+  # somebody actually read off a bill still raises its own advisory — nothing is
+  # asserted to be wrong with it, and that is exactly what advisory is for.
   def summary_issues(invoices, historical_observations \\ []) do
+    {inferred_novelty, novelty} =
+      invoices
+      |> new_code_issues(historical_observations)
+      |> Enum.split_with(& &1["hsn_inferred"])
+
+    inferred_codes = MapSet.new(inferred_novelty, & &1["hsn_code"])
+
     multiple_rate_issues(invoices) ++
-      new_code_issues(invoices, historical_observations) ++ inferred_code_issues(invoices)
+      novelty ++ inferred_code_issues(invoices, inferred_codes)
   end
 
   def purchase_flags(invoice) do
@@ -43,28 +70,28 @@ defmodule Nila.Gst.Hsn.Validation do
     |> maybe_put("hsn_kind", validation[:kind])
   end
 
-  defp sales_line_issues(invoice, line, index) do
+  defp sales_line_findings(line, index) do
     case get_in(line, ["hsn_validation", "status"]) do
-      "valid" ->
-        []
-
       status when status in ~w(missing incomplete invalid) ->
-        [sales_issue(invoice, line, index, status)]
+        [%{status: status, line: index, code: line["hsn_sac"], description: description(line)}]
 
-      _not_checked ->
+      _valid_or_not_checked ->
         []
     end
   end
 
-  defp sales_issue(invoice, line, index, status) do
+  defp sales_issue(invoice, status, findings) do
+    code = issue_code(status)
+
     %{
       "invoice" => invoice["invoice_number"],
       "source_id" => invoice["id"],
-      "code" => issue_code(status),
-      "level" => Issues.level_for(issue_code(status)),
-      "message" => reason(line, index, status),
-      "fields" => ["line_items[#{index - 1}].hsn_sac"],
-      "hsn_code" => line["hsn_sac"]
+      "code" => code,
+      "level" => Issues.level_for(code),
+      "message" => sales_reason(findings, status),
+      "fields" => Enum.map(findings, &"line_items[#{&1.line - 1}].hsn_sac"),
+      "lines" => Enum.map(findings, & &1.line),
+      "hsn_code" => Enum.find_value(findings, & &1.code)
     }
   end
 
@@ -91,6 +118,51 @@ defmodule Nila.Gst.Hsn.Validation do
       "fields" => ["line_items"],
       "confidence" => 1.0
     }
+  end
+
+  # One line reads as it always did. Several read as one sentence naming every
+  # line, rather than the same sentence repeated with a different number in it —
+  # the reviewer is looking at one invoice and one target, and the list of lines
+  # is the correction he has to make.
+  defp sales_reason([%{line: index, description: description}], "missing") do
+    "Line #{index} \"#{description}\" has no HSN/SAC code. Confirm it before filing."
+  end
+
+  defp sales_reason([%{line: index, description: description, code: code}], "incomplete") do
+    "Line #{index} \"#{description}\" carries #{code}, which is only a " <>
+      "prefix of codes in the active portal directory and is not itself an exact entry. " <>
+      "Select the exact HSN/SAC printed or confirmed by the reviewer."
+  end
+
+  defp sales_reason([%{line: index, description: description, code: code}], "invalid") do
+    "Line #{index} \"#{description}\" carries #{code}, which does not " <>
+      "exist in the active portal HSN/SAC directory."
+  end
+
+  defp sales_reason(findings, "missing") do
+    "#{lines_phrase(findings)} have no HSN/SAC code: #{descriptions_phrase(findings)}. " <>
+      "Confirm them before filing."
+  end
+
+  defp sales_reason(findings, "incomplete") do
+    "#{lines_phrase(findings)} carry codes that are only prefixes of entries in the active " <>
+      "portal directory, not exact entries: #{codes_phrase(findings)}. Select the exact " <>
+      "HSN/SAC printed or confirmed by the reviewer."
+  end
+
+  defp sales_reason(findings, "invalid") do
+    "#{lines_phrase(findings)} carry codes that do not exist in the active portal HSN/SAC " <>
+      "directory: #{codes_phrase(findings)}."
+  end
+
+  defp lines_phrase(findings), do: "Lines " <> Enum.map_join(findings, ", ", &"#{&1.line}")
+
+  defp descriptions_phrase(findings) do
+    findings |> Enum.map(&"\"#{&1.description}\"") |> Enum.uniq() |> Enum.join(", ")
+  end
+
+  defp codes_phrase(findings) do
+    findings |> Enum.map(&to_string(&1.code)) |> Enum.uniq() |> Enum.join(", ")
   end
 
   defp reason(line, index, "missing") do
@@ -170,26 +242,55 @@ defmodule Nila.Gst.Hsn.Validation do
     end)
   end
 
-  defp inferred_code_issues(invoices) do
-    invoices
-    |> Enum.flat_map(fn invoice ->
+  # One issue per invoice, for the same reason as `sales_issues/1`: every
+  # inferred line on one bill posts the same `source_id:hsn_inferred_code`
+  # target, so a row per line was a count nobody could clear line by line.
+  defp inferred_code_issues(invoices, novel_codes) do
+    Enum.flat_map(invoices, fn invoice ->
       invoice["line_items"]
       |> List.wrap()
-      |> Enum.filter(&(&1["hsn_inferred"] == true))
-      |> Enum.map(fn line ->
-        %{
-          "invoice" => invoice["invoice_number"],
-          "source_id" => invoice["id"],
-          "code" => "hsn_inferred_code",
-          "level" => Issues.level_for("hsn_inferred_code"),
-          "message" =>
-            "HSN/SAC #{line["hsn_sac"]} was inferred rather than read from the source document",
-          "fields" => ["line_items"],
-          "hsn_code" => line["hsn_sac"]
-        }
-      end)
+      |> Enum.with_index(1)
+      |> Enum.filter(fn {line, _index} -> line["hsn_inferred"] == true end)
+      |> case do
+        [] -> []
+        lines -> [inferred_code_issue(invoice, lines, novel_codes)]
+      end
     end)
   end
+
+  defp inferred_code_issue(invoice, lines, novel_codes) do
+    codes = lines |> Enum.map(fn {line, _index} -> line["hsn_sac"] end) |> Enum.uniq()
+    novel = Enum.filter(codes, &MapSet.member?(novel_codes, &1))
+
+    %{
+      "invoice" => invoice["invoice_number"],
+      "source_id" => invoice["id"],
+      "code" => "hsn_inferred_code",
+      "level" => Issues.level_for("hsn_inferred_code"),
+      "message" => inferred_message(lines, codes) <> novelty_clause(novel),
+      "fields" => ["line_items"],
+      "lines" => Enum.map(lines, fn {_line, index} -> index end),
+      "hsn_code" => List.first(codes)
+    }
+  end
+
+  defp inferred_message([{line, _index}], _codes) do
+    "HSN/SAC #{line["hsn_sac"]} was inferred rather than read from the source document"
+  end
+
+  defp inferred_message(lines, codes) do
+    "HSN/SAC #{Enum.join(codes, ", ")} on lines " <>
+      Enum.map_join(lines, ", ", fn {_line, index} -> "#{index}" end) <>
+      " were inferred rather than read from the source document"
+  end
+
+  defp novelty_clause([]), do: ""
+
+  defp novelty_clause([code]),
+    do: ". #{code} has not appeared in this client's prior 12 sales months"
+
+  defp novelty_clause(codes),
+    do: ". #{Enum.join(codes, ", ")} have not appeared in this client's prior 12 sales months"
 
   defp observations(invoices) do
     Enum.flat_map(invoices, fn invoice ->

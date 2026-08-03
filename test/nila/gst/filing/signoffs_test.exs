@@ -311,8 +311,29 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     assert withheld.itc["unsubstantiated_withheld_paise"] == 18_000
     assert withheld.itc["blocked_paise"] == 0
 
+    # ...and it reaches the return. 4A(5) stays at the 2B ceiling (the portal
+    # auto-populates it), the withheld credit reverses in 4B(2), and 4C is what
+    # actually gets filed. Before this, the bridge printed a claim of ₹0 above a
+    # 3B filing ₹18,000, and the month signed.
+    assert withheld.gstr3b["itc"]["all_other_itc_4a5"] == %{
+             "cgst" => 9_000,
+             "sgst" => 9_000,
+             "igst" => 0
+           }
+
+    assert withheld.gstr3b["itc"]["reversed_4b2"] == %{
+             "cgst" => 9_000,
+             "sgst" => 9_000,
+             "igst" => 0
+           }
+
+    assert heads_total(withheld.gstr3b["itc"]["net_itc_4c"]) == 0
+    assert heads_total(withheld.gstr3b["itc"]["net_itc_4c"]) == withheld.itc["claimable_paise"]
+
     assert {:ok, _signoff} = Signoffs.sign_off(withheld_month, scope)
   end
+
+  defp heads_total(heads), do: Enum.sum(Enum.map(~w(igst cgst sgst), &(heads[&1] || 0)))
 
   test "a later 2B import reopens an answer given about a different supply set", %{
     month: month,

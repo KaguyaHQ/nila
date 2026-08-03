@@ -82,15 +82,32 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             <p class="text-body text-ink-muted">{@verdict.copy}</p>
           </div>
           <%!-- The card above already asserts the tally; the button says where
-                it goes, not how many again. --%>
+                it goes, not how many again.
+
+                Its condition has to be the target section's own, not the issue
+                count: the count includes the completeness questions and the
+                section excludes them, so on a freshly worked month — whose only
+                open work is usually the attestation — the page's primary action
+                scrolled to an anchor that was not rendered. --%>
           <.button
-            :if={@open_issue_count > 0}
+            :if={@required_issues != []}
             id="gstr1-review-required"
             href="#gstr1-checks-before-filing"
             variant="primary"
             size="sm"
           >
             Take them one by one
+          </.button>
+          <%!-- ...and when the attestation is the open work, send them there
+                instead of nowhere. --%>
+          <.button
+            :if={@required_issues == [] and completeness_open?(@completeness_questions)}
+            id="gstr1-review-completeness"
+            href="#gstr1-completeness-attestation"
+            variant="primary"
+            size="sm"
+          >
+            Answer what we can't see
           </.button>
         </div>
         <dl class="gap-block mt-block grid sm:grid-cols-3">
@@ -114,8 +131,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           </div>
         </dl>
       </section>
-
-      {render_slot(@actions)}
 
       <%!-- What the pile cannot tell us about itself.
 
@@ -162,8 +177,11 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                 Yes
               </.button>
               <%!-- Never force a "no" to proceed. "I haven't checked" is the
-                    honest answer most of the time, and it routes to the client
-                    rather than into the filing. --%>
+                    honest answer most of the time, and it keeps the question
+                    open and gating rather than letting an unchecked category
+                    into the filing. It does not raise a client chase — there is
+                    no collection queue on this side, and the comment that said
+                    otherwise described a feature that was never built. --%>
               <.button
                 variant="ghost"
                 size="xs"
@@ -521,6 +539,13 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         </p>
       </section>
 
+      <%!-- Directly under the return it approves. This used to render ~370
+            lines higher, above the completeness questions and the checks and
+            the source documents, so the summary of what was actually being
+            filed sat below the button that filed it and a reviewer taking the
+            normal path never saw it. --%>
+      {render_slot(@actions)}
+
       <section id="gstr1-register" class="space-y-block">
         <h3 class="text-base-content text-body font-semibold">Invoice register</h3>
         <.invoice_table
@@ -751,6 +776,11 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   # Only what somebody actually said "no" to. A question answered "yes" or left
   # unknown is not an absence anyone confirmed, and listing it here would put an
   # assertion in a reviewer's mouth.
+  # Still gating: never answered, or answered "don't know", which settles
+  # nothing and deliberately keeps the question open.
+  defp completeness_open?(questions),
+    do: Enum.any?(questions, &(is_nil(&1.answer) or &1.answer == "unknown"))
+
   defp confirmed_absent(questions) do
     nouns = %{
       "credit_or_debit_notes" => "credit and debit notes",
@@ -845,6 +875,21 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
     end
   end
 
+  # A snapshot frozen before the printed projection existed has no "as printed"
+  # side, and inventing one from the current invoices would let a signed
+  # month's reconciliation drift after signature. The draft column is frozen and
+  # still true, so it stands alone and the comparison declines to answer.
+  defp reconciliation_rows(%{printed: %{recorded?: false}} = account) do
+    [
+      unrecorded_row("Documents", account.draft.documents),
+      unrecorded_row("Taxable value", Helpers.rupees(account.draft.totals[:taxable])),
+      unrecorded_row("IGST", Helpers.rupees(account.draft.totals[:igst])),
+      unrecorded_row("CGST", Helpers.rupees(account.draft.totals[:cgst])),
+      unrecorded_row("SGST", Helpers.rupees(account.draft.totals[:sgst])),
+      unrecorded_row("Output tax", Helpers.rupees(account.draft.totals[:tax]))
+    ]
+  end
+
   defp reconciliation_rows(account) do
     [
       reconciliation_row(
@@ -893,6 +938,11 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       causes: causes
     }
   end
+
+  # `changed: false` because nothing is being asserted to have changed — there is
+  # no comparison, so there is no review prompt to offer either.
+  defp unrecorded_row(label, proposed),
+    do: %{label: label, printed: "not recorded", proposed: proposed, changed: false, causes: []}
 
   defp cause_label([]), do: "Review the affected filing checks"
 

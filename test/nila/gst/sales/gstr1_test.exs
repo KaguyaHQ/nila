@@ -402,6 +402,108 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
       assert Gstr1.invoice_checks(invoice) == []
     end
+
+    # Three failing lines are three ✗ marks and one question: they post the same
+    # resolution target, so three cards meant answering one cleared all three.
+    test "lines failing the same check are one issue carrying all of them" do
+      invoice = %{
+        "id" => "inv_01",
+        "invoice_number" => "20/2026-27",
+        "line_items" => [
+          %{
+            "taxable_value" => 1000,
+            "cgst_rate" => 9,
+            "cgst_amount" => 50,
+            "sgst_rate" => 9,
+            "sgst_amount" => 50
+          },
+          %{
+            "taxable_value" => 500,
+            "cgst_rate" => 9,
+            "cgst_amount" => 45,
+            "sgst_rate" => 9,
+            "sgst_amount" => 45
+          },
+          %{
+            "taxable_value" => 200,
+            "cgst_rate" => 9,
+            "cgst_amount" => 10,
+            "sgst_rate" => 9,
+            "sgst_amount" => 10
+          }
+        ]
+      }
+
+      failed = invoice |> Gstr1.invoice_checks() |> Enum.reject(& &1["passed"])
+      assert length(failed) == 2
+
+      assert [issue] =
+               [invoice]
+               |> Gstr1.validation_issues()
+               |> Enum.filter(&(&1["code"] == "line_arithmetic"))
+
+      assert issue["lines"] == [1, 3]
+      assert issue["message"] =~ "line 1 tax 100"
+      assert issue["message"] =~ "line 3 tax 20"
+      assert "line_items[0].taxable_value" in issue["fields"]
+      assert "line_items[2].taxable_value" in issue["fields"]
+    end
+
+    test "a bill total out by what its components are out by folds into theirs" do
+      invoice = %{
+        "id" => "inv_01",
+        "invoice_number" => "20/2026-27",
+        "line_items" => [
+          %{
+            "taxable_value" => 1000,
+            "cgst_rate" => 9,
+            "cgst_amount" => 90,
+            "sgst_rate" => 9,
+            "sgst_amount" => 90
+          }
+        ],
+        "printed_total_taxable" => 1100,
+        "printed_total_tax" => 180,
+        "printed_grand_total" => 1280
+      }
+
+      codes = [invoice] |> Gstr1.validation_issues() |> Enum.map(& &1["code"])
+      assert "printed_taxable_mismatch" in codes
+      refute "grand_total_mismatch" in codes
+
+      issue =
+        [invoice]
+        |> Gstr1.validation_issues()
+        |> Enum.find(&(&1["code"] == "printed_taxable_mismatch"))
+
+      assert issue["message"] =~ "printed taxable total does not match line taxable sum"
+      assert issue["message"] =~ "printed bill total"
+      assert issue["message"] =~ "printed 1280.0, derived 1180.0"
+      assert "printed_grand_total" in issue["fields"]
+    end
+
+    test "a bill total wrong on its own stays its own issue" do
+      invoice = %{
+        "id" => "inv_01",
+        "invoice_number" => "20/2026-27",
+        "line_items" => [
+          %{
+            "taxable_value" => 1000,
+            "cgst_rate" => 9,
+            "cgst_amount" => 90,
+            "sgst_rate" => 9,
+            "sgst_amount" => 90
+          }
+        ],
+        "printed_total_taxable" => 1100,
+        "printed_total_tax" => 180,
+        "printed_grand_total" => 9999
+      }
+
+      codes = [invoice] |> Gstr1.validation_issues() |> Enum.map(& &1["code"])
+      assert "printed_taxable_mismatch" in codes
+      assert "grand_total_mismatch" in codes
+    end
   end
 
   describe "series_account/1 — the account's series statement" do

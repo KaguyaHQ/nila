@@ -371,6 +371,33 @@ defmodule Nila.Gst.Intake.Dumps do
   def release(%Dump{status: "held"} = dump),
     do: dump |> Dump.changeset(%{status: "received"}) |> Repo.update!()
 
+  @doc """
+  Abandons a packet whose extraction failed — the exit from an otherwise
+  permanent block.
+
+  `Confirmations.stale?/1` counts a `failed` sales packet as unresolved work,
+  and both sign-offs require a complete intake. Nothing moved a dump out of
+  `failed`: re-uploading added a *new* packet beside it, `list/3` is unfiltered,
+  so the failed row kept the month unfileable forever. The senior override could
+  not clear it either, because staleness is re-derived from the dump list rather
+  than read off the confirmation.
+
+  A failed extraction produced no rows, so abandoning it moves no figure. What
+  is recorded is that a human looked at the packet and chose not to wait for it.
+  """
+  def abandon_failed(dump, user_id)
+
+  def abandon_failed(%Dump{status: "failed"} = dump, user_id) do
+    dump
+    |> Dump.changeset(%{
+      status: "discarded",
+      meta: Map.put(meta(dump), "abandoned_by_id", user_id)
+    })
+    |> Repo.update()
+  end
+
+  def abandon_failed(%Dump{}, _user_id), do: {:error, :not_failed}
+
   defp extracted(org_id, client_id, period, kind) do
     org_id
     |> list(client_id, period)

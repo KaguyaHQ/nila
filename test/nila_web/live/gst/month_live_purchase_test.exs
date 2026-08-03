@@ -115,6 +115,67 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     refute has_element?(seeded, "#gstr3b-completeness", "not recorded for this month")
   end
 
+  test "an ITC figure that cannot be true is not printed as fact", %{
+    conn: conn,
+    client: client,
+    org: org,
+    user: user
+  } do
+    # "₹0 of ITC this month" above a register of a dozen bills is the money-side
+    # twin of "0 files received" beside "12 invoices extracted": the counts came
+    # through the freeze and the rupees did not, so the panel states a total it
+    # never had. A signed month renders from its snapshot, which is the only way
+    # a pre-money summary reaches the page — an unsigned one recomputes.
+    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    scope = Nila.Accounts.Scope.for_user(user)
+    month = settle_register!(month, user.id)
+    {:ok, _} = Signoffs.sign_off(month, scope)
+    {:ok, signoff} = Signoffs.latest_signoff(month.id)
+
+    frozen =
+      update_in(
+        signoff.snapshot,
+        ["summary"],
+        &Map.drop(&1, ~w(total_tax_paise matched_tax_paise open_tax_paise))
+      )
+
+    signoff
+    |> Ecto.Changeset.change(snapshot: frozen)
+    |> Nila.Repo.update!()
+
+    stats = Register.stats(frozen["summary"])
+    refute stats.itc_money_known?
+    assert stats.rows > 0
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    for id <- ~w(#gstr3b-total-itc #gstr3b-open-itc #gstr3b-settled-itc) do
+      assert has_element?(view, id, "not recorded for this month")
+      refute has_element?(view, id, "₹0")
+    end
+
+    # The register beside them still counts its rows, so the reconciliation
+    # matrix has to decline in the same voice rather than print ₹0 down a
+    # column whose neighbour counts real bills.
+    assert has_element?(view, "#gstr3b-recon-settled")
+    refute has_element?(view, "#gstr3b-reconciliation-matrix", "₹0")
+
+    # The month that did record its ITC still states it.
+    {:ok, _} =
+      ClientMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: "2025-06",
+        state: "worked",
+        register_rows: read_rows(),
+        recon: read_json("recon.json"),
+        summary: read_json("summary.json")
+      })
+
+    {:ok, seeded, _html} = live(conn, ~p"/gst/#{client.id}/2025-06")
+    refute has_element?(seeded, "#gstr3b-total-itc", "not recorded for this month")
+  end
+
   test "a reconciled month never claims the 2B is missing", %{
     conn: conn,
     org: org,
@@ -628,14 +689,19 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
   test "owner signs off: banner appears and the month moves to reviewed", %{
     conn: conn,
     client: client,
-    org: org
+    org: org,
+    user: user
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     refute has_element?(view, "#month-door-sign-3b")
-    refute has_element?(view, "#month-exit-gstr3b")
 
-    {:ok, _sales} =
+    # The section renders, but as blockers rather than a button: a month with no
+    # sales side cannot be signed, and used to say nothing at all about why.
+    assert has_element?(view, "#month-exit-gstr3b-blocked")
+    assert has_element?(view, "#gstr3b-blocker-no-sales")
+
+    {:ok, sales} =
       SalesMonths.upsert(%{
         org_id: org.id,
         client_id: client.id,
@@ -666,6 +732,11 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
         recon: clean_recon,
         summary: month.summary
       })
+
+    # A month with no sales invoices still gets asked what it cannot see for
+    # itself; "no sales at all" is a claim a human makes, not one Nila infers
+    # from an empty pile.
+    answer_sales_issues!(sales, user.id)
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
@@ -789,6 +860,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     scope = Nila.Accounts.Scope.for_user(user)
     client_month = settle_register!(client_month, user.id)
+    answer_sales_issues!(sales, user.id)
     assert {:ok, _} = Signoffs.sign_off_gstr1(sales, scope)
     assert {:ok, _} = Signoffs.sign_off(client_month, scope)
     assert {:ok, _} = Signoffs.mark_filed(sales, scope, "R1-ARN")
@@ -829,6 +901,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     scope = Nila.Accounts.Scope.for_user(user)
     client_month = settle_register!(client_month, user.id)
+    answer_sales_issues!(sales, user.id)
     assert {:ok, _} = Signoffs.sign_off_gstr1(sales, scope)
     assert {:ok, _} = Signoffs.sign_off(client_month, scope)
 
@@ -874,6 +947,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     scope = Nila.Accounts.Scope.for_user(user)
     client_month = settle_register!(client_month, user.id)
+    answer_sales_issues!(sales, user.id)
     assert {:ok, _} = Signoffs.sign_off_gstr1(sales, scope)
     assert {:ok, _} = Signoffs.sign_off(client_month, scope)
     assert {:ok, _} = Signoffs.mark_filed(client_month, scope, "3B-ARN")

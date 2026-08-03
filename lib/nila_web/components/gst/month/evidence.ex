@@ -284,13 +284,17 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
     checks = Gstr1.invoice_checks(assigns.selected_invoice)
     issues = Helpers.invoice_issues(assigns.issues_by_invoice, assigns.selected_invoice)
 
+    # Pair a failed check to the issue that speaks for it. Exact `fields`
+    # equality used to be enough because one failing line raised one issue; now
+    # that lines sharing a code collapse into a single issue, its `fields` is
+    # their union and never equals any one line's. Match on the code, then on
+    # the line being one the issue covers, so a merged issue still renders
+    # in place beside the line that produced it instead of dropping into the
+    # list below.
     check_issues =
       checks
       |> Enum.reject(& &1["passed"])
-      |> Map.new(fn check ->
-        {check_key(check),
-         Enum.find(issues, &(&1["code"] == check["code"] and &1["fields"] == check["fields"]))}
-      end)
+      |> Map.new(fn check -> {check_key(check), issue_for_check(issues, check)} end)
 
     in_place = check_issues |> Map.values() |> Enum.reject(&is_nil/1)
 
@@ -529,15 +533,27 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             </p>
           </div>
 
+          <%!-- Keyed the same way as the button that scrolls here. `flagged`
+                always carries a `{source_id, field}` entry but only carries
+                `{invoice_number, field}` for uniquely numbered invoices, so
+                reading it by `pristine_inum` alone meant that on a
+                duplicate-numbered invoice the "Correct extraction" button
+                rendered, the hook found no target, and the click did nothing at
+                all. --%>
           <div
-            :if={Gstr1.correctable_fields(@flagged, @selected_invoice["pristine_inum"]) != []}
+            :if={
+              Gstr1.correctable_fields(
+                @flagged,
+                @selected_invoice["id"] || @selected_invoice["pristine_inum"]
+              ) != []
+            }
             id="gstr1-corrections"
             class="space-y-related"
           >
             <div class="text-ink-subtle text-label font-semibold uppercase">
               Fields flagged for correction
             </div>
-            <%= for field <- Gstr1.correctable_fields(@flagged, @selected_invoice["pristine_inum"]) do %>
+            <%= for field <- Gstr1.correctable_fields(@flagged, @selected_invoice["id"] || @selected_invoice["pristine_inum"]) do %>
               <%= if @correcting && @correcting.field == field do %>
                 <form phx-submit="save_correct" class="flex items-end gap-2">
                   <.input type="hidden" name="field" id="gstr1-correct-field" value={field} />
@@ -688,7 +704,19 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               to one of them. It is now the primary button's own label; what is
               left here is the reasoning behind it. --%>
         <p class="text-ink-muted text-meta mt-1">{@proposal.basis}</p>
+        <%!-- What accepting it does to the numbers. `Proposals.for_issue/3`
+              computes this and freezes it into the audit payload, and the page
+              rendered only the reasoning — so the one figure that says whether
+              the click matters was written to the record and never shown to the
+              person clicking. `filed_effect` says it better where it applies;
+              this is the fallback for every other proposal. --%>
         <p :if={@filed_effect} class="mt-related text-ink-subtle text-meta">{@filed_effect}</p>
+        <p
+          :if={is_nil(@filed_effect) and proposal_effect(@proposal)}
+          class="mt-related text-ink-subtle text-meta"
+        >
+          {proposal_effect(@proposal)}
+        </p>
       </div>
 
       <%!-- Neither figure above is filed. The return recomputes per rate bucket,
@@ -907,6 +935,21 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
     end)
   end
 
+  defp issue_for_check(issues, check) do
+    Enum.find(issues, fn issue ->
+      issue["code"] == check["code"] and
+        (issue["fields"] == check["fields"] or covers_line?(issue, check))
+    end)
+  end
+
+  # `lines` is written by the collapsing generators; an issue that never merged
+  # does not carry it, and falls back to the exact-fields match above.
+  defp covers_line?(%{"lines" => lines}, %{"line" => line})
+       when is_list(lines) and not is_nil(line),
+       do: line in lines
+
+  defp covers_line?(_issue, _check), do: false
+
   defp issue_correctable?(issue, flagged, invoice) do
     candidates = Gstr1.correctable_fields(flagged, invoice["id"] || invoice["pristine_inum"])
 
@@ -969,6 +1012,12 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   end
 
   defp filed_effect(_issue, _values), do: nil
+
+  defp proposal_effect(%{effect: %{taxable: taxable, tax: tax}})
+       when is_number(taxable) and is_number(tax),
+       do: "Files #{Helpers.rupees(tax)} tax on #{Helpers.rupees(taxable)} taxable."
+
+  defp proposal_effect(_proposal), do: nil
 
   defp decision_maker(%{decided_by: %{name: name}}) when is_binary(name), do: name
   defp decision_maker(_decision), do: "a reviewer"

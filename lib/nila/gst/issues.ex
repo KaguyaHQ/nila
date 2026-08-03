@@ -99,7 +99,14 @@ defmodule Nila.Gst.Issues do
 
   @doc """
   The work that answers this issue: `:decision`, `:confirmation`, `:correction`,
-  `:collection`, or `nil` when there is nothing for a reviewer to do.
+  or `nil` when there is nothing for a reviewer to do.
+
+  There is no `:collection` on this side. It was advertised here, and a noun was
+  reserved for it downstream, but nothing in `@classification` ever mapped to it
+  — so a sales issue could never be "waiting on the client", and the promise
+  read as a feature to anyone reading the code. The purchase track has a real
+  collection queue (`ExceptionsLive`); if the sales side needs one, it gets
+  built there and mapped here, not declared in a docstring.
   """
   def resolution_kind(%{"code" => code}), do: resolution_kind(code)
 

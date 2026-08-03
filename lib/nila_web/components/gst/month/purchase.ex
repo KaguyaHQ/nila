@@ -64,45 +64,40 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             Request the {@stats.awaiting_bills} missing {plural(@stats.awaiting_bills, "bill")}
           </.button>
         </div>
+        <%!-- All three read from one recorded fact, so they go quiet together:
+              a snapshot frozen before the register carried its tax has no ITC
+              figure to state, and "₹0 of ITC this month" above a live register
+              is the loudest wrong thing this section can say. --%>
         <dl class="gap-block mt-block grid sm:grid-cols-3">
-          <div>
-            <dt class="text-ink-subtle text-label font-semibold uppercase">ITC this month</dt>
-            <dd
-              id="gstr3b-total-itc"
-              class="font-display text-base-content text-lead tabular-nums"
-            >
-              {format_money(@stats.total_tax_paise, prefix: "₹")}
-            </dd>
-          </div>
+          <.money_stat
+            id="gstr3b-total-itc"
+            label="ITC this month"
+            paise={@stats.total_tax_paise}
+            known={@stats.itc_money_known?}
+          />
           <%!-- Named for what actually holds the money up. When every open rupee
                 waits on a document, "riding on decisions" sends the reviewer to
                 decide something that cannot be decided. --%>
-          <div>
-            <dt class="text-ink-subtle text-label font-semibold uppercase">
-              {if @stats.need_decision == 0 and @stats.awaiting_bills > 0,
+          <.money_stat
+            id="gstr3b-open-itc"
+            label={
+              if @stats.need_decision == 0 and @stats.awaiting_bills > 0,
                 do: "Awaiting bills",
-                else: "Riding on decisions"}
-            </dt>
-            <dd
-              id="gstr3b-open-itc"
-              class="font-display text-base-content text-lead tabular-nums"
-            >
-              {format_money(@stats.open_tax_paise, prefix: "₹")}
-            </dd>
-          </div>
+                else: "Riding on decisions"
+            }
+            paise={@stats.open_tax_paise}
+            known={@stats.itc_money_known?}
+          />
           <%!-- Settled, not matched. `matched` and `open` are not complements —
                 audited-accepted rows sit in neither — so showing those two beside
                 the total invites a sum that lands short of the month. Settled is
                 the exact complement of open, so the three close. --%>
-          <div>
-            <dt class="text-ink-subtle text-label font-semibold uppercase">Settled</dt>
-            <dd
-              id="gstr3b-settled-itc"
-              class="font-display text-base-content text-lead tabular-nums"
-            >
-              {format_money(@stats.settled_tax_paise, prefix: "₹")}
-            </dd>
-          </div>
+          <.money_stat
+            id="gstr3b-settled-itc"
+            label="Settled"
+            paise={@stats.settled_tax_paise}
+            known={@stats.itc_money_known?}
+          />
         </dl>
       </section>
 
@@ -149,8 +144,13 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             <span class="text-ink-subtle text-meta block">{row.note}</span>
           </:col>
           <:col :let={row} label="Bills" align="right">{row.count}</:col>
+          <%!-- The counts came through the freeze and the money did not, so this
+                column is the one that has to decline. Printing ₹0 down a table
+                whose neighbouring column counts real bills is the same false
+                confidence as the tiles above, spread over three rows. --%>
           <:col :let={row} label="ITC" align="right">
-            {format_money(row.tax_paise, prefix: "₹")}
+            <span :if={@stats.itc_money_known?}>{format_money(row.tax_paise, prefix: "₹")}</span>
+            <span :if={not @stats.itc_money_known?} class="text-ink-subtle">—</span>
           </:col>
           <:col :let={row} label="Next move">
             <span class="text-ink-muted">{row.next_move}</span>
@@ -278,6 +278,33 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       </dd>
       <dd :if={@unknown} class="text-body text-ink-subtle mt-1 font-medium">
         — <span class="text-meta">{@unknown_note}</span>
+      </dd>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :paise, :integer, required: true
+  attr :known, :boolean, default: true
+
+  # A headline figure the summary never recorded gets the same treatment as a
+  # count it never recorded (`control_stat`): a dash and what is missing. The
+  # figure keeps its place in the row either way — a tile that vanishes reads as
+  # a section with two positions rather than one that cannot state its third.
+  defp money_stat(assigns) do
+    ~H"""
+    <div>
+      <dt class="text-ink-subtle text-label font-semibold uppercase">{@label}</dt>
+      <dd
+        :if={@known}
+        id={@id}
+        class="font-display text-base-content text-lead tabular-nums"
+      >
+        {format_money(@paise, prefix: "₹")}
+      </dd>
+      <dd :if={not @known} id={@id} class="text-ink-subtle text-lead">
+        — <span class="text-meta">not recorded for this month</span>
       </dd>
     </div>
     """

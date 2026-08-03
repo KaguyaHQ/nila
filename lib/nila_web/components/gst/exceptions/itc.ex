@@ -56,7 +56,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
   # inventing zeroes would draw a bridge whose middle is a guess.
   defp bridge_rows(itc, stats) when is_map(itc) do
     if Map.has_key?(itc, "reported_2b_paise") do
-      %{lines: opening(stats) ++ lines(itc)}
+      %{lines: opening(stats, itc) ++ lines(itc)}
     end
   end
 
@@ -70,7 +70,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
   # reader had to subtract two totals to discover the gap. It is the sharpest
   # number on the page — credit the client cannot take this month because a
   # vendor has not filed — so it is stated rather than left to be derived.
-  defp opening(%{unreported_by_vendor_known?: true} = stats) do
+  defp opening(%{unreported_by_vendor_known?: true} = stats, itc) do
     gap = stats.total_tax_paise - stats.unreported_by_vendor_tax_paise
 
     # Only when the two really differ. On a month where every books bill is in
@@ -96,13 +96,41 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           total?: false,
           emphasis: nil
         }
-      ]
+      ] ++ basis_residual(gap, itc)
     else
       []
     end
   end
 
-  defp opening(_stats), do: []
+  defp opening(_stats, _itc), do: []
+
+  # The two opening lines are books figures; every line below them is the 2B's.
+  # Where the two disagree on the same supply the subtraction does not land on
+  # the ceiling, and the bridge printed A − B above a C that was not A − B.
+  #
+  # Two things make it up: a value mismatch files the 2B's figure rather than
+  # the books', and a supply still under review is counted at the 2B's. Naming
+  # the residual is the honest fix — the alternative was a bridge whose first
+  # arithmetic step silently did not hold.
+  defp basis_residual(gap, itc) do
+    case (itc["reported_2b_paise"] || 0) - gap do
+      0 ->
+        []
+
+      residual ->
+        [
+          %{
+            key: "basis-residual",
+            label: "the 2B's figure where it differs from your books",
+            note: "Value mismatches and supplies under review are counted at the 2B's.",
+            paise: abs(residual),
+            sign: (residual > 0 && "+") || "−",
+            total?: false,
+            emphasis: nil
+          }
+        ]
+    end
+  end
 
   defp lines(itc) do
     [
@@ -122,6 +150,12 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
         "less awaiting a decision",
         itc["pending_decision_paise"],
         "Nobody has ruled on these yet"
+      ) ++
+      deduction(
+        "withheld",
+        "less credit the client holds no bill for",
+        itc["unsubstantiated_withheld_paise"],
+        "Attested under s.16(2)(a). Reversed in 4B(2) on the return."
       ) ++
       [
         %{
@@ -362,6 +396,18 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
             </span>
           </div>
         </div>
+
+        <%!-- Otherwise these rows read as credit taken away, and the bridge
+              above — which correctly ignores them — looks wrong instead. --%>
+        <div
+          :if={(@itc["blocked_outside_ceiling_paise"] || 0) > 0}
+          id="gst-itc-blocked-outside-ceiling"
+          class="border-base-300 text-ink-subtle text-meta border-t px-4 py-3"
+        >
+          {itc_money(@itc["blocked_outside_ceiling_paise"])} of the above sits outside the 2B
+          ceiling — the portal never reported that credit, so blocking it withholds nothing and
+          the claim is unchanged.
+        </div>
       </div>
     </div>
     """
@@ -369,5 +415,10 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
 
   defp itc_money(paise), do: Nila.Formatters.format_money_with_paise(paise || 0)
 
-  defp withheld?(block), do: (block["tax_paise"] || 0) > 0
+  # A block only withholds credit the claim actually contained. Blocking a
+  # books-only bill the 2B never reported takes nothing away — `ItcPosition`
+  # excludes it from `blocked_in_ceiling_paise` for exactly that reason — so
+  # printing −₹180 in alarm red against it contradicted the bridge two inches
+  # above, which was unchanged.
+  defp withheld?(block), do: (block["tax_paise"] || 0) > 0 and block["in_ceiling"]
 end

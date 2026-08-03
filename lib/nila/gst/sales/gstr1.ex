@@ -368,7 +368,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       invoice
       |> invoice_checks()
       |> Enum.reject(& &1["passed"])
-      |> Enum.map(&check_issue(invoice, &1))
+      |> failed_check_issues(invoice)
 
     invoice_number_issues(invoice) ++
       invoice_date_issues(invoice) ++
@@ -384,12 +384,18 @@ defmodule Nila.Gst.Sales.Gstr1 do
   Arithmetic check outcomes for one invoice — passed and failed alike, each with
   the operands a screen can print (`15,200 × 18% = 2,736 ✓`).
 
-  This is the sole judge of these checks: `validation_issues/1` raises exactly
-  the failing subset (`check_issue/2`), and the invoice modal renders outcomes
-  without computing anything, so a ✓ can never sit beside an open issue for the
-  same check, nor a ✗ beside silence. A check only exists where the bill makes a
+  This is the sole judge of these checks: `validation_issues/1` raises the
+  failing subset and nothing else (`failed_check_issues/2`), and the invoice
+  modal renders outcomes without computing anything, so a ✓ can never sit beside
+  an open issue for the same check. A check only exists where the bill makes a
   claim — a furniture row with no values, or an absent printed total, yields no
   outcome rather than a vacuous pass.
+
+  Failures outnumber issues, because an issue is a resolution target: the
+  failing lines of one check collapse into one issue, and a bill total that is
+  out by exactly what its components are out by is folded into theirs. Every
+  failure still prints its own ✗ with its own operands; what it no longer gets
+  is its own card and its own button.
   """
   def invoice_checks(invoice) do
     line_arithmetic_checks(invoice) ++
@@ -489,40 +495,105 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end)
   end
 
-  defp check_issue(invoice, %{"code" => "line_arithmetic"} = check) do
-    %{"line" => index, "operands" => ops, "fields" => fields} = check
+  @printed_total_codes ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch)
 
-    issue(
-      invoice,
-      "line_arithmetic",
-      "line #{index} tax #{ops["actual"]} does not match #{ops["taxable"]} × #{ops["rate"]}% = #{round2(ops["expected"])}",
-      fields,
-      Issues.level_for("line_arithmetic")
-    )
+  # The failing checks as the issues a reviewer answers, which is fewer rows than
+  # there are failures.
+  #
+  # Two collapses, both because a row is a resolution target and a target is not
+  # a line. Per-line checks share `source_id:code`, so three lines that do not
+  # multiply out were three cards posting one answer, and a count that fell by
+  # three when one was given. And the printed totals are not three independent
+  # claims: the grand total is *defined* as taxable + tax, so a single misread
+  # figure trips two or three of them at once. Where the bill total is out by
+  # exactly what the components are out by, it is the same misreading told twice,
+  # and it says so inside the one card rather than opening its own.
+  defp failed_check_issues(failed, invoice) do
+    {printed, per_line} = Enum.split_with(failed, &(&1["code"] in @printed_total_codes))
+
+    line_issues =
+      per_line
+      |> Enum.map(& &1["code"])
+      |> Enum.uniq()
+      |> Enum.map(fn code ->
+        line_check_issue(invoice, code, Enum.filter(per_line, &(&1["code"] == code)))
+      end)
+
+    line_issues ++ printed_total_issues(invoice, printed)
   end
 
-  defp check_issue(invoice, %{"code" => "cgst_sgst_unequal"} = check) do
-    %{"line" => index, "operands" => ops, "fields" => fields} = check
-
-    issue(
-      invoice,
-      "cgst_sgst_unequal",
-      "line #{index} CGST #{ops["cgst"]} and SGST #{ops["sgst"]} are not equal halves of the tax",
-      fields,
-      Issues.level_for("cgst_sgst_unequal")
+  defp line_check_issue(invoice, code, checks) do
+    invoice
+    |> issue(
+      code,
+      Enum.map_join(checks, "; ", &check_message/1),
+      checks |> Enum.flat_map(& &1["fields"]) |> Enum.uniq(),
+      Issues.level_for(code)
     )
+    |> Map.put("lines", Enum.map(checks, & &1["line"]))
   end
 
-  defp check_issue(invoice, %{"code" => code} = check) do
-    %{"operands" => ops, "fields" => fields} = check
+  defp printed_total_issues(_invoice, []), do: []
+
+  defp printed_total_issues(invoice, failed) do
+    {grand, components} = Enum.split_with(failed, &(&1["code"] == "grand_total_mismatch"))
+
+    if components != [] and grand_total_explained?(invoice, grand) do
+      [collapsed_printed_issue(invoice, components, grand)]
+    else
+      Enum.map(failed, &check_issue(invoice, &1))
+    end
+  end
+
+  # A printed component that is absent explains nothing and needs no explaining,
+  # so it contributes no difference: if the bill prints a taxable total and a
+  # grand total and both are out by the same amount, the tax portion of the grand
+  # total agreed with the lines, which is exactly the evidence of one cause.
+  defp grand_total_explained?(_invoice, []), do: false
+
+  defp grand_total_explained?(invoice, [%{"operands" => ops}]) do
+    explained =
+      printed_delta(invoice["printed_total_taxable"], invoice_taxable(invoice)) +
+        printed_delta(invoice["printed_total_tax"], invoice_tax(invoice))
+
+    close?(ops["printed"] - ops["derived"], explained, 2 * @money_tolerance)
+  end
+
+  defp printed_delta(nil, _derived), do: 0
+  defp printed_delta(printed, derived), do: num(printed) - derived
+
+  defp collapsed_printed_issue(invoice, components, [grand]) do
+    ops = grand["operands"]
+    code = hd(components)["code"]
+
+    message =
+      Enum.map_join(components, "; ", &check_message/1) <>
+        " — and the printed bill total, which is taxable + tax, is out by exactly that much " <>
+        "(printed #{round2(ops["printed"])}, derived #{round2(ops["derived"])})"
 
     issue(
       invoice,
       code,
-      "#{total_claim(code)}: printed #{round2(ops["printed"])}, derived #{round2(ops["derived"])}",
-      fields,
+      message,
+      (components ++ [grand]) |> Enum.flat_map(& &1["fields"]) |> Enum.uniq(),
       Issues.level_for(code)
     )
+  end
+
+  defp check_issue(invoice, %{"code" => code, "fields" => fields} = check) do
+    issue(invoice, code, check_message(check), fields, Issues.level_for(code))
+  end
+
+  defp check_message(%{"code" => "line_arithmetic", "line" => index, "operands" => ops}) do
+    "line #{index} tax #{ops["actual"]} does not match #{ops["taxable"]} × #{ops["rate"]}% = #{round2(ops["expected"])}"
+  end
+
+  defp check_message(%{"code" => "cgst_sgst_unequal", "line" => index, "operands" => ops}) do
+    "line #{index} CGST #{ops["cgst"]} and SGST #{ops["sgst"]} are not equal halves of the tax"
+  end
+
+  defp check_message(%{"code" => code, "operands" => ops}) do
+    "#{total_claim(code)}: printed #{round2(ops["printed"])}, derived #{round2(ops["derived"])}"
   end
 
   defp total_claim("printed_taxable_mismatch"),

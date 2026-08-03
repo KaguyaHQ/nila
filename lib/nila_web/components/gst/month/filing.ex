@@ -4,6 +4,8 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   @moduledoc "Audited return actions rendered directly after their evidence."
 
   alias Nila.Gst.Filing.ItcPosition
+  alias Nila.Gst.Sales.Values
+  alias NilaWeb.Components.Gst.Month.Helpers
 
   attr :sales_month, :any, required: true
   attr :r1_signoff, :any, default: nil
@@ -11,8 +13,11 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :reviewable, :boolean, required: true
   attr :completeness, :atom, required: true
   attr :can_sign_off, :boolean, required: true
+  attr :derived, :any, default: nil
 
   def gstr1_actions(assigns) do
+    assigns = assign(assigns, :filed, assigns.derived && Values.filed_totals(assigns.derived))
+
     ~H"""
     <section
       :if={gstr1_actionable?(assigns)}
@@ -29,12 +34,22 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <li>All supplied sales documents accounted for</li>
           <li>Table 12 reconciled</li>
         </ul>
+        <%!-- The figures, at the button. Three assurance strings and no rupees
+              is not a return: a senior could approve having seen only "all
+              checks resolved", with the section-by-section numbers hundreds of
+              lines further down a page they may never have scrolled. --%>
+        <p :if={@filed} id="month-exit-gstr1-amount" class="text-base-content text-ui">
+          Filing <span class="font-mono font-semibold">{Helpers.rupees(@filed.taxable)}</span>
+          taxable and <span class="font-mono font-semibold">{Helpers.rupees(@filed.tax)}</span>
+          output tax.
+        </p>
         <.button
           :if={@can_sign_off}
           id="month-door-sign-r1"
           variant="primary"
           size="sm"
           phx-click="r1-sign-off"
+          data-confirm={approval_confirm(@filed)}
         >
           Approve GSTR-1
         </.button>
@@ -88,16 +103,20 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :gstr3b_signoff, :any, default: nil
   attr :r1_signoff, :any, default: nil
   attr :can_sign_off, :boolean, required: true
+  attr :sales_completeness, :atom, default: :open
+  attr :documents_attested, :any, default: nil
 
   def gstr3b_actions(assigns) do
+    assigns = assign(assigns, :blockers, gstr3b_blockers(assigns))
+
     ~H"""
     <section
-      :if={not is_nil(@gstr3b_signoff) or gstr3b_ready?(assigns)}
+      :if={not is_nil(@gstr3b_signoff) or @blockers == [] or @purchase_month.state == "worked"}
       id="month-exit-gstr3b"
       class="border-base-300 pt-block scroll-mt-28 border-t"
     >
       <.button
-        :if={is_nil(@gstr3b_signoff) and @can_sign_off}
+        :if={is_nil(@gstr3b_signoff) and @blockers == [] and @can_sign_off}
         id="month-door-sign-3b"
         variant="primary"
         size="sm"
@@ -107,11 +126,46 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       </.button>
 
       <p
-        :if={is_nil(@gstr3b_signoff) and not @can_sign_off}
+        :if={is_nil(@gstr3b_signoff) and @blockers == [] and not @can_sign_off}
         class="text-ink-muted text-ui"
       >
         Ready for a senior to sign GSTR-3B.
       </p>
+
+      <%!-- Every one of these is a server gate in `Signoffs.sign_off/2`. The
+            button used to render on three of the five, so the other two failed
+            at the click with a flash naming a control on a different page and
+            no way to reach it — and a client-month with no sales side at all
+            had no in-product action that could ever satisfy them. --%>
+      <div :if={is_nil(@gstr3b_signoff) and @blockers != []} id="month-exit-gstr3b-blocked">
+        <p class="text-base-content text-ui font-medium">
+          Before the GSTR-3B can be signed
+        </p>
+        <ul class="mt-related space-y-related">
+          <li :for={{key, message, exit} <- @blockers} id={"gstr3b-blocker-#{key}"}>
+            <span class="text-ink-muted text-ui">{message}</span>
+            <.button
+              :if={elem(exit, 0) == :navigate}
+              navigate={elem(exit, 2)}
+              variant="outline"
+              size="xs"
+            >
+              {elem(exit, 1)}
+            </.button>
+            <.button
+              :if={elem(exit, 0) == :click}
+              phx-click={elem(exit, 2)}
+              variant="outline"
+              size="xs"
+            >
+              {elem(exit, 1)}
+            </.button>
+            <.button :if={elem(exit, 0) == :anchor} href={elem(exit, 2)} variant="outline" size="xs">
+              {elem(exit, 1)}
+            </.button>
+          </li>
+        </ul>
+      </div>
 
       <.signed_return
         :if={@gstr3b_signoff}
@@ -271,14 +325,64 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   defp approval_label("GSTR-1"), do: "Approved"
   defp approval_label(_return), do: "Signed"
 
-  # Mirrors the server gate (`Signoffs.sign_off/2`): offer the signature exactly
-  # when a decision would change what gets filed. Uncollected bills and vendor
-  # amount disputes stay visible as findings and in the money, but neither is
-  # answerable here, so neither withholds the button.
-  defp gstr3b_ready?(assigns) do
-    assigns.stats.need_decision == 0 and not is_nil(assigns.r1_signoff) and
-      not is_nil(assigns.sales_month) and not is_nil(assigns.sales_month.filed_at)
+  # `data-confirm` guarded reopening a signature but not giving one, which had
+  # the caution exactly backwards. Naming the money in the prompt also means the
+  # figures are in front of the signer at the moment of signing even if they
+  # never scrolled the summary.
+  defp approval_confirm(nil), do: nil
+
+  defp approval_confirm(filed) do
+    "Approve the GSTR-1 filing #{Helpers.rupees(filed.taxable)} taxable and " <>
+      "#{Helpers.rupees(filed.tax)} output tax?"
   end
+
+  # The full server gate (`Signoffs.sign_off/2`), each condition paired with the
+  # control that clears it. Uncollected bills and vendor amount disputes stay
+  # visible as findings and in the money, but neither is answerable here, so
+  # neither appears.
+  #
+  # This has to mirror all five conditions, not the three that happened to be
+  # cheap to check here: the two it omitted both fail at the click, and one of
+  # them — sales intake on a month with no sales side — had its only control
+  # inside a section that does not render without a sales month.
+  defp gstr3b_blockers(assigns) do
+    %{client_id: client_id, period: period} = assigns.purchase_month
+    exceptions = ~p"/gst/#{client_id}/#{period}/exceptions"
+
+    [
+      {"decisions", assigns.stats.need_decision > 0,
+       "#{assigns.stats.need_decision} purchase #{plural(assigns.stats.need_decision, "decision")} still open.",
+       {:navigate, "Work the exceptions", exceptions}},
+      {"attestation", assigns.documents_attested == "unknown",
+       "Nobody has confirmed whether the client holds tax invoices for the supplies the portal reported (s.16(2)(a)).",
+       {:navigate, "Answer it", exceptions}},
+      {"no-sales", is_nil(assigns.sales_month),
+       "This client-month has no sales side. The 3B takes its outward liability from the GSTR-1, so the sales month has to be worked and filed first — including a month with no sales at all.",
+       {:navigate, "Bring in sales bills",
+        ~p"/gst/upload?client_id=#{client_id}&period=#{period}"}},
+      {"r1-unsigned", not is_nil(assigns.sales_month) and is_nil(assigns.r1_signoff),
+       "The GSTR-1 has not been approved yet.",
+       {:anchor, "Go to the GSTR-1", "#month-exit-gstr1"}},
+      {"r1-unfiled",
+       not is_nil(assigns.sales_month) and not is_nil(assigns.r1_signoff) and
+         is_nil(assigns.sales_month.filed_at),
+       "The GSTR-1 is approved but not yet marked filed on the portal.",
+       {:anchor, "Mark it filed", "#month-exit-gstr1"}},
+      {"intake", assigns.sales_completeness != :complete,
+       "Sales collection is #{completeness_phrase(assigns.sales_completeness)} — the client has not confirmed we hold everything.",
+       {:click, "Record client confirmation", "open-completeness-override"}}
+    ]
+    |> Enum.filter(fn {_key, active?, _message, _exit} -> active? end)
+    |> Enum.map(fn {key, _active?, message, exit} -> {key, message, exit} end)
+  end
+
+  defp completeness_phrase(:open), do: "not confirmed"
+  defp completeness_phrase(:client_no), do: "still open"
+  defp completeness_phrase(:stale), do: "stale after later or unresolved intake"
+  defp completeness_phrase(_status), do: "incomplete"
+
+  defp plural(1, word), do: word
+  defp plural(_count, word), do: word <> "s"
 
   attr :gstr3b, :map, required: true
 
@@ -327,6 +431,18 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <.gstr3b_line label="C Net ITC" heads={@gstr3b["itc"]["net_itc_4c"]} strong />
         </div>
       </div>
+
+      <%!-- What this panel does not cover, said out loud. The engine builds
+            3.1(a) and 3.1(d) and nothing else, and a reviewer reading four
+            populated lines has no way to tell "nil-rated: none" from "nil-rated
+            was never considered". Silence about a table reads as a zero in it.
+            Building 3.1(b)/(c)/(e) and Table 5 needs data no client supplies
+            today; saying so costs nothing and is honest. --%>
+      <p id="gst-3b-scope" class="border-base-300 text-ink-subtle text-meta border-t px-4 py-3">
+        This covers 3.1(a) taxable and 3.1(d) reverse-charge outward supplies only. Zero-rated,
+        nil-rated, exempt and non-GST supplies (3.1 b/c/e) and Table 5 are not assembled here —
+        if the month has any, they have to be added on the portal.
+      </p>
     </div>
     """
   end

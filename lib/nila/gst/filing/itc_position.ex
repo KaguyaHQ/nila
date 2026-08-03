@@ -24,6 +24,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
   """
 
   @full_block ~w(personal_expense_17_5 gstin_state_mismatch)
+  @zero_heads %{"igst" => 0, "cgst" => 0, "sgst" => 0}
 
   @doc """
   Computes the position from the effective `recon`, the register `rows`, and the
@@ -99,6 +100,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
     reported = ceiling_paise(recon)
     raw_pending = pending_decision_paise(recon, rows)
     raw_awaiting = awaiting_document_paise(recon, rows)
+    raw_awaiting_heads = awaiting_document_heads(recon, rows)
 
     # A block can only withhold credit the ceiling actually contains. `rows` and
     # `recon` are two projections of the same month and a row can claim a bucket
@@ -129,8 +131,31 @@ defmodule Nila.Gst.Filing.ItcPosition do
       "pending_decision_paise" => pending,
       "blocked_in_ceiling_paise" => blocked,
       "awaiting_document_paise" => awaiting,
+      "awaiting_document_heads" => allocate(raw_awaiting_heads, awaiting),
       "substantiated_paise" => claimable - awaiting
     }
+  end
+
+  # Splits a head-wise figure so it sums to `target` exactly. Normally `target`
+  # already equals the head sum and this is the identity; it only does work in
+  # the clamped case, where the lump was cut to keep the partition an identity
+  # and the heads have to follow it or Table 4 stops tying to the bridge.
+  defp allocate(heads, target) do
+    heads = Map.merge(@zero_heads, heads || %{})
+    total = heads |> Map.values() |> Enum.sum()
+
+    cond do
+      total == target ->
+        heads
+
+      total <= 0 ->
+        @zero_heads
+
+      true ->
+        scaled = Map.new(heads, fn {h, v} -> {h, div(v * target, total)} end)
+        {largest, _} = Enum.max_by(heads, fn {_h, v} -> v end)
+        Map.update!(scaled, largest, &(&1 + (target - Enum.sum(Map.values(scaled)))))
+    end
   end
 
   @doc "Emitted whenever a partition term had to be clamped to keep the identity."
@@ -175,6 +200,22 @@ defmodule Nila.Gst.Filing.ItcPosition do
     end
   end
 
+  # Same traversal as `awaiting_document_paise/2`, head-wise. Table 4 is
+  # head-wise, so withholding this money from the return needs the split; the
+  # two must stay in step or 4B reverses a different figure than the bridge
+  # says was withheld.
+  defp awaiting_document_heads(recon, rows) do
+    accepted = accepted_2b_only_keys(rows)
+
+    heads =
+      for entry <- recon["in_2b_not_books"] || [],
+          g = entry["gstr2b"] || entry,
+          not MapSet.member?(accepted, invoice_key(g)),
+          do: g["tax_paise"] || %{}
+
+    sum_heads(heads)
+  end
+
   defp blocked_row_keys(rows) do
     for row <- rows,
         row["flags"] not in [nil, []],
@@ -202,6 +243,12 @@ defmodule Nila.Gst.Filing.ItcPosition do
   being folded into `blocked`: it is a substantiation failure, not an
   ineligible credit, and a reviewer reading the bridge should see which.
 
+  On the *return* the two converge: `unsubstantiated_withheld_heads` reverses in
+  4B(2) alongside the blocks (`Gstr3b.assemble/3`). 4A(5) is auto-populated from
+  the 2B on the portal, so withholding by shrinking it would break the tie-out
+  this engine is built to pass; 4C lands identically either way. Hence the head
+  split — the lump alone cannot fill a head-wise table.
+
   `unknown` withholds the signature (`Workings.documents_attested?/1`) but does
   not move the money — nobody has said the credit is bad, only that nobody has
   checked.
@@ -217,6 +264,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
       "claimable_paise" => position["claimable_paise"] - withheld,
       "awaiting_document_paise" => 0,
       "unsubstantiated_withheld_paise" => withheld,
+      "unsubstantiated_withheld_heads" => allocate(position["awaiting_document_heads"], withheld),
       "documents_attested" => "not_held"
     })
     |> Map.put("attestation_target", attestation.target)

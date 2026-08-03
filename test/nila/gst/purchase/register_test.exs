@@ -38,7 +38,8 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                decision_tax_paise: 45_000,
                unreported_by_vendor_tax_paise: 0,
                unreported_by_vendor_known?: false,
-               open_money_split_known?: false
+               open_money_split_known?: false,
+               itc_money_known?: true
              }
 
       # The 5 rows the portal reported and nobody supplied are a chase, not
@@ -83,7 +84,8 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                decision_tax_paise: 0,
                unreported_by_vendor_tax_paise: 0,
                unreported_by_vendor_known?: false,
-               open_money_split_known?: true
+               open_money_split_known?: true,
+               itc_money_known?: true
              }
 
       summary = %{"buckets" => %{"in_2b_not_books" => 1}}
@@ -149,7 +151,30 @@ defmodule Nila.Gst.Purchase.RegisterTest do
     test "an older summary falls back to matched + open rather than zero" do
       summary = %{"matched_tax_paise" => 90_000, "open_tax_paise" => 45_000}
 
-      assert Register.stats(summary).total_tax_paise == 135_000
+      stats = Register.stats(summary)
+
+      assert stats.total_tax_paise == 135_000
+      assert stats.itc_money_known?
+    end
+
+    # The fallback above has nothing left to fall back to: a snapshot frozen
+    # before any of the money existed reads 0 for the whole month, the total and
+    # the settled figure alike, beside bucket counts that are real. "₹0 of ITC"
+    # above twelve bills is impossible on its face, and stating it teaches a
+    # reviewer to distrust every other figure in the panel.
+    test "a snapshot frozen before the money existed says so rather than reading zero" do
+      stats = Register.stats(%{"buckets" => %{"matched" => 8, "needs_human" => 4}})
+
+      refute stats.itc_money_known?
+      assert stats.total_tax_paise == 0
+      assert stats.settled_tax_paise == 0
+    end
+
+    # Zero is only unsayable when something contradicts it. A register with no
+    # rows has no tax to sum, so ₹0 is the answer rather than a guess.
+    test "an empty register still states its ITC" do
+      assert Register.stats(%{}).itc_money_known?
+      assert Register.stats(%{"buckets" => %{}}).itc_money_known?
     end
   end
 

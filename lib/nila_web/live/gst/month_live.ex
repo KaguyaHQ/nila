@@ -326,7 +326,7 @@ defmodule NilaWeb.Gst.MonthLive do
           %{
             source_invoices: source,
             active_invoices: active,
-            printed_active_invoices: signoff.snapshot["printed_invoices"] || active,
+            printed_active_invoices: signoff.snapshot["printed_invoices"],
             issues: Issues.normalize_all(signoff.snapshot["issues"]),
             flagged: MapSet.new(),
             derived: signoff.snapshot["derived"]
@@ -861,6 +861,20 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
+  def handle_event("abandon-dump", %{"dump-id" => dump_id}, socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+
+    with {:ok, %{status: "failed"} = dump} <- Dumps.fetch(org_id, dump_id),
+         {:ok, _abandoned} <- Dumps.abandon_failed(dump, socket.assigns.current_scope.user.id) do
+      {:noreply,
+       socket
+       |> reload()
+       |> put_flash(:info, "Stopped waiting for that packet. The month can be worked without it.")}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event("3b-mark-filed", params, socket) do
     case Signoffs.mark_filed(
            socket.assigns.purchase_month,
@@ -1153,6 +1167,7 @@ defmodule NilaWeb.Gst.MonthLive do
                 reviewable={@reviewable}
                 completeness={@sales_completeness}
                 can_sign_off={@can_sign_off}
+                derived={@derived_gstr1}
               />
             </:actions>
           </Sales.sales_section>
@@ -1165,7 +1180,7 @@ defmodule NilaWeb.Gst.MonthLive do
             client={@client}
             period={@period}
             gstr3b_signoff={@gstr3b_signoff}
-            source_files={length(@purchase_dumps)}
+            source_files={length(@active_purchase_dumps)}
             pages_read={@purchase_pages_read}
             itc={@itc}
           >
@@ -1196,6 +1211,8 @@ defmodule NilaWeb.Gst.MonthLive do
                 gstr3b_signoff={@gstr3b_signoff}
                 r1_signoff={@r1_signoff}
                 can_sign_off={@can_sign_off}
+                sales_completeness={@sales_completeness}
+                documents_attested={@itc && @itc["documents_attested"]}
               />
             </:actions>
           </Purchase.register>

@@ -96,6 +96,7 @@ defmodule Nila.Gst.Sales.Workings do
       |> Enum.concat(completeness_issues(active_invoices, effective))
       |> Enum.concat(document_issues)
       |> Issues.normalize_all()
+      |> collapse_by_target()
 
     confirmations = Enum.filter(effective, &(&1["verb"] == "confirm_issue" and answered?(&1)))
 
@@ -103,7 +104,8 @@ defmodule Nila.Gst.Sales.Workings do
       confirmed_issue_keys(confirmations, raw_issues, pristine_source_invoices)
 
     issues =
-      Enum.map(raw_issues, fn issue ->
+      raw_issues
+      |> Enum.map(fn issue ->
         status =
           if not blocking?(issue) and MapSet.member?(confirmed_keys, issue_key(issue)),
             do: "resolved",
@@ -111,6 +113,7 @@ defmodule Nila.Gst.Sales.Workings do
 
         Map.put(issue, "status", status)
       end)
+      |> sort_by_severity()
 
     %{
       invoices: source_invoices,
@@ -221,8 +224,13 @@ defmodule Nila.Gst.Sales.Workings do
   @doc "The completeness questions asked of every month, in order."
   def completeness_questions, do: @completeness_questions
 
-  defp completeness_issues([], _effective), do: []
-
+  # Asked of an empty month too. Skipping it made a month with no invoices
+  # `reviewable?` by vacuum — `Enum.all?([])` is true — so the GSTR-1 could be
+  # approved with nobody having confirmed anything about any category. An empty
+  # month is exactly where the questions carry the most weight: "no sales at all
+  # this month" is a real claim a human should make, not a state Nila infers
+  # from an empty pile. `completeness_scope/1` hashes the empty set to a stable
+  # target, so the answers hold until documents actually arrive.
   defp completeness_issues(invoices, effective) do
     scope = completeness_scope(invoices)
 
@@ -421,6 +429,86 @@ defmodule Nila.Gst.Sales.Workings do
   def issue_key(%{"invoice" => nil, "code" => code}), do: code
   def issue_key(%{"invoice" => invoice, "code" => code}), do: "#{invoice}:#{code}"
   def issue_key(%{"code" => code}), do: code
+
+  # One row per resolution target, because that is what a reviewer can answer.
+  #
+  # `issue_key/1` is deliberately coarser than a line — `source_id:code` — so an
+  # invoice whose five lines carry the same unknown HSN raised five rows that all
+  # posted the same target. Answering any one of them resolved all five and the
+  # count fell by five: the reviewer was shown five checks where there was one,
+  # and then told he had cleared work he never saw. Six generators concatenated
+  # with no `uniq` made the same shape wherever a check runs per line, per page
+  # or per source file rather than per invoice.
+  #
+  # Only gating issues collapse. An `info` row is a settled observation, not
+  # work: the CGST and SGST rounding differences on one invoice share a key
+  # precisely because neither is ever answered, and the modal anchors each to its
+  # own evidence. Merging those would lose a fact and settle nothing.
+  #
+  # The survivor carries every message, because the line numbers are the part a
+  # reviewer works from, and the union of `fields`, because that is what makes
+  # each flagged value correctable.
+  defp collapse_by_target(issues) do
+    {gating, ungated} = Enum.split_with(issues, &Issues.gating?/1)
+    grouped = Enum.group_by(gating, &issue_key/1)
+
+    gating
+    |> Enum.map(&issue_key/1)
+    |> Enum.uniq()
+    |> Enum.map(&merge_issues(grouped[&1]))
+    |> Enum.concat(ungated)
+  end
+
+  defp merge_issues([issue]), do: issue
+
+  defp merge_issues([first | _rest] = group) do
+    first
+    |> Map.put("message", group |> Enum.map(& &1["message"]) |> Enum.uniq() |> Enum.join("; "))
+    |> Map.put("fields", group |> Enum.flat_map(&List.wrap(&1["fields"])) |> Enum.uniq())
+    |> merge_lines(group)
+  end
+
+  defp merge_lines(issue, group) do
+    case group
+         |> Enum.flat_map(&List.wrap(&1["lines"] || &1["line"]))
+         |> Enum.uniq()
+         |> Enum.sort() do
+      [] -> issue
+      lines -> Map.put(issue, "lines", lines)
+    end
+  end
+
+  # Severity first, then the kind of work, then the order the generators ran in.
+  #
+  # The list arrived in concatenation order, which put `blocking_issues` after
+  # every per-invoice arithmetic check: a month-stopping blocker rendered below a
+  # dozen routine tallies. Level decides first because a blocker is not more
+  # work, it is a different verdict. Kind decides next so a reviewer works one
+  # tool at a time rather than switching per row. The generator index breaks
+  # ties, so the same month renders the same list every time.
+  defp sort_by_severity(issues) do
+    issues
+    |> Enum.with_index()
+    |> Enum.sort_by(fn {issue, index} ->
+      {level_rank(Issues.level(issue)), kind_rank(Issues.resolution_kind(issue)), index}
+    end)
+    |> Enum.map(&elem(&1, 0))
+  end
+
+  defp level_rank("blocking"), do: 0
+  defp level_rank("required"), do: 1
+  defp level_rank("advisory"), do: 2
+  defp level_rank(_info), do: 3
+
+  # Corrections first: a wrong number is the only kind that changes what gets
+  # filed, and a decision taken over a figure about to be corrected is taken
+  # twice. Confirmations last, because they attest to what the other two settle.
+  # An issue that asks for no work at all sorts last within its level — every
+  # `blocking` code is one, and there is nothing to do but read it.
+  defp kind_rank(:correction), do: 0
+  defp kind_rank(:decision), do: 1
+  defp kind_rank(:confirmation), do: 2
+  defp kind_rank(_no_work), do: 3
 
   @doc """
   True when nothing that gates approval remains open: every `blocking` or

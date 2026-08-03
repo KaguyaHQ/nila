@@ -179,6 +179,45 @@ defmodule Nila.Gst.Intake.ConfirmationsTest do
     end
   end
 
+  test "abandoning a failed packet is the exit from an otherwise permanent block", context do
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: context.org.id, client_id: context.client.id},
+        %{period: @period, kind: "sales"}
+      )
+
+    failed = dump |> Dump.changeset(%{status: "failed"}) |> Repo.update!()
+
+    assert {:ok, _} =
+             record_client(context, %{
+               decision: "client_yes",
+               channel: "whatsapp",
+               source_ref: "wamid.failed"
+             })
+
+    # The trap: nothing moved a dump out of `failed`, re-uploading only added a
+    # second packet beside it, and the senior override could not help because
+    # staleness is re-derived from the dump list rather than read off the
+    # confirmation. The month was unfileable through the product forever.
+    assert :stale == status(context)
+
+    assert {:ok, abandoned} = Dumps.abandon_failed(failed, context.owner_scope.user.id)
+    assert abandoned.status == "discarded"
+    assert abandoned.meta["abandoned_by_id"] == context.owner_scope.user.id
+
+    assert :complete == status(context)
+  end
+
+  test "only a failed packet can be abandoned", context do
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: context.org.id, client_id: context.client.id},
+        %{period: @period, kind: "sales"}
+      )
+
+    assert {:error, :not_failed} = Dumps.abandon_failed(dump, context.owner_scope.user.id)
+  end
+
   test "WhatsApp client events reject a sender other than the client's phone", context do
     assert {:error, :sender_mismatch} =
              Confirmations.record_client(

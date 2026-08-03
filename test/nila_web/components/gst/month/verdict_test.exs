@@ -50,7 +50,8 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       matched_tax_paise: matched_tax,
       open_tax_paise: open_tax,
       awaiting_bills_tax_paise: 0,
-      decision_tax_paise: open_tax
+      decision_tax_paise: open_tax,
+      itc_money_known?: true
     }
   end
 

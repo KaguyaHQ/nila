@@ -761,4 +761,80 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     assert renamed["printed_grand_total"] == 65_551.36
     refute "grand_total_mismatch" in open_codes(result)
   end
+
+  test "a blocker sorts above the routine checks it would otherwise hide behind" do
+    [first | rest] = invoices()
+    duplicate = Map.put(first, "id", "source-b")
+
+    result = SalesWorkings.materialize([first, duplicate | rest], [], @header)
+
+    assert hd(result.issues)["code"] == "duplicate_invoice_number"
+
+    levels = result.issues |> Enum.map(&Nila.Gst.Issues.level/1) |> Enum.uniq()
+    assert levels == Enum.filter(~w(blocking required advisory info), &(&1 in levels))
+
+    # Within a level, the work a reviewer can only do with the bill in hand
+    # comes before the attestations that ride on it.
+    kinds =
+      result.issues
+      |> Enum.filter(&(Nila.Gst.Issues.level(&1) == "required"))
+      |> Enum.map(&Nila.Gst.Issues.resolution_kind/1)
+      |> Enum.uniq()
+
+    assert kinds == Enum.filter([:correction, :decision, :confirmation], &(&1 in kinds))
+  end
+
+  test "issues sharing one resolution target render once, carrying every message" do
+    ledger =
+      for source <- ~w(october-scan-1.pdf october-scan-2.pdf) do
+        %{
+          "invoice" => nil,
+          "code" => "pages_unaccounted",
+          "level" => "required",
+          "message" => "pages 3 of #{source} produced no invoice.",
+          "fields" => ["doc_issue"]
+        }
+      end
+
+    result = SalesWorkings.materialize(invoices(), [], @header, ledger)
+
+    assert [issue] = Enum.filter(result.issues, &(&1["code"] == "pages_unaccounted"))
+    assert issue["message"] =~ "october-scan-1.pdf"
+    assert issue["message"] =~ "october-scan-2.pdf"
+
+    # And one answer settles it, because there was only ever one target.
+    answered =
+      SalesWorkings.materialize(invoices(), [confirmation(issue)], @header, ledger)
+
+    assert [%{"status" => "resolved"}] =
+             Enum.filter(answered.issues, &(&1["code"] == "pages_unaccounted"))
+  end
+
+  # Two rounding differences on one bill share a key precisely because neither
+  # is ever answered. Merging them would lose a fact and settle nothing.
+  test "settled observations that share a key stay distinct" do
+    line = %{
+      "description" => "Service",
+      "taxable_value" => 1.06,
+      "cgst_rate" => 9,
+      "cgst_amount" => 0.10,
+      "sgst_rate" => 9,
+      "sgst_amount" => 0.10
+    }
+
+    invoice =
+      Gstr1.normalize_invoice(%{
+        "data" => %{
+          "invoice_number" => "44/2026-27",
+          "invoice_date" => "04.12.2025",
+          "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
+          "buyer" => %{"gstin" => "33AABCP9487A1ZG"},
+          "line_items" => List.duplicate(line, 4)
+        }
+      })
+
+    result = SalesWorkings.materialize([invoice], [], @header)
+
+    assert Enum.count(result.issues, &(&1["code"] == "rounding_variance")) == 2
+  end
 end

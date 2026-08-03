@@ -41,6 +41,20 @@ defmodule Nila.Gst.Filing.Signoffs do
 
   alias Nila.Repo
 
+  # Stamped into every snapshot from here on. Snapshots are read back years
+  # later by code that has moved on, and until now nothing in the record said
+  # which shape it was written in — a reader had to probe for keys and guess,
+  # which is how `printed_invoices` came to fall back to live data and how a
+  # pre-money register renders a confident ₹0. A version does not migrate
+  # anything by itself; it lets a reader refuse to guess.
+  #
+  # 1 — the first stamped shape. Older snapshots carry no key at all, which is
+  # itself the signal: absent means "before stamping", not "version 0".
+  @snapshot_schema_version 1
+
+  @doc "The snapshot format this module writes."
+  def snapshot_schema_version, do: @snapshot_schema_version
+
   @doc """
   Certifies the month's GSTR-3B side (ITC, register, cash payable): inserts
   the append-only signoff row with the frozen snapshot and transitions the
@@ -76,6 +90,7 @@ defmodule Nila.Gst.Filing.Signoffs do
                  :ok <- require_documents_attested(workings),
                  :ok <- require_sales_intake_complete(month) do
               snapshot = %{
+                "schema_version" => @snapshot_schema_version,
                 "summary" => workings.summary,
                 "itc" => workings.itc,
                 "gstr3b" => workings.gstr3b,
@@ -190,7 +205,12 @@ defmodule Nila.Gst.Filing.Signoffs do
       "derived" => workings.derived
     }
 
-    snapshot = Map.put(draft, "draft_version", draft_version(draft))
+    # `draft_version` hashes the draft's content, so the format stamp goes on
+    # after it — otherwise adding a stamp would change every draft's identity.
+    snapshot =
+      draft
+      |> Map.put("draft_version", draft_version(draft))
+      |> Map.put("schema_version", @snapshot_schema_version)
 
     month
     |> SalesMonth.changeset(%{state: "reviewed"})

@@ -106,7 +106,8 @@ defmodule Nila.Gst.Purchase.Register do
   along: `total_tax_paise` is the month's whole ITC, `matched_tax_paise` is
   settled tax, `open_tax_paise` is the tax on rows still needing a decision.
   All come straight from `summary/1`; older summaries and pre-money signoff
-  snapshots simply read 0.
+  snapshots read 0 with `itc_money_known?` false, so a surface can say the
+  figure is missing instead of asserting it is nothing.
 
   `rows` is every register line; `invoices` is only the books ones. A 2B-only
   line is a bill the books have never seen, so counting it as an invoice told
@@ -166,6 +167,21 @@ defmodule Nila.Gst.Purchase.Register do
         Map.has_key?(summary, "value_dispute_tax_paise") or
         open_tax == 0
 
+    # Whether the month's ITC was recorded at all, which is a different question
+    # from whether it is zero. A snapshot frozen before any of these fields
+    # existed reads 0 for every one of them, and `settled_tax_paise` subtracts
+    # one absence from another, so a page states "₹0 of ITC this month" beside a
+    # register listing a dozen bills — a pair that cannot both be true, printed
+    # in the confident voice. The bucket counts survived that freeze and the
+    # money did not, so only the keys can tell absent from zero, and they are
+    # gone by the time the map is built. An empty register is the one case where
+    # ₹0 is not a guess: nothing to sum, nothing to be wrong about.
+    itc_money_known? =
+      Map.has_key?(summary, "total_tax_paise") or
+        Map.has_key?(summary, "matched_tax_paise") or
+        Map.has_key?(summary, "open_tax_paise") or
+        rows == 0
+
     %{
       rows: rows,
       invoices: rows - gstr2b_only,
@@ -206,7 +222,10 @@ defmodule Nila.Gst.Purchase.Register do
       # month. `settled` is the exact complement of `open` (the money-side twin
       # of `open_row?/1`), so a surface can show one whole and two parts that
       # actually close.
-      settled_tax_paise: total_tax - open_tax
+      settled_tax_paise: total_tax - open_tax,
+      # Guards all three of the figures above. They are one fact from one place
+      # — the register's tax — so they are absent together or present together.
+      itc_money_known?: itc_money_known?
     }
   end
 

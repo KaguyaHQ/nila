@@ -79,6 +79,20 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
           >
             Rework month with it
           </.button>
+          <%!-- The only way out. A failed sales packet holds the intake
+                incomplete, and both sign-offs gate on that, so without this the
+                month could never be filed through the product at all. --%>
+          <.button
+            :if={dump.status == "failed"}
+            id={"month-dump-abandon-#{dump.id}"}
+            variant="outline"
+            size="xs"
+            phx-click="abandon-dump"
+            phx-value-dump-id={dump.id}
+            data-confirm="Stop waiting for this packet? The month can then be worked and filed without it."
+          >
+            Stop waiting for it
+          </.button>
         </div>
       </article>
     </div>
@@ -130,7 +144,9 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
     do: "Extracting. The month updates when it lands."
 
   defp attention_line(%{status: "failed"}),
-    do: "Extraction failed. Check the original and bring it in again."
+    do:
+      "Extraction failed. Bring the original in again, or stop waiting for it — " <>
+        "until one or the other, this month cannot be filed."
 
   defp attention_line(%{status: "held"}),
     do: "Added after signature. Reopen the signature to include it."

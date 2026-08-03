@@ -130,6 +130,48 @@ defmodule Nila.Gst.Sales.AccountTest do
     assert account.differences.cess == nil
   end
 
+  describe "the as-printed side of a frozen month" do
+    test "a snapshot that never recorded it says so rather than borrowing today's invoices" do
+      inv = invoice("1/2026-27", 100, %{cgst: 9, sgst: 9})
+
+      account =
+        Account.summarize(
+          %{
+            source_invoices: [inv],
+            active_invoices: [inv],
+            printed_active_invoices: nil,
+            issues: [],
+            derived: nil
+          },
+          %{files: 1, pages_read: nil}
+        )
+
+      # Defaulting to the active invoices made a signed month's reconciliation
+      # re-render against whatever the invoice set says now, so what a reviewer
+      # signed could change under the signature.
+      refute account.printed.recorded?
+    end
+
+    test "a month that did record it is believed" do
+      inv = invoice("1/2026-27", 100, %{cgst: 9, sgst: 9})
+
+      account =
+        Account.summarize(
+          %{
+            source_invoices: [inv],
+            active_invoices: [inv],
+            printed_active_invoices: [inv],
+            issues: [],
+            derived: nil
+          },
+          %{files: 1, pages_read: nil}
+        )
+
+      assert account.printed.recorded?
+      assert account.printed.documents == 1
+    end
+  end
+
   defp invoice(number, taxable, tax) do
     %{
       "id" => "d1-i#{number}",

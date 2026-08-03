@@ -455,6 +455,14 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   # the 2B is unchallenged so far, not banked. Nothing is claimed until the 3B
   # is filed, and telling a reviewer otherwise is how a page gets trusted for
   # something it never checked.
+  #
+  # Both money clauses drop when the snapshot never recorded the figures: a
+  # count is not evidence of a rupee amount, and "₹0 of ITC this month" above a
+  # register of N invoices is the impossible pair the tiles were just fixed not
+  # to print.
+  defp decisions_headline(%{stats: %{itc_money_known?: false}}, count),
+    do: "#{count} #{pluralise(count, "decision")} still to make."
+
   defp decisions_headline(%{stats: stats}, count) do
     "#{money(stats.total_tax_paise)} of ITC this month. " <>
       "#{money(stats.open_tax_paise)} of it rides on #{count} #{pluralise(count, "decision")}."
@@ -462,6 +470,9 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   # Same money shape, but the second figure names a document rather than a
   # judgement, because no decision on this page can release it.
+  defp awaiting_bills_headline(%{stats: %{itc_money_known?: false}}, count),
+    do: "#{count} #{pluralise(count, "bill")} the client has not sent."
+
   defp awaiting_bills_headline(%{stats: stats}, count) do
     "#{money(stats.total_tax_paise)} of ITC this month. " <>
       "#{money(stats.awaiting_bills_tax_paise)} of it needs #{count} " <>
@@ -531,8 +542,18 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp money_clause(facts), do: "#{money(facts.stats && facts.stats.matched_tax_paise)} ITC."
 
-  defp settled_money_headline(%{stats: %{matched: matched} = stats}, tail) when matched > 0,
-    do: "#{money(stats.matched_tax_paise)} ITC matched to 2B. #{tail}"
+  # Gated on the money being recorded, not on the row count. The count survived
+  # the freeze on snapshots taken before the tax fields existed and the money did
+  # not, so this printed "₹0 ITC matched to 2B" above a register full of matched
+  # invoices. When the figure is absent the headline simply drops the clause —
+  # the tail still says what the month needs.
+  defp settled_money_headline(%{stats: %{matched: matched} = stats}, tail)
+       when matched > 0,
+       do:
+         if(stats.itc_money_known?,
+           do: "#{money(stats.matched_tax_paise)} ITC matched to 2B. #{tail}",
+           else: tail
+         )
 
   defp settled_money_headline(_facts, tail), do: tail
 

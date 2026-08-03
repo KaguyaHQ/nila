@@ -77,4 +77,92 @@ defmodule Nila.Gst.Hsn.ValidationTest do
     assert Enum.map(issues, & &1["code"]) ==
              ~w(missing_hsn_sac incomplete_hsn_sac invalid_hsn_sac)
   end
+
+  test "lines sharing one bad code are one issue, and still name every line" do
+    invoices = [
+      %{
+        "id" => "inv_01",
+        "invoice_number" => "135/2025-26",
+        "line_items" => [
+          %{"description" => "Bogus", "hsn_sac" => "999999"},
+          %{"description" => "Silver Rod", "hsn_sac" => "71069290"},
+          %{"description" => "Also bogus", "hsn_sac" => "999999"},
+          %{"description" => "Third", "hsn_sac" => "888888"}
+        ]
+      }
+    ]
+
+    assert [issue] =
+             invoices
+             |> Validation.annotate_invoices(@directory)
+             |> Validation.sales_issues()
+
+    assert issue["code"] == "invalid_hsn_sac"
+    assert issue["lines"] == [1, 3, 4]
+    assert issue["message"] =~ "Lines 1, 3, 4"
+    assert issue["message"] =~ "999999, 888888"
+
+    # Every flagged line stays correctable: `flagged_fields/2` reads these.
+    assert issue["fields"] == [
+             "line_items[0].hsn_sac",
+             "line_items[2].hsn_sac",
+             "line_items[3].hsn_sac"
+           ]
+  end
+
+  test "an inferred code that is also new is asked once, at the level that gates" do
+    invoices = [
+      %{
+        "id" => "inv_01",
+        "invoice_number" => "135/2025-26",
+        "line_items" => [
+          %{
+            "description" => "Silver Rod",
+            "hsn_sac" => "710692",
+            "hsn_inferred" => true,
+            "taxable_value" => 1000,
+            "cgst_rate" => 9,
+            "sgst_rate" => 9
+          }
+        ]
+      }
+    ]
+
+    history = [%{code: "9999", rate: 18.0}]
+
+    issues =
+      invoices
+      |> Validation.annotate_invoices(@directory)
+      |> Validation.summary_issues(history)
+
+    assert [issue] = issues
+    assert issue["code"] == "hsn_inferred_code"
+    assert issue["message"] =~ "was inferred rather than read from the source document"
+    assert issue["message"] =~ "710692 has not appeared in this client's prior 12 sales months"
+  end
+
+  test "a new code someone read off the bill keeps its own advisory" do
+    invoices = [
+      %{
+        "id" => "inv_01",
+        "invoice_number" => "135/2025-26",
+        "line_items" => [
+          %{
+            "description" => "Silver Rod",
+            "hsn_sac" => "710692",
+            "taxable_value" => 1000,
+            "cgst_rate" => 9,
+            "sgst_rate" => 9
+          }
+        ]
+      }
+    ]
+
+    assert [issue] =
+             invoices
+             |> Validation.annotate_invoices(@directory)
+             |> Validation.summary_issues([%{code: "9999", rate: 18.0}])
+
+    assert issue["code"] == "hsn_new_code"
+  end
 end

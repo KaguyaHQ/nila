@@ -6,12 +6,15 @@ defmodule NilaWeb.Components.Gst.Month.Helpers do
   end
 
   # Blockers lead: they are the only entries nobody on the page can answer.
+  #
+  # No `collection` entry: nothing in `Issues` classification ever produced that
+  # kind, so the noun could never be counted and its only effect was to promise
+  # a queue the sales side does not have.
   @kinds [
     blocked: "blocker",
     decision: "decision",
     confirmation: "confirmation",
-    correction: "correction",
-    collection: "bill to collect"
+    correction: "correction"
   ]
 
   @doc """
@@ -41,7 +44,6 @@ defmodule NilaWeb.Components.Gst.Month.Helpers do
 
   def pluralise(1, noun), do: noun
   def pluralise(_count, "advisory"), do: "advisories"
-  def pluralise(_count, "bill to collect"), do: "bills to collect"
   def pluralise(_count, noun), do: noun <> "s"
 
   # A blocking issue is not a louder warning — it is the one thing on the page a
