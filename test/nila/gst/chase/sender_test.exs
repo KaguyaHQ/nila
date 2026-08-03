@@ -115,9 +115,10 @@ defmodule Nila.Gst.Chase.SenderTest do
       assert message =~ @draft
 
       # The reply address is what makes the answer attributable when it comes
-      # back, so it has to be on the wire, not merely computed.
+      # back, so it has to be on the wire, not merely computed — and the firm's
+      # own mailbox alongside it, so the firm still sees its client's reply.
       {:ok, reply_to} = InboundAddress.build(org.id, client.id, @period)
-      assert message =~ "Reply-To: #{reply_to}"
+      assert message =~ "Reply-To: #{reply_to}, firm@example.com"
 
       Req.Test.json(conn, %{"id" => "msg-123", "threadId" => "thread-123"})
     end)
@@ -155,7 +156,8 @@ defmodule Nila.Gst.Chase.SenderTest do
       {:ok, reply_to} = InboundAddress.build(org.id, client.id, @period)
 
       assert Enum.map(payload["message"]["replyTo"], & &1["emailAddress"]["address"]) == [
-               reply_to
+               reply_to,
+               "mail@bvccas.com"
              ]
 
       Plug.Conn.send_resp(conn, 202, "")
@@ -163,6 +165,65 @@ defmodule Nila.Gst.Chase.SenderTest do
 
     assert :ok = perform_job(ChaseSender, args(org, client, "email"))
     assert [%{channel: "email", sent_by_id: nil}] = Chase.list_asks(org.id, client.id, @period)
+  end
+
+  test "a firm that nominates its own reply address gets that, not the mailbox" do
+    org = org_fixture()
+    _connection = connection!(org, "gmail", "firm@example.com", %{"reply_to" => "gst@bvccas.com"})
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Ravi Traders",
+        type: "company",
+        email: "ravi@example.com",
+        chase_channel: "email"
+      })
+
+    Req.Test.expect(Nila.Integrations.Gmail, fn conn ->
+      {:ok, bytes, conn} = Plug.Conn.read_body(conn)
+      %{"raw" => encoded} = Jason.decode!(bytes)
+      {:ok, message} = Base.url_decode64(encoded, padding: false)
+
+      {:ok, reply_to} = InboundAddress.build(org.id, client.id, @period)
+      assert message =~ "Reply-To: #{reply_to}, gst@bvccas.com"
+      refute message =~ "firm@example.com"
+
+      Req.Test.json(conn, %{"id" => "msg-123", "threadId" => "thread-123"})
+    end)
+
+    assert :ok = perform_job(ChaseSender, args(org, client, "email"))
+  end
+
+  test "with inbound unconfigured the chase still sends, with no reply address" do
+    config = Application.get_env(:nila, InboundAddress)
+    Application.put_env(:nila, InboundAddress, Keyword.put(config, :secret, ""))
+    on_exit(fn -> Application.put_env(:nila, InboundAddress, config) end)
+
+    org = org_fixture()
+    _connection = connection!(org, "gmail", "firm@example.com")
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Ravi Traders",
+        type: "company",
+        email: "ravi@example.com",
+        chase_channel: "email"
+      })
+
+    Req.Test.expect(Nila.Integrations.Gmail, fn conn ->
+      {:ok, bytes, conn} = Plug.Conn.read_body(conn)
+      %{"raw" => encoded} = Jason.decode!(bytes)
+      {:ok, message} = Base.url_decode64(encoded, padding: false)
+
+      refute message =~ "Reply-To:"
+
+      Req.Test.json(conn, %{"id" => "msg-123", "threadId" => "thread-123"})
+    end)
+
+    assert :ok = perform_job(ChaseSender, args(org, client, "email"))
+    assert [%{channel: "email"}] = Chase.list_asks(org.id, client.id, @period)
   end
 
   @tag :capture_log
@@ -195,7 +256,7 @@ defmodule Nila.Gst.Chase.SenderTest do
     }
   end
 
-  defp connection!(org, provider, external_account_id) do
+  defp connection!(org, provider, external_account_id, settings \\ %{}) do
     expires_at = DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_iso8601()
 
     {credentials, tenant_id} =
@@ -218,7 +279,8 @@ defmodule Nila.Gst.Chase.SenderTest do
         provider: provider,
         external_account_id: external_account_id,
         tenant_id: tenant_id,
-        credentials: credentials
+        credentials: credentials,
+        settings: settings
       })
 
     connection

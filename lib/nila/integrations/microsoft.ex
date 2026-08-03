@@ -112,11 +112,16 @@ defmodule Nila.Integrations.Microsoft do
   end
 
   # A per-message reply address routes an answer back to one client and month,
-  # so it wins over the connection-wide default when the caller sets one.
+  # so it wins over the connection-wide default when the caller sets one. It
+  # may be a list: Nila's routing address plus the firm's own mailbox.
   defp reply_to(message, connection) do
-    case Map.get(message, :reply_to) do
-      value when is_binary(value) and value != "" -> [value]
-      _absent -> List.wrap(setting_value(connection, "reply_to"))
+    message
+    |> Map.get(:reply_to)
+    |> List.wrap()
+    |> Enum.filter(&(is_binary(&1) and &1 != ""))
+    |> case do
+      [] -> List.wrap(setting_value(connection, "reply_to"))
+      addresses -> addresses
     end
   end
 

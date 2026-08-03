@@ -90,20 +90,38 @@ defmodule Nila.Gst.Chase.Sender do
         body: args["body"]
       }
 
-      adapter.send_message(connection, client.email, put_reply_to(message, org, client, args))
+      adapter.send_message(
+        connection,
+        client.email,
+        put_reply_to(message, org, client, args, connection)
+      )
     else
       nil -> {:error, :no_email_connection}
       error -> error
     end
   end
 
-  # The reply address is what makes an emailed answer attributable. Without it
-  # configured the chase still sends; replies just land wherever the firm's own
-  # From points, which is where they went before inbound existed.
-  defp put_reply_to(message, org, client, args) do
+  # The reply address is what makes an emailed answer attributable. The firm's
+  # own mailbox rides alongside it deliberately: a Reply-To replaces the From
+  # a client would otherwise answer, and a firm that stops seeing its own
+  # clients' replies would rightly stop trusting us. Both addresses means Nila
+  # can attribute the answer and the firm still watches its own relationship.
+  #
+  # Without inbound configured the chase still sends, with no Reply-To at all,
+  # which is where replies went before any of this existed.
+  defp put_reply_to(message, org, client, args, connection) do
     case InboundAddress.build(org.id, client.id, args["period"]) do
-      {:ok, address} -> Map.put(message, :reply_to, address)
+      {:ok, address} -> Map.put(message, :reply_to, [address | firm_addresses(connection)])
       {:error, _reason} -> message
+    end
+  end
+
+  defp firm_addresses(connection) do
+    configured = connection.settings |> Kernel.||(%{}) |> Map.get("reply_to") |> List.wrap()
+
+    case Enum.filter(configured, &(is_binary(&1) and &1 != "")) do
+      [] -> List.wrap(connection.external_account_id)
+      addresses -> addresses
     end
   end
 

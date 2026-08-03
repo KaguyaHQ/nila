@@ -148,7 +148,7 @@ defmodule Nila.Integrations.Gmail do
       {"To", Map.fetch!(message, :to)},
       {"Cc", blank_to_nil(Map.get(message, :cc))},
       {"From", blank_to_nil(Map.get(message, :from))},
-      {"Reply-To", blank_to_nil(Map.get(message, :reply_to))},
+      {"Reply-To", address_list(Map.get(message, :reply_to))},
       {"Subject", Map.fetch!(message, :subject)},
       {"MIME-Version", "1.0"}
     ]
@@ -221,6 +221,18 @@ defmodule Nila.Integrations.Gmail do
 
   defp blank_to_nil(value) when value in [nil, ""], do: nil
   defp blank_to_nil(value), do: value
+
+  # A header may carry several addresses; RFC 5322 comma-separates them.
+  defp address_list(value) do
+    value
+    |> List.wrap()
+    |> Enum.map(&blank_to_nil/1)
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      addresses -> Enum.join(addresses, ", ")
+    end
+  end
 
   defp maybe_put_thread(body, nil), do: body
   defp maybe_put_thread(body, ""), do: body
