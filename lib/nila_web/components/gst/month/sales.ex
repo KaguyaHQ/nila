@@ -449,9 +449,15 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             />
             <.control_stat label="Taxable value" value={rupees(@hsn_totals.taxable)} />
             <.control_stat label="Output tax" value={rupees(@hsn_totals.tax)} />
+            <%!-- A non-zero difference under a badge reading "Reconciled" is a
+                  contradiction unless the page says why it is expected. The
+                  register sums tax per line; the return recomputes it once per
+                  rate bucket. Two paragraphs elsewhere explain this — the tile
+                  that actually prints the paise did not. --%>
             <.control_stat
               label="Difference from invoice register"
               value={rupees(@hsn_totals.tax - @account.extraction.totals.tax)}
+              note={rounding_note(@hsn_totals.tax - @account.extraction.totals.tax)}
             />
           </dl>
           <%!-- The issues themselves live in "Before filing", once. This card
@@ -621,7 +627,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <%!-- This invoice's tax reads three ways on this page: what the bill
             printed, the sum of the extracted lines, and the per-rate figure that
             reaches the return. All three were labelled "Tax". --%>
-      <:col :let={invoice} label="Sum of extracted lines" align="right">
+      <%!-- "Sum of extracted lines" said where the figure came from but not what
+            it is, and it sits in the next column after Taxable — so ₹3,88,337
+            beside ₹69,900.72 read as two takes on the taxable value. --%>
+      <:col :let={invoice} label="Tax · sum of extracted lines" align="right">
         {rupees(Gstr1.extracted_totals(invoice).tax)}
       </:col>
       <:col :let={invoice} label="Status">
@@ -650,15 +659,22 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
   attr :label, :string, required: true
   attr :value, :any, required: true
+  attr :note, :string, default: nil
 
   defp control_stat(assigns) do
     ~H"""
     <div>
       <dt class="text-ink-subtle text-label font-semibold uppercase">{@label}</dt>
       <dd class="text-base-content text-body mt-1 font-medium tabular-nums">{@value}</dd>
+      <p :if={@note} class="text-ink-subtle text-meta mt-1">{@note}</p>
     </div>
     """
   end
+
+  defp rounding_note(difference) when difference == 0, do: nil
+
+  defp rounding_note(_difference),
+    do: "Per-rate rounding, not a discrepancy — the return rounds once per rate bucket."
 
   defp verdict_state(%{r1_signoff: %{}, sales_month: %{filed_at: filed_at}})
        when not is_nil(filed_at),
@@ -675,10 +691,23 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       copy: "The approved draft is frozen and ready for portal filing."
     }
 
+  # "Blocked" is the strongest word the badge has, and it was spent on every
+  # month carrying any required issue — including one whose whole list is eight
+  # questions answerable on this screen in a minute. Phase 1 split severity from
+  # the work an issue asks for precisely so this could stop happening: a month
+  # nobody can finish here reads differently from a month waiting on a reviewer.
+  defp verdict_state(%{account: %{issues: %{by_kind: %{blocked: blocked}} = issues}})
+       when blocked > 0,
+       do: %{
+         variant: "error",
+         label: "Blocked",
+         copy: verdict_copy(issues)
+       }
+
   defp verdict_state(%{account: %{issues: %{required_count: count} = issues}}) when count > 0,
     do: %{
-      variant: "error",
-      label: "Blocked",
+      variant: "warning",
+      label: "#{count} to answer",
       copy: verdict_copy(issues)
     }
 

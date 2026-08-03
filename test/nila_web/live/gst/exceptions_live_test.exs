@@ -804,10 +804,26 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
   test "another org cannot open the month", %{conn: conn, client: client} do
     %{user: other_user} = user_with_org_fixture()
 
+    # Still bounced to /today, not to the month: the client belongs to somebody
+    # else, so there is no month here to send them to.
     assert {:error, {:live_redirect, %{to: "/today"}}} =
              conn
              |> log_in_user(other_user)
              |> live(~p"/gst/#{client.id}/#{@period}/exceptions")
+  end
+
+  test "a month with no purchase side goes to the month, not away", %{
+    conn: conn,
+    client: client
+  } do
+    # This queue is the purchase workbench, so a sales-only month has nothing to
+    # render here. It said "That month isn't available" and threw the reviewer
+    # back to the work list that had just advertised it as "8 sales issues" — a
+    # true statement about our tables, and a false one about the month.
+    assert {:error, {:live_redirect, %{to: to}}} =
+             live(conn, ~p"/gst/#{client.id}/2099-01/exceptions")
+
+    assert to == "/gst/#{client.id}/2099-01"
   end
 
   test "blocking a recommended duplicate credit reduces claimable ITC and logs it", %{

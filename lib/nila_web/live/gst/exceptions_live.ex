@@ -1,6 +1,7 @@
 defmodule NilaWeb.Gst.ExceptionsLive do
   use NilaWeb, :live_view
 
+  alias Nila.Clients
   alias Nila.Gst.Chase
   alias Nila.Gst.Filing.Signoffs
   alias Nila.Gst.Intake.Dumps
@@ -26,11 +27,25 @@ defmodule NilaWeb.Gst.ExceptionsLive do
          |> assign(:evidence_page, 0)
          |> assign_workings(month, workings)}
 
+      # This queue is the purchase workbench: recon buckets, 2B decisions, the
+      # ITC bridge. A month with sales work and no purchase month has nothing to
+      # show here — but it is not unavailable, and saying so while the work list
+      # advertises it as "8 sales issues" sends the reviewer back to the queue
+      # they just left. Send them to the month, where the sales work actually is.
       _ ->
-        {:ok,
-         socket
-         |> put_flash(:error, "That month isn't available.")
-         |> push_navigate(to: ~p"/today")}
+        {:ok, redirect_without_purchase(socket, org, client_id, period)}
+    end
+  end
+
+  defp redirect_without_purchase(socket, org, client_id, period) do
+    case org && Clients.get_client(org.id, client_id) do
+      {:ok, client} ->
+        push_navigate(socket, to: ~p"/gst/#{client.id}/#{period}")
+
+      _ ->
+        socket
+        |> put_flash(:error, "That month isn't available.")
+        |> push_navigate(to: ~p"/today")
     end
   end
 

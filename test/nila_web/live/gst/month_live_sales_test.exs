@@ -33,7 +33,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#month-sales")
     assert has_element?(view, "#gstr1-inv-20\\/2025-26")
     assert has_element?(view, "#month-verdict h1.text-h4", "Breeze Tech")
-    assert has_element?(view, "#gstr1-verdict", "Blocked")
+
+    # Required, but nothing here is blocking — the badge counts the work rather
+    # than spending the strongest word it has on a month a reviewer can finish
+    # on this screen. See the blocked/non-blocked pair below.
+    assert has_element?(view, "#gstr1-verdict", "to answer")
+    refute has_element?(view, "#gstr1-verdict", "Blocked")
     assert has_element?(view, "#gstr1-verdict", "1 decision")
     assert has_element?(view, "#gstr1-review-required", "Take them one by one")
     assert has_element?(view, "#gstr1-required-clause", "1 decision")
@@ -262,6 +267,13 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     confirm_sales_complete!(org, client, @period)
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    # Before the answer, every open issue is one somebody can settle here, so
+    # the badge counts the work. "Blocked" is the strongest word it has, and
+    # spending it on an ordinary month leaves nothing louder for this one.
+    assert has_element?(view, "#gstr1-verdict", "to answer")
+    refute has_element?(view, "#gstr1-verdict", "Blocked")
+
     view |> element("#gstr1-cess-applies") |> render_click()
     confirm_all_open_issues(view)
 
@@ -269,6 +281,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#gstr1-completeness", "Applies · this return cannot carry it")
     refute has_element?(view, "#gstr1-cess-none")
     refute has_element?(view, "#month-door-sign-r1")
+
+    # Now nothing on this page moves the month, and the badge says so.
+    assert has_element?(view, "#gstr1-verdict", "Blocked")
+    refute has_element?(view, "#gstr1-verdict", "to answer")
   end
 
   test "a blocker nobody can answer is still named in the count that gates", %{
@@ -1216,7 +1232,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     # recomputation and say so. "Tax" alone named all three. Column labels live
     # in the <thead>, which sits outside the <tbody> the id is on — so these
     # assert against the enclosing sections.
-    assert has_element?(view, "#gstr1-register th", "Sum of extracted lines")
+    # The column names what the figure is before where it came from: it sits
+    # immediately after Taxable, so a bare "Sum of extracted lines" read as a
+    # second take on the taxable value rather than as the tax.
+    assert has_element?(view, "#gstr1-register th", "Tax · sum of extracted lines")
     assert has_element?(view, "#gstr1-register-basis", "per-rate recomputation")
     assert has_element?(view, "#gstr1-workings-basis", "what this return files")
     assert has_element?(view, "#gstr1-workings-b2b th", "Proposed GSTR-1")
