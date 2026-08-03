@@ -29,18 +29,7 @@ defmodule Nila.Gst.Sales.ResolutionsTest do
     %{user: user, org: org, client: client, month: month}
   end
 
-  defp confirm_all_open(month, user) do
-    SalesResolutions.workings(month).issues
-    |> Enum.filter(&(&1["status"] == "open" and &1["level"] != "info"))
-    |> Enum.each(fn issue ->
-      {:ok, _} =
-        SalesResolutions.record(
-          month,
-          %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(issue)},
-          user.id
-        )
-    end)
-  end
+  defp confirm_all_open(month, user), do: answer_sales_issues!(month, user.id)
 
   test "legacy unsigned month IDs are stable and stored machine truth stays unchanged", %{
     month: month

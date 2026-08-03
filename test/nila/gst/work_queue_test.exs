@@ -10,7 +10,6 @@ defmodule Nila.Gst.WorkQueueTest do
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
-  alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias Nila.Gst.WorkQueue, as: Today
 
   @period "2025-10"
@@ -55,16 +54,7 @@ defmodule Nila.Gst.WorkQueueTest do
 
     {:ok, sales_month} = SalesMonths.get_by_period(org.id, client.id, @period)
 
-    SalesResolutions.workings(sales_month).issues
-    |> Enum.filter(&(&1["status"] == "open" and &1["level"] != "info"))
-    |> Enum.each(fn issue ->
-      {:ok, _} =
-        SalesResolutions.record(
-          sales_month,
-          %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(issue)},
-          user_id
-        )
-    end)
+    answer_sales_issues!(sales_month, user_id)
 
     {:ok, _} = SalesResolutions.mark_reviewed(sales_month)
     confirm_sales_complete!(org, client, @period)

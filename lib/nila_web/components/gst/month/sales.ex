@@ -43,7 +43,17 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
     assigns =
       assigns
       |> assign(:series, assigns.account.extraction.series)
-      |> assign(:required_issues, assigns.account.issues.required)
+      # The completeness questions gate like anything else, but they are one
+      # block of yes/no/don't-know rather than six rows in a list of defects —
+      # nothing is asserted to be wrong with the bills we hold.
+      |> assign(
+        :required_issues,
+        Enum.reject(assigns.account.issues.required, &completeness?/1)
+      )
+      |> assign(
+        :completeness_questions,
+        completeness_questions(assigns.account.issues.required)
+      )
       |> assign(:verdict, verdict_state(assigns))
       |> assign(:draft_label, draft_label(assigns))
       |> assign(:reconciliation_rows, reconciliation_rows(assigns.account))
@@ -105,6 +115,84 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       </section>
 
       {render_slot(@actions)}
+
+      <%!-- What the pile cannot tell us about itself.
+
+            Everything in the completeness block above is internal consistency —
+            files received, pages read, sequence gaps. One perfectly read file
+            can still be half a month, and no amount of internal agreement can
+            reveal a credit note that was issued and never sent. Somebody has to
+            answer, per question, because each yes routes somewhere different. --%>
+      <section
+        :if={@completeness_questions != []}
+        id="gstr1-completeness-attestation"
+        class="space-y-block"
+      >
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-base-content text-body font-semibold">What we can't see from the pile</h3>
+          <span class="text-ink-subtle text-meta">
+            {Enum.count(@completeness_questions, &is_nil(&1.answer))} unanswered
+          </span>
+        </div>
+        <div class="border-base-300 divide-base-300 rounded-box divide-y border">
+          <div
+            :for={q <- @completeness_questions}
+            id={"gstr1-attest-#{q.key}"}
+            class="gap-related flex flex-wrap items-center px-4 py-3"
+          >
+            <p class="text-base-content text-ui min-w-0 flex-1">{q.question}</p>
+            <div :if={is_nil(q.answer) and is_nil(@r1_signoff)} class="flex gap-1.5">
+              <.button
+                variant="outline"
+                size="xs"
+                phx-click="attest-completeness"
+                phx-value-target={q.target}
+                phx-value-answer="no"
+              >
+                No
+              </.button>
+              <.button
+                variant="outline"
+                size="xs"
+                phx-click="attest-completeness"
+                phx-value-target={q.target}
+                phx-value-answer="yes"
+              >
+                Yes
+              </.button>
+              <%!-- Never force a "no" to proceed. "I haven't checked" is the
+                    honest answer most of the time, and it routes to the client
+                    rather than into the filing. --%>
+              <.button
+                variant="ghost"
+                size="xs"
+                phx-click="attest-completeness"
+                phx-value-target={q.target}
+                phx-value-answer="unknown"
+              >
+                Don't know
+              </.button>
+            </div>
+            <div :if={q.answer} class="flex items-center gap-2">
+              <span class={[
+                "text-meta font-medium",
+                (q.answer == "no" && "text-ink-subtle") || "text-warning"
+              ]}>
+                {attestation_note(q)}
+              </span>
+              <.button
+                :if={is_nil(@r1_signoff)}
+                variant="ghost"
+                size="xs"
+                phx-click="undo"
+                phx-value-target={q.target}
+              >
+                Undo
+              </.button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section
         :if={@required_issues != []}
@@ -563,6 +651,49 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       label: "Ready for approval",
       copy: "All checks are resolved and supplied sales documents are accounted for."
     }
+
+  defp completeness?(%{"code" => "completeness_unconfirmed"}), do: true
+  defp completeness?(_issue), do: false
+
+  # Every question, in the order the domain asks them, carrying whatever answer
+  # has been given. An answered "no" leaves no issue behind, so the answered
+  # ones are reconstructed from the question list rather than from the issues.
+  defp completeness_questions(required) do
+    open =
+      required
+      |> Enum.filter(&completeness?/1)
+      |> Map.new(&{&1["attestation_key"], &1})
+
+    if open == %{} do
+      []
+    else
+      scope =
+        open
+        |> Map.values()
+        |> List.first()
+        |> Map.fetch!("target")
+        |> String.split("|")
+        |> List.last()
+
+      Enum.map(SalesWorkings.completeness_questions(), fn q ->
+        issue = open[q.key]
+
+        %{
+          key: q.key,
+          question: q.question,
+          target: "#{q.key}|#{scope}",
+          # An open issue means unanswered or answered in a way that left it
+          # standing; absent means somebody answered "no".
+          answer: if(issue, do: issue["answer"], else: "no")
+        }
+      end)
+    end
+  end
+
+  defp attestation_note(%{answer: "no"}), do: "No"
+  defp attestation_note(%{answer: "yes"}), do: "Yes — see the blocker below"
+  defp attestation_note(%{answer: "unknown"}), do: "Asked the client"
+  defp attestation_note(_q), do: nil
 
   defp verdict_copy(%{advisory_count: 0} = issues),
     do: "#{Helpers.work_clause(issues.by_kind)} before this can be approved."

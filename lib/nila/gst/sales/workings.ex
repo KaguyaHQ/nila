@@ -92,6 +92,7 @@ defmodule Nila.Gst.Sales.Workings do
       |> Enum.concat(compliance_issues(active_invoices, compliance))
       |> Enum.concat(Gstr1.blocking_issues(active_invoices))
       |> Enum.concat(cess_issues(cess_evaluated, active_invoices, effective))
+      |> Enum.concat(completeness_issues(active_invoices, effective))
       |> Enum.concat(document_issues)
       |> Issues.normalize_all()
 
@@ -155,6 +156,139 @@ defmodule Nila.Gst.Sales.Workings do
 
   defp annotate_rates(invoices, _compliance), do: invoices
 
+  # What the month cannot see for itself.
+  #
+  # Every completeness signal until now was *internal consistency*: files
+  # received, pages read, documents extracted, sequence gaps. One perfectly read
+  # file can still be half a month, and no amount of internal agreement can tell
+  # you that a credit note was issued and never sent to us.
+  #
+  # Not one lumped "anything else?" — each answer routes somewhere different.
+  # Exports, SEZ and B2C stay separate because they map to three different
+  # blocking codes, and a merged "yes" would tell Nila nothing about what is
+  # actually present.
+  @completeness_questions [
+    %{
+      key: "credit_or_debit_notes",
+      question: "Were any credit or debit notes issued this month?",
+      unsupported: "credit_note_unsupported",
+      gap:
+        "This return has no cdnr table, so a month containing credit or debit notes must be filed manually until that support lands."
+    },
+    %{
+      key: "exports",
+      question: "Were any export supplies made this month?",
+      unsupported: "export_supply_unsupported",
+      gap:
+        "This return files B2B invoices only. An export would be filed as an ordinary taxable supply, which is wrong."
+    },
+    %{
+      key: "sez_supplies",
+      question: "Were any supplies made to an SEZ this month?",
+      unsupported: "export_supply_unsupported",
+      gap: "An SEZ supply files in its own table, which this return does not build."
+    },
+    %{
+      key: "b2c_supplies",
+      question: "Were any B2C supplies made this month?",
+      unsupported: "b2c_supply_unsupported",
+      gap:
+        "This return files B2B invoices only. A B2C supply belongs in b2cs/b2cl, which it does not build."
+    },
+    %{
+      key: "cancelled_documents",
+      question: "Were any invoices cancelled this month?",
+      unsupported: nil,
+      gap: nil
+    },
+    %{
+      key: "additional_series",
+      question: "Is there a second invoice series we have not been sent?",
+      unsupported: nil,
+      gap: nil
+    }
+  ]
+
+  @completeness_keys Enum.map(@completeness_questions, & &1.key)
+
+  @doc "The completeness questions asked of every month, in order."
+  def completeness_questions, do: @completeness_questions
+
+  defp completeness_issues([], _effective), do: []
+
+  defp completeness_issues(invoices, effective) do
+    scope = completeness_scope(invoices)
+
+    Enum.flat_map(@completeness_questions, fn q ->
+      target = "#{q.key}|#{scope}"
+
+      case completeness_answer(effective, target) do
+        # Answered "no": nothing of this kind exists, and nothing is left to ask.
+        "no" ->
+          []
+
+        # "Yes" leaves the question standing beside the gap it uncovered, and
+        # "unknown" leaves it standing because nobody has actually checked — a
+        # first-class answer that routes to a chase rather than forcing someone
+        # to assert "no" to proceed. `nil` is nobody having been asked.
+        answer ->
+          [completeness_question_issue(q, target, answer) | completeness_gap_issues(q, answer)]
+      end
+    end)
+  end
+
+  defp completeness_question_issue(q, target, answer) do
+    %{
+      "invoice" => nil,
+      "code" => "completeness_unconfirmed",
+      "level" => Issues.level_for("completeness_unconfirmed"),
+      "message" => q.question,
+      "fields" => [],
+      "target" => target,
+      "attestation_key" => q.key,
+      "answer" => answer
+    }
+  end
+
+  # A blocker that only says "Nila cannot handle this" is honest and
+  # operationally useless — the cess lesson. Every yes names the next move.
+  defp completeness_gap_issues(%{unsupported: nil}, _answer), do: []
+  defp completeness_gap_issues(_q, answer) when answer != "yes", do: []
+
+  defp completeness_gap_issues(q, _yes) do
+    [
+      %{
+        "invoice" => nil,
+        "code" => q.unsupported,
+        "level" => Issues.level_for(q.unsupported),
+        "message" => q.gap,
+        "fields" => []
+      }
+    ]
+  end
+
+  defp completeness_answer(effective, target) do
+    effective
+    |> Enum.filter(&(&1["verb"] == "confirm_issue" and &1["target"] == target))
+    |> List.last()
+    |> case do
+      nil -> nil
+      confirmation -> get_in(confirmation, ["payload", "answer"])
+    end
+  end
+
+  # Scoped to the invoice set, so a later pile reopens every question: an answer
+  # given about one set of bills cannot speak for a set that has grown.
+  defp completeness_scope(invoices) do
+    invoices
+    |> Enum.map(&"#{&1["id"]}|#{&1["invoice_number"]}")
+    |> Enum.sort()
+    |> Enum.join("\n")
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 16)
+  end
+
   defp cess_issues(true, _invoices, _effective), do: []
 
   defp cess_issues(false, invoices, effective) do
@@ -201,6 +335,19 @@ defmodule Nila.Gst.Sales.Workings do
   # default — the accidental clearance this classification exists to prevent.
   defp answered?(%{"target" => "cess_not_evaluated|" <> _digest} = confirmation),
     do: get_in(confirmation, ["payload", "answer"]) in ~w(no_cess cess_applies)
+
+  # Same rule for the completeness questions: only "no" settles one. "Yes"
+  # leaves it standing beside the gap it uncovered, and "unknown" leaves it
+  # standing because nobody has actually checked.
+  defp answered?(%{"target" => target} = confirmation) when is_binary(target) do
+    case String.split(target, "|") do
+      [key, _scope] when key in @completeness_keys ->
+        get_in(confirmation, ["payload", "answer"]) == "no"
+
+      _other ->
+        true
+    end
+  end
 
   defp answered?(_confirmation), do: true
 

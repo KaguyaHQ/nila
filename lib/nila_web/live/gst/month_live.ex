@@ -652,6 +652,15 @@ defmodule NilaWeb.Gst.MonthLive do
   def handle_event("undo", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "reopen", "target" => target})
 
+  def handle_event("attest-completeness", %{"target" => target, "answer" => answer}, socket)
+      when answer in ~w(no yes unknown) do
+    record(socket, %{
+      "verb" => "confirm_issue",
+      "target" => target,
+      "payload" => %{"answer" => answer}
+    })
+  end
+
   def handle_event("accept_difference", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "accept_difference", "target" => target})
 

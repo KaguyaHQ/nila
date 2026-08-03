@@ -537,20 +537,8 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       %{sales_month: sales_month}
     end
 
-    defp resolve_open_issues(sales_month, user_id) do
-      SalesResolutions.workings(sales_month).issues
-      |> Enum.filter(fn issue ->
-        issue["status"] == "open" and issue["level"] == "required"
-      end)
-      |> Enum.each(fn issue ->
-        {:ok, _} =
-          SalesResolutions.record(
-            sales_month,
-            %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(issue)},
-            user_id
-          )
-      end)
-
+    defp resolve_open_issues(sales_month, user_id, opts \\ []) do
+      answer_sales_issues!(sales_month, user_id, opts)
       Nila.Repo.reload!(sales_month)
     end
 
@@ -643,7 +631,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       unresolved_cess =
         sales_month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
 
-      resolved = resolve_open_issues(unresolved_cess, scope.user.id)
+      resolved = resolve_open_issues(unresolved_cess, scope.user.id, except: "cess_not_evaluated")
 
       # Every other check is answered; the cess question alone holds the month.
       assert {:error, :open_issues} = SalesResolutions.mark_reviewed(resolved)

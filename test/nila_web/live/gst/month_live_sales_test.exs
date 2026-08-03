@@ -302,6 +302,136 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     refute has_element?(view, "#month-door-sign-r1")
   end
 
+  describe "what the pile cannot say about itself" do
+    test "a month is not approvable until somebody answers for its completeness", %{
+      conn: conn,
+      org: org,
+      client: client
+    } do
+      confirm_sales_complete!(org, client, @period)
+      {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+      # Files, pages and sequence gaps are internal consistency. One perfectly
+      # read file can still be half a month.
+      assert has_element?(view, "#gstr1-completeness-attestation", "6 unanswered")
+
+      assert has_element?(
+               view,
+               "#gstr1-attest-credit_or_debit_notes",
+               "Were any credit or debit notes issued"
+             )
+
+      # Exports, SEZ and B2C are asked apart, because each yes routes to a
+      # different capability gap.
+      assert has_element?(view, "#gstr1-attest-exports")
+      assert has_element?(view, "#gstr1-attest-sez_supplies")
+      assert has_element?(view, "#gstr1-attest-b2c_supplies")
+      assert has_element?(view, "#gstr1-attest-cancelled_documents")
+      assert has_element?(view, "#gstr1-attest-additional_series")
+    end
+
+    test "'yes' names the next move rather than only refusing", %{
+      conn: conn,
+      org: org,
+      client: client
+    } do
+      confirm_sales_complete!(org, client, @period)
+      {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+      view
+      |> element("#gstr1-attest-credit_or_debit_notes button[phx-value-answer='yes']")
+      |> render_click()
+
+      # A blocker that only says "Nila cannot do this" is honest and
+      # operationally useless — the cess lesson.
+      assert has_element?(view, "#gstr1-attest-credit_or_debit_notes", "see the blocker below")
+      assert has_element?(view, "#gstr1-checks-before-filing", "no cdnr table")
+      assert has_element?(view, "#gstr1-checks-before-filing", "filed manually")
+      refute has_element?(view, "#month-door-sign-r1")
+    end
+
+    test "'don't know' is a real answer that withholds approval", %{
+      conn: conn,
+      org: org,
+      client: client
+    } do
+      confirm_sales_complete!(org, client, @period)
+      {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+      confirm_all_open_issues_except_completeness(view)
+
+      # Nobody is forced to assert "no" to proceed: this reviewer genuinely does
+      # not know about exports and says so, then settles everything else.
+      view
+      |> element("#gstr1-attest-exports button[phx-value-answer='unknown']")
+      |> render_click()
+
+      answer_completeness(view, "no")
+
+      assert has_element?(view, "#gstr1-attest-exports", "Asked the client")
+      refute has_element?(view, "#month-door-sign-r1")
+
+      # And it is reversible: answering it settles the month.
+      view |> element("#gstr1-attest-exports button[phx-click='undo']") |> render_click()
+      view |> element("#gstr1-attest-exports button[phx-value-answer='no']") |> render_click()
+
+      assert has_element?(view, "#month-door-sign-r1")
+    end
+
+    test "a later pile reopens an answer given about a smaller one", %{
+      conn: conn,
+      org: org,
+      client: client
+    } do
+      alias Nila.Gst.Sales.Months, as: SalesMonths
+
+      confirm_sales_complete!(org, client, @period)
+      {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+      answer_completeness(view)
+      refute has_element?(view, "#gstr1-attest-exports button[phx-value-answer='no']")
+
+      # More bills arrive. An answer about one set of invoices cannot speak for
+      # a set that has grown.
+      {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+
+      wider =
+        month.invoices ++
+          [
+            Nila.Gst.Sales.Gstr1.normalize_invoice(%{
+              "data" => %{
+                "invoice_number" => "99/2025-26",
+                "invoice_date" => "04.10.2025",
+                "seller" => %{"gstin" => client.gstin},
+                "buyer" => %{"gstin" => "33AABCP9487A1ZG"},
+                "line_items" => [
+                  %{
+                    "taxable_value" => 1000,
+                    "cgst_rate" => 9,
+                    "cgst_amount" => 90,
+                    "sgst_rate" => 9,
+                    "sgst_amount" => 90
+                  }
+                ]
+              }
+            })
+          ]
+
+      {:ok, _} =
+        SalesMonths.upsert(%{
+          org_id: org.id,
+          client_id: client.id,
+          period: @period,
+          invoices: wider,
+          issues: Nila.Gst.Sales.Gstr1.validation_issues(wider)
+        })
+
+      {:ok, reopened, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+      assert has_element?(reopened, "#gstr1-completeness-attestation", "6 unanswered")
+    end
+  end
+
   test "unseen HSN codes render as one advisory block that never gates approval", %{
     conn: conn,
     org: org,
@@ -373,8 +503,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     # Context, not work: no confirm affordance, not in the gating clause, and
     # approval is reachable without anyone opening it.
     refute has_element?(view, "#gstr1-advisories button[phx-click='confirm_issue']")
-
     refute has_element?(view, "#gstr1-checks-before-filing")
+
+    # The completeness questions do gate — nothing is wrong with these bills,
+    # but nobody has yet said whether they are the whole month.
+    answer_completeness(view)
+
     assert has_element?(view, "#gstr1-verdict", "Ready for approval")
     assert has_element?(view, "#month-door-sign-r1")
   end
@@ -1355,6 +1489,34 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     end
 
     while_confirmable(view)
+    answer_completeness(view)
+  end
+
+  defp confirm_all_open_issues_except_completeness(view) do
+    for invoice <- ["20/2025-26"] do
+      view |> element("#gstr1-inv-#{String.replace(invoice, "/", "\\/")}") |> render_click()
+
+      while_confirmable(view)
+
+      view
+      |> element("#gstr1-evidence-modal button[phx-click='close-invoice-review']")
+      |> render_click()
+    end
+
+    while_confirmable(view)
+  end
+
+  # The questions the pile cannot answer about itself. A month is not approvable
+  # until somebody says whether there were credit notes, exports, SEZ or B2C
+  # supplies, cancellations or a second series — so a test driving a month to
+  # approval has to answer them the way a reviewer would.
+  defp answer_completeness(view, answer \\ "no") do
+    for q <- Nila.Gst.Sales.Workings.completeness_questions() do
+      selector =
+        "#gstr1-attest-#{q.key} button[phx-click='attest-completeness'][phx-value-answer='#{answer}']"
+
+      if has_element?(view, selector), do: view |> element(selector) |> render_click()
+    end
   end
 
   defp while_confirmable(view) do

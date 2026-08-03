@@ -178,7 +178,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     confirmations =
       result.issues
       |> Enum.filter(&(&1["status"] == "open" and Nila.Gst.Issues.gating?(&1)))
-      |> Enum.map(&%{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(&1)})
+      |> Enum.map(&confirmation/1)
 
     answered =
       SalesWorkings.materialize(invoices(), confirmations, @header, [], %{
@@ -330,8 +330,21 @@ defmodule Nila.Gst.Sales.WorkingsTest do
   defp confirm_all_but_cess do
     SalesWorkings.materialize(invoices(), [], @header, [], cess_evaluated: false).issues
     |> Enum.filter(&(&1["status"] == "open" and &1["code"] != "cess_not_evaluated"))
-    |> Enum.map(&%{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(&1)})
+    |> Enum.map(&confirmation/1)
   end
+
+  # The completeness questions and the cess question are two-exit: a bare
+  # confirmation does not settle them, so a resolution has to name the answer.
+  defp confirmation(%{"code" => "completeness_unconfirmed"} = issue) do
+    %{
+      "verb" => "confirm_issue",
+      "target" => SalesWorkings.issue_key(issue),
+      "payload" => %{"answer" => "no"}
+    }
+  end
+
+  defp confirmation(issue),
+    do: %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(issue)}
 
   test "a flagged correction is applied and re-derives" do
     resolutions = [
@@ -458,7 +471,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     confirmations =
       result.issues
       |> Enum.reject(&(&1["level"] == "info"))
-      |> Enum.map(&%{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(&1)})
+      |> Enum.map(&confirmation/1)
 
     reviewed = SalesWorkings.materialize(invoices(), confirmations, @header)
     assert SalesWorkings.reviewable?(reviewed.issues)

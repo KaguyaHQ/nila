@@ -3,7 +3,9 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
   use Oban.Testing, repo: Nila.Repo
 
   import Nila.AccountsFixtures
-  import Nila.GstFixtures, only: [confirm_sales_complete!: 3, settle_register!: 2]
+
+  import Nila.GstFixtures,
+    only: [answer_sales_issues!: 2, confirm_sales_complete!: 3, settle_register!: 2]
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
@@ -56,16 +58,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
   defp run(dump), do: perform_job(DumpWorker, %{"dump_id" => dump.id})
 
   defp sign_sales(month, user, scope) do
-    SalesResolutions.workings(month).issues
-    |> Enum.filter(&(&1["status"] == "open" and &1["level"] != "info"))
-    |> Enum.each(fn issue ->
-      {:ok, _} =
-        SalesResolutions.record(
-          month,
-          %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(issue)},
-          user.id
-        )
-    end)
+    answer_sales_issues!(month, user.id)
 
     {:ok, reviewed} = SalesResolutions.mark_reviewed(month)
 
