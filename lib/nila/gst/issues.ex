@@ -59,6 +59,10 @@ defmodule Nila.Gst.Issues do
     "statutory_rate_review" => {"required", :decision},
     "rate_history_conflict" => {"required", :decision},
 
+    # Human disagreement with a clean derived conclusion. This is gating work,
+    # not a validator defect: it exists only after an explicit challenge event.
+    "treatment_challenged" => {"required", :decision},
+
     # The extraction ledger
     "pages_unaccounted" => {"required", :confirmation},
     "evidence_unavailable" => {"required", :confirmation},

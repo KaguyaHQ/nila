@@ -775,6 +775,18 @@ defmodule Nila.Gst.Filing.SignoffsTest do
                  %{"verb" => "reopen", "target" => "anything"},
                  scope.user.id
                )
+
+      workings = SalesResolutions.workings(reviewed)
+      invoice = hd(workings.active_invoices)
+      snapshot = Nila.Gst.Sales.Review.treatment_snapshot(invoice, workings.derived)
+
+      assert {:error, :signed_off} =
+               SalesResolutions.challenge_treatment(
+                 reviewed,
+                 invoice["id"],
+                 snapshot,
+                 scope.user.id
+               )
     end
 
     test "3B assembles from the signed R1 snapshot, not a live derivation", %{
