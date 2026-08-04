@@ -235,7 +235,7 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
       Chase.draft(
         :missing_bills,
         socket.assigns.current_scope.current_org,
-        month.client,
+        socket.assigns.client,
         month.period,
         %{in_2b_not_books: [%{"gstr2b" => item.gstr2b}], sequence_issues: []}
       )

@@ -124,6 +124,17 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     assert Enum.all?(resolutions, &(&1.decided_by_id == context.user.id))
   end
 
+  test "asking the client drafts the missing-bill message", context do
+    put_month!(context, [], [gstr2b("PORTAL-9")])
+    {:ok, view, _html} = live(context.conn, review_path(context.client))
+
+    view |> element("#gst-ask-client") |> render_click()
+
+    assert has_element?(view, "#gst-missing-bill-modal")
+    assert has_element?(view, "#gst-missing-bill-draft", "Dear Breeze")
+    assert has_element?(view, "#gst-missing-bill-draft", "invoice PORTAL-9")
+  end
+
   defp put_month!(context, books, counterparts) do
     gstr2b_arrived!(context.org, context.client, @period, counterparts)
     recon = Reconciliation.reconcile(books, counterparts)

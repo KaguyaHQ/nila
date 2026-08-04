@@ -1259,6 +1259,7 @@ defmodule NilaWeb.Gst.MonthLive do
         module={PurchaseLive}
         id="purchase-review-live"
         month={@purchase_month}
+        client={@client}
         current_scope={@current_scope}
         route={@purchase_review_route}
         workings={@purchase_workings}
