@@ -124,12 +124,10 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       assert door_id(signed) == "month-door-file-purchase"
     end
 
-    # The lead is the *whole* month's ITC (₹75,000 here, not the ₹72,300 that
-    # matched + open comes to — ₹2,700 sits in audited-accepted rows), and the
-    # open figure is stated as a subset of it. The copy this replaced put
-    # matched beside open and called matched "clean": two numbers that sum to
-    # nothing, one of them claiming a finality the month has not reached.
-    test "purchases open, sales absent (the screenshot): money first, one door" do
+    # The detailed ITC position and its action live on the purchase track. The
+    # month header states the return-level consequence and the other track's
+    # blocker without repeating either the money or the button.
+    test "purchases open, sales absent: return status with no duplicate door" do
       verdict =
         Verdict.resolve(
           facts(
@@ -138,9 +136,10 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      assert verdict.headline == "₹75,000 of ITC this month. ₹13,900 of it rides on 12 decisions."
-      assert door_id(verdict) == "month-door-decisions"
+      assert is_nil(verdict.headline)
+      assert is_nil(verdict.door)
       assert verdict.quiet == ["Sales bills not in, so the GSTR-1 waits."]
+      assert Enum.map(verdict.deadlines, &elem(&1, 0)) == [:sales, :purchase]
       assert verdict.deadline.return == "GSTR-3B"
     end
 
@@ -156,25 +155,8 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      assert verdict.headline ==
-               "₹7,975 of ITC this month. ₹7,975 of it needs 8 bills the client has not sent."
-
-      assert door_id(verdict) == "month-door-request-bills"
-      assert verdict.door.label == "Request the missing bills"
-      refute verdict.headline =~ "decision"
-    end
-
-    test "one missing bill reads as one, and still is not a decision" do
-      verdict =
-        Verdict.resolve(
-          facts(
-            tracks: %{sales: :absent, purchase: :awaiting_bills},
-            stats: awaiting_bills_stats(1, 50_000, 900_000)
-          )
-        )
-
-      assert verdict.headline =~ "needs 1 bill the client has not sent."
-      assert verdict.door.label == "Request the missing bill"
+      assert is_nil(verdict.headline)
+      assert is_nil(verdict.door)
     end
 
     # The state every client sits in for the first two weeks of a filing
@@ -256,7 +238,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       end
     end
 
-    test "purchases open, sales open: purchases win, sales becomes a line" do
+    test "purchases open, sales open: purchase owns the headline and sales becomes a line" do
       verdict =
         Verdict.resolve(
           facts(
@@ -266,7 +248,8 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      assert door_id(verdict) == "month-door-decisions"
+      assert is_nil(verdict.headline)
+      assert is_nil(verdict.door)
       assert verdict.quiet == ["GSTR-1 drafted, issues still to check."]
     end
 
@@ -279,11 +262,8 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      # The headline no longer spends its opening clause on "GSTR-1 filed" —
-      # the quiet line below already carries that, and the headline's job is
-      # the money the door is about.
-      assert verdict.headline == "₹72,300 of ITC this month. ₹13,900 of it rides on 12 decisions."
-      assert door_id(verdict) == "month-door-decisions"
+      assert is_nil(verdict.headline)
+      assert is_nil(verdict.door)
       assert verdict.quiet == ["GSTR-1 filed."]
       assert verdict.deadline.return == "GSTR-3B"
     end
@@ -298,7 +278,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      assert verdict.headline == "Purchases clear, ₹58,400 ITC. GSTR-1 has 3 issues to check."
+      assert is_nil(verdict.headline)
       assert is_nil(verdict.door)
       assert verdict.deadline.return == "GSTR-1"
     end
@@ -313,7 +293,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      assert verdict.headline =~ "2 issues to check"
+      assert is_nil(verdict.headline)
       assert is_nil(verdict.door)
     end
 
@@ -321,7 +301,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       verdict =
         Verdict.resolve(facts(tracks: %{sales: :open, purchase: :clear}, can_sign_off: false))
 
-      assert verdict.headline =~ "approve it below"
+      assert is_nil(verdict.headline)
       assert is_nil(verdict.door)
     end
 
@@ -488,11 +468,12 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
         assert is_nil(verdict.door) or is_map(verdict.door),
                "#{sales}/#{purchase} produced #{inspect(verdict.door)}"
 
-        assert is_binary(verdict.headline) and verdict.headline != ""
+        assert is_nil(verdict.headline) or
+                 (is_binary(verdict.headline) and verdict.headline != "")
       end
     end
 
-    test "the door's track is never also a quiet line" do
+    test "the headline's track is never also a quiet line" do
       verdict =
         Verdict.resolve(
           facts(

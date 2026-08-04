@@ -202,7 +202,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
   def gstr3b_evidence(assigns) do
     ~H"""
-    <section :if={@gstr3b} id="month-3b" class="space-y-block">
+    <section :if={show_gstr3b_evidence?(@gstr3b, @stats, @signed)} id="month-3b" class="space-y-block">
       <div>
         <p class="text-eyebrow text-moon font-semibold uppercase">Return evidence</p>
         <%!-- "Assembled" reads as finished. Until it is signed, this is what the
@@ -367,7 +367,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     [
       {"decisions", assigns.stats.need_decision > 0,
        "#{assigns.stats.need_decision} purchase #{plural(assigns.stats.need_decision, "decision")} still open.",
-       {:patch, "Work the decisions", purchase_review}},
+       {:none, nil, nil}},
       {"attestation", assigns.stats.need_decision == 0 and attestation_open?(assigns.itc),
        "Nobody has confirmed whether the client holds tax invoices for the supplies the portal reported (s.16(2)(a)).",
        {:patch, "Answer it", purchase_review}},
@@ -499,6 +499,13 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       </span>
     </div>
     """
+  end
+
+  defp show_gstr3b_evidence?(nil, _stats, _signed), do: false
+  defp show_gstr3b_evidence?(_gstr3b, _stats, true), do: true
+
+  defp show_gstr3b_evidence?(gstr3b, stats, false) do
+    not liability_missing?(gstr3b) and stats.need_decision == 0
   end
 
   defp liability_missing?(gstr3b), do: gstr3b["liability_source"] == "missing"

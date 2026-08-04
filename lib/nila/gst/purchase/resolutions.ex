@@ -174,22 +174,17 @@ defmodule Nila.Gst.Purchase.Resolutions do
   end
 
   # The assembled 3B for the month. Outward liability comes from the client's
-  # worked sales month when one exists — a *signed* GSTR-1 supplies its frozen
-  # snapshot (the 3B must consume the return the senior approved, not a live
-  # re-derivation that may have drifted); otherwise it reads through the sales
-  # review loop so human corrections land here. `liability_source` says which:
-  # signed, human-reviewed, or still the raw derivation. Without a sales month
-  # the return is assembled with zero liability and marked so the UI never
-  # shows a cash-payable figure computed from a liability we don't have.
+  # worked sales month — a *signed* GSTR-1 supplies its frozen snapshot (the 3B
+  # must consume the return the senior approved, not a live re-derivation that
+  # may have drifted); otherwise a month with invoices reads through the sales
+  # review loop so human corrections land here. A signed nil return is also a
+  # real zero-liability source. Without either, the return is marked missing so
+  # the UI never shows cash payable against liability we do not have.
   defp gstr3b(%Month{} = month, recon, itc) do
     {source, liability} =
       case SalesMonths.get_by_period(month.org_id, month.client_id, month.period) do
-        {:ok, %{invoices: [_ | _]} = sales_month} ->
-          {source, derived} = effective_gstr1(sales_month)
-          {source, Gstr3b.liability_from_gstr1(derived)}
-
-        _ ->
-          {"missing", %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}}
+        {:ok, sales_month} -> gstr1_liability(sales_month)
+        {:error, :not_found} -> missing_liability()
       end
 
     liability
@@ -197,15 +192,23 @@ defmodule Nila.Gst.Purchase.Resolutions do
     |> Map.put("liability_source", source)
   end
 
-  defp effective_gstr1(sales_month) do
+  defp gstr1_liability(sales_month) do
     case Signoffs.latest_gstr1_signoff(sales_month.id) do
       {:ok, signoff} ->
-        {"gstr1_signed", signoff.snapshot["derived"]}
+        {"gstr1_signed", Gstr3b.liability_from_gstr1(signoff.snapshot["derived"])}
+
+      {:error, :not_found} when sales_month.invoices != [] ->
+        source = if sales_month.state == "reviewed", do: "gstr1_reviewed", else: "gstr1_derived"
+        derived = SalesResolutions.workings(sales_month).derived
+        {source, Gstr3b.liability_from_gstr1(derived)}
 
       {:error, :not_found} ->
-        source = if sales_month.state == "reviewed", do: "gstr1_reviewed", else: "gstr1_derived"
-        {source, SalesResolutions.workings(sales_month).derived}
+        missing_liability()
     end
+  end
+
+  defp missing_liability do
+    {"missing", %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}}
   end
 
   defp flags_for(%Month{} = month, invoices) do

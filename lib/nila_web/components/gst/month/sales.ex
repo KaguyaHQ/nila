@@ -71,67 +71,74 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <section
         id="gstr1-verdict"
         class={[
-          "border-base-300 p-block rounded-box border",
+          "border-base-300 pb-block space-y-related border-b",
           Workings.ripple_class(@rippled, @ripple_seq, "gstr1-account")
         ]}
       >
         <div class="flex flex-wrap items-start justify-between gap-4">
-          <div class="space-y-related">
-            <div class="flex flex-wrap items-center gap-2">
-              <h2 class="text-base-content text-h4 font-semibold">GSTR-1</h2>
-              <.badge variant={@verdict.variant}>{@verdict.label}</.badge>
-            </div>
-            <p class="text-body text-ink-muted">{@verdict.copy}</p>
+          <div class="min-w-0 space-y-1">
+            <h2 class="text-base-content text-h4 font-semibold">
+              {track_title(@sales_month, @r1_signoff)}
+            </h2>
+            <p
+              :if={is_nil(@r1_signoff) and @account.issues.required_count > 0}
+              id="gstr1-required-summary"
+              class="text-base-content text-body"
+            >
+              {Helpers.work_clause(@account.issues.by_kind)} required before approval
+            </p>
+            <p
+              :if={not is_nil(@r1_signoff) or @account.issues.required_count == 0}
+              class="text-body text-ink-muted"
+            >
+              {@verdict.copy}
+            </p>
+            <.link
+              :if={@account.issues.advisory_count > 0}
+              href="#gstr1-advisories"
+              class="text-ink-subtle text-meta inline-block whitespace-nowrap"
+            >
+              {@account.issues.advisory_count} {Helpers.pluralise(
+                @account.issues.advisory_count,
+                "advisory"
+              )}
+            </.link>
           </div>
-          <%!-- The card above already asserts the tally; the button says where
-                it goes, not how many again.
-
-                Its condition has to be the target section's own, not the issue
-                count: the count includes the completeness questions and the
-                section excludes them, so on a freshly worked month — whose only
-                open work is usually the attestation — the page's primary action
-                scrolled to an anchor that was not rendered. --%>
           <.button
-            :if={@required_issues != []}
+            :if={is_nil(@r1_signoff) and @required_issues != []}
             id="gstr1-review-required"
             patch={sales_review_path(@client, @period, nil, :needs_you)}
             variant="primary"
             size="sm"
           >
-            Take them one by one
+            Review required items
           </.button>
-          <%!-- ...and when the attestation is the open work, send them there
-                instead of nowhere. --%>
           <.button
-            :if={@required_issues == [] and completeness_open?(@completeness_questions)}
+            :if={
+              is_nil(@r1_signoff) and @required_issues == [] and
+                completeness_open?(@completeness_questions)
+            }
             id="gstr1-review-completeness"
             href="#gstr1-completeness-attestation"
             variant="primary"
             size="sm"
           >
-            Answer what we can't see
+            Answer required questions
           </.button>
         </div>
-        <dl class="gap-block mt-block grid sm:grid-cols-3">
-          <div>
-            <dt class="text-ink-subtle text-label font-semibold uppercase">Extracted invoices</dt>
-            <dd class="font-display text-base-content text-lead tabular-nums">
-              {@account.extraction.documents}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-ink-subtle text-label font-semibold uppercase">Taxable value</dt>
-            <dd class="font-display text-base-content text-lead tabular-nums">
-              {Helpers.rupees(@account.draft.totals.taxable)}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-ink-subtle text-label font-semibold uppercase">Output tax</dt>
-            <dd class="font-display text-base-content text-lead tabular-nums">
-              {Helpers.rupees(@account.draft.totals.tax)}
-            </dd>
-          </div>
-        </dl>
+        <p id="gstr1-draft-position" class="text-body text-ink-muted tabular-nums">
+          <span id="gstr1-draft-invoices">
+            {@account.draft.documents} {plural(@account.draft.documents, "invoice")} in draft
+          </span>
+          <span aria-hidden="true"> · </span>
+          <span id="gstr1-draft-taxable">
+            {Helpers.rupees(@account.draft.totals.taxable)} taxable
+          </span>
+          <span aria-hidden="true"> · </span>
+          <span id="gstr1-draft-output-tax">
+            {Helpers.rupees(@account.draft.totals.tax)} proposed output tax
+          </span>
+        </p>
       </section>
 
       <%!-- What the pile cannot tell us about itself.
@@ -749,54 +756,22 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp rounding_note(_difference),
     do: "Per-rate rounding, not a discrepancy — the return rounds once per rate bucket."
 
+  defp track_title(%{filed_at: filed_at}, %{}) when not is_nil(filed_at), do: "GSTR-1 filed"
+  defp track_title(_sales_month, %{}), do: "GSTR-1 approved"
+  defp track_title(_sales_month, _signoff), do: "GSTR-1 draft"
+
   defp verdict_state(%{r1_signoff: %{}, sales_month: %{filed_at: filed_at}})
        when not is_nil(filed_at),
-       do: %{
-         variant: "neutral",
-         label: "Filed",
-         copy: "The approved return is on the GST portal."
-       }
+       do: %{copy: "The approved return is on the GST portal."}
 
   defp verdict_state(%{r1_signoff: %{}}),
-    do: %{
-      variant: "success",
-      label: "Approved",
-      copy: "The approved draft is frozen and ready for portal filing."
-    }
-
-  # "Blocked" is the strongest word the badge has, and it was spent on every
-  # month carrying any required issue — including one whose whole list is eight
-  # questions answerable on this screen in a minute. Phase 1 split severity from
-  # the work an issue asks for precisely so this could stop happening: a month
-  # nobody can finish here reads differently from a month waiting on a reviewer.
-  defp verdict_state(%{account: %{issues: %{by_kind: %{blocked: blocked}} = issues}})
-       when blocked > 0,
-       do: %{
-         variant: "error",
-         label: "Blocked",
-         copy: verdict_copy(issues)
-       }
-
-  defp verdict_state(%{account: %{issues: %{required_count: count} = issues}}) when count > 0,
-    do: %{
-      variant: "warning",
-      label: "#{count} to answer",
-      copy: verdict_copy(issues)
-    }
+    do: %{copy: "The approved draft is frozen and ready for portal filing."}
 
   defp verdict_state(%{completeness: completeness}) when completeness != :complete,
-    do: %{
-      variant: "error",
-      label: "Blocked",
-      copy: "Approval waits for current client confirmation."
-    }
+    do: %{copy: "Approval waits for current client confirmation."}
 
   defp verdict_state(_assigns),
-    do: %{
-      variant: "success",
-      label: "Ready for approval",
-      copy: "All checks are resolved and supplied sales documents are accounted for."
-    }
+    do: %{copy: "Ready for approval. All required checks are resolved."}
 
   defp completeness?(%{"code" => "completeness_unconfirmed"}), do: true
   defp completeness?(_issue), do: false
@@ -846,14 +821,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp attestation_note(%{answer: "yes"}), do: "Yes — see the blocker below"
   defp attestation_note(%{answer: "unknown"}), do: "Asked the client"
   defp attestation_note(_q), do: nil
-
-  defp verdict_copy(%{advisory_count: 0} = issues),
-    do: "#{Helpers.work_clause(issues.by_kind)} before this can be approved."
-
-  defp verdict_copy(issues) do
-    "#{Helpers.work_clause(issues.by_kind, issues.advisory_count)} — the advisories are context, " <>
-      "the rest hold the filing."
-  end
 
   defp draft_label(%{r1_signoff: %{}}), do: "Approved draft"
 

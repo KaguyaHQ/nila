@@ -149,10 +149,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    for id <- ~w(#gstr3b-total-itc #gstr3b-open-itc #gstr3b-settled-itc) do
-      assert has_element?(view, id, "not recorded for this month")
-      refute has_element?(view, id, "₹0")
-    end
+    assert has_element?(view, "#gstr3b-itc-position", "not recorded for this month")
+    refute has_element?(view, "#gstr3b-itc-position", "₹0")
 
     # The register beside them still counts its rows, so the reconciliation
     # matrix has to decline in the same voice rather than print ₹0 down a
@@ -173,7 +171,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
       })
 
     {:ok, seeded, _html} = live(conn, ~p"/gst/#{client.id}/2025-06")
-    refute has_element?(seeded, "#gstr3b-total-itc", "not recorded for this month")
+    refute has_element?(seeded, "#gstr3b-itc-position", "not recorded for this month")
   end
 
   test "a reconciled month never claims the 2B is missing", %{
@@ -206,14 +204,15 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     refute has_element?(view, "#month-door-bring-2b")
     assert has_element?(view, "#gstr3b-reconciliation-matrix")
 
-    # And the headline reports the month's ITC rather than the pre-2B clause,
-    # which uses the open pot as if it were the whole credit.
+    # The detailed position belongs to the purchase track rather than being
+    # repeated in the month header.
     stats = Register.stats(read_json("summary.json"))
-    assert has_element?(view, "#month-headline", "of it rides on")
+    refute has_element?(view, "#month-headline")
+    assert has_element?(view, "#gstr3b-itc-position", "pending review")
     assert stats.matched_tax_paise > 0
   end
 
-  test "purchases open and sales absent: one door, money in the headline", %{
+  test "purchases open and sales absent: one contextual action", %{
     conn: conn,
     client: client,
     client_month: client_month
@@ -224,12 +223,23 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
       client_month |> Resolutions.workings() |> then(&Register.need_decision(&1.summary))
 
     assert has_element?(view, "#month-page")
-    assert has_element?(view, "#month-headline", "of it rides on #{need_decision} decisions")
-    assert has_element?(view, "#month-door-decisions", "Work the decisions")
+    refute has_element?(view, "#month-headline")
+    refute has_element?(view, "#month-verdict #month-door-decisions")
 
-    # The losing track is one quiet line, never a second button.
+    assert has_element?(
+             view,
+             "#gstr3b-review-required",
+             "Review #{need_decision} decisions"
+           )
+
+    assert purchase_review_hrefs(view) == [
+             ~p"/gst/#{client.id}/#{@period}/review/purchase?scope=needs_you"
+           ]
+
+    # The other track remains visible, but the header does not duplicate the
+    # purchase action.
     assert render(view) =~ "Sales bills not in, so the GSTR-1 waits."
-    assert doors(view) == ["month-door-decisions"]
+    assert doors(view) == []
 
     assert has_element?(view, "#month-evidence")
     refute has_element?(view, "#month-support")
@@ -253,7 +263,11 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     end
   end
 
-  test "the headline carries rupees, not only counts", %{conn: conn, client: client, org: org} do
+  test "the purchase position carries rupees, not only counts", %{
+    conn: conn,
+    client: client,
+    org: org
+  } do
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
     workings = Nila.Gst.Purchase.Resolutions.workings(month)
     stats = Nila.Gst.Purchase.Register.stats(workings.summary)
@@ -265,7 +279,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     assert has_element?(
              view,
-             "#month-headline",
+             "#gstr3b-itc-position",
              Nila.Formatters.format_money(stats.open_tax_paise, prefix: "₹")
            )
   end
@@ -282,26 +296,27 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    # The badge names this card's own object — an open reconciliation — not the
-    # GSTR-3B's state, which is what "Blocked" was describing.
-    assert has_element?(view, "#gstr3b-verdict", "Needs #{stats.need_decision} decision")
-
-    # The three figures must close: a reader adding the two parts has to land on
-    # the whole, or the card teaches an arithmetic that is wrong.
     assert stats.settled_tax_paise + stats.open_tax_paise == stats.total_tax_paise
 
-    for {id, paise} <- [
-          {"#gstr3b-total-itc", stats.total_tax_paise},
-          {"#gstr3b-open-itc", stats.open_tax_paise},
-          {"#gstr3b-settled-itc", stats.settled_tax_paise}
-        ] do
-      assert has_element?(view, id, Nila.Formatters.format_money(paise, prefix: "₹"))
-    end
+    assert has_element?(
+             view,
+             "#gstr3b-itc-position",
+             Nila.Formatters.format_money(stats.settled_tax_paise, prefix: "₹")
+           )
+
+    assert has_element?(
+             view,
+             "#gstr3b-itc-position",
+             Nila.Formatters.format_money(stats.open_tax_paise, prefix: "₹")
+           )
+
+    assert has_element?(view, "#gstr3b-itc-position", "resolved")
+    assert has_element?(view, "#gstr3b-itc-position", "pending review")
 
     assert has_element?(
              view,
              "#gstr3b-review-required",
-             "Work the #{stats.need_decision} decisions"
+             "Review #{stats.need_decision} decisions"
            )
   end
 
@@ -338,16 +353,14 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     awaiting = length(collection_only["in_2b_not_books"])
     assert awaiting > 0
 
-    assert has_element?(view, "#gstr3b-verdict", "Needs 1 decision")
-    assert has_element?(view, "#gstr3b-review-required", "Work the 1 decision")
+    assert has_element?(view, "#gstr3b-itc-position", "across 1 decision")
+    assert has_element?(view, "#gstr3b-review-required", "Review decision")
     refute has_element?(view, "#gstr3b-request-bills")
+    refute has_element?(view, "#month-verdict #month-door-decisions")
 
-    assert has_element?(view, "#gstr3b-verdict", "Riding on decisions")
-
-    # Net ITC is computed off the 2B ceiling, so it counts bills nobody sent.
-    # Saying so stops a claim-ready figure standing alone.
-    assert has_element?(view, "#gst-3b-unsupported", "has no supplied bill behind it")
-    assert has_element?(view, "#month-3b", "GSTR-3B preview")
+    # This is not yet a return to approve: the purchase position and bridge
+    # expose the unsupported credit without presenting a partial GSTR-3B.
+    refute has_element?(view, "#month-3b")
   end
 
   # A bill the portal has but nobody supplied is the sharpest completeness
@@ -468,19 +481,15 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
            |> render() =~ String.slice(open["next_action"], 0, 40)
   end
 
-  # The return the track assembles belongs with the position it belongs to, not
-  # after 58 rows of evidence where nobody reaches it.
-  test "the assembled 3B renders inside the purchase track, above the register", %{
+  test "a partial 3B does not render before its inputs are complete", %{
     conn: conn,
     client: client
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#month-register #month-3b #gst-3b-panel")
-
-    html = render(view)
-    assert index_of(html, "gstr3b-verdict") < index_of(html, "month-3b")
-    assert index_of(html, "month-3b") < index_of(html, "gst-register")
+    assert has_element?(view, "#gstr3b-itc-position")
+    assert has_element?(view, "#gst-register")
+    refute has_element?(view, "#month-3b")
   end
 
   test "the ⚠ and the row accent are spent only on rows needing a decision", %{
@@ -572,17 +581,14 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     refute has_element?(view, "#gst-exception-evidence-frame")
   end
 
-  test "the 3B panel shows the ITC side and says the liability is missing", %{
+  test "missing sales liability is stated without a 3B preview", %{
     conn: conn,
     client: client
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#gst-3b-panel")
-    html = render(view)
-    assert html =~ "Outward liability needs the month"
-    assert html =~ "C Net ITC"
-    refute has_element?(view, "#gst-3b-cash")
+    assert render(view) =~ "Sales bills not in, so the GSTR-1 waits."
+    refute has_element?(view, "#gst-3b-panel")
   end
 
   test "the sales section renders on the same page when a sales month exists", %{
@@ -744,15 +750,25 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     assert doors(view) == ["month-door-sign-r1"]
     assert has_element?(view, "#month-exit-gstr1 #month-door-sign-r1.btn-primary")
     refute has_element?(view, "#month-verdict #month-door-sign-r1")
+
     view |> element("#month-door-sign-r1") |> render_click()
 
     assert doors(view) == ["month-door-file-sales"]
     assert has_element?(view, "#month-door-file-sales[href='#month-exit-gstr1']")
+
+    # A signed nil GSTR-1 is a real zero-liability source, not missing sales.
+    # The assembled return follows the register and sits beside its sign-off.
+    assert has_element?(view, "#month-register #month-3b #gst-3b-panel")
+    html = render(view)
+    assert index_of(html, "gst-register") < index_of(html, "month-3b")
+    assert index_of(html, "month-3b") < index_of(html, "month-exit-gstr3b")
+
     view |> element("#gstr1-mark-filed") |> render_submit(%{"arn" => "R1-ARN"})
 
     assert doors(view) == ["month-door-sign-3b"]
     assert has_element?(view, "#month-exit-gstr3b #month-door-sign-3b.btn-primary")
     refute has_element?(view, "#month-verdict #month-door-sign-3b")
+
     view |> element("#month-door-sign-3b") |> render_click()
 
     # Signed: the door becomes the filing step and points at the ARN entry.
@@ -846,6 +862,10 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     assert has_element?(view, "#gst-register")
     assert has_element?(view, "#month-evidence #month-3b #gst-3b-panel")
 
+    html = render(view)
+    assert index_of(html, "gst-register") < index_of(html, "month-3b")
+    assert index_of(html, "month-3b") < index_of(html, "month-exit-gstr3b")
+
     frozen_stats = Nila.Gst.Purchase.Register.stats(frozen["summary"])
 
     assert has_element?(
@@ -888,7 +908,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     assert has_element?(view, "#month-headline", "ARN 3B-ARN. Month closed.")
     assert doors(view) == []
-    refute has_element?(view, "#month-deadline")
+    refute has_element?(view, "#month-deadlines")
     assert has_element?(view, "#gst-register")
     assert has_element?(view, "#gst-3b-panel")
     assert has_element?(view, "#gst-filed-note", "Filed")
@@ -920,12 +940,13 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    # Purchases win the door, so the chip is the 3B's clock (the 20th), not
-    # the GSTR-1's (the 11th) that deadline/4 would have led with.
+    # The month masthead keeps both unfiled return clocks visible even though
+    # the filing action belongs to the GSTR-3B.
     assert doors(view) == ["month-door-file-purchase"]
-    assert has_element?(view, "#month-deadline", "GSTR-3B")
-    assert has_element?(view, "#month-deadline", "due 20 Nov 2025")
-    assert has_element?(view, "#month-deadline", "days overdue")
+    assert has_element?(view, "#month-deadline-sales", "GSTR-1")
+    assert has_element?(view, "#month-deadline-purchase", "GSTR-3B")
+    assert has_element?(view, "#month-deadline-purchase", "due 20 Nov 2025")
+    assert has_element?(view, "#month-deadline-purchase", "days overdue")
     assert render(view) =~ "GSTR-1 signed, not yet on the portal."
   end
 
@@ -1053,5 +1074,13 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     |> LazyHTML.from_fragment()
     |> LazyHTML.query("[id^='month-door-']")
     |> LazyHTML.attribute("id")
+  end
+
+  defp purchase_review_hrefs(view) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("a[href*='/review/purchase?scope=needs_you']")
+    |> LazyHTML.attribute("href")
   end
 end

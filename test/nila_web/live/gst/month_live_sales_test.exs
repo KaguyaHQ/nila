@@ -33,14 +33,18 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#month-sales")
     assert has_element?(view, "#gstr1-inv-20\\/2025-26")
     assert has_element?(view, "#month-verdict h1.text-h4", "Breeze Tech")
+    refute has_element?(view, "#month-headline")
+    assert has_element?(view, "#month-deadline-sales", "GSTR-1")
+    assert has_element?(view, "#month-deadline-purchase", "GSTR-3B")
+    assert has_element?(view, "#month-verdict", "Purchase bills not in")
 
-    # Required, but nothing here is blocking — the badge counts the work rather
-    # than spending the strongest word it has on a month a reviewer can finish
-    # on this screen. See the blocked/non-blocked pair below.
-    assert has_element?(view, "#gstr1-verdict", "to answer")
-    refute has_element?(view, "#gstr1-verdict", "Blocked")
-    assert has_element?(view, "#gstr1-verdict", "1 decision")
-    assert has_element?(view, "#gstr1-review-required", "Take them one by one")
+    assert has_element?(view, "#gstr1-verdict h2", "GSTR-1 draft")
+    assert has_element?(view, "#gstr1-required-summary", "required before approval")
+    assert has_element?(view, "#gstr1-required-summary", "1 decision")
+    assert has_element?(view, "#gstr1-review-required", "Review required items")
+    assert has_element?(view, "#gstr1-draft-invoices", "in draft")
+    assert has_element?(view, "#gstr1-draft-output-tax", "proposed output tax")
+    refute has_element?(view, "#gstr1-verdict.rounded-box")
     assert has_element?(view, "#gstr1-required-clause", "1 decision")
     refute has_element?(view, "#month-door-sales-issues")
     assert has_element?(view, "#gstr1-inv-20\\/2025-26", "1 to answer")
@@ -300,11 +304,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    # Before the answer, every open issue is one somebody can settle here, so
-    # the badge counts the work. "Blocked" is the strongest word it has, and
-    # spending it on an ordinary month leaves nothing louder for this one.
-    assert has_element?(view, "#gstr1-verdict", "to answer")
-    refute has_element?(view, "#gstr1-verdict", "Blocked")
+    # Before the answer, every open issue is one somebody can settle here.
+    assert has_element?(view, "#gstr1-required-summary", "required before approval")
+    refute has_element?(view, "#gstr1-required-summary", "blocker")
 
     view |> element("#gstr1-cess-applies") |> render_click()
     confirm_all_open_issues(view)
@@ -314,9 +316,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     refute has_element?(view, "#gstr1-cess-none")
     refute has_element?(view, "#month-door-sign-r1")
 
-    # Now nothing on this page moves the month, and the badge says so.
-    assert has_element?(view, "#gstr1-verdict", "Blocked")
-    refute has_element?(view, "#gstr1-verdict", "to answer")
+    # Now nothing on this page moves the month, and the summary names the gate.
+    assert has_element?(view, "#gstr1-required-summary", "1 blocker required before approval")
   end
 
   test "a blocker nobody can answer is still named in the count that gates", %{
@@ -574,6 +575,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert has_element?(view, "#gstr1-advisory-hsn-new", "28043000 · 29033990")
     assert has_element?(view, "#gstr1-advisory-hsn-rows", "Printed on the bill")
+    assert has_element?(view, "#gstr1-verdict a[href='#gstr1-advisories']", "2 advisories")
 
     # Context, not work: no confirm affordance, not in the gating clause, and
     # approval is reachable without anyone opening it.
@@ -1197,7 +1199,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     # Everything was resolved before signing, so no legacy level may resurrect a
     # check, and the approved draft still renders.
-    assert has_element?(legacy_view, "#gstr1-verdict", "Approved")
+    assert has_element?(legacy_view, "#gstr1-verdict", "GSTR-1 approved")
     refute has_element?(legacy_view, "#gstr1-checks-before-filing")
     assert legacy_view |> element("#gstr1-workings-b2b") |> render() =~ "PONMANI AND CO"
   end

@@ -5,10 +5,10 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   Purchase reconciliation evidence. Every register row patches into the
   route-backed purchase review surface without unmounting the month.
 
-  The section states its own ITC position and its own completeness before the
-  register, in the same order the sales track states them: what the month is
-  worth, what the return assembles to, what came in, then the evidence. The
-  month-wide verdict band can only ever speak for one track, so a purchase
+  The section states its own ITC position before the evidence that determines
+  it. The assembled return follows that evidence and sits directly beside the
+  action that signs it, matching the sales track's filing-summary placement.
+  The month-wide verdict band can only ever speak for one track, so a purchase
   position that lives only there disappears whenever sales wins the band.
   """
 
@@ -35,14 +35,13 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
     ~H"""
     <section :if={@purchase_month} id="month-register" class="space-y-section">
-      <section id="gstr3b-verdict" class="border-base-300 p-block rounded-box border">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <div class="space-y-related">
-            <div class="flex flex-wrap items-center gap-2">
-              <h2 class="text-base-content text-h4 font-semibold">Purchase reconciliation</h2>
-              <.badge variant={@verdict.variant}>{@verdict.label}</.badge>
-            </div>
-            <p class="text-body text-ink-muted">{@verdict.copy}</p>
+      <section id="gstr3b-verdict" class="border-base-300 rounded-box border px-4 py-3">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div class="min-w-0">
+            <h2 class="text-base-content text-body font-semibold">Purchase reconciliation</h2>
+            <p id="gstr3b-itc-position" class="text-body text-ink-muted mt-1">
+              {@verdict.copy}
+            </p>
           </div>
           <.button
             :if={@stats.need_decision > 0}
@@ -51,9 +50,9 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             variant="primary"
             size="sm"
           >
-            Work the {@stats.need_decision} {plural(@stats.need_decision, "decision")}
+            {review_label(@stats.need_decision)}
           </.button>
-          <%!-- Nothing left to judge, so the door is the chase, not the queue. --%>
+          <%!-- Nothing left to judge, so the action is the chase. --%>
           <.button
             :if={@stats.need_decision == 0 and @stats.awaiting_bills > 0}
             id="gstr3b-request-bills"
@@ -61,47 +60,10 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             variant="primary"
             size="sm"
           >
-            Request the {@stats.awaiting_bills} missing {plural(@stats.awaiting_bills, "bill")}
+            Request {@stats.awaiting_bills} missing {plural(@stats.awaiting_bills, "bill")}
           </.button>
         </div>
-        <%!-- All three read from one recorded fact, so they go quiet together:
-              a snapshot frozen before the register carried its tax has no ITC
-              figure to state, and "₹0 of ITC this month" above a live register
-              is the loudest wrong thing this section can say. --%>
-        <dl class="gap-block mt-block grid sm:grid-cols-3">
-          <.money_stat
-            id="gstr3b-total-itc"
-            label="ITC this month"
-            paise={@stats.total_tax_paise}
-            known={@stats.itc_money_known?}
-          />
-          <%!-- Named for what actually holds the money up. When every open rupee
-                waits on a document, "riding on decisions" sends the reviewer to
-                decide something that cannot be decided. --%>
-          <.money_stat
-            id="gstr3b-open-itc"
-            label={
-              if @stats.need_decision == 0 and @stats.awaiting_bills > 0,
-                do: "Awaiting bills",
-                else: "Riding on decisions"
-            }
-            paise={@stats.open_tax_paise}
-            known={@stats.itc_money_known?}
-          />
-          <%!-- Settled, not matched. `matched` and `open` are not complements —
-                audited-accepted rows sit in neither — so showing those two beside
-                the total invites a sum that lands short of the month. Settled is
-                the exact complement of open, so the three close. --%>
-          <.money_stat
-            id="gstr3b-settled-itc"
-            label="Settled"
-            paise={@stats.settled_tax_paise}
-            known={@stats.itc_money_known?}
-          />
-        </dl>
       </section>
-
-      {render_slot(@assembled)}
 
       <section id="gstr3b-completeness" class="space-y-block">
         <h3 class="text-base-content text-body font-semibold">Completeness and reconciliation</h3>
@@ -245,6 +207,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         </.data_table>
       </div>
 
+      {render_slot(@assembled)}
       {render_slot(@actions)}
     </section>
     """
@@ -267,33 +230,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       </dd>
       <dd :if={@unknown} class="text-body text-ink-subtle mt-1 font-medium">
         — <span class="text-meta">{@unknown_note}</span>
-      </dd>
-    </div>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :label, :string, required: true
-  attr :paise, :integer, required: true
-  attr :known, :boolean, default: true
-
-  # A headline figure the summary never recorded gets the same treatment as a
-  # count it never recorded (`control_stat`): a dash and what is missing. The
-  # figure keeps its place in the row either way — a tile that vanishes reads as
-  # a section with two positions rather than one that cannot state its third.
-  defp money_stat(assigns) do
-    ~H"""
-    <div>
-      <dt class="text-ink-subtle text-label font-semibold uppercase">{@label}</dt>
-      <dd
-        :if={@known}
-        id={@id}
-        class="font-display text-base-content text-lead tabular-nums"
-      >
-        {format_money(@paise, prefix: "₹")}
-      </dd>
-      <dd :if={not @known} id={@id} class="text-ink-subtle text-lead">
-        — <span class="text-meta">not recorded for this month</span>
       </dd>
     </div>
     """
@@ -341,50 +277,83 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
     ]
   end
 
-  defp verdict_state(%{gstr3b_signoff: %{}, purchase_month: %{filed_at: filed_at}})
+  # The component is invoked for every month and hides itself when there is no
+  # purchase track, but assigns are prepared before HEEx applies that `:if`.
+  defp verdict_state(%{stats: nil}), do: %{copy: nil}
+
+  defp verdict_state(%{
+         gstr3b_signoff: %{},
+         purchase_month: %{filed_at: filed_at},
+         stats: stats
+       })
        when not is_nil(filed_at),
-       do: %{
-         variant: "neutral",
-         label: "Filed",
-         copy: "The signed GSTR-3B is on the GST portal."
-       }
+       do: %{copy: lifecycle_copy(stats, :filed)}
 
-  defp verdict_state(%{gstr3b_signoff: %{}}),
-    do: %{
-      variant: "success",
-      label: "Signed",
-      copy: "The signed reconciliation is frozen and ready for portal filing."
-    }
+  defp verdict_state(%{gstr3b_signoff: %{}, stats: stats}),
+    do: %{copy: lifecycle_copy(stats, :signed)}
 
-  # The badge names what this card is: a reconciliation with open decisions. It
-  # read "Blocked", which is the GSTR-3B's state, on a card titled "Purchase
-  # reconciliation" — the badge and its object disagreed.
-  defp verdict_state(%{stats: %{need_decision: count}}) when count > 0,
-    do: %{
-      variant: "error",
-      label: "Needs #{count} #{plural(count, "decision")}",
-      copy:
-        "#{count} #{plural(count, "decision")} must be worked before the GSTR-3B can be signed."
-    }
+  defp verdict_state(%{stats: %{need_decision: count} = stats}) when count > 0,
+    do: %{copy: decision_copy(stats, count)}
 
   # Reconciled as far as the supplied documents allow. Nobody on this page can
   # move it: the portal reported supplies whose bills were never sent, so the
   # next step is a request, not a judgement.
-  defp verdict_state(%{stats: %{awaiting_bills: count}}) when count > 0,
-    do: %{
-      variant: "warning",
-      label: "Waiting for bills",
-      copy:
-        "#{count} #{plural(count, "invoice")} #{verb(count)} in the GSTR-2B with no bill supplied. " <>
-          "That credit needs its documents before it can be claimed."
-    }
+  defp verdict_state(%{stats: %{awaiting_bills: count} = stats}) when count > 0,
+    do: %{copy: awaiting_bills_copy(stats, count)}
 
-  defp verdict_state(_assigns),
-    do: %{
-      variant: "success",
-      label: "Reconciled",
-      copy: "Every purchase bill is settled against the GSTR-2B."
-    }
+  defp verdict_state(%{stats: stats}), do: %{copy: reconciled_copy(stats)}
+
+  defp decision_copy(%{itc_money_known?: false}, count),
+    do:
+      "#{count} purchase #{plural(count, "decision")} awaiting review; ITC amount not recorded for this month."
+
+  defp decision_copy(%{total_tax_paise: 0}, count),
+    do: "#{count} purchase #{plural(count, "decision")} awaiting review."
+
+  defp decision_copy(%{settled_tax_paise: 0} = stats, count) do
+    "All #{money(stats.total_tax_paise)} of proposed ITC is awaiting #{count} " <>
+      "#{plural(count, "decision")}."
+  end
+
+  defp decision_copy(stats, count) do
+    "#{money(stats.settled_tax_paise)} resolved · #{money(stats.open_tax_paise)} pending review " <>
+      "across #{count} #{plural(count, "decision")}."
+  end
+
+  defp awaiting_bills_copy(%{itc_money_known?: false}, count),
+    do: "#{count} missing #{plural(count, "bill")}; ITC amount not recorded for this month."
+
+  defp awaiting_bills_copy(%{settled_tax_paise: 0} = stats, count) do
+    "All #{money(stats.total_tax_paise)} of proposed ITC is awaiting #{count} missing " <>
+      "#{plural(count, "bill")}."
+  end
+
+  defp awaiting_bills_copy(stats, count) do
+    "#{money(stats.settled_tax_paise)} resolved · #{money(stats.open_tax_paise)} awaiting " <>
+      "#{count} missing #{plural(count, "bill")}."
+  end
+
+  defp reconciled_copy(%{itc_money_known?: false}),
+    do: "Purchase reconciliation complete; ITC amount not recorded for this month."
+
+  defp reconciled_copy(stats), do: "#{money(stats.total_tax_paise)} resolved."
+
+  defp lifecycle_copy(%{itc_money_known?: false}, :filed),
+    do: "GSTR-3B filed; ITC amount not recorded for this month."
+
+  defp lifecycle_copy(%{itc_money_known?: false}, :signed),
+    do: "GSTR-3B signed; ITC amount not recorded for this month."
+
+  defp lifecycle_copy(stats, :filed),
+    do: "#{money(stats.total_tax_paise)} resolved · GSTR-3B filed on the GST portal."
+
+  defp lifecycle_copy(stats, :signed),
+    do: "#{money(stats.total_tax_paise)} resolved · GSTR-3B ready for portal filing."
+
+  defp review_label(1), do: "Review decision"
+  defp review_label(count), do: "Review #{count} decisions"
+
+  defp money(paise), do: format_money(paise, prefix: "₹")
 
   defp row_click(row, client, period) do
     scope = if Register.open_row?(row), do: "needs_you", else: "all"
@@ -415,7 +384,4 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
   defp plural(1, word), do: word
   defp plural(_count, word), do: word <> "s"
-
-  defp verb(1), do: "appears"
-  defp verb(_count), do: "appear"
 end

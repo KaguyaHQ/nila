@@ -15,7 +15,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   alias Nila.Gst.WorkQueue
 
   @doc """
-  Resolves the facts of a month into `%{headline, tone, quiet, door, deadline}`.
+  Resolves the facts of a month into `%{headline, tone, quiet, door, deadline, deadlines}`.
 
   Kept separate from the markup so the state table is testable as data rather
   than by scraping HTML.
@@ -25,6 +25,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     |> door_and_headline()
     |> Map.put(:quiet, quiet_lines(facts))
     |> put_deadline(facts)
+    |> put_deadlines(facts)
   end
 
   # 0/1. A packet in question, then interrupted piles.
@@ -127,60 +128,34 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     }
   end
 
-  # 4. Live work, purchases first. A track that is merely *absent* is not live
-  #    work for the person on the page (it is a chase, and it is somebody
-  #    else's move), so it must not outrank a signature that is ready now.
-  #    Each return has its own deadline; the GSTR-1 does not wait on purchase
-  #    bills it will never contain.
-  defp settled_door_and_headline(%{tracks: %{purchase: :open}} = facts) do
-    count = facts.stats.need_decision
-
+  # 4. Purchase work has its own visible track immediately below this header,
+  #    so that track owns the action and the detailed ITC position. The month
+  #    header states only the return-level consequence; repeating the amount,
+  #    count and button here made the two surfaces chant the same state.
+  defp settled_door_and_headline(%{tracks: %{purchase: :open}}) do
     %{
       tone: :calm,
-      headline: decisions_headline(facts, count),
-      door: %{
-        id: "month-door-decisions",
-        label: "Work the #{pluralise(count, "decision")}",
-        kind: :patch,
-        to: ~p"/gst/#{facts.client.id}/#{facts.period}/review/purchase?scope=needs_you"
-      }
+      headline: nil,
+      door: nil
     }
   end
 
-  # Everything judgeable is judged; what is left is a bill nobody sent. The door
-  # is the chase, and the headline says whose move it is — calling this "N
-  # decisions" pointed a senior at work that has no decision in it.
-  defp settled_door_and_headline(%{tracks: %{purchase: :awaiting_bills}} = facts) do
-    count = facts.stats.awaiting_bills
-
+  # Everything judgeable is judged; what remains is a document chase. It still
+  # belongs to the purchase track rather than becoming a duplicate header door.
+  defp settled_door_and_headline(%{tracks: %{purchase: :awaiting_bills}}) do
     %{
       tone: :calm,
-      headline: awaiting_bills_headline(facts, count),
-      door: %{
-        id: "month-door-request-bills",
-        label: "Request the missing #{pluralise(count, "bill")}",
-        kind: :patch,
-        to: ~p"/gst/#{facts.client.id}/#{facts.period}/review/purchase?scope=needs_you"
-      }
+      headline: nil,
+      door: nil
     }
   end
 
-  defp settled_door_and_headline(%{tracks: %{sales: :open}} = facts) do
-    count = facts.open_issue_count
-
-    if count > 0 do
-      %{
-        tone: :calm,
-        headline: sales_issues_headline(facts, count),
-        door: nil
-      }
-    else
-      %{
-        tone: :calm,
-        headline: "GSTR-1 drafted and clean. Review the register, then approve it below.",
-        door: nil
-      }
-    end
+  defp settled_door_and_headline(%{tracks: %{sales: :open}}) do
+    %{
+      tone: :calm,
+      headline: nil,
+      door: nil
+    }
   end
 
   defp settled_door_and_headline(%{tracks: %{sales: :awaiting_confirmation}}) do
@@ -445,40 +420,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp cash_payable(_facts), do: nil
 
-  # Headlines lead with rupees whenever rupees exist. A screen without a money
-  # rollup is not a position, it is homework.
-  #
-  # The lead is the month's whole ITC and the second figure is explicitly a
-  # *subset* of it. The previous copy put matched and open side by side — two
-  # numbers a reader naturally adds, which is wrong, because audited-accepted
-  # rows sit in neither. It also called the matched pot "clean"; ITC matched to
-  # the 2B is unchallenged so far, not banked. Nothing is claimed until the 3B
-  # is filed, and telling a reviewer otherwise is how a page gets trusted for
-  # something it never checked.
-  #
-  # Both money clauses drop when the snapshot never recorded the figures: a
-  # count is not evidence of a rupee amount, and "₹0 of ITC this month" above a
-  # register of N invoices is the impossible pair the tiles were just fixed not
-  # to print.
-  defp decisions_headline(%{stats: %{itc_money_known?: false}}, count),
-    do: "#{count} #{pluralise(count, "decision")} still to make."
-
-  defp decisions_headline(%{stats: stats}, count) do
-    "#{money(stats.total_tax_paise)} of ITC this month. " <>
-      "#{money(stats.open_tax_paise)} of it rides on #{count} #{pluralise(count, "decision")}."
-  end
-
-  # Same money shape, but the second figure names a document rather than a
-  # judgement, because no decision on this page can release it.
-  defp awaiting_bills_headline(%{stats: %{itc_money_known?: false}}, count),
-    do: "#{count} #{pluralise(count, "bill")} the client has not sent."
-
-  defp awaiting_bills_headline(%{stats: stats}, count) do
-    "#{money(stats.total_tax_paise)} of ITC this month. " <>
-      "#{money(stats.awaiting_bills_tax_paise)} of it needs #{count} " <>
-      "#{pluralise(count, "bill")} the client has not sent."
-  end
-
   # Both 2B headlines lead with what the month *has* rather than with what it
   # is missing, because the bills being in is the reviewer's own work and it
   # is real. What follows is a date, not a task.
@@ -510,20 +451,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     |> Map.fetch!(:gstr2b_due)
     |> Formatters.format_display_date()
   end
-
-  defp sales_issues_headline(%{tracks: %{purchase: :absent}}, count),
-    do: "GSTR-1 drafted. #{count} #{pluralise(count, "issue")} to check."
-
-  # Same gate as the other money clauses: a filed 3B whose snapshot predates the
-  # tax fields still carries its bucket counts, so this printed "Purchases
-  # clear, ₹0 ITC" from a month that recorded no ITC figure at all.
-  defp sales_issues_headline(%{stats: %{itc_money_known?: false}}, count),
-    do: "Purchases clear. GSTR-1 has #{count} #{pluralise(count, "issue")} to check."
-
-  defp sales_issues_headline(facts, count),
-    do:
-      "Purchases clear, #{money(facts.stats.matched_tax_paise)} ITC. " <>
-        "GSTR-1 has #{count} #{pluralise(count, "issue")} to check."
 
   # Same reason as the file door: at a 3B signature the payable is the fact the
   # signer is putting their name to, so it leads rather than trailing the word
@@ -656,15 +583,24 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp line_for(:purchase, :filed, _facts), do: "GSTR-3B filed."
   defp line_for(_track, _status, _facts), do: nil
 
-  # The chip follows whichever track owns the door, because a reviewer working
-  # 3B decisions does not need the GSTR-1 clock. A filed return never owns the
-  # door, so a closed month shows no clock at all; an unfiled one keeps its
-  # alarm however old, because late is late.
+  # Retained as the state table's primary clock for callers that need one track
+  # to win. The masthead renders `deadlines` instead: this page is the month, and
+  # hiding the second return's clock makes one overdue obligation disappear.
   defp put_deadline(verdict, facts) do
     track = resolve_owner(facts) || fallback_track(facts)
     deadline = track && WorkQueue.track_deadline(facts.period, facts.today, track)
 
     Map.put(verdict, :deadline, deadline)
+  end
+
+  defp put_deadlines(verdict, facts) do
+    deadlines =
+      for {track, status} <- [sales: facts.tracks.sales, purchase: facts.tracks.purchase],
+          status != :filed do
+        {track, WorkQueue.track_deadline(facts.period, facts.today, track)}
+      end
+
+    Map.put(verdict, :deadlines, deadlines)
   end
 
   defp fallback_track(%{tracks: %{sales: :filed, purchase: :filed}}), do: nil
@@ -716,6 +652,17 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     <section id="month-verdict" class="border-base-300 pb-section border-b">
       <div class="gap-block flex flex-col lg:flex-row lg:items-start lg:justify-between">
         <div class="space-y-related min-w-0">
+          <%!-- The month is reachable from Today, the register, a client, or a pasted
+               link, so it states its one parent itself. --%>
+          <p class="text-eyebrow text-moon font-semibold uppercase">
+            <.link
+              id="month-parent-link"
+              navigate={~p"/register"}
+              class="hover:text-base-content transition"
+            >
+              GST months
+            </.link>
+          </p>
           <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h1 class="font-display text-base-content text-h4 font-normal">{@client.name}</h1>
             <span class="text-ink-subtle text-ui font-medium">
@@ -723,6 +670,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
             </span>
           </div>
           <p
+            :if={@verdict.headline}
             id="month-headline"
             class={[
               "text-body max-w-3xl font-medium",
@@ -732,17 +680,23 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
             {@verdict.headline}
           </p>
           <div
-            :if={@verdict.quiet != [] or @verdict.deadline}
+            :if={@verdict.deadlines != []}
+            id="month-deadlines"
+            class="text-body text-ink-muted flex flex-wrap items-center gap-x-4 gap-y-1"
+          >
+            <span
+              :for={{track, deadline} <- @verdict.deadlines}
+              id={"month-deadline-#{track}"}
+              class={deadline_class(deadline)}
+            >
+              {deadline.return} · {deadline_label(deadline)}
+            </span>
+          </div>
+          <div
+            :if={@verdict.quiet != []}
             class="text-body text-ink-muted flex flex-wrap items-center gap-x-4 gap-y-1"
           >
             <span :for={line <- @verdict.quiet} id={"month-quiet-#{line_id(line)}"}>{line}</span>
-            <span
-              :if={@verdict.deadline}
-              id="month-deadline"
-              class={deadline_class(@verdict.deadline)}
-            >
-              {@verdict.deadline.return} · {deadline_label(@verdict.deadline)}
-            </span>
           </div>
           <p
             :if={Map.get(@verdict, :busy)}
