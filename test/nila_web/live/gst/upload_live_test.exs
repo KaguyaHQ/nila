@@ -370,6 +370,31 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     refute has_element?(view, "#gst-dump-progress-#{dump.id}")
   end
 
+  test "a read that lost pages names them instead of reporting a clean finish", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    upload_pdf(view, "sales.pdf", "sales")
+    submit(view, client)
+    [dump] = Dumps.list(org.id, client.id, @period)
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, @period, "sales",
+       {:done, client.id, @period, [1, 2]}}
+    )
+
+    assert render(view) =~ "Read, but not all of it"
+    assert render(view) =~ "Pages 1, 2 produced no bill"
+    refute has_element?(view, "#gst-dump-#{dump.id} .text-success")
+
+    # The month is still derived from what did land, so the way in stays open.
+    assert has_element?(view, "#gst-upload-open-month")
+  end
+
   test "a held dump links to the signed month", %{conn: conn, org: org, client: client} do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 

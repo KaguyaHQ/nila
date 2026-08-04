@@ -1675,7 +1675,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     ClientMonths.broadcast_progress(
       org.id,
-      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:done, client.id, @period}}
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase",
+       {:done, client.id, @period, []}}
     )
 
     refute has_element?(view, "#month-dump-#{dump.id}")

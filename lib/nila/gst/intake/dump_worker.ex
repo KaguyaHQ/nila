@@ -154,7 +154,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
         progress(dump, :held)
 
       :done ->
-        progress(dump, {:done, dump.client_id, dump.period})
+        progress(dump, {:done, dump.client_id, dump.period, dump_unaccounted_pages(dump)})
         if dump.kind == "sales", do: CompletenessSender.enqueue(dump)
     end
 
@@ -317,6 +317,16 @@ defmodule Nila.Gst.Intake.DumpWorker do
   end
 
   defp unaccounted_pages(result), do: Map.get(result, :unaccounted_pages) || []
+
+  # The same pages `ledger_issues/2` flags on the month, told to the screen the
+  # operator is actually watching. A read that lost a bill to a rate limit still
+  # derives a month and still reports `:done`; without this the only signal is a
+  # flag they have to click through to find, and the card that sent them there
+  # said the read was clean.
+  defp dump_unaccounted_pages(%Dump{meta: meta}) when is_map(meta),
+    do: Map.get(meta, "unaccounted_pages") || []
+
+  defp dump_unaccounted_pages(_dump), do: []
 
   # Pages that could not be rendered are a hole in the evidence a reviewer
   # checks a line against, not a failed read — so the dump lands, and the hole

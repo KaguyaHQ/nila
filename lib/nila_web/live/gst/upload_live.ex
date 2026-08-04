@@ -123,6 +123,7 @@ defmodule NilaWeb.Gst.UploadLive do
              status: :queued,
              progress: nil,
              retrying: nil,
+             unaccounted: [],
              client_id: client_id,
              period: period
            }}
@@ -275,7 +276,9 @@ defmodule NilaWeb.Gst.UploadLive do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  defp apply_progress(job, {:done, _client_id, _period}), do: %{job | status: :done}
+  defp apply_progress(job, {:done, _client_id, _period, unaccounted}),
+    do: %{job | status: :done, progress: nil, retrying: nil, unaccounted: unaccounted}
+
   defp apply_progress(job, {:failed, _reason}), do: %{job | status: :failed}
   defp apply_progress(job, :held), do: %{job | status: :held}
 
@@ -360,30 +363,48 @@ defmodule NilaWeb.Gst.UploadLive do
   defp kind_title("gstr2b"), do: "GSTR-2B"
   defp kind_title("filed_gstr1"), do: "Filed GSTR-1"
 
-  defp job_label(:queued), do: "Queued"
-  defp job_label(:extracting), do: "Reading the bills"
-  defp job_label(:deriving), do: "Deriving the GSTR-1"
-  defp job_label(:reconciling), do: "Reconciling against 2B"
-  defp job_label(:done), do: "Done"
+  # A read that lost pages to a provider error still derives a month, so it is
+  # `:done` — but a green check over a month that is missing a bill is the one
+  # thing this screen must not say. The pages are named here, next to the button
+  # that sends the operator to them.
+  defp partial?(%{status: :done, unaccounted: [_ | _]}), do: true
+  defp partial?(_job), do: false
 
-  defp job_label(:held),
+  defp page_list([page]), do: "Page #{page}"
+  defp page_list(pages), do: "Pages #{Enum.join(pages, ", ")}"
+
+  defp job_label(job) do
+    if partial?(job), do: "Read, but not all of it", else: status_label(job.status)
+  end
+
+  defp job_variant(job) do
+    if partial?(job), do: "warning", else: status_variant(job.status)
+  end
+
+  defp status_label(:queued), do: "Queued"
+  defp status_label(:extracting), do: "Reading the bills"
+  defp status_label(:deriving), do: "Deriving the GSTR-1"
+  defp status_label(:reconciling), do: "Reconciling against 2B"
+  defp status_label(:done), do: "Done"
+
+  defp status_label(:held),
     do: "Held — this month's return is already signed. Open the month to have a senior reopen it."
 
-  defp job_label(:needs_confirmation),
+  defp status_label(:needs_confirmation),
     do: "Read, but it doesn't look like this month's — open the month to sort it out"
 
-  defp job_label(:after_filing),
+  defp status_label(:after_filing),
     do: "This month is already filed — bring this into the current month instead"
 
-  defp job_label(:failed), do: "Failed — check the file and bring it in again"
-  defp job_label(_stage), do: "Working"
+  defp status_label(:failed), do: "Failed — check the file and bring it in again"
+  defp status_label(_stage), do: "Working"
 
-  defp job_variant(:done), do: "success"
-  defp job_variant(:failed), do: "error"
-  defp job_variant(:held), do: "warning"
-  defp job_variant(:needs_confirmation), do: "warning"
-  defp job_variant(:after_filing), do: "info"
-  defp job_variant(_status), do: "neutral"
+  defp status_variant(:done), do: "success"
+  defp status_variant(:failed), do: "error"
+  defp status_variant(:held), do: "warning"
+  defp status_variant(:needs_confirmation), do: "warning"
+  defp status_variant(:after_filing), do: "info"
+  defp status_variant(_status), do: "neutral"
 
   @settled [:done, :failed, :held, :after_filing, :needs_confirmation]
 
@@ -604,9 +625,14 @@ defmodule NilaWeb.Gst.UploadLive do
                 class="loading loading-sm loading-spinner text-primary mt-0.5 shrink-0"
               ></span>
               <.icon
-                :if={job.status == :done}
+                :if={job.status == :done and not partial?(job)}
                 name="hero-check-circle"
                 class="text-success mt-0.5 size-5 shrink-0"
+              />
+              <.icon
+                :if={partial?(job)}
+                name="hero-exclamation-triangle"
+                class="text-warning mt-0.5 size-5 shrink-0"
               />
               <.icon
                 :if={job.status == :failed}
@@ -630,8 +656,11 @@ defmodule NilaWeb.Gst.UploadLive do
               />
               <div class="min-w-0 flex-1">
                 <p class="text-base-content text-ui font-medium">{kind_title(job.kind)}</p>
-                <p class={["text-meta", "text-#{job_variant(job.status)}"]}>
-                  {job_label(job.status)}
+                <p class={["text-meta", "text-#{job_variant(job)}"]}>
+                  {job_label(job)}
+                </p>
+                <p :if={partial?(job)} class="text-ink-subtle text-meta">
+                  {page_list(job.unaccounted)} produced no bill. Open the month and check the original.
                 </p>
                 <.link
                   :if={job.status in [:held, :needs_confirmation]}
