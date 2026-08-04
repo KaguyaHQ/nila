@@ -98,6 +98,13 @@ defmodule Nila.Gst.Extraction.Segmented do
       |> Task.async_stream(
         fn segment -> {segment, contained(kind, transcription, segment, opts)} end,
         max_concurrency: Keyword.get(opts, :max_concurrency, @max_concurrency),
+        # Ordered delivery would drain the buffer in submission order, so one
+        # segment sitting in rate-limit backoff holds back the count for every
+        # segment behind it — a bar frozen at zero while thirteen bills are
+        # already read, and thirteen artifacts held live waiting on the first.
+        # Nothing downstream reads this order: artifacts are sorted by page and
+        # failures by their first page.
+        ordered: false,
         timeout: :infinity
       )
       # Mapped over the stream rather than after it, so each segment narrates as
@@ -125,7 +132,7 @@ defmodule Nila.Gst.Extraction.Segmented do
         segments: length(segments),
         invoice_segments: total,
         usage: artifacts |> Enum.map(& &1["usage"]) |> sum_usage(),
-        failures: Enum.flat_map(results, &failure/1)
+        failures: results |> Enum.flat_map(&failure/1) |> Enum.sort_by(&List.first(&1.pages))
       },
       unaccounted_pages: unaccounted_pages(transcription, segments, artifacts)
     }

@@ -168,6 +168,53 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
     end
   end
 
+  # A rate-limited segment sits in backoff for half a minute. Ordered delivery
+  # would hold every later segment's report behind it, so the bar reads zero
+  # while the rest of the pile is already read — which is what the operator
+  # saw, and what sent them looking for a hung screen.
+  test "a segment stuck in backoff does not hold back the count for the rest" do
+    test_pid = self()
+    t = transcription(Enum.map(1..3, &{&1, invoice_page(&1)}))
+
+    Req.Test.stub(MistralChat, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      content = Jason.decode!(body)["messages"] |> List.last() |> Map.fetch!("content")
+
+      if content =~ "--- page 1 ---" do
+        send(test_pid, {:stuck, self()})
+        receive do: (:release -> :ok)
+      end
+
+      reply(conn, %{
+        "invoice_number" => "BRZ/26/0X",
+        "line_items" => [%{"taxable_value" => 1_000.0}],
+        "printed_total_taxable" => 1_000.0,
+        "printed_grand_total" => 1_180.0
+      })
+    end)
+
+    task =
+      Task.async(fn ->
+        Req.Test.allow(MistralChat, test_pid, self())
+
+        Segmented.extract(:purchase, t, Enum.map(1..3, &segment([&1])),
+          on_segment: fn done, total -> send(test_pid, {:report, done, total}) end
+        )
+      end)
+
+    assert_receive {:stuck, blocked}, 2_000
+    # The first segment is still mid-call; the two behind it have landed and
+    # said so.
+    assert_receive {:report, 1, 3}, 2_000
+    assert_receive {:report, 2, 3}, 2_000
+
+    send(blocked, :release)
+    result = Task.await(task, 5_000)
+
+    assert_receive {:report, 3, 3}, 2_000
+    assert length(result.pages) == 3
+  end
+
   test "the ledger reports a page no invoice claimed, and accounts for challans" do
     t = transcription([{1, invoice_page(1)}, {2, "DELIVERY CHALLAN"}, {3, "???"}])
 
