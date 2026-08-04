@@ -55,6 +55,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
             :for={{_key, index} <- Enum.with_index(dump.file_keys)}
             href={~p"/gst/#{@client.id}/#{@period}/original/#{dump.id}/#{index}"}
             id={"month-arrived-file-#{dump.id}-#{index}"}
+            download
             variant="outline"
             size="xs"
           >

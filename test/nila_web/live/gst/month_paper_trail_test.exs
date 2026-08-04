@@ -154,9 +154,13 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
     refute render(view) =~ "arrival retained"
     refute render(view) =~ "Source arrivals"
 
+    # `download` keeps the click a file fetch. As a bare `href` it was a
+    # top-level navigation, which tore down the LiveView socket on the way out
+    # — the disconnect banner and a full remount, for a file the page already
+    # serves as an attachment.
     assert has_element?(
              view,
-             "#month-arrived-file-#{dump.id}-0[href='/gst/#{client.id}/#{@period}/original/#{dump.id}/0']",
+             "#month-arrived-file-#{dump.id}-0[href='/gst/#{client.id}/#{@period}/original/#{dump.id}/0'][download]",
              "Download original"
            )
 

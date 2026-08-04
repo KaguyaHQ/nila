@@ -85,6 +85,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             <.button
               id="gstr1-guide-download-json"
               href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/return.json"}
+              download
               variant="outline"
               size="xs"
             >
