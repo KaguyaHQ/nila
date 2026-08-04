@@ -68,10 +68,6 @@ defmodule Nila.Gst.Issues do
     "pages_unaccounted" => {"required", :confirmation},
     "evidence_unavailable" => {"required", :confirmation},
 
-    # What the month cannot see for itself: whether the pile is the whole month.
-    # Internal consistency cannot answer it, so somebody has to.
-    "completeness_unconfirmed" => {"required", :confirmation},
-
     # Cess: the question, and the capability gap one answer uncovers
     "cess_not_evaluated" => {"required", :confirmation},
     "cess_unsupported" => {"blocking", nil},

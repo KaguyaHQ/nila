@@ -439,8 +439,9 @@ defmodule NilaWeb.Gst.MonthLive do
     workings =
       provided_workings ||
         case signoff do
-          # Invoice-less months still have completeness questions. A hand-built
-          # empty projection would offer approval over a server-side rejection.
+          # Invoice-less months still face the client-confirmation gate. A
+          # hand-built empty projection would offer approval over a server-side
+          # rejection.
           nil ->
             SalesResolutions.workings(sales)
 
@@ -766,15 +767,6 @@ defmodule NilaWeb.Gst.MonthLive do
 
   def handle_event("undo", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "reopen", "target" => target})
-
-  def handle_event("attest-completeness", %{"target" => target, "answer" => answer}, socket)
-      when answer in ~w(no yes unknown) do
-    record(socket, %{
-      "verb" => "confirm_issue",
-      "target" => target,
-      "payload" => %{"answer" => answer}
-    })
-  end
 
   def handle_event("accept_difference", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "accept_difference", "target" => target})
@@ -1167,7 +1159,6 @@ defmodule NilaWeb.Gst.MonthLive do
             completeness={@sales_completeness}
             confirmation={@sales_confirmation}
             r1_signoff={@r1_signoff}
-            month_issues={@month_issues}
             issues_by_invoice={@issues_by_invoice}
             pages_read={@sales_pages_read}
             visited={@visited_inums}

@@ -215,7 +215,7 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     assert has_element?(month_view, "#gstr1-review-required[data-phx-link='patch']")
     refute has_element?(month_view, "#gstr1-evidence-modal")
     refute has_element?(month_view, "#month-page button[phx-click='resolve-invoice-issue']")
-    assert has_element?(month_view, "#gstr1-completeness-attestation")
+    assert has_element?(month_view, "#gstr1-checks-before-filing")
   end
 
   defp sign_month!(context) do

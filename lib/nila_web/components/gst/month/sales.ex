@@ -23,7 +23,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   attr :completeness, :atom, required: true
   attr :confirmation, :any, default: nil
   attr :r1_signoff, :any, default: nil
-  attr :month_issues, :list, required: true
   attr :issues_by_invoice, :map, required: true
   attr :pages_read, :integer, default: nil
   attr :visited, :any, default: MapSet.new()
@@ -46,17 +45,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
     assigns =
       assigns
       |> assign(:series, assigns.account.extraction.series)
-      # The completeness questions gate like anything else, but they are one
-      # block of yes/no/don't-know rather than six rows in a list of defects —
-      # nothing is asserted to be wrong with the bills we hold.
-      |> assign(
-        :required_issues,
-        Enum.reject(assigns.account.issues.required, &completeness?/1)
-      )
-      |> assign(
-        :completeness_questions,
-        completeness_questions(assigns.month_issues)
-      )
+      |> assign(:required_issues, assigns.account.issues.required)
       |> assign(:verdict, verdict_state(assigns))
       |> assign(:draft_label, draft_label(assigns))
       |> assign(:reconciliation_rows, reconciliation_rows(assigns.account))
@@ -113,18 +102,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           >
             Review required items
           </.button>
-          <.button
-            :if={
-              is_nil(@r1_signoff) and @required_issues == [] and
-                completeness_open?(@completeness_questions)
-            }
-            id="gstr1-review-completeness"
-            href="#gstr1-completeness-attestation"
-            variant="primary"
-            size="sm"
-          >
-            Answer required questions
-          </.button>
         </div>
         <p id="gstr1-draft-position" class="text-body text-ink-muted tabular-nums">
           <span id="gstr1-draft-invoices">
@@ -141,87 +118,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         </p>
       </section>
 
-      <%!-- What the pile cannot tell us about itself.
-
-            Everything in the completeness block above is internal consistency —
-            files received, pages read, sequence gaps. One perfectly read file
-            can still be half a month, and no amount of internal agreement can
-            reveal a credit note that was issued and never sent. Somebody has to
-            answer, per question, because each yes routes somewhere different. --%>
-      <section
-        :if={@completeness_questions != []}
-        id="gstr1-completeness-attestation"
-        class="space-y-block"
-      >
-        <div class="flex items-center justify-between gap-3">
-          <h3 class="text-base-content text-body font-semibold">What we can't see from the pile</h3>
-          <span class="text-ink-subtle text-meta">
-            {Enum.count(@completeness_questions, &is_nil(&1.answer))} unanswered
-          </span>
-        </div>
-        <div class="border-base-300 divide-base-300 rounded-box divide-y border">
-          <div
-            :for={q <- @completeness_questions}
-            id={"gstr1-attest-#{q.key}"}
-            class="gap-related flex flex-wrap items-center px-4 py-3"
-          >
-            <p class="text-base-content text-ui min-w-0 flex-1">{q.question}</p>
-            <div :if={is_nil(q.answer) and is_nil(@r1_signoff)} class="flex gap-1.5">
-              <.button
-                variant="outline"
-                size="xs"
-                phx-click="attest-completeness"
-                phx-value-target={q.target}
-                phx-value-answer="no"
-              >
-                No
-              </.button>
-              <.button
-                variant="outline"
-                size="xs"
-                phx-click="attest-completeness"
-                phx-value-target={q.target}
-                phx-value-answer="yes"
-              >
-                Yes
-              </.button>
-              <%!-- Never force a "no" to proceed. "I haven't checked" is the
-                    honest answer most of the time, and it keeps the question
-                    open and gating rather than letting an unchecked category
-                    into the filing. It does not raise a client chase — there is
-                    no collection queue on this side, and the comment that said
-                    otherwise described a feature that was never built. --%>
-              <.button
-                variant="ghost"
-                size="xs"
-                phx-click="attest-completeness"
-                phx-value-target={q.target}
-                phx-value-answer="unknown"
-              >
-                Don't know
-              </.button>
-            </div>
-            <div :if={q.answer} class="flex items-center gap-2">
-              <span class={[
-                "text-meta font-medium",
-                (q.answer == "no" && "text-ink-subtle") || "text-warning"
-              ]}>
-                {attestation_note(q)}
-              </span>
-              <.button
-                :if={is_nil(@r1_signoff)}
-                variant="ghost"
-                size="xs"
-                phx-click="undo"
-                phx-value-target={q.target}
-              >
-                Undo
-              </.button>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section
         :if={@required_issues != []}
         id="gstr1-checks-before-filing"
@@ -233,6 +129,20 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             {Helpers.work_clause(@account.issues.by_kind)}
           </span>
         </div>
+        <%!-- A blocker is a gap in this engine, not a defect in the client's
+              bills, and nothing on this page can clear one. Saying so names the
+              move that is actually available instead of leaving the month
+              parked against a wall. --%>
+        <p
+          :if={Map.get(@account.issues.by_kind, :blocked, 0) > 0}
+          id="gstr1-blocked-next-move"
+          class="bg-error/5 border-error/30 rounded-box text-base-content text-body border px-4 py-3"
+        >
+          Nila files B2B invoices only, so it cannot build this month's return. File {Nila.Formatters.period_label(
+            @period
+          )} for {@client.name} manually on the portal — and tell us
+          which table you needed.
+        </p>
         <div class="space-y-related">
           <article
             :for={issue <- @required_issues}
@@ -560,18 +470,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             <span class={["text-meta", row.blocked? && "text-error"]}>{row.status}</span>
           </:col>
         </.data_table>
-        <%!-- Before anyone answers, the capability statement is all this page
-              can honestly say. Once they have, it names what was actually
-              confirmed absent — an assertion with a person behind it, not a
-              claim the engine invented from an empty table. --%>
-        <p
-          :if={confirmed_absent(@completeness_questions) != []}
-          id="gstr1-filing-confirmed-absent"
-          class="text-ink-subtle text-meta"
-        >
-          Confirmed absent this month: {confirmed_absent(@completeness_questions)
-          |> Enum.map_join(", ", & &1.noun)}.
-        </p>
         <p id="gstr1-filing-capability" class="text-ink-subtle text-meta">
           This return files B2B invoices. A credit note, export, SEZ, reverse-charge or B2C bill
           stops the month rather than being filed as an ordinary invoice.
@@ -579,10 +477,9 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       </section>
 
       <%!-- Directly under the return it approves. This used to render ~370
-            lines higher, above the completeness questions and the checks and
-            the source documents, so the summary of what was actually being
-            filed sat below the button that filed it and a reviewer taking the
-            normal path never saw it. --%>
+            lines higher, above the checks and the source documents, so the
+            summary of what was actually being filed sat below the button that
+            filed it and a reviewer taking the normal path never saw it. --%>
       {render_slot(@actions)}
 
       <section id="gstr1-register" class="space-y-block">
@@ -772,55 +669,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
   defp verdict_state(_assigns),
     do: %{copy: "Ready for approval. All required checks are resolved."}
-
-  defp completeness?(%{"code" => "completeness_unconfirmed"}), do: true
-  defp completeness?(_issue), do: false
-
-  # Every question, in the order the domain asks them, carrying whatever answer
-  # has been given. An answered "no" leaves no issue behind, so the answered
-  # ones are reconstructed from the question list rather than from the issues.
-  defp completeness_questions(issues) do
-    asked =
-      issues
-      |> Enum.filter(&completeness?/1)
-      |> Map.new(&{&1["attestation_key"], &1})
-
-    Enum.flat_map(SalesWorkings.completeness_questions(), fn q ->
-      case asked[q.key] do
-        nil ->
-          []
-
-        issue ->
-          [%{key: q.key, question: q.question, target: issue["target"], answer: issue["answer"]}]
-      end
-    end)
-  end
-
-  # Only what somebody actually said "no" to. A question answered "yes" or left
-  # unknown is not an absence anyone confirmed, and listing it here would put an
-  # assertion in a reviewer's mouth.
-  # Still gating: never answered, or answered "don't know", which settles
-  # nothing and deliberately keeps the question open.
-  defp completeness_open?(questions),
-    do: Enum.any?(questions, &(is_nil(&1.answer) or &1.answer == "unknown"))
-
-  defp confirmed_absent(questions) do
-    nouns = %{
-      "credit_or_debit_notes" => "credit and debit notes",
-      "exports" => "exports",
-      "sez_supplies" => "SEZ supplies",
-      "b2c_supplies" => "B2C supplies",
-      "cancelled_documents" => "cancellations",
-      "additional_series" => "any further invoice series"
-    }
-
-    for q <- questions, q.answer == "no", do: %{noun: nouns[q.key]}
-  end
-
-  defp attestation_note(%{answer: "no"}), do: "No"
-  defp attestation_note(%{answer: "yes"}), do: "Yes — see the blocker below"
-  defp attestation_note(%{answer: "unknown"}), do: "Asked the client"
-  defp attestation_note(_q), do: nil
 
   defp draft_label(%{r1_signoff: %{}}), do: "Approved draft"
 

@@ -102,8 +102,8 @@ defmodule Nila.Gst.Sales.ReviewTest do
         issue("source-a", "hsn_inferred_code", "open"),
         %{
           "invoice" => nil,
-          "code" => "completeness_unconfirmed",
-          "target" => "exports|month-scope",
+          "code" => "cess_not_evaluated",
+          "target" => "cess_not_evaluated|month-scope",
           "level" => "required",
           "status" => "open"
         }

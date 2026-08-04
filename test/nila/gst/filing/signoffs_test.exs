@@ -579,6 +579,34 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       assert {:error, :not_reviewed} = Signoffs.sign_off_gstr1(sales_month, scope)
     end
 
+    # A month with no invoices raises no issues, so `reviewable?` is true by
+    # vacuum. Nothing derived from an empty pile can say the pile is the month —
+    # only the client can, and this is the gate that makes them.
+    test "an empty month cannot be approved on the strength of having no issues", %{
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      {:ok, empty} =
+        SalesMonths.upsert(%{
+          org_id: sales_month.org_id,
+          client_id: sales_month.client_id,
+          period: "2025-12",
+          state: "worked",
+          cess_evaluated: true,
+          invoices: [],
+          derived_gstr1: %{},
+          issues: [],
+          summary: %{}
+        })
+
+      {:ok, reviewed} = SalesResolutions.mark_reviewed(empty)
+
+      assert SalesWorkings.reviewable?(SalesResolutions.workings(reviewed).issues)
+
+      assert {:error, {:sales_intake_incomplete, :open}} =
+               Signoffs.sign_off_gstr1(reviewed, scope)
+    end
+
     test "maker review remains available while completeness is open", %{
       sales_month: sales_month,
       owner_scope: scope

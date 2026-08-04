@@ -85,7 +85,6 @@ defmodule Nila.GstFixtures do
     sales_month
   end
 
-  defp sales_answer(%{"code" => "completeness_unconfirmed"}), do: %{"answer" => "no"}
   defp sales_answer(%{"code" => "cess_not_evaluated"}), do: %{"answer" => "no_cess"}
   defp sales_answer(_issue), do: %{}
 
