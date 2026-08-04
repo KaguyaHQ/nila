@@ -1,0 +1,1393 @@
+{
+    "data": {
+        "itcsumm": {
+            "itcavl": {
+                "revsup": {
+                    "sgst": 84.33,
+                    "b2b": {
+                        "sgst": 84.33,
+                        "txval": 3373,
+                        "cgst": 84.33,
+                        "cess": 0,
+                        "igst": 0
+                    },
+                    "txval": 3373,
+                    "cgst": 84.33,
+                    "cess": 0,
+                    "igst": 0
+                },
+                "nonrevsup": {
+                    "sgst": 50504.22,
+                    "b2b": {
+                        "sgst": 50504.22,
+                        "txval": 573243.29,
+                        "cgst": 50504.22,
+                        "cess": 0,
+                        "igst": 2175.35
+                    },
+                    "cgst": 50504.22,
+                    "cess": 0,
+                    "igst": 2175.35
+                }
+            }
+        },
+        "rtnprd": "112025",
+        "docdata": {
+            "b2b": [
+                {
+                    "inv": [
+                        {
+                            "val": 15990,
+                            "sgst": 1219.58,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 13550.84,
+                            "typ": "R",
+                            "cgst": 1219.58,
+                            "inum": "FAU8T82602050305",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "30-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        },
+                        {
+                            "val": 99,
+                            "sgst": 7.55,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 83.9,
+                            "typ": "R",
+                            "cgst": 7.55,
+                            "inum": "FAU8T92601935165",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "30-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "S.V. ELECTRONICS PRIVATE LIMITED",
+                    "supfildt": "10-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AAECS1679J1Z5"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 6646,
+                            "sgst": 506.88,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 5632,
+                            "typ": "R",
+                            "cgst": 506.88,
+                            "inum": "GSTI/25-26/7147",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "08-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "THE CENTRAL HARDWARE STORES",
+                    "supfildt": "10-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AAIFT7092H1ZW"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 34704,
+                            "sgst": 2646.9,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "37c0b9a1449a087d37bf232ade1460e6a6dc06267de7cf1e4e5f9908dae22a12",
+                            "txval": 29410,
+                            "typ": "R",
+                            "cgst": 2646.9,
+                            "irngendate": "22-11-2025",
+                            "inum": "INV10126",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "22-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        },
+                        {
+                            "val": 1628,
+                            "sgst": 124.2,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "972685e621ef704592bc1e6560ba2037d602b92eac31536ca4585560da250dde",
+                            "txval": 1380,
+                            "typ": "R",
+                            "cgst": 124.2,
+                            "irngendate": "28-11-2025",
+                            "inum": "INV10362",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "28-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        },
+                        {
+                            "val": 850,
+                            "sgst": 64.8,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "8a0b9b75554c17198526237b91daa828cbb74797cfcb0ad4661a018e9983576e",
+                            "txval": 720,
+                            "typ": "R",
+                            "cgst": 64.8,
+                            "irngendate": "10-11-2025",
+                            "inum": "INV9490",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "10-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        },
+                        {
+                            "val": 307,
+                            "sgst": 23.4,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "be7e56d21b2ed851a65013d7191351d7ae8028b2b187ea77ecf55f17d4949451",
+                            "txval": 260,
+                            "typ": "R",
+                            "cgst": 23.4,
+                            "irngendate": "10-11-2025",
+                            "inum": "INV9494",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "10-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "REFRIGERATION AND ALLIED TRADERS",
+                    "supfildt": "06-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AAAFR6942G1ZB"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 1512,
+                            "sgst": 115.35,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 1281.7,
+                            "typ": "R",
+                            "cgst": 115.35,
+                            "inum": "818",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "27-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "SRI MEENAKSHI PIPE CORPORATION FIRM",
+                    "supfildt": "11-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33ACJFS9861N1ZA"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 1700,
+                            "sgst": 0,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 1440.68,
+                            "typ": "R",
+                            "cgst": 0,
+                            "inum": "SGS/2526/4554",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 259.32,
+                            "dt": "18-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "SRI GURU SPARES",
+                    "supfildt": "10-12-2025",
+                    "supprd": "112025",
+                    "ctin": "34AWRPP6407B1ZI"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 246,
+                            "sgst": 6.15,
+                            "rev": "Y",
+                            "itcavl": "Y",
+                            "txval": 246,
+                            "typ": "R",
+                            "cgst": 6.15,
+                            "inum": "CRN1680369482",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "06-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "SMARTSHIFT INFO MARKETING SERVICES PRIVATE LIMITED",
+                    "supfildt": "11-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33ABMCS3412L1Z8"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 6185,
+                            "sgst": 471.74,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "e86261cd1fa5f9b5f1960428bf9d868330c5a14e1b8c35894eb1d19180bdf6bc",
+                            "txval": 5241.6,
+                            "typ": "R",
+                            "cgst": 471.74,
+                            "irngendate": "28-11-2025",
+                            "inum": "KE/7664/25-26",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "28-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "KISHORE ENTERPRISES",
+                    "supfildt": "10-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AAAFK4070E1ZV"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 1522,
+                            "sgst": 0,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "abe72f183ef9417f6af9b02f8f88297c07d77f46e1203af04506bc2d31d9074f",
+                            "txval": 1290,
+                            "typ": "R",
+                            "cgst": 0,
+                            "irngendate": "26-11-2025",
+                            "inum": "19284/25-26",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 232.2,
+                            "dt": "26-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "USHA ELECTRICALS",
+                    "supfildt": "09-12-2025",
+                    "supprd": "112025",
+                    "ctin": "32AAGFU0623D1ZS"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 141600,
+                            "sgst": 10800,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 120000,
+                            "typ": "R",
+                            "cgst": 10800,
+                            "inum": "BVC/221/25-26",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "15-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "BALAJI VASUDEVAN AND CO",
+                    "supfildt": "11-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AREPB6942P1ZK"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 1416,
+                            "sgst": 108,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 1200,
+                            "typ": "R",
+                            "cgst": 108,
+                            "inum": "CH/CR-5694/25-26",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "14-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "AS REFRIGERATION",
+                    "supfildt": "07-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33COTPM2642P1Z9"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 3149.99,
+                            "sgst": 240.25,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 2669.48,
+                            "typ": "R",
+                            "cgst": 240.25,
+                            "inum": "423/25-26",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "30-10-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "S K ENTERPRISES",
+                    "supfildt": "22-11-2025",
+                    "supprd": "102025",
+                    "ctin": "33AXUPN9127A1ZC"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 6667,
+                            "sgst": 508.5,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "0fea8a1279ae2c6329c683b917e0af716404996724e7d8e9c5c86c48de209ef6",
+                            "txval": 5650,
+                            "typ": "R",
+                            "cgst": 508.5,
+                            "irngendate": "08-11-2025",
+                            "inum": "2321",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "08-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "M S R VALVES AND PIPES PVT LTD",
+                    "supfildt": "09-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AAGCM9591H1Z3"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 3399.58,
+                            "sgst": 0,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 2881,
+                            "typ": "R",
+                            "cgst": 0,
+                            "inum": "B882",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 518.58,
+                            "dt": "19-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "RAMESH ELECTRICALS APPLIANCES",
+                    "supfildt": "11-12-2025",
+                    "supprd": "112025",
+                    "ctin": "32AJBPA6110D1ZB"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 2395,
+                            "sgst": 182.7,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 2030,
+                            "typ": "R",
+                            "cgst": 182.7,
+                            "inum": "1807",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "08-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "ARAFAPACKAGING",
+                    "supfildt": "09-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33BAAPS6348N2Z8"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 117,
+                            "sgst": 0,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "70d214f6ff2e92ea02e8476057727245df0f41145b2baf14647838b474d52ac7",
+                            "txval": 99.15,
+                            "typ": "R",
+                            "cgst": 0,
+                            "irngendate": "30-11-2025",
+                            "inum": "FBF4426011111653",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 17.85,
+                            "dt": "30-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "FLIPKART INTERNET PRIVATE LIMITED",
+                    "supfildt": "09-12-2025",
+                    "supprd": "112025",
+                    "ctin": "29AACCF0683K1ZD"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 5098,
+                            "sgst": 388.8,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "aca1f24a0af5c8b17228a804c7a5f0b6146da66ac443683bb5eff8ca8fee1b2a",
+                            "txval": 4320,
+                            "typ": "R",
+                            "cgst": 388.8,
+                            "irngendate": "05-11-2025",
+                            "inum": "262067",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "05-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        },
+                        {
+                            "val": 5810,
+                            "sgst": 443.16,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "c7d8012d008ec6d1ef1e035ef0a5c9dfce5469a143301aecc9c226d5d982c2b7",
+                            "txval": 4924,
+                            "typ": "R",
+                            "cgst": 443.16,
+                            "irngendate": "20-11-2025",
+                            "inum": "262207",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "20-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        },
+                        {
+                            "val": 7953,
+                            "sgst": 606.6,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "8c714304e4e26095354cfc6d464841783c56cc2602e61df09aed1faa535a7e11",
+                            "txval": 6740,
+                            "typ": "R",
+                            "cgst": 606.6,
+                            "irngendate": "27-11-2025",
+                            "inum": "262284",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "27-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        },
+                        {
+                            "val": 3717,
+                            "sgst": 283.5,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "9ec7ff4b50a1c167812f8ae5f95c404058db8639d5e4abfa886a6d143afc4229",
+                            "txval": 3150,
+                            "typ": "R",
+                            "cgst": 283.5,
+                            "irngendate": "28-11-2025",
+                            "inum": "262296",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "28-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "OSWAL TRADERS",
+                    "supfildt": "08-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33APEPS8952A1ZW"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 1989.99,
+                            "sgst": 0,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "f7d1dafcebf9eb96e45feedc237e06d1e8e2294be39866966095b470a70e22d4",
+                            "txval": 1686.44,
+                            "typ": "R",
+                            "cgst": 0,
+                            "irngendate": "21-11-2025",
+                            "inum": "G3384",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 303.55,
+                            "dt": "21-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "INTERCOOL REFRIGERATION",
+                    "supfildt": "09-12-2025",
+                    "supprd": "112025",
+                    "ctin": "32ACVPR7455F1Z3"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 4282,
+                            "sgst": 0,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 3628.71,
+                            "typ": "R",
+                            "cgst": 0,
+                            "inum": "A566",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 653.17,
+                            "dt": "10-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "COOL TECH",
+                    "supfildt": "06-12-2025",
+                    "supprd": "112025",
+                    "ctin": "32AKJPS1874R1ZD"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 49475,
+                            "sgst": 3773.52,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 41928,
+                            "typ": "R",
+                            "cgst": 3773.52,
+                            "inum": "130",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "20-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "VINAYAGA ELECTRICAL SERVICES",
+                    "supfildt": "11-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AGEPA1134D1ZF"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 82600,
+                            "sgst": 6300,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 70000,
+                            "typ": "R",
+                            "cgst": 6300,
+                            "inum": "7803/2025-26",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "20-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "PARAMOUNT CHEMICALS (MADRAS)",
+                    "supfildt": "09-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AAFPB9029F1Z3"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 1565,
+                            "sgst": 119.37,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 1326.27,
+                            "typ": "R",
+                            "cgst": 119.37,
+                            "inum": "SMS/25-26/6755",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "10-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "SRI MAHAN SPARES",
+                    "supfildt": "11-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33APRPG8601F1ZZ"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 1000,
+                            "sgst": 25,
+                            "rev": "Y",
+                            "itcavl": "Y",
+                            "irn": "ec14ce222fabdabdc4df91fddde75be30b860cfb5218014d767b43e4ec11a8d3",
+                            "txval": 1000,
+                            "typ": "R",
+                            "cgst": 25,
+                            "irngendate": "19-11-2025",
+                            "inum": "3633326282",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "19-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "TCI FREIGHT (A DIVISION OF TRANSPORT CORP. OF INDIA LIMITED)",
+                    "supfildt": "11-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AAACT7966R1ZI"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 50250,
+                            "sgst": 3832.65,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "816c3d2b3f410f6b2740cc060180dd3e4b63f050c68c7ce24f47188d9d7a3dca",
+                            "txval": 42585,
+                            "typ": "R",
+                            "cgst": 3832.65,
+                            "irngendate": "18-11-2025",
+                            "inum": "SL-VN-R-25-04773",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "18-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "RISHABH ENTERPRISES HVAC&R PRIVATE LIMITED",
+                    "supfildt": "11-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AAJCR7107B1ZR"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 208000.02,
+                            "sgst": 15864.41,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 176271.2,
+                            "typ": "R",
+                            "cgst": 15864.41,
+                            "inum": "HE/056/25-26",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "11-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "HARISH ENTERPRISES",
+                    "supfildt": "06-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AGCPT8235C2ZJ"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 448,
+                            "sgst": 11.2,
+                            "rev": "Y",
+                            "itcavl": "Y",
+                            "txval": 448,
+                            "typ": "R",
+                            "cgst": 11.2,
+                            "inum": "CRN1399178030",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "10-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        },
+                        {
+                            "val": 454,
+                            "sgst": 11.35,
+                            "rev": "Y",
+                            "itcavl": "Y",
+                            "txval": 454,
+                            "typ": "R",
+                            "cgst": 11.35,
+                            "inum": "CRN1640402607",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "12-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        },
+                        {
+                            "val": 364,
+                            "sgst": 9.1,
+                            "rev": "Y",
+                            "itcavl": "Y",
+                            "txval": 364,
+                            "typ": "R",
+                            "cgst": 9.1,
+                            "inum": "CRN1662549058",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "22-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        },
+                        {
+                            "val": 597,
+                            "sgst": 14.93,
+                            "rev": "Y",
+                            "itcavl": "Y",
+                            "txval": 597,
+                            "typ": "R",
+                            "cgst": 14.93,
+                            "inum": "CRN1704309371",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "15-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        },
+                        {
+                            "val": 264,
+                            "sgst": 6.6,
+                            "rev": "Y",
+                            "itcavl": "Y",
+                            "txval": 264,
+                            "typ": "R",
+                            "cgst": 6.6,
+                            "inum": "CRN2041226966",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "24-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "SMARTSHIFT LOGISTICS SOLUTIONS PRIVATE LIMITED",
+                    "supfildt": "11-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AAGCR8772D1Z9"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 11210,
+                            "sgst": 855,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "402b3f00eeb4350ab365eb97db43235d2cea26ec92fbae9034cf796355e3ad29",
+                            "txval": 9500,
+                            "typ": "R",
+                            "cgst": 855,
+                            "irngendate": "08-11-2025",
+                            "inum": "GST/8753/25-26",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "08-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        },
+                        {
+                            "val": 767,
+                            "sgst": 58.5,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "963523adc30f3854ed61130221b006047332e458efbbfc9f76c2049cec8e2c68",
+                            "txval": 650,
+                            "typ": "R",
+                            "cgst": 58.5,
+                            "irngendate": "18-11-2025",
+                            "inum": "GST/9137/25-26",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "18-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "KALRO TRADES",
+                    "supfildt": "11-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AAAFK0705C1Z9"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 3623,
+                            "sgst": 276.3,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 3070,
+                            "typ": "R",
+                            "cgst": 276.3,
+                            "inum": "DA/03608/25-26",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "18-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        },
+                        {
+                            "val": 5770,
+                            "sgst": 440.1,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 4890,
+                            "typ": "R",
+                            "cgst": 440.1,
+                            "inum": "DA/03633/25-26",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "19-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "DEEPAK AGENCIES",
+                    "supfildt": "11-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AAHPD9192R1Z2"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 2118,
+                            "sgst": 161.55,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "txval": 1795,
+                            "typ": "R",
+                            "cgst": 161.55,
+                            "inum": "2220/25-26",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "07-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33"
+                        }
+                    ],
+                    "trdnm": "CHENNAI REFRIGERATION STORES",
+                    "supfildt": "09-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AKCPR3277Q1ZK"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 1250,
+                            "sgst": 0,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "8c026747ec3d4838c71b9a328f3c5ad9141906e8153c7eabbcf5d4dba4b6f965",
+                            "txval": 1059.32,
+                            "typ": "R",
+                            "cgst": 0,
+                            "irngendate": "20-11-2025",
+                            "inum": "SS/2874",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 190.68,
+                            "dt": "19-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "VIGNESH REFAC CO.",
+                    "supfildt": "10-12-2025",
+                    "supprd": "112025",
+                    "ctin": "37AEJPJ4202J1ZL"
+                },
+                {
+                    "inv": [
+                        {
+                            "val": 1060.82,
+                            "sgst": 80.91,
+                            "rev": "N",
+                            "itcavl": "Y",
+                            "irn": "bd17aa4ad494f62b8e01fe954a322555b1eab4061408dd61db0552dbeeef6ce6",
+                            "txval": 899,
+                            "typ": "R",
+                            "cgst": 80.91,
+                            "irngendate": "22-11-2025",
+                            "inum": "1025260379042",
+                            "rsn": "",
+                            "cess": 0,
+                            "igst": 0,
+                            "dt": "22-11-2025",
+                            "imsStatus": "N",
+                            "pos": "33",
+                            "srctyp": "E-Invoice"
+                        }
+                    ],
+                    "trdnm": "ZOHO CORPORATION PRIVATE LIMITED",
+                    "supfildt": "11-12-2025",
+                    "supprd": "112025",
+                    "ctin": "33AAACZ4322M2Z9"
+                }
+            ]
+        },
+        "gendt": "14-12-2025",
+        "gstin": "33AEWPH4158J1Z3",
+        "version": "1.0",
+        "cpsumm": {
+            "b2b": [
+                {
+                    "sgst": 240.25,
+                    "ttldocs": 1,
+                    "trdnm": "S K ENTERPRISES",
+                    "supprd": "102025",
+                    "supfildt": "22-11-2025",
+                    "txval": 2669.48,
+                    "ctin": "33AXUPN9127A1ZC",
+                    "cgst": 240.25,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 0,
+                    "ttldocs": 1,
+                    "trdnm": "COOL TECH",
+                    "supprd": "112025",
+                    "supfildt": "06-12-2025",
+                    "txval": 3628.71,
+                    "ctin": "32AKJPS1874R1ZD",
+                    "cgst": 0,
+                    "cess": 0,
+                    "igst": 653.17
+                },
+                {
+                    "sgst": 913.5,
+                    "ttldocs": 2,
+                    "trdnm": "KALRO TRADES",
+                    "supprd": "112025",
+                    "supfildt": "11-12-2025",
+                    "txval": 10150,
+                    "ctin": "33AAAFK0705C1Z9",
+                    "cgst": 913.5,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 6.15,
+                    "ttldocs": 1,
+                    "trdnm": "SMARTSHIFT INFO MARKETING SERVICES PRIVATE LIMITED",
+                    "supprd": "112025",
+                    "supfildt": "11-12-2025",
+                    "txval": 246,
+                    "ctin": "33ABMCS3412L1Z8",
+                    "cgst": 6.15,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 508.5,
+                    "ttldocs": 1,
+                    "trdnm": "M S R VALVES AND PIPES PVT LTD",
+                    "supprd": "112025",
+                    "supfildt": "09-12-2025",
+                    "txval": 5650,
+                    "ctin": "33AAGCM9591H1Z3",
+                    "cgst": 508.5,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 115.35,
+                    "ttldocs": 1,
+                    "trdnm": "SRI MEENAKSHI PIPE CORPORATION FIRM",
+                    "supprd": "112025",
+                    "supfildt": "11-12-2025",
+                    "txval": 1281.7,
+                    "ctin": "33ACJFS9861N1ZA",
+                    "cgst": 115.35,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 10800,
+                    "ttldocs": 1,
+                    "trdnm": "BALAJI VASUDEVAN AND CO",
+                    "supprd": "112025",
+                    "supfildt": "11-12-2025",
+                    "txval": 120000,
+                    "ctin": "33AREPB6942P1ZK",
+                    "cgst": 10800,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 0,
+                    "ttldocs": 1,
+                    "trdnm": "USHA ELECTRICALS",
+                    "supprd": "112025",
+                    "supfildt": "09-12-2025",
+                    "txval": 1290,
+                    "ctin": "32AAGFU0623D1ZS",
+                    "cgst": 0,
+                    "cess": 0,
+                    "igst": 232.2
+                },
+                {
+                    "sgst": 15864.41,
+                    "ttldocs": 1,
+                    "trdnm": "HARISH ENTERPRISES",
+                    "supprd": "112025",
+                    "supfildt": "06-12-2025",
+                    "txval": 176271.2,
+                    "ctin": "33AGCPT8235C2ZJ",
+                    "cgst": 15864.41,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 2859.3,
+                    "ttldocs": 4,
+                    "trdnm": "REFRIGERATION AND ALLIED TRADERS",
+                    "supprd": "112025",
+                    "supfildt": "06-12-2025",
+                    "txval": 31770,
+                    "ctin": "33AAAFR6942G1ZB",
+                    "cgst": 2859.3,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 182.7,
+                    "ttldocs": 1,
+                    "trdnm": "ARAFAPACKAGING",
+                    "supprd": "112025",
+                    "supfildt": "09-12-2025",
+                    "txval": 2030,
+                    "ctin": "33BAAPS6348N2Z8",
+                    "cgst": 182.7,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 1722.06,
+                    "ttldocs": 4,
+                    "trdnm": "OSWAL TRADERS",
+                    "supprd": "112025",
+                    "supfildt": "08-12-2025",
+                    "txval": 19134,
+                    "ctin": "33APEPS8952A1ZW",
+                    "cgst": 1722.06,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 0,
+                    "ttldocs": 1,
+                    "trdnm": "RAMESH ELECTRICALS APPLIANCES",
+                    "supprd": "112025",
+                    "supfildt": "11-12-2025",
+                    "txval": 2881,
+                    "ctin": "32AJBPA6110D1ZB",
+                    "cgst": 0,
+                    "cess": 0,
+                    "igst": 518.58
+                },
+                {
+                    "sgst": 6300,
+                    "ttldocs": 1,
+                    "trdnm": "PARAMOUNT CHEMICALS (MADRAS)",
+                    "supprd": "112025",
+                    "supfildt": "09-12-2025",
+                    "txval": 70000,
+                    "ctin": "33AAFPB9029F1Z3",
+                    "cgst": 6300,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 108,
+                    "ttldocs": 1,
+                    "trdnm": "AS REFRIGERATION",
+                    "supprd": "112025",
+                    "supfildt": "07-12-2025",
+                    "txval": 1200,
+                    "ctin": "33COTPM2642P1Z9",
+                    "cgst": 108,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 161.55,
+                    "ttldocs": 1,
+                    "trdnm": "CHENNAI REFRIGERATION STORES",
+                    "supprd": "112025",
+                    "supfildt": "09-12-2025",
+                    "txval": 1795,
+                    "ctin": "33AKCPR3277Q1ZK",
+                    "cgst": 161.55,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 471.74,
+                    "ttldocs": 1,
+                    "trdnm": "KISHORE ENTERPRISES",
+                    "supprd": "112025",
+                    "supfildt": "10-12-2025",
+                    "txval": 5241.6,
+                    "ctin": "33AAAFK4070E1ZV",
+                    "cgst": 471.74,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 3832.65,
+                    "ttldocs": 1,
+                    "trdnm": "RISHABH ENTERPRISES HVAC&R PRIVATE LIMITED",
+                    "supprd": "112025",
+                    "supfildt": "11-12-2025",
+                    "txval": 42585,
+                    "ctin": "33AAJCR7107B1ZR",
+                    "cgst": 3832.65,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 53.18,
+                    "ttldocs": 5,
+                    "trdnm": "SMARTSHIFT LOGISTICS SOLUTIONS PRIVATE LIMITED",
+                    "supprd": "112025",
+                    "supfildt": "11-12-2025",
+                    "txval": 2127,
+                    "ctin": "33AAGCR8772D1Z9",
+                    "cgst": 53.18,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 119.37,
+                    "ttldocs": 1,
+                    "trdnm": "SRI MAHAN SPARES",
+                    "supprd": "112025",
+                    "supfildt": "11-12-2025",
+                    "txval": 1326.27,
+                    "ctin": "33APRPG8601F1ZZ",
+                    "cgst": 119.37,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 0,
+                    "ttldocs": 1,
+                    "trdnm": "SRI GURU SPARES",
+                    "supprd": "112025",
+                    "supfildt": "10-12-2025",
+                    "txval": 1440.68,
+                    "ctin": "34AWRPP6407B1ZI",
+                    "cgst": 0,
+                    "cess": 0,
+                    "igst": 259.32
+                },
+                {
+                    "sgst": 0,
+                    "ttldocs": 1,
+                    "trdnm": "VIGNESH REFAC CO.",
+                    "supprd": "112025",
+                    "supfildt": "10-12-2025",
+                    "txval": 1059.32,
+                    "ctin": "37AEJPJ4202J1ZL",
+                    "cgst": 0,
+                    "cess": 0,
+                    "igst": 190.68
+                },
+                {
+                    "sgst": 716.4,
+                    "ttldocs": 2,
+                    "trdnm": "DEEPAK AGENCIES",
+                    "supprd": "112025",
+                    "supfildt": "11-12-2025",
+                    "txval": 7960,
+                    "ctin": "33AAHPD9192R1Z2",
+                    "cgst": 716.4,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 1227.13,
+                    "ttldocs": 2,
+                    "trdnm": "S.V. ELECTRONICS PRIVATE LIMITED",
+                    "supprd": "112025",
+                    "supfildt": "10-12-2025",
+                    "txval": 13634.74,
+                    "ctin": "33AAECS1679J1Z5",
+                    "cgst": 1227.13,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 3773.52,
+                    "ttldocs": 1,
+                    "trdnm": "VINAYAGA ELECTRICAL SERVICES",
+                    "supprd": "112025",
+                    "supfildt": "11-12-2025",
+                    "txval": 41928,
+                    "ctin": "33AGEPA1134D1ZF",
+                    "cgst": 3773.52,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 506.88,
+                    "ttldocs": 1,
+                    "trdnm": "THE CENTRAL HARDWARE STORES",
+                    "supprd": "112025",
+                    "supfildt": "10-12-2025",
+                    "txval": 5632,
+                    "ctin": "33AAIFT7092H1ZW",
+                    "cgst": 506.88,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 80.91,
+                    "ttldocs": 1,
+                    "trdnm": "ZOHO CORPORATION PRIVATE LIMITED",
+                    "supprd": "112025",
+                    "supfildt": "11-12-2025",
+                    "txval": 899,
+                    "ctin": "33AAACZ4322M2Z9",
+                    "cgst": 80.91,
+                    "cess": 0,
+                    "igst": 0
+                },
+                {
+                    "sgst": 0,
+                    "ttldocs": 1,
+                    "trdnm": "INTERCOOL REFRIGERATION",
+                    "supprd": "112025",
+                    "supfildt": "09-12-2025",
+                    "txval": 1686.44,
+                    "ctin": "32ACVPR7455F1Z3",
+                    "cgst": 0,
+                    "cess": 0,
+                    "igst": 303.55
+                },
+                {
+                    "sgst": 0,
+                    "ttldocs": 1,
+                    "trdnm": "FLIPKART INTERNET PRIVATE LIMITED",
+                    "supprd": "112025",
+                    "supfildt": "09-12-2025",
+                    "txval": 99.15,
+                    "ctin": "29AACCF0683K1ZD",
+                    "cgst": 0,
+                    "cess": 0,
+                    "igst": 17.85
+                },
+                {
+                    "sgst": 25,
+                    "ttldocs": 1,
+                    "trdnm": "TCI FREIGHT (A DIVISION OF TRANSPORT CORP. OF INDIA LIMITED)",
+                    "supprd": "112025",
+                    "supfildt": "11-12-2025",
+                    "txval": 1000,
+                    "ctin": "33AAACT7966R1ZI",
+                    "cgst": 25,
+                    "cess": 0,
+                    "igst": 0
+                }
+            ]
+        }
+    },
+    "chksum": "44a1822be4c5a01678663ed8cff24ff654c7551c6c7a7d790e69a65c2ce182eb"
+}

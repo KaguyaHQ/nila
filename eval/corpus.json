@@ -19,7 +19,7 @@
     {
       "byte_size": 12014454,
       "client": "breeze",
-      "ground_truth": null,
+      "ground_truth": "test/fixtures/purchase/breeze/2025-11/returns_R2B_33AEWPH4158J1Z3_112025.json",
       "key": "breeze/2025-11/purchase.pdf",
       "kind": "purchase",
       "name": "breeze-2025-11-purchase",
@@ -30,7 +30,7 @@
     {
       "byte_size": 3802959,
       "client": "breeze",
-      "ground_truth": null,
+      "ground_truth": "test/fixtures/gstr1/breeze/2025-11/returns_04082026_R1_33AEWPH4158J1Z3_offline_others_0.json",
       "key": "breeze/2025-11/sales.pdf",
       "kind": "sales",
       "name": "breeze-2025-11-sales",
@@ -41,7 +41,7 @@
     {
       "byte_size": 19044104,
       "client": "breeze",
-      "ground_truth": null,
+      "ground_truth": "test/fixtures/purchase/breeze/2025-12/returns_R2B_33AEWPH4158J1Z3_122025.json",
       "key": "breeze/2025-12/purchase.pdf",
       "kind": "purchase",
       "name": "breeze-2025-12-purchase",
@@ -52,7 +52,7 @@
     {
       "byte_size": 2832871,
       "client": "breeze",
-      "ground_truth": null,
+      "ground_truth": "test/fixtures/gstr1/breeze/2025-12/returns_04082026_R1_33AEWPH4158J1Z3_offline_others_0.json",
       "key": "breeze/2025-12/sales.pdf",
       "kind": "sales",
       "name": "breeze-2025-12-sales",
@@ -74,7 +74,7 @@
     {
       "byte_size": 3369957,
       "client": "breeze",
-      "ground_truth": null,
+      "ground_truth": "test/fixtures/gstr1/breeze/2026-03/returns_04082026_R1_33AEWPH4158J1Z3_offline_others_0.json",
       "key": "breeze/2026-03/sales.pdf",
       "kind": "sales",
       "name": "breeze-2026-03-sales",
@@ -129,7 +129,7 @@
     {
       "byte_size": 2174540,
       "client": "breeze",
-      "ground_truth": null,
+      "ground_truth": "test/fixtures/gstr1/breeze/2026-06/returns_04082026_R1_33AEWPH4158J1Z3_offline_others_0.json",
       "key": "breeze/2026-06/sales.pdf",
       "kind": "sales",
       "name": "breeze-2026-06-sales",
@@ -162,7 +162,7 @@
     {
       "byte_size": 6276830,
       "client": "caltech",
-      "ground_truth": null,
+      "ground_truth": "test/fixtures/gstr1/caltech/2025-09/returns_04082026_R1_33BPBPK1081A1ZO_offline_others_0.json",
       "key": "caltech/2025-09/sales.pdf",
       "kind": "sales",
       "name": "caltech-2025-09-sales",
@@ -239,7 +239,7 @@
     {
       "byte_size": 6861686,
       "client": "caltech",
-      "ground_truth": null,
+      "ground_truth": "test/fixtures/gstr1/caltech/2026-02/returns_04082026_R1_33BPBPK1081A1ZO_offline_others_0.json",
       "key": "caltech/2026-02/sales.pdf",
       "kind": "sales",
       "name": "caltech-2026-02-sales",
@@ -250,7 +250,7 @@
     {
       "byte_size": 4220312,
       "client": "caltech",
-      "ground_truth": null,
+      "ground_truth": "test/fixtures/gstr1/caltech/2026-03/returns_04082026_R1_33BPBPK1081A1ZO_offline_others_0.json",
       "key": "caltech/2026-03/sales.pdf",
       "kind": "sales",
       "name": "caltech-2026-03-sales",
@@ -272,7 +272,7 @@
     {
       "byte_size": 1702237,
       "client": "caltech",
-      "ground_truth": null,
+      "ground_truth": "test/fixtures/gstr1/caltech/2026-05/returns_04082026_R1_33BPBPK1081A1ZO_offline_others_0.json",
       "key": "caltech/2026-05/sales.pdf",
       "kind": "sales",
       "name": "caltech-2026-05-sales",
@@ -283,7 +283,7 @@
     {
       "byte_size": 3003184,
       "client": "caltech",
-      "ground_truth": null,
+      "ground_truth": "test/fixtures/gstr1/caltech/2026-06/returns_04082026_R1_33BPBPK1081A1ZO_offline_others_0.json",
       "key": "caltech/2026-06/sales.pdf",
       "kind": "sales",
       "name": "caltech-2026-06-sales",
