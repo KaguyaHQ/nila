@@ -772,13 +772,19 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
       workings = SalesResolutions.workings(reviewed)
       invoice = hd(workings.active_invoices)
-      snapshot = Nila.Gst.Sales.Review.treatment_snapshot(invoice, workings.derived)
 
       assert {:error, :signed_off} =
-               SalesResolutions.challenge_treatment(
+               SalesResolutions.record(
                  reviewed,
-                 invoice["id"],
-                 snapshot,
+                 %{
+                   "verb" => "correct_field",
+                   "target" => invoice["id"],
+                   "payload" => %{
+                     "field" => "buyer_name",
+                     "from" => invoice["buyer_name"],
+                     "to" => "Anything Ltd"
+                   }
+                 },
                  scope.user.id
                )
     end

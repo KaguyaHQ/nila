@@ -9,15 +9,15 @@ defmodule Nila.Gst.Sales.ReviewTest do
     assert Enum.map(review.all, & &1.source_id) == ~w(source-c source-a source-b)
     assert Enum.map(review.needs_you, & &1.source_id) == ~w(source-c source-a)
 
-    challenged = Enum.find(review.all, &(&1.source_id == "source-a"))
+    multi_issue = Enum.find(review.all, &(&1.source_id == "source-a"))
 
-    assert challenged.open_actionable_targets == [
+    assert multi_issue.open_actionable_targets == [
              "source-a:printed_tax_mismatch",
-             "treatment|source-a",
+             "source-a:furniture_row_with_values",
              "source-a:hsn_inferred_code"
            ]
 
-    assert challenged.state == :needs_you
+    assert multi_issue.state == :needs_you
 
     assert Enum.find(review.all, &(&1.source_id == "source-b")).state == :settled
     assert Enum.find(review.all, &(&1.source_id == "source-c")).state == :needs_you
@@ -89,14 +89,7 @@ defmodule Nila.Gst.Sales.ReviewTest do
       active_invoices: invoices,
       issues: [
         issue("source-a", "printed_tax_mismatch", "open"),
-        %{
-          "invoice" => "10/2025-26",
-          "source_id" => "source-a",
-          "code" => "treatment_challenged",
-          "target" => "treatment|source-a",
-          "level" => "required",
-          "status" => "open"
-        },
+        issue("source-a", "furniture_row_with_values", "open"),
         issue("source-b", "grand_total_mismatch", "resolved"),
         issue("source-c", "invalid_gstin", "open"),
         issue("source-a", "hsn_inferred_code", "open"),

@@ -171,42 +171,45 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
            end)
   end
 
-  test "a clean treatment is untouched until challenged, then becomes confirmable", context do
+  test "a clean treatment states there is nothing to answer and offers no write action",
+       context do
     clean = Enum.at(context.workings.active_invoices, 1)
     {:ok, view, _html} = live(context.conn, review_path(context.client, clean["id"], "all"))
 
-    assert has_element?(view, "#sales-review-challenge", "Challenge this treatment")
+    assert has_element?(
+             view,
+             "#sales-review-clean-treatment",
+             "Nila found no invoice check requiring an answer."
+           )
+
+    refute has_element?(view, "#sales-review-clean-treatment button")
     assert Resolutions.list(context.month.id) == []
-
-    view |> element("#sales-review-challenge") |> render_click()
-    assert_patch(view, review_path(context.client, clean["id"], "needs_you"))
-
-    assert Enum.any?(Resolutions.list(context.month.id), &(&1.verb == "challenge_treatment"))
-    assert has_element?(view, "#gstr1-evidence-modal", "Reviewer challenged Nila")
-    assert has_element?(view, "button[phx-click='resolve-invoice-issue']")
   end
 
-  test "signed and filed clean treatments explain why challenge is disabled", context do
+  test "a signed month withdraws every write action from the review surface", context do
+    [open | _] = context.workings.active_invoices
     sign_month!(context)
-    clean = Enum.at(context.workings.active_invoices, 1)
-    path = review_path(context.client, clean["id"], "all")
+    path = review_path(context.client, open["id"], "all")
     {:ok, signed, _html} = live(context.conn, path)
 
-    assert has_element?(
+    refute has_element?(
              signed,
-             "#sales-review-challenge[disabled]",
-             "Reopen GSTR-1 approval first"
+             "#sales-review-component button[phx-click='resolve-invoice-issue']"
            )
+
+    refute has_element?(signed, "#sales-review-component button[phx-click='undo']")
+    refute has_element?(signed, "#sales-review-component button[phx-click='start_correct']")
 
     {:ok, month} = SalesMonths.get_by_period(context.org.id, context.client.id, @period)
     {:ok, _month} = Signoffs.mark_filed(month, Scope.for_user(context.user))
     {:ok, filed, _html} = live(context.conn, path)
 
-    assert has_element?(
+    refute has_element?(
              filed,
-             "#sales-review-challenge[disabled]",
-             "Filed returns require an amendment."
+             "#sales-review-component button[phx-click='resolve-invoice-issue']"
            )
+
+    refute has_element?(filed, "#sales-review-component button[phx-click='undo']")
   end
 
   test "month issue actions remain outside the invoice surface", context do

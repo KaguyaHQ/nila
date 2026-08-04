@@ -5,7 +5,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
   alias Nila.Gst.Sales.{Gstr1, Review, Resolutions, Values, Workings}
   alias NilaWeb.Components.Gst.Month.Evidence
 
-  @write_events ~w(resolve-invoice-issue undo start_correct save_correct challenge)
+  @write_events ~w(resolve-invoice-issue undo start_correct save_correct)
 
   @impl true
   def update(assigns, socket) do
@@ -109,35 +109,6 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
   def handle_event(event, _params, %{assigns: %{signoff: %{} = _signoff}} = socket)
       when event in @write_events,
       do: {:noreply, put_flash(socket, :error, locked_message(socket))}
-
-  def handle_event("challenge", _params, socket) do
-    item = socket.assigns.selected_item
-    payload = Review.treatment_snapshot(item.invoice, socket.assigns.workings.derived)
-
-    case Resolutions.challenge_treatment(
-           socket.assigns.month,
-           item.source_id,
-           payload,
-           socket.assigns.current_scope.user.id
-         ) do
-      {:ok, _resolution} ->
-        workings = Resolutions.workings(socket.assigns.month)
-
-        send(
-          self(),
-          {:sales_review_refresh, socket.assigns.month, workings,
-           %{item: item.source_id, scope: :needs_you, focus: nil}}
-        )
-
-        {:noreply, socket}
-
-      {:error, :signed_off} ->
-        {:noreply, put_flash(socket, :error, locked_message(socket))}
-
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "That treatment could not be challenged.")}
-    end
-  end
 
   def handle_event(
         "resolve-invoice-issue",
@@ -276,12 +247,6 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
   defp rail_state(:settled), do: {"success", "Resolved"}
   defp rail_state(:unreviewed), do: {"neutral", "Clean"}
 
-  defp challenge_label(%{month: %{filed_at: filed_at}}) when not is_nil(filed_at),
-    do: "Filed returns require an amendment."
-
-  defp challenge_label(%{signoff: %{}}), do: "Reopen GSTR-1 approval first"
-  defp challenge_label(_assigns), do: "Challenge this treatment"
-
   @impl true
   def render(assigns) do
     previous =
@@ -371,17 +336,9 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
               <div
                 :if={@selected_item.state == :unreviewed}
                 id="sales-review-clean-treatment"
-                class="border-base-300 mb-block rounded-box flex shrink-0 items-center justify-between gap-3 border p-3"
+                class="border-base-300 mb-block rounded-box shrink-0 border p-3"
               >
                 <p class="text-ink-muted text-ui">Nila found no invoice check requiring an answer.</p>
-                <.button
-                  id="sales-review-challenge"
-                  variant="outline"
-                  size="sm"
-                  phx-click="challenge"
-                  phx-target={@myself}
-                  disabled={not is_nil(@signoff)}
-                >{challenge_label(assigns)}</.button>
               </div>
 
               <Evidence.invoice_detail
