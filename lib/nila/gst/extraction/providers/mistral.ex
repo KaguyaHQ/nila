@@ -107,22 +107,22 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
       printed_cgst:
         described_nullable(
           "number",
-          "Copy the invoice-level CGST summary amount exactly. Never calculate or allocate it from item rows."
+          "A single CGST amount printed once for the whole invoice, in the totals area below the item table — for example a row reading \"Add: CGST 9%\" or \"Total CGST\". The CGST column inside the item table is not this. If the invoice prints no such row, return null."
         ),
       printed_sgst:
         described_nullable(
           "number",
-          "Copy the invoice-level SGST summary amount exactly. Never calculate or allocate it from item rows."
+          "A single SGST amount printed once for the whole invoice, in the totals area below the item table — for example a row reading \"Add: SGST 9%\" or \"Total SGST\". The SGST column inside the item table is not this. If the invoice prints no such row, return null."
         ),
       printed_igst:
         described_nullable(
           "number",
-          "Copy the invoice-level IGST summary amount exactly. Never calculate or allocate it from item rows."
+          "The invoice-level IGST summary amount, copied exactly. Null when the bill prints no such summary. Never derive it — not from item rows, not by subtracting other tax fields from a total."
         ),
       printed_total_tax:
         described_nullable(
           "number",
-          "Copy the final printed total GST exactly; never calculate it from item rows."
+          "The combined total GST printed on the bill, copied exactly. Null when none is printed. Never derive it — not by summing item rows, not from the CGST/SGST/IGST fields."
         ),
       printed_additional_charges:
         described_nullable(

@@ -26,6 +26,11 @@ is explicit via `GST_OCR_PROVIDER`, with no automatic fallback.
   don't fail the dump on transient transport errors.
 - **Every physical page is accounted for**: an extracted invoice or confirmed
   non-invoice claims it; anything else becomes an explicit review gap.
+- **Segmenting fixed *which* bills come back, not *what numbers* they carry.** A
+  required-but-nullable schema field the bill doesn't print gets **invented**, and
+  the invented value then propagates into fields that are printed. The fix is to
+  name, in the field's description, the thing on the page the model is confusing it
+  with — not to restate the rule more firmly.
 
 ## What the request actually does
 
@@ -236,6 +241,183 @@ image for it), windows planned 1-based and converted to the API's 0-indexed
 `pages_unaccounted` review flag (purchase) / issue (sales). A packet of ≤8 pages,
 or an image, is still one whole-document call — small packets are proven clean.
 
+## Field fabrication in the structuring call (2026-08-04)
+
+Segmenting fixed *which bills* come back. It did not fix *what numbers* come back
+for a bill. A separate failure lives in the second half of the pipeline — the
+text-in/JSON-out structuring call (`MistralChat`, `mistral-small-latest`) — and it
+is quieter than a dropped invoice, because the output is well-formed, plausible,
+and blocks a filing.
+
+### The case
+
+Sales dump 11, page 7 (12 line items). The month page showed a blocking
+"Tax total doesn't tally". Three chips, but only one was a real problem: two were
+`info`-level `rounding_variance` (0.03 CGST + 0.03 SGST — the six paise), and the
+blocking one compared the line-item sum (69,900.72) against a `printed_total_tax`
+of **69,094.80**. The bill prints **69,900.66**.
+
+It was not an OCR misread. The archived transcription artifact has `69,900.66` at
+**99.67%** word confidence, and the table's own minimum confidence is 0.885. The
+value was on the page, read correctly, and then replaced downstream.
+
+### Mechanism
+
+`invoice_schema/1` is sent with `strict: true`, and strict structured-output mode
+requires **every** property to appear in `required` — so `strict_object/1` lists
+them all (`mistral.ex:186`). Optionality is expressed as
+`anyOf: [%{type: "number"}, %{type: "null"}]`.
+
+Formally that is correct and `null` validates cleanly: `required` constrains key
+*presence*, not value non-nullity. Nothing rejects a null. But the model does not
+read it that way. A required key with a `number` branch, plus per-line CGST
+visible in the text, reads as an invitation to produce a number. The original
+description made it worse by presupposing the value exists:
+
+```
+"Copy the invoice-level CGST summary amount exactly.
+ Never calculate or allocate it from item rows."
+```
+
+*Copy X* with no mention of null offers no sanctioned exit. So the model
+manufactures one: it invents an invoice-level CGST half, then derives the total
+from its own invention. One run during testing returned `printed_total_tax`
+= **139,801.32** — exactly 2× the truth, the doubling laid bare.
+
+The missing null branch is only half of it, though, and the smaller half. Adding
+one did **not** fix the behaviour (see the A/B below); what fixed it was naming
+the **decoy**. Every one of these bills carries a per-line CGST *column*, and the
+model treats that column as satisfying a request for "the invoice-level CGST".
+The field it invents is a plausible aggregate of something genuinely on the page —
+which is why it survives a casual read, and why the grounding check is the only
+thing that ever objects.
+
+Most bills in this corpus print no invoice-level CGST/SGST row at all. A scan of
+93 archived purchase OCR pages:
+
+| Invoice-level tax summary printed | Pages | Share |
+|-----------------------------------|-------|-------|
+| TOTAL row only (per-line tax)      | 76    | 81.7% |
+| `Add IGST` style summary           | 13    | 14.0% |
+| Neither                            |  4    |  4.3% |
+
+So the fields must stay — 14% of bills genuinely print a summary — and `null` has
+to become the expected answer for the rest.
+
+### Prompt A/B on `mistral-small-latest`
+
+All runs on sales dump 11; `printed_igst` and `printed_total_tax` wording held
+constant throughout, so `printed_cgst`/`printed_sgst` is the only variable.
+"fills" counts pages where `printed_cgst` came back non-null — on this corpus,
+every such fill is fabricated.
+
+| `printed_cgst` description                                   | n | page 7 correct | fills |
+|--------------------------------------------------------------|---|----------------|-------|
+| **"A single CGST amount printed once for the whole invoice, in the totals area below the item table — for example a row reading 'Add: CGST 9%' or 'Total CGST'. The CGST column inside the item table is not this. If the invoice prints no such row, return null."** | 7 | **7/7** | 26/56 |
+| "…Most bills break CGST out per line and print no invoice-level CGST summary at all: return null for those, which is the expected answer, not a failure. Never derive…" | 7 | 7/7 | 0/56 |
+| "…Fill this only when the bill prints a labelled invoice-level CGST total, such as 'Add: CGST 9%'; otherwise null."                | 5 | 3/5 | 23/40 |
+| "…Null is the expected answer when the bill prints no such summary — not a failure."                                              | 8 | 3/8 | 39/64 |
+| "…Null when the bill prints no such summary." (no negation clause)                                                                 | 3 | 1/3 | 15/24 |
+| "…Null when the bill prints no such summary. Never derive it — not from item rows, not by halving a tax total."                     | 3 | 1/3 | 13/24 |
+
+The top row is what shipped. On the full 7-run sweep it read **56/56 page totals
+correctly** — every page, every run, not just page 7.
+
+Four findings, in descending order of how much they should change behaviour:
+
+1. **Name the decoy, not the rule.** Every failing variant is a well-formed
+   instruction about *when* to fill the field, and the model ignores all of them.
+   What works is a sentence pointing at the thing it is confusing this with:
+   *"The CGST column inside the item table is not this."* The model was never
+   failing to understand the condition — it was looking at a table full of CGST
+   numbers and concluding the condition was met.
+2. **Fills alone do not predict failure — fills on multi-line bills do.** The
+   shipped wording still fills 26/56, but only on single-line invoices, where half
+   the total *is* that line's CGST and the value is therefore correct. On the
+   12-line page it returned null in all 7 runs. The earlier "fills predict failure
+   one-for-one" reading came from a variant that happened to fill everywhere.
+3. **The derivation identity is exact.** Across 18 runs and 4 variants,
+   `printed_total_tax == printed_cgst × 2` in *every* case where `printed_cgst` is
+   non-null, and the total is correct in every case where it is null — including
+   one run that filed the real total as the CGST component and doubled it to
+   139,801.32. The total is a pure function of the invented half.
+4. **Naming the bad derivation does not induce it.** Removing "never by halving a
+   tax total" slightly *increased* fills (13/24 → 15/24). No elephant effect.
+
+A frequency claim also scores 7/7, by asserting that most bills print no such row.
+It was tested and rejected: it is true of this corpus (two related businesses) and
+false of bills in general, and it works by shifting a prior rather than stating
+something checkable. Shipping it means the first supplier who prints "Total CGST"
+gets nulled. Do not reintroduce corpus statistics into schema descriptions.
+
+### Model size changes the direction of the error
+
+Before the wording above was found, `mistral-medium-latest` was measured as an
+alternative (n=3, plain description): page 7 correct 3/3, grounding flags 6 → 1.
+Superseded as a recommendation — small is sufficient with the right description —
+but the mechanism is worth keeping:
+
+- **small** — invents a CGST half, doubles it into the total. Corruption flows
+  *upward* into the field the arithmetic checks consume.
+- **medium** — reads the printed total correctly, then halves it into the
+  components. Corruption flows *downward* into fields little depends on.
+
+Every medium fill was exactly half the total. On the one 12-line page where it
+halved, `value_not_on_page` fired correctly, because 34,950.33 appears nowhere on
+the bill. The grounding check already has the signal — it is recorded as a note
+rather than acting as a gate.
+
+### `Add IGST` regression — passes
+
+`printed_igst` wording was held constant throughout and **not** given the same
+treatment, because it does not need it. Purchase dump 2 (Caltech, 2026-06, 15
+pages, n=3): the four bills printing `Add IGST : 18%` were captured on every run
+(48,801.60 / 4,599 / 5,445 / 6,073.20), and pages where "IGST" appears only as an
+HSN-summary *column header* correctly returned null. The `cgst`/`sgst` rewording
+does not bleed across fields. Changing a field that passes, for symmetry with one
+that failed, is how you acquire a new bug.
+
+`printed_total_taxable` still carries the original *"Copy … exactly"* shape with
+no null branch — the same defect that caused this bug. It has not misfired,
+because every bill in this corpus prints a taxable total, so the model has never
+had to invent one. Untested, not proven.
+
+### Methodological note
+
+n=3 is not enough to compare prompt variants here. The "expected … not a failure"
+variant scored 3/3 on its first three runs and 3/8 over eight — the first result
+was luck. Page-7 correctness gives one observation per run; the fill rate gives
+eight. **Score on fills, and run ≥7.** Several conclusions in this session drawn
+from n=3 had to be withdrawn.
+
+Note also that dump 11 yields only *one* page of real signal per run: pages 3, 4,
+5 and 8 are single-line invoices where a fabricated half is arithmetically correct
+anyway, so only the 12-line invoice 44/2026-27 can expose the fault. More
+multi-line bills belong in the eval set before any of this is trusted broadly.
+
+### Run-to-run coverage variance
+
+Identical input, back-to-back runs of purchase dump 2 returned 9 invoices
+(covering pages 1–10) and then 14 (covering all 15). Worth chasing — but it is
+**not** a silent drop. `unaccounted_pages` (`segmented.ex:411`) diffs extracted
+`source_pages` against every transcribed page and the flags layer raises
+`pages_unaccounted`, so the short run reports pages 11–15 rather than passing a
+truncated return off as complete. The ledger is blind only if pages are lost
+during *transcription*, since it takes its page universe from the transcript
+itself — that gap is real but has not been observed.
+
+### Open
+
+- Give `printed_total_taxable` a null branch, and re-measure.
+- Make `value_not_on_page` a gate for `printed_*` fields — null an ungrounded
+  component instead of storing it — rather than a note. 5 flags survive on the
+  shipped wording.
+- Reconsider `cgst_equals_sgst` / `tax_components_sum` when the components they
+  consume are ungrounded.
+- Add multi-line bills to the eval corpus; one signal page per dump is too thin.
+- Chase the coverage variance, and confirm whether transcription-stage page loss
+  can evade the ledger.
+
 ## Status
 
 - [x] **Segment-then-extract shipped and switched on** (2026-07-30):
@@ -250,6 +432,14 @@ or an image, is still one whole-document call — small packets are proven clean
 - [ ] Suspicious-table crop/retry for handwritten nested totals (separate failure;
       see the `84418` case — full-page decoder omits a nested footer the model reads
       correctly when cropped).
+- [x] **Invoice-level `printed_cgst`/`printed_sgst` fabrication fixed** (2026-08-04):
+      `mistral-small-latest` was inventing an invoice-level CGST half and doubling it
+      into `printed_total_tax`. Fixed in the schema description by naming the decoy —
+      "The CGST column inside the item table is not this" — which reads 56/56 page
+      totals correctly over 7 runs. No model change, no corpus statistic. See the
+      section above.
+- [ ] `printed_total_taxable` still has no null branch (same defect shape, not yet
+      triggered because every bill in the corpus prints a taxable total).
 
 ## Experiment log
 
@@ -268,3 +458,9 @@ cost — plain OCR ≈ OCR+features ≈ full annotation, ~1–1.4s/1p) and a nov
 | 2026-07-26 | `whole_packet_canary.exs` (windowed) | Does windowing recover RAC2451?      | Yes — 47–48 unique vs 34, no hallucinated dupes, true miss on p41 flagged. 42s at concurrency 16. |
 | 2026-07-26 | ad-hoc (fresh 28p packet)      | Does windowed hold on unseen data?         | Clean: 25/25 unique, 36s cold, non-invoice pages flagged. |
 | 2026-07-26 | canary re-run ×2               | Do window requests warm-cache?             | No — identical windows re-ran cold (~42s). Budget windowed runs as cold. |
+| 2026-08-04 | `reextract.exs` (dump 11)      | Does page 7's bad tax total reproduce?     | Yes, every run. Not OCR — the transcript holds 69,900.66 at 99.67% confidence. |
+| 2026-08-04 | `survey_formats.py` (93 pages) | Do our bills print invoice-level CGST/SGST?| No: 81.7% TOTAL-row only, 14.0% `Add IGST`, 4.3% neither. Null must be a valid answer. |
+| 2026-08-04 | `eval_prompt.exs` ×5 variants  | Can prompt wording stop the fabrication?   | Rule-shaped framings ("null when…", "expected, not a failure", "only when labelled") all fail on small. |
+| 2026-08-04 | `eval_prompt.exs` (medium)     | Is it the model rather than the prompt?    | Medium, honest wording: 3/3 correct, flags 6→1, and the corruption reverses direction. |
+| 2026-08-04 | `eval_prompt.exs` (decoy wording) | Does naming the item-table column fix it? | Yes — 56/56 page totals over 7 runs on small. Superseded the medium recommendation. |
+| 2026-08-04 | `eval_prompt.exs` (purchase d2) | Does the rewording suppress `Add IGST`?   | No — 4/4 interstate bills captured on 3/3 runs; HSN column headers correctly nulled. |
