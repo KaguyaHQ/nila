@@ -23,6 +23,8 @@ defmodule Nila.Gst.Filing.ItcPosition do
         is a real bill. A group of N identical scans blocks (N-1) copies' tax.
   """
 
+  alias Nila.Gst.InvoiceNumber
+
   @full_block ~w(personal_expense_17_5 gstin_state_mismatch)
   @zero_heads %{"igst" => 0, "cgst" => 0, "sgst" => 0}
 
@@ -441,5 +443,5 @@ defmodule Nila.Gst.Filing.ItcPosition do
   end
 
   defp tax_sum(inv), do: (inv["tax_paise"] || %{}) |> Map.values() |> Enum.sum()
-  defp norm(inum), do: inum |> to_string() |> String.trim() |> String.upcase()
+  defp norm(inum), do: InvoiceNumber.key(inum)
 end

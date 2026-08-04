@@ -27,6 +27,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   tooling, not product — the product never scores itself — so it lives in
   `Nila.Eval.Gstr1Diff`, not here.
   """
+  alias Nila.Gst.InvoiceNumber
   alias Nila.Gst.Issues
   alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Purchase.Flags
@@ -58,9 +59,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
   def correctable_field?(field) when field in @correctable_invoice_fields, do: true
 
   def correctable_field?(field) when is_binary(field) do
-    case Regex.run(~r/^line_items\[\d+\]\.(.+)$/, field) do
-      [_, line_field] -> line_field in @correctable_line_fields
-      _ -> false
+    case parse_field_path(field) do
+      {:line, _index, line_field} -> line_field in @correctable_line_fields
+      {:invoice, _field} -> false
     end
   end
 
@@ -86,13 +87,24 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   @doc "Reads a scalar invoice field, including `line_items[index].field` paths."
   def field_value(invoice, field_path) do
-    case Regex.run(~r/^line_items\[(\d+)\]\.(.+)$/, field_path) do
-      [_, index, line_field] ->
-        line = Enum.at(invoice["line_items"], String.to_integer(index)) || %{}
+    case parse_field_path(field_path) do
+      {:line, index, line_field} ->
+        line = Enum.at(invoice["line_items"] || [], index) || %{}
         line[line_field]
 
-      _ ->
-        invoice[field_path]
+      {:invoice, field} ->
+        invoice[field]
+    end
+  end
+
+  # The one reading of a correction's field path. It was written out three
+  # times — twice with a capture group and once without, and only one of the
+  # three tolerated a nil path, so `field_value/2` raised on input the sibling
+  # writer accepted.
+  defp parse_field_path(field_path) do
+    case Regex.run(~r/^line_items\[(\d+)\]\.(.+)$/, field_path || "") do
+      [_, index, line_field] -> {:line, String.to_integer(index), line_field}
+      _not_a_line_path -> {:invoice, field_path}
     end
   end
 
@@ -181,9 +193,13 @@ defmodule Nila.Gst.Sales.Gstr1 do
   def duplicate_number_issues(invoices) do
     invoices
     |> Enum.filter(&(is_binary(&1["invoice_number"]) and String.trim(&1["invoice_number"]) != ""))
-    |> Enum.group_by(& &1["invoice_number"])
-    |> Enum.filter(fn {_invoice_number, members} -> length(members) > 1 end)
-    |> Enum.map(fn {invoice_number, members} ->
+    # Grouped on the matching key, not the printed string: `inv/1` and `INV/1`
+    # are one invoice issued twice, and grouping on the raw text let the pair
+    # through as two. The message still names the number as it was read.
+    |> Enum.group_by(&InvoiceNumber.key(&1["invoice_number"]))
+    |> Enum.filter(fn {_key, members} -> length(members) > 1 end)
+    |> Enum.map(fn {_key, members} ->
+      invoice_number = members |> hd() |> Map.fetch!("invoice_number")
       source_ids = members |> Enum.map(&source_id/1) |> Enum.sort()
 
       %{
@@ -673,40 +689,28 @@ defmodule Nila.Gst.Sales.Gstr1 do
       nil ->
         []
 
-      :phone_number ->
+      smell ->
         [
           issue(
             invoice,
             "implausible_invoice_number",
-            "invoice number #{invoice["invoice_number"]} looks like a phone number — verify it against the bill",
-            ["invoice_number"],
-            Issues.level_for("implausible_invoice_number")
-          )
-        ]
-
-      :date ->
-        [
-          issue(
-            invoice,
-            "implausible_invoice_number",
-            "invoice number #{invoice["invoice_number"]} looks like a date — verify it against the bill",
-            ["invoice_number"],
-            Issues.level_for("implausible_invoice_number")
-          )
-        ]
-
-      :missing ->
-        [
-          issue(
-            invoice,
-            "implausible_invoice_number",
-            "the invoice carries values but no invoice number was extracted — verify it against the bill",
+            smell_message(smell, invoice["invoice_number"]),
             ["invoice_number"],
             Issues.level_for("implausible_invoice_number")
           )
         ]
     end
   end
+
+  defp smell_message(:phone_number, invoice_number),
+    do: "invoice number #{invoice_number} looks like a phone number — verify it against the bill"
+
+  defp smell_message(:date, invoice_number),
+    do: "invoice number #{invoice_number} looks like a date — verify it against the bill"
+
+  defp smell_message(:missing, _invoice_number),
+    do:
+      "the invoice carries values but no invoice number was extracted — verify it against the bill"
 
   defp sales_invoice_has_values?(invoice) do
     Enum.any?(
@@ -724,27 +728,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp furniture_row_issues(invoice) do
-    furniture_rows =
-      invoice["line_items"]
-      |> Enum.with_index(1)
-      |> Enum.filter(fn {line, _index} ->
-        furniture_description?(line["description"]) and not degenerate_line?(line)
-      end)
-      |> Enum.map(fn {_line, index} -> index end)
-
-    if furniture_rows == [] do
-      []
-    else
-      [
-        issue(
-          invoice,
-          "furniture_row_with_values",
-          "furniture rows #{Enum.join(furniture_rows, ", ")} carry taxable/tax values — keep for review, do not silently drop",
-          ["line_items"],
-          Issues.level_for("furniture_row_with_values")
-        )
-      ]
-    end
+    line_issue(invoice, "furniture_row_with_values", fn line ->
+      furniture_description?(line["description"]) and not degenerate_line?(line)
+    end)
   end
 
   defp bucket_rounding_issues(invoice) do
@@ -827,29 +813,46 @@ defmodule Nila.Gst.Sales.Gstr1 do
   # row's stacked tax sub-rows into separate line items — the invoice-27
   # failure mode. One issue per invoice, not per line.
   defp lopsided_split_issues(invoice) do
-    lopsided =
-      invoice["line_items"]
+    line_issue(invoice, "lopsided_tax_split", fn line ->
+      is_nil(line["igst_amount"]) and
+        is_nil(line["cgst_amount"]) != is_nil(line["sgst_amount"])
+    end)
+  end
+
+  # One issue naming the 1-based line numbers a predicate matched, or none. Two
+  # checks had written this out identically; the shape is the same every time
+  # because the reviewer's question is the same every time — which rows?
+  defp line_issue(invoice, code, predicate) do
+    lines =
+      (invoice["line_items"] || [])
       |> Enum.with_index(1)
-      |> Enum.filter(fn {line, _index} ->
-        is_nil(line["igst_amount"]) and
-          is_nil(line["cgst_amount"]) != is_nil(line["sgst_amount"])
-      end)
+      |> Enum.filter(fn {line, _index} -> predicate.(line) end)
       |> Enum.map(fn {_line, index} -> index end)
 
-    if lopsided == [] do
-      []
-    else
-      [
-        issue(
-          invoice,
-          "lopsided_tax_split",
-          "lines #{Enum.join(lopsided, ", ")} carry only one of CGST/SGST — stacked tax sub-rows were likely split into separate line items",
-          ["line_items"],
-          Issues.level_for("lopsided_tax_split")
-        )
-      ]
+    case lines do
+      [] ->
+        []
+
+      lines ->
+        [
+          issue(
+            invoice,
+            code,
+            line_issue_message(code, lines),
+            ["line_items"],
+            Issues.level_for(code)
+          )
+        ]
     end
   end
+
+  defp line_issue_message("furniture_row_with_values", lines),
+    do:
+      "furniture rows #{Enum.join(lines, ", ")} carry taxable/tax values — keep for review, do not silently drop"
+
+  defp line_issue_message("lopsided_tax_split", lines),
+    do:
+      "lines #{Enum.join(lines, ", ")} carry only one of CGST/SGST — stacked tax sub-rows were likely split into separate line items"
 
   defp gstin_issues(invoice) do
     [
@@ -967,12 +970,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   gaps.
   """
   def series_account(invoices) do
-    parsed =
-      invoices
-      |> Enum.map(&parse_invoice_number(&1["invoice_number"]))
-      |> Enum.reject(&is_nil/1)
-
-    case parsed do
+    case parsed_numbers(invoices) do
       [] ->
         nil
 
@@ -1205,12 +1203,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   defp det_tax(dets),
     do: dets |> Enum.map(&(num(&1["camt"]) + num(&1["samt"]) + num(&1["iamt"]))) |> Enum.sum()
 
-  defp derive_doc_issue(invoices) do
-    invoices
-    |> Enum.map(&parse_invoice_number(&1["invoice_number"]))
-    |> Enum.reject(&is_nil/1)
-    |> build_doc_issue()
-  end
+  defp derive_doc_issue(invoices), do: invoices |> parsed_numbers() |> build_doc_issue()
 
   # No parseable invoice numbers (empty month, or none numeric) means nothing
   # was issued — a valid return with an empty doc_det, not a crash.
@@ -1244,15 +1237,13 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp put_field(invoice, field, value) do
-    case Regex.run(~r/^line_items\[(\d+)\]\.(.+)$/, field || "") do
-      [_, index, line_field] ->
-        index = String.to_integer(index)
-
+    case parse_field_path(field) do
+      {:line, index, line_field} ->
         update_in(invoice, ["line_items", Access.at(index)], fn line ->
           Map.put(line || %{}, line_field, value)
         end)
 
-      _ ->
+      {:invoice, field} ->
         Map.put(invoice, field, value)
     end
   end
@@ -1383,6 +1374,16 @@ defmodule Nila.Gst.Sales.Gstr1 do
     |> String.replace(~r/\s*\/\s*/, "/")
   end
 
+  # The series reading, shared by `series_account/1` (what a reviewer is shown)
+  # and `derive_doc_issue/1` (what gets filed as doc_det). Two copies meant the
+  # printed sentence and the filed table could in principle read the series
+  # differently.
+  defp parsed_numbers(invoices) do
+    invoices
+    |> Enum.map(&parse_invoice_number(&1["invoice_number"]))
+    |> Enum.reject(&is_nil/1)
+  end
+
   defp parse_invoice_number(nil), do: nil
 
   defp parse_invoice_number(invoice_number) do
@@ -1399,39 +1400,26 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end
   end
 
-  def valid_gstin?(gstin) when is_binary(gstin) do
-    gstin = String.upcase(String.trim(gstin))
+  @doc """
+  Whether this is a valid GSTIN, case-insensitively.
 
-    if String.match?(gstin, ~r/^\d{2}[A-Z0-9]{13}$/) and String.length(gstin) == 15 do
-      body = String.slice(gstin, 0, 14)
-      expected = gstin_check_digit(body)
-      String.at(gstin, 14) == expected
-    else
-      false
-    end
-  end
+  Defers to `Nila.Gstin`, which every other caller already used. This module
+  carried its own copy of the base-36 checksum — arithmetically identical, but
+  gated on `^\\d{2}[A-Z0-9]{13}$` instead of the real layout, so a string with
+  the wrong PAN shape and a coincidentally correct check digit was valid to the
+  filing engine and invalid to purchase reconciliation and to the client form
+  that captured the GSTIN in the first place. One rule, in the module whose
+  moduledoc already claimed to be the only one.
+
+  Case is normalized here rather than in `Nila.Gstin`: a printed GSTIN is
+  whatever the scan gave us, while the form fields that call `Nila.Gstin`
+  directly are storing a canonical value and should not silently accept a
+  lowercase one. Purchase does the same thing in `Books.clean_gstin/1`.
+  """
+  def valid_gstin?(gstin) when is_binary(gstin),
+    do: gstin |> String.trim() |> String.upcase() |> Nila.Gstin.valid?()
 
   def valid_gstin?(_), do: false
-
-  defp gstin_check_digit(body) do
-    chars = String.graphemes(body)
-
-    sum =
-      chars
-      |> Enum.with_index()
-      |> Enum.reduce(0, fn {char, index}, acc ->
-        product = base36_value(char) * if(rem(index, 2) == 0, do: 1, else: 2)
-        acc + div(product, 36) + rem(product, 36)
-      end)
-
-    check = rem(36 - rem(sum, 36), 36)
-    base36_char(check)
-  end
-
-  defp base36_value(<<char>>) when char in ?0..?9, do: char - ?0
-  defp base36_value(<<char>>) when char in ?A..?Z, do: char - ?A + 10
-  defp base36_char(value) when value < 10, do: <<?0 + value>>
-  defp base36_char(value), do: <<?A + value - 10>>
 
   defp state_code(nil), do: nil
 
@@ -1447,7 +1435,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   defp money(value) when is_number(value), do: value
 
   defp money(value) when is_binary(value) do
-    value = value |> String.replace(",", "") |> String.replace(~r/[^0-9.\-]/, "")
+    value = String.replace(value, ~r/[^0-9.\-]/, "")
 
     case Float.parse(value) do
       {number, _} -> number

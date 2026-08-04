@@ -12,6 +12,7 @@ defmodule Nila.Gst.Purchase.Flags do
   alias Nila.Formatters
   alias Nila.Fuzzy
   alias Nila.Gst.Hsn.Validation
+  alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Rates.Validation, as: RateValidation
   alias Nila.Gst.StateCodes
   alias Nila.Gstin
@@ -57,6 +58,8 @@ defmodule Nila.Gst.Purchase.Flags do
       &check_source_attribution/3,
       &check_arithmetic_basis/3,
       &check_zero_value/3,
+      &check_invoice_date/3,
+      &check_unreadable_amounts/3,
       &check_invoice_number/3,
       &check_gstin_presence_and_validity/3,
       &check_gstin_state_vs_tax/3,
@@ -333,6 +336,57 @@ defmodule Nila.Gst.Purchase.Flags do
       ]
     end
   end
+
+  # A date the extractor printed but nobody can parse. `Books` used to drop it
+  # to nil, which reads downstream as "this bill has no date" — and a nil date
+  # makes `Reconciliation.dates_close?/3` false, so the match ladder quietly
+  # stops corroborating by date and the row lands in `needs_human` for a reason
+  # that appears nowhere. Naming it is the whole fix.
+  defp check_invoice_date(%{"unreadable_invoice_date" => text} = invoice, _ctx, _dir)
+       when is_binary(text) do
+    [
+      flag(
+        invoice,
+        "unreadable_invoice_date",
+        "The invoice date reads #{inspect(text)}, which is not a date. Nila cannot " <>
+          "corroborate this bill against the 2B by date, and the tax period it belongs " <>
+          "to is unconfirmed — read the date off the scan and correct it.",
+        nil,
+        ["invoice_date"],
+        1.0
+      )
+    ]
+  end
+
+  defp check_invoice_date(_invoice, _ctx, _dir), do: []
+
+  # An amount that was printed and could not be read is counted as ₹0 so the
+  # invoice still totals to something — but a zero that came from a failed read
+  # is not a zero the supplier wrote. Left unnamed it surfaces as a tax
+  # arithmetic complaint against a line whose arithmetic was never in question.
+  defp check_unreadable_amounts(%{"unreadable_amounts" => [_ | _] = fields} = invoice, _ctx, _dir) do
+    [
+      flag(
+        invoice,
+        "unreadable_amount",
+        "#{Enum.map_join(fields, ", ", &amount_label/1)} could not be read as " <>
+          "#{if length(fields) == 1, do: "a number", else: "numbers"} on this bill and " <>
+          "#{if length(fields) == 1, do: "was", else: "were"} counted as zero. Any total, " <>
+          "tax split or 2B comparison below is short by whatever was actually printed — " <>
+          "read the figure off the scan before trusting this row.",
+        nil,
+        ["line_items", "taxable_paise", "tax_paise"],
+        1.0
+      )
+    ]
+  end
+
+  defp check_unreadable_amounts(_invoice, _ctx, _dir), do: []
+
+  defp amount_label("taxable_value"), do: "Taxable value"
+  defp amount_label("cgst_amount"), do: "CGST"
+  defp amount_label("sgst_amount"), do: "SGST"
+  defp amount_label("igst_amount"), do: "IGST"
 
   defp check_invoice_number(invoice, _entity_ctx, _vendor_dir) do
     smell = invoice_number_smell(invoice["invoice_number"], invoice_has_values?(invoice))
@@ -737,10 +791,15 @@ defmodule Nila.Gst.Purchase.Flags do
     max(Fuzzy.match_score(na, nb), Fuzzy.match_score(nb, na))
   end
 
+  # The same cleaning `Books.clean_gstin/1` applies, so a GSTIN reaching these
+  # checks by any route reads the same. This trimmed and upcased but left
+  # separators in, which was harmless only for as long as every value came
+  # pre-cleaned from `Books` — and stopped being true the moment a reviewer
+  # could correct the field.
   defp normalize_gstin(gstin) when is_binary(gstin) do
-    case gstin |> String.trim() |> String.upcase() do
-      "" -> nil
-      normalized -> normalized
+    case Books.clean_gstin(gstin) do
+      {:missing, _} -> nil
+      {_status, cleaned} -> cleaned
     end
   end
 

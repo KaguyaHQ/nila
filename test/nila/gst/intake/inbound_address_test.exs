@@ -1,5 +1,8 @@
 defmodule Nila.Gst.Intake.InboundAddressTest do
-  use ExUnit.Case, async: true
+  # Not async: one test blanks the signing secret in `Application` env, which is
+  # global. It flaked under concurrency, failing an unrelated test in this file
+  # with `:inbound_not_configured`.
+  use ExUnit.Case, async: false
 
   alias Nila.Gst.Intake.InboundAddress
 

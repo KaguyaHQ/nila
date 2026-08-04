@@ -299,4 +299,112 @@ defmodule Nila.Gst.Purchase.WorkingsTest do
 
     assert result["in_2b_not_books"] == []
   end
+
+  describe "a correction is normalized the way extraction is" do
+    defp corrected(field, to) do
+      b = books(%{"vendor_gstin" => "27AAPFU0939F1ZV", "invoice_number" => "BOOK-1"})
+
+      recon =
+        Workings.materialize(Recon.reconcile([b], []), [
+          %{
+            "verb" => "correct_field",
+            "books_id" => "page_01",
+            "payload" => %{"field" => field, "to" => to}
+          }
+        ])
+
+      [%{"books" => corrected}] = recon["in_books_not_2b"]
+      corrected
+    end
+
+    test "a GSTIN retyped with the separators the bill prints still validates" do
+      corrected = corrected("vendor_gstin", "33-AAACR5055K-1ZE")
+
+      assert corrected["vendor_gstin"] == "33AAACR5055K1ZE"
+      assert Nila.Gstin.valid?(corrected["vendor_gstin"])
+      assert corrected["vendor_gstin_status"] == "ok"
+    end
+
+    test "a GSTIN that is still wrong after correction is marked invalid, not dropped" do
+      corrected = corrected("vendor_gstin", "33AAACR5055K1ZF")
+
+      assert corrected["vendor_gstin"] == "33AAACR5055K1ZF"
+      assert corrected["vendor_gstin_status"] == "invalid"
+    end
+
+    test "a date retyped in the format printed on the bill becomes a Date" do
+      # ISO already worked; this is the format a reviewer reads off the paper.
+      assert corrected("invoice_date", "15/04/2025")["invoice_date"] == ~D[2025-04-15]
+      assert corrected("invoice_date", "2025-04-15")["invoice_date"] == ~D[2025-04-15]
+    end
+
+    test "an invoice number is stored in the same shape extraction stores it" do
+      assert corrected("invoice_number", " inv-77 ")["invoice_number"] == "INV-77"
+    end
+  end
+
+  describe "the s.16(2)(a) document attestation" do
+    # The supply's number carries punctuation, so the old weak normalization and
+    # the shared matching key digest it differently. An answer given under the
+    # old rule must still be found, or every reviewer who has already attested
+    # is asked again for no reason.
+    defp attestation_setup do
+      g = g2b(%{"invoice_number" => "(PORTAL-9)"})
+      recon = Recon.reconcile([], [g])
+      %{recon: recon, rows: Register.rows([], recon, %{})}
+    end
+
+    test "an answer written against the pre-unification target is still honoured" do
+      %{recon: recon, rows: rows} = attestation_setup()
+
+      legacy_digest =
+        ["#{@gstin}|#{String.upcase(String.trim("(PORTAL-9)"))}"]
+        |> Enum.join("\n")
+        |> then(&:crypto.hash(:sha256, &1))
+        |> Base.encode16(case: :lower)
+        |> binary_part(0, 16)
+
+      legacy_target = "documents_held|#{legacy_digest}"
+
+      attestation =
+        Workings.document_attestation(recon, rows, [
+          %{
+            "verb" => "attest_documents",
+            "payload" => %{"target" => legacy_target, "answer" => "held"}
+          }
+        ])
+
+      # The target it would write today has moved...
+      refute attestation.target == legacy_target
+      # ...but the answer already given is not orphaned by that.
+      assert attestation.answer == "held"
+      assert Workings.documents_attested?(attestation)
+    end
+
+    test "an answer written against the current target is honoured" do
+      %{recon: recon, rows: rows} = attestation_setup()
+      %{target: target} = Workings.document_attestation(recon, rows, [])
+
+      attestation =
+        Workings.document_attestation(recon, rows, [
+          %{"verb" => "attest_documents", "payload" => %{"target" => target, "answer" => "held"}}
+        ])
+
+      assert attestation.answer == "held"
+    end
+
+    test "an answer about a different supply set is not inherited" do
+      %{recon: recon, rows: rows} = attestation_setup()
+
+      attestation =
+        Workings.document_attestation(recon, rows, [
+          %{
+            "verb" => "attest_documents",
+            "payload" => %{"target" => "documents_held|deadbeefdeadbeef", "answer" => "held"}
+          }
+        ])
+
+      assert attestation.answer == nil
+    end
+  end
 end

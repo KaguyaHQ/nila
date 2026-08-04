@@ -10,6 +10,8 @@ defmodule Nila.Gst.Purchase.Books do
   and mixed date formats.
   """
 
+  alias Nila.Gst.InvoiceNumber
+
   @doc """
   Groups page artifacts into invoices and normalizes each to:
 
@@ -21,6 +23,12 @@ defmodule Nila.Gst.Purchase.Books do
         "vendor_gstin" => String.t() | nil,
         "invoice_number" => String.t() | nil,
         "invoice_date" => Date.t() | nil,
+        # The printed text, when it was there and could not be read as a date.
+        # Never set alongside `invoice_date` — see `read_invoice_date/1`.
+        "unreadable_invoice_date" => String.t() | nil,
+        # Source field names whose amounts were printed but unreadable, counted
+        # as zero in the sums above. `nil` when everything read.
+        "unreadable_amounts" => [String.t()] | nil,
         "delivery_address" => String.t() | nil,
         "line_items" => [%{"description", "hsn_sac", "taxable_paise"}],
         "taxable_paise" => integer,
@@ -81,6 +89,31 @@ defmodule Nila.Gst.Purchase.Books do
     end
   end
 
+  # Returns `{date, unreadable_text}` — exactly one of the two is set.
+  #
+  # A date we cannot read is a question for the reviewer, not a `nil`. Dropping
+  # the text made `invoice_date` indistinguishable from a bill that never
+  # printed one, and `Reconciliation.dates_close?/3` returns false for a nil
+  # date — so a single bad character silently withdrew date corroboration from
+  # the match ladder, demoting the row to `needs_human` with nothing anywhere
+  # saying why. The sales side has kept the text for exactly this reason since
+  # `unreadable_invoice_date` was written; purchase never did.
+  defp read_invoice_date(value) do
+    case presence(value) do
+      nil ->
+        {nil, nil}
+
+      %Date{} = date ->
+        {date, nil}
+
+      text ->
+        case parse_date(to_string(text)) do
+          %Date{} = date -> {date, nil}
+          nil -> {nil, to_string(text)}
+        end
+    end
+  end
+
   defp parse_printed_date(value) do
     case Regex.run(~r/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/, value) do
       [_, d, m, y] ->
@@ -97,17 +130,74 @@ defmodule Nila.Gst.Purchase.Books do
     end
   end
 
-  @doc "Converts a rupee number (float/int/string) to integer paise. Nil-safe."
-  def paise(nil), do: 0
-  def paise(value) when is_integer(value), do: value * 100
-  def paise(value) when is_float(value), do: round(value * 100)
+  @doc """
+  Converts a rupee number (float/int/string) to integer paise. Nil-safe.
 
-  def paise(value) when is_binary(value) do
-    cleaned = String.replace(value, ~r/[^0-9.\-]/, "")
+  Both "absent" and "unreadable" collapse to `0` here. That is fine for the
+  callers that only need a number to sum, and wrong for anyone deciding whether
+  a figure was *read* — use `paise_or_error/1` for that.
+  """
+  def paise(value) do
+    case paise_or_error(value) do
+      {:ok, paise} -> paise
+      _missing_or_unreadable -> 0
+    end
+  end
 
-    case Float.parse(cleaned) do
-      {num, _} -> round(num * 100)
-      :error -> 0
+  @doc """
+  Rupees to paise, keeping the three outcomes apart: `{:ok, paise}`,
+  `:missing` (nothing printed) and `:unreadable` (something printed that is not
+  a number).
+
+  `paise/1` folds the last two into `0`, which reads downstream as a genuine
+  zero. A line whose taxable value came off the scan as `"1,2SO.00"` became
+  ₹0 inside an otherwise valid invoice, and `Flags.check_tax_arithmetic/3` then
+  reported a line-vs-invoice mismatch — blaming the arithmetic for a character
+  the OCR never read. The reviewer got sent to the wrong question.
+  """
+  def paise_or_error(nil), do: :missing
+  def paise_or_error(value) when is_integer(value), do: {:ok, value * 100}
+  def paise_or_error(value) when is_float(value), do: {:ok, round(value * 100)}
+
+  def paise_or_error(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> :missing
+      trimmed -> parse_rupee_text(trimmed)
+    end
+  end
+
+  def paise_or_error(_value), do: :unreadable
+
+  # Currency marks are noise; anything else that is not part of a number means
+  # the number was not read.
+  #
+  # The old rule deleted every character outside `[0-9.\-]` and parsed whatever
+  # survived, which is two silent wrongs. `"Rs. 1,275.00"` kept the dot from
+  # `Rs.`, became `".1275.00"`, failed `Float.parse` and was booked as ₹0 — a
+  # rupee prefix, on a real bill, zeroing the line. And `"1,2SO.OO"` — an OCR
+  # that read S for 5 and O for 0 — collapsed to `"12."` and was booked as ₹12,
+  # a number small enough to look like a cheap item and never be questioned.
+  # Both now say so instead.
+  @currency_prefix ~r/^(rs\.?|inr|₹)\s*/i
+  @grouping ~r/[\s,]/
+  @number ~r/^-?\d+(\.\d+)?$/
+
+  defp parse_rupee_text(trimmed) do
+    cleaned =
+      trimmed
+      |> String.replace(@currency_prefix, "")
+      |> String.replace(@grouping, "")
+
+    cond do
+      cleaned == "" ->
+        :unreadable
+
+      not Regex.match?(@number, cleaned) ->
+        :unreadable
+
+      true ->
+        {number, ""} = Float.parse(cleaned)
+        {:ok, round(number * 100)}
     end
   end
 
@@ -116,6 +206,7 @@ defmodule Nila.Gst.Purchase.Books do
     seller = data["seller"] || %{}
 
     {gstin_status, gstin} = clean_gstin(seller["gstin"])
+    {invoice_date, unreadable_date} = read_invoice_date(data["invoice_date"])
 
     %{
       "page" => artifact["page"],
@@ -128,8 +219,9 @@ defmodule Nila.Gst.Purchase.Books do
       "vendor_gstin" => gstin,
       "vendor_gstin_status" => to_string(gstin_status),
       "vendor_address" => presence(seller["address"]),
-      "invoice_number" => data["invoice_number"] |> presence() |> normalize_inum(),
-      "invoice_date" => parse_date(data["invoice_date"]),
+      "invoice_number" => data["invoice_number"] |> presence() |> InvoiceNumber.store(),
+      "invoice_date" => invoice_date,
+      "unreadable_invoice_date" => unreadable_date,
       "delivery_address" => presence(data["delivery_address"]),
       "line_items" => Enum.map(data["line_items"] || [], &normalize_line/1),
       "printed_subtotal_before_discount" => data["printed_subtotal_before_discount"],
@@ -146,7 +238,26 @@ defmodule Nila.Gst.Purchase.Books do
     }
   end
 
+  # The four money fields are read through `paise_or_error/1` so an unreadable
+  # one is named rather than folded into a zero nobody can tell from a real
+  # one. The zero still goes into the sums — the invoice has to total to
+  # something — but `unreadable_amounts` carries the evidence out to the flag.
+  @line_amount_fields [
+    {"taxable_value", ["taxable_paise"]},
+    {"cgst_amount", ["tax_paise", "cgst"]},
+    {"sgst_amount", ["tax_paise", "sgst"]},
+    {"igst_amount", ["tax_paise", "igst"]}
+  ]
+
   defp normalize_line(line) do
+    read =
+      Map.new(@line_amount_fields, fn {source, _path} ->
+        {source, paise_or_error(line[source])}
+      end)
+
+    unreadable =
+      for {source, :unreadable} <- read, do: source
+
     %{
       "description" => presence(line["description"]),
       "hsn_sac" => line["hsn_sac"] |> presence() |> strip_non_digits(),
@@ -154,16 +265,24 @@ defmodule Nila.Gst.Purchase.Books do
       "unit_price_paise" => paise_or_nil(line["unit_price"]),
       "discount_rate" => line["discount_rate"],
       "discount_paise" => paise_or_nil(line["discount_amount"]),
-      "taxable_paise" => paise(line["taxable_value"]),
+      "taxable_paise" => read_paise(read, "taxable_value"),
       "cgst_rate" => line["cgst_rate"],
       "sgst_rate" => line["sgst_rate"],
       "igst_rate" => line["igst_rate"],
       "tax_paise" => %{
-        "cgst" => paise(line["cgst_amount"]),
-        "sgst" => paise(line["sgst_amount"]),
-        "igst" => paise(line["igst_amount"])
-      }
+        "cgst" => read_paise(read, "cgst_amount"),
+        "sgst" => read_paise(read, "sgst_amount"),
+        "igst" => read_paise(read, "igst_amount")
+      },
+      "unreadable_amounts" => if(unreadable == [], do: nil, else: Enum.sort(unreadable))
     }
+  end
+
+  defp read_paise(read, source) do
+    case read[source] do
+      {:ok, paise} -> paise
+      _missing_or_unreadable -> 0
+    end
   end
 
   defp group_pages(pages) do
@@ -221,6 +340,18 @@ defmodule Nila.Gst.Purchase.Books do
 
     printed = printed_breakdown(group)
     {taxable, tax, arithmetic_basis} = invoice_amounts(line_taxable, line_tax, printed)
+    invoice_date = first_present(group, "invoice_date")
+
+    # Only unreadable when no page of the invoice yielded a date: a continuation
+    # page that printed nothing legible is not a defect if page 1 was clean.
+    unreadable_date =
+      if invoice_date, do: nil, else: first_present(group, "unreadable_invoice_date")
+
+    unreadable_amounts =
+      line_items
+      |> Enum.flat_map(&(&1["unreadable_amounts"] || []))
+      |> Enum.uniq()
+      |> Enum.sort()
 
     %{
       "id" => "inv_" <> String.pad_leading(to_string(index), 2, "0"),
@@ -232,7 +363,9 @@ defmodule Nila.Gst.Purchase.Books do
       "vendor_gstin_status" => first["vendor_gstin_status"],
       "vendor_address" => first_present(group, "vendor_address"),
       "invoice_number" => first_present(group, "invoice_number"),
-      "invoice_date" => first_present(group, "invoice_date"),
+      "invoice_date" => invoice_date,
+      "unreadable_invoice_date" => unreadable_date,
+      "unreadable_amounts" => if(unreadable_amounts == [], do: nil, else: unreadable_amounts),
       "delivery_address" => first_present(group, "delivery_address"),
       "line_items" => line_items,
       "taxable_paise" => taxable,
@@ -343,9 +476,6 @@ defmodule Nila.Gst.Purchase.Books do
   end
 
   defp first_present(group, key), do: Enum.find_value(group, & &1[key])
-
-  defp normalize_inum(nil), do: nil
-  defp normalize_inum(value), do: value |> String.trim() |> String.upcase()
 
   defp strip_non_digits(nil), do: nil
   defp strip_non_digits(value), do: String.replace(value, ~r/\D/, "")

@@ -21,6 +21,23 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       refute Gstr1.valid_gstin?("garbage")
       refute Gstr1.valid_gstin?(nil)
     end
+
+    # This module carried its own copy of the checksum, gated only on
+    # `^\d{2}[A-Z0-9]{13}$`. A string with the wrong PAN shape and a
+    # coincidentally correct check digit was valid to the filing engine and
+    # invalid to purchase reconciliation and to the client form that captured
+    # it.
+    test "agrees with Nila.Gstin on structure, not just the check digit" do
+      refute Gstr1.valid_gstin?("330ABCP9487A1ZG")
+      assert Nila.Gstin.valid?("330ABCP9487A1ZG") == Gstr1.valid_gstin?("330ABCP9487A1ZG")
+    end
+
+    test "tolerates the case a scan gives us" do
+      # The printed GSTIN is whatever the OCR read; `Nila.Gstin` itself stays
+      # strict for the form fields that store a canonical value.
+      assert Gstr1.valid_gstin?("33aewph4158j1z3")
+      refute Nila.Gstin.valid?("33aewph4158j1z3")
+    end
   end
 
   describe "normalize_invoice/1" do
@@ -994,6 +1011,20 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
       assert issue["target"] ==
                "duplicate_invoice_number|112/2025-26|source-a,source-b"
+    end
+
+    test "the same number in a different case is one invoice issued twice" do
+      # Grouping on the raw printed text let this pair through as two distinct
+      # invoices, so a genuine duplicate did not block.
+      invoices = [
+        sales_invoice(%{"id" => "source-a", "invoice_number" => "inv/112"}),
+        sales_invoice(%{"id" => "source-b", "invoice_number" => "INV/112"})
+      ]
+
+      assert [issue] = Gstr1.duplicate_number_issues(invoices)
+      assert issue["source_ids"] == ["source-a", "source-b"]
+      # The message still names the number as it was actually read.
+      assert issue["invoice"] in ["inv/112", "INV/112"]
     end
 
     test "a blocking issue cannot be cleared by confirming it" do

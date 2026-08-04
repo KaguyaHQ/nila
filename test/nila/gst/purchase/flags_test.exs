@@ -205,6 +205,44 @@ defmodule Nila.Gst.Purchase.FlagsTest do
     end
   end
 
+  describe "unreadable_invoice_date" do
+    # A nil date makes `Reconciliation.dates_close?/3` false, which silently
+    # withdraws date corroboration from the match ladder. Before this flag the
+    # row landed in `needs_human` for a reason that appeared nowhere.
+    test "names the text that could not be read as a date" do
+      assert [flag] =
+               invoice(%{"invoice_date" => nil, "unreadable_invoice_date" => "13/13/2025"})
+               |> Flags.evaluate(@entity_ctx)
+               |> only("unreadable_invoice_date")
+
+      assert flag["reason"] =~ "13/13/2025"
+      assert flag["fields"] == ["invoice_date"]
+    end
+
+    test "a readable date is silent" do
+      assert invoice(%{})
+             |> Flags.evaluate(@entity_ctx)
+             |> only("unreadable_invoice_date") == []
+    end
+  end
+
+  describe "unreadable_amount" do
+    test "names which figures were counted as zero because nobody could read them" do
+      assert [flag] =
+               invoice(%{"unreadable_amounts" => ["cgst_amount", "taxable_value"]})
+               |> Flags.evaluate(@entity_ctx)
+               |> only("unreadable_amount")
+
+      assert flag["reason"] =~ "CGST"
+      assert flag["reason"] =~ "Taxable value"
+      assert flag["reason"] =~ "counted as zero"
+    end
+
+    test "an invoice whose amounts all read is silent" do
+      assert invoice(%{}) |> Flags.evaluate(@entity_ctx) |> only("unreadable_amount") == []
+    end
+  end
+
   describe "invalid_gstin" do
     test "flags a GSTIN with a bad check digit as an error, naming the GSTIN" do
       bad = "33AAACR5055K1ZF"

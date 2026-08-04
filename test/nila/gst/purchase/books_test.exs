@@ -286,4 +286,126 @@ defmodule Nila.Gst.Purchase.BooksTest do
       assert PurchaseBooks.paise(nil) == 0
     end
   end
+
+  describe "paise_or_error/1" do
+    test "keeps absent and unreadable apart from a real zero" do
+      assert PurchaseBooks.paise_or_error(0) == {:ok, 0}
+      assert PurchaseBooks.paise_or_error("0.00") == {:ok, 0}
+      assert PurchaseBooks.paise_or_error(nil) == :missing
+      assert PurchaseBooks.paise_or_error("  ") == :missing
+      # The OCR read an S where a 5 was printed. This used to strip the letters
+      # and book ₹12 — small enough to look like a cheap item and never be
+      # questioned.
+      assert PurchaseBooks.paise_or_error("1,2SO.OO") == :unreadable
+      assert PurchaseBooks.paise_or_error("n/a") == :unreadable
+      assert PurchaseBooks.paise_or_error("-") == :unreadable
+      # Parenthesised negatives were read as positive; refusing them is the
+      # honest answer until something needs to book a credit note this way.
+      assert PurchaseBooks.paise_or_error("(1275.00)") == :unreadable
+      assert PurchaseBooks.paise_or_error("1275.00 Cr") == :unreadable
+    end
+
+    test "currency marks are noise, not a parse failure" do
+      # The dot in "Rs." survived the old character strip, broke Float.parse and
+      # booked a real line as zero.
+      assert PurchaseBooks.paise_or_error("Rs. 1,275.00") == {:ok, 127_500}
+      assert PurchaseBooks.paise_or_error("Rs.1275.00") == {:ok, 127_500}
+      assert PurchaseBooks.paise_or_error("INR 1275") == {:ok, 127_500}
+      assert PurchaseBooks.paise_or_error("₹1,275.00") == {:ok, 127_500}
+      assert PurchaseBooks.paise_or_error("12,75,000.00") == {:ok, 127_500_000}
+      assert PurchaseBooks.paise_or_error("1 275.00") == {:ok, 127_500}
+    end
+
+    test "paise/1 still folds both to zero for the summing callers" do
+      assert PurchaseBooks.paise("n/a") == 0
+      assert PurchaseBooks.paise(nil) == 0
+    end
+  end
+
+  describe "an invoice date that cannot be read" do
+    test "keeps the printed text instead of dropping it to nil" do
+      %{"invoices" => [invoice]} =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "invoice_number" => "A/1",
+            "invoice_date" => "13/13/2025",
+            "line_items" => [line(1000.0, cgst: 90.0, sgst: 90.0)]
+          })
+        ])
+
+      assert invoice["invoice_date"] == nil
+      assert invoice["unreadable_invoice_date"] == "13/13/2025"
+    end
+
+    test "a readable date reports nothing" do
+      %{"invoices" => [invoice]} =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "invoice_number" => "A/1",
+            "invoice_date" => "08/10/2025",
+            "line_items" => [line(1000.0, cgst: 90.0, sgst: 90.0)]
+          })
+        ])
+
+      assert invoice["invoice_date"] == ~D[2025-10-08]
+      assert invoice["unreadable_invoice_date"] == nil
+    end
+
+    test "a continuation page with an illegible date does not indict a clean invoice" do
+      %{"invoices" => [invoice]} =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "invoice_number" => "A/1",
+            "invoice_date" => "08/10/2025",
+            "line_items" => [line(1000.0, cgst: 90.0, sgst: 90.0)]
+          }),
+          artifact(2, %{
+            "continuation_of_previous" => true,
+            "invoice_date" => "—",
+            "line_items" => [line(500.0, cgst: 45.0, sgst: 45.0)]
+          })
+        ])
+
+      assert invoice["invoice_date"] == ~D[2025-10-08]
+      assert invoice["unreadable_invoice_date"] == nil
+    end
+  end
+
+  describe "an amount that cannot be read" do
+    test "is named rather than silently counted as zero" do
+      %{"invoices" => [invoice]} =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "invoice_number" => "A/1",
+            "invoice_date" => "08/10/2025",
+            "line_items" => [
+              %{
+                "description" => "paint",
+                "taxable_value" => "1,2SO.OO",
+                "cgst_amount" => 90.0,
+                "sgst_amount" => 90.0
+              }
+            ]
+          })
+        ])
+
+      assert invoice["unreadable_amounts"] == ["taxable_value"]
+      # Still zero in the sums — the invoice has to total to something — but the
+      # zero is no longer indistinguishable from one the supplier printed.
+      assert invoice["taxable_paise"] == 0
+    end
+
+    test "a genuinely absent amount is not an unreadable one" do
+      %{"invoices" => [invoice]} =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "invoice_number" => "A/1",
+            "invoice_date" => "08/10/2025",
+            "line_items" => [line(1000.0, cgst: 90.0, sgst: 90.0)]
+          })
+        ])
+
+      assert invoice["unreadable_amounts"] == nil
+    end
+  end
 end

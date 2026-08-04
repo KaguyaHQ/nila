@@ -21,6 +21,8 @@ defmodule Nila.Gst.Purchase.Workings do
   build the projection, so every surface reads one source and cannot drift.
   """
 
+  alias Nila.Gst.InvoiceNumber
+  alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Purchase.Reconciliation
   alias Nila.Gst.Replay
 
@@ -129,7 +131,7 @@ defmodule Nila.Gst.Purchase.Workings do
 
       %{
         target: target,
-        answer: attestation_answer(resolutions, target),
+        answer: attestation_answer(resolutions, [target, legacy_attestation_target(awaiting)]),
         count: length(awaiting),
         tax_paise: awaiting |> Enum.map(&supply_tax/1) |> Enum.sum()
       }
@@ -146,18 +148,29 @@ defmodule Nila.Gst.Purchase.Workings do
           row["bucket"] == "in_2b_not_books",
           row["accepted_reason"] != nil,
           into: MapSet.new(),
-          do: {row["vendor_gstin"], norm_inum(row["invoice_number"])}
+          do: {row["vendor_gstin"], InvoiceNumber.key(row["invoice_number"])}
 
     for entry <- recon["in_2b_not_books"] || [],
         g = entry["gstr2b"] || entry,
-        not MapSet.member?(accepted, {g["vendor_gstin"], norm_inum(g["invoice_number"])}),
+        not MapSet.member?(accepted, {g["vendor_gstin"], InvoiceNumber.key(g["invoice_number"])}),
         do: g
   end
 
-  defp attestation_target(supplies) do
+  defp attestation_target(supplies), do: attestation_target(supplies, &InvoiceNumber.key/1)
+
+  # The same digest under the weak normalization this module used before it
+  # shared `InvoiceNumber`. Attestation targets are written into signed
+  # resolutions, so recomputing them under the stronger key would orphan every
+  # answer a reviewer has already given on a supply whose number carries
+  # punctuation. New answers are written against the current target; this is
+  # only ever read.
+  defp legacy_attestation_target(supplies),
+    do: attestation_target(supplies, &InvoiceNumber.legacy_key/1)
+
+  defp attestation_target(supplies, normalize) do
     digest =
       supplies
-      |> Enum.map(&"#{&1["vendor_gstin"]}|#{norm_inum(&1["invoice_number"])}")
+      |> Enum.map(&"#{&1["vendor_gstin"]}|#{normalize.(&1["invoice_number"])}")
       |> Enum.sort()
       |> Enum.join("\n")
       |> then(&:crypto.hash(:sha256, &1))
@@ -167,11 +180,13 @@ defmodule Nila.Gst.Purchase.Workings do
     "documents_held|#{digest}"
   end
 
-  defp attestation_answer(resolutions, target) do
+  defp attestation_answer(resolutions, targets) do
+    targets = List.wrap(targets)
+
     resolutions
     |> Enum.filter(fn r ->
       r["verb"] in ["attest_documents", "reopen"] and
-        get_in(r, ["payload", "target"]) == target
+        get_in(r, ["payload", "target"]) in targets
     end)
     |> List.last()
     |> case do
@@ -185,8 +200,6 @@ defmodule Nila.Gst.Purchase.Workings do
   end
 
   defp supply_tax(supply), do: (supply["tax_paise"] || %{}) |> Map.values() |> Enum.sum()
-
-  defp norm_inum(inum), do: inum |> to_string() |> String.trim() |> String.upcase()
 
   @doc "The books invoices embedded in a recon, one per books-side bucket entry."
   def books_invoices(recon) do
@@ -214,10 +227,15 @@ defmodule Nila.Gst.Purchase.Workings do
   # Stored recon is JSON: dates are ISO strings. The reconciler's date
   # corroboration needs %Date{}, so coerce on the way back in. A correction may
   # also set invoice_date, handled the same way in put_field/3.
+  # `Books.parse_date/1` tries ISO first and then the printed Indian formats,
+  # so this accepts everything the old ISO-only reading did and additionally
+  # the `15/04/2025` a reviewer types when retyping a date off the bill. That
+  # used to stay a string, and `Reconciliation.dates_close?/3` matches on
+  # `%Date{}` — so the corrected date silently stopped corroborating anything.
   defp coerce_date(%{"invoice_date" => date} = inv) when is_binary(date) do
-    case Date.from_iso8601(date) do
-      {:ok, d} -> Map.put(inv, "invoice_date", d)
-      {:error, _} -> inv
+    case Books.parse_date(date) do
+      %Date{} = parsed -> Map.put(inv, "invoice_date", parsed)
+      nil -> inv
     end
   end
 
@@ -259,9 +277,26 @@ defmodule Nila.Gst.Purchase.Workings do
     end)
   end
 
-  defp put_field(b, "invoice_number", value), do: Map.put(b, "invoice_number", value)
+  # A correction goes through the same normalization the extractor's output
+  # does. It did not, and the asymmetry undid the correction: a reviewer
+  # retyping a GSTIN the way it is printed — `33-AAACR5055K-1ZE` — stored the
+  # separators verbatim, so `Gstin.valid?/1` failed, `invalid_gstin` fired
+  # again on the value that had just been fixed, and `reconcile/3` dropped the
+  # invoice out of the GSTIN ladder entirely into fuzzy-name matching. The
+  # reviewer answered the question and the answer was thrown away.
+  defp put_field(b, "invoice_number", value),
+    do: Map.put(b, "invoice_number", InvoiceNumber.store(value))
+
   defp put_field(b, "invoice_date", value), do: coerce_date(Map.put(b, "invoice_date", value))
-  defp put_field(b, "vendor_gstin", value), do: Map.put(b, "vendor_gstin", value)
+
+  defp put_field(b, "vendor_gstin", value) when is_binary(value) or is_nil(value) do
+    {status, cleaned} = Books.clean_gstin(value)
+
+    b
+    |> Map.put("vendor_gstin", cleaned)
+    |> Map.put("vendor_gstin_status", to_string(status))
+  end
+
   defp put_field(b, "vendor_name", value), do: Map.put(b, "vendor_name", value)
   defp put_field(b, _field, _value), do: b
 

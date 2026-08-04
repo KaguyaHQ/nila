@@ -33,6 +33,7 @@ defmodule Nila.Gst.Purchase.Reconciliation do
 
   alias Nila.Formatters
   alias Nila.Fuzzy
+  alias Nila.Gst.InvoiceNumber
   alias Nila.Gstin
 
   @ix "_ix"
@@ -382,14 +383,7 @@ defmodule Nila.Gst.Purchase.Reconciliation do
 
   defp dates_close?(_b, _g, _opts), do: false
 
-  defp norm_inum(inum) do
-    inum
-    |> to_string()
-    |> String.trim()
-    |> String.upcase()
-    |> String.replace(~r/\s+/, " ")
-    |> String.replace(~r/^[^0-9A-Z]+|[^0-9A-Z]+$/, "")
-  end
+  defp norm_inum(inum), do: InvoiceNumber.key(inum)
 
   defp relax_inum(inum) do
     s = norm_inum(inum)
