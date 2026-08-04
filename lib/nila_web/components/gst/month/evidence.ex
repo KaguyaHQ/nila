@@ -262,8 +262,11 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       |> assign(:all_checks, checks)
 
     ~H"""
-    <div id="gstr1-evidence-modal" class="space-y-block h-full min-h-0">
-      <div id="gstr1-review-header" class="space-y-related">
+    <%!-- A flex column, not a block: the pane grid below claims the leftover
+          height with `flex-1`, which is what lets each pane scroll on its own
+          instead of the two of them growing past the workbench. --%>
+    <div id="gstr1-evidence-modal" class="space-y-block flex h-full min-h-0 flex-col">
+      <div id="gstr1-review-header" class="space-y-related shrink-0">
         <div class="grid items-center gap-3 lg:grid-cols-[1fr_auto_1fr]">
           <button
             type="button"
@@ -315,7 +318,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         data-next={@review_navigation.next}
         data-initial-focus={@initial_focus}
         data-event-target={@event_target}
-        class="gap-block grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]"
+        class="gap-block grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]"
       >
         <div id="gstr1-evidence-images" class="min-h-0 overflow-y-auto">
           <.evidence_frame
@@ -349,12 +352,14 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
           <%!-- The decision leads. It used to sit fourth, below a twelve-row line
                 table and below the fold — the reader scrolled past the evidence
-                to find the question the evidence answers. Sticky, so the figures
-                stay on screen while the lines beneath them are read. --%>
+                to find the question the evidence answers. Leading is enough; it
+                was sticky once, from when the whole page scrolled, and in a
+                height-bounded pane a block this tall pinned to the top left the
+                lines beneath it scrolling through a slot two rows deep. --%>
           <div
             :if={@failed_checks != [] or @other_issues != []}
             id="gstr1-decisions"
-            class="bg-base-100 space-y-related sticky top-0 z-10 pb-3"
+            class="bg-base-100 space-y-related pb-3"
           >
             <div :if={@failed_checks != []} id="gstr1-checks" class="space-y-related">
               <div class="text-ink-subtle text-label font-semibold uppercase">

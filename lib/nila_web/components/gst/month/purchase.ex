@@ -35,11 +35,11 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
     ~H"""
     <section :if={@purchase_month} id="month-register" class="space-y-section">
-      <section id="gstr3b-verdict" class="border-base-300 rounded-box border px-4 py-3">
-        <div class="flex flex-wrap items-center justify-between gap-4">
-          <div class="min-w-0">
-            <h2 class="text-base-content text-body font-semibold">Purchase reconciliation</h2>
-            <p id="gstr3b-itc-position" class="text-body text-ink-muted mt-1">
+      <header id="gstr3b-verdict" class="border-base-300 pb-block border-b">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div class="min-w-0 space-y-1">
+            <h2 class="text-base-content text-h4 font-semibold">Purchase reconciliation</h2>
+            <p id="gstr3b-itc-position" class="text-body text-ink-muted">
               {@verdict.copy}
             </p>
           </div>
@@ -63,17 +63,17 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             Request {@stats.awaiting_bills} missing {plural(@stats.awaiting_bills, "bill")}
           </.button>
         </div>
-      </section>
+      </header>
 
       <section id="gstr3b-completeness" class="space-y-block">
-        <h3 class="text-base-content text-body font-semibold">Completeness and reconciliation</h3>
+        <h3 class="text-base-content text-body font-semibold">Completeness</h3>
 
         <%!-- "0 files received" beside "12 invoices extracted" is an impossible
               pair, and printing it flat as fact teaches a reviewer to distrust
               the whole block. A count that cannot be true is a count we do not
               have — a month reconciled from an import or a backfill never had a
               file pass through intake. Say that instead of asserting zero. --%>
-        <div class="border-base-300 rounded-box grid gap-4 border p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <dl class="border-base-300 gap-block py-block grid border-y sm:grid-cols-2 lg:grid-cols-4">
           <.control_stat
             label="Source files received"
             value={@source_files}
@@ -83,7 +83,11 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           <.control_stat :if={@pages_read} label="Bill pages read" value={@pages_read} />
           <.control_stat label="Invoices extracted" value={@stats.invoices} />
           <.control_stat label="Pages with no invoice" value={length(@document_flags)} />
-        </div>
+        </dl>
+      </section>
+
+      <section id="gstr3b-reconciliation" class="space-y-block">
+        <h3 class="text-base-content text-body font-semibold">ITC reconciliation</h3>
 
         <%!-- The same bridge the workbench draws. Two screens describing one
               month's ITC in two vocabularies is how a reviewer ends up unsure

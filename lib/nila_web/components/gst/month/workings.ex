@@ -45,7 +45,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       |> assign(:b2b, assigns.derived["b2b"] || [])
       |> assign(:rates, Gstr1.rate_summary(assigns.derived))
       |> assign(:hsn, Gstr1.hsn_summary(assigns.invoices))
-      |> assign(:docs, doc_rows(assigns.derived))
       |> assign(:names, names_by_gstin(assigns.invoices))
       |> assign(:buyers, buyers_by_inum(assigns.invoices))
       |> assign(:invoice_refs, invoice_refs_by_inum(assigns.invoices))
@@ -59,18 +58,28 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
 
     ~H"""
     <div id="gstr1-workings" class="space-y-block">
-      <%!-- Differences lit, agreements silent. "All 45 compared fields match" is
-            a trust meter — the product narrating its own diligence back at a CA
-            who did not ask for a score. When the filed return agrees, the
-            overlay says nothing, which is the claim. --%>
-      <p
+      <section
         :if={@diff && @mismatches != []}
-        id="gstr1-diff-summary"
-        class="text-body text-ink-muted flex items-center gap-2"
+        id="gstr1-filed-comparison"
+        class="space-y-block"
       >
-        <.icon name="hero-exclamation-triangle-mini" class="text-warning size-4 shrink-0" />
-        {diff_summary_line(@diff, @mismatches)}
-      </p>
+        <div class="space-y-related">
+          <h4 class="text-base-content text-body font-semibold">Compared with filed return</h4>
+          <p id="gstr1-diff-summary" class="text-body text-ink-muted flex items-center gap-2">
+            <.icon name="hero-exclamation-triangle-mini" class="text-warning size-4 shrink-0" />
+            {diff_summary_line(@diff, @mismatches)}
+          </p>
+        </div>
+        <div class="space-y-related">
+          <.diff_row
+            :for={row <- @mismatches}
+            row={row}
+            accepted={@accepted}
+            locked={@locked}
+            context={diff_context(row)}
+          />
+        </div>
+      </section>
 
       <%!-- One line, once, rather than a qualifier repeated on nine column
             headers: everything below is the figure that reaches the portal. --%>
@@ -100,13 +109,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               <span class="text-base-content truncate font-medium" title={row.name}>{row.name}</span>
             </div>
             <.contrib_cell :if={row.kind == :contrib} row={row} />
-            <.diff_row
-              :if={row.kind == :diff}
-              row={row.diff}
-              accepted={@accepted}
-              locked={@locked}
-              class="pl-6"
-            />
           </:col>
           <:col :let={row} label="GSTIN">
             <span :if={row.kind == :node} class="text-ink-subtle font-mono">
@@ -175,13 +177,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               <span class="text-base-content font-mono font-medium">{row.hsn || "—"}</span>
             </div>
             <.contrib_cell :if={row.kind == :contrib} row={row} />
-            <.diff_row
-              :if={row.kind == :diff}
-              row={row.diff}
-              accepted={@accepted}
-              locked={@locked}
-              class="pl-6"
-            />
           </:col>
           <:col :let={row} label="Description">
             <span
@@ -208,78 +203,14 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           </:col>
         </.data_table>
       </div>
-
-      <div :if={@docs != []} id="gstr1-workings-docs" class="space-y-1.5">
-        <.section_label>Documents issued</.section_label>
-        <.data_table id="gstr1-workings-docs-rows" rows={@docs} min_width="min-w-[520px]" dense>
-          <:col :let={doc} label="From"><span class="font-mono">{doc["from"]}</span></:col>
-          <:col :let={doc} label="To"><span class="font-mono">{doc["to"]}</span></:col>
-          <:col :let={doc} label="Numbers" align="right">{doc["totnum"]}</:col>
-          <:col :let={doc} label="Cancelled" align="right">{doc["cancel"]}</:col>
-          <:col :let={doc} label="Issued" align="right">{doc["net_issue"]}</:col>
-        </.data_table>
-        <.diff_row
-          :for={row <- @doc_mismatches}
-          row={row}
-          accepted={@accepted}
-          locked={@locked}
-        />
-      </div>
-
-      <div :if={@unclaimed != []} id="gstr1-diff-unclaimed" class="space-y-related">
-        <.section_label>Only one side holds these</.section_label>
-        <.diff_row
-          :for={row <- @unclaimed}
-          row={row}
-          accepted={@accepted}
-          locked={@locked}
-          context={"#{row["scope"]} #{row["key"]}"}
-        />
-      </div>
     </div>
     """
   end
 
-  # The overlay is a renderer over `Nila.Eval.Gstr1Diff.rows/2` — one differ in
-  # the codebase, never a second comparison here. Each mismatch is claimed by
-  # the node it belongs to (invoice rows by inum, HSN rows by rolled-up code
-  # prefix and rate); whatever no rendered node claims lands in the trailing
-  # block, so every difference is visible somewhere. Agreements are silent.
-  defp assign_diff(%{diff: nil} = assigns) do
-    assigns
-    |> assign(:mismatches, [])
-    |> assign(:diff_by_inum, %{})
-    |> assign(:hsn_mismatches, [])
-    |> assign(:doc_mismatches, [])
-    |> assign(:unclaimed, [])
-  end
+  defp assign_diff(%{diff: nil} = assigns), do: assign(assigns, :mismatches, [])
 
-  defp assign_diff(assigns) do
-    mismatches = Enum.reject(assigns.diff, & &1["match"])
-
-    invoice_mismatches =
-      Enum.filter(mismatches, &(&1["scope"] in ["invoice", "invoice_item"]))
-
-    hsn_mismatches = Enum.filter(mismatches, &(&1["scope"] == "hsn"))
-
-    rendered_inums =
-      MapSet.new(
-        for party <- assigns.derived["b2b"] || [], inv <- party["inv"] || [], do: inv["inum"]
-      )
-
-    unclaimed =
-      Enum.reject(invoice_mismatches, &MapSet.member?(rendered_inums, key_part(&1, 1))) ++
-        Enum.reject(hsn_mismatches, fn row ->
-          Enum.any?(assigns.hsn, &hsn_claim?(row, &1))
-        end)
-
-    assigns
-    |> assign(:mismatches, mismatches)
-    |> assign(:diff_by_inum, Enum.group_by(invoice_mismatches, &key_part(&1, 1)))
-    |> assign(:hsn_mismatches, hsn_mismatches)
-    |> assign(:doc_mismatches, Enum.filter(mismatches, &(&1["scope"] == "doc_issue")))
-    |> assign(:unclaimed, unclaimed)
-  end
+  defp assign_diff(assigns),
+    do: assign(assigns, :mismatches, Enum.reject(assigns.diff, & &1["match"]))
 
   defp diff_summary_line(diff, mismatches) do
     score = Gstr1Diff.score(diff)
@@ -292,7 +223,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   attr :accepted, :any, required: true
   attr :locked, :boolean, default: false
   attr :context, :string, default: nil
-  attr :class, :string, default: nil
 
   # One field where the filed return disagrees. `accept_difference` is the
   # AUDITOR verdict as a product verb — "filed differs; ours is right" —
@@ -301,7 +231,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     assigns = assign(assigns, :target, diff_target(assigns.row))
 
     ~H"""
-    <div class={["text-body flex flex-wrap items-center gap-x-2 gap-y-1", @class]}>
+    <div class="text-body flex flex-wrap items-center gap-x-2 gap-y-1">
       <.icon
         name="hero-exclamation-triangle-mini"
         class={[
@@ -338,50 +268,56 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   end
 
   defp diff_claim(row, nil) do
-    "#{row["field"]}: ours #{diff_value(row["derived"])} · filed #{diff_value(row["filed"])}"
+    field = row["field"]
+
+    "#{diff_field(field)}: ours #{diff_value(field, row["derived"])} · filed #{diff_value(field, row["filed"])}"
   end
 
   defp diff_claim(row, context), do: "#{context} · #{diff_claim(row, nil)}"
 
+  defp diff_context(%{"scope" => scope, "key" => key})
+       when scope in ["invoice", "invoice_item"] do
+    [_gstin, invoice, rate] = String.split(key, "|")
+    "Invoice #{invoice} · #{rate}%"
+  end
+
+  defp diff_context(%{"scope" => "hsn", "key" => key}) do
+    [code, rate] = String.split(key, "|")
+    "HSN #{code} · #{rate}%"
+  end
+
+  defp diff_context(%{"scope" => "doc_issue"}), do: "Invoice series"
+
+  defp diff_field("ctin"), do: "Counterparty GSTIN"
+  defp diff_field("inum"), do: "Invoice number"
+  defp diff_field("idt"), do: "Invoice date"
+  defp diff_field("val"), do: "Invoice value"
+  defp diff_field("pos"), do: "Place of supply"
+  defp diff_field("rchrg"), do: "Reverse charge"
+  defp diff_field("inv_typ"), do: "Invoice type"
+  defp diff_field("rt"), do: "Rate"
+  defp diff_field("txval"), do: "Taxable value"
+  defp diff_field("camt"), do: "CGST"
+  defp diff_field("samt"), do: "SGST"
+  defp diff_field("iamt"), do: "IGST"
+  defp diff_field("csamt"), do: "Cess"
+  defp diff_field("hsn_sc"), do: "HSN/SAC"
+  defp diff_field("from"), do: "From"
+  defp diff_field("to"), do: "To"
+  defp diff_field("totnum"), do: "Numbers"
+  defp diff_field("net_issue"), do: "Issued"
+  defp diff_field("cancel"), do: "Cancelled"
+
   defp diff_target(row), do: "#{row["scope"]}|#{row["key"]}|#{row["field"]}"
 
-  defp diff_value(nil), do: "—"
-  defp diff_value(value) when is_number(value), do: Helpers.amount(value)
-  defp diff_value(value), do: to_string(value)
+  defp diff_value(_field, nil), do: "—"
 
-  defp key_part(row, index) do
-    row["key"] |> String.split("|") |> Enum.at(index)
-  end
+  defp diff_value(field, value)
+       when field in ["val", "txval", "camt", "samt", "iamt", "csamt"] and is_number(value),
+       do: Helpers.amount(value)
 
-  # A diff key is rolled to the coarser code ("8415|18" may cover this row's
-  # "84151090") — prefix plus rate decides which rendered node claims it.
-  defp hsn_claim?(%{"key" => key}, row) do
-    case String.split(key, "|") do
-      [code, rate] ->
-        String.starts_with?(to_string(row["hsn_sc"]), code) and
-          rate_eq?(rate, row["rt"])
-
-      _other ->
-        false
-    end
-  end
-
-  defp hsn_claims(hsn_mismatches, row) do
-    Enum.filter(hsn_mismatches, &hsn_claim?(&1, row))
-  end
-
-  defp rate_eq?(a, b), do: rate_num(a) == rate_num(b)
-
-  defp rate_num(value) when is_number(value), do: value / 1
-
-  defp rate_num(value) when is_binary(value) do
-    case Float.parse(value) do
-      {number, _rest} -> number
-      :error -> nil
-    end
-  end
-
-  defp rate_num(_value), do: nil
+  defp diff_value("rt", value) when is_number(value), do: Helpers.percent(value)
+  defp diff_value(_field, value), do: to_string(value)
 
   @doc """
   The workings nodes whose value a re-materialization changed, as the DOM ids
@@ -509,7 +445,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   defp amount_cell(assigns) do
     ~H"""
     <span
-      :if={@row.kind != :diff and is_number(@value)}
+      :if={is_number(@value)}
       class={if @row.kind == :node, do: "text-ink font-medium", else: "text-ink-muted"}
     >
       {Helpers.amount(@value)}
@@ -540,8 +476,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   defp row_click(%{kind: :contrib} = row),
     do: JS.push("select-invoice", value: %{inum: row.ref})
 
-  defp row_click(%{kind: :diff}), do: nil
-
   defp party_rows(assigns) do
     Enum.flat_map(assigns.b2b, fn party ->
       id = party_node_id(party["ctin"])
@@ -563,23 +497,18 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         |> map_with_inum_occurrence(fn inv, occurrence ->
           inv_totals = invoice_totals(inv)
           ref = invoice_ref(assigns.invoice_refs, inv["inum"], occurrence)
-          row_id = contrib_id(id, ref)
 
-          [
-            %{
-              kind: :contrib,
-              id: row_id,
-              parent: id,
-              inum: inv["inum"],
-              ref: ref,
-              label: invoice_label(inv),
-              taxable: inv_totals.taxable,
-              tax: inv_totals.tax
-            }
-            | diff_rows(assigns.diff_by_inum[inv["inum"]] || [], id, row_id)
-          ]
+          %{
+            kind: :contrib,
+            id: contrib_id(id, ref),
+            parent: id,
+            inum: inv["inum"],
+            ref: ref,
+            label: invoice_label(inv),
+            taxable: inv_totals.taxable,
+            tax: inv_totals.tax
+          }
         end)
-        |> List.flatten()
 
       [node | invoices]
     end)
@@ -619,8 +548,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         tax: hsn_tax(row)
       }
 
-      [node | contrib_rows(contribs, id, assigns.buyers, assigns.invoice_refs)] ++
-        diff_rows(hsn_claims(assigns.hsn_mismatches, row), id, id)
+      [node | contrib_rows(contribs, id, assigns.buyers, assigns.invoice_refs)]
     end)
   end
 
@@ -656,12 +584,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     case Map.get(invoice_refs, inum, []) do
       [_single] -> inum
       refs -> Enum.at(refs, occurrence, inum)
-    end
-  end
-
-  defp diff_rows(rows, parent, prefix) do
-    for {row, index} <- Enum.with_index(rows) do
-      %{kind: :diff, id: "#{prefix}-diff-#{index}", parent: parent, diff: row}
     end
   end
 
@@ -702,13 +624,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   end
 
   defp hsn_tax(row), do: (row["camt"] || 0) + (row["samt"] || 0) + (row["iamt"] || 0)
-
-  defp doc_rows(derived) do
-    derived
-    |> get_in(["doc_issue", "doc_det"])
-    |> List.wrap()
-    |> Enum.flat_map(&(&1["docs"] || []))
-  end
 
   # The rate and HSN aggregates know their contributors by invoice number; the
   # buyer is the label that makes a row recognisable, and it comes off the

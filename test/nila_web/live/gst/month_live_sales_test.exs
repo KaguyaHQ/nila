@@ -973,9 +973,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert row =~ "text-primary/60"
   end
 
-  test "the workings body shows the derived return in working-sheet shape", %{
+  test "the workings show reviewable return figures without statutory plumbing", %{
     conn: conn,
-    client: client
+    client: client,
+    org: org
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
@@ -990,9 +991,25 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert hsn =~ "8415"
     assert hsn =~ "9987"
 
-    docs = view |> element("#gstr1-workings-docs") |> render()
-    assert docs =~ "20/2025-26"
-    assert docs =~ "22/2025-26"
+    refute has_element?(view, "#gstr1-workings-docs")
+    refute has_element?(view, "#gstr1-workings", "Documents issued")
+
+    {:ok, month} = Nila.Gst.Sales.Months.get_by_period(org.id, client.id, @period)
+
+    assert get_in(month.derived_gstr1, [
+             "doc_issue",
+             "doc_det",
+             Access.at(0),
+             "docs",
+             Access.at(0)
+           ]) == %{
+             "num" => 1,
+             "from" => "20/2025-26",
+             "to" => "22/2025-26",
+             "totnum" => 3,
+             "cancel" => 0,
+             "net_issue" => 3
+           }
   end
 
   test "an aggregate's contributor rows name their invoices and carry their share", %{
@@ -1017,7 +1034,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#gstr1-workings-b2b")
     assert has_element?(view, "#gstr1-workings-rates")
     assert has_element?(view, "#gstr1-workings-hsn")
-    assert has_element?(view, "#gstr1-workings-docs")
+    refute has_element?(view, "#gstr1-workings-docs")
 
     confirm_all_open_issues(view)
 
@@ -1248,16 +1265,16 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     refute render(view) =~ "Bill total doesn&#39;t tally"
   end
 
-  test "the diff-vs-filed overlay lights differences, accepts them attributed, locks when signed",
+  test "historical filed-return differences are centralized, attributed, and locked when signed",
        %{conn: conn, org: org, client: client, user: user} do
     alias Nila.Gst.Sales.Months, as: SalesMonths
     alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
 
     confirm_sales_complete!(org, client, @period)
 
-    # No filed return, no overlay — live months are untouched.
+    # No filed return, no comparison — live months are untouched.
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
-    refute has_element?(view, "#gstr1-diff-summary")
+    refute has_element?(view, "#gstr1-filed-comparison")
 
     # The filed return is the derived one with invoice 21's taxable moved:
     # exactly one field disagrees, and ours is right.
@@ -1288,13 +1305,19 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    # Differences lit, agreements silent: one mismatch, one accept button.
-    assert view |> element("#gstr1-diff-summary") |> render() =~ "1 differ"
+    # Differences live in one historical block; agreements stay silent.
+    assert view |> element("#gstr1-filed-comparison") |> render() =~ "1 differ"
     assert length(String.split(render(view), ~s(phx-click="accept_difference"))) == 2
 
     target = "invoice_item|33AABCP9487A1ZG|21/2025-26|18|txval"
-    row = view |> element("button[phx-value-target='#{target}']") |> render()
+
+    row =
+      view
+      |> element("#gstr1-filed-comparison button[phx-value-target='#{target}']")
+      |> render()
+
     assert row =~ "Ours is right"
+    refute has_element?(view, "#gstr1-workings-b2b button[phx-value-target='#{target}']")
 
     body = render(view)
     assert body =~ "ours 12,000.00"
@@ -1315,8 +1338,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     view |> element("button[phx-click='accept_difference']") |> render_click()
 
-    # An approved month still shows the overlay — from the snapshot — but the
-    # wall hides the verbs.
+    # An approved month still shows the historical comparison from the snapshot,
+    # but the wall hides the verbs.
     confirm_all_open_issues(view)
     view |> element("#month-door-sign-r1") |> render_click()
 
@@ -1324,6 +1347,41 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert render(view) =~ "Accepted — ours is right"
     refute has_element?(view, "button[phx-click='accept_difference']")
     refute has_element?(view, "button[phx-click='undo'][phx-value-target='#{target}']")
+  end
+
+  test "document-series differences survive without a documents-issued table", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Sales.Months, as: SalesMonths
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+
+    filed =
+      put_in(
+        month.derived_gstr1,
+        ["doc_issue", "doc_det", Access.at(0), "docs", Access.at(0), "cancel"],
+        1
+      )
+
+    {:ok, _} =
+      SalesMonths.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: @period,
+        filed_gstr1: filed
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(
+             view,
+             "#gstr1-filed-comparison",
+             "Invoice series · Cancelled: ours 0 · filed 1"
+           )
+
+    refute has_element?(view, "#gstr1-workings-docs")
   end
 
   test "a correction ripples the changed workings nodes and leaves the rest quiet", %{
@@ -1450,7 +1508,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#gstr1-invoices #gstr1-inv-20\\/2025-26", "Confirmed")
     refute has_element?(view, "#month-door-sign-r1")
     assert has_element?(view, "#gstr1-record-confirmation", "Record client confirmation")
-    assert has_element?(view, "#gstr1-completeness", "Awaiting client confirmation")
+
+    assert has_element?(
+             view,
+             "#gstr1-completeness",
+             "Awaiting a period-specific WhatsApp confirmation"
+           )
   end
 
   test "a senior can override missing client confirmation only with a recorded reason", %{
@@ -1684,14 +1747,20 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     confirm_all_open_issues(view)
 
     assert has_element?(view, "#month-dump-#{failed.id}", "Extraction failed")
-    assert has_element?(view, "#gstr1-completeness", "Confirmation stale")
+    assert has_element?(view, "#gstr1-completeness", "requires confirmation again")
     refute has_element?(view, "#month-door-sign-r1")
 
     view |> element("#month-dump-abandon-#{failed.id}") |> render_click()
 
     assert render(view) =~ "Stopped waiting for that packet"
     refute has_element?(view, "#month-dump-abandon-#{failed.id}")
-    assert has_element?(view, "#gstr1-completeness", "Client confirmed")
+
+    assert has_element?(
+             view,
+             "#gstr1-completeness",
+             "Client confirmed all sales documents were sent via WhatsApp"
+           )
+
     assert has_element?(view, "#month-door-sign-r1")
 
     assert Nila.Repo.get!(Dump, failed.id).status == "discarded"

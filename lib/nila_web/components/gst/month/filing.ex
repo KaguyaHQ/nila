@@ -113,40 +113,53 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     <section
       :if={not is_nil(@gstr3b_signoff) or @blockers == [] or @purchase_month.state == "worked"}
       id="month-exit-gstr3b"
-      class="border-base-300 pt-block scroll-mt-28 border-t"
+      class="border-base-300 pt-section scroll-mt-28 border-t"
     >
-      <.button
-        :if={is_nil(@gstr3b_signoff) and @blockers == [] and @can_sign_off}
-        id="month-door-sign-3b"
-        variant="primary"
-        size="sm"
-        phx-click="3b-sign-off"
-      >
-        Sign the GSTR-3B
-      </.button>
+      <div :if={is_nil(@gstr3b_signoff)} class="space-y-block">
+        <div class="gap-block flex flex-wrap items-start justify-between">
+          <div class="space-y-1">
+            <h3 class="text-base-content text-body font-semibold">GSTR-3B sign-off</h3>
+            <p :if={@blockers != []} class="text-ink-muted text-ui">
+              {length(@blockers)} {plural(length(@blockers), "requirement")} remain before this
+              return can be signed.
+            </p>
+            <p :if={@blockers == [] and @can_sign_off} class="text-ink-muted text-ui">
+              The assembled return is ready for your signature.
+            </p>
+            <p :if={@blockers == [] and not @can_sign_off} class="text-ink-muted text-ui">
+              Ready for a senior to sign GSTR-3B.
+            </p>
+          </div>
+          <.button
+            :if={@blockers == [] and @can_sign_off}
+            id="month-door-sign-3b"
+            variant="primary"
+            size="sm"
+            phx-click="3b-sign-off"
+          >
+            Sign the GSTR-3B
+          </.button>
+        </div>
 
-      <p
-        :if={is_nil(@gstr3b_signoff) and @blockers == [] and not @can_sign_off}
-        class="text-ink-muted text-ui"
-      >
-        Ready for a senior to sign GSTR-3B.
-      </p>
-
-      <%!-- Three of these are server gates in `Signoffs.sign_off/2` — the
-            register, the s.16(2)(a) attestation and the sales intake — and the
-            button used to render on the register alone, so the other two failed
-            at the click with a flash naming a control on a different page and no
-            way to reach it. The remaining three are this page's own filing
-            order: the 3B takes its outward liability from the GSTR-1, so it
-            waits for one that is approved and filed. The server would accept a
-            signature without them; the sequence is ours. --%>
-      <div :if={is_nil(@gstr3b_signoff) and @blockers != []} id="month-exit-gstr3b-blocked">
-        <p class="text-base-content text-ui font-medium">
-          Before the GSTR-3B can be signed
-        </p>
-        <ul class="mt-related space-y-related">
-          <li :for={{key, message, exit} <- @blockers} id={"gstr3b-blocker-#{key}"}>
-            <span class="text-ink-muted text-ui">{message}</span>
+        <%!-- Three of these are server gates in `Signoffs.sign_off/2` — the
+              register, the s.16(2)(a) attestation and the sales intake — and the
+              button used to render on the register alone, so the other two failed
+              at the click with a flash naming a control on a different page and no
+              way to reach it. The remaining three are this page's own filing
+              order: the 3B takes its outward liability from the GSTR-1, so it
+              waits for one that is approved and filed. The server would accept a
+              signature without them; the sequence is ours. --%>
+        <ul
+          :if={@blockers != []}
+          id="month-exit-gstr3b-blocked"
+          class="divide-base-300 divide-y"
+        >
+          <li
+            :for={{key, message, exit} <- @blockers}
+            id={"gstr3b-blocker-#{key}"}
+            class="gap-block py-related flex flex-wrap items-center justify-between"
+          >
+            <span class="text-ink-muted text-ui min-w-0 flex-1">{message}</span>
             <.button
               :if={elem(exit, 0) == :navigate}
               navigate={elem(exit, 2)}
@@ -203,15 +216,12 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   def gstr3b_evidence(assigns) do
     ~H"""
     <section :if={show_gstr3b_evidence?(@gstr3b, @stats, @signed)} id="month-3b" class="space-y-block">
-      <div>
-        <p class="text-eyebrow text-moon font-semibold uppercase">Return evidence</p>
-        <%!-- "Assembled" reads as finished. Until it is signed, this is what the
-              return would say if the month closed now — and while bills are
-              missing, part of it rests on documents nobody has. --%>
-        <h2 class="text-base-content text-h4 font-semibold">
-          {if @signed, do: "Assembled GSTR-3B", else: "GSTR-3B preview"}
-        </h2>
-      </div>
+      <%!-- "Assembled" reads as finished. Until it is signed, this is what the
+            return would say if the month closed now — and while bills are
+            missing, part of it rests on documents nobody has. --%>
+      <h3 class="text-base-content text-body font-semibold">
+        {if @signed, do: "Assembled GSTR-3B", else: "GSTR-3B preview"}
+      </h3>
       <.gstr3b_panel gstr3b={@gstr3b} />
       <%!-- Net ITC comes off the 2B ceiling, which counts every 2B invoice
             including the ones whose bills were never supplied. Stating that

@@ -226,6 +226,11 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     refute has_element?(view, "#month-headline")
     refute has_element?(view, "#month-verdict #month-door-decisions")
 
+    assert has_element?(view, "#gstr3b-verdict h2.text-h4", "Purchase reconciliation")
+    refute has_element?(view, "#gstr3b-verdict.rounded-box")
+    assert has_element?(view, "#gstr3b-completeness h3", "Completeness")
+    assert has_element?(view, "#gstr3b-reconciliation h3", "ITC reconciliation")
+
     assert has_element?(
              view,
              "#gstr3b-review-required",
@@ -376,9 +381,10 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     assert gstr2b_only > 0
 
     completeness = view |> element("#gstr3b-completeness") |> render()
+    reconciliation = view |> element("#gstr3b-reconciliation") |> render()
 
-    assert completeness =~ "In 2B, bill not supplied"
     assert completeness =~ "Invoices extracted"
+    assert reconciliation =~ "In 2B, bill not supplied"
     refute render(view) =~ "complete register"
   end
 
@@ -703,6 +709,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     # The section renders, but as blockers rather than a button: a month with no
     # sales side cannot be signed, and used to say nothing at all about why.
     assert has_element?(view, "#month-exit-gstr3b-blocked")
+    assert has_element?(view, "#month-exit-gstr3b h3", "GSTR-3B sign-off")
     assert has_element?(view, "#gstr3b-blocker-no-sales")
 
     {:ok, sales} =

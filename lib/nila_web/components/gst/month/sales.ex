@@ -314,20 +314,19 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <section id="gstr1-completeness" class="space-y-block">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h3 class="text-base-content text-body font-semibold">Completeness and reconciliation</h3>
-          <div class="flex flex-wrap items-center gap-2">
-            <.badge variant={completeness_variant(@completeness)}>
-              {completeness_label(@completeness)}
-            </.badge>
-            <.button
-              :if={@completeness != :complete and is_nil(@r1_signoff)}
-              id="gstr1-record-confirmation"
-              variant="outline"
-              size="xs"
-              phx-click="open-completeness-override"
-            >
-              Record client confirmation
-            </.button>
-          </div>
+          <%!-- No status pill. It restated `confirmation_note/2` at the foot of
+                this same section in two words, and the two words were the worse
+                copy: "Awaiting client confirmation" names a wait without saying
+                who is being waited on or through which channel. --%>
+          <.button
+            :if={@completeness != :complete and is_nil(@r1_signoff)}
+            id="gstr1-record-confirmation"
+            variant="outline"
+            size="xs"
+            phx-click="open-completeness-override"
+          >
+            Record client confirmation
+          </.button>
         </div>
 
         <%!-- The file count is read live off today's dumps while the documents
@@ -678,16 +677,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
   defp draft_label(_assigns), do: "Proposed after fixes"
 
-  defp completeness_variant(:complete), do: "success"
-  defp completeness_variant(:client_no), do: "warning"
-  defp completeness_variant(:stale), do: "warning"
-  defp completeness_variant(:open), do: "neutral"
-
-  defp completeness_label(:complete), do: "Client confirmed"
-  defp completeness_label(:client_no), do: "More documents coming"
-  defp completeness_label(:stale), do: "Confirmation stale"
-  defp completeness_label(:open), do: "Awaiting client confirmation"
-
+  # Every state the pill carried, in a sentence that says who and through which
+  # channel. This is now the only place the section states it.
   defp confirmation_note(nil, _status),
     do: "Awaiting a period-specific WhatsApp confirmation from the client."
 
