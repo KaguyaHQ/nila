@@ -83,7 +83,6 @@ defmodule NilaWeb.ClientsLive do
     ~H"""
     <Layouts.app
       flash={@flash}
-      page_title={@page_title}
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >

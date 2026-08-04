@@ -64,12 +64,11 @@ defmodule NilaWeb.ClientEditLive do
     ~H"""
     <Layouts.app
       flash={@flash}
-      page_title={@page_title}
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
       <div id="client-edit-page" class="space-y-section mx-auto max-w-2xl">
-        <.page_header eyebrow="Clients" title="Edit client">
+        <.page_header eyebrow="Clients" eyebrow_path={~p"/clients"} title="Edit client">
           A first-class party you file GST for. Name and type are required; GSTIN and PAN
           are validated when provided.
         </.page_header>

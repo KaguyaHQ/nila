@@ -21,6 +21,11 @@ defmodule NilaWeb.Components.Page do
       </.page_header>
   """
   attr :eyebrow, :string, default: nil
+
+  attr :eyebrow_path, :string,
+    default: nil,
+    doc: "makes the eyebrow the page's one link back to its parent"
+
   attr :title, :string, required: true
   slot :inner_block, doc: "intro / supporting copy under the title"
   slot :actions, doc: "buttons or stats aligned to the right"
@@ -30,7 +35,14 @@ defmodule NilaWeb.Components.Page do
     <div class="gap-block flex flex-col lg:flex-row lg:items-end lg:justify-between">
       <div class="space-y-related">
         <p :if={@eyebrow} class="text-eyebrow text-moon font-semibold uppercase">
-          {@eyebrow}
+          <.link
+            :if={@eyebrow_path}
+            navigate={@eyebrow_path}
+            class="hover:text-base-content transition"
+          >
+            {@eyebrow}
+          </.link>
+          <span :if={is_nil(@eyebrow_path)}>{@eyebrow}</span>
         </p>
         <h1 class="font-display text-base-content text-h2 font-normal">
           {@title}

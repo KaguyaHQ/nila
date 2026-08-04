@@ -31,7 +31,6 @@ defmodule NilaWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
-  attr :page_title, :string, default: nil
   attr :current_path, :string, default: nil, doc: "drives the active sidebar highlight"
 
   slot :inner_block, required: true
@@ -102,26 +101,20 @@ defmodule NilaWeb.Layouts do
       <div class="lg:duration-calm lg:pl-64 lg:transition-[padding] group-data-[rail-collapsed=true]/app:lg:pl-16">
         <div class="h-screen lg:p-3">
           <div class="bg-base-200 lg:rounded-box text-base-content flex h-full flex-col overflow-hidden lg:ring-1 lg:ring-white/40">
-            <header class="bg-base-100/80 border-base-300 z-30 shrink-0 border-b px-4 py-3 backdrop-blur sm:px-6 lg:px-8 print:hidden">
+            <%!-- Mobile only: the rail is hidden below lg, so this carries the brand and
+                 the account menu. On desktop the rail states the section and the page's
+                 own masthead names the object — a strip repeating either is chrome. --%>
+            <header class="bg-base-100/80 border-base-300 z-30 shrink-0 border-b px-4 py-3 backdrop-blur sm:px-6 lg:hidden print:hidden">
               <div class="flex items-center justify-between gap-4">
-                <nav
-                  aria-label="Breadcrumb"
-                  class="text-ink-subtle text-ui flex min-w-0 items-center gap-1.5"
-                >
-                  <span class="text-ink-muted font-medium">Nila</span>
-                  <span :if={@page_title} class="text-ink-faint opacity-75">/</span>
-                  <span :if={@page_title} class="text-ink truncate font-medium">
-                    {@page_title}
-                  </span>
-                </nav>
-                <div class="flex items-center gap-2">
-                  <div :if={@current_scope} class="lg:hidden">
-                    <.account_menu
-                      current_scope={@current_scope}
-                      placement={:header}
-                      id_prefix="mobile"
-                    />
-                  </div>
+                <.link navigate={~p"/today"} class="flex min-w-0 items-center">
+                  <.logo class="text-base-content h-5 w-auto" />
+                </.link>
+                <div :if={@current_scope} class="flex items-center gap-2">
+                  <.account_menu
+                    current_scope={@current_scope}
+                    placement={:header}
+                    id_prefix="mobile"
+                  />
                 </div>
               </div>
             </header>
@@ -146,14 +139,13 @@ defmodule NilaWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
-  attr :page_title, :string, default: nil
   attr :active_section, :atom, required: true
 
   slot :inner_block, required: true
 
   def settings(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} page_title={@page_title} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div id="settings-cockpit" class="gap-section flex flex-col lg:flex-row">
         <aside class="shrink-0 lg:w-64">
           <nav

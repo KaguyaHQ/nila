@@ -82,7 +82,6 @@ defmodule NilaWeb.Settings.ProfileLive do
     ~H"""
     <Layouts.settings
       flash={@flash}
-      page_title={@page_title}
       current_scope={@current_scope}
       active_section={@settings_section}
     >
