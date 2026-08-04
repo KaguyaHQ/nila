@@ -175,8 +175,8 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
     # Each invoice points at the page it was read from, stored under a basename
     # namespaced by the dump so a straggler's page_01 can never overwrite this one.
     assert [first, second] = extracted.invoices
-    assert first["images"] == ["d#{dump.id}_page_01.png"]
-    assert second["images"] == ["d#{dump.id}_page_09.png"]
+    assert first["images"] == ["d#{dump.id}_page_01.jpg"]
+    assert second["images"] == ["d#{dump.id}_page_09.jpg"]
 
     assert {:ok, bytes} =
              PurchaseMonths.fetch_evidence(org.id, client.id, "2025-10", hd(first["images"]))

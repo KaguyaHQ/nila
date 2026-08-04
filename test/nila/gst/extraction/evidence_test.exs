@@ -10,11 +10,19 @@ defmodule Nila.Gst.Extraction.EvidenceTest do
     attached = Evidence.attach(result, PdfFixtures.pdf(5), filename: "bills.pdf")
 
     assert attached.images |> Map.keys() |> Enum.sort() ==
-             ~w(page_01.png page_02.png page_03.png page_04.png page_05.png)
+             ~w(page_01.jpg page_02.jpg page_03.jpg page_04.jpg page_05.jpg)
 
     assert Enum.all?(Map.values(attached.images), &(byte_size(&1) > 0))
-    assert [%{"image" => "page_03.png"}] = attached.pages
+    assert [%{"image" => "page_03.jpg"}] = attached.pages
     refute Map.has_key?(attached, :evidence_error)
+  end
+
+  # The basename is not the evidence — a `.jpg` name over PNG bytes would serve
+  # the wrong content type and cost the same 5.8x on every click of the queue.
+  test "a page is encoded as the photograph it is" do
+    attached = Evidence.attach(result([artifact([1])]), PdfFixtures.pdf(1), filename: "bill.pdf")
+
+    assert <<0xFF, 0xD8, 0xFF, _rest::binary>> = attached.images["page_01.jpg"]
   end
 
   test "an artifact without page attribution points at no image" do
@@ -43,8 +51,8 @@ defmodule Nila.Gst.Extraction.EvidenceTest do
   end
 
   test "uses stable page basenames" do
-    assert Evidence.page_basename(1) == "page_01.png"
-    assert Evidence.page_basename(120) == "page_120.png"
+    assert Evidence.page_basename(1) == "page_01.jpg"
+    assert Evidence.page_basename(120) == "page_120.jpg"
   end
 
   defp result(pages), do: %{pages: pages, images: %{}, audit: %{}, unaccounted_pages: []}

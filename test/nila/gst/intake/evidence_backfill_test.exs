@@ -59,8 +59,8 @@ defmodule Nila.Gst.Intake.EvidenceBackfillTest do
 
       {:ok, reloaded} = Dumps.fetch(ctx.org.id, dump.id)
       assert [first, second] = reloaded.invoices
-      assert first["images"] == ["d#{dump.id}_page_01.png"]
-      assert second["images"] == ["d#{dump.id}_page_02.png", "d#{dump.id}_page_03.png"]
+      assert first["images"] == ["d#{dump.id}_page_01.jpg"]
+      assert second["images"] == ["d#{dump.id}_page_02.jpg", "d#{dump.id}_page_03.jpg"]
 
       # Stored where the evidence controller will look for it, with real bytes.
       assert {:ok, bytes} =
@@ -81,7 +81,7 @@ defmodule Nila.Gst.Intake.EvidenceBackfillTest do
 
       {:ok, month} = PurchaseMonths.get_by_period(ctx.org.id, ctx.client.id, "2025-10")
       assert [row] = month.register_rows
-      assert row["images"] == ["d#{dump.id}_page_01.png"]
+      assert row["images"] == ["d#{dump.id}_page_01.jpg"]
     end
 
     # An invoice extraction could not place has no page to point at. Guessing one
@@ -105,7 +105,7 @@ defmodule Nila.Gst.Intake.EvidenceBackfillTest do
 
       {:ok, reloaded} = Dumps.fetch(ctx.org.id, dump.id)
       assert [invoice] = reloaded.invoices
-      assert invoice["images"] == ["d#{dump.id}_page_01.png"]
+      assert invoice["images"] == ["d#{dump.id}_page_01.jpg"]
     end
 
     test "a dump whose original is gone reports rather than raises", ctx do

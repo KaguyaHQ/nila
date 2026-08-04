@@ -7,8 +7,8 @@ defmodule NilaWeb.Components.Evidence do
     * `evidence_frame/1` — the inline preview. An A4 page at any pane width is
       taller than the viewport, so this is never where reading happens; it is
       corroboration, sized to sit beside the thing it corroborates. It reserves
-      its box before the bytes land (a page is ~3 MB) so selecting a row is not
-      a layout jump followed by a flash.
+      its box before the bytes land (a page is ~370 KB) so selecting a row is
+      not a layout jump followed by a flash.
     * `evidence_overlay/1` — where reading actually happens. Full screen, ink
       scrim, fit-height by default, click to step fit → 100% → 200% (the
       smudged-total case), Esc back to the surface underneath with its
