@@ -17,6 +17,50 @@
       "sha256": "c4c9982b0c0f6e02386d6ae0f4a612aee822a0fc4a34b9349869f9ff6d786d5b"
     },
     {
+      "byte_size": 12014454,
+      "client": "breeze",
+      "ground_truth": null,
+      "key": "breeze/2025-11/purchase.pdf",
+      "kind": "purchase",
+      "name": "breeze-2025-11-purchase",
+      "pages": 39,
+      "period": "2025-11",
+      "sha256": "c148c8de11c909f82eb7bad3cdaf2bd4f721093d5094e39e2890b37ba2d1cbc5"
+    },
+    {
+      "byte_size": 3802959,
+      "client": "breeze",
+      "ground_truth": null,
+      "key": "breeze/2025-11/sales.pdf",
+      "kind": "sales",
+      "name": "breeze-2025-11-sales",
+      "pages": 15,
+      "period": "2025-11",
+      "sha256": "e7684ad12bc21eca135fbcc008d986f87fc1ca05c771551c0bae633f10c705c5"
+    },
+    {
+      "byte_size": 19044104,
+      "client": "breeze",
+      "ground_truth": null,
+      "key": "breeze/2025-12/purchase.pdf",
+      "kind": "purchase",
+      "name": "breeze-2025-12-purchase",
+      "pages": 44,
+      "period": "2025-12",
+      "sha256": "cd4f61ed80a7b7dcc97b192ac2248e1f3c396576c2889670db2ab04723a8a280"
+    },
+    {
+      "byte_size": 2832871,
+      "client": "breeze",
+      "ground_truth": null,
+      "key": "breeze/2025-12/sales.pdf",
+      "kind": "sales",
+      "name": "breeze-2025-12-sales",
+      "pages": 12,
+      "period": "2025-12",
+      "sha256": "19dc4324a144a657d2ea8769f85198c1e2a2132b5b79f3452f39db80854af8cb"
+    },
+    {
       "byte_size": 2037595,
       "client": "breeze",
       "ground_truth": "test/fixtures/gstr1/breeze/2026-01/returns_012026_R1_33AEWPH4158J1Z3.json",
@@ -28,6 +72,17 @@
       "sha256": "27fe2df4ee7893cf995d27144313e95121c854e127abef7c2eedf04a9be89993"
     },
     {
+      "byte_size": 3369957,
+      "client": "breeze",
+      "ground_truth": null,
+      "key": "breeze/2026-03/sales.pdf",
+      "kind": "sales",
+      "name": "breeze-2026-03-sales",
+      "pages": 9,
+      "period": "2026-03",
+      "sha256": "98b97676d4bd9376ccbff2bc6ca1449f5b01f44d0d72010615cf7263379c28a5"
+    },
+    {
       "byte_size": 26434150,
       "client": "breeze",
       "ground_truth": "test/fixtures/purchase/breeze/2026-04/returns_R2B_33AEWPH4158J1Z3_042026.json",
@@ -37,6 +92,17 @@
       "pages": 43,
       "period": "2026-04",
       "sha256": "46795c03db1dc95c7ea01723f765bf7366490163fba5d5928ebf4f6f36ef34cc"
+    },
+    {
+      "byte_size": 14095913,
+      "client": "breeze",
+      "ground_truth": null,
+      "key": "breeze/2026-05/purchase.pdf",
+      "kind": "purchase",
+      "name": "breeze-2026-05-purchase",
+      "pages": 45,
+      "period": "2026-05",
+      "sha256": "38d28e1d3679ca75e556773524cabed748302f48f398898c3e1fdef1803a1b88"
     },
     {
       "byte_size": 4851632,
@@ -61,6 +127,17 @@
       "sha256": "1d90f1fd67f50e5f1beb3ac9d2fa5c74e342a035c61cf9409c3f9abe501e6677"
     },
     {
+      "byte_size": 2174540,
+      "client": "breeze",
+      "ground_truth": null,
+      "key": "breeze/2026-06/sales.pdf",
+      "kind": "sales",
+      "name": "breeze-2026-06-sales",
+      "pages": 8,
+      "period": "2026-06",
+      "sha256": "cfb7e59ee7085f083d081c5c4e77249a45214cc503c577693907701a99d47608"
+    },
+    {
       "byte_size": 586606,
       "client": "caltech",
       "ground_truth": null,
@@ -81,6 +158,28 @@
       "pages": 13,
       "period": "2025-06",
       "sha256": "e90f728973190d8c012c391512f5f1878e2dbc998fe05ef58db8815d882ba7d2"
+    },
+    {
+      "byte_size": 6276830,
+      "client": "caltech",
+      "ground_truth": null,
+      "key": "caltech/2025-09/sales.pdf",
+      "kind": "sales",
+      "name": "caltech-2025-09-sales",
+      "pages": 17,
+      "period": "2025-09",
+      "sha256": "51d5ff21b0a7778ea62864eb3ddb82666ce8e64481792f2e0d0df82b8cfa8ee5"
+    },
+    {
+      "byte_size": 3086048,
+      "client": "caltech",
+      "ground_truth": null,
+      "key": "caltech/2025-10/purchase.pdf",
+      "kind": "purchase",
+      "name": "caltech-2025-10-purchase",
+      "pages": 12,
+      "period": "2025-10",
+      "sha256": "580ca1c1fd1e65b0be4acc6830abcde1e041b4b42cfaf183490bc4ddcd1fcfb2"
     },
     {
       "byte_size": 2247029,
@@ -105,6 +204,17 @@
       "sha256": "fae4fcdee0a5bb1d28b29fb63d5962a875d779b5de146a75b12f091269b52957"
     },
     {
+      "byte_size": 1816776,
+      "client": "caltech",
+      "ground_truth": null,
+      "key": "caltech/2025-12/purchase.pdf",
+      "kind": "purchase",
+      "name": "caltech-2025-12-purchase",
+      "pages": 10,
+      "period": "2025-12",
+      "sha256": "fbbb70dd7d14ccbb79a180a725268c326975cb0671f701125cec4d2a155dc143"
+    },
+    {
       "byte_size": 1228778,
       "client": "caltech",
       "ground_truth": "test/fixtures/gstr1/caltech/2025-12/returns_122025_R1_33BPBPK1081A1ZO.json",
@@ -127,6 +237,28 @@
       "sha256": "271543d0d01e2ecdc42c5d4c782786ff4a52025b016cbbaeb0e4276e44023598"
     },
     {
+      "byte_size": 6861686,
+      "client": "caltech",
+      "ground_truth": null,
+      "key": "caltech/2026-02/sales.pdf",
+      "kind": "sales",
+      "name": "caltech-2026-02-sales",
+      "pages": 15,
+      "period": "2026-02",
+      "sha256": "93093176ff7a69a84f51ec0e81b558c9f7153b4a380cca27d752954347b12ab4"
+    },
+    {
+      "byte_size": 4220312,
+      "client": "caltech",
+      "ground_truth": null,
+      "key": "caltech/2026-03/sales.pdf",
+      "kind": "sales",
+      "name": "caltech-2026-03-sales",
+      "pages": 11,
+      "period": "2026-03",
+      "sha256": "8f421281961d1f61980e92d848650d14b32cde8faf4cc41afb1573862d004779"
+    },
+    {
       "byte_size": 6224948,
       "client": "caltech",
       "ground_truth": "test/fixtures/purchase/caltech/2026-04/returns_R2B_33BPBPK1081A1ZO_042026.json",
@@ -136,6 +268,28 @@
       "pages": 15,
       "period": "2026-04",
       "sha256": "959fa9a66d9e7e79cd80ba9c4f303f9ad23b29e445eabe1bdaaadb2c47d9440d"
+    },
+    {
+      "byte_size": 1702237,
+      "client": "caltech",
+      "ground_truth": null,
+      "key": "caltech/2026-05/sales.pdf",
+      "kind": "sales",
+      "name": "caltech-2026-05-sales",
+      "pages": 5,
+      "period": "2026-05",
+      "sha256": "4c9b72a2925c7bdc6ecac394d03739a5b95d3a1aff34ecd4feb8242934a90aee"
+    },
+    {
+      "byte_size": 3003184,
+      "client": "caltech",
+      "ground_truth": null,
+      "key": "caltech/2026-06/sales.pdf",
+      "kind": "sales",
+      "name": "caltech-2026-06-sales",
+      "pages": 10,
+      "period": "2026-06",
+      "sha256": "71a5b133df86f51c2efc3c29c51b646b5cd8c7795cd2c8e0afac9a0625275835"
     }
   ],
   "note": "Real client packets for OCR evals. Bytes live in R2 (private, eval-scoped token); this file is the registry. Onboard a month with `mix nila.eval_corpus add <pdf> <portal-truth.json>`. Ground-truth JSONs stay in test/fixtures/."
