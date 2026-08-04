@@ -87,7 +87,7 @@ defmodule Nila.Gst.Sales.AccountTest do
       %{"code" => "hsn_new_code", "status" => "open", "level" => "advisory"},
       %{"code" => "hsn_new_code", "status" => "open", "level" => "advisory"},
       %{"code" => "grand_total_mismatch", "status" => "open", "level" => "required"},
-      %{"code" => "cess_not_evaluated", "status" => "open", "level" => "required"},
+      %{"code" => "pages_unaccounted", "status" => "open", "level" => "required"},
       %{"code" => "invalid_hsn_sac", "status" => "open", "level" => "required"},
       %{"code" => "credit_note_unsupported", "status" => "open", "level" => "blocking"},
       %{"code" => "rounding_variance", "status" => "open", "level" => "info"}

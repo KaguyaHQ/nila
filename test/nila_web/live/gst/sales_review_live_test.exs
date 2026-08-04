@@ -243,6 +243,42 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
       })
   end
 
+  # A cess-bearing supply cannot be filed at all, so the review pane offers no
+  # way to settle it — only the HSN correction, if the code was misread.
+  test "the cess blocker offers no resolve affordance in the review pane", context do
+    %{month: month, client: client} = context
+
+    invoices =
+      Enum.map(month.invoices, fn
+        %{"invoice_number" => "22/2025-26"} = invoice ->
+          put_in(invoice, ["line_items", Access.at(0), "hsn_sac"], "24039910")
+
+        invoice ->
+          invoice
+      end)
+
+    month |> Ecto.Changeset.change(invoices: invoices) |> Nila.Repo.update!()
+
+    tobacco = Enum.find(invoices, &(&1["invoice_number"] == "22/2025-26"))
+
+    {:ok, view, _html} =
+      live(context.conn, review_path(client, tobacco["id"], "all"))
+
+    assert render(view) =~ "csamt 0"
+
+    refute has_element?(
+             view,
+             "#sales-review button[phx-value-target$='cess_unsupported']"
+           )
+
+    # The blocker stands and the month cannot be reviewed past it.
+    {:ok, blocked} = SalesMonths.get_by_period(month.org_id, client.id, @period)
+    workings = Resolutions.workings(blocked)
+
+    assert Enum.any?(workings.issues, &(&1["code"] == "cess_unsupported"))
+    refute Resolutions.workings(blocked).issues |> Nila.Gst.Sales.Workings.reviewable?()
+  end
+
   defp review_path(client, item, scope) do
     "/gst/#{client.id}/#{@period}/review/sales?item=#{item}&scope=#{scope}"
   end

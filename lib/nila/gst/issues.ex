@@ -67,9 +67,6 @@ defmodule Nila.Gst.Issues do
     # The extraction ledger
     "pages_unaccounted" => {"required", :confirmation},
     "evidence_unavailable" => {"required", :confirmation},
-
-    # Cess: the question, and the capability gap one answer uncovers
-    "cess_not_evaluated" => {"required", :confirmation},
     "cess_unsupported" => {"blocking", nil},
 
     # Documents this return has no table for

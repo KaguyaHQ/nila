@@ -201,7 +201,7 @@ defmodule NilaWeb.Gst.MonthLive do
   defp blocked_message(codes) do
     "This month holds " <>
       Enum.map_join(codes, ", ", &blocked_document/1) <>
-      ", which this return has no section for. Filing it as a regular invoice would be wrong, so it cannot be signed."
+      ", which this return cannot carry. Filing it as a regular invoice would be wrong, so it cannot be signed."
   end
 
   defp blocked_document("credit_note_unsupported"), do: "a credit note"
@@ -749,18 +749,6 @@ defmodule NilaWeb.Gst.MonthLive do
 
   def handle_event("close-chase-history", _params, socket),
     do: {:noreply, assign(socket, :show_chase_history, false)}
-
-  # The cess question is answered either way through this one verb: the reviewer
-  # looked, and that is the durable fact. Which answer he gave rides as payload,
-  # and "cess applies" is what uncovers the blocking capability gap.
-  def handle_event("confirm_issue", %{"target" => target, "answer" => answer}, socket)
-      when answer in ~w(no_cess cess_applies),
-      do:
-        record(socket, %{
-          "verb" => "confirm_issue",
-          "target" => target,
-          "payload" => %{"answer" => answer}
-        })
 
   def handle_event("confirm_issue", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "confirm_issue", "target" => target})

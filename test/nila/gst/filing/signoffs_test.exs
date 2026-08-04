@@ -592,7 +592,6 @@ defmodule Nila.Gst.Filing.SignoffsTest do
           client_id: sales_month.client_id,
           period: "2025-12",
           state: "worked",
-          cess_evaluated: true,
           invoices: [],
           derived_gstr1: %{},
           issues: [],
@@ -617,7 +616,6 @@ defmodule Nila.Gst.Filing.SignoffsTest do
           client_id: sales_month.client_id,
           period: "2025-11",
           state: "worked",
-          cess_evaluated: sales_month.cess_evaluated,
           invoices: sales_month.invoices,
           derived_gstr1: sales_month.derived_gstr1,
           issues: sales_month.issues,
@@ -679,56 +677,22 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       assert {:error, :already_signed} = Signoffs.sign_off_gstr1(resolved, scope)
     end
 
-    test "an unanswered cess question withholds approval", %{
+    test "a month with nothing cess-bearing is never asked about cess", %{
       sales_month: sales_month,
       owner_scope: scope
     } do
-      unresolved_cess =
-        sales_month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
-
-      resolved = resolve_open_issues(unresolved_cess, scope.user.id, except: "cess_not_evaluated")
-
-      # Every other check is answered; the cess question alone holds the month.
-      assert {:error, :open_issues} = SalesResolutions.mark_reviewed(resolved)
-      assert {:error, :not_reviewed} = Signoffs.sign_off_gstr1(resolved, scope)
-
-      cess =
-        SalesResolutions.workings(resolved).issues
-        |> Enum.find(&(&1["code"] == "cess_not_evaluated"))
-
-      assert cess["status"] == "open"
-      assert cess["level"] == "required"
-    end
-
-    test "answering that no cess applies makes approval reachable", %{
-      sales_month: sales_month,
-      owner_scope: scope
-    } do
-      unresolved_cess =
-        sales_month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
-
-      answered = answer_cess(unresolved_cess, scope.user.id, "no_cess")
-      reviewed = make_reviewed(answered, scope.user.id)
+      reviewed = make_reviewed(sales_month, scope.user.id)
 
       assert {:ok, signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
-
-      # The signature records which answer was given, against which invoice set.
-      confirmed =
-        Enum.find(signoff.snapshot["issues"], &(&1["code"] == "cess_not_evaluated"))
-
-      assert confirmed["status"] == "resolved"
-      assert confirmed["target"] =~ "cess_not_evaluated|"
+      refute Enum.any?(signoff.snapshot["issues"], &(&1["code"] == "cess_unsupported"))
     end
 
-    test "answering that cess applies blocks approval with no confirm affordance", %{
+    test "a cess-bearing supply blocks approval with no confirm affordance", %{
       sales_month: sales_month,
       owner_scope: scope
     } do
-      unresolved_cess =
-        sales_month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
-
-      answered = answer_cess(unresolved_cess, scope.user.id, "cess_applies")
-      resolved = resolve_open_issues(answered, scope.user.id)
+      candidate = seed_cess_line!(sales_month)
+      resolved = resolve_open_issues(candidate, scope.user.id)
 
       assert {:error, {:blocking_issues, ["cess_unsupported"]}} =
                Signoffs.sign_off_gstr1(resolved, scope)
@@ -754,23 +718,19 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       assert still_blocked["status"] == "open"
     end
 
-    defp answer_cess(sales_month, user_id, answer) do
-      cess =
-        SalesResolutions.workings(sales_month).issues
-        |> Enum.find(&(&1["code"] == "cess_not_evaluated"))
+    # Chewing tobacco on 22/2025-26, so a cess test has a real cess-bearing line
+    # rather than a flag someone flipped.
+    defp seed_cess_line!(sales_month) do
+      invoices =
+        Enum.map(sales_month.invoices, fn
+          %{"invoice_number" => "22/2025-26"} = invoice ->
+            put_in(invoice, ["line_items", Access.at(0), "hsn_sac"], "24039910")
 
-      {:ok, _} =
-        SalesResolutions.record(
-          sales_month,
-          %{
-            "verb" => "confirm_issue",
-            "target" => SalesWorkings.issue_key(cess),
-            "payload" => %{"answer" => answer}
-          },
-          user_id
-        )
+          invoice ->
+            invoice
+        end)
 
-      Nila.Repo.reload!(sales_month)
+      sales_month |> Ecto.Changeset.change(invoices: invoices) |> Nila.Repo.update!()
     end
 
     test "a document the return has no table for cannot be signed", %{

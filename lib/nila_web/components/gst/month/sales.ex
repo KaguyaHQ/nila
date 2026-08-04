@@ -217,29 +217,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             >
               Review copies
             </.button>
-            <%!-- Two exits, because a yes-only answer to "does cess apply" is a dead end. --%>
-            <div :if={issue["code"] == "cess_not_evaluated"} class="flex flex-wrap gap-2">
-              <.button
-                id="gstr1-cess-none"
-                variant="outline"
-                size="xs"
-                phx-click="confirm_issue"
-                phx-value-target={SalesWorkings.issue_key(issue)}
-                phx-value-answer="no_cess"
-              >
-                No cess applies
-              </.button>
-              <.button
-                id="gstr1-cess-applies"
-                variant="outline"
-                size="xs"
-                phx-click="confirm_issue"
-                phx-value-target={SalesWorkings.issue_key(issue)}
-                phx-value-answer="cess_applies"
-              >
-                Cess applies
-              </.button>
-            </div>
             <.button
               :if={!is_binary(issue["hsn_code"]) and is_binary(issue["source_id"])}
               variant="outline"
@@ -259,7 +236,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             <.button
               :if={
                 !is_binary(issue["hsn_code"]) and is_nil(issue["source_id"]) and
-                  issue["code"] != "cess_not_evaluated" and
                   Issues.resolution_kind(issue) == :confirmation
               }
               variant="outline"
@@ -875,7 +851,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   end
 
   defp cess_label(:checked_none), do: "Checked · none found"
-  defp cess_label(:not_evaluated), do: "Not checked · awaiting your answer"
   defp cess_label(:unsupported), do: "Applies · this return cannot carry it"
 
   defp sales_review_path(client, period, source_id, scope, focus \\ nil) do

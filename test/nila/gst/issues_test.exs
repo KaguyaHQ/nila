@@ -32,8 +32,8 @@ defmodule Nila.Gst.IssuesTest do
     test "a blocker is a severity and the work is a separate lookup" do
       # Same kind of work, two severities: both are confirmations, and only one
       # can be answered at all.
-      assert Issues.level_for("cess_not_evaluated") == "required"
-      assert Issues.resolution_kind("cess_not_evaluated") == :confirmation
+      assert Issues.level_for("pages_unaccounted") == "required"
+      assert Issues.resolution_kind("pages_unaccounted") == :confirmation
       assert Issues.level_for("cess_unsupported") == "blocking"
       assert Issues.resolution_kind("cess_unsupported") == nil
     end
@@ -76,7 +76,7 @@ defmodule Nila.Gst.IssuesTest do
       issues = [
         %{"code" => "grand_total_mismatch"},
         %{"code" => "hsn_multiple_rates"},
-        %{"code" => "cess_not_evaluated"},
+        %{"code" => "pages_unaccounted"},
         %{"code" => "line_arithmetic"},
         %{"code" => "hsn_new_code"}
       ]

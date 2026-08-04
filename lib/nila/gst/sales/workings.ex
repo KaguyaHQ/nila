@@ -18,6 +18,7 @@ defmodule Nila.Gst.Sales.Workings do
   target wins (append-only store, so ordering is by insertion).
   """
 
+  alias Nila.Gst.Cess
   alias Nila.Gst.Hsn.DescriptionSignal
   alias Nila.Gst.Hsn.Validation
   alias Nila.Gst.Issues
@@ -48,7 +49,6 @@ defmodule Nila.Gst.Sales.Workings do
 
   def materialize(invoices, resolutions, header, document_issues, opts) when is_list(opts) do
     compliance = Keyword.get(opts, :compliance, %{})
-    cess_evaluated = Keyword.get(opts, :cess_evaluated, true)
 
     pristine_source_invoices =
       invoices
@@ -67,7 +67,8 @@ defmodule Nila.Gst.Sales.Workings do
     correction_issues =
       Gstr1.validation_issues(pristine_source_invoices) ++
         Gstr1.duplicate_number_issues(pristine_source_invoices) ++
-        compliance_issues(pristine_source_invoices, compliance)
+        compliance_issues(pristine_source_invoices, compliance) ++
+        cess_issues(pristine_source_invoices)
 
     source_flagged = Gstr1.flagged_fields(pristine_source_invoices, correction_issues)
 
@@ -95,7 +96,7 @@ defmodule Nila.Gst.Sales.Workings do
       |> Enum.concat(compliance_issues(active_invoices, compliance))
       |> Enum.concat(Gstr1.blocking_issues(active_invoices))
       |> Enum.concat(challenge_issues(effective, active_invoices))
-      |> Enum.concat(cess_issues(cess_evaluated, active_invoices, effective))
+      |> Enum.concat(cess_issues(active_invoices))
       |> Enum.concat(document_issues)
       |> Issues.normalize_all()
       |> collapse_by_target()
@@ -104,7 +105,7 @@ defmodule Nila.Gst.Sales.Workings do
       effective
       |> Replay.latest("target")
       |> Map.values()
-      |> Enum.filter(&(&1["verb"] == "confirm_issue" and answered?(&1)))
+      |> Enum.filter(&(&1["verb"] == "confirm_issue"))
 
     confirmed_keys =
       confirmed_issue_keys(confirmations, raw_issues, pristine_source_invoices)
@@ -172,87 +173,46 @@ defmodule Nila.Gst.Sales.Workings do
 
   defp annotate_rates(invoices, _compliance), do: invoices
 
-  defp cess_issues(true, _invoices, _effective), do: []
-
-  defp cess_issues(false, invoices, effective) do
-    target = cess_target(invoices)
-    count = length(invoices)
-
-    question = %{
-      "invoice" => nil,
-      "code" => "cess_not_evaluated",
-      "level" => Issues.level_for("cess_not_evaluated"),
-      "message" =>
-        "Cess has not been checked on #{count} sales #{if count == 1, do: "invoice", else: "invoices"}. Confirm that none of them carries a cess-applicable supply.",
-      "fields" => [],
-      "target" => target
-    }
-
-    [question | cess_unsupported_issues(cess_answer(effective, target))]
-  end
-
-  # "Cess applies" is not a more severe version of "cess was not checked" — it is
-  # the answer to it, which happens to uncover a capability gap. `derive_invoice`
-  # hardcodes `"csamt" => 0` and `normalize_line` carries no cess field, so this
-  # engine cannot file a cess-bearing return; that is the same family as a credit
-  # note the return has no table for, and `blocking?` keeps anyone confirming it
-  # away. Deriving it from the answer means `reopen` on the cess target discards
-  # both without a second event.
-  defp cess_unsupported_issues("cess_applies") do
-    [
-      %{
-        "invoice" => nil,
-        "code" => "cess_unsupported",
-        "level" => Issues.level_for("cess_unsupported"),
-        "message" =>
-          "a cess-applicable supply was confirmed on this month's sales, and GSTR-1 derivation carries no cess — it would file every line at csamt 0",
-        "fields" => []
-      }
-    ]
-  end
-
-  defp cess_unsupported_issues(_other_answer), do: []
-
-  # A two-exit question is answered only by choosing an exit. Without this, a
-  # bare confirmation on the cess target would mean "no cess applies" by
-  # default — the accidental clearance this classification exists to prevent.
-  defp answered?(%{"target" => "cess_not_evaluated|" <> _digest} = confirmation),
-    do: get_in(confirmation, ["payload", "answer"]) in ~w(no_cess cess_applies)
-
-  defp answered?(_confirmation), do: true
-
-  defp cess_answer(effective, target) do
-    effective
-    |> Enum.filter(&(&1["verb"] == "confirm_issue" and &1["target"] == target))
-    |> List.last()
-    |> case do
-      nil -> nil
-      confirmation -> get_in(confirmation, ["payload", "answer"])
-    end
-  end
-
-  # The cess question's resolution target, scoped to the invoice set it was asked
-  # about. A bare code would let a confirmation recorded over eight invoices cover
-  # a ninth that arrived later; hashing the reviewed set means a changed set yields
-  # a different key, so the old confirmation stops matching on its own rather than
-  # through an invalidation rule someone has to maintain. Callers read the target
-  # off the issue, never recompute it.
+  # Cess is screened, not asked about: a month with no cess-bearing HSN raises
+  # nothing, which post-02/2025 is nearly every month.
   #
-  # Identity is source ID *and* invoice number, not the ID alone: IDs are
-  # positional (`..._inv_03`), so a re-extraction that replaces the third bill
-  # with a different one reuses its ID, and hashing IDs alone would carry the old
-  # answer onto a document nobody looked at.
-  defp cess_target(invoices) do
-    digest =
-      invoices
-      |> Enum.map(&"#{&1["id"]}|#{&1["invoice_number"]}")
-      |> Enum.sort()
-      |> Enum.join("\n")
-      |> then(&:crypto.hash(:sha256, &1))
-      |> Base.encode16(case: :lower)
-      |> binary_part(0, 16)
+  # A hit blocks rather than asking, because there is no answer worth taking.
+  # `derive_invoice` hardcodes `"csamt" => 0` and no part of the chain —
+  # extraction, derivation, 3B, the cess credit pool — carries cess, so this
+  # return cannot be filed either way. Asking a reviewer to certify that no cess
+  # applies would trade a fact we screened for an assertion we cannot check, and
+  # file understated tax under his signature when he gets it wrong. The way out
+  # of a misread code is correcting the code, which the flagged HSN path allows.
+  defp cess_issues(invoices) do
+    Enum.flat_map(invoices, fn invoice ->
+      case Cess.hits(invoice) do
+        [] -> []
+        hits -> [cess_blocker(invoice, hits)]
+      end
+    end)
+  end
 
-    "cess_not_evaluated|#{digest}"
+  defp cess_blocker(invoice, hits) do
+    lines =
+      Enum.map_join(hits, " ", fn hit ->
+        described = if hit.description, do: " #{inspect(hit.description)}", else: ""
+        "Line #{hit.line}#{described} is HSN #{hit.hsn}."
+      end)
+
+    %{
+      "invoice" => invoice["invoice_number"],
+      "source_id" => invoice["id"],
+      "code" => "cess_unsupported",
+      "level" => Issues.level_for("cess_unsupported"),
+      "message" =>
+        "#{lines} That heading carried compensation cess on this invoice's date, " <>
+          "and GSTR-1 derivation carries no cess — it would file every line at csamt 0.",
+      # The line's own HSN path, not a bare `line_items`: this is what
+      # `flagged_fields` authorizes and `correctable_field?` accepts, and a
+      # misread code is the only way out of a supply this return cannot carry.
+      "fields" => Enum.map(hits, &"line_items[#{&1.line - 1}].hsn_sac"),
+      "lines" => Enum.map(hits, & &1.line)
+    }
   end
 
   defp challenge_issues(effective, active_invoices) do
@@ -531,10 +491,9 @@ defmodule Nila.Gst.Sales.Workings do
     if counts[invoice_number] == 1, do: "#{invoice_number}:#{code}"
   end
 
-  # An issue that carries its own explicit target has no legacy alias — the cess
-  # question's target is deliberately scoped to the invoice set it was asked
-  # about, and honouring the bare code here would re-open the exact hole that
-  # scoping closes.
+  # An issue that carries its own explicit target has no legacy alias — a
+  # duplicate-number group's target names the exact source rows it covers, and
+  # honouring the bare code here would re-open the hole that scoping closes.
   defp legacy_issue_target(%{"target" => target}, _pristine, _counts) when is_binary(target),
     do: nil
 

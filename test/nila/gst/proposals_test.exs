@@ -102,7 +102,7 @@ defmodule Nila.Gst.ProposalsTest do
       for code <- ~w(sequence_gaps hsn_inferred_code hsn_multiple_rates
                      statutory_rate_mismatch rate_history_conflict
                      mixed_tax_heads tax_split_mismatch duplicate_invoice_number
-                     cess_not_evaluated line_arithmetic) do
+                     cess_unsupported line_arithmetic) do
         refute Proposals.for_issue(%{"code" => code}, values, checks),
                "#{code} must not carry a proposal"
       end

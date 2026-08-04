@@ -55,10 +55,8 @@ defmodule Nila.GstFixtures do
   @doc """
   Answers every open gating issue on a sales month the way a reviewer would.
 
-  Two-exit questions — cess, and the completeness attestation — are not settled
-  by a bare confirmation: they carry an explicit answer so that "nobody asked"
-  and "somebody said no" stay distinguishable. A fixture that omitted the answer
-  would be seeding a month that looks reviewed and is not.
+  Blocking issues are not gating work and are never confirmed here — a month
+  holding one stays unsignable, which is the point of the level.
   """
   def answer_sales_issues!(sales_month, user_id, opts \\ []) do
     skip = opts |> Keyword.get(:except, []) |> List.wrap()
@@ -75,8 +73,7 @@ defmodule Nila.GstFixtures do
           sales_month,
           %{
             "verb" => "confirm_issue",
-            "target" => Nila.Gst.Sales.Workings.issue_key(issue),
-            "payload" => sales_answer(issue)
+            "target" => Nila.Gst.Sales.Workings.issue_key(issue)
           },
           user_id
         )
@@ -84,9 +81,6 @@ defmodule Nila.GstFixtures do
 
     sales_month
   end
-
-  defp sales_answer(%{"code" => "cess_not_evaluated"}), do: %{"answer" => "no_cess"}
-  defp sales_answer(_issue), do: %{}
 
   @doc """
   Records an already-extracted GSTR-2B arrival, for tests that seed a month's

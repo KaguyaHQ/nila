@@ -133,17 +133,12 @@ defmodule Nila.Gst.Sales.Account do
   defp tax_field?(field),
     do: Enum.any?(~w(igst cgst sgst total_tax grand_total), &String.contains?(field, &1))
 
-  # Three states, because the reviewer's answer is part of the account: nobody
-  # has checked, someone checked and found none, or someone found cess this
-  # return cannot carry.
+  # Two states, because the screen settles it: either no line falls under a
+  # cess-bearing heading, or one does and this return cannot carry it.
   defp cess_state(issues) do
-    open = Enum.filter(issues, &(&1["status"] == "open"))
-
-    cond do
-      Enum.any?(open, &(&1["code"] == "cess_unsupported")) -> :unsupported
-      Enum.any?(open, &(&1["code"] == "cess_not_evaluated")) -> :not_evaluated
-      true -> :checked_none
-    end
+    if Enum.any?(issues, &(&1["status"] == "open" and &1["code"] == "cess_unsupported")),
+      do: :unsupported,
+      else: :checked_none
   end
 
   # What withholds approval, and only that: `blocking` and `required`. An

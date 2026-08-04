@@ -271,6 +271,30 @@ defmodule Nila.Gst.Extraction.Verify do
   So they are detected here, where the text is, and refused at sign-off. Nothing
   in six filed months across both clients is any of these; the day one arrives,
   a human is told rather than a return being quietly built around it.
+
+  ## A false positive here is a month nobody can file or fix
+
+  These markers are page-wide regex, not a classification of the document, and
+  they gate `blocking` issues (`Gstr1.blocking_issues/1`) that no confirmation
+  clears. That is deliberate for a real credit note. But the patterns match
+  anywhere on the page: "no credit notes after 7 days" in a terms footer reads
+  as a credit note, and `@export` fires on a bare `LUT` or on `USD 1,200` quoted
+  as a reference price on a domestic bill.
+
+  When that happens the month is stuck. `unsupported_document_issues/1` names
+  `invoice_number` in its `"fields"`, which is not what is wrong, and
+  `blocking_issues/1` is not part of the `correction_issues` list that feeds
+  `Gstr1.flagged_fields/2` (see `Sales.Workings.materialize/5`) — so no field is
+  correctable, the blocker cannot be confirmed, and there is no third way out.
+  `b2c_supply_unsupported` escapes only because `buyer_gstin` happens to be
+  flagged by a different check.
+
+  The fix is not a wider `@correctable_*` list: the thing a reviewer would
+  correct is the document classification, not a field on the invoice. That wants
+  its own resolution verb (a `reclassify_document` alongside
+  `exclude_duplicate_copy`), so the override is an audited event naming what was
+  read and what it actually is. Until then, a misread marker needs a database
+  edit, and that is the real cost of these patterns being this loose.
   """
   def document_markers(text) when is_binary(text) do
     %{

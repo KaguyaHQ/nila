@@ -192,8 +192,7 @@ defmodule Nila.Gst.Sales.Resolutions do
       header(month),
       document_issues(month),
       source_namespace: "sales_month_#{month.id}",
-      compliance: compliance(month),
-      cess_evaluated: month.cess_evaluated
+      compliance: compliance(month)
     )
   end
 

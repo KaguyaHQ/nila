@@ -29,7 +29,7 @@ defmodule Nila.Gst.Extraction.Sales.Stub do
      %{
        pages: pages(),
        images: images(),
-       audit: %{source_page_count: length(pages()), cess_evaluated: true}
+       audit: %{source_page_count: length(pages())}
      }}
   end
 

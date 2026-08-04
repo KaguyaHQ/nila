@@ -87,7 +87,6 @@ defmodule Nila.Formatters do
     "missing_invoice_number" => "No invoice number on the bill",
     "zero_value_row" => "No value read off this document",
     "pages_unaccounted" => "Pages with no invoice",
-    "cess_not_evaluated" => "Cess was not evaluated",
     "low_ocr_confidence" => "Blurry scan, check the total",
     "source_attribution_uncertain" => "Not sure which page this is from",
     "subtotal_breakdown_uncertain" => "Line items don't add up"

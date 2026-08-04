@@ -252,72 +252,38 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     refute has_element?(view, "#gstr1-completeness", "Invoice pages read")
   end
 
-  test "the unanswered cess question holds the month and offers two exits", %{
-    conn: conn,
-    org: org,
-    client: client
-  } do
-    alias Nila.Gst.Sales.Months, as: SalesMonths
-
-    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
-    month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
+  test "an ordinary month asks nothing about cess", %{conn: conn, org: org, client: client} do
     confirm_sales_complete!(org, client, @period)
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#gstr1-checks-before-filing", "Cess has not been checked")
-    assert has_element?(view, "#gstr1-completeness", "Not checked · awaiting your answer")
-    assert has_element?(view, "#gstr1-cess-none")
-    assert has_element?(view, "#gstr1-cess-applies")
-    refute has_element?(view, "#month-door-sign-r1")
-  end
-
-  test "answering that no cess applies makes approval reachable", %{
-    conn: conn,
-    org: org,
-    client: client
-  } do
-    alias Nila.Gst.Sales.Months, as: SalesMonths
-
-    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
-    month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
-    confirm_sales_complete!(org, client, @period)
-
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
-    view |> element("#gstr1-cess-none") |> render_click()
-    confirm_all_open_issues(view)
-
+    # The stub bills refrigeration work. Nothing on them can carry cess, so the
+    # screen settles it and the reviewer is never asked.
     assert has_element?(view, "#gstr1-completeness", "Checked · none found")
-    assert has_element?(view, "#month-door-sign-r1")
+    refute has_element?(view, "#gstr1-checks-before-filing", "csamt 0")
+    refute has_element?(view, "#gstr1-required-summary", "blocker")
   end
 
-  test "answering that cess applies states the capability gap and blocks", %{
+  test "a tobacco line blocks the month, and nothing on the page clears it", %{
     conn: conn,
     org: org,
     client: client
   } do
-    alias Nila.Gst.Sales.Months, as: SalesMonths
-
-    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
-    month |> Ecto.Changeset.change(cess_evaluated: false) |> Nila.Repo.update!()
+    seed_cess_line!(org, client)
     confirm_sales_complete!(org, client, @period)
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    # Before the answer, every open issue is one somebody can settle here.
-    assert has_element?(view, "#gstr1-required-summary", "required before approval")
-    refute has_element?(view, "#gstr1-required-summary", "blocker")
-
-    view |> element("#gstr1-cess-applies") |> render_click()
-    confirm_all_open_issues(view)
-
-    assert has_element?(view, "#gstr1-checks-before-filing", "carries no cess")
+    assert has_element?(view, "#gstr1-checks-before-filing", "csamt 0")
     assert has_element?(view, "#gstr1-completeness", "Applies · this return cannot carry it")
-    refute has_element?(view, "#gstr1-cess-none")
+    assert has_element?(view, "#gstr1-required-summary", "1 blocker")
     refute has_element?(view, "#month-door-sign-r1")
 
-    # Now nothing on this page moves the month, and the summary names the gate.
-    assert has_element?(view, "#gstr1-required-summary", "1 blocker required before approval")
+    # Answering every other check does not move it: nothing here is an exit.
+    confirm_all_open_issues(view)
+
+    assert has_element?(view, "#gstr1-checks-before-filing", "csamt 0")
+    refute has_element?(view, "#month-door-sign-r1")
   end
 
   test "a blocker nobody can answer is still named in the count that gates", %{
@@ -460,7 +426,6 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
           client_id: client.id,
           period: period,
           state: "worked",
-          cess_evaluated: true,
           invoices: invoices,
           derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, period)),
           issues: Gstr1.validation_issues(invoices)
@@ -560,7 +525,6 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
         client_id: client.id,
         period: period,
         state: "worked",
-        cess_evaluated: true,
         invoices: invoices,
         derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, period)),
         issues: Gstr1.validation_issues(invoices)
@@ -1564,6 +1528,25 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     )
 
     assert render(view) =~ "WhatsApp confirmation request queued"
+  end
+
+  # Puts a chewing-tobacco line on invoice 22/2025-26, the one bill in the stub
+  # with a single line, so a cess test has a candidate to answer about.
+  defp seed_cess_line!(org, client) do
+    alias Nila.Gst.Sales.Months, as: SalesMonths
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+
+    invoices =
+      Enum.map(month.invoices, fn
+        %{"invoice_number" => "22/2025-26"} = invoice ->
+          put_in(invoice, ["line_items", Access.at(0), "hsn_sac"], "24039910")
+
+        invoice ->
+          invoice
+      end)
+
+    month |> Ecto.Changeset.change(invoices: invoices) |> Nila.Repo.update!()
   end
 
   defp confirm_all_open_issues(view) do
