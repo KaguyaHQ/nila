@@ -42,6 +42,7 @@ defmodule NilaWeb.Gst.UploadLive do
       |> assign(:form, to_form(prefilled, as: :intake))
       |> assign_period_options(prefilled["client_id"])
       |> assign(:entry_kinds, %{})
+      |> assign(:entry_keys, %{})
       |> assign(:jobs, %{})
       |> assign(:pending, nil)
       |> allow_upload(:documents,
@@ -50,7 +51,8 @@ defmodule NilaWeb.Gst.UploadLive do
         max_file_size: @max_pdf_bytes,
         auto_upload: true,
         progress: &handle_upload_progress/3,
-        validator: &validate_document_entry/1
+        validator: &validate_document_entry/1,
+        external: &presign_upload/2
       )
 
     {:ok, assign(socket, :error, nil)}
@@ -84,11 +86,18 @@ defmodule NilaWeb.Gst.UploadLive do
      |> assign_period_options(params["client_id"])}
   end
 
+  # Removing a row now has to take the object with it. The file reached the
+  # bucket the moment it was dropped, and the dump row that would have pointed
+  # at it is never written — so nothing downstream would ever collect it.
   def handle_event("cancel-upload", %{"ref" => ref}, socket) do
+    {key, entry_keys} = Map.pop(socket.assigns.entry_keys, ref)
+    if key, do: Storage.delete(key)
+
     {:noreply,
      socket
      |> cancel_upload(:documents, ref)
-     |> assign(:entry_kinds, Map.delete(socket.assigns.entry_kinds, ref))}
+     |> assign(:entry_kinds, Map.delete(socket.assigns.entry_kinds, ref))
+     |> assign(:entry_keys, entry_keys)}
   end
 
   def handle_event("choose-kind", %{"ref" => ref, "kind" => kind}, socket)
@@ -132,6 +141,7 @@ defmodule NilaWeb.Gst.UploadLive do
       {:noreply,
        socket
        |> assign(:entry_kinds, %{})
+       |> assign(:entry_keys, %{})
        |> assign(:jobs, jobs)
        |> assign(:error, nil)
        |> assign(:pending, %{client_id: client_id, period: period})}
@@ -152,6 +162,7 @@ defmodule NilaWeb.Gst.UploadLive do
     {:noreply,
      socket
      |> assign(:entry_kinds, %{})
+     |> assign(:entry_keys, %{})
      |> assign(:jobs, %{})
      |> assign(
        :form,
@@ -160,12 +171,49 @@ defmodule NilaWeb.Gst.UploadLive do
      |> assign_period_options(client_id)}
   end
 
+  # The bill goes from the operator's machine to the bucket and never through
+  # this server. Streaming it over the LiveView channel instead costs a
+  # serialized round trip per 64 KB — on a connection whose latency is the
+  # constraint, that is the whole of the wait on a pile of scans.
+  #
+  # The key omits client and period on purpose. Both are still form fields the
+  # operator can change after the file has landed, and a path that says October
+  # under a dump row that says November is a lie the bucket would keep. The dump
+  # row is the index; the key only has to be unique and org-scoped.
+  defp presign_upload(entry, socket) do
+    case socket.assigns.current_scope.current_org do
+      %{id: org_id} ->
+        key = "orgs/#{org_id}/dumps/#{Ecto.UUID.generate()}/original#{entry_extension(entry)}"
+
+        case Storage.presign_put(key) do
+          {:ok, url} ->
+            meta = %{uploader: "Put", key: key, url: url}
+
+            {:ok, meta,
+             assign(socket, :entry_keys, Map.put(socket.assigns.entry_keys, entry.ref, key))}
+
+          {:error, _reason} ->
+            {:error, %{reason: :storage_unavailable}, storage_unavailable(socket)}
+        end
+
+      _no_org ->
+        {:error, %{reason: :storage_unavailable}, storage_unavailable(socket)}
+    end
+  end
+
+  # An entry refused here comes back to the client as LiveView's own "failed
+  # preflight" and renders as a generic per-file error, which tells the operator
+  # nothing they can act on. The page-level line is the only place that can say
+  # the storage was unreachable and the drop is worth repeating.
+  defp storage_unavailable(socket),
+    do: assign(socket, :error, "Nila could not reach storage. Drop that file again.")
+
   defp handle_upload_progress(:documents, %{done?: true} = entry, socket) do
     entry_kinds =
       if entry_extension(entry) == ".json" do
         classification =
-          consume_uploaded_entry(socket, entry, fn %{path: path} ->
-            {:postpone, path |> File.read!() |> PortalDocument.classify()}
+          consume_uploaded_entry(socket, entry, fn %{key: key} ->
+            {:postpone, classify_portal_file(key)}
           end)
 
         Map.put(socket.assigns.entry_kinds, entry.ref, classification)
@@ -177,6 +225,16 @@ defmodule NilaWeb.Gst.UploadLive do
   end
 
   defp handle_upload_progress(:documents, _entry, socket), do: {:noreply, socket}
+
+  # The file is in the bucket rather than on a temp path, so identifying it
+  # costs a read back. A fetch that fails is not an unrecognized portal file and
+  # must not be reported as one.
+  defp classify_portal_file(key) do
+    case Storage.get(key) do
+      {:ok, bytes} -> PortalDocument.classify(bytes)
+      {:error, _reason} -> {:error, :unreadable}
+    end
+  end
 
   defp validate_document_entry(entry) do
     if entry_extension(entry) == ".json" and entry.client_size > @max_json_bytes,
@@ -225,6 +283,9 @@ defmodule NilaWeb.Gst.UploadLive do
       {".json", {:error, :ambiguous_structure}} ->
         "#{entry.client_name} matches more than one portal format. Remove it and check the download."
 
+      {".json", {:error, :unreadable}} ->
+        "Nila could not read #{entry.client_name} back after it uploaded. Remove it and try again."
+
       {".json", nil} ->
         "Nila could not finish identifying #{entry.client_name}. Remove it and try again."
 
@@ -237,15 +298,8 @@ defmodule NilaWeb.Gst.UploadLive do
     scope = socket.assigns.current_scope
 
     socket
-    |> consume_uploaded_entries(:documents, fn %{path: path}, entry ->
+    |> consume_uploaded_entries(:documents, fn %{key: key}, entry ->
       {:ok, kind} = Map.fetch!(entry_kinds, entry.ref)
-      bytes = File.read!(path)
-      ext = entry_extension(entry)
-
-      key =
-        "orgs/#{org_id}/clients/#{client_id}/#{period}/dumps/#{Ecto.UUID.generate()}/original#{ext}"
-
-      {:ok, _} = Storage.put(key, bytes, content_type: upload_content_type(kind))
       {:ok, {kind, key}}
     end)
     |> Enum.map(fn {kind, key} ->
@@ -340,9 +394,6 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp list_clients(_socket), do: []
 
-  defp upload_content_type(kind) when kind in ~w(gstr2b filed_gstr1), do: "application/json"
-  defp upload_content_type(_kind), do: "application/pdf"
-
   defp entry_kind_state(entry_kinds, entry) do
     case {entry_extension(entry), entry.done?, Map.get(entry_kinds, entry.ref)} do
       {".pdf", _done?, {:ok, kind}} -> {:pdf, kind}
@@ -356,6 +407,7 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp portal_error_label(:invalid_json), do: "This is not valid JSON"
   defp portal_error_label(:ambiguous_structure), do: "This matches more than one portal format"
+  defp portal_error_label(:unreadable), do: "Nila could not read this back after it uploaded"
   defp portal_error_label(_reason), do: "This is not a recognized GST portal file"
 
   defp kind_title("sales"), do: "Sales bills"

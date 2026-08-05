@@ -1,6 +1,9 @@
 defmodule Nila.Storage.Local do
   @behaviour Nila.Storage
 
+  @salt "storage local upload"
+  @default_ttl 300
+
   @impl true
   def put(key, data, opts) do
     path = path_for!(key)
@@ -36,6 +39,27 @@ defmodule Nila.Storage.Local do
     Path.join(public_path, normalize_key!(key))
   end
 
+  # There is no bucket to presign against on disk, so dev and test stand in an
+  # app endpoint that accepts the same browser PUT. The key travels in a signed
+  # token rather than the query string: the browser must not get to name the
+  # path it writes to.
+  @impl true
+  def presign_put(key, opts) do
+    _ = path_for!(key)
+    ttl = Keyword.get(opts, :expires_in, @default_ttl)
+    token = Phoenix.Token.sign(secret(), @salt, key, max_age: ttl)
+    {:ok, "/uploads/local?token=#{URI.encode_www_form(token)}"}
+  end
+
+  @doc """
+  Reads back the storage key a `presign_put/2` token stands for.
+  """
+  def verify_upload_token(token, opts \\ []) do
+    Phoenix.Token.verify(secret(), @salt, token,
+      max_age: Keyword.get(opts, :max_age, @default_ttl)
+    )
+  end
+
   defp path_for!(key) do
     root = Keyword.fetch!(config(), :root)
     Path.join(root, normalize_key!(key))
@@ -53,4 +77,8 @@ defmodule Nila.Storage.Local do
   end
 
   defp config, do: Application.fetch_env!(:nila, Nila.Storage)
+
+  defp secret do
+    Application.fetch_env!(:nila, NilaWeb.Endpoint) |> Keyword.fetch!(:secret_key_base)
+  end
 end

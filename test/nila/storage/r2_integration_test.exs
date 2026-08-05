@@ -15,7 +15,11 @@ defmodule Nila.Storage.R2IntegrationTest do
 
     settings = [
       {:nila, Nila.Storage.R2, [bucket: System.fetch_env!("R2_BUCKET")]},
-      {:ex_aws, :http_client, ExAws.Request.Req},
+      # Must stay the wrapper prod uses, not `ExAws.Request.Req` directly: the
+      # raw client turns every S3 read into a POST (see `Nila.Storage.ExAwsClient`),
+      # which R2 rejects as a signature mismatch. Deleting `:req_opts` below is
+      # what takes the Req.Test stub out of the way.
+      {:ex_aws, :http_client, Nila.Storage.ExAwsClient},
       {:ex_aws, :access_key_id, System.fetch_env!("R2_ACCESS_KEY_ID")},
       {:ex_aws, :secret_access_key, System.fetch_env!("R2_SECRET_ACCESS_KEY")},
       {:ex_aws, :region, "auto"},
@@ -63,5 +67,27 @@ defmodule Nila.Storage.R2IntegrationTest do
     end
 
     assert {:error, _reason} = R2.get(key, [])
+  end
+
+  # The signature on a direct upload is checked by R2, not by us, and the
+  # unsigned content-type the browser sends is either tolerated or it isn't.
+  # Neither fact is observable from a stub — a wrong answer surfaces as a CORS
+  # or 403 error in the operator's browser, in production.
+  test "a presigned PUT uploads without credentials" do
+    key = "orgs/integration-smoke/#{Ecto.UUID.generate()}/original.txt"
+    bytes = "nila-presigned-smoke"
+
+    assert {:ok, url} = R2.presign_put(key, [])
+
+    assert {:ok, %{status: status}} =
+             Req.put(url, body: bytes, headers: %{"content-type" => "text/plain"})
+
+    assert status in 200..299
+
+    try do
+      assert {:ok, ^bytes} = R2.get(key, [])
+    after
+      assert :ok = R2.delete(key, [])
+    end
   end
 end

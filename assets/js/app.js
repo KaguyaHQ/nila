@@ -29,6 +29,7 @@ import {CommandPalette} from "./hooks/command_palette"
 import {QuoteLineGrid} from "./hooks/quote_line_grid"
 import {QuoteDraftGuard} from "./hooks/quote_draft_guard"
 import {WhatsAppEmbeddedSignup} from "./hooks/whatsapp_embedded_signup"
+import {Uploaders} from "./uploaders"
 
 const ElapsedTimer = {
   mounted() {
@@ -91,6 +92,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
+  uploaders: Uploaders,
   hooks: {
     ...colocatedHooks,
     ElapsedTimer,

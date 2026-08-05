@@ -119,6 +119,33 @@ Verify:
 curl -s https://nila.tax/health        # {"status":"healthy","db":"ok","oban":"ok"}
 ```
 
+### 6. Allow browser uploads to the R2 bucket (CORS)
+
+Intake presigns a `PUT` and the browser sends the file **straight to R2** — the
+bytes never reach this box. R2 rejects a cross-origin `PUT` from a browser
+unless the bucket says otherwise, so without this the drop zone fails on every
+upload with a CORS error, while `curl` against the same presigned URL succeeds.
+
+Cloudflare dashboard → R2 → `nila-documents` → Settings → CORS policy:
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://nila.tax"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["content-type"],
+    "ExposeHeaders": [],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Only `https://nila.tax` belongs in `AllowedOrigins`. Dev and test never touch
+R2 — they PUT to the app's own `/uploads/local`, which stands in for the bucket.
+
+Verify from the browser console on `https://nila.tax`, or just drop a bill into
+`/gst/upload` and watch the network tab for a `200` on the R2 `PUT`.
+
 ---
 
 ## Day-to-day

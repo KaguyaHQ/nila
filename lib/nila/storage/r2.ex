@@ -63,6 +63,20 @@ defmodule Nila.Storage.R2 do
     end
   end
 
+  # Only the host is signed, so the browser is free to send its own
+  # Content-Type. Signing that header instead would mean the upload fails
+  # whenever the OS guesses a different type than the entry reported.
+  @impl true
+  def presign_put(key, opts) do
+    expires_in = Keyword.get(opts, :expires_in, @max_presign_ttl)
+
+    if expires_in not in 1..@max_presign_ttl do
+      raise ArgumentError, "presigned URL expiry must be between 1 and 300 seconds"
+    end
+
+    S3.presigned_url(ExAws.Config.new(:s3), :put, bucket(), key, expires_in: expires_in)
+  end
+
   defp bucket do
     Application.fetch_env!(:nila, __MODULE__)
     |> Keyword.fetch!(:bucket)

@@ -47,14 +47,32 @@ defmodule NilaWeb.Endpoint do
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
-  plug Plug.Parsers,
+  @parser_opts [
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
     body_reader: {NilaWeb.Plugs.CacheRawBody, :read_body, []},
     json_decoder: Phoenix.json_library()
+  ]
+
+  if Mix.env() == :prod do
+    plug Plug.Parsers, @parser_opts
+  else
+    plug :parse_body
+  end
 
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
   plug NilaWeb.Router
+
+  # `/uploads/local` stands in for R2 in dev and test, and R2 does not parse what
+  # it is handed. Left to the JSON parser, a portal file would be decoded, capped
+  # at the parser's 8 MB default, and reach the controller with its body already
+  # spent. In prod the browser PUTs to the bucket and no plug sees the bytes.
+  if Mix.env() != :prod do
+    @parsers Plug.Parsers.init(@parser_opts)
+
+    defp parse_body(%{path_info: ["uploads", "local"]} = conn, _opts), do: conn
+    defp parse_body(conn, _opts), do: Plug.Parsers.call(conn, @parsers)
+  end
 end

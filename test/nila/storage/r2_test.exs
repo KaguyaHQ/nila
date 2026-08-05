@@ -57,4 +57,24 @@ defmodule Nila.Storage.R2Test do
       R2.url("orgs/1/original.pdf", expires_in: 301)
     end
   end
+
+  # The browser gets this URL and PUTs the bill to it directly. Signing
+  # content-type would break the upload whenever the OS names the file's type
+  # differently than the entry did, so the signature covers the host only.
+  test "presign_put returns a PUT URL the browser can upload to" do
+    assert {:ok, url} = R2.presign_put("orgs/1/dumps/abc/original.pdf", [])
+    uri = URI.parse(url)
+    query = URI.decode_query(uri.query)
+
+    assert uri.scheme == "https"
+    assert uri.host == "r2.example.test"
+    assert uri.path == "/test-bucket/orgs/1/dumps/abc/original.pdf"
+    assert query["X-Amz-Expires"] == "300"
+    assert query["X-Amz-Signature"]
+    refute query["X-Amz-SignedHeaders"] =~ "content-type"
+
+    assert_raise ArgumentError, fn ->
+      R2.presign_put("orgs/1/dumps/abc/original.pdf", expires_in: 301)
+    end
+  end
 end

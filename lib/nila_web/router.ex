@@ -35,6 +35,20 @@ defmodule NilaWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :local_upload do
+    plug :accepts, ["json", "html"]
+  end
+
+  # Dev and test have no bucket to presign a PUT against, so the app plays the
+  # part. In prod the browser uploads straight to R2 and this route is absent.
+  if Mix.env() != :prod do
+    scope "/uploads", NilaWeb do
+      pipe_through :local_upload
+
+      put "/local", LocalUploadController, :update
+    end
+  end
+
   # Health probe — used by the container healthcheck and uptime monitors.
   # Excluded from force_ssl (see config/prod.exs) so the in-container HTTP
   # check isn't redirected to https.

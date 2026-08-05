@@ -7,6 +7,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
   alias Nila.Clients
   alias Nila.Gst.Filing.Calendar
   alias Nila.Gst.Intake.{Dumps, DumpWorker}
+  alias Nila.Storage
 
   @period "2025-10"
 
@@ -23,14 +24,32 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     |> render_submit()
   end
 
-  defp upload_pdf(view, name, kind) when kind in ~w(sales purchase) do
+  # Uploads go straight from the browser to the bucket, so the server never sees
+  # the bytes and nothing in the test process writes them either — LiveViewTest
+  # simulates an entry's progress without running the JS uploader. The test
+  # plays the browser: it takes the key the server presigned and writes the
+  # content there before letting the entry finish, which is the state the world
+  # is in by the time a real upload reports 100%.
+  defp upload_file(view, name, content, type) do
     upload =
       file_input(view, "#gst-upload-form", :documents, [
-        %{name: name, content: "%PDF-1.4 fake bills", type: "application/pdf"}
+        %{name: name, content: content, type: type}
       ])
 
-    assert render_upload(upload, name) =~ name
+    render_upload(upload, name, 0)
     ref = hd(upload.entries)["ref"]
+    {:ok, _stored} = Storage.put(presigned_key(view, ref), content, content_type: type)
+
+    assert render_upload(upload, name, 100) =~ name
+    ref
+  end
+
+  defp presigned_key(view, ref) do
+    :sys.get_state(view.pid).socket.assigns.entry_keys |> Map.fetch!(ref)
+  end
+
+  defp upload_pdf(view, name, kind) when kind in ~w(sales purchase) do
+    ref = upload_file(view, name, "%PDF-1.4 fake bills", "application/pdf")
 
     view
     |> element("#gst-upload-#{kind}-#{ref}")
@@ -40,13 +59,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
   end
 
   defp upload_json(view, name, content) do
-    upload =
-      file_input(view, "#gst-upload-form", :documents, [
-        %{name: name, content: content, type: "application/json"}
-      ])
-
-    assert render_upload(upload, name) =~ name
-    hd(upload.entries)["ref"]
+    upload_file(view, name, content, "application/json")
   end
 
   test "mounts with one shared document drop", %{conn: conn} do
@@ -176,13 +189,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
 
-    upload =
-      file_input(view, "#gst-upload-form", :documents, [
-        %{name: "bills.pdf", content: "%PDF-1.4 fake", type: "application/pdf"}
-      ])
-
-    render_upload(upload, "bills.pdf")
-    ref = hd(upload.entries)["ref"]
+    ref = upload_file(view, "bills.pdf", "%PDF-1.4 fake", "application/pdf")
 
     assert has_element?(view, "#gst-upload-sales-#{ref}")
     assert has_element?(view, "#gst-upload-purchase-#{ref}")
@@ -275,6 +282,53 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     for dump <- Dumps.list(org.id, client.id, @period) do
       assert_enqueued(worker: DumpWorker, args: %{dump_id: dump.id})
     end
+  end
+
+  # The file reaches the bucket the moment it is dropped, so removing the row
+  # has to take the object with it. Nothing downstream would: the dump row that
+  # points at it is never written.
+  test "removing a file takes its object out of storage", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    ref = upload_pdf(view, "bills.pdf", "purchase")
+    key = presigned_key(view, ref)
+    assert {:ok, "%PDF-1.4 fake bills"} = Storage.get(key)
+
+    view
+    |> element(~s(#gst-upload-documents button[aria-label="Remove bills.pdf"]))
+    |> render_click()
+
+    assert {:error, _reason} = Storage.get(key)
+    refute has_element?(view, "#gst-upload-documents-entry-#{ref}")
+  end
+
+  # The read-back is new surface: the browser reports a file uploaded that the
+  # server then cannot fetch. Reporting that as an unrecognized portal file
+  # would send the operator to check a download that was never the problem.
+  test "a portal file that cannot be read back says so rather than blaming it", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    upload =
+      file_input(view, "#gst-upload-form", :documents, [
+        %{name: "gstr2b.json", content: ~s({"docdata":{"b2b":[]}}), type: "application/json"}
+      ])
+
+    # Nothing stands in for the browser here, so the object is never written —
+    # the state a dropped upload leaves behind.
+    render_upload(upload, "gstr2b.json", 100)
+    ref = hd(upload.entries)["ref"]
+
+    assert has_element?(view, "#gst-upload-kind-#{ref}", "could not read this back")
+
+    submit(view, client)
+
+    assert has_element?(view, "#gst-upload-error", "could not read gstr2b.json back")
+    assert Dumps.list(org.id, client.id, @period) == []
+    refute_enqueued(worker: DumpWorker)
   end
 
   test "rejects a submit with no files attached", %{conn: conn, org: org, client: client} do
