@@ -4,6 +4,11 @@ defmodule Nila.Integrations.WhatsAppSignup do
 
   Browser-returned asset IDs are correlation hints. The exchanged business
   token and Graph readback are authoritative before Nila persists a binding.
+
+  `:allowed_business_id` pins signup to a single Meta business. It is a
+  development and staging guard; production onboards whichever business the
+  customer authorises, bounded by the signed signup transaction and the
+  browser-to-token business match.
   """
 
   @phone_fields Enum.join(
@@ -15,7 +20,7 @@ defmodule Nila.Integrations.WhatsAppSignup do
   def configured? do
     config = config()
 
-    Enum.all?([:app_id, :app_secret, :config_id, :allowed_business_id], fn key ->
+    Enum.all?([:app_id, :app_secret, :config_id], fn key ->
       present?(Keyword.get(config, key))
     end) and valid_graph_url?(Keyword.get(config, :graph_url))
   end
@@ -217,9 +222,7 @@ defmodule Nila.Integrations.WhatsAppSignup do
   end
 
   defp verify_business(session, %{"client_business_id" => business_id}) do
-    allowed_business_id = config!(:allowed_business_id)
-
-    if business_id == session["business_id"] and business_id == allowed_business_id do
+    if business_id == session["business_id"] and allowed_business?(business_id) do
       :ok
     else
       {:error, :whatsapp_business_mismatch}
@@ -227,6 +230,13 @@ defmodule Nila.Integrations.WhatsAppSignup do
   end
 
   defp verify_business(_session, _business), do: {:error, :missing_client_business_id}
+
+  defp allowed_business?(business_id) do
+    case Keyword.get(config(), :allowed_business_id) do
+      allowed when is_binary(allowed) and allowed != "" -> business_id == allowed
+      _unpinned -> true
+    end
+  end
 
   defp validate_session(session) do
     if Enum.all?(~w(business_id waba_id phone_number_id), &valid_id?(session[&1])) do

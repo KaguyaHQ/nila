@@ -1,5 +1,7 @@
 defmodule Nila.Integrations.WhatsAppSignupTest do
-  use ExUnit.Case, async: true
+  # Synchronous: the allowlist tests move `:allowed_business_id` in app env,
+  # which `configured?/0` reads from other suites.
+  use ExUnit.Case, async: false
 
   alias Nila.Integrations.{Connection, WhatsAppSignup}
 
@@ -156,6 +158,47 @@ defmodule Nila.Integrations.WhatsAppSignupTest do
              WhatsAppSignup.complete_signup("authorization-code", @session)
   end
 
+  test "onboards a business Nila has never seen when no allowlist is configured" do
+    session = %{@session | "business_id" => "555555555"}
+
+    expect_token_exchange()
+    expect_graph_get("/v26.0/me", %{"client_business_id" => "555555555"})
+
+    expect_graph_get("/v26.0/222222222", %{
+      "id" => "222222222",
+      "name" => "Customer WABA",
+      "account_review_status" => "APPROVED",
+      "business_verification_status" => "verified"
+    })
+
+    expect_graph_get("/v26.0/222222222/phone_numbers", %{"data" => [phone_payload()]})
+
+    Req.Test.expect(WhatsAppSignup, fn conn -> Req.Test.json(conn, %{"success" => true}) end)
+    expect_graph_get("/v26.0/222222222/subscribed_apps", %{"data" => [%{"id" => "123456789"}]})
+    Req.Test.expect(WhatsAppSignup, fn conn -> Req.Test.json(conn, %{"success" => true}) end)
+    expect_graph_get("/v26.0/222222222/phone_numbers", %{"data" => [phone_payload()]})
+
+    assert {:ok, signup} = WhatsAppSignup.complete_signup("authorization-code", session)
+    assert signup.business_id == "555555555"
+  end
+
+  test "still requires the pinned business when an allowlist is configured" do
+    pin_allowed_business("111111111")
+
+    session = %{@session | "business_id" => "555555555"}
+
+    expect_token_exchange()
+    expect_graph_get("/v26.0/me", %{"client_business_id" => "555555555"})
+
+    assert {:error, :whatsapp_business_mismatch} =
+             WhatsAppSignup.complete_signup("authorization-code", session)
+  end
+
+  test "is configured without an allowlist" do
+    assert WhatsAppSignup.configured?()
+    assert {:ok, %{app_id: "123456789", config_id: "987654321"}} = WhatsAppSignup.public_config()
+  end
+
   test "verifies an existing connection without sending a message" do
     expect_graph_get("/v26.0/me", %{"client_business_id" => "111111111"})
 
@@ -182,6 +225,18 @@ defmodule Nila.Integrations.WhatsAppSignupTest do
     assert metadata["phone_status"] == "CONNECTED"
     assert metadata["webhook_subscribed"]
     assert is_binary(metadata["readiness_checked_at"])
+  end
+
+  defp pin_allowed_business(business_id) do
+    config = Application.get_env(:nila, WhatsAppSignup, [])
+
+    Application.put_env(
+      :nila,
+      WhatsAppSignup,
+      Keyword.put(config, :allowed_business_id, business_id)
+    )
+
+    on_exit(fn -> Application.put_env(:nila, WhatsAppSignup, config) end)
   end
 
   defp expect_token_exchange do

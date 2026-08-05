@@ -87,20 +87,21 @@ chasing additionally needs `WHATSAPP_CHASE_TEMPLATE`, `WHATSAPP_COMPLETENESS_TEM
 and a 32-byte-or-longer `WHATSAPP_COMPLETENESS_SECRET`.
 
 For self-service onboarding, create a Facebook Login for Business configuration using
-Embedded Signup v4 and the Cloud API products. Controlled development testing requires
-the person completing signup to have a role on Nila's Meta app and full control of the
-allowed test business. Configure:
+Embedded Signup v4 and the Cloud API products. Configure:
 
 ```env
 WHATSAPP_APP_ID=
 WHATSAPP_APP_SECRET=
 WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID=
-WHATSAPP_EMBEDDED_SIGNUP_ALLOWED_BUSINESS_ID=
 WHATSAPP_GRAPH_URL=https://graph.facebook.com/v26.0
 ```
 
-The Connect WhatsApp button appears under Settings → Connectors once all four signup
-values are present. Nila exchanges Meta's short-lived code server-side, verifies the
+The Connect WhatsApp button appears under Settings → Connectors once the app ID, app
+secret, and config ID are present; any customer business may then authorise. Set the
+optional `WHATSAPP_EMBEDDED_SIGNUP_ALLOWED_BUSINESS_ID` to pin signup to a single Meta
+business during controlled testing, where the person completing signup holds a role on
+Nila's Meta app and full control of that business. Leave it unset in production and for
+Meta App Review, or the reviewer's own business is rejected. Nila exchanges Meta's short-lived code server-side, verifies the
 business/WABA/phone through Graph, subscribes the app to the WABA, registers the number,
 and encrypts the resulting BISU token and generated two-step-verification PIN. A local
 disconnect erases those credentials and requires Embedded Signup again; it does not

@@ -8,6 +8,8 @@ defmodule Nila.Integrations do
 
   import Ecto.Query
 
+  require Logger
+
   alias Nila.Integrations.Connection
   alias Nila.Orgs.Org
   alias Nila.Repo
@@ -65,6 +67,17 @@ defmodule Nila.Integrations do
 
   def complete_whatsapp_signup(org_id, authorization_code, session)
       when is_integer(org_id) and is_binary(authorization_code) and is_map(session) do
+    case run_whatsapp_signup(org_id, authorization_code, session) do
+      {:ok, connection} ->
+        {:ok, connection}
+
+      {:error, reason} = error ->
+        record_whatsapp_signup_failure(org_id, attr(session, :phone_number_id), reason)
+        error
+    end
+  end
+
+  defp run_whatsapp_signup(org_id, authorization_code, session) do
     phone_number_id = attr(session, :phone_number_id)
 
     with {:ok, _org} <- Repo.fetch(Org, org_id),
@@ -334,6 +347,42 @@ defmodule Nila.Integrations do
     )
   end
 
+  # A failed signup leaves no row to inspect, so the reason is logged either
+  # way. When the attempt was a reconnect the existing row carries it too, with
+  # `status` untouched so the operator can retry the same flow.
+  defp record_whatsapp_signup_failure(org_id, phone_number_id, reason) do
+    Logger.warning("WhatsApp signup failed",
+      org_id: org_id,
+      phone_number_id: phone_number_id,
+      reason: inspect(reason)
+    )
+
+    connection =
+      if is_binary(phone_number_id), do: whatsapp_connection(org_id, phone_number_id)
+
+    case connection do
+      %Connection{status: "active"} ->
+        :ok
+
+      %Connection{} = connection ->
+        now = DateTime.utc_now()
+
+        _ =
+          connection
+          |> Connection.changeset(%{
+            last_status: "error",
+            last_status_at: now,
+            last_error: error_message(reason)
+          })
+          |> Repo.update()
+
+        :ok
+
+      _absent ->
+        :ok
+    end
+  end
+
   defp existing_label(nil), do: nil
   defp existing_label(connection), do: connection.label
 
@@ -419,5 +468,12 @@ defmodule Nila.Integrations do
 
   defp error_message(error) when is_binary(error), do: error
   defp error_message(%{message: message}) when is_binary(message), do: message
+
+  # Provider error tuples carry the raw response body. `last_error` is rendered
+  # on the connectors screen, so only the tag and status travel; the body stays
+  # in the log line.
+  defp error_message({tag, status, _body}) when is_atom(tag) and is_integer(status),
+    do: "#{tag} (HTTP #{status})"
+
   defp error_message(error), do: inspect(error)
 end

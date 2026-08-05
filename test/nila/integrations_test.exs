@@ -146,6 +146,73 @@ defmodule Nila.IntegrationsTest do
     assert verified.settings["readiness_checked_at"] == "2026-08-03T00:00:00Z"
   end
 
+  test "a failed reconnect records the reason and leaves the connection retryable", %{org: org} do
+    session = %{
+      "business_id" => "111111111",
+      "waba_id" => "222222222",
+      "phone_number_id" => "333333333"
+    }
+
+    assert {:ok, connection} =
+             Integrations.complete_whatsapp_signup(org.id, "valid-code", session)
+
+    assert {:ok, _disconnected} = Integrations.disconnect(connection)
+
+    assert {:error, :invalid_authorization_code} =
+             Integrations.complete_whatsapp_signup(org.id, "stale-code", session)
+
+    failed = Integrations.get_connection!(connection.id)
+    assert failed.status == "disconnected"
+    assert failed.last_status == "error"
+    assert failed.last_error == ":invalid_authorization_code"
+
+    assert {:ok, recovered} =
+             Integrations.complete_whatsapp_signup(org.id, "valid-code", session)
+
+    assert recovered.status == "active"
+    assert recovered.last_error == nil
+  end
+
+  test "a provider error body never reaches the rendered connection error", %{org: org} do
+    session = %{
+      "business_id" => "111111111",
+      "waba_id" => "222222222",
+      "phone_number_id" => "333333333"
+    }
+
+    assert {:ok, connection} =
+             Integrations.complete_whatsapp_signup(org.id, "valid-code", session)
+
+    assert {:ok, degraded} =
+             Integrations.mark_degraded(
+               connection,
+               {:whatsapp_token_exchange_failed, 400,
+                %{"error" => %{"message" => "expired code", "fbtrace_id" => "AbC123"}}}
+             )
+
+    assert degraded.last_error == "whatsapp_token_exchange_failed (HTTP 400)"
+    refute degraded.last_error =~ "fbtrace_id"
+  end
+
+  test "a failed signup leaves an active connection untouched", %{org: org} do
+    session = %{
+      "business_id" => "111111111",
+      "waba_id" => "222222222",
+      "phone_number_id" => "333333333"
+    }
+
+    assert {:ok, connection} =
+             Integrations.complete_whatsapp_signup(org.id, "valid-code", session)
+
+    assert {:error, :invalid_authorization_code} =
+             Integrations.complete_whatsapp_signup(org.id, "stale-code", session)
+
+    unchanged = Integrations.get_connection!(connection.id)
+    assert unchanged.status == "active"
+    assert unchanged.last_status == "connected"
+    assert unchanged.last_error == nil
+  end
+
   test "one WhatsApp phone-number ID cannot bind to two organisations", %{org: org} do
     other_org = Nila.AccountsFixtures.org_fixture()
 

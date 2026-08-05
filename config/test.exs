@@ -42,7 +42,6 @@ config :nila, Nila.Integrations.WhatsAppSignup,
   app_id: "123456789",
   app_secret: "test-whatsapp-app-secret",
   config_id: "987654321",
-  allowed_business_id: "111111111",
   graph_url: "https://graph.facebook.com/v26.0/",
   req_options: [plug: {Req.Test, Nila.Integrations.WhatsAppSignup}]
 

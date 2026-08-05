@@ -186,11 +186,15 @@ if config_env() in [:prod, :dev] do
 
   signup_requested =
     signup_config
-    |> Keyword.take([:app_id, :config_id, :allowed_business_id])
+    |> Keyword.take([:app_id, :config_id])
     |> Enum.any?(fn {_key, value} -> is_binary(value) and value != "" end)
 
+  # ALLOWED_BUSINESS_ID pins onboarding to one Meta business. Leave it unset in
+  # production and App Review so any customer business can authorise.
   if signup_requested do
-    case Enum.find(signup_config, fn {_key, value} -> value in [nil, ""] end) do
+    required = Keyword.take(signup_config, [:app_id, :app_secret, :config_id])
+
+    case Enum.find(required, fn {_key, value} -> value in [nil, ""] end) do
       nil -> config :nila, Nila.Integrations.WhatsAppSignup, signup_config
       {key, _value} -> raise "WhatsApp Embedded Signup requires #{key}"
     end

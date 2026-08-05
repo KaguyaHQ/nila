@@ -254,7 +254,8 @@ Unless noted, absence disables the feature or leaves the compiled default:
 | `INTEGRATION_CREDENTIAL_KEY` | Encrypts stored integration credentials. Falls back to `SECRET_KEY_BASE`; set it explicitly so rotating session secrets cannot lock saved connectors. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GMAIL_REDIRECT_URI` | Gmail integration. Inactive when unset. |
 | `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` / `MICROSOFT_REDIRECT_URI` | Microsoft integration. Inactive when unset. |
-| `WHATSAPP_APP_ID` / `WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID` / `WHATSAPP_EMBEDDED_SIGNUP_ALLOWED_BUSINESS_ID` | Enables Embedded Signup. If any is supplied, all three plus the required app secret must be present or boot fails. |
+| `WHATSAPP_APP_ID` / `WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID` | Enables Embedded Signup. If either is supplied, both plus the required app secret must be present or boot fails. |
+| `WHATSAPP_EMBEDDED_SIGNUP_ALLOWED_BUSINESS_ID` | Optional. Pins onboarding to one Meta business for controlled testing. Leave unset in production and App Review so any customer business can authorise. |
 | `WHATSAPP_GRAPH_URL` | Overrides Meta's Graph base URL. Must be HTTPS and end in `/vN.N`; default is `https://graph.facebook.com/v26.0`. |
 | `R2_EVAL_ACCESS_KEY_ID` / `R2_EVAL_SECRET_ACCESS_KEY` | Optional credentials for the eval corpus; it reuses `R2_ENDPOINT`. |
 | `POOL_SIZE` | DB pool size (default `10`). |
