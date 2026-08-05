@@ -50,11 +50,14 @@ defmodule Nila.Gst.Hsn.DescriptionSignalTest do
     test "emits one measurement for the batch and returns the invoices untouched" do
       handler = {__MODULE__, :signal, self()}
 
+      # Handlers run in the emitting process, so comparing against the test pid
+      # keeps a concurrently running sales suite from delivering its own
+      # measurement into this mailbox.
       :telemetry.attach_many(
         handler,
         [DescriptionSignal.event()],
         fn event, measurements, metadata, pid ->
-          send(pid, {:signal, event, measurements, metadata})
+          if self() == pid, do: send(pid, {:signal, event, measurements, metadata})
         end,
         self()
       )
