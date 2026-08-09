@@ -407,7 +407,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   # a fresh month with a 2B-only supply — rendering the sign button over a gate
   # the server refuses.
   defp attestation_open?(%{"attestation_required" => true} = itc),
-    do: itc["documents_attested"] not in ~w(held not_held)
+    do: itc["documents_attested"] not in ~w(held not_held per_case)
 
   defp attestation_open?(_itc), do: false
 

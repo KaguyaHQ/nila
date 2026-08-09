@@ -146,26 +146,24 @@ defmodule Nila.GstFixtures do
             %{"verb" => "allow_itc", "payload" => %{"block_id" => block["block_id"]}}
           end
 
-        attestation_attrs =
-          case workings.document_attestation do
-            %{answer: answer} = attestation when answer not in ~w(held not_held) ->
-              [
-                %{
-                  "verb" => "attest_documents",
-                  "payload" => %{"target" => attestation.target, "answer" => "held"}
-                }
-              ]
-
-            _settled ->
-              []
-          end
-
         {:ok, result} =
-          Resolutions.record_many_and_refresh(
-            month,
-            recon_attrs ++ block_attrs ++ attestation_attrs,
-            user_id
-          )
+          Resolutions.record_many_and_refresh(month, recon_attrs ++ block_attrs, user_id)
+
+        result =
+          result.workings.document_cases
+          |> Enum.reject(&(&1.document_state in ~w(held not_held)))
+          |> Enum.reduce(result, fn itc_case, current ->
+            {:ok, next} =
+              Resolutions.record_itc_case_event_and_refresh(
+                current.month,
+                itc_case.case_id,
+                "client_holds_document",
+                [],
+                user_id
+              )
+
+            next
+          end)
 
         settle_register!(result.month, user_id, passes - 1)
     end

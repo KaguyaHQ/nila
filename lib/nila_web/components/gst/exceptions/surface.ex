@@ -196,73 +196,6 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
     """
   end
 
-  def detail(%{selected: %{kind: :attestation}} = assigns) do
-    ~H"""
-    <div id="gst-itc-attestation" class="space-y-section">
-      <div>
-        <h3 class="text-base-content text-body font-semibold">
-          Does the client hold the tax invoices?
-        </h3>
-        <p class="text-ink-muted text-ui mt-1">
-          {@selected.attestation.count} supplies in GSTR-2B have no bill on file, carrying
-          <span class="text-base-content font-mono font-medium">
-            {format_money(@selected.tax_paise, prefix: "₹")}
-          </span>
-          of credit. Confirm possession before filing.
-        </p>
-      </div>
-
-      <div
-        :if={not @selected.resolved and not @signed_off}
-        class="border-base-300 pt-block flex flex-wrap gap-2 border-t"
-      >
-        <.button
-          id="gst-attest-held"
-          variant="primary"
-          size="sm"
-          phx-click="attest_documents"
-          phx-target={@target}
-          phx-value-answer="held"
-        >Client holds them</.button>
-        <.button
-          id="gst-attest-not-held"
-          variant="outline"
-          size="sm"
-          phx-click="attest_documents"
-          phx-target={@target}
-          phx-value-answer="not_held"
-        >Not held — withhold {format_money(@selected.tax_paise, prefix: "₹")}</.button>
-        <.button
-          id="gst-attest-unknown"
-          variant="ghost"
-          size="sm"
-          phx-click="attest_documents"
-          phx-target={@target}
-          phx-value-answer="unknown"
-        >Unknown — ask the client</.button>
-      </div>
-
-      <div :if={@selected.verb} class="border-base-300 pt-block flex items-center gap-3 border-t">
-        <span class={[
-          "text-ui font-medium",
-          @selected.resolved && "text-success",
-          not @selected.resolved && "text-warning"
-        ]}>
-          {@selected.outcome || "Still unanswered"}
-        </span>
-        <.button
-          :if={not @signed_off}
-          id="gst-attest-undo"
-          variant="ghost"
-          size="sm"
-          phx-click="reopen_attestation"
-          phx-target={@target}
-        >Undo</.button>
-      </div>
-    </div>
-    """
-  end
-
   def detail(assigns) do
     ~H"""
     <div class="space-y-section">
@@ -481,6 +414,24 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           phx-target={@target}
           phx-value-id={@selected.id}
         >Ask the client for the bill</.button>
+        <.button
+          id="gst-document-held"
+          variant="outline"
+          size="sm"
+          phx-click="document_state"
+          phx-target={@target}
+          phx-value-id={@selected.id}
+          phx-value-state="held"
+        >Client holds the bill · claim now</.button>
+        <.button
+          id="gst-document-defer"
+          variant="outline"
+          size="sm"
+          phx-click="document_state"
+          phx-target={@target}
+          phx-value-id={@selected.id}
+          phx-value-state="not_held"
+        >Withhold this month · carry forward</.button>
         <%!-- Dismissing removes the entry from `in_2b_not_books`, which drops
               the 2B ceiling and therefore the claim by this row's whole tax.
               It was the quietest click on the purchase side and the only one

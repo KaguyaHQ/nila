@@ -325,8 +325,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
            )
   end
 
-  # The register waits on bills, while the return still needs one explicit
-  # possession decision before it can claim the reported credit.
+  # The register waits on bills, while the return needs one possession
+  # decision per supply before it can claim the reported credit.
   test "a month whose only open rows are uncollected bills asks for possession", %{
     conn: conn,
     org: org,
@@ -358,8 +358,12 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     awaiting = length(collection_only["in_2b_not_books"])
     assert awaiting > 0
 
-    assert has_element?(view, "#gstr3b-itc-position", "across 1 decision")
-    assert has_element?(view, "#gstr3b-review-required", "Review decision")
+    {:ok, worked_month} = ClientMonths.get_by_period(org.id, client.id, @period)
+    decision_count = length(Nila.Gst.Purchase.Resolutions.workings(worked_month).document_cases)
+    assert decision_count > 0
+
+    assert has_element?(view, "#gstr3b-itc-position", "across #{decision_count} decisions")
+    assert has_element?(view, "#gstr3b-review-required", "Review #{decision_count} decisions")
     refute has_element?(view, "#gstr3b-request-bills")
     refute has_element?(view, "#month-verdict #month-door-decisions")
 

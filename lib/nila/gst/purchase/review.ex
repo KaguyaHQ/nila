@@ -7,7 +7,7 @@ defmodule Nila.Gst.Purchase.Review do
   @sections [
     %{
       key: :decisions,
-      kinds: [:books, :itc, :attestation],
+      kinds: [:books, :itc],
       title: "Decisions",
       blurb: "Your call. Review the bill against the portal evidence and freeze the conclusion."
     },
@@ -52,7 +52,7 @@ defmodule Nila.Gst.Purchase.Review do
       |> Enum.uniq_by(& &1.key)
       |> Enum.flat_map(fn
         %{state: :awaiting_bill, counterparts: [_ | _]} = group ->
-          [missing_item(group, workings, asked_at)]
+          [missing_item(group, workings, month, asked_at)]
 
         %{state: :awaiting_bill} ->
           []
@@ -62,8 +62,7 @@ defmodule Nila.Gst.Purchase.Review do
       end)
 
     itc_items = Enum.map(workings.itc["blocks"] || [], &itc_item(&1, workings.rows, month))
-    attestation_items = attestation_items(workings.document_attestation)
-    items = reconciliation_items ++ itc_items ++ attestation_items
+    items = reconciliation_items ++ itc_items
 
     needs_you =
       items
@@ -71,7 +70,7 @@ defmodule Nila.Gst.Purchase.Review do
       |> Enum.sort_by(& &1.tax_paise, :desc)
 
     all = Enum.sort_by(items, &register_order(&1, workings.rows))
-    decisions = Enum.filter(items, &(&1.kind != :gstr2b and &1.review_origin?))
+    decisions = Enum.filter(items, & &1.review_origin?)
 
     %{
       needs_you: needs_you,
@@ -248,7 +247,7 @@ defmodule Nila.Gst.Purchase.Review do
     }
   end
 
-  defp missing_item(%{counterparts: [gstr2b | _]} = group, workings, asked_at) do
+  defp missing_item(%{counterparts: [gstr2b | _]} = group, workings, month, asked_at) do
     ref = Reconciliation.gstr2b_ref(gstr2b)
     verb = workings.gstr2b_decisions[ref]
 
@@ -257,6 +256,16 @@ defmodule Nila.Gst.Purchase.Review do
         workings.baseline["in_2b_not_books"] || [],
         &(Reconciliation.gstr2b_ref(&1["gstr2b"] || &1) == ref)
       ) || %{}
+
+    case_line =
+      workings
+      |> Map.get(:case_lines, [])
+      |> Enum.find(fn line ->
+        get_in(line.source_refs, ["gstr2b", month.period]) == ref
+      end)
+
+    document_state = case_line && case_line.document_state
+    resolved = verb == "dismiss_2b" or document_state in ~w(present held not_held)
 
     %{
       id: group.key,
@@ -280,10 +289,12 @@ defmodule Nila.Gst.Purchase.Review do
       tax_paise: group.tax_paise,
       action: :gstr2b,
       verb: verb,
-      resolved: verb == "dismiss_2b",
-      review_origin?: false,
-      outcome: outcome(verb, "missing_in_books", nil),
-      asked_at: asked_at
+      resolved: resolved,
+      review_origin?: true,
+      outcome: missing_outcome(verb, document_state),
+      asked_at: (case_line && case_line.asked_at) || asked_at,
+      itc_case_id: case_line && case_line.case_id,
+      document_state: document_state
     }
   end
 
@@ -291,8 +302,13 @@ defmodule Nila.Gst.Purchase.Review do
   def open_decision_count(workings) do
     reconciliation = Enum.count(workings.groups, &(&1.state == :needs_decision))
     blocks = Enum.count(workings.itc["blocks"] || [], &(&1["state"] == "recommended"))
-    attestation = if attestation_open?(workings.document_attestation), do: 1, else: 0
-    reconciliation + blocks + attestation
+
+    documents =
+      workings
+      |> Map.get(:document_cases, [])
+      |> Enum.count(&(&1.document_state not in ~w(held not_held)))
+
+    reconciliation + blocks + documents
   end
 
   defp itc_item(block, rows, month) do
@@ -332,52 +348,15 @@ defmodule Nila.Gst.Purchase.Review do
     }
   end
 
-  defp attestation_items(nil), do: []
-
-  defp attestation_items(attestation) do
-    resolved = attestation.answer in ~w(held not_held)
-
-    [
-      %{
-        id: "attestation-#{attestation.target}",
-        group_key: "attestation-#{attestation.target}",
-        member_ids: [],
-        kind: :attestation,
-        type: "documents_held",
-        vendor: "Document possession",
-        invoice_number: nil,
-        reason: "Confirm whether the client holds the tax invoices behind the 2B-only supplies.",
-        books: nil,
-        books_members: [],
-        gstr2b: nil,
-        counterparts: [],
-        candidates: [],
-        member_images: %{},
-        member_evidence_gaps: %{},
-        images: [],
-        evidence_gap: nil,
-        tax_paise: attestation.tax_paise,
-        action: :attestation,
-        verb: attestation.answer,
-        resolved: resolved,
-        review_origin?: true,
-        outcome: attestation_outcome(attestation.answer),
-        asked_at: nil,
-        attestation: attestation
-      }
-    ]
-  end
-
-  defp attestation_open?(nil), do: false
-  defp attestation_open?(attestation), do: attestation.answer not in ~w(held not_held)
-
   defp itc_outcome("blocked"), do: "Credit blocked"
   defp itc_outcome("allowed"), do: "Credit kept"
   defp itc_outcome(_state), do: nil
 
-  defp attestation_outcome("held"), do: "Client holds the tax invoices"
-  defp attestation_outcome("not_held"), do: "Credit withheld until documents are held"
-  defp attestation_outcome(_answer), do: nil
+  defp missing_outcome("dismiss_2b", _document_state), do: "Dismissed — not ours"
+  defp missing_outcome(_verb, "present"), do: "Prior-period bill on file — ready to claim"
+  defp missing_outcome(_verb, "held"), do: "Client holds the tax invoice"
+  defp missing_outcome(_verb, "not_held"), do: "Withheld — carry forward"
+  defp missing_outcome(_verb, _document_state), do: nil
 
   defp valid_scope("needs_you", _), do: :needs_you
   defp valid_scope("all", _), do: :all

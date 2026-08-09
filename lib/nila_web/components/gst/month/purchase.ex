@@ -25,13 +25,17 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   attr :source_files, :integer, default: 0
   attr :pages_read, :integer, default: nil
   attr :itc, :any, default: nil
+  attr :case_lines, :list, default: []
   slot :source
   slot :assembled
   slot :actions
 
   @doc "The complete purchase register, always visible as month evidence."
   def register(assigns) do
-    assigns = assign(assigns, :verdict, verdict_state(assigns))
+    assigns =
+      assigns
+      |> assign(:verdict, verdict_state(assigns))
+      |> assign(:carried_itc, carried_itc(assigns.case_lines, assigns.period))
 
     ~H"""
     <section :if={@purchase_month} id="month-register" class="space-y-section">
@@ -122,6 +126,35 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             <span class="text-ink-muted">{row.next_move}</span>
           </:col>
         </.data_table>
+
+        <section :if={@carried_itc != []} id="gstr3b-carried-itc" class="space-y-related">
+          <div>
+            <h4 class="text-base-content text-ui font-semibold">Prior-period ITC</h4>
+            <p class="text-ink-subtle text-meta">
+              Earlier invoices whose credit is still moving through evidence or this period's claim.
+            </p>
+          </div>
+          <div class="border-base-300 divide-base-300 rounded-box divide-y border">
+            <div
+              :for={line <- @carried_itc}
+              id={"gstr3b-carried-itc-#{line.case_id}"}
+              class="gap-related grid items-center px-4 py-3 sm:grid-cols-[7rem_minmax(0,1fr)_auto]"
+            >
+              <div class="text-ink-subtle text-meta font-medium uppercase">
+                {carried_origin(line)}
+              </div>
+              <div class="min-w-0">
+                <div class="text-base-content text-ui truncate font-medium">
+                  {line.invoice_number || "—"} · {line.vendor}
+                </div>
+                <div class="text-ink-subtle text-meta">{carried_status(line)}</div>
+              </div>
+              <div class="text-base-content text-ui font-mono">
+                {format_money(line.tax_paise, prefix: "₹")}
+              </div>
+            </div>
+          </div>
+        </section>
 
         <div :if={@document_flags != []} id="gst-document-flags" class="space-y-related">
           <div
@@ -216,6 +249,38 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
     </section>
     """
   end
+
+  defp carried_itc(case_lines, period) do
+    case_lines
+    |> Enum.filter(fn line ->
+      periods = line.books_periods ++ line.gstr2b_periods
+
+      Enum.any?(periods, &(&1 < period)) and
+        line.settlement_state not in ~w(claimed excluded)
+    end)
+    |> Enum.sort_by(&{carried_origin(&1), &1.invoice_number || "", &1.case_id})
+  end
+
+  defp carried_origin(line) do
+    (line.books_periods ++ line.gstr2b_periods)
+    |> Enum.min(fn -> nil end)
+    |> case do
+      nil -> "Earlier"
+      period -> Nila.Formatters.period_label(period)
+    end
+  end
+
+  defp carried_status(%{evidence_state: "awaiting_2b"}), do: "Awaiting the vendor's 2B"
+  defp carried_status(%{evidence_state: "awaiting_document"}), do: "Awaiting the tax invoice"
+
+  defp carried_status(%{settlement_state: "available", current_gstr2b?: true}),
+    do: "Ready to claim in this period"
+
+  defp carried_status(%{settlement_state: "available"}),
+    do: "Evidence complete; later-claim treatment needs review"
+
+  defp carried_status(%{settlement_state: "reserved"}), do: "Reserved by this period's sign-off"
+  defp carried_status(_), do: "Carried forward"
 
   attr :label, :string, required: true
   attr :value, :any, required: true

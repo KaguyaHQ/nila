@@ -21,6 +21,7 @@ defmodule Nila.Gst.Purchase.Resolutions do
   alias Nila.Gst.Purchase.{
     Flags,
     Groups,
+    ItcCases,
     Month,
     Register,
     Resolution,
@@ -67,6 +68,9 @@ defmodule Nila.Gst.Purchase.Resolutions do
 
       with :ok <- refuse_signed(month),
            {:ok, resolutions} <- insert_all(month, attrs_list, decided_by_id) do
+        :ok = ItcCases.separate_rejected_pairs(month, attrs_list)
+        workings = workings(month)
+        :ok = ItcCases.sync_month(month, workings.recon)
         workings = workings(month)
 
         month =
@@ -82,6 +86,33 @@ defmodule Nila.Gst.Purchase.Resolutions do
            month: month,
            workings: workings
          }}
+      end
+    end)
+  end
+
+  def record_itc_case_event_and_refresh(
+        %Month{} = month,
+        case_id,
+        event_type,
+        resolution_attrs,
+        decided_by_id
+      ) do
+    Repo.transact(fn ->
+      month = lock_month(month)
+
+      with :ok <- refuse_signed(month),
+           {:ok, event} <-
+             ItcCases.insert_event(month, case_id, event_type, decided_by_id),
+           {:ok, resolutions} <- insert_all(month, resolution_attrs, decided_by_id) do
+        workings = workings(month)
+
+        month =
+          month
+          |> Month.changeset(%{register_rows: workings.rows, summary: workings.summary})
+          |> Repo.update!()
+          |> Repo.preload(:client)
+
+        {:ok, %{event: event, resolutions: resolutions, month: month, workings: workings}}
       end
     end)
   end
@@ -129,15 +160,19 @@ defmodule Nila.Gst.Purchase.Resolutions do
     recon = Workings.materialize(month.recon, resolutions)
 
     invoices = Workings.books_invoices(recon)
-    flags = flags_for(month, invoices)
+    case_lines = ItcCases.list_for_month(month)
+    carried_books = ItcCases.carried_books(case_lines)
+    flags = flags_for(month, Enum.uniq_by(invoices ++ carried_books, & &1["id"]))
     groups = Groups.build(recon)
     rows = Register.rows(invoices, recon, flags)
+    claim_rows = ItcCases.claim_rows(case_lines, flags)
     attestation = Workings.document_attestation(recon, rows, resolutions)
+    document_cases = ItcCases.document_cases(case_lines)
 
     itc =
       recon
-      |> ItcPosition.compute(rows, Workings.itc_decisions(resolutions))
-      |> ItcPosition.apply_attestation(attestation)
+      |> ItcPosition.compute(rows ++ claim_rows, Workings.itc_decisions(resolutions))
+      |> ItcPosition.apply_document_cases(case_lines)
 
     summary =
       month
@@ -147,7 +182,8 @@ defmodule Nila.Gst.Purchase.Resolutions do
         Review.open_decision_count(%{
           groups: groups,
           itc: itc,
-          document_attestation: attestation
+          document_attestation: attestation,
+          document_cases: document_cases
         })
       )
 
@@ -158,6 +194,8 @@ defmodule Nila.Gst.Purchase.Resolutions do
       accepted_reasons: Workings.accepted_reasons(resolutions),
       gstr2b_decisions: Workings.gstr2b_decisions(resolutions),
       document_attestation: attestation,
+      case_lines: case_lines,
+      document_cases: document_cases,
       itc: itc,
       gstr3b: gstr3b(month, recon, itc),
       groups: groups,

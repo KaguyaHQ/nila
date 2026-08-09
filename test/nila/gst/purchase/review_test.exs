@@ -36,8 +36,8 @@ defmodule Nila.Gst.Purchase.ReviewTest do
   end
 
   test "ITC treatment and document possession are first-class decisions" do
-    invoice = books("clean", "CLEAN-1")
-    recon = Reconciliation.reconcile([invoice], [gstr2b("CLEAN-1")])
+    recon = Reconciliation.reconcile([], [gstr2b("CLEAN-1")])
+    document_case = document_case("CLEAN-1")
 
     workings =
       recon
@@ -56,17 +56,13 @@ defmodule Nila.Gst.Purchase.ReviewTest do
           }
         ]
       })
-      |> Map.put(:document_attestation, %{
-        target: "documents_held|one",
-        answer: nil,
-        count: 1,
-        tax_paise: 18_000
-      })
+      |> Map.put(:case_lines, [document_case])
+      |> Map.put(:document_cases, [document_case])
 
     review = Review.project(workings, month: %{client_id: 1, period: "2026-08"})
 
     assert review.progress == %{done: 0, total: 2}
-    assert Enum.map(review.needs_you, & &1.kind) == [:itc, :attestation]
+    assert MapSet.new(review.needs_you, & &1.kind) == MapSet.new([:itc, :gstr2b])
     assert Review.open_decision_count(workings) == 2
   end
 
@@ -96,7 +92,18 @@ defmodule Nila.Gst.Purchase.ReviewTest do
       groups: Groups.build(recon),
       rows: Workings.books_invoices(recon),
       itc: %{"blocks" => []},
-      document_attestation: nil
+      document_attestation: nil,
+      case_lines: [],
+      document_cases: []
+    }
+  end
+
+  defp document_case(number) do
+    %{
+      case_id: 1,
+      source_refs: %{"gstr2b" => %{"2026-08" => Reconciliation.gstr2b_ref(gstr2b(number))}},
+      document_state: "unknown",
+      asked_at: nil
     }
   end
 

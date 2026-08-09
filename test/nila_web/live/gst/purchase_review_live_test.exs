@@ -109,19 +109,43 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     assert [%{"books" => %{"id" => "b1"}}] = Resolutions.workings(month).recon["matched"]
   end
 
-  test "missing-bill dismissal and document attestation record from the component", context do
+  test "missing-bill possession records against the invoice case", context do
     counterpart = Map.put(gstr2b("PORTAL-9"), "vendor_gstin", "27AAPFU0939F1ZV")
-    month = put_month!(context, [], [counterpart])
+    put_month!(context, [], [counterpart])
     {:ok, view, _html} = live(context.conn, review_path(context.client))
 
-    view |> element("[id^=queue-attestation-]") |> render_click()
-    view |> element("#gst-attest-held") |> render_click()
-    assert Enum.any?(Resolutions.list(month.id), &(&1.verb == "attest_documents"))
+    view |> element("#gst-document-held") |> render_click()
 
-    view |> element("#gst-dismiss-2b") |> render_click()
-    resolutions = Resolutions.list(month.id)
-    assert Enum.any?(resolutions, &(&1.verb == "dismiss_2b"))
-    assert Enum.all?(resolutions, &(&1.decided_by_id == context.user.id))
+    assert event =
+             Nila.Repo.get_by!(Nila.Gst.Purchase.ItcCaseEvent,
+               event_type: "client_holds_document"
+             )
+
+    assert event.decided_by_id == context.user.id
+  end
+
+  test "the month surfaces prior-period ITC separately from its register", context do
+    prior_books = books("prior-book", %{"invoice_number" => "CARRY-1"})
+    prior_recon = Reconciliation.reconcile([prior_books], [])
+    prior_rows = Register.rows([prior_books], prior_recon, %{})
+
+    {:ok, _prior_month} =
+      Months.upsert(%{
+        org_id: context.org.id,
+        client_id: context.client.id,
+        period: "2026-07",
+        state: "worked",
+        register_rows: prior_rows,
+        recon: prior_recon,
+        summary: Register.summary(prior_rows)
+      })
+
+    put_month!(context, [], [gstr2b("CARRY-1")])
+    {:ok, view, _html} = live(context.conn, "/gst/#{context.client.id}/#{@period}")
+
+    assert has_element?(view, "#gstr3b-carried-itc", "Prior-period ITC")
+    assert has_element?(view, "#gstr3b-carried-itc", "Jul 2026")
+    assert has_element?(view, "#gstr3b-carried-itc", "Ready to claim in this period")
   end
 
   test "asking the client drafts the missing-bill message", context do

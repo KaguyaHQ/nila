@@ -94,7 +94,7 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
   end
 
   def handle_event(verb, _params, %{assigns: %{signed_off: true}} = socket)
-      when verb in ~w(confirm_pair reject_pair reject_all accept_unmatched dismiss_2b start_correct save_correct undo challenge block_itc allow_itc reopen_block attest_documents reopen_attestation) do
+      when verb in ~w(confirm_pair reject_pair reject_all accept_unmatched dismiss_2b document_state start_correct save_correct undo challenge block_itc allow_itc reopen_block) do
     {:noreply, put_flash(socket, :error, signed_off_message(socket))}
   end
 
@@ -180,7 +180,20 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
 
   def handle_event("dismiss_2b", %{"id" => id}, socket) do
     item = find_item(socket, id)
-    record(socket, %{"verb" => "dismiss_2b", "gstr2b_ref" => item.gstr2b_ref}, item.id)
+
+    record_case(
+      socket,
+      item,
+      "excluded_not_ours",
+      [%{"verb" => "dismiss_2b", "gstr2b_ref" => item.gstr2b_ref}]
+    )
+  end
+
+  def handle_event("document_state", %{"id" => id, "state" => state}, socket)
+      when state in ~w(held not_held) do
+    item = find_item(socket, id)
+    event = if state == "held", do: "client_holds_document", else: "document_not_held"
+    record_case(socket, item, event, [])
   end
 
   def handle_event("start_correct", %{"id" => id}, socket) do
@@ -217,14 +230,22 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
   def handle_event("undo", %{"id" => id}, socket) do
     item = find_item(socket, id)
 
-    attrs =
-      if item.kind == :books do
-        Enum.map(item.member_ids, &%{"verb" => "reopen", "books_id" => &1})
-      else
-        [%{"verb" => "reopen", "gstr2b_ref" => item.gstr2b_ref}]
-      end
+    cond do
+      item.kind == :books ->
+        attrs = Enum.map(item.member_ids, &%{"verb" => "reopen", "books_id" => &1})
+        record_many(socket, attrs, item.id)
 
-    record_many(socket, attrs, item.id)
+      item.kind == :gstr2b and item.itc_case_id ->
+        attrs =
+          if item.verb == "dismiss_2b",
+            do: [%{"verb" => "reopen", "gstr2b_ref" => item.gstr2b_ref}],
+            else: []
+
+        record_case(socket, item, "reopened", attrs)
+
+      true ->
+        record_many(socket, [%{"verb" => "reopen", "gstr2b_ref" => item.gstr2b_ref}], item.id)
+    end
   end
 
   def handle_event("open-ask", %{"id" => id}, socket) do
@@ -254,8 +275,25 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
         %{kind: "missing_bills", period: month.period, body: draft.body, channel: "manual"}
       )
 
-    send(self(), {:purchase_review_refresh, draft.item_id, month, socket.assigns.workings})
-    {:noreply, socket |> assign(:draft, nil) |> put_flash(:info, "Ask logged.")}
+    item = find_item(socket, draft.item_id)
+
+    case Resolutions.record_itc_case_event_and_refresh(
+           month,
+           item.itc_case_id,
+           "documents_requested",
+           [],
+           scope.user.id
+         ) do
+      {:ok, result} ->
+        send(self(), {:purchase_review_refresh, item.id, result.month, result.workings})
+        {:noreply, socket |> assign(:draft, nil) |> put_flash(:info, "Ask logged.")}
+
+      {:error, :signed_off} ->
+        {:noreply, put_flash(socket, :error, signed_off_message(socket))}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "This invoice case is no longer available.")}
+    end
   end
 
   def handle_event(verb, %{"block-id" => block_id}, socket)
@@ -264,24 +302,6 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
 
   def handle_event("reopen_block", %{"block-id" => id}, socket),
     do: refresh_only(socket, %{"verb" => "reopen", "payload" => %{"block_id" => id}})
-
-  def handle_event("attest_documents", %{"answer" => answer}, socket)
-      when answer in ~w(held not_held unknown),
-      do:
-        refresh_only(socket, %{
-          "verb" => "attest_documents",
-          "payload" => %{
-            "target" => socket.assigns.workings.document_attestation.target,
-            "answer" => answer
-          }
-        })
-
-  def handle_event("reopen_attestation", _, socket),
-    do:
-      refresh_only(socket, %{
-        "verb" => "reopen",
-        "payload" => %{"target" => socket.assigns.workings.document_attestation.target}
-      })
 
   defp record(socket, attrs, id, after_fun \\ & &1),
     do: record_many(socket, [attrs], id, after_fun)
@@ -298,6 +318,26 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
 
       {:error, :signed_off} ->
         {:noreply, put_flash(socket, :error, signed_off_message(socket))}
+    end
+  end
+
+  defp record_case(socket, item, event_type, resolution_attrs) do
+    case Resolutions.record_itc_case_event_and_refresh(
+           socket.assigns.month,
+           item.itc_case_id,
+           event_type,
+           resolution_attrs,
+           socket.assigns.current_scope.user.id
+         ) do
+      {:ok, result} ->
+        send(self(), {:purchase_review_refresh, item.id, result.month, result.workings})
+        {:noreply, socket}
+
+      {:error, :signed_off} ->
+        {:noreply, put_flash(socket, :error, signed_off_message(socket))}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "This invoice case is no longer available.")}
     end
   end
 

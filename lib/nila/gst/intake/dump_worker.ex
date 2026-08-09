@@ -41,6 +41,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
     Groups,
     Reconciliation,
     Register,
+    Resolutions,
     Review,
     TaxpayerContext,
     Workings
@@ -56,7 +57,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
 
-  alias Nila.Storage
+  alias Nila.{Repo, Storage}
 
   require Logger
 
@@ -648,8 +649,8 @@ defmodule Nila.Gst.Intake.DumpWorker do
     evidence_gaps = Dumps.evidence_gaps(dump.org_id, dump.client_id, dump.period, "purchase")
     document_flags = Flags.document_flags(unaccounted) ++ Flags.evidence_flags(evidence_gaps)
 
-    {:ok, _} =
-      PurchaseMonths.upsert(%{
+    {:ok, month} =
+      PurchaseMonths.upsert_in_transaction(%{
         org_id: dump.org_id,
         client_id: dump.client_id,
         period: dump.period,
@@ -660,6 +661,12 @@ defmodule Nila.Gst.Intake.DumpWorker do
         gst_rate_release_id: release_id(rate_directory),
         summary: Map.put(summary, "document_flags", document_flags)
       })
+
+    workings = Resolutions.workings(month)
+
+    month
+    |> PurchaseMonth.changeset(%{register_rows: workings.rows, summary: workings.summary})
+    |> Repo.update!()
 
     :ok
   end

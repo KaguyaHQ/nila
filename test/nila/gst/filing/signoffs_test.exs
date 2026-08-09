@@ -9,7 +9,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
   alias Nila.Gst.Filing.Signoffs
   alias Nila.Gst.Intake.{Confirmations, Dumps}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
-  alias Nila.Gst.Purchase.{Register, Resolutions}
+  alias Nila.Gst.Purchase.{ItcAllocation, ItcCases, Register, Resolutions}
   alias Nila.Gst.Purchase.Reconciliation, as: Recon
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
@@ -93,13 +93,27 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     owner_scope: scope,
     org: org
   } do
+    stale_workings = Resolutions.workings(month)
     assert {:ok, signoff} = Signoffs.sign_off(month, scope)
+
+    assert {:ok, :checked} =
+             Nila.Repo.transact(fn ->
+               assert {:error, {:itc_already_allocated, [_case_id]}} =
+                        ItcCases.reserve_claims(
+                          signoff,
+                          month,
+                          stale_workings.case_lines,
+                          stale_workings.itc
+                        )
+
+               {:ok, :checked}
+             end)
 
     assert signoff.org_id == org.id
     assert signoff.client_month_id == month.id
     assert signoff.signed_by_id == scope.user.id
 
-    for key <- ~w(summary itc gstr3b rows review) do
+    for key <- ~w(summary itc gstr3b rows case_lines review) do
       assert Map.has_key?(signoff.snapshot, key), "snapshot missing #{key}"
     end
 
@@ -228,11 +242,10 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       })
 
     workings = Resolutions.workings(unattested)
-    attestation = workings.document_attestation
+    document_case = hd(workings.document_cases)
 
-    assert attestation.count == 1
-    assert attestation.tax_paise == 36_000
-    refute attestation.answer
+    assert document_case.tax_paise == 36_000
+    assert document_case.document_state == "unknown"
 
     # Unanswered withholds the signature — nobody claims undocumented credit
     # silently.
@@ -241,12 +254,11 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     # "Unknown" is a legitimate answer and a legitimate reason to stop: it
     # routes to a client chase rather than forcing a false "no".
     {:ok, %{month: unknown_month}} =
-      Resolutions.record_and_refresh(
+      Resolutions.record_itc_case_event_and_refresh(
         unattested,
-        %{
-          "verb" => "attest_documents",
-          "payload" => %{"target" => attestation.target, "answer" => "unknown"}
-        },
+        document_case.case_id,
+        "documents_requested",
+        [],
         scope.user.id
       )
 
@@ -254,12 +266,11 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
     # Attested: the credit stands, with a name and a timestamp behind it.
     {:ok, %{month: held_month, workings: held}} =
-      Resolutions.record_and_refresh(
+      Resolutions.record_itc_case_event_and_refresh(
         unknown_month,
-        %{
-          "verb" => "attest_documents",
-          "payload" => %{"target" => attestation.target, "answer" => "held"}
-        },
+        document_case.case_id,
+        "client_holds_document",
+        [],
         scope.user.id
       )
 
@@ -298,15 +309,14 @@ defmodule Nila.Gst.Filing.SignoffsTest do
         summary: Register.summary(rows)
       })
 
-    target = Resolutions.workings(unattested).document_attestation.target
+    document_case = unattested |> Resolutions.workings() |> Map.fetch!(:document_cases) |> hd()
 
     {:ok, %{month: withheld_month, workings: withheld}} =
-      Resolutions.record_and_refresh(
+      Resolutions.record_itc_case_event_and_refresh(
         unattested,
-        %{
-          "verb" => "attest_documents",
-          "payload" => %{"target" => target, "answer" => "not_held"}
-        },
+        document_case.case_id,
+        "document_not_held",
+        [],
         scope.user.id
       )
 
@@ -341,7 +351,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
   defp heads_total(heads), do: Enum.sum(Enum.map(~w(igst cgst sgst), &(heads[&1] || 0)))
 
-  test "a later 2B import reopens an answer given about a different supply set", %{
+  test "a per-invoice answer does not answer a later 2B supply", %{
     month: month,
     client: client,
     org: org,
@@ -372,12 +382,14 @@ defmodule Nila.Gst.Filing.SignoffsTest do
         summary: Register.summary(Register.rows([], recon, %{}))
       })
 
-    target = Resolutions.workings(first).document_attestation.target
+    first_case = first |> Resolutions.workings() |> Map.fetch!(:document_cases) |> hd()
 
     {:ok, %{month: answered}} =
-      Resolutions.record_and_refresh(
+      Resolutions.record_itc_case_event_and_refresh(
         first,
-        %{"verb" => "attest_documents", "payload" => %{"target" => target, "answer" => "held"}},
+        first_case.case_id,
+        "client_holds_document",
+        [],
         scope.user.id
       )
 
@@ -399,18 +411,11 @@ defmodule Nila.Gst.Filing.SignoffsTest do
         summary: Register.summary(wider_rows)
       })
 
-    {:ok, _} =
-      Resolutions.record(
-        reopened,
-        %{"verb" => "attest_documents", "payload" => %{"target" => target, "answer" => "held"}},
-        scope.user.id
-      )
+    wider_cases = Resolutions.workings(reopened).document_cases
 
-    wider_attestation = Resolutions.workings(reopened).document_attestation
-
-    refute wider_attestation.target == target
-    refute wider_attestation.answer
-    assert wider_attestation.count == 2
+    assert length(wider_cases) == 2
+    assert Enum.count(wider_cases, &(&1.document_state == "held")) == 1
+    assert Enum.count(wider_cases, &(&1.document_state == "unknown")) == 1
   end
 
   test "GSTR-3B rejects open completeness and accepts an attributed override", %{
@@ -496,11 +501,15 @@ defmodule Nila.Gst.Filing.SignoffsTest do
   } do
     {:ok, signoff} = Signoffs.sign_off(month, scope)
 
+    allocation = Nila.Repo.get_by!(ItcAllocation, signoff_id: signoff.id)
+    refute allocation.revoked_at
+
     assert {:ok, revoked} = Signoffs.reopen(signoff, scope)
     assert revoked.revoked_at
     assert revoked.revoked_by_id == scope.user.id
 
     assert {:error, :not_found} = Signoffs.latest_signoff(month.id)
+    assert Nila.Repo.reload!(allocation).revoked_at
     {:ok, month} = ClientMonths.get_by_period(month.org_id, month.client_id, month.period)
     assert month.state == "worked"
 
@@ -521,6 +530,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     assert filed.filed_at
     assert filed.filed_by_id == scope.user.id
     assert filed.filing_arn == "AA331025000001"
+    assert Nila.Repo.get_by!(ItcAllocation, signoff_id: signoff.id).filed_at
 
     assert {:error, :already_filed} = Signoffs.mark_filed(filed, scope, nil)
     assert {:error, :filed} = Signoffs.reopen(signoff, scope)

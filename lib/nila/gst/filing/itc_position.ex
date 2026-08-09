@@ -294,6 +294,25 @@ defmodule Nila.Gst.Filing.ItcPosition do
     |> Map.put("attestation_target", attestation.target)
   end
 
+  def apply_document_cases(position, case_lines) do
+    cases = Enum.filter(case_lines, &(&1.current_gstr2b? and not &1.has_books?))
+    withheld_cases = Enum.filter(cases, &(&1.document_state == "not_held"))
+    withheld_heads = withheld_cases |> Enum.map(& &1.tax_heads) |> sum_heads()
+    raw_withheld = withheld_heads |> Map.values() |> Enum.sum()
+    withheld = min(raw_withheld, position["claimable_paise"])
+    settled? = Enum.all?(cases, &(&1.document_state in ~w(held not_held)))
+
+    position
+    |> Map.merge(%{
+      "claimable_paise" => position["claimable_paise"] - withheld,
+      "awaiting_document_paise" => max(position["awaiting_document_paise"] - withheld, 0),
+      "unsubstantiated_withheld_paise" => withheld,
+      "unsubstantiated_withheld_heads" => allocate(withheld_heads, withheld),
+      "documents_attested" => if(settled?, do: "per_case", else: nil),
+      "attestation_required" => cases != []
+    })
+  end
+
   @doc "The stable id a block/allow resolution targets for one flagged row."
   def block_id(row_id, code), do: "#{row_id}:#{code}"
 

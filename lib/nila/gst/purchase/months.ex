@@ -9,7 +9,7 @@ defmodule Nila.Gst.Purchase.Months do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Nila.Gst.Purchase.Month
+  alias Nila.Gst.Purchase.{ItcCases, Month}
   alias Nila.Repo
   alias Nila.Storage
 
@@ -65,18 +65,28 @@ defmodule Nila.Gst.Purchase.Months do
   `client_id` are set on the struct, never cast (tenancy is not user-supplied).
   Idempotent — safe to re-run a backfill.
   """
-  def upsert(%{org_id: org_id, client_id: client_id, period: period} = attrs) do
+  def upsert(attrs) do
+    Repo.transact(fn -> upsert_in_transaction(attrs) end)
+  end
+
+  def upsert_in_transaction(%{org_id: org_id, client_id: client_id, period: period} = attrs) do
     client_month =
       case get_by_period(org_id, client_id, period) do
         {:ok, existing} -> existing
         {:error, :not_found} -> %Month{org_id: org_id, client_id: client_id}
       end
 
-    client_month
-    |> Month.changeset(attrs)
-    |> maybe_put_hsn_release(attrs)
-    |> maybe_put_rate_release(attrs)
-    |> Repo.insert_or_update()
+    result =
+      client_month
+      |> Month.changeset(attrs)
+      |> maybe_put_hsn_release(attrs)
+      |> maybe_put_rate_release(attrs)
+      |> Repo.insert_or_update()
+
+    with {:ok, month} <- result,
+         :ok <- ItcCases.sync_month(month, month.recon) do
+      {:ok, month}
+    end
   end
 
   defp maybe_put_hsn_release(changeset, %{hsn_master_release_id: release_id}),

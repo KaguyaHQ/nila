@@ -12,7 +12,7 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps, Preconditions}
   alias Nila.Gst.Issues
-  alias Nila.Gst.Purchase.{Groups, Reconciliation, Register, Resolutions, Review}
+  alias Nila.Gst.Purchase.{Groups, ItcCases, Reconciliation, Register, Resolutions, Review}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Sales.Account
   alias Nila.Gst.Sales.Review, as: SalesReview
@@ -339,6 +339,8 @@ defmodule NilaWeb.Gst.MonthLive do
           accepted_reasons: review["accepted_reasons"] || %{},
           gstr2b_decisions: review["gstr2b_decisions"] || %{},
           document_attestation: restore_attestation(review["document_attestation"]),
+          case_lines: ItcCases.restore_case_lines(snapshot["case_lines"] || []),
+          document_cases: ItcCases.document_cases(snapshot["case_lines"] || []),
           rows: snapshot["rows"],
           summary: snapshot["summary"],
           gstr3b: snapshot["gstr3b"],
@@ -848,6 +850,14 @@ defmodule NilaWeb.Gst.MonthLive do
            "Confirm whether the client holds tax invoices for the supplies with no bill on file — the credit cannot be claimed unanswered."
          )}
 
+      {:error, {:ambiguous_itc_cases, _case_ids}} ->
+        {:noreply,
+         put_flash(socket, :error, "Resolve the ambiguous invoice identities before signing.")}
+
+      {:error, {:itc_already_allocated, _case_ids}} ->
+        {:noreply,
+         put_flash(socket, :error, "This ITC was already reserved or claimed in another period.")}
+
       {:error, {:sales_intake_incomplete, status}} ->
         {:noreply,
          put_flash(
@@ -1195,6 +1205,7 @@ defmodule NilaWeb.Gst.MonthLive do
             source_files={length(@active_purchase_dumps)}
             pages_read={@purchase_pages_read}
             itc={@itc}
+            case_lines={(@purchase_workings && @purchase_workings.case_lines) || []}
           >
             <:assembled>
               <Filing.gstr3b_evidence

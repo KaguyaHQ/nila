@@ -160,5 +160,7 @@ The full month loop, both returns, end to end:
 
 Automated chasing is built for consented email and WhatsApp channels, including a
 period-bound WhatsApp completeness question whose signed replies become intake evidence.
-Still deliberately unbuilt: amendments, cross-month ITC carry, QRMP, photo intake —
-pulled by real usage, not pushed.
+Cross-month ITC custody now carries original invoice credits from books to a later 2B,
+tracks missing-document decisions per invoice, and prevents duplicate claims at sign-off.
+Still deliberately unbuilt: the broader reversal/reclaim matrix, amendments, QRMP, and
+photo intake — pulled by real usage, not pushed.

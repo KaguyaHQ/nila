@@ -31,10 +31,9 @@ defmodule Nila.Gst.Filing.Signoffs do
 
   alias Nila.Gst.Filing.Signoff
   alias Nila.Gst.Intake.{Confirmations, Dumps}
-  alias Nila.Gst.Purchase.{Register, Resolutions}
+  alias Nila.Gst.Purchase.{ItcCases, Register, Resolutions}
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
-  alias Nila.Gst.Purchase.Workings, as: PurchaseWorkings
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Month, as: SalesMonth
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
@@ -50,7 +49,8 @@ defmodule Nila.Gst.Filing.Signoffs do
   #
   # 1 — the first stamped shape. Older snapshots carry no key at all, which is
   # itself the signal: absent means "before stamping", not "version 0".
-  @snapshot_schema_version 1
+  # 2 — GSTR-3B snapshots include longitudinal ITC case lines.
+  @snapshot_schema_version 2
 
   @doc "The snapshot format this module writes."
   def snapshot_schema_version, do: @snapshot_schema_version
@@ -95,6 +95,7 @@ defmodule Nila.Gst.Filing.Signoffs do
                 "itc" => workings.itc,
                 "gstr3b" => workings.gstr3b,
                 "rows" => workings.rows,
+                "case_lines" => workings.case_lines,
                 "review" => %{
                   "baseline" => workings.baseline,
                   "recon" => workings.recon,
@@ -114,11 +115,14 @@ defmodule Nila.Gst.Filing.Signoffs do
                 |> Signoff.changeset(%{artifact: "gstr3b", snapshot: snapshot})
                 |> Repo.insert!()
 
-              month
-              |> PurchaseMonth.changeset(%{state: "reviewed"})
-              |> Repo.update!()
+              with :ok <-
+                     ItcCases.reserve_claims(signoff, month, workings.case_lines, workings.itc) do
+                month
+                |> PurchaseMonth.changeset(%{state: "reviewed"})
+                |> Repo.update!()
 
-              {:ok, signoff}
+                {:ok, signoff}
+              end
             end
         end
       end)
@@ -193,7 +197,7 @@ defmodule Nila.Gst.Filing.Signoffs do
   # legitimate reason to stop: it routes to a client chase rather than forcing
   # someone to assert "no" to proceed.
   defp require_documents_attested(workings) do
-    if PurchaseWorkings.documents_attested?(workings[:document_attestation]),
+    if ItcCases.documents_settled?(workings.case_lines),
       do: :ok,
       else: {:error, :documents_unattested}
   end
@@ -265,8 +269,12 @@ defmodule Nila.Gst.Filing.Signoffs do
           signoff = revoke!(signoff, scope)
 
           case signoff.artifact do
-            "gstr1" -> cascade_to_gstr3b(signoff, scope)
-            "gstr3b" -> demote_client_month!(signoff.client_month_id)
+            "gstr1" ->
+              cascade_to_gstr3b(signoff, scope)
+
+            "gstr3b" ->
+              ItcCases.release_allocations!(signoff)
+              demote_client_month!(signoff.client_month_id)
           end
 
           {:ok, signoff}
@@ -309,10 +317,18 @@ defmodule Nila.Gst.Filing.Signoffs do
         |> Ecto.Changeset.put_change(:filed_by_id, scope.user.id)
         |> Repo.update!()
 
+      settle_itc_allocations(filed)
       transition_held_dumps(filed)
       {:ok, filed}
     end)
   end
+
+  defp settle_itc_allocations(%PurchaseMonth{} = month) do
+    {:ok, signoff} = latest_signoff(month.id)
+    ItcCases.file_allocations!(signoff)
+  end
+
+  defp settle_itc_allocations(%SalesMonth{}), do: :ok
 
   defp transition_held_dumps(%SalesMonth{} = month),
     do: transition_held_dumps(month, ["sales"])
@@ -390,6 +406,7 @@ defmodule Nila.Gst.Filing.Signoffs do
          nil <- client_month.filed_at,
          {:ok, gstr3b_signoff} <- latest_signoff(client_month.id) do
       revoke!(gstr3b_signoff, scope)
+      ItcCases.release_allocations!(gstr3b_signoff)
       demote_client_month!(client_month.id)
     end
 
