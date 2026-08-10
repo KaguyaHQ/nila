@@ -119,6 +119,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
       String.ends_with?(field_path, ".tax_inclusive") and String.downcase(text) == "false" ->
         false
 
+      Regex.match?(@numeric_correction_field, field_path) and String.trim(text) == "" ->
+        nil
+
       Regex.match?(@numeric_correction_field, field_path) ->
         case Float.parse(text) do
           {number, ""} -> number
@@ -185,6 +188,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "printed_total_tax" => money(value(data, ["printed_total_tax", "total_tax_amount"])),
       "printed_grand_total" => money(value(data, ["printed_grand_total", "total_gross_amount"])),
       "confidence" => non_empty_map(raw["confidence"]) || build_confidence(raw),
+      "verification" => non_empty_map(raw["verification"]),
       "document" => document
     }
   end
@@ -601,6 +605,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       invoice_date_issues(invoice) ++
       check_issues ++
       gstin_issues(invoice) ++
+      verification_issues(invoice) ++
       b2c_hsn_issues(invoice) ++
       mixed_head_issues(invoice) ++
       consistency_issues(invoice) ++
@@ -974,6 +979,36 @@ defmodule Nila.Gst.Sales.Gstr1 do
     issues ++ [issue(invoice, code, message, fields, Issues.level_for(code))]
   end
 
+  defp verification_issues(invoice) do
+    fields =
+      invoice
+      |> get_in(["verification", "failed_checks"])
+      |> List.wrap()
+      |> Enum.filter(&(&1["kind"] == "grounding"))
+      |> Enum.map(&verification_field/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    if fields == [] do
+      []
+    else
+      [
+        issue(
+          invoice,
+          "ungrounded_extracted_value",
+          "extraction returned values that the source pages do not print; clear or correct them before filing",
+          fields,
+          Issues.level_for("ungrounded_extracted_value")
+        )
+      ]
+    end
+  end
+
+  defp verification_field(%{"field" => "seller.gstin"}), do: "seller_gstin"
+  defp verification_field(%{"field" => "buyer.gstin"}), do: "buyer_gstin"
+  defp verification_field(%{"field" => field}) when is_binary(field), do: field
+  defp verification_field(_check), do: nil
+
   defp b2c_hsn_issues(invoice) do
     if recipient_registration(invoice) == "unregistered" and document_type(invoice) == "invoice" and
          document_status(invoice) == "active" and supply_type(invoice) == "taxable" do
@@ -999,8 +1034,14 @@ defmodule Nila.Gst.Sales.Gstr1 do
             issue(
               invoice,
               "missing_uom",
-              "B2C HSN lines #{Enum.map_join(indexes, ", ", &(&1 + 1))} have no unit of measurement; confirm the UQC before filing",
-              Enum.map(indexes, &"line_items[#{&1}].uom"),
+              "B2C HSN lines #{Enum.map_join(indexes, ", ", &(&1 + 1))} have no unit of measurement; confirm the item name and UQC before filing",
+              Enum.flat_map(
+                indexes,
+                &[
+                  "line_items[#{&1}].item_name",
+                  "line_items[#{&1}].uom"
+                ]
+              ),
               Issues.level_for("missing_uom")
             )
           ]
@@ -1580,6 +1621,16 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp derive_b2c_hsn(invoices) do
+    first_occurrence =
+      invoices
+      |> Enum.flat_map(&List.wrap(&1["line_items"]))
+      |> Enum.map(
+        &{hsn_code(&1["hsn_sac"]), normalize_number(line_rate(&1)), uqc(&1["uom"], &1["hsn_sac"])}
+      )
+      |> Enum.uniq()
+      |> Enum.with_index()
+      |> Map.new()
+
     invoices
     |> Enum.flat_map(&b2c_hsn_contributions/1)
     |> Enum.group_by(&{&1["hsn_sc"], &1["rt"], &1["uqc"]})
@@ -1601,7 +1652,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
         "rt" => normalize_number(rate)
       }
     end)
-    |> Enum.sort_by(&{&1["hsn_sc"], &1["rt"], &1["uqc"]})
+    |> Enum.sort_by(fn row ->
+      {Map.fetch!(first_occurrence, {row["hsn_sc"], row["rt"], row["uqc"]}), row["hsn_sc"]}
+    end)
     |> Enum.with_index(1)
     |> Enum.map(fn {row, index} -> Map.put(row, "num", index) end)
   end
@@ -1804,22 +1857,27 @@ defmodule Nila.Gst.Sales.Gstr1 do
   defp put_field(invoice, field, value) do
     case parse_field_path(field) do
       {:line, index, line_field} ->
-        update_in(invoice, ["line_items", Access.at(index)], fn line ->
+        invoice
+        |> update_in(["line_items", Access.at(index)], fn line ->
           (line || %{})
           |> Map.put(line_field, value)
           |> update_corrected_taxable(line_field)
         end)
+        |> clear_verification_failure(field)
 
       {:invoice, "buyer_gstin"} ->
-        case blank_to_nil(value) do
-          nil ->
-            Map.put(invoice, "buyer_gstin", nil)
+        corrected =
+          case blank_to_nil(value) do
+            nil ->
+              Map.put(invoice, "buyer_gstin", nil)
 
-          gstin ->
-            invoice
-            |> Map.put("buyer_gstin", gstin)
-            |> Map.put("recipient_registration", "registered")
-        end
+            gstin ->
+              invoice
+              |> Map.put("buyer_gstin", gstin)
+              |> Map.put("recipient_registration", "registered")
+          end
+
+        clear_verification_failure(corrected, "buyer_gstin")
 
       {:invoice, "place_of_supply"} ->
         Map.put(invoice, "place_of_supply", normalize_place_of_supply(value))
@@ -1834,9 +1892,22 @@ defmodule Nila.Gst.Sales.Gstr1 do
         Map.put(invoice, "supply_type", normalize_supply_type(value, invoice["document"] || %{}))
 
       {:invoice, field} ->
-        Map.put(invoice, field, value)
+        invoice
+        |> Map.put(field, value)
+        |> clear_verification_failure(field)
     end
   end
+
+  defp clear_verification_failure(%{"verification" => verification} = invoice, field)
+       when is_map(verification) do
+    update_in(invoice, ["verification", "failed_checks"], fn checks ->
+      checks
+      |> List.wrap()
+      |> Enum.reject(&(verification_field(&1) == field))
+    end)
+  end
+
+  defp clear_verification_failure(invoice, _field), do: invoice
 
   defp update_corrected_taxable(line, "taxable_value"),
     do: Map.put(line, "taxable_value_basis", "corrected")

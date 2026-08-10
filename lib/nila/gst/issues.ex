@@ -43,6 +43,7 @@ defmodule Nila.Gst.Issues do
     "furniture_row_with_values" => {"required", :decision},
     "unreadable_invoice_date" => {"required", :correction},
     "unreadable_amount" => {"required", :correction},
+    "ungrounded_extracted_value" => {"required", :correction},
     "implausible_invoice_number" => {"required", :correction},
     "missing_invoice_number" => {"required", :correction},
     "invalid_document_type" => {"blocking", :correction},

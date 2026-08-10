@@ -106,6 +106,75 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert get_in(derived, ["b2cl", Access.at(0), "inv", Access.at(0), "val"]) == 110_000.0
     end
 
+    test "preserves grounding failures until the reviewer clears the unprinted value" do
+      invoice =
+        Gstr1.normalize_invoice(%{
+          "verification" => %{
+            "status" => "flagged",
+            "failed_checks" => [
+              %{"kind" => "grounding", "field" => "printed_total_tax", "detail" => "not printed"},
+              %{
+                "kind" => "grounding",
+                "field" => "line_items[0].hsn_sac",
+                "detail" => "not printed"
+              }
+            ]
+          },
+          "data" => %{
+            "document_type" => "invoice",
+            "document_status" => "active",
+            "supply_type" => "taxable",
+            "recipient_registration" => "unregistered",
+            "place_of_supply" => "33",
+            "invoice_number" => "GROUND-1",
+            "invoice_date" => "15.07.2026",
+            "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
+            "line_items" => [
+              %{
+                "item_name" => "Fixture",
+                "hsn_sac" => "8471",
+                "quantity" => 1,
+                "uom" => "Nos",
+                "taxable_value" => 1_000,
+                "cgst_rate" => 9,
+                "cgst_amount" => 90,
+                "sgst_rate" => 9,
+                "sgst_amount" => 90
+              }
+            ],
+            "printed_total_tax" => 180,
+            "printed_grand_total" => 1_180
+          }
+        })
+
+      assert get_in(invoice, ["verification", "status"]) == "flagged"
+
+      assert [issue] =
+               Enum.filter(
+                 Gstr1.validation_issues([invoice]),
+                 &(&1["code"] == "ungrounded_extracted_value")
+               )
+
+      assert issue["fields"] == ["printed_total_tax", "line_items[0].hsn_sac"]
+
+      flagged = Gstr1.flagged_fields([invoice], [issue])
+
+      corrections = [
+        %{"invoice" => "GROUND-1", "field" => "printed_total_tax", "value" => nil},
+        %{"invoice" => "GROUND-1", "field" => "line_items[0].hsn_sac", "value" => "8472"}
+      ]
+
+      {[corrected], applied, [], _flags} =
+        Gstr1.apply_corrections([invoice], corrections, flagged)
+
+      assert applied == Enum.reverse(corrections)
+
+      refute Enum.any?(
+               Gstr1.validation_issues([corrected]),
+               &(&1["code"] == "ungrounded_extracted_value")
+             )
+    end
+
     test "corrections canonicalize POS and recompute an inclusive line's taxable value" do
       invoice =
         b2c_invoice("INC-1", "2026-07-15", "29", 93_220.34, 16_779.66)
@@ -238,7 +307,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
                |> then(&Gstr1.validation_issues([&1]))
                |> Enum.filter(&(&1["code"] == "missing_uom"))
 
-      assert issue["fields"] == ["line_items[0].uom"]
+      assert issue["fields"] == ["line_items[0].item_name", "line_items[0].uom"]
       assert Nila.Gst.Issues.resolution_kind(issue) == :correction
 
       corrected = put_in(invoice, ["line_items", Access.at(0), "uom"], "Nos")
@@ -246,6 +315,37 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert [hsn] = get_in(derived, ["hsn", "hsn_b2c"])
       assert hsn["desc"] == "Fixture product"
       assert hsn["uqc"] == "NOS"
+    end
+
+    test "numbers B2C HSN rows in first source occurrence order" do
+      invoices = [
+        b2c_invoice("HSN-1", "2026-07-15", "33", 1_000, 180),
+        b2c_invoice("HSN-2", "2026-07-15", "33", 2_000, 360)
+        |> put_in(["line_items", Access.at(0), "hsn_sac"], "1001")
+        |> put_in(["line_items", Access.at(0), "uom"], "Kgs"),
+        b2c_invoice("HSN-3", "2026-07-15", "33", 3_000, 540)
+        |> put_in(["line_items", Access.at(0), "hsn_sac"], "2106")
+      ]
+
+      derived = Gstr1.derive(invoices, %{"gstin" => "33AEWPH4158J1Z3", "fp" => "072026"})
+
+      assert Enum.map(derived["hsn"]["hsn_b2c"], &{&1["num"], &1["hsn_sc"]}) == [
+               {1, "8471"},
+               {2, "1001"},
+               {3, "2106"}
+             ]
+    end
+
+    test "uses NA consistently when ordering B2C service SAC rows" do
+      invoice =
+        b2c_invoice("SAC-1", "2026-07-15", "33", 1_000, 180)
+        |> put_in(["line_items", Access.at(0), "hsn_sac"], "998719")
+        |> put_in(["line_items", Access.at(0), "uom"], nil)
+
+      derived = Gstr1.derive([invoice], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "072026"})
+
+      assert [%{"hsn_sc" => "998719", "uqc" => "NA", "num" => 1}] =
+               derived["hsn"]["hsn_b2c"]
     end
 
     test "uses the historical B2CL threshold effective on the invoice date" do
@@ -1158,6 +1258,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
     test "coerces only the existing numeric field set and leaves invoice numbers as strings" do
       assert Gstr1.coerce_correction("printed_total_taxable", "100.25") == 100.25
+      assert Gstr1.coerce_correction("printed_total_taxable", " ") == nil
       assert Gstr1.coerce_correction("line_items[0].cgst_amount", "9") == 9.0
       assert Gstr1.coerce_correction("invoice_number", "1234") == "1234"
       assert Gstr1.coerce_correction("line_items[0].description", "9") == "9"
