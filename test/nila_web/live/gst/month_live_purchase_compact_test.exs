@@ -1,19 +1,19 @@
-defmodule NilaWeb.Gst.MonthLivePurchaseTest do
+defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
   use NilaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
   import Nila.GstFixtures
 
   alias Nila.Clients
-  alias Nila.Gst.Filing.{Calendar, Signoffs}
+  alias Nila.Gst.Filing.Signoffs
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Gst.Purchase.{Register, Resolutions}
   alias Nila.Gst.Sales.Months, as: SalesMonths
-  alias Nila.Storage
 
   @dir "tmp/register/breeze-2025-10"
   @period "2025-10"
+  @compact_book_ids ~w(d1_inv_01 d1_inv_02 d1_inv_04 d1_inv_07 d1_inv_09 d1_inv_22)
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
@@ -250,7 +250,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     refute has_element?(view, "#month-support")
 
     rows = read_rows()
-    stats = Nila.Gst.Purchase.Register.stats(read_json("summary.json"))
+    stats = rows |> Register.summary() |> Register.stats()
 
     # The header counts books invoices, not rows: a 2B-only row is a bill nobody
     # supplied, and calling it extracted credits the client with a document they
@@ -628,173 +628,6 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     refute has_element?(view, "#month-sales-missing")
   end
 
-  test "the owning org can fetch an evidence image", %{conn: conn, client: client} do
-    conn = get(conn, ~p"/gst/#{client.id}/#{@period}/evidence/page_09.png")
-
-    assert response(conn, 200)
-    assert get_resp_header(conn, "content-type") |> hd() =~ "image/png"
-  end
-
-  test "logged-out visitors cannot fetch evidence", %{client: client} do
-    conn =
-      get(Phoenix.ConnTest.build_conn(), ~p"/gst/#{client.id}/#{@period}/evidence/page_09.png")
-
-    assert redirected_to(conn) == "/users/log_in"
-  end
-
-  test "another org cannot fetch this org's evidence image", %{client: client} do
-    %{user: other_user} = user_with_org_fixture(%{org: %{gstin: "27AAPFU0939F1ZV"}})
-    conn = log_in_user(Phoenix.ConnTest.build_conn(), other_user)
-
-    conn = get(conn, ~p"/gst/#{client.id}/#{@period}/evidence/page_09.png")
-
-    assert response(conn, 404)
-  end
-
-  test "evidence rejects a basename outside the image whitelist", %{
-    conn: conn,
-    client: client
-  } do
-    conn = get(conn, ~p"/gst/#{client.id}/#{@period}/evidence/#{"secret.txt"}")
-
-    assert response(conn, 404)
-  end
-
-  test "a dump after filing points to the open month and cannot be released", %{
-    conn: conn,
-    user: user,
-    org: org,
-    client: client
-  } do
-    {:ok, dump} =
-      Dumps.record(
-        %{org_id: org.id, client_id: client.id, brought_in_by_id: user.id},
-        %{period: @period, kind: "purchase", file_keys: ["late/purchase.pdf"]}
-      )
-
-    dump = Dumps.mark_after_filing(dump)
-    open_period = Calendar.closeable_period(Date.utc_today())
-
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
-
-    # An interrupted pile owns the door: decisions taken on half the documents
-    # are worth nothing, so it outranks the 21 open decisions underneath.
-    assert has_element?(view, "#month-headline", "Documents arrived after this month was filed")
-
-    assert has_element?(
-             view,
-             "#month-door-after-filing[href='/gst/upload?client_id=#{client.id}&period=#{open_period}']"
-           )
-
-    assert doors(view) == ["month-door-after-filing"]
-
-    assert has_element?(
-             view,
-             "#month-purchase-sources #month-dump-#{dump.id}",
-             "Added after filing"
-           )
-
-    assert has_element?(view, "#month-dump-#{dump.id}", "Move it to an open month")
-
-    refute has_element?(view, "#month-dump-release-#{dump.id}")
-    refute has_element?(view, "#month-dump-#{dump.id}", "reopen")
-  end
-
-  test "owner signs off: banner appears and the month moves to reviewed", %{
-    conn: conn,
-    client: client,
-    org: org,
-    user: user
-  } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
-
-    refute has_element?(view, "#month-door-sign-3b")
-
-    # The section renders, but as blockers rather than a button: a month with no
-    # sales side cannot be signed, and used to say nothing at all about why.
-    assert has_element?(view, "#month-exit-gstr3b-blocked")
-    assert has_element?(view, "#month-exit-gstr3b h3", "GSTR-3B sign-off")
-    assert has_element?(view, "#gstr3b-blocker-no-sales")
-
-    {:ok, sales} =
-      SalesMonths.upsert(%{
-        org_id: org.id,
-        client_id: client.id,
-        period: @period,
-        state: "reviewed",
-        invoices: []
-      })
-
-    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
-
-    # Every bucket that leaves a row open, not just the three that happened to
-    # be populated when this was written — a value mismatch needs a decision too.
-    clean_recon =
-      month.recon
-      |> Map.put("needs_human", [])
-      |> Map.put("in_2b_not_books", [])
-      |> Map.put("in_books_not_2b", [])
-      |> Map.put("value_mismatch", [])
-
-    {:ok, _} =
-      ClientMonths.upsert(%{
-        org_id: org.id,
-        client_id: client.id,
-        period: @period,
-        state: "worked",
-        register_rows: month.register_rows,
-        recon: clean_recon,
-        summary: month.summary
-      })
-
-    # A month with no sales invoices still gets asked what it cannot see for
-    # itself; "no sales at all" is a claim a human makes, not one Nila infers
-    # from an empty pile.
-    answer_sales_issues!(sales, user.id)
-
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
-
-    # Both tracks clear: the door is the signature itself, in filing order,
-    # one at a time. The GSTR-1 files on the 11th, so it goes first, and the
-    # filing gap outranks the next signature all the way through.
-    assert doors(view) == ["month-door-sign-r1"]
-    assert has_element?(view, "#month-exit-gstr1 #month-door-sign-r1.btn-primary")
-    refute has_element?(view, "#month-verdict #month-door-sign-r1")
-
-    view |> element("#month-door-sign-r1") |> render_click()
-
-    assert doors(view) == ["month-door-file-sales"]
-    assert has_element?(view, "#month-door-file-sales[href='#month-exit-gstr1']")
-
-    # A signed nil GSTR-1 is a real zero-liability source, not missing sales.
-    # The assembled return follows the register and sits beside its sign-off.
-    assert has_element?(view, "#month-register #month-3b #gst-3b-panel")
-    html = render(view)
-    assert index_of(html, "gst-register") < index_of(html, "month-3b")
-    assert index_of(html, "month-3b") < index_of(html, "month-exit-gstr3b")
-
-    view |> element("#gstr1-mark-filed") |> render_submit(%{"arn" => "R1-ARN"})
-
-    assert doors(view) == ["month-door-sign-3b"]
-    assert has_element?(view, "#month-exit-gstr3b #month-door-sign-3b.btn-primary")
-    refute has_element?(view, "#month-verdict #month-door-sign-3b")
-
-    view |> element("#month-door-sign-3b") |> render_click()
-
-    # Signed: the door becomes the filing step and points at the ARN entry.
-    assert doors(view) == ["month-door-file-purchase"]
-    assert has_element?(view, "#month-door-file-purchase[href='#month-exit-gstr3b']")
-    assert has_element?(view, "#month-exit-gstr3b a[target='_blank'][rel='noopener']")
-    assert has_element?(view, "#gst-filed-arn")
-    refute has_element?(view, "#month-door-sign-3b")
-    assert has_element?(view, "#month-exit-gstr3b", "Signed by")
-
-    {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
-    assert month.state == "reviewed"
-    assert {:ok, signoff} = Signoffs.latest_signoff(month.id)
-    assert Map.has_key?(signoff.snapshot, "gstr3b")
-  end
-
   test "a clean worked month points seniors to sign-off and tells members to wait", %{
     conn: conn,
     org: org,
@@ -1023,11 +856,6 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     assert month.state == "worked"
   end
 
-  test "redirects logged-out visitors to log in", %{client: client} do
-    assert {:error, {:redirect, %{to: "/users/log_in"}}} =
-             live(Phoenix.ConnTest.build_conn(), ~p"/gst/#{client.id}/#{@period}")
-  end
-
   defp client_fixture(org) do
     {:ok, client} =
       Clients.create_client(%{org_id: org.id, name: "Breeze Tech", type: "company"})
@@ -1040,12 +868,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
   # open row is an artifact rather than a decision.
   defp seed_month(org, client) do
     gstr2b_arrived!(org, client, @period)
-
-    for basename <- File.ls!(Path.join(@dir, "images")) do
-      bytes = File.read!(Path.join([@dir, "images", basename]))
-      key = ClientMonths.evidence_key(org.id, client.id, @period, basename)
-      {:ok, _} = Storage.put(key, bytes)
-    end
+    rows = read_rows()
 
     {:ok, client_month} =
       ClientMonths.upsert(%{
@@ -1053,17 +876,35 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
         client_id: client.id,
         period: @period,
         state: "worked",
-        register_rows: read_rows(),
+        register_rows: rows,
         recon: read_json("recon.json"),
-        summary: read_json("summary.json")
+        summary: Register.summary(rows)
       })
 
     client_month
   end
 
-  defp read_rows, do: read_json("register_rows.json")
+  defp read_rows do
+    rows = read_fixture_json("register_rows.json")
 
-  defp read_json(file) do
+    Enum.filter(rows, &(&1["id"] in @compact_book_ids)) ++
+      (rows |> Enum.filter(&(&1["bucket"] == "in_2b_not_books")) |> Enum.take(2))
+  end
+
+  defp read_json("recon.json") do
+    read_fixture_json("recon.json")
+    |> Map.new(fn
+      {"in_2b_not_books" = bucket, entries} ->
+        {bucket, Enum.take(entries, 2)}
+
+      {bucket, entries} ->
+        {bucket, Enum.filter(entries, &(&1["books"]["id"] in @compact_book_ids))}
+    end)
+  end
+
+  defp read_json(file), do: read_fixture_json(file)
+
+  defp read_fixture_json(file) do
     @dir |> Path.join(file) |> File.read!() |> Jason.decode!()
   end
 

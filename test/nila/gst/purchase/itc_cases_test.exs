@@ -245,6 +245,26 @@ defmodule Nila.Gst.Purchase.ItcCasesTest do
     assert Enum.uniq_by(lines, & &1.case_id) == lines
   end
 
+  test "resyncing an unchanged month creates no cases, sources, or membership events", context do
+    bill = invoice("BOOK-1", "INV-42", ~D[2026-04-12])
+    portal = invoice(nil, "INV-42", ~D[2026-04-12])
+    month = put_month!(context, "2026-04", [bill], [portal])
+
+    persisted_ids = {
+      Repo.all(from c in ItcCase, order_by: c.id, select: c.id),
+      Repo.all(from s in ItcSource, order_by: s.id, select: s.id),
+      Repo.all(from e in ItcSourceCaseEvent, order_by: e.id, select: e.id)
+    }
+
+    assert :ok = ItcCases.sync_month(month, month.recon)
+
+    assert persisted_ids == {
+             Repo.all(from c in ItcCase, order_by: c.id, select: c.id),
+             Repo.all(from s in ItcSource, order_by: s.id, select: s.id),
+             Repo.all(from e in ItcSourceCaseEvent, order_by: e.id, select: e.id)
+           }
+  end
+
   defp put_month!(context, period, books, gstr2b) do
     recon = Reconciliation.reconcile(books, gstr2b)
     rows = Register.rows(books, recon, %{})

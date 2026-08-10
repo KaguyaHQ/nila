@@ -23,12 +23,16 @@ defmodule Nila.Gst.Purchase.ItcCases do
 
   def sync_month(%Month{} = month, recon) do
     sources =
-      Enum.map(Workings.books_invoices(recon), &{"books", &1["id"], &1}) ++
+      Enum.map(Workings.books_invoices(recon), fn invoice ->
+        {"books", invoice["id"], invoice, identity_attrs(invoice)}
+      end) ++
         Enum.map(Workings.gstr2b_invoices(recon), fn invoice ->
-          {"gstr2b", Reconciliation.gstr2b_ref(invoice), invoice}
+          {"gstr2b", Reconciliation.gstr2b_ref(invoice), invoice, identity_attrs(invoice)}
         end)
 
-    desired = MapSet.new(sources, fn {kind, source_ref, _invoice} -> {kind, source_ref} end)
+    desired =
+      MapSet.new(sources, fn {kind, source_ref, _invoice, _identity} -> {kind, source_ref} end)
+
     existing_sources = Repo.all(from s in ItcSource, where: s.client_month_id == ^month.id)
     sources_by_key = Map.new(existing_sources, &{{&1.kind, &1.source_ref}, &1})
     memberships = current_memberships(existing_sources)
@@ -54,8 +58,10 @@ defmodule Nila.Gst.Purchase.ItcCases do
         end
       end)
 
-    {sources_by_key, memberships} =
-      Enum.reduce(sources, {sources_by_key, memberships}, fn source_attrs, synced ->
+    matching = matching_state(month, sources)
+
+    {sources_by_key, memberships, _matching} =
+      Enum.reduce(sources, {sources_by_key, memberships, matching}, fn source_attrs, synced ->
         sync_source!(month, source_attrs, synced)
       end)
 
@@ -72,38 +78,93 @@ defmodule Nila.Gst.Purchase.ItcCases do
     cases =
       Repo.all(
         from c in ItcCase,
-          where: c.org_id == ^month.org_id and c.client_id == ^month.client_id,
-          preload: [
-            events: :effective_client_month,
-            allocations: [:signoff, :client_month]
-          ]
+          where: c.org_id == ^month.org_id and c.client_id == ^month.client_id
       )
 
-    sources =
-      Repo.all(
-        from s in ItcSource,
-          join: source_month in assoc(s, :client_month),
-          where:
-            s.org_id == ^month.org_id and source_month.client_id == ^month.client_id and
-              source_month.period <= ^month.period,
-          preload: [client_month: source_month]
-      )
+    case_ids = Enum.map(cases, & &1.id)
+    events_by_case = case_events_with_period(case_ids) |> Enum.group_by(& &1.case_id)
+    allocations_by_case = allocations_with_period(case_ids) |> Enum.group_by(& &1.case_id)
 
+    cases =
+      Enum.map(cases, fn itc_case ->
+        %{
+          itc_case
+          | events: Map.get(events_by_case, itc_case.id, []),
+            allocations: Map.get(allocations_by_case, itc_case.id, [])
+        }
+      end)
+
+    sources = sources_through_period(month)
     source_ids = Enum.map(sources, & &1.id)
-
-    membership_events =
-      Repo.all(
-        from e in ItcSourceCaseEvent,
-          where: e.source_id in ^source_ids,
-          preload: [:effective_client_month]
-      )
-
+    membership_events = membership_events_with_period(source_ids)
     sources_by_case = sources_by_case_as_of(sources, membership_events, month.period)
 
     cases
     |> Enum.map(&project(&1, month, Map.get(sources_by_case, &1.id, [])))
     |> Enum.filter(&relevant?/1)
     |> Enum.sort_by(&{state_rank(&1), &1.invoice_number || "", &1.case_id})
+  end
+
+  defp case_events_with_period([]), do: []
+
+  defp case_events_with_period(case_ids) do
+    Repo.all(
+      from e in ItcCaseEvent,
+        join: effective_month in assoc(e, :effective_client_month),
+        where: e.case_id in ^case_ids,
+        select: {e, effective_month.period}
+    )
+    |> Enum.map(fn {event, period} ->
+      %{
+        event
+        | effective_client_month: %Month{id: event.effective_client_month_id, period: period}
+      }
+    end)
+  end
+
+  defp allocations_with_period([]), do: []
+
+  defp allocations_with_period(case_ids) do
+    Repo.all(
+      from a in ItcAllocation,
+        join: client_month in assoc(a, :client_month),
+        where: a.case_id in ^case_ids,
+        select: {a, client_month.period}
+    )
+    |> Enum.map(fn {allocation, period} ->
+      %{allocation | client_month: %Month{id: allocation.client_month_id, period: period}}
+    end)
+  end
+
+  defp sources_through_period(month) do
+    Repo.all(
+      from s in ItcSource,
+        join: source_month in assoc(s, :client_month),
+        where:
+          s.org_id == ^month.org_id and source_month.client_id == ^month.client_id and
+            source_month.period <= ^month.period,
+        select: {s, source_month.period}
+    )
+    |> Enum.map(fn {source, period} ->
+      %{source | client_month: %Month{id: source.client_month_id, period: period}}
+    end)
+  end
+
+  defp membership_events_with_period([]), do: []
+
+  defp membership_events_with_period(source_ids) do
+    Repo.all(
+      from e in ItcSourceCaseEvent,
+        join: effective_month in assoc(e, :effective_client_month),
+        where: e.source_id in ^source_ids,
+        select: {e, effective_month.period}
+    )
+    |> Enum.map(fn {event, period} ->
+      %{
+        event
+        | effective_client_month: %Month{id: event.effective_client_month_id, period: period}
+      }
+    end)
   end
 
   def restore_case_lines(case_lines) do
@@ -314,8 +375,8 @@ defmodule Nila.Gst.Purchase.ItcCases do
 
   defp sync_source!(
          month,
-         {kind, source_ref, invoice},
-         {sources_by_key, memberships}
+         {kind, source_ref, invoice, attrs},
+         {sources_by_key, memberships, matching}
        )
        when is_binary(source_ref) do
     key = {kind, source_ref}
@@ -324,23 +385,26 @@ defmodule Nila.Gst.Purchase.ItcCases do
       %ItcSource{} = source ->
         case memberships[source.id] do
           %{action: "linked"} ->
-            {sources_by_key, memberships}
+            {sources_by_key, memberships, matching}
 
           membership ->
-            case_id =
-              if membership,
-                do: current_target_case_id(membership.case_id),
-                else: matching_case(month, kind, invoice, identity_attrs(invoice)).id
+            {case_id, matching} =
+              if membership do
+                {current_target_case_id(membership.case_id), matching}
+              else
+                {itc_case, matching} = matching_case(month, kind, invoice, attrs, matching)
+                {itc_case.id, matching}
+              end
 
             event =
               append_membership_event!(source, case_id, month, "linked", "source_restored")
 
-            {sources_by_key, Map.put(memberships, source.id, event)}
+            {sources_by_key, Map.put(memberships, source.id, event),
+             put_matching_source(matching, case_id, source)}
         end
 
       nil ->
-        attrs = identity_attrs(invoice)
-        itc_case = matching_case(month, kind, invoice, attrs)
+        {itc_case, matching} = matching_case(month, kind, invoice, attrs, matching)
 
         source =
           %ItcSource{client_month_id: month.id, org_id: month.org_id}
@@ -354,7 +418,8 @@ defmodule Nila.Gst.Purchase.ItcCases do
         event =
           append_membership_event!(source, itc_case.id, month, "linked", "source_discovered")
 
-        {Map.put(sources_by_key, key, source), Map.put(memberships, source.id, event)}
+        {Map.put(sources_by_key, key, source), Map.put(memberships, source.id, event),
+         put_matching_source(matching, itc_case.id, source)}
     end
   end
 
@@ -637,45 +702,97 @@ defmodule Nila.Gst.Purchase.ItcCases do
     end)
   end
 
-  defp matching_case(month, _, _, %{match_key: nil} = attrs),
-    do: create_case!(month, Map.put(attrs, :identity_state, "provisional"))
+  defp matching_state(month, sources) do
+    match_keys =
+      sources
+      |> Enum.map(fn {_kind, _source_ref, _invoice, attrs} -> attrs.match_key end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
 
-  defp matching_case(month, kind, invoice, attrs) do
     candidates =
-      Repo.all(
-        from c in ItcCase,
-          where:
-            c.org_id == ^month.org_id and c.client_id == ^month.client_id and
-              c.match_key == ^attrs.match_key and is_nil(c.merged_into_case_id),
-          preload: [source_events: [source: :client_month]]
-      )
+      if match_keys == [] do
+        []
+      else
+        Repo.all(
+          from c in ItcCase,
+            where:
+              c.org_id == ^month.org_id and c.client_id == ^month.client_id and
+                c.match_key in ^match_keys and is_nil(c.merged_into_case_id)
+        )
+      end
 
-    sources_by_case =
-      candidates
-      |> Enum.flat_map(& &1.source_events)
-      |> current_sources_from_events()
+    case_ids = Enum.map(candidates, & &1.id)
+
+    source_events =
+      if case_ids == [] do
+        []
+      else
+        Repo.all(
+          from e in ItcSourceCaseEvent,
+            where: e.case_id in ^case_ids,
+            preload: [source: :client_month]
+        )
+      end
+
+    %{
+      cases_by_match_key: Enum.group_by(candidates, & &1.match_key),
+      sources_by_case: current_sources_from_events(source_events)
+    }
+  end
+
+  defp matching_case(month, _, _, %{match_key: nil} = attrs, matching) do
+    {create_case!(month, Map.put(attrs, :identity_state, "provisional")), matching}
+  end
+
+  defp matching_case(month, kind, invoice, attrs, matching) do
+    candidates = Map.get(matching.cases_by_match_key, attrs.match_key, [])
 
     compatible =
       Enum.filter(candidates, fn candidate ->
-        compatible?(Map.get(sources_by_case, candidate.id, []), kind, invoice)
+        compatible?(Map.get(matching.sources_by_case, candidate.id, []), kind, invoice)
       end)
 
     case compatible do
       [itc_case] ->
-        itc_case
+        {itc_case, matching}
 
       [] when candidates == [] ->
-        create_case!(month, Map.put(attrs, :identity_state, "confirmed"))
+        itc_case = create_case!(month, Map.put(attrs, :identity_state, "confirmed"))
+        {itc_case, put_matching_case(matching, itc_case)}
 
       _ ->
-        Enum.each(candidates, fn candidate ->
-          candidate
-          |> ItcCase.changeset(%{identity_state: "ambiguous"})
-          |> Repo.update!()
-        end)
-
-        create_case!(month, Map.put(attrs, :identity_state, "ambiguous"))
+        candidates = Enum.map(candidates, &mark_ambiguous!/1)
+        matching = put_matching_cases(matching, attrs.match_key, candidates)
+        itc_case = create_case!(month, Map.put(attrs, :identity_state, "ambiguous"))
+        {itc_case, put_matching_case(matching, itc_case)}
     end
+  end
+
+  defp mark_ambiguous!(%ItcCase{identity_state: "ambiguous"} = itc_case), do: itc_case
+
+  defp mark_ambiguous!(itc_case) do
+    itc_case
+    |> ItcCase.changeset(%{identity_state: "ambiguous"})
+    |> Repo.update!()
+  end
+
+  defp put_matching_case(matching, itc_case) do
+    cases = Map.get(matching.cases_by_match_key, itc_case.match_key, [])
+    put_matching_cases(matching, itc_case.match_key, [itc_case | cases])
+  end
+
+  defp put_matching_cases(matching, match_key, cases) do
+    %{matching | cases_by_match_key: Map.put(matching.cases_by_match_key, match_key, cases)}
+  end
+
+  defp put_matching_source(matching, case_id, source) do
+    sources =
+      matching.sources_by_case
+      |> Map.get(case_id, [])
+      |> then(&[source | &1])
+      |> Enum.uniq_by(& &1.id)
+
+    %{matching | sources_by_case: Map.put(matching.sources_by_case, case_id, sources)}
   end
 
   defp compatible?(sources, kind, invoice) do
