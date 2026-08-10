@@ -137,6 +137,84 @@ defmodule Nila.Gst.Filing.Gstr3bTest do
              }
     end
 
+    test "adds positive-valued registered debit-note buckets exactly once" do
+      derived = %{
+        "b2b" => [
+          %{
+            "inv" => [
+              %{
+                "inum" => "INV-1",
+                "itms" => [
+                  %{
+                    "itm_det" => %{
+                      "rt" => 18,
+                      "txval" => 100_000,
+                      "camt" => 0,
+                      "samt" => 0,
+                      "iamt" => 18_000
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "cdnr" => [
+          %{
+            "nt" => [
+              %{
+                "nt_num" => "CDN-000001",
+                "ntty" => "D",
+                "itms" => [
+                  %{
+                    "itm_det" => %{
+                      "rt" => 18,
+                      "txval" => 10_000,
+                      "camt" => 0,
+                      "samt" => 0,
+                      "iamt" => 1_800
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+
+      assert Gstr3b.liability_from_gstr1(derived) == %{
+               "txval" => 11_000_000,
+               "igst" => 1_980_000,
+               "cgst" => 0,
+               "sgst" => 0
+             }
+    end
+
+    test "credit and debit note effects cancel exactly once in a mixed month" do
+      detail = fn txval, tax ->
+        %{"itm_det" => %{"rt" => 18, "txval" => txval, "camt" => 0, "samt" => 0, "iamt" => tax}}
+      end
+
+      derived = %{
+        "b2b" => [%{"inv" => [%{"inum" => "INV-1", "itms" => [detail.(100_000, 18_000)]}]}],
+        "cdnr" => [
+          %{
+            "nt" => [
+              %{"nt_num" => "CN-1", "ntty" => "C", "itms" => [detail.(10_000, 1_800)]},
+              %{"nt_num" => "DN-1", "ntty" => "D", "itms" => [detail.(10_000, 1_800)]}
+            ]
+          }
+        ]
+      }
+
+      assert Gstr3b.liability_from_gstr1(derived) == %{
+               "txval" => 10_000_000,
+               "igst" => 1_800_000,
+               "cgst" => 0,
+               "sgst" => 0
+             }
+    end
+
     test "names a note-only negative position as unsupported" do
       liability = %{"txval" => -100_000, "igst" => 0, "cgst" => -9_000, "sgst" => -9_000}
       gstr3b = %{"liability_31" => %{"a" => liability}}

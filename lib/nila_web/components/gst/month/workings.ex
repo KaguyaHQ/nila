@@ -54,7 +54,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     assigns =
       assigns
       |> assign(:party_rows, party_rows(assigns))
-      |> assign(:credit_note_rows, credit_note_rows(assigns.cdnr))
+      |> assign(:note_rows, note_rows(assigns.cdnr))
       |> assign(:rate_rows, rate_rows(assigns))
       |> assign(:hsn_rows, hsn_rows(assigns))
 
@@ -132,11 +132,11 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         </.data_table>
       </div>
 
-      <div :if={@credit_note_rows != []} id="gstr1-workings-cdnr" class="space-y-1.5">
-        <.section_label>9B — registered credit notes</.section_label>
+      <div :if={@note_rows != []} id="gstr1-workings-cdnr" class="space-y-1.5">
+        <.section_label>9B — registered credit and debit notes</.section_label>
         <.data_table
           id="gstr1-workings-cdnr-rows"
-          rows={@credit_note_rows}
+          rows={@note_rows}
           row_id={& &1.id}
           min_width="min-w-[620px]"
           dense
@@ -144,6 +144,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:col :let={row} label="Note">
             <span class="text-primary font-mono font-medium">{row.number}</span>
           </:col>
+          <:col :let={row} label="Type">{row.type}</:col>
           <:col :let={row} label="Date">{row.date}</:col>
           <:col :let={row} label="Recipient GSTIN">
             <span class="text-ink-subtle font-mono">{row.gstin}</span>
@@ -309,9 +310,15 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   end
 
   defp diff_context(%{"scope" => scope, "key" => key})
-       when scope in ["credit_note", "credit_note_item"] do
+       when scope in ["credit_note", "credit_note_item", "debit_note", "debit_note_item"] do
     [_gstin, note, rate] = String.split(key, "|")
-    "Credit note #{note} · #{rate}%"
+    type = if(String.starts_with?(scope, "credit"), do: "Credit", else: "Debit")
+    "#{type} note #{note} · #{rate}%"
+  end
+
+  defp diff_context(%{"scope" => scope, "key" => key}) when scope in ["note", "note_item"] do
+    [_gstin, note, rate] = String.split(key, "|")
+    "Note #{note} · #{rate}%"
   end
 
   defp diff_context(%{"scope" => "hsn", "key" => key}) do
@@ -321,6 +328,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
 
   defp diff_context(%{"scope" => "doc_issue", "key" => key}) do
     case String.split(key, "|") do
+      ["4", _num] -> "Debit-note series"
       ["5", _num] -> "Credit-note series"
       _invoice -> "Invoice series"
     end
@@ -329,8 +337,8 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   defp diff_field("ctin"), do: "Counterparty GSTIN"
   defp diff_field("inum"), do: "Invoice number"
   defp diff_field("idt"), do: "Invoice date"
-  defp diff_field("nt_num"), do: "Credit-note number"
-  defp diff_field("nt_dt"), do: "Credit-note date"
+  defp diff_field("nt_num"), do: "Note number"
+  defp diff_field("nt_dt"), do: "Note date"
   defp diff_field("ntty"), do: "Note type"
   defp diff_field("val"), do: "Invoice value"
   defp diff_field("pos"), do: "Place of supply"
@@ -555,18 +563,20 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     end)
   end
 
-  defp credit_note_rows(cdnr) do
+  defp note_rows(cdnr) do
     for party <- cdnr,
         note <- party["nt"] || [] do
       totals = invoice_totals(note)
+      effect = if(note["ntty"] == "C", do: -1, else: 1)
 
       %{
-        id: dom_id("gstr1-workings-credit-note-#{party["ctin"]}-#{note["nt_num"]}"),
+        id: dom_id("gstr1-workings-note-#{party["ctin"]}-#{note["nt_num"]}"),
         number: note["nt_num"],
+        type: if(note["ntty"] == "C", do: "Credit", else: "Debit"),
         date: note["nt_dt"],
         gstin: party["ctin"],
-        taxable: -totals.taxable,
-        tax: -totals.tax
+        taxable: effect * totals.taxable,
+        tax: effect * totals.tax
       }
     end
   end

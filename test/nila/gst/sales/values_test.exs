@@ -109,6 +109,54 @@ defmodule Nila.Gst.Sales.ValuesTest do
       assert Values.filed_totals(derived).tax == 270.0
     end
 
+    test "debit-note face values and liability effect both stay positive" do
+      sale =
+        invoice(%{
+          "invoice_number" => "INV-1",
+          "line_items" => [line(100_000.0, 18.0, :intrastate)]
+        })
+
+      note =
+        invoice(%{
+          "document_type" => "debit_note",
+          "invoice_number" => "DN-1",
+          "line_items" => [line(10_000.0, 18.0, :intrastate)]
+        })
+
+      derived = derive([sale, note])
+      note_values = Values.for_invoice(note, derived)
+
+      assert note_values.filed.taxable == 10_000.0
+      assert note_values.filed.tax == 1_800.0
+      assert note_values.liability_effect.taxable == 10_000.0
+      assert note_values.liability_effect.tax == 1_800.0
+      assert Values.filed_totals(derived).taxable == 110_000.0
+      assert Values.filed_totals(derived).tax == 19_800.0
+    end
+
+    test "credit and debit notes sharing a number resolve by note type" do
+      credit =
+        invoice(%{
+          "document_type" => "credit_note",
+          "invoice_number" => "N-1",
+          "line_items" => [line(500.0, 18.0, :intrastate)]
+        })
+
+      debit =
+        invoice(%{
+          "document_type" => "debit_note",
+          "invoice_number" => "N-1",
+          "line_items" => [line(700.0, 18.0, :intrastate)]
+        })
+
+      derived = derive([credit, debit])
+
+      assert Values.filed(credit, derived).taxable == 500.0
+      assert Values.filed(debit, derived).taxable == 700.0
+      assert Values.for_invoice(credit, derived).liability_effect.taxable == -500.0
+      assert Values.for_invoice(debit, derived).liability_effect.taxable == 700.0
+    end
+
     test "the filed total is computed once — the month equals the sum of its invoices" do
       invoices =
         for n <- 1..7 do

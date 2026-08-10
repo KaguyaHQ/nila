@@ -138,7 +138,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           id="gstr1-blocked-next-move"
           class="bg-error/5 border-error/30 rounded-box text-base-content text-body border px-4 py-3"
         >
-          Nila files registered B2B invoices and credit notes, but another document type in this month is unsupported. File {Nila.Formatters.period_label(
+          Nila files registered B2B invoices, credit notes and debit notes, but another document type in this month is unsupported. File {Nila.Formatters.period_label(
             @period
           )} for {@client.name} manually on the portal — and tell us
           which table you needed.
@@ -421,9 +421,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       </section>
 
       <%!-- The object being approved, which this page never actually showed.
-            One row, because `derive/2` emits b2b, hsn and doc_issue and nothing
-            else — printing "Credit/debit notes: none" would be an assertion
-            nobody made and the engine cannot check. --%>
+            Empty sections are omitted rather than printed as assertions that no
+            such documents exist. --%>
       <section :if={@derived} id="gstr1-filing-summary" class="space-y-block">
         <h3 class="text-base-content text-body font-semibold">What this return files</h3>
         <.data_table
@@ -446,7 +445,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           </:col>
         </.data_table>
         <p id="gstr1-filing-capability" class="text-ink-subtle text-meta">
-          This return files registered B2B invoices and credit notes. Debit notes, exports, SEZ,
+          This return files registered B2B invoices, credit notes and debit notes. Exports, SEZ,
           reverse-charge and B2C supplies still stop the month rather than being misfiled.
         </p>
       </section>
@@ -692,7 +691,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       ),
       filing_summary_row(
         "cdnr",
-        "9B registered credit notes",
+        "9B registered credit and debit notes",
         count_documents(derived, "cdnr", "nt"),
         Values.filed_totals(Map.put(derived, "b2b", [])),
         account,

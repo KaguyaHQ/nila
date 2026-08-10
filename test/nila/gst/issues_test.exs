@@ -60,7 +60,7 @@ defmodule Nila.Gst.IssuesTest do
       required = %{"code" => "grand_total_mismatch", "level" => "required"}
       advisory = %{"code" => "hsn_new_code", "level" => "advisory"}
       settled = %{"code" => "rounding_variance", "level" => "info"}
-      blocker = %{"code" => "debit_note_unsupported", "level" => "blocking"}
+      blocker = %{"code" => "export_supply_unsupported", "level" => "blocking"}
 
       assert Issues.gating?(required)
       assert Issues.gating?(blocker)
@@ -90,7 +90,7 @@ defmodule Nila.Gst.IssuesTest do
       # blocking. Dropping it here would leave a count that gates the filing
       # while being invisible in the copy that reports what is open.
       issues = [
-        %{"code" => "debit_note_unsupported"},
+        %{"code" => "export_supply_unsupported"},
         %{"code" => "cess_unsupported"},
         %{"code" => "grand_total_mismatch"},
         %{"code" => "hsn_new_code"}

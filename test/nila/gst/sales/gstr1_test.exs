@@ -144,6 +144,71 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert Gstr1.blocking_issues([note]) == []
     end
 
+    test "derives the verified Zoho debit-note shape with positive liability effect" do
+      note = debit_note()
+
+      assert note["document_type"] == "debit_note"
+      assert Gstr1.document_number(note) == "CDN-000001"
+      assert Gstr1.document_date(note) == ~D[2026-08-10]
+      assert Gstr1.document_effect(note) == 1
+
+      derived =
+        Gstr1.derive([note], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "082026"})
+
+      assert derived["b2b"] == []
+
+      assert derived["cdnr"] == [
+               %{
+                 "ctin" => "29AAVCS8021P1ZB",
+                 "nt" => [
+                   %{
+                     "nt_num" => "CDN-000001",
+                     "nt_dt" => "10-08-2026",
+                     "ntty" => "D",
+                     "val" => 11_800,
+                     "pos" => "29",
+                     "rchrg" => "N",
+                     "inv_typ" => "R",
+                     "itms" => [
+                       %{
+                         "num" => 1,
+                         "itm_det" => %{
+                           "rt" => 18,
+                           "txval" => 10_000,
+                           "camt" => 0,
+                           "samt" => 0,
+                           "iamt" => 1_800,
+                           "csamt" => 0
+                         }
+                       }
+                     ]
+                   }
+                 ]
+               }
+             ]
+
+      assert get_in(derived, ["doc_issue", "doc_det"]) == [
+               %{
+                 "doc_num" => 4,
+                 "docs" => [
+                   %{
+                     "num" => 1,
+                     "from" => "CDN-000001",
+                     "to" => "CDN-000001",
+                     "totnum" => 1,
+                     "cancel" => 0,
+                     "net_issue" => 1
+                   }
+                 ]
+               }
+             ]
+
+      assert [hsn] = get_in(derived, ["hsn", "hsn_b2b"])
+      assert hsn["txval"] == 10_000
+      assert hsn["iamt"] == 1_800
+      assert Gstr1.blocking_issues([note]) == []
+    end
+
     test "classification disagreement blocks instead of flipping liability silently" do
       invoice =
         Gstr1.normalize_invoice(%{
@@ -256,6 +321,33 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         "printed_total_taxable" => 743_125,
         "printed_total_tax" => 133_762.5,
         "printed_grand_total" => 876_887.5
+      }
+    })
+  end
+
+  defp debit_note do
+    Gstr1.normalize_invoice(%{
+      "page" => 1,
+      "document" => %{"credit_note" => false, "debit_note" => true},
+      "data" => %{
+        "document_type" => "debit_note",
+        "invoice_number" => "CDN-000001",
+        "invoice_date" => "2026-08-10",
+        "seller" => %{"name" => "Seller", "gstin" => "33AEWPH4158J1Z3"},
+        "buyer" => %{"name" => "Buyer", "gstin" => "29AAVCS8021P1ZB"},
+        "line_items" => [
+          %{
+            "description" => "Additional charge test",
+            "hsn_sac" => "998719",
+            "unit_price" => 10_000,
+            "taxable_value" => 10_000,
+            "igst_rate" => 18,
+            "igst_amount" => 1_800
+          }
+        ],
+        "printed_total_taxable" => 10_000,
+        "printed_total_tax" => 1_800,
+        "printed_grand_total" => 11_800
       }
     })
   end
@@ -659,6 +751,22 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert account.to == "23/2026-27"
       assert account.missing == ["22/2026-27"]
       assert account.duplicates == ["21/2026-27"]
+    end
+
+    test "multiple prefixed series report every gap without combining their ranges" do
+      invoices = [
+        seq_invoice("INV-001"),
+        seq_invoice("INV-003"),
+        seq_invoice("20/2026-27"),
+        seq_invoice("22/2026-27")
+      ]
+
+      account = Gstr1.series_account(invoices)
+      assert account.missing == ["21/2026-27", "INV-002"]
+
+      [issue] = Enum.filter(Gstr1.validation_issues(invoices), &(&1["code"] == "sequence_gaps"))
+      assert issue["message"] =~ "21/2026-27"
+      assert issue["message"] =~ "INV-002"
     end
 
     test "a complete series has nothing to confess" do
@@ -1083,7 +1191,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       )
     end
 
-    test "a registered credit note is supported while a debit note still blocks" do
+    test "registered credit and debit notes are both supported" do
       credit =
         sales_invoice(%{
           "document_type" => "credit_note",
@@ -1096,10 +1204,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
           "document" => %{"debit_note" => true}
         })
 
-      assert Gstr1.blocking_issues([credit]) == []
-      assert [issue] = Gstr1.blocking_issues([debit])
-      assert issue["code"] == "debit_note_unsupported"
-      assert issue["level"] == "blocking"
+      assert Gstr1.blocking_issues([credit, debit]) == []
     end
 
     test "an export, an outward reverse charge and a missing buyer GSTIN each block" do
@@ -1170,7 +1275,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       confirmed = %{
         "level" => "blocking",
         "status" => "resolved",
-        "code" => "debit_note_unsupported"
+        "code" => "export_supply_unsupported"
       }
 
       refute Nila.Gst.Sales.Workings.reviewable?([confirmed])

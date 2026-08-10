@@ -81,6 +81,46 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
     assert artifact["verification"]["status"] == "verified"
   end
 
+  test "a sales debit-note heading and structured type leave as the same classification" do
+    text = """
+    DEBIT NOTE # CDN-000001
+    Date 10/08/2026
+    Seller GSTIN 33AEWPH4158J1Z3
+    Buyer GSTIN 29AAVCS8021P1ZB
+    HSN 998719 Taxable 10,000.00 IGST 18% 1,800.00 Total 11,800.00
+    """
+
+    t = transcription([{1, text}])
+
+    Req.Test.expect(MistralChat, fn conn ->
+      reply(conn, %{
+        "document_type" => "debit_note",
+        "invoice_number" => "CDN-000001",
+        "invoice_date" => "10/08/2026",
+        "seller" => %{"name" => "Seller", "gstin" => "33AEWPH4158J1Z3"},
+        "buyer" => %{"name" => "Buyer", "gstin" => "29AAVCS8021P1ZB"},
+        "line_items" => [
+          %{
+            "hsn_sac" => "998719",
+            "taxable_value" => 10_000,
+            "igst_rate" => 18,
+            "igst_amount" => 1_800
+          }
+        ],
+        "printed_total_taxable" => 10_000,
+        "printed_total_tax" => 1_800,
+        "printed_grand_total" => 11_800
+      })
+    end)
+
+    {:ok, artifact} = Segmented.extract_segment(:sales, t, segment([1], "CDN-000001"))
+
+    assert artifact["data"]["document_type"] == "debit_note"
+    assert artifact["document"]["debit_note"]
+    refute artifact["document"]["credit_note"]
+    assert artifact["document"]["extracted_type"] == "debit_note"
+  end
+
   test "a fabricated total is caught before the artifact leaves the stage" do
     t = transcription([{1, invoice_page(1)}])
 

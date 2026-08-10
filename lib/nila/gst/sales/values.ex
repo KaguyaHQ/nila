@@ -193,13 +193,16 @@ defmodule Nila.Gst.Sales.Values do
 
   defp invoice_entries(derived, invoice) do
     case Gstr1.document_type(invoice) do
-      "credit_note" ->
-        for group <- List.wrap(derived["cdnr"]),
-            note <- List.wrap(group["nt"]),
-            note["nt_num"] == Gstr1.document_number(invoice),
-            do: note
+      note when note in ~w(credit_note debit_note) ->
+        note_type = if(note == "credit_note", do: "C", else: "D")
 
-      _invoice ->
+        for group <- List.wrap(derived["cdnr"]),
+            entry <- List.wrap(group["nt"]),
+            entry["nt_num"] == Gstr1.document_number(invoice),
+            entry["ntty"] == note_type,
+            do: entry
+
+      "invoice" ->
         for group <- List.wrap(derived["b2b"]),
             entry <- List.wrap(group["inv"]),
             entry["inum"] == Gstr1.document_number(invoice),

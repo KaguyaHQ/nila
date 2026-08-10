@@ -144,6 +144,68 @@ defmodule Nila.Gst.Sales.AccountTest do
     assert account.differences.tax == 0.0
   end
 
+  test "debit notes increase extracted and draft control totals without changing face values" do
+    sale = invoice("INV-1", 100_000, %{igst: 18_000})
+
+    note =
+      invoice("DN-1", 10_000, %{igst: 1_800})
+      |> Map.put("document_type", "debit_note")
+
+    derived = %{
+      "b2b" => [
+        %{
+          "inv" => [
+            %{
+              "inum" => "INV-1",
+              "itms" => [
+                %{
+                  "itm_det" => %{
+                    "rt" => 18,
+                    "txval" => 100_000,
+                    "camt" => 0,
+                    "samt" => 0,
+                    "iamt" => 18_000
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "cdnr" => [
+        %{
+          "nt" => [
+            %{
+              "nt_num" => "DN-1",
+              "ntty" => "D",
+              "itms" => [
+                %{
+                  "itm_det" => %{
+                    "rt" => 18,
+                    "txval" => 10_000,
+                    "camt" => 0,
+                    "samt" => 0,
+                    "iamt" => 1_800
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
+    account = Account.summarize([sale, note], [sale, note], [], derived, %{files: 2})
+
+    assert note["line_items"] |> hd() |> Map.fetch!("taxable_value") == 10_000
+    assert account.extraction.totals.taxable == 110_000.0
+    assert account.extraction.totals.tax == 19_800.0
+    assert account.draft.documents == 2
+    assert account.draft.totals.taxable == 110_000.0
+    assert account.draft.totals.tax == 19_800.0
+    assert account.differences.tax == 0.0
+  end
+
   test "advisories are counted apart from what gates approval, and named by kind" do
     issues = [
       %{"code" => "hsn_new_code", "status" => "open", "level" => "advisory"},
@@ -151,7 +213,7 @@ defmodule Nila.Gst.Sales.AccountTest do
       %{"code" => "grand_total_mismatch", "status" => "open", "level" => "required"},
       %{"code" => "pages_unaccounted", "status" => "open", "level" => "required"},
       %{"code" => "invalid_hsn_sac", "status" => "open", "level" => "required"},
-      %{"code" => "debit_note_unsupported", "status" => "open", "level" => "blocking"},
+      %{"code" => "cess_unsupported", "status" => "open", "level" => "blocking"},
       %{"code" => "rounding_variance", "status" => "open", "level" => "info"}
     ]
 

@@ -128,6 +128,52 @@ defmodule Nila.Gst.Sales.ReviewTest do
            }
   end
 
+  test "debit-note treatment keeps portal values and liability effect positive" do
+    note = %{
+      "id" => "source-dn",
+      "document_type" => "debit_note",
+      "invoice_number" => "CDN-000001",
+      "buyer_gstin" => "29AAVCS8021P1ZB",
+      "line_items" => []
+    }
+
+    derived = %{
+      "cdnr" => [
+        %{
+          "ctin" => "29AAVCS8021P1ZB",
+          "nt" => [
+            %{
+              "nt_num" => "CDN-000001",
+              "ntty" => "D",
+              "inv_typ" => "R",
+              "pos" => "29",
+              "itms" => [
+                %{
+                  "itm_det" => %{
+                    "txval" => 10_000,
+                    "iamt" => 1_800,
+                    "camt" => 0,
+                    "samt" => 0,
+                    "csamt" => 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
+    snapshot = Review.treatment_snapshot(note, derived)
+
+    assert snapshot["table"] == "cdnr"
+    assert snapshot["category"] == "D"
+    assert snapshot["tax_head"] == "igst"
+    assert snapshot["taxable_amount"] == 10_000
+    assert snapshot["tax_amount"] == 1_800
+    assert snapshot["tax_amounts"] == %{"igst" => 1_800, "cgst" => 0, "sgst" => 0, "cess" => 0}
+  end
+
   defp workings do
     invoices = [
       invoice("source-c", "30/2025-26"),

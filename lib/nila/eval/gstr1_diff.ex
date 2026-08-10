@@ -130,15 +130,17 @@ defmodule Nila.Eval.Gstr1Diff do
       derived_row = derived_rows[key] || %{}
       filed_row = filed_rows[key] || %{}
 
+      scope = note_scope(derived_row["ntty"] || filed_row["ntty"])
+
       note_checks =
         Enum.map(@note_fields, fn field ->
-          row("credit_note", key, field, derived_row[field], filed_row[field])
+          row(scope, key, field, derived_row[field], filed_row[field])
         end)
 
       item_checks =
         Enum.map(@item_fields, fn field ->
           row(
-            "credit_note_item",
+            scope <> "_item",
             key,
             field,
             get_in(derived_row, ["itm_det", field]),
@@ -149,6 +151,10 @@ defmodule Nila.Eval.Gstr1Diff do
       note_checks ++ item_checks
     end)
   end
+
+  defp note_scope("C"), do: "credit_note"
+  defp note_scope("D"), do: "debit_note"
+  defp note_scope(_type), do: "note"
 
   defp note_rows(gstr1) do
     for ctin_block <- gstr1["cdnr"] || [],

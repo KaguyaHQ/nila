@@ -190,14 +190,11 @@ defmodule Nila.Gst.Sales.Gstr1 do
   @doc """
   Issues that must be answered before a GSTR-1 can be signed, not merely read.
 
-  `derive/2` builds `b2b`, `hsn` and `doc_issue` and nothing else, which is
-  exactly what both clients have filed in every month of the corpus. A document
-  that belongs in a table this return does not have would still be derived — as
-  a *regular outward supply*, because that is the only shape on offer. A credit
-  note would be filed as a sale of the same value, so the liability moves by
-  twice its amount in the wrong direction; an export or SEZ supply would be
-  filed as taxable; a reverse-charge supply would be filed `rchrg: "N"` and the
-  tax charged to the wrong party.
+  `derive/2` builds registered `b2b` and `cdnr`, `hsn` and `doc_issue`. A
+  document that belongs in another table would still be derived as the closest
+  supported outward supply: an export or SEZ supply would be filed as ordinary
+  taxable B2B; a reverse-charge supply would be filed `rchrg: "N"` and the tax
+  charged to the wrong party.
 
   None of these can be caught downstream: every one is arithmetically perfect.
   So the return refuses to be signed while one is present, and the missing table
@@ -237,8 +234,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
     document = invoice["document"] || %{}
 
     [
-      {document_type(invoice) == "debit_note" or document["debit_note"], "debit_note_unsupported",
-       "this is a debit note, and GSTR-1 derivation only supports credit notes"},
       {document["export"], "export_supply_unsupported",
        "this bill carries export, LUT or SEZ wording, and GSTR-1 derivation has no exp table — it would be filed as an ordinary taxable supply"},
       {document["reverse_charge"], "outward_reverse_charge_unsupported",
@@ -346,10 +341,10 @@ defmodule Nila.Gst.Sales.Gstr1 do
     seller_gstin = filed["gstin"] || first_present(invoices, "seller_gstin")
     seller_state = state_code(seller_gstin)
     regular_invoices = Enum.filter(invoices, &(document_type(&1) == "invoice"))
-    credit_notes = Enum.filter(invoices, &(document_type(&1) == "credit_note"))
+    notes = Enum.filter(invoices, &(document_type(&1) in ~w(credit_note debit_note)))
 
     b2b = derive_b2b(regular_invoices, seller_state)
-    cdnr = derive_cdnr(credit_notes, seller_state)
+    cdnr = derive_cdnr(notes, seller_state)
 
     %{
       "gstin" => seller_gstin,
@@ -359,7 +354,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "cur_gt" => filed["cur_gt"] || 0.0,
       "b2b" => b2b,
       "cdnr" => cdnr,
-      "hsn" => %{"hsn_b2b" => derive_hsn(regular_invoices ++ credit_notes), "hsn_b2c" => []},
+      "hsn" => %{"hsn_b2b" => derive_hsn(regular_invoices ++ notes), "hsn_b2c" => []},
       "doc_issue" => derive_doc_issue(invoices),
       "fil_dt" => filed["fil_dt"]
     }
@@ -390,7 +385,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
         "nt" =>
           Enum.map(
             Enum.sort_by(buyer_notes, &invoice_sort_key(document_number(&1))),
-            &derive_credit_note(&1, seller_state)
+            &derive_note(&1, seller_state)
           )
       }
     end)
@@ -1068,25 +1063,20 @@ defmodule Nila.Gst.Sales.Gstr1 do
   gaps.
   """
   def series_account(invoices) do
-    case invoices |> Enum.filter(&(document_type(&1) == "invoice")) |> parsed_numbers() do
-      [] ->
+    accounts =
+      invoices
+      |> Enum.filter(&(document_type(&1) == "invoice"))
+      |> series_accounts()
+
+    case Enum.max_by(accounts, & &1.count, fn -> nil end) do
+      nil ->
         nil
 
-      parsed ->
-        numbers = Enum.map(parsed, & &1.number)
-        first = hd(parsed)
-        min = Enum.min(numbers)
-        max = Enum.max(numbers)
-
-        %{
-          from: format_series_number(min, first),
-          to: format_series_number(max, first),
-          missing: Enum.map(Enum.to_list(min..max) -- numbers, &format_series_number(&1, first)),
-          duplicates:
-            (numbers -- Enum.uniq(numbers))
-            |> Enum.uniq()
-            |> Enum.map(&format_series_number(&1, first))
-        }
+      primary ->
+        primary
+        |> Map.put(:missing, Enum.flat_map(accounts, & &1.missing))
+        |> Map.put(:duplicates, Enum.flat_map(accounts, & &1.duplicates))
+        |> Map.delete(:count)
     end
   end
 
@@ -1106,21 +1096,25 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp sequence_issues(invoices) do
-    case series_account(invoices) do
-      %{missing: [_ | _] = missing} ->
-        [
-          %{
-            "invoice" => nil,
-            "code" => "sequence_gaps",
-            "level" => Issues.level_for("sequence_gaps"),
-            "message" =>
-              "missing/cancelled inferred from sequence: #{Enum.join(missing, ", ")} — confirm cancellation records",
-            "fields" => ["doc_issue"]
-          }
-        ]
+    missing =
+      invoices
+      |> Enum.filter(&(document_type(&1) == "invoice"))
+      |> series_accounts()
+      |> Enum.flat_map(& &1.missing)
 
-      _complete_or_unparseable ->
-        []
+    if missing == [] do
+      []
+    else
+      [
+        %{
+          "invoice" => nil,
+          "code" => "sequence_gaps",
+          "level" => Issues.level_for("sequence_gaps"),
+          "message" =>
+            "missing/cancelled inferred from sequence: #{Enum.join(missing, ", ")} — confirm cancellation records",
+          "fields" => ["doc_issue"]
+        }
+      ]
     end
   end
 
@@ -1153,13 +1147,13 @@ defmodule Nila.Gst.Sales.Gstr1 do
     }
   end
 
-  defp derive_credit_note(note, seller_state) do
+  defp derive_note(note, seller_state) do
     buyer_state = state_code(note["buyer_gstin"])
 
     %{
       "nt_num" => document_number(note),
       "nt_dt" => normalize_date(document_date(note)),
-      "ntty" => "C",
+      "ntty" => note_type(document_type(note)),
       "val" => document_value(note),
       "pos" => buyer_state || seller_state,
       "rchrg" => "N",
@@ -1167,6 +1161,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "itms" => derive_items(note, seller_state, buyer_state)
     }
   end
+
+  defp note_type("credit_note"), do: "C"
+  defp note_type("debit_note"), do: "D"
 
   defp derive_items(document, seller_state, buyer_state) do
     document["line_items"]
@@ -1364,39 +1361,39 @@ defmodule Nila.Gst.Sales.Gstr1 do
     groups =
       [
         {1, Enum.filter(invoices, &(document_type(&1) == "invoice"))},
+        {4, Enum.filter(invoices, &(document_type(&1) == "debit_note"))},
         {5, Enum.filter(invoices, &(document_type(&1) == "credit_note"))}
       ]
       |> Enum.flat_map(fn {doc_num, documents} ->
-        case parsed_numbers(documents) do
+        case parsed_series(documents) do
           [] -> []
-          parsed -> [build_doc_issue_group(doc_num, parsed)]
+          series -> [%{"doc_num" => doc_num, "docs" => build_doc_issue_rows(series)}]
         end
       end)
 
     %{"doc_det" => groups}
   end
 
-  defp build_doc_issue_group(doc_num, parsed) do
-    numbers = Enum.map(parsed, & &1.number)
-    min = Enum.min(numbers)
-    max = Enum.max(numbers)
-    first = hd(parsed)
-    totnum = max - min + 1
-    net_issue = length(Enum.uniq(numbers))
+  defp build_doc_issue_rows(series) do
+    series
+    |> Enum.with_index(1)
+    |> Enum.map(fn {parsed, index} ->
+      numbers = Enum.map(parsed, & &1.number)
+      min = Enum.min(numbers)
+      max = Enum.max(numbers)
+      first = hd(parsed)
+      totnum = max - min + 1
+      net_issue = length(Enum.uniq(numbers))
 
-    %{
-      "doc_num" => doc_num,
-      "docs" => [
-        %{
-          "num" => 1,
-          "from" => format_series_number(min, first),
-          "to" => format_series_number(max, first),
-          "totnum" => totnum,
-          "cancel" => totnum - net_issue,
-          "net_issue" => net_issue
-        }
-      ]
-    }
+      %{
+        "num" => index,
+        "from" => format_series_number(min, first),
+        "to" => format_series_number(max, first),
+        "totnum" => totnum,
+        "cancel" => totnum - net_issue,
+        "net_issue" => net_issue
+      }
+    end)
   end
 
   defp put_field(invoice, field, value) do
@@ -1578,20 +1575,62 @@ defmodule Nila.Gst.Sales.Gstr1 do
     |> Enum.reject(&is_nil/1)
   end
 
+  defp parsed_series(documents) do
+    documents
+    |> parsed_numbers()
+    |> Enum.group_by(&{&1.prefix, &1.suffix})
+    |> Enum.sort_by(fn {key, _parsed} -> key end)
+    |> Enum.map(&elem(&1, 1))
+  end
+
+  defp series_accounts(documents) do
+    Enum.map(parsed_series(documents), fn parsed ->
+      numbers = Enum.map(parsed, & &1.number)
+      first = hd(parsed)
+      min = Enum.min(numbers)
+      max = Enum.max(numbers)
+
+      %{
+        from: format_series_number(min, first),
+        to: format_series_number(max, first),
+        missing: Enum.map(Enum.to_list(min..max) -- numbers, &format_series_number(&1, first)),
+        duplicates:
+          (numbers -- Enum.uniq(numbers))
+          |> Enum.uniq()
+          |> Enum.map(&format_series_number(&1, first)),
+        count: length(parsed)
+      }
+    end)
+  end
+
   defp parse_invoice_number(nil), do: nil
 
   defp parse_invoice_number(invoice_number) do
-    case Regex.run(~r/^(\d+)(.*)$/, normalize_invoice_number(invoice_number)) do
-      [_, number, suffix] ->
-        %{number: String.to_integer(number), width: String.length(number), suffix: suffix}
+    normalized = normalize_invoice_number(invoice_number)
 
-      _ ->
-        nil
+    case Regex.run(~r/^(\d+)(.*)$/, normalized) do
+      [_, number, suffix] ->
+        parsed_invoice_number("", number, suffix)
+
+      _prefixed ->
+        case Regex.run(~r/^(.*\D)(\d+)(\D*)$/, normalized) do
+          [_, prefix, number, suffix] -> parsed_invoice_number(prefix, number, suffix)
+          _unparseable -> nil
+        end
     end
   end
 
+  defp parsed_invoice_number(prefix, number, suffix) do
+    %{
+      prefix: prefix,
+      number: String.to_integer(number),
+      width: String.length(number),
+      suffix: suffix
+    }
+  end
+
   defp format_series_number(number, parsed) do
-    String.pad_leading(to_string(number), parsed.width, "0") <> parsed.suffix
+    parsed.prefix <> String.pad_leading(to_string(number), parsed.width, "0") <> parsed.suffix
   end
 
   defp invoice_sort_key(invoice_number) do

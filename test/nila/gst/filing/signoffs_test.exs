@@ -754,9 +754,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       # and signing is the act that makes the number final.
       invoices =
         Enum.map(reviewed.invoices, fn invoice ->
-          invoice
-          |> Map.put("document_type", "debit_note")
-          |> Map.put("document", %{"debit_note" => true})
+          Map.put(invoice, "document", %{"export" => true})
         end)
 
       {:ok, reviewed} =
@@ -764,7 +762,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
         |> Nila.Gst.Sales.Month.changeset(%{invoices: invoices})
         |> Nila.Repo.update()
 
-      assert {:error, {:blocking_issues, ["debit_note_unsupported"]}} =
+      assert {:error, {:blocking_issues, ["export_supply_unsupported"]}} =
                Signoffs.sign_off_gstr1(reviewed, scope)
 
       assert {:error, :not_found} = Signoffs.latest_gstr1_signoff(reviewed.id)

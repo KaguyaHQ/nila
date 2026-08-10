@@ -204,7 +204,6 @@ defmodule NilaWeb.Gst.MonthLive do
       ", which this return cannot carry. Filing it as a regular invoice would be wrong, so it cannot be signed."
   end
 
-  defp blocked_document("debit_note_unsupported"), do: "a debit note"
   defp blocked_document("export_supply_unsupported"), do: "an export or SEZ supply"
   defp blocked_document("outward_reverse_charge_unsupported"), do: "a reverse-charge supply"
   defp blocked_document("b2c_supply_unsupported"), do: "a bill with no buyer GSTIN"

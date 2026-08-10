@@ -68,7 +68,6 @@ defmodule Nila.Gst.Issues do
     "cess_unsupported" => {"blocking", nil},
 
     # Documents this return has no table for
-    "debit_note_unsupported" => {"blocking", nil},
     "export_supply_unsupported" => {"blocking", nil},
     "outward_reverse_charge_unsupported" => {"blocking", nil},
     "b2c_supply_unsupported" => {"blocking", nil},

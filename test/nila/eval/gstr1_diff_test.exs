@@ -86,6 +86,20 @@ defmodule Nila.Eval.Gstr1DiffTest do
       refute Enum.any?(rows, &(&1["field"] in ~w(d_flag chksum flag updby cflag cfs)))
     end
 
+    test "labels debit-note CDNR rows without changing their stable identity" do
+      ours = put_in(return()["cdnr"], [credit_note("10-08-2026", "D", "ours")])
+      theirs = put_in(return()["cdnr"], [credit_note("10-08-2026", "D", "theirs")])
+      rows = Gstr1Diff.rows(ours, theirs)
+
+      assert Enum.any?(rows, fn row ->
+               row["scope"] == "debit_note" and
+                 row["key"] == "33AABCP9487A1ZG|03/2024-25|18" and row["field"] == "ntty" and
+                 row["match"]
+             end)
+
+      assert Enum.any?(rows, &(&1["scope"] == "debit_note_item"))
+    end
+
     test "compares invoice and credit-note document series independently" do
       ours =
         put_in(return()["doc_issue"], %{
@@ -102,6 +116,20 @@ defmodule Nila.Eval.Gstr1DiffTest do
 
       mismatch = Enum.find(rows, &(&1["scope"] == "doc_issue" and not &1["match"]))
       assert mismatch["key"] == "5|1"
+      assert mismatch["field"] == "net_issue"
+    end
+
+    test "compares debit-note document series as type 4" do
+      ours = put_in(return()["doc_issue"], %{"doc_det" => [doc_group(4, "DN-1", "DN-1", 1)]})
+
+      theirs =
+        put_in(ours, ["doc_issue", "doc_det", Access.at(0), "docs", Access.at(0), "net_issue"], 2)
+
+      mismatch =
+        Gstr1Diff.rows(ours, theirs)
+        |> Enum.find(&(&1["scope"] == "doc_issue" and not &1["match"]))
+
+      assert mismatch["key"] == "4|1"
       assert mismatch["field"] == "net_issue"
     end
 

@@ -125,7 +125,7 @@ defmodule Nila.Gst.Sales.Review do
           "source_id" => invoice["id"],
           "invoice_number" => Gstr1.document_number(invoice),
           "buyer_gstin" => invoice["buyer_gstin"],
-          "table" => if(Gstr1.document_type(invoice) == "credit_note", do: "cdnr", else: "b2b"),
+          "table" => if(Gstr1.document_type(invoice) == "invoice", do: "b2b", else: "cdnr"),
           "category" => treatment["ntty"] || treatment["inv_typ"],
           "place_of_supply" => treatment["pos"],
           "tax_head" => tax_head(amounts),
@@ -197,14 +197,18 @@ defmodule Nila.Gst.Sales.Review do
 
   defp derived_invoice(derived, invoice) do
     case Gstr1.document_type(invoice) do
-      "credit_note" ->
+      note when note in ~w(credit_note debit_note) ->
+        note_type = if(note == "credit_note", do: "C", else: "D")
+
         derived
         |> Map.get("cdnr", [])
         |> Enum.filter(&(&1["ctin"] == invoice["buyer_gstin"]))
         |> Enum.flat_map(&List.wrap(&1["nt"]))
-        |> Enum.find(&(&1["nt_num"] == Gstr1.document_number(invoice)))
+        |> Enum.find(fn entry ->
+          entry["nt_num"] == Gstr1.document_number(invoice) and entry["ntty"] == note_type
+        end)
 
-      _invoice ->
+      "invoice" ->
         derived
         |> Map.get("b2b", [])
         |> Enum.filter(&(&1["ctin"] == invoice["buyer_gstin"]))

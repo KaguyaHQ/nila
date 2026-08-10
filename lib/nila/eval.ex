@@ -180,13 +180,13 @@ defmodule Nila.Eval do
     end
   end
 
-  defp extracted_value(%{"scope" => "credit_note", "field" => field}, invoice)
-       when is_map(invoice) do
+  defp extracted_value(%{"scope" => scope, "field" => field}, invoice)
+       when scope in ~w(credit_note debit_note) and is_map(invoice) do
     case field do
       "nt_num" -> invoice["invoice_number"]
       "ctin" -> invoice["buyer_gstin"]
       "nt_dt" -> invoice["invoice_date"] && to_string(invoice["invoice_date"])
-      "ntty" -> "C"
+      "ntty" -> if(Gstr1.document_type(invoice) == "credit_note", do: "C", else: "D")
       _other -> nil
     end
   end

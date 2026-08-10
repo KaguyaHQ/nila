@@ -295,15 +295,13 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
 
-    # A debit note still has no supported derivation, so no reviewer action
-    # clears it. It asks for no work, which is exactly why blockers must remain
-    # in the count even when the review queue has no answer.
+    # An export still has no supported derivation, so no reviewer action clears
+    # it. It asks for no work, which is exactly why blockers must remain in the
+    # count even when the review queue has no answer.
     invoices =
       Enum.map(month.invoices, fn
         %{"invoice_number" => "21/2025-26"} = invoice ->
-          invoice
-          |> Map.put("document_type", "debit_note")
-          |> Map.put("document", %{"debit_note" => true})
+          Map.put(invoice, "document", %{"export" => true})
 
         invoice ->
           invoice
@@ -344,8 +342,38 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     assert has_element?(view, "#gstr1-workings-cdnr", "21/2025-26")
-    assert has_element?(view, "#gstr1-filing-cdnr", "9B registered credit notes")
+    assert has_element?(view, "#gstr1-filing-cdnr", "9B registered credit and debit notes")
     refute has_element?(view, "#gstr1-checks-before-filing", "credit note")
+  end
+
+  test "a registered debit note reaches CDNR with a positive liability effect", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Sales.Months, as: SalesMonths
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+
+    invoices =
+      Enum.map(month.invoices, fn
+        %{"invoice_number" => "21/2025-26"} = invoice ->
+          invoice
+          |> Map.put("document_type", "debit_note")
+          |> Map.put("document", %{"debit_note" => true})
+
+        invoice ->
+          invoice
+      end)
+
+    month |> Ecto.Changeset.change(invoices: invoices) |> Nila.Repo.update!()
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#gstr1-workings-cdnr", "21/2025-26")
+    assert has_element?(view, "#gstr1-workings-cdnr", "Debit")
+    assert has_element?(view, "#gstr1-filing-cdnr", "9B registered credit and debit notes")
+    refute has_element?(view, "#gstr1-checks-before-filing", "debit note")
   end
 
   test "the month shows the object being approved, and claims nothing it cannot check", %{
