@@ -135,6 +135,27 @@ defmodule Nila.Gst.ChaseTest do
       refute text =~ "invoice numbering"
     end
 
+    test "names a missing supplier credit note as a credit note" do
+      gaps = %{
+        in_2b_not_books: [
+          %{
+            "gstr2b" => %{
+              "document_type" => "credit_note",
+              "vendor_name" => "Sharma Steels",
+              "invoice_number" => "CN-104",
+              "total_paise" => 236_000
+            }
+          }
+        ],
+        sequence_issues: []
+      }
+
+      text = Chase.draft(:missing_bills, nil_org(), %{name: "Breeze Tech"}, @period, gaps)
+
+      assert text =~ "• Sharma Steels — credit note CN-104, ₹2,360.00"
+      assert text =~ "verify the input credit and adjustments"
+    end
+
     test "relays sequence gaps when the sales month reports them", %{
       org: org,
       client: client
@@ -162,6 +183,8 @@ defmodule Nila.Gst.ChaseTest do
       assert text =~ "missing/cancelled inferred from sequence: 7"
     end
   end
+
+  defp nil_org, do: %Nila.Orgs.Org{name: "Firm"}
 
   describe "record_ask/2 + last_ask/3 + list_asks/3" do
     test "logs append-only and returns the newest first", %{

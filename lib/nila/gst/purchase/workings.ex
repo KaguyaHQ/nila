@@ -148,11 +148,12 @@ defmodule Nila.Gst.Purchase.Workings do
           row["bucket"] == "in_2b_not_books",
           row["accepted_reason"] != nil,
           into: MapSet.new(),
-          do: {row["vendor_gstin"], InvoiceNumber.key(row["invoice_number"])}
+          do: document_key(row)
 
     for entry <- recon["in_2b_not_books"] || [],
         g = entry["gstr2b"] || entry,
-        not MapSet.member?(accepted, {g["vendor_gstin"], InvoiceNumber.key(g["invoice_number"])}),
+        g["document_type"] != "credit_note",
+        not MapSet.member?(accepted, document_key(g)),
         do: g
   end
 
@@ -170,7 +171,13 @@ defmodule Nila.Gst.Purchase.Workings do
   defp attestation_target(supplies, normalize) do
     digest =
       supplies
-      |> Enum.map(&"#{&1["vendor_gstin"]}|#{normalize.(&1["invoice_number"])}")
+      |> Enum.map(fn supply ->
+        base = "#{supply["vendor_gstin"]}|#{normalize.(supply["invoice_number"])}"
+
+        if supply["document_type"] in [nil, "invoice"],
+          do: base,
+          else: base <> "|#{supply["document_type"]}"
+      end)
       |> Enum.sort()
       |> Enum.join("\n")
       |> then(&:crypto.hash(:sha256, &1))
@@ -178,6 +185,11 @@ defmodule Nila.Gst.Purchase.Workings do
       |> binary_part(0, 16)
 
     "documents_held|#{digest}"
+  end
+
+  defp document_key(document) do
+    type = document["document_type"] || "invoice"
+    {type, document["vendor_gstin"], InvoiceNumber.key(document["invoice_number"])}
   end
 
   defp attestation_answer(resolutions, targets) do

@@ -57,6 +57,23 @@ defmodule Nila.Gst.Purchase.ReconciliationTest do
       empty_buckets_except(result, ["matched"])
     end
 
+    test "purchase notes match only the same document type" do
+      credit = books(%{"document_type" => "credit_note", "invoice_number" => "CN-104"})
+      portal_credit = g2b(%{"document_type" => "credit_note", "invoice_number" => "CN-104"})
+
+      assert %{"matched" => [%{"books" => matched_books}]} =
+               Recon.reconcile([credit], [portal_credit])
+
+      assert matched_books["document_type"] == "credit_note"
+
+      invoice = books(%{"document_type" => "invoice", "invoice_number" => "CN-104"})
+      result = Recon.reconcile([invoice], [portal_credit])
+
+      assert result["matched"] == []
+      assert [_] = result["in_books_not_2b"]
+      assert [_] = result["in_2b_not_books"]
+    end
+
     test "invoice number matches after trim/case/whitespace normalization" do
       result =
         Recon.reconcile(
@@ -292,6 +309,20 @@ defmodule Nila.Gst.Purchase.ReconciliationTest do
       assert result["matched"] == []
       assert [_] = result["in_books_not_2b"]
       assert [_] = result["in_2b_not_books"]
+    end
+  end
+
+  describe "stable 2B references" do
+    test "keeps legacy invoice refs stable and separates note types" do
+      invoice = g2b(%{"invoice_number" => "SAME"})
+      credit = Map.put(invoice, "document_type", "credit_note")
+      debit = Map.put(invoice, "document_type", "debit_note")
+
+      refute Recon.gstr2b_ref(invoice) == Recon.gstr2b_ref(credit)
+      refute Recon.gstr2b_ref(credit) == Recon.gstr2b_ref(debit)
+
+      assert Recon.gstr2b_ref(invoice) ==
+               Recon.gstr2b_ref(Map.put(invoice, "document_type", "invoice"))
     end
   end
 

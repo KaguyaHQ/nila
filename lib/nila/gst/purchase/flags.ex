@@ -55,7 +55,9 @@ defmodule Nila.Gst.Purchase.Flags do
 
   def evaluate(invoice, entity_ctx, vendor_dir \\ %{}) do
     [
+      &check_document_type/3,
       &check_source_attribution/3,
+      &check_ungrounded_fields/3,
       &check_arithmetic_basis/3,
       &check_zero_value/3,
       &check_invoice_date/3,
@@ -212,9 +214,10 @@ defmodule Nila.Gst.Purchase.Flags do
     invoices
     |> Enum.reject(&(&1["invoice_number"] in [nil, ""]))
     |> Enum.group_by(fn inv ->
-      {inv["vendor_gstin"], Fuzzy.normalize(inv["invoice_number"])}
+      {inv["document_type"] || "invoice", inv["vendor_gstin"],
+       Fuzzy.normalize(inv["invoice_number"])}
     end)
-    |> Enum.filter(fn {{gstin, _inum}, group} -> gstin != nil and length(group) > 1 end)
+    |> Enum.filter(fn {{_type, gstin, _inum}, group} -> gstin != nil and length(group) > 1 end)
     |> Enum.flat_map(fn {_key, group} ->
       pages = group |> Enum.flat_map(&(&1["pages"] || [])) |> Enum.sort()
 
@@ -224,10 +227,10 @@ defmodule Nila.Gst.Purchase.Flags do
         flag(
           inv,
           "duplicate_invoice",
-          "Invoice #{inv["invoice_number"]} from #{inv["vendor_name"]} appears " <>
-            "#{length(group)} times in this month's bills (pages #{Enum.join(pages, ", ")}) — " <>
-            "likely the same bill scanned twice. Booking both would claim ITC of " <>
-            "#{rupees(tax_total(inv))} twice; keep one (duplicates: " <>
+          "#{document_label(inv)} #{inv["invoice_number"]} from #{inv["vendor_name"]} appears " <>
+            "#{length(group)} times in this month's documents (pages #{Enum.join(pages, ", ")}) — " <>
+            "likely the same document scanned twice. Booking both would apply its " <>
+            "#{rupees(tax_total(inv))} ITC effect twice; keep one (duplicates: " <>
             "#{Enum.map_join(others, ", ", & &1["id"])}).",
           nil,
           ["invoice_number"],
@@ -265,6 +268,49 @@ defmodule Nila.Gst.Purchase.Flags do
     end
   end
 
+  defp check_document_type(invoice, _ctx, _dir) do
+    type = invoice["document_type"] || "invoice"
+    document = invoice["document"] || %{}
+
+    conflict? =
+      (document["credit_note"] == true and type != "credit_note") or
+        (document["debit_note"] == true and type != "debit_note") or
+        (document["credit_note"] == true and document["debit_note"] == true)
+
+    cond do
+      type not in ~w(invoice credit_note debit_note) ->
+        [
+          flag(
+            invoice,
+            "invalid_document_type",
+            "This purchase document could not be classified as an invoice, credit note or debit note.",
+            nil,
+            ["document_type"],
+            1.0
+          )
+        ]
+
+      conflict? ->
+        [
+          flag(
+            invoice,
+            "document_type_conflict",
+            "The structured document type conflicts with the title read from the source. Confirm whether this is an invoice, credit note or debit note.",
+            nil,
+            ["document_type"],
+            1.0
+          )
+        ]
+
+      true ->
+        []
+    end
+  end
+
+  defp document_label(%{"document_type" => "credit_note"}), do: "Credit note"
+  defp document_label(%{"document_type" => "debit_note"}), do: "Debit note"
+  defp document_label(_invoice), do: "Invoice"
+
   defp check_source_attribution(%{"source_attribution" => attribution} = invoice, _ctx, _dir)
        when is_map(attribution) do
     if attribution["status"] == "verified" do
@@ -296,6 +342,21 @@ defmodule Nila.Gst.Purchase.Flags do
   defp source_attribution_reason(_attribution) do
     "No source page could be resolved for this invoice — open the original document and attach the right page."
   end
+
+  defp check_ungrounded_fields(%{"ungrounded_fields" => [_ | _] = fields} = invoice, _ctx, _dir) do
+    [
+      flag(
+        invoice,
+        "ungrounded_extracted_value",
+        "These extracted values were not supported by their printed labels: #{Enum.join(fields, ", ")}. Nila excluded them from accounting; review the source document.",
+        nil,
+        fields,
+        1.0
+      )
+    ]
+  end
+
+  defp check_ungrounded_fields(_invoice, _ctx, _dir), do: []
 
   defp check_arithmetic_basis(
          %{"arithmetic_basis" => "printed_final_reconciled"} = invoice,

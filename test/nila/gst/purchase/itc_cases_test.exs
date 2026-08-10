@@ -207,6 +207,29 @@ defmodule Nila.Gst.Purchase.ItcCasesTest do
     assert Enum.any?(lines, &(&1.has_gstr2b? and not &1.has_books?))
   end
 
+  test "credit notes have separate identity and terminal reversal state", context do
+    invoice = invoice("BOOK-INV", "SAME-1", ~D[2026-04-12])
+
+    credit =
+      invoice("BOOK-CN", "SAME-1", ~D[2026-04-12])
+      |> Map.put("document_type", "credit_note")
+
+    portal_credit =
+      invoice(nil, "SAME-1", ~D[2026-04-12])
+      |> Map.put("document_type", "credit_note")
+
+    month = put_month!(context, "2026-04", [invoice, credit], [portal_credit])
+    lines = ItcCases.list_for_month(month)
+
+    assert length(lines) == 2
+    assert Enum.map(lines, & &1.document_type) |> Enum.sort() == ["credit_note", "invoice"]
+
+    credit_line = Enum.find(lines, &(&1.document_type == "credit_note"))
+    assert credit_line.evidence_state == "complete"
+    assert credit_line.eligibility_state == "not_applicable"
+    assert credit_line.settlement_state == "reversed"
+  end
+
   test "a conflicting duplicate fingerprint remains ambiguous", context do
     first = invoice("BOOK-1", "DUP-7", ~D[2026-04-12])
 

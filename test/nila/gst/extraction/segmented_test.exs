@@ -146,6 +146,56 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
     assert artifact["document"]["extracted_type"] == "debit_note"
   end
 
+  test "a purchase credit note is classified without turning positive amounts negative" do
+    text = """
+    CREDIT NOTE CN-NILA-PUR-001
+    Date 10/08/2026
+    Supplier GSTIN 33CPWPV2650A1ZQ
+    Buyer GSTIN 22AAAAA0000A1Z5
+    SAC 998719 Taxable 20,000.00 IGST 18% 3,600.00 Total 23,600.00
+    """
+
+    t = transcription([{1, text}])
+
+    Req.Test.expect(MistralChat, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(body)
+      properties = payload["response_format"]["json_schema"]["schema"]["properties"]
+      [_system, user] = payload["messages"]
+
+      assert properties["document_type"]["enum"] ==
+               ["invoice", "credit_note", "debit_note"]
+
+      assert user["content"] =~ "Keep every printed amount positive"
+
+      reply(conn, %{
+        "document_type" => "credit_note",
+        "invoice_number" => "CN-NILA-PUR-001",
+        "invoice_date" => "10/08/2026",
+        "seller" => %{"name" => "Supplier", "gstin" => "33CPWPV2650A1ZQ"},
+        "buyer" => %{"name" => "Buyer", "gstin" => "22AAAAA0000A1Z5"},
+        "line_items" => [
+          %{
+            "hsn_sac" => "998719",
+            "printed_taxable_value" => 20_000,
+            "igst_rate" => 18,
+            "igst_amount" => 3_600
+          }
+        ],
+        "printed_total_taxable" => 20_000,
+        "printed_total_tax" => 3_600,
+        "printed_grand_total" => 23_600
+      })
+    end)
+
+    {:ok, artifact} = Segmented.extract_segment(:purchase, t, segment([1], "CN-NILA-PUR-001"))
+
+    assert artifact["data"]["document_type"] == "credit_note"
+    assert artifact["data"]["printed_grand_total"] == 23_600
+    assert artifact["document"]["credit_note"]
+    assert artifact["document"]["extracted_type"] == "credit_note"
+  end
+
   test "a fabricated total is caught before the artifact leaves the stage" do
     t = transcription([{1, invoice_page(1)}])
 

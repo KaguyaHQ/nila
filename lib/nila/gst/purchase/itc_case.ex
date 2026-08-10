@@ -2,6 +2,7 @@ defmodule Nila.Gst.Purchase.ItcCase do
   use Nila.Schema
 
   @identity_states ~w(provisional confirmed ambiguous merged)
+  @document_types ~w(invoice credit_note debit_note)
 
   schema "gst_itc_cases" do
     field :supplier_gstin, :string
@@ -36,6 +37,7 @@ defmodule Nila.Gst.Purchase.ItcCase do
       :merged_into_case_id
     ])
     |> validate_required([:org_id, :client_id, :document_type, :identity_state])
+    |> validate_inclusion(:document_type, @document_types)
     |> validate_inclusion(:identity_state, @identity_states)
   end
 end

@@ -66,6 +66,25 @@ defmodule Nila.Gst.Purchase.ReviewTest do
     assert Review.open_decision_count(workings) == 2
   end
 
+  test "purchase credit notes expose positive face tax and negative ITC effect" do
+    credit =
+      books("credit", "CN-104", %{
+        "document_type" => "credit_note",
+        "document_effect" => -1
+      })
+
+    review =
+      [credit]
+      |> Reconciliation.reconcile([])
+      |> workings()
+      |> Review.project(month: %{client_id: 1, period: "2026-08"})
+
+    assert [item] = review.needs_you
+    assert item.document_type == "credit_note"
+    assert item.tax_paise == 18_000
+    assert item.itc_effect_paise == -18_000
+  end
+
   test "group evidence gap is taken from any member, not only the first" do
     first = books("a", "SAME", %{"images" => []})
     second = books("d9_b", "SAME", %{"images" => []})

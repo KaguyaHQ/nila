@@ -58,6 +58,29 @@ defmodule NilaWeb.Components.Gst.Exceptions.ItcTest do
     refute html =~ ~s(id="b-basis-residual")
   end
 
+  test "supplier credit notes are a named 4B(2) deduction" do
+    html =
+      bridge(
+        position(%{
+          "reported_2b_paise" => 18_000,
+          "credit_note_reversal_applied_paise" => 3_600,
+          "claimable_paise" => 14_400
+        }),
+        %{
+          total_tax_paise: 21_600,
+          net_itc_effect_paise: 14_400,
+          unreported_by_vendor_tax_paise: 0,
+          unreported_by_vendor_known?: true
+        }
+      )
+
+    assert html =~ ~s(id="b-credit-notes")
+    assert html =~ "less supplier credit notes"
+    assert html =~ "Positive face values"
+    assert html =~ "4B(2)"
+    assert html =~ "36.00"
+  end
+
   test "withheld credit gets a line of its own between the ceiling and the claim" do
     html =
       bridge(

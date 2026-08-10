@@ -81,6 +81,12 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
 
   defp invoice_properties(kind) do
     properties = %{
+      document_type: %{
+        type: "string",
+        enum: ["invoice", "credit_note", "debit_note"],
+        description:
+          "Classify the document itself from its title and charging table. Footer terms that merely mention credit or debit notes do not change an invoice's type."
+      },
       invoice_number: %{type: "string"},
       invoice_date: %{type: "string"},
       seller: party_schema(kind == :purchase),
@@ -146,12 +152,6 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
 
     if kind == :sales do
       Map.merge(properties, %{
-        document_type: %{
-          type: "string",
-          enum: ["invoice", "credit_note", "debit_note"],
-          description:
-            "Classify the document itself from its title and charging table. Footer terms that merely mention credit or debit notes do not change an invoice's type."
-        },
         recipient_registration: %{
           type: "string",
           enum: ["registered", "unregistered", "unknown"],
@@ -230,7 +230,7 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
         type: "string",
         enum: ["inclusive", "exclusive", "unknown"],
         description:
-          "Whether the printed line Amount includes GST. A Tax Inclusive label on the item table, Amount column or subtotal applies to every contributing line unless the document says otherwise. Use exclusive only when the document positively shows GST is added to line Amounts; use unknown when unclear."
+          "Whether the printed line Amount includes GST. A Tax Inclusive label on the item table, Amount column or subtotal applies to every contributing line unless the document says otherwise. A subtotal equal to the line Amounts followed by GST and then a larger grand total positively shows exclusive pricing. Use unknown when unclear."
       },
       cgst_rate: nullable("number"),
       cgst_amount: nullable("number"),

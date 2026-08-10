@@ -127,7 +127,12 @@ defmodule Nila.Gst.Purchase.Reconciliation do
   after inputs are re-reconciled (the ephemeral position index is not stable).
   """
   def gstr2b_ref(g) do
-    [g["vendor_gstin"], g["invoice_number"], g["taxable_paise"], g["total_paise"]]
+    identity = [g["vendor_gstin"], g["invoice_number"], g["taxable_paise"], g["total_paise"]]
+
+    identity =
+      if document_type(g) == "invoice", do: identity, else: identity ++ [document_type(g)]
+
+    identity
     |> Enum.map_join("|", &to_string/1)
     |> then(&:crypto.hash(:sha256, &1))
     |> Base.encode16(case: :lower)
@@ -158,13 +163,13 @@ defmodule Nila.Gst.Purchase.Reconciliation do
   end
 
   defp exact_inum_rung(acc, books, g2b, opts) do
-    g_by = Enum.group_by(g2b, &norm_inum(&1["invoice_number"]))
+    g_by = Enum.group_by(g2b, &document_number_key/1)
 
     {acc, books_left, used} =
       books
-      |> Enum.group_by(&norm_inum(&1["invoice_number"]))
+      |> Enum.group_by(&document_number_key/1)
       |> Enum.reduce({acc, [], MapSet.new()}, fn {key, group_books}, {acc, left, used} ->
-        case {group_books, if(key == "", do: [], else: Map.get(g_by, key, []))} do
+        case {group_books, if(elem(key, 1) == "", do: [], else: Map.get(g_by, key, []))} do
           {_, []} ->
             {acc, group_books ++ left, used}
 
@@ -181,7 +186,7 @@ defmodule Nila.Gst.Purchase.Reconciliation do
                     b,
                     gs,
                     "ambiguous_matches",
-                    "#{length(gs)} GSTR-2B invoice(s) and #{length(bs)} books invoice(s) share invoice number #{key}; confirm which pairing is correct."
+                    "#{length(gs)} GSTR-2B document(s) and #{length(bs)} books document(s) share #{elem(key, 0)} number #{elem(key, 1)}; confirm which pairing is correct."
                   )
                 )
               end)
@@ -197,8 +202,16 @@ defmodule Nila.Gst.Purchase.Reconciliation do
     proposals =
       Enum.map(books, fn b ->
         case relax_inum(b["invoice_number"]) do
-          "" -> {b, []}
-          key -> {b, Enum.filter(g2b, &(relax_inum(&1["invoice_number"]) == key))}
+          "" ->
+            {b, []}
+
+          key ->
+            {b,
+             Enum.filter(
+               g2b,
+               &(document_type(&1) == document_type(b) and
+                   relax_inum(&1["invoice_number"]) == key)
+             )}
         end
       end)
 
@@ -232,7 +245,12 @@ defmodule Nila.Gst.Purchase.Reconciliation do
   defp inum_mismatch_rung(acc, books, g2b, opts) do
     proposals =
       Enum.map(books, fn b ->
-        {b, Enum.filter(g2b, &(dates_close?(b, &1, opts) and values_close?(b, &1, opts)))}
+        {b,
+         Enum.filter(
+           g2b,
+           &(document_type(&1) == document_type(b) and dates_close?(b, &1, opts) and
+               values_close?(b, &1, opts))
+         )}
       end)
 
     resolve_proposals(acc, proposals, g2b, fn acc, b, g ->
@@ -282,8 +300,9 @@ defmodule Nila.Gst.Purchase.Reconciliation do
 
       bname ->
         Enum.filter(g2b, fn g ->
-          Fuzzy.match_score(bname, Fuzzy.normalize(g["vendor_name"] || "")) >=
-            opts.name_threshold and
+          document_type(g) == document_type(b) and
+            Fuzzy.match_score(bname, Fuzzy.normalize(g["vendor_name"] || "")) >=
+              opts.name_threshold and
             (norm_inum(b["invoice_number"]) == norm_inum(g["invoice_number"]) or
                taxable_plausible?(b, g, opts))
         end)
@@ -370,7 +389,8 @@ defmodule Nila.Gst.Purchase.Reconciliation do
   end
 
   defp values_close?(b, g, opts) do
-    abs(b["taxable_paise"] - g["taxable_paise"]) <= opts.tolerance and
+    document_type(b) == document_type(g) and
+      abs(b["taxable_paise"] - g["taxable_paise"]) <= opts.tolerance and
       abs(tax_sum(b) - tax_sum(g)) <= opts.tolerance
   end
 
@@ -382,6 +402,15 @@ defmodule Nila.Gst.Purchase.Reconciliation do
     do: abs(Date.diff(d1, d2)) <= opts.date_window
 
   defp dates_close?(_b, _g, _opts), do: false
+
+  defp document_number_key(document),
+    do: {document_type(document), norm_inum(document["invoice_number"])}
+
+  defp document_type(%{"document_type" => type})
+       when type in ~w(invoice credit_note debit_note),
+       do: type
+
+  defp document_type(_legacy_invoice), do: "invoice"
 
   defp norm_inum(inum), do: InvoiceNumber.key(inum)
 
@@ -414,6 +443,8 @@ defmodule Nila.Gst.Purchase.Reconciliation do
   confirmation displaces a books row from an existing machine match.
   """
   def books_residual(b) do
+    label = document_label(b)
+
     %{
       "books" => b,
       "reason" => %{
@@ -421,23 +452,29 @@ defmodule Nila.Gst.Purchase.Reconciliation do
         "message" => "No confident GSTR-2B match was found automatically."
       },
       "next_action" =>
-        "No GSTR-2B row matched invoice #{b["invoice_number"]} from #{b["vendor_name"]} automatically. Review the 2B for a near-match before concluding it is absent; if genuinely missing, ask the vendor to confirm it was reported in their GSTR-1."
+        "No GSTR-2B row matched #{label} #{b["invoice_number"]} from #{b["vendor_name"]} automatically. Review the 2B for a near-match before concluding it is absent; if genuinely missing, ask the vendor to confirm it was reported in their GSTR-1."
     }
   end
 
   defp g2b_residual(g) do
     g = strip(g)
+    label = document_label(g)
+    noun = if label == "invoice", do: "bill", else: label
 
     %{
       "gstr2b" => g,
       "reason" => %{
         "code" => "missing_in_books",
-        "message" => "No books invoice corresponds to this GSTR-2B invoice."
+        "message" => "No books #{label} corresponds to this GSTR-2B #{label}."
       },
       "next_action" =>
-        "GSTR-2B shows invoice #{g["invoice_number"]} from vendor #{g["vendor_name"]} dated #{Formatters.format_display_date(g["invoice_date"])} for #{Formatters.format_money_with_paise(g["total_paise"])}; do you have this bill?"
+        "GSTR-2B shows #{label} #{g["invoice_number"]} from vendor #{g["vendor_name"]} dated #{Formatters.format_display_date(g["invoice_date"])} for #{Formatters.format_money_with_paise(g["total_paise"])}; do you have this #{noun}?"
     }
   end
+
+  defp document_label(%{"document_type" => "credit_note"}), do: "credit note"
+  defp document_label(%{"document_type" => "debit_note"}), do: "debit note"
+  defp document_label(_invoice), do: "invoice"
 
   defp push(acc, bucket, row), do: Map.update!(acc, bucket, &[row | &1])
 

@@ -55,6 +55,52 @@ defmodule Nila.Gst.Purchase.BooksTest do
       assert result["skipped_pages"] == []
     end
 
+    test "keeps supplier note face values positive and derives effect from document type" do
+      result =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "document_type" => "credit_note",
+            "invoice_number" => "Credit Note: CN-104",
+            "invoice_date" => "15/07/2026",
+            "seller" => %{"name" => "Supplier", "gstin" => "29AAVCS8021P1ZB"},
+            "line_items" => [line(20_000, igst: 3_600)]
+          }),
+          artifact(2, %{
+            "document_type" => "debit_note",
+            "invoice_number" => "Debit Note: DN-105",
+            "invoice_date" => "16/07/2026",
+            "seller" => %{"name" => "Supplier", "gstin" => "29AAVCS8021P1ZB"},
+            "line_items" => [line(10_000, igst: 1_800)]
+          })
+        ])
+
+      assert [credit, debit] = result["invoices"]
+      assert credit["document_type"] == "credit_note"
+      assert credit["document_effect"] == -1
+      assert credit["invoice_number"] == "CN-104"
+      assert credit["taxable_paise"] == 2_000_000
+      assert credit["tax_paise"]["igst"] == 360_000
+
+      assert debit["document_type"] == "debit_note"
+      assert debit["document_effect"] == 1
+      assert debit["invoice_number"] == "DN-105"
+      assert debit["taxable_paise"] == 1_000_000
+      assert debit["tax_paise"]["igst"] == 180_000
+    end
+
+    test "uses document markers when purchase structuring omits the note type" do
+      note =
+        artifact(1, %{
+          "invoice_number" => "CN-104",
+          "seller" => %{"name" => "Supplier", "gstin" => "29AAVCS8021P1ZB"},
+          "line_items" => [line(20_000, igst: 3_600)]
+        })
+        |> Map.put("document", %{"credit_note" => true, "debit_note" => false})
+
+      assert %{"invoices" => [%{"document_type" => "credit_note"}]} =
+               PurchaseBooks.normalize([note])
+    end
+
     test "tax-inclusive purchase evidence derives taxable paise without changing printed amounts" do
       result =
         PurchaseBooks.normalize([
@@ -87,6 +133,100 @@ defmodule Nila.Gst.Purchase.BooksTest do
       assert line["printed_line_amount_paise"] == 118_000
       assert line["printed_taxable_value_paise"] == nil
       assert line["line_amount_tax_inclusion"] == "inclusive"
+    end
+
+    test "materializes exclusive line amounts when the printed subtotal, tax and total reconcile" do
+      result =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "document_type" => "credit_note",
+            "invoice_number" => "CN-NILA-PUR-001",
+            "seller" => %{"name" => "Supplier", "gstin" => "29AAVCS8021P1ZB"},
+            "line_items" => [
+              %{
+                "description" => "Controlled supplier credit note",
+                "printed_line_amount" => 20_000,
+                "printed_taxable_value" => nil,
+                "line_amount_tax_inclusion" => "unknown",
+                "igst_rate" => 18,
+                "igst_amount" => 3_600
+              }
+            ],
+            "printed_subtotal_before_discount" => 20_000,
+            "printed_igst" => 3_600,
+            "printed_total_tax" => 3_600,
+            "printed_grand_total" => 23_600
+          })
+        ])
+
+      assert [credit] = result["invoices"]
+      assert credit["document_type"] == "credit_note"
+      assert credit["taxable_paise"] == 2_000_000
+      assert credit["tax_paise"]["igst"] == 360_000
+      assert credit["total_paise"] == 2_360_000
+      assert [line] = credit["line_items"]
+      assert line["line_amount_tax_inclusion"] == "exclusive"
+      assert line["taxable_paise"] == 2_000_000
+      assert line["taxable_value_basis"] == "derived_from_reconciled_invoice_totals"
+    end
+
+    test "excludes a taxable total that appeared numerically but lacked a taxable label" do
+      page =
+        artifact(1, %{
+          "document_type" => "credit_note",
+          "invoice_number" => "CN-UNGROUNDED",
+          "seller" => %{"name" => "Supplier", "gstin" => "29AAVCS8021P1ZB"},
+          "line_items" => [
+            %{
+              "printed_line_amount" => 20_000,
+              "printed_taxable_value" => nil,
+              "line_amount_tax_inclusion" => "unknown",
+              "igst_rate" => 18,
+              "igst_amount" => 3_600
+            }
+          ],
+          "printed_subtotal_before_discount" => 20_000,
+          "printed_total_taxable" => 20_000,
+          "printed_igst" => 3_600,
+          "printed_total_tax" => 3_600,
+          "printed_grand_total" => 23_600
+        })
+        |> Map.put("verification", %{
+          "failed_checks" => [
+            %{"kind" => "grounding", "field" => "printed_total_taxable"}
+          ]
+        })
+
+      assert %{"invoices" => [credit]} = PurchaseBooks.normalize([page])
+      assert credit["ungrounded_fields"] == ["printed_total_taxable"]
+      assert credit["printed_taxable_paise"] == nil
+      assert credit["taxable_paise"] == 2_000_000
+      assert credit["total_paise"] == 2_360_000
+    end
+
+    test "does not infer exclusive pricing when the printed totals do not reconcile" do
+      result =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "invoice_number" => "UNCLEAR",
+            "line_items" => [
+              %{
+                "printed_line_amount" => 20_000,
+                "line_amount_tax_inclusion" => "unknown",
+                "igst_rate" => 18,
+                "igst_amount" => 3_600
+              }
+            ],
+            "printed_subtotal_before_discount" => 20_000,
+            "printed_total_tax" => 3_600,
+            "printed_grand_total" => 25_000
+          })
+        ])
+
+      assert [invoice] = result["invoices"]
+      assert invoice["taxable_paise"] == 0
+      assert [line] = invoice["line_items"]
+      assert line["line_amount_tax_inclusion"] == "unknown"
     end
 
     test "does not book an inclusive gross as taxable when the GST rate is missing" do

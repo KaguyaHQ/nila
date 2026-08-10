@@ -19,7 +19,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
   alias Nila.Repo
 
   @decision_events ~w(client_holds_document document_not_held excluded_not_ours reopened)
-  @line_keys ~w(case_id id identity_state merged? vendor supplier_gstin invoice_number invoice_date tax_heads tax_paise books_periods gstr2b_periods books_invoices has_sources? has_books? has_gstr2b? current_books? current_gstr2b? evidence_state eligibility_state settlement_state document_state asked_at allocation_id source_refs)
+  @line_keys ~w(case_id id identity_state merged? vendor supplier_gstin document_type invoice_number invoice_date tax_heads tax_paise books_periods gstr2b_periods books_invoices has_sources? has_books? has_gstr2b? current_books? current_gstr2b? evidence_state eligibility_state settlement_state document_state asked_at allocation_id source_refs)
 
   def sync_month(%Month{} = month, recon) do
     sources =
@@ -149,6 +149,8 @@ defmodule Nila.Gst.Purchase.ItcCases do
         "id" => line.id,
         "vendor_name" => line.vendor,
         "vendor_gstin" => line.supplier_gstin,
+        "document_type" => line.document_type,
+        "document_effect" => if(line.document_type == "credit_note", do: -1, else: 1),
         "invoice_number" => line.invoice_number,
         "cgst_paise" => line.tax_heads["cgst"],
         "sgst_paise" => line.tax_heads["sgst"],
@@ -218,7 +220,9 @@ defmodule Nila.Gst.Purchase.ItcCases do
   end
 
   def reserve_claims(%Signoff{} = signoff, %Month{} = month, case_lines, itc) do
-    current = Enum.filter(case_lines, & &1.current_gstr2b?)
+    current =
+      Enum.filter(case_lines, &(&1.current_gstr2b? and &1.document_type != "credit_note"))
+
     case_ids = current |> Enum.map(& &1.case_id) |> Enum.uniq() |> Enum.sort()
 
     Enum.each(case_ids, fn case_id ->
@@ -250,13 +254,17 @@ defmodule Nila.Gst.Purchase.ItcCases do
       true ->
         blocked =
           for block <- itc["blocks"] || [], block["state"] == "blocked", into: MapSet.new() do
-            {block["vendor"], InvoiceNumber.key(block["invoice_number"])}
+            {block["document_type"] || "invoice", block["vendor"],
+             InvoiceNumber.key(block["invoice_number"])}
           end
 
         current
         |> Enum.filter(fn line ->
           line.evidence_state == "complete" and line.settlement_state == "available" and
-            not MapSet.member?(blocked, {line.vendor, InvoiceNumber.key(line.invoice_number)})
+            not MapSet.member?(
+              blocked,
+              {line.document_type, line.vendor, InvoiceNumber.key(line.invoice_number)}
+            )
         end)
         |> Enum.sort_by(& &1.case_id)
         |> Enum.each(fn line ->
@@ -694,14 +702,16 @@ defmodule Nila.Gst.Purchase.ItcCases do
     gstin = invoice["vendor_gstin"] |> to_string() |> String.trim() |> String.upcase()
     gstin = if gstin == "", do: nil, else: gstin
 
+    document_type = invoice["document_type"] || "invoice"
+
     match_key =
       if gstin && normalized not in [nil, ""] && fy do
-        Enum.join([gstin, "invoice", fy, normalized], "|")
+        Enum.join([gstin, document_type, fy, normalized], "|")
       end
 
     %{
       supplier_gstin: gstin,
-      document_type: "invoice",
+      document_type: document_type,
       invoice_number: number,
       normalized_invoice_number: normalized,
       supplier_fy_start_year: fy,
@@ -741,7 +751,13 @@ defmodule Nila.Gst.Purchase.ItcCases do
         true -> "complete"
       end
 
-    settlement_state = settlement_state(allocation, decision, evidence_state)
+    settlement_state =
+      if itc_case.document_type == "credit_note" do
+        credit_note_settlement_state(decision)
+      else
+        settlement_state(allocation, decision, evidence_state)
+      end
+
     basis = List.last(gstr2b) || List.last(books)
     payload = (basis && basis.payload) || %{}
 
@@ -752,6 +768,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
       merged?: merged?,
       vendor: payload["vendor_name"] || itc_case.supplier_gstin || "Unknown vendor",
       supplier_gstin: itc_case.supplier_gstin,
+      document_type: itc_case.document_type,
       invoice_number: itc_case.invoice_number,
       invoice_date: payload["invoice_date"],
       tax_heads: tax_heads(payload),
@@ -765,7 +782,11 @@ defmodule Nila.Gst.Purchase.ItcCases do
       current_books?: Enum.any?(books, &(&1.client_month_id == month.id)),
       current_gstr2b?: Enum.any?(gstr2b, &(&1.client_month_id == month.id)),
       evidence_state: evidence_state,
-      eligibility_state: eligibility_state(decision, evidence_state),
+      eligibility_state:
+        if(itc_case.document_type == "credit_note",
+          do: "not_applicable",
+          else: eligibility_state(decision, evidence_state)
+        ),
       settlement_state: settlement_state,
       document_state: document_state,
       asked_at: latest_event_at(events, "documents_requested"),
@@ -836,6 +857,9 @@ defmodule Nila.Gst.Purchase.ItcCases do
   defp eligibility_state(_, "complete"), do: "needs_rules"
   defp eligibility_state(_, _), do: "unassessed"
 
+  defp credit_note_settlement_state(%{event_type: "excluded_not_ours"}), do: "excluded"
+  defp credit_note_settlement_state(_decision), do: "reversed"
+
   defp settlement_state(%{filed_at: filed_at}, _, _) when not is_nil(filed_at),
     do: "claimed"
 
@@ -854,7 +878,8 @@ defmodule Nila.Gst.Purchase.ItcCases do
   defp relevant?(line) do
     not line.merged? and line.has_sources? and
       (line.current_books? or line.current_gstr2b? or
-         (line.settlement_state not in ~w(claimed excluded) and is_nil(line.allocation_id)))
+         (line.settlement_state not in ~w(claimed excluded reversed) and
+            is_nil(line.allocation_id)))
   end
 
   defp state_rank(%{settlement_state: "available"}), do: 0

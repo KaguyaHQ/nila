@@ -90,6 +90,11 @@ defmodule Nila.Gst.Purchase.Books do
     end
   end
 
+  @doc "Economic effect of a positive-valued purchase document."
+  def document_effect(%{} = document), do: document_effect(document["document_type"])
+  def document_effect("credit_note"), do: -1
+  def document_effect(_invoice_or_debit_note), do: 1
+
   # Returns `{date, unreadable_text}` — exactly one of the two is set.
   #
   # A date we cannot read is a question for the reviewer, not a `nil`. Dropping
@@ -203,8 +208,12 @@ defmodule Nila.Gst.Purchase.Books do
   end
 
   defp normalize_page(artifact) do
-    data = artifact["data"] || %{}
+    {data, ungrounded_fields} =
+      clear_ungrounded(artifact["data"] || %{}, artifact["verification"] || %{})
+
     seller = data["seller"] || %{}
+    document = artifact["document"] || %{}
+    document_type = normalize_document_type(data["document_type"], document)
 
     {gstin_status, gstin} = clean_gstin(seller["gstin"])
     {invoice_date, unreadable_date} = read_invoice_date(data["invoice_date"])
@@ -216,11 +225,14 @@ defmodule Nila.Gst.Purchase.Books do
       "image" => artifact["image"],
       "is_invoice" => data["is_invoice"] != false,
       "continuation" => data["continuation_of_previous"] == true,
+      "document_type" => document_type,
+      "document" => document,
+      "ungrounded_fields" => ungrounded_fields,
       "vendor_name" => presence(seller["name"]),
       "vendor_gstin" => gstin,
       "vendor_gstin_status" => to_string(gstin_status),
       "vendor_address" => presence(seller["address"]),
-      "invoice_number" => data["invoice_number"] |> presence() |> InvoiceNumber.store(),
+      "invoice_number" => normalize_document_number(data["invoice_number"], document_type),
       "invoice_date" => invoice_date,
       "unreadable_invoice_date" => unreadable_date,
       "delivery_address" => presence(data["delivery_address"]),
@@ -343,7 +355,8 @@ defmodule Nila.Gst.Purchase.Books do
         true
 
       same_value?(prev["invoice_number"], page["invoice_number"]) and
-          same_value?(prev["vendor_gstin"], page["vendor_gstin"]) ->
+        same_value?(prev["vendor_gstin"], page["vendor_gstin"]) and
+          prev["document_type"] == page["document_type"] ->
         true
 
       is_nil(page["invoice_number"]) and is_nil(page["vendor_gstin"]) and
@@ -359,7 +372,12 @@ defmodule Nila.Gst.Purchase.Books do
 
   defp build_invoice(group, index) do
     first = hd(group)
-    line_items = Enum.flat_map(group, & &1["line_items"])
+    printed = printed_breakdown(group)
+
+    line_items =
+      group
+      |> Enum.flat_map(& &1["line_items"])
+      |> materialize_exclusive_lines(printed)
 
     line_taxable = line_items |> Enum.map(& &1["taxable_paise"]) |> Enum.sum()
 
@@ -368,7 +386,6 @@ defmodule Nila.Gst.Purchase.Books do
         Map.merge(acc, line["tax_paise"], fn _k, a, b -> a + b end)
       end)
 
-    printed = printed_breakdown(group)
     {taxable, tax, arithmetic_basis} = invoice_amounts(line_taxable, line_tax, printed)
     invoice_date = first_present(group, "invoice_date")
 
@@ -388,6 +405,9 @@ defmodule Nila.Gst.Purchase.Books do
       "pages" => group |> Enum.flat_map(& &1["source_pages"]) |> Enum.uniq(),
       "source_attribution" => first["source_attribution"],
       "images" => group |> Enum.map(& &1["image"]) |> Enum.reject(&is_nil/1),
+      "document_type" => first["document_type"],
+      "document" => first["document"],
+      "document_effect" => document_effect(first),
       "vendor_name" => first_present(group, "vendor_name"),
       "vendor_gstin" => first_present(group, "vendor_gstin"),
       "vendor_gstin_status" => first["vendor_gstin_status"],
@@ -396,6 +416,8 @@ defmodule Nila.Gst.Purchase.Books do
       "invoice_date" => invoice_date,
       "unreadable_invoice_date" => unreadable_date,
       "unreadable_amounts" => if(unreadable_amounts == [], do: nil, else: unreadable_amounts),
+      "ungrounded_fields" =>
+        group |> Enum.flat_map(&(&1["ungrounded_fields"] || [])) |> Enum.uniq() |> Enum.sort(),
       "delivery_address" => first_present(group, "delivery_address"),
       "line_items" => line_items,
       "taxable_paise" => taxable,
@@ -407,6 +429,47 @@ defmodule Nila.Gst.Purchase.Books do
       "arithmetic_basis" => arithmetic_basis,
       "confidence" => first["confidence"]
     }
+  end
+
+  defp materialize_exclusive_lines(line_items, printed) do
+    if exclusive_subtotal_evidence?(line_items, printed) do
+      Enum.map(line_items, fn line ->
+        if line["line_amount_tax_inclusion"] == "unknown" and
+             is_nil(line["printed_taxable_value_paise"]) do
+          line
+          |> Map.put("line_amount_tax_inclusion", "exclusive")
+          |> Map.put("taxable_paise", line["printed_line_amount_paise"])
+          |> Map.put("taxable_value_basis", "derived_from_reconciled_invoice_totals")
+        else
+          line
+        end
+      end)
+    else
+      line_items
+    end
+  end
+
+  defp exclusive_subtotal_evidence?(line_items, printed) do
+    discount = printed.discount || 0
+    line_amounts = Enum.map(line_items, & &1["printed_line_amount_paise"])
+    line_tax = Enum.map(line_items, &tax_total/1) |> Enum.sum()
+
+    line_items != [] and not is_nil(printed.subtotal) and is_nil(printed.taxable) and
+      not is_nil(printed.total_tax) and not is_nil(printed.grand_total) and discount >= 0 and
+      Enum.all?(line_amounts, &is_number/1) and
+      Enum.all?(line_items, &(&1["line_amount_tax_inclusion"] != "inclusive")) and
+      close_paise?(Enum.sum(line_amounts), printed.subtotal - discount) and
+      close_paise?(line_tax, printed.total_tax) and
+      close_paise?(
+        printed.subtotal - discount + printed.total_tax + (printed.charges || 0) +
+          (printed.rounding || 0),
+        printed.grand_total
+      )
+  end
+
+  defp tax_total(line) do
+    tax = line["tax_paise"] || %{}
+    (tax["cgst"] || 0) + (tax["sgst"] || 0) + (tax["igst"] || 0)
   end
 
   defp printed_breakdown(group) do
@@ -506,6 +569,59 @@ defmodule Nila.Gst.Purchase.Books do
   end
 
   defp first_present(group, key), do: Enum.find_value(group, & &1[key])
+
+  defp clear_ungrounded(data, verification) do
+    fields =
+      verification
+      |> Map.get("failed_checks", [])
+      |> Enum.filter(&(&1["kind"] == "grounding"))
+      |> Enum.map(& &1["field"])
+
+    {Enum.reduce(fields, data, &clear_field/2), fields}
+  end
+
+  defp clear_field("line_items[" <> rest, data) do
+    case Regex.run(~r/^(\d+)\]\.(.+)$/, rest) do
+      [_, index, field] ->
+        update_in(data, ["line_items"], fn lines ->
+          List.update_at(lines || [], String.to_integer(index), &Map.put(&1, field, nil))
+        end)
+
+      _invalid_path ->
+        data
+    end
+  end
+
+  defp clear_field(field, data), do: Map.put(data, field, nil)
+
+  defp normalize_document_type(_type, %{"credit_note" => true, "debit_note" => true}),
+    do: "unknown"
+
+  defp normalize_document_type(_type, %{"credit_note" => true}), do: "credit_note"
+  defp normalize_document_type(_type, %{"debit_note" => true}), do: "debit_note"
+
+  defp normalize_document_type(type, _document)
+       when type in ~w(invoice credit_note debit_note),
+       do: type
+
+  defp normalize_document_type(_type, _document), do: "invoice"
+
+  defp normalize_document_number(nil, _document_type), do: nil
+
+  defp normalize_document_number(number, document_type) do
+    pattern =
+      case document_type do
+        "credit_note" -> ~r/^\s*(?:tax\s+)?credit\s+note\s*(?:no\.?|number)?\s*[:#-]?\s*/i
+        "debit_note" -> ~r/^\s*(?:tax\s+)?debit\s+note\s*(?:no\.?|number)?\s*[:#-]?\s*/i
+        _invoice -> ~r/(?!)/
+      end
+
+    number
+    |> to_string()
+    |> String.replace(pattern, "")
+    |> presence()
+    |> InvoiceNumber.store()
+  end
 
   defp strip_non_digits(nil), do: nil
   defp strip_non_digits(value), do: String.replace(value, ~r/\D/, "")

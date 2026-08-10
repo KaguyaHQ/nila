@@ -2,8 +2,8 @@ defmodule Nila.Gst.Filing.Gstr2b do
   @moduledoc """
   Parser/normalizer for the GSTR-2B JSON downloaded from the GST portal.
 
-  Flattens the portal's supplier-grouped B2B section into one plain map per
-  invoice, with all money converted from rupee floats to integer paise so the
+  Flattens the portal's supplier-grouped B2B and CDNR sections into one plain
+  map per document, with all money converted from rupee floats to integer paise so the
   reconciler never touches floats. Pure: takes a decoded map (or raw JSON
   binary), returns plain maps, no DB, no IO.
 
@@ -45,12 +45,10 @@ defmodule Nila.Gst.Filing.Gstr2b do
   def parse(%{} = map) do
     case docdata(map) do
       %{} = docdata ->
-        invoices =
-          docdata
-          |> Map.get("b2b", [])
-          |> Enum.flat_map(&supplier_invoices/1)
+        invoices = docdata |> Map.get("b2b", []) |> Enum.flat_map(&supplier_invoices/1)
+        notes = docdata |> Map.get("cdnr", []) |> Enum.flat_map(&supplier_notes/1)
 
-        {:ok, invoices}
+        {:ok, invoices ++ notes}
 
       _ ->
         {:error, :unrecognized_structure}
@@ -77,10 +75,22 @@ defmodule Nila.Gst.Filing.Gstr2b do
 
   defp supplier_invoices(_), do: []
 
+  defp supplier_notes(%{"ctin" => ctin} = supplier) do
+    trade_name = supplier["trdnm"]
+
+    supplier
+    |> Map.get("nt", [])
+    |> Enum.map(&normalize_note(&1, ctin, trade_name))
+  end
+
+  defp supplier_notes(_), do: []
+
   defp normalize_invoice(inv, ctin, trade_name) do
     items = List.wrap(inv["items"])
 
     %{
+      "document_type" => "invoice",
+      "source_section" => "b2b",
       "vendor_gstin" => ctin,
       "vendor_name" => trade_name,
       "invoice_number" => to_string(inv["inum"] || ""),
@@ -98,6 +108,33 @@ defmodule Nila.Gst.Filing.Gstr2b do
       "pos" => pos(inv["pos"])
     }
   end
+
+  defp normalize_note(note, ctin, trade_name) do
+    %{
+      "document_type" => note_type(note["typ"]),
+      "source_section" => "cdnr",
+      "vendor_gstin" => ctin,
+      "vendor_name" => trade_name,
+      "invoice_number" => to_string(note["ntnum"] || ""),
+      "invoice_date" => parse_date(note["dt"]),
+      "total_paise" => paise(note["val"]),
+      "taxable_paise" => paise(note["txval"]),
+      "tax_paise" => %{
+        "cgst" => paise(note["cgst"]),
+        "sgst" => paise(note["sgst"]),
+        "igst" => paise(note["igst"])
+      },
+      "itc_available" => note["itcavl"] == "Y",
+      "itc_reason" => note["rsn"],
+      "reverse_charge" => note["rev"] == "Y",
+      "pos" => pos(note["pos"]),
+      "ims_status" => note["imsStatus"]
+    }
+  end
+
+  defp note_type("C"), do: "credit_note"
+  defp note_type("D"), do: "debit_note"
+  defp note_type(_unknown), do: "unknown"
 
   defp amount(inv, items, key) do
     case inv[key] do

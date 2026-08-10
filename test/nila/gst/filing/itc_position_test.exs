@@ -49,6 +49,61 @@ defmodule Nila.Gst.Filing.ItcPositionTest do
     assert pos["substantiated_paise"] == 12_000
   end
 
+  test "debit notes increase 4A while positive-valued credit notes reduce the claim" do
+    invoice = Map.put(g2b(18_000), "document_type", "invoice")
+    debit = Map.put(g2b(1_800), "document_type", "debit_note")
+    credit = Map.put(g2b(3_600), "document_type", "credit_note")
+
+    recon = %{
+      "matched" => [%{"gstr2b" => keyed(invoice, "INV-1")}],
+      "value_mismatch" => [],
+      "in_2b_not_books" => [
+        %{"gstr2b" => keyed(debit, "DN-1")},
+        %{"gstr2b" => keyed(credit, "CN-1")}
+      ],
+      "needs_human" => [],
+      "in_books_not_2b" => []
+    }
+
+    position = ItcPosition.compute(recon, [], %{})
+
+    assert position["ceiling_paise"] == 19_800
+    assert position["credit_note_reversal_paise"] == 3_600
+    assert position["credit_note_reversal_applied_paise"] == 3_600
+    assert position["claimable_paise"] == 16_200
+    assert position["awaiting_document_paise"] == 1_800
+
+    assert position["reported_2b_paise"] ==
+             position["claimable_paise"] + position["pending_decision_paise"] +
+               position["blocked_in_ceiling_paise"] +
+               position["credit_note_reversal_applied_paise"]
+  end
+
+  test "a books-only supplier credit note still reverses ITC conservatively" do
+    invoice = keyed(Map.put(g2b(18_000), "document_type", "invoice"), "INV-1")
+
+    books_credit = %{
+      "document_type" => "credit_note",
+      "vendor_gstin" => "33AAACS1234A1Z9",
+      "invoice_number" => "CN-1",
+      "tax_paise" => %{"cgst" => 1_800, "sgst" => 1_800, "igst" => 0}
+    }
+
+    recon = %{
+      "matched" => [%{"gstr2b" => invoice}],
+      "value_mismatch" => [],
+      "in_2b_not_books" => [],
+      "needs_human" => [],
+      "in_books_not_2b" => [%{"books" => books_credit}]
+    }
+
+    position = ItcPosition.compute(recon, [], %{})
+
+    assert position["ceiling_paise"] == 18_000
+    assert position["credit_note_reversal_paise"] == 3_600
+    assert position["claimable_paise"] == 14_400
+  end
+
   test "awaiting 2B tax is deduped (ambiguous pair lists same candidate twice)" do
     g = g2b(5_000)
 
@@ -354,6 +409,7 @@ defmodule Nila.Gst.Filing.ItcPositionTest do
     pos = ItcPosition.compute(base_recon(), rows, %{})
     assert [block] = pos["blocks"]
     assert block["code"] == "duplicate_invoice"
+    assert block["document_type"] == "invoice"
     # 2 copies of 315 -> block one copy's 315, keep the other
     assert block["tax_paise"] == 315
   end

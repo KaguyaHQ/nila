@@ -75,6 +75,8 @@ defmodule Nila.Gst.Purchase.Register do
           "id" => inv["id"],
           "pages" => inv["pages"] || [],
           "images" => inv["images"] || [],
+          "document_type" => inv["document_type"] || "invoice",
+          "document_effect" => inv["document_effect"] || document_effect(inv),
           "invoice_number" => inv["invoice_number"],
           "invoice_date" => inv["invoice_date"],
           "vendor_name" => inv["vendor_name"],
@@ -84,6 +86,7 @@ defmodule Nila.Gst.Purchase.Register do
           "sgst_paise" => tax(inv, "sgst"),
           "igst_paise" => tax(inv, "igst"),
           "total_paise" => inv["total_paise"] || 0,
+          "itc_effect_paise" => tax_total(inv) * document_effect(inv),
           "bucket" => bucket,
           "bucket_label" => bucket_label(bucket, flags),
           "accepted_reason" => entry && entry["accepted_reason"],
@@ -204,6 +207,7 @@ defmodule Nila.Gst.Purchase.Register do
       # never read ₹0 next to a live open figure, which is the one way this
       # number can actively mislead.
       total_tax_paise: total_tax,
+      net_itc_effect_paise: summary["net_itc_effect_paise"] || total_tax,
       matched_tax_paise: matched_tax,
       open_tax_paise: open_tax,
       # The money twin of the count split. `open_tax_paise` stays the whole open
@@ -278,6 +282,7 @@ defmodule Nila.Gst.Purchase.Register do
       # audited-accepted rows — a gap a reviewer reading them side by side has
       # no way to see.
       "total_tax_paise" => rows |> Enum.map(&row_tax/1) |> Enum.sum(),
+      "net_itc_effect_paise" => rows |> Enum.map(&itc_effect/1) |> Enum.sum(),
       "matched_tax_paise" =>
         rows
         |> Enum.filter(&(&1["bucket"] == "matched"))
@@ -316,7 +321,10 @@ defmodule Nila.Gst.Purchase.Register do
       # each row is a vendor who has not filed.
       "unreported_by_vendor_tax_paise" =>
         rows
-        |> Enum.filter(&(&1["bucket"] in ["in_books_not_2b", "needs_human"]))
+        |> Enum.filter(
+          &(&1["bucket"] in ["in_books_not_2b", "needs_human"] and
+              &1["document_type"] != "credit_note")
+        )
         |> Enum.map(&row_tax/1)
         |> Enum.sum(),
       # Tax on rows paired to a 2B that disagrees on amount. Still open money —
@@ -423,6 +431,8 @@ defmodule Nila.Gst.Purchase.Register do
         "id" => nil,
         "pages" => [],
         "images" => [],
+        "document_type" => g["document_type"] || "invoice",
+        "document_effect" => document_effect(g),
         "invoice_number" => g["invoice_number"],
         "invoice_date" => g["invoice_date"],
         "vendor_name" => g["vendor_name"],
@@ -432,6 +442,7 @@ defmodule Nila.Gst.Purchase.Register do
         "sgst_paise" => tax(g, "sgst"),
         "igst_paise" => tax(g, "igst"),
         "total_paise" => g["total_paise"] || 0,
+        "itc_effect_paise" => tax_total(g) * document_effect(g),
         "bucket" => "in_2b_not_books",
         "bucket_label" => @bucket_labels["in_2b_not_books"],
         "accepted_reason" => nil,
@@ -504,6 +515,14 @@ defmodule Nila.Gst.Purchase.Register do
 
   defp flag_summary([]), do: nil
   defp flag_summary(flags), do: Enum.map_join(flags, ", ", & &1["code"])
+
+  defp itc_effect(row), do: row["itc_effect_paise"] || row_tax(row) * document_effect(row)
+
+  defp tax_total(document),
+    do: tax(document, "cgst") + tax(document, "sgst") + tax(document, "igst")
+
+  defp document_effect(%{"document_type" => "credit_note"}), do: -1
+  defp document_effect(_invoice_or_debit_note), do: 1
 
   defp tax(inv, key), do: get_in(inv, ["tax_paise", key]) || 0
 end

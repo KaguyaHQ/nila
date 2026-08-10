@@ -89,7 +89,8 @@ defmodule Nila.Gst.Filing.Signoffs do
             with :ok <- require_documents_attested(workings),
                  :ok <- require_settled_register(workings),
                  :ok <- require_sales_intake_complete(month),
-                 :ok <- require_nonnegative_outward_liability(workings.gstr3b) do
+                 :ok <- require_nonnegative_outward_liability(workings.gstr3b),
+                 :ok <- require_nonnegative_net_itc(workings.gstr3b) do
               snapshot = %{
                 "schema_version" => @snapshot_schema_version,
                 "summary" => workings.summary,
@@ -196,6 +197,12 @@ defmodule Nila.Gst.Filing.Signoffs do
   defp require_nonnegative_outward_liability(gstr3b) do
     if Gstr3b.negative_outward_liability?(gstr3b),
       do: {:error, :negative_outward_liability_unsupported},
+      else: :ok
+  end
+
+  defp require_nonnegative_net_itc(gstr3b) do
+    if Gstr3b.negative_net_itc?(gstr3b),
+      do: {:error, :negative_net_itc_unsupported},
       else: :ok
   end
 

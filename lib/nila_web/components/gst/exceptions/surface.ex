@@ -22,7 +22,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       <.icon name="hero-check-circle" class="text-success mx-auto size-10" />
       <p class="mt-related text-base-content text-body font-medium">No exceptions</p>
       <p class="text-ink-muted text-ui mt-1">
-        The engine matched every invoice confidently — nothing needs a human decision.
+        The engine matched every purchase document confidently — nothing needs a human decision.
       </p>
     </div>
 
@@ -94,7 +94,8 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
                 <span class="text-ink-subtle text-meta truncate">
                   {if item.resolved,
                     do: item.outcome,
-                    else: "#{item.invoice_number || "no invoice no"} · #{short_type(item.type)}"}
+                    else:
+                      "#{document_label(item)} #{item.invoice_number || "without number"} · #{short_type(item.type)}"}
                 </span>
               </span>
             </button>
@@ -201,9 +202,16 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
     <div class="space-y-section">
       <div>
         <h3 class="text-base-content text-body flex flex-wrap items-baseline gap-x-3 font-semibold">
-          <span>{@selected.invoice_number || "—"} · {@selected.vendor}</span>
+          <span>{document_label(@selected)} {@selected.invoice_number || "—"} · {@selected.vendor}</span>
           <span :if={@selected.tax_paise > 0} id="gst-exception-tax" class="text-ui font-mono">
-            {format_money(@selected.tax_paise, prefix: "₹")} tax at stake
+            <%= if @selected.document_type == "credit_note" do %>
+              {format_money(@selected.tax_paise, prefix: "₹")} face tax · −{format_money(
+                @selected.tax_paise,
+                prefix: "₹"
+              )} ITC
+            <% else %>
+              {format_money(@selected.tax_paise, prefix: "₹")} tax at stake
+            <% end %>
           </span>
         </h3>
         <p class="text-ink-muted text-ui mt-1">{@selected.reason}</p>
@@ -367,8 +375,15 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             id="gst-accept-unmatched-note"
             class="text-ink-subtle text-meta basis-full"
           >
-            Neither changes this month's claim — a bill with no 2B entry was never in the
-            ceiling. They differ in what the register then says to do with it.
+            <%= if @selected.document_type == "credit_note" do %>
+              This supplier credit note already reduces ITC by {format_money(
+                @selected.tax_paise,
+                prefix: "₹"
+              )}. The decision records whether its 2B filing is still expected.
+            <% else %>
+              Neither changes this month's claim — a bill with no 2B entry was never in the
+              ceiling. They differ in what the register then says to do with it.
+            <% end %>
           </p>
           <.button
             :if={@selected.action == :unmatched}
@@ -379,7 +394,9 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             phx-target={@target}
             phx-value-id={@selected.id}
             phx-value-reason="await_2b"
-          >Vendor hasn't filed it yet · claim in a later month</.button>
+          >{if @selected.document_type == "credit_note",
+            do: "Supplier hasn't filed it yet · reversal retained",
+            else: "Vendor hasn't filed it yet · claim in a later month"}</.button>
           <.button
             :if={@selected.action == :unmatched}
             id="gst-accept-not-claimable"
@@ -389,7 +406,9 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             phx-target={@target}
             phx-value-id={@selected.id}
             phx-value-reason="not_claimable"
-          >Not claimable · close the bill</.button>
+          >{if @selected.document_type == "credit_note",
+            do: "Close the note · reversal retained",
+            else: "Not claimable · close the bill"}</.button>
           <.button
             variant="ghost"
             size="sm"
@@ -413,7 +432,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           phx-click="open-ask"
           phx-target={@target}
           phx-value-id={@selected.id}
-        >Ask the client for the bill</.button>
+        >Ask the client for the {document_noun(@selected)}</.button>
         <.button
           id="gst-document-held"
           variant="outline"
@@ -422,7 +441,9 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           phx-target={@target}
           phx-value-id={@selected.id}
           phx-value-state="held"
-        >Client holds the bill · claim now</.button>
+        >{if @selected.document_type == "credit_note",
+          do: "Client holds the credit note · reversal retained",
+          else: "Client holds the bill · claim now"}</.button>
         <.button
           id="gst-document-defer"
           variant="outline"
@@ -431,7 +452,9 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           phx-target={@target}
           phx-value-id={@selected.id}
           phx-value-state="not_held"
-        >Withhold this month · carry forward</.button>
+        >{if @selected.document_type == "credit_note",
+          do: "Credit note unavailable · reversal retained",
+          else: "Withhold this month · carry forward"}</.button>
         <%!-- Dismissing removes the entry from `in_2b_not_books`, which drops
               the 2B ceiling and therefore the claim by this row's whole tax.
               It was the quietest click on the purchase side and the only one
@@ -445,8 +468,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           phx-value-id={@selected.id}
           data-confirm={dismiss_confirm(@selected)}
         >
-          Not ours / ignore{if @selected.tax_paise > 0,
-            do: " · −#{format_money(@selected.tax_paise, prefix: "₹")} claim"}
+          Not ours / ignore{dismiss_effect(@selected)}
         </.button>
       </div>
     </div>
@@ -511,6 +533,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   def gstr2b_card(assigns) do
     assigns =
       assign(assigns, :fields, [
+        {"Document", document_label(assigns.gstr2b)},
         {"Date", assigns.gstr2b["invoice_date"]},
         {"GSTIN", assigns.gstr2b["vendor_gstin"]},
         {"Taxable", money(assigns.gstr2b["taxable_paise"])},
@@ -555,7 +578,8 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
 
   defp field_diff(b, g) do
     [
-      {"Invoice no", b["invoice_number"], g["invoice_number"]},
+      {"Document", document_label(b), document_label(g)},
+      {"Number", b["invoice_number"], g["invoice_number"]},
       {"Date", b["invoice_date"], g["invoice_date"]},
       {"GSTIN", b["vendor_gstin"], g["vendor_gstin"]},
       {"Taxable", money(b["taxable_paise"]), money(g["taxable_paise"])},
@@ -572,6 +596,11 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
   defp tax_sum(inv), do: (inv["tax_paise"] || %{}) |> Map.values() |> Enum.sum()
   defp money(paise), do: format_money(paise || 0, prefix: "₹")
 
+  defp dismiss_confirm(%{document_type: "credit_note", tax_paise: tax})
+       when is_integer(tax) and tax > 0 do
+    "Drop this credit note from the month? Its #{format_money(tax, prefix: "₹")} ITC reversal is removed, so the claim increases by that amount."
+  end
+
   defp dismiss_confirm(%{tax_paise: tax}) when is_integer(tax) and tax > 0 do
     "Drop this supply from the month? The 2B ceiling falls by " <>
       "#{format_money(tax, prefix: "₹")} and the claim falls with it."
@@ -579,6 +608,24 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
 
   defp dismiss_confirm(_selected),
     do: "Drop this supply from the month?"
+
+  defp dismiss_effect(%{document_type: "credit_note", tax_paise: tax})
+       when is_integer(tax) and tax > 0,
+       do: " · +#{format_money(tax, prefix: "₹")} claim"
+
+  defp dismiss_effect(%{tax_paise: tax}) when is_integer(tax) and tax > 0,
+    do: " · −#{format_money(tax, prefix: "₹")} claim"
+
+  defp dismiss_effect(_selected), do: ""
+
+  defp document_label(%{document_type: type}), do: document_label(%{"document_type" => type})
+  defp document_label(%{"document_type" => "credit_note"}), do: "Credit note"
+  defp document_label(%{"document_type" => "debit_note"}), do: "Debit note"
+  defp document_label(_invoice), do: "Invoice"
+
+  defp document_noun(%{document_type: "credit_note"}), do: "credit note"
+  defp document_noun(%{document_type: "debit_note"}), do: "debit note"
+  defp document_noun(_invoice), do: "bill"
 
   defp asked_label(nil), do: nil
 

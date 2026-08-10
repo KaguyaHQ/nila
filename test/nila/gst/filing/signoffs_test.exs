@@ -840,6 +840,43 @@ defmodule Nila.Gst.Filing.SignoffsTest do
                Signoffs.sign_off(client_month, scope)
     end
 
+    test "GSTR-3B sign-off refuses a supplier-credit-note reversal above current ITC", %{
+      month: client_month,
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      credit_note = %{
+        "document_type" => "credit_note",
+        "vendor_gstin" => "33AAACS1234A1Z9",
+        "vendor_name" => "Supplier",
+        "invoice_number" => "CN-ONLY",
+        "invoice_date" => ~D[2026-08-10],
+        "taxable_paise" => 20_000,
+        "tax_paise" => %{"igst" => 3_600, "cgst" => 0, "sgst" => 0},
+        "total_paise" => 23_600,
+        "reverse_charge" => false
+      }
+
+      recon = %{
+        "matched" => [],
+        "value_mismatch" => [],
+        "needs_human" => [],
+        "in_books_not_2b" => [],
+        "in_2b_not_books" => [%{"gstr2b" => credit_note}]
+      }
+
+      client_month =
+        client_month
+        |> Ecto.Changeset.change(recon: recon)
+        |> Nila.Repo.update!()
+
+      reviewed = make_reviewed(sales_month, scope.user.id)
+      {:ok, _} = Signoffs.sign_off_gstr1(reviewed, scope)
+
+      assert {:error, :negative_net_itc_unsupported} =
+               Signoffs.sign_off(client_month, scope)
+    end
+
     test "a signed GSTR-1 files independently of the 3B", %{
       sales_month: sales_month,
       owner_scope: scope

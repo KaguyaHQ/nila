@@ -13,9 +13,9 @@ defmodule Nila.Gst.Filing.ItcPosition do
   ITC law shape encoded here:
 
     * The 2B is the ceiling — you cannot claim credit the vendor didn't report.
-      `ceiling_paise` is the total tax across all GSTR-2B rows the engine saw
-      (matched + value_mismatch + awaiting-in-needs_human + 2B-only), which is
-      what ties to the filed 3B's Table 4A(5).
+      `ceiling_paise` is invoice and debit-note tax across all GSTR-2B rows the
+      engine saw, which ties to filed 3B Table 4A. Supplier credit notes remain
+      positive-valued evidence and reverse ITC in Table 4B(2).
     * Blocked credits reduce what is *claimable* below the ceiling:
       - `personal_expense_17_5` / `gstin_state_mismatch`: the row's full tax is
         ineligible (s.17(5) / inter-state CGST-SGST wrongly charged).
@@ -100,6 +100,9 @@ defmodule Nila.Gst.Filing.ItcPosition do
   """
   def partition(recon, rows, blocked_in_ceiling) do
     reported = ceiling_paise(recon)
+    credit_note_reversal = credit_note_reversal_paise(recon)
+    reversal_applied = min(credit_note_reversal, reported)
+    after_reversal = reported - reversal_applied
     raw_pending = pending_decision_paise(recon, rows)
     raw_awaiting = awaiting_document_paise(recon, rows)
     raw_awaiting_heads = awaiting_document_heads(recon, rows)
@@ -113,15 +116,16 @@ defmodule Nila.Gst.Filing.ItcPosition do
     # But a clamp that fires silently turns a data inconsistency into a clean
     # split nobody can question, so each one is reported. A figure that had to
     # be clamped is a bug upstream, not a number to trust.
-    pending = min(raw_pending, reported)
-    blocked = blocked_in_ceiling |> min(reported - pending) |> max(0)
-    claimable = reported - blocked - pending
+    pending = min(raw_pending, after_reversal)
+    blocked = blocked_in_ceiling |> min(after_reversal - pending) |> max(0)
+    claimable = after_reversal - blocked - pending
 
     # Substantiation splits the claim, so it cannot exceed it: every rupee
     # awaiting a document is by definition inside the claim.
     awaiting = min(raw_awaiting, claimable)
 
     report_clamps(reported, %{
+      credit_note_reversal: {credit_note_reversal, reversal_applied},
       pending: {raw_pending, pending},
       blocked: {blocked_in_ceiling, blocked},
       awaiting: {raw_awaiting, awaiting}
@@ -129,6 +133,9 @@ defmodule Nila.Gst.Filing.ItcPosition do
 
     %{
       "reported_2b_paise" => reported,
+      "credit_note_reversal_paise" => credit_note_reversal,
+      "credit_note_reversal_applied_paise" => reversal_applied,
+      "credit_note_reversal_excess_paise" => credit_note_reversal - reversal_applied,
       "claimable_paise" => claimable,
       "pending_decision_paise" => pending,
       "blocked_in_ceiling_paise" => blocked,
@@ -188,6 +195,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
 
     recon
     |> awaiting_2b_invoices()
+    |> Enum.filter(&available_document?/1)
     |> Enum.reject(&MapSet.member?(blocked_keys, invoice_key(&1)))
     |> Enum.map(&tax_sum/1)
     |> Enum.sum()
@@ -202,6 +210,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
 
     for entry <- recon["in_2b_not_books"] || [],
         g = entry["gstr2b"] || entry,
+        available_document?(g),
         not MapSet.member?(accepted, invoice_key(g)),
         reduce: 0 do
       total -> total + tax_sum(g)
@@ -218,6 +227,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
     heads =
       for entry <- recon["in_2b_not_books"] || [],
           g = entry["gstr2b"] || entry,
+          available_document?(g),
           not MapSet.member?(accepted, invoice_key(g)),
           do: g["tax_paise"] || %{}
 
@@ -240,7 +250,8 @@ defmodule Nila.Gst.Filing.ItcPosition do
         do: invoice_key(row)
   end
 
-  defp invoice_key(row), do: {row["vendor_gstin"], norm(row["invoice_number"])}
+  defp invoice_key(row),
+    do: {document_type(row), row["vendor_gstin"], norm(row["invoice_number"])}
 
   @doc """
   Applies the s.16(2)(a) attestation to a computed position.
@@ -295,7 +306,12 @@ defmodule Nila.Gst.Filing.ItcPosition do
   end
 
   def apply_document_cases(position, case_lines) do
-    cases = Enum.filter(case_lines, &(&1.current_gstr2b? and not &1.has_books?))
+    cases =
+      Enum.filter(
+        case_lines,
+        &(&1.current_gstr2b? and not &1.has_books? and &1.document_type != "credit_note")
+      )
+
     withheld_cases = Enum.filter(cases, &(&1.document_state == "not_held"))
     withheld_heads = withheld_cases |> Enum.map(& &1.tax_heads) |> sum_heads()
     raw_withheld = withheld_heads |> Map.values() |> Enum.sum()
@@ -316,12 +332,14 @@ defmodule Nila.Gst.Filing.ItcPosition do
   @doc "The stable id a block/allow resolution targets for one flagged row."
   def block_id(row_id, code), do: "#{row_id}:#{code}"
 
-  # The 2B ITC ceiling — every 2B invoice the engine saw, whichever bucket recon
-  # put it in. Validated to tie to the filed 3B.
+  # The 2B ITC ceiling — every invoice and debit note the engine saw, whichever
+  # bucket recon put it in. Credit notes are a separate Table 4B(2) reversal.
   def ceiling_paise(recon) do
-    matched = tax_of(recon["matched"]) + tax_of(recon["value_mismatch"])
-    in_2b_only = recon["in_2b_not_books"] |> Enum.map(&tax_sum(&1["gstr2b"] || &1)) |> Enum.sum()
-    matched + in_2b_only + awaiting_2b_tax(recon)
+    recon
+    |> gstr2b_documents()
+    |> Enum.filter(&available_document?/1)
+    |> Enum.map(&tax_sum/1)
+    |> Enum.sum()
   end
 
   @doc """
@@ -330,12 +348,22 @@ defmodule Nila.Gst.Filing.ItcPosition do
   Table 4 is head-wise; the lump total alone cannot fill it.
   """
   def ceiling_heads(recon) do
-    matched =
-      for b <- ["matched", "value_mismatch"], e <- recon[b] || [], g = e["gstr2b"] || %{}, do: g
+    recon
+    |> gstr2b_documents()
+    |> Enum.filter(&available_document?/1)
+    |> Enum.map(&(&1["tax_paise"] || %{}))
+    |> sum_heads()
+  end
 
-    in_2b_only = for e <- recon["in_2b_not_books"] || [], do: e["gstr2b"] || e
+  @doc "Positive-valued supplier credit-note tax that reverses in Table 4B(2)."
+  def credit_note_reversal_paise(recon) do
+    recon |> credit_note_documents() |> Enum.map(&tax_sum/1) |> Enum.sum()
+  end
 
-    (matched ++ in_2b_only ++ awaiting_2b_invoices(recon))
+  @doc "Head-wise supplier credit-note reversal for Table 4B(2)."
+  def credit_note_reversal_heads(recon) do
+    recon
+    |> credit_note_documents()
     |> Enum.map(&(&1["tax_paise"] || %{}))
     |> sum_heads()
   end
@@ -347,14 +375,36 @@ defmodule Nila.Gst.Filing.ItcPosition do
     end)
   end
 
-  defp tax_of(entries), do: entries |> Enum.map(&tax_sum(&1["gstr2b"])) |> Enum.sum()
+  defp gstr2b_documents(recon) do
+    matched =
+      for bucket <- ["matched", "value_mismatch"],
+          entry <- recon[bucket] || [],
+          gstr2b = entry["gstr2b"],
+          do: gstr2b
 
-  # 2B invoices routed to human, deduped (an ambiguous pair lists the same
-  # candidate from both books rows).
-  defp awaiting_2b_tax(recon) do
-    recon |> awaiting_2b_invoices() |> Enum.map(&tax_sum/1) |> Enum.sum()
+    residual =
+      for entry <- recon["in_2b_not_books"] || [], do: entry["gstr2b"] || entry
+
+    (matched ++ residual ++ awaiting_2b_invoices(recon))
+    |> Enum.uniq_by(&document_ref/1)
   end
 
+  defp credit_note_documents(recon) do
+    portal = Enum.filter(gstr2b_documents(recon), &(document_type(&1) == "credit_note"))
+    portal_keys = MapSet.new(portal, &invoice_key/1)
+
+    books_only =
+      for entry <- recon["in_books_not_2b"] || [],
+          books = entry["books"],
+          document_type(books) == "credit_note",
+          not MapSet.member?(portal_keys, invoice_key(books)),
+          do: books
+
+    (portal ++ books_only) |> Enum.uniq_by(&document_ref/1)
+  end
+
+  # 2B documents routed to human, deduped (an ambiguous pair lists the same
+  # candidate from both books rows).
   defp awaiting_2b_invoices(recon) do
     recon["needs_human"]
     |> Enum.flat_map(fn e ->
@@ -363,8 +413,21 @@ defmodule Nila.Gst.Filing.ItcPosition do
         g -> [g]
       end
     end)
-    |> Enum.uniq_by(fn g -> {g["vendor_gstin"], g["invoice_number"]} end)
+    |> Enum.uniq_by(&document_ref/1)
   end
+
+  defp document_ref(document) do
+    {invoice_key(document), document["taxable_paise"], document["total_paise"],
+     document["tax_paise"]}
+  end
+
+  defp available_document?(document), do: document_type(document) in ~w(invoice debit_note)
+
+  defp document_type(%{"document_type" => type})
+       when type in ~w(invoice credit_note debit_note),
+       do: type
+
+  defp document_type(_legacy_invoice), do: "invoice"
 
   # The block candidates for a month: one per full-block flag (personal / state)
   # staking the row's whole tax, plus ONE per duplicate GROUP staking the excess
@@ -372,12 +435,16 @@ defmodule Nila.Gst.Filing.ItcPosition do
   # ("keep one, drop the rest").
   defp block_candidates(rows) do
     full =
-      for row <- rows, flag <- row["flags"] || [], flag["code"] in @full_block do
+      for row <- rows,
+          document_type(row) != "credit_note",
+          flag <- row["flags"] || [],
+          flag["code"] in @full_block do
         %{
           "block_id" => block_id(row["id"], flag["code"]),
           "code" => flag["code"],
           "section" => flag["section"],
           "vendor" => row["vendor_name"],
+          "document_type" => document_type(row),
           "invoice_number" => row["invoice_number"],
           "tax_paise" => row_tax(row),
           "tax_heads" => row_heads(row, 1),
@@ -398,7 +465,8 @@ defmodule Nila.Gst.Filing.ItcPosition do
   # symmetric: treating 2B-backed credit as outside silently *keeps* a credit
   # the reviewer explicitly blocked, while the reverse produces the impossible
   # figure that made this visible in the first place.
-  defp in_ceiling?(row), do: row["bucket"] != "in_books_not_2b"
+  defp in_ceiling?(row),
+    do: row["bucket"] != "in_books_not_2b" and document_type(row) != "credit_note"
 
   # One block per duplicate group, keyed on the group's kept row, staking the
   # excess (N-1) copies' tax. The excess is what claiming every copy would
@@ -406,7 +474,8 @@ defmodule Nila.Gst.Filing.ItcPosition do
   defp duplicate_blocks(rows) do
     rows
     |> Enum.filter(fn r -> Enum.any?(r["flags"] || [], &(&1["code"] == "duplicate_invoice")) end)
-    |> Enum.group_by(fn r -> {r["vendor_gstin"], norm(r["invoice_number"])} end)
+    |> Enum.reject(&(document_type(&1) == "credit_note"))
+    |> Enum.group_by(fn r -> {document_type(r), r["vendor_gstin"], norm(r["invoice_number"])} end)
     |> Enum.map(fn {_key, group} ->
       keep = Enum.min_by(group, & &1["id"])
       n = length(group)
@@ -417,6 +486,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
         "code" => "duplicate_invoice",
         "section" => dup_flag["section"],
         "vendor" => keep["vendor_name"],
+        "document_type" => document_type(keep),
         "invoice_number" => keep["invoice_number"],
         "tax_paise" => row_tax(keep) * (n - 1),
         "tax_heads" => row_heads(keep, n - 1),

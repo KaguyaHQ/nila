@@ -20,8 +20,9 @@ defmodule Nila.Gst.Filing.Gstr3b do
       minus RCM), 4B reversals from *human-confirmed* blocks only (Nila
       recommends; the return moves on confirmation): section 17(5) blocks in
       4B(1), duplicate-excess and state-mismatch in 4B(2). Credit the client
-      has attested they hold no tax invoice for (s.16(2)(a)) also reverses in
-      4B(2) — 4A(5) is auto-populated from the 2B on the portal, so the claim
+      has attested they hold no tax invoice for (s.16(2)(a)) and positive-valued
+      supplier credit notes also reverse in 4B(2) — 4A(5) is auto-populated from
+      the 2B on the portal, so the claim
       is withheld by reversing, not by shrinking what was availed. Only blocks
       *inside* the ceiling reverse; a books bill the 2B never reported was
       never availed. 4C = 4A − 4B, and at sign-off 4C ties to the ITC bridge's
@@ -64,7 +65,10 @@ defmodule Nila.Gst.Filing.Gstr3b do
         itc
       )
 
-    reversed_4b2 = add(blocked_4b2, itc["unsubstantiated_withheld_heads"] || @zero)
+    reversed_4b2 =
+      blocked_4b2
+      |> add(itc["unsubstantiated_withheld_heads"] || @zero)
+      |> add(ItcPosition.credit_note_reversal_heads(recon))
 
     net_itc_4c =
       rcm_tax
@@ -146,10 +150,20 @@ defmodule Nila.Gst.Filing.Gstr3b do
 
   def negative_outward_liability?(_gstr3b), do: false
 
+  @doc "Whether supplier credit-note reversals exceed available ITC in this month."
+  def negative_net_itc?(%{"itc" => %{"net_itc_4c" => net}}) do
+    Enum.any?(@heads, &((net[&1] || 0) < 0))
+  end
+
+  def negative_net_itc?(_gstr3b), do: false
+
   # -- reverse charge -------------------------------------------------------
 
   defp rcm_position(recon) do
-    rows = recon |> Workings.gstr2b_invoices() |> Enum.filter(& &1["reverse_charge"])
+    rows =
+      recon
+      |> Workings.gstr2b_invoices()
+      |> Enum.filter(&(&1["reverse_charge"] == true and &1["document_type"] != "credit_note"))
 
     {
       rows |> Enum.map(&(&1["taxable_paise"] || 0)) |> Enum.sum(),
@@ -200,7 +214,7 @@ defmodule Nila.Gst.Filing.Gstr3b do
   # before set-off, so cash figures land exactly on the filed numbers.
   defp setoff(liability, rcm_tax, net_itc_4c) do
     payable = Map.new(@heads, fn h -> {h, round_rupee(liability[h] || 0)} end)
-    credit = Map.new(@heads, fn h -> {h, round_rupee(net_itc_4c[h])} end)
+    credit = Map.new(@heads, fn h -> {h, max(round_rupee(net_itc_4c[h]), 0)} end)
 
     {used, remaining} = apply_credit(payable, credit)
 

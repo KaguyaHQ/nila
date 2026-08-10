@@ -57,9 +57,10 @@ defmodule Nila.Gst.Extraction.Segmented do
     for another.
     - line_amount_tax_inclusion describes whether printed_line_amount includes GST. A Tax \
     Inclusive label on the item table, Amount column or subtotal applies to every \
-    contributing line unless the document says otherwise. Use exclusive only on \
-    positive evidence that GST is added to line Amounts; otherwise use unknown. \
-    Do not calculate taxable value; a later deterministic step does that.
+    contributing line unless the document says otherwise. A subtotal equal to \
+    the line Amounts followed by GST and then a larger grand total is positive \
+    evidence for exclusive. Otherwise use unknown. Do not calculate taxable value; \
+    a later deterministic step does that.
     - When a GST slab, tax summary or CGST/SGST outward block is printed, copy \
     its taxable turnover and tax amounts into the printed_* fields exactly. Do \
     not recalculate them and do not redistribute them across item rows.
@@ -102,7 +103,16 @@ defmodule Nila.Gst.Extraction.Segmented do
     """
   end
 
-  defp kind_rules(:purchase), do: ""
+  defp kind_rules(:purchase) do
+    """
+    - Classify the supplier document itself as invoice, credit_note or debit_note. \
+    A title reading CREDIT NOTE or DEBIT NOTE controls; footer terms that merely \
+    mention notes do not.
+    - For a credit or debit note, invoice_number is the note number only. Exclude \
+    labels such as "Credit Note:" or "Debit Note:" from the value. Keep every \
+    printed amount positive; document_type determines its accounting effect.
+    """
+  end
 
   @doc """
   Extracts and verifies every invoice segment.

@@ -31,6 +31,7 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                value_disputes: 0,
                taxable_paise: 500_000,
                total_tax_paise: 160_000,
+               net_itc_effect_paise: 160_000,
                matched_tax_paise: 90_000,
                open_tax_paise: 45_000,
                settled_tax_paise: 115_000,
@@ -79,6 +80,7 @@ defmodule Nila.Gst.Purchase.RegisterTest do
                value_disputes: 0,
                taxable_paise: 0,
                total_tax_paise: 0,
+               net_itc_effect_paise: 0,
                matched_tax_paise: 0,
                open_tax_paise: 0,
                settled_tax_paise: 0,
@@ -183,6 +185,29 @@ defmodule Nila.Gst.Purchase.RegisterTest do
   end
 
   describe "summary/1 money" do
+    test "reports positive face tax separately from signed ITC effect" do
+      rows = [
+        row("invoice", "matched", nil, 18_000),
+        row("credit", "matched", nil, 3_600)
+        |> Map.merge(%{
+          "document_type" => "credit_note",
+          "document_effect" => -1,
+          "itc_effect_paise" => -3_600
+        }),
+        row("debit", "matched", nil, 1_800)
+        |> Map.merge(%{
+          "document_type" => "debit_note",
+          "document_effect" => 1,
+          "itc_effect_paise" => 1_800
+        })
+      ]
+
+      summary = Register.summary(rows)
+
+      assert summary["total_tax_paise"] == 23_400
+      assert summary["net_itc_effect_paise"] == 16_200
+    end
+
     test "open_tax_paise sums exactly the rows need_decision counts" do
       rows = [
         row("a", "matched", nil, 1_000),

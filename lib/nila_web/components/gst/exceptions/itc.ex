@@ -71,7 +71,8 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
   # number on the page — credit the client cannot take this month because a
   # vendor has not filed — so it is stated rather than left to be derived.
   defp opening(%{unreported_by_vendor_known?: true} = stats, itc) do
-    gap = stats.total_tax_paise - stats.unreported_by_vendor_tax_paise
+    net_effect = Map.get(stats, :net_itc_effect_paise, stats.total_tax_paise)
+    gap = net_effect - stats.unreported_by_vendor_tax_paise
 
     # Only when the two really differ. On a month where every books bill is in
     # the 2B, "ITC in your books" and "Reported in GSTR-2B" are one number, and
@@ -80,9 +81,9 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
       [
         %{
           key: "books-itc",
-          label: "ITC in your books",
+          label: "Net ITC effect in the register",
           note: nil,
-          paise: stats.total_tax_paise,
+          paise: net_effect,
           sign: "",
           total?: false,
           emphasis: nil
@@ -122,7 +123,8 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           %{
             key: "basis-residual",
             label: "the 2B's figure where it differs from your books",
-            note: "Value mismatches and supplies under review are counted at the 2B's.",
+            note:
+              "Value mismatches and supplies under review use the 2B's figure; supplier credit notes are shown separately as reversals.",
             paise: abs(residual),
             sign: (residual > 0 && "+") || "−",
             total?: false,
@@ -144,6 +146,12 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
         emphasis: nil
       }
     ] ++
+      deduction(
+        "credit-notes",
+        "less supplier credit notes",
+        itc["credit_note_reversal_applied_paise"],
+        "Positive face values; reversed in GSTR-3B Table 4B(2)."
+      ) ++
       deduction("blocked", "less blocked credits", itc["blocked_in_ceiling_paise"], nil) ++
       deduction(
         "pending",

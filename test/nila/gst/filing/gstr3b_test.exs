@@ -5,6 +5,10 @@ defmodule Nila.Gst.Filing.Gstr3bTest do
   alias Nila.Gst.Purchase.Reconciliation, as: Recon
 
   @fixtures Path.expand("../../../fixtures/purchase/breeze/2025-10", __DIR__)
+  @december_fixture Path.expand(
+                      "../../../fixtures/purchase/breeze/2025-12/returns_R2B_33AEWPH4158J1Z3_122025.json",
+                      __DIR__
+                    )
 
   describe "Breeze October tie-out against the filed 3B" do
     setup do
@@ -296,6 +300,89 @@ defmodule Nila.Gst.Filing.Gstr3bTest do
                  "a" => Map.new(liability, fn {key, value} -> {key, abs(value)} end)
                }
              })
+    end
+  end
+
+  describe "purchase credit and debit notes" do
+    test "real portal credit-note totals become the same head-wise 4B(2) reversal" do
+      portal = @december_fixture |> File.read!() |> Jason.decode!()
+      {:ok, gstr2b} = Gstr2b.parse(portal)
+      recon = Recon.reconcile([], gstr2b)
+      itc = ItcPosition.compute(recon, [], %{})
+      liability = %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}
+      result = Gstr3b.assemble(liability, recon, itc)
+      cdnr = get_in(portal, ["data", "itcsumm", "itcavl", "othersup", "cdnr"])
+
+      assert result["itc"]["reversed_4b2"] == %{
+               "igst" => round((cdnr["igst"] || 0) * 100),
+               "cgst" => round((cdnr["cgst"] || 0) * 100),
+               "sgst" => round((cdnr["sgst"] || 0) * 100)
+             }
+    end
+
+    test "debit-note ITC enters 4A and supplier credit-note tax reverses in 4B(2)" do
+      g2b = fn number, type, tax ->
+        %{
+          "vendor_gstin" => "33AAACS1234A1Z9",
+          "invoice_number" => number,
+          "document_type" => type,
+          "taxable_paise" => 0,
+          "tax_paise" => %{"igst" => tax, "cgst" => 0, "sgst" => 0},
+          "reverse_charge" => false
+        }
+      end
+
+      recon = %{
+        "matched" => [%{"gstr2b" => g2b.("INV-1", "invoice", 18_000)}],
+        "value_mismatch" => [],
+        "needs_human" => [],
+        "in_books_not_2b" => [],
+        "in_2b_not_books" => [
+          %{"gstr2b" => g2b.("DN-1", "debit_note", 1_800)},
+          %{"gstr2b" => g2b.("CN-1", "credit_note", 3_600)}
+        ]
+      }
+
+      itc = ItcPosition.compute(recon, [], %{})
+      liability = %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}
+      result = Gstr3b.assemble(liability, recon, itc)
+
+      assert result["itc"]["all_other_itc_4a5"] ==
+               %{"igst" => 19_800, "cgst" => 0, "sgst" => 0}
+
+      assert result["itc"]["reversed_4b2"] ==
+               %{"igst" => 3_600, "cgst" => 0, "sgst" => 0}
+
+      assert result["itc"]["net_itc_4c"] ==
+               %{"igst" => 16_200, "cgst" => 0, "sgst" => 0}
+
+      refute Gstr3b.negative_net_itc?(result)
+    end
+
+    test "names a note-only negative ITC position as unsupported" do
+      credit = %{
+        "vendor_gstin" => "33AAACS1234A1Z9",
+        "invoice_number" => "CN-ONLY",
+        "document_type" => "credit_note",
+        "tax_paise" => %{"igst" => 3_600, "cgst" => 0, "sgst" => 0},
+        "reverse_charge" => false
+      }
+
+      recon = %{
+        "matched" => [],
+        "value_mismatch" => [],
+        "needs_human" => [],
+        "in_books_not_2b" => [],
+        "in_2b_not_books" => [%{"gstr2b" => credit}]
+      }
+
+      itc = ItcPosition.compute(recon, [], %{})
+      liability = %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}
+      result = Gstr3b.assemble(liability, recon, itc)
+
+      assert result["itc"]["net_itc_4c"]["igst"] == -3_600
+      assert Gstr3b.negative_net_itc?(result)
+      assert result["setoff_61"]["cash_total"] == 0
     end
   end
 

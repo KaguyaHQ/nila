@@ -61,7 +61,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
 
-    assert has_element?(view, "#gstr3b-itc-bridge-books-itc", "ITC in your books")
+    assert has_element?(view, "#gstr3b-itc-bridge-books-itc", "Net ITC effect in the register")
 
     assert has_element?(
              view,
@@ -258,7 +258,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     assert has_element?(
              view,
              "#month-register:not(details)",
-             "#{stats.invoices} invoices extracted · #{stats.gstr2b_only} from 2B only"
+             "#{stats.invoices} purchase documents extracted · #{stats.gstr2b_only} from 2B only"
            )
 
     refute has_element?(view, "#month-register summary")
@@ -387,8 +387,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     completeness = view |> element("#gstr3b-completeness") |> render()
     reconciliation = view |> element("#gstr3b-reconciliation") |> render()
 
-    assert completeness =~ "Invoices extracted"
-    assert reconciliation =~ "In 2B, bill not supplied"
+    assert completeness =~ "Purchase documents extracted"
+    assert reconciliation =~ "In 2B, document not supplied"
     refute render(view) =~ "complete register"
   end
 
@@ -573,7 +573,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     assert has_element?(view, "#gst-challenge-match", "Challenge this match")
   end
 
-  test "a 2B-only row opens the separate bills-to-collect section", %{
+  test "a 2B-only row opens the separate documents-to-collect section", %{
     conn: conn,
     client: client
   } do
@@ -586,7 +586,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
 
     view |> element("##{dom_id(row, index)}") |> render_click()
 
-    assert has_element?(view, "#gst-exception-queue", "Bills to collect")
+    assert has_element?(view, "#gst-exception-queue", "Documents to collect")
     assert has_element?(view, "#gst-ask-client")
     refute has_element?(view, "#gst-exception-evidence-frame")
   end
@@ -881,7 +881,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseTest do
     assert has_element?(
              view,
              "#month-register",
-             "#{frozen_stats.invoices} invoices extracted"
+             "#{frozen_stats.invoices} purchase documents extracted"
            )
   end
 

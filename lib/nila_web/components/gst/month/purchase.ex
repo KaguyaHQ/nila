@@ -64,7 +64,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             variant="primary"
             size="sm"
           >
-            Request {@stats.awaiting_bills} missing {plural(@stats.awaiting_bills, "bill")}
+            Request {@stats.awaiting_bills} missing {plural(@stats.awaiting_bills, "document")}
           </.button>
         </div>
       </header>
@@ -84,9 +84,9 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             unknown={@source_files == 0 and @stats.invoices > 0}
             unknown_note="not recorded for this month"
           />
-          <.control_stat :if={@pages_read} label="Bill pages read" value={@pages_read} />
-          <.control_stat label="Invoices extracted" value={@stats.invoices} />
-          <.control_stat label="Pages with no invoice" value={length(@document_flags)} />
+          <.control_stat :if={@pages_read} label="Document pages read" value={@pages_read} />
+          <.control_stat label="Purchase documents extracted" value={@stats.invoices} />
+          <.control_stat label="Pages with no document" value={length(@document_flags)} />
         </dl>
       </section>
 
@@ -118,7 +118,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                 column is the one that has to decline. Printing ₹0 down a table
                 whose neighbouring column counts real bills is the same false
                 confidence as the tiles above, spread over three rows. --%>
-          <:col :let={row} label="ITC" align="right">
+          <:col :let={row} label="Face tax" align="right">
             <span :if={@stats.itc_money_known?}>{format_money(row.tax_paise, prefix: "₹")}</span>
             <span :if={not @stats.itc_money_known?} class="text-ink-subtle">—</span>
           </:col>
@@ -182,10 +182,10 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                 2B-only row is a bill nobody sent, so a month with no purchase
                 documents at all read "0 extracted" beside 8 rows of them. --%>
           <p class="text-ink-muted text-ui">
-            {@stats.invoices} {plural(@stats.invoices, "invoice")} extracted{if @stats.gstr2b_only >
-                                                                                  0,
-                                                                                do:
-                                                                                  " · #{@stats.gstr2b_only} from 2B only"}
+            {@stats.invoices} purchase {plural(@stats.invoices, "document")} extracted{if @stats.gstr2b_only >
+                                                                                            0,
+                                                                                          do:
+                                                                                            " · #{@stats.gstr2b_only} from 2B only"}
           </p>
         </div>
 
@@ -197,7 +197,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           row_class={&row_accent/1}
           min_width="min-w-[880px]"
         >
-          <:col :let={row} label="Inv No">
+          <:col :let={row} label="Document no">
             <div class="flex items-center gap-2">
               <.icon
                 :if={Register.open_row?(row)}
@@ -205,14 +205,19 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                 class="text-warning size-4 shrink-0"
               />
               <span class="font-medium">{row["invoice_number"] || "—"}</span>
+              <span :if={row["document_type"] != "invoice"} class="text-ink-subtle text-meta">
+                {document_abbreviation(row)}
+              </span>
             </div>
           </:col>
           <:col :let={row} label="Vendor">{row["vendor_name"]}</:col>
           <:col :let={row} label="Taxable" align="right">
             {format_money(row["taxable_paise"], prefix: "₹")}
           </:col>
-          <:col :let={row} label="Tax total" align="right">
-            {format_money(Register.row_tax(row), prefix: "₹")}
+          <:col :let={row} label="ITC effect" align="right">
+            <span class={row["itc_effect_paise"] < 0 && "text-error"}>
+              {signed_money(row["itc_effect_paise"])}
+            </span>
           </:col>
           <%!-- The label already tells the truth for a flagged match (see
                 `Register.bucket_label/2`); the variant has to stop painting it
@@ -317,7 +322,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
     [
       %{
         key: "settled",
-        label: "Bill and 2B agree",
+        label: "Document and 2B agree",
         note: "Matched to the portal, or ruled on and closed",
         count: stats.rows - stats.open,
         tax_paise: stats.settled_tax_paise,
@@ -325,7 +330,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       },
       %{
         key: "decisions",
-        label: "Bill supplied, not settled against 2B",
+        label: "Document supplied, not settled against 2B",
         note: "Absent from the 2B, ambiguous, or disagreeing on amount",
         count: stats.open - stats.awaiting_bills,
         tax_paise: decisions_tax,
@@ -337,8 +342,8 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       },
       %{
         key: "awaiting",
-        label: "In 2B, bill not supplied",
-        note: "The portal reported a supply nobody sent us a document for",
+        label: "In 2B, document not supplied",
+        note: "The portal reported a supply or adjustment nobody sent us a document for",
         count: stats.awaiting_bills,
         tax_paise: stats.awaiting_bills_tax_paise,
         next_move: if(stats.awaiting_bills > 0, do: "Ask the client", else: "Nothing")
@@ -390,22 +395,22 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   end
 
   defp awaiting_bills_copy(%{itc_money_known?: false}, count),
-    do: "#{count} missing #{plural(count, "bill")}; ITC amount not recorded for this month."
+    do: "#{count} missing #{plural(count, "document")}; ITC amount not recorded for this month."
 
   defp awaiting_bills_copy(%{settled_tax_paise: 0} = stats, count) do
     "All #{money(stats.total_tax_paise)} of proposed ITC is awaiting #{count} missing " <>
-      "#{plural(count, "bill")}."
+      "#{plural(count, "document")}."
   end
 
   defp awaiting_bills_copy(stats, count) do
     "#{money(stats.settled_tax_paise)} resolved · #{money(stats.open_tax_paise)} awaiting " <>
-      "#{count} missing #{plural(count, "bill")}."
+      "#{count} missing #{plural(count, "document")}."
   end
 
   defp reconciled_copy(%{itc_money_known?: false}),
     do: "Purchase reconciliation complete; ITC amount not recorded for this month."
 
-  defp reconciled_copy(stats), do: "#{money(stats.total_tax_paise)} resolved."
+  defp reconciled_copy(stats), do: "#{money(stats.net_itc_effect_paise)} net ITC effect resolved."
 
   defp lifecycle_copy(%{itc_money_known?: false}, :filed),
     do: "GSTR-3B filed; ITC amount not recorded for this month."
@@ -414,15 +419,24 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
     do: "GSTR-3B signed; ITC amount not recorded for this month."
 
   defp lifecycle_copy(stats, :filed),
-    do: "#{money(stats.total_tax_paise)} resolved · GSTR-3B filed on the GST portal."
+    do: "#{money(stats.net_itc_effect_paise)} net ITC effect · GSTR-3B filed on the GST portal."
 
   defp lifecycle_copy(stats, :signed),
-    do: "#{money(stats.total_tax_paise)} resolved · GSTR-3B ready for portal filing."
+    do: "#{money(stats.net_itc_effect_paise)} net ITC effect · GSTR-3B ready for portal filing."
 
   defp review_label(1), do: "Review decision"
   defp review_label(count), do: "Review #{count} decisions"
 
   defp money(paise), do: format_money(paise, prefix: "₹")
+
+  defp signed_money(paise) when is_number(paise) and paise < 0,
+    do: "−" <> format_money(abs(paise), prefix: "₹")
+
+  defp signed_money(paise), do: "+" <> format_money(paise || 0, prefix: "₹")
+
+  defp document_abbreviation(%{"document_type" => "credit_note"}), do: "CN"
+  defp document_abbreviation(%{"document_type" => "debit_note"}), do: "DN"
+  defp document_abbreviation(_unknown), do: "Document"
 
   defp row_click(row, client, period) do
     scope = if Register.open_row?(row), do: "needs_you", else: "all"

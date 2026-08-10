@@ -14,8 +14,8 @@ defmodule Nila.Gst.Purchase.Review do
     %{
       key: :collection,
       kinds: [:gstr2b],
-      title: "Bills to collect",
-      blurb: "The portal reported these supplies, but no document was supplied."
+      title: "Documents to collect",
+      blurb: "The portal reported these supplies or adjustments, but no document was supplied."
     }
   ]
 
@@ -138,6 +138,7 @@ defmodule Nila.Gst.Purchase.Review do
           | books: member,
             books_members: [member | Enum.reject(item.books_members, &(&1["id"] == member_id))],
             vendor: member["vendor_name"],
+            document_type: member["document_type"] || "invoice",
             invoice_number: member["invoice_number"],
             images: item.member_images[member_id] || [],
             evidence_gap: item.member_evidence_gaps[member_id],
@@ -226,6 +227,7 @@ defmodule Nila.Gst.Purchase.Review do
       kind: :books,
       type: type,
       vendor: books["vendor_name"],
+      document_type: books["document_type"] || "invoice",
       invoice_number: books["invoice_number"],
       reason: (entry && get_in(entry, ["reason", "message"])) || "Review the possible pairings.",
       books: books,
@@ -238,6 +240,7 @@ defmodule Nila.Gst.Purchase.Review do
       images: Enum.flat_map(books_members, &image_urls(&1, month)),
       evidence_gap: Enum.find_value(books_members, &evidence_gap(&1, gaps)),
       tax_paise: group.tax_paise,
+      itc_effect_paise: group.tax_paise * document_effect(books),
       action: action(type, candidates, length(books_members)),
       verb: verb,
       resolved: resolved,
@@ -274,6 +277,7 @@ defmodule Nila.Gst.Purchase.Review do
       kind: :gstr2b,
       type: get_in(entry, ["reason", "code"]) || "missing_in_books",
       vendor: gstr2b["vendor_name"],
+      document_type: gstr2b["document_type"] || "invoice",
       invoice_number: gstr2b["invoice_number"],
       reason: get_in(entry, ["reason", "message"]) || "This GSTR-2B bill is not in the books.",
       books: nil,
@@ -287,11 +291,12 @@ defmodule Nila.Gst.Purchase.Review do
       images: [],
       evidence_gap: nil,
       tax_paise: group.tax_paise,
+      itc_effect_paise: group.tax_paise * document_effect(gstr2b),
       action: :gstr2b,
       verb: verb,
       resolved: resolved,
       review_origin?: true,
-      outcome: missing_outcome(verb, document_state),
+      outcome: missing_outcome(verb, document_state, gstr2b["document_type"]),
       asked_at: (case_line && case_line.asked_at) || asked_at,
       itc_case_id: case_line && case_line.case_id,
       document_state: document_state
@@ -314,7 +319,9 @@ defmodule Nila.Gst.Purchase.Review do
   defp itc_item(block, rows, month) do
     row =
       Enum.find(rows, fn row ->
-        row["invoice_number"] == block["invoice_number"] and row["vendor_name"] == block["vendor"]
+        (row["document_type"] || "invoice") == (block["document_type"] || "invoice") and
+          row["invoice_number"] == block["invoice_number"] and
+          row["vendor_name"] == block["vendor"]
       end)
 
     state = block["state"]
@@ -326,6 +333,7 @@ defmodule Nila.Gst.Purchase.Review do
       kind: :itc,
       type: block["code"],
       vendor: block["vendor"],
+      document_type: (row && row["document_type"]) || "invoice",
       invoice_number: block["invoice_number"],
       reason: block["reason"],
       books: nil,
@@ -338,6 +346,7 @@ defmodule Nila.Gst.Purchase.Review do
       images: image_urls(row || %{}, month),
       evidence_gap: nil,
       tax_paise: block["tax_paise"] || 0,
+      itc_effect_paise: block["tax_paise"] || 0,
       action: :itc,
       verb: state,
       resolved: state != "recommended",
@@ -352,11 +361,19 @@ defmodule Nila.Gst.Purchase.Review do
   defp itc_outcome("allowed"), do: "Credit kept"
   defp itc_outcome(_state), do: nil
 
-  defp missing_outcome("dismiss_2b", _document_state), do: "Dismissed — not ours"
-  defp missing_outcome(_verb, "present"), do: "Prior-period bill on file — ready to claim"
-  defp missing_outcome(_verb, "held"), do: "Client holds the tax invoice"
-  defp missing_outcome(_verb, "not_held"), do: "Withheld — carry forward"
-  defp missing_outcome(_verb, _document_state), do: nil
+  defp missing_outcome("dismiss_2b", _document_state, _type), do: "Dismissed — not ours"
+  defp missing_outcome(_verb, "present", _type), do: "Prior-period document on file"
+
+  defp missing_outcome(_verb, "held", "credit_note"),
+    do: "Credit note received · reversal retained"
+
+  defp missing_outcome(_verb, "held", _type), do: "Client holds the tax invoice"
+
+  defp missing_outcome(_verb, "not_held", "credit_note"),
+    do: "Credit note missing · reversal retained"
+
+  defp missing_outcome(_verb, "not_held", _type), do: "Withheld — carry forward"
+  defp missing_outcome(_verb, _document_state, _type), do: nil
 
   defp valid_scope("needs_you", _), do: :needs_you
   defp valid_scope("all", _), do: :all
@@ -409,6 +426,9 @@ defmodule Nila.Gst.Purchase.Review do
        do: :pair
 
   defp action(_, _, _), do: :unmatched
+
+  defp document_effect(%{"document_type" => "credit_note"}), do: -1
+  defp document_effect(_invoice_or_debit_note), do: 1
 
   defp outcome("confirm_pair", "ambiguous_matches", _), do: "Matched to the chosen 2B row"
   defp outcome("confirm_pair", _, _), do: "Confirmed — same bill"

@@ -182,6 +182,8 @@ defmodule Nila.Gst.Extraction.VerifyTest do
                "credit_note"
              ]
 
+      assert Verify.document_markers("**CREDIT NOTE**\n# : CN-NILA-PUR-001")["credit_note"]
+
       refute Verify.document_markers("TAX INVOICE\nTerms: No credit notes after seven days")[
                "credit_note"
              ]
@@ -232,6 +234,31 @@ defmodule Nila.Gst.Extraction.VerifyTest do
       """
 
       assert %{status: :verified} = Verify.invoice(halves, text)
+    end
+
+    test "a subtotal cannot ground an invented printed taxable total" do
+      extracted = %{
+        "printed_subtotal_before_discount" => 20_000,
+        "printed_total_taxable" => 20_000,
+        "printed_igst" => 3_600,
+        "printed_total_tax" => 3_600,
+        "printed_grand_total" => 23_600,
+        "line_items" => [
+          %{
+            "printed_line_amount" => 20_000,
+            "line_amount_tax_inclusion" => "exclusive",
+            "igst_rate" => 18,
+            "igst_amount" => 3_600
+          }
+        ]
+      }
+
+      text = "Sub Total 20,000.00 IGST18 (18%) 3,600.00 Total 23,600.00"
+
+      assert %{status: :flagged, flags: [{:value_not_on_page, fields}]} =
+               Verify.invoice(extracted, text)
+
+      assert "printed_total_taxable" in fields
     end
 
     test "a total tax matching nothing on the page is still ungrounded" do

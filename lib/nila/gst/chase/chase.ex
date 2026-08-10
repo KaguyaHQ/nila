@@ -169,15 +169,15 @@ defmodule Nila.Gst.Chase do
       Enum.map_join(entries, "\n", fn entry ->
         g = entry["gstr2b"] || entry
 
-        "• #{g["vendor_name"]} — invoice #{g["invoice_number"]}, #{Formatters.format_money_with_paise(g["total_paise"])}"
+        "• #{g["vendor_name"]} — #{document_label(g)} #{g["invoice_number"]}, #{Formatters.format_money_with_paise(g["total_paise"])}"
       end)
 
     """
-    While preparing your #{month_label(period)} GST return, we found #{bills_phrase(length(entries))} your vendors have reported to the portal that we haven't received from you:
+    While preparing your #{month_label(period)} GST return, we found #{documents_phrase(length(entries))} your vendors have reported to the portal that we haven't received from you:
 
     #{lines}
 
-    Please send these bills (a photo or PDF is fine) so we can claim the input credit.\
+    Please send these documents (a photo or PDF is fine) so we can verify the input credit and adjustments.\
     """
   end
 
@@ -191,8 +191,12 @@ defmodule Nila.Gst.Chase do
     """
   end
 
-  defp bills_phrase(1), do: "a bill"
-  defp bills_phrase(n), do: "#{n} bills"
+  defp documents_phrase(1), do: "a purchase document"
+  defp documents_phrase(n), do: "#{n} purchase documents"
+
+  defp document_label(%{"document_type" => "credit_note"}), do: "credit note"
+  defp document_label(%{"document_type" => "debit_note"}), do: "debit note"
+  defp document_label(_invoice), do: "invoice"
 
   defp signature(org) do
     ["Regards,", org.name, org.contact_phone]

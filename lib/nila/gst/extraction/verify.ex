@@ -76,7 +76,7 @@ defmodule Nila.Gst.Extraction.Verify do
       |> Enum.reject(fn {_field, value} -> is_nil(value) end)
       |> Enum.map(fn {field, value} ->
         cond do
-          printed?(value, haystack) ->
+          grounded_money?(field, value, haystack) ->
             check(:grounding, field, true, %{value: value})
 
           derived_total_tax?(field, value, data, haystack) ->
@@ -116,14 +116,27 @@ defmodule Nila.Gst.Extraction.Verify do
         |> Enum.map(&{&1, line[&1]})
         |> Enum.reject(fn {_field, value} -> is_nil(value) end)
         |> Enum.map(fn {field, value} ->
-          check(:grounding, "line_items[#{index}].#{field}", printed?(value, haystack), %{
-            value: value
-          })
+          check(
+            :grounding,
+            "line_items[#{index}].#{field}",
+            grounded_money?(field, value, haystack),
+            %{
+              value: value
+            }
+          )
         end)
       end)
 
     money ++ line_money ++ identifiers
   end
+
+  defp grounded_money?(field, value, haystack)
+       when field in ["printed_total_taxable", "printed_taxable_value"] do
+    printed?(value, haystack) and
+      Regex.match?(~r/\b(TAXABLE|ASSESSABLE)(?:\s+(?:VALUE|AMOUNT|TURNOVER))?\b/, haystack)
+  end
+
+  defp grounded_money?(_field, value, haystack), do: printed?(value, haystack)
 
   # Many bills print CGST and SGST and no combined figure, so a total tax that is
   # the sum of its own printed halves is a derivation, not an invention —
@@ -282,8 +295,8 @@ defmodule Nila.Gst.Extraction.Verify do
     Regex.match?(@rcm_positive, text) and not Regex.match?(@rcm_negative, text)
   end
 
-  @credit_note ~r/(?:^|\n)[\s|#>*_-]*(?:tax\s+)?credit\s+note(?:\s*(?:no\.?|number)?\s*[:#-]?\s*[A-Z0-9][^\n]*)?\s*(?:\||$)/im
-  @debit_note ~r/(?:^|\n)[\s|#>*_-]*(?:tax\s+)?debit\s+note(?:\s*(?:no\.?|number)?\s*[:#-]?\s*[A-Z0-9][^\n]*)?\s*(?:\||$)/im
+  @credit_note ~r/(?:^|\n)[\s|#>*_-]*(?:tax\s+)?credit\s+note(?:\s*(?:no\.?|number)?\s*[:#-]?\s*[A-Z0-9][^\n]*)?\s*[*_]*(?:\||$)/im
+  @debit_note ~r/(?:^|\n)[\s|#>*_-]*(?:tax\s+)?debit\s+note(?:\s*(?:no\.?|number)?\s*[:#-]?\s*[A-Z0-9][^\n]*)?\s*[*_]*(?:\||$)/im
   @export ~r/\b(export\s+invoice|letter\s+of\s+undertaking|\bLUT\b|special\s+economic\s+zone|\bSEZ\b|supply\s+meant\s+for\s+export)\b|\b(USD|EUR|GBP|AED|SGD)\s*[\d.,]/i
 
   @doc """
