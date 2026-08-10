@@ -16,7 +16,7 @@ defmodule Nila.Gst.Purchase.ItcCase do
     belongs_to :client, Nila.Clients.Client
     belongs_to :merged_into_case, __MODULE__
 
-    has_many :sources, Nila.Gst.Purchase.ItcSource, foreign_key: :case_id
+    has_many :source_events, Nila.Gst.Purchase.ItcSourceCaseEvent, foreign_key: :case_id
     has_many :events, Nila.Gst.Purchase.ItcCaseEvent, foreign_key: :case_id
     has_many :allocations, Nila.Gst.Purchase.ItcAllocation, foreign_key: :case_id
 

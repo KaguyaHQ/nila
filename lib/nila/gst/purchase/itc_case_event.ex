@@ -2,8 +2,6 @@ defmodule Nila.Gst.Purchase.ItcCaseEvent do
   use Nila.Schema
 
   @event_types ~w(
-    source_linked
-    source_unlinked
     documents_requested
     client_holds_document
     document_not_held

@@ -26,7 +26,6 @@ defmodule Nila.Repo.Migrations.CreateGstItcCases do
            )
 
     create table(:gst_itc_sources) do
-      add :case_id, references(:gst_itc_cases, on_delete: :delete_all), null: false
       add :client_month_id, references(:client_months, on_delete: :delete_all), null: false
       add :org_id, references(:orgs, on_delete: :delete_all), null: false
       add :kind, :string, null: false
@@ -37,11 +36,34 @@ defmodule Nila.Repo.Migrations.CreateGstItcCases do
     end
 
     create unique_index(:gst_itc_sources, [:client_month_id, :kind, :source_ref])
-    create index(:gst_itc_sources, [:case_id])
     create index(:gst_itc_sources, [:org_id])
 
     create constraint(:gst_itc_sources, :gst_itc_sources_kind,
              check: "kind IN ('books', 'gstr2b')"
+           )
+
+    create table(:gst_itc_source_case_events) do
+      add :source_id, references(:gst_itc_sources, on_delete: :delete_all), null: false
+      add :case_id, references(:gst_itc_cases, on_delete: :delete_all), null: false
+
+      add :effective_client_month_id, references(:client_months, on_delete: :restrict),
+        null: false
+
+      add :org_id, references(:orgs, on_delete: :delete_all), null: false
+      add :action, :string, null: false
+      add :reason, :string, null: false
+      add :decided_by_id, references(:users, on_delete: :nilify_all)
+
+      timestamps(type: :utc_datetime_usec, updated_at: false)
+    end
+
+    create index(:gst_itc_source_case_events, [:source_id, :id])
+    create index(:gst_itc_source_case_events, [:case_id, :id])
+    create index(:gst_itc_source_case_events, [:effective_client_month_id])
+    create index(:gst_itc_source_case_events, [:org_id])
+
+    create constraint(:gst_itc_source_case_events, :gst_itc_source_case_events_action,
+             check: "action IN ('linked', 'unlinked')"
            )
 
     create table(:gst_itc_case_events) do

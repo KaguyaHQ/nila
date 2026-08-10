@@ -8,8 +8,8 @@ defmodule Nila.Gst.Purchase.ItcSource do
     field :source_ref, :string
     field :payload, :map
 
-    belongs_to :itc_case, Nila.Gst.Purchase.ItcCase, foreign_key: :case_id
     belongs_to :client_month, Nila.Gst.Purchase.Month
+    has_many :case_events, Nila.Gst.Purchase.ItcSourceCaseEvent, foreign_key: :source_id
     belongs_to :org, Nila.Orgs.Org
 
     timestamps(updated_at: false)
@@ -17,8 +17,8 @@ defmodule Nila.Gst.Purchase.ItcSource do
 
   def changeset(source, attrs) do
     source
-    |> cast(attrs, [:kind, :source_ref, :payload, :case_id])
-    |> validate_required([:case_id, :client_month_id, :org_id, :kind, :source_ref, :payload])
+    |> cast(attrs, [:kind, :source_ref, :payload])
+    |> validate_required([:client_month_id, :org_id, :kind, :source_ref, :payload])
     |> validate_inclusion(:kind, @kinds)
     |> unique_constraint([:client_month_id, :kind, :source_ref])
   end

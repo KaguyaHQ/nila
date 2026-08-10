@@ -10,6 +10,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
     ItcCase,
     ItcCaseEvent,
     ItcSource,
+    ItcSourceCaseEvent,
     Month,
     Reconciliation,
     Workings
@@ -18,7 +19,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
   alias Nila.Repo
 
   @decision_events ~w(client_holds_document document_not_held excluded_not_ours reopened)
-  @line_keys ~w(case_id id identity_state vendor supplier_gstin invoice_number invoice_date tax_heads tax_paise books_periods gstr2b_periods books_invoices has_sources? has_books? has_gstr2b? current_books? current_gstr2b? evidence_state eligibility_state settlement_state document_state asked_at allocation_id source_refs)
+  @line_keys ~w(case_id id identity_state merged? vendor supplier_gstin invoice_number invoice_date tax_heads tax_paise books_periods gstr2b_periods books_invoices has_sources? has_books? has_gstr2b? current_books? current_gstr2b? evidence_state eligibility_state settlement_state document_state asked_at allocation_id source_refs)
 
   def sync_month(%Month{} = month, recon) do
     sources =
@@ -28,21 +29,41 @@ defmodule Nila.Gst.Purchase.ItcCases do
         end)
 
     desired = MapSet.new(sources, fn {kind, source_ref, _invoice} -> {kind, source_ref} end)
+    existing_sources = Repo.all(from s in ItcSource, where: s.client_month_id == ^month.id)
+    sources_by_key = Map.new(existing_sources, &{{&1.kind, &1.source_ref}, &1})
+    memberships = current_memberships(existing_sources)
 
-    Repo.all(from s in ItcSource, where: s.client_month_id == ^month.id)
-    |> Enum.each(fn source ->
-      if not MapSet.member?(desired, {source.kind, source.source_ref}) and source_active?(source) do
-        append_source_event!(source, month, "source_unlinked")
-      end
+    memberships =
+      Enum.reduce(existing_sources, memberships, fn source, current ->
+        membership = current[source.id]
+
+        if not MapSet.member?(desired, {source.kind, source.source_ref}) and
+             match?(%{action: "linked"}, membership) do
+          event =
+            append_membership_event!(
+              source,
+              membership.case_id,
+              month,
+              "unlinked",
+              "source_removed"
+            )
+
+          Map.put(current, source.id, event)
+        else
+          current
+        end
+      end)
+
+    {sources_by_key, memberships} =
+      Enum.reduce(sources, {sources_by_key, memberships}, fn source_attrs, synced ->
+        sync_source!(month, source_attrs, synced)
+      end)
+
+    recon
+    |> pair_entries()
+    |> Enum.reduce(memberships, fn entry, current ->
+      link_pair!(month, entry["books"], entry["gstr2b"], sources_by_key, current)
     end)
-
-    Enum.each(sources, fn {kind, source_ref, invoice} ->
-      sync_source!(month, kind, source_ref, invoice)
-    end)
-
-    for bucket <- ~w(matched value_mismatch), entry <- recon[bucket] || [] do
-      link_pair!(month, entry["books"], entry["gstr2b"])
-    end
 
     :ok
   end
@@ -51,18 +72,36 @@ defmodule Nila.Gst.Purchase.ItcCases do
     cases =
       Repo.all(
         from c in ItcCase,
-          where:
-            c.org_id == ^month.org_id and c.client_id == ^month.client_id and
-              is_nil(c.merged_into_case_id),
+          where: c.org_id == ^month.org_id and c.client_id == ^month.client_id,
           preload: [
-            sources: :client_month,
             events: :effective_client_month,
             allocations: [:signoff, :client_month]
           ]
       )
 
+    sources =
+      Repo.all(
+        from s in ItcSource,
+          join: source_month in assoc(s, :client_month),
+          where:
+            s.org_id == ^month.org_id and source_month.client_id == ^month.client_id and
+              source_month.period <= ^month.period,
+          preload: [client_month: source_month]
+      )
+
+    source_ids = Enum.map(sources, & &1.id)
+
+    membership_events =
+      Repo.all(
+        from e in ItcSourceCaseEvent,
+          where: e.source_id in ^source_ids,
+          preload: [:effective_client_month]
+      )
+
+    sources_by_case = sources_by_case_as_of(sources, membership_events, month.period)
+
     cases
-    |> Enum.map(&project(&1, month))
+    |> Enum.map(&project(&1, month, Map.get(sources_by_case, &1.id, [])))
     |> Enum.filter(&relevant?/1)
     |> Enum.sort_by(&{state_rank(&1), &1.invoice_number || "", &1.case_id})
   end
@@ -120,18 +159,29 @@ defmodule Nila.Gst.Purchase.ItcCases do
     end
   end
 
-  def separate_rejected_pairs(%Month{} = month, attrs_list) do
+  def separate_rejected_pairs(%Month{} = month, attrs_list, decided_by_id) do
     Enum.each(attrs_list, fn attrs ->
       if (attrs["verb"] || attrs[:verb]) == "reject_pair" do
         separate_pair!(
           month,
           attrs["books_id"] || attrs[:books_id],
-          attrs["gstr2b_ref"] || attrs[:gstr2b_ref]
+          attrs["gstr2b_ref"] || attrs[:gstr2b_ref],
+          decided_by_id
         )
       end
     end)
 
     :ok
+  end
+
+  def move_source(%Month{} = month, source_id, target_case_id, reason, decided_by_id) do
+    Repo.transact(fn ->
+      month = Repo.one!(from m in Month, where: m.id == ^month.id, lock: "FOR UPDATE")
+
+      with :ok <- refuse_signed(month) do
+        move_source!(month, source_id, target_case_id, reason, decided_by_id)
+      end
+    end)
   end
 
   def record_event(%Month{} = month, case_id, event_type, decided_by_id, payload \\ %{}) do
@@ -254,81 +304,111 @@ defmodule Nila.Gst.Purchase.ItcCases do
     :ok
   end
 
-  defp sync_source!(month, kind, source_ref, invoice) when is_binary(source_ref) do
-    existing =
-      Repo.one(
-        from s in ItcSource,
-          where:
-            s.client_month_id == ^month.id and s.kind == ^kind and s.source_ref == ^source_ref
-      )
+  defp sync_source!(
+         month,
+         {kind, source_ref, invoice},
+         {sources_by_key, memberships}
+       )
+       when is_binary(source_ref) do
+    key = {kind, source_ref}
 
-    if existing do
-      if not source_active?(existing), do: append_source_event!(existing, month, "source_linked")
-    else
-      attrs = identity_attrs(invoice)
-      itc_case = matching_case(month, kind, invoice, attrs)
+    case sources_by_key[key] do
+      %ItcSource{} = source ->
+        case memberships[source.id] do
+          %{action: "linked"} ->
+            {sources_by_key, memberships}
 
-      source =
-        %ItcSource{client_month_id: month.id, org_id: month.org_id}
-        |> ItcSource.changeset(%{
-          case_id: itc_case.id,
-          kind: kind,
-          source_ref: source_ref,
-          payload: json_map(invoice)
-        })
-        |> Repo.insert!()
+          membership ->
+            case_id =
+              if membership,
+                do: current_target_case_id(membership.case_id),
+                else: matching_case(month, kind, invoice, identity_attrs(invoice)).id
 
-      append_source_event!(source, month, "source_linked")
+            event =
+              append_membership_event!(source, case_id, month, "linked", "source_restored")
+
+            {sources_by_key, Map.put(memberships, source.id, event)}
+        end
+
+      nil ->
+        attrs = identity_attrs(invoice)
+        itc_case = matching_case(month, kind, invoice, attrs)
+
+        source =
+          %ItcSource{client_month_id: month.id, org_id: month.org_id}
+          |> ItcSource.changeset(%{
+            kind: kind,
+            source_ref: source_ref,
+            payload: json_map(invoice)
+          })
+          |> Repo.insert!()
+
+        event =
+          append_membership_event!(source, itc_case.id, month, "linked", "source_discovered")
+
+        {Map.put(sources_by_key, key, source), Map.put(memberships, source.id, event)}
     end
   end
 
-  defp sync_source!(_, _, _, _), do: :ok
+  defp sync_source!(_, _, synced), do: synced
 
-  defp link_pair!(month, %{"id" => books_id}, %{} = gstr2b) do
-    gstr2b_ref = Reconciliation.gstr2b_ref(gstr2b)
-
-    books_source =
-      Repo.get_by!(ItcSource,
-        client_month_id: month.id,
-        kind: "books",
-        source_ref: books_id
-      )
+  defp link_pair!(
+         month,
+         %{"id" => books_id},
+         %{} = gstr2b,
+         sources_by_key,
+         memberships
+       ) do
+    books_source = Map.fetch!(sources_by_key, {"books", books_id})
 
     gstr2b_source =
-      Repo.get_by!(ItcSource,
-        client_month_id: month.id,
-        kind: "gstr2b",
-        source_ref: gstr2b_ref
-      )
+      Map.fetch!(sources_by_key, {"gstr2b", Reconciliation.gstr2b_ref(gstr2b)})
 
-    if books_source.case_id != gstr2b_source.case_id do
-      previous_case_id = gstr2b_source.case_id
-      append_source_event!(gstr2b_source, month, "source_unlinked")
+    books_membership = Map.fetch!(memberships, books_source.id)
+    gstr2b_membership = Map.fetch!(memberships, gstr2b_source.id)
 
-      gstr2b_source =
-        gstr2b_source
-        |> Ecto.Changeset.change(case_id: books_source.case_id)
-        |> Repo.update!()
+    if books_membership.case_id != gstr2b_membership.case_id do
+      {:ok, _} =
+        move_source!(
+          month,
+          gstr2b_source.id,
+          books_membership.case_id,
+          "reconciliation_match",
+          nil
+        )
 
-      append_source_event!(gstr2b_source, month, "source_linked")
-      merge_empty_case!(previous_case_id, books_source.case_id, month)
+      merge_empty_case!(gstr2b_membership.case_id, books_membership.case_id, month)
 
       ItcCase
-      |> Repo.get!(books_source.case_id)
+      |> Repo.get!(books_membership.case_id)
       |> ItcCase.changeset(%{identity_state: "confirmed"})
       |> Repo.update!()
+
+      Map.put(memberships, gstr2b_source.id, %{
+        gstr2b_membership
+        | action: "linked",
+          case_id: books_membership.case_id
+      })
+    else
+      memberships
     end
   end
 
-  defp link_pair!(_, _, _), do: :ok
+  defp link_pair!(_, _, _, _, memberships), do: memberships
+
+  defp pair_entries(recon) do
+    for bucket <- ~w(matched value_mismatch), entry <- recon[bucket] || [], do: entry
+  end
 
   defp merge_empty_case!(case_id, merged_into_case_id, month) do
-    remaining =
-      Repo.aggregate(from(s in ItcSource, where: s.case_id == ^case_id), :count, :id)
+    itc_case =
+      Repo.one!(
+        from c in ItcCase,
+          where: c.id == ^case_id,
+          lock: "FOR UPDATE"
+      )
 
-    if remaining == 0 do
-      itc_case = Repo.get!(ItcCase, case_id)
-
+    if is_nil(itc_case.merged_into_case_id) and current_sources_for_case_ids([case_id]) == %{} do
       itc_case
       |> ItcCase.changeset(%{
         identity_state: "merged",
@@ -343,13 +423,16 @@ defmodule Nila.Gst.Purchase.ItcCases do
       }
       |> ItcCaseEvent.changeset(%{
         event_type: "case_merged",
-        payload: %{"merged_into_case_id" => merged_into_case_id}
+        payload: %{
+          "merged_into_case_id" => merged_into_case_id,
+          "previous_identity_state" => itc_case.identity_state
+        }
       })
       |> Repo.insert!()
     end
   end
 
-  defp separate_pair!(month, books_id, gstr2b_ref)
+  defp separate_pair!(month, books_id, gstr2b_ref, decided_by_id)
        when is_binary(books_id) and is_binary(gstr2b_ref) do
     books_source =
       Repo.get_by(ItcSource,
@@ -365,9 +448,11 @@ defmodule Nila.Gst.Purchase.ItcCases do
         source_ref: gstr2b_ref
       )
 
-    if books_source && gstr2b_source && books_source.case_id == gstr2b_source.case_id do
-      append_source_event!(gstr2b_source, month, "source_unlinked")
+    books_membership = books_source && current_membership(books_source)
+    gstr2b_membership = gstr2b_source && current_membership(gstr2b_source)
 
+    if books_membership && gstr2b_membership &&
+         books_membership.case_id == gstr2b_membership.case_id do
       attrs =
         gstr2b_source.payload
         |> identity_attrs()
@@ -375,58 +460,173 @@ defmodule Nila.Gst.Purchase.ItcCases do
 
       separate_case = create_case!(month, attrs)
 
-      gstr2b_source
-      |> Ecto.Changeset.change(case_id: separate_case.id)
-      |> Repo.update!()
-      |> then(&append_source_event!(&1, month, "source_linked"))
+      {:ok, _} =
+        move_source!(
+          month,
+          gstr2b_source.id,
+          separate_case.id,
+          "pair_rejected",
+          decided_by_id
+        )
 
       ItcCase
-      |> Repo.get!(books_source.case_id)
+      |> Repo.get!(books_membership.case_id)
       |> ItcCase.changeset(%{identity_state: "ambiguous"})
       |> Repo.update!()
     end
   end
 
-  defp separate_pair!(_, _, _), do: :ok
+  defp separate_pair!(_, _, _, _), do: :ok
 
-  defp append_source_event!(source, month, event_type) do
-    %ItcCaseEvent{
-      case_id: source.case_id,
+  defp move_source!(month, source_id, target_case_id, reason, decided_by_id) do
+    source =
+      Repo.one(
+        from s in ItcSource,
+          join: source_month in assoc(s, :client_month),
+          where:
+            s.id == ^source_id and s.org_id == ^month.org_id and
+              source_month.client_id == ^month.client_id,
+          lock: "FOR UPDATE"
+      )
+
+    target_case =
+      Repo.one(
+        from c in ItcCase,
+          where:
+            c.id == ^target_case_id and c.org_id == ^month.org_id and
+              c.client_id == ^month.client_id and is_nil(c.merged_into_case_id),
+          lock: "FOR UPDATE"
+      )
+
+    with %ItcSource{} <- source,
+         %ItcCase{} <- target_case do
+      membership = current_membership(source)
+
+      if membership && membership.action == "linked" && membership.case_id == target_case.id do
+        {:ok, %{from_case_id: target_case.id, to_case_id: target_case.id}}
+      else
+        if membership && membership.action == "linked" do
+          append_membership_event!(
+            source,
+            membership.case_id,
+            month,
+            "unlinked",
+            reason,
+            decided_by_id
+          )
+        end
+
+        append_membership_event!(
+          source,
+          target_case.id,
+          month,
+          "linked",
+          reason,
+          decided_by_id
+        )
+
+        {:ok,
+         %{
+           from_case_id: membership && membership.case_id,
+           to_case_id: target_case.id
+         }}
+      end
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp append_membership_event!(
+         source,
+         case_id,
+         month,
+         action,
+         reason,
+         decided_by_id \\ nil
+       ) do
+    Repo.one!(from s in ItcSource, where: s.id == ^source.id, lock: "FOR UPDATE")
+
+    if action == "linked" do
+      Repo.one!(
+        from c in ItcCase,
+          where: c.id == ^case_id and is_nil(c.merged_into_case_id),
+          lock: "FOR UPDATE"
+      )
+    end
+
+    %ItcSourceCaseEvent{
+      source_id: source.id,
+      case_id: case_id,
       effective_client_month_id: month.id,
-      org_id: month.org_id
+      org_id: month.org_id,
+      decided_by_id: decided_by_id
     }
-    |> ItcCaseEvent.changeset(%{
-      event_type: event_type,
-      payload: %{
-        "source_id" => source.id,
-        "kind" => source.kind,
-        "source_ref" => source.source_ref
-      }
-    })
+    |> ItcSourceCaseEvent.changeset(%{action: action, reason: reason})
     |> Repo.insert!()
   end
 
-  defp source_active?(source) do
-    events =
-      Repo.all(
-        from e in ItcCaseEvent,
-          where:
-            e.case_id == ^source.case_id and e.event_type in ["source_linked", "source_unlinked"],
-          order_by: [asc: e.inserted_at, asc: e.id]
-      )
+  defp current_memberships([]), do: %{}
 
-    source_active?(source, events)
+  defp current_memberships(sources) do
+    source_ids = Enum.map(sources, & &1.id)
+
+    Repo.all(from e in ItcSourceCaseEvent, where: e.source_id in ^source_ids)
+    |> latest_memberships()
+    |> Map.new(&{&1.source_id, &1})
   end
 
-  defp source_active?(source, events) do
-    events
-    |> Enum.filter(&(get_in(&1.payload, ["source_id"]) == source.id))
-    |> Enum.max_by(&{&1.inserted_at, &1.id}, fn -> nil end)
-    |> case do
-      %{event_type: "source_unlinked"} -> false
-      %{event_type: "source_linked"} -> true
-      nil -> true
+  defp current_membership(source) do
+    Repo.one(
+      from e in ItcSourceCaseEvent,
+        where: e.source_id == ^source.id,
+        order_by: [desc: e.id],
+        limit: 1
+    )
+  end
+
+  defp current_target_case_id(case_id) do
+    case Repo.get!(ItcCase, case_id) do
+      %{merged_into_case_id: nil} -> case_id
+      %{merged_into_case_id: merged_into_case_id} -> current_target_case_id(merged_into_case_id)
     end
+  end
+
+  defp current_sources_for_case_ids(case_ids) do
+    Repo.all(
+      from e in ItcSourceCaseEvent,
+        where: e.case_id in ^case_ids,
+        preload: [source: :client_month]
+    )
+    |> current_sources_from_events()
+  end
+
+  defp sources_by_case_as_of(sources, membership_events, period) do
+    sources_by_id = Map.new(sources, &{&1.id, &1})
+
+    membership_events
+    |> Enum.filter(&(&1.effective_client_month.period <= period))
+    |> latest_memberships()
+    |> Enum.filter(&(&1.action == "linked"))
+    |> Enum.reduce(%{}, fn event, by_case ->
+      Map.update(by_case, event.case_id, [sources_by_id[event.source_id]], fn case_sources ->
+        [sources_by_id[event.source_id] | case_sources]
+      end)
+    end)
+  end
+
+  defp current_sources_from_events(events) do
+    events
+    |> latest_memberships()
+    |> Enum.filter(&(&1.action == "linked"))
+    |> Enum.group_by(& &1.case_id, & &1.source)
+  end
+
+  defp latest_memberships(events) do
+    events
+    |> Enum.group_by(& &1.source_id)
+    |> Enum.map(fn {_source_id, source_events} ->
+      Enum.max_by(source_events, & &1.id)
+    end)
   end
 
   defp matching_case(month, _, _, %{match_key: nil} = attrs),
@@ -439,10 +639,18 @@ defmodule Nila.Gst.Purchase.ItcCases do
           where:
             c.org_id == ^month.org_id and c.client_id == ^month.client_id and
               c.match_key == ^attrs.match_key and is_nil(c.merged_into_case_id),
-          preload: [:sources]
+          preload: [source_events: [source: :client_month]]
       )
 
-    compatible = Enum.filter(candidates, &compatible?(&1, kind, invoice))
+    sources_by_case =
+      candidates
+      |> Enum.flat_map(& &1.source_events)
+      |> current_sources_from_events()
+
+    compatible =
+      Enum.filter(candidates, fn candidate ->
+        compatible?(Map.get(sources_by_case, candidate.id, []), kind, invoice)
+      end)
 
     case compatible do
       [itc_case] ->
@@ -462,8 +670,8 @@ defmodule Nila.Gst.Purchase.ItcCases do
     end
   end
 
-  defp compatible?(itc_case, kind, invoice) do
-    same_kind = Enum.filter(itc_case.sources, &(&1.kind == kind))
+  defp compatible?(sources, kind, invoice) do
+    same_kind = Enum.filter(sources, &(&1.kind == kind))
     same_kind == [] or Enum.any?(same_kind, &corroborates?(&1.payload, invoice))
   end
 
@@ -501,18 +709,17 @@ defmodule Nila.Gst.Purchase.ItcCases do
     }
   end
 
-  defp project(itc_case, month) do
+  defp project(itc_case, month, sources) do
+    all_events = itc_case.events
+
     events =
       Enum.filter(
-        itc_case.events,
+        all_events,
         &(&1.effective_client_month.period <= month.period)
       )
 
-    sources =
-      itc_case.sources
-      |> Enum.filter(&(&1.client_month.period <= month.period))
-      |> Enum.filter(&source_active?(&1, events))
-      |> Enum.sort_by(&{&1.client_month.period, &1.id})
+    sources = Enum.sort_by(sources, &{&1.client_month.period, &1.id})
+    merged? = merged_as_of?(events)
 
     books = Enum.filter(sources, &(&1.kind == "books"))
     gstr2b = Enum.filter(sources, &(&1.kind == "gstr2b"))
@@ -541,7 +748,8 @@ defmodule Nila.Gst.Purchase.ItcCases do
     %{
       case_id: itc_case.id,
       id: "itc-case-#{itc_case.id}",
-      identity_state: itc_case.identity_state,
+      identity_state: identity_state_as_of(itc_case, all_events, events, merged?),
+      merged?: merged?,
       vendor: payload["vendor_name"] || itc_case.supplier_gstin || "Unknown vendor",
       supplier_gstin: itc_case.supplier_gstin,
       invoice_number: itc_case.invoice_number,
@@ -570,6 +778,38 @@ defmodule Nila.Gst.Purchase.ItcCases do
         end)
     }
   end
+
+  defp merged_as_of?(events) do
+    events
+    |> Enum.filter(&(&1.event_type in ~w(case_merged case_merge_reversed)))
+    |> Enum.max_by(&{&1.inserted_at, &1.id}, fn -> nil end)
+    |> case do
+      %{event_type: "case_merged"} -> true
+      _ -> false
+    end
+  end
+
+  defp identity_state_as_of(_, _, _, true), do: "merged"
+
+  defp identity_state_as_of(%{identity_state: "merged"}, all_events, events, false) do
+    reversed_identity =
+      events
+      |> Enum.find(&(&1.event_type == "case_merge_reversed"))
+      |> case do
+        %{payload: %{"identity_state" => identity_state}} -> identity_state
+        _ -> nil
+      end
+
+    reversed_identity ||
+      all_events
+      |> Enum.find(&(&1.event_type == "case_merged"))
+      |> case do
+        %{payload: %{"previous_identity_state" => identity_state}} -> identity_state
+        _ -> "confirmed"
+      end
+  end
+
+  defp identity_state_as_of(itc_case, _, _, false), do: itc_case.identity_state
 
   defp latest_decision(events) do
     events
@@ -612,7 +852,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
   end
 
   defp relevant?(line) do
-    line.has_sources? and
+    not line.merged? and line.has_sources? and
       (line.current_books? or line.current_gstr2b? or
          (line.settlement_state not in ~w(claimed excluded) and is_nil(line.allocation_id)))
   end

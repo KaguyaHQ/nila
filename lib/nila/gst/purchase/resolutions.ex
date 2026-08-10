@@ -68,7 +68,7 @@ defmodule Nila.Gst.Purchase.Resolutions do
 
       with :ok <- refuse_signed(month),
            {:ok, resolutions} <- insert_all(month, attrs_list, decided_by_id) do
-        :ok = ItcCases.separate_rejected_pairs(month, attrs_list)
+        :ok = ItcCases.separate_rejected_pairs(month, attrs_list, decided_by_id)
         workings = workings(month)
         :ok = ItcCases.sync_month(month, workings.recon)
         workings = workings(month)
