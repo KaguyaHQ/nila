@@ -77,6 +77,57 @@ defmodule Nila.Gst.Sales.ReviewTest do
            }
   end
 
+  test "credit-note treatment keeps portal values positive and presents negative liability" do
+    note = %{
+      "id" => "source-cn",
+      "document_type" => "credit_note",
+      "invoice_number" => "03/2024-25",
+      "buyer_gstin" => "33AABCP9487A1ZG",
+      "line_items" => []
+    }
+
+    derived = %{
+      "cdnr" => [
+        %{
+          "ctin" => "33AABCP9487A1ZG",
+          "nt" => [
+            %{
+              "nt_num" => "03/2024-25",
+              "ntty" => "C",
+              "inv_typ" => "R",
+              "pos" => "33",
+              "itms" => [
+                %{
+                  "itm_det" => %{
+                    "txval" => 743_125,
+                    "iamt" => 0,
+                    "camt" => 66_881.25,
+                    "samt" => 66_881.25,
+                    "csamt" => 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
+    snapshot = Review.treatment_snapshot(note, derived)
+
+    assert snapshot["table"] == "cdnr"
+    assert snapshot["category"] == "C"
+    assert snapshot["taxable_amount"] == -743_125
+    assert snapshot["tax_amount"] == -133_762.5
+
+    assert snapshot["tax_amounts"] == %{
+             "igst" => 0,
+             "cgst" => -66_881.25,
+             "sgst" => -66_881.25,
+             "cess" => 0
+           }
+  end
+
   defp workings do
     invoices = [
       invoice("source-c", "30/2025-26"),

@@ -72,6 +72,39 @@ defmodule Nila.Eval.Gstr1DiffTest do
       refute Enum.any?(rows, &(&1["field"] == "chksum"))
     end
 
+    test "compares CDNR by stable note number and rate while ignoring portal bookkeeping" do
+      ours = put_in(return()["cdnr"], [credit_note("03-01-2025", "C", "ours")])
+      theirs = put_in(return()["cdnr"], [credit_note("04-01-2025", "C", "theirs")])
+      rows = Gstr1Diff.rows(ours, theirs)
+
+      date = Enum.find(rows, &(&1["scope"] == "credit_note" and &1["field"] == "nt_dt"))
+
+      assert date["key"] == "33AABCP9487A1ZG|03/2024-25|18"
+      assert date["derived"] == "03-01-2025"
+      assert date["filed"] == "04-01-2025"
+      refute date["match"]
+      refute Enum.any?(rows, &(&1["field"] in ~w(d_flag chksum flag updby cflag cfs)))
+    end
+
+    test "compares invoice and credit-note document series independently" do
+      ours =
+        put_in(return()["doc_issue"], %{
+          "doc_det" => [
+            doc_group(1, "112/2024-25", "134/2024-25", 23),
+            doc_group(5, "03/2024-25", "03/2024-25", 1)
+          ]
+        })
+
+      theirs =
+        put_in(ours, ["doc_issue", "doc_det", Access.at(1), "docs", Access.at(0), "net_issue"], 2)
+
+      rows = Gstr1Diff.rows(ours, theirs)
+
+      mismatch = Enum.find(rows, &(&1["scope"] == "doc_issue" and not &1["match"]))
+      assert mismatch["key"] == "5|1"
+      assert mismatch["field"] == "net_issue"
+    end
+
     test "an invoice missing from one side still produces rows, with that side nil" do
       rows = Gstr1Diff.rows(%{"b2b" => []}, return())
       invoice_rows = Enum.filter(rows, &(&1["scope"] in ["invoice", "invoice_item"]))
@@ -94,6 +127,55 @@ defmodule Nila.Eval.Gstr1DiffTest do
       txval = Enum.find(rows, &(&1["field"] == "txval"))
       refute txval["match"], "a non-zero filed amount still fails"
     end
+  end
+
+  defp credit_note(date, type, checksum) do
+    %{
+      "ctin" => "33AABCP9487A1ZG",
+      "cfs" => "N",
+      "nt" => [
+        %{
+          "nt_num" => "03/2024-25",
+          "nt_dt" => date,
+          "ntty" => type,
+          "val" => 876_887.5,
+          "pos" => "33",
+          "rchrg" => "N",
+          "inv_typ" => "R",
+          "d_flag" => "Y",
+          "chksum" => checksum,
+          "itms" => [
+            %{
+              "num" => 1,
+              "itm_det" => %{
+                "rt" => 18,
+                "txval" => 743_125,
+                "camt" => 66_881.25,
+                "samt" => 66_881.25,
+                "iamt" => 0,
+                "csamt" => 0
+              }
+            }
+          ]
+        }
+      ]
+    }
+  end
+
+  defp doc_group(doc_num, from, to, total) do
+    %{
+      "doc_num" => doc_num,
+      "docs" => [
+        %{
+          "num" => 1,
+          "from" => from,
+          "to" => to,
+          "totnum" => total,
+          "cancel" => 0,
+          "net_issue" => total
+        }
+      ]
+    }
   end
 
   describe "tolerances" do

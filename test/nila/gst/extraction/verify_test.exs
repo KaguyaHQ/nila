@@ -148,6 +148,24 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     end
   end
 
+  describe "document markers" do
+    test "recognizes a credit-note heading and ignores invoice footer terms" do
+      assert Verify.document_markers("| Credit Note-3 |\nCredit Note:03/2024-25")[
+               "credit_note"
+             ]
+
+      refute Verify.document_markers("TAX INVOICE\nTerms: No credit notes after seven days")[
+               "credit_note"
+             ]
+    end
+
+    test "recognizes a debit-note heading independently" do
+      markers = Verify.document_markers("# DEBIT NOTE\nDebit Note No: DN-4")
+      assert markers["debit_note"]
+      refute markers["credit_note"]
+    end
+  end
+
   test "a repaired value is grounded against what the page printed, not the correction" do
     # The repair replaced a scan-damaged GSTIN with its only legal reading; the
     # corrected form is by definition not on the page, and grounding must check

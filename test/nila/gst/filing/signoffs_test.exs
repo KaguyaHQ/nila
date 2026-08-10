@@ -753,14 +753,18 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       # check exists for — a month can reach `reviewed` before a rule exists,
       # and signing is the act that makes the number final.
       invoices =
-        Enum.map(reviewed.invoices, &Map.put(&1, "document", %{"credit_note" => true}))
+        Enum.map(reviewed.invoices, fn invoice ->
+          invoice
+          |> Map.put("document_type", "debit_note")
+          |> Map.put("document", %{"debit_note" => true})
+        end)
 
       {:ok, reviewed} =
         reviewed
         |> Nila.Gst.Sales.Month.changeset(%{invoices: invoices})
         |> Nila.Repo.update()
 
-      assert {:error, {:blocking_issues, ["credit_note_unsupported"]}} =
+      assert {:error, {:blocking_issues, ["debit_note_unsupported"]}} =
                Signoffs.sign_off_gstr1(reviewed, scope)
 
       assert {:error, :not_found} = Signoffs.latest_gstr1_signoff(reviewed.id)
@@ -812,6 +816,30 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
       expected = Nila.Gst.Filing.Gstr3b.liability_from_gstr1(signoff.snapshot["derived"])
       assert gstr3b["liability_31"]["a"]["txval"] == expected["txval"]
+    end
+
+    test "GSTR-3B sign-off refuses a negative outward-liability position", %{
+      month: client_month,
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      invoices =
+        Enum.map(sales_month.invoices, fn invoice ->
+          invoice
+          |> Map.put("document_type", "credit_note")
+          |> Map.put("document", %{"credit_note" => true})
+        end)
+
+      sales_month =
+        sales_month
+        |> Ecto.Changeset.change(invoices: invoices)
+        |> Nila.Repo.update!()
+        |> make_reviewed(scope.user.id)
+
+      {:ok, _} = Signoffs.sign_off_gstr1(sales_month, scope)
+
+      assert {:error, :negative_outward_liability_unsupported} =
+               Signoffs.sign_off(client_month, scope)
     end
 
     test "a signed GSTR-1 files independently of the 3B", %{

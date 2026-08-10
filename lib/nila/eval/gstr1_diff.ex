@@ -21,8 +21,10 @@ defmodule Nila.Eval.Gstr1Diff do
   @diff_tolerance 0.01
   @val_tolerance 1.0
   @ignored_invoice_fields ~w(chksum flag updby cflag)
+  @ignored_note_fields ~w(chksum flag updby cflag cfs d_flag)
 
   @invoice_fields ~w(ctin inum idt val pos rchrg inv_typ)
+  @note_fields ~w(ctin nt_num nt_dt ntty val pos rchrg inv_typ)
   @item_fields ~w(rt txval camt samt iamt csamt)
   @hsn_fields ~w(hsn_sc rt txval camt samt iamt)
   @doc_fields ~w(from to totnum net_issue cancel)
@@ -40,6 +42,7 @@ defmodule Nila.Eval.Gstr1Diff do
       "tolerance" => @diff_tolerance,
       "val_tolerance" => @val_tolerance,
       "ignored_invoice_fields" => @ignored_invoice_fields,
+      "ignored_note_fields" => @ignored_note_fields,
       "hsn_comparison" => "rolled to the shorter side's code length"
     }
   end
@@ -52,7 +55,8 @@ defmodule Nila.Eval.Gstr1Diff do
 
   @doc "One row per compared field, invoice rows first, then HSN, then doc issue."
   def rows(derived, filed) do
-    invoice_rows_diff(derived, filed) ++ hsn_diff(derived, filed) ++ doc_diff(derived, filed)
+    invoice_rows_diff(derived, filed) ++
+      note_rows_diff(derived, filed) ++ hsn_diff(derived, filed) ++ doc_diff(derived, filed)
   end
 
   @doc "Folds rows into the match percentage."
@@ -110,6 +114,53 @@ defmodule Nila.Eval.Gstr1Diff do
         value =
           inv
           |> Map.drop(@ignored_invoice_fields)
+          |> Map.put("ctin", ctin_block["ctin"])
+          |> Map.put("itm_det", item["itm_det"] || %{})
+
+        Map.put(acc, key, value)
+    end
+  end
+
+  defp note_rows_diff(derived, filed) do
+    derived_rows = note_rows(derived)
+    filed_rows = note_rows(filed)
+    keys = (Map.keys(derived_rows) ++ Map.keys(filed_rows)) |> Enum.uniq() |> Enum.sort()
+
+    Enum.flat_map(keys, fn key ->
+      derived_row = derived_rows[key] || %{}
+      filed_row = filed_rows[key] || %{}
+
+      note_checks =
+        Enum.map(@note_fields, fn field ->
+          row("credit_note", key, field, derived_row[field], filed_row[field])
+        end)
+
+      item_checks =
+        Enum.map(@item_fields, fn field ->
+          row(
+            "credit_note_item",
+            key,
+            field,
+            get_in(derived_row, ["itm_det", field]),
+            get_in(filed_row, ["itm_det", field])
+          )
+        end)
+
+      note_checks ++ item_checks
+    end)
+  end
+
+  defp note_rows(gstr1) do
+    for ctin_block <- gstr1["cdnr"] || [],
+        note <- ctin_block["nt"] || [],
+        item <- note["itms"] || [],
+        reduce: %{} do
+      acc ->
+        key = "#{ctin_block["ctin"]}|#{note["nt_num"]}|#{get_in(item, ["itm_det", "rt"])}"
+
+        value =
+          note
+          |> Map.drop(@ignored_note_fields)
           |> Map.put("ctin", ctin_block["ctin"])
           |> Map.put("itm_det", item["itm_det"] || %{})
 
@@ -210,16 +261,26 @@ defmodule Nila.Eval.Gstr1Diff do
   end
 
   defp doc_diff(derived, filed) do
-    derived_doc = first_doc(derived)
-    filed_doc = first_doc(filed)
+    derived_docs = doc_rows(derived)
+    filed_docs = doc_rows(filed)
+    keys = (Map.keys(derived_docs) ++ Map.keys(filed_docs)) |> Enum.uniq() |> Enum.sort()
 
-    Enum.map(@doc_fields, fn field ->
-      row("doc_issue", "doc_issue", field, derived_doc[field], filed_doc[field])
+    Enum.flat_map(keys, fn key ->
+      derived_doc = derived_docs[key] || %{}
+      filed_doc = filed_docs[key] || %{}
+
+      Enum.map(@doc_fields, fn field ->
+        row("doc_issue", key, field, derived_doc[field], filed_doc[field])
+      end)
     end)
   end
 
-  defp first_doc(gstr1) do
-    get_in(gstr1, ["doc_issue", "doc_det", Access.at(0), "docs", Access.at(0)]) || %{}
+  defp doc_rows(gstr1) do
+    for group <- get_in(gstr1, ["doc_issue", "doc_det"]) || [],
+        doc <- group["docs"] || [],
+        reduce: %{} do
+      acc -> Map.put(acc, "#{group["doc_num"]}|#{doc["num"]}", doc)
+    end
   end
 
   defp row(scope, key, field, derived, filed) do

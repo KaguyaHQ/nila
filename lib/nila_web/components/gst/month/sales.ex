@@ -105,7 +105,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         </div>
         <p id="gstr1-draft-position" class="text-body text-ink-muted tabular-nums">
           <span id="gstr1-draft-invoices">
-            {@account.draft.documents} {plural(@account.draft.documents, "invoice")} in draft
+            {@account.draft.documents} {plural(@account.draft.documents, "document")} in draft
           </span>
           <span aria-hidden="true"> · </span>
           <span id="gstr1-draft-taxable">
@@ -138,7 +138,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           id="gstr1-blocked-next-move"
           class="bg-error/5 border-error/30 rounded-box text-base-content text-body border px-4 py-3"
         >
-          Nila files B2B invoices only, so it cannot build this month's return. File {Nila.Formatters.period_label(
+          Nila files registered B2B invoices and credit notes, but another document type in this month is unsupported. File {Nila.Formatters.period_label(
             @period
           )} for {@client.name} manually on the portal — and tell us
           which table you needed.
@@ -446,8 +446,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           </:col>
         </.data_table>
         <p id="gstr1-filing-capability" class="text-ink-subtle text-meta">
-          This return files B2B invoices. A credit note, export, SEZ, reverse-charge or B2C bill
-          stops the month rather than being filed as an ordinary invoice.
+          This return files registered B2B invoices and credit notes. Debit notes, exports, SEZ,
+          reverse-charge and B2C supplies still stop the month rather than being misfiled.
         </p>
       </section>
 
@@ -458,7 +458,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       {render_slot(@actions)}
 
       <section id="gstr1-register" class="space-y-block">
-        <h3 class="text-base-content text-body font-semibold">Invoice register</h3>
+        <h3 class="text-base-content text-body font-semibold">Sales document register</h3>
         <.invoice_table
           id="gstr1-invoices"
           rows={@invoices}
@@ -542,7 +542,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       }
       min_width="min-w-[760px]"
     >
-      <:col :let={invoice} label="Inv No">
+      <:col :let={invoice} label="Document No">
         <span class={[
           "font-mono",
           (MapSet.member?(@visited, invoice["id"] || invoice["invoice_number"]) &&
@@ -582,7 +582,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <:col label="" align="right">
         <.icon name="hero-chevron-right-mini" class="text-ink-faint size-4" />
       </:col>
-      <:empty>No sales invoices were extracted for this month.</:empty>
+      <:empty>No sales documents were extracted for this month.</:empty>
     </.data_table>
     """
   end
@@ -679,22 +679,47 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   # One row per section the return actually builds. The status is the work still
   # standing against it, in the same vocabulary the rest of the page uses.
   defp filing_summary_rows(account, derived) do
-    totals = Values.filed_totals(derived)
     by_kind = account.issues.by_kind
 
     [
-      %{
-        key: "b2b",
-        label: "B2B regular",
-        documents: account.draft.documents,
-        taxable: totals.taxable,
-        igst: totals.igst,
-        cgst: totals.cgst,
-        sgst: totals.sgst,
-        blocked?: Map.get(by_kind, :blocked, 0) > 0,
-        status: filing_status(account)
-      }
+      filing_summary_row(
+        "b2b",
+        "B2B regular",
+        count_documents(derived, "b2b", "inv"),
+        Values.filed_totals(Map.put(derived, "cdnr", [])),
+        account,
+        by_kind
+      ),
+      filing_summary_row(
+        "cdnr",
+        "9B registered credit notes",
+        count_documents(derived, "cdnr", "nt"),
+        Values.filed_totals(Map.put(derived, "b2b", [])),
+        account,
+        by_kind
+      )
     ]
+    |> Enum.reject(&(&1.documents == 0))
+  end
+
+  defp filing_summary_row(key, label, documents, totals, account, by_kind) do
+    %{
+      key: key,
+      label: label,
+      documents: documents,
+      taxable: totals.taxable,
+      igst: totals.igst,
+      cgst: totals.cgst,
+      sgst: totals.sgst,
+      blocked?: Map.get(by_kind, :blocked, 0) > 0,
+      status: filing_status(account)
+    }
+  end
+
+  defp count_documents(derived, section, rows) do
+    derived
+    |> Map.get(section, [])
+    |> Enum.reduce(0, &(length(&1[rows] || []) + &2))
   end
 
   defp filing_status(account) do

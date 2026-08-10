@@ -43,6 +43,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     assigns =
       assigns
       |> assign(:b2b, assigns.derived["b2b"] || [])
+      |> assign(:cdnr, assigns.derived["cdnr"] || [])
       |> assign(:rates, Gstr1.rate_summary(assigns.derived))
       |> assign(:hsn, Gstr1.hsn_summary(assigns.invoices))
       |> assign(:names, names_by_gstin(assigns.invoices))
@@ -53,6 +54,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     assigns =
       assigns
       |> assign(:party_rows, party_rows(assigns))
+      |> assign(:credit_note_rows, credit_note_rows(assigns.cdnr))
       |> assign(:rate_rows, rate_rows(assigns))
       |> assign(:hsn_rows, hsn_rows(assigns))
 
@@ -126,6 +128,31 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
                 both "Tax" is why nobody could say which one gets filed. --%>
           <:col :let={row} label="Proposed GSTR-1" align="right">
             <.amount_cell row={row} value={row[:tax]} />
+          </:col>
+        </.data_table>
+      </div>
+
+      <div :if={@credit_note_rows != []} id="gstr1-workings-cdnr" class="space-y-1.5">
+        <.section_label>9B — registered credit notes</.section_label>
+        <.data_table
+          id="gstr1-workings-cdnr-rows"
+          rows={@credit_note_rows}
+          row_id={& &1.id}
+          min_width="min-w-[620px]"
+          dense
+        >
+          <:col :let={row} label="Note">
+            <span class="text-primary font-mono font-medium">{row.number}</span>
+          </:col>
+          <:col :let={row} label="Date">{row.date}</:col>
+          <:col :let={row} label="Recipient GSTIN">
+            <span class="text-ink-subtle font-mono">{row.gstin}</span>
+          </:col>
+          <:col :let={row} label="Taxable effect" align="right">
+            {Helpers.amount(row.taxable)}
+          </:col>
+          <:col :let={row} label="Output-tax effect" align="right">
+            {Helpers.amount(row.tax)}
           </:col>
         </.data_table>
       </div>
@@ -281,16 +308,30 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     "Invoice #{invoice} · #{rate}%"
   end
 
+  defp diff_context(%{"scope" => scope, "key" => key})
+       when scope in ["credit_note", "credit_note_item"] do
+    [_gstin, note, rate] = String.split(key, "|")
+    "Credit note #{note} · #{rate}%"
+  end
+
   defp diff_context(%{"scope" => "hsn", "key" => key}) do
     [code, rate] = String.split(key, "|")
     "HSN #{code} · #{rate}%"
   end
 
-  defp diff_context(%{"scope" => "doc_issue"}), do: "Invoice series"
+  defp diff_context(%{"scope" => "doc_issue", "key" => key}) do
+    case String.split(key, "|") do
+      ["5", _num] -> "Credit-note series"
+      _invoice -> "Invoice series"
+    end
+  end
 
   defp diff_field("ctin"), do: "Counterparty GSTIN"
   defp diff_field("inum"), do: "Invoice number"
   defp diff_field("idt"), do: "Invoice date"
+  defp diff_field("nt_num"), do: "Credit-note number"
+  defp diff_field("nt_dt"), do: "Credit-note date"
+  defp diff_field("ntty"), do: "Note type"
   defp diff_field("val"), do: "Invoice value"
   defp diff_field("pos"), do: "Place of supply"
   defp diff_field("rchrg"), do: "Reverse charge"
@@ -512,6 +553,22 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
 
       [node | invoices]
     end)
+  end
+
+  defp credit_note_rows(cdnr) do
+    for party <- cdnr,
+        note <- party["nt"] || [] do
+      totals = invoice_totals(note)
+
+      %{
+        id: dom_id("gstr1-workings-credit-note-#{party["ctin"]}-#{note["nt_num"]}"),
+        number: note["nt_num"],
+        date: note["nt_dt"],
+        gstin: party["ctin"],
+        taxable: -totals.taxable,
+        tax: -totals.tax
+      }
+    end
   end
 
   defp rate_rows(assigns) do

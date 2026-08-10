@@ -295,13 +295,15 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
 
-    # A credit note: the return has no cdnr table, so no reviewer action clears
-    # it. It asks for no work, which is exactly why it used to fall out of a
-    # count named after the work.
+    # A debit note still has no supported derivation, so no reviewer action
+    # clears it. It asks for no work, which is exactly why blockers must remain
+    # in the count even when the review queue has no answer.
     invoices =
       Enum.map(month.invoices, fn
         %{"invoice_number" => "21/2025-26"} = invoice ->
-          Map.put(invoice, "document", %{"credit_note" => true})
+          invoice
+          |> Map.put("document_type", "debit_note")
+          |> Map.put("document", %{"debit_note" => true})
 
         invoice ->
           invoice
@@ -315,6 +317,35 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#gstr1-required-clause", "1 decision")
     assert has_element?(view, "#gstr1-verdict", "1 blocker")
     refute has_element?(view, "#month-door-sign-r1")
+  end
+
+  test "a registered credit note reaches CDNR workings and no longer blocks the month", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Sales.Months, as: SalesMonths
+
+    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
+
+    invoices =
+      Enum.map(month.invoices, fn
+        %{"invoice_number" => "21/2025-26"} = invoice ->
+          invoice
+          |> Map.put("document_type", "credit_note")
+          |> Map.put("document", %{"credit_note" => true})
+
+        invoice ->
+          invoice
+      end)
+
+    month |> Ecto.Changeset.change(invoices: invoices) |> Nila.Repo.update!()
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#gstr1-workings-cdnr", "21/2025-26")
+    assert has_element?(view, "#gstr1-filing-cdnr", "9B registered credit notes")
+    refute has_element?(view, "#gstr1-checks-before-filing", "credit note")
   end
 
   test "the month shows the object being approved, and claims nothing it cannot check", %{
@@ -331,7 +362,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     # One row, because `derive/2` builds b2b, hsn and doc_issue and nothing
     # else. The capability statement is what the page can honestly say; it does
     # not claim any category is absent, because nothing here can check that.
-    assert has_element?(view, "#gstr1-filing-capability", "stops the month")
+    assert has_element?(view, "#gstr1-filing-capability", "still stop the month")
 
     # It reports the work standing against the filing, not a bare "blocked".
     assert has_element?(view, "#gstr1-filing-b2b", "1 decision")

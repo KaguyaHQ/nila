@@ -30,6 +30,8 @@ defmodule Nila.Gst.Sales.Values do
   Every figure here is a float of rupees, matching `Gstr1`'s own arithmetic.
   """
 
+  alias Nila.Gst.Sales.Gstr1
+
   @heads ~w(igst cgst sgst)a
 
   # Deliberately tighter than `Gstr1`'s `@money_tolerance` of 0.5. That one asks
@@ -55,6 +57,7 @@ defmodule Nila.Gst.Sales.Values do
       printed: printed,
       extracted_lines: extracted,
       filed: filed,
+      liability_effect: scale(filed, Gstr1.document_effect(invoice)),
       # What a reviewer is answering when a `printed_*_mismatch` is open: the
       # footer against the extraction. Both are readings of the document. A
       # field the bill did not print is `nil` here rather than a difference
@@ -90,7 +93,7 @@ defmodule Nila.Gst.Sales.Values do
       copies would show a reviewer double the tax while they decide.
   """
   def filed(invoice, derived) do
-    case invoice_entries(derived, invoice["invoice_number"]) do
+    case invoice_entries(derived, invoice) do
       [entry] -> entry |> details() |> Enum.reduce(empty(), &add_detail/2)
       _none_or_many -> nil
     end
@@ -181,16 +184,27 @@ defmodule Nila.Gst.Sales.Values do
   defp invoice_details(nil), do: []
 
   defp invoice_details(derived) do
-    derived |> invoice_entries(:all) |> Enum.flat_map(&details/1)
+    derived
+    |> Gstr1.signed_details()
+    |> Enum.map(& &1.detail)
   end
 
-  defp invoice_entries(nil, _inum), do: []
+  defp invoice_entries(nil, _invoice), do: []
 
-  defp invoice_entries(derived, inum) do
-    for group <- List.wrap(derived["b2b"]),
-        inv <- List.wrap(group["inv"]),
-        inum == :all or inv["inum"] == inum,
-        do: inv
+  defp invoice_entries(derived, invoice) do
+    case Gstr1.document_type(invoice) do
+      "credit_note" ->
+        for group <- List.wrap(derived["cdnr"]),
+            note <- List.wrap(group["nt"]),
+            note["nt_num"] == Gstr1.document_number(invoice),
+            do: note
+
+      _invoice ->
+        for group <- List.wrap(derived["b2b"]),
+            entry <- List.wrap(group["inv"]),
+            entry["inum"] == Gstr1.document_number(invoice),
+            do: entry
+    end
   end
 
   defp details(inv) do
@@ -222,6 +236,12 @@ defmodule Nila.Gst.Sales.Values do
 
   defp printed_delta(_extracted, nil), do: nil
   defp printed_delta(extracted, printed), do: round2(extracted - printed)
+
+  defp scale(nil, _effect), do: nil
+
+  defp scale(totals, effect) do
+    Map.new(totals, fn {key, value} -> {key, value * effect} end)
+  end
 
   defp difference(_a, nil), do: nil
   defp difference(nil, _b), do: nil

@@ -83,6 +83,72 @@ defmodule Nila.Gst.Filing.Gstr3bTest do
                "sgst" => 990
              }
     end
+
+    test "subtracts positive-valued registered credit-note buckets exactly once" do
+      derived = %{
+        "b2b" => [
+          %{
+            "inv" => [
+              %{
+                "inum" => "I-1",
+                "itms" => [
+                  %{
+                    "itm_det" => %{
+                      "rt" => 18,
+                      "txval" => 2000,
+                      "camt" => 180,
+                      "samt" => 180,
+                      "iamt" => 0
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "cdnr" => [
+          %{
+            "nt" => [
+              %{
+                "nt_num" => "CN-1",
+                "ntty" => "C",
+                "itms" => [
+                  %{
+                    "itm_det" => %{
+                      "rt" => 18,
+                      "txval" => 500,
+                      "camt" => 45,
+                      "samt" => 45,
+                      "iamt" => 0
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+
+      assert Gstr3b.liability_from_gstr1(derived) == %{
+               "txval" => 150_000,
+               "igst" => 0,
+               "cgst" => 13_500,
+               "sgst" => 13_500
+             }
+    end
+
+    test "names a note-only negative position as unsupported" do
+      liability = %{"txval" => -100_000, "igst" => 0, "cgst" => -9_000, "sgst" => -9_000}
+      gstr3b = %{"liability_31" => %{"a" => liability}}
+
+      assert Gstr3b.negative_outward_liability?(gstr3b)
+
+      refute Gstr3b.negative_outward_liability?(%{
+               "liability_31" => %{
+                 "a" => Map.new(liability, fn {key, value} -> {key, abs(value)} end)
+               }
+             })
+    end
   end
 
   describe "Rule 88A set-off ordering" do

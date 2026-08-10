@@ -3,7 +3,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
   @moduledoc "Audited return actions rendered directly after their evidence."
 
-  alias Nila.Gst.Filing.ItcPosition
+  alias Nila.Gst.Filing.{Gstr3b, ItcPosition}
   alias Nila.Gst.Sales.Values
   alias NilaWeb.Components.Gst.Month.Helpers
 
@@ -106,6 +106,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :can_sign_off, :boolean, required: true
   attr :sales_completeness, :atom, default: :open
   attr :itc, :any, default: nil
+  attr :gstr3b, :any, default: nil
 
   def gstr3b_actions(assigns) do
     assigns = assign(assigns, :blockers, gstr3b_blockers(assigns))
@@ -395,7 +396,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
        {:anchor, "Mark it filed", "#month-exit-gstr1"}},
       {"intake", assigns.sales_completeness != :complete,
        "Sales collection is #{completeness_phrase(assigns.sales_completeness)} — the client has not confirmed we hold everything.",
-       {:click, "Record client confirmation", "open-completeness-override"}}
+       {:click, "Record client confirmation", "open-completeness-override"}},
+      {"negative-liability", Gstr3b.negative_outward_liability?(assigns.gstr3b),
+       "Credit notes exceed this month's supported outward liability. Nila can calculate the reduction but does not yet file the resulting negative GSTR-3B position.",
+       {:none, nil, nil}}
     ]
     |> Enum.filter(fn {_key, active?, _message, _exit} -> active? end)
     |> Enum.map(fn {key, _active?, message, exit} -> {key, message, exit} end)

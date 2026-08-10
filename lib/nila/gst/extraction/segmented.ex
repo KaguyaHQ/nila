@@ -70,6 +70,11 @@ defmodule Nila.Gst.Extraction.Segmented do
   # failure in `Nila.Gst.Sales.Gstr1`.
   defp kind_rules(:sales) do
     """
+    - Classify the document itself as invoice, credit_note or debit_note. A title \
+    reading CREDIT NOTE or DEBIT NOTE controls; footer terms that merely mention \
+    notes do not.
+    - For a credit or debit note, invoice_number is the note number only. Exclude \
+    labels such as "Credit Note:" from the value.
     - Include cancelled invoices. A cancelled number is still a number the \
     series has to account for.
     - CGST and SGST printed as stacked sub-rows under one item are that item's \
@@ -263,7 +268,10 @@ defmodule Nila.Gst.Extraction.Segmented do
          "repairs" => repairs,
          # What the page says it is, for the shapes the return has no table
          # for — see `Nila.Gst.Extraction.Verify.document_markers/1`.
-         "document" => Verify.document_markers(text),
+         "document" =>
+           text
+           |> Verify.document_markers()
+           |> Map.put("extracted_type", data["document_type"]),
          # Per-invoice, because that is the unit the call was made in and the
          # unit a cost per bill is quoted in.
          "usage" => sum_usage(usage),

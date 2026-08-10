@@ -29,7 +29,7 @@ defmodule Nila.Gst.Filing.Signoffs do
 
   alias Nila.Accounts.Policy
 
-  alias Nila.Gst.Filing.Signoff
+  alias Nila.Gst.Filing.{Gstr3b, Signoff}
   alias Nila.Gst.Intake.{Confirmations, Dumps}
   alias Nila.Gst.Purchase.{ItcCases, Register, Resolutions}
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
@@ -88,7 +88,8 @@ defmodule Nila.Gst.Filing.Signoffs do
 
             with :ok <- require_documents_attested(workings),
                  :ok <- require_settled_register(workings),
-                 :ok <- require_sales_intake_complete(month) do
+                 :ok <- require_sales_intake_complete(month),
+                 :ok <- require_nonnegative_outward_liability(workings.gstr3b) do
               snapshot = %{
                 "schema_version" => @snapshot_schema_version,
                 "summary" => workings.summary,
@@ -190,6 +191,12 @@ defmodule Nila.Gst.Filing.Signoffs do
   # signature on work that changes nothing teaches people to click through.
   defp require_settled_register(workings) do
     if Register.need_decision(workings.summary) == 0, do: :ok, else: {:error, :not_reviewed}
+  end
+
+  defp require_nonnegative_outward_liability(gstr3b) do
+    if Gstr3b.negative_outward_liability?(gstr3b),
+      do: {:error, :negative_outward_liability_unsupported},
+      else: :ok
   end
 
   # s.16(2)(a) is a condition of the claim, so an unanswered question about it

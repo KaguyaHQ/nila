@@ -38,6 +38,7 @@ defmodule Nila.Gst.Filing.Gstr3b do
 
   alias Nila.Gst.Filing.ItcPosition
   alias Nila.Gst.Purchase.Workings
+  alias Nila.Gst.Sales.Gstr1
 
   @heads ~w(igst cgst sgst)
   @zero %{"igst" => 0, "cgst" => 0, "sgst" => 0}
@@ -90,12 +91,7 @@ defmodule Nila.Gst.Filing.Gstr3b do
   floats) — sums every rate bucket into head-wise paise.
   """
   def liability_from_gstr1(derived) do
-    buckets =
-      for party <- derived["b2b"] || [],
-          inv <- party["inv"] || [],
-          itm <- inv["itms"] || [],
-          det = itm["itm_det"],
-          do: det
+    buckets = derived |> Gstr1.signed_details() |> Enum.map(& &1.detail)
 
     Enum.reduce(buckets, Map.put(@zero, "txval", 0), fn det, acc ->
       acc
@@ -105,6 +101,13 @@ defmodule Nila.Gst.Filing.Gstr3b do
       |> bump("sgst", det["samt"])
     end)
   end
+
+  @doc "Whether Table 3.1(a) contains a negative value this assembler cannot file safely yet."
+  def negative_outward_liability?(%{"liability_31" => %{"a" => liability}}) do
+    Enum.any?(~w(txval igst cgst sgst), &((liability[&1] || 0) < 0))
+  end
+
+  def negative_outward_liability?(_gstr3b), do: false
 
   # -- reverse charge -------------------------------------------------------
 

@@ -80,7 +80,7 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
   end
 
   defp invoice_properties(kind) do
-    %{
+    properties = %{
       invoice_number: %{type: "string"},
       invoice_date: %{type: "string"},
       seller: party_schema(kind == :purchase),
@@ -140,6 +140,17 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
           "Final printed amount payable after tax, charges and rounding."
         )
     }
+
+    if kind == :sales do
+      Map.put(properties, :document_type, %{
+        type: "string",
+        enum: ["invoice", "credit_note", "debit_note"],
+        description:
+          "Classify the document itself from its title and charging table. Footer terms that merely mention credit or debit notes do not change an invoice's type."
+      })
+    else
+      properties
+    end
   end
 
   defp party_schema(include_address?) do

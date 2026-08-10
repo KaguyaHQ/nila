@@ -45,6 +45,8 @@ defmodule Nila.Gst.Issues do
     "unreadable_amount" => {"required", :correction},
     "implausible_invoice_number" => {"required", :correction},
     "missing_invoice_number" => {"required", :correction},
+    "invalid_document_type" => {"blocking", :correction},
+    "document_type_conflict" => {"blocking", :correction},
     "zero_value_row" => {"required", :decision},
     "invalid_gstin" => {"required", :correction},
     "sequence_gaps" => {"required", :confirmation},
@@ -66,7 +68,6 @@ defmodule Nila.Gst.Issues do
     "cess_unsupported" => {"blocking", nil},
 
     # Documents this return has no table for
-    "credit_note_unsupported" => {"blocking", nil},
     "debit_note_unsupported" => {"blocking", nil},
     "export_supply_unsupported" => {"blocking", nil},
     "outward_reverse_charge_unsupported" => {"blocking", nil},

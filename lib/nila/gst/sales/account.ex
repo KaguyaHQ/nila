@@ -159,20 +159,22 @@ defmodule Nila.Gst.Sales.Account do
   end
 
   defp extracted_totals(invoices) do
-    invoices
-    |> Enum.flat_map(&List.wrap(&1["line_items"]))
-    |> Enum.reduce(empty_totals(), fn line, totals ->
-      taxable = number(line["taxable_value"])
-      igst = number(line["igst_amount"])
-      cgst = number(line["cgst_amount"])
-      sgst = number(line["sgst_amount"])
+    Enum.reduce(invoices, empty_totals(), fn invoice, totals ->
+      effect = Gstr1.document_effect(invoice)
 
-      totals
-      |> Map.update!(:taxable, &(&1 + taxable))
-      |> Map.update!(:igst, &(&1 + igst))
-      |> Map.update!(:cgst, &(&1 + cgst))
-      |> Map.update!(:sgst, &(&1 + sgst))
-      |> Map.update!(:tax, &(&1 + igst + cgst + sgst))
+      Enum.reduce(List.wrap(invoice["line_items"]), totals, fn line, totals ->
+        taxable = effect * number(line["taxable_value"])
+        igst = effect * number(line["igst_amount"])
+        cgst = effect * number(line["cgst_amount"])
+        sgst = effect * number(line["sgst_amount"])
+
+        totals
+        |> Map.update!(:taxable, &(&1 + taxable))
+        |> Map.update!(:igst, &(&1 + igst))
+        |> Map.update!(:cgst, &(&1 + cgst))
+        |> Map.update!(:sgst, &(&1 + sgst))
+        |> Map.update!(:tax, &(&1 + igst + cgst + sgst))
+      end)
     end)
   end
 
@@ -198,17 +200,21 @@ defmodule Nila.Gst.Sales.Account do
   defp draft_document_count(nil), do: 0
 
   defp draft_document_count(derived) do
-    derived
-    |> Map.get("b2b", [])
-    |> Enum.reduce(0, &(length(&1["inv"] || []) + &2))
+    invoices =
+      derived
+      |> Map.get("b2b", [])
+      |> Enum.reduce(0, &(length(&1["inv"] || []) + &2))
+
+    notes =
+      derived
+      |> Map.get("cdnr", [])
+      |> Enum.reduce(0, &(length(&1["nt"] || []) + &2))
+
+    invoices + notes
   end
 
   defp draft_details(derived) do
-    derived
-    |> Map.get("b2b", [])
-    |> Enum.flat_map(&List.wrap(&1["inv"]))
-    |> Enum.flat_map(&List.wrap(&1["itms"]))
-    |> Enum.map(&(&1["itm_det"] || %{}))
+    derived |> Gstr1.signed_details() |> Enum.map(& &1.detail)
   end
 
   defp totals_difference(draft, extracted) do

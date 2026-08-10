@@ -255,8 +255,8 @@ defmodule Nila.Gst.Extraction.Verify do
     Regex.match?(@rcm_positive, text) and not Regex.match?(@rcm_negative, text)
   end
 
-  @credit_note ~r/\bcredit\s+note\b/i
-  @debit_note ~r/\bdebit\s+note\b/i
+  @credit_note ~r/(?:^|\n)[\s|#>*_-]*(?:tax\s+)?credit\s+note(?:\s*(?:no\.?|number)?\s*[:#-]?\s*[A-Z0-9][^\n]*)?\s*(?:\||$)/im
+  @debit_note ~r/(?:^|\n)[\s|#>*_-]*(?:tax\s+)?debit\s+note(?:\s*(?:no\.?|number)?\s*[:#-]?\s*[A-Z0-9][^\n]*)?\s*(?:\||$)/im
   @export ~r/\b(export\s+invoice|letter\s+of\s+undertaking|\bLUT\b|special\s+economic\s+zone|\bSEZ\b|supply\s+meant\s+for\s+export)\b|\b(USD|EUR|GBP|AED|SGD)\s*[\d.,]/i
 
   @doc """

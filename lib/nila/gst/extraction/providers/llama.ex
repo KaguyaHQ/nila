@@ -347,10 +347,16 @@ defmodule Nila.Gst.Extraction.Providers.Llama do
     %{
       type: "object",
       properties: %{
+        document_type: %{
+          type: "string",
+          enum: ["invoice", "credit_note", "debit_note"],
+          description:
+            "Classify the document itself from its title and charging table. Footer terms that merely mention notes do not change an invoice's type."
+        },
         invoice_number: %{
           type: "string",
           description:
-            "Invoice number exactly as printed, including financial-year suffix, e.g. 20/2026-27"
+            "Document number exactly as printed, excluding labels such as Credit Note:, and including any financial-year suffix."
         },
         invoice_date: %{
           type: "string",
@@ -432,7 +438,14 @@ defmodule Nila.Gst.Extraction.Providers.Llama do
               @amount_desc
         }
       },
-      required: ["invoice_number", "invoice_date", "seller", "buyer", "line_items"]
+      required: [
+        "document_type",
+        "invoice_number",
+        "invoice_date",
+        "seller",
+        "buyer",
+        "line_items"
+      ]
     }
   end
 end

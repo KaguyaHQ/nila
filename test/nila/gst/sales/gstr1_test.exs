@@ -77,6 +77,103 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     end
   end
 
+  describe "registered credit notes" do
+    test "normalizes the source note number and derives the filed January CDNR row" do
+      note = credit_note()
+
+      assert note["document_type"] == "credit_note"
+      assert Gstr1.document_number(note) == "03/2024-25"
+      assert Gstr1.document_date(note) == ~D[2025-01-03]
+      assert Gstr1.document_effect(note) == -1
+
+      derived =
+        Gstr1.derive([note], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "012025"})
+
+      assert derived["b2b"] == []
+
+      assert derived["cdnr"] == [
+               %{
+                 "ctin" => "33AABCP9487A1ZG",
+                 "nt" => [
+                   %{
+                     "nt_num" => "03/2024-25",
+                     "nt_dt" => "03-01-2025",
+                     "ntty" => "C",
+                     "val" => 876_887.5,
+                     "pos" => "33",
+                     "rchrg" => "N",
+                     "inv_typ" => "R",
+                     "itms" => [
+                       %{
+                         "num" => 1,
+                         "itm_det" => %{
+                           "rt" => 18,
+                           "txval" => 743_125,
+                           "camt" => 66_881.25,
+                           "samt" => 66_881.25,
+                           "iamt" => 0,
+                           "csamt" => 0
+                         }
+                       }
+                     ]
+                   }
+                 ]
+               }
+             ]
+
+      assert get_in(derived, ["doc_issue", "doc_det"]) == [
+               %{
+                 "doc_num" => 5,
+                 "docs" => [
+                   %{
+                     "num" => 1,
+                     "from" => "03/2024-25",
+                     "to" => "03/2024-25",
+                     "totnum" => 1,
+                     "cancel" => 0,
+                     "net_issue" => 1
+                   }
+                 ]
+               }
+             ]
+
+      assert [hsn] = get_in(derived, ["hsn", "hsn_b2b"])
+      assert hsn["txval"] == -743_125
+      assert hsn["camt"] == -66_881.25
+      assert hsn["samt"] == -66_881.25
+      assert Gstr1.blocking_issues([note]) == []
+    end
+
+    test "classification disagreement blocks instead of flipping liability silently" do
+      invoice =
+        Gstr1.normalize_invoice(%{
+          "document" => %{
+            "credit_note" => true,
+            "debit_note" => false,
+            "extracted_type" => "invoice"
+          },
+          "data" => %{
+            "document_type" => "invoice",
+            "invoice_number" => "03/2024-25",
+            "invoice_date" => "03.01.2025",
+            "line_items" => []
+          }
+        })
+
+      assert [issue] =
+               Gstr1.validation_issues([invoice])
+               |> Enum.filter(&(&1["code"] == "document_type_conflict"))
+
+      assert issue["level"] == "blocking"
+      assert issue["fields"] == ["document_type"]
+    end
+
+    test "a credit note and invoice with the same number are not duplicate documents" do
+      invoice = %{dated("03.01.2025") | "invoice_number" => "03/2024-25"}
+      assert Gstr1.duplicate_number_issues([invoice, credit_note()]) == []
+    end
+  end
+
   describe "validation_issues/1 — the date that reaches the portal unchecked" do
     test "an unreadable date is raised as a correctable issue" do
       issues = Gstr1.validation_issues([dated("Invoice Dt.")])
@@ -133,6 +230,35 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   end
 
   defp date_issue?(issue), do: issue["code"] == "unreadable_invoice_date"
+
+  defp credit_note do
+    Gstr1.normalize_invoice(%{
+      "page" => 1,
+      "document" => %{"credit_note" => true, "debit_note" => false},
+      "data" => %{
+        "invoice_number" => "Credit Note:03/2024-25",
+        "invoice_date" => "03.01.2025",
+        "seller" => %{"name" => "BREEZE TECH", "gstin" => "33AEWPH4158J1Z3"},
+        "buyer" => %{"name" => "Philips India Ltd", "gstin" => "33AABCP9487A1ZG"},
+        "line_items" => [
+          %{
+            "description" => "AMC for Turnkey work for 29 Customers",
+            "hsn_sac" => "998719",
+            "quantity" => 29,
+            "unit_price" => 25_625,
+            "taxable_value" => 743_125,
+            "cgst_rate" => 9,
+            "cgst_amount" => 66_881.25,
+            "sgst_rate" => 9,
+            "sgst_amount" => 66_881.25
+          }
+        ],
+        "printed_total_taxable" => 743_125,
+        "printed_total_tax" => 133_762.5,
+        "printed_grand_total" => 876_887.5
+      }
+    })
+  end
 
   defp dated(printed) do
     Gstr1.normalize_invoice(%{
@@ -957,13 +1083,23 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       )
     end
 
-    test "a credit note blocks, because filing it as a sale moves the liability twice" do
-      invoice = sales_invoice(%{"document" => %{"credit_note" => true}})
+    test "a registered credit note is supported while a debit note still blocks" do
+      credit =
+        sales_invoice(%{
+          "document_type" => "credit_note",
+          "document" => %{"credit_note" => true}
+        })
 
-      assert [issue] = Gstr1.blocking_issues([invoice])
-      assert issue["code"] == "credit_note_unsupported"
+      debit =
+        sales_invoice(%{
+          "document_type" => "debit_note",
+          "document" => %{"debit_note" => true}
+        })
+
+      assert Gstr1.blocking_issues([credit]) == []
+      assert [issue] = Gstr1.blocking_issues([debit])
+      assert issue["code"] == "debit_note_unsupported"
       assert issue["level"] == "blocking"
-      assert issue["invoice"] == "112/2025-26"
     end
 
     test "an export, an outward reverse charge and a missing buyer GSTIN each block" do
@@ -1034,7 +1170,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       confirmed = %{
         "level" => "blocking",
         "status" => "resolved",
-        "code" => "credit_note_unsupported"
+        "code" => "debit_note_unsupported"
       }
 
       refute Nila.Gst.Sales.Workings.reviewable?([confirmed])

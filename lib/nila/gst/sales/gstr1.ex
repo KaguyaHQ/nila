@@ -36,7 +36,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   @money_tolerance 0.5
   @diff_tolerance 0.01
   @correctable_invoice_fields ~w(
-    invoice_number invoice_date seller_name seller_gstin buyer_name buyer_gstin
+    document_type invoice_number invoice_date seller_name seller_gstin buyer_name buyer_gstin
     printed_total_taxable printed_total_tax printed_grand_total
   )
   @correctable_line_fields ~w(
@@ -137,6 +137,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
     data = raw["data"] || raw["extract_result"] || raw["result"] || raw
     seller = data["seller"] || %{}
     buyer = data["buyer"] || data["bill_to"] || %{}
+    document = raw["document"] || %{}
+    document_type = normalize_document_type(data["document_type"], document)
 
     line_items =
       data
@@ -148,7 +150,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "page" => raw["page"] || data["page"],
       "source_pages" => raw["source_pages"] || [raw["page"] || data["page"]],
       "source_attribution" => raw["source_attribution"],
-      "invoice_number" => normalize_invoice_number(value(data, ["invoice_number", "inum"])),
+      "document_type" => document_type,
+      "invoice_number" =>
+        normalize_document_number(value(data, ["invoice_number", "inum"]), document_type),
       "invoice_date" => normalize_invoice_date(value(data, ["invoice_date", "idt"])),
       "seller_name" => value(data, ["seller_name"]) || seller["name"],
       "seller_gstin" => value(data, ["seller_gstin"]) || seller["gstin"],
@@ -160,8 +164,22 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "printed_total_tax" => money(value(data, ["printed_total_tax", "total_tax_amount"])),
       "printed_grand_total" => money(value(data, ["printed_grand_total", "total_gross_amount"])),
       "confidence" => non_empty_map(raw["confidence"]) || build_confidence(raw),
-      "document" => raw["document"] || %{}
+      "document" => document
     }
+  end
+
+  @doc "The canonical source-document classification used by filing and accounting."
+  def document_type(invoice), do: invoice["document_type"] || "invoice"
+
+  @doc "The source document's number, retained in the legacy invoice-number storage key."
+  def document_number(invoice), do: invoice["invoice_number"]
+
+  @doc "The source document's date, retained in the legacy invoice-date storage key."
+  def document_date(invoice), do: invoice["invoice_date"]
+
+  @doc "The direction this source document contributes to outward liability."
+  def document_effect(invoice) do
+    if document_type(invoice) == "credit_note", do: -1, else: 1
   end
 
   def validation_issues(invoices) do
@@ -196,7 +214,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
     # Grouped on the matching key, not the printed string: `inv/1` and `INV/1`
     # are one invoice issued twice, and grouping on the raw text let the pair
     # through as two. The message still names the number as it was read.
-    |> Enum.group_by(&InvoiceNumber.key(&1["invoice_number"]))
+    |> Enum.group_by(&{document_type(&1), InvoiceNumber.key(&1["invoice_number"])})
     |> Enum.filter(fn {_key, members} -> length(members) > 1 end)
     |> Enum.map(fn {_key, members} ->
       invoice_number = members |> hd() |> Map.fetch!("invoice_number")
@@ -219,10 +237,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
     document = invoice["document"] || %{}
 
     [
-      {document["credit_note"], "credit_note_unsupported",
-       "this is a credit note, and GSTR-1 derivation has no cdnr table — filing it as a regular invoice would move the liability by twice its value"},
-      {document["debit_note"], "debit_note_unsupported",
-       "this is a debit note, and GSTR-1 derivation has no cdnr table"},
+      {document_type(invoice) == "debit_note" or document["debit_note"], "debit_note_unsupported",
+       "this is a debit note, and GSTR-1 derivation only supports credit notes"},
       {document["export"], "export_supply_unsupported",
        "this bill carries export, LUT or SEZ wording, and GSTR-1 derivation has no exp table — it would be filed as an ordinary taxable supply"},
       {document["reverse_charge"], "outward_reverse_charge_unsupported",
@@ -329,21 +345,11 @@ defmodule Nila.Gst.Sales.Gstr1 do
   def derive(invoices, filed) do
     seller_gstin = filed["gstin"] || first_present(invoices, "seller_gstin")
     seller_state = state_code(seller_gstin)
+    regular_invoices = Enum.filter(invoices, &(document_type(&1) == "invoice"))
+    credit_notes = Enum.filter(invoices, &(document_type(&1) == "credit_note"))
 
-    b2b =
-      invoices
-      |> Enum.group_by(& &1["buyer_gstin"])
-      |> Enum.map(fn {ctin, buyer_invoices} ->
-        %{
-          "ctin" => ctin,
-          "inv" =>
-            Enum.map(
-              Enum.sort_by(buyer_invoices, &invoice_sort_key(&1["invoice_number"])),
-              &derive_invoice(&1, seller_state)
-            )
-        }
-      end)
-      |> Enum.sort_by(& &1["ctin"])
+    b2b = derive_b2b(regular_invoices, seller_state)
+    cdnr = derive_cdnr(credit_notes, seller_state)
 
     %{
       "gstin" => seller_gstin,
@@ -352,10 +358,43 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "gt" => filed["gt"] || 0.0,
       "cur_gt" => filed["cur_gt"] || 0.0,
       "b2b" => b2b,
-      "hsn" => %{"hsn_b2b" => derive_hsn(invoices), "hsn_b2c" => []},
+      "cdnr" => cdnr,
+      "hsn" => %{"hsn_b2b" => derive_hsn(regular_invoices ++ credit_notes), "hsn_b2c" => []},
       "doc_issue" => derive_doc_issue(invoices),
       "fil_dt" => filed["fil_dt"]
     }
+  end
+
+  defp derive_b2b(invoices, seller_state) do
+    invoices
+    |> Enum.group_by(& &1["buyer_gstin"])
+    |> Enum.map(fn {ctin, buyer_invoices} ->
+      %{
+        "ctin" => ctin,
+        "inv" =>
+          Enum.map(
+            Enum.sort_by(buyer_invoices, &invoice_sort_key(document_number(&1))),
+            &derive_invoice(&1, seller_state)
+          )
+      }
+    end)
+    |> Enum.sort_by(& &1["ctin"])
+  end
+
+  defp derive_cdnr(notes, seller_state) do
+    notes
+    |> Enum.group_by(& &1["buyer_gstin"])
+    |> Enum.map(fn {ctin, buyer_notes} ->
+      %{
+        "ctin" => ctin,
+        "nt" =>
+          Enum.map(
+            Enum.sort_by(buyer_notes, &invoice_sort_key(document_number(&1))),
+            &derive_credit_note(&1, seller_state)
+          )
+      }
+    end)
+    |> Enum.sort_by(& &1["ctin"])
   end
 
   defp normalize_line(line) do
@@ -386,7 +425,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
       |> Enum.reject(& &1["passed"])
       |> failed_check_issues(invoice)
 
-    invoice_number_issues(invoice) ++
+    document_type_issues(invoice) ++
+      invoice_number_issues(invoice) ++
       invoice_date_issues(invoice) ++
       check_issues ++
       gstin_issues(invoice) ++
@@ -640,6 +680,64 @@ defmodule Nila.Gst.Sales.Gstr1 do
   #
   # Gated on the invoice carrying values, the same gate `invoice_number_issues/1`
   # uses: a furniture row scraped off a page header is not a bill anyone files.
+  defp document_type_issues(invoice) do
+    document = invoice["document"] || %{}
+    marked_type = marker_document_type(document)
+    extracted_type = document["extracted_type"]
+    canonical = document_type(invoice)
+
+    cond do
+      canonical not in ~w(invoice credit_note debit_note) ->
+        [
+          issue(
+            invoice,
+            "invalid_document_type",
+            "document type #{inspect(canonical)} is not invoice, credit_note, or debit_note",
+            ["document_type"],
+            Issues.level_for("invalid_document_type")
+          )
+        ]
+
+      document["credit_note"] == true and document["debit_note"] == true ->
+        [
+          issue(
+            invoice,
+            "document_type_conflict",
+            "the document carries both credit-note and debit-note markers",
+            ["document_type"],
+            Issues.level_for("document_type_conflict")
+          )
+        ]
+
+      is_binary(extracted_type) and not is_nil(marked_type) and extracted_type != marked_type and
+          canonical != marked_type ->
+        [
+          issue(
+            invoice,
+            "document_type_conflict",
+            "structured extraction says #{extracted_type}, while the document heading says #{marked_type}",
+            ["document_type"],
+            Issues.level_for("document_type_conflict")
+          )
+        ]
+
+      extracted_type in ~w(credit_note debit_note) and is_nil(marked_type) and
+          canonical == extracted_type ->
+        [
+          issue(
+            invoice,
+            "document_type_conflict",
+            "structured extraction says #{extracted_type}, but no matching document heading was found",
+            ["document_type"],
+            Issues.level_for("document_type_conflict")
+          )
+        ]
+
+      true ->
+        []
+    end
+  end
+
   defp invoice_date_issues(%{"invoice_date" => %Date{}}), do: []
 
   defp invoice_date_issues(invoice) do
@@ -970,22 +1068,24 @@ defmodule Nila.Gst.Sales.Gstr1 do
   gaps.
   """
   def series_account(invoices) do
-    case parsed_numbers(invoices) do
+    case invoices |> Enum.filter(&(document_type(&1) == "invoice")) |> parsed_numbers() do
       [] ->
         nil
 
       parsed ->
         numbers = Enum.map(parsed, & &1.number)
-        suffix = parsed |> hd() |> Map.fetch!(:suffix)
+        first = hd(parsed)
         min = Enum.min(numbers)
         max = Enum.max(numbers)
 
         %{
-          from: "#{min}#{suffix}",
-          to: "#{max}#{suffix}",
-          missing: Enum.map(Enum.to_list(min..max) -- numbers, &"#{&1}#{suffix}"),
+          from: format_series_number(min, first),
+          to: format_series_number(max, first),
+          missing: Enum.map(Enum.to_list(min..max) -- numbers, &format_series_number(&1, first)),
           duplicates:
-            (numbers -- Enum.uniq(numbers)) |> Enum.uniq() |> Enum.map(&"#{&1}#{suffix}")
+            (numbers -- Enum.uniq(numbers))
+            |> Enum.uniq()
+            |> Enum.map(&format_series_number(&1, first))
         }
     end
   end
@@ -1041,41 +1141,57 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   defp derive_invoice(invoice, seller_state) do
     buyer_state = state_code(invoice["buyer_gstin"])
-    lines_by_rate = Enum.group_by(invoice["line_items"], &line_rate/1)
-
-    itms =
-      lines_by_rate
-      |> Enum.sort_by(fn {rate, _lines} -> rate end)
-      |> Enum.with_index(1)
-      |> Enum.map(fn {{rate, lines}, index} ->
-        tax = computed_bucket_tax(lines, rate, invoice_tax_mode(lines, seller_state, buyer_state))
-
-        %{
-          "num" => index,
-          "itm_det" => %{
-            "rt" => normalize_number(rate),
-            "txval" => tax.txval,
-            "camt" => tax.camt,
-            "samt" => tax.samt,
-            "iamt" => tax.iamt,
-            "csamt" => 0
-          }
-        }
-      end)
-
-    taxable = invoice_taxable(invoice)
-    tax = invoice_tax(invoice)
 
     %{
-      "inum" => invoice["invoice_number"],
-      "idt" => normalize_date(invoice["invoice_date"]),
-      "val" => round2(taxable + tax),
+      "inum" => document_number(invoice),
+      "idt" => normalize_date(document_date(invoice)),
+      "val" => document_value(invoice),
       "pos" => buyer_state || seller_state,
       "rchrg" => "N",
       "inv_typ" => "R",
-      "itms" => itms
+      "itms" => derive_items(invoice, seller_state, buyer_state)
     }
   end
+
+  defp derive_credit_note(note, seller_state) do
+    buyer_state = state_code(note["buyer_gstin"])
+
+    %{
+      "nt_num" => document_number(note),
+      "nt_dt" => normalize_date(document_date(note)),
+      "ntty" => "C",
+      "val" => document_value(note),
+      "pos" => buyer_state || seller_state,
+      "rchrg" => "N",
+      "inv_typ" => "R",
+      "itms" => derive_items(note, seller_state, buyer_state)
+    }
+  end
+
+  defp derive_items(document, seller_state, buyer_state) do
+    document["line_items"]
+    |> Enum.group_by(&line_rate/1)
+    |> Enum.sort_by(fn {rate, _lines} -> rate end)
+    |> Enum.with_index(1)
+    |> Enum.map(fn {{rate, lines}, index} ->
+      tax = computed_bucket_tax(lines, rate, invoice_tax_mode(lines, seller_state, buyer_state))
+
+      %{
+        "num" => index,
+        "itm_det" => %{
+          "rt" => normalize_number(rate),
+          "txval" => tax.txval,
+          "camt" => tax.camt,
+          "samt" => tax.samt,
+          "iamt" => tax.iamt,
+          "csamt" => 0
+        }
+      }
+    end)
+  end
+
+  defp document_value(document),
+    do: round2(invoice_taxable(document) + invoice_tax(document))
 
   # The HSN summary reports the code the bill prints, at the length it prints it.
   #
@@ -1097,26 +1213,20 @@ defmodule Nila.Gst.Sales.Gstr1 do
   """
   def hsn_summary(invoices) do
     invoices
-    |> Enum.flat_map(fn invoice ->
-      Enum.map(invoice["line_items"] || [], &{invoice["invoice_number"], &1})
-    end)
-    |> Enum.group_by(fn {_inum, line} -> {hsn_code(line["hsn_sac"]), line_rate(line)} end)
-    |> Enum.map(fn {{hsn, rate}, tagged} ->
-      lines = Enum.map(tagged, &elem(&1, 1))
-      intra_tax = mode_tax(lines, rate, :intrastate)
-      inter_tax = mode_tax(lines, rate, :interstate)
-
+    |> Enum.flat_map(&document_hsn_contributions/1)
+    |> Enum.group_by(&{&1["hsn_sc"], &1["rt"]})
+    |> Enum.map(fn {{hsn, rate}, contribs} ->
       %{
         "hsn_sc" => hsn,
         "rt" => normalize_number(rate),
         "uqc" => if(String.starts_with?(to_string(hsn), "99"), do: "NA", else: "OTH"),
         "qty" => 0,
-        "txval" => round2(sum(lines, "taxable_value")),
-        "camt" => intra_tax.camt,
-        "samt" => intra_tax.samt,
-        "iamt" => inter_tax.iamt,
-        "description" => official_hsn_description(lines),
-        "contribs" => hsn_contribs(tagged, rate)
+        "txval" => round2(sum_maps(contribs, "txval")),
+        "camt" => round2(sum_maps(contribs, "camt")),
+        "samt" => round2(sum_maps(contribs, "samt")),
+        "iamt" => round2(sum_maps(contribs, "iamt")),
+        "description" => official_hsn_description(Enum.flat_map(contribs, & &1["lines"])),
+        "contribs" => Enum.map(contribs, &Map.take(&1, ~w(inum txval tax)))
       }
     end)
     |> Enum.sort_by(& &1["hsn_sc"])
@@ -1124,21 +1234,35 @@ defmodule Nila.Gst.Sales.Gstr1 do
     |> Enum.map(fn {row, index} -> Map.put(row, "num", index) end)
   end
 
-  defp hsn_contribs(tagged, rate) do
-    lines_by_inum = Enum.group_by(tagged, &elem(&1, 0), &elem(&1, 1))
+  defp document_hsn_contributions(document) do
+    effect = document_effect(document)
 
-    for inum <- tagged |> Enum.map(&elem(&1, 0)) |> Enum.uniq() do
-      lines = lines_by_inum[inum]
+    document["line_items"]
+    |> List.wrap()
+    |> Enum.group_by(&{hsn_code(&1["hsn_sac"]), line_rate(&1)})
+    |> Enum.map(fn {{hsn, rate}, lines} ->
       intra = mode_tax(lines, rate, :intrastate)
       inter = mode_tax(lines, rate, :interstate)
+      txval = effect * round2(sum(lines, "taxable_value"))
+      camt = effect * intra.camt
+      samt = effect * intra.samt
+      iamt = effect * inter.iamt
 
       %{
-        "inum" => inum,
-        "txval" => round2(sum(lines, "taxable_value")),
-        "tax" => round2(intra.camt + intra.samt + inter.iamt)
+        "inum" => document_number(document),
+        "hsn_sc" => hsn,
+        "rt" => rate,
+        "txval" => txval,
+        "camt" => camt,
+        "samt" => samt,
+        "iamt" => iamt,
+        "tax" => round2(camt + samt + iamt),
+        "lines" => lines
       }
-    end
+    end)
   end
+
+  defp sum_maps(maps, field), do: maps |> Enum.map(&num(&1[field])) |> Enum.sum()
 
   defp official_hsn_description(lines) do
     lines
@@ -1163,13 +1287,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
   invoice put into the bucket, for the workings screen to open.
   """
   def rate_summary(derived) do
-    derived["b2b"]
-    |> List.wrap()
-    |> Enum.flat_map(fn party ->
-      Enum.flat_map(party["inv"] || [], fn inv ->
-        Enum.map(inv["itms"] || [], fn itm -> {inv["inum"], itm["itm_det"] || %{}} end)
-      end)
-    end)
+    derived
+    |> signed_details()
+    |> Enum.map(fn entry -> {entry.number, entry.detail} end)
     |> Enum.group_by(fn {_inum, det} -> det["rt"] end)
     |> Enum.map(fn {rate, tagged} ->
       dets = Enum.map(tagged, &elem(&1, 1))
@@ -1203,34 +1323,77 @@ defmodule Nila.Gst.Sales.Gstr1 do
   defp det_tax(dets),
     do: dets |> Enum.map(&(num(&1["camt"]) + num(&1["samt"]) + num(&1["iamt"]))) |> Enum.sum()
 
-  defp derive_doc_issue(invoices), do: invoices |> parsed_numbers() |> build_doc_issue()
+  @doc "Every filed rate bucket with its outward-liability sign already applied."
+  def signed_details(derived) do
+    invoice_details =
+      for party <- derived["b2b"] || [],
+          invoice <- party["inv"] || [],
+          item <- invoice["itms"] || [],
+          do: %{number: invoice["inum"], type: "invoice", detail: item["itm_det"] || %{}}
 
-  # No parseable invoice numbers (empty month, or none numeric) means nothing
-  # was issued — a valid return with an empty doc_det, not a crash.
-  defp build_doc_issue([]), do: %{"doc_det" => []}
+    credit_details =
+      for party <- derived["cdnr"] || [],
+          note <- party["nt"] || [],
+          item <- note["itms"] || [],
+          do: %{
+            number: note["nt_num"],
+            type: note_document_type(note["ntty"]),
+            detail: scale_detail(item["itm_det"] || %{}, note_effect(note["ntty"]))
+          }
 
-  defp build_doc_issue(parsed) do
+    invoice_details ++ credit_details
+  end
+
+  defp note_document_type("C"), do: "credit_note"
+  defp note_document_type("D"), do: "debit_note"
+
+  defp note_effect("C"), do: -1
+  defp note_effect("D"), do: 1
+
+  defp scale_detail(detail, effect) do
+    Map.new(detail, fn
+      {field, value} when field in ~w(txval camt samt iamt csamt) and is_number(value) ->
+        {field, value * effect}
+
+      entry ->
+        entry
+    end)
+  end
+
+  defp derive_doc_issue(invoices) do
+    groups =
+      [
+        {1, Enum.filter(invoices, &(document_type(&1) == "invoice"))},
+        {5, Enum.filter(invoices, &(document_type(&1) == "credit_note"))}
+      ]
+      |> Enum.flat_map(fn {doc_num, documents} ->
+        case parsed_numbers(documents) do
+          [] -> []
+          parsed -> [build_doc_issue_group(doc_num, parsed)]
+        end
+      end)
+
+    %{"doc_det" => groups}
+  end
+
+  defp build_doc_issue_group(doc_num, parsed) do
     numbers = Enum.map(parsed, & &1.number)
     min = Enum.min(numbers)
     max = Enum.max(numbers)
-    suffix = parsed |> hd() |> Map.fetch!(:suffix)
+    first = hd(parsed)
     totnum = max - min + 1
     net_issue = length(Enum.uniq(numbers))
 
     %{
-      "doc_det" => [
+      "doc_num" => doc_num,
+      "docs" => [
         %{
-          "doc_num" => 1,
-          "docs" => [
-            %{
-              "num" => 1,
-              "from" => "#{min}#{suffix}",
-              "to" => "#{max}#{suffix}",
-              "totnum" => totnum,
-              "cancel" => totnum - net_issue,
-              "net_issue" => net_issue
-            }
-          ]
+          "num" => 1,
+          "from" => format_series_number(min, first),
+          "to" => format_series_number(max, first),
+          "totnum" => totnum,
+          "cancel" => totnum - net_issue,
+          "net_issue" => net_issue
         }
       ]
     }
@@ -1365,6 +1528,37 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end
   end
 
+  defp normalize_document_type(type, _document)
+       when type in ["invoice", "credit_note", "debit_note"] do
+    type
+  end
+
+  defp normalize_document_type(_type, document), do: marker_document_type(document) || "invoice"
+
+  defp marker_document_type(%{"credit_note" => true, "debit_note" => true}), do: nil
+  defp marker_document_type(%{"credit_note" => true}), do: "credit_note"
+  defp marker_document_type(%{"debit_note" => true}), do: "debit_note"
+  defp marker_document_type(_document), do: nil
+
+  defp normalize_document_number(nil, _document_type), do: nil
+
+  defp normalize_document_number(number, document_type) do
+    number
+    |> to_string()
+    |> strip_document_label(document_type)
+    |> normalize_invoice_number()
+  end
+
+  defp strip_document_label(number, "credit_note") do
+    String.replace(number, ~r/^\s*(?:tax\s+)?credit\s+note\s*(?:no\.?|number)?\s*[:#-]?\s*/i, "")
+  end
+
+  defp strip_document_label(number, "debit_note") do
+    String.replace(number, ~r/^\s*(?:tax\s+)?debit\s+note\s*(?:no\.?|number)?\s*[:#-]?\s*/i, "")
+  end
+
+  defp strip_document_label(number, _document_type), do: number
+
   defp normalize_invoice_number(nil), do: nil
 
   defp normalize_invoice_number(invoice_number) do
@@ -1388,9 +1582,16 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   defp parse_invoice_number(invoice_number) do
     case Regex.run(~r/^(\d+)(.*)$/, normalize_invoice_number(invoice_number)) do
-      [_, number, suffix] -> %{number: String.to_integer(number), suffix: suffix}
-      _ -> nil
+      [_, number, suffix] ->
+        %{number: String.to_integer(number), width: String.length(number), suffix: suffix}
+
+      _ ->
+        nil
     end
+  end
+
+  defp format_series_number(number, parsed) do
+    String.pad_leading(to_string(number), parsed.width, "0") <> parsed.suffix
   end
 
   defp invoice_sort_key(invoice_number) do

@@ -11,7 +11,7 @@ defmodule Nila.Gst.Sales.Review do
   """
 
   alias Nila.Gst.Issues
-  alias Nila.Gst.Sales.Workings
+  alias Nila.Gst.Sales.{Gstr1, Workings}
 
   @doc "Builds both review scopes and scope-independent lane progress."
   def build(workings) when is_map(workings) do
@@ -116,14 +116,17 @@ defmodule Nila.Gst.Sales.Review do
         nil
 
       treatment ->
-        amounts = treatment_amounts(treatment)
+        amounts =
+          treatment
+          |> treatment_amounts()
+          |> scale_amounts(Gstr1.document_effect(invoice))
 
         %{
           "source_id" => invoice["id"],
-          "invoice_number" => invoice["invoice_number"],
+          "invoice_number" => Gstr1.document_number(invoice),
           "buyer_gstin" => invoice["buyer_gstin"],
-          "table" => "b2b",
-          "category" => treatment["inv_typ"],
+          "table" => if(Gstr1.document_type(invoice) == "credit_note", do: "cdnr", else: "b2b"),
+          "category" => treatment["ntty"] || treatment["inv_typ"],
           "place_of_supply" => treatment["pos"],
           "tax_head" => tax_head(amounts),
           "taxable_amount" => amounts["taxable"],
@@ -193,11 +196,21 @@ defmodule Nila.Gst.Sales.Review do
   defp issue_source_ids(_issue, _invoices), do: []
 
   defp derived_invoice(derived, invoice) do
-    derived
-    |> Map.get("b2b", [])
-    |> Enum.filter(&(&1["ctin"] == invoice["buyer_gstin"]))
-    |> Enum.flat_map(&List.wrap(&1["inv"]))
-    |> Enum.find(&(&1["inum"] == invoice["invoice_number"]))
+    case Gstr1.document_type(invoice) do
+      "credit_note" ->
+        derived
+        |> Map.get("cdnr", [])
+        |> Enum.filter(&(&1["ctin"] == invoice["buyer_gstin"]))
+        |> Enum.flat_map(&List.wrap(&1["nt"]))
+        |> Enum.find(&(&1["nt_num"] == Gstr1.document_number(invoice)))
+
+      _invoice ->
+        derived
+        |> Map.get("b2b", [])
+        |> Enum.filter(&(&1["ctin"] == invoice["buyer_gstin"]))
+        |> Enum.flat_map(&List.wrap(&1["inv"]))
+        |> Enum.find(&(&1["inum"] == Gstr1.document_number(invoice)))
+    end
   end
 
   defp treatment_amounts(treatment) do
@@ -215,6 +228,10 @@ defmodule Nila.Gst.Sales.Review do
         |> Map.update!("cess", &(&1 + number(detail["csamt"])))
       end
     )
+  end
+
+  defp scale_amounts(amounts, effect) do
+    Map.new(amounts, fn {key, value} -> {key, value * effect} end)
   end
 
   defp tax_head(%{"igst" => igst}) when igst != 0, do: "igst"

@@ -84,6 +84,31 @@ defmodule Nila.Gst.Sales.ValuesTest do
       assert per_invoice == filed_tax
     end
 
+    test "credit-note face values stay positive while month liability is reduced" do
+      sale =
+        invoice(%{
+          "invoice_number" => "I-1",
+          "line_items" => [line(2000.0, 18.0, :intrastate)]
+        })
+
+      note =
+        invoice(%{
+          "document_type" => "credit_note",
+          "invoice_number" => "CN-1",
+          "line_items" => [line(500.0, 18.0, :intrastate)]
+        })
+
+      derived = derive([sale, note])
+      note_values = Values.for_invoice(note, derived)
+
+      assert note_values.filed.taxable == 500.0
+      assert note_values.filed.tax == 90.0
+      assert note_values.liability_effect.taxable == -500.0
+      assert note_values.liability_effect.tax == -90.0
+      assert Values.filed_totals(derived).taxable == 1500.0
+      assert Values.filed_totals(derived).tax == 270.0
+    end
+
     test "the filed total is computed once — the month equals the sum of its invoices" do
       invoices =
         for n <- 1..7 do
