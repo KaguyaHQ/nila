@@ -10,6 +10,7 @@ defmodule Nila.Gst.Purchase.Books do
   and mixed date formats.
   """
 
+  alias Nila.Gst.Extraction.LineAmounts
   alias Nila.Gst.InvoiceNumber
 
   @doc """
@@ -243,17 +244,18 @@ defmodule Nila.Gst.Purchase.Books do
   # one. The zero still goes into the sums — the invoice has to total to
   # something — but `unreadable_amounts` carries the evidence out to the flag.
   @line_amount_fields [
-    {"taxable_value", ["taxable_paise"]},
     {"cgst_amount", ["tax_paise", "cgst"]},
     {"sgst_amount", ["tax_paise", "sgst"]},
     {"igst_amount", ["tax_paise", "igst"]}
   ]
 
   defp normalize_line(line) do
+    amounts = LineAmounts.normalize(line)
+
     read =
-      Map.new(@line_amount_fields, fn {source, _path} ->
-        {source, paise_or_error(line[source])}
-      end)
+      @line_amount_fields
+      |> Map.new(fn {source, _path} -> {source, paise_or_error(line[source])} end)
+      |> Map.put("taxable_value", taxable_paise_or_error(line, amounts))
 
     unreadable =
       for {source, :unreadable} <- read, do: source
@@ -262,7 +264,10 @@ defmodule Nila.Gst.Purchase.Books do
       "description" => presence(line["description"]),
       "hsn_sac" => line["hsn_sac"] |> presence() |> strip_non_digits(),
       "quantity" => line["quantity"],
-      "unit_price_paise" => paise_or_nil(line["unit_price"]),
+      "unit_price_paise" => paise_or_nil(amounts.printed_unit_price),
+      "printed_line_amount_paise" => paise_or_nil(amounts.printed_line_amount),
+      "printed_taxable_value_paise" => paise_or_nil(amounts.printed_taxable_value),
+      "amount_tax_basis" => amounts.amount_tax_basis,
       "discount_rate" => line["discount_rate"],
       "discount_paise" => paise_or_nil(line["discount_amount"]),
       "taxable_paise" => read_paise(read, "taxable_value"),
@@ -277,6 +282,31 @@ defmodule Nila.Gst.Purchase.Books do
       "unreadable_amounts" => if(unreadable == [], do: nil, else: Enum.sort(unreadable))
     }
   end
+
+  defp taxable_paise_or_error(line, amounts) do
+    cond do
+      Map.has_key?(line, "printed_taxable_value") and
+          not is_nil(line["printed_taxable_value"]) ->
+        paise_or_error(line["printed_taxable_value"])
+
+      not Map.has_key?(line, "printed_taxable_value") and
+          not is_nil(line["taxable_value"]) ->
+        paise_or_error(line["taxable_value"])
+
+      amounts.amount_tax_basis in ~w(inclusive exclusive) and
+          is_nil(amounts.taxable_value) ->
+        line
+        |> then(&(&1["printed_line_amount"] || &1["tax_inclusive_value"]))
+        |> paise_or_error()
+        |> missing_unless_unreadable()
+
+      true ->
+        paise_or_error(amounts.taxable_value)
+    end
+  end
+
+  defp missing_unless_unreadable(:unreadable), do: :unreadable
+  defp missing_unless_unreadable(_clean_or_missing), do: :missing
 
   defp read_paise(read, source) do
     case read[source] do

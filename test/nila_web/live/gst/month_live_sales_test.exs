@@ -1564,13 +1564,16 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     view |> element("#gstr1-inv-40\\/2025-26") |> render_click()
 
     view
-    |> element("button[phx-value-field='line_items[0].taxable_value']", "Correct")
+    |> element("button[phx-value-field='line_items[0].printed_taxable_value']", "Correct")
     |> render_click()
 
     view
     |> element("form[phx-submit='save_correct']")
     |> render_submit(%{
-      "correction" => %{"field" => "line_items[0].taxable_value", "value" => "1500"}
+      "correction" => %{
+        "field" => "line_items[0].printed_taxable_value",
+        "value" => "1500"
+      }
     })
 
     _ = :sys.get_state(view.pid)

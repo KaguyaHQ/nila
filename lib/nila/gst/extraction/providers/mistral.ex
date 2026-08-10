@@ -93,7 +93,10 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
         items: line_item_schema()
       },
       printed_subtotal_before_discount:
-        described_nullable("number", "Printed goods/services subtotal before any discount."),
+        described_nullable(
+          "number",
+          "Literal goods/services subtotal printed before any discount. Copy it regardless of whether it includes GST; this field does not imply a taxable or tax-exclusive basis."
+        ),
       printed_discount_amount:
         described_nullable(
           "number",
@@ -205,24 +208,29 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
       hsn_sac: nullable("string"),
       quantity: nullable("number"),
       uom: nullable("string"),
-      unit_price: nullable("number"),
+      printed_unit_price:
+        described_nullable(
+          "number",
+          "Unit rate printed for this line. Copy it regardless of whether prices include GST; do not multiply it by quantity."
+        ),
       discount_rate: described_nullable("number", "Printed percentage discount for this item."),
       discount_amount:
         described_nullable("number", "Discount amount subtracted from this item's list value."),
-      taxable_value: %{
-        anyOf: [%{type: "number"}, %{type: "null"}],
-        description:
-          "Printed post-discount taxable value before GST. A Rate, Amount, Sub Total or line value labelled Tax Inclusive is NOT taxable_value; return null for taxable_value and copy that printed inclusive amount into tax_inclusive_value instead. Never return a pre-discount or tax-inclusive value here."
-      },
-      tax_inclusive_value:
+      printed_line_amount:
         described_nullable(
           "number",
-          "Printed line amount including GST when the document labels the rate, amount, subtotal or value as Tax Inclusive. Null for tax-exclusive lines."
+          "Final post-discount extended Amount/Value printed for this whole line. This is not a unit rate. Copy it whether tax-inclusive or tax-exclusive; null when no line amount is printed."
         ),
-      tax_inclusive: %{
-        type: "boolean",
+      printed_taxable_value:
+        described_nullable(
+          "number",
+          "Taxable value before GST only when the document prints a separate taxable value for this line. Copy it even when the rate or line amount is tax-inclusive; null when no separate line taxable value is printed."
+        ),
+      amount_tax_basis: %{
+        type: "string",
+        enum: ["inclusive", "exclusive", "unknown"],
         description:
-          "True only when the document explicitly labels this line/table amount as Tax Inclusive; otherwise false."
+          "Whether the printed line Amount includes GST. A Tax Inclusive label on the item table, Amount column or subtotal applies to every contributing line unless the document says otherwise. Use exclusive only when the document positively shows GST is added to line Amounts; use unknown when unclear."
       },
       cgst_rate: nullable("number"),
       cgst_amount: nullable("number"),

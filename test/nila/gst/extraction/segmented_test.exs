@@ -105,9 +105,14 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
       assert Map.has_key?(properties, "supply_type")
       line_properties = get_in(properties, ["line_items", "items", "properties"])
       assert Map.has_key?(line_properties, "item_name")
-      assert Map.has_key?(line_properties, "tax_inclusive_value")
-      assert Map.has_key?(line_properties, "tax_inclusive")
-      assert line_properties["taxable_value"]["description"] =~ "Tax Inclusive"
+      assert Map.has_key?(line_properties, "printed_unit_price")
+      assert Map.has_key?(line_properties, "printed_line_amount")
+      assert Map.has_key?(line_properties, "printed_taxable_value")
+
+      assert line_properties["amount_tax_basis"]["enum"] ==
+               ["inclusive", "exclusive", "unknown"]
+
+      assert line_properties["amount_tax_basis"]["description"] =~ "subtotal applies"
 
       reply(conn, %{
         "document_type" => "debit_note",

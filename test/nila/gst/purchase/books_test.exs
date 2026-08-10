@@ -55,6 +55,67 @@ defmodule Nila.Gst.Purchase.BooksTest do
       assert result["skipped_pages"] == []
     end
 
+    test "tax-inclusive purchase evidence derives taxable paise without changing printed amounts" do
+      result =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "is_invoice" => true,
+            "invoice_number" => "INC-1",
+            "invoice_date" => "15/07/2026",
+            "seller" => %{"name" => "Supplier", "gstin" => "29AAVCS8021P1ZB"},
+            "buyer" => %{},
+            "line_items" => [
+              %{
+                "description" => "Inclusive goods",
+                "hsn_sac" => "8471",
+                "quantity" => 1,
+                "printed_unit_price" => 1_180,
+                "printed_line_amount" => 1_180,
+                "printed_taxable_value" => nil,
+                "amount_tax_basis" => "inclusive",
+                "igst_rate" => 18,
+                "igst_amount" => 180
+              }
+            ]
+          })
+        ])
+
+      assert [invoice] = result["invoices"]
+      assert invoice["taxable_paise"] == 100_000
+      assert [line] = invoice["line_items"]
+      assert line["unit_price_paise"] == 118_000
+      assert line["printed_line_amount_paise"] == 118_000
+      assert line["printed_taxable_value_paise"] == nil
+      assert line["amount_tax_basis"] == "inclusive"
+    end
+
+    test "does not book an inclusive gross as taxable when the GST rate is missing" do
+      result =
+        PurchaseBooks.normalize([
+          artifact(1, %{
+            "is_invoice" => true,
+            "invoice_number" => "INC-NO-RATE",
+            "invoice_date" => "15/07/2026",
+            "seller" => %{"name" => "Supplier", "gstin" => "29AAVCS8021P1ZB"},
+            "buyer" => %{},
+            "line_items" => [
+              %{
+                "description" => "Inclusive goods",
+                "printed_line_amount" => 1_180,
+                "printed_taxable_value" => nil,
+                "amount_tax_basis" => "inclusive"
+              }
+            ]
+          })
+        ])
+
+      assert [invoice] = result["invoices"]
+      assert invoice["taxable_paise"] == 0
+      assert [line] = invoice["line_items"]
+      assert line["printed_line_amount_paise"] == 118_000
+      assert line["taxable_paise"] == 0
+    end
+
     test "continuation page folds into previous invoice" do
       result =
         PurchaseBooks.normalize([

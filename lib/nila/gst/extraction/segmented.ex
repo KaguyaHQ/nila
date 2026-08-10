@@ -50,10 +50,16 @@ defmodule Nila.Gst.Extraction.Segmented do
     - item_name is the printed product/service name, usually the first line in \
     the Item & Description column. Keep following narrative in description but \
     do not append it to item_name.
-    - taxable_value on a line means a printed post-discount value before GST, \
-    never the list value, a pre-discount subtotal, or an Amount/Sub Total labelled \
-    Tax Inclusive. Put a printed tax-inclusive line amount in tax_inclusive_value \
-    and set tax_inclusive true; a later deterministic step derives taxable value.
+    - Keep the printed number separate from what it means. printed_unit_price is \
+    one unit's rate; printed_line_amount is the final post-discount Amount/Value \
+    for the whole row; printed_taxable_value is only a separately printed taxable \
+    value before GST. Copy all that are actually printed and never substitute one \
+    for another.
+    - amount_tax_basis describes whether printed_line_amount includes GST. A Tax \
+    Inclusive label on the item table, Amount column or subtotal applies to every \
+    contributing line unless the document says otherwise. Use exclusive only on \
+    positive evidence that GST is added to line Amounts; otherwise use unknown. \
+    Do not calculate taxable value; a later deterministic step does that.
     - When a GST slab, tax summary or CGST/SGST outward block is printed, copy \
     its taxable turnover and tax amounts into the printed_* fields exactly. Do \
     not recalculate them and do not redistribute them across item rows.

@@ -39,6 +39,34 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     assert %{status: :verified, flags: []} = Verify.invoice(invoice(%{}), page())
   end
 
+  test "a tax-inclusive line verifies from printed evidence without a taxable total" do
+    inclusive = %{
+      "invoice_number" => "INV-000005",
+      "line_items" => [
+        %{
+          "printed_unit_price" => 100_000,
+          "printed_line_amount" => 100_000,
+          "printed_taxable_value" => nil,
+          "amount_tax_basis" => "inclusive",
+          "igst_rate" => 18,
+          "igst_amount" => 15_254.24
+        }
+      ],
+      "printed_igst" => 15_254.24,
+      "printed_total_tax" => 15_254.24,
+      "printed_grand_total" => 100_000
+    }
+
+    text = """
+    TAX INVOICE INV-000005
+    Rate 1,00,000.00 IGST 18% 15,254.24 Amount 1,00,000.00
+    Sub Total (Tax Inclusive) 1,00,000.00
+    Total ₹1,00,000.00
+    """
+
+    assert %{status: :verified, flags: []} = Verify.invoice(inclusive, text)
+  end
+
   test "a value that appears nowhere on the page is flagged, not reconciled" do
     # The real failure: the model returned 62,552 for a bill printing 64,552, and
     # every downstream check passed because nothing contradicted the invention.

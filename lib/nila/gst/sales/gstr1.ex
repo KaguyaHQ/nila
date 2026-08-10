@@ -27,6 +27,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   tooling, not product — the product never scores itself — so it lives in
   `Nila.Eval.Gstr1Diff`, not here.
   """
+  alias Nila.Gst.Extraction.LineAmounts
   alias Nila.Gst.InvoiceNumber
   alias Nila.Gst.Issues
   alias Nila.Gst.StateCodes
@@ -42,10 +43,11 @@ defmodule Nila.Gst.Sales.Gstr1 do
     printed_total_taxable printed_total_tax printed_grand_total
   )
   @correctable_line_fields ~w(
-    item_name description hsn_sac quantity uom unit_price taxable_value tax_inclusive_value tax_inclusive
+    item_name description hsn_sac quantity uom printed_unit_price printed_line_amount
+    printed_taxable_value amount_tax_basis taxable_value
     cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount
   )
-  @numeric_correction_field ~r/^(printed_total_taxable|printed_total_tax|printed_grand_total)$|\.(taxable_value|tax_inclusive_value|quantity|unit_price|[csi]gst_(rate|amount))$/
+  @numeric_correction_field ~r/^(printed_total_taxable|printed_total_tax|printed_grand_total)$|\.(taxable_value|printed_(unit_price|line_amount|taxable_value)|quantity|[csi]gst_(rate|amount))$/
 
   @doc "Returns the flagged scalar fields that may be corrected for a source invoice."
   def correctable_fields(flagged, pristine_source_id) do
@@ -113,12 +115,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
   @doc "Coerces correction text for the numeric fields accepted by the review UI."
   def coerce_correction(field_path, text) do
     cond do
-      String.ends_with?(field_path, ".tax_inclusive") and String.downcase(text) == "true" ->
-        true
-
-      String.ends_with?(field_path, ".tax_inclusive") and String.downcase(text) == "false" ->
-        false
-
       Regex.match?(@numeric_correction_field, field_path) and String.trim(text) == "" ->
         nil
 
@@ -551,16 +547,16 @@ defmodule Nila.Gst.Sales.Gstr1 do
     cgst_rate = money(line["cgst_rate"] || cgst["rate"])
     sgst_rate = money(line["sgst_rate"] || sgst["rate"])
     igst_rate = money(line["igst_rate"] || igst["rate"])
-    printed_taxable = money(value(line, ["taxable_value", "taxable", "net_amount", "txval"]))
-    inclusive_value = money(line["tax_inclusive_value"])
 
-    {taxable_value, taxable_basis} =
-      normalized_taxable_value(
-        printed_taxable,
-        inclusive_value,
-        line["tax_inclusive"],
-        num(cgst_rate) + num(sgst_rate) + num(igst_rate)
-      )
+    amount_line =
+      line
+      |> Map.put("cgst_rate", cgst_rate)
+      |> Map.put("sgst_rate", sgst_rate)
+      |> Map.put("igst_rate", igst_rate)
+      |> Map.put_new("taxable_value", value(line, ["taxable", "net_amount", "txval"]))
+      |> Map.put_new("unit_price", line["rate"])
+
+    amounts = LineAmounts.normalize(amount_line)
 
     %{
       "item_name" => blank_to_nil(line["item_name"]),
@@ -568,11 +564,13 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "hsn_sac" => to_string_or_nil(value(line, ["hsn_sac", "hsn_sc"])),
       "quantity" => money(value(line, ["quantity", "qty"])),
       "uom" => value(line, ["uom", "unit"]),
-      "unit_price" => money(value(line, ["unit_price", "rate"])),
-      "taxable_value" => taxable_value,
-      "taxable_value_basis" => taxable_basis,
-      "tax_inclusive_value" => inclusive_value,
-      "tax_inclusive" => line["tax_inclusive"] == true,
+      "unit_price" => amounts.printed_unit_price,
+      "printed_unit_price" => amounts.printed_unit_price,
+      "printed_line_amount" => amounts.printed_line_amount,
+      "printed_taxable_value" => amounts.printed_taxable_value,
+      "amount_tax_basis" => amounts.amount_tax_basis,
+      "taxable_value" => amounts.taxable_value,
+      "taxable_value_basis" => amounts.taxable_value_basis,
       "cgst_rate" => cgst_rate,
       "cgst_amount" => money(line["cgst_amount"] || cgst["amount"] || line["camt"]),
       "sgst_rate" => sgst_rate,
@@ -581,16 +579,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "igst_amount" => money(line["igst_amount"] || igst["amount"] || line["iamt"])
     }
   end
-
-  defp normalized_taxable_value(printed, _inclusive, _inclusive?, _rate) when is_number(printed),
-    do: {printed, "printed"}
-
-  defp normalized_taxable_value(nil, inclusive, true, rate)
-       when is_number(inclusive) and rate > 0 do
-    {round2(inclusive / (1 + rate / 100)), "derived_from_tax_inclusive_value"}
-  end
-
-  defp normalized_taxable_value(_printed, _inclusive, _inclusive?, _rate), do: {nil, nil}
 
   defp invoice_issues(invoice) do
     check_issues =
@@ -657,12 +645,13 @@ defmodule Nila.Gst.Sales.Gstr1 do
               "actual" => tax
             },
             "passed" => close?(tax, taxable * rate / 100, @money_tolerance),
-            "fields" => [
-              "line_items[#{index - 1}].taxable_value",
-              "line_items[#{index - 1}].cgst_amount",
-              "line_items[#{index - 1}].sgst_amount",
-              "line_items[#{index - 1}].igst_amount"
-            ]
+            "fields" =>
+              taxable_correction_fields(line, index - 1) ++
+                [
+                  "line_items[#{index - 1}].cgst_amount",
+                  "line_items[#{index - 1}].sgst_amount",
+                  "line_items[#{index - 1}].igst_amount"
+                ]
           }
         ]
       end
@@ -673,6 +662,22 @@ defmodule Nila.Gst.Sales.Gstr1 do
   # halves differ passed no other check (`line_arithmetic` sums them, so a
   # high-low pair can still multiply out) and is exactly the kind of quiet
   # extraction error the modal exists to surface.
+  defp taxable_correction_fields(line, index) do
+    case line["taxable_value_basis"] do
+      "printed_taxable_value" ->
+        ["line_items[#{index}].printed_taxable_value"]
+
+      basis when basis in ~w(derived_from_inclusive_line_amount printed_exclusive_line_amount) ->
+        [
+          "line_items[#{index}].printed_line_amount",
+          "line_items[#{index}].amount_tax_basis"
+        ]
+
+      _other ->
+        ["line_items[#{index}].taxable_value"]
+    end
+  end
+
   defp split_equality_checks(invoice) do
     invoice["line_items"]
     |> Enum.with_index(1)
@@ -1913,20 +1918,16 @@ defmodule Nila.Gst.Sales.Gstr1 do
     do: Map.put(line, "taxable_value_basis", "corrected")
 
   defp update_corrected_taxable(line, field)
-       when field in ~w(tax_inclusive_value tax_inclusive cgst_rate sgst_rate igst_rate) do
-    if line["taxable_value_basis"] == "derived_from_tax_inclusive_value" or
-         line["tax_inclusive"] == true do
-      rate = num(line["cgst_rate"]) + num(line["sgst_rate"]) + num(line["igst_rate"])
+       when field in ~w(printed_line_amount printed_taxable_value amount_tax_basis cgst_rate sgst_rate igst_rate) do
+    amounts = LineAmounts.normalize(line)
 
-      case normalized_taxable_value(nil, line["tax_inclusive_value"], line["tax_inclusive"], rate) do
-        {taxable, basis} ->
-          line
-          |> Map.put("taxable_value", taxable)
-          |> Map.put("taxable_value_basis", basis)
-      end
-    else
-      line
-    end
+    line
+    |> Map.put("printed_unit_price", amounts.printed_unit_price)
+    |> Map.put("printed_line_amount", amounts.printed_line_amount)
+    |> Map.put("printed_taxable_value", amounts.printed_taxable_value)
+    |> Map.put("amount_tax_basis", amounts.amount_tax_basis)
+    |> Map.put("taxable_value", amounts.taxable_value)
+    |> Map.put("taxable_value_basis", amounts.taxable_value_basis)
   end
 
   defp update_corrected_taxable(line, _field), do: line

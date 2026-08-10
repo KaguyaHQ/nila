@@ -27,6 +27,7 @@ defmodule Nila.Gst.Extraction.Verify do
   the coherent subset, and a human decides.
   """
 
+  alias Nila.Gst.Extraction.LineAmounts
   alias Nila.Gstin
 
   @tolerance 1.0
@@ -106,7 +107,22 @@ defmodule Nila.Gst.Extraction.Verify do
         end
       end)
 
-    money ++ identifiers
+    line_money =
+      data
+      |> Map.get("line_items", [])
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {line, index} ->
+        ~w(printed_unit_price printed_line_amount printed_taxable_value)
+        |> Enum.map(&{&1, line[&1]})
+        |> Enum.reject(fn {_field, value} -> is_nil(value) end)
+        |> Enum.map(fn {field, value} ->
+          check(:grounding, "line_items[#{index}].#{field}", printed?(value, haystack), %{
+            value: value
+          })
+        end)
+      end)
+
+    money ++ line_money ++ identifiers
   end
 
   # Many bills print CGST and SGST and no combined figure, so a total tax that is
@@ -181,8 +197,9 @@ defmodule Nila.Gst.Extraction.Verify do
 
   defp arithmetic_checks(data, reverse_charge?) do
     lines = data["line_items"] || []
-    lines_sum = sum(lines, "taxable_value")
+    lines_sum = sum_taxable(lines)
     taxable = data["printed_total_taxable"]
+    effective_taxable = if(is_number(taxable), do: taxable, else: complete_lines_taxable(lines))
     cgst = data["printed_cgst"]
     sgst = data["printed_sgst"]
     igst = data["printed_igst"]
@@ -212,7 +229,7 @@ defmodule Nila.Gst.Extraction.Verify do
       %{components: num(cgst) + num(sgst) + num(igst), printed: total_tax}
     )
     |> maybe_check(
-      is_number(grand) and is_number(taxable),
+      is_number(grand) and is_number(effective_taxable),
       :arithmetic,
       "grand_total",
       close?(computed_grand_total(data, reverse_charge?), grand),
@@ -223,11 +240,11 @@ defmodule Nila.Gst.Extraction.Verify do
       }
     )
     |> maybe_check(
-      is_number(taxable) and is_number(total_tax) and implied_rate(lines) != nil,
+      is_number(effective_taxable) and is_number(total_tax) and implied_rate(lines) != nil,
       :arithmetic,
       "tax_is_rate_times_taxable",
-      close?(num(taxable) * num(implied_rate(lines)) / 100, num(total_tax), 2.0),
-      %{rate: implied_rate(lines), on: taxable, printed: total_tax}
+      close?(num(effective_taxable) * num(implied_rate(lines)) / 100, num(total_tax), 2.0),
+      %{rate: implied_rate(lines), on: effective_taxable, printed: total_tax}
     )
   end
 
@@ -237,10 +254,20 @@ defmodule Nila.Gst.Extraction.Verify do
   # total does not merely misfire here, it misfires on a whole category of real
   # purchases, and a check that cries wolf on a category is a check nobody reads.
   defp computed_grand_total(data, reverse_charge?) do
-    tax = if reverse_charge?, do: 0.0, else: num(data["printed_total_tax"])
+    lines = data["line_items"] || []
 
-    num(data["printed_total_taxable"]) + tax +
-      num(data["printed_additional_charges"]) + num(data["printed_rounding_adjustment"])
+    base =
+      case {complete_lines_taxable(lines), reverse_charge? or complete_line_taxes?(lines)} do
+        {taxable, true} when is_number(taxable) ->
+          tax = if reverse_charge?, do: 0.0, else: sum_line_tax(lines)
+          taxable + tax
+
+        _incomplete_lines ->
+          tax = if reverse_charge?, do: 0.0, else: num(data["printed_total_tax"])
+          num(data["printed_total_taxable"]) + tax
+      end
+
+    base + num(data["printed_additional_charges"]) + num(data["printed_rounding_adjustment"])
   end
 
   # Read from the page, because the page says so in words. The negative form is
@@ -303,6 +330,38 @@ defmodule Nila.Gst.Extraction.Verify do
     |> Enum.reject(fn {_field, value} -> is_nil(value) or value == "" end)
     |> Enum.map(fn {field, value} ->
       check(:gstin, field, Gstin.valid?(value), %{value: value})
+    end)
+  end
+
+  defp sum_taxable(lines) do
+    lines |> Enum.map(&LineAmounts.taxable_value/1) |> Enum.reject(&is_nil/1) |> Enum.sum()
+  end
+
+  defp complete_lines_taxable([]), do: nil
+
+  defp complete_lines_taxable(lines) do
+    values = Enum.map(lines, &LineAmounts.taxable_value/1)
+    if Enum.all?(values, &is_number/1), do: Enum.sum(values)
+  end
+
+  defp complete_line_taxes?(lines) do
+    Enum.all?(lines, fn line ->
+      cond do
+        num(line["igst_rate"]) > 0 ->
+          is_number(line["igst_amount"])
+
+        num(line["cgst_rate"]) + num(line["sgst_rate"]) > 0 ->
+          is_number(line["cgst_amount"]) and is_number(line["sgst_amount"])
+
+        true ->
+          true
+      end
+    end)
+  end
+
+  defp sum_line_tax(lines) do
+    Enum.reduce(lines, 0.0, fn line, total ->
+      total + num(line["cgst_amount"]) + num(line["sgst_amount"]) + num(line["igst_amount"])
     end)
   end
 
@@ -380,7 +439,7 @@ defmodule Nila.Gst.Extraction.Verify do
 
   defp taxable_candidates(data) do
     lines = data["line_items"] || []
-    lines_sum = sum(lines, "taxable_value")
+    lines_sum = sum_taxable(lines)
     total_tax = data["printed_total_tax"]
     grand = data["printed_grand_total"]
     rate = implied_rate(lines)
@@ -442,8 +501,6 @@ defmodule Nila.Gst.Extraction.Verify do
 
   defp add(flags, false, _build), do: flags
   defp add(flags, true, build), do: flags ++ [build.()]
-
-  defp sum(lines, key), do: Enum.reduce(lines, 0.0, fn line, acc -> acc + num(line[key]) end)
 
   defp num(value) when is_number(value), do: value / 1
   defp num(_value), do: 0.0

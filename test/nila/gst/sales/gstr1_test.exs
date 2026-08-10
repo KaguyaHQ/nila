@@ -81,10 +81,10 @@ defmodule Nila.Gst.Sales.Gstr1Test do
                 "hsn_sac" => "8471",
                 "quantity" => 1,
                 "uom" => "Nos",
-                "unit_price" => 110_000,
-                "taxable_value" => nil,
-                "tax_inclusive_value" => 110_000,
-                "tax_inclusive" => true,
+                "printed_unit_price" => 110_000,
+                "printed_line_amount" => 110_000,
+                "printed_taxable_value" => nil,
+                "amount_tax_basis" => "inclusive",
                 "igst_rate" => 18,
                 "igst_amount" => 16_779.66
               }
@@ -97,8 +97,10 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
       assert [line] = invoice["line_items"]
       assert line["taxable_value"] == 93_220.34
-      assert line["taxable_value_basis"] == "derived_from_tax_inclusive_value"
-      assert line["tax_inclusive_value"] == 110_000
+      assert line["taxable_value_basis"] == "derived_from_inclusive_line_amount"
+      assert line["printed_line_amount"] == 110_000
+      assert line["printed_taxable_value"] == nil
+      assert line["amount_tax_basis"] == "inclusive"
       assert Gstr1.validation_issues([invoice]) == []
       assert Gstr1.filing_table(invoice) == "b2cl"
 
@@ -179,11 +181,12 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       invoice =
         b2c_invoice("INC-1", "2026-07-15", "29", 93_220.34, 16_779.66)
         |> Map.put("id", "source-inc")
-        |> put_in(["line_items", Access.at(0), "tax_inclusive_value"], 110_000)
-        |> put_in(["line_items", Access.at(0), "tax_inclusive"], true)
+        |> put_in(["line_items", Access.at(0), "printed_taxable_value"], nil)
+        |> put_in(["line_items", Access.at(0), "printed_line_amount"], 110_000)
+        |> put_in(["line_items", Access.at(0), "amount_tax_basis"], "inclusive")
         |> put_in(
           ["line_items", Access.at(0), "taxable_value_basis"],
-          "derived_from_tax_inclusive_value"
+          "derived_from_inclusive_line_amount"
         )
 
       flagged =
@@ -209,7 +212,42 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert get_in(corrected, ["line_items", Access.at(0), "taxable_value"]) == 98_214.29
 
       assert get_in(corrected, ["line_items", Access.at(0), "taxable_value_basis"]) ==
-               "derived_from_tax_inclusive_value"
+               "derived_from_inclusive_line_amount"
+    end
+
+    test "a reviewed taxable correction survives a later rate correction" do
+      invoice =
+        b2c_invoice("INC-CORRECTED", "2026-07-15", "29", 93_220.34, 16_779.66)
+        |> Map.put("id", "source-corrected")
+        |> put_in(["line_items", Access.at(0), "printed_taxable_value"], nil)
+        |> put_in(["line_items", Access.at(0), "printed_line_amount"], 110_000)
+        |> put_in(["line_items", Access.at(0), "amount_tax_basis"], "inclusive")
+
+      flagged =
+        MapSet.new([
+          {"source-corrected", "line_items[0].taxable_value"},
+          {"source-corrected", "line_items[0].igst_rate"}
+        ])
+
+      corrections = [
+        %{
+          "source_id" => "source-corrected",
+          "field" => "line_items[0].taxable_value",
+          "value" => 95_000
+        },
+        %{
+          "source_id" => "source-corrected",
+          "field" => "line_items[0].igst_rate",
+          "value" => 12
+        }
+      ]
+
+      {[corrected], _applied, [], _flags} =
+        Gstr1.apply_corrections([invoice], corrections, flagged)
+
+      assert get_in(corrected, ["line_items", Access.at(0), "taxable_value"]) == 95_000
+      assert get_in(corrected, ["line_items", Access.at(0), "taxable_value_basis"]) == "corrected"
+      assert get_in(corrected, ["line_items", Access.at(0), "igst_rate"]) == 12
     end
 
     # Parsed here so every kind of packet carries the same type downstream and a
