@@ -47,8 +47,13 @@ defmodule Nila.Gst.Extraction.Segmented do
     - Copy printed values exactly. Never compute a value that is printed, and \
     never print a value you cannot see: if a field is not on these pages, return \
     null. A fabricated number is worse than a missing one and will be caught.
-    - taxable_value on a line means the post-discount value before GST, never \
-    the list value or a pre-discount subtotal.
+    - item_name is the printed product/service name, usually the first line in \
+    the Item & Description column. Keep following narrative in description but \
+    do not append it to item_name.
+    - taxable_value on a line means a printed post-discount value before GST, \
+    never the list value, a pre-discount subtotal, or an Amount/Sub Total labelled \
+    Tax Inclusive. Put a printed tax-inclusive line amount in tax_inclusive_value \
+    and set tax_inclusive true; a later deterministic step derives taxable value.
     - When a GST slab, tax summary or CGST/SGST outward block is printed, copy \
     its taxable turnover and tax amounts into the printed_* fields exactly. Do \
     not recalculate them and do not redistribute them across item rows.
@@ -76,7 +81,16 @@ defmodule Nila.Gst.Extraction.Segmented do
     - For a credit or debit note, invoice_number is the note number only. Exclude \
     labels such as "Credit Note:" from the value.
     - Include cancelled invoices. A cancelled number is still a number the \
-    series has to account for.
+    series has to account for, and classify its document_status as cancelled so \
+    it cannot be filed as an active taxable invoice.
+    - A printed recipient GSTIN means recipient_registration is registered. Use \
+    unregistered only when the document positively identifies an unregistered or \
+    consumer recipient. A missing or unreadable GSTIN alone is unknown, never a \
+    silent B2C inference.
+    - Copy the printed place of supply exactly. Do not substitute the billing or \
+    shipping state when the document does not state its place of supply.
+    - Preserve nil-rated, exempt, non-GST, export and SEZ treatment in supply_type. \
+    Never coerce one of them to an ordinary taxable sale.
     - CGST and SGST printed as stacked sub-rows under one item are that item's \
     tax, not two items. Never split them, and never split a total row.
     """

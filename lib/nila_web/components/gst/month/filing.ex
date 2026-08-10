@@ -452,6 +452,22 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           </div>
           <.gstr3b_line label="(a) Taxable supplies" heads={@gstr3b["liability_31"]["a"]} />
           <.gstr3b_line label="(d) Reverse charge" heads={@gstr3b["liability_31"]["d"]} />
+          <div
+            :if={get_in(@gstr3b, ["interstate_32", "unregistered"]) not in [nil, []]}
+            id="gst-3b-table-32"
+            class="pt-2"
+          >
+            <div class="text-ink-subtle text-label font-semibold uppercase">
+              3.2 Interstate supplies to unregistered persons
+            </div>
+            <div
+              :for={row <- get_in(@gstr3b, ["interstate_32", "unregistered"]) || []}
+              class="text-ink-muted text-ui mt-1 flex items-baseline justify-between gap-3"
+            >
+              <span>POS {row["pos"]} · taxable {money_paise(row["txval"])}</span>
+              <span class="font-mono">IGST {money_paise(row["igst"])}</span>
+            </div>
+          </div>
         </div>
         <div :if={liability_missing?(@gstr3b)} class="space-y-1.5">
           <div class="text-ink-subtle text-label font-semibold uppercase">
@@ -478,7 +494,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             Building 3.1(b)/(c)/(e) and Table 5 needs data no client supplies
             today; saying so costs nothing and is honest. --%>
       <p id="gst-3b-scope" class="border-base-300 text-ink-subtle text-meta border-t px-4 py-3">
-        This covers 3.1(a) taxable and 3.1(d) reverse-charge outward supplies only. Zero-rated,
+        This covers 3.1(a), 3.1(d), and Table 3.2 interstate supplies to unregistered persons. Zero-rated,
         nil-rated, exempt and non-GST supplies (3.1 b/c/e) and Table 5 are not assembled here —
         if the month has any, they have to be added on the portal.
       </p>

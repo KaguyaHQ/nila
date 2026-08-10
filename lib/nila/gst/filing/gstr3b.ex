@@ -51,7 +51,9 @@ defmodule Nila.Gst.Filing.Gstr3b do
     * `recon` — the effective recon (RCM rows and the ITC ceiling live here)
     * `itc` — `ItcPosition.compute/3` output (blocks carry `tax_heads`/`state`)
   """
-  def assemble(liability, recon, itc) do
+  def assemble(liability, recon, itc), do: assemble(liability, recon, itc, [])
+
+  def assemble(liability, recon, itc, interstate_unregistered) do
     {rcm_txval, rcm_tax} = rcm_position(recon)
     all_other_4a5 = subtract(ItcPosition.ceiling_heads(recon), rcm_tax)
 
@@ -74,6 +76,11 @@ defmodule Nila.Gst.Filing.Gstr3b do
       "liability_31" => %{
         "a" => Map.put(liability, "txval", liability["txval"] || 0),
         "d" => Map.put(rcm_tax, "txval", rcm_txval)
+      },
+      "interstate_32" => %{
+        "unregistered" => interstate_unregistered,
+        "composition" => [],
+        "uin" => []
       },
       "itc" => %{
         "rcm_4a3" => rcm_tax,
@@ -100,6 +107,36 @@ defmodule Nila.Gst.Filing.Gstr3b do
       |> bump("cgst", det["camt"])
       |> bump("sgst", det["samt"])
     end)
+  end
+
+  @doc "Table 3.2 interstate supplies to unregistered persons, grouped by POS in paise."
+  def interstate_unregistered_from_gstr1(derived) do
+    b2cs =
+      for row <- derived["b2cs"] || [], row["sply_ty"] == "INTER" do
+        %{"pos" => row["pos"], "txval" => row["txval"] || 0, "igst" => row["iamt"] || 0}
+      end
+
+    b2cl =
+      for block <- derived["b2cl"] || [], invoice <- block["inv"] || [] do
+        details = for item <- invoice["itms"] || [], do: item["itm_det"] || %{}
+
+        %{
+          "pos" => block["pos"],
+          "txval" => Enum.sum(Enum.map(details, &(&1["txval"] || 0))),
+          "igst" => Enum.sum(Enum.map(details, &(&1["iamt"] || 0)))
+        }
+      end
+
+    (b2cs ++ b2cl)
+    |> Enum.group_by(& &1["pos"])
+    |> Enum.map(fn {pos, rows} ->
+      %{
+        "pos" => pos,
+        "txval" => rows |> Enum.map(& &1["txval"]) |> Enum.sum() |> rupees_to_paise(),
+        "igst" => rows |> Enum.map(& &1["igst"]) |> Enum.sum() |> rupees_to_paise()
+      }
+    end)
+    |> Enum.sort_by(& &1["pos"])
   end
 
   @doc "Whether Table 3.1(a) contains a negative value this assembler cannot file safely yet."
@@ -221,6 +258,7 @@ defmodule Nila.Gst.Filing.Gstr3b do
   # -- money ----------------------------------------------------------------
 
   defp round_rupee(paise), do: round(paise / 100) * 100
+  defp rupees_to_paise(rupees), do: round(rupees * 100)
 
   defp add(a, b), do: Map.new(@heads, fn h -> {h, a[h] + b[h]} end)
   defp subtract(a, b), do: Map.new(@heads, fn h -> {h, a[h] - b[h]} end)

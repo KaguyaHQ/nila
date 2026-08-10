@@ -215,6 +215,76 @@ defmodule Nila.Gst.Filing.Gstr3bTest do
              }
     end
 
+    test "includes B2CS and B2CL once in 3.1(a) and discloses interstate unregistered in 3.2" do
+      detail = fn txval, igst ->
+        %{"itm_det" => %{"rt" => 18, "txval" => txval, "camt" => 0, "samt" => 0, "iamt" => igst}}
+      end
+
+      derived = %{
+        "b2cs" => [
+          %{
+            "pos" => "29",
+            "typ" => "OE",
+            "sply_ty" => "INTER",
+            "rt" => 18,
+            "txval" => 161_016.95,
+            "iamt" => 28_983.05,
+            "camt" => 0,
+            "samt" => 0,
+            "csamt" => 0
+          },
+          %{
+            "pos" => "33",
+            "typ" => "OE",
+            "sply_ty" => "INTRA",
+            "rt" => 18,
+            "txval" => 42_372.88,
+            "iamt" => 0,
+            "camt" => 3_813.56,
+            "samt" => 3_813.56,
+            "csamt" => 0
+          }
+        ],
+        "b2cl" => [
+          %{
+            "pos" => "29",
+            "inv" => [%{"inum" => "INV-000006", "itms" => [detail.(93_220.34, 16_779.66)]}]
+          }
+        ]
+      }
+
+      assert Gstr3b.liability_from_gstr1(derived) == %{
+               "txval" => 29_661_017,
+               "igst" => 4_576_271,
+               "cgst" => 381_356,
+               "sgst" => 381_356
+             }
+
+      assert Gstr3b.interstate_unregistered_from_gstr1(derived) == [
+               %{"pos" => "29", "txval" => 25_423_729, "igst" => 4_576_271}
+             ]
+    end
+
+    test "Table 3.2 disclosure does not add to payable a second time" do
+      liability = %{"txval" => 100_000, "igst" => 18_000, "cgst" => 0, "sgst" => 0}
+      disclosure = [%{"pos" => "29", "txval" => 100_000, "igst" => 18_000}]
+
+      recon = %{
+        "matched" => [],
+        "value_mismatch" => [],
+        "needs_human" => [],
+        "in_books_not_2b" => [],
+        "in_2b_not_books" => []
+      }
+
+      itc = ItcPosition.compute(recon, [], %{})
+
+      assembled = Gstr3b.assemble(liability, recon, itc, disclosure)
+
+      assert assembled["interstate_32"]["unregistered"] == disclosure
+      assert assembled["setoff_61"]["other"]["igst"]["payable"] == 18_000
+    end
+
     test "names a note-only negative position as unsupported" do
       liability = %{"txval" => -100_000, "igst" => 0, "cgst" => -9_000, "sgst" => -9_000}
       gstr3b = %{"liability_31" => %{"a" => liability}}

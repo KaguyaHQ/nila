@@ -45,7 +45,7 @@ defmodule Nila.Gst.Sales.Account do
         recorded?: printed_recorded?
       },
       draft: %{
-        documents: draft_document_count(derived),
+        documents: draft_document_count(derived, active_invoices),
         totals: draft_totals
       },
       differences: totals_difference(draft_totals, printed_totals),
@@ -197,20 +197,16 @@ defmodule Nila.Gst.Sales.Account do
     end)
   end
 
-  defp draft_document_count(nil), do: 0
+  defp draft_document_count(nil, _active_invoices), do: 0
 
-  defp draft_document_count(derived) do
-    invoices =
-      derived
-      |> Map.get("b2b", [])
-      |> Enum.reduce(0, &(length(&1["inv"] || []) + &2))
+  defp draft_document_count(derived, active_invoices) do
+    invoice_level =
+      Enum.reduce(derived["b2b"] || [], 0, &(length(&1["inv"] || []) + &2)) +
+        Enum.reduce(derived["b2cl"] || [], 0, &(length(&1["inv"] || []) + &2)) +
+        Enum.reduce(derived["cdnr"] || [], 0, &(length(&1["nt"] || []) + &2))
 
-    notes =
-      derived
-      |> Map.get("cdnr", [])
-      |> Enum.reduce(0, &(length(&1["nt"] || []) + &2))
-
-    invoices + notes
+    b2cs = Enum.count(active_invoices, &(Gstr1.filing_table(&1) == "b2cs"))
+    invoice_level + b2cs
   end
 
   defp draft_details(derived) do

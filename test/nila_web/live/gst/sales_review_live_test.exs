@@ -157,7 +157,9 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
       live(context.conn, review_path(context.client, correction["id"], "needs_you"))
 
     correction_view
-    |> element("#gstr1-corrections button[phx-click='start_correct']")
+    |> element(
+      "#gstr1-corrections button[phx-click='start_correct'][phx-value-field='buyer_gstin']"
+    )
     |> render_click()
 
     correction_view

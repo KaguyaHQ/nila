@@ -262,15 +262,10 @@ defmodule Nila.Gst.Extraction.Verify do
   @doc """
   What kind of document the page says it is, read off the page and nothing else.
 
-  These are the shapes `Nila.Gst.Sales.Gstr1.derive/2` has no table for — a
-  credit note has no `cdnr`, an export has no `exp`, an outward reverse-charge
-  supply is filed `rchrg: "N"` regardless. Deriving one of them anyway files a
-  number that is wrong in a way no arithmetic check can see: a ₹50,000 credit
-  note becomes a ₹50,000 sale, and the liability is out by ₹100,000.
-
-  So they are detected here, where the text is, and refused at sign-off. Nothing
-  in six filed months across both clients is any of these; the day one arrives,
-  a human is told rather than a return being quietly built around it.
+  Credit/debit headings independently verify the structured document type.
+  Export and outward reverse-charge markers name shapes the current return still
+  cannot file, so they are detected here where the text is and refused at sign-off
+  rather than coerced into an ordinary taxable invoice.
 
   ## A false positive here is a month nobody can file or fix
 
@@ -286,15 +281,10 @@ defmodule Nila.Gst.Extraction.Verify do
   `blocking_issues/1` is not part of the `correction_issues` list that feeds
   `Gstr1.flagged_fields/2` (see `Sales.Workings.materialize/5`) — so no field is
   correctable, the blocker cannot be confirmed, and there is no third way out.
-  `b2c_supply_unsupported` escapes only because `buyer_gstin` happens to be
-  flagged by a different check.
 
-  The fix is not a wider `@correctable_*` list: the thing a reviewer would
-  correct is the document classification, not a field on the invoice. That wants
-  its own resolution verb (a `reclassify_document` alongside
-  `exclude_duplicate_copy`), so the override is an audited event naming what was
-  read and what it actually is. Until then, a misread marker needs a database
-  edit, and that is the real cost of these patterns being this loose.
+  Structured filing classifications are now correctable fields, but these
+  page-wide markers remain independent evidence. A marker disagreement must
+  therefore stay visible rather than being silently overwritten by extraction.
   """
   def document_markers(text) when is_binary(text) do
     %{

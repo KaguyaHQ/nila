@@ -125,8 +125,8 @@ defmodule Nila.Gst.Sales.Review do
           "source_id" => invoice["id"],
           "invoice_number" => Gstr1.document_number(invoice),
           "buyer_gstin" => invoice["buyer_gstin"],
-          "table" => if(Gstr1.document_type(invoice) == "invoice", do: "b2b", else: "cdnr"),
-          "category" => treatment["ntty"] || treatment["inv_typ"],
+          "table" => source_table(invoice),
+          "category" => treatment["ntty"] || treatment["inv_typ"] || treatment["typ"] || "OE",
           "place_of_supply" => treatment["pos"],
           "tax_head" => tax_head(amounts),
           "taxable_amount" => amounts["taxable"],
@@ -196,9 +196,9 @@ defmodule Nila.Gst.Sales.Review do
   defp issue_source_ids(_issue, _invoices), do: []
 
   defp derived_invoice(derived, invoice) do
-    case Gstr1.document_type(invoice) do
-      note when note in ~w(credit_note debit_note) ->
-        note_type = if(note == "credit_note", do: "C", else: "D")
+    case source_table(invoice) do
+      "cdnr" ->
+        note_type = if(Gstr1.document_type(invoice) == "credit_note", do: "C", else: "D")
 
         derived
         |> Map.get("cdnr", [])
@@ -208,12 +208,41 @@ defmodule Nila.Gst.Sales.Review do
           entry["nt_num"] == Gstr1.document_number(invoice) and entry["ntty"] == note_type
         end)
 
-      "invoice" ->
+      "b2b" ->
         derived
         |> Map.get("b2b", [])
         |> Enum.filter(&(&1["ctin"] == invoice["buyer_gstin"]))
         |> Enum.flat_map(&List.wrap(&1["inv"]))
         |> Enum.find(&(&1["inum"] == Gstr1.document_number(invoice)))
+
+      "b2cl" ->
+        derived
+        |> Map.get("b2cl", [])
+        |> Enum.filter(&(&1["pos"] == invoice["place_of_supply"]))
+        |> Enum.flat_map(&List.wrap(&1["inv"]))
+        |> Enum.find(&(&1["inum"] == Gstr1.document_number(invoice)))
+
+      "b2cs" ->
+        %{
+          "typ" => "OE",
+          "pos" => invoice["place_of_supply"],
+          "itms" =>
+            invoice
+            |> Gstr1.filing_details()
+            |> Enum.with_index(1)
+            |> Enum.map(fn {detail, index} -> %{"num" => index, "itm_det" => detail} end)
+        }
+
+      nil ->
+        nil
+    end
+  end
+
+  defp source_table(invoice) do
+    cond do
+      Gstr1.document_type(invoice) in ~w(credit_note debit_note) -> "cdnr"
+      Gstr1.recipient_registration(invoice) == "registered" -> "b2b"
+      true -> Gstr1.filing_table(invoice)
     end
   end
 

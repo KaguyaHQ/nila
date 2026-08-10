@@ -100,6 +100,76 @@ defmodule Nila.Eval.Gstr1DiffTest do
       assert Enum.any?(rows, &(&1["scope"] == "debit_note_item"))
     end
 
+    test "compares B2CS, B2CL and B2C HSN at their portal grains" do
+      b2c = %{
+        "b2b" => [],
+        "b2cs" => [
+          %{
+            "pos" => "29",
+            "typ" => "OE",
+            "sply_ty" => "INTER",
+            "rt" => 18,
+            "txval" => 161_016.95,
+            "iamt" => 28_983.05,
+            "camt" => 0,
+            "samt" => 0,
+            "csamt" => 0
+          }
+        ],
+        "b2cl" => [
+          %{
+            "pos" => "29",
+            "inv" => [
+              %{
+                "inum" => "INV-000006",
+                "idt" => "15-07-2026",
+                "val" => 110_000,
+                "itms" => [
+                  %{
+                    "itm_det" => %{
+                      "rt" => 18,
+                      "txval" => 93_220.34,
+                      "iamt" => 16_779.66,
+                      "camt" => 0,
+                      "samt" => 0,
+                      "csamt" => 0
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "hsn" => %{
+          "hsn_b2b" => [],
+          "hsn_b2c" => [
+            %{
+              "hsn_sc" => "8471",
+              "desc" => "Fixture goods",
+              "user_desc" => "Fixture goods",
+              "uqc" => "NOS",
+              "qty" => 3,
+              "rt" => 18,
+              "txval" => 254_237.29,
+              "iamt" => 45_762.71,
+              "camt" => 0,
+              "samt" => 0,
+              "csamt" => 0
+            }
+          ]
+        },
+        "doc_issue" => %{"doc_det" => []}
+      }
+
+      assert Gstr1Diff.rows(b2c, b2c) |> Enum.all?(& &1["match"])
+
+      changed = put_in(b2c, ["b2cs", Access.at(0), "txval"], 160_000)
+      mismatch = Enum.find(Gstr1Diff.rows(changed, b2c), &(not &1["match"]))
+      assert mismatch["scope"] == "b2cs"
+      assert mismatch["key"] == "INTER|29|OE|18"
+      assert mismatch["field"] == "txval"
+    end
+
     test "compares invoice and credit-note document series independently" do
       ours =
         put_in(return()["doc_issue"], %{

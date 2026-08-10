@@ -62,6 +62,87 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert length(invoice["line_items"]) == 1
     end
 
+    test "derives taxable value deterministically from a printed tax-inclusive line" do
+      invoice =
+        Gstr1.normalize_invoice(%{
+          "data" => %{
+            "document_type" => "invoice",
+            "document_status" => "active",
+            "supply_type" => "taxable",
+            "recipient_registration" => "unregistered",
+            "place_of_supply" => "29",
+            "invoice_number" => "INV-000006",
+            "invoice_date" => "15.07.2026",
+            "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
+            "buyer" => %{"name" => "Consumer", "gstin" => nil},
+            "line_items" => [
+              %{
+                "description" => "Tax-inclusive fixture",
+                "hsn_sac" => "8471",
+                "quantity" => 1,
+                "uom" => "Nos",
+                "unit_price" => 110_000,
+                "taxable_value" => nil,
+                "tax_inclusive_value" => 110_000,
+                "tax_inclusive" => true,
+                "igst_rate" => 18,
+                "igst_amount" => 16_779.66
+              }
+            ],
+            "printed_total_taxable" => nil,
+            "printed_total_tax" => 16_779.66,
+            "printed_grand_total" => 110_000
+          }
+        })
+
+      assert [line] = invoice["line_items"]
+      assert line["taxable_value"] == 93_220.34
+      assert line["taxable_value_basis"] == "derived_from_tax_inclusive_value"
+      assert line["tax_inclusive_value"] == 110_000
+      assert Gstr1.validation_issues([invoice]) == []
+      assert Gstr1.filing_table(invoice) == "b2cl"
+
+      derived = Gstr1.derive([invoice], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "072026"})
+      assert get_in(derived, ["b2cl", Access.at(0), "inv", Access.at(0), "val"]) == 110_000.0
+    end
+
+    test "corrections canonicalize POS and recompute an inclusive line's taxable value" do
+      invoice =
+        b2c_invoice("INC-1", "2026-07-15", "29", 93_220.34, 16_779.66)
+        |> Map.put("id", "source-inc")
+        |> put_in(["line_items", Access.at(0), "tax_inclusive_value"], 110_000)
+        |> put_in(["line_items", Access.at(0), "tax_inclusive"], true)
+        |> put_in(
+          ["line_items", Access.at(0), "taxable_value_basis"],
+          "derived_from_tax_inclusive_value"
+        )
+
+      flagged =
+        MapSet.new([
+          {"source-inc", "place_of_supply"},
+          {"source-inc", "line_items[0].igst_rate"}
+        ])
+
+      corrections = [
+        %{"source_id" => "source-inc", "field" => "place_of_supply", "value" => "Karnataka"},
+        %{
+          "source_id" => "source-inc",
+          "field" => "line_items[0].igst_rate",
+          "value" => Gstr1.coerce_correction("line_items[0].igst_rate", "12")
+        }
+      ]
+
+      {[corrected], applied, [], _flags} =
+        Gstr1.apply_corrections([invoice], corrections, flagged)
+
+      assert length(applied) == 2
+      assert corrected["place_of_supply"] == "29"
+      assert get_in(corrected, ["line_items", Access.at(0), "taxable_value"]) == 98_214.29
+
+      assert get_in(corrected, ["line_items", Access.at(0), "taxable_value_basis"]) ==
+               "derived_from_tax_inclusive_value"
+    end
+
     # Parsed here so every kind of packet carries the same type downstream and a
     # check written once covers all of them — the gap that let a June sales
     # packet file itself into December unremarked.
@@ -74,6 +155,115 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     test "a date nothing can read keeps its printed text rather than becoming nil" do
       assert dated("Invoice Dt.")["invoice_date"] == "Invoice Dt."
       assert dated(nil)["invoice_date"] == nil
+    end
+  end
+
+  describe "unregistered B2C invoices" do
+    test "missing GSTIN remains unknown unless registration is positively classified" do
+      invoice = b2c_invoice("B2C-UNKNOWN", "2026-07-15", "KA", 10_000, 1_800, nil)
+
+      assert invoice["recipient_registration"] == "unknown"
+      assert Gstr1.filing_table(invoice) == nil
+
+      assert Enum.any?(
+               Gstr1.validation_issues([invoice]),
+               &(&1["code"] == "unknown_recipient_registration")
+             )
+    end
+
+    test "derives the controlled Zoho B2CS/B2CL boundary and B2C HSN shape" do
+      below = b2c_invoice("INV-000004", "2026-07-15", "29", 76_271.19, 13_728.81)
+      boundary = b2c_invoice("INV-000005", "2026-07-15", "29", 84_745.76, 15_254.24)
+      above = b2c_invoice("INV-000006", "2026-07-15", "29", 93_220.34, 16_779.66)
+      intrastate = b2c_invoice("INV-000003", "2026-07-15", "33", 42_372.88, 7_627.12)
+
+      derived =
+        Gstr1.derive(
+          [below, boundary, above, intrastate],
+          %{"gstin" => "33AEWPH4158J1Z3", "fp" => "072026"}
+        )
+
+      assert Gstr1.filing_table(below) == "b2cs"
+      assert Gstr1.filing_table(boundary) == "b2cs"
+      assert Gstr1.filing_table(above) == "b2cl"
+      assert Gstr1.filing_table(intrastate) == "b2cs"
+
+      assert Enum.find(derived["b2cs"], &(&1["pos"] == "29")) == %{
+               "pos" => "29",
+               "typ" => "OE",
+               "txval" => 161_016.95,
+               "iamt" => 28_983.05,
+               "camt" => 0.0,
+               "samt" => 0.0,
+               "csamt" => 0.0,
+               "rt" => 18,
+               "sply_ty" => "INTER"
+             }
+
+      assert [%{"pos" => "29", "inv" => [large]}] = derived["b2cl"]
+      assert large["inum"] == "INV-000006"
+      assert large["idt"] == "15-07-2026"
+      assert large["val"] == 110_000.0
+
+      assert get_in(large, ["itms", Access.at(0), "itm_det"]) == %{
+               "rt" => 18,
+               "txval" => 93_220.34,
+               "iamt" => 16_779.66,
+               "csamt" => 0
+             }
+
+      assert [hsn] = get_in(derived, ["hsn", "hsn_b2c"])
+      assert hsn["hsn_sc"] == "8471"
+      assert hsn["uqc"] == "NOS"
+      assert hsn["qty"] == 4.0
+      assert hsn["txval"] == 296_610.17
+      assert hsn["iamt"] == 45_762.71
+      assert hsn["camt"] == 3_813.56
+      assert hsn["samt"] == 3_813.56
+      assert get_in(derived, ["hsn", "hsn_b2b"]) == []
+    end
+
+    test "uses item name for HSN description and requires a missing goods UOM correction" do
+      invoice =
+        b2c_invoice("INV-UOM", "2026-07-15", "29", 10_000, 1_800)
+        |> put_in(["line_items", Access.at(0), "item_name"], "Fixture product")
+        |> put_in(
+          ["line_items", Access.at(0), "description"],
+          "Fixture product supplementary narrative"
+        )
+        |> put_in(["line_items", Access.at(0), "uom"], nil)
+
+      assert [issue] =
+               invoice
+               |> then(&Gstr1.validation_issues([&1]))
+               |> Enum.filter(&(&1["code"] == "missing_uom"))
+
+      assert issue["fields"] == ["line_items[0].uom"]
+      assert Nila.Gst.Issues.resolution_kind(issue) == :correction
+
+      corrected = put_in(invoice, ["line_items", Access.at(0), "uom"], "Nos")
+      derived = Gstr1.derive([corrected], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "072026"})
+      assert [hsn] = get_in(derived, ["hsn", "hsn_b2c"])
+      assert hsn["desc"] == "Fixture product"
+      assert hsn["uqc"] == "NOS"
+    end
+
+    test "uses the historical B2CL threshold effective on the invoice date" do
+      at_old_boundary = b2c_invoice("OLD-1", "2024-07-31", "29", 211_864.41, 38_135.59)
+      above_old_boundary = b2c_invoice("OLD-2", "2024-07-31", "29", 211_864.42, 38_135.59)
+
+      assert Gstr1.filing_table(at_old_boundary) == "b2cs"
+      assert Gstr1.filing_table(above_old_boundary) == "b2cl"
+    end
+
+    test "blocks unregistered notes instead of misfiling them in CDNR" do
+      note =
+        b2c_invoice("CN-B2C-1", "2026-07-15", "29", 10_000, 1_800)
+        |> Map.put("document_type", "credit_note")
+
+      assert Gstr1.filing_table(note) == nil
+      assert Enum.any?(Gstr1.blocking_issues([note]), &(&1["code"] == "cdnur_unsupported"))
+      assert Gstr1.derive([note], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "072026"})["cdnr"] == []
     end
   end
 
@@ -348,6 +538,50 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         "printed_total_taxable" => 10_000,
         "printed_total_tax" => 1_800,
         "printed_grand_total" => 11_800
+      }
+    })
+  end
+
+  defp b2c_invoice(number, date, place_of_supply, taxable, tax, registration \\ "unregistered") do
+    tax_fields =
+      if place_of_supply == "33" do
+        %{
+          "cgst_rate" => 9,
+          "cgst_amount" => tax / 2,
+          "sgst_rate" => 9,
+          "sgst_amount" => tax / 2
+        }
+      else
+        %{"igst_rate" => 18, "igst_amount" => tax}
+      end
+
+    Gstr1.normalize_invoice(%{
+      "data" => %{
+        "document_type" => "invoice",
+        "document_status" => "active",
+        "supply_type" => "taxable",
+        "recipient_registration" => registration,
+        "place_of_supply" => place_of_supply,
+        "invoice_number" => number,
+        "invoice_date" => date,
+        "seller" => %{"name" => "Seller", "gstin" => "33AEWPH4158J1Z3"},
+        "buyer" => %{"name" => "Unregistered buyer", "gstin" => nil},
+        "line_items" => [
+          Map.merge(
+            %{
+              "description" => "Synthetic fixture goods",
+              "hsn_sac" => "8471",
+              "quantity" => 1,
+              "uom" => "Nos",
+              "unit_price" => taxable,
+              "taxable_value" => taxable
+            },
+            tax_fields
+          )
+        ],
+        "printed_total_taxable" => taxable,
+        "printed_total_tax" => tax,
+        "printed_grand_total" => taxable + tax
       }
     })
   end
@@ -1207,7 +1441,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert Gstr1.blocking_issues([credit, debit]) == []
     end
 
-    test "an export, an outward reverse charge and a missing buyer GSTIN each block" do
+    test "an export and an outward reverse charge block while taxable B2C is supported" do
       export = sales_invoice(%{"id" => "source-a", "document" => %{"export" => true}})
 
       rcm =
@@ -1217,21 +1451,10 @@ defmodule Nila.Gst.Sales.Gstr1Test do
           "document" => %{"reverse_charge" => true}
         })
 
-      b2c =
-        sales_invoice(%{
-          "id" => "source-c",
-          "invoice_number" => "114/2025-26",
-          "buyer_gstin" => nil
-        })
-
       codes =
-        [export, rcm, b2c] |> Gstr1.blocking_issues() |> Enum.map(& &1["code"]) |> Enum.sort()
+        [export, rcm] |> Gstr1.blocking_issues() |> Enum.map(& &1["code"]) |> Enum.sort()
 
-      assert codes == [
-               "b2c_supply_unsupported",
-               "export_supply_unsupported",
-               "outward_reverse_charge_unsupported"
-             ]
+      assert codes == ["export_supply_unsupported", "outward_reverse_charge_unsupported"]
     end
 
     test "an ordinary uniquely numbered B2B invoice blocks nothing" do

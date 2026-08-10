@@ -93,8 +93,28 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
     t = transcription([{1, text}])
 
     Req.Test.expect(MistralChat, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      schema = Jason.decode!(body)["response_format"]["json_schema"]["schema"]
+      properties = schema["properties"]
+
+      assert properties["recipient_registration"]["enum"] ==
+               ["registered", "unregistered", "unknown"]
+
+      assert Map.has_key?(properties, "place_of_supply")
+      assert Map.has_key?(properties, "document_status")
+      assert Map.has_key?(properties, "supply_type")
+      line_properties = get_in(properties, ["line_items", "items", "properties"])
+      assert Map.has_key?(line_properties, "item_name")
+      assert Map.has_key?(line_properties, "tax_inclusive_value")
+      assert Map.has_key?(line_properties, "tax_inclusive")
+      assert line_properties["taxable_value"]["description"] =~ "Tax Inclusive"
+
       reply(conn, %{
         "document_type" => "debit_note",
+        "recipient_registration" => "registered",
+        "place_of_supply" => "Karnataka",
+        "document_status" => "active",
+        "supply_type" => "taxable",
         "invoice_number" => "CDN-000001",
         "invoice_date" => "10/08/2026",
         "seller" => %{"name" => "Seller", "gstin" => "33AEWPH4158J1Z3"},

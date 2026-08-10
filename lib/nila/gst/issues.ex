@@ -49,10 +49,17 @@ defmodule Nila.Gst.Issues do
     "document_type_conflict" => {"blocking", :correction},
     "zero_value_row" => {"required", :decision},
     "invalid_gstin" => {"required", :correction},
+    "unknown_recipient_registration" => {"required", :correction},
+    "recipient_registration_conflict" => {"required", :correction},
+    "missing_place_of_supply" => {"required", :correction},
+    "invalid_place_of_supply" => {"required", :correction},
+    "unknown_document_status" => {"required", :correction},
+    "unknown_supply_type" => {"required", :correction},
     "sequence_gaps" => {"required", :confirmation},
 
     # HSN/SAC and rate compliance
     "missing_hsn_sac" => {"required", :correction},
+    "missing_uom" => {"required", :correction},
     "incomplete_hsn_sac" => {"required", :correction},
     "invalid_hsn_sac" => {"required", :correction},
     "hsn_multiple_rates" => {"required", :decision},
@@ -69,8 +76,14 @@ defmodule Nila.Gst.Issues do
 
     # Documents this return has no table for
     "export_supply_unsupported" => {"blocking", nil},
+    "sez_supply_unsupported" => {"blocking", nil},
+    "nil_rated_supply_unsupported" => {"blocking", nil},
+    "exempt_supply_unsupported" => {"blocking", nil},
+    "non_gst_supply_unsupported" => {"blocking", nil},
     "outward_reverse_charge_unsupported" => {"blocking", nil},
-    "b2c_supply_unsupported" => {"blocking", nil},
+    "cdnur_unsupported" => {"blocking", nil},
+    "cancelled_document_unsupported" => {"blocking", nil},
+    "amendment_document_unsupported" => {"blocking", nil},
     "duplicate_invoice_number" => {"blocking", :decision}
   }
 

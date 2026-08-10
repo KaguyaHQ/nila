@@ -138,7 +138,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           id="gstr1-blocked-next-move"
           class="bg-error/5 border-error/30 rounded-box text-base-content text-body border px-4 py-3"
         >
-          Nila files registered B2B invoices, credit notes and debit notes, but another document type in this month is unsupported. File {Nila.Formatters.period_label(
+          Nila files taxable B2B and B2C invoices plus registered credit and debit notes, but another document type in this month is unsupported. File {Nila.Formatters.period_label(
             @period
           )} for {@client.name} manually on the portal — and tell us
           which table you needed.
@@ -427,7 +427,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         <h3 class="text-base-content text-body font-semibold">What this return files</h3>
         <.data_table
           id="gstr1-filing-summary-rows"
-          rows={filing_summary_rows(@account, @derived)}
+          rows={filing_summary_rows(@account, @derived, @active_invoices)}
           row_id={&"gstr1-filing-#{&1.key}"}
           min_width="min-w-[640px]"
           dense
@@ -445,8 +445,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           </:col>
         </.data_table>
         <p id="gstr1-filing-capability" class="text-ink-subtle text-meta">
-          This return files registered B2B invoices, credit notes and debit notes. Exports, SEZ,
-          reverse-charge and B2C supplies still stop the month rather than being misfiled.
+          This return files taxable B2B, B2CS and B2CL invoices plus registered credit and debit notes. Exports, SEZ, reverse-charge, nil-rated, exempt, non-GST and unregistered notes still stop the month rather than being misfiled.
         </p>
       </section>
 
@@ -559,8 +558,13 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           {invoice["buyer_name"] || "—"}
         </span>
       </:col>
-      <:col :let={invoice} label="Buyer GSTIN">
-        <span class="text-ink-muted font-mono">{invoice["buyer_gstin"] || "—"}</span>
+      <:col :let={invoice} label="Recipient">
+        <span class="text-ink-muted font-mono">
+          {invoice["buyer_gstin"] || registration_label(invoice)}
+        </span>
+      </:col>
+      <:col :let={invoice} label="POS">
+        <span class="text-ink-muted font-mono">{invoice["place_of_supply"] || "—"}</span>
       </:col>
       <:col :let={invoice} label="Taxable" align="right">
         {rupees(Gstr1.extracted_totals(invoice).taxable)}
@@ -677,7 +681,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
   # One row per section the return actually builds. The status is the work still
   # standing against it, in the same vocabulary the rest of the page uses.
-  defp filing_summary_rows(account, derived) do
+  defp filing_summary_rows(account, derived, invoices) do
     by_kind = account.issues.by_kind
 
     [
@@ -685,7 +689,23 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         "b2b",
         "B2B regular",
         count_documents(derived, "b2b", "inv"),
-        Values.filed_totals(Map.put(derived, "cdnr", [])),
+        section_totals(derived, "b2b"),
+        account,
+        by_kind
+      ),
+      filing_summary_row(
+        "b2cs",
+        "B2CS unregistered supplies",
+        Enum.count(invoices, &(Gstr1.filing_table(&1) == "b2cs")),
+        section_totals(derived, "b2cs"),
+        account,
+        by_kind
+      ),
+      filing_summary_row(
+        "b2cl",
+        "B2CL large interstate supplies",
+        count_documents(derived, "b2cl", "inv"),
+        section_totals(derived, "b2cl"),
         account,
         by_kind
       ),
@@ -693,12 +713,23 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         "cdnr",
         "9B registered credit and debit notes",
         count_documents(derived, "cdnr", "nt"),
-        Values.filed_totals(Map.put(derived, "b2b", [])),
+        section_totals(derived, "cdnr"),
         account,
         by_kind
       )
     ]
     |> Enum.reject(&(&1.documents == 0))
+  end
+
+  defp section_totals(derived, section) do
+    sections = ~w(b2b b2cs b2cl cdnr)
+
+    isolated =
+      Enum.reduce(sections, derived, fn key, acc ->
+        if key == section, do: acc, else: Map.put(acc, key, [])
+      end)
+
+    Values.filed_totals(isolated)
   end
 
   defp filing_summary_row(key, label, documents, totals, account, by_kind) do
@@ -884,6 +915,14 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       |> Map.new()
 
     "/gst/#{client.id}/#{period}/review/sales?" <> URI.encode_query(params)
+  end
+
+  defp registration_label(invoice) do
+    case Gstr1.recipient_registration(invoice) do
+      "unregistered" -> "Unregistered"
+      "unknown" -> "Registration unknown"
+      _registered -> "—"
+    end
   end
 
   defp invoice_scope(issues_by_invoice, invoice) do

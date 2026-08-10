@@ -66,7 +66,7 @@ defmodule Nila.Gst.Sales.Workings do
 
     correction_issues =
       Gstr1.validation_issues(pristine_source_invoices) ++
-        Gstr1.duplicate_number_issues(pristine_source_invoices) ++
+        Gstr1.blocking_issues(pristine_source_invoices) ++
         compliance_issues(pristine_source_invoices, compliance) ++
         cess_issues(pristine_source_invoices)
 

@@ -72,6 +72,83 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#gstr1-verdict", "₹15,615.36")
   end
 
+  test "renders B2CS, B2CL and B2C HSN filing sections", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    alias Nila.Gst.Sales.{Gstr1, Months}
+    period = "2026-07"
+
+    invoice = fn number, pos, taxable, tax ->
+      tax_fields =
+        if pos == "33" do
+          %{
+            "cgst_rate" => 9,
+            "cgst_amount" => tax / 2,
+            "sgst_rate" => 9,
+            "sgst_amount" => tax / 2
+          }
+        else
+          %{"igst_rate" => 18, "igst_amount" => tax}
+        end
+
+      Gstr1.normalize_invoice(%{
+        "data" => %{
+          "document_type" => "invoice",
+          "document_status" => "active",
+          "supply_type" => "taxable",
+          "recipient_registration" => "unregistered",
+          "place_of_supply" => pos,
+          "invoice_number" => number,
+          "invoice_date" => "15.07.2026",
+          "seller" => %{"gstin" => client.gstin},
+          "buyer" => %{"name" => "Unregistered buyer", "gstin" => nil},
+          "line_items" => [
+            Map.merge(
+              %{
+                "description" => "Fixture goods",
+                "hsn_sac" => "8471",
+                "quantity" => 1,
+                "uom" => "Nos",
+                "taxable_value" => taxable
+              },
+              tax_fields
+            )
+          ],
+          "printed_total_taxable" => taxable,
+          "printed_total_tax" => tax,
+          "printed_grand_total" => taxable + tax
+        }
+      })
+    end
+
+    invoices = [
+      invoice.("INV-B2CS", "33", 42_372.88, 7_627.12),
+      invoice.("INV-B2CL", "29", 93_220.34, 16_779.66)
+    ]
+
+    {:ok, _month} =
+      Months.upsert(%{
+        org_id: org.id,
+        client_id: client.id,
+        period: period,
+        state: "worked",
+        invoices: invoices,
+        issues: Gstr1.validation_issues(invoices),
+        derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, period))
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+
+    assert has_element?(view, "#gstr1-filing-b2cs", "B2CS")
+    assert has_element?(view, "#gstr1-filing-b2cl", "B2CL")
+    assert has_element?(view, "#gstr1-workings-b2cs")
+    assert has_element?(view, "#gstr1-workings-b2cl", "INV-B2CL")
+    assert has_element?(view, "#gstr1-workings-hsn-b2c", "NOS")
+    assert has_element?(view, "#gstr1-inv-INV-B2CS", "Unregistered")
+  end
+
   test "a source-file count that cannot be true is not printed as fact", %{
     conn: conn,
     org: org,
@@ -400,11 +477,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#gstr1-filing-b2b", "Ready")
   end
 
-  # Nobody is asked whether the month contains a B2C bill. The bill itself says
-  # so — no buyer GSTIN — and the engine raises the blocker off the document.
-  # A blocker cannot be confirmed away, so the only honest thing the page can do
-  # is name the move that is actually available.
-  test "a document this return has no table for blocks the month and names the way out", %{
+  # Taxable B2C invoices are supported, but notes to unregistered recipients
+  # belong in CDNUR. Until that table exists they must block rather than leak into
+  # registered CDNR or be confirmed away.
+  test "an unregistered note blocks the month and names the way out", %{
     conn: conn,
     org: org,
     client: client
@@ -417,9 +493,20 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     invoices =
       Enum.map(month.invoices, fn invoice ->
-        if invoice["invoice_number"] == "21/2025-26",
-          do: Map.put(invoice, "buyer_gstin", nil),
-          else: invoice
+        if invoice["invoice_number"] == "21/2025-26" do
+          invoice
+          |> Map.put("buyer_gstin", nil)
+          |> Map.put("recipient_registration", "unregistered")
+          |> Map.put("place_of_supply", "33")
+          |> Map.put("document_type", "credit_note")
+          |> Map.put("document", %{
+            "credit_note" => true,
+            "debit_note" => false,
+            "extracted_type" => "credit_note"
+          })
+        else
+          invoice
+        end
       end)
 
     {:ok, _month} =
@@ -435,7 +522,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#gstr1-checks-before-filing", "no b2cs table")
+    assert has_element?(view, "#gstr1-checks-before-filing", "no cdnur table")
     assert has_element?(view, "#gstr1-blocked-next-move", "manually on the portal")
     assert has_element?(view, "#gstr1-blocked-next-move", "Breeze Tech")
 

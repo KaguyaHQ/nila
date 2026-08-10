@@ -180,6 +180,16 @@ defmodule Nila.Eval do
     end
   end
 
+  defp extracted_value(%{"scope" => "b2cl", "field" => field}, invoice)
+       when is_map(invoice) do
+    case field do
+      "inum" -> invoice["invoice_number"]
+      "idt" -> invoice["invoice_date"] && to_string(invoice["invoice_date"])
+      "pos" -> invoice["place_of_supply"]
+      _other -> nil
+    end
+  end
+
   defp extracted_value(%{"scope" => scope, "field" => field}, invoice)
        when scope in ~w(credit_note debit_note) and is_map(invoice) do
     case field do
@@ -195,6 +205,9 @@ defmodule Nila.Eval do
 
   # Rows are keyed `ctin|inum|rate`; the invoice number is the only part that
   # survives a grouping change, so match on it alone.
+  defp invoice_for(%{"scope" => scope}, _invoices) when scope in ~w(b2cs hsn hsn_b2c doc_issue),
+    do: nil
+
   defp invoice_for(%{"key" => key}, invoices) do
     case String.split(key, "|") do
       [_ctin, inum | _rest] -> Enum.find(invoices, &(&1["invoice_number"] == inum))

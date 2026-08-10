@@ -192,9 +192,9 @@ defmodule Nila.Gst.Sales.Values do
   defp invoice_entries(nil, _invoice), do: []
 
   defp invoice_entries(derived, invoice) do
-    case Gstr1.document_type(invoice) do
-      note when note in ~w(credit_note debit_note) ->
-        note_type = if(note == "credit_note", do: "C", else: "D")
+    case source_table(invoice) do
+      "cdnr" ->
+        note_type = if(Gstr1.document_type(invoice) == "credit_note", do: "C", else: "D")
 
         for group <- List.wrap(derived["cdnr"]),
             entry <- List.wrap(group["nt"]),
@@ -202,11 +202,39 @@ defmodule Nila.Gst.Sales.Values do
             entry["ntty"] == note_type,
             do: entry
 
-      "invoice" ->
+      "b2b" ->
         for group <- List.wrap(derived["b2b"]),
             entry <- List.wrap(group["inv"]),
             entry["inum"] == Gstr1.document_number(invoice),
             do: entry
+
+      "b2cl" ->
+        for group <- List.wrap(derived["b2cl"]),
+            entry <- List.wrap(group["inv"]),
+            entry["inum"] == Gstr1.document_number(invoice),
+            do: entry
+
+      "b2cs" ->
+        [
+          %{
+            "itms" =>
+              invoice
+              |> Gstr1.filing_details()
+              |> Enum.with_index(1)
+              |> Enum.map(fn {detail, index} -> %{"num" => index, "itm_det" => detail} end)
+          }
+        ]
+
+      nil ->
+        []
+    end
+  end
+
+  defp source_table(invoice) do
+    cond do
+      Gstr1.document_type(invoice) in ~w(credit_note debit_note) -> "cdnr"
+      Gstr1.recipient_registration(invoice) == "registered" -> "b2b"
+      true -> Gstr1.filing_table(invoice)
     end
   end
 

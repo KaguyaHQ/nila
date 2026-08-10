@@ -219,34 +219,45 @@ defmodule Nila.Gst.Purchase.Resolutions do
   # real zero-liability source. Without either, the return is marked missing so
   # the UI never shows cash payable against liability we do not have.
   defp gstr3b(%Month{} = month, recon, itc) do
-    {source, liability} =
+    {source, outward} =
       case SalesMonths.get_by_period(month.org_id, month.client_id, month.period) do
-        {:ok, sales_month} -> gstr1_liability(sales_month)
-        {:error, :not_found} -> missing_liability()
+        {:ok, sales_month} -> gstr1_outward(sales_month)
+        {:error, :not_found} -> missing_outward()
       end
 
-    liability
-    |> Gstr3b.assemble(recon, itc)
+    outward.liability
+    |> Gstr3b.assemble(recon, itc, outward.interstate_unregistered)
     |> Map.put("liability_source", source)
   end
 
-  defp gstr1_liability(sales_month) do
+  defp gstr1_outward(sales_month) do
     case Signoffs.latest_gstr1_signoff(sales_month.id) do
       {:ok, signoff} ->
-        {"gstr1_signed", Gstr3b.liability_from_gstr1(signoff.snapshot["derived"])}
+        {"gstr1_signed", outward_projection(signoff.snapshot["derived"])}
 
       {:error, :not_found} when sales_month.invoices != [] ->
         source = if sales_month.state == "reviewed", do: "gstr1_reviewed", else: "gstr1_derived"
         derived = SalesResolutions.workings(sales_month).derived
-        {source, Gstr3b.liability_from_gstr1(derived)}
+        {source, outward_projection(derived)}
 
       {:error, :not_found} ->
-        missing_liability()
+        missing_outward()
     end
   end
 
-  defp missing_liability do
-    {"missing", %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}}
+  defp outward_projection(derived) do
+    %{
+      liability: Gstr3b.liability_from_gstr1(derived),
+      interstate_unregistered: Gstr3b.interstate_unregistered_from_gstr1(derived)
+    }
+  end
+
+  defp missing_outward do
+    {"missing",
+     %{
+       liability: %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0},
+       interstate_unregistered: []
+     }}
   end
 
   defp flags_for(%Month{} = month, invoices) do

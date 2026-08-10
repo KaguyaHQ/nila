@@ -24,9 +24,12 @@ defmodule Nila.Eval.Gstr1Diff do
   @ignored_note_fields ~w(chksum flag updby cflag cfs d_flag)
 
   @invoice_fields ~w(ctin inum idt val pos rchrg inv_typ)
+  @b2cl_fields ~w(pos inum idt val)
+  @b2cs_fields ~w(pos typ rt sply_ty txval camt samt iamt csamt)
   @note_fields ~w(ctin nt_num nt_dt ntty val pos rchrg inv_typ)
   @item_fields ~w(rt txval camt samt iamt csamt)
   @hsn_fields ~w(hsn_sc rt txval camt samt iamt)
+  @hsn_b2c_fields ~w(hsn_sc desc user_desc uqc qty rt txval camt samt iamt csamt)
   @doc_fields ~w(from to totnum net_issue cancel)
 
   @doc """
@@ -56,7 +59,10 @@ defmodule Nila.Eval.Gstr1Diff do
   @doc "One row per compared field, invoice rows first, then HSN, then doc issue."
   def rows(derived, filed) do
     invoice_rows_diff(derived, filed) ++
-      note_rows_diff(derived, filed) ++ hsn_diff(derived, filed) ++ doc_diff(derived, filed)
+      b2cl_rows_diff(derived, filed) ++
+      b2cs_rows_diff(derived, filed) ++
+      note_rows_diff(derived, filed) ++
+      hsn_diff(derived, filed) ++ hsn_b2c_diff(derived, filed) ++ doc_diff(derived, filed)
   end
 
   @doc "Folds rows into the match percentage."
@@ -119,6 +125,64 @@ defmodule Nila.Eval.Gstr1Diff do
 
         Map.put(acc, key, value)
     end
+  end
+
+  defp b2cl_rows_diff(derived, filed) do
+    derived_rows = b2cl_rows(derived)
+    filed_rows = b2cl_rows(filed)
+    keys = (Map.keys(derived_rows) ++ Map.keys(filed_rows)) |> Enum.uniq() |> Enum.sort()
+
+    Enum.flat_map(keys, fn key ->
+      derived_row = derived_rows[key] || %{}
+      filed_row = filed_rows[key] || %{}
+
+      Enum.map(@b2cl_fields, &row("b2cl", key, &1, derived_row[&1], filed_row[&1])) ++
+        Enum.map(@item_fields, fn field ->
+          row(
+            "b2cl_item",
+            key,
+            field,
+            get_in(derived_row, ["itm_det", field]),
+            get_in(filed_row, ["itm_det", field])
+          )
+        end)
+    end)
+  end
+
+  defp b2cl_rows(gstr1) do
+    for block <- gstr1["b2cl"] || [],
+        invoice <- block["inv"] || [],
+        item <- invoice["itms"] || [],
+        reduce: %{} do
+      acc ->
+        key = "#{block["pos"]}|#{invoice["inum"]}|#{get_in(item, ["itm_det", "rt"])}"
+
+        value =
+          invoice
+          |> Map.put("pos", block["pos"])
+          |> Map.put("itm_det", item["itm_det"] || %{})
+
+        Map.put(acc, key, value)
+    end
+  end
+
+  defp b2cs_rows_diff(derived, filed) do
+    derived_rows = b2cs_rows(derived)
+    filed_rows = b2cs_rows(filed)
+    keys = (Map.keys(derived_rows) ++ Map.keys(filed_rows)) |> Enum.uniq() |> Enum.sort()
+
+    Enum.flat_map(keys, fn key ->
+      derived_row = derived_rows[key] || %{}
+      filed_row = filed_rows[key] || %{}
+      Enum.map(@b2cs_fields, &row("b2cs", key, &1, derived_row[&1], filed_row[&1]))
+    end)
+  end
+
+  defp b2cs_rows(gstr1) do
+    Map.new(gstr1["b2cs"] || [], fn row ->
+      key = "#{row["sply_ty"]}|#{row["pos"]}|#{row["typ"]}|#{row["rt"]}"
+      {key, row}
+    end)
   end
 
   defp note_rows_diff(derived, filed) do
@@ -264,6 +328,24 @@ defmodule Nila.Eval.Gstr1Diff do
     for hsn <- get_in(gstr1, ["hsn", "hsn_b2b"]) || [], reduce: %{} do
       acc -> Map.put(acc, "#{hsn["hsn_sc"]}|#{hsn["rt"]}", hsn)
     end
+  end
+
+  defp hsn_b2c_diff(derived, filed) do
+    derived_rows = hsn_b2c_rows(derived)
+    filed_rows = hsn_b2c_rows(filed)
+    keys = (Map.keys(derived_rows) ++ Map.keys(filed_rows)) |> Enum.uniq() |> Enum.sort()
+
+    Enum.flat_map(keys, fn key ->
+      derived_row = derived_rows[key] || %{}
+      filed_row = filed_rows[key] || %{}
+      Enum.map(@hsn_b2c_fields, &row("hsn_b2c", key, &1, derived_row[&1], filed_row[&1]))
+    end)
+  end
+
+  defp hsn_b2c_rows(gstr1) do
+    Map.new(get_in(gstr1, ["hsn", "hsn_b2c"]) || [], fn row ->
+      {"#{row["hsn_sc"]}|#{row["rt"]}|#{row["uqc"]}", row}
+    end)
   end
 
   defp doc_diff(derived, filed) do

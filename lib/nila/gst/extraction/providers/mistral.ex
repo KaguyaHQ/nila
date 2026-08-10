@@ -102,7 +102,7 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
       printed_total_taxable:
         described_nullable(
           "number",
-          "Copy the final taxable turnover printed in the invoice-level GST/tax summary after discount. Never calculate it from item rows."
+          "Copy the final taxable turnover printed in the invoice-level GST/tax summary after discount. A Sub Total or Amount labelled Tax Inclusive is not a taxable total; return null when that is the only subtotal printed. Never calculate this field from item rows or subtract tax from an inclusive total."
         ),
       printed_cgst:
         described_nullable(
@@ -142,11 +142,36 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
     }
 
     if kind == :sales do
-      Map.put(properties, :document_type, %{
-        type: "string",
-        enum: ["invoice", "credit_note", "debit_note"],
-        description:
-          "Classify the document itself from its title and charging table. Footer terms that merely mention credit or debit notes do not change an invoice's type."
+      Map.merge(properties, %{
+        document_type: %{
+          type: "string",
+          enum: ["invoice", "credit_note", "debit_note"],
+          description:
+            "Classify the document itself from its title and charging table. Footer terms that merely mention credit or debit notes do not change an invoice's type."
+        },
+        recipient_registration: %{
+          type: "string",
+          enum: ["registered", "unregistered", "unknown"],
+          description:
+            "Whether the recipient is GST-registered. A printed GSTIN means registered. Use unregistered only when the document positively identifies an unregistered/consumer recipient; a missing or unreadable GSTIN alone means unknown."
+        },
+        place_of_supply:
+          described_nullable(
+            "string",
+            "Printed place of supply as a state name or GST state code. Copy it exactly; null when the document does not print one."
+          ),
+        document_status: %{
+          type: "string",
+          enum: ["active", "cancelled", "amendment", "unknown"],
+          description:
+            "Whether this is an active original document, a cancelled document, an amendment, or unclear. Do not treat a cancellation footer policy as the document's status."
+        },
+        supply_type: %{
+          type: "string",
+          enum: ["taxable", "nil_rated", "exempt", "non_gst", "export", "sez", "unknown"],
+          description:
+            "The supply treatment stated by the document. Ordinary GST-charged domestic supplies are taxable. Preserve nil-rated, exempt, non-GST, export and SEZ distinctions; use unknown when unclear."
+        }
       })
     else
       properties
@@ -167,7 +192,16 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
 
   defp line_item_schema do
     strict_object(%{
-      description: nullable("string"),
+      item_name:
+        described_nullable(
+          "string",
+          "Printed product or service name, normally the first line in the Item & Description column. Exclude supplementary notes or narrative printed on following lines."
+        ),
+      description:
+        described_nullable(
+          "string",
+          "Full printed line description, including supplementary narrative after the item name."
+        ),
       hsn_sac: nullable("string"),
       quantity: nullable("number"),
       uom: nullable("string"),
@@ -178,7 +212,17 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
       taxable_value: %{
         anyOf: [%{type: "number"}, %{type: "null"}],
         description:
-          "Post-discount taxable value before GST. Never return the pre-discount list value here."
+          "Printed post-discount taxable value before GST. A Rate, Amount, Sub Total or line value labelled Tax Inclusive is NOT taxable_value; return null for taxable_value and copy that printed inclusive amount into tax_inclusive_value instead. Never return a pre-discount or tax-inclusive value here."
+      },
+      tax_inclusive_value:
+        described_nullable(
+          "number",
+          "Printed line amount including GST when the document labels the rate, amount, subtotal or value as Tax Inclusive. Null for tax-exclusive lines."
+        ),
+      tax_inclusive: %{
+        type: "boolean",
+        description:
+          "True only when the document explicitly labels this line/table amount as Tax Inclusive; otherwise false."
       },
       cgst_rate: nullable("number"),
       cgst_amount: nullable("number"),

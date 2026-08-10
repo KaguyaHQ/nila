@@ -43,9 +43,17 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     assigns =
       assigns
       |> assign(:b2b, assigns.derived["b2b"] || [])
+      |> assign(:b2cl, assigns.derived["b2cl"] || [])
+      |> assign(:b2cs, assigns.derived["b2cs"] || [])
       |> assign(:cdnr, assigns.derived["cdnr"] || [])
+      |> assign(:hsn_b2c, get_in(assigns.derived, ["hsn", "hsn_b2c"]) || [])
       |> assign(:rates, Gstr1.rate_summary(assigns.derived))
-      |> assign(:hsn, Gstr1.hsn_summary(assigns.invoices))
+      |> assign(
+        :hsn,
+        Gstr1.hsn_summary(
+          Enum.reject(assigns.invoices, &(Gstr1.filing_table(&1) in ~w(b2cs b2cl)))
+        )
+      )
       |> assign(:names, names_by_gstin(assigns.invoices))
       |> assign(:buyers, buyers_by_inum(assigns.invoices))
       |> assign(:invoice_refs, invoice_refs_by_inum(assigns.invoices))
@@ -54,6 +62,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     assigns =
       assigns
       |> assign(:party_rows, party_rows(assigns))
+      |> assign(:b2cl_rows, b2cl_rows(assigns.b2cl))
       |> assign(:note_rows, note_rows(assigns.cdnr))
       |> assign(:rate_rows, rate_rows(assigns))
       |> assign(:hsn_rows, hsn_rows(assigns))
@@ -132,6 +141,31 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         </.data_table>
       </div>
 
+      <div :if={@b2cl_rows != []} id="gstr1-workings-b2cl" class="space-y-1.5">
+        <.section_label>B2CL — large interstate unregistered supplies</.section_label>
+        <.data_table id="gstr1-workings-b2cl-rows" rows={@b2cl_rows} min_width="min-w-[620px]" dense>
+          <:col :let={row} label="Invoice">
+            <span class="text-primary font-mono font-medium">{row.number}</span>
+          </:col>
+          <:col :let={row} label="Date">{row.date}</:col>
+          <:col :let={row} label="POS"><span class="font-mono">{row.pos}</span></:col>
+          <:col :let={row} label="Invoice value" align="right">{Helpers.amount(row.value)}</:col>
+          <:col :let={row} label="Taxable" align="right">{Helpers.amount(row.taxable)}</:col>
+          <:col :let={row} label="Output tax" align="right">{Helpers.amount(row.tax)}</:col>
+        </.data_table>
+      </div>
+
+      <div :if={@b2cs != []} id="gstr1-workings-b2cs" class="space-y-1.5">
+        <.section_label>B2CS — aggregated unregistered supplies</.section_label>
+        <.data_table id="gstr1-workings-b2cs-rows" rows={@b2cs} min_width="min-w-[620px]" dense>
+          <:col :let={row} label="Supply">{row["sply_ty"]}</:col>
+          <:col :let={row} label="POS"><span class="font-mono">{row["pos"]}</span></:col>
+          <:col :let={row} label="Rate" align="right">{Helpers.percent(row["rt"])}</:col>
+          <:col :let={row} label="Taxable" align="right">{Helpers.amount(row["txval"])}</:col>
+          <:col :let={row} label="Output tax" align="right">{Helpers.amount(detail_tax(row))}</:col>
+        </.data_table>
+      </div>
+
       <div :if={@note_rows != []} id="gstr1-workings-cdnr" class="space-y-1.5">
         <.section_label>9B — registered credit and debit notes</.section_label>
         <.data_table
@@ -188,8 +222,21 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         </.data_table>
       </div>
 
+      <div :if={@hsn_b2c != []} id="gstr1-workings-hsn-b2c" class="space-y-1.5">
+        <.section_label>HSN summary — B2C</.section_label>
+        <.data_table id="gstr1-workings-hsn-b2c-rows" rows={@hsn_b2c} min_width="min-w-[720px]" dense>
+          <:col :let={row} label="HSN/SAC"><span class="font-mono">{row["hsn_sc"]}</span></:col>
+          <:col :let={row} label="Description">{row["desc"] || "—"}</:col>
+          <:col :let={row} label="UQC">{row["uqc"]}</:col>
+          <:col :let={row} label="Quantity" align="right">{row["qty"]}</:col>
+          <:col :let={row} label="Rate" align="right">{Helpers.percent(row["rt"])}</:col>
+          <:col :let={row} label="Taxable" align="right">{Helpers.amount(row["txval"])}</:col>
+          <:col :let={row} label="Output tax" align="right">{Helpers.amount(detail_tax(row))}</:col>
+        </.data_table>
+      </div>
+
       <div :if={@hsn != []} id="gstr1-workings-hsn" class="space-y-1.5">
-        <.section_label>HSN summary</.section_label>
+        <.section_label>HSN summary — B2B and registered notes</.section_label>
         <.data_table
           id="gstr1-workings-hsn-rows"
           rows={@hsn_rows}
@@ -309,6 +356,16 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     "Invoice #{invoice} · #{rate}%"
   end
 
+  defp diff_context(%{"scope" => scope, "key" => key}) when scope in ["b2cl", "b2cl_item"] do
+    [_pos, invoice, rate] = String.split(key, "|")
+    "B2CL invoice #{invoice} · #{rate}%"
+  end
+
+  defp diff_context(%{"scope" => "b2cs", "key" => key}) do
+    [supply_type, pos, _type, rate] = String.split(key, "|")
+    "B2CS #{supply_type} · POS #{pos} · #{rate}%"
+  end
+
   defp diff_context(%{"scope" => scope, "key" => key})
        when scope in ["credit_note", "credit_note_item", "debit_note", "debit_note_item"] do
     [_gstin, note, rate] = String.split(key, "|")
@@ -324,6 +381,11 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   defp diff_context(%{"scope" => "hsn", "key" => key}) do
     [code, rate] = String.split(key, "|")
     "HSN #{code} · #{rate}%"
+  end
+
+  defp diff_context(%{"scope" => "hsn_b2c", "key" => key}) do
+    [code, rate, uqc] = String.split(key, "|")
+    "B2C HSN #{code} · #{rate}% · #{uqc}"
   end
 
   defp diff_context(%{"scope" => "doc_issue", "key" => key}) do
@@ -344,6 +406,8 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   defp diff_field("pos"), do: "Place of supply"
   defp diff_field("rchrg"), do: "Reverse charge"
   defp diff_field("inv_typ"), do: "Invoice type"
+  defp diff_field("typ"), do: "Supply type"
+  defp diff_field("sply_ty"), do: "Supply mode"
   defp diff_field("rt"), do: "Rate"
   defp diff_field("txval"), do: "Taxable value"
   defp diff_field("camt"), do: "CGST"
@@ -351,6 +415,10 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   defp diff_field("iamt"), do: "IGST"
   defp diff_field("csamt"), do: "Cess"
   defp diff_field("hsn_sc"), do: "HSN/SAC"
+  defp diff_field("desc"), do: "Description"
+  defp diff_field("user_desc"), do: "User description"
+  defp diff_field("uqc"), do: "UQC"
+  defp diff_field("qty"), do: "Quantity"
   defp diff_field("from"), do: "From"
   defp diff_field("to"), do: "To"
   defp diff_field("totnum"), do: "Numbers"
@@ -563,6 +631,21 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     end)
   end
 
+  defp b2cl_rows(b2cl) do
+    for block <- b2cl, invoice <- block["inv"] || [] do
+      totals = invoice_totals(invoice)
+
+      %{
+        number: invoice["inum"],
+        date: invoice["idt"],
+        pos: block["pos"],
+        value: invoice["val"],
+        taxable: totals.taxable,
+        tax: totals.tax
+      }
+    end
+  end
+
   defp note_rows(cdnr) do
     for party <- cdnr,
         note <- party["nt"] || [] do
@@ -690,7 +773,10 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     }
   end
 
-  defp hsn_tax(row), do: (row["camt"] || 0) + (row["samt"] || 0) + (row["iamt"] || 0)
+  defp detail_tax(row),
+    do: (row["camt"] || 0) + (row["samt"] || 0) + (row["iamt"] || 0) + (row["csamt"] || 0)
+
+  defp hsn_tax(row), do: detail_tax(row)
 
   # The rate and HSN aggregates know their contributors by invoice number; the
   # buyer is the label that makes a row recognisable, and it comes off the
