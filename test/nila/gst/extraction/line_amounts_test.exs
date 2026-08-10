@@ -9,7 +9,7 @@ defmodule Nila.Gst.Extraction.LineAmountsTest do
         "printed_unit_price" => 118,
         "printed_line_amount" => 1_180,
         "printed_taxable_value" => 1_000,
-        "amount_tax_basis" => "inclusive",
+        "line_amount_tax_inclusion" => "inclusive",
         "igst_rate" => 18
       })
 
@@ -26,7 +26,7 @@ defmodule Nila.Gst.Extraction.LineAmountsTest do
         "printed_unit_price" => 100_000,
         "printed_line_amount" => 100_000,
         "printed_taxable_value" => nil,
-        "amount_tax_basis" => "inclusive",
+        "line_amount_tax_inclusion" => "inclusive",
         "igst_rate" => 18
       })
 
@@ -39,7 +39,7 @@ defmodule Nila.Gst.Extraction.LineAmountsTest do
       LineAmounts.normalize(%{
         "printed_line_amount" => 10_000,
         "printed_taxable_value" => nil,
-        "amount_tax_basis" => "exclusive",
+        "line_amount_tax_inclusion" => "exclusive",
         "cgst_rate" => 9,
         "sgst_rate" => 9
       })
@@ -53,7 +53,7 @@ defmodule Nila.Gst.Extraction.LineAmountsTest do
       LineAmounts.normalize(%{
         "printed_line_amount" => 1_180,
         "printed_taxable_value" => nil,
-        "amount_tax_basis" => "inclusive",
+        "line_amount_tax_inclusion" => "inclusive",
         "taxable_value" => 950,
         "taxable_value_basis" => "corrected",
         "igst_rate" => 18
@@ -69,7 +69,7 @@ defmodule Nila.Gst.Extraction.LineAmountsTest do
       LineAmounts.normalize(%{
         "printed_line_amount" => 10_000,
         "printed_taxable_value" => nil,
-        "amount_tax_basis" => "unknown",
+        "line_amount_tax_inclusion" => "unknown",
         "igst_rate" => 18
       })
 

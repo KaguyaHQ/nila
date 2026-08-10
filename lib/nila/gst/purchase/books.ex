@@ -267,7 +267,7 @@ defmodule Nila.Gst.Purchase.Books do
       "unit_price_paise" => paise_or_nil(amounts.printed_unit_price),
       "printed_line_amount_paise" => paise_or_nil(amounts.printed_line_amount),
       "printed_taxable_value_paise" => paise_or_nil(amounts.printed_taxable_value),
-      "amount_tax_basis" => amounts.amount_tax_basis,
+      "line_amount_tax_inclusion" => amounts.line_amount_tax_inclusion,
       "discount_rate" => line["discount_rate"],
       "discount_paise" => paise_or_nil(line["discount_amount"]),
       "taxable_paise" => read_paise(read, "taxable_value"),
@@ -293,7 +293,7 @@ defmodule Nila.Gst.Purchase.Books do
           not is_nil(line["taxable_value"]) ->
         paise_or_error(line["taxable_value"])
 
-      amounts.amount_tax_basis in ~w(inclusive exclusive) and
+      amounts.line_amount_tax_inclusion in ~w(inclusive exclusive) and
           is_nil(amounts.taxable_value) ->
         line
         |> then(&(&1["printed_line_amount"] || &1["tax_inclusive_value"]))

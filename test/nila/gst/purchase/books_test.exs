@@ -72,7 +72,7 @@ defmodule Nila.Gst.Purchase.BooksTest do
                 "printed_unit_price" => 1_180,
                 "printed_line_amount" => 1_180,
                 "printed_taxable_value" => nil,
-                "amount_tax_basis" => "inclusive",
+                "line_amount_tax_inclusion" => "inclusive",
                 "igst_rate" => 18,
                 "igst_amount" => 180
               }
@@ -86,7 +86,7 @@ defmodule Nila.Gst.Purchase.BooksTest do
       assert line["unit_price_paise"] == 118_000
       assert line["printed_line_amount_paise"] == 118_000
       assert line["printed_taxable_value_paise"] == nil
-      assert line["amount_tax_basis"] == "inclusive"
+      assert line["line_amount_tax_inclusion"] == "inclusive"
     end
 
     test "does not book an inclusive gross as taxable when the GST rate is missing" do
@@ -103,7 +103,7 @@ defmodule Nila.Gst.Purchase.BooksTest do
                 "description" => "Inclusive goods",
                 "printed_line_amount" => 1_180,
                 "printed_taxable_value" => nil,
-                "amount_tax_basis" => "inclusive"
+                "line_amount_tax_inclusion" => "inclusive"
               }
             ]
           })

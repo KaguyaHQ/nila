@@ -47,7 +47,7 @@ defmodule Nila.Gst.Extraction.VerifyTest do
           "printed_unit_price" => 100_000,
           "printed_line_amount" => 100_000,
           "printed_taxable_value" => nil,
-          "amount_tax_basis" => "inclusive",
+          "line_amount_tax_inclusion" => "inclusive",
           "igst_rate" => 18,
           "igst_amount" => 15_254.24
         }

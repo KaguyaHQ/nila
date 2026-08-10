@@ -84,7 +84,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
                 "printed_unit_price" => 110_000,
                 "printed_line_amount" => 110_000,
                 "printed_taxable_value" => nil,
-                "amount_tax_basis" => "inclusive",
+                "line_amount_tax_inclusion" => "inclusive",
                 "igst_rate" => 18,
                 "igst_amount" => 16_779.66
               }
@@ -100,7 +100,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert line["taxable_value_basis"] == "derived_from_inclusive_line_amount"
       assert line["printed_line_amount"] == 110_000
       assert line["printed_taxable_value"] == nil
-      assert line["amount_tax_basis"] == "inclusive"
+      assert line["line_amount_tax_inclusion"] == "inclusive"
       assert Gstr1.validation_issues([invoice]) == []
       assert Gstr1.filing_table(invoice) == "b2cl"
 
@@ -183,7 +183,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         |> Map.put("id", "source-inc")
         |> put_in(["line_items", Access.at(0), "printed_taxable_value"], nil)
         |> put_in(["line_items", Access.at(0), "printed_line_amount"], 110_000)
-        |> put_in(["line_items", Access.at(0), "amount_tax_basis"], "inclusive")
+        |> put_in(["line_items", Access.at(0), "line_amount_tax_inclusion"], "inclusive")
         |> put_in(
           ["line_items", Access.at(0), "taxable_value_basis"],
           "derived_from_inclusive_line_amount"
@@ -221,7 +221,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         |> Map.put("id", "source-corrected")
         |> put_in(["line_items", Access.at(0), "printed_taxable_value"], nil)
         |> put_in(["line_items", Access.at(0), "printed_line_amount"], 110_000)
-        |> put_in(["line_items", Access.at(0), "amount_tax_basis"], "inclusive")
+        |> put_in(["line_items", Access.at(0), "line_amount_tax_inclusion"], "inclusive")
 
       flagged =
         MapSet.new([

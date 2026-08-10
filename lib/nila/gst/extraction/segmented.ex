@@ -55,7 +55,7 @@ defmodule Nila.Gst.Extraction.Segmented do
     for the whole row; printed_taxable_value is only a separately printed taxable \
     value before GST. Copy all that are actually printed and never substitute one \
     for another.
-    - amount_tax_basis describes whether printed_line_amount includes GST. A Tax \
+    - line_amount_tax_inclusion describes whether printed_line_amount includes GST. A Tax \
     Inclusive label on the item table, Amount column or subtotal applies to every \
     contributing line unless the document says otherwise. Use exclusive only on \
     positive evidence that GST is added to line Amounts; otherwise use unknown. \

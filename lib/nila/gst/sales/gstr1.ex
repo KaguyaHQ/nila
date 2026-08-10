@@ -44,7 +44,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   )
   @correctable_line_fields ~w(
     item_name description hsn_sac quantity uom printed_unit_price printed_line_amount
-    printed_taxable_value amount_tax_basis taxable_value
+    printed_taxable_value line_amount_tax_inclusion taxable_value
     cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount
   )
   @numeric_correction_field ~r/^(printed_total_taxable|printed_total_tax|printed_grand_total)$|\.(taxable_value|printed_(unit_price|line_amount|taxable_value)|quantity|[csi]gst_(rate|amount))$/
@@ -568,7 +568,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "printed_unit_price" => amounts.printed_unit_price,
       "printed_line_amount" => amounts.printed_line_amount,
       "printed_taxable_value" => amounts.printed_taxable_value,
-      "amount_tax_basis" => amounts.amount_tax_basis,
+      "line_amount_tax_inclusion" => amounts.line_amount_tax_inclusion,
       "taxable_value" => amounts.taxable_value,
       "taxable_value_basis" => amounts.taxable_value_basis,
       "cgst_rate" => cgst_rate,
@@ -670,7 +670,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       basis when basis in ~w(derived_from_inclusive_line_amount printed_exclusive_line_amount) ->
         [
           "line_items[#{index}].printed_line_amount",
-          "line_items[#{index}].amount_tax_basis"
+          "line_items[#{index}].line_amount_tax_inclusion"
         ]
 
       _other ->
@@ -1918,14 +1918,14 @@ defmodule Nila.Gst.Sales.Gstr1 do
     do: Map.put(line, "taxable_value_basis", "corrected")
 
   defp update_corrected_taxable(line, field)
-       when field in ~w(printed_line_amount printed_taxable_value amount_tax_basis cgst_rate sgst_rate igst_rate) do
+       when field in ~w(printed_line_amount printed_taxable_value line_amount_tax_inclusion cgst_rate sgst_rate igst_rate) do
     amounts = LineAmounts.normalize(line)
 
     line
     |> Map.put("printed_unit_price", amounts.printed_unit_price)
     |> Map.put("printed_line_amount", amounts.printed_line_amount)
     |> Map.put("printed_taxable_value", amounts.printed_taxable_value)
-    |> Map.put("amount_tax_basis", amounts.amount_tax_basis)
+    |> Map.put("line_amount_tax_inclusion", amounts.line_amount_tax_inclusion)
     |> Map.put("taxable_value", amounts.taxable_value)
     |> Map.put("taxable_value_basis", amounts.taxable_value_basis)
   end
