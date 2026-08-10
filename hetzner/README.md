@@ -248,8 +248,7 @@ The app refuses to boot, or compose errors, without these:
 | `SECRET_KEY_BASE` | Signs and encrypts cookies and sessions. Generate with `mix phx.gen.secret`. |
 | `DATABASE_URL` | Ecto connection string. Must use the same password as `POSTGRES_PASSWORD` and point at host `nila-postgres`. |
 | `ASSISTANT_API_KEY` | API key for the OpenAI-compatible assistant. `runtime.exs` raises in prod if missing. |
-| `GST_OCR_PROVIDER` | Explicit GST extractor: `mistral` or `llama`. Production currently uses `mistral`; there is no automatic fallback. |
-| `MISTRAL_API_KEY` / `LLAMA_CLOUD_API_KEY` | Set the key for the selected OCR provider. `mistral` requires the former; `llama` requires the latter. |
+| `MISTRAL_API_KEY` | Required key for the sole GST extraction provider. |
 | `R2_ENDPOINT` / `R2_BUCKET` | Private Cloudflare R2 account endpoint and bucket name. |
 | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Bucket-scoped R2 Object Read & Write credentials. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Postgres container credentials, interpolated by Compose. |
@@ -272,7 +271,6 @@ Unless noted, absence disables the feature or leaves the compiled default:
 | `ASSISTANT_RECEIVE_TIMEOUT` | Upstream read timeout in ms (default `60000`). |
 | `ASSISTANT_EXTRA_HEADERS` | JSON object merged into every assistant request for gateway routing. Invalid JSON fails boot. |
 | `GST_TEXT_MODEL` | Overrides the segmented pipeline's text model; default is `mistral-small-latest`. |
-| `LLAMA_PROJECT_ID` / `LLAMA_BASE_URL` / `LLAMA_TIER` / `LLAMA_VERSION` | LlamaExtract project and endpoint settings. |
 | `MISTRAL_BASE_URL` | Mistral endpoint override. The OCR model is pinned in code to `mistral-ocr-4-0`. |
 | `RESEND_API_KEY` | Switches `Nila.Mailer` to Resend and configures inbound Resend API access. **Unset means invite emails are silently dropped in prod**, so this is effectively required to onboard teammates. |
 | `MAIL_FROM` / `MAIL_FROM_NAME` | Sender for outgoing mail (default `Nila <onboarding@resend.dev>`). `nila.tax` is verified; production should use `MAIL_FROM=noreply@nila.tax`. Read only when `RESEND_API_KEY` is set. |

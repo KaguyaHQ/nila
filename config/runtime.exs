@@ -70,52 +70,18 @@ if config_env() in [:prod, :dev] do
   end
 end
 
-# GST OCR provider selection is explicit. Credentials configure clients for the
-# comparison benchmark, but never select a provider and never trigger fallback.
+# Mistral is the sole GST extraction provider. Development remains optional so
+# the app can boot without making OCR calls; production refuses to boot without
+# the key rather than silently selecting or falling back to another provider.
 if config_env() in [:prod, :dev] do
-  llama_key = env!("LLAMA_CLOUD_API_KEY", :string, nil)
   mistral_key = env!("MISTRAL_API_KEY", :string, nil)
 
-  if llama_key do
-    config :nila, Nila.Gst.Extraction.Providers.Llama,
-      api_key: llama_key,
-      project_id: env!("LLAMA_PROJECT_ID", :string, nil)
+  if config_env() == :prod and is_nil(mistral_key) do
+    raise "MISTRAL_API_KEY is required in production"
   end
 
   if mistral_key do
     config :nila, Nila.Gst.Extraction.Providers.Mistral, api_key: mistral_key
-  end
-
-  provider = env!("GST_OCR_PROVIDER", :string, if(config_env() == :dev, do: "mistral", else: nil))
-
-  case provider do
-    "llama" ->
-      if is_nil(llama_key), do: raise("GST_OCR_PROVIDER=llama requires LLAMA_CLOUD_API_KEY")
-      config :nila, :purchase_extractor, Nila.Gst.Extraction.Purchase.LlamaExtract
-      config :nila, :sales_extractor, Nila.Gst.Extraction.Sales.LlamaExtract
-
-    "mistral" ->
-      if is_nil(mistral_key), do: raise("GST_OCR_PROVIDER=mistral requires MISTRAL_API_KEY")
-      config :nila, :purchase_extractor, Nila.Gst.Extraction.Purchase.MistralOCR
-      config :nila, :sales_extractor, Nila.Gst.Extraction.Sales.MistralOCR
-
-    nil ->
-      raise "GST_OCR_PROVIDER is required in production (llama or mistral)"
-
-    other ->
-      raise "unsupported GST_OCR_PROVIDER=#{inspect(other)}"
-  end
-
-  if base_url = env!("LLAMA_BASE_URL", :string, nil) do
-    config :nila, Nila.Gst.Extraction.Providers.Llama, base_url: base_url
-  end
-
-  if tier = env!("LLAMA_TIER", :string, nil) do
-    config :nila, Nila.Gst.Extraction.Providers.Llama, tier: tier
-  end
-
-  if version = env!("LLAMA_VERSION", :string, nil) do
-    config :nila, Nila.Gst.Extraction.Providers.Llama, version: version
   end
 
   if base_url = env!("MISTRAL_BASE_URL", :string, nil) do
@@ -123,8 +89,8 @@ if config_env() in [:prod, :dev] do
   end
 
   # The segmented pipeline's text calls — segmentation and per-invoice reading —
-  # are a model choice, not a provider choice: same key, same endpoint, swapped
-  # by config and auditioned through `mix nila.eval`. Defaults to the cheap tier.
+  # share the Mistral endpoint and can audition a cheaper text model independently
+  # of the pinned OCR model.
   if model = env!("GST_TEXT_MODEL", :string, nil) do
     config :nila, Nila.Gst.Extraction.Providers.MistralChat, model: model
   end

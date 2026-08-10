@@ -6,9 +6,8 @@ that follows. See `lib/nila/gst/extraction/` for the code and `decisions.md` for
 system-level rationale._
 
 The extraction path turns a dumped PDF (a month of invoices, one or more per page)
-into structured invoice artifacts. Mistral OCR is the operational default;
-LlamaExtract is a benchmark-only adapter (prohibitively costly). Provider selection
-is explicit via `GST_OCR_PROVIDER`, with no automatic fallback.
+into structured invoice artifacts. Mistral OCR is the sole provider; the former
+LlamaExtract benchmark path was removed after Mistral proved materially cheaper.
 
 ## TL;DR
 

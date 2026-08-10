@@ -2,7 +2,6 @@ defmodule Nila.Gst.Extraction.SalesTest do
   use ExUnit.Case, async: true
 
   alias Nila.Gst.Sales.Gstr1
-  alias Nila.Gst.Extraction.Providers.Llama
   alias Nila.Gst.Extraction.Sales.Stub
 
   describe "Stub.extract/2" do
@@ -42,38 +41,6 @@ defmodule Nila.Gst.Extraction.SalesTest do
 
       stages = agent |> Agent.get(&Enum.reverse/1)
       assert stages == [:rendering, :reading, :extracting]
-    end
-  end
-
-  describe "Providers.Llama.pages/3 (pure response mapping)" do
-    test "reshapes per-page results and attaches rendered image basenames" do
-      body = %{
-        "extract_result" => [
-          %{
-            "page" => 1,
-            "data" => %{"invoice_number" => "20/2025-26"},
-            "confidence" => %{"x" => 0.9}
-          },
-          %{"page" => 2, "data" => %{"invoice_number" => "21/2025-26"}}
-        ]
-      }
-
-      images = %{"page_01.png" => <<0>>}
-
-      [first, second] = Llama.pages(:sales, body, images)
-
-      assert first["page"] == 1
-      assert first["image"] == "images/page_01.png"
-      assert first["data"]["invoice_number"] == "20/2025-26"
-      assert first["confidence"] == %{"x" => 0.9}
-
-      # No rendered image for page 2 → image and confidence stay nil.
-      assert second["image"] == nil
-      assert second["confidence"] == nil
-    end
-
-    test "returns [] when the response has no recognizable page list" do
-      assert Llama.pages(:sales, %{"status" => "COMPLETED"}, %{}) == []
     end
   end
 end

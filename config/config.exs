@@ -32,15 +32,6 @@ config :nila, Nila.Assistant,
   max_tool_iterations: 8,
   receive_timeout: 60_000
 
-# LlamaExtract remains available only for explicit comparison benchmarks.
-config :nila, Nila.Gst.Extraction.Providers.Llama,
-  base_url: "https://api.cloud.llamaindex.ai",
-  tier: "agentic",
-  version: "latest",
-  receive_timeout: 60_000,
-  poll_interval_ms: 3_000,
-  max_polls: 200
-
 config :nila, Nila.Gst.Extraction.Providers.Mistral,
   base_url: "https://api.mistral.ai",
   receive_timeout: 300_000
