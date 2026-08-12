@@ -24,6 +24,8 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
 
   @default_model "mistral-small-latest"
 
+  alias Nila.Gst.Extraction.MistralFinch
+
   @doc "The model this module will use unless a call overrides it."
   def model, do: config()[:model] || @default_model
 
@@ -63,6 +65,7 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
         retry_delay: &retry_delay/1,
         receive_timeout: receive_timeout()
       ]
+      |> Keyword.merge(MistralFinch.req_options())
       |> Keyword.merge(req_options())
 
     case Req.post(options) do

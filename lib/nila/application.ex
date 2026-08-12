@@ -13,6 +13,7 @@ defmodule Nila.Application do
       {Oban, Application.fetch_env!(:nila, Oban)},
       {DNSCluster, query: Application.get_env(:nila, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Nila.PubSub},
+      Nila.Gst.Extraction.MistralFinch,
       # Start a worker by calling: Nila.Worker.start_link(arg)
       # {Nila.Worker, arg},
       # Start to serve requests, typically the last entry

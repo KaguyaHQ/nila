@@ -59,6 +59,62 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
     end
   end
 
+  defmodule CrashingProvider do
+    @behaviour Nila.Gst.Extraction.Purchase
+
+    def provider, do: "test"
+    def model, do: "test-crash"
+
+    @impl true
+    def extract(_bytes, opts) do
+      opts
+      |> Keyword.fetch!(:on_progress)
+      |> then(& &1.({:progress, %{done: 8, total: 14, pages_done: 8, page_count: 14}}))
+
+      raise "provider crashed"
+    end
+  end
+
+  test "an intermediate worker failure announces its retry without failing the dump" do
+    previous = Application.get_env(:nila, :purchase_extractor)
+    Application.put_env(:nila, :purchase_extractor, CrashingProvider)
+    on_exit(fn -> Application.put_env(:nila, :purchase_extractor, previous) end)
+
+    %{user: user, org: org} = user_with_org_fixture()
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Breeze Tech",
+        type: "company",
+        gstin: "33AEWPH4158J1Z3"
+      })
+
+    key = "orgs/#{org.id}/gst/test/crashing.pdf"
+    {:ok, _stored} = Storage.put(key, "%PDF-1.7 test")
+
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id, brought_in_by_id: user.id},
+        %{period: "2025-10", kind: "purchase", file_keys: [key]}
+      )
+
+    PurchaseMonths.subscribe(org.id)
+    job = %Oban.Job{args: %{"dump_id" => dump.id}, attempt: 1, max_attempts: 3}
+
+    assert_raise RuntimeError, "provider crashed", fn -> DumpWorker.perform(job) end
+
+    assert_receive {:gst_dump_progress, dump_id, client_id, "2025-10", "purchase",
+                    {:worker_retrying, 2, 3}}
+
+    assert dump_id == dump.id
+    assert client_id == client.id
+
+    {:ok, retrying_dump} = Dumps.fetch(org.id, dump.id)
+    assert retrying_dump.status == "extracting"
+    assert retrying_dump.error == nil
+  end
+
   test "records and stores the provider call before deriving the dump" do
     previous = Application.get_env(:nila, :purchase_extractor)
     Application.put_env(:nila, :purchase_extractor, Provider)

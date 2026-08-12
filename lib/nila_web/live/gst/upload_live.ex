@@ -132,6 +132,7 @@ defmodule NilaWeb.Gst.UploadLive do
              status: :queued,
              progress: nil,
              retrying: nil,
+             worker_retry: nil,
              unaccounted: [],
              client_id: client_id,
              period: period
@@ -331,13 +332,37 @@ defmodule NilaWeb.Gst.UploadLive do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp apply_progress(job, {:done, _client_id, _period, unaccounted}),
-    do: %{job | status: :done, progress: nil, retrying: nil, unaccounted: unaccounted}
+    do: %{
+      job
+      | status: :done,
+        progress: nil,
+        retrying: nil,
+        worker_retry: nil,
+        unaccounted: unaccounted
+    }
 
-  defp apply_progress(job, {:failed, _reason}), do: %{job | status: :failed}
-  defp apply_progress(job, :held), do: %{job | status: :held}
+  defp apply_progress(job, {:failed, _reason}),
+    do: %{job | status: :failed, worker_retry: nil}
+
+  defp apply_progress(job, :held), do: %{job | status: :held, worker_retry: nil}
+
+  defp apply_progress(job, {:worker_retrying, attempt, max_attempts}),
+    do: %{
+      job
+      | retrying: nil,
+        worker_retry: %{attempt: attempt, max_attempts: max_attempts, state: :waiting}
+    }
+
+  defp apply_progress(job, :extracting),
+    do: %{
+      job
+      | status: :extracting,
+        retrying: nil,
+        worker_retry: start_worker_retry(job.worker_retry)
+    }
 
   defp apply_progress(job, {:extracting, window}) when is_map(window),
-    do: %{job | status: :extracting, progress: window}
+    do: %{job | status: :extracting, progress: window, retrying: nil}
 
   # A resent window costs another provider round-trip, so the bar sits still for
   # ~40s while it happens. Saying so is the difference between a slow read and a
@@ -348,7 +373,10 @@ defmodule NilaWeb.Gst.UploadLive do
   # Past extraction the window counts are stale — derivation is a different unit
   # of work, and a bar frozen at "48 of 57 pages" would read as stuck.
   defp apply_progress(job, stage) when is_atom(stage),
-    do: %{job | status: stage, progress: nil, retrying: nil}
+    do: %{job | status: stage, progress: nil, retrying: nil, worker_retry: nil}
+
+  defp start_worker_retry(nil), do: nil
+  defp start_worker_retry(retry), do: %{retry | state: :running}
 
   defp fetch_client(org, client_id) do
     case org && client_id && client_id != "" && Clients.get_client(org.id, client_id) do
@@ -425,9 +453,17 @@ defmodule NilaWeb.Gst.UploadLive do
   defp page_list([page]), do: "Page #{page}"
   defp page_list(pages), do: "Pages #{Enum.join(pages, ", ")}"
 
+  defp job_label(%{worker_retry: %{state: :waiting, attempt: attempt, max_attempts: max}}),
+    do: "Processing interrupted — retrying (#{attempt} of #{max})"
+
+  defp job_label(%{worker_retry: %{state: :running, attempt: attempt, max_attempts: max}}),
+    do: "Reading again — attempt #{attempt} of #{max}"
+
   defp job_label(job) do
     if partial?(job), do: "Read, but not all of it", else: status_label(job.status)
   end
+
+  defp job_variant(%{worker_retry: %{}}), do: "warning"
 
   defp job_variant(job) do
     if partial?(job), do: "warning", else: status_variant(job.status)

@@ -424,6 +424,55 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     refute has_element?(view, "#gst-dump-progress-#{dump.id}")
   end
 
+  test "a worker retry keeps the last progress visible and explains the restart", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    upload_pdf(view, "bills.pdf", "purchase")
+    submit(view, client)
+    [dump] = Dumps.list(org.id, client.id, @period)
+
+    landed = %{done: 8, total: 14, pages_done: 8, page_count: 14}
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:extracting, landed}}
+    )
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:worker_retrying, 2, 3}}
+    )
+
+    assert has_element?(
+             view,
+             "#gst-dump-#{dump.id}",
+             "Processing interrupted — retrying (2 of 3)"
+           )
+
+    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "8 of 14 pages read")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id} progress[value='8'][max='14']")
+
+    send(view.pid, {:gst_dump_progress, dump.id, client.id, @period, "purchase", :extracting})
+
+    assert has_element?(view, "#gst-dump-#{dump.id}", "Reading again — attempt 2 of 3")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "8 of 14 pages read")
+
+    restarted = %{done: 0, total: 14, pages_done: 0, page_count: 14}
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:extracting, restarted}}
+    )
+
+    assert has_element?(view, "#gst-dump-#{dump.id}", "Reading again — attempt 2 of 3")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "14 pages to read")
+    refute has_element?(view, "#gst-dump-progress-#{dump.id} progress[value]")
+  end
+
   test "a read that lost pages names them instead of reporting a clean finish", %{
     conn: conn,
     org: org,

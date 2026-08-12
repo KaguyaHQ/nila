@@ -758,6 +758,8 @@ defmodule Nila.Gst.Intake.DumpWorker do
     if job.attempt >= job.max_attempts do
       Dumps.mark_failed(dump, reason)
       progress(dump, {:failed, reason})
+    else
+      progress(dump, {:worker_retrying, job.attempt + 1, job.max_attempts})
     end
 
     :ok
