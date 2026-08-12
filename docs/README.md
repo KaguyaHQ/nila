@@ -6,6 +6,7 @@ What's in here. Open the one that answers your question.
 - [`architecture.md`](./architecture.md) — runtime, domain contexts, and the state principle.
 - [`decisions.md`](./decisions.md) — system-level decisions and their reasoning (monolith, Postgres-as-truth, Oban, R2 storage, transactional code).
 - [`ocr-extraction.md`](./ocr-extraction.md) — OCR/extraction provider behaviour: measured latency, why whole-packet extraction drops invoices past ~15 pages, and the chunking mandate. Extensible experiment log.
+- [`mistral-http-transport.md`](./mistral-http-transport.md) — the 2026-08-12 stale-connection investigation, retry semantics, discarded HTTP-client alternatives, and implemented document/chat transport split.
 - [`design/DESIGN.md`](./design/DESIGN.md) — brand, principles, layout contracts, and the moonlight UI system.
 - [`runbooks/`](./runbooks/) — debugging playbooks for shipped features.
 

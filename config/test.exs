@@ -93,6 +93,10 @@ config :nila, Nila.Gst.Extraction.Providers.MistralChat,
   api_key: "test-mistral-key",
   req_options: [plug: {Req.Test, Nila.Gst.Extraction.Providers.MistralChat}]
 
+# Req.Test replaces the adapter, so an eager real H2 connection would only add
+# DNS/reconnect noise to the test application.
+config :nila, Nila.Gst.Extraction.MistralChatFinch, start: false
+
 config :nila, Nila.Assistant,
   http_client: Nila.Assistant.HTTPClient.Stub,
   api_key: "test-key",

@@ -24,7 +24,7 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
 
   @default_model "mistral-small-latest"
 
-  alias Nila.Gst.Extraction.MistralFinch
+  alias Nila.Gst.Extraction.MistralChatFinch
 
   @doc "The model this module will use unless a call overrides it."
   def model, do: config()[:model] || @default_model
@@ -55,17 +55,16 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
         auth: {:bearer, api_key()},
         json: payload,
         decode_body: false,
-        # The OCR path sets `retry: false` because a repeated read costs real
-        # money per page. This one is different in kind: labelling a packet fans
-        # out to one small call per page, so a 429 is the expected weather rather
-        # than a failure, and the call has no side effect to repeat. Bounded, and
-        # only for transient statuses.
-        retry: :transient,
+        # Chat fans out across pages and invoice segments, so 429/5xx backoff is
+        # expected and replay has no business side effect. The custom policy is
+        # intentionally narrower than Req's `:transient`: a POST is also retried
+        # when the pure-H2 pool says it never accepted the request, but not for
+        # ambiguous timeouts or connection closures that may have spent tokens.
+        retry: &retry_policy/2,
         max_retries: Keyword.get(opts, :max_retries, 5),
-        retry_delay: &retry_delay/1,
         receive_timeout: receive_timeout()
       ]
-      |> Keyword.merge(MistralFinch.req_options())
+      |> Keyword.merge(MistralChatFinch.req_options())
       |> Keyword.merge(req_options())
 
     case Req.post(options) do
@@ -118,6 +117,23 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
   # Exponential with a floor: a rate-limited fan-out that all retries at once is
   # the same fan-out again.
   defp retry_delay(attempt), do: (:math.pow(2, attempt) * 1_000) |> round() |> min(30_000)
+
+  @doc false
+  def retry_policy(request, %Req.Response{status: status})
+      when status in [429, 500, 502, 503, 504] do
+    attempt = Req.Request.get_private(request, :req_retry_count, 0)
+    {:delay, retry_delay(attempt)}
+  end
+
+  def retry_policy(_request, %Req.HTTPError{protocol: :http2, reason: reason})
+      when reason in [:pool_not_available, :connection_not_ready, :unprocessed],
+      # A real cold Mistral pool was still unavailable at 100ms and ready
+      # within the next few hundred milliseconds. This error is proven
+      # pre-send, so two short waits are safer than leaking process-start timing
+      # into the extraction result.
+      do: {:delay, 200}
+
+  def retry_policy(_request, _response_or_error), do: false
 
   defp to_binary(body) when is_binary(body), do: body
   defp to_binary(body), do: IO.iodata_to_binary(body)

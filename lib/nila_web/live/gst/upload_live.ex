@@ -131,6 +131,7 @@ defmodule NilaWeb.Gst.UploadLive do
              kind: dump.kind,
              status: :queued,
              progress: nil,
+             bill_count: nil,
              retrying: nil,
              worker_retry: nil,
              unaccounted: [],
@@ -362,7 +363,13 @@ defmodule NilaWeb.Gst.UploadLive do
     }
 
   defp apply_progress(job, {:extracting, window}) when is_map(window),
-    do: %{job | status: :extracting, progress: window, retrying: nil}
+    do: %{
+      job
+      | status: :extracting,
+        progress: window,
+        bill_count: bill_count(window, job.bill_count),
+        retrying: nil
+    }
 
   # A resent window costs another provider round-trip, so the bar sits still for
   # ~40s while it happens. Saying so is the difference between a slow read and a
@@ -370,10 +377,29 @@ defmodule NilaWeb.Gst.UploadLive do
   defp apply_progress(job, {:extracting_retry, pages}),
     do: %{job | status: :extracting, retrying: pages}
 
-  # Past extraction the window counts are stale — derivation is a different unit
-  # of work, and a bar frozen at "48 of 57 pages" would read as stuck.
+  # Once every bill has landed, derivation and reconciliation are bookkeeping
+  # over that completed read. Keep the full bar on screen while those short
+  # checks run: replacing useful progress with another indeterminate animation
+  # makes a normal phase transition look like the document restarted.
+  defp apply_progress(job, stage) when stage in [:deriving, :reconciling],
+    do: %{
+      job
+      | status: stage,
+        progress: checking_progress(job.progress),
+        retrying: nil,
+        worker_retry: nil
+    }
+
   defp apply_progress(job, stage) when is_atom(stage),
     do: %{job | status: stage, progress: nil, retrying: nil, worker_retry: nil}
+
+  defp bill_count(%{stage: :reading, total: total}, _previous), do: total
+  defp bill_count(_progress, previous), do: previous
+
+  defp checking_progress(%{stage: :reading, total: total}),
+    do: %{stage: :checking, done: total, total: total}
+
+  defp checking_progress(_progress), do: nil
 
   defp start_worker_retry(nil), do: nil
   defp start_worker_retry(retry), do: %{retry | state: :running}
@@ -453,11 +479,22 @@ defmodule NilaWeb.Gst.UploadLive do
   defp page_list([page]), do: "Page #{page}"
   defp page_list(pages), do: "Pages #{Enum.join(pages, ", ")}"
 
+  defp retry_message("all"), do: "The document did not come back. Asking again."
+  defp retry_message(pages), do: "Pages #{pages} did not come back. Asking again."
+
   defp job_label(%{worker_retry: %{state: :waiting, attempt: attempt, max_attempts: max}}),
     do: "Processing interrupted — retrying (#{attempt} of #{max})"
 
   defp job_label(%{worker_retry: %{state: :running, attempt: attempt, max_attempts: max}}),
     do: "Reading again — attempt #{attempt} of #{max}"
+
+  defp job_label(%{status: :extracting, progress: %{stage: stage}})
+       when stage in [:transcribing, :segmenting],
+       do: "Preparing the document"
+
+  defp job_label(%{status: :done, bill_count: count, unaccounted: []})
+       when is_integer(count),
+       do: "Done — #{count} #{pluralize(count, "bill")} added"
 
   defp job_label(job) do
     if partial?(job), do: "Read, but not all of it", else: status_label(job.status)
@@ -471,8 +508,8 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp status_label(:queued), do: "Queued"
   defp status_label(:extracting), do: "Reading the bills"
-  defp status_label(:deriving), do: "Deriving the GSTR-1"
-  defp status_label(:reconciling), do: "Reconciling against 2B"
+  defp status_label(:deriving), do: "Checking the result"
+  defp status_label(:reconciling), do: "Checking the result"
   defp status_label(:done), do: "Done"
 
   defp status_label(:held),
@@ -506,50 +543,32 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp spinning?(status), do: status not in @settled
 
-  # Pages are the unit the operator can see in their own PDF, so the bar counts
-  # pages when the page count is known and falls back to windows when `pdfinfo`
-  # could not read the document. Nothing landed yet omits `value` entirely,
-  # which is daisyUI's indeterminate bar — the honest render for "started, no
-  # ground covered", and the thing a static empty bar gets wrong.
-  defp progress_value(%{page_count: page_count, pages_done: 0}) when is_integer(page_count),
-    do: nil
+  # The row spinner is the sole progress signal while useful accounting work is
+  # still unknown. Page labelling is deliberately folded into preparation: a CA
+  # cares how many bills are ready, not how many classifier calls have returned.
+  # The bar appears only once the bill count is known, when zero is a real value.
+  defp progress_bar?(%{stage: stage}), do: stage in [:reading, :checking]
 
-  defp progress_value(%{page_count: page_count, pages_done: pages_done})
-       when is_integer(page_count),
-       do: pages_done
-
-  defp progress_value(%{done: 0}), do: nil
   defp progress_value(%{done: done}), do: done
 
-  defp progress_max(%{page_count: page_count}) when is_integer(page_count), do: page_count
   defp progress_max(%{total: total}), do: total
 
-  # The read has three stages and the honest unit changes between them: the scan
-  # is one call, the packet is then labelled page by page, and only then is each
-  # bill read. Saying "pages" while bills are being read would stall a bar that
-  # is in fact moving.
+  # The provider pipeline has more stages than the customer journey. Expose one
+  # preparation phase, then progress in bills — the artifact the CA brought in
+  # and the only unit on which they can act.
   defp progress_caption(%{stage: :transcribing}), do: "reading the scan"
 
+  defp progress_caption(%{stage: :segmenting, page_count: count}),
+    do: "#{count} #{pluralize(count, "page")} received"
+
   defp progress_caption(%{stage: :reading, done: 0, total: total}),
-    do: "#{total} #{pluralize(total, "bill")} to read"
+    do: "#{total} #{pluralize(total, "bill")} found — starting to read"
 
   defp progress_caption(%{stage: :reading, done: done, total: total}),
     do: "#{done} of #{total} #{pluralize(total, "bill")} read"
 
-  # Before the first window lands the count is the *size of the job*, which is
-  # the reassuring number ("of course a 57-page packet takes a minute"), not a
-  # zero.
-  defp progress_caption(%{page_count: count, pages_done: 0}) when is_integer(count),
-    do: "#{count} #{pluralize(count, "page")} to read"
-
-  defp progress_caption(%{page_count: count, pages_done: done}) when is_integer(count),
-    do: "#{done} of #{count} #{pluralize(count, "page")} read"
-
-  defp progress_caption(%{done: 0, total: total}),
-    do: "#{total} #{pluralize(total, "part")} to read"
-
-  defp progress_caption(%{done: done, total: total}),
-    do: "#{done} of #{total} #{pluralize(total, "part")} read"
+  defp progress_caption(%{stage: :checking, total: total}),
+    do: "#{total} of #{total} #{pluralize(total, "bill")} read"
 
   defp pluralize(1, word), do: word
   defp pluralize(_count, word), do: word <> "s"
@@ -783,6 +802,7 @@ defmodule NilaWeb.Gst.UploadLive do
 
             <div :if={job.progress} id={"gst-dump-progress-#{dump_id}"} class="space-y-1.5 pl-8">
               <progress
+                :if={progress_bar?(job.progress)}
                 class="progress progress-primary block h-1.5 w-full"
                 value={progress_value(job.progress)}
                 max={progress_max(job.progress)}
@@ -791,7 +811,7 @@ defmodule NilaWeb.Gst.UploadLive do
                 {progress_caption(job.progress)}
               </p>
               <p :if={job.retrying} class="text-meta text-warning">
-                Pages {job.retrying} did not come back. Asking again.
+                {retry_message(job.retrying)}
               </p>
             </div>
           </div>

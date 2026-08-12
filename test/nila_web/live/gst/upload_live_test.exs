@@ -367,7 +367,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert_redirect(view, "/gst/#{client.id}/#{@period}")
   end
 
-  test "extraction narrates in pages read, not a dead spinner", %{
+  test "extraction presents one preparation phase followed by bill progress", %{
     conn: conn,
     org: org,
     client: client
@@ -382,26 +382,58 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert has_element?(view, "#gst-upload-progress-header", "Breeze Tech")
     assert has_element?(view, "#gst-upload-progress-header", "Oct 2025")
 
-    plan = %{done: 0, total: 8, pages_done: 0, page_count: 57}
+    transcribing = %{stage: :transcribing, done: 0, total: 1}
 
     send(
       view.pid,
-      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:extracting, plan}}
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:extracting, transcribing}}
     )
 
-    # Nothing has landed: the size of the job, and an indeterminate bar.
-    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "57 pages to read")
-    refute has_element?(view, "#gst-dump-progress-#{dump.id} progress[value]")
+    assert has_element?(view, "#gst-dump-#{dump.id}", "Preparing the document")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "reading the scan")
+    refute has_element?(view, "#gst-dump-progress-#{dump.id} progress")
 
-    landed = %{done: 3, total: 8, pages_done: 20, page_count: 57}
+    # Page labelling is internal preparation, not a first run through the bills.
+    # The row spinner remains the only animation instead of a first progress bar
+    # counting 1..57 and then starting over.
+    segmenting = %{stage: :segmenting, done: 20, total: 57, pages_done: 20, page_count: 57}
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:extracting, segmenting}}
+    )
+
+    assert has_element?(view, "#gst-dump-#{dump.id}", "Preparing the document")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "57 pages received")
+    refute has_element?(view, "#gst-dump-progress-#{dump.id} progress")
+
+    # Once bills are known, zero is determinate. There is no second loader.
+    reading = %{stage: :reading, done: 0, total: 8}
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:extracting, reading}}
+    )
+
+    assert has_element?(view, "#gst-dump-#{dump.id}", "Reading the bills")
+
+    assert has_element?(
+             view,
+             "#gst-dump-progress-#{dump.id}",
+             "8 bills found — starting to read"
+           )
+
+    assert has_element?(view, "#gst-dump-progress-#{dump.id} progress[value='0'][max='8']")
+
+    landed = %{stage: :reading, done: 3, total: 8}
 
     send(
       view.pid,
       {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:extracting, landed}}
     )
 
-    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "20 of 57 pages read")
-    assert has_element?(view, "#gst-dump-progress-#{dump.id} progress[value='20'][max='57']")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "3 of 8 bills read")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id} progress[value='3'][max='8']")
 
     # A resent window holds the bar still for another ~40s round-trip; saying so
     # is what separates a slow read from a screen that looks hung.
@@ -416,12 +448,19 @@ defmodule NilaWeb.Gst.UploadLiveTest do
              "Pages 7-14 did not come back. Asking again."
            )
 
-    # Derivation is a different unit of work — a bar frozen at 20/57 would read
-    # as stuck, so it goes away rather than lying.
+    finished = %{stage: :reading, done: 8, total: 8}
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:extracting, finished}}
+    )
+
+    # Final bookkeeping keeps the completed bar instead of flashing a loader.
     send(view.pid, {:gst_dump_progress, dump.id, client.id, @period, "purchase", :reconciling})
 
-    assert render(view) =~ "Reconciling against 2B"
-    refute has_element?(view, "#gst-dump-progress-#{dump.id}")
+    assert has_element?(view, "#gst-dump-#{dump.id}", "Checking the result")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "8 of 8 bills read")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id} progress[value='8'][max='8']")
   end
 
   test "a worker retry keeps the last progress visible and explains the restart", %{
@@ -435,7 +474,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     submit(view, client)
     [dump] = Dumps.list(org.id, client.id, @period)
 
-    landed = %{done: 8, total: 14, pages_done: 8, page_count: 14}
+    landed = %{stage: :reading, done: 8, total: 14}
 
     send(
       view.pid,
@@ -453,15 +492,15 @@ defmodule NilaWeb.Gst.UploadLiveTest do
              "Processing interrupted — retrying (2 of 3)"
            )
 
-    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "8 of 14 pages read")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "8 of 14 bills read")
     assert has_element?(view, "#gst-dump-progress-#{dump.id} progress[value='8'][max='14']")
 
     send(view.pid, {:gst_dump_progress, dump.id, client.id, @period, "purchase", :extracting})
 
     assert has_element?(view, "#gst-dump-#{dump.id}", "Reading again — attempt 2 of 3")
-    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "8 of 14 pages read")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "8 of 14 bills read")
 
-    restarted = %{done: 0, total: 14, pages_done: 0, page_count: 14}
+    restarted = %{stage: :transcribing, done: 0, total: 1}
 
     send(
       view.pid,
@@ -469,8 +508,23 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     )
 
     assert has_element?(view, "#gst-dump-#{dump.id}", "Reading again — attempt 2 of 3")
-    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "14 pages to read")
-    refute has_element?(view, "#gst-dump-progress-#{dump.id} progress[value]")
+    assert has_element?(view, "#gst-dump-progress-#{dump.id}", "reading the scan")
+    refute has_element?(view, "#gst-dump-progress-#{dump.id} progress")
+
+    bills_found = %{stage: :reading, done: 0, total: 14}
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, @period, "purchase", {:extracting, bills_found}}
+    )
+
+    assert has_element?(
+             view,
+             "#gst-dump-progress-#{dump.id}",
+             "14 bills found — starting to read"
+           )
+
+    assert has_element?(view, "#gst-dump-progress-#{dump.id} progress[value='0'][max='14']")
   end
 
   test "a read that lost pages names them instead of reporting a clean finish", %{

@@ -1,7 +1,7 @@
 defmodule Nila.Gst.Extraction.Providers.Mistral do
   @moduledoc false
 
-  alias Nila.Gst.Extraction.MistralFinch
+  alias Nila.Gst.Extraction.MistralDocumentAdapter
 
   @model "mistral-ocr-4-0"
   @supported_content_types ~w(application/pdf image/jpeg image/png image/webp image/avif image/heic image/heif)
@@ -72,8 +72,12 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
   defp request_options(options) do
     options
     |> Keyword.update!(:url, &url/1)
-    |> Keyword.merge(auth: {:bearer, api_key()}, retry: false, receive_timeout: receive_timeout())
-    |> Keyword.merge(MistralFinch.req_options())
+    |> Keyword.merge(
+      adapter: MistralDocumentAdapter,
+      auth: {:bearer, api_key()},
+      retry: false,
+      receive_timeout: receive_timeout()
+    )
     |> Keyword.merge(req_options())
   end
 
@@ -311,11 +315,11 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
         url: url("/v1/ocr"),
         auth: {:bearer, api_key()},
         json: payload,
+        adapter: MistralDocumentAdapter,
         decode_body: false,
         retry: false,
         receive_timeout: receive_timeout()
       ]
-      |> Keyword.merge(MistralFinch.req_options())
       |> Keyword.merge(req_options())
 
     case Req.post(options) do
