@@ -118,32 +118,32 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
       printed_total_taxable:
         described_nullable(
           "number",
-          "Copy the final taxable turnover printed in the invoice-level GST/tax summary after discount. A Sub Total or Amount labelled Tax Inclusive is not a taxable total; return null when that is the only subtotal printed. Never calculate this field from item rows or subtract tax from an inclusive total."
+          "Copy only a final invoice-level taxable turnover aggregate that is itself printed after discount. A subtotal labelled tax-inclusive and individual tax-rate or slab-summary taxable rows are not this aggregate. Return null when no invoice-level aggregate is printed; never select, combine or calculate one from item or summary rows."
         ),
       printed_cgst:
         described_nullable(
           "number",
-          "A single CGST amount printed once for the whole invoice, in the totals area below the item table — for example a row reading \"Add: CGST 9%\" or \"Total CGST\". The CGST column inside the item table is not this. If the invoice prints no such row, return null."
+          "A single invoice-level CGST aggregate that is itself printed in a totals or tax-summary area rather than an individual item or tax-rate row — for example a row labelled Total CGST. Return null when no invoice-level aggregate is printed; never select, combine or calculate one from summary rows."
         ),
       printed_sgst:
         described_nullable(
           "number",
-          "A single SGST amount printed once for the whole invoice, in the totals area below the item table — for example a row reading \"Add: SGST 9%\" or \"Total SGST\". The SGST column inside the item table is not this. If the invoice prints no such row, return null."
+          "A single invoice-level SGST aggregate that is itself printed in a totals or tax-summary area rather than an individual item or tax-rate row — for example a row labelled Total SGST. Return null when no invoice-level aggregate is printed; never select, combine or calculate one from summary rows."
         ),
       printed_igst:
         described_nullable(
           "number",
-          "The invoice-level IGST summary amount, copied exactly. Null when the bill prints no such summary. Never derive it — not from item rows, not by subtracting other tax fields from a total."
+          "A single invoice-level IGST aggregate that is itself printed in a totals or tax-summary area rather than an individual item or tax-rate row. Return null when no invoice-level aggregate is printed; never select, combine or calculate one from summary rows."
         ),
       printed_total_tax:
         described_nullable(
           "number",
-          "The combined total GST printed on the bill, copied exactly. Null when none is printed. Never derive it — not by summing item rows, not from the CGST/SGST/IGST fields."
+          "The combined invoice-level total GST only when that aggregate is itself printed. Return null when none is printed; never derive it from item rows, tax-rate summaries or the CGST/SGST/IGST fields."
         ),
       printed_additional_charges:
         described_nullable(
           "number",
-          "Total non-tax line additions after GST, such as packing, freight or other charges."
+          "A single invoice-level addition only when the document explicitly places that amount after GST in the total calculation. Do not infer that freight, packing, handling or another charge is post-GST, and do not combine separate charges unless their aggregate is itself printed."
         ),
       printed_rounding_adjustment:
         described_nullable(
@@ -205,7 +205,7 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
       item_name:
         described_nullable(
           "string",
-          "Printed product or service name, normally the first line in the Item & Description column. Exclude supplementary notes or narrative printed on following lines."
+          "Primary printed product or service text in this item's name or description cell. Exclude supplementary notes or narrative from item_name; preserve them in description."
         ),
       description:
         described_nullable(

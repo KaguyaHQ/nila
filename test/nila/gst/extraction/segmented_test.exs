@@ -118,9 +118,17 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
 
       [_system, user] = Jason.decode!(body)["messages"]
       assert user["content"] =~ "regardless of vendor wording"
-      assert user["content"] =~ "Never use arithmetic to populate a printed_* field"
+      assert user["content"] =~ "Never use arithmetic to populate any extracted numeric field"
+      assert user["content"] =~ "line_amount_tax_inclusion is an inferred semantic field"
       assert user["content"] =~ "footer captions and amount-in-words labels"
       assert user["content"] =~ "Populate CGST, SGST or IGST only when"
+      assert user["content"] =~ "Never select, combine or sum tax-rate or slab-summary rows"
+
+      assert properties["printed_total_taxable"]["description"] =~
+               "Return null when no invoice-level aggregate is printed"
+
+      assert properties["printed_additional_charges"]["description"] =~
+               "explicitly places that amount after GST"
 
       reply(conn, %{
         "document_type" => "debit_note",

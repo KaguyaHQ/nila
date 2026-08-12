@@ -48,9 +48,9 @@ defmodule Nila.Gst.Extraction.Segmented do
     and digit grouping as required by the numeric schema, but never replace a \
     printed value with a calculation. If a field is not on these pages, return \
     null. A fabricated number is worse than a missing one and will be caught.
-    - item_name is the printed product/service name, usually the first line in \
-    the Item & Description column. Keep following narrative in description but \
-    do not append it to item_name.
+    - item_name is the primary printed product/service text in the item's name \
+    or description cell. Keep supplementary narrative in description but do not \
+    append it to item_name.
     - Preserve each printed figure in its own role: printed_unit_price is one \
     unit's rate; printed_line_amount is the row's extended amount; \
     printed_line_total is its gross total after separately shown tax; \
@@ -59,9 +59,12 @@ defmodule Nila.Gst.Extraction.Segmented do
     - Use headings, table structure and same-row relationships to identify \
     roles, regardless of vendor wording. Populate CGST, SGST or IGST only when \
     the document identifies that tax head.
-    - Arithmetic may classify a printed amount. For example, a row amount plus \
-    separately printed GST equalling its gross total establishes tax-exclusive \
-    pricing. Never use arithmetic to populate a printed_* field.
+    - Arithmetic may classify what a printed amount means. For example, a row \
+    amount plus separately printed GST equalling its gross total establishes \
+    tax-exclusive pricing. Never use arithmetic to populate any extracted \
+    numeric field — including quantities, rates, discounts, taxable values or \
+    tax amounts — unless that value itself appears on the document. \
+    line_amount_tax_inclusion is an inferred semantic field, not a printed number.
     - Respect scope: line and column labels describe their rows; summaries, \
     footer captions and amount-in-words labels describe invoice-level figures. \
     Never assign a summary figure to a line unless it is independently printed \
@@ -70,9 +73,10 @@ defmodule Nila.Gst.Extraction.Segmented do
     - Set line_amount_tax_inclusion from labels, structure or visible arithmetic. \
     Use unknown when evidence is incomplete or conflicting. Do not calculate \
     taxable_value; a later deterministic step does that.
-    - Copy invoice-level and tax-summary taxable turnover and tax amounts into \
-    their printed_* fields. Do not recalculate them or redistribute them across \
-    item rows.
+    - Populate singular invoice-level printed_total_* and printed tax-head \
+    fields only when that invoice-level aggregate is itself printed. Never \
+    select, combine or sum tax-rate or slab-summary rows to create an aggregate, \
+    and never redistribute summary figures across item rows.
     - Include every real item row. Never turn a subtotal, total, HSN summary or \
     amount-in-words row into a line item.
     - The invoice may be internally inconsistent — its own printed total may \
