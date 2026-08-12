@@ -218,6 +218,25 @@ defmodule Nila.Gst.Sales.ValuesTest do
       assert Values.filed_totals(derived).tax == 360.0
     end
 
+    test "missing taxable remains unknown while independently extracted GST remains visible" do
+      inv =
+        invoice(%{
+          "line_items" => [
+            %{
+              "taxable_value" => nil,
+              "igst_rate" => 18,
+              "igst_amount" => 1_800
+            }
+          ]
+        })
+
+      extracted = Values.extracted_lines(inv)
+
+      assert extracted.taxable == nil
+      assert extracted.tax == 1_800.0
+      assert extracted.igst == 1_800.0
+    end
+
     test "an invoice held out of the return files nothing rather than zero" do
       invoices = [invoice(%{"line_items" => [line(1000.0, 18.0, :intrastate)]})]
       derived = derive(invoices)

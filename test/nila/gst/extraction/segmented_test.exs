@@ -107,12 +107,20 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
       assert Map.has_key?(line_properties, "item_name")
       assert Map.has_key?(line_properties, "printed_unit_price")
       assert Map.has_key?(line_properties, "printed_line_amount")
+      assert Map.has_key?(line_properties, "printed_line_total")
       assert Map.has_key?(line_properties, "printed_taxable_value")
 
       assert line_properties["line_amount_tax_inclusion"]["enum"] ==
                ["inclusive", "exclusive", "unknown"]
 
-      assert line_properties["line_amount_tax_inclusion"]["description"] =~ "subtotal applies"
+      assert line_properties["line_amount_tax_inclusion"]["description"] =~
+               "labels, table structure or visible same-row arithmetic"
+
+      [_system, user] = Jason.decode!(body)["messages"]
+      assert user["content"] =~ "regardless of vendor wording"
+      assert user["content"] =~ "Never use arithmetic to populate a printed_* field"
+      assert user["content"] =~ "footer captions and amount-in-words labels"
+      assert user["content"] =~ "Populate CGST, SGST or IGST only when"
 
       reply(conn, %{
         "document_type" => "debit_note",

@@ -30,6 +30,7 @@ defmodule Nila.Gst.Issues do
   # a code missing from this table is a classification bug, not a default.
   @classification %{
     # Arithmetic and extraction checks on one invoice
+    "missing_taxable_value" => {"blocking", :correction},
     "line_arithmetic" => {"required", :correction},
     "cgst_sgst_unequal" => {"required", :correction},
     "lopsided_tax_split" => {"required", :correction},
@@ -170,10 +171,10 @@ defmodule Nila.Gst.Issues do
   @doc """
   Counts of the work open across these issues, by kind.
 
-  A gating issue with no kind is counted as `:blocked` rather than dropped. Every
-  `blocking` code asks for no work — that is what makes it blocking — but it
-  still withholds the filing, and a count that gates while staying invisible is
-  the exact defect this classification exists to remove.
+  A gating issue with no kind is counted as `:blocked` rather than dropped. Most
+  `blocking` codes ask for no work because the return lacks the capability; a
+  blocking correction instead stays in the correction queue until the missing
+  filing evidence is supplied.
   """
   def by_kind(issues) do
     empty = %{decision: 0, confirmation: 0, correction: 0, blocked: 0}

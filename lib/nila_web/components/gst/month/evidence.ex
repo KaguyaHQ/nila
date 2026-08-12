@@ -456,11 +456,19 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 </div>
               </:col>
               <:col :let={row} label="Taxable" align="right" class="whitespace-nowrap">
-                {amount(
-                  if row.kind == :total, do: row.totals.taxable, else: row.line["taxable_value"]
-                )}
+                <span>
+                  {amount(
+                    if row.kind == :total, do: row.totals.taxable, else: row.line["taxable_value"]
+                  )}
+                </span>
+                <span
+                  :if={row.kind == :line and taxable_basis_label(row.line)}
+                  class="text-ink-subtle text-meta block"
+                >
+                  {taxable_basis_label(row.line)}
+                </span>
               </:col>
-              <:col :let={row} label="Extracted tax" align="right" class="whitespace-nowrap">
+              <:col :let={row} label="Extracted GST" align="right" class="whitespace-nowrap">
                 <span :if={row.kind == :total}>{amount(row.totals.tax)}</span>
                 <div :if={row.kind == :line}>
                   <% reading = line_tax_reading(row.line) %>
@@ -703,11 +711,13 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       <div
         :if={
           @issue["status"] == "open" and is_nil(@r1_signoff) and
-            Issues.gating?(@issue) and not SalesWorkings.blocking?(@issue)
+            Issues.gating?(@issue) and
+            (not SalesWorkings.blocking?(@issue) or @can_correct)
         }
         class="mt-block flex flex-wrap gap-2"
       >
         <.button
+          :if={not SalesWorkings.blocking?(@issue)}
           variant="primary"
           size="sm"
           phx-click="resolve-invoice-issue"
@@ -1037,6 +1047,33 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
   defp amount(value), do: Helpers.amount(value)
   defp percent(rate), do: Helpers.percent(rate)
+
+  defp taxable_basis_label(%{"taxable_value_basis" => "printed_taxable_value"}),
+    do: "Printed taxable value"
+
+  defp taxable_basis_label(%{
+         "taxable_value_basis" => "line_amount_plus_tax_equals_total"
+       }),
+       do: "Value + tax = total"
+
+  defp taxable_basis_label(%{
+         "taxable_value_basis" => "line_amount_times_rate_equals_tax"
+       }),
+       do: "Value × rate = tax"
+
+  defp taxable_basis_label(%{"taxable_value_basis" => "printed_exclusive_line_amount"}),
+    do: "Printed amount · tax extra"
+
+  defp taxable_basis_label(%{
+         "taxable_value_basis" => "derived_from_inclusive_line_amount"
+       }),
+       do: "Derived from tax-inclusive amount"
+
+  defp taxable_basis_label(%{"taxable_value_basis" => "corrected"}),
+    do: "Reviewer corrected"
+
+  defp taxable_basis_label(%{"taxable_value" => nil}), do: "Not determined"
+  defp taxable_basis_label(_line), do: nil
 
   defp line_rate_label(line) do
     rate =

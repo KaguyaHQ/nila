@@ -226,7 +226,12 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
       printed_line_amount:
         described_nullable(
           "number",
-          "Final post-discount extended Amount/Value printed for this whole line. This is not a unit rate. Copy it whether tax-inclusive or tax-exclusive; null when no line amount is printed."
+          "The main extended amount printed for this whole line, regardless of the vendor's heading. This is not a unit rate and not the gross total after separately printed tax. Copy it whether tax-inclusive or tax-exclusive; null when no line amount is printed."
+        ),
+      printed_line_total:
+        described_nullable(
+          "number",
+          "The gross total printed for this same item row after separately shown tax, regardless of the vendor's heading. Do not copy an invoice subtotal, grand total or amount-in-words value."
         ),
       printed_taxable_value:
         described_nullable(
@@ -237,7 +242,7 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
         type: "string",
         enum: ["inclusive", "exclusive", "unknown"],
         description:
-          "Whether the printed line Amount includes GST. A Tax Inclusive label on the item table, Amount column or subtotal applies to every contributing line unless the document says otherwise. A subtotal equal to the line Amounts followed by GST and then a larger grand total positively shows exclusive pricing. Use unknown when unclear."
+          "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Labels apply only at their structural scope; invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion. Use unknown when evidence is incomplete or conflicting."
       },
       cgst_rate: nullable("number"),
       cgst_amount: nullable("number"),

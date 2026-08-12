@@ -50,7 +50,8 @@ defmodule Nila.Gst.Filing.Signoffs do
   # 1 — the first stamped shape. Older snapshots carry no key at all, which is
   # itself the signal: absent means "before stamping", not "version 0".
   # 2 — GSTR-3B snapshots include longitudinal ITC case lines.
-  @snapshot_schema_version 2
+  # 3 — GSTR-1 invoice lines retain taxable-basis resolution provenance.
+  @snapshot_schema_version 3
 
   @doc "The snapshot format this module writes."
   def snapshot_schema_version, do: @snapshot_schema_version

@@ -62,6 +62,7 @@ defmodule Nila.Formatters do
     "furniture_row_with_values" => "Blank row carries amounts",
     "rounding_variance" => "Rounding difference",
     "bucket_tax_mismatch" => "Tax doesn't match the rate",
+    "missing_taxable_value" => "Taxable value not established",
     "line_arithmetic" => "Line doesn't multiply out",
     "cgst_sgst_unequal" => "CGST and SGST aren't equal halves",
     "lopsided_tax_split" => "CGST and SGST split unevenly",

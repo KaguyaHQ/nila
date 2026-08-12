@@ -575,7 +575,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <%!-- "Sum of extracted lines" said where the figure came from but not what
             it is, and it sits in the next column after Taxable — so ₹3,88,337
             beside ₹69,900.72 read as two takes on the taxable value. --%>
-      <:col :let={invoice} label="Tax · sum of extracted lines" align="right">
+      <:col :let={invoice} label="Extracted GST" align="right">
         {rupees(Gstr1.extracted_totals(invoice).tax)}
       </:col>
       <:col :let={invoice} label="Status">
@@ -819,7 +819,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       label: label,
       printed: Helpers.rupees(printed),
       proposed: Helpers.rupees(proposed),
-      changed: abs(difference) >= 0.01,
+      changed: is_number(difference) and abs(difference) >= 0.01,
       causes: causes
     }
   end

@@ -159,23 +159,30 @@ defmodule Nila.Gst.Sales.Account do
   end
 
   defp extracted_totals(invoices) do
-    Enum.reduce(invoices, empty_totals(), fn invoice, totals ->
-      effect = Gstr1.document_effect(invoice)
+    {totals, taxable_complete?} =
+      Enum.reduce(invoices, {empty_totals(), true}, fn invoice, {totals, complete?} ->
+        effect = Gstr1.document_effect(invoice)
 
-      Enum.reduce(List.wrap(invoice["line_items"]), totals, fn line, totals ->
-        taxable = effect * number(line["taxable_value"])
-        igst = effect * number(line["igst_amount"])
-        cgst = effect * number(line["cgst_amount"])
-        sgst = effect * number(line["sgst_amount"])
+        Enum.reduce(List.wrap(invoice["line_items"]), {totals, complete?}, fn line,
+                                                                              {totals, complete?} ->
+          taxable = line["taxable_value"]
+          igst = effect * number(line["igst_amount"])
+          cgst = effect * number(line["cgst_amount"])
+          sgst = effect * number(line["sgst_amount"])
 
-        totals
-        |> Map.update!(:taxable, &(&1 + taxable))
-        |> Map.update!(:igst, &(&1 + igst))
-        |> Map.update!(:cgst, &(&1 + cgst))
-        |> Map.update!(:sgst, &(&1 + sgst))
-        |> Map.update!(:tax, &(&1 + igst + cgst + sgst))
+          totals =
+            totals
+            |> Map.update!(:taxable, &(&1 + effect * number(taxable)))
+            |> Map.update!(:igst, &(&1 + igst))
+            |> Map.update!(:cgst, &(&1 + cgst))
+            |> Map.update!(:sgst, &(&1 + sgst))
+            |> Map.update!(:tax, &(&1 + igst + cgst + sgst))
+
+          {totals, complete? and is_number(taxable)}
+        end)
       end)
-    end)
+
+    if taxable_complete?, do: totals, else: %{totals | taxable: nil}
   end
 
   defp draft_totals(nil), do: empty_totals()
@@ -205,7 +212,12 @@ defmodule Nila.Gst.Sales.Account do
         Enum.reduce(derived["b2cl"] || [], 0, &(length(&1["inv"] || []) + &2)) +
         Enum.reduce(derived["cdnr"] || [], 0, &(length(&1["nt"] || []) + &2))
 
-    b2cs = Enum.count(active_invoices, &(Gstr1.filing_table(&1) == "b2cs"))
+    b2cs =
+      Enum.count(
+        active_invoices,
+        &(Gstr1.filing_table(&1) == "b2cs" and Gstr1.taxable_values_complete?(&1))
+      )
+
     invoice_level + b2cs
   end
 
@@ -216,10 +228,15 @@ defmodule Nila.Gst.Sales.Account do
   defp totals_difference(draft, extracted) do
     Map.new(["taxable" | @tax_heads] ++ ["tax"], fn head ->
       key = String.to_existing_atom(head)
-      {key, Float.round(number(draft[key]) - number(extracted[key]), 2)}
+      {key, amount_difference(draft[key], extracted[key])}
     end)
     |> Map.put(:cess, nil)
   end
+
+  defp amount_difference(left, right) when is_number(left) and is_number(right),
+    do: Float.round(left - right, 2)
+
+  defp amount_difference(_left, _right), do: nil
 
   defp empty_totals,
     do: %{taxable: 0.0, igst: 0.0, cgst: 0.0, sgst: 0.0, cess: nil, tax: 0.0}

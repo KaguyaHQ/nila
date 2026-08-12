@@ -44,27 +44,35 @@ defmodule Nila.Gst.Extraction.Segmented do
 
     Return exactly one invoice object.
 
-    - Copy printed values exactly. Never compute a value that is printed, and \
-    never print a value you cannot see: if a field is not on these pages, return \
+    - Preserve the economic value of printed numbers. Normalize currency marks \
+    and digit grouping as required by the numeric schema, but never replace a \
+    printed value with a calculation. If a field is not on these pages, return \
     null. A fabricated number is worse than a missing one and will be caught.
     - item_name is the printed product/service name, usually the first line in \
     the Item & Description column. Keep following narrative in description but \
     do not append it to item_name.
-    - Keep the printed number separate from what it means. printed_unit_price is \
-    one unit's rate; printed_line_amount is the final post-discount Amount/Value \
-    for the whole row; printed_taxable_value is only a separately printed taxable \
-    value before GST. Copy all that are actually printed and never substitute one \
-    for another.
-    - line_amount_tax_inclusion describes whether printed_line_amount includes GST. A Tax \
-    Inclusive label on the item table, Amount column or subtotal applies to every \
-    contributing line unless the document says otherwise. A subtotal equal to \
-    the line Amounts followed by GST and then a larger grand total is positive \
-    evidence for exclusive. Otherwise use unknown. Do not calculate taxable value; \
-    a later deterministic step does that.
-    - When a GST slab, tax summary or CGST/SGST outward block is printed, copy \
-    its taxable turnover and tax amounts into the printed_* fields exactly. Do \
-    not recalculate them and do not redistribute them across item rows.
-    - Handwritten tax and total boxes are printed values too.
+    - Preserve each printed figure in its own role: printed_unit_price is one \
+    unit's rate; printed_line_amount is the row's extended amount; \
+    printed_line_total is its gross total after separately shown tax; \
+    printed_taxable_value is a separately printed pre-GST value. Never \
+    substitute one field for another.
+    - Use headings, table structure and same-row relationships to identify \
+    roles, regardless of vendor wording. Populate CGST, SGST or IGST only when \
+    the document identifies that tax head.
+    - Arithmetic may classify a printed amount. For example, a row amount plus \
+    separately printed GST equalling its gross total establishes tax-exclusive \
+    pricing. Never use arithmetic to populate a printed_* field.
+    - Respect scope: line and column labels describe their rows; summaries, \
+    footer captions and amount-in-words labels describe invoice-level figures. \
+    Never assign a summary figure to a line unless it is independently printed \
+    there. Clearly visible handwritten or manually entered values are source \
+    evidence too.
+    - Set line_amount_tax_inclusion from labels, structure or visible arithmetic. \
+    Use unknown when evidence is incomplete or conflicting. Do not calculate \
+    taxable_value; a later deterministic step does that.
+    - Copy invoice-level and tax-summary taxable turnover and tax amounts into \
+    their printed_* fields. Do not recalculate them or redistribute them across \
+    item rows.
     - Include every real item row. Never turn a subtotal, total, HSN summary or \
     amount-in-words row into a line item.
     - The invoice may be internally inconsistent — its own printed total may \

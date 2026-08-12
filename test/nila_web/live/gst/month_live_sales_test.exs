@@ -1337,7 +1337,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     # The column names what the figure is before where it came from: it sits
     # immediately after Taxable, so a bare "Sum of extracted lines" read as a
     # second take on the taxable value rather than as the tax.
-    assert has_element?(view, "#gstr1-register th", "Tax · sum of extracted lines")
+    assert has_element?(view, "#gstr1-register th", "Extracted GST")
     assert has_element?(view, "#gstr1-register-basis", "per-rate recomputation")
     assert has_element?(view, "#gstr1-workings-basis", "what this return files")
     assert has_element?(view, "#gstr1-workings-b2b th", "Proposed GSTR-1")

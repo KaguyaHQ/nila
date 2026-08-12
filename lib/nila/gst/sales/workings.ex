@@ -53,6 +53,7 @@ defmodule Nila.Gst.Sales.Workings do
     pristine_source_invoices =
       invoices
       |> ensure_source_ids(Keyword.get(opts, :source_namespace, "legacy"))
+      |> Enum.map(&Gstr1.resolve_line_amounts/1)
       |> annotate_compliance(compliance)
 
     effective = Replay.drop_reopened(resolutions, "target")

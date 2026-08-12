@@ -44,10 +44,10 @@ defmodule Nila.Gst.Sales.Gstr1 do
   )
   @correctable_line_fields ~w(
     item_name description hsn_sac quantity uom printed_unit_price printed_line_amount
-    printed_taxable_value line_amount_tax_inclusion taxable_value
+    printed_line_total printed_taxable_value line_amount_tax_inclusion taxable_value
     cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount
   )
-  @numeric_correction_field ~r/^(printed_total_taxable|printed_total_tax|printed_grand_total)$|\.(taxable_value|printed_(unit_price|line_amount|taxable_value)|quantity|[csi]gst_(rate|amount))$/
+  @numeric_correction_field ~r/^(printed_total_taxable|printed_total_tax|printed_grand_total)$|\.(taxable_value|printed_(unit_price|line_amount|line_total|taxable_value)|quantity|[csi]gst_(rate|amount))$/
 
   @doc "Returns the flagged scalar fields that may be corrected for a source invoice."
   def correctable_fields(flagged, pristine_source_id) do
@@ -131,18 +131,34 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   @doc "Sums extracted taxable and tax amounts without deriving or rounding them."
   def extracted_totals(invoice) do
-    Enum.reduce(List.wrap(invoice["line_items"]), %{taxable: 0, tax: 0}, fn line, totals ->
-      %{
-        taxable: totals.taxable + extracted_number(line["taxable_value"]),
-        tax:
-          totals.tax + extracted_number(line["cgst_amount"]) +
-            extracted_number(line["sgst_amount"]) + extracted_number(line["igst_amount"])
-      }
-    end)
+    lines = List.wrap(invoice["line_items"])
+
+    taxable =
+      if Enum.all?(lines, &is_number(&1["taxable_value"])),
+        do: Enum.sum(Enum.map(lines, & &1["taxable_value"])),
+        else: nil
+
+    tax =
+      Enum.reduce(lines, 0, fn line, total ->
+        total + extracted_number(line["cgst_amount"]) + extracted_number(line["sgst_amount"]) +
+          extracted_number(line["igst_amount"])
+      end)
+
+    %{taxable: taxable, tax: tax}
   end
 
   defp extracted_number(value) when is_number(value), do: value
   defp extracted_number(_value), do: 0
+
+  @doc "Re-resolves normalized line amounts from their preserved printed evidence."
+  def resolve_line_amounts(invoice) do
+    Map.update(invoice, "line_items", [], fn lines -> Enum.map(lines, &resolve_line_amount/1) end)
+  end
+
+  @doc "Whether every line has a known taxable value, including a genuine zero."
+  def taxable_values_complete?(invoice) do
+    Enum.all?(List.wrap(invoice["line_items"]), &is_number(&1["taxable_value"]))
+  end
 
   def normalize_invoice(raw) when is_map(raw) do
     data = raw["data"] || raw["extract_result"] || raw["result"] || raw
@@ -250,7 +266,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
     seller_state = state_code(invoice["seller_gstin"])
     pos = effective_place_of_supply(invoice)
 
-    if filing_table(invoice) do
+    if not is_nil(filing_table(invoice)) and taxable_values_complete?(invoice) do
       invoice
       |> derive_items(seller_state, pos)
       |> Enum.map(&(&1["itm_det"] || %{}))
@@ -438,10 +454,11 @@ defmodule Nila.Gst.Sales.Gstr1 do
   def derive(invoices, filed) do
     seller_gstin = filed["gstin"] || first_present(invoices, "seller_gstin")
     seller_state = state_code(seller_gstin)
-    b2b_invoices = Enum.filter(invoices, &(filing_table(&1) == "b2b"))
-    b2cs_invoices = Enum.filter(invoices, &(filing_table(&1) == "b2cs"))
-    b2cl_invoices = Enum.filter(invoices, &(filing_table(&1) == "b2cl"))
-    notes = Enum.filter(invoices, &(filing_table(&1) == "cdnr"))
+    complete = Enum.filter(invoices, &taxable_values_complete?/1)
+    b2b_invoices = Enum.filter(complete, &(filing_table(&1) == "b2b"))
+    b2cs_invoices = Enum.filter(complete, &(filing_table(&1) == "b2cs"))
+    b2cl_invoices = Enum.filter(complete, &(filing_table(&1) == "b2cl"))
+    notes = Enum.filter(complete, &(filing_table(&1) == "cdnr"))
 
     %{
       "gstin" => seller_gstin,
@@ -567,8 +584,13 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "unit_price" => amounts.printed_unit_price,
       "printed_unit_price" => amounts.printed_unit_price,
       "printed_line_amount" => amounts.printed_line_amount,
+      "printed_line_total" => amounts.printed_line_total,
       "printed_taxable_value" => amounts.printed_taxable_value,
+      "line_amount_tax_inclusion_candidate" => amounts.line_amount_tax_inclusion_candidate,
       "line_amount_tax_inclusion" => amounts.line_amount_tax_inclusion,
+      "line_amount_tax_inclusion_basis" => amounts.line_amount_tax_inclusion_basis,
+      "line_amount_tax_inclusion_evidence" => amounts.line_amount_tax_inclusion_evidence,
+      "line_amount_tax_inclusion_disagreement" => amounts.line_amount_tax_inclusion_disagreement,
       "taxable_value" => amounts.taxable_value,
       "taxable_value_basis" => amounts.taxable_value_basis,
       "cgst_rate" => cgst_rate,
@@ -578,6 +600,24 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "igst_rate" => igst_rate,
       "igst_amount" => money(line["igst_amount"] || igst["amount"] || line["iamt"])
     }
+  end
+
+  defp resolve_line_amount(line) do
+    amounts = LineAmounts.normalize(line)
+
+    Map.merge(line, %{
+      "printed_unit_price" => amounts.printed_unit_price,
+      "printed_line_amount" => amounts.printed_line_amount,
+      "printed_line_total" => amounts.printed_line_total,
+      "printed_taxable_value" => amounts.printed_taxable_value,
+      "line_amount_tax_inclusion_candidate" => amounts.line_amount_tax_inclusion_candidate,
+      "line_amount_tax_inclusion" => amounts.line_amount_tax_inclusion,
+      "line_amount_tax_inclusion_basis" => amounts.line_amount_tax_inclusion_basis,
+      "line_amount_tax_inclusion_evidence" => amounts.line_amount_tax_inclusion_evidence,
+      "line_amount_tax_inclusion_disagreement" => amounts.line_amount_tax_inclusion_disagreement,
+      "taxable_value" => amounts.taxable_value,
+      "taxable_value_basis" => amounts.taxable_value_basis
+    })
   end
 
   defp invoice_issues(invoice) do
@@ -591,6 +631,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       filing_classification_issues(invoice) ++
       invoice_number_issues(invoice) ++
       invoice_date_issues(invoice) ++
+      missing_taxable_value_issues(invoice) ++
       check_issues ++
       gstin_issues(invoice) ++
       verification_issues(invoice) ++
@@ -627,11 +668,11 @@ defmodule Nila.Gst.Sales.Gstr1 do
     invoice["line_items"]
     |> Enum.with_index(1)
     |> Enum.flat_map(fn {line, index} ->
-      taxable = num(line["taxable_value"])
+      taxable = line["taxable_value"]
       tax = num(line["cgst_amount"]) + num(line["sgst_amount"]) + num(line["igst_amount"])
       rate = num(line["cgst_rate"]) + num(line["sgst_rate"]) + num(line["igst_rate"])
 
-      if taxable == 0 and tax == 0 and rate == 0 do
+      if is_nil(taxable) or (taxable == 0 and tax == 0 and rate == 0) do
         []
       else
         [
@@ -667,7 +708,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "printed_taxable_value" ->
         ["line_items[#{index}].printed_taxable_value"]
 
-      basis when basis in ~w(derived_from_inclusive_line_amount printed_exclusive_line_amount) ->
+      basis
+      when basis in ~w(derived_from_inclusive_line_amount printed_exclusive_line_amount line_amount_plus_tax_equals_total line_amount_times_rate_equals_tax) ->
         [
           "line_items[#{index}].printed_line_amount",
           "line_items[#{index}].line_amount_tax_inclusion"
@@ -706,19 +748,19 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp printed_total_checks(invoice) do
-    taxable = invoice_taxable(invoice)
-    tax = invoice_tax(invoice)
+    taxable = complete_invoice_taxable(invoice)
+    tax = extracted_line_tax(invoice)
 
     [
       {"printed_taxable_mismatch", invoice["printed_total_taxable"], taxable,
        ["printed_total_taxable", "line_items"]},
       {"printed_tax_mismatch", invoice["printed_total_tax"], tax,
        ["printed_total_tax", "line_items"]},
-      {"grand_total_mismatch", invoice["printed_grand_total"], taxable + tax,
-       ["printed_grand_total", "line_items"]}
+      {"grand_total_mismatch", invoice["printed_grand_total"],
+       if(is_number(taxable), do: taxable + tax), ["printed_grand_total", "line_items"]}
     ]
     |> Enum.flat_map(fn
-      {_code, nil, _derived, _fields} ->
+      {_code, printed, derived, _fields} when is_nil(printed) or is_nil(derived) ->
         []
 
       {code, printed, derived, fields} ->
@@ -800,13 +842,14 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   defp grand_total_explained?(invoice, [%{"operands" => ops}]) do
     explained =
-      printed_delta(invoice["printed_total_taxable"], invoice_taxable(invoice)) +
-        printed_delta(invoice["printed_total_tax"], invoice_tax(invoice))
+      printed_delta(invoice["printed_total_taxable"], complete_invoice_taxable(invoice)) +
+        printed_delta(invoice["printed_total_tax"], extracted_line_tax(invoice))
 
     close?(ops["printed"] - ops["derived"], explained, 2 * @money_tolerance)
   end
 
   defp printed_delta(nil, _derived), do: 0
+  defp printed_delta(_printed, nil), do: 0
   defp printed_delta(printed, derived), do: num(printed) - derived
 
   defp collapsed_printed_issue(invoice, %{"code" => code} = component, [grand]) do
@@ -1056,6 +1099,46 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end
   end
 
+  defp missing_taxable_value_issues(invoice) do
+    missing =
+      invoice["line_items"]
+      |> List.wrap()
+      |> Enum.with_index(1)
+      |> Enum.filter(fn {line, _index} -> is_nil(line["taxable_value"]) end)
+
+    case missing do
+      [] ->
+        []
+
+      lines ->
+        numbers = Enum.map(lines, fn {_line, index} -> index end)
+
+        fields =
+          Enum.flat_map(lines, fn {_line, index} ->
+            zero = index - 1
+
+            [
+              "line_items[#{zero}].taxable_value",
+              "line_items[#{zero}].line_amount_tax_inclusion"
+            ]
+          end)
+
+        [
+          invoice
+          |> issue(
+            "missing_taxable_value",
+            "taxable value could not be established for #{line_word(numbers)} #{Enum.join(numbers, ", ")}; correct the taxable value or whether the printed line amount includes GST",
+            fields,
+            Issues.level_for("missing_taxable_value")
+          )
+          |> Map.put("lines", numbers)
+        ]
+    end
+  end
+
+  defp line_word([_one]), do: "line"
+  defp line_word(_many), do: "lines"
+
   defp invoice_date_issues(%{"invoice_date" => %Date{}}), do: []
 
   defp invoice_date_issues(invoice) do
@@ -1150,6 +1233,14 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp bucket_rounding_issues(invoice) do
+    if taxable_values_complete?(invoice) do
+      bucket_rounding_issues_for_complete_invoice(invoice)
+    else
+      []
+    end
+  end
+
+  defp bucket_rounding_issues_for_complete_invoice(invoice) do
     invoice["line_items"]
     |> Enum.group_by(&line_rate/1)
     |> Enum.flat_map(fn {rate, lines} ->
@@ -1552,6 +1643,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   """
   def hsn_summary(invoices) do
     invoices
+    |> Enum.filter(&taxable_values_complete?/1)
     |> Enum.flat_map(&document_hsn_contributions/1)
     |> Enum.group_by(&{&1["hsn_sc"], &1["rt"]})
     |> Enum.map(fn {{hsn, rate}, contribs} ->
@@ -1864,7 +1956,21 @@ defmodule Nila.Gst.Sales.Gstr1 do
       {:line, index, line_field} ->
         invoice
         |> update_in(["line_items", Access.at(index)], fn line ->
-          (line || %{})
+          line = line || %{}
+
+          line =
+            if line_field == "line_amount_tax_inclusion" do
+              line
+              |> Map.put_new(
+                "line_amount_tax_inclusion_candidate",
+                line["line_amount_tax_inclusion"] || "unknown"
+              )
+              |> Map.put("line_amount_tax_inclusion_basis", "corrected")
+            else
+              line
+            end
+
+          line
           |> Map.put(line_field, value)
           |> update_corrected_taxable(line_field)
         end)
@@ -1918,23 +2024,27 @@ defmodule Nila.Gst.Sales.Gstr1 do
     do: Map.put(line, "taxable_value_basis", "corrected")
 
   defp update_corrected_taxable(line, field)
-       when field in ~w(printed_line_amount printed_taxable_value line_amount_tax_inclusion cgst_rate sgst_rate igst_rate) do
-    amounts = LineAmounts.normalize(line)
-
-    line
-    |> Map.put("printed_unit_price", amounts.printed_unit_price)
-    |> Map.put("printed_line_amount", amounts.printed_line_amount)
-    |> Map.put("printed_taxable_value", amounts.printed_taxable_value)
-    |> Map.put("line_amount_tax_inclusion", amounts.line_amount_tax_inclusion)
-    |> Map.put("taxable_value", amounts.taxable_value)
-    |> Map.put("taxable_value_basis", amounts.taxable_value_basis)
+       when field in ~w(printed_line_amount printed_line_total printed_taxable_value line_amount_tax_inclusion cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount) do
+    resolve_line_amount(line)
   end
 
   defp update_corrected_taxable(line, _field), do: line
 
   defp close?(a, b, tolerance), do: abs(num(a) - num(b)) <= tolerance + 0.000001
 
+  defp complete_invoice_taxable(invoice) do
+    if taxable_values_complete?(invoice), do: invoice_taxable(invoice)
+  end
+
   defp invoice_taxable(invoice), do: sum(invoice["line_items"], "taxable_value")
+
+  defp extracted_line_tax(invoice) do
+    invoice["line_items"]
+    |> List.wrap()
+    |> Enum.reduce(0.0, fn line, total ->
+      total + num(line["cgst_amount"]) + num(line["sgst_amount"]) + num(line["igst_amount"])
+    end)
+  end
 
   defp invoice_tax(invoice) do
     invoice["line_items"]

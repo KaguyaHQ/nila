@@ -339,6 +339,66 @@ defmodule Nila.Gst.Sales.WorkingsTest do
   defp confirmation(issue),
     do: %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(issue)}
 
+  test "legacy unknown line inclusion is re-resolved without mutating stored machine truth" do
+    [invoice | _rest] = invoices()
+
+    legacy_line = %{
+      "description" => "Condensor Coil",
+      "printed_line_amount" => 21_500,
+      "printed_taxable_value" => nil,
+      "line_amount_tax_inclusion" => "unknown",
+      "taxable_value" => nil,
+      "taxable_value_basis" => nil,
+      "igst_rate" => 18,
+      "igst_amount" => 3_870
+    }
+
+    pristine =
+      invoice
+      |> Map.put("invoice_number", "125/2025-26")
+      |> Map.put("line_items", [legacy_line])
+      |> Map.put("printed_total_tax", 3_870)
+      |> Map.put("printed_grand_total", 25_370)
+
+    result = SalesWorkings.materialize([pristine], [], @header)
+    [resolved] = result.active_invoices
+    [line] = resolved["line_items"]
+
+    assert line["taxable_value"] == 21_500
+    assert line["line_amount_tax_inclusion_candidate"] == "unknown"
+    assert line["line_amount_tax_inclusion"] == "exclusive"
+    assert line["taxable_value_basis"] == "line_amount_times_rate_equals_tax"
+    assert get_in(result.derived, ["b2b", Access.at(0), "inv", Access.at(0), "val"]) == 25_370.0
+
+    assert get_in(pristine, ["line_items", Access.at(0), "taxable_value"]) == nil
+  end
+
+  test "unresolved taxable evidence blocks and is withheld from the return" do
+    [invoice | _rest] = invoices()
+
+    unresolved =
+      invoice
+      |> Map.put("invoice_number", "UNRESOLVED-1")
+      |> Map.put("line_items", [
+        %{
+          "description" => "Unknown amount basis",
+          "printed_line_amount" => 10_000,
+          "line_amount_tax_inclusion" => "unknown",
+          "taxable_value" => nil,
+          "igst_rate" => 18,
+          "igst_amount" => nil
+        }
+      ])
+
+    result = SalesWorkings.materialize([unresolved], [], @header)
+    issue = Enum.find(result.issues, &(&1["code"] == "missing_taxable_value"))
+
+    assert issue["level"] == "blocking"
+    assert Nila.Gst.Issues.resolution_kind(issue) == :correction
+    assert result.derived["b2b"] == []
+    refute SalesWorkings.reviewable?(result.issues)
+  end
+
   test "a flagged correction is applied and re-derives" do
     resolutions = [
       %{

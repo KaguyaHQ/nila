@@ -110,23 +110,27 @@ defmodule Nila.Gst.Sales.Values do
 
   @doc "The unrounded, ungrouped sum of the extracted lines, split by head."
   def extracted_lines(invoice) do
-    invoice
-    |> List.wrap()
-    |> Enum.flat_map(&List.wrap(&1["line_items"]))
-    |> Enum.reduce(empty(), fn line, totals ->
-      igst = number(line["igst_amount"]) || 0.0
-      cgst = number(line["cgst_amount"]) || 0.0
-      sgst = number(line["sgst_amount"]) || 0.0
+    lines = invoice |> List.wrap() |> Enum.flat_map(&List.wrap(&1["line_items"]))
 
-      %{
-        totals
-        | taxable: totals.taxable + (number(line["taxable_value"]) || 0.0),
-          igst: totals.igst + igst,
-          cgst: totals.cgst + cgst,
-          sgst: totals.sgst + sgst,
-          tax: totals.tax + igst + cgst + sgst
-      }
-    end)
+    totals =
+      Enum.reduce(lines, empty(), fn line, totals ->
+        igst = number(line["igst_amount"]) || 0.0
+        cgst = number(line["cgst_amount"]) || 0.0
+        sgst = number(line["sgst_amount"]) || 0.0
+
+        %{
+          totals
+          | taxable: totals.taxable + (number(line["taxable_value"]) || 0.0),
+            igst: totals.igst + igst,
+            cgst: totals.cgst + cgst,
+            sgst: totals.sgst + sgst,
+            tax: totals.tax + igst + cgst + sgst
+        }
+      end)
+
+    if Enum.all?(lines, &is_number(&1["taxable_value"])),
+      do: totals,
+      else: %{totals | taxable: nil}
   end
 
   @doc """
@@ -258,14 +262,19 @@ defmodule Nila.Gst.Sales.Values do
   end
 
   defp printed_difference(extracted, printed) do
+    total =
+      if is_number(extracted.taxable),
+        do: printed_delta(extracted.taxable + extracted.tax, printed.total)
+
     %{
       taxable: printed_delta(extracted.taxable, printed.taxable),
       tax: printed_delta(extracted.tax, printed.tax),
-      total: printed_delta(extracted.taxable + extracted.tax, printed.total)
+      total: total
     }
   end
 
   defp printed_delta(_extracted, nil), do: nil
+  defp printed_delta(nil, _printed), do: nil
   defp printed_delta(extracted, printed), do: round2(extracted - printed)
 
   defp scale(nil, _effect), do: nil
@@ -279,13 +288,16 @@ defmodule Nila.Gst.Sales.Values do
 
   defp difference(a, b) do
     %{
-      taxable: round2(a.taxable - (b[:taxable] || 0.0)),
-      igst: round2(a.igst - (b[:igst] || 0.0)),
-      cgst: round2(a.cgst - (b[:cgst] || 0.0)),
-      sgst: round2(a.sgst - (b[:sgst] || 0.0)),
-      tax: round2(a.tax - (b[:tax] || 0.0))
+      taxable: component_difference(a.taxable, b[:taxable]),
+      igst: component_difference(a.igst, b[:igst]),
+      cgst: component_difference(a.cgst, b[:cgst]),
+      sgst: component_difference(a.sgst, b[:sgst]),
+      tax: component_difference(a.tax, b[:tax])
     }
   end
+
+  defp component_difference(a, b) when is_number(a) and is_number(b), do: round2(a - b)
+  defp component_difference(_a, _b), do: nil
 
   defp heads(totals), do: Map.take(totals, @heads)
 

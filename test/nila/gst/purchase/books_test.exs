@@ -167,7 +167,7 @@ defmodule Nila.Gst.Purchase.BooksTest do
       assert [line] = credit["line_items"]
       assert line["line_amount_tax_inclusion"] == "exclusive"
       assert line["taxable_paise"] == 2_000_000
-      assert line["taxable_value_basis"] == "derived_from_reconciled_invoice_totals"
+      assert line["taxable_value_basis"] == "line_amount_times_rate_equals_tax"
     end
 
     test "excludes a taxable total that appeared numerically but lacked a taxable label" do
@@ -204,7 +204,7 @@ defmodule Nila.Gst.Purchase.BooksTest do
       assert credit["total_paise"] == 2_360_000
     end
 
-    test "does not infer exclusive pricing when the printed totals do not reconcile" do
+    test "line arithmetic proves exclusive pricing even when invoice totals do not reconcile" do
       result =
         PurchaseBooks.normalize([
           artifact(1, %{
@@ -224,9 +224,12 @@ defmodule Nila.Gst.Purchase.BooksTest do
         ])
 
       assert [invoice] = result["invoices"]
-      assert invoice["taxable_paise"] == 0
+      assert invoice["taxable_paise"] == 2_000_000
       assert [line] = invoice["line_items"]
-      assert line["line_amount_tax_inclusion"] == "unknown"
+      assert line["line_amount_tax_inclusion"] == "exclusive"
+
+      assert line["line_amount_tax_inclusion_basis"] ==
+               "line_amount_times_rate_equals_tax"
     end
 
     test "does not book an inclusive gross as taxable when the GST rate is missing" do

@@ -112,7 +112,7 @@ defmodule Nila.Gst.Extraction.Verify do
       |> Map.get("line_items", [])
       |> Enum.with_index()
       |> Enum.flat_map(fn {line, index} ->
-        ~w(printed_unit_price printed_line_amount printed_taxable_value)
+        ~w(printed_unit_price printed_line_amount printed_line_total printed_taxable_value)
         |> Enum.map(&{&1, line[&1]})
         |> Enum.reject(fn {_field, value} -> is_nil(value) end)
         |> Enum.map(fn {field, value} ->
