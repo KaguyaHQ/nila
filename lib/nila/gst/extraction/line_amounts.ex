@@ -45,6 +45,27 @@ defmodule Nila.Gst.Extraction.LineAmounts do
 
   def taxable_value(line) when is_map(line), do: normalize(line).taxable_value
 
+  @doc "Drops a redundant taxable candidate only when printed row arithmetic proves its twin."
+  def discard_redundant_printed_taxable(line) when is_map(line) do
+    amounts = normalize(line)
+
+    if is_number(amounts.printed_taxable_value) and is_number(amounts.printed_line_amount) and
+         close?(amounts.printed_taxable_value, amounts.printed_line_amount) and
+         amounts.line_amount_tax_inclusion == "exclusive" and
+         amounts.line_amount_tax_inclusion_basis in ~w(line_amount_plus_tax_equals_total line_amount_times_rate_equals_tax) do
+      repair = %{
+        "field" => "printed_taxable_value",
+        "from" => amounts.printed_taxable_value,
+        "to" => nil,
+        "basis" => "redundant_with_arithmetically_exclusive_line_amount"
+      }
+
+      {Map.put(line, "printed_taxable_value", nil), repair}
+    else
+      {line, nil}
+    end
+  end
+
   defp resolve_inclusion(
          %{
            "line_amount_tax_inclusion_basis" => "corrected",

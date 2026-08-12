@@ -26,8 +26,8 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     """
     TAX INVOICE  BRZ/26/020
     GSTIN 33AAKCS8613A1ZM
-    | Item | 40,000.00 |
-    | Item | 24,552.00 |
+    | Item | 40,000.00 | CGST 9% | SGST 9% |
+    | Item | 24,552.00 | CGST 9% | SGST 9% |
     Taxable 64,552.00  CGST 5,809.68  SGST 5,809.68
     Total tax 11,619.36
     Grand total 76,171.36
@@ -81,9 +81,36 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     assert Verify.printed?(552.0, "TOTAL 552.00")
   end
 
-  test "commas and paise spellings still ground" do
+  test "commas and paise spellings still establish source presence" do
     assert Verify.printed?(64_552.0, String.upcase("taxable 64,552.00"))
     assert Verify.printed?(11_619.36, String.upcase("tax 11,619.36"))
+  end
+
+  test "a printed taxable candidate does not require vendor-specific vocabulary" do
+    value_column =
+      invoice(%{
+        "printed_total_taxable" => 64_552.0,
+        "line_items" => [
+          %{
+            "printed_line_amount" => 64_552.0,
+            "printed_line_total" => 76_171.36,
+            "line_amount_tax_inclusion" => "exclusive",
+            "cgst_rate" => 9.0,
+            "cgst_amount" => 5_809.68,
+            "sgst_rate" => 9.0,
+            "sgst_amount" => 5_809.68
+          }
+        ]
+      })
+
+    text = """
+    TAX INVOICE BRZ/26/020 GSTIN 33AAKCS8613A1ZM
+    | Item | Value | CGST | SGST | Total |
+    | Service | 64,552.00 | 9% 5,809.68 | 9% 5,809.68 | 76,171.36 |
+    | TOTAL | 64,552.00 | | 11,619.36 | 76,171.36 |
+    """
+
+    assert %{status: :verified, flags: []} = Verify.invoice(value_column, text)
   end
 
   test "a bill whose own printed total is wrong names the outlier and the coherent subset" do
@@ -196,9 +223,9 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     end
   end
 
-  test "a repaired value is grounded against what the page printed, not the correction" do
+  test "a repaired value is checked against what the page printed, not the correction" do
     # The repair replaced a scan-damaged GSTIN with its only legal reading; the
-    # corrected form is by definition not on the page, and grounding must check
+    # corrected form is by definition not on the page, and source presence must check
     # the evidence rather than object to the fix.
     repaired = invoice(%{"seller" => %{"gstin" => "32ABSPI4532L1ZG"}})
     text = String.replace(page(), "33AAKCS8613A1ZM", "32ABSP14532L1ZG")
@@ -211,11 +238,8 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     assert %{status: :flagged} = Verify.invoice(repaired, text)
   end
 
-  describe "derived total tax" do
-    test "a total tax that is the sum of its own printed halves grounds" do
-      # breeze 2026-06 page 13: the bill prints CGST 289.83 and SGST 289.83 and
-      # no combined figure. Reporting 579.66 is a derivation from two grounded
-      # values, not an invention, and grounding exists to catch inventions.
+  describe "printed versus derived totals" do
+    test "an unprinted total tax cannot masquerade as printed evidence" do
       halves =
         invoice(%{
           "printed_cgst" => 289.83,
@@ -229,14 +253,15 @@ defmodule Nila.Gst.Extraction.VerifyTest do
       text = """
       TAX INVOICE BRZ/26/020
       GSTIN 33AAKCS8613A1ZM
-      Taxable 3,220.34  CGST 289.83  SGST 289.83
+      Taxable 3,220.34  CGST 9% 289.83  SGST 9% 289.83
       Grand total 3,800.00
       """
 
-      assert %{status: :verified} = Verify.invoice(halves, text)
+      assert %{status: :flagged, flags: flags} = Verify.invoice(halves, text)
+      assert {:value_not_on_page, ["printed_total_tax"]} in flags
     end
 
-    test "a subtotal cannot ground an invented printed taxable total" do
+    test "a printed Value total is source-present without a magic taxable label" do
       extracted = %{
         "printed_subtotal_before_discount" => 20_000,
         "printed_total_taxable" => 20_000,
@@ -255,13 +280,10 @@ defmodule Nila.Gst.Extraction.VerifyTest do
 
       text = "Sub Total 20,000.00 IGST18 (18%) 3,600.00 Total 23,600.00"
 
-      assert %{status: :flagged, flags: [{:value_not_on_page, fields}]} =
-               Verify.invoice(extracted, text)
-
-      assert "printed_total_taxable" in fields
+      assert %{status: :verified, flags: []} = Verify.invoice(extracted, text)
     end
 
-    test "a total tax matching nothing on the page is still ungrounded" do
+    test "a total tax matching nothing on the page is absent" do
       invented =
         invoice(%{
           "printed_cgst" => 289.83,
@@ -275,15 +297,15 @@ defmodule Nila.Gst.Extraction.VerifyTest do
       assert Enum.any?(flags, &match?({:value_not_on_page, _}, &1))
     end
 
-    test "the taxable value is never derivable — it is where fabrication was found" do
+    test "an absent taxable candidate is never excused by arithmetic" do
       # 62,552 is what the model returned for a bill printing 64,552. No
-      # arithmetic on grounded components may excuse it.
+      # arithmetic on source-present components may excuse it.
       fabricated =
         invoice(%{"printed_total_taxable" => 62_552.0, "printed_grand_total" => 74_171.36})
 
       assert %{status: :flagged, flags: flags} = Verify.invoice(fabricated, page())
-      assert [{:value_not_on_page, ungrounded}] = flags
-      assert "printed_total_taxable" in ungrounded
+      assert [{:value_not_on_page, absent}] = flags
+      assert "printed_total_taxable" in absent
     end
   end
 end

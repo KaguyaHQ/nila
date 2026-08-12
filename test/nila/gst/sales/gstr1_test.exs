@@ -108,13 +108,17 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert get_in(derived, ["b2cl", Access.at(0), "inv", Access.at(0), "val"]) == 110_000.0
     end
 
-    test "preserves grounding failures until the reviewer clears the unprinted value" do
+    test "ignores audited source failures for candidates absent from canonical data" do
       invoice =
         Gstr1.normalize_invoice(%{
           "verification" => %{
             "status" => "flagged",
             "failed_checks" => [
-              %{"kind" => "grounding", "field" => "printed_total_tax", "detail" => "not printed"},
+              %{
+                "kind" => "source_presence",
+                "field" => "printed_cgst",
+                "detail" => "%{value: 90}"
+              },
               %{
                 "kind" => "grounding",
                 "field" => "line_items[0].hsn_sac",
@@ -157,24 +161,8 @@ defmodule Nila.Gst.Sales.Gstr1Test do
                  &(&1["code"] == "ungrounded_extracted_value")
                )
 
-      assert issue["fields"] == ["printed_total_tax", "line_items[0].hsn_sac"]
-
-      flagged = Gstr1.flagged_fields([invoice], [issue])
-
-      corrections = [
-        %{"invoice" => "GROUND-1", "field" => "printed_total_tax", "value" => nil},
-        %{"invoice" => "GROUND-1", "field" => "line_items[0].hsn_sac", "value" => "8472"}
-      ]
-
-      {[corrected], applied, [], _flags} =
-        Gstr1.apply_corrections([invoice], corrections, flagged)
-
-      assert applied == Enum.reverse(corrections)
-
-      refute Enum.any?(
-               Gstr1.validation_issues([corrected]),
-               &(&1["code"] == "ungrounded_extracted_value")
-             )
+      assert issue["fields"] == ["line_items[0].hsn_sac"]
+      refute "printed_cgst" in issue["fields"]
     end
 
     test "corrections canonicalize POS and recompute an inclusive line's taxable value" do

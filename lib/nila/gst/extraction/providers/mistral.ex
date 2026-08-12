@@ -236,7 +236,7 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
       printed_taxable_value:
         described_nullable(
           "number",
-          "Taxable value before GST only when the document prints a separate taxable value for this line. Copy it even when the rate or line amount is tax-inclusive; null when no separate line taxable value is printed."
+          "A distinct source field that separately prints this line's taxable value before GST. Do not duplicate printed_line_amount into this field merely because the line amount is tax-exclusive; return null when no separate taxable-value field is printed."
         ),
       line_amount_tax_inclusion: %{
         type: "string",

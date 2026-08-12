@@ -21,6 +21,7 @@ defmodule Nila.Gst.Extraction.Segmented do
   """
 
   alias Nila.Gst.Extraction.Discovery.Features
+  alias Nila.Gst.Extraction.LineAmounts
   alias Nila.Gst.Extraction.Providers.Mistral
   alias Nila.Gst.Extraction.Providers.MistralChat
   alias Nila.Gst.Extraction.Transcription
@@ -54,8 +55,9 @@ defmodule Nila.Gst.Extraction.Segmented do
     - Preserve each printed figure in its own role: printed_unit_price is one \
     unit's rate; printed_line_amount is the row's extended amount; \
     printed_line_total is its gross total after separately shown tax; \
-    printed_taxable_value is a separately printed pre-GST value. Never \
-    substitute one field for another.
+    printed_taxable_value is a distinct source field that separately prints the \
+    pre-GST value. Never duplicate printed_line_amount into \
+    printed_taxable_value merely because the line amount is tax-exclusive.
     - Use headings, table structure and same-row relationships to identify \
     roles, regardless of vendor wording. Populate CGST, SGST or IGST only when \
     the document identifies that tax head.
@@ -276,6 +278,12 @@ defmodule Nila.Gst.Extraction.Segmented do
         invoices |> merge_chunks() |> markers(kind) |> repair_gstins(kind, opts[:client_gstin])
 
       text = Transcription.text(transcription, segment.pages)
+      candidate_verification = Verify.invoice(data, text, repairs)
+
+      {data, discarded} = Verify.discard_unobserved_values(data, candidate_verification.checks)
+
+      {data, redundant} = discard_redundant_taxable_candidates(data)
+      repairs = repairs ++ discarded ++ redundant
       verification = Verify.invoice(data, text, repairs)
 
       {:ok,
@@ -324,6 +332,25 @@ defmodule Nila.Gst.Extraction.Segmented do
          }
        }}
     end
+  end
+
+  defp discard_redundant_taxable_candidates(data) do
+    {lines, repairs} =
+      data
+      |> Map.get("line_items", [])
+      |> Enum.with_index()
+      |> Enum.map_reduce([], fn {line, index}, repairs ->
+        case LineAmounts.discard_redundant_printed_taxable(line) do
+          {line, nil} ->
+            {line, repairs}
+
+          {line, repair} ->
+            repair = Map.update!(repair, "field", &"line_items[#{index}].#{&1}")
+            {line, repairs ++ [repair]}
+        end
+      end)
+
+    {Map.put(data, "line_items", lines), repairs}
   end
 
   # Header and total fields come from whichever chunk actually printed them;

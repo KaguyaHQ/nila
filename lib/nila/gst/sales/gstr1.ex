@@ -1032,9 +1032,10 @@ defmodule Nila.Gst.Sales.Gstr1 do
       invoice
       |> get_in(["verification", "failed_checks"])
       |> List.wrap()
-      |> Enum.filter(&(&1["kind"] == "grounding"))
+      |> Enum.filter(&(&1["kind"] in ~w(source_presence grounding)))
       |> Enum.map(&verification_field/1)
       |> Enum.reject(&is_nil/1)
+      |> Enum.filter(&(not is_nil(field_value(invoice, &1))))
       |> Enum.uniq()
 
     if fields == [] do
@@ -1044,7 +1045,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
         issue(
           invoice,
           "ungrounded_extracted_value",
-          "extraction returned values that the source pages do not print; clear or correct them before filing",
+          "AI read a value that does not appear on the invoice. Check the highlighted field against the source before filing.",
           fields,
           Issues.level_for("ungrounded_extracted_value")
         )

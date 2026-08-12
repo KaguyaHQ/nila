@@ -90,7 +90,8 @@ defmodule Nila.Formatters do
     "pages_unaccounted" => "Pages with no invoice",
     "low_ocr_confidence" => "Blurry scan, check the total",
     "source_attribution_uncertain" => "Not sure which page this is from",
-    "subtotal_breakdown_uncertain" => "Line items don't add up"
+    "subtotal_breakdown_uncertain" => "Line items don't add up",
+    "ungrounded_extracted_value" => "AI read a value not on the invoice"
   }
 
   @doc """

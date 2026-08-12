@@ -57,7 +57,6 @@ defmodule Nila.Gst.Purchase.Flags do
     [
       &check_document_type/3,
       &check_source_attribution/3,
-      &check_ungrounded_fields/3,
       &check_arithmetic_basis/3,
       &check_zero_value/3,
       &check_invoice_date/3,
@@ -342,21 +341,6 @@ defmodule Nila.Gst.Purchase.Flags do
   defp source_attribution_reason(_attribution) do
     "No source page could be resolved for this invoice — open the original document and attach the right page."
   end
-
-  defp check_ungrounded_fields(%{"ungrounded_fields" => [_ | _] = fields} = invoice, _ctx, _dir) do
-    [
-      flag(
-        invoice,
-        "ungrounded_extracted_value",
-        "These extracted values were not supported by their printed labels: #{Enum.join(fields, ", ")}. Nila excluded them from accounting; review the source document.",
-        nil,
-        fields,
-        1.0
-      )
-    ]
-  end
-
-  defp check_ungrounded_fields(_invoice, _ctx, _dir), do: []
 
   defp check_arithmetic_basis(
          %{"arithmetic_basis" => "printed_final_reconciled"} = invoice,

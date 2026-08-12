@@ -170,7 +170,7 @@ defmodule Nila.Gst.Purchase.BooksTest do
       assert line["taxable_value_basis"] == "line_amount_times_rate_equals_tax"
     end
 
-    test "excludes a taxable total that appeared numerically but lacked a taxable label" do
+    test "excludes an unobserved taxable candidate while retaining line evidence" do
       page =
         artifact(1, %{
           "document_type" => "credit_note",
@@ -186,19 +186,19 @@ defmodule Nila.Gst.Purchase.BooksTest do
             }
           ],
           "printed_subtotal_before_discount" => 20_000,
-          "printed_total_taxable" => 20_000,
+          "printed_total_taxable" => 19_999,
           "printed_igst" => 3_600,
           "printed_total_tax" => 3_600,
           "printed_grand_total" => 23_600
         })
         |> Map.put("verification", %{
           "failed_checks" => [
-            %{"kind" => "grounding", "field" => "printed_total_taxable"}
+            %{"kind" => "source_presence", "field" => "printed_total_taxable"}
           ]
         })
 
       assert %{"invoices" => [credit]} = PurchaseBooks.normalize([page])
-      assert credit["ungrounded_fields"] == ["printed_total_taxable"]
+      refute Map.has_key?(credit, "ungrounded_fields")
       assert credit["printed_taxable_paise"] == nil
       assert credit["taxable_paise"] == 2_000_000
       assert credit["total_paise"] == 2_360_000

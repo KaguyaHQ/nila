@@ -4,14 +4,14 @@ defmodule Nila.Gst.Extraction.Verify do
 
   Two independent checks, in that order, because they catch different failures.
 
-  **Grounding.** Every field defined as "copy what is printed" must be provably
-  present in the transcription. On breeze 2026-06 the model returned a taxable
-  value of 62,552 for a bill whose pages contain no such number anywhere — the
-  real figure was 64,552 — and every downstream check passed, because a
-  fabricated number is internally consistent with nothing to contradict it. A
-  reconcile check on ungrounded values is checking fiction. Grounding is cheap
-  and total here only because the pipeline reasons over text: on pixels there is
-  nothing to string-search.
+  **Source presence.** Every field defined as "copy what is printed" must have
+  its value somewhere in the transcription. On breeze 2026-06 the model returned
+  a taxable value of 62,552 for a bill whose pages contain no such number anywhere
+  — the real figure was 64,552 — and every downstream check passed, because a
+  fabricated number is internally consistent with nothing to contradict it.
+  This check proves only numeric presence. It does not infer a field's meaning
+  from vendor vocabulary; the structuring model sees headings and table geometry,
+  while arithmetic below can prove or contradict exact accounting relationships.
 
   **Arithmetic.** GST invoices are overdetermined — lines sum to the taxable
   value, tax is a percentage of it, CGST equals SGST, the grand total is their
@@ -37,6 +37,9 @@ defmodule Nila.Gst.Extraction.Verify do
                     printed_total_taxable printed_cgst printed_sgst printed_igst
                     printed_total_tax printed_additional_charges
                     printed_rounding_adjustment printed_grand_total)
+  @source_line_numbers ~w(quantity printed_unit_price discount_rate discount_amount
+                          printed_line_amount printed_line_total printed_taxable_value
+                          cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount)
 
   @doc """
   Verifies one invoice map against the text of its own pages.
@@ -49,7 +52,7 @@ defmodule Nila.Gst.Extraction.Verify do
     haystack = normalize_text(text)
 
     checks =
-      grounding_checks(data, haystack, repaired_from(repairs)) ++
+      source_presence_checks(data, haystack, repaired_from(repairs)) ++
         arithmetic_checks(data, reverse_charge?(text)) ++ gstin_checks(data)
 
     flags = flags(data, checks, haystack)
@@ -57,34 +60,55 @@ defmodule Nila.Gst.Extraction.Verify do
     %{status: status(data, checks, flags), checks: checks, flags: flags}
   end
 
-  # ---- grounding ----
+  @doc "Removes extracted numeric candidates whose values do not occur in the source."
+  def discard_unobserved_values(data, checks) when is_map(data) and is_list(checks) do
+    fields =
+      checks
+      |> Enum.filter(&failed_source_presence?/1)
+      |> Enum.map(&check_field/1)
+      |> Enum.filter(&source_numeric_field?/1)
+      |> Enum.uniq()
 
-  # A value an earlier stage repaired is grounded against what the page actually
+    {data, repairs} =
+      Enum.reduce(fields, {data, []}, fn field, {current, repairs} ->
+        case field_value(current, field) do
+          nil ->
+            {current, repairs}
+
+          value ->
+            repair = %{
+              "field" => field,
+              "from" => value,
+              "to" => nil,
+              "basis" => "value_absent_from_source"
+            }
+
+            {clear_field(current, field), repairs ++ [repair]}
+        end
+      end)
+
+    {data, repairs}
+  end
+
+  # ---- source presence ----
+
+  # A value an earlier stage repaired is checked against what the page actually
   # printed, not against the corrected form. Otherwise the two guards fight: the
   # repair replaces a scan-damaged GSTIN with the only legal reading of it, and
-  # grounding then objects that the legal reading is not on the page — which is
-  # the whole reason it needed repairing. The evidence is the damaged string plus
-  # the check digit, and that evidence is what gets checked.
+  # source presence then objects that the legal reading is not on the page — which
+  # is the whole reason it needed repairing. The evidence is the damaged string
+  # plus the check digit, and that evidence is what gets checked.
   defp repaired_from(repairs) do
     Map.new(repairs, fn repair -> {repair["field"], repair["from"]} end)
   end
 
-  defp grounding_checks(data, haystack, repaired) do
+  defp source_presence_checks(data, haystack, repaired) do
     money =
       @printed_money
       |> Enum.map(&{&1, data[&1]})
       |> Enum.reject(fn {_field, value} -> is_nil(value) end)
       |> Enum.map(fn {field, value} ->
-        cond do
-          grounded_money?(field, value, haystack) ->
-            check(:grounding, field, true, %{value: value})
-
-          derived_total_tax?(field, value, data, haystack) ->
-            check(:grounding, field, true, %{value: value, derived_from: "cgst + sgst + igst"})
-
-          true ->
-            check(:grounding, field, false, %{value: value})
-        end
+        check(:source_presence, field, printed?(value, haystack), %{value: value})
       end)
 
     identifiers =
@@ -97,10 +121,10 @@ defmodule Nila.Gst.Extraction.Verify do
       |> Enum.map(fn {field, value} ->
         case repaired[field] do
           nil ->
-            check(:grounding, field, alphanumeric_present?(value, haystack), %{value: value})
+            check(:source_presence, field, alphanumeric_present?(value, haystack), %{value: value})
 
           printed ->
-            check(:grounding, field, alphanumeric_present?(printed, haystack), %{
+            check(:source_presence, field, alphanumeric_present?(printed, haystack), %{
               value: value,
               repaired_from: printed
             })
@@ -112,50 +136,21 @@ defmodule Nila.Gst.Extraction.Verify do
       |> Map.get("line_items", [])
       |> Enum.with_index()
       |> Enum.flat_map(fn {line, index} ->
-        ~w(printed_unit_price printed_line_amount printed_line_total printed_taxable_value)
+        @source_line_numbers
         |> Enum.map(&{&1, line[&1]})
         |> Enum.reject(fn {_field, value} -> is_nil(value) end)
         |> Enum.map(fn {field, value} ->
           check(
-            :grounding,
+            :source_presence,
             "line_items[#{index}].#{field}",
-            grounded_money?(field, value, haystack),
-            %{
-              value: value
-            }
+            printed?(value, haystack),
+            %{value: value}
           )
         end)
       end)
 
     money ++ line_money ++ identifiers
   end
-
-  defp grounded_money?(field, value, haystack)
-       when field in ["printed_total_taxable", "printed_taxable_value"] do
-    printed?(value, haystack) and
-      Regex.match?(~r/\b(TAXABLE|ASSESSABLE)(?:\s+(?:VALUE|AMOUNT|TURNOVER))?\b/, haystack)
-  end
-
-  defp grounded_money?(_field, value, haystack), do: printed?(value, haystack)
-
-  # Many bills print CGST and SGST and no combined figure, so a total tax that is
-  # the sum of its own printed halves is a derivation, not an invention —
-  # breeze 2026-06 pages 13 and 21 print 289.83 and 109.80 twice over and no
-  # total. Grounding exists to catch values with no support on the page, so it
-  # accepts this one narrowly: total tax only, only from components that are
-  # themselves grounded, and the derivation is recorded on the check rather than
-  # waved through. Every other printed_* field still has to be on the page —
-  # notably the taxable value, which is where the fabrication was found.
-  defp derived_total_tax?("printed_total_tax", value, data, haystack) do
-    components = ["printed_cgst", "printed_sgst", "printed_igst"]
-    present = Enum.filter(components, &is_number(data[&1]))
-
-    present != [] and
-      Enum.all?(present, &printed?(data[&1], haystack)) and
-      close?(Enum.reduce(present, 0.0, fn field, acc -> acc + num(data[field]) end), value)
-  end
-
-  defp derived_total_tax?(_field, _value, _data, _haystack), do: false
 
   @doc """
   Whether a money value is printed in the given text.
@@ -184,7 +179,10 @@ defmodule Nila.Gst.Extraction.Verify do
       if rounded == whole * 1.0 do
         ["#{whole}", "#{whole}.00", "#{whole}.0", "#{whole}.-"]
       else
-        [:erlang.float_to_binary(rounded, decimals: 2)]
+        [
+          :erlang.float_to_binary(rounded, decimals: 2),
+          :erlang.float_to_binary(rounded, [:compact, decimals: 2])
+        ]
       end
 
     Enum.uniq(base)
@@ -397,15 +395,62 @@ defmodule Nila.Gst.Extraction.Verify do
 
   # ---- flags ----
 
+  defp failed_source_presence?(%{kind: :source_presence, ok?: false}), do: true
+
+  defp failed_source_presence?(%{"kind" => kind}) when kind in ~w(source_presence grounding),
+    do: true
+
+  defp failed_source_presence?(_check), do: false
+
+  defp check_field(%{field: field}), do: field
+  defp check_field(%{"field" => field}), do: field
+
+  defp source_numeric_field?(field) when field in @printed_money, do: true
+
+  defp source_numeric_field?("line_items[" <> rest) do
+    case Regex.run(~r/^\d+\]\.([^\]]+)$/, rest) do
+      [_, field] -> field in @source_line_numbers
+      _invalid -> false
+    end
+  end
+
+  defp source_numeric_field?(_field), do: false
+
+  defp field_value(data, "line_items[" <> rest) do
+    case Regex.run(~r/^(\d+)\]\.(.+)$/, rest) do
+      [_, index, field] ->
+        get_in(data, ["line_items", Access.at(String.to_integer(index)), field])
+
+      _invalid ->
+        nil
+    end
+  end
+
+  defp field_value(data, field), do: data[field]
+
+  defp clear_field(data, "line_items[" <> rest) do
+    case Regex.run(~r/^(\d+)\]\.(.+)$/, rest) do
+      [_, index, field] ->
+        update_in(data, ["line_items"], fn lines ->
+          List.update_at(lines || [], String.to_integer(index), &Map.put(&1, field, nil))
+        end)
+
+      _invalid ->
+        data
+    end
+  end
+
+  defp clear_field(data, field), do: Map.put(data, field, nil)
+
   defp flags(data, checks, haystack) do
-    ungrounded = Enum.filter(checks, &(&1.kind == :grounding and not &1.ok?))
+    absent = Enum.filter(checks, &(&1.kind == :source_presence and not &1.ok?))
     failed_arithmetic = Enum.filter(checks, &(&1.kind == :arithmetic and not &1.ok?))
 
     []
-    |> add(ungrounded != [], fn ->
-      {:value_not_on_page, Enum.map(ungrounded, & &1.field)}
+    |> add(absent != [], fn ->
+      {:value_not_on_page, Enum.map(absent, & &1.field)}
     end)
-    |> add(failed_arithmetic != [] and ungrounded == [], fn ->
+    |> add(failed_arithmetic != [] and absent == [], fn ->
       inconsistency(data, haystack) ||
         {:arithmetic_mismatch, Enum.map(failed_arithmetic, & &1.field)}
     end)

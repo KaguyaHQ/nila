@@ -208,8 +208,7 @@ defmodule Nila.Gst.Purchase.Books do
   end
 
   defp normalize_page(artifact) do
-    {data, ungrounded_fields} =
-      clear_ungrounded(artifact["data"] || %{}, artifact["verification"] || %{})
+    data = clear_unobserved(artifact["data"] || %{}, artifact["verification"] || %{})
 
     seller = data["seller"] || %{}
     document = artifact["document"] || %{}
@@ -227,7 +226,6 @@ defmodule Nila.Gst.Purchase.Books do
       "continuation" => data["continuation_of_previous"] == true,
       "document_type" => document_type,
       "document" => document,
-      "ungrounded_fields" => ungrounded_fields,
       "vendor_name" => presence(seller["name"]),
       "vendor_gstin" => gstin,
       "vendor_gstin_status" => to_string(gstin_status),
@@ -422,8 +420,6 @@ defmodule Nila.Gst.Purchase.Books do
       "invoice_date" => invoice_date,
       "unreadable_invoice_date" => unreadable_date,
       "unreadable_amounts" => if(unreadable_amounts == [], do: nil, else: unreadable_amounts),
-      "ungrounded_fields" =>
-        group |> Enum.flat_map(&(&1["ungrounded_fields"] || [])) |> Enum.uniq() |> Enum.sort(),
       "delivery_address" => first_present(group, "delivery_address"),
       "line_items" => line_items,
       "taxable_paise" => taxable,
@@ -576,15 +572,30 @@ defmodule Nila.Gst.Purchase.Books do
 
   defp first_present(group, key), do: Enum.find_value(group, & &1[key])
 
-  defp clear_ungrounded(data, verification) do
+  defp clear_unobserved(data, verification) do
     fields =
       verification
       |> Map.get("failed_checks", [])
-      |> Enum.filter(&(&1["kind"] == "grounding"))
+      |> Enum.filter(&(&1["kind"] in ~w(source_presence grounding)))
       |> Enum.map(& &1["field"])
+      |> Enum.filter(&(not is_nil(field_value(data, &1))))
 
-    {Enum.reduce(fields, data, &clear_field/2), fields}
+    Enum.reduce(fields, data, &clear_field/2)
   end
+
+  defp field_value(data, "line_items[" <> rest) do
+    case Regex.run(~r/^(\d+)\]\.(.+)$/, rest) do
+      [_, index, field] ->
+        get_in(data, ["line_items", Access.at(String.to_integer(index)), field])
+
+      _invalid ->
+        nil
+    end
+  end
+
+  defp field_value(data, "seller." <> field), do: get_in(data, ["seller", field])
+  defp field_value(data, "buyer." <> field), do: get_in(data, ["buyer", field])
+  defp field_value(data, field), do: data[field]
 
   defp clear_field("line_items[" <> rest, data) do
     case Regex.run(~r/^(\d+)\]\.(.+)$/, rest) do
@@ -598,6 +609,8 @@ defmodule Nila.Gst.Purchase.Books do
     end
   end
 
+  defp clear_field("seller." <> field, data), do: put_in(data, ["seller", field], nil)
+  defp clear_field("buyer." <> field, data), do: put_in(data, ["buyer", field], nil)
   defp clear_field(field, data), do: Map.put(data, field, nil)
 
   defp normalize_document_type(_type, %{"credit_note" => true, "debit_note" => true}),

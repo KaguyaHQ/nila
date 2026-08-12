@@ -16,6 +16,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   alias NilaWeb.Components.Gst.Exceptions.Itc
 
   attr :purchase_month, :any, default: nil
+  attr :deadline, :any, default: nil
   attr :stats, :any, default: nil
   attr :document_flags, :list, default: []
   attr :rows, :list, required: true

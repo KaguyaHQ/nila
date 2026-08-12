@@ -34,7 +34,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
     TAX INVOICE No. BRZ/26/0#{number}
     | Item | Qty | Amount |
     | Bolt | 4 | 1,000.00 |
-    Taxable 1,000.00  CGST 90.00  SGST 90.00
+    Taxable 1,000.00  CGST 9% 90.00  SGST 9% 90.00
     Total tax 180.00
     Grand total 1,180.00
     """
@@ -81,6 +81,71 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
     assert artifact["verification"]["status"] == "verified"
   end
 
+  test "unobserved printed candidates are discarded and retained in the audit" do
+    text = """
+    TAX INVOICE INV-1
+    | Item | Value | CGST | SGST | Total |
+    | Service | 1,000.00 | 90.00 | 90.00 | 1,180.00 |
+    """
+
+    t = transcription([{1, text}])
+
+    Req.Test.expect(MistralChat, fn conn ->
+      reply(conn, %{
+        "invoice_number" => "INV-1",
+        "line_items" => [
+          %{
+            "quantity" => 2,
+            "printed_line_amount" => 1_000,
+            "printed_line_total" => 1_180,
+            "printed_taxable_value" => 1_000,
+            "line_amount_tax_inclusion" => "exclusive",
+            "cgst_rate" => 9,
+            "cgst_amount" => 90,
+            "sgst_rate" => 9,
+            "sgst_amount" => 90
+          }
+        ],
+        "printed_cgst" => 3_105,
+        "printed_sgst" => 3_105,
+        "printed_total_tax" => 180,
+        "printed_grand_total" => 1_180
+      })
+    end)
+
+    {:ok, artifact} = Segmented.extract_segment(:sales, t, segment([1], "INV-1"))
+
+    assert artifact["data"]["printed_cgst"] == nil
+    assert artifact["data"]["printed_sgst"] == nil
+    assert artifact["data"]["printed_total_tax"] == nil
+    assert get_in(artifact, ["data", "line_items", Access.at(0), "quantity"]) == nil
+    assert get_in(artifact, ["data", "line_items", Access.at(0), "printed_taxable_value"]) == nil
+
+    assert %{
+             "field" => "printed_total_tax",
+             "from" => 180,
+             "to" => nil,
+             "basis" => "value_absent_from_source"
+           } in artifact["repairs"]
+
+    assert Enum.any?(artifact["repairs"], fn repair ->
+             repair["field"] == "line_items[0].printed_taxable_value" and
+               repair["from"] == 1_000 and repair["to"] == nil and
+               repair["basis"] == "redundant_with_arithmetically_exclusive_line_amount"
+           end)
+
+    assert Enum.any?(artifact["repairs"], fn repair ->
+             repair["field"] == "printed_cgst" and repair["from"] == 3_105 and
+               repair["to"] == nil
+           end)
+
+    assert artifact["verification"] == %{
+             "status" => "verified",
+             "flags" => [],
+             "failed_checks" => []
+           }
+  end
+
   test "a sales debit-note heading and structured type leave as the same classification" do
     text = """
     DEBIT NOTE # CDN-000001
@@ -110,6 +175,9 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
       assert Map.has_key?(line_properties, "printed_line_total")
       assert Map.has_key?(line_properties, "printed_taxable_value")
 
+      assert line_properties["printed_taxable_value"]["description"] =~
+               "Do not duplicate printed_line_amount"
+
       assert line_properties["line_amount_tax_inclusion"]["enum"] ==
                ["inclusive", "exclusive", "unknown"]
 
@@ -120,6 +188,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
       assert user["content"] =~ "regardless of vendor wording"
       assert user["content"] =~ "Never use arithmetic to populate any extracted numeric field"
       assert user["content"] =~ "line_amount_tax_inclusion is an inferred semantic field"
+      assert user["content"] =~ "Never duplicate printed_line_amount"
       assert user["content"] =~ "footer captions and amount-in-words labels"
       assert user["content"] =~ "Populate CGST, SGST or IGST only when"
       assert user["content"] =~ "Never select, combine or sum tax-rate or slab-summary rows"
@@ -218,17 +287,34 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
     Req.Test.expect(MistralChat, fn conn ->
       reply(conn, %{
         "invoice_number" => "BRZ/26/01",
-        "line_items" => [%{"taxable_value" => 1_000.0}],
+        "line_items" => [
+          %{
+            "printed_line_amount" => 1_000.0,
+            "line_amount_tax_inclusion" => "exclusive",
+            "cgst_rate" => 9.0,
+            "cgst_amount" => 90.0,
+            "sgst_rate" => 9.0,
+            "sgst_amount" => 90.0
+          }
+        ],
         # 9,999 appears nowhere on the page.
         "printed_total_taxable" => 9_999.0,
+        "printed_total_tax" => 180.0,
         "printed_grand_total" => 1_180.0
       })
     end)
 
     {:ok, artifact} = Segmented.extract_segment(:purchase, t, segment([1]))
 
-    assert artifact["verification"]["status"] == "flagged"
-    assert [%{"flag" => "value_not_on_page"} | _rest] = artifact["verification"]["flags"]
+    assert artifact["data"]["printed_total_taxable"] == nil
+    assert artifact["verification"]["status"] == "verified"
+
+    assert %{
+             "field" => "printed_total_taxable",
+             "from" => 9_999.0,
+             "to" => nil,
+             "basis" => "value_absent_from_source"
+           } in artifact["repairs"]
   end
 
   test "a segment too dense for one output budget is split before the call, not after" do

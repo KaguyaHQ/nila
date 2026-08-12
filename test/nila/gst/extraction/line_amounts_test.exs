@@ -3,6 +3,36 @@ defmodule Nila.Gst.Extraction.LineAmountsTest do
 
   alias Nila.Gst.Extraction.LineAmounts
 
+  describe "discard_redundant_printed_taxable/1" do
+    test "drops a duplicate only when row arithmetic independently proves exclusive pricing" do
+      line = %{
+        "printed_line_amount" => 20_500,
+        "printed_line_total" => 24_190,
+        "printed_taxable_value" => 20_500,
+        "line_amount_tax_inclusion" => "exclusive",
+        "cgst_rate" => 9,
+        "cgst_amount" => 1_845,
+        "sgst_rate" => 9,
+        "sgst_amount" => 1_845
+      }
+
+      assert {cleaned, repair} = LineAmounts.discard_redundant_printed_taxable(line)
+      assert cleaned["printed_taxable_value"] == nil
+      assert repair["from"] == 20_500
+      assert repair["basis"] == "redundant_with_arithmetically_exclusive_line_amount"
+    end
+
+    test "keeps equal candidates when arithmetic cannot establish their relationship" do
+      line = %{
+        "printed_line_amount" => 20_500,
+        "printed_taxable_value" => 20_500,
+        "line_amount_tax_inclusion" => "exclusive"
+      }
+
+      assert {^line, nil} = LineAmounts.discard_redundant_printed_taxable(line)
+    end
+  end
+
   test "keeps printed unit, line and taxable amounts as separate evidence" do
     amounts =
       LineAmounts.normalize(%{
