@@ -34,6 +34,10 @@ config :nila, Nila.Gst.Extraction.Providers.Mistral,
   base_url: "https://api.mistral.ai",
   receive_timeout: 300_000
 
+config :nila, Nila.Gst.Extraction.ProviderAdmission,
+  tokens_per_minute: 100_000,
+  requests_per_second: 1.67
+
 config :hammer,
   backend:
     {Hammer.Backend.ETS,

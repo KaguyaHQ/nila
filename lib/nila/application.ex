@@ -42,10 +42,11 @@ defmodule Nila.Application do
     documents = Application.get_env(:nila, Nila.Gst.Extraction.Providers.Mistral, [])
     chat = Application.get_env(:nila, Nila.Gst.Extraction.Providers.MistralChat, [])
 
-    if config[:start] == false or is_nil(chat[:api_key] || documents[:api_key]) do
+    if is_nil(chat[:api_key] || documents[:api_key]) do
       []
     else
-      [Nila.Gst.Extraction.MistralChatFinch]
+      [Nila.Gst.Extraction.ProviderAdmission] ++
+        if(config[:start] == false, do: [], else: [Nila.Gst.Extraction.MistralChatFinch])
     end
   end
 end

@@ -318,10 +318,8 @@ defmodule Nila.Gst.Intake.DumpWorker do
   defp unaccounted_pages(result), do: Map.get(result, :unaccounted_pages) || []
 
   # The same pages `ledger_issues/2` flags on the month, told to the screen the
-  # operator is actually watching. A read that lost a bill to a rate limit still
-  # derives a month and still reports `:done`; without this the only signal is a
-  # flag they have to click through to find, and the card that sent them there
-  # said the read was clean.
+  # operator is actually watching. These are successful semantic verdicts that
+  # still need human review; provider failures never reach derivation.
   defp dump_unaccounted_pages(%Dump{meta: meta}) when is_map(meta),
     do: Map.get(meta, "unaccounted_pages") || []
 

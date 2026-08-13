@@ -23,13 +23,11 @@ defmodule Nila.Gst.Extraction.Pipeline do
 
   ## A bill that will not read
 
-  The former chunked path failed the whole month if any chunk failed, because a
-  chunk held several bills and nobody could say which ones were lost. Here the
-  loss is nameable: a segment that fails to extract leaves its pages in
-  `:unaccounted_pages`, which the flags layer raises as `pages_unaccounted` for a
-  human to read off the scan. Failing 54 good bills over the 55th is not more
-  honest, only more expensive — the discipline that matters is that no page ever
-  leaves the read in silence, and the ledger still enforces that.
+  Provider and transport failures are infrastructure state, never document
+  semantics. Every page label and invoice segment must return successfully before
+  this pipeline publishes a result. A successful model verdict of `unreadable`
+  still leaves that page in `:unaccounted_pages` for human review; an exhausted
+  429 cannot manufacture that verdict or publish a partial month.
 
   ## Audit
 
@@ -312,17 +310,18 @@ defmodule Nila.Gst.Extraction.Pipeline do
       end)
 
     hooks.per_call.(%{stage: "extraction", segments: invoice_count}, fn ->
-      result = Segmented.extract(kind, transcription, segments, call_opts)
-      audit = extraction_audit(result, discovery, transcription)
+      case Segmented.extract(kind, transcription, segments, call_opts) do
+        %{pages: pages} = result ->
+          audit = extraction_audit(result, discovery, transcription)
 
-      # A read that produced no invoice at all is a failure, not an empty month.
-      # A partial loss is nameable — those pages stay in the ledger and a human
-      # is sent to them — but "nothing came back" names nothing, and letting it
-      # through would derive an empty register over whatever the month already
-      # held.
-      case result.pages do
-        [] -> {:error, {:no_invoices_extracted, result.audit.failures}, audit}
-        _some -> {:ok, Map.put(result, :audit, audit)}
+          case pages do
+            [] -> {:error, {:no_invoices_extracted, []}, audit}
+            _some -> {:ok, Map.put(result, :audit, audit)}
+          end
+
+        {:error, reason, segmented_audit} ->
+          result = %{pages: [], audit: segmented_audit}
+          {:error, reason, extraction_audit(result, discovery, transcription)}
       end
     end)
   end

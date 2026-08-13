@@ -110,9 +110,8 @@ defmodule Nila.Gst.Extraction.PipelineTest do
   end
 
   test "a read that produced no invoice at all fails rather than deriving an empty month" do
-    # Partial loss is nameable and stays in the ledger. "Nothing came back"
-    # names nothing, and letting it through would write an empty register over
-    # whatever the month already held.
+    # Provider failure is infrastructure state, so no subset can leave the stage
+    # and overwrite whatever the month already held.
     Req.Test.stub(Mistral, fn conn ->
       Req.Test.json(conn, ocr_response([{1, bill("INV-1")}]))
     end)
@@ -121,13 +120,13 @@ defmodule Nila.Gst.Extraction.PipelineTest do
       conn |> Plug.Conn.put_status(400) |> Req.Test.json(%{"error" => "schema rejected"})
     end)
 
-    assert {:error, {:no_invoices_extracted, [failure]}} =
+    assert {:error, {:invoice_segments_failed, [failure]}} =
              Pipeline.extract(:purchase, "%PDF-1.7", filename: "packet.pdf")
 
     assert failure.pages == [1]
   end
 
-  test "one page whose label never comes back costs that page, not the packet" do
+  test "one page whose label never comes back fails discovery instead of becoming unreadable" do
     Req.Test.stub(Mistral, fn conn ->
       Req.Test.json(conn, ocr_response([{1, bill("INV-1")}, {2, "a page"}]))
     end)
@@ -145,17 +144,12 @@ defmodule Nila.Gst.Extraction.PipelineTest do
       &invoice/2
     )
 
-    assert {:ok, result} =
+    assert {:error,
+            {:page_label_failed, 2, {:mistral_chat_failed, 429, %{"error" => "slow down"}}}} =
              Pipeline.extract(:purchase, PdfFixtures.pdf(2),
                filename: "packet.pdf",
                max_retries: 0
              )
-
-    assert [artifact] = result.pages
-    assert artifact["source_pages"] == [1]
-    # Page 2 is reported, which is the whole point: it is not silently dropped
-    # and it did not take the other page down with it.
-    assert result.unaccounted_pages == [2]
   end
 
   test "reports segmented stages through on_progress" do

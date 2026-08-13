@@ -385,6 +385,32 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
     end
   end
 
+  test "one failed segment prevents partial extraction from leaving the stage" do
+    t = transcription([{1, invoice_page(1)}, {2, invoice_page(2)}])
+
+    Req.Test.stub(MistralChat, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      content = Jason.decode!(body)["messages"] |> List.last() |> Map.fetch!("content")
+
+      if content =~ "--- page 2 ---" do
+        conn |> Plug.Conn.put_status(429) |> Req.Test.json(%{"error" => "slow down"})
+      else
+        reply(conn, %{
+          "invoice_number" => "BRZ/26/01",
+          "line_items" => [%{"taxable_value" => 1_000.0}],
+          "printed_total_taxable" => 1_000.0,
+          "printed_grand_total" => 1_180.0
+        })
+      end
+    end)
+
+    assert {:error, {:invoice_segments_failed, [failure]}, audit} =
+             Segmented.extract(:purchase, t, [segment([1]), segment([2])], max_retries: 0)
+
+    assert failure.pages == [2]
+    assert audit.failures == [failure]
+  end
+
   # A rate-limited segment sits in backoff for half a minute. Ordered delivery
   # would hold every later segment's report behind it, so the bar reads zero
   # while the rest of the pile is already read — which is what the operator

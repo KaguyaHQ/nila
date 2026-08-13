@@ -258,26 +258,29 @@ defmodule Nila.Eval.Segmented do
           )
         end)
 
-      artifacts =
-        results
-        |> Enum.flat_map(fn
-          {:ok, artifact} -> [artifact]
-          {:error, _reason} -> []
-        end)
-        |> Enum.sort_by(& &1["page"])
+      failures = Enum.flat_map(results, &replay_failure/1)
 
-      {:ok,
-       %{
-         pages: artifacts,
-         images: %{},
-         audit: %{
-           provider: meta["provider"],
-           model: meta["model"],
-           discovery_shape: meta["discovery_shape"],
-           failures: Enum.flat_map(results, &replay_failure/1)
-         },
-         unaccounted_pages: unaccounted(meta, artifacts)
-       }}
+      if failures == [] do
+        artifacts =
+          results
+          |> Enum.map(fn {:ok, artifact} -> artifact end)
+          |> Enum.sort_by(& &1["page"])
+
+        {:ok,
+         %{
+           pages: artifacts,
+           images: %{},
+           audit: %{
+             provider: meta["provider"],
+             model: meta["model"],
+             discovery_shape: meta["discovery_shape"],
+             failures: []
+           },
+           unaccounted_pages: unaccounted(meta, artifacts)
+         }}
+      else
+        {:error, {:invoice_segments_failed, failures}}
+      end
     end
   end
 

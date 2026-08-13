@@ -94,6 +94,10 @@ if config_env() in [:prod, :dev] do
   if model = env!("GST_TEXT_MODEL", :string, nil) do
     config :nila, Nila.Gst.Extraction.Providers.MistralChat, model: model
   end
+
+  config :nila, Nila.Gst.Extraction.ProviderAdmission,
+    tokens_per_minute: env!("GST_TEXT_TOKENS_PER_MINUTE", :integer, 100_000),
+    requests_per_second: env!("GST_TEXT_REQUESTS_PER_SECOND", :float, 1.67)
 end
 
 # WhatsApp is a production intake boundary, so all webhook and outbound reply

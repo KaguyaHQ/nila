@@ -172,19 +172,25 @@ defmodule Nila.Gst.Extraction.Segmented do
       end)
       |> Enum.sort_by(& &1["page"])
 
-    %{
-      pages: artifacts,
-      images: %{},
-      audit: %{
-        provider: MistralChat.provider(),
-        model: MistralChat.model(),
-        segments: length(segments),
-        invoice_segments: total,
-        usage: artifacts |> Enum.map(& &1["usage"]) |> sum_usage(),
-        failures: results |> Enum.flat_map(&failure/1) |> Enum.sort_by(&List.first(&1.pages))
-      },
-      unaccounted_pages: unaccounted_pages(transcription, segments, artifacts)
+    audit = %{
+      provider: MistralChat.provider(),
+      model: MistralChat.model(),
+      segments: length(segments),
+      invoice_segments: total,
+      usage: artifacts |> Enum.map(& &1["usage"]) |> sum_usage(),
+      failures: results |> Enum.flat_map(&failure/1) |> Enum.sort_by(&List.first(&1.pages))
     }
+
+    if audit.failures == [] do
+      %{
+        pages: artifacts,
+        images: %{},
+        audit: audit,
+        unaccounted_pages: unaccounted_pages(transcription, segments, artifacts)
+      }
+    else
+      {:error, {:invoice_segments_failed, audit.failures}, audit}
+    end
   end
 
   defp failure({segment, {:error, reason}}), do: [%{pages: segment.pages, reason: reason}]
@@ -204,8 +210,8 @@ defmodule Nila.Gst.Extraction.Segmented do
 
   # A raise inside an `async_stream` child reaches the caller as an exit, and no
   # `try/rescue` up the stack catches an exit — the audit row would stay open and
-  # the dump would sit in `extracting` forever. Contained here, one malformed
-  # response costs one bill, which the ledger then reports.
+  # the dump would sit in `extracting` forever. Contained here, a malformed
+  # response becomes a regular stage failure and no partial result can publish.
   defp contained(kind, transcription, segment, opts) do
     try do
       extract_segment(kind, transcription, segment, opts)

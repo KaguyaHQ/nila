@@ -70,6 +70,37 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabelsTest do
     end
   end
 
+  describe "map_responses/1" do
+    test "provider failure remains infrastructure state" do
+      assert {:error, {:page_label_failed, 4, :rate_limited}} =
+               PageLabels.map_responses([%{page: 4, error: :rate_limited}])
+    end
+
+    test "a successful unreadable verdict remains document semantics" do
+      body =
+        Jason.encode!(%{
+          "choices" => [
+            %{
+              "message" => %{
+                "content" =>
+                  Jason.encode!(%{
+                    "label" => "unreadable",
+                    "invoice_no" => nil,
+                    "reason" => "garbled"
+                  })
+              }
+            }
+          ]
+        })
+
+      assert {:ok, [labelled]} =
+               PageLabels.map_responses([%{page: 4, response: %{status: 200, body: body}}])
+
+      assert labelled.label == :unreadable
+      assert labelled.reason == "garbled"
+    end
+  end
+
   describe "request_page/3" do
     test "shows the judged page in full with its neighbours for context only" do
       t = transcription(Map.new(1..6, fn n -> {n, "page #{n} body"} end))

@@ -95,6 +95,10 @@ config :nila, Nila.Gst.Extraction.Providers.MistralChat,
 # DNS/reconnect noise to the test application.
 config :nila, Nila.Gst.Extraction.MistralChatFinch, start: false
 
+config :nila, Nila.Gst.Extraction.ProviderAdmission,
+  tokens_per_minute: 100_000_000,
+  requests_per_second: 100_000
+
 config :nila, Nila.Assistant,
   http_client: Nila.Assistant.HTTPClient.Stub,
   api_key: "test-key",

@@ -25,6 +25,7 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
   @default_model "mistral-small-latest"
 
   alias Nila.Gst.Extraction.MistralChatFinch
+  alias Nila.Gst.Extraction.ProviderAdmission
 
   @doc "The model this module will use unless a call overrides it."
   def model, do: config()[:model] || @default_model
@@ -55,26 +56,13 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
         auth: {:bearer, api_key()},
         json: payload,
         decode_body: false,
-        # Chat fans out across pages and invoice segments, so 429/5xx backoff is
-        # expected and replay has no business side effect. The custom policy is
-        # intentionally narrower than Req's `:transient`: a POST is also retried
-        # when the pure-H2 pool says it never accepted the request, but not for
-        # ambiguous timeouts or connection closures that may have spent tokens.
-        retry: &retry_policy/2,
-        max_retries: Keyword.get(opts, :max_retries, 5),
+        retry: false,
         receive_timeout: receive_timeout()
       ]
       |> Keyword.merge(MistralChatFinch.req_options())
       |> Keyword.merge(req_options())
 
-    case Req.post(options) do
-      {:ok, %Req.Response{} = response} ->
-        {:ok,
-         %{status: response.status, headers: response.headers, body: to_binary(response.body)}}
-
-      {:error, reason} ->
-        {:error, {:mistral_chat_request_failed, reason}}
-    end
+    request(options, estimate_tokens(payload), Keyword.get(opts, :max_retries, 8), 0)
   end
 
   @doc "Decodes a cached or live response into `{:ok, content_map, usage}`."
@@ -114,26 +102,139 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
 
   defp sha256(value), do: :crypto.hash(:sha256, value) |> Base.encode16(case: :lower)
 
-  # Exponential with a floor: a rate-limited fan-out that all retries at once is
-  # the same fan-out again.
-  defp retry_delay(attempt), do: (:math.pow(2, attempt) * 1_000) |> round() |> min(30_000)
+  defp request(options, estimated_tokens, max_retries, attempt) do
+    reservation = ProviderAdmission.acquire(estimated_tokens)
 
-  @doc false
-  def retry_policy(request, %Req.Response{status: status})
-      when status in [429, 500, 502, 503, 504] do
-    attempt = Req.Request.get_private(request, :req_retry_count, 0)
-    {:delay, retry_delay(attempt)}
+    case Req.post(options) do
+      {:ok, %Req.Response{} = response} ->
+        raw = %{
+          status: response.status,
+          headers: response.headers,
+          body: to_binary(response.body)
+        }
+
+        if retryable_status?(response.status) do
+          delay = retry_delay(response, attempt)
+          ProviderAdmission.release(reservation, delay)
+
+          if attempt < max_retries do
+            request(options, estimated_tokens, max_retries, attempt + 1)
+          else
+            {:ok, raw}
+          end
+        else
+          ProviderAdmission.reconcile(reservation, response_tokens(raw, estimated_tokens))
+          {:ok, raw}
+        end
+
+      {:error, %Req.HTTPError{protocol: :http2, reason: reason} = error}
+      when reason in [:pool_not_available, :connection_not_ready, :unprocessed] ->
+        ProviderAdmission.release(reservation, jitter(200))
+
+        if attempt < max_retries do
+          request(options, estimated_tokens, max_retries, attempt + 1)
+        else
+          {:error, {:mistral_chat_request_failed, error}}
+        end
+
+      {:error, reason} ->
+        ProviderAdmission.reconcile(reservation, estimated_tokens)
+        {:error, {:mistral_chat_request_failed, reason}}
+    end
   end
 
-  def retry_policy(_request, %Req.HTTPError{protocol: :http2, reason: reason})
-      when reason in [:pool_not_available, :connection_not_ready, :unprocessed],
-      # A real cold Mistral pool was still unavailable at 100ms and ready
-      # within the next few hundred milliseconds. This error is proven
-      # pre-send, so two short waits are safer than leaking process-start timing
-      # into the extraction result.
-      do: {:delay, 200}
+  defp retryable_status?(status), do: status in [429, 500, 502, 503, 504]
 
-  def retry_policy(_request, _response_or_error), do: false
+  defp retry_delay(%Req.Response{status: 429, headers: headers}, attempt) do
+    max(header_delay(headers), exponential_delay(attempt)) + jitter(500)
+  end
+
+  defp retry_delay(_response, attempt), do: exponential_delay(attempt) + jitter(500)
+
+  defp exponential_delay(attempt),
+    do: (:math.pow(2, attempt) * 1_000) |> round() |> min(30_000)
+
+  defp jitter(maximum), do: :rand.uniform(maximum + 1) - 1
+
+  defp header_delay(headers) do
+    retry_after = headers |> Map.get("retry-after", []) |> Enum.map(&parse_retry_after/1)
+
+    resets =
+      ["x-ratelimit-reset", "x-ratelimit-reset-requests", "x-ratelimit-reset-tokens"]
+      |> Enum.flat_map(&Map.get(headers, &1, []))
+      |> Enum.map(&parse_reset/1)
+
+    Enum.max(retry_after ++ resets, fn -> 0 end)
+  end
+
+  defp parse_retry_after(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {seconds, ""} -> seconds * 1_000
+      _not_seconds -> http_date_delay(value)
+    end
+  end
+
+  defp parse_retry_after(_value), do: 0
+
+  defp parse_reset(value) when is_binary(value) do
+    cond do
+      Regex.match?(~r/^\d+ms$/, value) ->
+        value |> String.trim_trailing("ms") |> String.to_integer()
+
+      Regex.match?(~r/^\d+(\.\d+)?s$/, value) ->
+        seconds = String.trim_trailing(value, "s")
+
+        value =
+          if String.contains?(seconds, "."),
+            do: String.to_float(seconds),
+            else: String.to_integer(seconds)
+
+        round(value * 1_000)
+
+      Regex.match?(~r/^\d+$/, value) ->
+        reset_from_integer(String.to_integer(value))
+
+      true ->
+        0
+    end
+  end
+
+  defp parse_reset(_value), do: 0
+
+  defp reset_from_integer(value) when value > 10_000_000_000,
+    do: max(value - System.os_time(:millisecond), 0)
+
+  defp reset_from_integer(value) when value > 1_000_000_000,
+    do: max(value - System.os_time(:second), 0) * 1_000
+
+  defp reset_from_integer(value), do: value * 1_000
+
+  defp http_date_delay(value) do
+    case :httpd_util.convert_request_date(String.to_charlist(value)) do
+      :bad_date ->
+        0
+
+      datetime ->
+        unix_epoch = {{1970, 1, 1}, {0, 0, 0}} |> :calendar.datetime_to_gregorian_seconds()
+        reset = :calendar.datetime_to_gregorian_seconds(datetime) - unix_epoch
+        max(reset - System.os_time(:second), 0) * 1_000
+    end
+  end
+
+  defp estimate_tokens(payload) do
+    payload
+    |> Jason.encode!()
+    |> byte_size()
+    |> div(4)
+    |> Kernel.+(1_024)
+  end
+
+  defp response_tokens(response, fallback) do
+    case Jason.decode(response.body) do
+      {:ok, %{"usage" => %{"total_tokens" => tokens}}} when is_integer(tokens) -> tokens
+      _missing -> fallback
+    end
+  end
 
   defp to_binary(body) when is_binary(body), do: body
   defp to_binary(body), do: IO.iodata_to_binary(body)

@@ -176,8 +176,8 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
 
   # A raise inside an `async_stream` child reaches the caller as an exit, which no
   # `try/rescue` up the stack can catch — the audit row would stay open and the
-  # dump would sit in `extracting` forever. Contained here, one page's crash is
-  # one page's error.
+  # dump would sit in `extracting` forever. Contained here, the stage returns a
+  # regular infrastructure error and cannot misclassify the page.
   defp contained(call) do
     try do
       call.()
@@ -205,33 +205,37 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
 
   @doc "Decodes labelled pages into `{:ok, [%{page:, label:, invoice_no:}]}`."
   def map_responses(responses) do
-    {:ok, Enum.map(responses, &map_response/1)}
+    responses
+    |> Enum.reduce_while({:ok, []}, fn response, {:ok, labels} ->
+      case map_response(response) do
+        {:ok, label} -> {:cont, {:ok, [label | labels]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, labels} -> {:ok, Enum.reverse(labels)}
+      error -> error
+    end
   end
 
-  defp map_response(%{page: page, error: reason}), do: unreadable(page, reason)
+  defp map_response(%{page: page, error: reason}),
+    do: {:error, {:page_label_failed, page, reason}}
 
   defp map_response(%{page: page, response: response}) do
     case MistralChat.decode(response) do
       {:ok, content, usage} ->
-        %{
-          page: page,
-          label: label(content["label"]),
-          invoice_no: blank_to_nil(content["invoice_no"]),
-          reason: blank_to_nil(content["reason"]),
-          usage: usage
-        }
+        {:ok,
+         %{
+           page: page,
+           label: label(content["label"]),
+           invoice_no: blank_to_nil(content["invoice_no"]),
+           reason: blank_to_nil(content["reason"]),
+           usage: usage
+         }}
 
       {:error, reason} ->
-        unreadable(page, reason)
+        {:error, {:page_label_failed, page, reason}}
     end
-  end
-
-  # A page whose label never came back is `unreadable`, not a dead month. One
-  # rate-limited call out of fifty-seven used to fail the whole packet and throw
-  # away fifty-six good labels; now the page is reported by the ledger, which is
-  # the same discipline every other unknown here gets.
-  defp unreadable(page, reason) do
-    %{page: page, label: :unreadable, invoice_no: nil, reason: inspect(reason), usage: %{}}
   end
 
   defp label("start"), do: :start
