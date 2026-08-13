@@ -20,8 +20,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   attr :active_invoices, :list, required: true
   attr :open_issue_count, :integer, required: true
   attr :account, :map, required: true
-  attr :completeness, :atom, required: true
-  attr :confirmation, :any, default: nil
   attr :r1_signoff, :any, default: nil
   attr :issues_by_invoice, :map, required: true
   attr :pages_read, :integer, default: nil
@@ -44,7 +42,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   def sales_section(assigns) do
     assigns =
       assigns
-      |> assign(:series, assigns.account.extraction.series)
       |> assign(:required_issues, assigns.account.issues.required)
       |> assign(:verdict, verdict_state(assigns))
       |> assign(:draft_label, draft_label(assigns))
@@ -287,64 +284,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         </p>
       </section>
 
-      <section id="gstr1-completeness" class="space-y-block">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <h3 class="text-base-content text-body font-semibold">Completeness and reconciliation</h3>
-          <%!-- No status pill. It restated `confirmation_note/2` at the foot of
-                this same section in two words, and the two words were the worse
-                copy: "Awaiting client confirmation" names a wait without saying
-                who is being waited on or through which channel. --%>
-          <.button
-            :if={@completeness != :complete and is_nil(@r1_signoff)}
-            id="gstr1-record-confirmation"
-            variant="outline"
-            size="xs"
-            phx-click="open-completeness-override"
-          >
-            Record client confirmation
-          </.button>
-        </div>
-
-        <%!-- The file count is read live off today's dumps while the documents
-              beside it can come out of a frozen snapshot, so "0 files received"
-              can sit next to "12 documents extracted" — a pair that cannot both
-              be true. A count that cannot be true is a count we do not have: a
-              month reconciled from a backfill or an import never had a file
-              pass through intake. Same treatment the purchase track already
-              gives it. --%>
-        <div class="border-base-300 rounded-box grid gap-4 border p-4 sm:grid-cols-2 lg:grid-cols-4">
-          <.control_stat
-            label="Source files received"
-            value={@account.source.files}
-            unknown={@account.source.files == 0 and @account.extraction.documents > 0}
-            unknown_note="not recorded for this month"
-          />
-          <.control_stat
-            :if={@account.source.pages_read}
-            label="Invoice pages read"
-            value={@account.source.pages_read}
-          />
-          <.control_stat label="Documents extracted" value={@account.extraction.documents} />
-          <.control_stat
-            label="Unique invoice numbers"
-            value={@account.extraction.unique_invoice_numbers}
-          />
-          <.control_stat
-            label="Duplicate documents unresolved"
-            value={@account.extraction.unresolved_duplicates}
-          />
-          <.control_stat label="Documents included in draft" value={@account.draft.documents} />
-          <.control_stat
-            label="Sequence gaps"
-            value={if(@series, do: length(@series.missing), else: "Not checked")}
-          />
-          <.control_stat
-            :if={@account.extraction.duplicate_copies > 0}
-            label="Duplicate documents excluded"
-            value={@account.extraction.duplicate_copies}
-          />
-          <.control_stat label="Cess" value={cess_label(@account.cess)} />
-        </div>
+      <section id="gstr1-draft-reconciliation" class="space-y-block">
+        <h3 class="text-base-content text-body font-semibold">Draft reconciliation</h3>
 
         <.data_table id="gstr1-reconciliation" rows={@reconciliation_rows} dense>
           <:col :let={row} label="Component">{row.label}</:col>
@@ -411,8 +352,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             </.link>
           </p>
         </section>
-
-        <p class="text-ink-muted text-ui">{confirmation_note(@confirmation, @completeness)}</p>
       </section>
 
       <section class="space-y-block">
@@ -642,42 +581,14 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp verdict_state(%{r1_signoff: %{}}),
     do: %{copy: "The approved draft is frozen and ready for portal filing."}
 
-  defp verdict_state(%{completeness: completeness}) when completeness != :complete,
-    do: %{copy: "Approval waits for current client confirmation."}
-
   defp verdict_state(_assigns),
     do: %{copy: "Ready for approval. All required checks are resolved."}
 
   defp draft_label(%{r1_signoff: %{}}), do: "Approved draft"
 
-  defp draft_label(%{account: %{issues: %{required: issues}}, completeness: :complete}) do
+  defp draft_label(%{account: %{issues: %{required: issues}}}) do
     if SalesWorkings.reviewable?(issues), do: "Draft for approval", else: "Proposed after fixes"
   end
-
-  defp draft_label(_assigns), do: "Proposed after fixes"
-
-  # Every state the pill carried, in a sentence that says who and through which
-  # channel. This is now the only place the section states it.
-  defp confirmation_note(nil, _status),
-    do: "Awaiting a period-specific WhatsApp confirmation from the client."
-
-  defp confirmation_note(confirmation, :stale),
-    do:
-      "Confirmation recorded #{format_display_datetime(confirmation.inserted_at)}, but later or unresolved sales intake requires confirmation again."
-
-  defp confirmation_note(%{decision: "client_no"} = confirmation, _status),
-    do:
-      "Client said more documents are coming · #{format_display_datetime(confirmation.inserted_at)}"
-
-  defp confirmation_note(%{decision: "senior_override"} = confirmation, _status) do
-    actor = confirmation.actor_user && confirmation.actor_user.name
-
-    "Overridden by #{actor || "a senior"} · #{confirmation.reason} · #{format_display_datetime(confirmation.inserted_at)}"
-  end
-
-  defp confirmation_note(confirmation, _status),
-    do:
-      "Client confirmed all sales documents were sent via WhatsApp · #{format_display_datetime(confirmation.inserted_at)}"
 
   # One row per section the return actually builds. The status is the work still
   # standing against it, in the same vocabulary the rest of the page uses.
@@ -904,9 +815,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       }
     end)
   end
-
-  defp cess_label(:checked_none), do: "Checked · none found"
-  defp cess_label(:unsupported), do: "Applies · this return cannot carry it"
 
   defp sales_review_path(client, period, source_id, scope, focus \\ nil) do
     params =

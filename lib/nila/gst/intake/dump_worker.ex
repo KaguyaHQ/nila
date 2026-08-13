@@ -29,7 +29,6 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Nila.Gst.Chase.CompletenessSender
   alias Nila.Gst.Filing.{Gstr2b, ItcPosition, PortalDocument, Signoffs}
   alias Nila.Gst.Hsn.{Directory, Validation}
   alias Nila.Gst.Intake.{Dump, Dumps, ExtractionAttempts, Preconditions}
@@ -156,7 +155,6 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
       :done ->
         progress(dump, {:done, dump.client_id, dump.period, dump_unaccounted_pages(dump)})
-        if dump.kind == "sales", do: CompletenessSender.enqueue(dump)
     end
 
     :ok

@@ -8,9 +8,8 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Accounts.Policy
   alias Nila.Clients
   alias Nila.Gst.Chase
-  alias Nila.Gst.Chase.CompletenessSender
   alias Nila.Gst.Filing.{Calendar, Signoffs}
-  alias Nila.Gst.Intake.{Confirmations, DumpWorker, Dumps, Preconditions}
+  alias Nila.Gst.Intake.{DumpWorker, Dumps, Preconditions}
   alias Nila.Gst.Issues
   alias Nila.Gst.Purchase.{Groups, ItcCases, Reconciliation, Register, Resolutions, Review}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
@@ -81,8 +80,6 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:rippled, MapSet.new())
       |> assign(:ripple_seq, 0)
       |> assign(:duplicate_review_target, nil)
-      |> assign(:show_completeness_override, false)
-      |> assign(:completeness_override_form, to_form(%{"reason" => ""}, as: :override))
       |> assign(:show_chase_history, false)
       |> assign(:precondition_choice, nil)
       |> assign(:can_sign_off, Policy.can?(socket.assigns.current_scope, :sign_off))
@@ -216,10 +213,6 @@ defmodule NilaWeb.Gst.MonthLive do
   defp blocked_document("cess_unsupported"), do: "a cess-bearing supply"
   defp blocked_document(code), do: code
 
-  defp completeness_error(:open), do: "not confirmed"
-  defp completeness_error(:client_no), do: "still open"
-  defp completeness_error(:stale), do: "stale after later or unresolved intake"
-
   defp reload(socket) do
     %{client: client, period: period} = socket.assigns
     org_id = socket.assigns.current_scope.current_org.id
@@ -264,6 +257,7 @@ defmodule NilaWeb.Gst.MonthLive do
         Enum.any?(dumps, &(&1.kind == "gstr2b" and &1.status == "extracted"))
     )
     |> assign(:sales_pages_read, Dumps.source_page_count(org_id, client.id, period, "sales"))
+    |> assign(:sales_intake_open, Dumps.unresolved?(dumps, "sales"))
     |> assign(
       :purchase_pages_read,
       Dumps.source_page_count(org_id, client.id, period, "purchase")
@@ -433,8 +427,6 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:gstr1_diff, nil)
     |> assign(:accepted_diffs, MapSet.new())
     |> assign(:sales_account, nil)
-    |> assign(:sales_completeness, :open)
-    |> assign(:sales_confirmation, nil)
     |> assign(:open_issue_count, 0)
     |> assign(:reviewable, false)
   end
@@ -445,9 +437,6 @@ defmodule NilaWeb.Gst.MonthLive do
     workings =
       provided_workings ||
         case signoff do
-          # Invoice-less months still face the client-confirmation gate. A
-          # hand-built empty projection would offer approval over a server-side
-          # rejection.
           nil ->
             SalesResolutions.workings(sales)
 
@@ -482,8 +471,6 @@ defmodule NilaWeb.Gst.MonthLive do
 
     {month_issues, invoice_issues} = Enum.split_with(issues, &is_nil(&1["source_id"]))
     org_id = sales.org_id
-    completeness = Confirmations.status(org_id, sales.client_id, sales.period)
-    confirmation = fetch_or_nil(Confirmations.latest(org_id, sales.client_id, sales.period))
 
     account =
       Account.summarize(workings, %{
@@ -507,8 +494,6 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:gstr1_diff, filed && derived && Gstr1Diff.rows(derived, filed))
     |> assign(:accepted_diffs, SalesResolutions.accepted_differences(sales))
     |> assign(:sales_account, account)
-    |> assign(:sales_completeness, completeness)
-    |> assign(:sales_confirmation, confirmation)
     |> assign(:open_issue_count, account.issues.required_count)
     |> assign(:reviewable, SalesWorkings.reviewable?(issues))
   end
@@ -553,8 +538,7 @@ defmodule NilaWeb.Gst.MonthLive do
         r1_signed: r1_signoff != nil,
         r1_filed: sales != nil and sales.filed_at != nil,
         gstr3b_signed: gstr3b_signoff != nil,
-        gstr3b_filed: purchase != nil and purchase.filed_at != nil,
-        sales_complete: socket.assigns.sales_completeness == :complete
+        gstr3b_filed: purchase != nil and purchase.filed_at != nil
       })
 
     facts = %{
@@ -696,60 +680,6 @@ defmodule NilaWeb.Gst.MonthLive do
      end)}
   end
 
-  def handle_event("open-completeness-override", _params, socket),
-    do:
-      {:noreply,
-       assign(socket,
-         show_completeness_override: true,
-         completeness_override_form: to_form(%{"reason" => ""}, as: :override)
-       )}
-
-  def handle_event("close-completeness-override", _params, socket),
-    do: {:noreply, assign(socket, :show_completeness_override, false)}
-
-  def handle_event("send-completeness-request", _params, socket) do
-    org_id = socket.assigns.current_scope.current_org.id
-
-    case CompletenessSender.enqueue_now(org_id, socket.assigns.client.id, socket.assigns.period) do
-      {:ok, _job} ->
-        {:noreply,
-         socket
-         |> assign(:show_completeness_override, false)
-         |> put_flash(:info, "WhatsApp confirmation request queued.")}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "The WhatsApp request could not be queued.")}
-    end
-  end
-
-  def handle_event("save-completeness-override", %{"override" => params}, socket) do
-    case Confirmations.record_override(
-           socket.assigns.current_scope,
-           socket.assigns.client.id,
-           socket.assigns.period,
-           params
-         ) do
-      {:ok, _confirmation} ->
-        {:noreply,
-         socket
-         |> assign(:show_completeness_override, false)
-         |> reload()
-         |> put_flash(:info, "Sales collection completeness overridden with an audit reason.")}
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply,
-         assign(
-           socket,
-           :completeness_override_form,
-           to_form(%{changeset | action: :insert}, as: :override)
-         )}
-
-      {:error, :not_allowed} ->
-        {:noreply,
-         put_flash(socket, :error, "You don't have permission to override completeness.")}
-    end
-  end
-
   def handle_event("open-chase-history", _params, socket),
     do: {:noreply, assign(socket, :show_chase_history, true)}
 
@@ -779,13 +709,8 @@ defmodule NilaWeb.Gst.MonthLive do
       {:error, :already_signed} ->
         {:noreply, put_flash(socket, :error, "This GSTR-1 is already approved.")}
 
-      {:error, {:sales_intake_incomplete, status}} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "Sales collection is #{completeness_error(status)} — get a current client confirmation or record a senior override."
-         )}
+      {:error, :unresolved_sales_intake} ->
+        {:noreply, put_flash(socket, :error, "A supplied sales packet is still unresolved.")}
 
       {:error, {:blocking_issues, codes}} ->
         {:noreply, put_flash(socket, :error, blocked_message(codes))}
@@ -862,13 +787,8 @@ defmodule NilaWeb.Gst.MonthLive do
         {:noreply,
          put_flash(socket, :error, "This ITC was already reserved or claimed in another period.")}
 
-      {:error, {:sales_intake_incomplete, status}} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "Sales collection is #{completeness_error(status)} — GSTR-3B cannot be signed yet."
-         )}
+      {:error, :unresolved_sales_intake} ->
+        {:noreply, put_flash(socket, :error, "A supplied sales packet is still unresolved.")}
     end
   end
 
@@ -926,11 +846,8 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
-  # Senior-only, because it clears exactly the block that
-  # `Confirmations.record_override/4` clears — and that is `:sign_off`-only with
-  # a written reason. Leaving this open let any member reach the same outcome in
-  # one click, which is a cheaper route around a control that was made
-  # senior-only on purpose.
+  # Senior-only because abandoning unresolved intake is a deliberate audit
+  # decision, even though the failed packet produced no rows.
   def handle_event("abandon-dump", %{"dump-id" => dump_id}, socket) do
     org_id = socket.assigns.current_scope.current_org.id
 
@@ -1158,8 +1075,6 @@ defmodule NilaWeb.Gst.MonthLive do
             active_invoices={@active_invoices}
             open_issue_count={@open_issue_count}
             account={@sales_account}
-            completeness={@sales_completeness}
-            confirmation={@sales_confirmation}
             r1_signoff={@r1_signoff}
             issues_by_invoice={@issues_by_invoice}
             pages_read={@sales_pages_read}
@@ -1191,7 +1106,7 @@ defmodule NilaWeb.Gst.MonthLive do
                 r1_signoff={@r1_signoff}
                 open_issue_count={@open_issue_count}
                 reviewable={@reviewable}
-                completeness={@sales_completeness}
+                sales_intake_open={@sales_intake_open}
                 can_sign_off={@can_sign_off}
                 derived={@derived_gstr1}
               />
@@ -1239,7 +1154,7 @@ defmodule NilaWeb.Gst.MonthLive do
                 gstr3b_signoff={@gstr3b_signoff}
                 r1_signoff={@r1_signoff}
                 can_sign_off={@can_sign_off}
-                sales_completeness={@sales_completeness}
+                sales_intake_open={@sales_intake_open}
                 itc={@itc}
                 gstr3b={@gstr3b}
               />
@@ -1279,8 +1194,6 @@ defmodule NilaWeb.Gst.MonthLive do
         asks={@asks}
         source_invoices={@invoices}
         duplicate_issue={@duplicate_issue}
-        show_completeness_override={@show_completeness_override}
-        completeness_override_form={@completeness_override_form}
       />
     </Layouts.app>
     """

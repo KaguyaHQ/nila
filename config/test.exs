@@ -28,8 +28,6 @@ config :nila, Oban, testing: :manual, queues: false, plugins: false
 config :nila,
   whatsapp_signup_adapter: Nila.Integrations.WhatsAppSignupStub,
   whatsapp_chase_template: "nila_document_chase",
-  whatsapp_completeness_template: "nila_sales_completeness",
-  whatsapp_completeness_secret: "test-whatsapp-completeness-secret-32-bytes",
   purchase_extractor: Nila.Gst.Extraction.Purchase.Stub,
   sales_extractor: Nila.Gst.Extraction.Sales.Stub
 

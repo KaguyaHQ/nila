@@ -224,7 +224,6 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
   end
 
   defp sign_month!(context) do
-    confirm_sales_complete!(context.org, context.client, @period)
     answer_sales_issues!(context.month, context.user.id)
     {:ok, month} = SalesMonths.get_by_period(context.org.id, context.client.id, @period)
     {:ok, _signoff} = Signoffs.sign_off_gstr1(month, Scope.for_user(context.user))

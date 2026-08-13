@@ -158,15 +158,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     }
   end
 
-  defp settled_door_and_headline(%{tracks: %{sales: :awaiting_confirmation}}) do
-    %{
-      tone: :calm,
-      headline:
-        "GSTR-1 review is complete. Filing readiness waits for the client's current sales-document confirmation.",
-      door: nil
-    }
-  end
-
   # 5. Worked clean and signable now. The senior's door; the junior has none,
   #    so for them the page falls through to whatever is still missing.
   defp settled_door_and_headline(%{can_sign_off: true, tracks: tracks} = facts)
@@ -514,7 +505,12 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp track_line(track, facts) do
     owner = door_owner(facts)
-    if owner == track, do: nil, else: line_for(track, facts.tracks[track], facts)
+
+    cond do
+      owner == track -> nil
+      track == :purchase and facts.tracks.sales == :open -> nil
+      true -> line_for(track, facts.tracks[track], facts)
+    end
   end
 
   defp door_owner(facts) do
@@ -584,8 +580,8 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp line_for(_track, _status, _facts), do: nil
 
   # Retained as the state table's primary clock for callers that need one track
-  # to win. The masthead renders `deadlines` instead: this page is the month, and
-  # hiding the second return's clock makes one overdue obligation disappear.
+  # to win. The masthead follows the same working sequence: while GSTR-1 is open,
+  # its clock is the only one that can change the reviewer's next move.
   defp put_deadline(verdict, facts) do
     track = resolve_owner(facts) || fallback_track(facts)
     deadline = track && WorkQueue.track_deadline(facts.period, facts.today, track)
@@ -596,6 +592,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp put_deadlines(verdict, facts) do
     deadlines =
       for {track, status} <- [sales: facts.tracks.sales, purchase: facts.tracks.purchase],
+          not (facts.tracks.sales == :open and track == :purchase),
           status != :filed do
         {track, WorkQueue.track_deadline(facts.period, facts.today, track)}
       end
@@ -652,17 +649,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     <section id="month-verdict" class="border-base-300 pb-section border-b">
       <div class="gap-block flex flex-col lg:flex-row lg:items-start lg:justify-between">
         <div class="space-y-related min-w-0">
-          <%!-- The month is reachable from Today, the register, a client, or a pasted
-               link, so it states its one parent itself. --%>
-          <p class="text-eyebrow text-moon font-semibold uppercase">
-            <.link
-              id="month-parent-link"
-              navigate={~p"/register"}
-              class="hover:text-base-content transition"
-            >
-              GST months
-            </.link>
-          </p>
           <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h1 class="font-display text-base-content text-h4 font-normal">{@client.name}</h1>
             <span class="text-ink-subtle text-ui font-medium">

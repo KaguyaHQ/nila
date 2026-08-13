@@ -11,7 +11,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :r1_signoff, :any, default: nil
   attr :open_issue_count, :integer, required: true
   attr :reviewable, :boolean, required: true
-  attr :completeness, :atom, required: true
+  attr :sales_intake_open, :boolean, default: false
   attr :can_sign_off, :boolean, required: true
   attr :derived, :any, default: nil
 
@@ -25,7 +25,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       class="border-base-300 pt-block scroll-mt-28 border-t"
     >
       <div
-        :if={is_nil(@r1_signoff) and @reviewable and @completeness == :complete}
+        :if={is_nil(@r1_signoff) and @reviewable and not @sales_intake_open}
         class="space-y-related"
       >
         <div class="text-base-content text-body font-medium">GSTR-1 ready for approval</div>
@@ -59,10 +59,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       </div>
 
       <p
-        :if={is_nil(@r1_signoff) and @reviewable and @completeness != :complete}
+        :if={is_nil(@r1_signoff) and @reviewable and @sales_intake_open}
         class="text-ink-muted text-ui"
       >
-        All review checks are resolved. Approval waits for current client confirmation.
+        Approval waits for the unresolved sales packet shown in source documents.
       </p>
 
       <.signed_return
@@ -104,7 +104,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :gstr3b_signoff, :any, default: nil
   attr :r1_signoff, :any, default: nil
   attr :can_sign_off, :boolean, required: true
-  attr :sales_completeness, :atom, default: :open
+  attr :sales_intake_open, :boolean, default: false
   attr :itc, :any, default: nil
   attr :gstr3b, :any, default: nil
 
@@ -364,10 +364,8 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   # visible as findings and in the money, but neither is answerable here, so
   # neither appears.
   #
-  # All three server gates have to be mirrored, not the one that happened to be
-  # cheap to check here: the two omitted both failed at the click, and one of
-  # them — sales intake on a month with no sales side — had its only control
-  # inside a section that does not render without a sales month.
+  # Every server gate has to be mirrored, not just the ones that are cheap to
+  # check here.
   #
   # Every `:anchor` must point at a section that renders in the state its
   # blocker describes. `#month-exit-gstr1` does not: it is gated on the GSTR-1
@@ -394,9 +392,9 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
          is_nil(assigns.sales_month.filed_at),
        "The GSTR-1 is approved but not yet marked filed on the portal.",
        {:anchor, "Mark it filed", "#month-exit-gstr1"}},
-      {"intake", assigns.sales_completeness != :complete,
-       "Sales collection is #{completeness_phrase(assigns.sales_completeness)} — the client has not confirmed we hold everything.",
-       {:click, "Record client confirmation", "open-completeness-override"}},
+      {"sales-intake", assigns.sales_intake_open,
+       "A supplied sales packet is still unresolved, so the outward liability may be incomplete.",
+       {:anchor, "Review the packet", "#month-sales-sources"}},
       {"negative-liability", Gstr3b.negative_outward_liability?(assigns.gstr3b),
        "Credit notes exceed this month's supported outward liability. Nila can calculate the reduction but does not yet file the resulting negative GSTR-3B position.",
        {:none, nil, nil}}
@@ -414,11 +412,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     do: itc["documents_attested"] not in ~w(held not_held per_case)
 
   defp attestation_open?(_itc), do: false
-
-  defp completeness_phrase(:open), do: "not confirmed"
-  defp completeness_phrase(:client_no), do: "still open"
-  defp completeness_phrase(:stale), do: "stale after later or unresolved intake"
-  defp completeness_phrase(_status), do: "incomplete"
 
   defp plural(1, word), do: word
   defp plural(_count, word), do: word <> "s"

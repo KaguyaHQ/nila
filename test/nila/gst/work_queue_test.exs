@@ -57,7 +57,6 @@ defmodule Nila.Gst.WorkQueueTest do
     answer_sales_issues!(sales_month, user_id)
 
     {:ok, _} = SalesResolutions.mark_reviewed(sales_month)
-    confirm_sales_complete!(org, client, @period)
 
     month
   end
@@ -86,8 +85,7 @@ defmodule Nila.Gst.WorkQueueTest do
         r1_signed: false,
         r1_filed: false,
         gstr3b_signed: false,
-        gstr3b_filed: false,
-        sales_complete: true
+        gstr3b_filed: false
       }
       |> Map.merge(Map.new(overrides))
     end
@@ -121,6 +119,13 @@ defmodule Nila.Gst.WorkQueueTest do
 
       assert tracks.purchase == :clear
       assert Today.fold_state(tracks) == :waiting_on_senior
+    end
+
+    test "a concrete unresolved sales packet is work, not a client attestation wait" do
+      tracks = Today.track_states(purchase_facts(sales_intake_open: true))
+
+      assert tracks.sales == :open
+      assert Today.fold_state(tracks) == :needs_you
     end
 
     # The 2B gates everything behind it: with no portal side, every books row is

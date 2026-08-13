@@ -16,8 +16,6 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :asks, :list, required: true
   attr :source_invoices, :list, default: []
   attr :duplicate_issue, :any, default: nil
-  attr :show_completeness_override, :boolean, default: false
-  attr :completeness_override_form, :any, default: nil
 
   def evidence_modals(assigns) do
     ~H"""
@@ -38,65 +36,6 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       client={@client}
       period={@period}
     />
-
-    <.modal
-      :if={@show_completeness_override}
-      id="gstr1-completeness-override-modal"
-      title="Record client confirmation"
-      on_close="close-completeness-override"
-      class="max-w-xl"
-    >
-      <div class="space-y-block">
-        <section class="space-y-related">
-          <h3 class="text-base-content text-body font-semibold">Ask the client on WhatsApp</h3>
-          <p class="text-body text-ink-muted">
-            Send a period-specific Yes/No request. Only the client phone on record can confirm it.
-          </p>
-          <.button
-            :if={@client.chase_channel == "whatsapp" and is_binary(@client.phone)}
-            id="gstr1-send-completeness-request"
-            variant="primary"
-            size="sm"
-            phx-click="send-completeness-request"
-          >
-            Send WhatsApp confirmation request
-          </.button>
-          <p
-            :if={@client.chase_channel != "whatsapp" or is_nil(@client.phone)}
-            class="text-ui text-warning"
-          >
-            Add a WhatsApp phone and select WhatsApp as this client’s chase channel first.
-          </p>
-        </section>
-
-        <div class="border-base-300 border-t pt-4">
-          <h3 class="text-base-content text-body font-semibold">Senior override</h3>
-        </div>
-
-        <.form
-          for={@completeness_override_form}
-          id="gstr1-completeness-override-form"
-          phx-submit="save-completeness-override"
-          class="space-y-block"
-        >
-          <p class="text-body text-ink-muted">
-            Use this only when the firm has independent evidence that every sales invoice, credit/debit note, and cancellation detail for the period was supplied.
-          </p>
-          <.input
-            field={@completeness_override_form[:reason]}
-            type="textarea"
-            label="Reason for override"
-            placeholder="State the evidence relied on"
-          />
-          <div class="flex justify-end gap-2">
-            <.button type="button" variant="ghost" phx-click="close-completeness-override">
-              Cancel
-            </.button>
-            <.button type="submit" variant="primary">Record override</.button>
-          </div>
-        </.form>
-      </div>
-    </.modal>
     """
   end
 

@@ -1,11 +1,10 @@
 defmodule Nila.Integrations.WhatsAppTest do
   use ExUnit.Case, async: true
 
-  alias Nila.Integrations.{Connection, WhatsApp, WhatsAppReply}
+  alias Nila.Integrations.{Connection, WhatsApp}
 
   test "normalizes media, text evidence, and template quick replies" do
-    ask_ref = Ecto.UUID.generate()
-    {:ok, reply_payload} = WhatsAppReply.sign(ask_ref, "client_yes")
+    reply_payload = "reply-payload"
 
     payload = %{
       "entry" => [
@@ -125,63 +124,5 @@ defmodule Nila.Integrations.WhatsAppTest do
 
     assert {:error, :missing_access_token} =
              WhatsApp.send_message(connection, "919876543210", "Send the bills", "template")
-  end
-
-  test "sends period-specific Yes and No quick replies" do
-    yes_payload = "signed-yes"
-    no_payload = "signed-no"
-
-    connection = %Connection{
-      external_account_id: "phone-number-123",
-      credentials: %{"access_token" => "token"}
-    }
-
-    Req.Test.expect(WhatsApp, fn conn ->
-      assert conn.request_path == "/v26.0/phone-number-123/messages"
-      {:ok, body, conn} = Plug.Conn.read_body(conn)
-      payload = Jason.decode!(body)
-
-      assert payload["to"] == "919876543210"
-      assert get_in(payload, ["template", "name"]) == "nila_sales_completeness"
-
-      assert get_in(payload, [
-               "template",
-               "components",
-               Access.at(0),
-               "parameters",
-               Access.at(0),
-               "text"
-             ]) == "June 2026"
-
-      assert get_in(payload, [
-               "template",
-               "components",
-               Access.at(1),
-               "parameters",
-               Access.at(0),
-               "payload"
-             ]) == yes_payload
-
-      assert get_in(payload, [
-               "template",
-               "components",
-               Access.at(2),
-               "parameters",
-               Access.at(0),
-               "payload"
-             ]) == no_payload
-
-      Req.Test.json(conn, %{"messages" => [%{"id" => "wamid.request"}]})
-    end)
-
-    assert {:ok, %{"messages" => [%{"id" => "wamid.request"}]}} =
-             WhatsApp.send_completeness_request(
-               connection,
-               "919876543210",
-               "June 2026",
-               "nila_sales_completeness",
-               yes_payload,
-               no_payload
-             )
   end
 end

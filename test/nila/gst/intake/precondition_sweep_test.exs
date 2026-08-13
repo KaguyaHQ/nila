@@ -3,7 +3,7 @@ defmodule Nila.Gst.Intake.PreconditionSweepTest do
   use Oban.Testing, repo: Nila.Repo
 
   import Nila.AccountsFixtures
-  import Nila.GstFixtures, only: [confirm_sales_complete!: 3, settle_register!: 2]
+  import Nila.GstFixtures, only: [settle_register!: 2]
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
@@ -192,8 +192,6 @@ defmodule Nila.Gst.Intake.PreconditionSweepTest do
     dump = bring_in(context, "2026-06", april_bills(6))
     assert :ok = run(dump)
     dump = as_if_never_asked(context, dump)
-
-    confirm_sales_complete!(context.org, context.client, "2026-06")
 
     {:ok, _signoff} =
       context

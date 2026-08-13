@@ -7,7 +7,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
   alias Nila.Accounts.Scope
   alias Nila.Clients
   alias Nila.Gst.Filing.Signoffs
-  alias Nila.Gst.Intake.{Confirmations, Dumps}
+  alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Gst.Purchase.{ItcAllocation, ItcCases, Register, Resolutions}
   alias Nila.Gst.Purchase.Reconciliation, as: Recon
@@ -72,8 +72,6 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       })
 
     owner_scope = %Scope{user: owner, current_org: org, membership: owner_membership}
-
-    _confirmation = confirm_sales_complete!(org, client, @period)
 
     %{org: org, client: client, month: month, owner_scope: owner_scope}
   end
@@ -418,9 +416,8 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     assert Enum.count(wider_cases, &(&1.document_state == "unknown")) == 1
   end
 
-  test "GSTR-3B rejects open completeness and accepts an attributed override", %{
+  test "GSTR-3B does not invent a client-completeness gate", %{
     month: month,
-    client: client,
     owner_scope: scope
   } do
     {:ok, open_month} =
@@ -434,37 +431,24 @@ defmodule Nila.Gst.Filing.SignoffsTest do
         summary: month.summary
       })
 
-    assert {:error, {:sales_intake_incomplete, :open}} =
-             Signoffs.sign_off(open_month, scope)
-
-    assert {:ok, _override} =
-             Confirmations.record_override(scope, client.id, "2025-11", %{
-               reason: "Client's records are known to be complete"
-             })
-
     assert {:ok, _signoff} = Signoffs.sign_off(open_month, scope)
   end
 
-  test "GSTR-3B rejects the latest client-no decision", %{
+  test "GSTR-3B still blocks on a concrete unresolved sales packet", %{
     month: month,
-    client: client,
     owner_scope: scope
   } do
-    assert {:ok, _no} =
-             Confirmations.record_client(
-               %{org_id: month.org_id},
-               month.client_id,
-               month.period,
-               %{
-                 decision: "client_no",
-                 channel: "whatsapp",
-                 source_ref: "wamid.client-no",
-                 actor_phone: client.phone
-               }
-             )
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: month.org_id, client_id: month.client_id},
+        %{period: month.period, kind: "sales"}
+      )
 
-    assert {:error, {:sales_intake_incomplete, :client_no}} =
-             Signoffs.sign_off(month, scope)
+    failed = Dumps.mark_failed(dump, "unreadable")
+    assert {:error, :unresolved_sales_intake} = Signoffs.sign_off(month, scope)
+
+    {:ok, _discarded} = Dumps.abandon_failed(failed, scope.user.id)
+    assert {:ok, _signoff} = Signoffs.sign_off(month, scope)
   end
 
   test "the operator (member) cannot self-certify", %{month: month, org: org} do
@@ -568,8 +552,6 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
       work_dump!(org, client, @period, "sales", "%PDF-1.4 fake bytes")
 
-      _confirmation = confirm_sales_complete!(org, client, @period)
-
       {:ok, sales_month} = SalesMonths.get_by_period(org.id, client.id, @period)
       %{sales_month: sales_month}
     end
@@ -589,10 +571,9 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       assert {:error, :not_reviewed} = Signoffs.sign_off_gstr1(sales_month, scope)
     end
 
-    # A month with no invoices raises no issues, so `reviewable?` is true by
-    # vacuum. Nothing derived from an empty pile can say the pile is the month —
-    # only the client can, and this is the gate that makes them.
-    test "an empty month cannot be approved on the strength of having no issues", %{
+    # A deliberately worked nil-return month raises no invoice issues. The
+    # maker gate is the real workflow fact; Nila must not add a client ritual.
+    test "an explicitly worked empty month can be approved without an invented attestation", %{
       sales_month: sales_month,
       owner_scope: scope
     } do
@@ -612,47 +593,28 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
       assert SalesWorkings.reviewable?(SalesResolutions.workings(reviewed).issues)
 
-      assert {:error, {:sales_intake_incomplete, :open}} =
-               Signoffs.sign_off_gstr1(reviewed, scope)
+      assert {:ok, _signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
     end
 
-    test "maker review remains available while completeness is open", %{
-      sales_month: sales_month,
-      owner_scope: scope
-    } do
-      {:ok, open_month} =
-        SalesMonths.upsert(%{
-          org_id: sales_month.org_id,
-          client_id: sales_month.client_id,
-          period: "2025-11",
-          state: "worked",
-          invoices: sales_month.invoices,
-          derived_gstr1: sales_month.derived_gstr1,
-          issues: sales_month.issues,
-          summary: sales_month.summary
-        })
-
-      reviewed = make_reviewed(open_month, scope.user.id)
-      assert reviewed.state == "reviewed"
-
-      assert {:error, {:sales_intake_incomplete, :open}} =
-               Signoffs.sign_off_gstr1(reviewed, scope)
-    end
-
-    test "GSTR-1 rejects a confirmation made stale by late active sales intake", %{
+    test "a failed sales packet is the concrete intake failure that still blocks", %{
       sales_month: sales_month,
       owner_scope: scope
     } do
       reviewed = make_reviewed(sales_month, scope.user.id)
 
-      {:ok, _late} =
+      {:ok, dump} =
         Dumps.record(
           %{org_id: reviewed.org_id, client_id: reviewed.client_id},
           %{period: reviewed.period, kind: "sales"}
         )
 
-      assert {:error, {:sales_intake_incomplete, :stale}} =
+      failed = Dumps.mark_failed(dump, "unreadable")
+
+      assert {:error, :unresolved_sales_intake} =
                Signoffs.sign_off_gstr1(reviewed, scope)
+
+      {:ok, _discarded} = Dumps.abandon_failed(failed, scope.user.id)
+      assert {:ok, _signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
     end
 
     test "approval directly freezes a reviewed draft with reviewer, time, and version", %{

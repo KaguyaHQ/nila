@@ -81,7 +81,6 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
 
   test "challenge is disabled after sign-off with a reason", context do
     month = put_month!(context, [books("b1")], [gstr2b("INV-001")])
-    confirm_sales_complete!(context.org, context.client, @period)
     {:ok, _} = Signoffs.sign_off(month, Nila.Accounts.Scope.for_user(context.user))
 
     {:ok, view, _html} = live(context.conn, review_path(context.client, "b1", "all"))

@@ -101,16 +101,8 @@ end
 case config_env() do
   :prod ->
     app_secret = env!("WHATSAPP_APP_SECRET", :string!)
-    completeness_secret = env!("WHATSAPP_COMPLETENESS_SECRET", :string!)
 
-    if byte_size(completeness_secret) < 32 do
-      raise "WHATSAPP_COMPLETENESS_SECRET must be at least 32 bytes"
-    end
-
-    config :nila,
-      whatsapp_chase_template: env!("WHATSAPP_CHASE_TEMPLATE", :string!),
-      whatsapp_completeness_template: env!("WHATSAPP_COMPLETENESS_TEMPLATE", :string!),
-      whatsapp_completeness_secret: completeness_secret
+    config :nila, whatsapp_chase_template: env!("WHATSAPP_CHASE_TEMPLATE", :string!)
 
     config :nila, NilaWeb.Webhooks.WhatsAppController,
       app_secret: app_secret,
@@ -127,14 +119,6 @@ case config_env() do
 
     if template = env!("WHATSAPP_CHASE_TEMPLATE", :string, nil) do
       config :nila, whatsapp_chase_template: template
-    end
-
-    if template = env!("WHATSAPP_COMPLETENESS_TEMPLATE", :string, nil) do
-      config :nila, whatsapp_completeness_template: template
-    end
-
-    if secret = env!("WHATSAPP_COMPLETENESS_SECRET", :string, nil) do
-      config :nila, whatsapp_completeness_secret: secret
     end
 
   _env ->

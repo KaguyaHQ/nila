@@ -19,7 +19,6 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
       Clients.create_client(%{org_id: org.id, name: "Breeze Tech", type: "company"})
 
     gstr2b_arrived!(org, client, @period)
-    confirm_sales_complete!(org, client, @period)
 
     {:ok, _month} =
       ClientMonths.upsert(%{

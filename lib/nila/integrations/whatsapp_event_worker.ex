@@ -5,10 +5,8 @@ defmodule Nila.Integrations.WhatsAppEventWorker do
 
   alias Nila.Clients
   alias Nila.Clients.Client
-  alias Nila.Gst.Chase
-  alias Nila.Gst.Intake.{Arrivals, Confirmations, Dumps, Messages}
+  alias Nila.Gst.Intake.{Arrivals, Messages}
   alias Nila.Integrations
-  alias Nila.Integrations.WhatsAppReply
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"connection_id" => connection_id, "event" => event}}) do
@@ -79,47 +77,7 @@ defmodule Nila.Integrations.WhatsAppEventWorker do
     end
   end
 
-  defp handle_event(%{"type" => "button_reply"} = reply, connection) do
-    sender = Client.normalize_phone(reply["sender"])
-
-    with {:ok, %{ask_ref: ask_ref, decision: decision}} <-
-           WhatsAppReply.verify(reply["payload"]),
-         {:ok, ask} <- Chase.fetch_ask_by_ref(connection.org_id, ask_ref),
-         true <- ask.kind == "sales_completeness" and ask.channel == "whatsapp",
-         {:ok, client} <- Clients.get_client(connection.org_id, ask.client_id),
-         true <- Client.normalize_phone(client.phone) == sender,
-         false <- stale_ask?(ask),
-         {:ok, _confirmation} <-
-           Confirmations.record_client(
-             %{org_id: connection.org_id},
-             client.id,
-             ask.period,
-             %{
-               decision: decision,
-               channel: "whatsapp",
-               source_ref: reply["source_ref"],
-               actor_phone: sender
-             }
-           ) do
-      :ok
-    else
-      {:error, reason} when reason in [:invalid_reply, :not_found, :sender_mismatch] ->
-        ignore_invalid_reply(reason)
-
-      reason when is_boolean(reason) ->
-        ignore_invalid_reply(reason)
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
   defp handle_event(_unsupported, _connection), do: :ok
-
-  defp ignore_invalid_reply(reason) do
-    Logger.warning("Ignored invalid WhatsApp completeness reply", reason: inspect(reason))
-    :ok
-  end
 
   defp mark_connected_after_success(%{"type" => "media"}, connection) do
     _ = Integrations.mark_connected(connection)
@@ -127,15 +85,6 @@ defmodule Nila.Integrations.WhatsAppEventWorker do
   end
 
   defp mark_connected_after_success(_event, _connection), do: :ok
-
-  defp stale_ask?(ask) do
-    ask.org_id
-    |> Dumps.list(ask.client_id, ask.period)
-    |> Enum.any?(fn dump ->
-      dump.kind == "sales" and dump.status not in ~w(discarded after_filing) and
-        DateTime.compare(dump.inserted_at, ask.inserted_at) == :gt
-    end)
-  end
 
   defp access_token(%{credentials: %{"access_token" => token}})
        when is_binary(token) and token != "",

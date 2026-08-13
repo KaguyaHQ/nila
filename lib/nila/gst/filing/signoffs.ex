@@ -30,7 +30,7 @@ defmodule Nila.Gst.Filing.Signoffs do
   alias Nila.Accounts.Policy
 
   alias Nila.Gst.Filing.{Gstr3b, Signoff}
-  alias Nila.Gst.Intake.{Confirmations, Dumps}
+  alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.{ItcCases, Register, Resolutions}
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
@@ -64,8 +64,8 @@ defmodule Nila.Gst.Filing.Signoffs do
   Returns `{:error, :not_allowed}` without the `sign_off` capability,
   `{:error, :already_signed}` when the month is not in `worked`,
   `{:error, :not_reviewed}` while any register row is unsettled, and
-  `{:error, {:sales_intake_incomplete, status}}` until sales collection is
-  confirmed and current.
+  `{:error, :unresolved_sales_intake}` while a supplied sales packet is still
+  processing or needs a human decision.
   """
   def sign_off(%PurchaseMonth{} = month, scope) do
     if Policy.can?(scope, :sign_off) do
@@ -89,7 +89,7 @@ defmodule Nila.Gst.Filing.Signoffs do
 
             with :ok <- require_documents_attested(workings),
                  :ok <- require_settled_register(workings),
-                 :ok <- require_sales_intake_complete(month),
+                 :ok <- require_resolved_sales_intake(month),
                  :ok <- require_nonnegative_outward_liability(workings.gstr3b),
                  :ok <- require_nonnegative_net_itc(workings.gstr3b) do
               snapshot = %{
@@ -139,15 +139,16 @@ defmodule Nila.Gst.Filing.Signoffs do
   corrections applied, issues as decided, the portal-shaped derivation) and
   transitions the sales month to `reviewed`, in one transaction.
 
-  The approval transaction re-checks the effective issues and completeness,
-  marks the worked month reviewed, and freezes the approved draft under the
+  The approval transaction re-checks the effective issues, marks the worked
+  month reviewed, and freezes the approved draft under the
   checker’s identity. The signature is its own durable fact, and "approved"
   means a live signoff row exists. Returns
   `{:error, :not_allowed}` without the `sign_off` capability,
   `{:error, :not_reviewed}` before the maker gate,
-  `{:error, :already_signed}` when a live signature exists,
-  `{:error, {:sales_intake_incomplete, status}}` until sales collection is
-  confirmed and current, and `{:error, {:blocking_issues, codes}}` when the month holds a document the
+  `{:error, :already_signed}` when a live signature exists, and
+  `{:error, :unresolved_sales_intake}` while a supplied sales packet is still
+  processing or needs a human decision, and
+  `{:error, {:blocking_issues, codes}}` when the month holds a document the
   return has no table for (see `Nila.Gst.Sales.Gstr1.blocking_issues/1`).
   """
   def sign_off_gstr1(%SalesMonth{} = month, scope) do
@@ -169,7 +170,7 @@ defmodule Nila.Gst.Filing.Signoffs do
 
             if blocking == [] do
               with true <- SalesWorkings.reviewable?(workings.issues),
-                   :ok <- require_sales_intake_complete(month) do
+                   :ok <- require_resolved_sales_intake(month) do
                 approve_gstr1(month, scope, workings)
               else
                 false -> {:error, :not_reviewed}
@@ -217,11 +218,10 @@ defmodule Nila.Gst.Filing.Signoffs do
       else: {:error, :documents_unattested}
   end
 
-  defp require_sales_intake_complete(month) do
-    case Confirmations.status(month.org_id, month.client_id, month.period) do
-      :complete -> :ok
-      status -> {:error, {:sales_intake_incomplete, status}}
-    end
+  defp require_resolved_sales_intake(month) do
+    if Dumps.unresolved?(month.org_id, month.client_id, month.period, "sales"),
+      do: {:error, :unresolved_sales_intake},
+      else: :ok
   end
 
   defp approve_gstr1(month, scope, workings) do

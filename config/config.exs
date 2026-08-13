@@ -16,9 +16,7 @@ config :nila,
   microsoft_adapter: Nila.Integrations.Microsoft,
   whatsapp_adapter: Nila.Integrations.WhatsApp,
   whatsapp_signup_adapter: Nila.Integrations.WhatsAppSignup,
-  whatsapp_chase_template: nil,
-  whatsapp_completeness_template: nil,
-  whatsapp_completeness_secret: nil
+  whatsapp_chase_template: nil
 
 config :nila, Nila.Repo, migration_timestamps: [type: :utc_datetime_usec]
 

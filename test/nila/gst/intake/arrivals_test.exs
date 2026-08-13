@@ -3,8 +3,6 @@ defmodule Nila.Gst.Intake.ArrivalsTest do
   use Oban.Testing, repo: Nila.Repo
 
   import Nila.AccountsFixtures
-  import Nila.GstFixtures, only: [confirm_sales_complete!: 3]
-
   alias Nila.Accounts.Scope
   alias Nila.Clients
   alias Nila.Gst.Filing.Signoffs
@@ -86,7 +84,6 @@ defmodule Nila.Gst.Intake.ArrivalsTest do
         summary: %{"buckets" => %{"matched" => 0}}
       })
 
-    confirm_sales_complete!(context.org, context.client, @period)
     assert {:ok, _signoff} = Signoffs.sign_off(month, context.scope)
     arrival = arrival!(context, "late.pdf")
 

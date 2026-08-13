@@ -33,7 +33,7 @@ defmodule Nila.Gst.WorkQueue do
 
   alias Nila.Gst.Chase
   alias Nila.Gst.Filing.{Calendar, Signoffs}
-  alias Nila.Gst.Intake.{Confirmations, Dumps}
+  alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Issues
   alias Nila.Gst.Purchase.{Register, Resolutions, Review}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
@@ -104,8 +104,7 @@ defmodule Nila.Gst.WorkQueue do
     purchase_stats = purchase_stats(purchase)
     need_decision = purchase_stats.need_decision
     sales_open = sales_open_issues(sales)
-    sales_complete = sales && Confirmations.complete?(sales.org_id, sales.client_id, sales.period)
-
+    sales_intake_open = Dumps.unresolved?(client.org_id, client.id, period, "sales")
     r1_signed = sales != nil and match?({:ok, _}, Signoffs.latest_gstr1_signoff(sales.id))
     r1_filed = sales != nil and sales.filed_at != nil
     gstr3b_signed = purchase != nil and match?({:ok, _}, Signoffs.latest_signoff(purchase.id))
@@ -123,7 +122,7 @@ defmodule Nila.Gst.WorkQueue do
         r1_filed: r1_filed,
         gstr3b_signed: gstr3b_signed,
         gstr3b_filed: gstr3b_filed,
-        sales_complete: sales_complete
+        sales_intake_open: sales_intake_open
       })
 
     deadline = deadline(period, today, r1_filed, gstr3b_filed)
@@ -196,9 +195,8 @@ defmodule Nila.Gst.WorkQueue do
   defp sales_track(%{r1_filed: true}), do: :filed
   defp sales_track(%{r1_signed: true}), do: :signed
 
-  defp sales_track(%{sales: %{state: "reviewed"}} = facts) do
-    if Map.get(facts, :sales_complete, true), do: :clear, else: :awaiting_confirmation
-  end
+  defp sales_track(%{sales: %{state: "reviewed"}, sales_intake_open: true}), do: :open
+  defp sales_track(%{sales: %{state: "reviewed"}}), do: :clear
 
   defp sales_track(_facts), do: :open
 
@@ -242,7 +240,7 @@ defmodule Nila.Gst.WorkQueue do
       Enum.any?(tracks, &(&1 in [:open, :need_2b])) ->
         :needs_you
 
-      Enum.any?(tracks, &(&1 in [:absent, :awaiting_confirmation, :awaiting_bills])) ->
+      Enum.any?(tracks, &(&1 in [:absent, :awaiting_bills])) ->
         :waiting_on_client
 
       Enum.any?(tracks, &(&1 == :clear)) ->

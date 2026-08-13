@@ -84,16 +84,6 @@ defmodule Nila.Gst.Chase do
     """
   end
 
-  def draft(:sales_completeness, %Org{} = org, client, period) do
-    """
-    Dear #{client.name},
-
-    For #{month_label(period)}, have you sent all sales invoices, credit/debit notes, and cancellation details?
-
-    #{signature(org)}\
-    """
-  end
-
   @doc """
   `:missing_bills` chases the specific gaps from `gaps/1`: each 2B-only bill
   is listed with vendor, invoice number, and amount; sequence gaps in the

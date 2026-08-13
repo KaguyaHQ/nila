@@ -8,18 +8,15 @@ defmodule Nila.IntegrationsIngestTest do
   import Nila.AccountsFixtures
 
   alias Nila.Clients
-  alias Nila.Gst.Chase
-  alias Nila.Gst.Intake.{Arrivals, Confirmations, Messages}
+  alias Nila.Gst.Intake.Arrivals
   alias Nila.Integrations
-  alias Nila.Integrations.{WhatsAppIngestWorker, WhatsAppReply}
+  alias Nila.Integrations.WhatsAppIngestWorker
 
   setup do
     whatsapp_adapter = Application.get_env(:nila, :whatsapp_adapter)
-    completeness_secret = Application.get_env(:nila, :whatsapp_completeness_secret)
 
     on_exit(fn ->
       Application.put_env(:nila, :whatsapp_adapter, whatsapp_adapter)
-      Application.put_env(:nila, :whatsapp_completeness_secret, completeness_secret)
     end)
 
     %{org: org_fixture()}
@@ -69,73 +66,6 @@ defmodule Nila.IntegrationsIngestTest do
     refreshed_connection = Integrations.get_connection!(connection.id)
     assert refreshed_connection.last_status == "connected"
     assert refreshed_connection.last_synced_at
-  end
-
-  test "WhatsApp button replies record period completeness and text remains evidence", %{
-    org: org
-  } do
-    Application.put_env(:nila, :whatsapp_adapter, Nila.Integrations.WhatsAppStub)
-    connection = connection!(org, "whatsapp", "phone-number-123")
-
-    {:ok, client} =
-      Clients.create_client(%{
-        org_id: org.id,
-        name: "Ravi Traders",
-        type: "company",
-        phone: "9876543210"
-      })
-
-    ask_ref = Ecto.UUID.generate()
-
-    {:ok, _ask} =
-      Chase.record_ask(%{org_id: org.id, client_id: client.id}, %{
-        kind: "sales_completeness",
-        period: "2026-06",
-        body: "Have you sent everything for June 2026?",
-        channel: "whatsapp",
-        ask_ref: ask_ref,
-        provider_ref: "wamid.question"
-      })
-
-    {:ok, reply_payload} = WhatsAppReply.sign(ask_ref, "client_yes")
-
-    assert :ok =
-             dispatch_whatsapp(
-               connection,
-               whatsapp_button_payload("919876543210", reply_payload)
-             )
-
-    assert Confirmations.status(org.id, client.id, "2026-06") == :complete
-
-    assert :ok =
-             dispatch_whatsapp(
-               connection,
-               whatsapp_text_payload(
-                 "919876543210",
-                 "Two invoices are cancelled",
-                 "wamid.question"
-               )
-             )
-
-    assert [message] = Messages.list(org.id, client.id, "2026-06")
-    assert message.body == "Two invoices are cancelled"
-  end
-
-  test "an operational button-reply failure is retried", %{org: org} do
-    Application.put_env(:nila, :whatsapp_adapter, Nila.Integrations.WhatsAppStub)
-    connection = connection!(org, "whatsapp", "phone-number-123")
-    ask_ref = Ecto.UUID.generate()
-    {:ok, reply_payload} = WhatsAppReply.sign(ask_ref, "client_yes")
-    Application.delete_env(:nila, :whatsapp_completeness_secret)
-
-    assert :ok =
-             perform_job(WhatsAppIngestWorker, %{
-               "connection_id" => connection.id,
-               "payload" => whatsapp_button_payload("919876543210", reply_payload)
-             })
-
-    assert %{failure: 1, success: 0} = Oban.drain_queue(queue: :whatsapp)
-    assert Integrations.get_connection!(connection.id).last_status == "error"
   end
 
   test "one failed WhatsApp event does not block siblings", %{org: org} do
@@ -191,23 +121,6 @@ defmodule Nila.IntegrationsIngestTest do
       })
 
     connection
-  end
-
-  defp whatsapp_button_payload(sender, reply_payload) do
-    whatsapp_message(%{
-      "id" => "wamid.completeness-reply",
-      "from" => sender,
-      "button" => %{"payload" => reply_payload, "text" => "Yes, everything sent"}
-    })
-  end
-
-  defp whatsapp_text_payload(sender, body, context_ref) do
-    whatsapp_message(%{
-      "id" => "wamid.text-reply",
-      "from" => sender,
-      "context" => %{"id" => context_ref},
-      "text" => %{"body" => body}
-    })
   end
 
   defp whatsapp_payload(sender, filename) do

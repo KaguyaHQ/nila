@@ -5,7 +5,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
   import Nila.AccountsFixtures
 
   import Nila.GstFixtures,
-    only: [answer_sales_issues!: 2, confirm_sales_complete!: 3, settle_register!: 2]
+    only: [answer_sales_issues!: 2, settle_register!: 2]
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
@@ -61,9 +61,6 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     answer_sales_issues!(month, user.id)
 
     {:ok, reviewed} = SalesResolutions.mark_reviewed(month)
-
-    {:ok, client} = Clients.get_client(month.org_id, month.client_id)
-    _confirmation = confirm_sales_complete!(scope.current_org, client, month.period)
 
     {:ok, signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
     {reviewed, signoff}
@@ -246,7 +243,6 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     first = bring_in(org, client, user, "purchase", "%PDF-1.4 fake")
     assert :ok = run(first)
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
-    confirm_sales_complete!(org, client, @period)
     month = settle_register!(month, scope.user.id)
     {:ok, _signoff} = Signoffs.sign_off(month, scope)
     assert {:ok, _filed} = Signoffs.mark_filed(month, scope)

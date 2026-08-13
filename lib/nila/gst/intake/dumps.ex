@@ -111,6 +111,20 @@ defmodule Nila.Gst.Intake.Dumps do
     )
   end
 
+  @doc "Whether a supplied packet of `kind` still needs processing or a human decision."
+  def unresolved?(org_id, client_id, period, kind) do
+    org_id |> list(client_id, period) |> unresolved?(kind)
+  end
+
+  def unresolved?(dumps, kind) when is_list(dumps) do
+    superseded = superseded_failures(dumps)
+
+    Enum.any?(dumps, fn dump ->
+      dump.kind == kind and dump.id not in superseded and
+        dump.status in ~w(received extracting failed held needs_confirmation)
+    end)
+  end
+
   @doc "Fetches one dump scoped to the org. `{:error, :not_found}` otherwise."
   def fetch(org_id, dump_id) do
     Repo.fetch_by(Dump, id: dump_id, org_id: org_id)
@@ -375,12 +389,9 @@ defmodule Nila.Gst.Intake.Dumps do
   Abandons a packet whose extraction failed — the exit from an otherwise
   permanent block.
 
-  `Confirmations.stale?/1` counts a `failed` sales packet as unresolved work,
-  and both sign-offs require a complete intake. Nothing moved a dump out of
-  `failed`: re-uploading added a *new* packet beside it, `list/3` is unfiltered,
-  so the failed row kept the month unfileable forever. The senior override could
-  not clear it either, because staleness is re-derived from the dump list rather
-  than read off the confirmation.
+  Failed packets are otherwise permanent unresolved intake: re-uploading adds
+  a *new* packet beside them and `list/3` is unfiltered. Abandoning records the
+  deliberate decision to stop waiting for a packet that produced no rows.
 
   A failed extraction produced no rows, so abandoning it moves no figure. What
   is recorded is that a human looked at the packet and chose not to wait for it.
@@ -397,6 +408,25 @@ defmodule Nila.Gst.Intake.Dumps do
   end
 
   def abandon_failed(%Dump{}, _user_id), do: {:error, :not_failed}
+
+  # A later successful extraction of the same artifact kind is the operational
+  # answer to an earlier failed upload; requiring a second manual dismissal
+  # would leave a dead packet blocking a month after its replacement succeeded.
+  defp superseded_failures(dumps) do
+    indexed = Enum.with_index(dumps)
+
+    last_extracted =
+      for {dump, index} <- indexed,
+          dump.status == "extracted",
+          into: %{},
+          do: {dump.kind, index}
+
+    for {dump, index} <- indexed,
+        dump.status == "failed",
+        index < Map.get(last_extracted, dump.kind, -1),
+        into: MapSet.new(),
+        do: dump.id
+  end
 
   defp extracted(org_id, client_id, period, kind) do
     org_id

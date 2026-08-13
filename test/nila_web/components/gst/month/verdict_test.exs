@@ -253,6 +253,19 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       assert verdict.quiet == ["GSTR-1 drafted, issues still to check."]
     end
 
+    test "sales open: downstream purchase absence does not compete with the current gate" do
+      verdict =
+        Verdict.resolve(
+          facts(
+            tracks: %{sales: :open, purchase: :absent},
+            open_issue_count: 3
+          )
+        )
+
+      assert verdict.quiet == []
+      assert Enum.map(verdict.deadlines, &elem(&1, 0)) == [:sales]
+    end
+
     test "sales filed, purchases open: the 11th-to-20th window every client sits in" do
       verdict =
         Verdict.resolve(

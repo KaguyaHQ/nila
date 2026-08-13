@@ -19,7 +19,6 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     %{user: user, org: org} = user_with_org_fixture()
     client = client_fixture(org)
     client_month = seed_month(org, client)
-    confirm_sales_complete!(org, client, @period)
 
     %{
       conn: log_in_user(conn, user),

@@ -4,7 +4,7 @@ defmodule NilaWeb.TodayLiveTest do
 
   import Phoenix.LiveViewTest
   # Scoped: GstFixtures `use`s Oban.Testing, whose helpers this module defines itself.
-  import Nila.GstFixtures, only: [confirm_sales_complete!: 3, gstr2b_arrived!: 3]
+  import Nila.GstFixtures, only: [gstr2b_arrived!: 3]
 
   alias Nila.Clients
   alias Nila.Gst.Chase
@@ -249,7 +249,7 @@ defmodule NilaWeb.TodayLiveTest do
     assert has_element?(view, "#today-add-first-client", "Add your first client")
   end
 
-  test "a reviewed month waits for client completeness before moving to waiting-on-senior",
+  test "a reviewed clean month moves to waiting-on-senior",
        %{conn: conn, org: org, client: client} do
     seed_client_month(org, client, recon_with_2b_gap())
 
@@ -281,11 +281,6 @@ defmodule NilaWeb.TodayLiveTest do
         period: @period,
         state: "reviewed"
       })
-
-    {:ok, view, _html} = live(conn, ~p"/today")
-    assert has_element?(view, "#today-waiting_on_client #today-row-#{client.id}-#{@period}")
-
-    confirm_sales_complete!(org, client, @period)
 
     {:ok, view, _html} = live(conn, ~p"/today")
     assert has_element?(view, "#today-waiting_on_senior #today-row-#{client.id}-#{@period}")

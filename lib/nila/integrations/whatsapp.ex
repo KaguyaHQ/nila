@@ -38,36 +38,6 @@ defmodule Nila.Integrations.WhatsApp do
   end
 
   @impl true
-  def send_completeness_request(
-        connection,
-        recipient,
-        period_label,
-        template_name,
-        yes_payload,
-        no_payload
-      )
-      when is_binary(recipient) and is_binary(period_label) and is_binary(template_name) and
-             is_binary(yes_payload) and is_binary(no_payload) do
-    post_message(connection, %{
-      "messaging_product" => "whatsapp",
-      "to" => recipient,
-      "type" => "template",
-      "template" => %{
-        "name" => template_name,
-        "language" => %{"code" => "en"},
-        "components" => [
-          %{
-            "type" => "body",
-            "parameters" => [%{"type" => "text", "text" => period_label}]
-          },
-          quick_reply("0", yes_payload),
-          quick_reply("1", no_payload)
-        ]
-      }
-    })
-  end
-
-  @impl true
   def fetch_media(media_id, token) do
     with {:ok, media_url} <- fetch_media_url(media_id, token),
          {:ok, response} <-
@@ -226,15 +196,6 @@ defmodule Nila.Integrations.WhatsApp do
       sender: sender,
       source_ref: "whatsapp:#{message_id}",
       provider_context_ref: context_ref
-    }
-  end
-
-  defp quick_reply(index, payload) do
-    %{
-      "type" => "button",
-      "sub_type" => "quick_reply",
-      "index" => index,
-      "parameters" => [%{"type" => "payload", "payload" => payload}]
     }
   end
 

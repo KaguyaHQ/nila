@@ -14,6 +14,8 @@ defmodule Nila.Gst.Chase.Delivery do
   """
   use Nila.Schema
 
+  # `sales_completeness` remains readable for historical delivery rows, but no
+  # runtime path creates it after the confirmation workflow's removal.
   @kinds ~w(month_open missing_bills sales_completeness)
   @channels ~w(manual whatsapp email)
 
