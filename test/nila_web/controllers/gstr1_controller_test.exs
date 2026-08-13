@@ -119,6 +119,54 @@ defmodule NilaWeb.Gstr1ControllerTest do
     refute sheet =~ "Customer &amp; Co"
   end
 
+  test "downloads current sales workings as Tally XML", %{conn: conn, client: client} do
+    conn = get(conn, ~p"/gstr1/#{client.id}/2026-07/tally.xml")
+
+    assert response(conn, 200)
+    assert get_resp_header(conn, "content-type") == ["application/xml; charset=utf-8"]
+
+    assert [disposition] = get_resp_header(conn, "content-disposition")
+    assert disposition =~ "sales_#{client.gstin}_2026-07_tally.xml"
+
+    assert conn.resp_body =~ "<TALLYREQUEST>Import</TALLYREQUEST>"
+    assert conn.resp_body =~ "<VOUCHERNUMBER>INV-001</VOUCHERNUMBER>"
+    assert conn.resp_body =~ "<LEDGERNAME>Customer &amp; Co</LEDGERNAME>"
+    assert conn.resp_body =~ "<LEDGERNAME>Output IGST</LEDGERNAME>"
+    assert conn.resp_body =~ "<AMOUNT>180.00</AMOUNT>"
+  end
+
+  test "downloads the frozen sales projection as Tally XML", %{
+    conn: conn,
+    client: client,
+    month: month,
+    org: org,
+    user: user
+  } do
+    frozen_invoice =
+      month.invoices
+      |> hd()
+      |> Map.put("invoice_number", "FROZEN-TALLY-001")
+      |> Map.put("buyer_name", "Frozen Tally Customer")
+
+    %Signoff{
+      org_id: org.id,
+      sales_month_id: month.id,
+      signed_by_id: user.id
+    }
+    |> Signoff.changeset(%{
+      artifact: "gstr1",
+      snapshot: %{"derived" => month.derived_gstr1, "invoices" => [frozen_invoice]}
+    })
+    |> Repo.insert!()
+
+    conn = get(conn, ~p"/gstr1/#{client.id}/2026-07/tally.xml")
+
+    assert conn.resp_body =~ "FROZEN-TALLY-001"
+    assert conn.resp_body =~ "Frozen Tally Customer"
+    refute conn.resp_body =~ "INV-001"
+    refute conn.resp_body =~ "Customer &amp; Co"
+  end
+
   test "does not expose another organisation's workbook", %{client: client} do
     %{user: outsider} = user_with_org_fixture()
 
@@ -126,6 +174,17 @@ defmodule NilaWeb.Gstr1ControllerTest do
       build_conn()
       |> log_in_user(outsider)
       |> get(~p"/gstr1/#{client.id}/2026-07/winman-b2b.xlsm")
+
+    assert response(conn, 404) == "Not found"
+  end
+
+  test "does not expose another organisation's Tally XML", %{client: client} do
+    %{user: outsider} = user_with_org_fixture()
+
+    conn =
+      build_conn()
+      |> log_in_user(outsider)
+      |> get(~p"/gstr1/#{client.id}/2026-07/tally.xml")
 
     assert response(conn, 404) == "Not found"
   end

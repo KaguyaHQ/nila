@@ -27,6 +27,10 @@ defmodule NilaWeb.Router do
     plug :require_capability, :manage_connectors
   end
 
+  pipeline :require_export do
+    plug :require_capability, :export
+  end
+
   pipeline :require_sign_off do
     plug :require_capability, :sign_off
   end
@@ -156,6 +160,17 @@ defmodule NilaWeb.Router do
       live "/settings/connectors", Settings.ConnectorsLive, :index
       live "/settings/users", Settings.UsersLive, :index
     end
+  end
+
+  scope "/gstr1", NilaWeb do
+    pipe_through [
+      :browser,
+      :authenticated_browser,
+      :verified_browser,
+      :require_export
+    ]
+
+    get "/:client_id/:period/tally.xml", Gstr1Controller, :tally_download
   end
 
   if Mix.env() != :prod do

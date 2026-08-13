@@ -119,7 +119,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       </section>
 
       <section
-        :if={@can_sign_off and TallyPrime.available?()}
         id="gstr1-tally-export"
         class="gap-block flex flex-wrap items-center justify-between"
       >
@@ -127,25 +126,37 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <p class="text-ink-subtle text-label font-semibold uppercase">Accounting handoff</p>
           <p class="text-base-content text-ui font-medium">TallyPrime · GL sales vouchers</p>
           <p class="text-ink-subtle text-meta">
-            Sends directly to the company currently open on localhost:9000.
+            Import the XML in TallyPrime. GST return metadata is not included in this version.
           </p>
         </div>
-        <.form
-          for={@tally_form}
-          id="gstr1-send-tally-form"
-          action={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/tally"}
-          method="post"
-        >
+        <div class="flex flex-wrap gap-2">
           <.button
-            id="gstr1-send-tally"
-            type="submit"
+            id="gstr1-download-tally"
+            href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/tally.xml"}
+            download
             variant="outline"
             size="xs"
-            data-confirm="Send all active sales vouchers to the company currently open in TallyPrime?"
           >
-            Send to TallyPrime
+            Download Tally XML
           </.button>
-        </.form>
+          <.form
+            :if={@can_sign_off and TallyPrime.available?()}
+            for={@tally_form}
+            id="gstr1-send-tally-form"
+            action={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/tally"}
+            method="post"
+          >
+            <.button
+              id="gstr1-send-tally"
+              type="submit"
+              variant="outline"
+              size="xs"
+              data-confirm="Send all active sales vouchers to the company currently open in TallyPrime?"
+            >
+              Send to TallyPrime
+            </.button>
+          </.form>
+        </div>
       </section>
     </div>
     """

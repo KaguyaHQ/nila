@@ -49,8 +49,15 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
     html = render_component(&Filing.gstr1_actions/1, assigns)
 
     export = html |> LazyHTML.from_fragment() |> LazyHTML.query("#gstr1-tally-export")
+    download = LazyHTML.query(export, "#gstr1-download-tally")
     form = LazyHTML.query(export, "#gstr1-send-tally-form")
     button = LazyHTML.query(form, "#gstr1-send-tally")
+
+    assert LazyHTML.attribute(download, "href") == [
+             "/gstr1/#{assigns.sales_month.client_id}/2026-07/tally.xml"
+           ]
+
+    assert LazyHTML.text(download) =~ "Download Tally XML"
 
     assert LazyHTML.attribute(form, "action") == [
              "/gstr1/#{assigns.sales_month.client_id}/2026-07/tally"
@@ -59,10 +66,10 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
     assert LazyHTML.attribute(form, "method") == ["post"]
     assert LazyHTML.text(button) =~ "Send to TallyPrime"
     assert LazyHTML.text(export) =~ "GL sales vouchers"
-    assert LazyHTML.text(export) =~ "localhost:9000"
+    assert LazyHTML.text(export) =~ "GST return metadata is not included"
   end
 
-  test "hides the TallyPrime write action from operators" do
+  test "keeps the Tally XML download but hides direct write from operators" do
     assigns = %{
       sales_month: %{client_id: Ecto.UUID.generate(), period: "2026-07", filed_at: nil},
       r1_signoff: nil,
@@ -76,10 +83,10 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
     assigns = Map.put(assigns, :readiness, Filing.gstr1_readiness(assigns))
     html = render_component(&Filing.gstr1_actions/1, assigns)
 
-    refute html
-           |> LazyHTML.from_fragment()
-           |> LazyHTML.query("#gstr1-tally-export")
-           |> LazyHTML.text() =~ "TallyPrime"
+    export = html |> LazyHTML.from_fragment() |> LazyHTML.query("#gstr1-tally-export")
+
+    assert LazyHTML.text(LazyHTML.query(export, "#gstr1-download-tally")) =~ "Download Tally XML"
+    refute LazyHTML.text(LazyHTML.query(export, "#gstr1-send-tally")) =~ "Send to TallyPrime"
   end
 
   test "readiness keeps unresolved intake provisional after issue checks clear" do

@@ -59,18 +59,38 @@ defmodule NilaWeb.Gstr1Controller do
     end
   end
 
+  def tally_download(conn, %{"client_id" => client_id, "period" => period}) do
+    org_id = conn.assigns.current_scope.current_org.id
+
+    with {:ok, sales_month} <- SalesMonths.get_by_period(org_id, client_id, period),
+         {:ok, client} <- Clients.get_client(org_id, client_id),
+         {:ok, xml} <- TallyPrime.build(tally_projection(sales_month, period)) do
+      filename = "sales_#{client.gstin || client.id}_#{period}_tally.xml"
+
+      conn
+      |> put_resp_content_type("application/xml")
+      |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
+      |> send_resp(200, xml)
+    else
+      {:error, reason} when reason in [:no_active_sales, :invalid_sales_data] ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> text(tally_export_error(reason))
+
+      {:error, _reason} ->
+        conn
+        |> put_status(:not_found)
+        |> text("Not found")
+    end
+  end
+
   def tally_export(conn, %{"client_id" => client_id, "period" => period}) do
     org_id = conn.assigns.current_scope.current_org.id
 
     case SalesMonths.get_by_period(org_id, client_id, period) do
       {:ok, sales_month} ->
-        projection =
-          sales_month
-          |> SalesResolutions.effective_workings()
-          |> Map.put(:period, period)
-
         conn
-        |> tally_result(TallyPrime.push(projection))
+        |> tally_result(TallyPrime.push(tally_projection(sales_month, period)))
         |> redirect(to: ~p"/gst/#{client_id}/#{period}")
 
       {:error, _reason} ->
@@ -96,6 +116,17 @@ defmodule NilaWeb.Gstr1Controller do
         |> text("Not found")
     end
   end
+
+  defp tally_projection(sales_month, period) do
+    sales_month
+    |> SalesResolutions.effective_workings()
+    |> Map.put(:period, period)
+  end
+
+  defp tally_export_error(:no_active_sales), do: "There are no active sales vouchers to export"
+
+  defp tally_export_error(:invalid_sales_data),
+    do: "Sales data contains fields Tally cannot import"
 
   defp tally_result(conn, {:ok, result}) do
     imported = result.created + result.altered + result.combined
@@ -126,7 +157,9 @@ defmodule NilaWeb.Gstr1Controller do
         [] ->
           failures = max(result.errors, result.exceptions)
           "Tally rejected the import with #{failures} #{plural(failures, "error")}."
-        errors -> errors |> Enum.join("; ") |> String.slice(0, 300)
+
+        errors ->
+          errors |> Enum.join("; ") |> String.slice(0, 300)
       end
 
     prefix = if imported > 0, do: "Tally imported #{imported} before failing. ", else: ""
