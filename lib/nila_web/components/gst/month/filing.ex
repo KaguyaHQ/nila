@@ -5,6 +5,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
   alias Nila.Gst.Filing.{Gstr3b, ItcPosition, WinmanGstr1}
   alias Nila.Gst.Sales.Values
+  alias NilaWeb.Components.Gst.Exceptions.Itc
   alias NilaWeb.Components.Gst.Month.Helpers
 
   attr :sales_month, :any, required: true
@@ -307,39 +308,103 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   end
 
   attr :gstr3b, :any, default: nil
+  attr :itc, :any, default: nil
   attr :stats, :any, default: nil
   attr :signed, :boolean, default: false
 
   def gstr3b_evidence(assigns) do
     ~H"""
     <section :if={show_gstr3b_evidence?(@gstr3b, @stats, @signed)} id="month-3b" class="space-y-block">
-      <%!-- "Assembled" reads as finished. Until it is signed, this is what the
-            return would say if the month closed now — and while bills are
-            missing, part of it rests on documents nobody has. --%>
-      <h3 class="text-base-content text-h4 font-semibold">
-        {if @signed, do: "Assembled GSTR-3B", else: "Proposed GSTR-3B"}
-      </h3>
-      <p :if={not @signed} id="gstr3b-preview-status" class="text-body text-ink-muted">
-        {gstr3b_preview_status(@gstr3b, @stats)}
-      </p>
-      <.gstr3b_panel gstr3b={@gstr3b} />
-      <%!-- Net ITC comes off the 2B ceiling, which counts every 2B invoice
-            including the ones whose bills were never supplied. Stating that
-            beside the total stops a claim-ready figure standing alone. --%>
-      <%!-- Snapshots frozen before this money existed have the count but not the
-            rupees, and "₹0.00 across 5 invoices" contradicts itself. A signed
-            month is immutable, so the note simply stays quiet there. --%>
-      <p
-        :if={(@stats && @stats.awaiting_bills > 0) and @stats.awaiting_bills_tax_paise > 0}
-        id="gst-3b-unsupported"
-        class="text-ink-muted text-ui"
+      <div class="space-y-1">
+        <h3 class="text-base-content text-h4 font-semibold">
+          {if @signed, do: "Signed GSTR-3B", else: "Proposed GSTR-3B"}
+        </h3>
+        <p :if={not @signed} id="gstr3b-preview-status" class="text-body text-ink-muted">
+          {gstr3b_preview_status(@gstr3b, @stats)}
+        </p>
+      </div>
+
+      <div class="space-y-related">
+        <dl
+          id="gst-3b-position"
+          class="border-base-300 gap-block py-block grid border-y sm:grid-cols-3"
+        >
+          <div class="space-y-1">
+            <dt class="text-ink-subtle text-label font-semibold uppercase">
+              Outward tax · 3.1(a)
+            </dt>
+            <dd
+              :if={not liability_missing?(@gstr3b)}
+              class="text-base-content text-lead font-semibold tabular-nums"
+            >
+              {money_paise(heads_total(@gstr3b["liability_31"]["a"]))}
+            </dd>
+            <dd :if={liability_missing?(@gstr3b)} class="text-ink-muted text-ui font-medium">
+              Pending GSTR-1
+            </dd>
+          </div>
+          <div class="space-y-1">
+            <dt class="text-ink-subtle text-label font-semibold uppercase">
+              Current proposed ITC
+            </dt>
+            <dd
+              id="gst-3b-current-itc"
+              class="text-base-content text-lead font-semibold tabular-nums"
+            >
+              {money_paise(current_proposed_itc(@gstr3b, @itc, @signed))}
+            </dd>
+          </div>
+          <div class="space-y-1">
+            <dt class="text-ink-subtle text-label font-semibold uppercase">Cash payable</dt>
+            <dd
+              :if={cash_available?(@gstr3b, @stats, @signed)}
+              id="gst-3b-cash"
+              class="text-base-content text-lead font-semibold tabular-nums"
+            >
+              {money_paise(@gstr3b["setoff_61"]["cash_total"])}
+            </dd>
+            <dd
+              :if={not cash_available?(@gstr3b, @stats, @signed)}
+              id="gst-3b-cash-pending"
+              class="text-ink-muted text-ui font-medium"
+            >
+              {cash_pending_copy(@gstr3b)}
+            </dd>
+          </div>
+        </dl>
+
+        <Itc.supporting_evidence
+          :if={not @signed and @itc}
+          itc={@itc}
+          stats={@stats}
+          id="gstr3b-itc-supporting-evidence"
+        />
+      </div>
+
+      <.data_table
+        :if={filing_detail_ready?(@gstr3b, @stats, @signed)}
+        id="gst-3b-filing-detail"
+        rows={gstr3b_rows(@gstr3b)}
+        row_id={&"gst-3b-row-#{&1.key}"}
+        min_width="min-w-[640px]"
+        dense
       >
-        {Nila.Formatters.format_money_with_paise(@stats.awaiting_bills_tax_paise)} of this credit
-        has no supplied bill behind it, across {@stats.awaiting_bills} {if @stats.awaiting_bills ==
-                                                                             1,
-                                                                           do: "invoice",
-                                                                           else: "invoices"} the portal reported. Collect the documents before claiming it.
-      </p>
+        <:col :let={row} label="GSTR-3B section">
+          <span class={row.strong? && "text-base-content font-semibold"}>{row.label}</span>
+        </:col>
+        <:col :let={row} label="IGST" align="right">
+          {head_money(row, "igst")}
+        </:col>
+        <:col :let={row} label="CGST" align="right">
+          {head_money(row, "cgst")}
+        </:col>
+        <:col :let={row} label="SGST" align="right">
+          {head_money(row, "sgst")}
+        </:col>
+        <:col :let={row} label="Total" align="right">
+          <span class={row.strong? && "text-base-content font-semibold"}>{row_total(row)}</span>
+        </:col>
+      </.data_table>
     </section>
     """
   end
@@ -476,7 +541,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
        "Nobody has confirmed whether the client holds tax invoices for the supplies the portal reported (s.16(2)(a)).",
        {:patch, "Answer it", purchase_review}},
       {"no-sales", is_nil(assigns.sales_month),
-       "This client-month has no sales side. The 3B takes its outward liability from the GSTR-1, so the sales month has to be worked and filed first — including a month with no sales at all.",
+       "GSTR-1 is not ready, so outward liability and cash payable are still pending.",
        {:navigate, "Bring in sales bills",
         ~p"/gst/upload?client_id=#{client_id}&period=#{period}"}},
       {"r1-unsigned", not is_nil(assigns.sales_month) and is_nil(assigns.r1_signoff),
@@ -510,122 +575,66 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   defp plural(1, word), do: word
   defp plural(_count, word), do: word <> "s"
 
-  attr :gstr3b, :map, required: true
-
-  defp gstr3b_panel(assigns) do
-    ~H"""
-    <div id="gst-3b-panel" class="border-base-300 rounded-box border">
-      <div class="border-base-300 gap-block flex items-center justify-between border-b px-4 py-3">
-        <div class="text-body text-ink-muted">
-          {if liability_missing?(@gstr3b),
-            do: "ITC side assembled. Outward liability needs the month's sales bills.",
-            else: "Assembled from the worked sales month and the 2B reconciliation."}
-        </div>
-        <div :if={!liability_missing?(@gstr3b)} class="shrink-0 text-right">
-          <div class="text-ink-subtle text-label font-semibold uppercase">Cash payable</div>
-          <div
-            id="gst-3b-cash"
-            class="font-display text-base-content text-h3 leading-none font-normal tabular-nums"
-          >
-            {money_paise(@gstr3b["setoff_61"]["cash_total"])}
-          </div>
-        </div>
-      </div>
-
-      <div class="grid gap-x-6 gap-y-2 px-4 py-3 sm:grid-cols-2">
-        <div :if={!liability_missing?(@gstr3b)} class="space-y-1.5">
-          <div class="text-ink-subtle text-label font-semibold uppercase">
-            3.1 Outward liability
-          </div>
-          <.gstr3b_line label="(a) Taxable supplies" heads={@gstr3b["liability_31"]["a"]} />
-          <.gstr3b_line label="(d) Reverse charge" heads={@gstr3b["liability_31"]["d"]} />
-          <div
-            :if={get_in(@gstr3b, ["interstate_32", "unregistered"]) not in [nil, []]}
-            id="gst-3b-table-32"
-            class="pt-2"
-          >
-            <div class="text-ink-subtle text-label font-semibold uppercase">
-              3.2 Interstate supplies to unregistered persons
-            </div>
-            <div
-              :for={row <- get_in(@gstr3b, ["interstate_32", "unregistered"]) || []}
-              class="text-ink-muted text-ui mt-1 flex items-baseline justify-between gap-3"
-            >
-              <span>POS {row["pos"]} · taxable {money_paise(row["txval"])}</span>
-              <span class="font-mono">IGST {money_paise(row["igst"])}</span>
-            </div>
-          </div>
-        </div>
-        <div :if={liability_missing?(@gstr3b)} class="space-y-1.5">
-          <div class="text-ink-subtle text-label font-semibold uppercase">
-            3.1 Outward liability
-          </div>
-          <p class="text-body text-ink-muted">
-            No worked sales month for this period yet. Upload the sales bills to derive the GSTR-1 and complete the return.
-          </p>
-          <.gstr3b_line label="(d) Reverse charge" heads={@gstr3b["liability_31"]["d"]} />
-        </div>
-        <div class="space-y-1.5">
-          <div class="text-ink-subtle text-label font-semibold uppercase">4. Eligible ITC</div>
-          <.gstr3b_line label="A(3) Reverse charge credit" heads={@gstr3b["itc"]["rcm_4a3"]} />
-          <.gstr3b_line label="A(5) All other ITC" heads={@gstr3b["itc"]["all_other_itc_4a5"]} />
-          <.gstr3b_line label="B Reversed (confirmed blocks)" heads={sum_4b(@gstr3b["itc"])} negative />
-          <.gstr3b_line label="C Net ITC" heads={@gstr3b["itc"]["net_itc_4c"]} strong />
-        </div>
-      </div>
-
-      <%!-- What this panel does not cover, said out loud. The engine builds
-            3.1(a) and 3.1(d) and nothing else, and a reviewer reading four
-            populated lines has no way to tell "nil-rated: none" from "nil-rated
-            was never considered". Silence about a table reads as a zero in it.
-            Building 3.1(b)/(c)/(e) and Table 5 needs data no client supplies
-            today; saying so costs nothing and is honest. --%>
-      <p id="gst-3b-scope" class="border-base-300 text-ink-subtle text-meta border-t px-4 py-3">
-        This covers 3.1(a), 3.1(d), and Table 3.2 interstate supplies to unregistered persons. Zero-rated,
-        nil-rated, exempt and non-GST supplies (3.1 b/c/e) and Table 5 are not assembled here —
-        if the month has any, they have to be added on the portal.
-      </p>
-    </div>
-    """
+  defp current_proposed_itc(gstr3b, itc, signed?) do
+    cond do
+      signed? -> heads_total(gstr3b["itc"]["net_itc_4c"])
+      is_map(itc) and is_number(itc["claimable_paise"]) -> itc["claimable_paise"]
+      true -> heads_total(gstr3b["itc"]["net_itc_4c"])
+    end
   end
 
-  attr :label, :string, required: true
-  attr :heads, :map, required: true
-  attr :negative, :boolean, default: false
-  attr :strong, :boolean, default: false
-
-  defp gstr3b_line(assigns) do
-    # Nothing is being taken away at zero, so neither the minus sign nor the
-    # alarm colour is earned. Same rule as the ITC panel: the negative treatment
-    # belongs to the amount, not to the row's role.
-    assigns = assign(assigns, :withheld?, assigns.negative and heads_total(assigns.heads) > 0)
-
-    ~H"""
-    <div class="flex items-baseline justify-between gap-3">
-      <span class={[
-        "text-ui",
-        (@strong && "text-ink font-medium") || "text-ink-muted"
-      ]}>
-        {@label}
-      </span>
-      <span class={[
-        "text-ui font-mono",
-        @withheld? && "text-error",
-        !@withheld? && ((@strong && "text-ink font-semibold") || "text-ink-muted")
-      ]}>
-        {if @withheld?, do: "−"}{money_paise(heads_total(@heads))}
-      </span>
-    </div>
-    """
+  defp cash_available?(gstr3b, stats, signed?) do
+    not liability_missing?(gstr3b) and
+      (signed? or is_nil(stats) or stats.need_decision == 0)
   end
+
+  defp cash_pending_copy(gstr3b) do
+    if liability_missing?(gstr3b), do: "Pending outward tax", else: "Pending decisions"
+  end
+
+  defp filing_detail_ready?(gstr3b, stats, signed?) do
+    not liability_missing?(gstr3b) and
+      (signed? or is_nil(stats) or stats.need_decision == 0)
+  end
+
+  defp gstr3b_rows(gstr3b) do
+    itc = gstr3b["itc"]
+
+    [
+      filing_row("31a", "3.1(a) Taxable outward supplies", gstr3b["liability_31"]["a"]),
+      filing_row("31d", "3.1(d) Reverse-charge liability", gstr3b["liability_31"]["d"]),
+      filing_row(
+        "4a",
+        "4A Eligible ITC",
+        ItcPosition.sum_heads([itc["rcm_4a3"], itc["all_other_itc_4a5"]])
+      ),
+      filing_row("4b", "4B Reversals", sum_4b(itc), negative?: true),
+      filing_row("4c", "4C Net ITC", itc["net_itc_4c"], strong?: true)
+    ]
+  end
+
+  defp filing_row(key, label, heads, opts \\ []) do
+    %{
+      key: key,
+      label: label,
+      heads: heads,
+      negative?: Keyword.get(opts, :negative?, false),
+      strong?: Keyword.get(opts, :strong?, false)
+    }
+  end
+
+  defp head_money(row, head), do: signed_head_money(row.heads[head] || 0, row.negative?)
+  defp row_total(row), do: signed_head_money(heads_total(row.heads), row.negative?)
+
+  defp signed_head_money(paise, true) when paise > 0, do: "−" <> money_paise(paise)
+  defp signed_head_money(paise, _negative?), do: money_paise(paise)
 
   defp show_gstr3b_evidence?(nil, _stats, _signed), do: false
   defp show_gstr3b_evidence?(_gstr3b, _stats, _signed), do: true
 
   defp gstr3b_preview_status(%{"liability_source" => "missing"}, %{need_decision: count})
        when count > 0,
-       do:
-         "Provisional · #{count} purchase #{plural(count, "decision")} may change ITC; outward liability is pending GSTR-1"
+       do: "Provisional · #{count} purchase #{plural(count, "decision")} may change ITC"
 
   defp gstr3b_preview_status(_gstr3b, %{need_decision: count}) when count > 0,
     do: "Provisional · #{count} purchase #{plural(count, "decision")} may change ITC"

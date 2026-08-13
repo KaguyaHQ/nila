@@ -69,18 +69,13 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         </div>
       </header>
 
+      {render_slot(@assembled)}
+
       <section id="gstr3b-reconciliation" class="space-y-block">
         <div class="space-y-1">
-          <h3 class="text-base-content text-h4 font-semibold">Proposed ITC</h3>
-          <p
-            :if={@itc && is_number(@itc["claimable_paise"])}
-            id="gstr3b-proposed-itc"
-            class="font-display text-base-content text-h3 tabular-nums"
-          >
-            {Nila.Formatters.format_money_with_paise(@itc["claimable_paise"])}
-          </p>
-          <p id="gstr3b-proposed-itc-status" class="text-body text-ink-muted">
-            {proposed_itc_status(@stats)}
+          <h3 class="text-base-content text-h4 font-semibold">ITC working</h3>
+          <p class="text-body text-ink-muted">
+            How the available purchase credit becomes Nila's current proposal.
           </p>
         </div>
 
@@ -89,36 +84,11 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               whether the numbers disagree or the words do. --%>
         <Itc.itc_bridge :if={@itc} itc={@itc} stats={@stats} id="gstr3b-itc-bridge" />
 
-        <%!-- Nine tiles asked the reader to work out which counts overlapped and
-              which were subsets. These three rows partition the register: every
-              row is in exactly one, they carry the money as well as the count,
-              and each names the move it is waiting on. --%>
-        <.data_table
-          id="gstr3b-reconciliation-matrix"
-          rows={reconciliation_rows(@stats)}
-          row_id={&"gstr3b-recon-#{&1.key}"}
-          min_width="min-w-[560px]"
-          dense
+        <section
+          :if={@carried_itc != []}
+          id="gstr3b-carried-itc"
+          class="space-y-related max-w-5xl"
         >
-          <:col :let={row} label="Position">
-            <span class="text-base-content font-medium">{row.label}</span>
-            <span class="text-ink-subtle text-meta block">{row.note}</span>
-          </:col>
-          <:col :let={row} label="Bills" align="right">{row.count}</:col>
-          <%!-- The counts came through the freeze and the money did not, so this
-                column is the one that has to decline. Printing ₹0 down a table
-                whose neighbouring column counts real bills is the same false
-                confidence as the tiles above, spread over three rows. --%>
-          <:col :let={row} label="Tax at stake" align="right">
-            <span :if={@stats.itc_money_known?}>{format_money(row.tax_paise, prefix: "₹")}</span>
-            <span :if={not @stats.itc_money_known?} class="text-ink-subtle">—</span>
-          </:col>
-          <:col :let={row} label="Next move">
-            <span class="text-ink-muted">{row.next_move}</span>
-          </:col>
-        </.data_table>
-
-        <section :if={@carried_itc != []} id="gstr3b-carried-itc" class="space-y-related">
           <div>
             <h4 class="text-base-content text-ui font-semibold">Prior-period ITC</h4>
             <p class="text-ink-subtle text-meta">
@@ -148,7 +118,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         </section>
       </section>
 
-      {render_slot(@assembled)}
       {render_slot(@actions)}
 
       <section id="gstr3b-register" class="space-y-block">
@@ -278,44 +247,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   defp carried_status(%{settlement_state: "reserved"}), do: "Reserved by this period's sign-off"
   defp carried_status(_), do: "Carried forward"
 
-  # The register's three terminal positions, each with its count, its money and
-  # the move it waits on. `matched + open` does not close the month on its own —
-  # audited-accepted rows sit in neither — so settled is used as open's exact
-  # complement and the three rows sum to the register.
-  defp reconciliation_rows(stats) do
-    decisions_tax =
-      if stats.open_money_split_known?,
-        do: stats.decision_tax_paise + stats.value_dispute_tax_paise,
-        else: stats.open_tax_paise - stats.awaiting_bills_tax_paise
-
-    [
-      %{
-        key: "settled",
-        label: "Settled",
-        note: "Matched automatically or resolved during review",
-        count: stats.rows - stats.open,
-        tax_paise: stats.settled_tax_paise,
-        next_move: "No action"
-      },
-      %{
-        key: "decisions",
-        label: "Needs review",
-        note: "Document supplied; 2B is absent, ambiguous, or different",
-        count: stats.open - stats.awaiting_bills,
-        tax_paise: decisions_tax,
-        next_move: if(stats.open - stats.awaiting_bills > 0, do: "Review", else: "No action")
-      },
-      %{
-        key: "awaiting",
-        label: "Awaiting document",
-        note: "Supply appears in 2B; the invoice was not supplied",
-        count: stats.awaiting_bills,
-        tax_paise: stats.awaiting_bills_tax_paise,
-        next_move: if(stats.awaiting_bills > 0, do: "Request bills", else: "No action")
-      }
-    ]
-  end
-
   # The component is invoked for every month and hides itself when there is no
   # purchase track, but assigns are prepared before HEEx applies that `:if`.
   defp verdict_state(%{stats: nil}), do: %{copy: nil}
@@ -378,27 +309,23 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
     do: "#{money(stats.net_itc_effect_paise)} net ITC effect · GSTR-3B ready for portal filing."
 
   defp position_copy(%{itc_money_known?: false} = stats, count) do
-    "#{stats.open - stats.awaiting_bills} unsettled #{plural(stats.open - stats.awaiting_bills, "bill")} across #{count} #{plural(count, "decision")} · " <>
-      "#{stats.awaiting_bills} missing #{plural(stats.awaiting_bills, "bill")}"
+    "#{count} #{plural(count, "decision")} affect #{stats.open - stats.awaiting_bills} supplied #{plural(stats.open - stats.awaiting_bills, "bill")}" <>
+      missing_bills_clause(stats)
   end
 
   defp position_copy(stats, count) do
-    "#{money(stats.settled_tax_paise)} settled · #{money(decision_tax(stats))} needs review across #{count} #{plural(count, "decision")} · " <>
-      "#{money(stats.awaiting_bills_tax_paise)} awaiting #{stats.awaiting_bills} #{plural(stats.awaiting_bills, "bill")}"
+    "#{money(stats.settled_tax_paise)} settled · #{count} #{plural(count, "decision")} affect #{money(decision_tax(stats))} of tax" <>
+      missing_bills_clause(stats)
   end
 
-  defp proposed_itc_status(%{need_decision: count, awaiting_bills: bills})
-       when count > 0 and bills > 0,
-       do:
-         "Provisional · #{count} purchase #{plural(count, "decision")} remain · #{bills} supporting #{plural(bills, "bill")} not supplied"
+  defp missing_bills_clause(%{awaiting_bills: 0}), do: ""
 
-  defp proposed_itc_status(%{need_decision: count}) when count > 0,
-    do: "Provisional · #{count} purchase #{plural(count, "decision")} remain"
+  defp missing_bills_clause(%{itc_money_known?: false} = stats),
+    do: " · #{stats.awaiting_bills} #{plural(stats.awaiting_bills, "bill")} missing"
 
-  defp proposed_itc_status(%{awaiting_bills: count}) when count > 0,
-    do: "#{count} supporting #{plural(count, "bill")} not supplied"
-
-  defp proposed_itc_status(_stats), do: "Reconciled"
+  defp missing_bills_clause(stats),
+    do:
+      " · #{stats.awaiting_bills} #{plural(stats.awaiting_bills, "bill")} missing for #{money(stats.awaiting_bills_tax_paise)} of tax"
 
   defp decision_tax(%{open_money_split_known?: true} = stats),
     do: stats.decision_tax_paise + stats.value_dispute_tax_paise

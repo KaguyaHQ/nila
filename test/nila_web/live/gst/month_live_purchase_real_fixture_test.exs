@@ -93,7 +93,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
 
     assert doors(view) == ["month-door-file-sales"]
     assert has_element?(view, "#month-door-file-sales[href='#month-exit-gstr1']")
-    assert has_element?(view, "#month-register #month-3b #gst-3b-panel")
+    assert has_element?(view, "#month-register #month-3b #gst-3b-position")
+    assert has_element?(view, "#month-register #month-3b #gst-3b-filing-detail")
 
     html = render(view)
     assert index_of(html, "month-3b") < index_of(html, "month-exit-gstr3b")

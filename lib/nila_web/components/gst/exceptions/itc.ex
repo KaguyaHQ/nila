@@ -26,27 +26,60 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
     assigns = assign(assigns, :bridge, bridge_rows(assigns.itc, assigns.stats))
 
     ~H"""
-    <div :if={@bridge} id={@id} class={["border-base-300 rounded-box border", @class]}>
+    <div
+      :if={@bridge}
+      id={@id}
+      class={["border-base-300 w-full max-w-5xl border-y", @class]}
+    >
       <dl class="divide-base-300 divide-y">
         <div
           :for={line <- @bridge.lines}
           id={"#{@id}-#{line.key}"}
-          class={["flex items-baseline justify-between gap-3 px-4 py-3", line.emphasis]}
+          class={["py-related flex items-baseline justify-between gap-6", line.emphasis]}
         >
           <dt class="min-w-0">
-            <span class={["text-ui", (line.total? && "font-semibold") || "text-ink-muted"]}>
+            <span class={[
+              "text-base-content text-ui",
+              (line.total? or line[:subtotal?]) && "font-semibold"
+            ]}>
               {line.label}
             </span>
-            <span :if={line.note} class="text-ink-subtle text-meta block">{line.note}</span>
+            <span :if={line.note} class="text-ink-muted text-meta block">{line.note}</span>
           </dt>
           <dd class={[
-            "shrink-0 font-mono tabular-nums",
-            (line.total? && "text-base-content text-body font-semibold") || "text-ink-muted text-ui"
+            "text-base-content shrink-0 font-mono tabular-nums",
+            (line.total? && "text-body font-semibold") ||
+              (line[:subtotal?] && "text-ui font-semibold") || "text-ui"
           ]}>
             {line.sign}{itc_money(line.paise)}
           </dd>
         </div>
       </dl>
+    </div>
+    """
+  end
+
+  @doc "A qualification of the proposed amount, separate from the arithmetic that derives it."
+  attr :itc, :map, required: true
+  attr :stats, :any, default: nil
+  attr :id, :string, default: "gst-itc-supporting-evidence"
+
+  def supporting_evidence(assigns) do
+    ~H"""
+    <div
+      :if={(@itc["awaiting_document_paise"] || 0) > 0}
+      id={@id}
+      class="bg-warning/5 border-warning/30 gap-block flex flex-wrap items-start justify-between border-l-2 px-4 py-3"
+    >
+      <div class="min-w-0 space-y-0.5">
+        <p class="text-base-content text-ui font-semibold">Supporting invoices pending</p>
+        <p class="text-ink-muted text-meta">
+          {supporting_evidence_copy(@stats)}
+        </p>
+      </div>
+      <p class="text-base-content text-body shrink-0 font-mono font-semibold tabular-nums">
+        {itc_money(@itc["awaiting_document_paise"])}
+      </p>
     </div>
     """
   end
@@ -90,7 +123,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
         },
         %{
           key: "not-in-2b",
-          label: "less credit no vendor has reported",
+          label: "Less: not reported in GSTR-2B",
           note: "Not claimable this month — the vendor has not filed it. Chase them.",
           paise: stats.unreported_by_vendor_tax_paise,
           sign: "−",
@@ -122,9 +155,9 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
         [
           %{
             key: "basis-residual",
-            label: "the 2B's figure where it differs from your books",
+            label: "Adjustment to GSTR-2B amounts on mismatched invoices",
             note:
-              "Value mismatches and supplies under review use the 2B's figure; supplier credit notes are shown separately as reversals.",
+              "For mismatched invoices, the current treatment uses the portal amount rather than the books amount.",
             paise: abs(residual),
             sign: (residual > 0 && "+") || "−",
             total?: false,
@@ -143,25 +176,26 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
         paise: itc["reported_2b_paise"],
         sign: "",
         total?: false,
-        emphasis: nil
+        subtotal?: true,
+        emphasis: "border-base-300 border-t-2"
       }
     ] ++
       deduction(
         "credit-notes",
-        "less supplier credit notes",
+        "Less: supplier credit notes",
         itc["credit_note_reversal_applied_paise"],
         "Positive face values; reversed in GSTR-3B Table 4B(2)."
       ) ++
-      deduction("blocked", "less blocked credits", itc["blocked_in_ceiling_paise"], nil) ++
+      deduction("blocked", "Less: blocked credits", itc["blocked_in_ceiling_paise"], nil) ++
       deduction(
         "pending",
-        "less awaiting a decision",
+        "Less: ITC withheld pending decisions",
         itc["pending_decision_paise"],
-        "Nobody has ruled on these yet"
+        "These decisions have not been resolved yet."
       ) ++
       deduction(
         "withheld",
-        "less credit the client holds no bill for",
+        "Less: credit without a held invoice",
         itc["unsubstantiated_withheld_paise"],
         "Attested under s.16(2)(a). Reversed in 4B(2) on the return."
       ) ++
@@ -173,9 +207,9 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           paise: itc["claimable_paise"],
           sign: "",
           total?: true,
-          emphasis: "bg-base-200/40"
+          emphasis: "border-base-300 border-t-2"
         }
-      ] ++ substantiation(itc)
+      ]
   end
 
   defp deduction(_key, _label, paise, _note) when paise in [0, nil], do: []
@@ -185,23 +219,13 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
       %{key: key, label: label, note: note, paise: paise, sign: "−", total?: false, emphasis: nil}
     ]
 
-  # The claim's own split. Silent when every rupee is substantiated, because
-  # then there is nothing a reviewer needs to attest to.
-  defp substantiation(%{"awaiting_document_paise" => awaiting}) when awaiting in [0, nil], do: []
+  defp supporting_evidence_copy(%{awaiting_bills: count}) when count > 0,
+    do:
+      "#{count} #{if count == 1, do: "supply appears", else: "supplies appear"} in GSTR-2B without an invoice on file. This amount remains inside the current proposal until document possession is resolved."
 
-  defp substantiation(itc) do
-    [
-      %{
-        key: "awaiting-document",
-        label: "of which the client hasn't sent us the bill",
-        note: "Included from the 2B. Confirm the client holds the tax invoices.",
-        paise: itc["awaiting_document_paise"],
-        sign: "",
-        total?: false,
-        emphasis: nil
-      }
-    ]
-  end
+  defp supporting_evidence_copy(_stats),
+    do:
+      "Supplies appear in GSTR-2B without invoices on file. This amount remains inside the current proposal until document possession is resolved."
 
   attr :itc, :map, required: true
   attr :signed_off, :boolean, required: true
@@ -213,6 +237,12 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
     ~H"""
     <div id="gst-itc-panel" class="space-y-related">
       <.itc_bridge :if={@show_bridge} itc={@itc} stats={@stats} id="gst-itc-bridge" />
+      <.supporting_evidence
+        :if={@show_bridge}
+        itc={@itc}
+        stats={@stats}
+        id="gst-itc-supporting-evidence"
+      />
       <div
         :if={is_nil(@itc["reported_2b_paise"])}
         class="border-base-300 rounded-box flex items-center justify-between border px-4 py-3"
@@ -236,6 +266,12 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
             "2B ceiling − blocked", which was the whole story only when no
             money was pending or unsubstantiated. --%>
       <.itc_bridge :if={@show_bridge} itc={@itc} stats={@stats} id="gst-itc-bridge" />
+      <.supporting_evidence
+        :if={@show_bridge}
+        itc={@itc}
+        stats={@stats}
+        id="gst-itc-supporting-evidence"
+      />
 
       <div class="border-base-300 rounded-box border">
         <div

@@ -47,7 +47,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.ItcTest do
     # 15,000 − 5,000 = 10,000, but the ceiling is 12,000. Without this line the
     # bridge printed A − B above a C that was not A − B.
     assert html =~ ~s(id="b-basis-residual")
-    assert html =~ "the 2B&#39;s figure where it differs from your books"
+    assert html =~ "Adjustment to GSTR-2B amounts on mismatched invoices"
     assert html =~ "+"
     assert html =~ "20.00"
   end
@@ -75,7 +75,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.ItcTest do
       )
 
     assert html =~ ~s(id="b-credit-notes")
-    assert html =~ "less supplier credit notes"
+    assert html =~ "Less: supplier credit notes"
     assert html =~ "Positive face values"
     assert html =~ "4B(2)"
     assert html =~ "36.00"
@@ -94,7 +94,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.ItcTest do
     # Previously the bridge printed the ceiling directly above a claim of ₹0
     # with nothing between them: the entire month's credit vanished silently.
     assert html =~ ~s(id="b-withheld")
-    assert html =~ "less credit the client holds no bill for"
+    assert html =~ "Less: credit without a held invoice"
     assert html =~ "4B(2)"
 
     assert html =~ ~s(id="b-claimable")

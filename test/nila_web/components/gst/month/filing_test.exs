@@ -65,4 +65,41 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
     assert awaiting.state == :awaiting_senior
     assert awaiting.status == "Draft checks complete — awaiting a senior"
   end
+
+  test "a provisional 3B states the current proposed ITC instead of its pre-decision ceiling" do
+    gstr3b = %{
+      "liability_source" => "missing",
+      "liability_31" => %{
+        "a" => %{"igst" => 0, "cgst" => 0, "sgst" => 0},
+        "d" => %{"igst" => 0, "cgst" => 16_338, "sgst" => 16_338}
+      },
+      "itc" => %{
+        "rcm_4a3" => %{"igst" => 0, "cgst" => 16_338, "sgst" => 16_338},
+        "all_other_itc_4a5" => %{"igst" => 1_000_000, "cgst" => 3_070_000, "sgst" => 3_069_750},
+        "reversed_4b1" => %{"igst" => 0, "cgst" => 0, "sgst" => 0},
+        "reversed_4b2" => %{"igst" => 0, "cgst" => 0, "sgst" => 0},
+        "net_itc_4c" => %{"igst" => 1_000_000, "cgst" => 3_086_338, "sgst" => 3_086_088}
+      },
+      "setoff_61" => %{"cash_total" => 0}
+    }
+
+    html =
+      render_component(&Filing.gstr3b_evidence/1,
+        gstr3b: gstr3b,
+        itc: %{"claimable_paise" => 6_836_024},
+        stats: %{need_decision: 12},
+        signed: false
+      )
+
+    position = html |> LazyHTML.from_fragment() |> LazyHTML.query("#gst-3b-position")
+
+    assert LazyHTML.text(position) =~ "₹68,360.24"
+    refute LazyHTML.text(position) =~ "₹71,724.26"
+    assert LazyHTML.text(position) =~ "Pending GSTR-1"
+
+    refute html
+           |> LazyHTML.from_fragment()
+           |> LazyHTML.query("#gst-3b-filing-detail")
+           |> LazyHTML.text() =~ "4C"
+  end
 end

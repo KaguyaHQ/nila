@@ -1135,6 +1135,7 @@ defmodule NilaWeb.Gst.MonthLive do
             <:assembled>
               <Filing.gstr3b_evidence
                 gstr3b={@gstr3b}
+                itc={@itc}
                 stats={@stats}
                 signed={@gstr3b_signoff != nil}
               />

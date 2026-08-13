@@ -65,7 +65,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     assert has_element?(
              view,
              "#gstr3b-itc-bridge-not-in-2b",
-             "less credit no vendor has reported"
+             "Less: not reported in GSTR-2B"
            )
 
     # And it says what to do about it, because it is the most actionable figure
@@ -152,12 +152,6 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     assert has_element?(view, "#gstr3b-itc-position", "not recorded for this month")
     refute has_element?(view, "#gstr3b-itc-position", "₹0")
 
-    # The register beside them still counts its rows, so the reconciliation
-    # matrix has to decline in the same voice rather than print ₹0 down a
-    # column whose neighbour counts real bills.
-    assert has_element?(view, "#gstr3b-recon-settled")
-    refute has_element?(view, "#gstr3b-reconciliation-matrix", "₹0")
-
     # The month that did record its ITC still states it.
     {:ok, _} =
       ClientMonths.upsert(%{
@@ -202,13 +196,13 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     refute render(view) =~ "Nothing reconciles until it is in"
     refute has_element?(view, "#month-door-bring-2b")
-    assert has_element?(view, "#gstr3b-reconciliation-matrix")
+    assert has_element?(view, "#gstr3b-itc-bridge")
 
     # The detailed position belongs to the purchase track rather than being
     # repeated in the month header.
     stats = Register.stats(read_json("summary.json"))
     refute has_element?(view, "#month-headline")
-    assert has_element?(view, "#gstr3b-itc-position", "needs review")
+    assert has_element?(view, "#gstr3b-itc-position", "decisions affect")
     assert stats.matched_tax_paise > 0
   end
 
@@ -229,7 +223,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     assert has_element?(view, "#gstr3b-verdict h2.text-h4", "Purchases & ITC")
     refute has_element?(view, "#gstr3b-verdict.rounded-box")
     refute has_element?(view, "#gstr3b-completeness")
-    assert has_element?(view, "#gstr3b-reconciliation h3", "Proposed ITC")
+    assert has_element?(view, "#gstr3b-reconciliation h3", "ITC working")
 
     assert has_element?(
              view,
@@ -329,8 +323,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
            )
 
     assert has_element?(view, "#gstr3b-itc-position", "settled")
-    assert has_element?(view, "#gstr3b-itc-position", "needs review")
-    assert has_element?(view, "#gstr3b-itc-position", "awaiting")
+    assert has_element?(view, "#gstr3b-itc-position", "decisions affect")
+    assert has_element?(view, "#gstr3b-itc-position", "missing")
 
     assert has_element?(
              view,
@@ -391,10 +385,14 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     gstr2b_only = Enum.count(rows, &(&1["bucket"] == "in_2b_not_books"))
     assert gstr2b_only > 0
 
-    reconciliation = view |> element("#gstr3b-reconciliation") |> render()
-
     refute has_element?(view, "#gstr3b-completeness")
-    assert reconciliation =~ "Awaiting document"
+
+    assert has_element?(
+             view,
+             "#month-3b #gstr3b-itc-supporting-evidence",
+             "Supporting invoices pending"
+           )
+
     assert has_element?(view, "#gstr3b-register", "#{gstr2b_only} additional 2B-only entries")
     refute render(view) =~ "complete register"
   end
@@ -498,16 +496,31 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
            |> render() =~ String.slice(open["next_action"], 0, 40)
   end
 
-  test "a provisional 3B remains visible before its inputs are complete", %{
-    conn: conn,
-    client: client
-  } do
+  test "a provisional 3B leads with Nila's current treatment rather than the undecided ceiling",
+       %{
+         conn: conn,
+         client: client,
+         client_month: client_month
+       } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    workings = Resolutions.workings(client_month)
 
     assert has_element?(view, "#gstr3b-itc-position")
     assert has_element?(view, "#gst-register")
     assert has_element?(view, "#month-3b", "Proposed GSTR-3B")
     assert has_element?(view, "#gstr3b-preview-status", "Provisional")
+    assert has_element?(view, "#gst-3b-cash-pending", "Pending")
+
+    assert has_element?(
+             view,
+             "#gst-3b-current-itc",
+             Nila.Formatters.format_money_with_paise(workings.itc["claimable_paise"])
+           )
+
+    refute has_element?(view, "#gst-3b-filing-detail")
+
+    html = render(view)
+    assert index_of(html, "month-3b") < index_of(html, "gstr3b-reconciliation")
   end
 
   test "the ⚠ and the row accent are spent only on rows needing a decision", %{
@@ -606,7 +619,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     assert render(view) =~ "Sales bills not in, so the GSTR-1 waits."
-    assert has_element?(view, "#month-3b", "outward liability")
+    assert has_element?(view, "#gst-3b-position", "Pending GSTR-1")
+    assert has_element?(view, "#gst-3b-cash-pending", "Pending outward tax")
   end
 
   test "the sales section renders on the same page when a sales month exists", %{
@@ -711,7 +725,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     assert has_element?(view, "#month-exit-gstr3b", "Signed by")
     assert has_element?(view, "#gst-register")
-    assert has_element?(view, "#month-evidence #month-3b #gst-3b-panel")
+    assert has_element?(view, "#month-evidence #month-3b #gst-3b-position")
 
     html = render(view)
     assert index_of(html, "month-3b") < index_of(html, "month-exit-gstr3b")
@@ -760,7 +774,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     assert doors(view) == []
     refute has_element?(view, "#month-deadlines")
     assert has_element?(view, "#gst-register")
-    assert has_element?(view, "#gst-3b-panel")
+    assert has_element?(view, "#gst-3b-position")
     assert has_element?(view, "#gst-filed-note", "Filed")
     refute has_element?(view, "#gst-mark-filed")
     refute has_element?(view, "#gst-reopen-signoff")
