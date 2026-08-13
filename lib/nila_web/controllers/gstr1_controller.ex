@@ -8,7 +8,7 @@ defmodule NilaWeb.Gstr1Controller do
   use NilaWeb, :controller
 
   alias Nila.Clients
-  alias Nila.Gst.Filing.WinmanGstr1
+  alias Nila.Gst.Filing.{TallyPrime, WinmanGstr1}
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
 
@@ -59,6 +59,27 @@ defmodule NilaWeb.Gstr1Controller do
     end
   end
 
+  def tally_export(conn, %{"client_id" => client_id, "period" => period}) do
+    org_id = conn.assigns.current_scope.current_org.id
+
+    case SalesMonths.get_by_period(org_id, client_id, period) do
+      {:ok, sales_month} ->
+        projection =
+          sales_month
+          |> SalesResolutions.effective_workings()
+          |> Map.put(:period, period)
+
+        conn
+        |> tally_result(TallyPrime.push(projection))
+        |> redirect(to: ~p"/gst/#{client_id}/#{period}")
+
+      {:error, _reason} ->
+        conn
+        |> put_status(:not_found)
+        |> text("Not found")
+    end
+  end
+
   def evidence(conn, %{"client_id" => client_id, "period" => period, "basename" => basename}) do
     org_id = conn.assigns.current_scope.current_org.id
 
@@ -75,6 +96,62 @@ defmodule NilaWeb.Gstr1Controller do
         |> text("Not found")
     end
   end
+
+  defp tally_result(conn, {:ok, result}) do
+    imported = result.created + result.altered + result.combined
+    duplicate = if result.ignored == 1, do: "duplicate", else: "duplicates"
+
+    message =
+      "Tally imported #{imported} sales #{plural(imported, "voucher")}." <>
+        if(result.ignored > 0, do: " Ignored #{result.ignored} #{duplicate}.", else: "")
+
+    put_flash(conn, :info, message)
+  end
+
+  defp tally_result(conn, {:error, {:partial_import, result}}) do
+    imported = result.created + result.altered + result.combined
+
+    put_flash(
+      conn,
+      :error,
+      "Tally acknowledged only part of the batch (#{imported} imported, #{result.ignored} ignored). Check Tally before retrying."
+    )
+  end
+
+  defp tally_result(conn, {:error, {:tally_rejected, result}}) do
+    imported = result.created + result.altered + result.combined
+
+    detail =
+      case result.line_errors do
+        [] ->
+          failures = max(result.errors, result.exceptions)
+          "Tally rejected the import with #{failures} #{plural(failures, "error")}."
+        errors -> errors |> Enum.join("; ") |> String.slice(0, 300)
+      end
+
+    prefix = if imported > 0, do: "Tally imported #{imported} before failing. ", else: ""
+    put_flash(conn, :error, prefix <> detail)
+  end
+
+  defp tally_result(conn, {:error, :no_active_sales}),
+    do: put_flash(conn, :error, "There are no active sales vouchers to send to Tally")
+
+  defp tally_result(conn, {:error, :invalid_sales_data}),
+    do: put_flash(conn, :error, "Sales data contains fields Tally cannot import")
+
+  defp tally_result(conn, {:error, {:http_status, status}}),
+    do: put_flash(conn, :error, "Tally returned HTTP #{status}")
+
+  defp tally_result(conn, {:error, _reason}),
+    do:
+      put_flash(
+        conn,
+        :error,
+        "TallyPrime did not confirm the import. Check Tally before retrying."
+      )
+
+  defp plural(1, word), do: word
+  defp plural(_count, word), do: word <> "s"
 
   defp export_error(:invalid_period), do: "Invalid filing period"
   defp export_error(:unsupported_period), do: "Winman export currently supports FY 2026-27"

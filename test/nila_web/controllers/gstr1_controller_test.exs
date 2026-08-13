@@ -130,6 +130,29 @@ defmodule NilaWeb.Gstr1ControllerTest do
     assert response(conn, 404) == "Not found"
   end
 
+  test "does not send another organisation's sales to Tally", %{client: client} do
+    %{user: outsider} = user_with_org_fixture()
+
+    conn =
+      build_conn()
+      |> log_in_user(outsider)
+      |> post(~p"/gstr1/#{client.id}/2026-07/tally")
+
+    assert response(conn, 404) == "Not found"
+  end
+
+  test "does not let an operator write to Tally", %{client: client} do
+    %{user: operator} = user_with_org_fixture(%{role: "member"})
+
+    conn =
+      build_conn()
+      |> log_in_user(operator)
+      |> post(~p"/gstr1/#{client.id}/2026-07/tally")
+
+    assert redirected_to(conn) == ~p"/today"
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) == "You don't have access to that area."
+  end
+
   defp entries(workbook) do
     {:ok, entries} = :zip.extract(workbook, [:memory])
     Map.new(entries, fn {path, bytes} -> {List.to_string(path), bytes} end)

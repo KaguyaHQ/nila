@@ -3,7 +3,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
   @moduledoc "Audited return actions rendered directly after their evidence."
 
-  alias Nila.Gst.Filing.{Gstr3b, ItcPosition, WinmanGstr1}
+  alias Nila.Gst.Filing.{Gstr3b, ItcPosition, TallyPrime, WinmanGstr1}
   alias Nila.Gst.Sales.Values
   alias NilaWeb.Components.Gst.Exceptions.Itc
   alias NilaWeb.Components.Gst.Month.Helpers
@@ -18,7 +18,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :readiness, :map, required: true
 
   def gstr1_actions(assigns) do
-    assigns = assign(assigns, :filed, assigns.derived && Values.filed_totals(assigns.derived))
+    assigns =
+      assigns
+      |> assign(:filed, assigns.derived && Values.filed_totals(assigns.derived))
+      |> assign(:tally_form, to_form(%{}, as: :tally))
 
     ~H"""
     <div id="gstr1-handoff" class="py-section space-y-related">
@@ -113,6 +116,36 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         >
           Download Winman B2B
         </.button>
+      </section>
+
+      <section
+        :if={@can_sign_off and TallyPrime.available?()}
+        id="gstr1-tally-export"
+        class="gap-block flex flex-wrap items-center justify-between"
+      >
+        <div class="space-y-1">
+          <p class="text-ink-subtle text-label font-semibold uppercase">Accounting handoff</p>
+          <p class="text-base-content text-ui font-medium">TallyPrime · GL sales vouchers</p>
+          <p class="text-ink-subtle text-meta">
+            Sends directly to the company currently open on localhost:9000.
+          </p>
+        </div>
+        <.form
+          for={@tally_form}
+          id="gstr1-send-tally-form"
+          action={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/tally"}
+          method="post"
+        >
+          <.button
+            id="gstr1-send-tally"
+            type="submit"
+            variant="outline"
+            size="xs"
+            data-confirm="Send all active sales vouchers to the company currently open in TallyPrime?"
+          >
+            Send to TallyPrime
+          </.button>
+        </.form>
       </section>
     </div>
     """

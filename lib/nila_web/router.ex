@@ -27,6 +27,10 @@ defmodule NilaWeb.Router do
     plug :require_capability, :manage_connectors
   end
 
+  pipeline :require_sign_off do
+    plug :require_capability, :sign_off
+  end
+
   pipeline :api do
     plug :accepts, ["json"]
   end
@@ -151,6 +155,19 @@ defmodule NilaWeb.Router do
       live "/settings/workspace", Settings.WorkspaceLive, :index
       live "/settings/connectors", Settings.ConnectorsLive, :index
       live "/settings/users", Settings.UsersLive, :index
+    end
+  end
+
+  if Mix.env() != :prod do
+    scope "/gstr1", NilaWeb do
+      pipe_through [
+        :browser,
+        :authenticated_browser,
+        :verified_browser,
+        :require_sign_off
+      ]
+
+      post "/:client_id/:period/tally", Gstr1Controller, :tally_export
     end
   end
 

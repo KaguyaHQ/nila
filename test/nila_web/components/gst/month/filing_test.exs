@@ -34,6 +34,54 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
     assert LazyHTML.text(export) =~ "Only the B2B sheet is populated"
   end
 
+  test "offers a direct TallyPrime sales export" do
+    assigns = %{
+      sales_month: %{client_id: Ecto.UUID.generate(), period: "2026-07", filed_at: nil},
+      r1_signoff: nil,
+      open_issue_count: 0,
+      reviewable: true,
+      sales_intake_open: false,
+      can_sign_off: true,
+      derived: nil
+    }
+
+    assigns = Map.put(assigns, :readiness, Filing.gstr1_readiness(assigns))
+    html = render_component(&Filing.gstr1_actions/1, assigns)
+
+    export = html |> LazyHTML.from_fragment() |> LazyHTML.query("#gstr1-tally-export")
+    form = LazyHTML.query(export, "#gstr1-send-tally-form")
+    button = LazyHTML.query(form, "#gstr1-send-tally")
+
+    assert LazyHTML.attribute(form, "action") == [
+             "/gstr1/#{assigns.sales_month.client_id}/2026-07/tally"
+           ]
+
+    assert LazyHTML.attribute(form, "method") == ["post"]
+    assert LazyHTML.text(button) =~ "Send to TallyPrime"
+    assert LazyHTML.text(export) =~ "GL sales vouchers"
+    assert LazyHTML.text(export) =~ "localhost:9000"
+  end
+
+  test "hides the TallyPrime write action from operators" do
+    assigns = %{
+      sales_month: %{client_id: Ecto.UUID.generate(), period: "2026-07", filed_at: nil},
+      r1_signoff: nil,
+      open_issue_count: 0,
+      reviewable: true,
+      sales_intake_open: false,
+      can_sign_off: false,
+      derived: nil
+    }
+
+    assigns = Map.put(assigns, :readiness, Filing.gstr1_readiness(assigns))
+    html = render_component(&Filing.gstr1_actions/1, assigns)
+
+    refute html
+           |> LazyHTML.from_fragment()
+           |> LazyHTML.query("#gstr1-tally-export")
+           |> LazyHTML.text() =~ "TallyPrime"
+  end
+
   test "readiness keeps unresolved intake provisional after issue checks clear" do
     readiness =
       Filing.gstr1_readiness(%{

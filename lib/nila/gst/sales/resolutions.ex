@@ -26,9 +26,12 @@ defmodule Nila.Gst.Sales.Resolutions do
   def effective_workings(%Month{} = month) do
     case Signoffs.latest_gstr1_signoff(month.id) do
       {:ok, signoff} ->
+        invoices = signoff.snapshot["invoices"] || []
+
         %{
           derived: signoff.snapshot["derived"],
-          invoices: signoff.snapshot["invoices"] || []
+          invoices: invoices,
+          active_invoices: Enum.reject(invoices, & &1["duplicate_copy"])
         }
 
       {:error, :not_found} ->
