@@ -13,7 +13,7 @@ defmodule Nila.Gst.Extraction.Providers.MistralTest do
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       payload = Jason.decode!(body)
 
-      assert payload["model"] == "mistral-ocr-4-0"
+      assert payload["model"] == "mistral-ocr-latest"
       assert payload["table_format"] == "markdown"
       assert payload["include_blocks"] == true
       assert payload["confidence_scores_granularity"] == "word"

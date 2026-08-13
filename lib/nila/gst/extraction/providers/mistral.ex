@@ -3,7 +3,7 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
 
   alias Nila.Gst.Extraction.MistralDocumentAdapter
 
-  @model "mistral-ocr-4-0"
+  @model "mistral-ocr-latest"
   @supported_content_types ~w(application/pdf image/jpeg image/png image/webp image/avif image/heic image/heif)
 
   def model, do: @model
