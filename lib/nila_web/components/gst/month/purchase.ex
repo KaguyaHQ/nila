@@ -5,9 +5,9 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   Purchase reconciliation evidence. Every register row patches into the
   route-backed purchase review surface without unmounting the month.
 
-  The section states its own ITC position before the evidence that determines
-  it. The assembled return follows that evidence and sits directly beside the
-  action that signs it, matching the sales track's filing-summary placement.
+  The section states its own ITC position before the return assembled from it.
+  The assembled return and sign-off precede the register and source evidence,
+  matching the sales track's conclusion-before-inspection placement.
   The month-wide verdict band can only ever speak for one track, so a purchase
   position that lives only there disappears whenever sales wins the band.
   """
@@ -23,8 +23,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   attr :client, :map, required: true
   attr :period, :string, required: true
   attr :gstr3b_signoff, :any, default: nil
-  attr :source_files, :integer, default: 0
-  attr :pages_read, :integer, default: nil
   attr :itc, :any, default: nil
   attr :case_lines, :list, default: []
   slot :source
@@ -43,56 +41,48 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       <header id="gstr3b-verdict" class="border-base-300 pb-block border-b">
         <div class="flex flex-wrap items-start justify-between gap-4">
           <div class="min-w-0 space-y-1">
-            <h2 class="text-base-content text-h4 font-semibold">Purchase reconciliation</h2>
+            <h2 class="text-base-content text-h4 font-semibold">Purchases &amp; ITC</h2>
             <p id="gstr3b-itc-position" class="text-body text-ink-muted">
               {@verdict.copy}
             </p>
           </div>
-          <.button
-            :if={@stats.need_decision > 0}
-            id="gstr3b-review-required"
-            patch={~p"/gst/#{@client.id}/#{@period}/review/purchase?scope=needs_you"}
-            variant="primary"
-            size="sm"
-          >
-            {review_label(@stats.need_decision)}
-          </.button>
-          <%!-- Nothing left to judge, so the action is the chase. --%>
-          <.button
-            :if={@stats.need_decision == 0 and @stats.awaiting_bills > 0}
-            id="gstr3b-request-bills"
-            patch={~p"/gst/#{@client.id}/#{@period}/review/purchase?scope=needs_you"}
-            variant="primary"
-            size="sm"
-          >
-            Request {@stats.awaiting_bills} missing {plural(@stats.awaiting_bills, "document")}
-          </.button>
+          <div class="flex flex-wrap items-center gap-2">
+            <.button
+              :if={@stats.need_decision > 0}
+              id="gstr3b-review-required"
+              patch={~p"/gst/#{@client.id}/#{@period}/review/purchase?scope=needs_you"}
+              variant="primary"
+              size="sm"
+            >
+              {review_label(@stats.need_decision)}
+            </.button>
+            <.button
+              :if={@stats.awaiting_bills > 0}
+              id="gstr3b-request-bills"
+              patch={~p"/gst/#{@client.id}/#{@period}/review/purchase?scope=needs_you"}
+              variant={if @stats.need_decision > 0, do: "outline", else: "primary"}
+              size="sm"
+            >
+              Request {@stats.awaiting_bills} missing {plural(@stats.awaiting_bills, "bill")}
+            </.button>
+          </div>
         </div>
       </header>
 
-      <section id="gstr3b-completeness" class="space-y-block">
-        <h3 class="text-base-content text-body font-semibold">Completeness</h3>
-
-        <%!-- "0 files received" beside "12 invoices extracted" is an impossible
-              pair, and printing it flat as fact teaches a reviewer to distrust
-              the whole block. A count that cannot be true is a count we do not
-              have — a month reconciled from an import or a backfill never had a
-              file pass through intake. Say that instead of asserting zero. --%>
-        <dl class="border-base-300 gap-block py-block grid border-y sm:grid-cols-2 lg:grid-cols-4">
-          <.control_stat
-            label="Source files received"
-            value={@source_files}
-            unknown={@source_files == 0 and @stats.invoices > 0}
-            unknown_note="not recorded for this month"
-          />
-          <.control_stat :if={@pages_read} label="Document pages read" value={@pages_read} />
-          <.control_stat label="Purchase documents extracted" value={@stats.invoices} />
-          <.control_stat label="Pages with no document" value={length(@document_flags)} />
-        </dl>
-      </section>
-
       <section id="gstr3b-reconciliation" class="space-y-block">
-        <h3 class="text-base-content text-body font-semibold">ITC reconciliation</h3>
+        <div class="space-y-1">
+          <h3 class="text-base-content text-h4 font-semibold">Proposed ITC</h3>
+          <p
+            :if={@itc && is_number(@itc["claimable_paise"])}
+            id="gstr3b-proposed-itc"
+            class="font-display text-base-content text-h3 tabular-nums"
+          >
+            {Nila.Formatters.format_money_with_paise(@itc["claimable_paise"])}
+          </p>
+          <p id="gstr3b-proposed-itc-status" class="text-body text-ink-muted">
+            {proposed_itc_status(@stats)}
+          </p>
+        </div>
 
         <%!-- The same bridge the workbench draws. Two screens describing one
               month's ITC in two vocabularies is how a reviewer ends up unsure
@@ -119,7 +109,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                 column is the one that has to decline. Printing ₹0 down a table
                 whose neighbouring column counts real bills is the same false
                 confidence as the tiles above, spread over three rows. --%>
-          <:col :let={row} label="Face tax" align="right">
+          <:col :let={row} label="Tax at stake" align="right">
             <span :if={@stats.itc_money_known?}>{format_money(row.tax_paise, prefix: "₹")}</span>
             <span :if={not @stats.itc_money_known?} class="text-ink-subtle">—</span>
           </:col>
@@ -156,37 +146,24 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             </div>
           </div>
         </section>
-
-        <div :if={@document_flags != []} id="gst-document-flags" class="space-y-related">
-          <div
-            :for={{flag, index} <- Enum.with_index(@document_flags)}
-            id={"gst-document-flag-#{index}"}
-            class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
-          >
-            <span class="text-ink-subtle text-meta font-medium">{issue_label(flag["code"])}</span>
-            <span class="text-body text-ink-muted min-w-0 flex-1">{flag["reason"]}</span>
-          </div>
-        </div>
       </section>
 
-      <section class="space-y-block">
-        <h3 class="text-base-content text-body font-semibold">Source documents</h3>
-        {render_slot(@source)}
-      </section>
+      {render_slot(@assembled)}
+      {render_slot(@actions)}
 
-      <div class="space-y-block">
+      <section id="gstr3b-register" class="space-y-block">
         <div class="gap-related flex flex-wrap items-end justify-between">
-          <h3 class="text-base-content text-body font-semibold">Purchase register</h3>
+          <h3 class="text-base-content text-h4 font-semibold">Purchase register</h3>
           <%!-- "Complete register" was read as "the purchase register is
                 complete" — a claim this page cannot make while bills sit in 2B
                 unsupplied. Nor can it call every row an extracted invoice: a
                 2B-only row is a bill nobody sent, so a month with no purchase
                 documents at all read "0 extracted" beside 8 rows of them. --%>
           <p class="text-ink-muted text-ui">
-            {@stats.invoices} purchase {plural(@stats.invoices, "document")} extracted{if @stats.gstr2b_only >
-                                                                                            0,
-                                                                                          do:
-                                                                                            " · #{@stats.gstr2b_only} from 2B only"}
+            {@stats.invoices} supplied {plural(@stats.invoices, "document")} · {@stats.gstr2b_only} additional 2B-only {plural(
+              @stats.gstr2b_only,
+              "entry"
+            )} · {@stats.rows} register {plural(@stats.rows, "position")}
           </p>
         </div>
 
@@ -215,7 +192,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           <:col :let={row} label="Taxable" align="right">
             {format_money(row["taxable_paise"], prefix: "₹")}
           </:col>
-          <:col :let={row} label="ITC effect" align="right">
+          <:col :let={row} label="Current ITC" align="right">
             <span class={row["itc_effect_paise"] < 0 && "text-error"}>
               {signed_money(row["itc_effect_paise"])}
             </span>
@@ -248,10 +225,23 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           </:col>
           <:empty>The register is empty for this month.</:empty>
         </.data_table>
-      </div>
+      </section>
 
-      {render_slot(@assembled)}
-      {render_slot(@actions)}
+      <section id="gstr3b-source-documents" class="space-y-block">
+        <h3 class="text-base-content text-h4 font-semibold">Source documents</h3>
+        {render_slot(@source)}
+        <div :if={@document_flags != []} id="gst-document-flags" class="space-y-related">
+          <p class="text-ink-subtle text-label font-semibold uppercase">Source processing</p>
+          <div
+            :for={{flag, index} <- Enum.with_index(@document_flags)}
+            id={"gst-document-flag-#{index}"}
+            class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+          >
+            <span class="text-ink-subtle text-meta font-medium">{issue_label(flag["code"])}</span>
+            <span class="text-body text-ink-muted min-w-0 flex-1">{flag["reason"]}</span>
+          </div>
+        </div>
+      </section>
     </section>
     """
   end
@@ -288,28 +278,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   defp carried_status(%{settlement_state: "reserved"}), do: "Reserved by this period's sign-off"
   defp carried_status(_), do: "Carried forward"
 
-  attr :label, :string, required: true
-  attr :value, :any, required: true
-  attr :unknown, :boolean, default: false
-  attr :unknown_note, :string, default: nil
-
-  defp control_stat(assigns) do
-    ~H"""
-    <div>
-      <dt class="text-ink-subtle text-label font-semibold uppercase">{@label}</dt>
-      <dd
-        :if={not @unknown}
-        class="text-base-content text-body mt-1 font-medium tabular-nums"
-      >
-        {@value}
-      </dd>
-      <dd :if={@unknown} class="text-body text-ink-subtle mt-1 font-medium">
-        — <span class="text-meta">{@unknown_note}</span>
-      </dd>
-    </div>
-    """
-  end
-
   # The register's three terminal positions, each with its count, its money and
   # the move it waits on. `matched + open` does not close the month on its own —
   # audited-accepted rows sit in neither — so settled is used as open's exact
@@ -323,31 +291,27 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
     [
       %{
         key: "settled",
-        label: "Document and 2B agree",
-        note: "Matched to the portal, or ruled on and closed",
+        label: "Settled",
+        note: "Matched automatically or resolved during review",
         count: stats.rows - stats.open,
         tax_paise: stats.settled_tax_paise,
-        next_move: "Nothing"
+        next_move: "No action"
       },
       %{
         key: "decisions",
-        label: "Document supplied, not settled against 2B",
-        note: "Absent from the 2B, ambiguous, or disagreeing on amount",
+        label: "Needs review",
+        note: "Document supplied; 2B is absent, ambiguous, or different",
         count: stats.open - stats.awaiting_bills,
         tax_paise: decisions_tax,
-        next_move:
-          if(stats.open - stats.awaiting_bills > 0,
-            do: "Yours to decide",
-            else: "Nothing"
-          )
+        next_move: if(stats.open - stats.awaiting_bills > 0, do: "Review", else: "No action")
       },
       %{
         key: "awaiting",
-        label: "In 2B, document not supplied",
-        note: "The portal reported a supply or adjustment nobody sent us a document for",
+        label: "Awaiting document",
+        note: "Supply appears in 2B; the invoice was not supplied",
         count: stats.awaiting_bills,
         tax_paise: stats.awaiting_bills_tax_paise,
-        next_move: if(stats.awaiting_bills > 0, do: "Ask the client", else: "Nothing")
+        next_move: if(stats.awaiting_bills > 0, do: "Request bills", else: "No action")
       }
     ]
   end
@@ -378,22 +342,10 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
   defp verdict_state(%{stats: stats}), do: %{copy: reconciled_copy(stats)}
 
-  defp decision_copy(%{itc_money_known?: false}, count),
-    do:
-      "#{count} purchase #{plural(count, "decision")} awaiting review; ITC amount not recorded for this month."
+  defp decision_copy(%{itc_money_known?: false} = stats, count),
+    do: position_copy(stats, count)
 
-  defp decision_copy(%{total_tax_paise: 0}, count),
-    do: "#{count} purchase #{plural(count, "decision")} awaiting review."
-
-  defp decision_copy(%{settled_tax_paise: 0} = stats, count) do
-    "All #{money(stats.total_tax_paise)} of proposed ITC is awaiting #{count} " <>
-      "#{plural(count, "decision")}."
-  end
-
-  defp decision_copy(stats, count) do
-    "#{money(stats.settled_tax_paise)} resolved · #{money(stats.open_tax_paise)} pending review " <>
-      "across #{count} #{plural(count, "decision")}."
-  end
+  defp decision_copy(stats, count), do: position_copy(stats, count)
 
   defp awaiting_bills_copy(%{itc_money_known?: false}, count),
     do: "#{count} missing #{plural(count, "document")}; ITC amount not recorded for this month."
@@ -424,6 +376,35 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
   defp lifecycle_copy(stats, :signed),
     do: "#{money(stats.net_itc_effect_paise)} net ITC effect · GSTR-3B ready for portal filing."
+
+  defp position_copy(%{itc_money_known?: false} = stats, count) do
+    "#{stats.open - stats.awaiting_bills} unsettled #{plural(stats.open - stats.awaiting_bills, "bill")} across #{count} #{plural(count, "decision")} · " <>
+      "#{stats.awaiting_bills} missing #{plural(stats.awaiting_bills, "bill")}"
+  end
+
+  defp position_copy(stats, count) do
+    "#{money(stats.settled_tax_paise)} settled · #{money(decision_tax(stats))} needs review across #{count} #{plural(count, "decision")} · " <>
+      "#{money(stats.awaiting_bills_tax_paise)} awaiting #{stats.awaiting_bills} #{plural(stats.awaiting_bills, "bill")}"
+  end
+
+  defp proposed_itc_status(%{need_decision: count, awaiting_bills: bills})
+       when count > 0 and bills > 0,
+       do:
+         "Provisional · #{count} purchase #{plural(count, "decision")} remain · #{bills} supporting #{plural(bills, "bill")} not supplied"
+
+  defp proposed_itc_status(%{need_decision: count}) when count > 0,
+    do: "Provisional · #{count} purchase #{plural(count, "decision")} remain"
+
+  defp proposed_itc_status(%{awaiting_bills: count}) when count > 0,
+    do: "#{count} supporting #{plural(count, "bill")} not supplied"
+
+  defp proposed_itc_status(_stats), do: "Reconciled"
+
+  defp decision_tax(%{open_money_split_known?: true} = stats),
+    do: stats.decision_tax_paise + stats.value_dispute_tax_paise
+
+  defp decision_tax(stats),
+    do: stats.open_tax_paise - stats.awaiting_bills_tax_paise
 
   defp review_label(1), do: "Review decision"
   defp review_label(count), do: "Review #{count} decisions"
@@ -467,5 +448,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   end
 
   defp plural(1, word), do: word
+  defp plural(_count, "entry"), do: "entries"
   defp plural(_count, word), do: word <> "s"
 end

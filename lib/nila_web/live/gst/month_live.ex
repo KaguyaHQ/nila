@@ -226,7 +226,12 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign_purchase(purchase)
     |> assign_dumps()
     |> assign_sales(sales)
+    |> assign_gstr1_readiness()
     |> assign_verdict(purchase, sales)
+  end
+
+  defp assign_gstr1_readiness(socket) do
+    assign(socket, :gstr1_readiness, Filing.gstr1_readiness(socket.assigns))
   end
 
   defp assign_dumps(socket) do
@@ -597,6 +602,7 @@ defmodule NilaWeb.Gst.MonthLive do
     socket =
       socket
       |> assign_sales(month, workings)
+      |> assign_gstr1_readiness()
       |> assign_verdict(socket.assigns.purchase_month, month)
       |> ripple(old_derived)
 
@@ -1076,6 +1082,7 @@ defmodule NilaWeb.Gst.MonthLive do
             open_issue_count={@open_issue_count}
             account={@sales_account}
             r1_signoff={@r1_signoff}
+            readiness={@gstr1_readiness}
             issues_by_invoice={@issues_by_invoice}
             pages_read={@sales_pages_read}
             visited={@visited_inums}
@@ -1109,6 +1116,7 @@ defmodule NilaWeb.Gst.MonthLive do
                 sales_intake_open={@sales_intake_open}
                 can_sign_off={@can_sign_off}
                 derived={@derived_gstr1}
+                readiness={@gstr1_readiness}
               />
             </:actions>
           </Sales.sales_section>
@@ -1121,8 +1129,6 @@ defmodule NilaWeb.Gst.MonthLive do
             client={@client}
             period={@period}
             gstr3b_signoff={@gstr3b_signoff}
-            source_files={length(@active_purchase_dumps)}
-            pages_read={@purchase_pages_read}
             itc={@itc}
             case_lines={(@purchase_workings && @purchase_workings.case_lines) || []}
           >

@@ -42,35 +42,70 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#gstr1-required-summary", "required before approval")
     assert has_element?(view, "#gstr1-required-summary", "1 decision")
     assert has_element?(view, "#gstr1-review-required", "Review required items")
-    assert has_element?(view, "#gstr1-draft-invoices", "in draft")
+    assert has_element?(view, "#gstr1-draft-invoices", "3 invoices in draft")
     assert has_element?(view, "#gstr1-draft-output-tax", "proposed output tax")
     refute has_element?(view, "#gstr1-verdict.rounded-box")
-    assert has_element?(view, "#gstr1-required-clause", "1 decision")
     refute has_element?(view, "#month-door-sales-issues")
     assert has_element?(view, "#gstr1-inv-20\\/2025-26", "1 to answer")
+
+    assert has_element?(
+             view,
+             "#gstr1-checks-before-filing article [data-role='issue-invoice']:first-child",
+             "Invoice 20/2025-26"
+           )
+
+    assert has_element?(
+             view,
+             "#gstr1-checks-before-filing article [data-role='issue-context'] .badge"
+           )
+
     assert has_element?(view, "#month-sales-sources", "Sales bills")
-    refute has_element?(view, "#month-exit-gstr1")
+    assert has_element?(view, "#gstr1-filing-status", "Provisional")
+    assert has_element?(view, "#month-exit-gstr1", "Blocked · 1 required item remains")
     refute has_element?(view, "#month-door-review-issue")
+
+    section_ids =
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#month-sales > [id]")
+      |> LazyHTML.attribute("id")
+
+    assert section_ids == [
+             "gstr1-verdict",
+             "gstr1-checks-before-filing",
+             "gstr1-filing-summary",
+             "gstr1-handoff",
+             "gstr1-register",
+             "gstr1-return",
+             "gstr1-source-documents"
+           ]
   end
 
-  test "the draft reconciliation preserves reviewed economic values", %{
-    conn: conn,
-    client: client
-  } do
+  test "the proposed return shows filing sections without pipeline telemetry or false reconciliation",
+       %{
+         conn: conn,
+         client: client
+       } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#gstr1-draft-reconciliation", "Draft reconciliation")
-    refute has_element?(view, "#gstr1-draft-reconciliation", "Source files received")
-    refute has_element?(view, "#gstr1-draft-reconciliation", "Invoice pages read")
-    refute has_element?(view, "#gstr1-draft-reconciliation", "Documents extracted")
-    refute has_element?(view, "#gstr1-draft-reconciliation", "Unique invoice numbers")
-    refute has_element?(view, "#gstr1-draft-reconciliation", "Cess")
+    refute has_element?(view, "#gstr1-draft-reconciliation")
+    refute has_element?(view, "#gstr1-reconciliation")
+    refute has_element?(view, "#month-sales", "Source files received")
+    refute has_element?(view, "#month-sales", "Invoice pages read")
+    refute has_element?(view, "#month-sales", "Documents extracted")
+    refute has_element?(view, "#month-sales", "Unique invoice numbers")
     refute has_element?(view, "#gstr1-record-confirmation")
     refute has_element?(view, "#gstr1-completeness-override-modal")
-    refute has_element?(view, "#gstr1-draft-reconciliation", "client confirmation")
-    assert has_element?(view, "#gstr1-reconciliation", "Taxable value")
-    assert has_element?(view, "#gstr1-reconciliation", "Output tax")
-    assert has_element?(view, "#gstr1-reconciliation", "₹0.00")
+    assert has_element?(view, "#gstr1-filing-summary", "Proposed GSTR-1")
+    assert has_element?(view, "#gstr1-filing-b2b", "₹86,752.00")
+    assert has_element?(view, "#gstr1-hsn-signoff", "HSN summary · Table 12")
+    assert has_element?(view, "#gstr1-filing-summary #gstr1-workings-hsn")
+    refute has_element?(view, "#gstr1-return #gstr1-workings-hsn")
+    refute has_element?(view, "#gstr1-hsn-signoff", "Difference from sales register")
+    assert has_element?(view, "#gstr1-document-summary", "Documents issued · Table 13")
+    assert has_element?(view, "#gstr1-document-series-1-1", "20/2025-26")
+    assert has_element?(view, "#gstr1-document-series-1-1", "22/2025-26")
     assert has_element?(view, "#gstr1-verdict", "₹86,752.00")
     assert has_element?(view, "#gstr1-verdict", "₹15,615.36")
   end
@@ -235,7 +270,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
              "Both IGST and CGST/SGST on one bill"
            )
 
-    assert has_element?(view, "#gstr1-required-clause", "1 decision")
+    assert has_element?(view, "#gstr1-required-summary", "1 decision")
     refute has_element?(view, "#month-door-sign-r1")
 
     # The modal has to say what it costs, because the totals agree and no other
@@ -355,9 +390,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#gstr1-required-clause", "1 blocker")
-    assert has_element?(view, "#gstr1-required-clause", "1 decision")
-    assert has_element?(view, "#gstr1-verdict", "1 blocker")
+    assert has_element?(view, "#gstr1-required-summary", "1 blocker")
+    assert has_element?(view, "#gstr1-required-summary", "1 decision")
     refute has_element?(view, "#month-door-sign-r1")
   end
 
@@ -387,6 +421,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert has_element?(view, "#gstr1-workings-cdnr", "21/2025-26")
     assert has_element?(view, "#gstr1-filing-cdnr", "9B registered credit and debit notes")
+    assert has_element?(view, "#gstr1-document-summary", "Credit notes")
     refute has_element?(view, "#gstr1-checks-before-filing", "credit note")
   end
 
@@ -417,6 +452,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#gstr1-workings-cdnr", "21/2025-26")
     assert has_element?(view, "#gstr1-workings-cdnr", "Debit")
     assert has_element?(view, "#gstr1-filing-cdnr", "9B registered credit and debit notes")
+    assert has_element?(view, "#gstr1-document-summary", "Debit notes")
     refute has_element?(view, "#gstr1-checks-before-filing", "debit note")
   end
 
@@ -426,20 +462,19 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
-    assert has_element?(view, "#gstr1-filing-summary", "What this return files")
+    assert has_element?(view, "#gstr1-filing-summary", "Proposed GSTR-1")
+    assert has_element?(view, "#gstr1-filing-status", "Provisional")
     assert has_element?(view, "#gstr1-filing-b2b", "B2B regular")
 
-    # One row, because `derive/2` builds b2b, hsn and doc_issue and nothing
-    # else. The capability statement is what the page can honestly say; it does
-    # not claim any category is absent, because nothing here can check that.
-    assert has_element?(view, "#gstr1-filing-capability", "still stop the month")
-
-    # It reports the work standing against the filing, not a bare "blocked".
-    assert has_element?(view, "#gstr1-filing-b2b", "1 decision")
+    # The page describes this month's populated filing sections. Generic
+    # capability boundaries belong in required work only when this month hits one.
+    refute has_element?(view, "#gstr1-filing-capability")
+    refute has_element?(view, "#gstr1-filing-summary", "Exports, SEZ")
 
     confirm_all_open_issues(view)
 
-    assert has_element?(view, "#gstr1-filing-b2b", "Ready")
+    assert has_element?(view, "#gstr1-filing-status", "Ready for approval")
+    assert has_element?(view, "#month-door-sign-r1")
   end
 
   # Taxable B2C invoices are supported, but notes to unregistered recipients
@@ -554,22 +589,19 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/2025-12")
 
-    assert has_element?(
-             view,
-             "#gstr1-advisory-hsn-new",
-             "2 HSN/SAC codes are new for this client"
-           )
-
-    assert has_element?(view, "#gstr1-advisory-hsn-new", "28043000 · 29033990")
-    assert has_element?(view, "#gstr1-advisory-hsn-rows", "Printed on the bill")
-    assert has_element?(view, "#gstr1-verdict a[href='#gstr1-advisories']", "2 advisories")
+    assert has_element?(view, "#gstr1-hsn-new-codes", "2 of 2 codes are new for this client")
+    assert has_element?(view, "#gstr1-workings-hsn-28043000-18", "New")
+    assert has_element?(view, "#gstr1-workings-hsn-29033990-18", "New")
+    refute has_element?(view, "#gstr1-hsn-new-code-rows")
+    refute has_element?(view, "#gstr1-hsn-signoff", "Printed on the bill")
+    refute has_element?(view, "#gstr1-verdict", "advisories")
 
     # Context, not work: no confirm affordance, not in the gating clause, and
-    # approval is reachable without anyone opening it.
-    refute has_element?(view, "#gstr1-advisories button[phx-click='confirm_issue']")
+    # approval is reachable without anyone clearing it.
+    refute has_element?(view, "#gstr1-hsn-new-codes button[phx-click='confirm_issue']")
     refute has_element?(view, "#gstr1-checks-before-filing")
 
-    assert has_element?(view, "#gstr1-verdict", "Ready for approval")
+    assert has_element?(view, "#gstr1-filing-status", "Ready for approval")
     assert has_element?(view, "#month-door-sign-r1")
   end
 
@@ -655,7 +687,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert has_element?(view, card, "HSN/SAC 71069290 appears at 3% and 18%")
     refute has_element?(view, "#gstr1-hsn-signoff", "HSN/SAC 71069290 appears at 3% and 18%")
-    assert has_element?(view, "#gstr1-hsn-signoff", "checks before filing")
+    assert has_element?(view, "#gstr1-hsn-signoff", "HSN check in required work")
     assert has_element?(view, "#gstr1-workings-hsn", "Other semi-manufactured forms of silver")
 
     refute has_element?(view, "#gstr1-workings-hsn-71069290-3 .rotate-90")
@@ -719,9 +751,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     refute has_element?(view, "#gstr1-duplicate-review-modal")
     refute has_element?(view, "button[phx-click='open-duplicate-review']")
-    refute has_element?(view, "#gstr1-draft-reconciliation", "Duplicate documents excluded")
-    assert has_element?(view, "#gstr1-reconciliation", "Documents")
-    assert has_element?(view, "#gstr1-reconciliation", "3")
+    refute has_element?(view, "#gstr1-draft-reconciliation")
+    assert has_element?(view, "#gstr1-document-summary", "Documents issued · Table 13")
+    assert has_element?(view, "#gstr1-document-series-1-1", "3")
     assert has_element?(view, "#gstr1-inv-#{copy_two["id"]}", "Duplicate copy")
     assert has_element?(view, "#gstr1-inv-#{copy_three["id"]}", "Duplicate copy")
   end
@@ -1045,7 +1077,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert row =~ "text-primary/60"
   end
 
-  test "the workings show reviewable return figures without statutory plumbing", %{
+  test "the workings and single Table 12 show reviewable return figures", %{
     conn: conn,
     client: client,
     org: org
@@ -1062,6 +1094,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert hsn =~ "2903"
     assert hsn =~ "8415"
     assert hsn =~ "9987"
+    assert has_element?(view, "#gstr1-filing-summary #gstr1-workings-hsn")
+    refute has_element?(view, "#gstr1-return #gstr1-workings-hsn")
 
     refute has_element?(view, "#gstr1-workings-docs")
     refute has_element?(view, "#gstr1-workings", "Documents issued")
@@ -1096,7 +1130,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert row =~ "10,200.00"
   end
 
-  test "the return workings remain visible while issues are open and after a re-render", %{
+  test "the return workings and Table 12 remain visible through re-renders", %{
     conn: conn,
     client: client
   } do
@@ -1105,12 +1139,13 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#gstr1-return", "Return workings")
     assert has_element?(view, "#gstr1-workings-b2b")
     assert has_element?(view, "#gstr1-workings-rates")
-    assert has_element?(view, "#gstr1-workings-hsn")
+    assert has_element?(view, "#gstr1-filing-summary #gstr1-workings-hsn")
+    refute has_element?(view, "#gstr1-return #gstr1-workings-hsn")
     refute has_element?(view, "#gstr1-workings-docs")
 
     confirm_all_open_issues(view)
 
-    assert has_element?(view, "#gstr1-workings-hsn")
+    assert has_element?(view, "#gstr1-filing-summary #gstr1-workings-hsn")
   end
 
   test "an opened bucket survives an unrelated re-render", %{conn: conn, client: client} do
@@ -1299,7 +1334,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#gstr1-register th", "Extracted GST")
     assert has_element?(view, "#gstr1-register-basis", "per-rate recomputation")
     assert has_element?(view, "#gstr1-workings-basis", "what this return files")
-    assert has_element?(view, "#gstr1-workings-b2b th", "Proposed GSTR-1")
+    assert has_element?(view, "#gstr1-workings-b2b th", "Output tax")
+    assert has_element?(view, "#gstr1-workings-rates th", "Output tax")
+    assert has_element?(view, "#gstr1-workings-hsn th", "Output tax")
     refute has_element?(view, "#gstr1-workings-b2b th", "GSTR-1 tax")
 
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
@@ -1544,12 +1581,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert view |> element("#gstr1-workings-hsn-8415-18") |> render() =~ "workings-ripple"
     assert view |> element("#gstr1-verdict") |> render() =~ "workings-ripple"
 
-    reconciliation = view |> element("#gstr1-draft-reconciliation") |> render()
-    assert reconciliation =~ "As printed"
-    assert reconciliation =~ "Proposed after fixes"
-    assert reconciliation =~ "₹3,000.00"
-    assert reconciliation =~ "₹3,500.00"
-    assert reconciliation =~ "Caused by invoice 40/2025-26"
+    refute has_element?(view, "#gstr1-draft-reconciliation")
+    assert has_element?(view, "#gstr1-filing-b2b", "₹3,500.00")
+    assert has_element?(view, "#gstr1-filing-status", "Provisional")
 
     # The other party's numbers did not move, so its node stays quiet.
     refute view |> element("#gstr1-workings-party-33AAVCS8021P1ZM") |> render() =~
@@ -1630,6 +1664,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#month-door-sign-r1", "Approve GSTR-1")
     view |> element("#month-door-sign-r1") |> render_click()
 
+    assert has_element?(view, "#gstr1-filing-summary", "Approved GSTR-1")
     assert has_element?(view, "#month-exit-gstr1")
     assert has_element?(view, "#gstr1-invoices #gstr1-inv-20\\/2025-26")
     assert has_element?(view, "#gstr1-workings-b2b")
@@ -1662,6 +1697,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     |> element("#gstr1-mark-filed")
     |> render_submit(%{"arn" => "AA331025000001"})
 
+    assert has_element?(view, "#gstr1-filing-summary", "Filed GSTR-1")
     assert has_element?(view, "#gstr1-filed-note")
     assert has_element?(view, "#gstr1-invoices #gstr1-inv-20\\/2025-26")
     assert has_element?(view, "#gstr1-workings-b2b")
@@ -1680,7 +1716,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     confirm_all_open_issues(view)
 
     refute has_element?(view, "#month-door-sign-r1")
-    assert has_element?(view, "#month-exit-gstr1", "Ready for a senior to approve")
+    assert has_element?(view, "#gstr1-filing-status", "Draft checks complete — awaiting a senior")
+    assert has_element?(view, "#month-exit-gstr1", "Ready · A senior must approve this return")
   end
 
   test "an in-flight dump appears and clears through the month subscription", %{
@@ -1762,9 +1799,11 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(
              view,
              "#month-exit-gstr1",
-             "Approval waits for the unresolved sales packet"
+             "Blocked · 1 sales packet remains unresolved"
            )
 
+    assert has_element?(view, "#gstr1-filing-status", "Provisional")
+    refute has_element?(view, "#gstr1-filing-status", "Ready for approval")
     refute has_element?(view, "#month-door-sign-r1")
 
     view |> element("#month-dump-abandon-#{failed.id}") |> render_click()

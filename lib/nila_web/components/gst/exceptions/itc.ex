@@ -168,7 +168,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
       [
         %{
           key: "claimable",
-          label: "Claimable ITC",
+          label: "Current proposed ITC",
           note: nil,
           paise: itc["claimable_paise"],
           sign: "",
@@ -194,7 +194,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
       %{
         key: "awaiting-document",
         label: "of which the client hasn't sent us the bill",
-        note: "Claimed on the 2B. Confirm the client holds the tax invoices.",
+        note: "Included from the 2B. Confirm the client holds the tax invoices.",
         paise: itc["awaiting_document_paise"],
         sign: "",
         total?: false,
@@ -217,7 +217,9 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
         :if={is_nil(@itc["reported_2b_paise"])}
         class="border-base-300 rounded-box flex items-center justify-between border px-4 py-3"
       >
-        <span class="text-ink-muted text-ui">Claimable ITC (2B ceiling, no blocked credits)</span>
+        <span class="text-ink-muted text-ui">
+          Current proposed ITC (2B ceiling, no blocked credits)
+        </span>
         <span id="gst-itc-claimable" class="text-base-content text-body font-mono font-semibold">
           {itc_money(@itc["claimable_paise"])}
         </span>
@@ -240,7 +242,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           :if={is_nil(@itc["reported_2b_paise"])}
           class="border-base-300 flex items-center justify-between border-b px-4 py-3"
         >
-          <div class="text-ink-subtle text-label font-medium uppercase">Claimable ITC</div>
+          <div class="text-ink-subtle text-label font-medium uppercase">Current proposed ITC</div>
           <div id="gst-itc-claimable" class="text-base-content text-lead font-mono font-semibold">
             {itc_money(@itc["claimable_paise"])}
           </div>

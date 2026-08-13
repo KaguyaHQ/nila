@@ -3,8 +3,8 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
 
   @moduledoc """
   The GSTR-1 workings body: the derived return rendered in the working-sheet
-  shape a CA already reads — B2B party-wise, rate summary, HSN, documents
-  issued.
+  shape a CA already reads — B2B party-wise and rate summary. Table 12 has its
+  own component so the same HSN output is not rendered again in the workings.
 
   Renders the materialized projection (`derived_gstr1` out of
   `Nila.Gst.Sales.Workings.materialize/4`, or a sign-off snapshot) — never the
@@ -30,6 +30,110 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   alias Nila.Gst.Sales.Gstr1
   alias NilaWeb.Components.Gst.Month.Helpers
 
+  @doc "The complete Table 12 output, with expandable invoice contributors."
+  attr :derived, :map, required: true
+  attr :invoices, :list, required: true
+  attr :novelty_codes, :any, default: MapSet.new()
+  attr :rippled, :any, default: MapSet.new()
+  attr :ripple_seq, :integer, default: 0
+  attr :expanded, :any, default: MapSet.new()
+
+  def hsn_summary(assigns) do
+    assigns =
+      assigns
+      |> assign(:hsn_b2c, get_in(assigns.derived, ["hsn", "hsn_b2c"]) || [])
+      |> assign(
+        :hsn,
+        Gstr1.hsn_summary(
+          Enum.reject(assigns.invoices, &(Gstr1.filing_table(&1) in ~w(b2cs b2cl)))
+        )
+      )
+      |> assign(:buyers, buyers_by_inum(assigns.invoices))
+      |> assign(:invoice_refs, invoice_refs_by_inum(assigns.invoices))
+      |> assign(:novelty_codes, MapSet.new(assigns.novelty_codes))
+
+    assigns = assign(assigns, :hsn_rows, hsn_rows(assigns))
+
+    ~H"""
+    <div id="gstr1-table-12-rows" class="space-y-block">
+      <div :if={@hsn_b2c != []} id="gstr1-workings-hsn-b2c" class="space-y-1.5">
+        <.section_label>B2C</.section_label>
+        <.data_table id="gstr1-workings-hsn-b2c-rows" rows={@hsn_b2c} min_width="min-w-[720px]" dense>
+          <:col :let={row} label="HSN/SAC">
+            <div class="flex items-center gap-2">
+              <span class="font-mono">{row["hsn_sc"]}</span>
+              <.badge
+                :if={MapSet.member?(@novelty_codes, row["hsn_sc"])}
+                variant="neutral"
+                class="badge-xs"
+              >
+                New
+              </.badge>
+            </div>
+          </:col>
+          <:col :let={row} label="Description">{row["desc"] || "—"}</:col>
+          <:col :let={row} label="UQC">{row["uqc"]}</:col>
+          <:col :let={row} label="Quantity" align="right">{row["qty"]}</:col>
+          <:col :let={row} label="Rate" align="right">{Helpers.percent(row["rt"])}</:col>
+          <:col :let={row} label="Taxable" align="right">{Helpers.amount(row["txval"])}</:col>
+          <:col :let={row} label="Output tax" align="right">{Helpers.amount(detail_tax(row))}</:col>
+        </.data_table>
+      </div>
+
+      <div :if={@hsn != []} id="gstr1-workings-hsn" class="space-y-1.5">
+        <.section_label>B2B and registered notes</.section_label>
+        <.data_table
+          id="gstr1-workings-hsn-rows"
+          rows={@hsn_rows}
+          row_id={& &1.id}
+          row_class={fn row -> row_class(row, @rippled, @ripple_seq, @expanded) end}
+          row_click={&row_click/1}
+          min_width="min-w-[620px]"
+          dense
+        >
+          <:col :let={row} label="HSN/SAC">
+            <div :if={row.kind == :node} class="flex items-center gap-2">
+              <.chevron open={MapSet.member?(@expanded, row.id)} />
+              <span class="text-base-content font-mono font-medium">{row.hsn || "—"}</span>
+              <.badge
+                :if={MapSet.member?(@novelty_codes, row.hsn)}
+                variant="neutral"
+                class="badge-xs"
+              >
+                New
+              </.badge>
+            </div>
+            <.contrib_cell :if={row.kind == :contrib} row={row} />
+          </:col>
+          <:col :let={row} label="Description">
+            <span
+              :if={row.kind == :node}
+              class="text-ink-subtle block max-w-72 truncate"
+              title={row.description}
+            >
+              {row.description || "Official description unavailable"}
+            </span>
+          </:col>
+          <:col :let={row} label="Rate" align="right">
+            <span :if={row.kind == :node} class="text-ink-subtle">
+              {Helpers.percent(row.rate)}
+            </span>
+          </:col>
+          <:col :let={row} label="Invoices" align="right">
+            <span :if={row.kind == :node} class="text-ink-subtle">{row.count}</span>
+          </:col>
+          <:col :let={row} label="Taxable" align="right">
+            <.amount_cell row={row} value={row[:taxable]} />
+          </:col>
+          <:col :let={row} label="Output tax" align="right">
+            <.amount_cell row={row} value={row[:tax]} />
+          </:col>
+        </.data_table>
+      </div>
+    </div>
+    """
+  end
+
   attr :derived, :map, required: true
   attr :invoices, :list, required: true
   attr :diff, :any, default: nil
@@ -46,14 +150,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       |> assign(:b2cl, assigns.derived["b2cl"] || [])
       |> assign(:b2cs, assigns.derived["b2cs"] || [])
       |> assign(:cdnr, assigns.derived["cdnr"] || [])
-      |> assign(:hsn_b2c, get_in(assigns.derived, ["hsn", "hsn_b2c"]) || [])
       |> assign(:rates, Gstr1.rate_summary(assigns.derived))
-      |> assign(
-        :hsn,
-        Gstr1.hsn_summary(
-          Enum.reject(assigns.invoices, &(Gstr1.filing_table(&1) in ~w(b2cs b2cl)))
-        )
-      )
       |> assign(:names, names_by_gstin(assigns.invoices))
       |> assign(:buyers, buyers_by_inum(assigns.invoices))
       |> assign(:invoice_refs, invoice_refs_by_inum(assigns.invoices))
@@ -65,7 +162,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       |> assign(:b2cl_rows, b2cl_rows(assigns.b2cl))
       |> assign(:note_rows, note_rows(assigns.cdnr))
       |> assign(:rate_rows, rate_rows(assigns))
-      |> assign(:hsn_rows, hsn_rows(assigns))
 
     ~H"""
     <div id="gstr1-workings" class="space-y-block">
@@ -135,7 +231,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <%!-- Every figure in these workings is the derived per-rate bucket, not
                 the sum of extracted lines. They differ by rounding, and calling
                 both "Tax" is why nobody could say which one gets filed. --%>
-          <:col :let={row} label="Proposed GSTR-1" align="right">
+          <:col :let={row} label="Output tax" align="right">
             <.amount_cell row={row} value={row[:tax]} />
           </:col>
         </.data_table>
@@ -216,64 +312,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:col :let={row} label="Taxable" align="right">
             <.amount_cell row={row} value={row[:taxable]} />
           </:col>
-          <:col :let={row} label="Proposed GSTR-1" align="right">
-            <.amount_cell row={row} value={row[:tax]} />
-          </:col>
-        </.data_table>
-      </div>
-
-      <div :if={@hsn_b2c != []} id="gstr1-workings-hsn-b2c" class="space-y-1.5">
-        <.section_label>HSN summary — B2C</.section_label>
-        <.data_table id="gstr1-workings-hsn-b2c-rows" rows={@hsn_b2c} min_width="min-w-[720px]" dense>
-          <:col :let={row} label="HSN/SAC"><span class="font-mono">{row["hsn_sc"]}</span></:col>
-          <:col :let={row} label="Description">{row["desc"] || "—"}</:col>
-          <:col :let={row} label="UQC">{row["uqc"]}</:col>
-          <:col :let={row} label="Quantity" align="right">{row["qty"]}</:col>
-          <:col :let={row} label="Rate" align="right">{Helpers.percent(row["rt"])}</:col>
-          <:col :let={row} label="Taxable" align="right">{Helpers.amount(row["txval"])}</:col>
-          <:col :let={row} label="Output tax" align="right">{Helpers.amount(detail_tax(row))}</:col>
-        </.data_table>
-      </div>
-
-      <div :if={@hsn != []} id="gstr1-workings-hsn" class="space-y-1.5">
-        <.section_label>HSN summary — B2B and registered notes</.section_label>
-        <.data_table
-          id="gstr1-workings-hsn-rows"
-          rows={@hsn_rows}
-          row_id={& &1.id}
-          row_class={fn row -> row_class(row, @rippled, @ripple_seq, @expanded) end}
-          row_click={&row_click/1}
-          min_width="min-w-[620px]"
-          dense
-        >
-          <:col :let={row} label="HSN/SAC">
-            <div :if={row.kind == :node} class="flex items-center gap-2">
-              <.chevron open={MapSet.member?(@expanded, row.id)} />
-              <span class="text-base-content font-mono font-medium">{row.hsn || "—"}</span>
-            </div>
-            <.contrib_cell :if={row.kind == :contrib} row={row} />
-          </:col>
-          <:col :let={row} label="Description">
-            <span
-              :if={row.kind == :node}
-              class="text-ink-subtle block max-w-72 truncate"
-              title={row.description}
-            >
-              {row.description || "Official description unavailable"}
-            </span>
-          </:col>
-          <:col :let={row} label="Rate" align="right">
-            <span :if={row.kind == :node} class="text-ink-subtle">
-              {Helpers.percent(row.rate)}
-            </span>
-          </:col>
-          <:col :let={row} label="Invoices" align="right">
-            <span :if={row.kind == :node} class="text-ink-subtle">{row.count}</span>
-          </:col>
-          <:col :let={row} label="Taxable" align="right">
-            <.amount_cell row={row} value={row[:taxable]} />
-          </:col>
-          <:col :let={row} label="Proposed GSTR-1" align="right">
+          <:col :let={row} label="Output tax" align="right">
             <.amount_cell row={row} value={row[:tax]} />
           </:col>
         </.data_table>

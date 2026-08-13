@@ -49,7 +49,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
 
     refute has_element?(view, "#month-door-sign-3b")
     assert has_element?(view, "#month-exit-gstr3b-blocked")
-    assert has_element?(view, "#month-exit-gstr3b h3", "GSTR-3B sign-off")
+    assert has_element?(view, "#month-exit-gstr3b h3", "Sign-off")
     assert has_element?(view, "#gstr3b-blocker-no-sales")
 
     {:ok, sales} =
@@ -96,8 +96,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
     assert has_element?(view, "#month-register #month-3b #gst-3b-panel")
 
     html = render(view)
-    assert index_of(html, "gst-register") < index_of(html, "month-3b")
     assert index_of(html, "month-3b") < index_of(html, "month-exit-gstr3b")
+    assert index_of(html, "month-exit-gstr3b") < index_of(html, "gst-register")
 
     view |> element("#gstr1-mark-filed") |> render_submit(%{"arn" => "R1-ARN"})
 

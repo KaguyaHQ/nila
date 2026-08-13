@@ -7,7 +7,7 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
 
   test "offers the B2B Winman download before approval" do
     assigns = %{
-      sales_month: %{client_id: Ecto.UUID.generate(), period: "2026-07"},
+      sales_month: %{client_id: Ecto.UUID.generate(), period: "2026-07", filed_at: nil},
       r1_signoff: nil,
       open_issue_count: 2,
       reviewable: false,
@@ -17,6 +17,7 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
       derived: nil
     }
 
+    assigns = Map.put(assigns, :readiness, Filing.gstr1_readiness(assigns))
     html = render_component(&Filing.gstr1_actions/1, assigns)
 
     export = html |> LazyHTML.from_fragment() |> LazyHTML.query("#gstr1-winman-b2b-export")
@@ -28,6 +29,40 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
              "/gstr1/#{assigns.sales_month.client_id}/2026-07/winman-b2b.xlsm"
            ]
 
-    assert LazyHTML.text(export) =~ "Only the B2B tab is populated"
+    assert LazyHTML.text(export) =~ "Filing artifact"
+    assert LazyHTML.text(export) =~ "Winman import · B2B sheet"
+    assert LazyHTML.text(export) =~ "Only the B2B sheet is populated"
+  end
+
+  test "readiness keeps unresolved intake provisional after issue checks clear" do
+    readiness =
+      Filing.gstr1_readiness(%{
+        sales_month: %{filed_at: nil},
+        r1_signoff: nil,
+        open_issue_count: 0,
+        reviewable: true,
+        sales_intake_open: true,
+        can_sign_off: true
+      })
+
+    assert readiness.state == :provisional
+    assert readiness.status =~ "unresolved sales packet"
+    refute readiness.status =~ "Ready for approval"
+  end
+
+  test "readiness separates complete checks from the user's permission" do
+    common = %{
+      sales_month: %{filed_at: nil},
+      r1_signoff: nil,
+      open_issue_count: 0,
+      reviewable: true,
+      sales_intake_open: false
+    }
+
+    assert Filing.gstr1_readiness(Map.put(common, :can_sign_off, true)).state == :ready
+
+    awaiting = Filing.gstr1_readiness(Map.put(common, :can_sign_off, false))
+    assert awaiting.state == :awaiting_senior
+    assert awaiting.status == "Draft checks complete — awaiting a senior"
   end
 end
