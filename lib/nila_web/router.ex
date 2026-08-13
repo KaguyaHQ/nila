@@ -134,6 +134,7 @@ defmodule NilaWeb.Router do
     get "/gst/:client_id/:period/evidence/:basename", GstEvidenceController, :show
     get "/gst/:client_id/:period/original/:dump_id/:index", GstEvidenceController, :original
     get "/gstr1/:client_id/:period/return.json", Gstr1Controller, :return_json
+    get "/gstr1/:client_id/:period/winman-b2b.xlsm", Gstr1Controller, :winman_b2b
     get "/gstr1/:client_id/:period/evidence/:basename", Gstr1Controller, :evidence
 
     get "/settings", SettingsController, :index

@@ -22,6 +22,20 @@ defmodule Nila.Gst.Sales.Resolutions do
   alias Nila.Gst.Sales.{Gstr1, Month, Resolution, Workings}
   alias Nila.Repo
 
+  @doc "The frozen approved projection when signed, otherwise the current effective workings."
+  def effective_workings(%Month{} = month) do
+    case Signoffs.latest_gstr1_signoff(month.id) do
+      {:ok, signoff} ->
+        %{
+          derived: signoff.snapshot["derived"],
+          invoices: signoff.snapshot["invoices"] || []
+        }
+
+      {:error, :not_found} ->
+        workings(month)
+    end
+  end
+
   @doc "Resolutions for a sales month, oldest first (append-only replay order)."
   def list(sales_month_id) do
     Repo.all(

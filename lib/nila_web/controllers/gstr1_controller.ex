@@ -7,7 +7,8 @@ defmodule NilaWeb.Gstr1Controller do
   """
   use NilaWeb, :controller
 
-  alias Nila.Gst.Filing.Signoffs
+  alias Nila.Clients
+  alias Nila.Gst.Filing.WinmanGstr1
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
 
@@ -16,7 +17,7 @@ defmodule NilaWeb.Gstr1Controller do
 
     case SalesMonths.get_by_period(org_id, client_id, period) do
       {:ok, sales_month} ->
-        derived = effective_return(sales_month)
+        derived = SalesResolutions.effective_workings(sales_month).derived
         filename = "gstr1_#{derived["gstin"]}_#{period}.json"
 
         conn
@@ -25,6 +26,33 @@ defmodule NilaWeb.Gstr1Controller do
         |> send_resp(200, Jason.encode!(derived))
 
       {:error, _} ->
+        conn
+        |> put_status(:not_found)
+        |> text("Not found")
+    end
+  end
+
+  def winman_b2b(conn, %{"client_id" => client_id, "period" => period}) do
+    org_id = conn.assigns.current_scope.current_org.id
+
+    with {:ok, sales_month} <- SalesMonths.get_by_period(org_id, client_id, period),
+         {:ok, client} <- Clients.get_client(org_id, client_id),
+         {:ok, workbook} <-
+           WinmanGstr1.build(SalesResolutions.effective_workings(sales_month), client, period) do
+      filename = "gstr1_#{client.gstin || client.id}_#{period}_winman_b2b.xlsm"
+
+      conn
+      |> put_resp_content_type("application/vnd.ms-excel.sheet.macroEnabled.12", nil)
+      |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
+      |> send_resp(200, workbook)
+    else
+      {:error, reason}
+      when reason in [:invalid_period, :unsupported_period, :invalid_b2b_data, :too_many_rows] ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> text(export_error(reason))
+
+      {:error, _reason} ->
         conn
         |> put_status(:not_found)
         |> text("Not found")
@@ -48,14 +76,10 @@ defmodule NilaWeb.Gstr1Controller do
     end
   end
 
-  # A signed month downloads the frozen return from the signature's snapshot
-  # — the file an auditor uploads must be the numbers the senior approved.
-  defp effective_return(sales_month) do
-    case Signoffs.latest_gstr1_signoff(sales_month.id) do
-      {:ok, signoff} -> signoff.snapshot["derived"]
-      {:error, :not_found} -> SalesResolutions.workings(sales_month).derived
-    end
-  end
+  defp export_error(:invalid_period), do: "Invalid filing period"
+  defp export_error(:unsupported_period), do: "Winman export currently supports FY 2026-27"
+  defp export_error(:invalid_b2b_data), do: "B2B data contains fields Winman cannot import"
+  defp export_error(:too_many_rows), do: "Winman B2B export supports at most 995 rows"
 
   defp content_type(basename) do
     case Path.extname(basename) do

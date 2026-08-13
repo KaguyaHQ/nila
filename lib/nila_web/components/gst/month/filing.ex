@@ -3,7 +3,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
   @moduledoc "Audited return actions rendered directly after their evidence."
 
-  alias Nila.Gst.Filing.{Gstr3b, ItcPosition}
+  alias Nila.Gst.Filing.{Gstr3b, ItcPosition, WinmanGstr1}
   alias Nila.Gst.Sales.Values
   alias NilaWeb.Components.Gst.Month.Helpers
 
@@ -24,6 +24,24 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       id="month-exit-gstr1"
       class="border-base-300 pt-block scroll-mt-28 border-t"
     >
+      <div
+        :if={WinmanGstr1.supported_period?(@sales_month.period)}
+        id="gstr1-winman-b2b-export"
+        class="space-y-related"
+      >
+        <p class="text-ink-subtle text-label font-semibold uppercase">Winman import</p>
+        <.button
+          id="gstr1-download-winman-b2b"
+          href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/winman-b2b.xlsm"}
+          download
+          variant="outline"
+          size="xs"
+        >
+          Download Winman B2B
+        </.button>
+        <p class="text-ink-muted text-meta">Only the B2B tab is populated in this first version.</p>
+      </div>
+
       <div
         :if={is_nil(@r1_signoff) and @reviewable and not @sales_intake_open}
         class="space-y-related"
@@ -342,7 +360,8 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   end
 
   defp gstr1_actionable?(assigns) do
-    not is_nil(assigns.r1_signoff) or assigns.reviewable
+    not is_nil(assigns.r1_signoff) or assigns.reviewable or
+      WinmanGstr1.supported_period?(assigns.sales_month.period)
   end
 
   defp approval_label("GSTR-1"), do: "Approved"
