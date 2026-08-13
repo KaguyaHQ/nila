@@ -47,27 +47,15 @@ defmodule Nila.Gst.Filing.History do
   end
 
   defp cell(months) do
-    purchase = months[:purchase]
-    sales = months[:sales]
-    r1_filed = sales != nil and sales.filed_at != nil
-    gstr3b_filed = purchase != nil and purchase.filed_at != nil
-
     %{
-      state: cell_state(purchase, sales, r1_filed, gstr3b_filed),
-      r1_filed: r1_filed,
-      gstr3b_filed: gstr3b_filed,
-      r1_arn: sales && sales.filing_arn,
-      gstr3b_arn: purchase && purchase.filing_arn
+      gstr1: filing_state(months[:sales]),
+      gstr3b: filing_state(months[:purchase])
     }
   end
 
-  defp cell_state(purchase, sales, r1_filed, gstr3b_filed) do
-    cond do
-      purchase != nil and sales != nil and r1_filed and gstr3b_filed -> :filed
-      purchase != nil and sales != nil and (r1_filed or gstr3b_filed) -> :partial
-      purchase == nil and r1_filed -> :filed
-      sales == nil and gstr3b_filed -> :filed
-      true -> :open
-    end
-  end
+  defp filing_state(nil), do: :absent
+  defp filing_state(%{filed_at: nil}), do: :not_filed
+
+  defp filing_state(month),
+    do: {:filed, month.filed_at, month.filing_arn}
 end

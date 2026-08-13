@@ -13,11 +13,8 @@ defmodule NilaWeb.Gst.RegisterLive do
      |> assign(:grid, History.grid(org_id))}
   end
 
-  defp cell_title(%{state: :filed} = cell) do
-    [
-      cell.r1_arn && "GSTR-1 ARN: #{cell.r1_arn}",
-      cell.gstr3b_arn && "GSTR-3B ARN: #{cell.gstr3b_arn}"
-    ]
+  defp cell_title(cell) do
+    [filing_arn("GSTR-1", cell.gstr1), filing_arn("GSTR-3B", cell.gstr3b)]
     |> Enum.reject(&is_nil/1)
     |> case do
       [] -> nil
@@ -25,7 +22,46 @@ defmodule NilaWeb.Gst.RegisterLive do
     end
   end
 
-  defp cell_title(_cell), do: nil
+  defp filing_arn(return, {:filed, _filed_at, arn}) when is_binary(arn),
+    do: "#{return} ARN: #{arn}"
+
+  defp filing_arn(_return, _state), do: nil
+
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :return, :string, required: true
+  attr :state, :any, required: true
+
+  defp filing_line(assigns) do
+    ~H"""
+    <div id={@id} class="flex min-h-5 items-center gap-2 text-left">
+      <span class="sr-only">{filing_description(@return, @state)}</span>
+      <span aria-hidden="true" class="contents">
+        <span class="text-ink-subtle w-6 shrink-0 font-semibold">{@label}</span>
+        <%= case @state do %>
+          <% :absent -> %>
+            <span class="text-ink-faint">—</span>
+          <% :not_filed -> %>
+            <span class="text-ink-muted">Not filed</span>
+          <% {:filed, filed_at, _arn} -> %>
+            <span class="text-base-content flex items-center gap-1 font-medium">
+              <.icon name="hero-check-mini" class="text-success size-3.5" />
+              <span>{Calendar.strftime(filed_at, "%d %b")}</span>
+            </span>
+        <% end %>
+      </span>
+    </div>
+    """
+  end
+
+  defp filing_description(return, :absent), do: "#{return} does not exist in Nila"
+  defp filing_description(return, :not_filed), do: "#{return} not filed"
+
+  defp filing_description(return, {:filed, filed_at, nil}),
+    do: "#{return} filed on #{Calendar.strftime(filed_at, "%d %B %Y")}"
+
+  defp filing_description(return, {:filed, filed_at, arn}),
+    do: "#{return} filed on #{Calendar.strftime(filed_at, "%d %B %Y")}, ARN #{arn}"
 
   @impl true
   def render(assigns) do
@@ -37,7 +73,7 @@ defmodule NilaWeb.Gst.RegisterLive do
     >
       <div id="register-page" class="space-y-section mx-auto max-w-6xl">
         <.page_header eyebrow="GST" title="GST months">
-          The firm's recent client-periods — open, partly filed, or filed.
+          Recent client periods and their GSTR-1 and GSTR-3B filing status.
         </.page_header>
 
         <.card :if={@grid.periods == []} id="register-empty" class="py-12 text-center">
@@ -106,16 +142,20 @@ defmodule NilaWeb.Gst.RegisterLive do
                       navigate={~p"/gst/#{row.client_id}/#{period}"}
                       id={"register-link-#{row.client_id}-#{period}"}
                       title={cell_title(cell)}
-                      class="hover:bg-base-200/70 flex min-h-14 items-center justify-center px-4 py-3 transition"
+                      class="hover:bg-base-200/70 text-ui flex min-h-14 flex-col justify-center px-4 py-3 transition"
                     >
-                      <.badge :if={cell.state == :filed} variant="success" class="gap-1">
-                        <.icon name="hero-check-mini" class="size-3.5" /> filed
-                      </.badge>
-                      <.badge :if={cell.state == :partial} variant="warning" class="gap-1">
-                        <span>{if cell.r1_filed, do: "R1", else: "3B"}</span>
-                        <.icon name="hero-check-mini" class="size-3.5" />
-                      </.badge>
-                      <.badge :if={cell.state == :open} variant="neutral">open</.badge>
+                      <.filing_line
+                        id={"register-r1-#{row.client_id}-#{period}"}
+                        label="R1"
+                        return="GSTR-1"
+                        state={cell.gstr1}
+                      />
+                      <.filing_line
+                        id={"register-3b-#{row.client_id}-#{period}"}
+                        label="3B"
+                        return="GSTR-3B"
+                        state={cell.gstr3b}
+                      />
                     </.link>
                   <% else %>
                     <span class="text-ink-faint">—</span>

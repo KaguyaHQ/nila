@@ -44,48 +44,60 @@ defmodule Nila.Gst.Filing.HistoryTest do
     month
   end
 
-  defp filed!(month, arn) do
+  defp filed!(month, arn, filed_at) do
     month
-    |> change(state: "filed", filed_at: ~U[2025-11-01 10:00:00.000000Z], filing_arn: arn)
+    |> change(state: "filed", filed_at: filed_at, filing_arn: arn)
     |> Repo.update!()
   end
 
-  test "merges both return sides, keeps the roster, and derives every cell state", %{org: org} do
+  test "returns independent filing facts for every sales and purchase combination", %{org: org} do
     zed = client!(org, "Zed Foods")
     alpha = client!(org, "alpha Works")
+    r1_date = ~U[2025-07-10 10:00:00.000000Z]
+    gstr3b_date = ~U[2025-07-18 10:00:00.000000Z]
 
-    purchase!(org, alpha, "2025-08") |> filed!("3B-08")
-    sales!(org, alpha, "2025-08") |> filed!("R1-08")
+    purchase!(org, alpha, "2025-12") |> filed!("3B-12", gstr3b_date)
+    sales!(org, alpha, "2025-12") |> filed!("R1-12", r1_date)
 
-    purchase!(org, alpha, "2025-07")
-    sales!(org, alpha, "2025-07") |> filed!("R1-07")
+    purchase!(org, alpha, "2025-11")
+    sales!(org, alpha, "2025-11") |> filed!("R1-11", r1_date)
 
-    sales!(org, alpha, "2025-06") |> filed!("R1-06")
-    purchase!(org, alpha, "2025-05") |> filed!("3B-05")
-    purchase!(org, alpha, "2025-04")
-    sales!(org, alpha, "2025-04")
+    purchase!(org, alpha, "2025-10") |> filed!("3B-10", gstr3b_date)
+    sales!(org, alpha, "2025-10")
 
-    assert %{periods: ["2025-08", "2025-07", "2025-06", "2025-05", "2025-04"], rows: rows} =
-             FilingRegister.grid(org.id)
+    purchase!(org, alpha, "2025-09")
+    sales!(org, alpha, "2025-09")
 
-    assert [alpha_row, zed_row] = rows
+    sales!(org, alpha, "2025-08") |> filed!("R1-08", r1_date)
+    sales!(org, alpha, "2025-07")
+    purchase!(org, alpha, "2025-06") |> filed!("3B-06", gstr3b_date)
+    purchase!(org, alpha, "2025-05")
+
+    assert %{periods: periods, rows: [alpha_row, zed_row]} = FilingRegister.grid(org.id)
+    assert periods == ~w(2025-12 2025-11 2025-10 2025-09 2025-08 2025-07 2025-06 2025-05)
     assert alpha_row.client_name == "alpha Works"
     assert zed_row == %{client_id: zed.id, client_name: "Zed Foods", cells: %{}}
 
-    assert alpha_row.cells["2025-08"] == %{
-             state: :filed,
-             r1_filed: true,
-             gstr3b_filed: true,
-             r1_arn: "R1-08",
-             gstr3b_arn: "3B-08"
+    assert alpha_row.cells["2025-12"] == %{
+             gstr1: {:filed, r1_date, "R1-12"},
+             gstr3b: {:filed, gstr3b_date, "3B-12"}
            }
 
-    assert alpha_row.cells["2025-07"].state == :partial
-    assert alpha_row.cells["2025-07"].r1_filed
-    refute alpha_row.cells["2025-07"].gstr3b_filed
-    assert alpha_row.cells["2025-06"].state == :filed
-    assert alpha_row.cells["2025-05"].state == :filed
-    assert alpha_row.cells["2025-04"].state == :open
+    assert alpha_row.cells["2025-11"] == %{
+             gstr1: {:filed, r1_date, "R1-11"},
+             gstr3b: :not_filed
+           }
+
+    assert alpha_row.cells["2025-10"] == %{
+             gstr1: :not_filed,
+             gstr3b: {:filed, gstr3b_date, "3B-10"}
+           }
+
+    assert alpha_row.cells["2025-09"] == %{gstr1: :not_filed, gstr3b: :not_filed}
+    assert alpha_row.cells["2025-08"] == %{gstr1: {:filed, r1_date, "R1-08"}, gstr3b: :absent}
+    assert alpha_row.cells["2025-07"] == %{gstr1: :not_filed, gstr3b: :absent}
+    assert alpha_row.cells["2025-06"] == %{gstr1: :absent, gstr3b: {:filed, gstr3b_date, "3B-06"}}
+    assert alpha_row.cells["2025-05"] == %{gstr1: :absent, gstr3b: :not_filed}
   end
 
   test "caps newest-first periods at twelve", %{org: org} do

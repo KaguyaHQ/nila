@@ -5,13 +5,14 @@ defmodule NilaWeb.Gst.RegisterLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
+  alias Nila.Gst.Filing.Signoff
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Repo
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
-    %{conn: log_in_user(conn, user), org: org}
+    %{conn: log_in_user(conn, user), org: org, user: user}
   end
 
   defp client!(org, name) do
@@ -43,10 +44,22 @@ defmodule NilaWeb.Gst.RegisterLiveTest do
     month
   end
 
-  defp filed!(month, arn) do
+  defp filed!(month, arn, filed_at \\ ~U[2025-07-10 10:00:00.000000Z]) do
     month
-    |> change(state: "filed", filed_at: ~U[2025-11-01 10:00:00.000000Z], filing_arn: arn)
+    |> change(state: "filed", filed_at: filed_at, filing_arn: arn)
     |> Repo.update!()
+  end
+
+  defp signed_gstr1!(month, user) do
+    %Signoff{org_id: month.org_id, sales_month_id: month.id, signed_by_id: user.id}
+    |> Signoff.changeset(%{artifact: "gstr1", snapshot: %{}})
+    |> Repo.insert!()
+  end
+
+  defp signed_gstr3b!(month, user) do
+    %Signoff{org_id: month.org_id, client_month_id: month.id, signed_by_id: user.id}
+    |> Signoff.changeset(%{artifact: "gstr3b", snapshot: %{}})
+    |> Repo.insert!()
   end
 
   test "mounts for a verified org user and renders the ordered rail", %{conn: conn} do
@@ -66,36 +79,73 @@ defmodule NilaWeb.Gst.RegisterLiveTest do
              live(Phoenix.ConnTest.build_conn(), ~p"/register")
   end
 
-  test "a filed month links to its workbench and exposes both ARNs", %{conn: conn, org: org} do
+  test "each populated cell renders the two return filing facts, dates, ARNs, and link", %{
+    conn: conn,
+    org: org
+  } do
     client = client!(org, "Breeze Tech")
-    purchase!(org, client, "2025-08") |> filed!("3B-ARN-08")
-    sales!(org, client, "2025-08") |> filed!("R1-ARN-08")
+    r1_date = ~U[2025-07-10 10:00:00.000000Z]
+    gstr3b_date = ~U[2025-07-18 10:00:00.000000Z]
+
+    purchase!(org, client, "2025-08") |> filed!("3B-ARN-08", gstr3b_date)
+    sales!(org, client, "2025-08") |> filed!("R1-ARN-08", r1_date)
+
+    purchase!(org, client, "2025-07")
+    sales!(org, client, "2025-07") |> filed!("R1-ARN-07", r1_date)
+
+    purchase!(org, client, "2025-06") |> filed!("3B-ARN-06", gstr3b_date)
+    sales!(org, client, "2025-06")
+
+    purchase!(org, client, "2025-05")
+    sales!(org, client, "2025-05")
+
+    sales!(org, client, "2025-04") |> filed!("R1-ARN-04", r1_date)
+    sales!(org, client, "2025-03")
+    purchase!(org, client, "2025-02") |> filed!("3B-ARN-02", gstr3b_date)
+    purchase!(org, client, "2025-01")
 
     {:ok, view, _html} = live(conn, ~p"/register")
-
-    link = "#register-link-#{client.id}-2025-08"
-    assert has_element?(view, link, "filed")
-    assert has_element?(view, ~s|#{link}[href="/gst/#{client.id}/2025-08"]|)
 
     assert has_element?(
              view,
-             ~s|#{link}[title="GSTR-1 ARN: R1-ARN-08 · GSTR-3B ARN: 3B-ARN-08"]|
+             ~s|#register-link-#{client.id}-2025-08[href="/gst/#{client.id}/2025-08"]|
            )
+
+    assert has_element?(
+             view,
+             ~s|#register-link-#{client.id}-2025-08[title="GSTR-1 ARN: R1-ARN-08 · GSTR-3B ARN: 3B-ARN-08"]|
+           )
+
+    assert has_element?(view, "#register-r1-#{client.id}-2025-08", "10 Jul")
+    assert has_element?(view, "#register-3b-#{client.id}-2025-08", "18 Jul")
+
+    assert has_element?(view, "#register-r1-#{client.id}-2025-07", "10 Jul")
+    assert has_element?(view, "#register-3b-#{client.id}-2025-07", "Not filed")
+    assert has_element?(view, "#register-r1-#{client.id}-2025-06", "Not filed")
+    assert has_element?(view, "#register-3b-#{client.id}-2025-06", "18 Jul")
+    assert has_element?(view, "#register-r1-#{client.id}-2025-05", "Not filed")
+    assert has_element?(view, "#register-3b-#{client.id}-2025-05", "Not filed")
+    assert has_element?(view, "#register-r1-#{client.id}-2025-04", "10 Jul")
+    assert has_element?(view, "#register-3b-#{client.id}-2025-04", "—")
+    assert has_element?(view, "#register-r1-#{client.id}-2025-03", "Not filed")
+    assert has_element?(view, "#register-3b-#{client.id}-2025-03", "—")
+    assert has_element?(view, "#register-r1-#{client.id}-2025-02", "—")
+    assert has_element?(view, "#register-3b-#{client.id}-2025-02", "18 Jul")
+    assert has_element?(view, "#register-r1-#{client.id}-2025-01", "—")
+    assert has_element?(view, "#register-3b-#{client.id}-2025-01", "Not filed")
   end
 
-  test "partial cells identify whether R1 or 3B was filed", %{conn: conn, org: org} do
+  test "signed but unfiled returns still say Not filed", %{conn: conn, org: org, user: user} do
     client = client!(org, "Breeze Tech")
-
-    purchase!(org, client, "2025-08")
-    sales!(org, client, "2025-08") |> filed!("R1-ARN")
-
-    purchase!(org, client, "2025-07") |> filed!("3B-ARN")
-    sales!(org, client, "2025-07")
+    sales = sales!(org, client, "2025-08")
+    purchase = purchase!(org, client, "2025-08")
+    signed_gstr1!(sales, user)
+    signed_gstr3b!(purchase, user)
 
     {:ok, view, _html} = live(conn, ~p"/register")
 
-    assert has_element?(view, "#register-cell-#{client.id}-2025-08 .badge-warning", "R1")
-    assert has_element?(view, "#register-cell-#{client.id}-2025-07 .badge-warning", "3B")
+    assert has_element?(view, "#register-r1-#{client.id}-2025-08", "Not filed")
+    assert has_element?(view, "#register-3b-#{client.id}-2025-08", "Not filed")
   end
 
   test "a client without months remains in the roster with an absent cell", %{
