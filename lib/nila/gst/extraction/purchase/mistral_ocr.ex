@@ -1,15 +1,10 @@
 defmodule Nila.Gst.Extraction.Purchase.MistralOCR do
   @behaviour Nila.Gst.Extraction.Purchase
 
-  # Two models read a packet now — the OCR model transcribes it, the text model
-  # segments and extracts — and the attempt row carries one name, so it carries
-  # both. See `Nila.Gst.Extraction.Pipeline`.
+  # Stage completion replaces these extractor defaults with the provider and
+  # model that actually handled transcription, discovery, or extraction.
   def provider, do: Nila.Gst.Extraction.Providers.Mistral.provider()
-
-  def model do
-    Nila.Gst.Extraction.Providers.Mistral.model() <>
-      "+" <> Nila.Gst.Extraction.Providers.MistralChat.model()
-  end
+  def model, do: Nila.Gst.Extraction.Providers.Mistral.model()
 
   @impl true
   def per_call?, do: true

@@ -6,8 +6,10 @@ that follows. See `lib/nila/gst/extraction/` for the code and `decisions.md` for
 system-level rationale._
 
 The extraction path turns a dumped PDF (a month of invoices, one or more per page)
-into structured invoice artifacts. Mistral OCR is the sole provider; the former
-LlamaExtract benchmark path was removed after Mistral proved materially cheaper.
+into structured invoice artifacts. Mistral remains the OCR provider; discovery
+and invoice structuring use a separately configurable OpenAI-compatible text
+provider. The former LlamaExtract benchmark path was removed after Mistral proved
+materially cheaper.
 
 ## TL;DR
 
@@ -244,7 +246,8 @@ or an image, is still one whole-document call — small packets are proven clean
 
 Segmenting fixed *which bills* come back. It did not fix *what numbers* come back
 for a bill. A separate failure lives in the second half of the pipeline — the
-text-in/JSON-out structuring call (`MistralChat`, `mistral-small-latest`) — and it
+text-in/JSON-out structuring call (`OpenAICompatibleChat`, then configured as
+`mistral-small-latest`) — and it
 is quieter than a dropped invoice, because the output is well-formed, plausible,
 and blocks a filing.
 

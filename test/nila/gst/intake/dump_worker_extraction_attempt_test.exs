@@ -173,7 +173,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
       |> Req.Test.json(transcription_response())
     end)
 
-    Req.Test.stub(Nila.Gst.Extraction.Providers.MistralChat, fn conn ->
+    Req.Test.stub(Nila.Gst.Extraction.Providers.OpenAICompatibleChat, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       request = Jason.decode!(body)
 
@@ -210,6 +210,14 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
 
     assert attempts |> Enum.map(& &1.request_metadata["stage"]) |> Enum.sort() ==
              ["discovery", "extraction", "transcription"]
+
+    attempts_by_stage = Map.new(attempts, &{&1.request_metadata["stage"], &1})
+    assert attempts_by_stage["transcription"].provider == "mistral"
+    assert attempts_by_stage["transcription"].model == "mistral-ocr-4-0"
+    assert attempts_by_stage["discovery"].provider == "mistral"
+    assert attempts_by_stage["discovery"].model == "mistral-small-latest"
+    assert attempts_by_stage["extraction"].provider == "mistral"
+    assert attempts_by_stage["extraction"].model == "mistral-small-latest"
 
     # The transcription is the text every later stage and every grounding check
     # ran against, so it is the one raw response kept whole.

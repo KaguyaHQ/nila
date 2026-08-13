@@ -33,6 +33,8 @@ defmodule Nila.Gst.Intake.ExtractionAttempt do
   def changeset(attempt, attrs) do
     attempt
     |> cast(attrs, [
+      :provider,
+      :model,
       :provider_request_id,
       :status,
       :http_status,

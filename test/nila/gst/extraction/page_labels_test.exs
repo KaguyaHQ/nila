@@ -2,7 +2,7 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabelsTest do
   use ExUnit.Case, async: true
 
   alias Nila.Gst.Extraction.Discovery.PageLabels
-  alias Nila.Gst.Extraction.Providers.MistralChat
+  alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.Transcription
 
   defp label(page, label, invoice_no \\ nil) do
@@ -105,7 +105,7 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabelsTest do
     test "shows the judged page in full with its neighbours for context only" do
       t = transcription(Map.new(1..6, fn n -> {n, "page #{n} body"} end))
 
-      Req.Test.expect(MistralChat, fn conn ->
+      Req.Test.expect(OpenAICompatibleChat, fn conn ->
         {:ok, body, conn} = Plug.Conn.read_body(conn)
         [_system, user] = Jason.decode!(body)["messages"]
 

@@ -18,10 +18,26 @@ defmodule Nila.Gst.Extraction.ProviderAdmissionTest do
     assert System.monotonic_time(:millisecond) - started >= 80
   end
 
+  test "holds requests above the provider concurrency limit" do
+    server =
+      start_supervised!(
+        {ProviderAdmission,
+         name: nil, tokens_per_minute: 100, requests_per_second: 1_000, max_concurrency: 1}
+      )
+
+    first = ProviderAdmission.acquire(10, server)
+    task = Task.async(fn -> ProviderAdmission.acquire(10, server) end)
+    refute Task.yield(task, 30)
+
+    ProviderAdmission.reconcile(first, 10, server)
+    assert is_reference(Task.await(task, 500))
+  end
+
   test "reconciled usage holds later requests until the token window expires" do
     server =
       start_supervised!(
-        {ProviderAdmission, name: nil, tokens_per_minute: 10, requests_per_second: 1_000}
+        {ProviderAdmission,
+         name: nil, tokens_per_minute: 10, requests_per_second: 1_000, max_concurrency: 10}
       )
 
     reservation = ProviderAdmission.acquire(5, server)

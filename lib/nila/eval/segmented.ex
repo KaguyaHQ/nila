@@ -28,7 +28,7 @@ defmodule Nila.Eval.Segmented do
   alias Nila.EvalCorpus
   alias Nila.Gst.Extraction.Discovery
   alias Nila.Gst.Extraction.Discovery.PageLabels
-  alias Nila.Gst.Extraction.Providers.MistralChat
+  alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.Segmented
   alias Nila.Gst.Extraction.Transcription
 
@@ -124,7 +124,12 @@ defmodule Nila.Eval.Segmented do
 
               File.write!(
                 Path.join([dir, "discovery", "#{name}.meta.json"]),
-                Jason.encode!(%{"page" => entry.page, "status" => response.status})
+                Jason.encode!(%{
+                  "page" => entry.page,
+                  "status" => response.status,
+                  "response_format" =>
+                    to_string(response.response_format || OpenAICompatibleChat.response_format())
+                })
               )
 
             %{error: reason} ->
@@ -137,6 +142,15 @@ defmodule Nila.Eval.Segmented do
 
       :whole_dump ->
         File.write!(Path.join([dir, "discovery", "dump.json"]), responses.body)
+
+        File.write!(
+          Path.join([dir, "discovery", "dump.meta.json"]),
+          Jason.encode!(%{
+            "status" => responses.status,
+            "response_format" =>
+              to_string(responses.response_format || OpenAICompatibleChat.response_format())
+          })
+        )
     end
 
     File.write!(
@@ -170,12 +184,29 @@ defmodule Nila.Eval.Segmented do
     |> Enum.map(fn meta_path ->
       meta = read_json!(meta_path)
       body = meta_path |> String.replace_suffix(".meta.json", ".json") |> File.read!()
-      %{page: meta["page"], response: %{status: meta["status"] || 200, headers: %{}, body: body}}
+
+      %{
+        page: meta["page"],
+        response: %{
+          status: meta["status"] || 200,
+          headers: %{},
+          body: body,
+          response_format: response_format(meta)
+        }
+      }
     end)
   end
 
   defp cached_discovery(dir, :whole_dump) do
-    %{status: 200, headers: %{}, body: File.read!(Path.join(dir, "discovery/dump.json"))}
+    meta_path = Path.join(dir, "discovery/dump.meta.json")
+    meta = if File.exists?(meta_path), do: read_json!(meta_path), else: %{}
+
+    %{
+      status: meta["status"] || 200,
+      headers: %{},
+      body: File.read!(Path.join(dir, "discovery/dump.json")),
+      response_format: response_format(meta)
+    }
   end
 
   # ---- extraction ----
@@ -223,6 +254,8 @@ defmodule Nila.Eval.Segmented do
           "chunk" => chunk,
           "chunk_pages" => pages,
           "status" => response.status,
+          "response_format" =>
+            to_string(response.response_format || OpenAICompatibleChat.response_format()),
           "segment" => encode_segment(segment)
         })
       )
@@ -318,8 +351,8 @@ defmodule Nila.Eval.Segmented do
   shape, and both model/prompt/schema pairs that interpret it.
   """
   def extract_id(doc, kind, shape, transcription_dir) do
-    discovery = discovery_fingerprint(shape)
-    extraction = MistralChat.fingerprint(Segmented.prompt(kind), Segmented.schema(kind))
+    discovery = discovery_fingerprint(shape, kind)
+    extraction = OpenAICompatibleChat.fingerprint(Segmented.prompt(kind), Segmented.schema(kind))
 
     :crypto.hash(
       :sha256,
@@ -329,10 +362,18 @@ defmodule Nila.Eval.Segmented do
           Path.basename(Path.dirname(transcription_dir)),
           "segmented",
           to_string(shape),
+          discovery.provider,
+          discovery.base_url,
           discovery.model,
+          discovery.response_format,
+          discovery.prompt_version,
           discovery.prompt,
           discovery.schema,
+          extraction.provider,
+          extraction.base_url,
           extraction.model,
+          extraction.response_format,
+          extraction.prompt_version,
           extraction.prompt,
           extraction.schema
         ],
@@ -343,11 +384,11 @@ defmodule Nila.Eval.Segmented do
     |> String.slice(0, 16)
   end
 
-  defp discovery_fingerprint(:per_page),
-    do: MistralChat.fingerprint(PageLabels.prompt(), PageLabels.schema())
+  defp discovery_fingerprint(:per_page, kind),
+    do: OpenAICompatibleChat.fingerprint(PageLabels.prompt(kind), PageLabels.schema())
 
-  defp discovery_fingerprint(:whole_dump),
-    do: MistralChat.fingerprint(Discovery.prompt(), Discovery.schema())
+  defp discovery_fingerprint(:whole_dump, _kind),
+    do: OpenAICompatibleChat.fingerprint(Discovery.prompt(), Discovery.schema())
 
   defp load_chunk(meta_path) do
     meta = read_json!(meta_path)
@@ -358,7 +399,12 @@ defmodule Nila.Eval.Segmented do
       chunk: meta["chunk"],
       chunk_pages: meta["chunk_pages"],
       segment: decode_segment(meta["segment"]),
-      response: %{status: meta["status"] || 200, headers: %{}, body: body}
+      response: %{
+        status: meta["status"] || 200,
+        headers: %{},
+        body: body,
+        response_format: response_format(meta)
+      }
     }
   end
 
@@ -404,11 +450,11 @@ defmodule Nila.Eval.Segmented do
           "kind" => to_string(kind),
           "pipeline" => "segmented",
           "discovery_shape" => to_string(shape),
-          "provider" => MistralChat.provider(),
-          "model" => MistralChat.model(),
+          "provider" => OpenAICompatibleChat.provider(),
+          "model" => OpenAICompatibleChat.model(),
           "fingerprint" =>
-            MistralChat.fingerprint(Segmented.prompt(kind), Segmented.schema(kind)),
-          "discovery_fingerprint" => discovery_fingerprint(shape),
+            OpenAICompatibleChat.fingerprint(Segmented.prompt(kind), Segmented.schema(kind)),
+          "discovery_fingerprint" => discovery_fingerprint(shape, kind),
           "transcription_attempt" => transcription_dir,
           "client_gstin" => client_gstin,
           "page_count" => Transcription.page_count(transcription),
@@ -422,6 +468,13 @@ defmodule Nila.Eval.Segmented do
         pretty: true
       )
     )
+  end
+
+  defp response_format(meta) do
+    case meta["response_format"] do
+      "json_object" -> :json_object
+      _strict_or_legacy -> :json_schema
+    end
   end
 
   defp read_json!(path), do: path |> File.read!() |> Jason.decode!()

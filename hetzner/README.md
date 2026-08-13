@@ -248,7 +248,7 @@ The app refuses to boot, or compose errors, without these:
 | `SECRET_KEY_BASE` | Signs and encrypts cookies and sessions. Generate with `mix phx.gen.secret`. |
 | `DATABASE_URL` | Ecto connection string. Must use the same password as `POSTGRES_PASSWORD` and point at host `nila-postgres`. |
 | `ASSISTANT_API_KEY` | API key for the OpenAI-compatible assistant. `runtime.exs` raises in prod if missing. |
-| `MISTRAL_API_KEY` | Required key for the sole GST extraction provider. |
+| `MISTRAL_API_KEY` | Required Mistral OCR key. Also supplies text extraction unless `GST_TEXT_API_KEY` is set. |
 | `R2_ENDPOINT` / `R2_BUCKET` | Private Cloudflare R2 account endpoint and bucket name. |
 | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Bucket-scoped R2 Object Read & Write credentials. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Postgres container credentials, interpolated by Compose. |
@@ -270,8 +270,14 @@ Unless noted, absence disables the feature or leaves the compiled default:
 | `ASSISTANT_MODEL` | Defaults to `step-3.7-flash`. |
 | `ASSISTANT_RECEIVE_TIMEOUT` | Upstream read timeout in ms (default `60000`). |
 | `ASSISTANT_EXTRA_HEADERS` | JSON object merged into every assistant request for gateway routing. Invalid JSON fails boot. |
-| `GST_TEXT_MODEL` | Overrides the segmented pipeline's text model; default is `mistral-small-latest`. |
-| `MISTRAL_BASE_URL` | Mistral endpoint override. The OCR model is pinned in code to `mistral-ocr-4-0`. |
+| `GST_TEXT_PROVIDER` | Audit identity for the OpenAI-compatible text provider; default `mistral`. Use `tencent-tokenhub` for Hy3. |
+| `GST_TEXT_BASE_URL` | Text provider API root. For Mistral it follows `MISTRAL_BASE_URL` plus `/v1`; non-Mistral providers must set it. TokenHub: `https://tokenhub.tencentmaas.com/v1`. |
+| `GST_TEXT_API_KEY` | Text provider key; defaults to `MISTRAL_API_KEY`. Set it whenever the selected text provider uses a different credential. |
+| `GST_TEXT_MODEL` | Text model; default `mistral-small-latest`. TokenHub Hy3: `hy3`. |
+| `GST_TEXT_RESPONSE_FORMAT` | `json_schema` by default. Use `json_object` for DeepSeek and Z.ai; Nila then embeds the schema and validates every response locally. |
+| `GST_TEXT_HTTP_PROTOCOL` | Defaults to `http1` for `tencent-tokenhub`, otherwise `http2`. Override only when the selected endpoint negotiates differently. |
+| `GST_TEXT_TOKENS_PER_MINUTE` / `GST_TEXT_REQUESTS_PER_SECOND` / `GST_TEXT_MAX_CONCURRENCY` | Admission limits for the selected text provider/model; defaults `100000` / `1.67` / `100`. GLM-4.7-FlashX requires max concurrency `3`. |
+| `MISTRAL_BASE_URL` | Mistral OCR endpoint override. The OCR model is pinned in code to `mistral-ocr-4-0`. |
 | `RESEND_API_KEY` | Switches `Nila.Mailer` to Resend and configures inbound Resend API access. **Unset means invite emails are silently dropped in prod**, so this is effectively required to onboard teammates. |
 | `MAIL_FROM` / `MAIL_FROM_NAME` | Sender for outgoing mail (default `Nila <onboarding@resend.dev>`). `nila.tax` is verified; production should use `MAIL_FROM=noreply@nila.tax`. Read only when `RESEND_API_KEY` is set. |
 | `INBOUND_EMAIL_DOMAIN` / `INBOUND_EMAIL_SECRET` | Overrides the compiled inbound-address domain and signing secret. Runtime requires the secret when the domain override is set. If both are omitted, the current compiled development defaults remain active—do not mistake omission for disabling inbound. |

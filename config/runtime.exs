@@ -70,9 +70,9 @@ if config_env() in [:prod, :dev] do
   end
 end
 
-# Mistral is the sole GST extraction provider. Development remains optional so
-# the app can boot without making OCR calls; production refuses to boot without
-# the key rather than silently selecting or falling back to another provider.
+# Mistral owns OCR; an independently configured OpenAI-compatible provider owns
+# discovery and structuring. Development remains optional, while production
+# refuses to boot without the OCR and text credentials.
 if config_env() in [:prod, :dev] do
   mistral_key = env!("MISTRAL_API_KEY", :string, nil)
 
@@ -84,20 +84,62 @@ if config_env() in [:prod, :dev] do
     config :nila, Nila.Gst.Extraction.Providers.Mistral, api_key: mistral_key
   end
 
-  if base_url = env!("MISTRAL_BASE_URL", :string, nil) do
-    config :nila, Nila.Gst.Extraction.Providers.Mistral, base_url: base_url
+  mistral_base_url = env!("MISTRAL_BASE_URL", :string, "https://api.mistral.ai")
+  config :nila, Nila.Gst.Extraction.Providers.Mistral, base_url: mistral_base_url
+
+  text_provider = env!("GST_TEXT_PROVIDER", :string, "mistral")
+  text_key = env!("GST_TEXT_API_KEY", :string, nil)
+  text_key = if text_provider == "mistral", do: text_key || mistral_key, else: text_key
+
+  if config_env() == :prod and is_nil(text_key) do
+    raise "GST_TEXT_API_KEY is required when GST_TEXT_PROVIDER is not mistral"
   end
 
-  # The segmented pipeline's text calls — segmentation and per-invoice reading —
-  # share the Mistral endpoint and can audition a cheaper text model independently
-  # of the pinned OCR model.
-  if model = env!("GST_TEXT_MODEL", :string, nil) do
-    config :nila, Nila.Gst.Extraction.Providers.MistralChat, model: model
+  text_response_format =
+    case env!("GST_TEXT_RESPONSE_FORMAT", :string, "json_schema") do
+      "json_schema" ->
+        :json_schema
+
+      "json_object" ->
+        :json_object
+
+      format ->
+        raise "GST_TEXT_RESPONSE_FORMAT must be json_schema or json_object, got: #{inspect(format)}"
+    end
+
+  default_text_base_url =
+    if text_provider == "mistral",
+      do: String.trim_trailing(mistral_base_url, "/") <> "/v1",
+      else: nil
+
+  text_base_url = env!("GST_TEXT_BASE_URL", :string, default_text_base_url)
+
+  if config_env() == :prod and is_nil(text_base_url) do
+    raise "GST_TEXT_BASE_URL is required when GST_TEXT_PROVIDER is not mistral"
   end
+
+  config :nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChat,
+    provider: text_provider,
+    base_url: text_base_url,
+    api_key: text_key,
+    model: env!("GST_TEXT_MODEL", :string, "mistral-small-latest"),
+    response_format: text_response_format
+
+  default_text_protocol = if text_provider == "tencent-tokenhub", do: "http1", else: "http2"
+
+  text_protocol =
+    case env!("GST_TEXT_HTTP_PROTOCOL", :string, default_text_protocol) do
+      "http1" -> :http1
+      "http2" -> :http2
+      protocol -> raise "GST_TEXT_HTTP_PROTOCOL must be http1 or http2, got: #{inspect(protocol)}"
+    end
+
+  config :nila, Nila.Gst.Extraction.OpenAICompatibleChatFinch, protocol: text_protocol
 
   config :nila, Nila.Gst.Extraction.ProviderAdmission,
     tokens_per_minute: env!("GST_TEXT_TOKENS_PER_MINUTE", :integer, 100_000),
-    requests_per_second: env!("GST_TEXT_REQUESTS_PER_SECOND", :float, 1.67)
+    requests_per_second: env!("GST_TEXT_REQUESTS_PER_SECOND", :float, 1.67),
+    max_concurrency: env!("GST_TEXT_MAX_CONCURRENCY", :integer, 100)
 end
 
 # WhatsApp is a production intake boundary, so all webhook and outbound reply

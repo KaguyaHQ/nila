@@ -277,7 +277,7 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
   for transcription alone therefore has no equivalent output-size ceiling,
   and it produces the artifact every later stage argues over: **one canonical
   text per physical page**. The interpretation half moves to
-  `Nila.Gst.Extraction.Providers.MistralChat`, text in and JSON out, where it can
+  `Nila.Gst.Extraction.Providers.OpenAICompatibleChat`, text in and JSON out, where it can
   be re-run offline against these bytes and scoped to a single invoice.
   """
   def transcription_payload(bytes, content_type, pages \\ nil, document \\ nil) do

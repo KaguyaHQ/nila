@@ -31,7 +31,7 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
   """
 
   alias Nila.Gst.Extraction.Discovery.Features
-  alias Nila.Gst.Extraction.Providers.MistralChat
+  alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.Transcription
 
   @neighbours 1
@@ -200,7 +200,7 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
       }
     ]
 
-    MistralChat.request_raw(messages, "nila_page_label", schema(), opts)
+    OpenAICompatibleChat.request_raw(messages, "nila_page_label", schema(), opts)
   end
 
   @doc "Decodes labelled pages into `{:ok, [%{page:, label:, invoice_no:}]}`."
@@ -222,7 +222,7 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
     do: {:error, {:page_label_failed, page, reason}}
 
   defp map_response(%{page: page, response: response}) do
-    case MistralChat.decode(response) do
+    case OpenAICompatibleChat.decode(response, schema()) do
       {:ok, content, usage} ->
         {:ok,
          %{

@@ -8,8 +8,9 @@ defmodule Nila.Gst.Extraction.Purchase do
   flags) that `Nila.Gst.Purchase.Books` assembles into invoices.
 
   The implementation is selected via `Application.get_env(:nila,
-  :purchase_extractor, Nila.Gst.Extraction.Purchase.MistralOCR)`. Mistral OCR is
-  the sole operational provider; tests override it with a test-only extractor.
+  :purchase_extractor, Nila.Gst.Extraction.Purchase.MistralOCR)`. Mistral handles
+  OCR; an independently configured OpenAI-compatible provider handles text
+  discovery and extraction. Tests may override the full pipeline.
 
   A successful `extract/2` returns:
 

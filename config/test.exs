@@ -87,17 +87,24 @@ config :nila, Nila.Gst.Extraction.Providers.Mistral,
 
 # The segmented pipeline's text calls get their own stub, so an OCR expectation
 # and a chat expectation can never satisfy each other.
-config :nila, Nila.Gst.Extraction.Providers.MistralChat,
+config :nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChat,
+  provider: "mistral",
+  base_url: "https://api.mistral.ai/v1",
   api_key: "test-mistral-key",
-  req_options: [plug: {Req.Test, Nila.Gst.Extraction.Providers.MistralChat}]
+  model: "mistral-small-latest",
+  response_format: :json_schema,
+  req_options: [plug: {Req.Test, Nila.Gst.Extraction.Providers.OpenAICompatibleChat}]
 
 # Req.Test replaces the adapter, so an eager real H2 connection would only add
 # DNS/reconnect noise to the test application.
-config :nila, Nila.Gst.Extraction.MistralChatFinch, start: false
+config :nila, Nila.Gst.Extraction.OpenAICompatibleChatFinch,
+  start: false,
+  protocol: :http2
 
 config :nila, Nila.Gst.Extraction.ProviderAdmission,
   tokens_per_minute: 100_000_000,
-  requests_per_second: 100_000
+  requests_per_second: 100_000,
+  max_concurrency: 100
 
 config :nila, Nila.Assistant,
   http_client: Nila.Assistant.HTTPClient.Stub,

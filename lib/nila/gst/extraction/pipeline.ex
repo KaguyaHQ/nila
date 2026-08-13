@@ -41,7 +41,7 @@ defmodule Nila.Gst.Extraction.Pipeline do
   alias Nila.Gst.Extraction.Discovery
   alias Nila.Gst.Extraction.Evidence
   alias Nila.Gst.Extraction.Providers.Mistral
-  alias Nila.Gst.Extraction.Providers.MistralChat
+  alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.Segmented
   alias Nila.Gst.Extraction.Transcription
 
@@ -268,7 +268,8 @@ defmodule Nila.Gst.Extraction.Pipeline do
           {:ok, Map.put(discovery, :audit, discovery_audit(discovery, page_count))}
 
         {:error, reason} ->
-          {:error, reason}
+          {:error, reason,
+           %{provider: OpenAICompatibleChat.provider(), model: OpenAICompatibleChat.model()}}
       end
     end)
   end
@@ -279,8 +280,8 @@ defmodule Nila.Gst.Extraction.Pipeline do
 
   defp discovery_audit(discovery, page_count) do
     %{
-      provider: MistralChat.provider(),
-      model: MistralChat.model(),
+      provider: OpenAICompatibleChat.provider(),
+      model: OpenAICompatibleChat.model(),
       source_page_count: page_count,
       usage: discovery.usage,
       # `:metadata` is merged into the attempt's `request_metadata` when it

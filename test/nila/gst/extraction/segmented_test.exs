@@ -1,7 +1,7 @@
 defmodule Nila.Gst.Extraction.SegmentedTest do
   use ExUnit.Case, async: true
 
-  alias Nila.Gst.Extraction.Providers.MistralChat
+  alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.Segmented
   alias Nila.Gst.Extraction.Transcription
 
@@ -43,7 +43,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
   test "one call carries exactly one invoice, and its pages are a fact not a guess" do
     t = transcription([{5, invoice_page(5)}, {6, "continued\nGrand total 1,180.00"}])
 
-    Req.Test.expect(MistralChat, fn conn ->
+    Req.Test.expect(OpenAICompatibleChat, fn conn ->
       assert conn.request_path == "/v1/chat/completions"
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       payload = Jason.decode!(body)
@@ -90,7 +90,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
 
     t = transcription([{1, text}])
 
-    Req.Test.expect(MistralChat, fn conn ->
+    Req.Test.expect(OpenAICompatibleChat, fn conn ->
       reply(conn, %{
         "invoice_number" => "INV-1",
         "line_items" => [
@@ -157,7 +157,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
 
     t = transcription([{1, text}])
 
-    Req.Test.expect(MistralChat, fn conn ->
+    Req.Test.expect(OpenAICompatibleChat, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       schema = Jason.decode!(body)["response_format"]["json_schema"]["schema"]
       properties = schema["properties"]
@@ -242,7 +242,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
 
     t = transcription([{1, text}])
 
-    Req.Test.expect(MistralChat, fn conn ->
+    Req.Test.expect(OpenAICompatibleChat, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       payload = Jason.decode!(body)
       properties = payload["response_format"]["json_schema"]["schema"]["properties"]
@@ -284,7 +284,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
   test "a fabricated total is caught before the artifact leaves the stage" do
     t = transcription([{1, invoice_page(1)}])
 
-    Req.Test.expect(MistralChat, fn conn ->
+    Req.Test.expect(OpenAICompatibleChat, fn conn ->
       reply(conn, %{
         "invoice_number" => "BRZ/26/01",
         "line_items" => [
@@ -326,7 +326,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
     # because the input is text and therefore measurable in advance.
     assert Segmented.row_limit() < 200
 
-    Req.Test.expect(MistralChat, 2, fn conn ->
+    Req.Test.expect(OpenAICompatibleChat, 2, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       [_system, user] = Jason.decode!(body)["messages"]
 
@@ -388,7 +388,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
   test "one failed segment prevents partial extraction from leaving the stage" do
     t = transcription([{1, invoice_page(1)}, {2, invoice_page(2)}])
 
-    Req.Test.stub(MistralChat, fn conn ->
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       content = Jason.decode!(body)["messages"] |> List.last() |> Map.fetch!("content")
 
@@ -419,7 +419,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
     test_pid = self()
     t = transcription(Enum.map(1..3, &{&1, invoice_page(&1)}))
 
-    Req.Test.stub(MistralChat, fn conn ->
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       content = Jason.decode!(body)["messages"] |> List.last() |> Map.fetch!("content")
 
@@ -438,7 +438,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
 
     task =
       Task.async(fn ->
-        Req.Test.allow(MistralChat, test_pid, self())
+        Req.Test.allow(OpenAICompatibleChat, test_pid, self())
 
         Segmented.extract(:purchase, t, Enum.map(1..3, &segment([&1])),
           on_segment: fn done, total -> send(test_pid, {:report, done, total}) end
@@ -461,7 +461,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
   test "the ledger reports a page no invoice claimed, and accounts for challans" do
     t = transcription([{1, invoice_page(1)}, {2, "DELIVERY CHALLAN"}, {3, "???"}])
 
-    Req.Test.expect(MistralChat, fn conn ->
+    Req.Test.expect(OpenAICompatibleChat, fn conn ->
       reply(conn, %{
         "invoice_number" => "BRZ/26/01",
         "line_items" => [%{"taxable_value" => 1_000.0}],

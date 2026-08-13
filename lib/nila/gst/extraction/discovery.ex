@@ -47,7 +47,7 @@ defmodule Nila.Gst.Extraction.Discovery do
 
   alias Nila.Gst.Extraction.Discovery.Features
   alias Nila.Gst.Extraction.Discovery.PageLabels
-  alias Nila.Gst.Extraction.Providers.MistralChat
+  alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.Segmented
   alias Nila.Gst.Extraction.Transcription
 
@@ -151,12 +151,12 @@ defmodule Nila.Gst.Extraction.Discovery do
       %{role: "user", content: prompt() <> "\n\n" <> pages_block(transcription)}
     ]
 
-    MistralChat.request_raw(messages, "nila_packet_segments", schema(), opts)
+    OpenAICompatibleChat.request_raw(messages, "nila_packet_segments", schema(), opts)
   end
 
   @doc "Decodes a whole-dump decider response and runs the guards over it."
   def map_response(%Transcription{} = transcription, response, opts \\ []) do
-    with {:ok, content, usage} <- MistralChat.decode(response) do
+    with {:ok, content, usage} <- OpenAICompatibleChat.decode(response, schema()) do
       segments = content["segments"] |> List.wrap() |> Enum.map(&normalize/1)
       {segments, violations} = guard(transcription, segments, opts)
       {:ok, %{segments: segments, violations: violations, usage: usage}}

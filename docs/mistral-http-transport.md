@@ -25,7 +25,7 @@ The short version is:
 - OCR is one sparse, large, paid request. It does not benefit materially from
   connection reuse. The clearest document transport is an explicit unpooled
   HTTP/1 request (`Hackney pool: false`) behind a narrow Req adapter.
-- Mistral chat is different: discovery makes up to four concurrent calls and
+- The OpenAI-compatible text path is different: discovery makes up to four concurrent calls and
   invoice extraction makes up to eight concurrent calls. Pure HTTP/2 is a good fit
   for that fan-out and has been tested successfully with Mistral.
 - `retry: false` prevents only Req-level replay. The pipeline and Oban can still
@@ -446,9 +446,11 @@ Why this is now preferred over `Connection: close`: `pool: false` states the
 required property at the client boundary. There is no pool from which an old
 document socket can be selected.
 
-### Mistral chat: dedicated pure HTTP/2 Finch
+### OpenAI-compatible text: dedicated Finch
 
-`MistralChatFinch` is an explicitly configured Mistral-origin pool with:
+`OpenAICompatibleChatFinch` configures the selected text-provider origin for one
+explicit pure protocol. Mistral and Z.ai use HTTP/2; Tencent TokenHub currently
+negotiates HTTP/1.1 and is configured with `GST_TEXT_HTTP_PROTOCOL=http1`:
 
 ```elixir
 protocols: [:http2]
@@ -562,9 +564,9 @@ URLs, or extracted invoice contents in transport telemetry.
 Current relevant code:
 
 - `lib/nila/gst/extraction/mistral_document_adapter.ex` — unpooled pure-H1 document adapter
-- `lib/nila/gst/extraction/mistral_chat_finch.ex` — pure-H2 chat pool
+- `lib/nila/gst/extraction/openai_compatible_chat_finch.ex` — text-provider pool
 - `lib/nila/gst/extraction/providers/mistral.ex` — OCR and Files API calls
-- `lib/nila/gst/extraction/providers/mistral_chat.ex` — concurrent text/JSON calls
+- `lib/nila/gst/extraction/providers/openai_compatible_chat.ex` — concurrent text/JSON calls
 - `lib/nila/gst/extraction/pipeline.ex` — OCR, internal transcription retry, discovery, extraction
 - `lib/nila/gst/extraction/discovery/page_labels.ex` — per-page concurrency (4)
 - `lib/nila/gst/extraction/segmented.ex` — per-segment concurrency (8)
@@ -589,9 +591,9 @@ Mistral document bytes
   → no Req replay
   → pipeline/Oban replay remains visible and may repeat cost
 
-Mistral chat over cached text
-  → dedicated pure HTTP/2 Finch
-  → multiplex the actual 4×/8× concurrency
+OpenAI-compatible text over cached OCR
+  → selected provider/model from runtime config
+  → explicit pure HTTP/2 or HTTP/1 from provider config
   → narrowly defined retry conditions
 
 all other integrations

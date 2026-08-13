@@ -12,7 +12,7 @@ defmodule Nila.Application do
         NilaWeb.Telemetry,
         Nila.Repo
       ] ++
-        mistral_chat_children() ++
+        text_chat_children() ++
         [
           {Oban, Application.fetch_env!(:nila, Oban)},
           {DNSCluster, query: Application.get_env(:nila, :dns_cluster_query) || :ignore},
@@ -37,16 +37,15 @@ defmodule Nila.Application do
     :ok
   end
 
-  defp mistral_chat_children do
-    config = Application.get_env(:nila, Nila.Gst.Extraction.MistralChatFinch, [])
-    documents = Application.get_env(:nila, Nila.Gst.Extraction.Providers.Mistral, [])
-    chat = Application.get_env(:nila, Nila.Gst.Extraction.Providers.MistralChat, [])
+  defp text_chat_children do
+    config = Application.get_env(:nila, Nila.Gst.Extraction.OpenAICompatibleChatFinch, [])
+    chat = Application.get_env(:nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChat, [])
 
-    if is_nil(chat[:api_key] || documents[:api_key]) do
+    if is_nil(chat[:api_key]) do
       []
     else
       [Nila.Gst.Extraction.ProviderAdmission] ++
-        if(config[:start] == false, do: [], else: [Nila.Gst.Extraction.MistralChatFinch])
+        if(config[:start] == false, do: [], else: [Nila.Gst.Extraction.OpenAICompatibleChatFinch])
     end
   end
 end

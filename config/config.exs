@@ -34,9 +34,19 @@ config :nila, Nila.Gst.Extraction.Providers.Mistral,
   base_url: "https://api.mistral.ai",
   receive_timeout: 300_000
 
+config :nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChat,
+  provider: "mistral",
+  base_url: "https://api.mistral.ai/v1",
+  model: "mistral-small-latest",
+  response_format: :json_schema,
+  receive_timeout: 300_000
+
+config :nila, Nila.Gst.Extraction.OpenAICompatibleChatFinch, protocol: :http2
+
 config :nila, Nila.Gst.Extraction.ProviderAdmission,
   tokens_per_minute: 100_000,
-  requests_per_second: 1.67
+  requests_per_second: 1.67,
+  max_concurrency: 100
 
 config :hammer,
   backend:

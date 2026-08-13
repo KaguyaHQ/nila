@@ -3,7 +3,7 @@ defmodule Nila.Gst.Extraction.PipelineTest do
 
   alias Nila.Gst.Extraction.Pipeline
   alias Nila.Gst.Extraction.Providers.Mistral
-  alias Nila.Gst.Extraction.Providers.MistralChat
+  alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.PdfFixtures
 
   defp ocr_response(pages) do
@@ -35,7 +35,7 @@ defmodule Nila.Gst.Extraction.PipelineTest do
   end
 
   defp stub_chat(label_fun, invoice_fun) do
-    Req.Test.stub(MistralChat, fn conn ->
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       request = Jason.decode!(body)
 
@@ -144,8 +144,7 @@ defmodule Nila.Gst.Extraction.PipelineTest do
       &invoice/2
     )
 
-    assert {:error,
-            {:page_label_failed, 2, {:mistral_chat_failed, 429, %{"error" => "slow down"}}}} =
+    assert {:error, {:page_label_failed, 2, {:text_chat_failed, 429, %{"error" => "slow down"}}}} =
              Pipeline.extract(:purchase, PdfFixtures.pdf(2),
                filename: "packet.pdf",
                max_retries: 0

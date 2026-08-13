@@ -23,7 +23,7 @@ defmodule Nila.Gst.Extraction.Segmented do
   alias Nila.Gst.Extraction.Discovery.Features
   alias Nila.Gst.Extraction.LineAmounts
   alias Nila.Gst.Extraction.Providers.Mistral
-  alias Nila.Gst.Extraction.Providers.MistralChat
+  alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.Transcription
   alias Nila.Gst.Extraction.Verify
   alias Nila.Gstin
@@ -173,8 +173,8 @@ defmodule Nila.Gst.Extraction.Segmented do
       |> Enum.sort_by(& &1["page"])
 
     audit = %{
-      provider: MistralChat.provider(),
-      model: MistralChat.model(),
+      provider: OpenAICompatibleChat.provider(),
+      model: OpenAICompatibleChat.model(),
       segments: length(segments),
       invoice_segments: total,
       usage: artifacts |> Enum.map(& &1["usage"]) |> sum_usage(),
@@ -261,7 +261,7 @@ defmodule Nila.Gst.Extraction.Segmented do
       %{role: "user", content: content}
     ]
 
-    MistralChat.request_raw(messages, "nila_#{kind}_invoice", schema(kind), opts)
+    OpenAICompatibleChat.request_raw(messages, "nila_#{kind}_invoice", schema(kind), opts)
   end
 
   @doc """
@@ -273,7 +273,7 @@ defmodule Nila.Gst.Extraction.Segmented do
   def map_segment(kind, transcription, segment, responses, opts \\ []) do
     decoded =
       Enum.reduce_while(responses, {:ok, [], []}, fn %{response: response}, {:ok, acc, usage} ->
-        case MistralChat.decode(response) do
+        case OpenAICompatibleChat.decode(response, schema(kind)) do
           {:ok, invoice, call_usage} -> {:cont, {:ok, acc ++ [invoice], usage ++ [call_usage]}}
           {:error, reason} -> {:halt, {:error, reason}}
         end

@@ -482,6 +482,8 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
   defp audit_attrs(audit) do
     Map.take(audit, [
+      :provider,
+      :model,
       :provider_request_id,
       :http_status,
       :source_page_count,

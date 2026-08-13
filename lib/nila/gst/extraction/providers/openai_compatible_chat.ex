@@ -1,36 +1,25 @@
-defmodule Nila.Gst.Extraction.Providers.MistralChat do
+defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
   @moduledoc """
-  `/v1/chat/completions` with a strict JSON schema: text in, JSON out.
+  OpenAI-compatible `/chat/completions` with a strict JSON schema: text in, JSON out.
 
-  The sibling `Providers.Mistral` calls `/v1/ocr`, which takes pixels and returns
-  transcription *and* interpretation fused into one call. Fusing them is what
-  forced windows: the interpretation half has a per-call output budget, so the
-  page count had to shrink until the budget fit, which made a transport decision
-  into a semantic one.
-
-  Splitting them off here buys three things the fused call cannot give:
-
-    * the input is text, so its size is measurable *before* the call — a segment
-      with 200 table rows can be spotted and split rather than discovered
-      truncated afterwards;
-    * the call is replayable offline against cached transcription bytes, so a
-      prompt change costs no OCR; and
-    * the model is a config knob (`GST_DISCOVERY_MODEL`, `GST_EXTRACT_MODEL`),
-      auditioned through the eval harness rather than by a rewrite.
-
-  Credentials fall back to the OCR provider's config so one `MISTRAL_API_KEY`
-  configures both.
+  Mistral remains the OCR provider. The text provider is configured independently,
+  so Mistral, Tencent TokenHub, Z.ai, or another compatible endpoint can be
+  auditioned through the eval harness without changing the extraction pipeline.
   """
 
+  @default_base_url "https://api.mistral.ai/v1"
   @default_model "mistral-small-latest"
+  @default_provider "mistral"
+  @json_object_prompt_version 1
 
-  alias Nila.Gst.Extraction.MistralChatFinch
+  alias Nila.Gst.Extraction.OpenAICompatibleChatFinch
   alias Nila.Gst.Extraction.ProviderAdmission
 
   @doc "The model this module will use unless a call overrides it."
   def model, do: config()[:model] || @default_model
-
-  def provider, do: "mistral-chat"
+  def provider, do: config()[:provider] || @default_provider
+  def base_url, do: config()[:base_url] || @default_base_url
+  def response_format, do: config()[:response_format] || :json_schema
 
   @doc """
   One completion constrained to `schema`, returning the raw response.
@@ -40,61 +29,74 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
   put decoding on the wrong side of the cache.
   """
   def request_raw(messages, schema_name, schema, opts \\ []) when is_list(messages) do
+    format = Keyword.get(opts, :response_format) || response_format()
+
     payload = %{
       model: Keyword.get(opts, :model) || model(),
       temperature: Keyword.get(opts, :temperature, 0),
-      messages: messages,
-      response_format: %{
-        type: "json_schema",
-        json_schema: %{name: schema_name, strict: true, schema: schema}
-      }
+      messages: messages(format, schema_name, schema, messages),
+      response_format: response_format_payload(format, schema_name, schema)
     }
 
     options =
       [
-        url: url("/v1/chat/completions"),
+        url: url("/chat/completions"),
         auth: {:bearer, api_key()},
         json: payload,
         decode_body: false,
         retry: false,
         receive_timeout: receive_timeout()
       ]
-      |> Keyword.merge(MistralChatFinch.req_options())
+      |> Keyword.merge(OpenAICompatibleChatFinch.req_options())
       |> Keyword.merge(req_options())
 
-    request(options, estimate_tokens(payload), Keyword.get(opts, :max_retries, 8), 0)
+    request(
+      options,
+      estimate_tokens(payload),
+      Keyword.get(opts, :max_retries, 8),
+      0,
+      schema,
+      format
+    )
   end
 
-  @doc "Decodes a cached or live response into `{:ok, content_map, usage}`."
-  def decode(%{status: status, body: body}) when status in 200..299 do
+  @doc "Decodes and locally validates a cached or live response."
+  def decode(response, schema \\ nil)
+
+  def decode(%{status: status, body: body} = response, schema) when status in 200..299 do
     with {:ok, decoded} <- Jason.decode(body),
          %{"choices" => [%{"message" => %{"content" => content}} | _rest]} <- decoded,
-         {:ok, parsed} <- decode_content(content) do
+         {:ok, parsed} <- decode_content(content),
+         :ok <- validate(parsed, schema, Map.get(response, :response_format, response_format())) do
       {:ok, parsed, decoded["usage"] || %{}}
     else
       {:error, %Jason.DecodeError{} = reason} ->
-        {:error, {:invalid_mistral_chat_response, reason}}
+        {:error, {:invalid_text_chat_response, reason}}
 
       {:error, reason} ->
         {:error, reason}
 
       other ->
-        {:error, {:unexpected_mistral_chat_response, other}}
+        {:error, {:unexpected_text_chat_response, other}}
     end
   end
 
-  def decode(%{status: status, body: body}) do
-    {:error, {:mistral_chat_failed, status, decode_error_body(body)}}
+  def decode(%{status: status, body: body}, _schema) do
+    {:error, {:text_chat_failed, status, decode_error_body(body)}}
   end
 
   defp decode_content(content) when is_binary(content), do: Jason.decode(content)
   defp decode_content(content) when is_map(content), do: {:ok, content}
-  defp decode_content(_content), do: {:error, :invalid_mistral_chat_content}
+  defp decode_content(_content), do: {:error, :invalid_text_chat_content}
 
   @doc "Cache key parts: the model plus a hash of the prompt and schema it is sent with."
   def fingerprint(prompt, schema) do
     %{
+      provider: provider(),
+      base_url: base_url(),
       model: model(),
+      response_format: response_format(),
+      prompt_version: @json_object_prompt_version,
       prompt: sha256(prompt),
       schema: schema |> Jason.encode!() |> sha256()
     }
@@ -102,7 +104,33 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
 
   defp sha256(value), do: :crypto.hash(:sha256, value) |> Base.encode16(case: :lower)
 
-  defp request(options, estimated_tokens, max_retries, attempt) do
+  defp messages(:json_schema, _schema_name, _schema, messages), do: messages
+
+  defp messages(:json_object, schema_name, schema, messages) do
+    instruction =
+      "Return one JSON object that validates against this JSON Schema. " <>
+        "Return no prose or markdown. Schema name: #{schema_name}. Schema: #{Jason.encode!(schema)}"
+
+    [%{role: "system", content: instruction} | messages]
+  end
+
+  defp response_format_payload(:json_schema, schema_name, schema) do
+    %{type: "json_schema", json_schema: %{name: schema_name, strict: true, schema: schema}}
+  end
+
+  defp response_format_payload(:json_object, _schema_name, _schema), do: %{type: "json_object"}
+
+  defp validate(_content, _schema, :json_schema), do: :ok
+  defp validate(_content, nil, :json_object), do: {:error, :text_chat_schema_required}
+
+  defp validate(content, schema, :json_object) do
+    case JSV.validate(content, JSV.build!(schema)) do
+      {:ok, _validated} -> :ok
+      {:error, error} -> {:error, {:text_chat_schema_mismatch, JSV.normalize_error(error)}}
+    end
+  end
+
+  defp request(options, estimated_tokens, max_retries, attempt, schema, format) do
     reservation = ProviderAdmission.acquire(estimated_tokens)
 
     case Req.post(options) do
@@ -110,7 +138,8 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
         raw = %{
           status: response.status,
           headers: response.headers,
-          body: to_binary(response.body)
+          body: to_binary(response.body),
+          response_format: format
         }
 
         if retryable_status?(response.status) do
@@ -118,13 +147,19 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
           ProviderAdmission.release(reservation, delay)
 
           if attempt < max_retries do
-            request(options, estimated_tokens, max_retries, attempt + 1)
+            request(options, estimated_tokens, max_retries, attempt + 1, schema, format)
           else
             {:ok, raw}
           end
         else
           ProviderAdmission.reconcile(reservation, response_tokens(raw, estimated_tokens))
-          {:ok, raw}
+
+          if format == :json_object and response.status in 200..299 and
+               not valid_response?(raw, schema) and attempt < max_retries do
+            request(options, estimated_tokens, max_retries, attempt + 1, schema, format)
+          else
+            {:ok, raw}
+          end
         end
 
       {:error, %Req.HTTPError{protocol: :http2, reason: reason} = error}
@@ -132,16 +167,18 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
         ProviderAdmission.release(reservation, jitter(200))
 
         if attempt < max_retries do
-          request(options, estimated_tokens, max_retries, attempt + 1)
+          request(options, estimated_tokens, max_retries, attempt + 1, schema, format)
         else
-          {:error, {:mistral_chat_request_failed, error}}
+          {:error, {:text_chat_request_failed, error}}
         end
 
       {:error, reason} ->
         ProviderAdmission.reconcile(reservation, estimated_tokens)
-        {:error, {:mistral_chat_request_failed, reason}}
+        {:error, {:text_chat_request_failed, reason}}
     end
   end
+
+  defp valid_response?(response, schema), do: match?({:ok, _, _}, decode(response, schema))
 
   defp retryable_status?(status), do: status in [429, 500, 502, 503, 504]
 
@@ -249,10 +286,8 @@ defmodule Nila.Gst.Extraction.Providers.MistralChat do
   defp decode_error_body(body), do: body
 
   defp config, do: Application.get_env(:nila, __MODULE__, [])
-  defp ocr_config, do: Application.get_env(:nila, Nila.Gst.Extraction.Providers.Mistral, [])
-  defp api_key, do: config()[:api_key] || ocr_config()[:api_key]
-  defp base_url, do: config()[:base_url] || ocr_config()[:base_url] || "https://api.mistral.ai"
-  defp url(path), do: base_url() <> path
+  defp api_key, do: config()[:api_key]
+  defp url(path), do: String.trim_trailing(base_url(), "/") <> path
   defp receive_timeout, do: config()[:receive_timeout] || 300_000
-  defp req_options, do: config()[:req_options] || ocr_config()[:req_options] || []
+  defp req_options, do: config()[:req_options] || []
 end
