@@ -119,7 +119,7 @@ defmodule Mix.Tasks.Nila.Eval do
 
   defp context(opts, :per_page) do
     case opts[:context] do
-      nil -> :neighbours
+      nil -> :paper
       "neighbours" -> :neighbours
       "paper" -> :paper
       other -> Mix.raise("unknown --context #{inspect(other)} (neighbours | paper)")

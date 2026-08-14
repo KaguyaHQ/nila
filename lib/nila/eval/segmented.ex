@@ -45,7 +45,7 @@ defmodule Nila.Eval.Segmented do
     doc = EvalCorpus.document!(name)
     kind = kind!(doc)
     shape = Keyword.get(opts, :shape, :per_page)
-    context = Keyword.get(opts, :context, :neighbours)
+    context = Keyword.get(opts, :context, :paper)
     report = Keyword.get(opts, :on_event, fn _event -> :ok end)
     started = System.monotonic_time(:millisecond)
 
@@ -343,7 +343,7 @@ defmodule Nila.Eval.Segmented do
   def latest_attempt(name, opts \\ []) do
     doc = EvalCorpus.document!(name)
     shape = Keyword.get(opts, :shape, :per_page)
-    context = Keyword.get(opts, :context, :neighbours)
+    context = Keyword.get(opts, :context, :paper)
 
     with {:ok, transcription_dir} <- EvalTranscription.latest_attempt(name) do
       id = extract_id(doc, kind!(doc), shape, transcription_dir, context)
@@ -359,7 +359,7 @@ defmodule Nila.Eval.Segmented do
   The cache key: the document, the transcription it was read from, the decider
   shape, and both model/prompt/schema pairs that interpret it.
   """
-  def extract_id(doc, kind, shape, transcription_dir, context \\ :neighbours) do
+  def extract_id(doc, kind, shape, transcription_dir, context \\ :paper) do
     discovery = discovery_fingerprint(shape, kind, context)
     extraction = OpenAICompatibleChat.fingerprint(Segmented.prompt(kind), Segmented.schema(kind))
 

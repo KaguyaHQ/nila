@@ -14,11 +14,13 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
   And the input grows without bound. The corpus already holds 43- and 57-page
   months, so a whole-dump decider is asked to hold more context to make each
   decision precisely as the decisions get more numerous — while the decision
-  itself stays local. Whether page 31 starts a new bill depends on pages 30–32:
-  a fresh header and number, whether the page before it closed with totals.
-  Page 3 cannot inform that and can only distract from it.
+  itself stays local. Whether page 31 starts a new bill depends on the boundary
+  between pages 30 and 31: whether page 30 closed with totals and page 31 opens
+  with a fresh header and number. Page 3 cannot inform that and can only distract.
 
-  So each page is judged with its immediate neighbours and nothing else. The
+  So each page is judged against the preceding page and nothing else. Both pages
+  contribute their heads and tails: invoice identity lives at the top and closing
+  totals live at the bottom. The
   context a decision sees is constant whether the dump is 28 pages or 300; the
   calls are small, cheap and parallel; a retry re-judges one page rather than a
   month; and a disagreement between runs is one page's label instead of a
@@ -40,7 +42,7 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
   @paper_page_char_limit div(@page_char_limit + 2 * @neighbour_char_limit, 2)
   @max_concurrency 4
 
-  @doc "Pages of context on each side of the page being judged."
+  @doc "Legacy comparison radius retained by the context ablation."
   def neighbours, do: @neighbours
 
   @doc "Stable identity for the page-context representation used by eval caches."
@@ -208,7 +210,7 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
         content:
           prompt(Keyword.get(opts, :kind, :purchase)) <>
             "\n\n" <>
-            context_block(transcription, number, Keyword.get(opts, :context, :neighbours))
+            context_block(transcription, number, Keyword.get(opts, :context, :paper))
       }
     ]
 

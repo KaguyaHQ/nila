@@ -130,7 +130,7 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabelsTest do
         })
       end)
 
-      {:ok, response} = PageLabels.request_page(t, 3)
+      {:ok, response} = PageLabels.request_page(t, 3, context: :neighbours)
       {:ok, [labelled]} = PageLabels.map_responses([%{page: 3, response: response}])
 
       assert labelled.label == :start
@@ -210,7 +210,7 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabelsTest do
         })
       end)
 
-      assert {:ok, _response} = PageLabels.request_page(t, 3, context: :paper)
+      assert {:ok, _response} = PageLabels.request_page(t, 3)
     end
   end
 end
