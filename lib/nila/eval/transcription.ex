@@ -66,7 +66,9 @@ defmodule Nila.Eval.Transcription do
 
   @doc "Parses a cached attempt into a `Nila.Gst.Extraction.Transcription`."
   def load(dir) do
-    dir |> Path.join("raw.json") |> File.read!() |> Transcription.from_response()
+    with {:ok, body} <- File.read(Path.join(dir, "raw.json")) do
+      Transcription.from_response(body)
+    end
   end
 
   @doc "Newest attempt, parsed."

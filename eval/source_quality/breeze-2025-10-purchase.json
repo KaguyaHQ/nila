@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "document": "breeze-2025-10-purchase",
+  "document_sha256": "c4c9982b0c0f6e02386d6ae0f4a612aee822a0fc4a34b9349869f9ff6d786d5b",
+  "complete": false,
+  "reviewed_pages": 40,
+  "total_pages": 57,
+  "taxonomy": {
+    "visual_quality": {
+      "good": "The scan itself is clear enough for ordinary reading.",
+      "degraded": "Blur, bleed, contrast or scale makes reading noticeably harder.",
+      "unusable": "The page is globally too poor to transcribe without guessing."
+    },
+    "critical_readability": {
+      "comfortable": "Critical invoice fields are quickly readable.",
+      "effortful": "Critical fields require zoom or concentration but not guessing.",
+      "unreliable": "At least one critical field requires guessing or another source."
+    }
+  },
+  "pages": [
+    {"page": 1, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 2, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 3, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 4, "visual_quality": "good", "critical_readability": "comfortable"},
+    {
+      "page": 5,
+      "visual_quality": "good",
+      "critical_readability": "unreliable",
+      "reasons": ["handwriting"],
+      "note": "The scan is crisp, but handwritten footer tax amounts are not reliably readable. This is not a blur-detector target."
+    },
+    {
+      "page": 6,
+      "visual_quality": "degraded",
+      "critical_readability": "effortful",
+      "reasons": ["slight_blur", "small_text"],
+      "note": "The final B in the seller GSTIN requires a closer look."
+    },
+    {"page": 7, "visual_quality": "good", "critical_readability": "comfortable"},
+    {
+      "page": 8,
+      "visual_quality": "degraded",
+      "critical_readability": "effortful",
+      "reasons": ["ink_bleed", "small_text"],
+      "note": "GSTIN and HSN require squinting, while the main amounts remain readable."
+    },
+    {"page": 9, "visual_quality": "good", "critical_readability": "comfortable"},
+    {
+      "page": 10,
+      "visual_quality": "unusable",
+      "critical_readability": "unreliable",
+      "reasons": ["global_blur", "low_contrast", "faint_text", "small_text"],
+      "note": "Invoice identity, line descriptions, totals and tax figures require guessing."
+    },
+    {"page": 11, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 12, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 13, "visual_quality": "good", "critical_readability": "comfortable"},
+    {
+      "page": 14,
+      "visual_quality": "degraded",
+      "critical_readability": "unreliable",
+      "reasons": ["ink_bleed"],
+      "note": "The invoice number requires guessing even though the main amounts are clearer."
+    },
+    {"page": 15, "visual_quality": "good", "critical_readability": "comfortable"},
+    {
+      "page": 16,
+      "visual_quality": "degraded",
+      "critical_readability": "effortful",
+      "reasons": ["ink_bleed"]
+    },
+    {
+      "page": 17,
+      "visual_quality": "degraded",
+      "critical_readability": "effortful",
+      "reasons": ["ink_bleed"]
+    },
+    {"page": 18, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 19, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 20, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 21, "visual_quality": "good", "critical_readability": "comfortable"},
+    {
+      "page": 22,
+      "visual_quality": "degraded",
+      "critical_readability": "unreliable",
+      "reasons": ["blur", "small_text"],
+      "note": "Important totals and the GSTIN require concentration and possible guessing."
+    },
+    {
+      "page": 23,
+      "visual_quality": "degraded",
+      "critical_readability": "unreliable",
+      "reasons": ["blur", "small_text"],
+      "note": "At least one HSN code cannot be confidently distinguished."
+    },
+    {
+      "page": 24,
+      "visual_quality": "degraded",
+      "critical_readability": "unreliable",
+      "reasons": ["blur", "small_text"],
+      "note": "The item name and supplier GSTIN require uncertain character choices."
+    },
+    {"page": 25, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 26, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 27, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 28, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 29, "visual_quality": "good", "critical_readability": "comfortable"},
+    {
+      "page": 30,
+      "visual_quality": "degraded",
+      "critical_readability": "effortful",
+      "reasons": ["blur", "small_text"],
+      "note": "Main values are clear; the GSTIN requires uncomfortable zooming."
+    },
+    {
+      "page": 31,
+      "visual_quality": "degraded",
+      "critical_readability": "unreliable",
+      "reasons": ["blur", "faint_text"],
+      "note": "Invoice identity and the footer tax total require guessing; some repeated table amounts remain readable."
+    },
+    {"page": 32, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 33, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 34, "visual_quality": "good", "critical_readability": "comfortable"},
+    {
+      "page": 35,
+      "visual_quality": "degraded",
+      "critical_readability": "effortful",
+      "reasons": ["blur", "small_text"]
+    },
+    {
+      "page": 36,
+      "visual_quality": "degraded",
+      "critical_readability": "effortful",
+      "reasons": ["blur", "small_text"],
+      "note": "A separate complete scan of the same invoice as page 35 with similar readability."
+    },
+    {"page": 37, "visual_quality": "good", "critical_readability": "comfortable"},
+    {"page": 38, "visual_quality": "good", "critical_readability": "comfortable"},
+    {
+      "page": 39,
+      "visual_quality": "degraded",
+      "critical_readability": "unreliable",
+      "reasons": ["blur", "handwriting"],
+      "note": "The line amount cannot be read directly and requires surrounding totals and context to infer."
+    },
+    {
+      "page": 40,
+      "visual_quality": "degraded",
+      "critical_readability": "effortful",
+      "reasons": ["blur", "handwriting"],
+      "note": "Initially appears hopeless; values become readable with close inspection."
+    }
+  ]
+}

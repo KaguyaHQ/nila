@@ -12,6 +12,7 @@ defmodule Mix.Tasks.Nila.Eval do
 
       mix nila.eval transcribe <name>          # pure OCR, no annotation, cached
       mix nila.eval segment <name> [--runs 5] [--shape per_page|whole_dump] [--context neighbours|paper]
+      mix nila.eval source-quality <name> [--transcription-attempt DIR]
 
   `extract` runs the production transcribe → discover → extract → verify path
   and writes a new attempt under `tmp/eval/segmented/`. Attempts are never
@@ -36,23 +37,44 @@ defmodule Mix.Tasks.Nila.Eval do
 
   @impl Mix.Task
   def run(args) do
-    Mix.Task.run("app.start")
-
     {opts, positional, invalid} =
       OptionParser.parse(args,
-        strict: [all: :boolean, runs: :integer, shape: :string, context: :string]
+        strict: [
+          all: :boolean,
+          runs: :integer,
+          shape: :string,
+          context: :string,
+          transcription_attempt: :string
+        ]
       )
 
     if invalid != [], do: Mix.raise("invalid options #{inspect(invalid)}")
+
+    validate_options!(positional, opts)
+
+    if match?(["source-quality", _name], positional) do
+      Mix.Task.run("compile")
+    else
+      Mix.Task.run("app.start")
+    end
 
     case positional do
       ["extract", name] -> extract(name, opts)
       ["transcribe", name] -> transcribe(name)
       ["segment", name] -> segment(name, opts)
+      ["source-quality", name] -> source_quality(name, opts)
       ["score", name] -> score_months([name], opts)
       ["score"] -> score_all(opts)
       [] -> Mix.shell().info(@moduledoc)
       other -> Mix.raise("unknown command #{inspect(Enum.join(other, " "))}")
+    end
+  end
+
+  defp validate_options!(["source-quality", _name], _opts), do: :ok
+
+  defp validate_options!(_positional, opts) do
+    if opts[:transcription_attempt] do
+      Mix.raise("--transcription-attempt applies only to source-quality")
     end
   end
 
@@ -223,6 +245,40 @@ defmodule Mix.Tasks.Nila.Eval do
       {:ok, dir} -> Mix.shell().info("\ncached → #{dir}")
       {:error, reason} -> Mix.raise("segmented extraction failed: #{inspect(reason, limit: 8)}")
     end
+  end
+
+  defp source_quality(name, opts) do
+    case Nila.Eval.SourceQuality.report(name, opts) do
+      {:ok, report} ->
+        Mix.shell().info("source quality #{name}")
+        Mix.shell().info("  cached attempt: #{report.attempt}")
+        Mix.shell().info("")
+        Mix.shell().info("page  provider   all-word   p10       <70       words")
+
+        Enum.each(report.pages, fn page ->
+          Mix.shell().info(
+            "#{page["page"] |> to_string() |> String.pad_leading(4)}  " <>
+              "#{percentage(page["provider_average_confidence_score"])}  " <>
+              "#{percentage(page["all_word_average_confidence_score"])}  " <>
+              "#{percentage(page["all_word_p10_confidence_score"])}  " <>
+              "#{percentage(page["under_70_word_share"])}  " <>
+              "#{page["all_word_count"] |> to_string() |> String.pad_leading(5)}"
+          )
+        end)
+
+      {:error, reason} ->
+        Mix.raise("source-quality report failed: #{inspect(reason, limit: 8)}")
+    end
+  end
+
+  defp percentage(nil), do: String.pad_leading("-", 8)
+
+  defp percentage(value) do
+    value
+    |> Kernel.*(100.0)
+    |> :erlang.float_to_binary(decimals: 2)
+    |> Kernel.<>("%")
+    |> String.pad_leading(8)
   end
 
   defp score_all(opts) do
