@@ -31,12 +31,14 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
   def request_raw(messages, schema_name, schema, opts \\ []) when is_list(messages) do
     format = Keyword.get(opts, :response_format) || response_format()
 
-    payload = %{
-      model: Keyword.get(opts, :model) || model(),
-      temperature: Keyword.get(opts, :temperature, 0),
-      messages: messages(format, schema_name, schema, messages),
-      response_format: response_format_payload(format, schema_name, schema)
-    }
+    payload =
+      %{
+        model: Keyword.get(opts, :model) || model(),
+        temperature: Keyword.get(opts, :temperature, 0),
+        messages: messages(format, schema_name, schema, messages),
+        response_format: response_format_payload(format, schema_name, schema)
+      }
+      |> maybe_put_provider_options()
 
     options =
       [
@@ -97,6 +99,7 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
       model: model(),
       response_format: response_format(),
       prompt_version: @json_object_prompt_version,
+      provider_options: config()[:provider_options] |> Jason.encode!() |> sha256(),
       prompt: sha256(prompt),
       schema: schema |> Jason.encode!() |> sha256()
     }
@@ -104,7 +107,9 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
 
   defp sha256(value), do: :crypto.hash(:sha256, value) |> Base.encode16(case: :lower)
 
-  defp messages(:json_schema, _schema_name, _schema, messages), do: messages
+  defp messages(format, _schema_name, _schema, messages)
+       when format in [:json_schema, :json_schema_local],
+       do: messages
 
   defp messages(:json_object, schema_name, schema, messages) do
     instruction =
@@ -114,16 +119,26 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
     [%{role: "system", content: instruction} | messages]
   end
 
-  defp response_format_payload(:json_schema, schema_name, schema) do
+  defp response_format_payload(format, schema_name, schema)
+       when format in [:json_schema, :json_schema_local] do
     %{type: "json_schema", json_schema: %{name: schema_name, strict: true, schema: schema}}
   end
 
   defp response_format_payload(:json_object, _schema_name, _schema), do: %{type: "json_object"}
 
-  defp validate(_content, _schema, :json_schema), do: :ok
-  defp validate(_content, nil, :json_object), do: {:error, :text_chat_schema_required}
+  defp maybe_put_provider_options(payload) do
+    case config()[:provider_options] do
+      nil -> payload
+      provider_options -> Map.put(payload, :providerOptions, provider_options)
+    end
+  end
 
-  defp validate(content, schema, :json_object) do
+  defp validate(_content, _schema, :json_schema), do: :ok
+
+  defp validate(_content, nil, format) when format in [:json_object, :json_schema_local],
+    do: {:error, :text_chat_schema_required}
+
+  defp validate(content, schema, format) when format in [:json_object, :json_schema_local] do
     case JSV.validate(content, JSV.build!(schema)) do
       {:ok, _validated} -> :ok
       {:error, error} -> {:error, {:text_chat_schema_mismatch, JSV.normalize_error(error)}}
@@ -154,7 +169,7 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
         else
           ProviderAdmission.reconcile(reservation, response_tokens(raw, estimated_tokens))
 
-          if format == :json_object and response.status in 200..299 and
+          if format in [:json_object, :json_schema_local] and response.status in 200..299 and
                not valid_response?(raw, schema) and attempt < max_retries do
             request(options, estimated_tokens, max_retries, attempt + 1, schema, format)
           else

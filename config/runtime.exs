@@ -100,11 +100,14 @@ if config_env() in [:prod, :dev] do
       "json_schema" ->
         :json_schema
 
+      "json_schema_local" ->
+        :json_schema_local
+
       "json_object" ->
         :json_object
 
       format ->
-        raise "GST_TEXT_RESPONSE_FORMAT must be json_schema or json_object, got: #{inspect(format)}"
+        raise "GST_TEXT_RESPONSE_FORMAT must be json_schema, json_schema_local, or json_object, got: #{inspect(format)}"
     end
 
   default_text_base_url =
@@ -118,12 +121,25 @@ if config_env() in [:prod, :dev] do
     raise "GST_TEXT_BASE_URL is required when GST_TEXT_PROVIDER is not mistral"
   end
 
+  text_provider_options =
+    case env!("GST_TEXT_PROVIDER_OPTIONS", :string, nil) do
+      nil ->
+        nil
+
+      encoded ->
+        case Jason.decode(encoded) do
+          {:ok, options} when is_map(options) -> options
+          _invalid -> raise "GST_TEXT_PROVIDER_OPTIONS must be a JSON object"
+        end
+    end
+
   config :nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChat,
     provider: text_provider,
     base_url: text_base_url,
     api_key: text_key,
     model: env!("GST_TEXT_MODEL", :string, "mistral-small-latest"),
-    response_format: text_response_format
+    response_format: text_response_format,
+    provider_options: text_provider_options
 
   default_text_protocol = if text_provider == "tencent-tokenhub", do: "http1", else: "http2"
 

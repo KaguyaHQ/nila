@@ -7,12 +7,27 @@ defmodule Nila.EvalTest do
   use ExUnit.Case, async: true
 
   alias Nila.Eval
+  alias Nila.Eval.Segmented
   alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.Sales.Workings
 
   describe "run_id/0" do
     test "sorts chronologically and names the code that produced it" do
       assert Eval.run_id() =~ ~r/^\d{4}-\d{2}-\d{2}T[\d-]+Z-[0-9a-f]+(-dirty)?$/
+    end
+  end
+
+  describe "segmented cache identity" do
+    test "separates page-context strategies" do
+      doc = %{"sha256" => "document-sha"}
+      transcription_dir = "tmp/eval/transcriptions/transcription-id/attempt"
+
+      neighbours =
+        Segmented.extract_id(doc, :purchase, :per_page, transcription_dir, :neighbours)
+
+      paper = Segmented.extract_id(doc, :purchase, :per_page, transcription_dir, :paper)
+
+      refute neighbours == paper
     end
   end
 

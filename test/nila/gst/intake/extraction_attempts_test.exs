@@ -32,7 +32,7 @@ defmodule Nila.Gst.Intake.ExtractionAttemptsTest do
              ExtractionAttempts.start(dump, %{
                source_storage_key: source_key,
                provider: "mistral",
-               model: "mistral-ocr-4-0",
+               model: "mistral-ocr-latest",
                worker_attempt: 1,
                source_byte_size: 12_345,
                started_at: started_at
@@ -54,7 +54,7 @@ defmodule Nila.Gst.Intake.ExtractionAttemptsTest do
 
     assert completed.status == "succeeded"
     assert completed.provider == "mistral"
-    assert completed.model == "mistral-ocr-4-0"
+    assert completed.model == "mistral-ocr-latest"
     assert completed.source_byte_size == 12_345
     assert completed.response_byte_size == byte_size(raw)
     assert completed.response_sha256 == sha256(raw)
@@ -85,7 +85,7 @@ defmodule Nila.Gst.Intake.ExtractionAttemptsTest do
         ExtractionAttempts.start(dump, %{
           source_storage_key: "source.pdf",
           provider: "mistral",
-          model: "mistral-ocr-4-0",
+          model: "mistral-ocr-latest",
           worker_attempt: worker_attempt,
           source_byte_size: 10,
           started_at: DateTime.utc_now()

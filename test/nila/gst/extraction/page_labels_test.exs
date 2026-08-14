@@ -136,5 +136,81 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabelsTest do
       assert labelled.label == :start
       assert labelled.invoice_no == "A-1"
     end
+
+    test "marks an empty judged page instead of dropping it from the prompt" do
+      t = transcription(%{1 => "previous", 2 => "", 3 => "next"})
+
+      Req.Test.expect(OpenAICompatibleChat, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        [_system, user] = Jason.decode!(body)["messages"]
+
+        assert user["content"] =~ "JUDGE THIS PAGE — page 2"
+
+        Req.Test.json(conn, %{
+          "choices" => [
+            %{
+              "message" => %{
+                "content" =>
+                  Jason.encode!(%{
+                    "label" => "non_invoice",
+                    "invoice_no" => nil,
+                    "reason" => "blank"
+                  })
+              }
+            }
+          ]
+        })
+      end)
+
+      assert {:ok, _response} = PageLabels.request_page(t, 2)
+    end
+
+    test "paper context shows the previous and current page heads and tails" do
+      previous =
+        "previous head\n" <>
+          String.duplicate("a", 2_000) <>
+          "PREVIOUS MIDDLE" <>
+          String.duplicate("b", 2_000) <> "\nprevious tail"
+
+      current =
+        "current head\n" <>
+          String.duplicate("c", 2_000) <>
+          "CURRENT MIDDLE" <>
+          String.duplicate("d", 2_000) <> "\ncurrent tail"
+
+      t = transcription(%{2 => previous, 3 => current, 4 => "next page body"})
+
+      Req.Test.expect(OpenAICompatibleChat, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        [_system, user] = Jason.decode!(body)["messages"]
+        content = user["content"]
+
+        assert content =~ "context — page 2"
+        assert content =~ "previous head"
+        assert content =~ "previous tail"
+        refute content =~ "PREVIOUS MIDDLE"
+
+        assert content =~ "JUDGE THIS PAGE — page 3"
+        assert content =~ "current head"
+        assert content =~ "current tail"
+        refute content =~ "CURRENT MIDDLE"
+
+        refute content =~ "next page body"
+        assert content =~ "[middle truncated]"
+
+        Req.Test.json(conn, %{
+          "choices" => [
+            %{
+              "message" => %{
+                "content" =>
+                  Jason.encode!(%{"label" => "start", "invoice_no" => "A-1", "reason" => nil})
+              }
+            }
+          ]
+        })
+      end)
+
+      assert {:ok, _response} = PageLabels.request_page(t, 3, context: :paper)
+    end
   end
 end

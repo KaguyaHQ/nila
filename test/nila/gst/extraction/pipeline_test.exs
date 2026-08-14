@@ -8,7 +8,7 @@ defmodule Nila.Gst.Extraction.PipelineTest do
 
   defp ocr_response(pages) do
     %{
-      "model" => "mistral-ocr-4-0",
+      "model" => "mistral-ocr-latest",
       "pages" =>
         Enum.map(pages, fn {number, markdown} ->
           %{"index" => number - 1, "markdown" => markdown}

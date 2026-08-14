@@ -15,7 +15,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
     @behaviour Nila.Gst.Extraction.Purchase
 
     def provider, do: "mistral"
-    def model, do: "mistral-ocr-4-0"
+    def model, do: "mistral-ocr-latest"
 
     @impl true
     def extract(_bytes, _opts) do
@@ -53,7 +53,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
            http_status: 200,
            source_page_count: 1,
            usage: %{"pages_processed" => 1},
-           raw_response: ~s({"model":"mistral-ocr-4-0","pages":[{"index":0}]})
+           raw_response: ~s({"model":"mistral-ocr-latest","pages":[{"index":0}]})
          }
        }}
     end
@@ -144,14 +144,14 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
     assert [attempt] = ExtractionAttempts.list_for_dump(dump.id)
     assert attempt.status == "succeeded"
     assert attempt.provider == "mistral"
-    assert attempt.model == "mistral-ocr-4-0"
+    assert attempt.model == "mistral-ocr-latest"
     assert attempt.provider_request_id == "req-worker"
     assert attempt.worker_attempt == 1
     assert attempt.source_page_count == 1
     assert attempt.response_artifact_key
 
     assert {:ok, compressed} = Storage.get(attempt.response_artifact_key)
-    assert Jason.decode!(:zstd.decompress(compressed))["model"] == "mistral-ocr-4-0"
+    assert Jason.decode!(:zstd.decompress(compressed))["model"] == "mistral-ocr-latest"
 
     {:ok, extracted} = Dumps.fetch(org.id, dump.id)
     assert extracted.status == "extracted"
@@ -213,7 +213,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
 
     attempts_by_stage = Map.new(attempts, &{&1.request_metadata["stage"], &1})
     assert attempts_by_stage["transcription"].provider == "mistral"
-    assert attempts_by_stage["transcription"].model == "mistral-ocr-4-0"
+    assert attempts_by_stage["transcription"].model == "mistral-ocr-latest"
     assert attempts_by_stage["discovery"].provider == "mistral"
     assert attempts_by_stage["discovery"].model == "mistral-small-latest"
     assert attempts_by_stage["extraction"].provider == "mistral"
@@ -259,7 +259,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
     @behaviour Nila.Gst.Extraction.Purchase
 
     def provider, do: "mistral"
-    def model, do: "mistral-ocr-4-0"
+    def model, do: "mistral-ocr-latest"
 
     @impl true
     def extract(_bytes, _opts) do
@@ -323,7 +323,11 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
         %{"index" => page - 1, "markdown" => page_text(page), "blocks" => []}
       end)
 
-    %{"model" => "mistral-ocr-4-0", "pages" => pages, "usage_info" => %{"pages_processed" => 14}}
+    %{
+      "model" => "mistral-ocr-latest",
+      "pages" => pages,
+      "usage_info" => %{"pages_processed" => 14}
+    }
   end
 
   defp page_text(14), do: "page 14"

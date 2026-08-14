@@ -74,6 +74,36 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatTest do
     assert {:ok, %{"ok" => true}, %{}} = OpenAICompatibleChat.decode(response, @schema)
   end
 
+  test "sends provider options and fingerprints them" do
+    previous = Application.get_env(:nila, OpenAICompatibleChat)
+
+    Application.put_env(:nila, OpenAICompatibleChat,
+      provider: "vercel-ai-gateway",
+      base_url: "https://ai-gateway.vercel.sh/v1",
+      api_key: "vercel-key",
+      model: "alibaba/qwen3.7-flash",
+      response_format: :json_schema,
+      provider_options: %{"alibaba" => %{"enableThinking" => false}},
+      req_options: [plug: {Req.Test, OpenAICompatibleChat}]
+    )
+
+    on_exit(fn -> Application.put_env(:nila, OpenAICompatibleChat, previous) end)
+
+    Req.Test.expect(OpenAICompatibleChat, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(body)
+
+      assert payload["providerOptions"] == %{"alibaba" => %{"enableThinking" => false}}
+
+      Req.Test.json(conn, %{
+        "choices" => [%{"message" => %{"content" => Jason.encode!(%{"ok" => true})}}]
+      })
+    end)
+
+    assert is_binary(OpenAICompatibleChat.fingerprint("prompt", @schema).provider_options)
+    assert {:ok, _response} = OpenAICompatibleChat.request_raw([], "test", @schema)
+  end
+
   test "json_object puts the schema in the prompt and validates locally" do
     Req.Test.expect(OpenAICompatibleChat, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
@@ -123,6 +153,31 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatTest do
              OpenAICompatibleChat.request_raw([], "test", @schema, max_retries: 2)
 
     assert Agent.get(calls, & &1) == 1
+  end
+
+  test "locally validated strict schema retries a mismatch" do
+    {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert Jason.decode!(body)["response_format"]["type"] == "json_schema"
+
+      attempt = Agent.get_and_update(calls, &{&1, &1 + 1})
+      content = if attempt == 0, do: %{"answer" => "yes"}, else: %{"ok" => true}
+
+      Req.Test.json(conn, %{
+        "choices" => [%{"message" => %{"content" => Jason.encode!(content)}}]
+      })
+    end)
+
+    assert {:ok, response} =
+             OpenAICompatibleChat.request_raw([], "test", @schema,
+               response_format: :json_schema_local,
+               max_retries: 1
+             )
+
+    assert {:ok, %{"ok" => true}, %{}} = OpenAICompatibleChat.decode(response, @schema)
+    assert Agent.get(calls, & &1) == 2
   end
 
   test "json_object retries a schema mismatch through the normal request path" do

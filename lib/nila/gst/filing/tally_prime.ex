@@ -147,7 +147,10 @@ defmodule Nila.Gst.Filing.TallyPrime do
       {:ok,
        [
          "<TALLYMESSAGE>",
-         "<VOUCHER REMOTEID=\"", remote_id(invoice, period), "\" VCHTYPE=\"", xml(voucher_type),
+         "<VOUCHER REMOTEID=\"",
+         remote_id(invoice, period),
+         "\" VCHTYPE=\"",
+         xml(voucher_type),
          "\" ACTION=\"Create\" VIEW=\"Accounting Voucher View\">",
          tag("DATE", Calendar.strftime(date, "%Y%m%d")),
          tag("EFFECTIVEDATE", Calendar.strftime(date, "%Y%m%d")),
@@ -253,6 +256,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
         ["nila", invoice["seller_gstin"], period || invoice["invoice_date"], source_identity],
         "|"
       )
+
     "nila-" <> Base.encode16(:crypto.hash(:sha256, identity), case: :lower)
   end
 
@@ -269,7 +273,9 @@ defmodule Nila.Gst.Filing.TallyPrime do
   defp response_body(%{status: status, body: body}) when status in 200..299 and is_binary(body),
     do: {:ok, body}
 
-  defp response_body(%{status: status}) when is_integer(status), do: {:error, {:http_status, status}}
+  defp response_body(%{status: status}) when is_integer(status),
+    do: {:error, {:http_status, status}}
+
   defp response_body(_response), do: {:error, :invalid_response}
 
   defp invoice_date(%Date{} = date), do: date

@@ -82,10 +82,10 @@ defmodule Nila.Eval do
   deriving and diffing all run now. A rule change is therefore re-scored with no
   API call, and no cache hit can attribute a number to code that no longer runs.
   """
-  def score(name, run_id) do
+  def score(name, run_id, opts \\ []) do
     doc = EvalCorpus.document!(name)
 
-    with {:ok, attempt} <- Nila.Eval.Segmented.latest_attempt(name),
+    with {:ok, attempt} <- Nila.Eval.Segmented.latest_attempt(name, opts),
          {:ok, assembled} <- Nila.Eval.Segmented.replay(attempt) do
       invoices = Enum.map(assembled.pages, &Gstr1.normalize_invoice/1)
       meta = attempt |> Path.join("meta.json") |> File.read!() |> Jason.decode!()
@@ -95,6 +95,8 @@ defmodule Nila.Eval do
         "pipeline" => "segmented",
         "extractor" => meta["provider"],
         "model" => meta["model"],
+        "discovery_shape" => meta["discovery_shape"],
+        "discovery_context" => meta["discovery_context"],
         "prompt_fingerprint" => get_in(meta, ["fingerprint", "prompt"]),
         "attempt" => attempt,
         "unaccounted_pages" => assembled[:unaccounted_pages] || [],

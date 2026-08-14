@@ -274,10 +274,11 @@ Unless noted, absence disables the feature or leaves the compiled default:
 | `GST_TEXT_BASE_URL` | Text provider API root. For Mistral it follows `MISTRAL_BASE_URL` plus `/v1`; non-Mistral providers must set it. TokenHub: `https://tokenhub.tencentmaas.com/v1`. |
 | `GST_TEXT_API_KEY` | Text provider key; defaults to `MISTRAL_API_KEY`. Set it whenever the selected text provider uses a different credential. |
 | `GST_TEXT_MODEL` | Text model; default `mistral-small-latest`. TokenHub Hy3: `hy3`. |
-| `GST_TEXT_RESPONSE_FORMAT` | `json_schema` by default. Use `json_object` for DeepSeek and Z.ai; Nila then embeds the schema and validates every response locally. |
+| `GST_TEXT_RESPONSE_FORMAT` | `json_schema` by default for provider-enforced Mistral output. Use `json_schema_local` for gateways such as Vercel that accept strict schemas but still require Nila-side validation, or `json_object` for DeepSeek and Z.ai. Local modes retry invalid model output and fail rather than publish it. |
 | `GST_TEXT_HTTP_PROTOCOL` | Defaults to `http1` for `tencent-tokenhub`, otherwise `http2`. Override only when the selected endpoint negotiates differently. |
+| `GST_TEXT_PROVIDER_OPTIONS` | Optional JSON object sent as Vercel `providerOptions`. Qwen no-thinking: `{"alibaba":{"enableThinking":false}}`. Included in eval cache identity. |
 | `GST_TEXT_TOKENS_PER_MINUTE` / `GST_TEXT_REQUESTS_PER_SECOND` / `GST_TEXT_MAX_CONCURRENCY` | Admission limits for the selected text provider/model; defaults `100000` / `1.67` / `100`. GLM-4.7-FlashX requires max concurrency `3`. |
-| `MISTRAL_BASE_URL` | Mistral OCR endpoint override. The OCR model is pinned in code to `mistral-ocr-4-0`. |
+| `MISTRAL_BASE_URL` | Mistral OCR endpoint override. The OCR model is pinned in code to `mistral-ocr-latest`. |
 | `RESEND_API_KEY` | Switches `Nila.Mailer` to Resend and configures inbound Resend API access. **Unset means invite emails are silently dropped in prod**, so this is effectively required to onboard teammates. |
 | `MAIL_FROM` / `MAIL_FROM_NAME` | Sender for outgoing mail (default `Nila <onboarding@resend.dev>`). `nila.tax` is verified; production should use `MAIL_FROM=noreply@nila.tax`. Read only when `RESEND_API_KEY` is set. |
 | `INBOUND_EMAIL_DOMAIN` / `INBOUND_EMAIL_SECRET` | Overrides the compiled inbound-address domain and signing secret. Runtime requires the secret when the domain override is set. If both are omitted, the current compiled development defaults remain active—do not mistake omission for disabling inbound. |

@@ -36,10 +36,21 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
 
   @neighbours 1
   @page_char_limit 4_000
+  @neighbour_char_limit div(@page_char_limit, 3)
+  @paper_page_char_limit div(@page_char_limit + 2 * @neighbour_char_limit, 2)
   @max_concurrency 4
 
   @doc "Pages of context on each side of the page being judged."
   def neighbours, do: @neighbours
+
+  @doc "Stable identity for the page-context representation used by eval caches."
+  def context_fingerprint(:neighbours),
+    do:
+      "neighbours-v1:previous-head=#{@neighbour_char_limit},current-head=#{@page_char_limit},next-head=#{@neighbour_char_limit}"
+
+  def context_fingerprint(:paper),
+    do:
+      "paper-v1:previous-head-tail=#{@paper_page_char_limit},current-head-tail=#{@paper_page_char_limit}"
 
   @doc "The JSON schema one page's verdict is constrained to."
   def schema do
@@ -196,7 +207,8 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
         role: "user",
         content:
           prompt(Keyword.get(opts, :kind, :purchase)) <>
-            "\n\n" <> context_block(transcription, number)
+            "\n\n" <>
+            context_block(transcription, number, Keyword.get(opts, :context, :neighbours))
       }
     ]
 
@@ -296,31 +308,60 @@ defmodule Nila.Gst.Extraction.Discovery.PageLabels do
     }
   end
 
-  defp context_block(transcription, number) do
+  defp context_block(transcription, number, :neighbours) do
     (number - @neighbours)..(number + @neighbours)//1
-    |> Enum.filter(&(Transcription.page_text(transcription, &1) != ""))
+    |> Enum.filter(&include_page?(transcription, &1, number))
     |> Enum.map_join("\n\n", fn page ->
-      text = Transcription.page_text(transcription, page)
-
-      heading =
-        if page == number, do: "JUDGE THIS PAGE — page #{page}", else: "context — page #{page}"
-
-      """
-      === #{heading} ===
-      signals: #{text |> Features.scan() |> Features.summary()}
-      #{clip(text, page == number)}
-      """
+      context_page(transcription, page, number, &neighbour_clip(&1, page == number))
     end)
   end
 
-  # Context pages are there to answer "did the previous bill close" and "is this
-  # the same supplier", which the head of a page answers; the page being judged
-  # is shown in full.
-  defp clip(text, judged?) do
-    limit = if judged?, do: @page_char_limit, else: div(@page_char_limit, 3)
+  defp context_block(transcription, number, :paper) do
+    [number - 1, number]
+    |> Enum.filter(&include_page?(transcription, &1, number))
+    |> Enum.map_join("\n\n", fn page ->
+      context_page(transcription, page, number, &head_tail(&1, @paper_page_char_limit))
+    end)
+  end
+
+  defp include_page?(_transcription, page, judged) when page == judged, do: true
+
+  defp include_page?(transcription, page, _judged),
+    do: Transcription.page_text(transcription, page) != ""
+
+  defp context_page(transcription, page, judged, clip) do
+    text = Transcription.page_text(transcription, page)
+
+    heading =
+      if page == judged, do: "JUDGE THIS PAGE — page #{page}", else: "context — page #{page}"
+
+    """
+    === #{heading} ===
+    signals: #{text |> Features.scan() |> Features.summary()}
+    #{clip.(text)}
+    """
+  end
+
+  defp neighbour_clip(text, judged?) do
+    limit = if judged?, do: @page_char_limit, else: @neighbour_char_limit
 
     if String.length(text) > limit do
       String.slice(text, 0, limit) <> "\n… [truncated]"
+    else
+      text
+    end
+  end
+
+  defp head_tail(text, limit) do
+    length = String.length(text)
+
+    if length > limit do
+      head_length = div(limit, 2)
+      tail_length = limit - head_length
+
+      String.slice(text, 0, head_length) <>
+        "\n… [middle truncated] …\n" <>
+        String.slice(text, length - tail_length, tail_length)
     else
       text
     end

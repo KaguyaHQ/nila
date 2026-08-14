@@ -11,7 +11,7 @@ defmodule Mix.Tasks.Nila.Eval do
       mix nila.eval score --all
 
       mix nila.eval transcribe <name>          # pure OCR, no annotation, cached
-      mix nila.eval segment <name> [--runs 5] [--shape per_page|whole_dump]
+      mix nila.eval segment <name> [--runs 5] [--shape per_page|whole_dump] [--context neighbours|paper]
 
   `extract` runs the production transcribe → discover → extract → verify path
   and writes a new attempt under `tmp/eval/segmented/`. Attempts are never
@@ -39,7 +39,9 @@ defmodule Mix.Tasks.Nila.Eval do
     Mix.Task.run("app.start")
 
     {opts, positional, invalid} =
-      OptionParser.parse(args, strict: [all: :boolean, runs: :integer, shape: :string])
+      OptionParser.parse(args,
+        strict: [all: :boolean, runs: :integer, shape: :string, context: :string]
+      )
 
     if invalid != [], do: Mix.raise("invalid options #{inspect(invalid)}")
 
@@ -47,7 +49,7 @@ defmodule Mix.Tasks.Nila.Eval do
       ["extract", name] -> extract(name, opts)
       ["transcribe", name] -> transcribe(name)
       ["segment", name] -> segment(name, opts)
-      ["score", name] -> score_months([name])
+      ["score", name] -> score_months([name], opts)
       ["score"] -> score_all(opts)
       [] -> Mix.shell().info(@moduledoc)
       other -> Mix.raise("unknown command #{inspect(Enum.join(other, " "))}")
@@ -76,12 +78,13 @@ defmodule Mix.Tasks.Nila.Eval do
   defp segment(name, opts) do
     runs = opts[:runs] || 1
     shape = shape(opts)
+    context = context(opts, shape)
 
     with {:ok, dir} <- Nila.Eval.Transcription.ensure(name),
          {:ok, transcription} <- Nila.Eval.Transcription.load(dir) do
       results =
         Enum.map(1..runs, fn index ->
-          case Discovery.discover(transcription, shape: shape) do
+          case Discovery.discover(transcription, shape: shape, context: context) do
             {:ok, result} ->
               if runs > 1, do: Mix.shell().info("run #{index}/#{runs}")
               print_segments(result)
@@ -92,7 +95,7 @@ defmodule Mix.Tasks.Nila.Eval do
           end
         end)
 
-      report_scores(name, shape, transcription, results)
+      report_scores(name, shape, context, transcription, results)
     else
       {:error, reason} -> Mix.raise("segmentation failed: #{inspect(reason, limit: 8)}")
     end
@@ -104,6 +107,22 @@ defmodule Mix.Tasks.Nila.Eval do
       "per_page" -> :per_page
       "whole_dump" -> :whole_dump
       other -> Mix.raise("unknown --shape #{inspect(other)} (per_page | whole_dump)")
+    end
+  end
+
+  defp context(opts, :whole_dump) do
+    case opts[:context] do
+      nil -> :whole_dump
+      context -> Mix.raise("--context #{context} applies only to --shape per_page")
+    end
+  end
+
+  defp context(opts, :per_page) do
+    case opts[:context] do
+      nil -> :neighbours
+      "neighbours" -> :neighbours
+      "paper" -> :paper
+      other -> Mix.raise("unknown --context #{inspect(other)} (neighbours | paper)")
     end
   end
 
@@ -121,11 +140,11 @@ defmodule Mix.Tasks.Nila.Eval do
     Mix.shell().info("")
   end
 
-  defp report_scores(name, shape, transcription, results) do
+  defp report_scores(name, shape, context, transcription, results) do
     runs = Enum.map(results, & &1.segments)
 
     Mix.shell().info(
-      "#{Transcription.page_count(transcription)} pages, #{length(runs)} run(s), shape #{shape}"
+      "#{Transcription.page_count(transcription)} pages, #{length(runs)} run(s), shape #{shape}, context #{context}"
     )
 
     case Nila.Eval.Segmentation.truth(name) do
@@ -179,7 +198,8 @@ defmodule Mix.Tasks.Nila.Eval do
 
   defp extract(name, opts) do
     shape = shape(opts)
-    Mix.shell().info("extracting #{name} (segmented, #{shape})")
+    context = context(opts, shape)
+    Mix.shell().info("extracting #{name} (segmented, #{shape}, #{context})")
 
     report = fn
       {:transcribed, pages} ->
@@ -199,7 +219,7 @@ defmodule Mix.Tasks.Nila.Eval do
         :ok
     end
 
-    case Nila.Eval.Segmented.run(name, on_event: report, shape: shape) do
+    case Nila.Eval.Segmented.run(name, on_event: report, shape: shape, context: context) do
       {:ok, dir} -> Mix.shell().info("\ncached → #{dir}")
       {:error, reason} -> Mix.raise("segmented extraction failed: #{inspect(reason, limit: 8)}")
     end
@@ -207,15 +227,17 @@ defmodule Mix.Tasks.Nila.Eval do
 
   defp score_all(opts) do
     opts[:all] || Mix.raise("mix nila.eval score needs <name>, or --all for every month")
-    score_months(Eval.evaluable())
+    score_months(Eval.evaluable(), opts)
   end
 
-  defp score_months(names) do
+  defp score_months(names, opts) do
     run_id = Eval.run_id()
-    Mix.shell().info("run #{run_id} (segmented)\n")
+    shape = shape(opts)
+    context = context(opts, shape)
+    Mix.shell().info("run #{run_id} (segmented, #{shape}, #{context})\n")
 
     Enum.each(names, fn name ->
-      case Eval.score(name, run_id) do
+      case Eval.score(name, run_id, shape: shape, context: context) do
         {:ok, month} ->
           Mix.shell().info("  #{String.pad_trailing(name, 26)} #{summary(month)}")
           warn_unaccounted(month)

@@ -45,6 +45,7 @@ defmodule Nila.Eval.Segmented do
     doc = EvalCorpus.document!(name)
     kind = kind!(doc)
     shape = Keyword.get(opts, :shape, :per_page)
+    context = Keyword.get(opts, :context, :neighbours)
     report = Keyword.get(opts, :on_event, fn _event -> :ok end)
     started = System.monotonic_time(:millisecond)
 
@@ -56,7 +57,13 @@ defmodule Nila.Eval.Segmented do
       report.({:segmented, discovery.segments, discovery.violations})
       client_gstin = Discovery.client_gstin(transcription)
 
-      dir = Path.join([@root, extract_id(doc, kind, shape, transcription_dir), attempt_id()])
+      dir =
+        Path.join([
+          @root,
+          extract_id(doc, kind, shape, transcription_dir, context),
+          attempt_id()
+        ])
+
       File.mkdir_p!(Path.join(dir, "raw"))
       write_discovery!(dir, shape, responses, discovery)
 
@@ -69,6 +76,7 @@ defmodule Nila.Eval.Segmented do
             doc,
             kind,
             shape,
+            context,
             transcription_dir,
             transcription,
             discovery,
@@ -335,9 +343,10 @@ defmodule Nila.Eval.Segmented do
   def latest_attempt(name, opts \\ []) do
     doc = EvalCorpus.document!(name)
     shape = Keyword.get(opts, :shape, :per_page)
+    context = Keyword.get(opts, :context, :neighbours)
 
     with {:ok, transcription_dir} <- EvalTranscription.latest_attempt(name) do
-      id = extract_id(doc, kind!(doc), shape, transcription_dir)
+      id = extract_id(doc, kind!(doc), shape, transcription_dir, context)
 
       case @root |> Path.join("#{id}/*") |> Path.wildcard() |> Enum.sort() |> List.last() do
         nil -> {:error, {:no_attempt, name}}
@@ -350,8 +359,8 @@ defmodule Nila.Eval.Segmented do
   The cache key: the document, the transcription it was read from, the decider
   shape, and both model/prompt/schema pairs that interpret it.
   """
-  def extract_id(doc, kind, shape, transcription_dir) do
-    discovery = discovery_fingerprint(shape, kind)
+  def extract_id(doc, kind, shape, transcription_dir, context \\ :neighbours) do
+    discovery = discovery_fingerprint(shape, kind, context)
     extraction = OpenAICompatibleChat.fingerprint(Segmented.prompt(kind), Segmented.schema(kind))
 
     :crypto.hash(
@@ -367,6 +376,8 @@ defmodule Nila.Eval.Segmented do
           discovery.model,
           discovery.response_format,
           discovery.prompt_version,
+          discovery.provider_options,
+          discovery.context_strategy,
           discovery.prompt,
           discovery.schema,
           extraction.provider,
@@ -374,6 +385,7 @@ defmodule Nila.Eval.Segmented do
           extraction.model,
           extraction.response_format,
           extraction.prompt_version,
+          extraction.provider_options,
           extraction.prompt,
           extraction.schema
         ],
@@ -384,11 +396,17 @@ defmodule Nila.Eval.Segmented do
     |> String.slice(0, 16)
   end
 
-  defp discovery_fingerprint(:per_page, kind),
-    do: OpenAICompatibleChat.fingerprint(PageLabels.prompt(kind), PageLabels.schema())
+  defp discovery_fingerprint(:per_page, kind, context) do
+    PageLabels.prompt(kind)
+    |> OpenAICompatibleChat.fingerprint(PageLabels.schema())
+    |> Map.put(:context_strategy, PageLabels.context_fingerprint(context))
+  end
 
-  defp discovery_fingerprint(:whole_dump, _kind),
-    do: OpenAICompatibleChat.fingerprint(Discovery.prompt(), Discovery.schema())
+  defp discovery_fingerprint(:whole_dump, _kind, _context) do
+    Discovery.prompt()
+    |> OpenAICompatibleChat.fingerprint(Discovery.schema())
+    |> Map.put(:context_strategy, "whole-dump-v1")
+  end
 
   defp load_chunk(meta_path) do
     meta = read_json!(meta_path)
@@ -433,6 +451,7 @@ defmodule Nila.Eval.Segmented do
          doc,
          kind,
          shape,
+         context,
          transcription_dir,
          transcription,
          discovery,
@@ -450,11 +469,12 @@ defmodule Nila.Eval.Segmented do
           "kind" => to_string(kind),
           "pipeline" => "segmented",
           "discovery_shape" => to_string(shape),
+          "discovery_context" => to_string(context),
           "provider" => OpenAICompatibleChat.provider(),
           "model" => OpenAICompatibleChat.model(),
           "fingerprint" =>
             OpenAICompatibleChat.fingerprint(Segmented.prompt(kind), Segmented.schema(kind)),
-          "discovery_fingerprint" => discovery_fingerprint(shape, kind),
+          "discovery_fingerprint" => discovery_fingerprint(shape, kind, context),
           "transcription_attempt" => transcription_dir,
           "client_gstin" => client_gstin,
           "page_count" => Transcription.page_count(transcription),
@@ -473,6 +493,7 @@ defmodule Nila.Eval.Segmented do
   defp response_format(meta) do
     case meta["response_format"] do
       "json_object" -> :json_object
+      "json_schema_local" -> :json_schema_local
       _strict_or_legacy -> :json_schema
     end
   end
