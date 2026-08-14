@@ -11,6 +11,13 @@ and invoice structuring use a separately configurable OpenAI-compatible text
 provider. The former LlamaExtract benchmark path was removed after Mistral proved
 materially cheaper.
 
+> **Verification warning, 2026-08-14.** The current lexical source-presence checker
+> is not accounting assurance: on labelled real invoices it deleted correct values,
+> and re-verifying after deletion improved some statuses. The semantic Binder
+> replacement was noisier and has been removed. Do not extend either approach
+> without a labelled baseline comparison. See
+> [`verification-spike-retrospective.md`](./verification-spike-retrospective.md).
+
 ## TL;DR
 
 - **Per-page OCR is reliable and roughly linear**: ~3.5s/page cold, ~2s fixed
@@ -19,9 +26,10 @@ materially cheaper.
   ~15 pages**: it silently **drops** real invoices and **duplicates** others, while
   still returning HTTP 200 with well-formed JSON. This is the dangerous failure —
   plausible and silent.
-- **The fix is segment-then-extract**: transcribe once, discover bill boundaries,
-  extract one bill per call, and verify every returned value against that bill's
-  text. The extraction unit is therefore the correctness unit.
+- **The fix for packet-level omission is segment-then-extract**: transcribe once,
+  discover bill boundaries, and extract one bill per call. This makes source checks
+  local to one invoice, but the current lexical checker is not semantic proof and
+  must not be treated as accounting assurance.
 - **Timeouts are recoverable, not fatal**: Mistral caches OCR on identical
   requests, so a retry after a client timeout returns in seconds. Retry once;
   don't fail the dump on transient transport errors.
