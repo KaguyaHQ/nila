@@ -1,6 +1,8 @@
 defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
 
   @schema %{
@@ -30,13 +32,177 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatTest do
       conn |> Plug.Conn.put_status(429) |> Req.Test.json(%{"error" => "slow down"})
     end)
 
-    assert {:ok, response} =
-             OpenAICompatibleChat.request_raw([], "test", @schema, max_retries: 0)
+    log =
+      capture_log(fn ->
+        assert {:ok, response} =
+                 OpenAICompatibleChat.request_raw([], "test", @schema, max_retries: 0)
 
-    assert {:error, {:text_chat_failed, 429, %{"error" => "slow down"}}} =
-             OpenAICompatibleChat.decode(response)
+        assert {:error, {:text_chat_failed, 429, %{"error" => "slow down"}}} =
+                 OpenAICompatibleChat.decode(response)
+      end)
 
+    assert log =~ "gst_text.retry_exhausted"
+    assert log =~ "reason={:http_status, 429}"
     assert Agent.get(calls, & &1) == 1
+  end
+
+  test "a rate-limited caller waits and retries without gating another caller" do
+    previous = Application.get_env(:nila, OpenAICompatibleChat)
+    parent = self()
+
+    Application.put_env(
+      :nila,
+      OpenAICompatibleChat,
+      Keyword.put(previous, :retry_wait, fn delay ->
+        send(parent, {:retry_wait, self(), delay})
+
+        receive do
+          :continue -> :ok
+        end
+      end)
+    )
+
+    on_exit(fn -> Application.put_env(:nila, OpenAICompatibleChat, previous) end)
+
+    {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
+      case Agent.get_and_update(calls, &{&1, &1 + 1}) do
+        0 ->
+          conn
+          |> Plug.Conn.put_resp_header("retry-after", "2")
+          |> Plug.Conn.put_status(429)
+          |> Req.Test.json(%{"error" => "slow down"})
+
+        _later ->
+          Req.Test.json(conn, %{
+            "choices" => [%{"message" => %{"content" => Jason.encode!(%{"ok" => true})}}]
+          })
+      end
+    end)
+
+    log =
+      capture_log(
+        [
+          metadata: [
+            :provider,
+            :model,
+            :retry_kind,
+            :http_status,
+            :attempt,
+            :max_retries,
+            :delay_ms
+          ]
+        ],
+        fn ->
+          first =
+            Task.async(fn ->
+              OpenAICompatibleChat.request_raw([], "test", @schema, max_retries: 1)
+            end)
+
+          assert_receive {:retry_wait, waiting, delay}, 500
+          assert delay in 2_000..2_500
+
+          second =
+            Task.async(fn ->
+              OpenAICompatibleChat.request_raw([], "test", @schema, max_retries: 1)
+            end)
+
+          assert {:ok, second_response} = Task.await(second, 500)
+
+          assert {:ok, %{"ok" => true}, %{}} =
+                   OpenAICompatibleChat.decode(second_response, @schema)
+
+          send(waiting, :continue)
+          assert {:ok, first_response} = Task.await(first, 500)
+
+          assert {:ok, %{"ok" => true}, %{}} =
+                   OpenAICompatibleChat.decode(first_response, @schema)
+        end
+      )
+
+    assert log =~ "gst_text.retry"
+    assert log =~ "retry_kind=http_status"
+    assert log =~ "http_status=429"
+    assert Agent.get(calls, & &1) == 3
+  end
+
+  test "retries a transient provider failure locally" do
+    previous = Application.get_env(:nila, OpenAICompatibleChat)
+    parent = self()
+
+    Application.put_env(
+      :nila,
+      OpenAICompatibleChat,
+      Keyword.put(previous, :retry_wait, fn delay -> send(parent, {:retry_wait, delay}) end)
+    )
+
+    on_exit(fn -> Application.put_env(:nila, OpenAICompatibleChat, previous) end)
+
+    {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
+      case Agent.get_and_update(calls, &{&1, &1 + 1}) do
+        0 -> conn |> Plug.Conn.put_status(500) |> Req.Test.json(%{"error" => "try again"})
+        _later -> successful_response(conn)
+      end
+    end)
+
+    log =
+      capture_log([metadata: [:retry_kind, :http_status, :attempt, :delay_ms]], fn ->
+        assert {:ok, response} =
+                 OpenAICompatibleChat.request_raw([], "test", @schema, max_retries: 1)
+
+        assert {:ok, %{"ok" => true}, %{}} = OpenAICompatibleChat.decode(response, @schema)
+      end)
+
+    assert_receive {:retry_wait, delay}
+    assert delay in 1_000..1_500
+    assert log =~ "reason={:http_status, 500}"
+    assert log =~ "http_status=500"
+    assert Agent.get(calls, & &1) == 2
+  end
+
+  test "retries an HTTP/2 pool startup failure locally" do
+    previous = Application.get_env(:nila, OpenAICompatibleChat)
+    parent = self()
+
+    Application.put_env(
+      :nila,
+      OpenAICompatibleChat,
+      Keyword.put(previous, :retry_wait, fn delay -> send(parent, {:retry_wait, delay}) end)
+    )
+
+    on_exit(fn -> Application.put_env(:nila, OpenAICompatibleChat, previous) end)
+
+    {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
+      case Agent.get_and_update(calls, &{&1, &1 + 1}) do
+        0 ->
+          put_in(
+            conn.private[:req_test_exception],
+            %Req.HTTPError{protocol: :http2, reason: :pool_not_available}
+          )
+
+        _later ->
+          successful_response(conn)
+      end
+    end)
+
+    log =
+      capture_log([metadata: [:retry_kind, :transport_reason, :attempt, :delay_ms]], fn ->
+        assert {:ok, response} =
+                 OpenAICompatibleChat.request_raw([], "test", @schema, max_retries: 1)
+
+        assert {:ok, %{"ok" => true}, %{}} = OpenAICompatibleChat.decode(response, @schema)
+      end)
+
+    assert_receive {:retry_wait, delay}
+    assert delay in 0..200
+    assert log =~ "reason={:http2, :pool_not_available}"
+    assert log =~ "transport_reason=pool_not_available"
+    assert Agent.get(calls, & &1) == 2
   end
 
   test "swaps endpoint, key, model, and provider identity through config" do
@@ -178,6 +344,12 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatTest do
 
     assert {:ok, %{"ok" => true}, %{}} = OpenAICompatibleChat.decode(response, @schema)
     assert Agent.get(calls, & &1) == 2
+  end
+
+  defp successful_response(conn) do
+    Req.Test.json(conn, %{
+      "choices" => [%{"message" => %{"content" => Jason.encode!(%{"ok" => true})}}]
+    })
   end
 
   test "json_object retries a schema mismatch through the normal request path" do

@@ -101,11 +101,6 @@ config :nila, Nila.Gst.Extraction.OpenAICompatibleChatFinch,
   start: false,
   protocol: :http2
 
-config :nila, Nila.Gst.Extraction.ProviderAdmission,
-  tokens_per_minute: 100_000_000,
-  requests_per_second: 100_000,
-  max_concurrency: 100
-
 config :nila, Nila.Assistant,
   http_client: Nila.Assistant.HTTPClient.Stub,
   api_key: "test-key",

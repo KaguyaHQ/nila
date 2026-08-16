@@ -44,8 +44,7 @@ defmodule Nila.Application do
     if is_nil(chat[:api_key]) do
       []
     else
-      [Nila.Gst.Extraction.ProviderAdmission] ++
-        if(config[:start] == false, do: [], else: [Nila.Gst.Extraction.OpenAICompatibleChatFinch])
+      if(config[:start] == false, do: [], else: [Nila.Gst.Extraction.OpenAICompatibleChatFinch])
     end
   end
 end

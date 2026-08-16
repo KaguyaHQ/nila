@@ -43,11 +43,6 @@ config :nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChat,
 
 config :nila, Nila.Gst.Extraction.OpenAICompatibleChatFinch, protocol: :http2
 
-config :nila, Nila.Gst.Extraction.ProviderAdmission,
-  tokens_per_minute: 100_000,
-  requests_per_second: 1.67,
-  max_concurrency: 100
-
 config :hammer,
   backend:
     {Hammer.Backend.ETS,

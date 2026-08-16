@@ -151,11 +151,6 @@ if config_env() in [:prod, :dev] do
     end
 
   config :nila, Nila.Gst.Extraction.OpenAICompatibleChatFinch, protocol: text_protocol
-
-  config :nila, Nila.Gst.Extraction.ProviderAdmission,
-    tokens_per_minute: env!("GST_TEXT_TOKENS_PER_MINUTE", :integer, 100_000),
-    requests_per_second: env!("GST_TEXT_REQUESTS_PER_SECOND", :float, 1.67),
-    max_concurrency: env!("GST_TEXT_MAX_CONCURRENCY", :integer, 100)
 end
 
 # WhatsApp is a production intake boundary, so all webhook and outbound reply

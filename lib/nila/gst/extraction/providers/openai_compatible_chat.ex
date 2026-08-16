@@ -13,7 +13,8 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
   @json_object_prompt_version 1
 
   alias Nila.Gst.Extraction.OpenAICompatibleChatFinch
-  alias Nila.Gst.Extraction.ProviderAdmission
+
+  require Logger
 
   @doc "The model this module will use unless a call overrides it."
   def model, do: config()[:model] || @default_model
@@ -54,7 +55,7 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
 
     request(
       options,
-      estimate_tokens(payload),
+      payload.model,
       Keyword.get(opts, :max_retries, 8),
       0,
       schema,
@@ -145,9 +146,7 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
     end
   end
 
-  defp request(options, estimated_tokens, max_retries, attempt, schema, format) do
-    reservation = ProviderAdmission.acquire(estimated_tokens)
-
+  defp request(options, request_model, max_retries, attempt, schema, format) do
     case Req.post(options) do
       {:ok, %Req.Response{} = response} ->
         raw = %{
@@ -157,39 +156,76 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
           response_format: format
         }
 
-        if retryable_status?(response.status) do
-          delay = retry_delay(response, attempt)
-          ProviderAdmission.release(reservation, delay)
+        cond do
+          retryable_status?(response.status) and attempt < max_retries ->
+            delay = retry_delay(response, attempt)
+            log_retry(request_model, {:http_status, response.status}, attempt, max_retries, delay)
+            wait(delay)
+            request(options, request_model, max_retries, attempt + 1, schema, format)
 
-          if attempt < max_retries do
-            request(options, estimated_tokens, max_retries, attempt + 1, schema, format)
-          else
+          retryable_status?(response.status) ->
+            log_retry_exhausted(request_model, {:http_status, response.status}, attempt)
             {:ok, raw}
-          end
-        else
-          ProviderAdmission.reconcile(reservation, response_tokens(raw, estimated_tokens))
 
-          if format in [:json_object, :json_schema_local] and response.status in 200..299 and
-               not valid_response?(raw, schema) and attempt < max_retries do
-            request(options, estimated_tokens, max_retries, attempt + 1, schema, format)
-          else
+          format in [:json_object, :json_schema_local] and response.status in 200..299 and
+            not valid_response?(raw, schema) and attempt < max_retries ->
+            request(options, request_model, max_retries, attempt + 1, schema, format)
+
+          true ->
             {:ok, raw}
-          end
         end
 
       {:error, %Req.HTTPError{protocol: :http2, reason: reason} = error}
       when reason in [:pool_not_available, :connection_not_ready, :unprocessed] ->
-        ProviderAdmission.release(reservation, jitter(200))
-
         if attempt < max_retries do
-          request(options, estimated_tokens, max_retries, attempt + 1, schema, format)
+          delay = jitter(200)
+          log_retry(request_model, {:http2, reason}, attempt, max_retries, delay)
+          wait(delay)
+          request(options, request_model, max_retries, attempt + 1, schema, format)
         else
+          log_retry_exhausted(request_model, {:http2, reason}, attempt)
           {:error, {:text_chat_request_failed, error}}
         end
 
       {:error, reason} ->
-        ProviderAdmission.reconcile(reservation, estimated_tokens)
         {:error, {:text_chat_request_failed, reason}}
+    end
+  end
+
+  defp log_retry(request_model, reason, attempt, max_retries, delay) do
+    Logger.warning(
+      "gst_text.retry provider=#{provider()} model=#{request_model} " <>
+        "reason=#{inspect(reason)} retry=#{attempt + 1}/#{max_retries} delay_ms=#{delay}",
+      retry_metadata(request_model, reason) ++
+        [attempt: attempt + 1, max_retries: max_retries, delay_ms: delay]
+    )
+  end
+
+  defp log_retry_exhausted(request_model, reason, attempt) do
+    Logger.warning(
+      "gst_text.retry_exhausted provider=#{provider()} model=#{request_model} " <>
+        "reason=#{inspect(reason)} attempts=#{attempt + 1}",
+      retry_metadata(request_model, reason) ++ [attempts: attempt + 1]
+    )
+  end
+
+  defp retry_metadata(request_model, {:http_status, status}),
+    do: [
+      provider: provider(),
+      model: request_model,
+      retry_kind: :http_status,
+      http_status: status
+    ]
+
+  defp retry_metadata(request_model, {:http2, reason}),
+    do: [provider: provider(), model: request_model, retry_kind: :http2, transport_reason: reason]
+
+  defp wait(delay), do: (config()[:retry_wait] || (&default_wait/1)).(delay)
+
+  defp default_wait(delay) do
+    receive do
+    after
+      delay -> :ok
     end
   end
 
@@ -270,21 +306,6 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
         unix_epoch = {{1970, 1, 1}, {0, 0, 0}} |> :calendar.datetime_to_gregorian_seconds()
         reset = :calendar.datetime_to_gregorian_seconds(datetime) - unix_epoch
         max(reset - System.os_time(:second), 0) * 1_000
-    end
-  end
-
-  defp estimate_tokens(payload) do
-    payload
-    |> Jason.encode!()
-    |> byte_size()
-    |> div(4)
-    |> Kernel.+(1_024)
-  end
-
-  defp response_tokens(response, fallback) do
-    case Jason.decode(response.body) do
-      {:ok, %{"usage" => %{"total_tokens" => tokens}}} when is_integer(tokens) -> tokens
-      _missing -> fallback
     end
   end
 
