@@ -207,7 +207,7 @@ defmodule NilaWeb.Router do
     post "/resend", ResendController, :ingest
   end
 
-  # Enable LiveDashboard and Swoosh mailbox preview in development
+  # Enable operational and design references in development
   if Application.compile_env(:nila, :dev_routes) do
     # If you want to use the LiveDashboard in production, you should put
     # it behind authentication and allow only admins to access it.
@@ -221,6 +221,7 @@ defmodule NilaWeb.Router do
 
       live_dashboard "/dashboard", metrics: NilaWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
+      live "/design-system", NilaWeb.Dev.DesignSystemLive
 
       # The error pages, previewable — `debug_errors: true` means a real 404 in
       # dev renders the Plug debugger instead of ours.

@@ -9,6 +9,8 @@ screen. [`DESIGN.md`](./DESIGN.md) holds the durable product principles.
 - `assets/css/app.css` — authoritative token values, fonts, theme, and signature utilities.
 - `lib/nila_web/components/` — authoritative component APIs and internal recipes.
 - `lib/nila_web/components/layouts.ex` — product shell and responsive outer geometry.
+- `/dev/design-system` — development-only executable reference built from real components
+  and static accounting specimens.
 - `mix nila.style_guard` — mechanically enforced token, spacing, ruling, motion, and
   restricted-context rules.
 

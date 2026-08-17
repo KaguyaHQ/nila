@@ -67,7 +67,7 @@ custom classes must fully style the input
 - For token, class, component, or mechanical UI work, also read `docs/design/FRONTEND.md`.
 - For a new screen, workflow, or substantial restructuring, also read `docs/design/COMPOSITION.md` and `docs/design/TASTE.md`.
 - For public/marketing pages, read `docs/design/MARKETING.md` and `docs/design/TASTE.md`.
-- `assets/css/app.css` is authoritative for token values; `lib/nila_web/components/` owns shared recipes. Token bans are enforced by `mix nila.style_guard`.
+- `assets/css/app.css` is authoritative for token values; `lib/nila_web/components/` owns shared recipes. Token bans are enforced by `mix nila.style_guard`. Use the development-only `/dev/design-system` as the executable component reference.
 - For visible UI changes, inspect the real affected desktop screen before and after editing. Nila is a desktop workbench for CA firms; routine mobile screenshots/parity are not required. Check narrow layouts only when shared shell/layout changes could break catastrophically.
 
 ### JS and CSS guidelines

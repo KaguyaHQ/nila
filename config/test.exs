@@ -23,6 +23,9 @@ config :nila, NilaWeb.Endpoint,
 # In test we don't send emails
 config :nila, Nila.Mailer, adapter: Swoosh.Adapters.Test
 
+# Compile the design reference for isolated component tests without enabling dev routes.
+config :nila, compile_design_system: true
+
 config :nila, Oban, testing: :manual, queues: false, plugins: false
 
 config :nila,
