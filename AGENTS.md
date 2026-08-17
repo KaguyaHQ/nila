@@ -57,9 +57,18 @@ Rationale lives in `docs/decisions.md` (Transactional Code).
   - You failed to follow the Authenticated Routes guidelines, or you failed to pass `current_scope` to `<Layouts.app>`
   - **Always** fix the `current_scope` error by moving your routes to the proper `live_session` and ensure you pass `current_scope` as needed
 - Phoenix v1.8 moved the `<.flash_group>` component to the `Layouts` module. You are **forbidden** from calling `<.flash_group>` outside of the `layouts.ex` module
-- Out of the box, `core_components.ex` imports an `<.icon name="hero-x-mark" class="w-5 h-5"/>` component for hero icons. **Always** use the `<.icon>` component for icons, **never** use `Heroicons` modules or similar
+- The shared component imports include `<.icon name="hero-x-mark" class="w-5 h-5"/>` for hero icons. **Always** use `<.icon>`, never `Heroicons` modules or similar
 - If you override the default input classes (`<.input class="myclass px-2 py-1 rounded-lg">)`) class with your own values, no default classes are inherited, so your
 custom classes must fully style the input
+
+### UI and design routing
+
+- Before changing product UI, read `docs/design/DESIGN.md`; it is the short router and invariant set.
+- For token, class, component, or mechanical UI work, also read `docs/design/FRONTEND.md`.
+- For a new screen, workflow, or substantial restructuring, also read `docs/design/COMPOSITION.md` and `docs/design/TASTE.md`.
+- For public/marketing pages, read `docs/design/MARKETING.md` and `docs/design/TASTE.md`.
+- `assets/css/app.css` is authoritative for token values; `lib/nila_web/components/` owns shared recipes. Token bans are enforced by `mix nila.style_guard`.
+- For visible UI changes, inspect the real affected desktop screen before and after editing. Nila is a desktop workbench for CA firms; routine mobile screenshots/parity are not required. Check narrow layouts only when shared shell/layout changes could break catastrophically.
 
 ### JS and CSS guidelines
 
@@ -72,7 +81,7 @@ custom classes must fully style the input
 
 - **Always use and maintain this import syntax** in the app.css file for projects generated with `phx.new`
 - **Never** use `@apply` when writing raw css
-- This project uses **daisyUI v5 + the bespoke "moonlight" tokens** (see `docs/design/DESIGN.md`). Build from the shared components in `core_components.ex`; never hard-code colors or hex. (Overrides the generic phx.new "write your own, no daisyUI" default.)
+- This project uses **daisyUI v5 + the bespoke "moonlight" tokens** (see `docs/design/FRONTEND.md`). Build from shared modules in `lib/nila_web/components/`; never hard-code colors or hex. (Overrides the generic phx.new "write your own, no daisyUI" default.)
 - Out of the box **only the app.js and app.css bundles are supported**
   - You cannot reference an external vendor'd script `src` or link `href` in the layouts
   - You must import the vendor deps into app.js and app.css to use them
@@ -121,7 +130,7 @@ custom classes must fully style the input
 
 ## HEEx / forms — read before editing `.heex`
 
-- **YOU MUST use the project's `<.input>` component for every form field** (it carries label + `<.error>` + design tokens). If a field needs something `<.input>` can't do, **extend the component** (add a clause in `core_components.ex`) — do NOT hand-roll a raw `<input>`, or you silently lose error rendering and design-system consistency.
+- **YOU MUST use the project's `<.input>` component for every form field** (it carries label + `<.error>` + design tokens). If a field needs something `<.input>` can't do, **extend `lib/nila_web/components/input.ex`** — do NOT hand-roll a raw `<input>`, or you silently lose error rendering and design-system consistency.
 - Forms: build with `to_form/2` + `<.form for={@form} id="...">`, drive fields via `@form[:field]`. Never `<.form for={@changeset}>`, never `form_for`/`let={f}`. Always give forms/buttons unique DOM IDs (tests rely on them).
 - Interpolation: `{...}` works in attrs and bodies; `<%= ... %>` only in bodies. Block constructs (`if`/`cond`/`case`/`for`) in a body use `<%= ... %>`. Never interpolate into an attribute with `<%= %>` (`id="<%= @x %>"` is a syntax error — use `id={@x}`).
 - No `else if`/`elsif` — use `cond`/`case`. No `Enum.each` for content — use `<%= for x <- @col do %>`. Comments are `<%!-- … --%>`.

@@ -12,7 +12,7 @@ Detailed Elixir, Phoenix, LiveView, Ecto, and HEEx coding rules live in `AGENTS.
 
 ## UI / Design
 
-`docs/design/DESIGN.md` is authoritative for all UI (brand, principles, tokens, type scale in one file) — read it before editing `.heex` or components. The system is **"moonlight"**: daisyUI v5 semantic tokens over a bespoke oklch palette (light-only, no purple). Token reference lives in `docs/design/DESIGN.md`.
+`docs/design/DESIGN.md` is the UI router and invariant set — read it before editing `.heex` or components. Then read `docs/design/FRONTEND.md` for mechanical/token work, `docs/design/COMPOSITION.md` for screen design, or `docs/design/MARKETING.md` for public pages. `docs/design/TASTE.md` judges aesthetic calls. The system is **"moonlight"**: daisyUI v5 semantic tokens over a bespoke light-only palette. Exact token values live in `assets/css/app.css`.
 
 - Use the moonlight tokens; never hard-code colors (`slate-*`, `bg-white`, raw hex). Parts of the interior still use legacy slate — that's drift to fix when you touch a page, not a pattern to copy.
 - Build pages from the shared components in `lib/nila_web/components/` — one module per component (`card.ex`, `badge.ex`, `modal.ex`, `table.ex`, `evidence.ex`, …), all imported by `lib/nila_web.ex`'s `html_helpers`. Extract a new module when a pattern repeats rather than pasting class strings. That directory is the single source of truth for the look.
@@ -45,7 +45,7 @@ Canonical sources:
 - Product intent (why/who, the GST wedge, goals, non-goals): `docs/prd.md`
 - Runtime and domain shape: `docs/architecture.md`
 - Architecture decisions: `docs/decisions.md`
-- UI system: `docs/design/DESIGN.md`, with reasoning in `docs/design/`
+- UI router/invariants: `docs/design/DESIGN.md`; scoped frontend, composition, marketing, and taste guidance lives beside it
 
 Scratch/implementation plans go in `docs/.plans/` — gitignored, local-only. Not `docs/plans/` (that path is tracked).
 

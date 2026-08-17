@@ -22,7 +22,7 @@
   Nila is light-mode only. The palette is "moonlight": a hushed sea-blue on a
   deep midnight "ink" (#004865), warmed by a single sand accent (#d3c0aa), over
   cool near-white surfaces. No purple — night over water. Low chroma, soft
-  luminance, calm not loud. See docs/design/DESIGN.md. Build your own at:
+  luminance, calm not loud. See docs/design/FRONTEND.md. Build your own at:
   https://daisyui.com/theme-generator/ */
 @plugin "../vendor/daisyui-theme" {
   name: "light";
@@ -178,7 +178,7 @@
    into each step so markup never repeats them. Display steps are fluid (clamp)
    and pair with `font-display`; body/label steps are fixed and use the sans.
    Never reach for an arbitrary `text-[13.5px]` — pick the nearest step. The
-   scale is documented in docs/design/DESIGN.md#typography. */
+   scale is documented in docs/design/FRONTEND.md#typography. */
 @theme {
   /* Display & headings — fluid, serif. Pair with `font-display`. */
   --text-hero: clamp(3.25rem, 1.9rem + 6vw, 5.25rem);
@@ -271,7 +271,7 @@
 /* ── Nila moonlight design system ────────────────────────────────────────
    The feeling is moonlight on a pale wall: cool, hushed, low-chroma light and
    soft luminance — never glare. Keep these few utilities and reuse them; the
-   calm comes from restraint, not from many one-off styles. See docs/design/DESIGN.md. */
+   calm comes from restraint, not from many one-off styles. See docs/design/FRONTEND.md. */
 
 body {
   -webkit-font-smoothing: antialiased;

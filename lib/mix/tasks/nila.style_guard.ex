@@ -12,7 +12,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     * **Type scale** — raw Tailwind sizes (`text-sm`, `text-xs`, `text-4xl`, …),
       arbitrary `text-[…]`, `tracking-[…]`, and `leading-[…]`, plus the retired
       `text-table` / `text-small` / `text-fine` / `text-micro` steps. The role scale in
-      `docs/design/DESIGN.md#typography` bundles size + line-height + tracking, so
+      `docs/design/FRONTEND.md#typography` bundles size + line-height + tracking, so
       markup names a role (`text-ui`, `text-context`), never a pixel. Raw sizes
       have been eliminated; the empty allowlist keeps them from returning.
 
@@ -52,7 +52,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
   # Escape hatch for files allowed to keep raw text sizes. The design-token sweep
   # drove this to empty: every `lib/nila_web` screen now names a role from
-  # docs/design/DESIGN.md#typography. Keep it empty. DO NOT add a file here to silence a
+  # docs/design/FRONTEND.md#typography. Keep it empty. DO NOT add a file here to silence a
   # new violation — convert it to the role scale instead. The only legitimate
   # entry would be a genuinely print-specific stylesheet measured in pt, which
   # lives in CSS, not markup.
@@ -72,7 +72,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   @motion_pattern ~r/\bduration-(?:\d+\b|\[[^\]]+\])|\bease-(?:in-out|in|out)\b/
 
   # Product-only checks reuse the live/component scope and deliberately exclude
-  # the ledger marketing controller templates. Type scale covers the whole web tree.
+  # public marketing controller templates. Type scale covers the whole web tree.
   @legacy_globs [
     "lib/nila_web/live/**/*.heex",
     "lib/nila_web/live/**/*.ex",
@@ -93,7 +93,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     motion = @motion_globs |> expand() |> Enum.flat_map(&motion_violations/1)
 
     report(legacy, "legacy hardcoded classes")
-    report(type_scale, "raw type sizes — name a role from docs/design/DESIGN.md#typography")
+    report(type_scale, "raw type sizes — name a role from docs/design/FRONTEND.md#typography")
 
     report(
       context_type,

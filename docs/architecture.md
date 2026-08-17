@@ -115,5 +115,6 @@ trigger workflow steps and audited state transitions.
 
 - `decisions.md` — system-level decisions (Postgres, Oban, monolith, the
   R2 storage adapter design).
-- `design/DESIGN.md` — brand, layout contracts, principles, and the moonlight system.
+- `design/DESIGN.md` — UI router, durable brand/product principles, and invariants.
+- `design/FRONTEND.md` — token/component contracts; `design/COMPOSITION.md` — screen hierarchy; `design/MARKETING.md` — public surfaces; `design/TASTE.md` — aesthetic record.
 - `prd.md` — product intent: why/who, the GST wedge, goals and non-goals.

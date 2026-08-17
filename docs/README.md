@@ -8,7 +8,11 @@ What's in here. Open the one that answers your question.
 - [`ocr-extraction.md`](./ocr-extraction.md) — OCR/extraction provider behaviour: measured latency, why whole-packet extraction drops invoices past ~15 pages, and the chunking mandate. Extensible experiment log.
 - [`verification-spike-retrospective.md`](./verification-spike-retrospective.md) — the 2026-08-14 verifier A/B, discarded Binder architecture, current production risk, lessons, and next-agent handoff.
 - [`mistral-http-transport.md`](./mistral-http-transport.md) — the 2026-08-12 stale-connection investigation, retry semantics, discarded HTTP-client alternatives, and implemented document/chat transport split.
-- [`design/DESIGN.md`](./design/DESIGN.md) — brand, principles, layout contracts, and the moonlight UI system.
+- [`design/DESIGN.md`](./design/DESIGN.md) — short UI router, brand, product principles, and invariants.
+- [`design/FRONTEND.md`](./design/FRONTEND.md) — executable token/component contracts and visible-UI workflow.
+- [`design/COMPOSITION.md`](./design/COMPOSITION.md) — screen hierarchy and workbench composition judgment.
+- [`design/MARKETING.md`](./design/MARKETING.md) — scoped public-page identity and shell rules.
+- [`design/TASTE.md`](./design/TASTE.md) — founder taste record that judges aesthetic calls.
 - [`runbooks/`](./runbooks/) — debugging playbooks for shipped features.
 
 Coding conventions live in [`../AGENTS.md`](../AGENTS.md). Claude-specific repo guidance in [`../CLAUDE.md`](../CLAUDE.md).

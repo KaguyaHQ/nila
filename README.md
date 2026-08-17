@@ -36,7 +36,7 @@ through one workings projection so nothing drifts.
 - Phoenix 1.8, LiveView
 - Ecto + PostgreSQL (source of truth)
 - Oban (extraction and derivation jobs)
-- Tailwind CSS + daisyUI ("moonlight" tokens, `docs/design/DESIGN.md`)
+- Tailwind CSS + daisyUI ("moonlight" UI router in `docs/design/DESIGN.md`; executable token values in `assets/css/app.css`)
 - Req/Jason for HTTP/JSON
 - `Nila.Storage` — local disk in dev/test, private Cloudflare R2 in production
 
