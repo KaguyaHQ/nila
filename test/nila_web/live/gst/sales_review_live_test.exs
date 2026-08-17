@@ -44,12 +44,18 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     month_pid = view.pid
 
     assert has_element?(view, "#month-page")
+    assert has_element?(view, "#month-workpaper-tab-sales[aria-current='page']")
+    assert has_element?(view, "#month-sales")
+    refute has_element?(view, "#month-register")
     assert has_element?(view, "#sales-review")
     assert has_element?(view, "#gstr1-evidence-modal")
 
     view |> element("#sales-review-scope button", "All") |> render_click()
     assert_patch(view, review_path(context.client, open["id"], "all"))
     assert view.pid == month_pid
+
+    view |> element("#sales-review button[phx-click='done']") |> render_click()
+    assert_patch(view, "/gst/#{context.client.id}/#{@period}?track=sales")
 
     assert {:error, {:live_redirect, %{to: legacy_target}}} =
              live(context.conn, ~p"/gst/#{context.client.id}/#{@period}?invoice=20%2F2025-26")

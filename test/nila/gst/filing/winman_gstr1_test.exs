@@ -54,6 +54,13 @@ defmodule Nila.Gst.Filing.WinmanGstr1Test do
       }
     }
 
+    assert {:ok, manifest} = WinmanGstr1.export_manifest(projection)
+    assert manifest.included_documents == 2
+    assert manifest.included_b2b_invoices == 1
+    assert manifest.taxable == 1610.17
+    assert_in_delta manifest.output_tax, 159.83, 0.001
+    assert manifest.omitted_documents == 0
+
     assert {:ok, workbook} = WinmanGstr1.build(projection, %{name: "Nila & Co"}, "2026-07")
 
     original = template_entries()

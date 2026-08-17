@@ -8,12 +8,12 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Accounts.Policy
   alias Nila.Clients
   alias Nila.Gst.Chase
-  alias Nila.Gst.Filing.{Calendar, Signoffs}
+  alias Nila.Gst.Filing.{Calendar, Signoffs, WinmanGstr1}
   alias Nila.Gst.Intake.{DumpWorker, Dumps, Preconditions}
   alias Nila.Gst.Issues
   alias Nila.Gst.Purchase.{Groups, ItcCases, Reconciliation, Register, Resolutions, Review}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
-  alias Nila.Gst.Sales.Account
+  alias Nila.Gst.Sales.{Account, Values}
   alias Nila.Gst.Sales.Review, as: SalesReview
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
@@ -25,15 +25,23 @@ defmodule NilaWeb.Gst.MonthLive do
     Arrivals,
     Evidence,
     Filing,
+    Helpers,
     Precondition,
     Purchase,
     Sales,
     Verdict,
-    Workings
+    Workings,
+    Workpaper
   }
 
   alias NilaWeb.Components.Gst.Review.{PurchaseLive, SalesLive}
   alias NilaWeb.Gst.PeriodOptions
+
+  @unsupported_sales_codes ~w(
+    export_supply_unsupported sez_supply_unsupported nil_rated_supply_unsupported
+    exempt_supply_unsupported non_gst_supply_unsupported outward_reverse_charge_unsupported
+    cdnur_unsupported cancelled_document_unsupported amendment_document_unsupported cess_unsupported
+  )
 
   @impl true
   def mount(%{"client_id" => client_id, "period" => period}, _session, socket) do
@@ -74,8 +82,17 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:page_title, "#{client.name} · #{period_label(period)}")
       |> assign(:purchase_review_route, nil)
       |> assign(:sales_review_route, nil)
+      |> assign(:selected_track, :sales)
       |> assign(:last_reviewed_inum, nil)
       |> assign(:visited_inums, MapSet.new())
+      |> assign(:open_folds, MapSet.new())
+      |> assign(:sales_register_query, "")
+      |> assign(:sales_register_filter, :all)
+      |> assign(:purchase_register_query, "")
+      |> assign(:purchase_recon_filter, :all)
+      |> assign(:purchase_action_filter, :all)
+      |> assign(:purchase_register_sort, :register)
+      |> assign(:sales_change, nil)
       |> assign(:expanded_nodes, MapSet.new())
       |> assign(:rippled, MapSet.new())
       |> assign(:ripple_seq, 0)
@@ -100,7 +117,8 @@ defmodule NilaWeb.Gst.MonthLive do
     {:noreply,
      assign(socket,
        purchase_review_route: route,
-       sales_review_route: nil
+       sales_review_route: nil,
+       selected_track: :purchases
      )}
   end
 
@@ -120,6 +138,7 @@ defmodule NilaWeb.Gst.MonthLive do
       assign(socket,
         purchase_review_route: nil,
         sales_review_route: route,
+        selected_track: :sales,
         last_reviewed_inum: route.item || socket.assigns.last_reviewed_inum,
         visited_inums:
           if(route.item,
@@ -136,7 +155,8 @@ defmodule NilaWeb.Gst.MonthLive do
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :review}} = socket) do
-    {:noreply, push_patch(socket, to: month_path(socket))}
+    track = fallback_track(socket.assigns)
+    {:noreply, push_patch(socket, to: track_path(socket, track))}
   end
 
   def handle_params(
@@ -152,12 +172,21 @@ defmodule NilaWeb.Gst.MonthLive do
     {:noreply, push_patch(socket, to: sales_review_path(socket, route), replace: true)}
   end
 
-  def handle_params(_params, _uri, socket) do
-    {:noreply,
-     assign(socket,
-       purchase_review_route: nil,
-       sales_review_route: nil
-     )}
+  def handle_params(params, _uri, socket) do
+    track = selected_track(params["track"], socket.assigns)
+
+    socket =
+      assign(socket,
+        purchase_review_route: nil,
+        sales_review_route: nil,
+        selected_track: track
+      )
+
+    if is_nil(params["track"]) or params["track"] == Atom.to_string(track) do
+      {:noreply, socket}
+    else
+      {:noreply, push_patch(socket, to: track_path(socket, track), replace: true)}
+    end
   end
 
   defp valid_review_focus(nil, _focus), do: nil
@@ -226,12 +255,20 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign_purchase(purchase)
     |> assign_dumps()
     |> assign_sales(sales)
+    |> assign_review_projections()
     |> assign_gstr1_readiness()
+    |> assign_gstr3b_readiness()
     |> assign_verdict(purchase, sales)
+    |> assign_workpaper_states()
+    |> assign_register_views()
   end
 
   defp assign_gstr1_readiness(socket) do
     assign(socket, :gstr1_readiness, Filing.gstr1_readiness(socket.assigns))
+  end
+
+  defp assign_gstr3b_readiness(socket) do
+    assign(socket, :gstr3b_readiness, Filing.gstr3b_readiness(socket.assigns))
   end
 
   defp assign_dumps(socket) do
@@ -306,6 +343,7 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:document_flags, [])
     |> assign(:gstr3b, nil)
     |> assign(:itc, nil)
+    |> assign(:purchase_review, nil)
   end
 
   defp assign_purchase(socket, purchase, provided_workings) do
@@ -434,6 +472,8 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:sales_account, nil)
     |> assign(:open_issue_count, 0)
     |> assign(:reviewable, false)
+    |> assign(:sales_review, nil)
+    |> assign(:gstr1_handoff, nil)
   end
 
   defp assign_sales(socket, sales, provided_workings) do
@@ -483,12 +523,15 @@ defmodule NilaWeb.Gst.MonthLive do
         pages_read: socket.assigns.sales_pages_read
       })
 
+    decisions = SalesResolutions.latest_decisions(sales.id)
+    review = SalesReview.build(workings)
     filed = filed_gstr1(sales)
 
     socket
     |> assign(:sales_month, sales)
     |> assign(:sales_workings, workings)
-    |> assign(:sales_decisions, SalesResolutions.latest_decisions(sales.id))
+    |> assign(:sales_decisions, decisions)
+    |> assign(:sales_review, review)
     |> assign(:r1_signoff, signoff)
     |> assign(:invoices, invoices)
     |> assign(:active_invoices, active_invoices)
@@ -501,7 +544,169 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:sales_account, account)
     |> assign(:open_issue_count, account.issues.required_count)
     |> assign(:reviewable, SalesWorkings.reviewable?(issues))
+    |> assign(
+      :gstr1_handoff,
+      gstr1_handoff(invoices, issues, decisions, review, derived)
+    )
   end
+
+  defp gstr1_handoff(invoices, issues, decisions, review, derived) do
+    case WinmanGstr1.export_manifest(%{derived: derived, invoices: invoices}) do
+      {:ok, export} ->
+        actions = decisions |> Map.values() |> Enum.reject(&(&1.verb == "reopen"))
+
+        unsupported_source_ids =
+          issues
+          |> Enum.filter(&(&1["code"] in @unsupported_sales_codes and &1["status"] == "open"))
+          |> Enum.flat_map(fn issue ->
+            List.wrap(issue["source_ids"] || issue["source_id"] || issue["invoice"])
+          end)
+          |> Enum.uniq()
+
+        Map.merge(export, %{
+          confirmations: Enum.count(actions, &(&1.verb == "confirm_issue")),
+          corrections: Enum.count(actions, &(&1.verb == "correct_field")),
+          review_cases_held: length(review.needs_you),
+          blockers_held: Enum.count(issues, &(&1["status"] == "open" and Issues.gating?(&1))),
+          unsupported_held: length(unsupported_source_ids)
+        })
+
+      {:error, :invalid_b2b_data} ->
+        nil
+    end
+  end
+
+  defp assign_review_projections(%{assigns: %{purchase_month: nil}} = socket), do: socket
+
+  defp assign_review_projections(socket) do
+    asked_at = socket.assigns.asks |> List.last() |> then(&(&1 && &1.inserted_at))
+
+    assign(
+      socket,
+      :purchase_review,
+      Review.project(socket.assigns.purchase_workings,
+        month: socket.assigns.purchase_month,
+        asked_at: asked_at
+      )
+    )
+  end
+
+  defp assign_register_views(socket) do
+    sales_rows =
+      filter_sales_rows(
+        socket.assigns.invoices,
+        socket.assigns.issues_by_invoice,
+        socket.assigns.sales_register_query,
+        socket.assigns.sales_register_filter
+      )
+
+    purchase_rows =
+      filter_purchase_rows(
+        socket.assigns.rows,
+        socket.assigns.purchase_review,
+        socket.assigns.purchase_register_query,
+        socket.assigns.purchase_recon_filter,
+        socket.assigns.purchase_action_filter,
+        socket.assigns.purchase_register_sort
+      )
+
+    socket
+    |> assign(:sales_register_rows, sales_rows)
+    |> assign(:purchase_register_rows, purchase_rows)
+    |> assign(
+      :sales_register_form,
+      to_form(%{"query" => socket.assigns.sales_register_query}, as: :sales_register)
+    )
+    |> assign(
+      :purchase_register_form,
+      to_form(%{"query" => socket.assigns.purchase_register_query}, as: :purchase_register)
+    )
+  end
+
+  defp filter_sales_rows(rows, issues_by_invoice, query, filter) do
+    query = query |> to_string() |> String.trim() |> String.downcase()
+
+    Enum.filter(rows, fn invoice ->
+      issues =
+        issues_by_invoice[invoice["id"]] || issues_by_invoice[invoice["invoice_number"]] || []
+
+      review_case? =
+        Enum.any?(issues, fn issue ->
+          issue["status"] == "open" and
+            Issues.resolution_kind(issue) in [:decision, :correction, :confirmation]
+        end)
+
+      filter_match? =
+        case filter do
+          :review_cases -> review_case?
+          :no_open_checks -> not review_case?
+          :all -> true
+        end
+
+      searchable =
+        [invoice["invoice_number"], invoice["buyer_name"], invoice["buyer_gstin"]]
+        |> Enum.join(" ")
+        |> String.downcase()
+
+      filter_match? and (query == "" or String.contains?(searchable, query))
+    end)
+  end
+
+  defp filter_purchase_rows(rows, review, query, recon_filter, action_filter, sort) do
+    query = query |> to_string() |> String.trim() |> String.downcase()
+
+    rows
+    |> Enum.filter(fn row ->
+      item = purchase_review_item(review, row)
+
+      recon_match? =
+        case recon_filter do
+          :all -> true
+          :resolved -> purchase_item_resolved?(item)
+          bucket -> row["bucket"] == Atom.to_string(bucket)
+        end
+
+      action_match? = purchase_action_match?(action_filter, item)
+
+      searchable =
+        [row["invoice_number"], row["vendor_name"], row["vendor_gstin"]]
+        |> Enum.join(" ")
+        |> String.downcase()
+
+      recon_match? and action_match? and
+        (query == "" or String.contains?(searchable, query))
+    end)
+    |> sort_purchase_rows(sort)
+  end
+
+  defp purchase_review_item(nil, _row), do: nil
+  defp purchase_review_item(review, row), do: Review.lookup(review.all, row["review_item"])
+
+  defp purchase_item_resolved?(%{resolved: true}), do: true
+  defp purchase_item_resolved?(_item), do: false
+
+  defp purchase_action_match?(:all, _item), do: true
+
+  defp purchase_action_match?(:decisions, %{resolved: false, kind: kind}) when kind != :gstr2b,
+    do: true
+
+  defp purchase_action_match?(:documents, %{resolved: false, kind: :gstr2b, asked_at: nil}),
+    do: true
+
+  defp purchase_action_match?(:waiting, %{resolved: false, kind: :gstr2b, asked_at: asked_at}),
+    do: not is_nil(asked_at)
+
+  defp purchase_action_match?(:resolved, %{resolved: true}), do: true
+  defp purchase_action_match?(_filter, _item), do: false
+
+  defp sort_purchase_rows(rows, :materiality),
+    do: Enum.sort_by(rows, &abs(&1["itc_effect_paise"] || 0), :desc)
+
+  defp sort_purchase_rows(rows, :vendor),
+    do:
+      Enum.sort_by(rows, &{String.downcase(&1["vendor_name"] || ""), &1["invoice_number"] || ""})
+
+  defp sort_purchase_rows(rows, :register), do: rows
 
   # Present only when a portal download actually landed — the column is nil on
   # every month that never loaded one, and an empty map is not a return.
@@ -528,6 +733,86 @@ defmodule NilaWeb.Gst.MonthLive do
   defp toggle(set, member) do
     if MapSet.member?(set, member), do: MapSet.delete(set, member), else: MapSet.put(set, member)
   end
+
+  defp assign_workpaper_states(socket) do
+    sales = sales_workpaper_state(socket.assigns.gstr1_readiness)
+    purchase_state = purchase_track_state(socket.assigns)
+    purchase = purchase_workpaper_state(purchase_state)
+
+    socket
+    |> assign(:purchase_track_state, purchase_state)
+    |> assign(:workpaper_states, %{
+      sales: sales,
+      purchases: purchase,
+      gstr3b: socket.assigns.gstr3b_readiness
+    })
+    |> assign(:global_verdict, without_track_door(socket.assigns.verdict))
+  end
+
+  defp sales_workpaper_state(%{state: :absent}),
+    do: %{label: "Documents not in", variant: "neutral"}
+
+  defp sales_workpaper_state(%{state: :provisional}),
+    do: %{label: "Needs review", variant: "warning"}
+
+  defp sales_workpaper_state(%{state: :ready}),
+    do: %{label: "Ready for approval", variant: "success"}
+
+  defp sales_workpaper_state(%{state: :awaiting_senior}),
+    do: %{label: "Awaiting senior", variant: "info"}
+
+  defp sales_workpaper_state(%{state: :approved}),
+    do: %{label: "Approved", variant: "success"}
+
+  defp sales_workpaper_state(%{state: :filed}),
+    do: %{label: "Filed", variant: "neutral"}
+
+  defp purchase_track_state(%{tracks: %{purchase: state}})
+       when state in [:absent, :awaiting_2b, :need_2b, :signed, :filed],
+       do: state
+
+  defp purchase_track_state(%{stats: %{need_decision: count}}) when count > 0, do: :open
+
+  defp purchase_track_state(%{stats: %{awaiting_bills: count}}) when count > 0,
+    do: :awaiting_bills
+
+  defp purchase_track_state(%{stats: %{value_disputes: count}}) when count > 0,
+    do: :differences
+
+  defp purchase_track_state(%{tracks: %{purchase: state}}), do: state
+
+  defp purchase_workpaper_state(:absent),
+    do: %{label: "Documents not in", variant: "neutral"}
+
+  defp purchase_workpaper_state(:awaiting_2b),
+    do: %{label: "Waiting for GSTR-2B", variant: "info"}
+
+  defp purchase_workpaper_state(:need_2b),
+    do: %{label: "GSTR-2B not in", variant: "warning"}
+
+  defp purchase_workpaper_state(:open),
+    do: %{label: "Needs review", variant: "warning"}
+
+  defp purchase_workpaper_state(:awaiting_bills),
+    do: %{label: "Waiting on documents", variant: "info"}
+
+  defp purchase_workpaper_state(:differences),
+    do: %{label: "Differences noted", variant: "info"}
+
+  defp purchase_workpaper_state(:signed),
+    do: %{label: "Position frozen", variant: "info"}
+
+  defp purchase_workpaper_state(:filed),
+    do: %{label: "Filed", variant: "neutral"}
+
+  defp purchase_workpaper_state(_state),
+    do: %{label: "Reconciled", variant: "success"}
+
+  defp without_track_door(%{door: %{id: id}} = verdict)
+       when id in ~w(month-door-file-sales month-door-file-purchase month-door-bring-sales month-door-bring-purchase month-door-bring-2b),
+       do: %{verdict | door: nil}
+
+  defp without_track_door(verdict), do: verdict
 
   defp assign_verdict(socket, purchase, sales) do
     %{stats: stats, r1_signoff: r1_signoff, gstr3b_signoff: gstr3b_signoff} = socket.assigns
@@ -583,7 +868,11 @@ defmodule NilaWeb.Gst.MonthLive do
     socket =
       socket
       |> assign_purchase(month, workings)
+      |> assign_review_projections()
       |> assign_verdict(month, socket.assigns.sales_month)
+      |> assign_gstr3b_readiness()
+      |> assign_workpaper_states()
+      |> assign_register_views()
 
     review = Review.project(socket.assigns.purchase_workings, month: month)
     route = Review.route_state(review, item_id, current.scope)
@@ -598,12 +887,21 @@ defmodule NilaWeb.Gst.MonthLive do
 
   def handle_info({:sales_review_refresh, month, workings, requested}, socket) do
     old_derived = socket.assigns.derived_gstr1
+    old_review = socket.assigns.sales_review
 
     socket =
       socket
       |> assign_sales(month, workings)
+      |> assign_review_projections()
       |> assign_gstr1_readiness()
       |> assign_verdict(socket.assigns.purchase_month, month)
+      |> assign_gstr3b_readiness()
+      |> assign_workpaper_states()
+      |> assign_register_views()
+      |> assign(
+        :sales_change,
+        sales_change(requested[:action], old_derived, workings.derived, old_review)
+      )
       |> ripple(old_derived)
 
     case socket.assigns.sales_review_route do
@@ -665,6 +963,58 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
+  def handle_event("toggle-fold", %{"fold" => fold}, socket),
+    do: {:noreply, update(socket, :open_folds, &toggle(&1, fold))}
+
+  def handle_event("dismiss-sales-change", _params, socket),
+    do: {:noreply, assign(socket, :sales_change, nil)}
+
+  def handle_event("search-sales-register", %{"sales_register" => params}, socket) do
+    {:noreply,
+     socket
+     |> assign(:sales_register_query, params["query"] || "")
+     |> assign_register_views()}
+  end
+
+  def handle_event("filter-sales-register", %{"filter" => filter}, socket)
+      when filter in ~w(review_cases no_open_checks all) do
+    {:noreply,
+     socket
+     |> assign(:sales_register_filter, String.to_existing_atom(filter))
+     |> assign_register_views()}
+  end
+
+  def handle_event("search-purchase-register", %{"purchase_register" => params}, socket) do
+    {:noreply,
+     socket
+     |> assign(:purchase_register_query, params["query"] || "")
+     |> assign_register_views()}
+  end
+
+  def handle_event("filter-purchase-reconciliation", %{"filter" => filter}, socket)
+      when filter in ~w(all matched needs_human value_mismatch in_books_not_2b in_2b_not_books resolved) do
+    {:noreply,
+     socket
+     |> assign(:purchase_recon_filter, String.to_existing_atom(filter))
+     |> assign_register_views()}
+  end
+
+  def handle_event("filter-purchase-action", %{"filter" => filter}, socket)
+      when filter in ~w(all decisions documents waiting resolved) do
+    {:noreply,
+     socket
+     |> assign(:purchase_action_filter, String.to_existing_atom(filter))
+     |> assign_register_views()}
+  end
+
+  def handle_event("sort-purchase-register", %{"sort" => sort}, socket)
+      when sort in ~w(register materiality vendor) do
+    {:noreply,
+     socket
+     |> assign(:purchase_register_sort, String.to_existing_atom(sort))
+     |> assign_register_views()}
+  end
+
   # Which workings buckets are open lives here rather than in an inline style,
   # so a re-render somewhere else on the page cannot collapse them.
   def handle_event("toggle-workings-node", %{"node" => node}, socket),
@@ -681,9 +1031,9 @@ defmodule NilaWeb.Gst.MonthLive do
       |> Enum.flat_map(&Workings.hsn_node_ids(socket.assigns.active_invoices, &1))
 
     {:noreply,
-     update(socket, :expanded_nodes, fn expanded ->
-       MapSet.union(expanded, MapSet.new(nodes))
-     end)}
+     socket
+     |> update(:expanded_nodes, fn expanded -> MapSet.union(expanded, MapSet.new(nodes)) end)
+     |> update(:open_folds, &MapSet.put(&1, "gstr1-control-hsn"))}
   end
 
   def handle_event("open-chase-history", _params, socket),
@@ -968,11 +1318,108 @@ defmodule NilaWeb.Gst.MonthLive do
          ) do
       {:ok, _} ->
         old_derived = socket.assigns.derived_gstr1
-        {:noreply, socket |> reload() |> ripple(old_derived)}
+        old_review = socket.assigns.sales_review
+        socket = reload(socket)
+
+        {:noreply,
+         socket
+         |> assign(
+           :sales_change,
+           sales_change(attrs, old_derived, socket.assigns.derived_gstr1, old_review)
+         )
+         |> ripple(old_derived)}
 
       {:error, :signed_off} ->
         {:noreply,
          put_flash(socket, :error, "This GSTR-1 is signed off — a senior must reopen it first.")}
+    end
+  end
+
+  defp sales_change(nil, _old_derived, _new_derived, _review), do: nil
+
+  defp sales_change(action, old_derived, new_derived, review) do
+    before = old_derived && Values.filed_totals(old_derived)
+    after_totals = new_derived && Values.filed_totals(new_derived)
+    verb = action[:verb] || action["verb"]
+    payload = action[:payload] || action["payload"] || %{}
+    field = payload[:field] || payload["field"]
+
+    context = sales_action_context(action, review)
+
+    title =
+      case {verb, field, context} do
+        {"correct_field", field, context} when is_binary(field) and is_binary(context) ->
+          "Correction · #{context} · #{humanize_field_path(field)}"
+
+        {"correct_field", field, _context} when is_binary(field) ->
+          "Correction · #{humanize_field_path(field)}"
+
+        {"correct_field", _field, context} when is_binary(context) ->
+          "Correction · #{context}"
+
+        {"correct_field", _field, _context} ->
+          "Invoice correction recorded"
+
+        {"confirm_issue", _field, context} when is_binary(context) ->
+          "Confirmation · #{context}"
+
+        {"confirm_issue", _field, _context} ->
+          "Confirmation recorded"
+
+        {"exclude_duplicate_copy", _field, context} when is_binary(context) ->
+          "Duplicate excluded · #{context}"
+
+        {"exclude_duplicate_copy", _field, _context} ->
+          "Duplicate copy excluded"
+
+        _other ->
+          "Review recorded"
+      end
+
+    body =
+      cond do
+        is_nil(before) or is_nil(after_totals) ->
+          "The effective sales register was reworked."
+
+        before == after_totals ->
+          "Proposed GSTR-1 totals did not change."
+
+        true ->
+          "Proposed GSTR-1 changed from #{Helpers.rupees(before.taxable)} taxable and #{Helpers.rupees(before.tax)} tax to #{Helpers.rupees(after_totals.taxable)} taxable and #{Helpers.rupees(after_totals.tax)} tax."
+      end
+
+    %{title: title, body: body}
+  end
+
+  defp humanize_field_path(field) do
+    field
+    |> String.replace("_", " ")
+    |> String.replace(".", " ")
+    |> String.capitalize()
+  end
+
+  defp sales_action_context(action, review) do
+    target = action[:target] || action["target"]
+    payload = action[:payload] || action["payload"] || %{}
+
+    source_id =
+      cond do
+        Enum.any?(review.all, &(&1.source_id == target)) ->
+          target
+
+        item = Enum.find(review.all, &(target in &1.actionable_targets)) ->
+          item.source_id
+
+        is_binary(payload["excluded_source_id"]) ->
+          payload["excluded_source_id"]
+
+        true ->
+          nil
+      end
+
+    case Enum.find(review.all, &(&1.source_id == source_id)) do
+      nil -> if(is_binary(target), do: "target #{target}")
+      item -> "invoice #{item.invoice["invoice_number"] || item.source_id}"
     end
   end
 
@@ -991,14 +1438,17 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
-  defp month_path(socket) do
+  defp month_base_path(socket) do
     %{client: client, period: period} = socket.assigns
     ~p"/gst/#{client.id}/#{period}"
   end
 
+  defp track_path(socket, track),
+    do: month_base_path(socket) <> "?" <> URI.encode_query(%{"track" => to_string(track)})
+
   defp purchase_review_path(socket, route) do
     params = %{"item" => route.item, "scope" => to_string(route.scope)}
-    month_path(socket) <> "/review/purchase?" <> URI.encode_query(params)
+    month_base_path(socket) <> "/review/purchase?" <> URI.encode_query(params)
   end
 
   defp sales_review_path(socket, route) do
@@ -1007,8 +1457,18 @@ defmodule NilaWeb.Gst.MonthLive do
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
       |> Map.new()
 
-    month_path(socket) <> "/review/sales?" <> URI.encode_query(params)
+    month_base_path(socket) <> "/review/sales?" <> URI.encode_query(params)
   end
+
+  defp selected_track("sales", _assigns), do: :sales
+  defp selected_track("purchases", _assigns), do: :purchases
+  defp selected_track("gstr3b", _assigns), do: :gstr3b
+  defp selected_track(_track, assigns), do: fallback_track(assigns)
+
+  defp fallback_track(%{sales_month: sales}) when not is_nil(sales), do: :sales
+  defp fallback_track(%{purchase_month: purchase}) when not is_nil(purchase), do: :purchases
+  defp fallback_track(%{sales_dumps: [_ | _]}), do: :sales
+  defp fallback_track(_assigns), do: :purchases
 
   @impl true
   def render(assigns) do
@@ -1026,7 +1486,7 @@ defmodule NilaWeb.Gst.MonthLive do
       current_path={assigns[:current_path]}
     >
       <div id="month-page" class="space-y-region mx-auto max-w-7xl">
-        <Verdict.verdict verdict={@verdict} client={@client} period={@period} />
+        <Verdict.verdict verdict={@global_verdict} client={@client} period={@period} />
 
         <Precondition.question
           :if={@verdict[:question]}
@@ -1072,101 +1532,223 @@ defmodule NilaWeb.Gst.MonthLive do
           />
         </div>
 
-        <main id="month-evidence" class="space-y-canvas min-w-0">
-          <Sales.sales_section
-            sales_month={@sales_month}
-            client={@client}
-            period={@period}
-            invoices={@invoices}
-            active_invoices={@active_invoices}
-            open_issue_count={@open_issue_count}
-            account={@sales_account}
-            r1_signoff={@r1_signoff}
-            readiness={@gstr1_readiness}
-            issues_by_invoice={@issues_by_invoice}
-            pages_read={@sales_pages_read}
-            visited={@visited_inums}
-            reviewed_invoice={@last_reviewed_inum}
-            derived={@derived_gstr1}
-            diff={@gstr1_diff}
-            accepted_diffs={@accepted_diffs}
-            rippled={@rippled}
-            ripple_seq={@ripple_seq}
-            expanded_nodes={@expanded_nodes}
-          >
-            <:source>
-              <Arrivals.source_record
-                can_sign_off={@can_sign_off}
-                id="month-sales-sources"
-                dumps={@sales_dumps}
-                superseded_2b_ids={@superseded_2b_ids}
-                client={@client}
-                period={@period}
-                open_period={@open_period}
-                r1_signoff={@r1_signoff}
-                gstr3b_signoff={@gstr3b_signoff}
-              />
-            </:source>
-            <:actions>
-              <Filing.gstr1_actions
-                sales_month={@sales_month}
-                r1_signoff={@r1_signoff}
-                open_issue_count={@open_issue_count}
-                reviewable={@reviewable}
-                sales_intake_open={@sales_intake_open}
-                can_sign_off={@can_sign_off}
-                derived={@derived_gstr1}
-                readiness={@gstr1_readiness}
-              />
-            </:actions>
-          </Sales.sales_section>
+        <Workpaper.tabs
+          client={@client}
+          period={@period}
+          selected={@selected_track}
+          states={@workpaper_states}
+        />
 
-          <Purchase.register
-            purchase_month={@purchase_month}
-            stats={@stats}
-            document_flags={@document_flags}
-            rows={@rows}
-            client={@client}
-            period={@period}
-            gstr3b_signoff={@gstr3b_signoff}
-            itc={@itc}
-            case_lines={(@purchase_workings && @purchase_workings.case_lines) || []}
-          >
-            <:assembled>
-              <Filing.gstr3b_evidence
-                gstr3b={@gstr3b}
-                itc={@itc}
-                stats={@stats}
-                signed={@gstr3b_signoff != nil}
-              />
-            </:assembled>
-            <:source>
-              <Arrivals.source_record
-                can_sign_off={@can_sign_off}
-                id="month-purchase-sources"
-                dumps={@purchase_dumps}
-                superseded_2b_ids={@superseded_2b_ids}
-                client={@client}
-                period={@period}
-                open_period={@open_period}
-                r1_signoff={@r1_signoff}
-                gstr3b_signoff={@gstr3b_signoff}
-              />
-            </:source>
-            <:actions>
-              <Filing.gstr3b_actions
-                purchase_month={@purchase_month}
-                sales_month={@sales_month}
-                stats={@stats}
-                gstr3b_signoff={@gstr3b_signoff}
-                r1_signoff={@r1_signoff}
-                can_sign_off={@can_sign_off}
-                sales_intake_open={@sales_intake_open}
-                itc={@itc}
-                gstr3b={@gstr3b}
-              />
-            </:actions>
-          </Purchase.register>
+        <main id="month-evidence" class="space-y-canvas min-w-0">
+          <%= case @selected_track do %>
+            <% :sales -> %>
+              <%= if @sales_month do %>
+                <Sales.sales_section
+                  sales_month={@sales_month}
+                  client={@client}
+                  period={@period}
+                  invoices={@invoices}
+                  active_invoices={@active_invoices}
+                  open_issue_count={@open_issue_count}
+                  account={@sales_account}
+                  r1_signoff={@r1_signoff}
+                  readiness={@gstr1_readiness}
+                  issues_by_invoice={@issues_by_invoice}
+                  pages_read={@sales_pages_read}
+                  visited={@visited_inums}
+                  open_folds={@open_folds}
+                  register_rows={@sales_register_rows}
+                  register_form={@sales_register_form}
+                  register_filter={@sales_register_filter}
+                  review={@sales_review}
+                  decisions={@sales_decisions}
+                  change={@sales_change}
+                  reviewed_invoice={@last_reviewed_inum}
+                  derived={@derived_gstr1}
+                  diff={@gstr1_diff}
+                  accepted_diffs={@accepted_diffs}
+                  rippled={@rippled}
+                  ripple_seq={@ripple_seq}
+                  expanded_nodes={@expanded_nodes}
+                >
+                  <:primary_action>
+                    <Filing.gstr1_primary_action
+                      sales_month={@sales_month}
+                      r1_signoff={@r1_signoff}
+                      open_issue_count={@open_issue_count}
+                      reviewable={@reviewable}
+                      sales_intake_open={@sales_intake_open}
+                      can_sign_off={@can_sign_off}
+                      derived={@derived_gstr1}
+                      readiness={@gstr1_readiness}
+                      review_case_count={length(@sales_review.needs_you)}
+                    />
+                  </:primary_action>
+                  <:source>
+                    <Arrivals.source_record
+                      can_sign_off={@can_sign_off}
+                      id="month-sales-sources"
+                      dumps={@sales_dumps}
+                      superseded_2b_ids={@superseded_2b_ids}
+                      client={@client}
+                      period={@period}
+                      open_period={@open_period}
+                      r1_signoff={@r1_signoff}
+                      gstr3b_signoff={@gstr3b_signoff}
+                    />
+                  </:source>
+                  <:actions>
+                    <Filing.gstr1_actions
+                      sales_month={@sales_month}
+                      r1_signoff={@r1_signoff}
+                      open_issue_count={@open_issue_count}
+                      reviewable={@reviewable}
+                      sales_intake_open={@sales_intake_open}
+                      can_sign_off={@can_sign_off}
+                      derived={@derived_gstr1}
+                      readiness={@gstr1_readiness}
+                      handoff={@gstr1_handoff}
+                    />
+                  </:actions>
+                </Sales.sales_section>
+              <% else %>
+                <Workpaper.empty_state
+                  track={:sales}
+                  client={@client}
+                  period={@period}
+                  purchase_present={not is_nil(@purchase_month)}
+                  show_action={is_nil(@verdict[:question])}
+                />
+              <% end %>
+            <% :purchases -> %>
+              <%= if @purchase_month do %>
+                <Purchase.register
+                  purchase_month={@purchase_month}
+                  stats={@stats}
+                  document_flags={@document_flags}
+                  rows={@rows}
+                  client={@client}
+                  period={@period}
+                  gstr3b_signoff={@gstr3b_signoff}
+                  itc={@itc}
+                  case_lines={(@purchase_workings && @purchase_workings.case_lines) || []}
+                  track_state={@purchase_track_state}
+                  review={@purchase_review}
+                  open_folds={@open_folds}
+                  visible_rows={@purchase_register_rows}
+                  register_form={@purchase_register_form}
+                  recon_filter={@purchase_recon_filter}
+                  action_filter={@purchase_action_filter}
+                  register_sort={@purchase_register_sort}
+                  gstr2b_in={@gstr2b_in}
+                  asks={@asks}
+                >
+                  <:source>
+                    <Arrivals.source_record
+                      can_sign_off={@can_sign_off}
+                      id="month-purchase-sources"
+                      dumps={@purchase_dumps}
+                      superseded_2b_ids={@superseded_2b_ids}
+                      client={@client}
+                      period={@period}
+                      open_period={@open_period}
+                      r1_signoff={@r1_signoff}
+                      gstr3b_signoff={@gstr3b_signoff}
+                    />
+                  </:source>
+                </Purchase.register>
+              <% else %>
+                <Workpaper.empty_state
+                  track={:purchases}
+                  client={@client}
+                  period={@period}
+                  purchase_present={false}
+                  show_action={is_nil(@verdict[:question])}
+                />
+              <% end %>
+            <% :gstr3b -> %>
+              <%= if @purchase_month do %>
+                <section id="month-gstr3b-workpaper" class="space-y-section">
+                  <Filing.gstr3b_evidence
+                    gstr3b={@gstr3b}
+                    itc={@itc}
+                    stats={@stats}
+                    signed={@gstr3b_signoff != nil}
+                  >
+                    <:primary_action>
+                      <Filing.gstr3b_primary_action
+                        purchase_month={@purchase_month}
+                        sales_month={@sales_month}
+                        stats={@stats}
+                        gstr3b_signoff={@gstr3b_signoff}
+                        r1_signoff={@r1_signoff}
+                        can_sign_off={@can_sign_off}
+                        sales_intake_open={@sales_intake_open}
+                        itc={@itc}
+                        gstr3b={@gstr3b}
+                      />
+                    </:primary_action>
+                  </Filing.gstr3b_evidence>
+
+                  <Filing.gstr3b_blocker_list
+                    purchase_month={@purchase_month}
+                    sales_month={@sales_month}
+                    stats={@stats}
+                    gstr3b_signoff={@gstr3b_signoff}
+                    r1_signoff={@r1_signoff}
+                    can_sign_off={@can_sign_off}
+                    sales_intake_open={@sales_intake_open}
+                    itc={@itc}
+                    gstr3b={@gstr3b}
+                  />
+
+                  <Workpaper.section_nav links={
+                    [
+                      %{id: "month-3b", label: "Return position"},
+                      @gstr3b_readiness.state == :blocked &&
+                        %{id: "gstr3b-blockers", label: "Blockers"},
+                      %{id: "gstr3b-controls", label: "Controls"},
+                      %{id: "gstr3b-source-references", label: "Sources"},
+                      @gstr3b_readiness.state != :blocked &&
+                        %{id: "month-exit-gstr3b", label: "Sign-off"}
+                    ]
+                    |> Enum.filter(&is_map/1)
+                  } />
+
+                  <Filing.gstr3b_controls
+                    gstr3b={@gstr3b}
+                    itc={@itc}
+                    stats={@stats}
+                    signed={@gstr3b_signoff != nil}
+                    open_folds={@open_folds}
+                    r1_signoff={@r1_signoff}
+                    gstr3b_signoff={@gstr3b_signoff}
+                    client_id={@client.id}
+                    period={@period}
+                  />
+
+                  <Filing.gstr3b_actions
+                    purchase_month={@purchase_month}
+                    sales_month={@sales_month}
+                    stats={@stats}
+                    gstr3b_signoff={@gstr3b_signoff}
+                    r1_signoff={@r1_signoff}
+                    can_sign_off={@can_sign_off}
+                    sales_intake_open={@sales_intake_open}
+                    itc={@itc}
+                    gstr3b={@gstr3b}
+                  />
+                </section>
+              <% else %>
+                <Workpaper.empty_state
+                  track={:gstr3b}
+                  client={@client}
+                  period={@period}
+                  purchase_present={false}
+                  show_action={is_nil(@verdict[:question])}
+                />
+              <% end %>
+          <% end %>
         </main>
       </div>
 

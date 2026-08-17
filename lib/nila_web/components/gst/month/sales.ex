@@ -1,10 +1,7 @@
 defmodule NilaWeb.Components.Gst.Month.Sales do
   use NilaWeb, :html
 
-  @moduledoc """
-  GSTR-1 working surface: the complete invoice register, issues, and derived
-  return evidence. Lifecycle never hides or replaces this material.
-  """
+  @moduledoc "The Sales and GSTR-1 workpaper."
 
   alias Nila.Gst.Issues
   alias Nila.Gst.Sales.Gstr1
@@ -12,6 +9,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias NilaWeb.Components.Gst.Month.Helpers
   alias NilaWeb.Components.Gst.Month.Workings
+  alias NilaWeb.Components.Gst.Month.Workpaper
 
   attr :sales_month, :any, default: nil
   attr :client, :map, required: true
@@ -32,7 +30,15 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   attr :rippled, :any, default: MapSet.new()
   attr :ripple_seq, :integer, default: 0
   attr :expanded_nodes, :any, default: MapSet.new()
+  attr :open_folds, :any, default: MapSet.new()
+  attr :register_rows, :list, required: true
+  attr :register_form, :any, required: true
+  attr :register_filter, :atom, required: true
+  attr :review, :any, required: true
+  attr :decisions, :map, default: %{}
+  attr :change, :any, default: nil
   slot :source
+  slot :primary_action
   slot :actions
 
   def sales_section(%{sales_month: nil} = assigns) do
@@ -41,97 +47,208 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   end
 
   def sales_section(assigns) do
+    required_issues = assigns.account.issues.required
+    hsn_summary = Gstr1.hsn_summary(assigns.active_invoices)
+    hsn_issues = hsn_issues(required_issues)
+    novelty = novelty(assigns.account.issues.advisory)
+    document_rows = document_summary_rows(assigns.derived)
+    human_actions = human_actions(assigns.decisions)
+    grouped_cases = grouped_review_cases(assigns.review)
+    grouped_targets = grouped_cases |> Enum.flat_map(& &1.targets) |> MapSet.new()
+
+    standalone_issues =
+      Enum.reject(required_issues, &MapSet.member?(grouped_targets, SalesWorkings.issue_key(&1)))
+
+    assured_source_ids = assured_source_ids(assigns.review, assigns.invoices, assigns.decisions)
+
     assigns =
       assigns
-      |> assign(:required_issues, assigns.account.issues.required)
-      |> assign(:hsn_summary, Gstr1.hsn_summary(assigns.active_invoices))
-      |> assign(:hsn_issues, hsn_issues(assigns.account.issues.required))
-      |> assign(:novelty, novelty(assigns.account.issues.advisory))
-      |> assign(:document_summary_rows, document_summary_rows(assigns.derived))
-      |> then(&assign(&1, :novelty_codes, if(&1.novelty, do: &1.novelty.codes, else: [])))
-      |> then(&assign(&1, :hsn_totals, hsn_totals(&1.hsn_summary)))
+      |> assign(:required_issues, required_issues)
+      |> assign(:grouped_cases, grouped_cases)
+      |> assign(:standalone_issues, standalone_issues)
+      |> assign(
+        :standalone_blocker_count,
+        Enum.count(standalone_issues, &SalesWorkings.blocking?/1)
+      )
+      |> assign(:assured_invoice_count, MapSet.size(assured_source_ids))
+      |> assign(
+        :unassured_invoice_count,
+        length(assigns.invoices) - MapSet.size(assured_source_ids)
+      )
+      |> assign(:hsn_summary, hsn_summary)
+      |> assign(:hsn_issues, hsn_issues)
+      |> assign(:hsn_control, hsn_control(hsn_issues, novelty))
+      |> assign(:novelty, novelty)
+      |> assign(:novelty_codes, if(novelty, do: novelty.codes, else: []))
+      |> assign(:hsn_totals, hsn_totals(hsn_summary))
+      |> assign(:document_summary_rows, document_rows)
+      |> assign(:document_control, document_control(required_issues, document_rows))
+      |> assign(:human_actions, human_actions)
+      |> assign(
+        :first_review_invoice,
+        first_review_invoice(assigns.register_rows, assigns.review)
+      )
+      |> assign(:section_links, section_links(required_issues, assigns.derived))
 
     ~H"""
-    <section :if={@sales_month} id="month-sales" class="space-y-section scroll-mt-28">
+    <section id="month-sales" class="space-y-section scroll-mt-28">
       <section
         id="gstr1-verdict"
         class={[
-          "border-base-300 pb-block space-y-related border-b",
+          "border-base-300 moonlight-soft rounded-box space-y-block border p-6",
           Workings.ripple_class(@rippled, @ripple_seq, "gstr1-account")
         ]}
       >
         <div class="flex flex-wrap items-start justify-between gap-4">
           <div class="min-w-0 space-y-1">
-            <h2 class="text-base-content text-h4 font-semibold">
+            <p class="text-ink-subtle text-label font-semibold uppercase">Sales return</p>
+            <h2 class="font-display text-base-content text-h3 font-normal">
               {track_title(@sales_month, @r1_signoff)}
             </h2>
-            <p
-              :if={is_nil(@r1_signoff) and @account.issues.required_count > 0}
-              id="gstr1-required-summary"
-              class="text-base-content text-body"
-            >
-              {Helpers.work_clause(@account.issues.by_kind)} required before approval
-            </p>
-            <p
-              :if={not is_nil(@r1_signoff) or @account.issues.required_count == 0}
-              id="gstr1-lifecycle-summary"
-              class="text-body text-ink-muted"
-            >
-              {@readiness.status}
+            <p id="gstr1-filing-status" class="text-body text-ink-muted">{@readiness.status}</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">{render_slot(@primary_action)}</div>
+        </div>
+        <p id="gstr1-draft-position" class="text-body text-ink-muted tabular-nums">
+          <span id="gstr1-draft-invoices" class="text-base-content font-medium">
+            {document_mix_label(@active_invoices)} in draft
+          </span>
+          <span aria-hidden="true"> · </span>
+          <span id="gstr1-draft-taxable">{Helpers.rupees(@account.draft.totals.taxable)} taxable</span>
+          <span aria-hidden="true"> · </span>
+          <span id="gstr1-draft-output-tax" class="text-base-content font-medium">
+            {Helpers.rupees(@account.draft.totals.tax)} proposed output tax
+          </span>
+        </p>
+        <p
+          :if={is_nil(@r1_signoff) and @account.issues.required_count > 0}
+          id="gstr1-required-summary"
+          class="text-base-content text-body font-medium"
+        >
+          {review_summary(
+            length(@grouped_cases),
+            @standalone_blocker_count,
+            length(@standalone_issues) - @standalone_blocker_count
+          )} before approval
+        </p>
+      </section>
+
+      <aside
+        :if={@change}
+        id="gstr1-what-changed"
+        class="bg-info/5 border-info/30 rounded-box flex items-start justify-between gap-4 border px-4 py-3"
+      >
+        <div class="space-y-0.5">
+          <p class="text-base-content text-ui font-semibold">{@change.title}</p>
+          <p class="text-ink-muted text-meta">{@change.body}</p>
+        </div>
+        <button
+          type="button"
+          phx-click="dismiss-sales-change"
+          aria-label="Dismiss change summary"
+          class="hover:text-base-content text-ink-faint"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
+      </aside>
+
+      <section id="gstr1-assurance" class="border-base-300 rounded-box grid border sm:grid-cols-2">
+        <div class="sm:border-base-300 space-y-1 p-4 sm:border-r">
+          <p class="text-ink-subtle text-label font-semibold uppercase">Machine review</p>
+          <p class="text-base-content text-ui font-semibold">
+            {length(@active_invoices)} processed · {length(@review.needs_you)} {plural(
+              length(@review.needs_you),
+              "review case"
+            )}
+          </p>
+          <p class="text-ink-muted text-meta">
+            Checks identify where Nila needs an answer; they do not prove every invoice correct.
+          </p>
+        </div>
+        <div class="border-base-300 space-y-1 border-t p-4 sm:border-t-0">
+          <p class="text-ink-subtle text-label font-semibold uppercase">Human assurance</p>
+          <p id="gstr1-human-assurance-count" class="text-base-content text-ui font-semibold">
+            {@assured_invoice_count} of {length(@invoices)} invoices have a recorded human action
+          </p>
+          <p id="gstr1-human-assurance-open" class="text-ink-muted text-meta">
+            {@unassured_invoice_count} have no recorded human review. Non-invoice actions do not count toward coverage.
+          </p>
+        </div>
+      </section>
+
+      <Workpaper.section_nav links={@section_links} />
+
+      <section
+        :if={@grouped_cases != [] or @standalone_issues != []}
+        id="gstr1-checks-before-filing"
+        class="space-y-block scroll-mt-28"
+      >
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 class="text-base-content text-h4 font-semibold">Required review</h3>
+            <p class="text-ink-muted text-ui">
+              Only work that can block or change the proposed return.
             </p>
           </div>
           <.button
-            :if={is_nil(@r1_signoff) and @required_issues != []}
+            :if={@first_review_invoice}
             id="gstr1-review-required"
-            patch={sales_review_path(@client, @period, nil, :needs_you)}
-            variant="primary"
+            patch={sales_review_path(@client, @period, @first_review_invoice, :needs_you)}
+            variant="outline"
             size="sm"
           >
             Review required items
           </.button>
         </div>
-        <p id="gstr1-draft-position" class="text-body text-ink-muted tabular-nums">
-          <span id="gstr1-draft-invoices">
-            {document_mix_label(@active_invoices)} in draft
-          </span>
-          <span aria-hidden="true"> · </span>
-          <span id="gstr1-draft-taxable">
-            {Helpers.rupees(@account.draft.totals.taxable)} taxable
-          </span>
-          <span aria-hidden="true"> · </span>
-          <span id="gstr1-draft-output-tax">
-            {Helpers.rupees(@account.draft.totals.tax)} proposed output tax
-          </span>
-        </p>
-      </section>
 
-      <section
-        :if={@required_issues != []}
-        id="gstr1-checks-before-filing"
-        class="space-y-block scroll-mt-28"
-      >
-        <h3 class="sr-only">Required work</h3>
-        <%!-- A blocker is a gap in this engine, not a defect in the client's
-              bills, and nothing on this page can clear one. Saying so names the
-              move that is actually available instead of leaving the month
-              parked against a wall. --%>
         <p
           :if={Map.get(@account.issues.by_kind, :blocked, 0) > 0}
           id="gstr1-blocked-next-move"
           class="bg-error/5 border-error/30 rounded-box text-base-content text-body border px-4 py-3"
         >
-          Nila files taxable B2B and B2C invoices plus registered credit and debit notes, but another document type in this month is unsupported. File {Nila.Formatters.period_label(
+          Nila files taxable B2B and B2C invoices plus registered credit and debit notes, but another document type in this month is unsupported. File {period_label(
             @period
-          )} for {@client.name} manually on the portal — and tell us
-          which table you needed.
+          )} for {@client.name} manually on the portal and tell us which table you needed.
         </p>
-        <div class="space-y-related">
+
+        <div id="gstr1-grouped-review-cases" class="space-y-related">
           <article
-            :for={issue <- @required_issues}
-            id={
-              "gstr1-required-#{:erlang.phash2({SalesWorkings.issue_key(issue), issue["message"]})}"
-            }
-            class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+            :for={review_case <- @grouped_cases}
+            id={"gstr1-review-case-#{review_case.source_id}"}
+            class="bg-base-100 border-warning/45 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+          >
+            <div class="min-w-0 flex-1 space-y-1">
+              <p class="text-base-content text-body font-semibold">
+                Invoice {review_case.invoice_number}
+              </p>
+              <p class="text-body text-ink-muted">{review_case.reason}</p>
+              <p :if={review_case.effect} class="text-ink-subtle text-meta tabular-nums">
+                {review_case.effect}
+              </p>
+            </div>
+            <.button
+              variant="outline"
+              size="xs"
+              patch={
+                sales_review_path(
+                  @client,
+                  @period,
+                  review_case.source_id,
+                  :needs_you,
+                  review_case.target
+                )
+              }
+            >
+              Review
+            </.button>
+          </article>
+        </div>
+
+        <div id="gstr1-standalone-required" class="space-y-related">
+          <article
+            :for={issue <- @standalone_issues}
+            id={"gstr1-required-#{:erlang.phash2({SalesWorkings.issue_key(issue), issue["message"]})}"}
+            class="bg-base-100 border-warning/45 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
             <div class="min-w-0 flex-1 space-y-1">
               <p
@@ -153,7 +270,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                 is_binary(issue["hsn_code"]) and
                   not hsn_reviewed?(issue, @active_invoices, @expanded_nodes)
               }
-              href="#gstr1-workings-hsn"
+              href="#gstr1-control-hsn"
               variant="outline"
               size="xs"
               phx-click="review-hsn-issue"
@@ -161,8 +278,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             >
               Review HSN rows
             </.button>
-            <%!-- Only after the rows have actually been opened: confirming an
-                  HSN check you have not looked at is not an answer. --%>
             <.button
               :if={
                 is_binary(issue["hsn_code"]) and
@@ -237,148 +352,263 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         </div>
       </section>
 
-      <%!-- Nila's answer comes before the machinery that produced it. Table 12
-            and Table 13 are parts of that answer, not independent proof that
-            the source month is complete or reconciled to books. --%>
-      <section :if={@derived} id="gstr1-filing-summary" class="space-y-block">
-        <div class="space-y-1">
-          <h3 class="text-base-content text-h4 font-semibold">{@readiness.title}</h3>
-          <p
-            id="gstr1-filing-status"
-            class={[
-              "text-body",
-              @readiness.state == :provisional && "text-warning",
-              @readiness.state != :provisional && "text-ink-muted"
-            ]}
-          >
-            {@readiness.status}
+      <section id="gstr1-return-controls" class="space-y-block scroll-mt-28">
+        <div>
+          <h3 class="text-base-content text-h4 font-semibold">Return controls</h3>
+          <p class="text-ink-muted text-ui">
+            Open a schedule when you need its figures or source population.
           </p>
         </div>
 
-        <.data_table
-          id="gstr1-filing-summary-rows"
-          rows={filing_summary_rows(@derived, @active_invoices)}
-          row_id={&"gstr1-filing-#{&1.key}"}
-          min_width="min-w-[640px]"
-          dense
-        >
-          <:col :let={row} label="Section">
-            <span class="text-base-content font-medium">{row.label}</span>
-          </:col>
-          <:col :let={row} label="Invoices / notes" align="right">{row.documents}</:col>
-          <:col :let={row} label="Taxable" align="right">{Helpers.rupees(row.taxable)}</:col>
-          <:col :let={row} label="IGST" align="right">{Helpers.rupees(row.igst)}</:col>
-          <:col :let={row} label="CGST" align="right">{Helpers.rupees(row.cgst)}</:col>
-          <:col :let={row} label="SGST" align="right">{Helpers.rupees(row.sgst)}</:col>
-        </.data_table>
-
-        <section
-          :if={@hsn_summary != []}
-          id="gstr1-hsn-signoff"
-          class="space-y-block"
-        >
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="space-y-1">
-              <h4 class="text-base-content text-body font-semibold">HSN summary · Table 12</h4>
-              <p class="text-ink-muted text-ui tabular-nums">
-                {length(@hsn_summary)} HSN/rate {plural(length(@hsn_summary), "combination")} · {rupees(
-                  @hsn_totals.taxable
-                )} taxable · {rupees(@hsn_totals.tax)} output tax
-              </p>
-              <p
-                :if={@novelty}
-                id="gstr1-hsn-new-codes"
-                class="text-ink-muted text-ui font-medium"
+        <div class="bg-base-100 border-base-300 divide-base-300 rounded-box divide-y border">
+          <.fold
+            :if={@derived}
+            id="gstr1-filing-summary"
+            open={MapSet.member?(@open_folds, "gstr1-filing-summary")}
+            class="px-4"
+            summary_class="py-4 text-base-content w-full"
+          >
+            <:summary>
+              <div class="min-w-0 flex-1">
+                <p class="text-ui font-semibold">
+                  Proposed GSTR-1 derived from effective sales register
+                </p>
+                <p class="text-ink-muted text-meta tabular-nums">
+                  {length(@active_invoices)} documents · {Helpers.rupees(
+                    @account.draft.totals.taxable
+                  )} taxable · {Helpers.rupees(@account.draft.totals.tax)} tax
+                  <span :if={@required_issues != []}> · blockers disclosed above</span>
+                </p>
+              </div>
+              <.badge variant="neutral">Derived</.badge>
+            </:summary>
+            <div class="space-y-related pb-4">
+              <h4 class="text-base-content text-body font-semibold">{@readiness.title}</h4>
+              <.data_table
+                id="gstr1-filing-summary-rows"
+                rows={filing_summary_rows(@derived, @active_invoices)}
+                row_id={&"gstr1-filing-#{&1.key}"}
+                min_width="min-w-[640px]"
+                dense
               >
+                <:col :let={row} label="Section">
+                  <span class="text-base-content font-medium">{row.label}</span>
+                </:col>
+                <:col :let={row} label="Invoices / notes" align="right">{row.documents}</:col>
+                <:col :let={row} label="Taxable" align="right">{Helpers.rupees(row.taxable)}</:col>
+                <:col :let={row} label="IGST" align="right">{Helpers.rupees(row.igst)}</:col>
+                <:col :let={row} label="CGST" align="right">{Helpers.rupees(row.cgst)}</:col>
+                <:col :let={row} label="SGST" align="right">{Helpers.rupees(row.sgst)}</:col>
+              </.data_table>
+            </div>
+          </.fold>
+
+          <.fold
+            :if={@hsn_summary != []}
+            id="gstr1-control-hsn"
+            open={MapSet.member?(@open_folds, "gstr1-control-hsn")}
+            class="px-4"
+            summary_class="py-4 text-base-content w-full"
+          >
+            <:summary>
+              <div class="min-w-0 flex-1">
+                <p class="text-ui font-semibold">HSN Table 12 derived from effective invoice lines</p>
+                <p class="text-ink-muted text-meta tabular-nums">
+                  {length(@hsn_summary)} combinations · {Helpers.rupees(@hsn_totals.tax)} tax
+                  <span :if={@novelty}> · {@novelty.count} codes new</span>
+                </p>
+              </div>
+              <.badge variant={@hsn_control.variant}>{@hsn_control.label}</.badge>
+            </:summary>
+            <section id="gstr1-hsn-signoff" class="space-y-block pb-4">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <h4 class="text-base-content text-body font-semibold">HSN summary · Table 12</h4>
+                <.link
+                  :if={@hsn_issues != []}
+                  href="#gstr1-checks-before-filing"
+                  class="text-ui text-warning font-medium underline"
+                >
+                  {length(@hsn_issues)} HSN {plural(length(@hsn_issues), "check")} in required work
+                </.link>
+              </div>
+              <p :if={@novelty} id="gstr1-hsn-new-codes" class="text-ink-muted text-ui font-medium">
                 {@novelty.count} of {length(@hsn_summary)} codes are new for this client
               </p>
-            </div>
-            <.link
-              :if={@hsn_issues != []}
-              href="#gstr1-checks-before-filing"
-              class="text-ui text-warning font-medium underline"
-            >
-              {length(@hsn_issues)} HSN {plural(length(@hsn_issues), "check")} in required work
-            </.link>
-          </div>
-          <Workings.hsn_summary
-            derived={@derived}
-            invoices={@active_invoices}
-            novelty_codes={@novelty_codes}
-            rippled={@rippled}
-            ripple_seq={@ripple_seq}
-            expanded={@expanded_nodes}
-          />
-        </section>
+              <Workings.hsn_summary
+                derived={@derived}
+                invoices={@active_invoices}
+                novelty_codes={@novelty_codes}
+                rippled={@rippled}
+                ripple_seq={@ripple_seq}
+                expanded={@expanded_nodes}
+              />
+            </section>
+          </.fold>
 
-        <section
-          :if={@document_summary_rows != []}
-          id="gstr1-document-summary"
-          class="space-y-block"
-        >
-          <h4 class="text-base-content text-body font-semibold">Documents issued · Table 13</h4>
-          <.data_table
-            id="gstr1-document-summary-rows"
-            rows={@document_summary_rows}
-            row_id={&"gstr1-document-series-#{&1.id}"}
-            min_width="min-w-[560px]"
-            dense
+          <.fold
+            :if={@document_summary_rows != []}
+            id="gstr1-control-documents"
+            open={MapSet.member?(@open_folds, "gstr1-control-documents")}
+            class="px-4"
+            summary_class="py-4 text-base-content w-full"
           >
-            <:col :let={row} label="Document kind">
-              <span class="text-base-content font-medium">{row.kind}</span>
-            </:col>
-            <:col :let={row} label="From"><span class="font-mono">{row.from}</span></:col>
-            <:col :let={row} label="To"><span class="font-mono">{row.to}</span></:col>
-            <:col :let={row} label="Total" align="right">{row.total}</:col>
-            <:col :let={row} label="Cancelled" align="right">{row.cancelled}</:col>
-            <:col :let={row} label="Net issued" align="right">{row.net_issued}</:col>
-          </.data_table>
-        </section>
+            <:summary>
+              <div class="min-w-0 flex-1">
+                <p class="text-ui font-semibold">Extracted document sequence</p>
+                <p class="text-ink-muted text-meta">{@document_control.copy}</p>
+              </div>
+              <.badge variant={@document_control.variant}>{@document_control.label}</.badge>
+            </:summary>
+            <section id="gstr1-document-summary" class="space-y-related pb-4">
+              <h4 class="text-base-content text-body font-semibold">Documents issued · Table 13</h4>
+              <p class="text-ink-muted text-meta">
+                This checks only the extracted numbers for an internal gap. It is not an independent issued-document register and does not prove completeness.
+              </p>
+              <.data_table
+                id="gstr1-document-summary-rows"
+                rows={@document_summary_rows}
+                row_id={&"gstr1-document-series-#{&1.id}"}
+                min_width="min-w-[560px]"
+                dense
+              >
+                <:col :let={row} label="Document kind">
+                  <span class="text-base-content font-medium">{row.kind}</span>
+                </:col>
+                <:col :let={row} label="From"><span class="font-mono">{row.from}</span></:col>
+                <:col :let={row} label="To"><span class="font-mono">{row.to}</span></:col>
+                <:col :let={row} label="Total" align="right">{row.total}</:col>
+                <:col :let={row} label="Cancelled" align="right">{row.cancelled}</:col>
+                <:col :let={row} label="Net issued" align="right">{row.net_issued}</:col>
+              </.data_table>
+            </section>
+          </.fold>
+        </div>
       </section>
 
-      <%!-- Approval follows the proposed artifact and its statutory summaries.
-            The register below is inspectable evidence, not a scroll ritual. --%>
-      {render_slot(@actions)}
+      <section id="gstr1-register" class="space-y-block scroll-mt-28">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h3 class="text-base-content text-h4 font-semibold">Sales register</h3>
+            <p class="text-ink-muted text-ui">
+              {length(@register_rows)} of {length(@invoices)} documents shown
+            </p>
+          </div>
+          <.button
+            :if={@first_review_invoice}
+            id="gstr1-register-review-next"
+            patch={sales_review_path(@client, @period, @first_review_invoice, :needs_you)}
+            variant="outline"
+            size="xs"
+          >
+            Review next
+          </.button>
+        </div>
 
-      <section id="gstr1-register" class="space-y-block">
-        <h3 class="text-base-content text-body font-semibold">Sales document register</h3>
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <.form
+            for={@register_form}
+            id="gstr1-register-search"
+            phx-change="search-sales-register"
+            class="w-full max-w-sm"
+          >
+            <.input
+              field={@register_form[:query]}
+              type="search"
+              label="Search sales register"
+              placeholder="Invoice, buyer or GSTIN"
+            />
+          </.form>
+          <div id="gstr1-register-filters" class="join">
+            <button
+              :for={
+                {filter, label} <- [
+                  {:review_cases, "Review cases"},
+                  {:no_open_checks, "No open checks"},
+                  {:all, "All"}
+                ]
+              }
+              type="button"
+              phx-click="filter-sales-register"
+              phx-value-filter={filter}
+              class={["btn btn-sm join-item", @register_filter == filter && "btn-active"]}
+            >
+              {label}
+            </button>
+          </div>
+        </div>
+
         <.invoice_table
           id="gstr1-invoices"
-          rows={@invoices}
+          rows={@register_rows}
           visited={@visited}
           reviewed_invoice={@reviewed_invoice}
           issues_by_invoice={@issues_by_invoice}
+          decisions={@decisions}
           client={@client}
           period={@period}
         />
-        <%!-- The register reads the extraction; the return files a
-              recomputation. Naming both "Tax" is what let a reviewer approve
-              one figure believing it was the other. --%>
         <p id="gstr1-register-basis" class="text-ink-subtle text-meta">
-          These are the lines as extracted. The return files a per-rate recomputation of them,
-          shown under Return workings — the two differ by a few paise, because CGST and SGST are
-          aggregated and rounded once per rate bucket rather than per line.
+          These are the lines as extracted. The return files a per-rate recomputation, shown under Return workings.
         </p>
       </section>
 
-      <section :if={@derived} id="gstr1-return" class="space-y-block">
-        <h3 class="text-base-content text-body font-semibold">Return workings</h3>
+      <section :if={@derived} id="gstr1-return" class="space-y-block scroll-mt-28">
+        <h3 class="text-base-content text-h4 font-semibold">Return workings</h3>
         <Workings.workings_body
           derived={@derived}
           invoices={@active_invoices}
           diff={@diff}
           accepted={@accepted_diffs}
-          locked={@r1_signoff != nil}
+          locked={not is_nil(@r1_signoff)}
           rippled={@rippled}
           ripple_seq={@ripple_seq}
           expanded={@expanded_nodes}
         />
       </section>
 
-      <section id="gstr1-source-documents" class="space-y-block">
-        <h3 class="text-base-content text-body font-semibold">Source documents</h3>
+      <section id="gstr1-source-documents" class="space-y-block scroll-mt-28">
+        <div>
+          <h3 class="text-base-content text-h4 font-semibold">Evidence and history</h3>
+          <p class="text-ink-muted text-ui">
+            Source packets and attributed actions behind the effective register.
+          </p>
+        </div>
         {render_slot(@source)}
+        <div
+          :if={@human_actions != []}
+          id="gstr1-action-history"
+          class="border-base-300 divide-base-300 rounded-box divide-y border"
+        >
+          <div
+            :for={action <- @human_actions}
+            class="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+          >
+            <div>
+              <p class="text-base-content text-ui font-medium">{action_label(action)}</p>
+              <p class="text-ink-muted text-meta">{action.target}</p>
+            </div>
+            <p class="text-ink-subtle text-meta">
+              {(action.decided_by && action.decided_by.name) || "Unknown reviewer"} · {format_display_datetime(
+                action.inserted_at
+              )}
+            </p>
+          </div>
+        </div>
+        <p
+          :if={@r1_signoff && @r1_signoff.snapshot["draft_version"]}
+          id="gstr1-approved-version"
+          class="text-ink-muted text-ui"
+        >
+          Approved version
+          <span class="text-base-content font-mono">{String.slice(
+            @r1_signoff.snapshot["draft_version"],
+            0,
+            12
+          )}</span>
+        </p>
       </section>
+
+      {render_slot(@actions)}
     </section>
     """
   end
@@ -388,6 +618,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   attr :visited, :any, default: MapSet.new()
   attr :reviewed_invoice, :string, default: nil
   attr :issues_by_invoice, :map, required: true
+  attr :decisions, :map, default: %{}
   attr :client, :map, required: true
   attr :period, :string, required: true
 
@@ -399,16 +630,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
     <.data_table
       id={@id}
       rows={@rows}
-      row_id={
-        fn invoice ->
-          identity =
-            if @number_counts[invoice["invoice_number"]] == 1,
-              do: invoice["invoice_number"],
-              else: invoice["id"]
-
-          "gstr1-inv-#{identity}"
-        end
-      }
+      row_id={fn invoice -> invoice_dom_id(invoice, @number_counts) end}
       row_click={
         fn invoice ->
           JS.patch(
@@ -423,81 +645,254 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       }
       row_class={
         fn invoice ->
-          (invoice["id"] == @reviewed_invoice or
-             invoice["invoice_number"] == @reviewed_invoice or
+          (invoice["id"] == @reviewed_invoice or invoice["invoice_number"] == @reviewed_invoice or
              invoice["pristine_inum"] == @reviewed_invoice) && "bg-primary/[0.04]"
         end
       }
-      min_width="min-w-[760px]"
+      min_width="min-w-[920px]"
     >
       <:col :let={invoice} label="Document No">
         <span class={[
           "font-mono",
-          (MapSet.member?(@visited, invoice["id"] || invoice["invoice_number"]) &&
-             "text-primary/60") ||
+          (MapSet.member?(@visited, invoice["id"] || invoice["invoice_number"]) && "text-primary/60") ||
             "text-primary font-medium"
         ]}>
           {invoice["invoice_number"] || "—"}
         </span>
       </:col>
-      <:col :let={invoice} label="Date">
-        {Nila.Formatters.format_display_date(invoice["invoice_date"])}
-      </:col>
+      <:col :let={invoice} label="Date">{format_display_date(invoice["invoice_date"])}</:col>
       <:col :let={invoice} label="Buyer">
-        <span class="block max-w-64 truncate" title={invoice["buyer_name"]}>
-          {invoice["buyer_name"] || "—"}
-        </span>
+        <span class="block max-w-64 truncate" title={invoice["buyer_name"]}>{invoice["buyer_name"] ||
+          "—"}</span>
       </:col>
       <:col :let={invoice} label="Recipient">
-        <span class="text-ink-muted font-mono">
-          {invoice["buyer_gstin"] || registration_label(invoice)}
-        </span>
+        <span class="text-ink-muted font-mono">{invoice["buyer_gstin"] || registration_label(invoice)}</span>
       </:col>
       <:col :let={invoice} label="POS">
         <span class="text-ink-muted font-mono">{invoice["place_of_supply"] || "—"}</span>
       </:col>
       <:col :let={invoice} label="Taxable" align="right">
-        {rupees(Gstr1.extracted_totals(invoice).taxable)}
+        {Helpers.rupees(Gstr1.extracted_totals(invoice).taxable)}
       </:col>
-      <%!-- This invoice's tax reads three ways on this page: what the bill
-            printed, the sum of the extracted lines, and the per-rate figure that
-            reaches the return. All three were labelled "Tax". --%>
-      <%!-- "Sum of extracted lines" said where the figure came from but not what
-            it is, and it sits in the next column after Taxable — so ₹3,88,337
-            beside ₹69,900.72 read as two takes on the taxable value. --%>
       <:col :let={invoice} label="Extracted GST" align="right">
-        {rupees(Gstr1.extracted_totals(invoice).tax)}
+        {Helpers.rupees(Gstr1.extracted_totals(invoice).tax)}
       </:col>
-      <:col :let={invoice} label="Status">
-        <% state = invoice_state(@issues_by_invoice, invoice) %>
-        <.badge :if={state} variant={state.variant}>{state.label}</.badge>
+      <:col :let={invoice} label="Machine state">
+        <.badge variant={machine_state(@issues_by_invoice, invoice).variant}>
+          {machine_state(@issues_by_invoice, invoice).label}
+        </.badge>
+      </:col>
+      <:col :let={invoice} label="Human action">
+        <span class="text-ink-muted text-meta">{human_state(@issues_by_invoice, @decisions, invoice)}</span>
       </:col>
       <:col label="" align="right">
         <.icon name="hero-chevron-right-mini" class="text-ink-faint size-4" />
       </:col>
-      <:empty>No sales documents were extracted for this month.</:empty>
+      <:empty>No sales documents match these filters.</:empty>
     </.data_table>
     """
   end
 
-  defp invoice_state(issues_by_invoice, invoice) do
-    issues = Helpers.invoice_issues(issues_by_invoice, invoice)
-    open = Enum.count(issues, &(&1["status"] == "open" and Issues.gating?(&1)))
+  defp section_links(required_issues, derived) do
+    [
+      required_issues != [] && %{id: "gstr1-checks-before-filing", label: "Required review"},
+      derived && %{id: "gstr1-return-controls", label: "Return controls"},
+      %{id: "gstr1-register", label: "Register"},
+      derived && %{id: "gstr1-return", label: "Workings"},
+      %{id: "gstr1-source-documents", label: "Evidence"},
+      %{id: "gstr1-handoff", label: "Approval & handoff"}
+    ]
+    |> Enum.filter(&is_map/1)
+  end
 
-    cond do
-      Map.has_key?(invoice, "duplicate_copy") -> %{variant: "neutral", label: "Duplicate copy"}
-      open > 0 -> %{variant: "warning", label: issues_clause(open)}
-      issues != [] -> %{variant: "success", label: "Confirmed"}
-      true -> nil
+  defp first_review_invoice(rows, %{needs_you: needs_you}) do
+    visible = MapSet.new(rows, & &1["id"])
+
+    case Enum.find(needs_you, &MapSet.member?(visible, &1.source_id)) do
+      nil -> nil
+      item -> item.source_id
     end
+  end
+
+  defp machine_state(_issues_by_invoice, %{"duplicate_copy" => _copy}),
+    do: %{variant: "neutral", label: "Duplicate copy"}
+
+  defp machine_state(issues_by_invoice, invoice) do
+    issues = Helpers.invoice_issues(issues_by_invoice, invoice)
+
+    open =
+      Enum.any?(
+        issues,
+        &(&1["status"] == "open" and
+            Issues.resolution_kind(&1) in [:decision, :correction, :confirmation])
+      )
+
+    if open,
+      do: %{variant: "warning", label: "Review case"},
+      else: %{variant: "neutral", label: "No open checks"}
+  end
+
+  defp human_state(issues_by_invoice, decisions, invoice) do
+    targets = [
+      invoice["id"]
+      | Enum.map(Helpers.invoice_issues(issues_by_invoice, invoice), &SalesWorkings.issue_key/1)
+    ]
+
+    action = Enum.find_value(targets, &decisions[&1])
+
+    case action && action.verb do
+      "correct_field" -> "Corrected"
+      "confirm_issue" -> "Confirmed"
+      "exclude_duplicate_copy" -> "Excluded as duplicate"
+      _ -> "No recorded action"
+    end
+  end
+
+  defp human_actions(decisions) do
+    decisions
+    |> Map.values()
+    |> Enum.reject(&(&1.verb == "reopen"))
+    |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
+  end
+
+  defp grouped_review_cases(review) do
+    Enum.flat_map(review.needs_you, fn item ->
+      issues =
+        Enum.filter(item.actionable_issues, fn issue ->
+          issue["status"] == "open" and groupable_invoice_issue?(issue)
+        end)
+
+      case issues do
+        [] ->
+          []
+
+        [first | _] ->
+          [
+            %{
+              source_id: item.source_id,
+              invoice_number: item.invoice["invoice_number"] || "—",
+              target: SalesWorkings.issue_key(first),
+              targets: Enum.map(issues, &SalesWorkings.issue_key/1),
+              reason: grouped_reason(issues),
+              effect: treatment_effect(item.treatment)
+            }
+          ]
+      end
+    end)
+  end
+
+  defp groupable_invoice_issue?(issue),
+    do: not is_binary(issue["hsn_code"]) and issue["code"] != "duplicate_invoice_number"
+
+  defp grouped_reason([issue]), do: issue["message"]
+
+  defp grouped_reason([first | rest]) do
+    "#{issue_label(first["code"])}: #{first["message"]} · #{length(rest)} related #{plural(length(rest), "check")} grouped with this invoice"
+  end
+
+  defp treatment_effect(nil), do: nil
+
+  defp treatment_effect(treatment) do
+    "Current draft: #{String.upcase(treatment["table"] || "return")} · #{Helpers.rupees(treatment["taxable_amount"])} taxable · #{Helpers.rupees(treatment["tax_amount"])} tax"
+  end
+
+  defp assured_source_ids(review, invoices, decisions) do
+    invoice_ids = MapSet.new(invoices, & &1["id"])
+
+    decisions
+    |> Map.values()
+    |> Enum.reject(&(&1.verb == "reopen"))
+    |> Enum.reduce(MapSet.new(), fn action, covered ->
+      case assured_source_id(action, review, invoice_ids) do
+        nil -> covered
+        source_id -> MapSet.put(covered, source_id)
+      end
+    end)
+  end
+
+  defp assured_source_id(%{verb: "correct_field", target: target}, _review, invoice_ids),
+    do: if(MapSet.member?(invoice_ids, target), do: target)
+
+  defp assured_source_id(
+         %{verb: "exclude_duplicate_copy", payload: payload},
+         _review,
+         invoice_ids
+       ) do
+    source_id = payload["excluded_source_id"]
+    if MapSet.member?(invoice_ids, source_id), do: source_id
+  end
+
+  defp assured_source_id(%{verb: "confirm_issue", target: target}, review, _invoice_ids) do
+    case Enum.find(review.all, &(target in &1.actionable_targets)) do
+      nil -> nil
+      item -> item.source_id
+    end
+  end
+
+  defp assured_source_id(_action, _review, _invoice_ids), do: nil
+
+  defp review_summary(review_cases, blockers, required_checks) do
+    [
+      review_cases > 0 && "#{review_cases} #{plural(review_cases, "review case")}",
+      blockers > 0 && "#{blockers} #{plural(blockers, "blocker")}",
+      required_checks > 0 &&
+        "#{required_checks} #{plural(required_checks, "required check")}"
+    ]
+    |> Enum.filter(&is_binary/1)
+    |> Enum.join(" · ")
+  end
+
+  defp action_label(%{verb: "correct_field", payload: %{"field" => field}}),
+    do: "Corrected #{humanize_label(field)}"
+
+  defp action_label(%{verb: "confirm_issue"}), do: "Confirmed Nila's proposed treatment"
+  defp action_label(%{verb: "accept_difference"}), do: "Accepted filed-return difference"
+  defp action_label(%{verb: "exclude_duplicate_copy"}), do: "Excluded duplicate source copy"
+  defp action_label(action), do: humanize_label(action.verb)
+
+  defp hsn_control([issue | _], _novelty),
+    do: %{label: issue_level_label(issue), variant: Helpers.severity_variant(issue["level"])}
+
+  defp hsn_control([], %{}), do: %{label: "Advisory", variant: "neutral"}
+  defp hsn_control([], nil), do: %{label: "Derived", variant: "neutral"}
+
+  defp issue_level_label(%{"level" => "blocking"}), do: "Blocked"
+  defp issue_level_label(_issue), do: "Review required"
+
+  defp document_control(required_issues, rows) do
+    sequence? =
+      Enum.any?(
+        required_issues,
+        &(&1["code"] in ~w(invoice_sequence_gap duplicate_invoice_number))
+      )
+
+    first = List.first(rows)
+    copy = if first, do: "#{first.from} to #{first.to}", else: "No extracted series"
+
+    if sequence? do
+      %{label: "Review required", variant: "warning", copy: copy}
+    else
+      %{
+        label: "Not independently tested",
+        variant: "neutral",
+        copy: copy <> " · no internal gap observed"
+      }
+    end
+  end
+
+  defp invoice_dom_id(invoice, number_counts) do
+    identity =
+      if number_counts[invoice["invoice_number"]] == 1,
+        do: invoice["invoice_number"],
+        else: invoice["id"]
+
+    "gstr1-inv-#{identity}"
   end
 
   defp track_title(%{filed_at: filed_at}, %{}) when not is_nil(filed_at), do: "GSTR-1 filed"
   defp track_title(_sales_month, %{}), do: "GSTR-1 approved"
   defp track_title(_sales_month, _signoff), do: "GSTR-1 draft"
 
-  # One row per transaction section the return actually builds. Table 12 and
-  # Table 13 have their own shapes below rather than being forced into this one.
   defp filing_summary_rows(derived, invoices) do
     [
       filing_summary_row(
@@ -529,18 +924,16 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   end
 
   defp section_totals(derived, section) do
-    sections = ~w(b2b b2cs b2cl cdnr)
-
     isolated =
-      Enum.reduce(sections, derived, fn key, acc ->
+      Enum.reduce(~w(b2b b2cs b2cl cdnr), derived, fn key, acc ->
         if key == section, do: acc, else: Map.put(acc, key, [])
       end)
 
     Values.filed_totals(isolated)
   end
 
-  defp filing_summary_row(key, label, documents, totals) do
-    %{
+  defp filing_summary_row(key, label, documents, totals),
+    do: %{
       key: key,
       label: label,
       documents: documents,
@@ -549,13 +942,9 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       cgst: totals.cgst,
       sgst: totals.sgst
     }
-  end
 
-  defp count_documents(derived, section, rows) do
-    derived
-    |> Map.get(section, [])
-    |> Enum.reduce(0, &(length(&1[rows] || []) + &2))
-  end
+  defp count_documents(derived, section, rows),
+    do: derived |> Map.get(section, []) |> Enum.reduce(0, &(length(&1[rows] || []) + &2))
 
   defp document_summary_rows(nil), do: []
 
@@ -605,15 +994,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp count_label(1, label), do: "1 #{label}"
   defp count_label(count, label), do: "#{count} #{label}s"
 
-  defp hsn_issues(issues) do
-    Enum.filter(issues, fn issue ->
-      is_binary(issue["hsn_code"]) and
-        issue["code"] in ~w(hsn_multiple_rates hsn_inferred_code rate_history_conflict statutory_rate_mismatch statutory_rate_review invalid_hsn_sac incomplete_hsn_sac)
-    end)
-  end
+  defp hsn_issues(issues), do: Enum.filter(issues, &is_binary(&1["hsn_code"]))
 
-  # One concrete observation beside Table 12, with the code rows visible rather
-  # than a generic count of the domain's advisory bucket.
   defp novelty(advisories) do
     case Enum.filter(advisories, &(&1["code"] == "hsn_new_code")) do
       [] ->
@@ -621,19 +1003,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
       issues ->
         codes = issues |> Enum.map(& &1["hsn_code"]) |> Enum.uniq() |> Enum.sort()
-
-        %{
-          count: length(codes),
-          codes: codes
-        }
+        %{count: length(codes), codes: codes}
     end
   end
 
-  # Every code the issue covers, not just the first. Collapsing per-line findings
-  # into one card left this reading `hsn_code` alone, so an invoice with two bad
-  # codes cleared its check once the rows for the first were expanded — the
-  # second was never rendered and nobody looked at it. Before the collapse that
-  # took two separate reviews.
   defp hsn_reviewed?(issue, invoices, expanded_nodes) do
     case Enum.flat_map(hsn_codes(issue), &Workings.hsn_node_ids(invoices, &1)) do
       [] -> false
@@ -641,8 +1014,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
     end
   end
 
-  # The fallback is load-bearing: `rate_history.ex` and `multiple_rate_issues/1`
-  # emit single-code issues that carry no `hsn_codes` at all.
   defp hsn_codes(issue), do: issue["hsn_codes"] || List.wrap(issue["hsn_code"])
 
   defp hsn_totals(rows) do
@@ -675,20 +1046,14 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
     actionable? =
       issues_by_invoice
       |> Helpers.invoice_issues(invoice)
-      |> Enum.any?(fn issue ->
-        issue["status"] == "open" and
-          Issues.resolution_kind(issue) in [:decision, :correction, :confirmation]
-      end)
+      |> Enum.any?(
+        &(&1["status"] == "open" and
+            Issues.resolution_kind(&1) in [:decision, :correction, :confirmation])
+      )
 
     if actionable?, do: :needs_you, else: :all
   end
 
-  defp issues_clause(0), do: "Ready"
-  defp issues_clause(1), do: "1 to answer"
-  defp issues_clause(n), do: "#{n} to answer"
-
   defp plural(1, word), do: word
   defp plural(_count, word), do: word <> "s"
-
-  defp rupees(amount), do: Helpers.rupees(amount)
 end

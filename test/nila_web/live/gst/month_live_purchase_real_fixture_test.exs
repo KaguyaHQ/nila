@@ -45,11 +45,11 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
     org: org,
     user: user
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=gstr3b")
 
     refute has_element?(view, "#month-door-sign-3b")
     assert has_element?(view, "#month-exit-gstr3b-blocked")
-    assert has_element?(view, "#month-exit-gstr3b h3", "Sign-off")
+    refute has_element?(view, "#month-exit-gstr3b")
     assert has_element?(view, "#gstr3b-blocker-no-sales")
 
     {:ok, sales} =
@@ -86,30 +86,27 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     assert doors(view) == ["month-door-sign-r1"]
-    assert has_element?(view, "#month-exit-gstr1 #month-door-sign-r1.btn-primary")
+    assert has_element?(view, "#gstr1-verdict #month-door-sign-r1.btn-primary")
     refute has_element?(view, "#month-verdict #month-door-sign-r1")
 
     view |> element("#month-door-sign-r1") |> render_click()
 
-    assert doors(view) == ["month-door-file-sales"]
-    assert has_element?(view, "#month-door-file-sales[href='#month-exit-gstr1']")
-    assert has_element?(view, "#month-register #month-3b #gst-3b-position")
-    assert has_element?(view, "#month-register #month-3b #gst-3b-filing-detail")
-
-    html = render(view)
-    assert index_of(html, "month-3b") < index_of(html, "month-exit-gstr3b")
-    assert index_of(html, "month-exit-gstr3b") < index_of(html, "gst-register")
+    assert doors(view) == []
+    refute has_element?(view, "#gstr1-primary-handoff")
+    assert has_element?(view, "#month-exit-gstr1", "Approved by")
+    refute has_element?(view, "#month-3b")
 
     view |> element("#gstr1-mark-filed") |> render_submit(%{"arn" => "R1-ARN"})
+    view |> element("#month-workpaper-tab-gstr3b") |> render_click()
 
     assert doors(view) == ["month-door-sign-3b"]
-    assert has_element?(view, "#month-exit-gstr3b #month-door-sign-3b.btn-primary")
+    assert has_element?(view, "#month-3b #month-door-sign-3b.btn-primary")
     refute has_element?(view, "#month-verdict #month-door-sign-3b")
 
     view |> element("#month-door-sign-3b") |> render_click()
 
-    assert doors(view) == ["month-door-file-purchase"]
-    assert has_element?(view, "#month-door-file-purchase[href='#month-exit-gstr3b']")
+    assert doors(view) == []
+    assert has_element?(view, "#gstr3b-primary-filing[href='#month-exit-gstr3b']")
     assert has_element?(view, "#month-exit-gstr3b a[target='_blank'][rel='noopener']")
     assert has_element?(view, "#gst-filed-arn")
     refute has_element?(view, "#month-door-sign-3b")
@@ -123,11 +120,6 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
 
   defp read_json(file) do
     @dir |> Path.join(file) |> File.read!() |> Jason.decode!()
-  end
-
-  defp index_of(html, id) do
-    [start, _rest] = String.split(html, ~s(id="#{id}"), parts: 2)
-    String.length(start)
   end
 
   defp doors(view) do

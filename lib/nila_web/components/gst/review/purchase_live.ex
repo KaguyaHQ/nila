@@ -376,10 +376,10 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
     do: "Month is signed off — a senior must reopen it from the month page."
 
   defp month_path(socket),
-    do: "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}"
+    do: "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}?track=purchases"
 
   defp review_path(socket, item, scope) do
-    base = month_path(socket) <> "/review/purchase"
+    base = "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}/review/purchase"
     query = URI.encode_query(%{"item" => item || "", "scope" => to_string(scope)})
     base <> "?" <> query
   end

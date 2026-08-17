@@ -35,6 +35,9 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
       )
 
     assert has_element?(view, "#month-page")
+    assert has_element?(view, "#month-workpaper-tab-purchases[aria-current='page']")
+    assert has_element?(view, "#month-register")
+    refute has_element?(view, "#month-sales")
     assert has_element?(view, "#purchase-review")
     assert has_element?(view, "#gst-exception-books-members")
     members = view |> element("#gst-exception-books-members") |> render()
@@ -47,6 +50,9 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     view |> element("#purchase-review-scope button", "All") |> render_click()
     assert has_element?(view, "#purchase-review-progress", "0 of 2 decisions")
     assert length(Resolutions.list(month.id)) == 0
+
+    view |> element("#purchase-review button[phx-click='done']") |> render_click()
+    assert_patch(view, "/gst/#{context.client.id}/#{@period}?track=purchases")
   end
 
   test "confirm_pair records the evidence and alternatives shown", context do

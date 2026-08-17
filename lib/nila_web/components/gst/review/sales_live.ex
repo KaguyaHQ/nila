@@ -188,7 +188,8 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
            %{
              item: socket.assigns.selected_id,
              scope: socket.assigns.route.scope,
-             focus: socket.assigns.route.focus
+             focus: socket.assigns.route.focus,
+             action: attrs
            }}
         )
 
@@ -232,7 +233,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
   defp locked_message(_socket), do: "Reopen GSTR-1 approval first."
 
   defp month_path(socket),
-    do: "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}"
+    do: "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}?track=sales"
 
   defp review_path(socket, item, scope) do
     params = %{
@@ -240,12 +241,13 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
       "scope" => to_string(scope)
     }
 
-    month_path(socket) <> "/review/sales?" <> URI.encode_query(params)
+    "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}/review/sales?" <>
+      URI.encode_query(params)
   end
 
   defp rail_state(:needs_you), do: {"warning", "Needs you"}
   defp rail_state(:settled), do: {"success", "Resolved"}
-  defp rail_state(:unreviewed), do: {"neutral", "Clean"}
+  defp rail_state(:unreviewed), do: {"neutral", "No open checks"}
 
   @impl true
   def render(assigns) do

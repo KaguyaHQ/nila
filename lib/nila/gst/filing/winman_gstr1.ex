@@ -7,6 +7,7 @@ defmodule Nila.Gst.Filing.WinmanGstr1 do
   """
 
   alias Nila.Gst.Filing.WinmanGstr1.Package
+  alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.StateCodes
 
   @first_period ~D[2026-04-01]
@@ -14,6 +15,7 @@ defmodule Nila.Gst.Filing.WinmanGstr1 do
   @max_rows 995
   @tax_rates [0, 0.1, 0.25, 1, 1.5, 3, 5, 6, 7.5, 12, 18, 28, 40]
   @invalid_xml ~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x{FFFE}\x{FFFF}]/u
+  @omitted_tables [{"b2cs", "B2CS"}, {"b2cl", "B2CL"}, {"cdnr", "CDNR"}]
 
   @type projection :: %{required(:derived) => map(), required(:invoices) => [map()]}
 
@@ -32,13 +34,48 @@ defmodule Nila.Gst.Filing.WinmanGstr1 do
   @spec build(projection(), map(), String.t()) ::
           {:ok, binary()}
           | {:error, :invalid_period | :unsupported_period | :invalid_b2b_data | :too_many_rows}
-  def build(%{derived: derived, invoices: invoices}, client, period) do
+  def build(projection, client, period) do
     with {:ok, date} <- period_date(period),
          :ok <- require_supported_period(date),
          :ok <- validate_client(client),
-         {:ok, rows} <- b2b_rows(derived, invoices),
-         :ok <- require_row_capacity(rows) do
-      {:ok, Package.build(rows, title(client, period))}
+         {:ok, population} <- export_population(projection),
+         :ok <- require_row_capacity(population.rows) do
+      {:ok, Package.build(population.rows, title(client, period))}
+    end
+  end
+
+  @doc "Describes the exact B2B rows the current workbook exporter will write."
+  @spec export_manifest(projection()) :: {:ok, map()} | {:error, :invalid_b2b_data}
+  def export_manifest(projection) do
+    with {:ok, population} <- export_population(projection) do
+      {:ok, Map.delete(population, :rows)}
+    end
+  end
+
+  defp export_population(%{derived: derived, invoices: invoices}) do
+    with {:ok, rows} <- b2b_rows(derived, invoices) do
+      active_invoices = Enum.reject(invoices, &Map.has_key?(&1, "duplicate_copy"))
+
+      omitted_by_table =
+        Enum.map(@omitted_tables, fn {table, label} ->
+          %{
+            table: table,
+            label: label,
+            count: Enum.count(active_invoices, &(Gstr1.filing_table(&1) == table))
+          }
+        end)
+
+      {:ok,
+       %{
+         rows: rows,
+         included_documents: length(rows),
+         included_b2b_invoices: b2b_invoice_count(derived),
+         duplicates_excluded: Enum.count(invoices, &Map.has_key?(&1, "duplicate_copy")),
+         omitted_documents: Enum.sum(Enum.map(omitted_by_table, & &1.count)),
+         omitted_by_table: Enum.reject(omitted_by_table, &(&1.count == 0)),
+         taxable: Enum.sum(Enum.map(rows, & &1.taxable_value)),
+         output_tax: Enum.sum(Enum.map(rows, &(&1.igst + &1.cgst + &1.sgst + &1.cess)))
+       }}
     end
   end
 
@@ -62,6 +99,12 @@ defmodule Nila.Gst.Filing.WinmanGstr1 do
       {:ok, rows} -> {:ok, Enum.reverse(rows)}
       {:error, :invalid_b2b_data} = error -> error
     end
+  end
+
+  defp b2b_invoice_count(derived) do
+    derived
+    |> Map.get("b2b", [])
+    |> Enum.reduce(0, &(length(&1["inv"] || []) + &2))
   end
 
   defp b2b_row({recipient, invoice, item}, names) do
