@@ -3,6 +3,85 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
 
   alias Mix.Tasks.Nila.StyleGuard
 
+  test "rejects raw daisyUI component recipes" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-daisy-guard-#{System.unique_integer([:positive])}.heex")
+
+    File.write!(
+      path,
+      ~s(<button class="btn btn-soft tooltip tooltip-left" data-tip="Save">Save</button>\n)
+    )
+
+    on_exit(fn -> File.rm(path) end)
+
+    violations = StyleGuard.daisy_component_violations(path)
+
+    assert Enum.sort(violations) ==
+             Enum.sort([
+               {path, 1, "btn"},
+               {path, 1, "btn-soft"},
+               {path, 1, "tooltip"},
+               {path, 1, "tooltip-left"},
+               {path, 1, "data-tip"}
+             ])
+  end
+
+  test "rejects daisyUI classes in multiline HEEx class expressions" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-daisy-guard-#{System.unique_integer([:positive])}.heex")
+
+    File.write!(
+      path,
+      """
+      <div
+        class={[
+          "btn",
+          @active && "tooltip-left"
+        ]}
+      >Content</div>
+      """
+    )
+
+    on_exit(fn -> File.rm(path) end)
+
+    assert Enum.sort(StyleGuard.daisy_component_violations(path)) ==
+             Enum.sort([{path, 3, "btn"}, {path, 4, "tooltip-left"}])
+  end
+
+  test "allows colliding Tailwind utilities and shared Nila recipes" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-daisy-guard-#{System.unique_integer([:positive])}.heex")
+
+    File.write!(
+      path,
+      ~s(<.button><span class="nila-input-error select-none table-fixed table-cell">Save</span></.button>\n)
+    )
+
+    on_exit(fn -> File.rm(path) end)
+
+    assert StyleGuard.daisy_component_violations(path) == []
+  end
+
+  test "ignores comparison values inside class expressions" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-daisy-guard-#{System.unique_integer([:positive])}.heex")
+
+    File.write!(path, ~s(<div class={["nila-modal", @variant == "modal" && "px-4"]}></div>\n))
+    on_exit(fn -> File.rm(path) end)
+
+    assert StyleGuard.daisy_component_violations(path) == []
+  end
+
+  test "allows shared Nila recipes and component calls" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-daisy-guard-#{System.unique_integer([:positive])}.heex")
+
+    File.write!(path, ~s(<.button><span class="nila-input-error">Save</span></.button>\n))
+    on_exit(fn -> File.rm(path) end)
+
+    assert StyleGuard.daisy_component_violations(path) == []
+  end
+
   test "rejects raw context typography outside its primitive" do
     path =
       Path.join(System.tmp_dir!(), "nila-style-guard-#{System.unique_integer([:positive])}.heex")

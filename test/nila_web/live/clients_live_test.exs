@@ -36,7 +36,8 @@ defmodule NilaWeb.ClientsLiveTest do
     assert html =~ "Oct 2025"
     assert html =~ "Ready for review"
     assert has_element?(view, "#client-decisions-#{client.id}", "2")
-    assert has_element?(view, "#client-edit-#{client.id}")
+    assert has_element?(view, "#client-edit-#{client.id}[data-variant='ghost']", "Edit")
+    refute has_element?(view, "[data-tip]")
     refute html =~ "no GSTIN"
   end
 

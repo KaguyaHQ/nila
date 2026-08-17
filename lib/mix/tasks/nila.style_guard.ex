@@ -9,6 +9,9 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     * **Legacy classes** — hardcoded Tailwind (`bg-slate`, `bg-white`, …) instead
       of moonlight semantic tokens. Zero tolerance, everywhere.
 
+    * **daisyUI components** — raw `btn-*`, `select-*`, `tooltip`, and related
+      component recipes are forbidden. DaisyUI supplies theme plumbing only.
+
     * **Type scale** — raw Tailwind sizes (`text-sm`, `text-xs`, `text-4xl`, …),
       arbitrary `text-[…]`, `tracking-[…]`, and `leading-[…]`, plus the retired
       `text-table` / `text-small` / `text-fine` / `text-micro` steps. The role scale in
@@ -45,6 +48,16 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "rounded-md",
     "shadow-sm"
   ]
+  @daisy_component_classes MapSet.new(
+                             ~w(btn badge card input textarea select file-input checkbox radio toggle range join alert loading progress radial-progress tooltip drawer dropdown modal swap collapse indicator table tabs tab menu)
+                           )
+  @daisy_modifier_pattern ~r/\A(?:btn|badge|card|input|textarea|select|file-input|checkbox|radio|toggle|range|join|alert|loading|progress|radial-progress|tooltip|drawer|dropdown|modal|swap|collapse|indicator|table|tabs|tab|menu)-[a-z][\w-]*\z/
+  @daisy_modifier_exceptions MapSet.new(
+                               ~w(select-none select-text select-all select-auto table-auto table-fixed table-caption table-cell table-column table-column-group table-footer-group table-header-group table-row table-row-group)
+                             )
+  @class_attribute_start_pattern ~r/\bclass\s*=\s*/
+  @class_string_pattern ~r/"([^"]*)"/s
+  @data_tip_pattern ~r/\bdata-tip(?=\s*=)/
 
   # Raw text sizes, plus arbitrary text/tracking/leading. `text-base` is matched
   # only as a size — never the `text-base-content` / `text-base-100` color tokens
@@ -116,6 +129,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   @impl Mix.Task
   def run(_args) do
     legacy = @legacy_globs |> expand() |> Enum.flat_map(&legacy_violations/1)
+    daisy_components = @legacy_globs |> expand() |> Enum.flat_map(&daisy_component_violations/1)
     type_scale = @type_scale_globs |> expand() |> Enum.flat_map(&type_scale_violations/1)
     context_type = @type_scale_globs |> expand() |> Enum.flat_map(&context_type_violations/1)
 
@@ -128,6 +142,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     css_variables = css_variable_violations(@css_path)
 
     report(legacy, "legacy hardcoded classes")
+    report(daisy_components, "raw daisyUI component classes — use the shared Nila component")
     report(type_scale, "raw type sizes — name a role from docs/design/FRONTEND.md#typography")
 
     report(
@@ -145,8 +160,9 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     report(motion, "off-system motion — use the named fast/calm transition vocabulary")
     report(css_variables, "undefined CSS variables — define the token before consuming it")
 
-    if legacy != [] or type_scale != [] or context_type != [] or component_recipes != [] or
-         spacing != [] or ruling != [] or motion != [] or css_variables != [] do
+    if legacy != [] or daisy_components != [] or type_scale != [] or context_type != [] or
+         component_recipes != [] or spacing != [] or ruling != [] or motion != [] or
+         css_variables != [] do
       Mix.raise("Replace the flagged classes with Nila design-system tokens.")
     end
   end
@@ -157,6 +173,117 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
   defp legacy_violations(path) do
     scan(path, fn line -> Enum.filter(@legacy_patterns, &String.contains?(line, &1)) end)
+  end
+
+  @doc false
+  def daisy_component_violations(path) do
+    source = path |> File.read!() |> strip_heex_comments()
+
+    class_violations =
+      @class_attribute_start_pattern
+      |> Regex.scan(source, return: :index)
+      |> Enum.flat_map(fn [{attribute_start, attribute_length}] ->
+        value_start = attribute_start + attribute_length
+
+        source
+        |> binary_part(value_start, byte_size(source) - value_start)
+        |> class_attribute_source()
+        |> case do
+          nil ->
+            []
+
+          attribute_source ->
+            @class_string_pattern
+            |> Regex.scan(attribute_source, return: :index)
+            |> Enum.reject(fn [{quoted_start, _quoted_length}, _string] ->
+              comparison_operand?(attribute_source, quoted_start)
+            end)
+            |> Enum.flat_map(fn [_full, {string_start, string_length}] ->
+              attribute_source
+              |> binary_part(string_start, string_length)
+              |> String.split()
+              |> Enum.filter(&daisy_component_class?/1)
+              |> Enum.map(fn token ->
+                {path, line_number(source, value_start + string_start), token}
+              end)
+            end)
+        end
+      end)
+
+    data_tip_violations = pattern_violations(path, @data_tip_pattern)
+
+    Enum.uniq(class_violations ++ data_tip_violations)
+  end
+
+  defp class_attribute_source(<<"\"", _rest::binary>> = source) do
+    case Regex.run(~r/\A"[^"]*"/s, source) do
+      [attribute_source] -> attribute_source
+      nil -> nil
+    end
+  end
+
+  defp class_attribute_source(<<"{", _rest::binary>> = source), do: balanced_braces(source)
+  defp class_attribute_source(_source), do: nil
+
+  defp balanced_braces(source), do: balanced_braces(source, source, 0, nil, false, 0)
+
+  defp balanced_braces(_source, <<>>, _depth, _quote, _escaped, _length), do: nil
+
+  defp balanced_braces(source, <<char, rest::binary>>, depth, quote, escaped, length) do
+    next_length = length + 1
+
+    cond do
+      escaped ->
+        balanced_braces(source, rest, depth, quote, false, next_length)
+
+      quote && char == ?\\ ->
+        balanced_braces(source, rest, depth, quote, true, next_length)
+
+      quote && char == quote ->
+        balanced_braces(source, rest, depth, nil, false, next_length)
+
+      quote ->
+        balanced_braces(source, rest, depth, quote, false, next_length)
+
+      char in [?\", ?'] ->
+        balanced_braces(source, rest, depth, char, false, next_length)
+
+      char == ?{ ->
+        balanced_braces(source, rest, depth + 1, nil, false, next_length)
+
+      char == ?} && depth == 1 ->
+        binary_part(source, 0, next_length)
+
+      char == ?} ->
+        balanced_braces(source, rest, depth - 1, nil, false, next_length)
+
+      true ->
+        balanced_braces(source, rest, depth, nil, false, next_length)
+    end
+  end
+
+  defp comparison_operand?(source, string_start) do
+    source
+    |> binary_part(0, string_start)
+    |> String.trim_trailing()
+    |> then(&(String.ends_with?(&1, "==") or String.ends_with?(&1, "!=")))
+  end
+
+  defp daisy_component_class?(token) do
+    MapSet.member?(@daisy_component_classes, token) or
+      (Regex.match?(@daisy_modifier_pattern, token) and
+         !MapSet.member?(@daisy_modifier_exceptions, token))
+  end
+
+  defp line_number(source, byte_offset) do
+    source
+    |> binary_part(0, byte_offset)
+    |> String.split("\n")
+    |> length()
+  end
+
+  defp strip_heex_comments(source) do
+    Regex.replace(~r/<%!--.*?--%>/s, source, &preserve_newlines/1)
   end
 
   defp type_scale_violations(path) do

@@ -139,15 +139,17 @@ defmodule NilaWeb.ClientsLive do
           </:col>
           <:col :let={client} label="" class="whitespace-nowrap">
             <div class="flex items-center justify-end gap-3">
-              <.link
-                navigate={~p"/clients/#{client.id}/edit"}
-                id={"client-edit-#{client.id}"}
-                class="hover:text-ink text-ink-subtle tooltip tooltip-left relative z-10"
-                data-tip="Edit client"
-                aria-label={"Edit #{client.name}"}
-              >
-                <.icon name="hero-pencil-square" class="size-4" />
-              </.link>
+              <span class="relative z-10">
+                <.button
+                  navigate={~p"/clients/#{client.id}/edit"}
+                  id={"client-edit-#{client.id}"}
+                  variant="ghost"
+                  size="xs"
+                  aria-label={"Edit #{client.name}"}
+                >
+                  <.icon name="hero-pencil-square" class="size-4" /> Edit
+                </.button>
+              </span>
               <%!-- Not a control — the standing mark that the row itself opens.
                     The hover and the pointer only say so once you're already
                     on the row. --%>

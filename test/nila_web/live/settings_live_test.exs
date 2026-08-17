@@ -20,6 +20,8 @@ defmodule NilaWeb.SettingsLiveTest do
       assert has_element?(view, "#settings-add-microsoft-form")
       assert has_element?(view, "#settings-add-microsoft-tenant")
       assert has_element?(view, "#settings-add-microsoft-mailbox")
+      assert has_element?(view, "#settings-add-microsoft[data-variant='soft']")
+      refute has_element?(view, "#settings-connectors .btn-soft")
 
       assert has_element?(
                view,

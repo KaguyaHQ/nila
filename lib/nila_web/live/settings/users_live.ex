@@ -170,23 +170,18 @@ defmodule NilaWeb.Settings.UsersLive do
             <form
               id={"role-form-#{member.id}"}
               phx-change="change_role"
-              class="inline-flex flex-col gap-1"
+              class="inline-flex w-56 flex-col gap-1"
             >
-              <input type="hidden" name="membership_id" value={member.id} />
-              <select
+              <.input type="hidden" name="membership_id" value={member.id} />
+              <.input
+                type="select"
+                id={"member-role-#{member.id}"}
                 name="role"
-                class="select select-sm"
+                value={member.role}
+                options={Policy.assignable_roles()}
                 disabled={locked_owner?(@members, member)}
                 aria-label={"Role for #{member.user.name}"}
-              >
-                <option
-                  :for={{label, value} <- Policy.assignable_roles()}
-                  value={value}
-                  selected={member.role == value}
-                >
-                  {label}
-                </option>
-              </select>
+              />
               <span class="text-ink-muted text-ui max-w-56">
                 {Policy.role_description(member.role)}
               </span>
@@ -198,24 +193,28 @@ defmodule NilaWeb.Settings.UsersLive do
           </:col>
           <:col :let={member} label="Actions" align="right">
             <div class="flex items-center justify-end gap-3">
-              <button
+              <.button
                 :if={invited?(member.user)}
                 type="button"
+                id={"member-resend-#{member.id}"}
                 phx-click="resend_invite"
                 phx-value-user_id={member.user_id}
-                class="text-primary text-ui font-semibold transition hover:underline"
+                variant="ghost"
+                size="xs"
               >
                 Resend invite
-              </button>
-              <button
+              </.button>
+              <.button
                 :if={member.user_id != @current_scope.user.id}
                 type="button"
+                id={"member-toggle-#{member.id}"}
                 phx-click="toggle_active"
                 phx-value-user_id={member.user_id}
-                class="hover:text-ink text-ink-muted text-ui font-semibold transition"
+                variant="ghost"
+                size="xs"
               >
                 {if member.user.active, do: "Disable", else: "Enable"}
-              </button>
+              </.button>
             </div>
           </:col>
           <:empty>No members yet.</:empty>

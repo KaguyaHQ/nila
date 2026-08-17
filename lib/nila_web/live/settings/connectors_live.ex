@@ -171,14 +171,8 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                 id="settings-add-gmail-label"
                 label="Label"
                 placeholder="Firm intake"
-                class="border-base-300 rounded-field text-ui w-full border px-3 py-2"
               />
-              <.button
-                type="submit"
-                id="settings-add-gmail"
-                size="sm"
-                class="btn-soft"
-              >
+              <.button type="submit" id="settings-add-gmail" variant="soft" size="sm">
                 <.icon name="hero-plus" class="size-4" /> Add Gmail
               </.button>
             </.form>
@@ -208,29 +202,21 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                   id="settings-add-microsoft-tenant"
                   label="Directory (tenant) ID"
                   placeholder="00000000-0000-0000-0000-000000000000"
-                  class="border-base-300 rounded-field text-ui w-full border px-3 py-2"
                 />
                 <.input
                   field={@microsoft_form[:mailbox]}
                   id="settings-add-microsoft-mailbox"
                   label="Send from"
                   placeholder="mail@firm.com"
-                  class="border-base-300 rounded-field text-ui w-full border px-3 py-2"
                 />
                 <.input
                   field={@microsoft_form[:label]}
                   id="settings-add-microsoft-label"
                   label="Label"
                   placeholder="Firm mailbox"
-                  class="border-base-300 rounded-field text-ui w-full border px-3 py-2"
                 />
               </div>
-              <.button
-                type="submit"
-                id="settings-add-microsoft"
-                size="sm"
-                class="btn-soft w-fit"
-              >
+              <.button type="submit" id="settings-add-microsoft" variant="soft" size="sm">
                 <.icon name="hero-plus" class="size-4" /> Start Microsoft consent
               </.button>
             </.form>
@@ -265,8 +251,8 @@ defmodule NilaWeb.Settings.ConnectorsLive do
               type="button"
               id="settings-connect-whatsapp"
               data-whatsapp-launch
+              variant="soft"
               size="sm"
-              class="btn-soft w-fit"
             >
               <.icon name="hero-plus" class="size-4" /> Connect WhatsApp
             </.button>
@@ -325,7 +311,6 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                     field={to_form(connection_form_data(connection), as: :connection)[:label]}
                     id={"settings-connection-label-#{connection.id}"}
                     label="Label"
-                    class="border-base-300 rounded-field text-ui w-full border px-3 py-2"
                   />
                   <div class="flex flex-wrap items-center gap-2 sm:col-span-2">
                     <.button
@@ -355,7 +340,6 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                       phx-value-id={connection.id}
                       variant="error"
                       size="sm"
-                      class="btn-soft"
                     >
                       <.icon name="hero-no-symbol" class="size-4" /> Disconnect
                     </.button>

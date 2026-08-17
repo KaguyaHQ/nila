@@ -945,7 +945,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             value=""
             label="Filing ARN"
             placeholder="Optional"
-            class="input input-bordered w-full font-mono"
           />
           <.button type="submit" variant="outline" size="xs">Mark filed on portal</.button>
         </form>
