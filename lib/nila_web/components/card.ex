@@ -65,7 +65,7 @@ defmodule NilaWeb.Components.Card do
       >
         {render_slot(@inner_block)}
       </div>
-      <div :if={@caption != []} class="text-ink-subtle text-meta mt-2">
+      <div :if={@caption != []} class="text-ink-subtle text-ui mt-2">
         {render_slot(@caption)}
       </div>
     </div>

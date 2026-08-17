@@ -235,7 +235,7 @@ defmodule NilaWeb.Layouts do
       </span>
       <span
         :if={@count}
-        class="bg-base-100/15 text-base-100 text-meta rounded-full px-2 py-0.5 font-semibold group-data-[rail-collapsed=true]/app:hidden"
+        class="bg-base-100/15 text-base-100 text-ui rounded-full px-2 py-0.5 font-semibold group-data-[rail-collapsed=true]/app:hidden"
       >
         {@count}
       </span>
@@ -298,15 +298,15 @@ defmodule NilaWeb.Layouts do
         aria-label="Open account menu"
         title={@current_scope.user.name}
       >
-        <span class="bg-base-100/15 text-base-100/80 text-meta grid size-8 shrink-0 place-items-center rounded-full font-semibold">
+        <span class="bg-base-100/15 text-base-100/80 text-label grid size-8 shrink-0 place-items-center rounded-full font-semibold">
           {user_initials(@current_scope.user)}
         </span>
         <span class="min-w-0 flex-1 text-left group-data-[rail-collapsed=true]/app:hidden">
           <span class="text-base-100 text-ui block truncate font-semibold">
             {@current_scope.user.name}
           </span>
-          <span class="text-base-100/55 text-meta block truncate">
-            {workspace_name(@current_scope)}
+          <span class="block truncate">
+            <.context_text tone="inverse">{workspace_name(@current_scope)}</.context_text>
           </span>
         </span>
         <.icon
@@ -322,7 +322,7 @@ defmodule NilaWeb.Layouts do
         aria-label="Open account menu"
         title={@current_scope.user.name}
       >
-        <span class="bg-base-100 text-ink-muted text-meta grid size-6 shrink-0 place-items-center rounded-full font-semibold">
+        <span class="bg-base-100 text-ink-muted text-label grid size-6 shrink-0 place-items-center rounded-full font-semibold">
           {user_initials(@current_scope.user)}
         </span>
         <span class="hidden max-w-36 truncate font-medium sm:block">

@@ -53,4 +53,24 @@ defmodule NilaWeb.Components.Fold do
     </details>
     """
   end
+
+  attr :title, :string, required: true
+  attr :tabular, :boolean, default: false
+  slot :detail, required: true
+  slot :status
+
+  @doc "Canonical fold heading with 14px operational title and detail."
+  def fold_summary(assigns) do
+    ~H"""
+    <div class="flex min-w-0 flex-1 items-center gap-3">
+      <div class="min-w-0 flex-1">
+        <p class="text-ui font-semibold">{@title}</p>
+        <p class={["text-ink-muted text-ui", @tabular && "tabular-nums"]}>
+          {render_slot(@detail)}
+        </p>
+      </div>
+      <div :if={@status != []} class="shrink-0">{render_slot(@status)}</div>
+    </div>
+    """
+  end
 end

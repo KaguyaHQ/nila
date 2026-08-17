@@ -23,9 +23,9 @@ defmodule NilaWeb.Components.Today.Arrivals do
           <span class="text-base-content text-ui flex-1 font-medium">
             {arrival_label(group)}
           </span>
-          <span class="text-ink-subtle text-meta">
+          <.context_text>
             {arrival_age(group.received_at, @now)}
-          </span>
+          </.context_text>
           <.icon name="hero-chevron-right" class="text-ink-faint size-4" />
         </button>
       </.card>
@@ -54,9 +54,9 @@ defmodule NilaWeb.Components.Today.Arrivals do
       >
         <div class="space-y-block">
           <div class="bg-base-200/40 rounded-box px-3 py-2">
-            <p class="text-ink-subtle text-meta">
+            <.context_text tag="p">
               From {display_sender(@group)} over {source_label(@group.source)}
-            </p>
+            </.context_text>
             <p :for={arrival <- @group.arrivals} class="text-base-content text-ui mt-1">
               {arrival.filename}
             </p>

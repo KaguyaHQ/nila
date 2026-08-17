@@ -36,7 +36,7 @@ defmodule NilaWeb.Components.Badge do
     assigns = assign(assigns, :variant_class, Map.fetch!(@variants, assigns.variant))
 
     ~H"""
-    <span class={["badge badge-soft text-meta font-semibold", @variant_class, @class]}>
+    <span class={["badge badge-soft text-ui font-semibold", @variant_class, @class]}>
       {render_slot(@inner_block)}
     </span>
     """

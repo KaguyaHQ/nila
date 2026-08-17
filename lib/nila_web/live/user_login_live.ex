@@ -65,7 +65,7 @@ defmodule NilaWeb.UserLoginLive do
               <input type="hidden" name="email" value={user.email} />
               <button
                 type="submit"
-                class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 text-ink-muted text-meta rounded-full border px-3 py-2 font-semibold transition"
+                class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 text-ink-muted text-ui rounded-full border px-3 py-2 font-semibold transition"
               >
                 {user.name}
               </button>

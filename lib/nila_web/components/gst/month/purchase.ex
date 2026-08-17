@@ -144,7 +144,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           >
             <span class="text-ink-subtle text-label font-semibold uppercase">{card.label}</span>
             <span class="text-base-content text-lead block font-semibold tabular-nums">{card.count}</span>
-            <span class="text-ink-muted text-meta block tabular-nums">{format_money(card.tax_paise,
+            <span class="text-ink-muted text-ui block tabular-nums">{format_money(card.tax_paise,
               prefix: "₹"
             )} tax</span>
           </button>
@@ -175,7 +175,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                   {item.invoice_number || "—"} · {item.vendor}
                 </p>
               </div>
-              <p class="text-ink-muted text-meta mt-1">{item.reason}</p>
+              <p class="text-body text-ink-muted mt-1">{item.reason}</p>
             </div>
             <p class="text-base-content text-ui font-mono tabular-nums">
               {format_money(item.tax_paise, prefix: "₹")}
@@ -206,15 +206,16 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             summary_class="py-4 text-base-content w-full"
           >
             <:summary>
-              <div class="min-w-0 flex-1">
-                <p class="text-ui font-semibold">Purchase register and GSTR-2B coverage</p>
-                <p class="text-ink-muted text-meta">
+              <.fold_summary title="Purchase register and GSTR-2B coverage">
+                <:detail>
                   {@stats.invoices} supplied documents · {@stats.gstr2b_only} 2B-only entries · {@stats.rows} positions
-                </p>
-              </div>
-              <.badge variant={if @gstr2b_in, do: "neutral", else: "warning"}>
-                {if @gstr2b_in, do: "Compared", else: "2B not in"}
-              </.badge>
+                </:detail>
+                <:status>
+                  <.badge variant={if @gstr2b_in, do: "neutral", else: "warning"}>
+                    {if @gstr2b_in, do: "Compared", else: "2B not in"}
+                  </.badge>
+                </:status>
+              </.fold_summary>
             </:summary>
             <dl class="grid gap-4 pb-4 sm:grid-cols-3">
               <div>
@@ -243,15 +244,14 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             summary_class="py-4 text-base-content w-full"
           >
             <:summary>
-              <div class="min-w-0 flex-1">
-                <p class="text-ui font-semibold">Current ITC proposal bridge</p>
-                <p class="text-ink-muted text-meta">
-                  How portal-reported credit becomes the current proposed ITC.
-                </p>
-              </div>
-              <.badge variant={if @stats.need_decision > 0, do: "warning", else: "neutral"}>
-                {if @stats.need_decision > 0, do: "Review open", else: "Current"}
-              </.badge>
+              <.fold_summary title="Current ITC proposal bridge">
+                <:detail>How portal-reported credit becomes the current proposed ITC.</:detail>
+                <:status>
+                  <.badge variant={if @stats.need_decision > 0, do: "warning", else: "neutral"}>
+                    {if @stats.need_decision > 0, do: "Review open", else: "Current"}
+                  </.badge>
+                </:status>
+              </.fold_summary>
             </:summary>
             <div class="space-y-related pb-4">
               <h3 class="text-base-content text-body font-semibold">ITC working</h3>
@@ -267,12 +267,14 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             summary_class="py-4 text-base-content w-full"
           >
             <:summary>
-              <div class="min-w-0 flex-1">
-                <p class="text-ui font-semibold">Prior-period ITC</p><p class="text-ink-muted text-meta">
+              <.fold_summary title="Prior-period ITC">
+                <:detail>
                   {length(@carried_itc)} earlier {plural(length(@carried_itc), "position")}
-                </p>
-              </div>
-              <.badge variant="info">Carried</.badge>
+                </:detail>
+                <:status>
+                  <.badge variant="info">Carried</.badge>
+                </:status>
+              </.fold_summary>
             </:summary>
             <div id="gstr3b-carried-itc" class="space-y-related pb-4">
               <h4 class="text-base-content text-body font-semibold">Prior-period ITC</h4>
@@ -282,13 +284,13 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                   id={"gstr3b-carried-itc-#{line.case_id}"}
                   class="gap-related grid items-center px-4 py-3 sm:grid-cols-[7rem_minmax(0,1fr)_auto]"
                 >
-                  <div class="text-ink-subtle text-meta font-medium uppercase">
+                  <div class="text-ink-subtle text-ui font-medium">
                     {carried_origin(line)}
                   </div>
                   <div class="min-w-0">
                     <div class="text-base-content text-ui truncate font-medium">
                       {line.invoice_number || "—"} · {line.vendor}
-                    </div><div class="text-ink-subtle text-meta">{carried_status(line)}</div>
+                    </div><div class="text-ink-subtle text-ui">{carried_status(line)}</div>
                   </div>
                   <div class="text-base-content text-ui font-mono">
                     {format_money(line.tax_paise, prefix: "₹")}
@@ -306,12 +308,14 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             summary_class="py-4 text-base-content w-full"
           >
             <:summary>
-              <div class="min-w-0 flex-1">
-                <p class="text-ui font-semibold">Missing-evidence coverage</p><p class="text-ink-muted text-meta">
+              <.fold_summary title="Missing-evidence coverage">
+                <:detail>
                   {@stats.awaiting_bills} supporting {plural(@stats.awaiting_bills, "document")} not on file
-                </p>
-              </div>
-              <.badge variant="warning">Evidence pending</.badge>
+                </:detail>
+                <:status>
+                  <.badge variant="warning">Evidence pending</.badge>
+                </:status>
+              </.fold_summary>
             </:summary>
             <div class="pb-4">
               <Itc.supporting_evidence
@@ -408,7 +412,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                 class="text-warning size-4 shrink-0"
               /><span class="font-medium">{row["invoice_number"] || "—"}</span><span
                 :if={row["document_type"] != "invoice"}
-                class="text-ink-subtle text-meta"
+                class="text-ink-subtle text-ui"
               >{document_abbreviation(row)}</span>
             </div>
           </:col>
@@ -425,14 +429,14 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             <.badge variant={status_variant(row)}>{row["bucket_label"]}</.badge>
           </:col>
           <:col :let={row} label="Human action">
-            <span class="text-ink-muted text-meta">{purchase_human_state(row, @review)}</span>
+            <span class="text-ink-muted text-ui">{purchase_human_state(row, @review)}</span>
           </:col>
           <:col :let={row} label="Note" class="max-w-sm">
             <span :if={Register.annotated_row?(row)} class="text-base-content block truncate">{row[
               "verdict"
             ]}</span><span
               :if={Register.annotated_row?(row) and row["next_action"]}
-              class="text-ink-subtle text-meta mt-0.5 block truncate"
+              class="text-ink-subtle text-ui mt-0.5 block truncate"
             >{row["next_action"]}</span>
           </:col>
           <:empty>No purchase positions match these filters.</:empty>
@@ -465,7 +469,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             id={"gst-document-flag-#{index}"}
             class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
-            <span class="text-ink-subtle text-meta font-medium">{issue_label(flag["code"])}</span><span class="text-body text-ink-muted min-w-0 flex-1">{flag[
+            <span class="text-ink-subtle text-ui font-medium">{issue_label(flag["code"])}</span><span class="text-body text-ink-muted min-w-0 flex-1">{flag[
               "reason"
             ]}</span>
           </div>

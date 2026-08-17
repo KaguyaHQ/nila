@@ -86,7 +86,7 @@ defmodule NilaWeb.Components.Form do
         <span class="text-ink-muted text-ui">
           <span class="text-primary font-semibold">{@prompt}</span> or drag them here
         </span>
-        <span :if={@hint} class="text-ink-muted text-meta">{@hint}</span>
+        <span :if={@hint} class="text-ink-muted text-ui">{@hint}</span>
       </label>
 
       <div :if={@upload.entries != []} class="mt-related space-y-related">
@@ -99,7 +99,7 @@ defmodule NilaWeb.Components.Form do
             <.icon name="hero-document" class="text-primary size-5 shrink-0" />
             <div class="min-w-0 flex-1">
               <p class="text-base-content text-ui truncate font-medium">{entry.client_name}</p>
-              <p class="text-ink-subtle text-meta">
+              <p class="text-ink-subtle text-ui">
                 {humanize_bytes(entry.client_size)}
                 <span :if={entry.valid? and entry.progress < 100}> · {entry.progress}% uploaded</span>
               </p>

@@ -140,7 +140,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       >
         <div class="space-y-0.5">
           <p class="text-base-content text-ui font-semibold">{@change.title}</p>
-          <p class="text-ink-muted text-meta">{@change.body}</p>
+          <p class="text-body text-ink-muted">{@change.body}</p>
         </div>
         <button
           type="button"
@@ -161,7 +161,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               "review case"
             )}
           </p>
-          <p class="text-ink-muted text-meta">
+          <p class="text-body text-ink-muted">
             Checks identify where Nila needs an answer; they do not prove every invoice correct.
           </p>
         </div>
@@ -170,7 +170,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           <p id="gstr1-human-assurance-count" class="text-base-content text-ui font-semibold">
             {@assured_invoice_count} of {length(@invoices)} invoices have a recorded human action
           </p>
-          <p id="gstr1-human-assurance-open" class="text-ink-muted text-meta">
+          <p id="gstr1-human-assurance-open" class="text-body text-ink-muted">
             {@unassured_invoice_count} have no recorded human review. Non-invoice actions do not count toward coverage.
           </p>
         </div>
@@ -222,7 +222,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                 Invoice {review_case.invoice_number}
               </p>
               <p class="text-body text-ink-muted">{review_case.reason}</p>
-              <p :if={review_case.effect} class="text-ink-subtle text-meta tabular-nums">
+              <p :if={review_case.effect} class="text-ink-subtle text-ui tabular-nums">
                 {review_case.effect}
               </p>
             </div>
@@ -369,18 +369,17 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             summary_class="py-4 text-base-content w-full"
           >
             <:summary>
-              <div class="min-w-0 flex-1">
-                <p class="text-ui font-semibold">
-                  Proposed GSTR-1 derived from effective sales register
-                </p>
-                <p class="text-ink-muted text-meta tabular-nums">
+              <.fold_summary title="Proposed GSTR-1 derived from effective sales register" tabular>
+                <:detail>
                   {length(@active_invoices)} documents · {Helpers.rupees(
                     @account.draft.totals.taxable
                   )} taxable · {Helpers.rupees(@account.draft.totals.tax)} tax
                   <span :if={@required_issues != []}> · blockers disclosed above</span>
-                </p>
-              </div>
-              <.badge variant="neutral">Derived</.badge>
+                </:detail>
+                <:status>
+                  <.badge variant="neutral">Derived</.badge>
+                </:status>
+              </.fold_summary>
             </:summary>
             <div class="space-y-related pb-4">
               <h4 class="text-base-content text-body font-semibold">{@readiness.title}</h4>
@@ -411,14 +410,15 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             summary_class="py-4 text-base-content w-full"
           >
             <:summary>
-              <div class="min-w-0 flex-1">
-                <p class="text-ui font-semibold">HSN Table 12 derived from effective invoice lines</p>
-                <p class="text-ink-muted text-meta tabular-nums">
+              <.fold_summary title="HSN Table 12 derived from effective invoice lines" tabular>
+                <:detail>
                   {length(@hsn_summary)} combinations · {Helpers.rupees(@hsn_totals.tax)} tax
                   <span :if={@novelty}> · {@novelty.count} codes new</span>
-                </p>
-              </div>
-              <.badge variant={@hsn_control.variant}>{@hsn_control.label}</.badge>
+                </:detail>
+                <:status>
+                  <.badge variant={@hsn_control.variant}>{@hsn_control.label}</.badge>
+                </:status>
+              </.fold_summary>
             </:summary>
             <section id="gstr1-hsn-signoff" class="space-y-block pb-4">
               <div class="flex flex-wrap items-center justify-between gap-3">
@@ -453,15 +453,16 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             summary_class="py-4 text-base-content w-full"
           >
             <:summary>
-              <div class="min-w-0 flex-1">
-                <p class="text-ui font-semibold">Extracted document sequence</p>
-                <p class="text-ink-muted text-meta">{@document_control.copy}</p>
-              </div>
-              <.badge variant={@document_control.variant}>{@document_control.label}</.badge>
+              <.fold_summary title="Extracted document sequence">
+                <:detail>{@document_control.copy}</:detail>
+                <:status>
+                  <.badge variant={@document_control.variant}>{@document_control.label}</.badge>
+                </:status>
+              </.fold_summary>
             </:summary>
             <section id="gstr1-document-summary" class="space-y-related pb-4">
               <h4 class="text-base-content text-body font-semibold">Documents issued · Table 13</h4>
-              <p class="text-ink-muted text-meta">
+              <p class="text-ink-muted text-ui">
                 This checks only the extracted numbers for an internal gap. It is not an independent issued-document register and does not prove completeness.
               </p>
               <.data_table
@@ -547,7 +548,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           client={@client}
           period={@period}
         />
-        <p id="gstr1-register-basis" class="text-ink-subtle text-meta">
+        <p id="gstr1-register-basis" class="text-ink-subtle text-ui">
           These are the lines as extracted. The return files a per-rate recomputation, shown under Return workings.
         </p>
       </section>
@@ -586,13 +587,13 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           >
             <div>
               <p class="text-base-content text-ui font-medium">{action_label(action)}</p>
-              <p class="text-ink-muted text-meta">{action.target}</p>
+              <p class="text-ink-muted text-ui">{action.target}</p>
             </div>
-            <p class="text-ink-subtle text-meta">
+            <.context_text tag="p">
               {(action.decided_by && action.decided_by.name) || "Unknown reviewer"} · {format_display_datetime(
                 action.inserted_at
               )}
-            </p>
+            </.context_text>
           </div>
         </div>
         <p
@@ -684,7 +685,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         </.badge>
       </:col>
       <:col :let={invoice} label="Human action">
-        <span class="text-ink-muted text-meta">{human_state(@issues_by_invoice, @decisions, invoice)}</span>
+        <span class="text-ink-muted text-ui">{human_state(@issues_by_invoice, @decisions, invoice)}</span>
       </:col>
       <:col label="" align="right">
         <.icon name="hero-chevron-right-mini" class="text-ink-faint size-4" />

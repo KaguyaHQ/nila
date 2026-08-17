@@ -187,7 +187,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
 
       <%!-- One line, once, rather than a qualifier repeated on nine column
             headers: everything below is the figure that reaches the portal. --%>
-      <p id="gstr1-workings-basis" class="text-ink-subtle text-meta">
+      <p id="gstr1-workings-basis" class="text-ink-subtle text-ui">
         Every figure below is what this return files — taxable value aggregated per rate bucket,
         with the tax recomputed on that total rather than summed from the extracted lines.
       </p>
@@ -204,13 +204,12 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           summary_class="py-4 text-base-content w-full"
         >
           <:summary>
-            <div class="grid min-w-0 flex-1 gap-1 sm:grid-cols-2 sm:items-center sm:gap-4">
-              <p class="text-ui font-semibold">Party-wise B2B working</p>
-              <p class="text-ink-muted text-meta tabular-nums">
-                {party_working_summary(@party_rows)}
-              </p>
-            </div>
-            <.badge variant="neutral">Inspect</.badge>
+            <.fold_summary title="Party-wise B2B working" tabular>
+              <:detail>{party_working_summary(@party_rows)}</:detail>
+              <:status>
+                <.badge variant="neutral">Inspect</.badge>
+              </:status>
+            </.fold_summary>
           </:summary>
           <div class="pb-4">
             <.data_table
@@ -261,13 +260,12 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           summary_class="py-4 text-base-content w-full"
         >
           <:summary>
-            <div class="grid min-w-0 flex-1 gap-1 sm:grid-cols-2 sm:items-center sm:gap-4">
-              <p class="text-ui font-semibold">B2CL working</p>
-              <p class="text-ink-muted text-meta tabular-nums">
-                {invoice_working_summary(@b2cl_rows)}
-              </p>
-            </div>
-            <.badge variant="neutral">Inspect</.badge>
+            <.fold_summary title="B2CL working" tabular>
+              <:detail>{invoice_working_summary(@b2cl_rows)}</:detail>
+              <:status>
+                <.badge variant="neutral">Inspect</.badge>
+              </:status>
+            </.fold_summary>
           </:summary>
           <div class="pb-4">
             <.data_table
@@ -295,13 +293,12 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           summary_class="py-4 text-base-content w-full"
         >
           <:summary>
-            <div class="grid min-w-0 flex-1 gap-1 sm:grid-cols-2 sm:items-center sm:gap-4">
-              <p class="text-ui font-semibold">B2CS working</p>
-              <p class="text-ink-muted text-meta tabular-nums">
-                {b2cs_working_summary(@b2cs)}
-              </p>
-            </div>
-            <.badge variant="neutral">Inspect</.badge>
+            <.fold_summary title="B2CS working" tabular>
+              <:detail>{b2cs_working_summary(@b2cs)}</:detail>
+              <:status>
+                <.badge variant="neutral">Inspect</.badge>
+              </:status>
+            </.fold_summary>
           </:summary>
           <div class="pb-4">
             <.data_table id="gstr1-workings-b2cs-rows" rows={@b2cs} min_width="min-w-[620px]">
@@ -324,13 +321,12 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           summary_class="py-4 text-base-content w-full"
         >
           <:summary>
-            <div class="grid min-w-0 flex-1 gap-1 sm:grid-cols-2 sm:items-center sm:gap-4">
-              <p class="text-ui font-semibold">Registered notes working</p>
-              <p class="text-ink-muted text-meta tabular-nums">
-                {note_working_summary(@note_rows)}
-              </p>
-            </div>
-            <.badge variant="neutral">Inspect</.badge>
+            <.fold_summary title="Registered notes working" tabular>
+              <:detail>{note_working_summary(@note_rows)}</:detail>
+              <:status>
+                <.badge variant="neutral">Inspect</.badge>
+              </:status>
+            </.fold_summary>
           </:summary>
           <div class="pb-4">
             <.data_table
@@ -365,13 +361,12 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           summary_class="py-4 text-base-content w-full"
         >
           <:summary>
-            <div class="grid min-w-0 flex-1 gap-1 sm:grid-cols-2 sm:items-center sm:gap-4">
-              <p class="text-ui font-semibold">Rate summary</p>
-              <p class="text-ink-muted text-meta tabular-nums">
-                {rate_working_summary(@rate_rows)}
-              </p>
-            </div>
-            <.badge variant="neutral">Inspect</.badge>
+            <.fold_summary title="Rate summary" tabular>
+              <:detail>{rate_working_summary(@rate_rows)}</:detail>
+              <:status>
+                <.badge variant="neutral">Inspect</.badge>
+              </:status>
+            </.fold_summary>
           </:summary>
           <div class="pb-4">
             <.data_table
@@ -496,7 +491,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         Ours is right
       </.button>
       <span :if={MapSet.member?(@accepted, @target)} class="flex items-center gap-1.5">
-        <span class="text-meta text-success font-medium">Accepted — ours is right</span>
+        <span class="text-success text-ui font-medium">Accepted — ours is right</span>
         <.button
           :if={not @locked}
           variant="ghost"

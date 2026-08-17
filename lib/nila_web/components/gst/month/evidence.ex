@@ -242,7 +242,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             :for={{issue, index} <- Enum.with_index(@open_issues, 1)}
             type="button"
             data-review-target={issue_focus_target(issue)}
-            class="bg-warning/10 hover:bg-warning/20 rounded-field text-base-content text-meta flex items-center gap-1.5 px-2 py-1 font-medium transition-colors"
+            class="bg-warning/10 hover:bg-warning/20 rounded-field text-base-content text-ui flex items-center gap-1.5 px-2 py-1 font-medium transition-colors"
           >
             <span class="bg-warning/15 rounded-full px-1.5 tabular-nums">{index}</span>
             {issue_chip_label(issue)}
@@ -284,7 +284,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <div class="text-base-content text-body mt-1 font-medium">
               {@selected_invoice["buyer_name"] || "—"}
             </div>
-            <div class="text-ink-subtle text-meta mt-0.5 font-mono">
+            <div class="text-ink-subtle text-ui mt-0.5 font-mono">
               {@selected_invoice["buyer_gstin"] || "—"}
             </div>
           </div>
@@ -375,7 +375,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   <span class="font-mono">{row.line["hsn_sac"] || "—"}</span>
                   <span
                     :if={row.line["hsn_description"]}
-                    class="text-ink-subtle text-meta block truncate"
+                    class="text-ink-subtle text-ui block truncate"
                     title={row.line["hsn_description"]}
                   >
                     {row.line["hsn_description"]}
@@ -387,7 +387,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   <span>{line_rate_label(row.line)}</span>
                   <span
                     :if={rate_candidate_label(row.line)}
-                    class="text-ink-subtle text-meta block whitespace-nowrap"
+                    class="text-ink-subtle text-ui block whitespace-nowrap"
                     title={rate_candidate_source(row.line)}
                   >
                     {rate_candidate_label(row.line)}
@@ -402,7 +402,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 </span>
                 <span
                   :if={row.kind == :line and taxable_basis_label(row.line)}
-                  class="text-ink-subtle text-meta block"
+                  class="text-ink-subtle text-ui block"
                 >
                   {taxable_basis_label(row.line)}
                 </span>
@@ -412,7 +412,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 <div :if={row.kind == :line}>
                   <% reading = line_tax_reading(row.line) %>
                   <span>{reading.total}</span>
-                  <span :if={reading.split} class="text-ink-subtle text-meta block">
+                  <span :if={reading.split} class="text-ink-subtle text-ui block">
                     {reading.split}
                   </span>
                 </div>
@@ -428,7 +428,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 </span>
               </:col>
             </.data_table>
-            <p id="gstr1-rate-validation-scope" class="mt-related text-ink-subtle text-meta">
+            <p id="gstr1-rate-validation-scope" class="mt-related text-ink-subtle text-ui">
               HSN/SAC existence, tax arithmetic, and imported taxable-goods rate candidates are checked independently. Exemptions and description-dependent conditions still require review.
             </p>
           </div>
@@ -582,19 +582,19 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             term of the reading rather than subtraction left to the reader. --%>
       <dl :if={@mismatch} class="border-base-300 mt-block grid gap-2 border-y py-3 sm:grid-cols-3">
         <div>
-          <dt class="text-ink-subtle text-meta">{@mismatch.printed_label}</dt>
+          <dt class="text-ink-subtle text-label">{@mismatch.printed_label}</dt>
           <dd class="font-display text-base-content text-body mt-1 leading-none tabular-nums">
             {Helpers.rupees(@mismatch.printed)}
           </dd>
         </div>
         <div>
-          <dt class="text-ink-subtle text-meta">{@mismatch.extracted_label}</dt>
+          <dt class="text-ink-subtle text-label">{@mismatch.extracted_label}</dt>
           <dd class="font-display text-base-content text-body mt-1 leading-none tabular-nums">
             {Helpers.rupees(@mismatch.extracted)}
           </dd>
         </div>
         <div>
-          <dt class="text-ink-subtle text-meta">Difference</dt>
+          <dt class="text-ink-subtle text-label">Difference</dt>
           <dd class="font-display text-body text-error mt-1 leading-none tabular-nums">
             {Helpers.rupees(@mismatch.extracted - @mismatch.printed)}
           </dd>
@@ -615,14 +615,14 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               weight, so the reviewer read a sentence and then matched it by eye
               to one of them. It is now the primary button's own label; what is
               left here is the reasoning behind it. --%>
-        <p class="text-ink-muted text-meta mt-1">{@proposal.basis}</p>
+        <p class="text-body text-ink-muted mt-1">{@proposal.basis}</p>
         <%!-- What accepting it does to the numbers. `Proposals.for_issue/3`
               returns a proposal only for the three arithmetic codes and only
               when the filed figures are known — which is exactly when
               `filed_effect/2` speaks — so every proposal that reaches this
               block has its money stated. A fallback for the other case was
               written and was unreachable; it is not kept as decoration. --%>
-        <p :if={@filed_effect} class="mt-related text-ink-subtle text-meta">{@filed_effect}</p>
+        <p :if={@filed_effect} class="mt-related text-body text-ink-subtle">{@filed_effect}</p>
       </div>
 
       <%!-- Neither figure above is filed. The return recomputes per rate bucket,
@@ -631,7 +631,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       <p
         :if={@filed_effect && is_nil(@proposal)}
         id={"#{@id}-filed-effect"}
-        class="mt-related text-ink-subtle text-meta"
+        class="mt-related text-body text-ink-subtle"
       >
         {@filed_effect}
       </p>
@@ -641,7 +641,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             button on it would change nothing when clicked. --%>
       <p
         :if={@issue["status"] == "open" and Issues.level(@issue) == "info"}
-        class="mt-block text-ink-subtle text-meta flex items-center gap-1.5"
+        class="mt-block text-ink-subtle text-ui flex items-center gap-1.5"
       >
         <.icon name="hero-check-mini" class="text-success size-4 shrink-0" />
         {settled_note(@issue)}
@@ -683,8 +683,9 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           <p class="text-base-content text-ui font-medium">
             Resolved by {decision_maker(@decision)}
           </p>
-          <p class="text-ink-subtle text-meta">
-            {decision_summary(@issue, @decision)} · {decision_time(@decision)}
+          <p class="text-ink-muted text-ui">
+            {decision_summary(@issue, @decision)} ·
+            <.context_text>{decision_time(@decision)}</.context_text>
           </p>
         </div>
         <.button

@@ -79,7 +79,7 @@ defmodule NilaWeb.Components.Evidence do
         />
       </button>
 
-      <p class="text-ink-muted text-meta">Click to read it full screen.</p>
+      <p class="text-ink-muted text-ui">Click to read it full screen.</p>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".EvidenceFrame">
         export default {
@@ -175,7 +175,7 @@ defmodule NilaWeb.Components.Evidence do
         />
       </div>
 
-      <p class="text-base-100/50 text-meta shrink-0 px-4 py-3 text-center">
+      <p class="text-base-100/50 text-ui shrink-0 px-4 py-3 text-center">
         Click the bill to zoom · click outside it or press Esc to close
       </p>
 
@@ -270,7 +270,7 @@ defmodule NilaWeb.Components.Evidence do
       >
         <.icon name="hero-chevron-left-mini" class="size-4" />
       </button>
-      <span class={["text-meta tabular-nums", count_tone(@tone)]}>{@page + 1}/{@count}</span>
+      <span class={["text-ui tabular-nums", count_tone(@tone)]}>{@page + 1}/{@count}</span>
       <button
         type="button"
         id={"#{@id}-next"}

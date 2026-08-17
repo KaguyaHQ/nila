@@ -56,7 +56,7 @@ defmodule NilaWeb.Components.List do
       {@rest}
     >
       <span class="block truncate font-medium">{render_slot(@title)}</span>
-      <span :if={@subtitle != []} class="text-meta mt-0.5 block truncate opacity-70">
+      <span :if={@subtitle != []} class="text-ui mt-0.5 block truncate opacity-70">
         {render_slot(@subtitle)}
       </span>
     </button>

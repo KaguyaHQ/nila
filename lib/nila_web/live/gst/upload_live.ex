@@ -629,7 +629,7 @@ defmodule NilaWeb.Gst.UploadLive do
                 prompt="Select a client"
                 options={@clients}
               />
-              <p class="text-ink-muted text-meta mt-1">
+              <p class="text-ink-muted text-ui mt-1">
                 Client not listed?
                 <.link
                   navigate={~p"/clients/new"}
@@ -689,11 +689,11 @@ defmodule NilaWeb.Gst.UploadLive do
                       </div>
                     </div>
                   <% :identifying -> %>
-                    <p class="text-ink-muted text-meta">Identifying the portal file…</p>
+                    <p class="text-ink-muted text-ui">Identifying the portal file…</p>
                   <% {:identified, kind} -> %>
                     <div
                       id={"gst-upload-kind-#{entry.ref}"}
-                      class="text-meta text-success flex items-center gap-1.5"
+                      class="text-success text-ui flex items-center gap-1.5"
                     >
                       <.icon name="hero-check-circle" class="size-4" />
                       {kind_title(kind)} · detected from the portal structure
@@ -701,7 +701,7 @@ defmodule NilaWeb.Gst.UploadLive do
                   <% {:error, reason} -> %>
                     <div
                       id={"gst-upload-kind-#{entry.ref}"}
-                      class="text-error text-meta flex items-center gap-1.5"
+                      class="text-error text-ui flex items-center gap-1.5"
                     >
                       <.icon name="hero-exclamation-circle" class="size-4" />
                       {portal_error_label(reason)}
@@ -729,7 +729,7 @@ defmodule NilaWeb.Gst.UploadLive do
             <p class="text-base-content text-h4 truncate font-semibold">
               {client_name(@clients, @pending.client_id) || "This client"}
             </p>
-            <p class="text-ink-subtle text-meta shrink-0">{period_label(@pending.period)}</p>
+            <p class="text-ink-subtle text-ui shrink-0">{period_label(@pending.period)}</p>
           </div>
 
           <div
@@ -774,17 +774,17 @@ defmodule NilaWeb.Gst.UploadLive do
               />
               <div class="min-w-0 flex-1">
                 <p class="text-base-content text-ui font-medium">{kind_title(job.kind)}</p>
-                <p class={["text-meta", "text-#{job_variant(job)}"]}>
+                <p class={["text-ui", "text-#{job_variant(job)}"]}>
                   {job_label(job)}
                 </p>
-                <p :if={partial?(job)} class="text-ink-subtle text-meta">
+                <p :if={partial?(job)} class="text-body text-ink-subtle">
                   {page_list(job.unaccounted)} produced no bill. Open the month and check the original.
                 </p>
                 <.link
                   :if={job.status in [:held, :needs_confirmation]}
                   navigate={~p"/gst/#{job.client_id}/#{job.period}"}
                   id={"gst-dump-open-month-#{dump_id}"}
-                  class="text-meta text-moon font-semibold"
+                  class="text-moon text-ui font-semibold"
                 >
                   Open the month
                 </.link>
@@ -794,7 +794,7 @@ defmodule NilaWeb.Gst.UploadLive do
                     ~p"/gst/upload?client_id=#{job.client_id}&period=#{Calendar.closeable_period(Date.utc_today())}"
                   }
                   id={"gst-dump-open-period-#{dump_id}"}
-                  class="text-meta text-moon font-semibold"
+                  class="text-moon text-ui font-semibold"
                 >
                   Bring it into the open month →
                 </.link>
@@ -818,10 +818,10 @@ defmodule NilaWeb.Gst.UploadLive do
                 value={progress_value(job.progress)}
                 max={progress_max(job.progress)}
               ></progress>
-              <p class="text-ink-subtle text-meta tabular-nums">
+              <p class="text-ink-subtle text-ui tabular-nums">
                 {progress_caption(job.progress)}
               </p>
-              <p :if={job.retrying} class="text-meta text-warning">
+              <p :if={job.retrying} class="text-ui text-warning">
                 {retry_message(job.retrying)}
               </p>
             </div>

@@ -213,11 +213,11 @@
 
   /* Context the reader does not need to finish the task at hand: when and
      where the work arrived. Importance to the task decides this, never the
-     datatype — an invoice number or a mismatch status is `ui`, not `meta`. */
-  --text-meta: 0.75rem; /* 12px — timestamps, provenance, tertiary context */
-  --text-meta--line-height: 1rem;
+     datatype — an invoice number or a mismatch status is `ui`, not `context`. */
+  --text-context: 0.75rem; /* 12px — timestamps, provenance, tertiary context */
+  --text-context--line-height: 1rem;
 
-  /* Same size as meta, different job: weight and tracking separate schema from
+  /* Same size as context, different job: weight and tracking separate schema from
      data. Column headers and compact group labels — not ordinary form labels,
      which are sentence-case `ui`. */
   --text-label: 0.75rem; /* 12px — column headers and compact group labels */

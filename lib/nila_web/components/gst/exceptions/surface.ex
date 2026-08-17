@@ -39,15 +39,15 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           <div class="border-base-300 space-y-1 border-b px-3 py-2">
             <div class="flex items-baseline justify-between gap-2">
               <span class="text-base-content text-ui font-semibold">{group.title}</span>
-              <span class="text-ink-muted text-meta font-mono">
+              <span class="text-ink-muted text-ui font-mono">
                 {group.count} · {format_money(group.tax_paise, prefix: "₹")}
               </span>
             </div>
-            <p class="text-ink-subtle text-meta">{group.blurb}</p>
+            <p class="text-ink-subtle text-ui">{group.blurb}</p>
             <%!-- Nila's position on the group, where it has one. A collection
                   queue's treatment is a request, not a decision, so it belongs
                   on the group rather than on each row. --%>
-            <p :if={group[:proposal]} class="text-base-content text-meta font-medium">
+            <p :if={group[:proposal]} class="text-base-content text-ui font-medium">
               {group.proposal.action}
             </p>
           </div>
@@ -84,14 +84,14 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
                     :if={item.tax_paise > 0}
                     id={"queue-tax-#{item.id}"}
                     class={[
-                      "text-meta shrink-0 font-mono",
+                      "text-ui shrink-0 font-mono",
                       (item.resolved && "text-ink-subtle") || "text-ink-muted"
                     ]}
                   >
                     {format_money(item.tax_paise, prefix: "₹")}
                   </span>
                 </span>
-                <span class="text-ink-subtle text-meta truncate">
+                <span class="text-ink-subtle text-ui truncate">
                   {if item.resolved,
                     do: item.outcome,
                     else:
@@ -137,7 +137,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       <div>
         <div class="flex flex-wrap items-center gap-2">
           <.badge variant="warning">{issue_label(@selected.type)}</.badge>
-          <span :if={@selected.itc_block["section"]} class="text-ink-subtle text-meta">
+          <span :if={@selected.itc_block["section"]} class="text-ink-subtle text-ui">
             {@selected.itc_block["section"]}
           </span>
         </div>
@@ -215,9 +215,11 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           </span>
         </h3>
         <p class="text-ink-muted text-ui mt-1">{@selected.reason}</p>
-        <p :if={asked_label(@selected.asked_at)} class="text-meta text-moon mt-1 font-medium">
-          {asked_label(@selected.asked_at)}
-        </p>
+        <div :if={asked_label(@selected.asked_at)} class="mt-1">
+          <.context_text tag="p" tone="moon" weight="medium">
+            {asked_label(@selected.asked_at)}
+          </.context_text>
+        </div>
         <div
           :if={length(@selected.books_members) > 1}
           id="gst-exception-books-members"
@@ -229,7 +231,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             class="flex items-baseline justify-between gap-3 px-3 py-2"
           >
             <span class="text-base-content text-ui font-medium">{books["vendor_name"]}</span>
-            <span class="text-ink-muted text-meta font-mono">{books["invoice_number"] || "—"}</span>
+            <span class="text-ink-muted text-ui font-mono">{books["invoice_number"] || "—"}</span>
           </div>
         </div>
       </div>
@@ -373,7 +375,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           <p
             :if={@selected.action == :unmatched}
             id="gst-accept-unmatched-note"
-            class="text-ink-subtle text-meta basis-full"
+            class="text-body text-ink-subtle basis-full"
           >
             <%= if @selected.document_type == "credit_note" do %>
               This supplier credit note already reduces ITC by {format_money(
@@ -491,7 +493,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       class="border-base-300 divide-base-300 rounded-box divide-y border"
     >
       <div class="grid grid-cols-[6rem_1fr_1.5rem_1fr] items-center gap-2 px-3 py-2">
-        <span class="text-ink-subtle text-meta">Candidate {@index}</span>
+        <span class="text-ink-subtle text-label">Candidate {@index}</span>
         <span class="text-ink-subtle text-label font-medium uppercase">Your books</span>
         <span></span>
         <span class="text-ink-subtle text-label font-medium uppercase">GSTR-2B</span>
@@ -500,7 +502,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         :for={{label, bv, gv, agree?} <- @diff}
         class="grid grid-cols-[6rem_1fr_1.5rem_1fr] items-center gap-2 px-3 py-2"
       >
-        <span class="text-ink-subtle text-meta uppercase">{label}</span>
+        <span class="text-ink-subtle text-label uppercase">{label}</span>
         <span class="text-base-content text-ui font-mono">{fmt(bv)}</span>
         <span class="flex justify-center">
           <.icon :if={agree?} name="hero-check-mini" class="text-success size-4" />
@@ -547,7 +549,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         Reported in GSTR-2B
       </div>
       <div :for={{label, value} <- @fields} class="flex items-center gap-4 px-3 py-2">
-        <span class="text-ink-subtle text-meta w-24 uppercase">{label}</span>
+        <span class="text-ink-subtle text-label w-24 uppercase">{label}</span>
         <span class="text-base-content text-ui font-mono">{fmt(value)}</span>
       </div>
     </div>

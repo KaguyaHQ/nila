@@ -34,7 +34,7 @@ defmodule NilaWeb.Components.Gst.Month.Workpaper do
         ]}>
           {label}
         </span>
-        <span class="mt-related text-ink-muted text-meta flex items-center gap-2 font-medium">
+        <span class="mt-related text-ink-muted text-ui flex items-center gap-2 font-medium">
           <span class={["size-2 shrink-0 rounded-full", state_dot(@states[track].variant)]}></span>
           <span class="truncate">{@states[track].label}</span>
         </span>
@@ -57,7 +57,7 @@ defmodule NilaWeb.Components.Gst.Month.Workpaper do
           :for={link <- @links}
           id={"workpaper-section-#{link.id}"}
           href={"##{link.id}"}
-          class="hover:bg-base-200 hover:text-base-content rounded-field text-ink-muted text-meta px-3 py-1.5 font-semibold"
+          class="hover:bg-base-200 hover:text-base-content rounded-field text-ink-muted text-ui px-3 py-1.5 font-semibold"
         >
           {link.label}
         </.link>

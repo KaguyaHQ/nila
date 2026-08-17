@@ -46,11 +46,11 @@ defmodule NilaWeb.Components.Today.WorkQueue do
           <span
             :if={r.processing?}
             id={"today-processing-#{r.client_id}-#{r.period}"}
-            class="text-meta text-moon mr-2 inline-flex items-center gap-1.5"
+            class="text-moon text-ui mr-2 inline-flex items-center gap-1.5"
           >
             <span class="loading loading-spinner loading-xs"></span> extracting…
           </span>
-          <span :if={section == :waiting_on_client} class="text-ink-muted text-meta">
+          <span :if={section == :waiting_on_client} class="text-ink-muted text-ui">
             {slots_label(r.slots)}
           </span>
           <span :if={section != :waiting_on_client and work_label(r)} class="text-ui">
@@ -68,7 +68,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
             :if={last_ask_label(r.last_ask_at, @today)}
             type="button"
             id={"last-ask-#{r.client_id}-#{r.period}"}
-            class="hover:text-moon text-ink-muted text-meta cursor-pointer underline decoration-dotted underline-offset-2"
+            class="hover:text-moon text-ink-muted text-ui cursor-pointer underline decoration-dotted underline-offset-2"
             phx-click={
               JS.push("open-chase-history",
                 value: %{"client-id" => to_string(r.client_id), "period" => r.period}
@@ -87,7 +87,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
               :if={r.ask_count > 0}
               type="button"
               id={"automated-chase-#{r.client_id}-#{r.period}"}
-              class="hover:text-moon text-ink-muted text-meta cursor-pointer underline decoration-dotted underline-offset-2"
+              class="hover:text-moon text-ink-muted text-ui cursor-pointer underline decoration-dotted underline-offset-2"
               phx-click={
                 JS.push("open-chase-history",
                   value: %{"client-id" => to_string(r.client_id), "period" => r.period}
@@ -99,7 +99,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
             <span
               :if={r.ask_count == 0}
               id={"automated-chase-#{r.client_id}-#{r.period}"}
-              class="text-ink-muted text-meta"
+              class="text-ink-muted text-ui"
             >
               {automated_ask_label(r, @today)}
             </span>

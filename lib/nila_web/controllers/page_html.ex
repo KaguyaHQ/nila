@@ -65,7 +65,9 @@ defmodule NilaWeb.PageHTML do
       <header class="max-w-3xl">
         <p class="text-eyebrow text-ink-subtle font-semibold uppercase">{@eyebrow}</p>
         <h1 class="font-display text-statement mt-6 font-normal text-balance">{@title}</h1>
-        <p class="text-ink-subtle text-meta mt-5">Last updated {@updated}</p>
+        <div class="mt-5">
+          <.context_text tag="p">Last updated {@updated}</.context_text>
+        </div>
       </header>
       <article class="mt-12 max-w-3xl space-y-10">
         {render_slot(@inner_block)}
@@ -81,12 +83,12 @@ defmodule NilaWeb.PageHTML do
         <.link navigate={~p"/"} class="inline-flex items-center">
           <.logo class="text-ink-subtle h-5 w-auto" />
         </.link>
-        <nav class="text-ink-subtle text-meta flex items-center gap-6">
+        <nav class="text-ink-subtle text-ui flex items-center gap-6">
           <.link navigate={~p"/contact"} class="hover:text-ink transition">Contact</.link>
           <.link navigate={~p"/privacy"} class="hover:text-ink transition">Privacy</.link>
           <.link navigate={~p"/terms"} class="hover:text-ink transition">Terms</.link>
         </nav>
-        <p class="text-ink-subtle text-meta">© 2026 Nila · Kaguya Media Private Limited</p>
+        <.context_text tag="p">© 2026 Nila · Kaguya Media Private Limited</.context_text>
       </div>
     </footer>
     """

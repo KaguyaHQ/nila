@@ -316,13 +316,13 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
                 <span class="text-base-content text-ui block truncate font-mono">
                   {item.invoice["invoice_number"] || "—"}
                 </span>
-                <span class="text-ink-subtle text-meta block truncate">
+                <span class="text-ink-subtle text-ui block truncate">
                   {item.invoice["buyer_name"] || item.invoice["buyer_gstin"] || "Unknown buyer"}
                 </span>
                 <% {variant, label} = rail_state(item.state) %>
                 <span class="mt-related flex items-center justify-between gap-2">
                   <.badge variant={variant}>{label}</.badge>
-                  <span :if={item.open_actionable_targets != []} class="text-ink-subtle text-meta">
+                  <span :if={item.open_actionable_targets != []} class="text-ink-subtle text-ui">
                     {length(item.open_actionable_targets)} open
                   </span>
                 </span>

@@ -44,7 +44,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
             ]}>
               {line.label}
             </span>
-            <span :if={line.note} class="text-ink-muted text-meta block">{line.note}</span>
+            <span :if={line.note} class="text-ink-muted text-ui block">{line.note}</span>
           </dt>
           <dd class={[
             "text-base-content shrink-0 font-mono tabular-nums",
@@ -73,7 +73,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
     >
       <div class="min-w-0 space-y-0.5">
         <p class="text-base-content text-ui font-semibold">Supporting invoices pending</p>
-        <p class="text-ink-muted text-meta">
+        <p class="text-body text-ink-muted">
           {supporting_evidence_copy(@stats)}
         </p>
       </div>
@@ -290,7 +290,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
             id={"itc-block-#{b["block_id"]}"}
             class="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3"
           >
-            <span class="text-ink-subtle text-meta w-40 shrink-0 uppercase">
+            <span class="text-ink-subtle text-label w-40 shrink-0 uppercase">
               {issue_label(b["code"])}{if b["section"], do: " · #{b["section"]}"}
             </span>
             <span class="text-base-content text-ui min-w-0 flex-1 truncate">
@@ -325,7 +325,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
               </.button>
             </span>
             <span :if={b["state"] == "blocked"} class="flex items-center gap-1.5">
-              <span class="text-error text-meta font-medium">Blocked</span>
+              <span class="text-error text-ui font-medium">Blocked</span>
               <.button
                 :if={not @signed_off}
                 variant="ghost"
@@ -336,7 +336,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
               >Undo</.button>
             </span>
             <span :if={b["state"] == "allowed"} class="flex items-center gap-1.5">
-              <span class="text-ink-subtle text-meta font-medium">Credit kept</span>
+              <span class="text-ink-subtle text-ui font-medium">Credit kept</span>
               <.button
                 :if={not @signed_off}
                 variant="ghost"
@@ -354,7 +354,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
         <div
           :if={(@itc["blocked_outside_ceiling_paise"] || 0) > 0}
           id="gst-itc-blocked-outside-ceiling"
-          class="border-base-300 text-ink-subtle text-meta border-t px-4 py-3"
+          class="border-base-300 text-body text-ink-subtle border-t px-4 py-3"
         >
           {itc_money(@itc["blocked_outside_ceiling_paise"])} of the above sits outside the 2B
           ceiling — the portal never reported that credit, so blocking it withholds nothing and

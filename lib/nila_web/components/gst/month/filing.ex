@@ -144,7 +144,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <div class="space-y-1">
             <p class="text-ink-subtle text-label font-semibold uppercase">Primary handoff</p>
             <p class="text-base-content text-h4 font-semibold">Winman B2B sheet</p>
-            <p class="text-ink-subtle text-meta">
+            <p class="text-body text-ink-subtle">
               Uses the approved snapshot. Only the B2B sheet is populated in this version.
             </p>
           </div>
@@ -169,7 +169,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             <dd class="text-base-content text-ui font-semibold">
               {@handoff.included_documents} B2B workbook {plural(@handoff.included_documents, "row")}
             </dd>
-            <p class="text-ink-muted text-meta">
+            <p class="text-ink-muted text-ui">
               From {@handoff.included_b2b_invoices} B2B {plural(
                 @handoff.included_b2b_invoices,
                 "invoice"
@@ -184,7 +184,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
                 "correction"
               )}
             </dd>
-            <p :if={@handoff.omitted_documents > 0} class="text-ink-muted text-meta">
+            <p :if={@handoff.omitted_documents > 0} class="text-ink-muted text-ui">
               {@handoff.omitted_documents} supported {plural(
                 @handoff.omitted_documents,
                 "document"
@@ -207,7 +207,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
                 "blocker"
               )}
             </dd>
-            <p :if={@handoff.unsupported_held > 0} class="text-ink-muted text-meta">
+            <p :if={@handoff.unsupported_held > 0} class="text-ink-muted text-ui">
               {@handoff.unsupported_held} unsupported {plural(@handoff.unsupported_held, "record")} held
             </p>
           </div>
@@ -230,7 +230,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         <div class="space-y-1">
           <p class="text-ink-subtle text-label font-semibold uppercase">Accounting handoff</p>
           <p class="text-base-content text-ui font-medium">TallyPrime · GL sales vouchers</p>
-          <p class="text-ink-subtle text-meta">
+          <p class="text-body text-ink-subtle">
             Import the XML in TallyPrime. GST return metadata is not included in this version.
           </p>
         </div>
@@ -421,7 +421,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <span
             :if={@primary_blocker && elem(@primary_blocker, 0) == key}
             id={"gstr3b-blocker-current-#{key}"}
-            class="text-ink-subtle text-meta font-medium"
+            class="text-ink-subtle text-ui font-medium"
           >
             Current next step
           </span>
@@ -479,14 +479,14 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           summary_class="py-4 text-base-content w-full"
         >
           <:summary>
-            <div class="min-w-0 flex-1">
-              <p class="text-ui font-semibold">Outward liability source</p><p class="text-ink-muted text-meta">
-                {outward_source(@gstr3b)}
-              </p>
-            </div>
-            <.badge variant={if liability_missing?(@gstr3b), do: "warning", else: "neutral"}>
-              {if liability_missing?(@gstr3b), do: "Pending", else: "Derived"}
-            </.badge>
+            <.fold_summary title="Outward liability source">
+              <:detail>{outward_source(@gstr3b)}</:detail>
+              <:status>
+                <.badge variant={if liability_missing?(@gstr3b), do: "warning", else: "neutral"}>
+                  {if liability_missing?(@gstr3b), do: "Pending", else: "Derived"}
+                </.badge>
+              </:status>
+            </.fold_summary>
           </:summary>
           <div class="grid gap-4 pb-4 sm:grid-cols-4">
             <.head_fact label="Taxable" amount={get_in(@gstr3b, ["liability_31", "a", "txval"])} />
@@ -503,16 +503,18 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           summary_class="py-4 text-base-content w-full"
         >
           <:summary>
-            <div class="min-w-0 flex-1">
-              <p class="text-ui font-semibold">Net ITC source</p><p class="text-ink-muted text-meta">
+            <.fold_summary title="Net ITC source">
+              <:detail>
                 {if @signed,
                   do: "Frozen purchase position",
                   else: "Current purchase and GSTR-2B position"}
-              </p>
-            </div>
-            <.badge variant={if @pending_reason && not @signed, do: "warning", else: "neutral"}>
-              {if @pending_reason && not @signed, do: "Provisional", else: "Derived"}
-            </.badge>
+              </:detail>
+              <:status>
+                <.badge variant={if @pending_reason && not @signed, do: "warning", else: "neutral"}>
+                  {if @pending_reason && not @signed, do: "Provisional", else: "Derived"}
+                </.badge>
+              </:status>
+            </.fold_summary>
           </:summary>
           <div class="space-y-related pb-4">
             <p class="text-ink-muted text-ui">
@@ -546,14 +548,14 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           summary_class="py-4 text-base-content w-full"
         >
           <:summary>
-            <div class="min-w-0 flex-1">
-              <p class="text-ui font-semibold">GSTR-3B filing-line mapping</p><p class="text-ink-muted text-meta">
-                3.1 liability and Table 4 credit by tax head
-              </p>
-            </div>
-            <.badge variant={if @filing_ready, do: "neutral", else: "warning"}>
-              {if @filing_ready, do: "Derived", else: "Pending inputs"}
-            </.badge>
+            <.fold_summary title="GSTR-3B filing-line mapping">
+              <:detail>3.1 liability and Table 4 credit by tax head</:detail>
+              <:status>
+                <.badge variant={if @filing_ready, do: "neutral", else: "warning"}>
+                  {if @filing_ready, do: "Derived", else: "Pending inputs"}
+                </.badge>
+              </:status>
+            </.fold_summary>
           </:summary>
           <div class="pb-4">
             <.data_table
@@ -591,14 +593,14 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           summary_class="py-4 text-base-content w-full"
         >
           <:summary>
-            <div class="min-w-0 flex-1">
-              <p class="text-ui font-semibold">Rule 88A set-off and cash</p><p class="text-ink-muted text-meta">
-                Credit used and residual cash by liability head
-              </p>
-            </div>
-            <.badge variant={if @filing_ready, do: "neutral", else: "warning"}>
-              {if @filing_ready, do: "Calculated", else: "Pending inputs"}
-            </.badge>
+            <.fold_summary title="Rule 88A set-off and cash">
+              <:detail>Credit used and residual cash by liability head</:detail>
+              <:status>
+                <.badge variant={if @filing_ready, do: "neutral", else: "warning"}>
+                  {if @filing_ready, do: "Calculated", else: "Pending inputs"}
+                </.badge>
+              </:status>
+            </.fold_summary>
           </:summary>
           <div class="pb-4">
             <.data_table
@@ -880,7 +882,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         </.badge>
       </div>
 
-      <dl class="gap-block text-meta grid sm:grid-cols-4">
+      <dl class="gap-block text-ui grid sm:grid-cols-4">
         <div>
           <dt class="text-ink-subtle text-label font-semibold uppercase">
             {if @return == "GSTR-1", do: "Approved by", else: "Signed by"}

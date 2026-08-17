@@ -193,7 +193,7 @@ changes the room, not the palette:
 | `paper` | `oklch(97.6% 0.005 78)` | `accent` (hue 78) at half chroma — the page's warmth is the brand's one sanctioned warm note, kept to a whisper because a tint that reads as an accent on a badge reads as cream across a whole page |
 | `ink` | `oklch(23% 0.045 233)` | `base-content` (`30% 0.055 233`) pressed darker for ink on paper |
 | `feint` | `oklch(89.5% 0.02 233)` | `base-300`'s hue, chroma held higher — feint blue ruling has to read blue |
-| `redink` | `oklch(50% 0.17 22)` | `error` exactly, at 50% L not 60% — the margin rule and `text-meta` flags need the contrast on paper |
+| `redink` | `oklch(50% 0.17 22)` | `error` exactly, at 50% L not 60% — the margin rule and `text-context` flags need the contrast on paper |
 
 What the ledger keeps as its own is **structure, not color**: zero radius on
 rules and tables, 4px double borders, the red margin rule, ruled rows. Only the
@@ -407,7 +407,7 @@ responsive variants** (`sm:text-*`).
 | Lead | `text-lead` | 18px | Hero sub, section intros. |
 | Body | `text-body` | 16px | Default reading copy and workflow sentences. |
 | UI | `text-ui` | 14px | App UI, forms, tables, buttons, navigation — the working default. |
-| Meta | `text-meta` | 12px | Timestamps, provenance, tertiary context. |
+| Context | `text-context` | 12px | Timestamps, provenance, tertiary context. Render through `<.context_text>`. |
 | Label | `text-label` | 12px · 0.04em | Column headers and compact group labels. |
 | Eyebrow | `text-eyebrow` | 11px · 0.18em | Uppercase marketing kickers. Pair with `.text-moon`. |
 
@@ -435,10 +435,11 @@ routinely pair with a type class — figures are the exception that proves the r
   everything the operator works in is `text-ui`. `mix nila.style_guard` fails the
   build on raw sizes (`text-sm`, `text-[Npx]`, stray `tracking-[…]`/`leading-[…]`)
   and on the retired `text-table`/`text-small`/`text-fine`/`text-micro` steps.
-- **`meta` is decided by importance, never by datatype.** An invoice number,
+- **`context` is decided by importance, never by datatype.** An invoice number,
   GSTIN, or mismatch status is what the accountant came to check — that is
-  `text-ui`. `text-meta` is for context that explains where or when the work
+  `text-ui`. `<.context_text>` is for context that explains where or when the work
   arrived: "uploaded 12 minutes ago", "extracted from page 4", "source: WhatsApp".
+  Raw `text-context` is forbidden outside that primitive.
 - **`label` is schema, not data.** 12px semibold with light tracking for column
   headers and `<dt>`-style group labels. Ordinary form labels are sentence-case
   `text-ui` — uppercase tracking on "Invoice Number" is just shouting.

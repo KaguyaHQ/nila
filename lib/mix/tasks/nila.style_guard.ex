@@ -13,8 +13,11 @@ defmodule Mix.Tasks.Nila.StyleGuard do
       arbitrary `text-[…]`, `tracking-[…]`, and `leading-[…]`, plus the retired
       `text-table` / `text-small` / `text-fine` / `text-micro` steps. The role scale in
       `docs/design/DESIGN.md#typography` bundles size + line-height + tracking, so
-      markup names a role (`text-ui`, `text-meta`), never a pixel. Raw sizes
+      markup names a role (`text-ui`, `text-context`), never a pixel. Raw sizes
       have been eliminated; the empty allowlist keeps them from returning.
+
+    * **Context type** — 12px is restricted to the `context_text` primitive.
+      Secondary-looking operational information remains 14px `text-ui`.
 
     * **Spacing scale** — arbitrary and off-scale product spacing, plus raw
       numeric structural stacks. Components keep a small primitive scale for
@@ -55,6 +58,9 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   # lives in CSS, not markup.
   @type_scale_allowlist MapSet.new([])
 
+  @context_type_pattern ~r/\btext-context\b/
+  @context_type_implementation "lib/nila_web/components/typography.ex"
+
   @spacing_pattern ~r/(?<![\w-])-?(?:p[xysetrbl]?|m[xysetrbl]?|gap(?:-[xy])?|space-[xy])-(\[[^\]]+\]|\d+(?:\.\d+)?)/
   @raw_structural_spacing_pattern ~r/(?<![\w-])space-y-(?:2|4|6|8)\b/
   @spacing_values MapSet.new(~w(0 0.5 1 1.5 2 3 4 6 8 12))
@@ -81,17 +87,25 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   def run(_args) do
     legacy = @legacy_globs |> expand() |> Enum.flat_map(&legacy_violations/1)
     type_scale = @type_scale_globs |> expand() |> Enum.flat_map(&type_scale_violations/1)
+    context_type = @type_scale_globs |> expand() |> Enum.flat_map(&context_type_violations/1)
     spacing = @spacing_globs |> expand() |> Enum.flat_map(&spacing_violations/1)
     ruling = @ruling_globs |> expand() |> Enum.flat_map(&ruling_violations/1)
     motion = @motion_globs |> expand() |> Enum.flat_map(&motion_violations/1)
 
     report(legacy, "legacy hardcoded classes")
     report(type_scale, "raw type sizes — name a role from docs/design/DESIGN.md#typography")
+
+    report(
+      context_type,
+      "12px is context only; secondary operational information remains 14px."
+    )
+
     report(spacing, "off-scale spacing — use the closed primitives and structural roles")
     report(ruling, "off-system ruling — use the base-300 hairline")
     report(motion, "off-system motion — use the named fast/calm transition vocabulary")
 
-    if legacy != [] or type_scale != [] or spacing != [] or ruling != [] or motion != [] do
+    if legacy != [] or type_scale != [] or context_type != [] or spacing != [] or ruling != [] or
+         motion != [] do
       Mix.raise("Replace the flagged classes with Nila design-system tokens.")
     end
   end
@@ -111,6 +125,11 @@ defmodule Mix.Tasks.Nila.StyleGuard do
       scan(path, fn line -> @type_scale_pattern |> Regex.scan(line) |> Enum.map(&hd/1) end)
     end
   end
+
+  @doc false
+  def context_type_violations(@context_type_implementation), do: []
+
+  def context_type_violations(path), do: pattern_violations(path, @context_type_pattern)
 
   defp spacing_violations(path) do
     scan(path, fn line ->

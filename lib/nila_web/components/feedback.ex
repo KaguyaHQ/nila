@@ -65,7 +65,7 @@ defmodule NilaWeb.Components.Feedback do
       >
         <div class="flex items-center gap-2 whitespace-nowrap">
           <span class={[
-            "text-meta flex size-7 items-center justify-center rounded-full border font-semibold",
+            "text-ui flex size-7 items-center justify-center rounded-full border font-semibold",
             stage_marker_class(step.state)
           ]}>
             <.icon :if={step.state == :done} name="hero-check" class="size-4" />

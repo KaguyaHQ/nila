@@ -6,6 +6,8 @@ defmodule NilaWeb.CoreComponentsTest do
   import NilaWeb.Components.Page
   import NilaWeb.Components.Card
   import NilaWeb.Components.Badge
+  import NilaWeb.Components.Fold
+  import NilaWeb.Components.Typography
 
   test "page_header renders eyebrow, display title, and intro copy" do
     assigns = %{}
@@ -60,6 +62,41 @@ defmodule NilaWeb.CoreComponentsTest do
 
     assert html =~ "badge-soft"
     assert html =~ "badge-success"
+    assert html =~ "text-ui"
+    refute html =~ "text-context"
     assert html =~ "Completed"
+  end
+
+  test "context text owns the restricted 12px role" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.context_text tag="p" tone="muted" weight="medium" id="upload-context">
+        Uploaded 12 minutes ago
+      </.context_text>
+      """)
+
+    assert html =~ ~s(id="upload-context")
+    assert html =~ ~s(class="text-context text-ink-muted font-medium")
+    assert html =~ "Uploaded 12 minutes ago"
+  end
+
+  test "fold summary keeps operational detail at the working size" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.fold_summary title="Party-wise B2B working" tabular>
+        <:detail>4 recipients · ₹1,28,230.74 output tax</:detail>
+        <:status>
+          <.badge variant="neutral">Inspect</.badge>
+        </:status>
+      </.fold_summary>
+      """)
+
+    assert html =~ "Party-wise B2B working"
+    assert html =~ "text-ink-muted text-ui tabular-nums"
+    refute html =~ "text-context"
   end
 end

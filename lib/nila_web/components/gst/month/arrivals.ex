@@ -37,11 +37,11 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
             </.badge>
             <.badge :if={dump.status == "discarded"} variant="neutral">Discarded</.badge>
           </div>
-          <p class="text-ink-subtle text-meta">{arrived_line(dump)}</p>
+          <.context_text tag="p">{arrived_line(dump)}</.context_text>
           <p
             :if={answer_line(dump)}
             id={"month-arrived-answer-#{dump.id}"}
-            class="text-ink-muted text-meta"
+            class="text-ink-muted text-ui"
           >
             {answer_line(dump)}
           </p>
@@ -110,7 +110,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
       type="button"
       id="month-chase-history-link"
       phx-click="open-chase-history"
-      class="text-meta text-moon font-semibold"
+      class="text-moon text-ui font-semibold"
     >
       Requests sent: {length(@asks)} · view history
     </button>

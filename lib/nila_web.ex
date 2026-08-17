@@ -90,6 +90,7 @@ defmodule NilaWeb do
       import NilaWeb.Components.Badge
       import NilaWeb.Components.Card
       import NilaWeb.Components.Fold
+      import NilaWeb.Components.Typography
       import NilaWeb.Components.Table
       import NilaWeb.Components.List
       import NilaWeb.Components.Page

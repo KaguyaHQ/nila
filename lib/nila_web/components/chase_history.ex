@@ -7,6 +7,7 @@ defmodule NilaWeb.Components.ChaseHistory do
   use Phoenix.Component
 
   import NilaWeb.Components.Badge
+  import NilaWeb.Components.Typography
   import Nila.Formatters, only: [format_display_datetime_with_time: 1]
 
   attr :asks, :list,
@@ -24,9 +25,9 @@ defmodule NilaWeb.Components.ChaseHistory do
         <div class="flex flex-wrap items-center gap-2">
           <.badge variant={channel_variant(ask.channel)}>{channel_label(ask.channel)}</.badge>
           <span class="text-base-content text-ui font-medium">{kind_label(ask.kind)}</span>
-          <span class="text-ink-subtle text-meta">
+          <.context_text>
             {format_display_datetime_with_time(ask.inserted_at)} · sent by {sender_name(ask)}
-          </span>
+          </.context_text>
         </div>
         <pre class="bg-base-200/40 border-base-300 mt-related rounded-box text-base-content text-body overflow-x-auto border p-4 font-sans whitespace-pre-wrap">{ask.body}</pre>
       </div>
