@@ -153,7 +153,8 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
           status: response.status,
           headers: response.headers,
           body: to_binary(response.body),
-          response_format: format
+          response_format: format,
+          retry_count: attempt
         }
 
         cond do

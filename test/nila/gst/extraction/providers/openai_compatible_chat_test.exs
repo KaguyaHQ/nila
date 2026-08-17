@@ -20,7 +20,9 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatTest do
       conn |> Plug.Conn.put_status(400) |> Req.Test.json(%{"error" => "bad schema"})
     end)
 
-    assert {:ok, %{status: 400}} = OpenAICompatibleChat.request_raw([], "test", @schema)
+    assert {:ok, %{status: 400, retry_count: 0}} =
+             OpenAICompatibleChat.request_raw([], "test", @schema)
+
     assert Agent.get(calls, & &1) == 1
   end
 
@@ -153,6 +155,7 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatTest do
         assert {:ok, response} =
                  OpenAICompatibleChat.request_raw([], "test", @schema, max_retries: 1)
 
+        assert response.retry_count == 1
         assert {:ok, %{"ok" => true}, %{}} = OpenAICompatibleChat.decode(response, @schema)
       end)
 
@@ -195,6 +198,7 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatTest do
         assert {:ok, response} =
                  OpenAICompatibleChat.request_raw([], "test", @schema, max_retries: 1)
 
+        assert response.retry_count == 1
         assert {:ok, %{"ok" => true}, %{}} = OpenAICompatibleChat.decode(response, @schema)
       end)
 

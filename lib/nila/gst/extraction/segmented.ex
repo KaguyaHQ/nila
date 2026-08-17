@@ -224,8 +224,9 @@ defmodule Nila.Gst.Extraction.Segmented do
 
   @doc "One segment: call, map, verify."
   def extract_segment(kind, transcription, segment, opts \\ []) do
-    with {:ok, responses} <- request_segment(kind, transcription, segment, opts) do
-      map_segment(kind, transcription, segment, responses, opts)
+    case request_segment(kind, transcription, segment, opts) do
+      {:ok, responses} -> map_segment(kind, transcription, segment, responses, opts)
+      {:error, reason, _completed_responses} -> {:error, reason}
     end
   end
 
@@ -238,7 +239,7 @@ defmodule Nila.Gst.Extraction.Segmented do
     |> Enum.reduce_while({:ok, []}, fn chunk, {:ok, acc} ->
       case request_chunk(kind, transcription, chunk, length(acc), opts) do
         {:ok, response} -> {:cont, {:ok, acc ++ [%{pages: chunk, response: response}]}}
-        {:error, reason} -> {:halt, {:error, reason}}
+        {:error, reason} -> {:halt, {:error, reason, acc}}
       end
     end)
   end

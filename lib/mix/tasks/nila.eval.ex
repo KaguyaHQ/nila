@@ -12,6 +12,8 @@ defmodule Mix.Tasks.Nila.Eval do
 
       mix nila.eval transcribe <name>          # pure OCR, no annotation, cached
       mix nila.eval segment <name> [--runs 5] [--shape per_page|whole_dump] [--context neighbours|paper]
+      mix nila.eval stability <name> [--runs 10] [--concurrency 4]
+      mix nila.eval compare-vision <name> [<name> ...] [--concurrency 4]
       mix nila.eval source-quality <name> [--transcription-attempt DIR]
 
   `extract` runs the production transcribe → discover → extract → verify path
@@ -44,6 +46,7 @@ defmodule Mix.Tasks.Nila.Eval do
           runs: :integer,
           shape: :string,
           context: :string,
+          concurrency: :integer,
           transcription_attempt: :string
         ]
       )
@@ -62,6 +65,8 @@ defmodule Mix.Tasks.Nila.Eval do
       ["extract", name] -> extract(name, opts)
       ["transcribe", name] -> transcribe(name)
       ["segment", name] -> segment(name, opts)
+      ["stability", name] -> stability(name, opts)
+      ["compare-vision" | names] when names != [] -> compare_vision(names, opts)
       ["source-quality", name] -> source_quality(name, opts)
       ["score", name] -> score_months([name], opts)
       ["score"] -> score_all(opts)
@@ -70,12 +75,52 @@ defmodule Mix.Tasks.Nila.Eval do
     end
   end
 
-  defp validate_options!(["source-quality", _name], _opts), do: :ok
+  defp validate_options!(["source-quality", _name], opts) do
+    reject_non_positive!(opts)
 
-  defp validate_options!(_positional, opts) do
+    if opts[:concurrency], do: Mix.raise("--concurrency applies only to stability")
+    if opts[:runs], do: Mix.raise("--runs applies only to segment or stability")
+  end
+
+  defp validate_options!(["compare-vision" | _names], opts) do
+    reject_non_positive!(opts)
+
+    if opts[:transcription_attempt],
+      do: Mix.raise("--transcription-attempt applies only to source-quality")
+
+    if opts[:runs], do: Mix.raise("--runs does not apply to compare-vision")
+    if opts[:shape], do: Mix.raise("--shape does not apply to compare-vision")
+    if opts[:context], do: Mix.raise("--context does not apply to compare-vision")
+  end
+
+  defp validate_options!([command, _name], opts) when command in ~w(segment stability) do
+    reject_non_positive!(opts)
+
     if opts[:transcription_attempt] do
       Mix.raise("--transcription-attempt applies only to source-quality")
     end
+
+    if opts[:concurrency] && command != "stability" do
+      Mix.raise("--concurrency applies only to stability")
+    end
+  end
+
+  defp validate_options!(_positional, opts) do
+    reject_non_positive!(opts)
+
+    if opts[:transcription_attempt] do
+      Mix.raise("--transcription-attempt applies only to source-quality")
+    end
+
+    if opts[:concurrency], do: Mix.raise("--concurrency applies only to stability")
+    if opts[:runs], do: Mix.raise("--runs applies only to segment or stability")
+  end
+
+  defp reject_non_positive!(opts) do
+    if opts[:runs] && opts[:runs] < 1, do: Mix.raise("--runs must be positive")
+
+    if opts[:concurrency] && opts[:concurrency] < 1,
+      do: Mix.raise("--concurrency must be positive")
   end
 
   defp transcribe(name) do
@@ -217,6 +262,138 @@ defmodule Mix.Tasks.Nila.Eval do
 
   defp issues(%{issues: []}), do: ""
   defp issues(%{issues: issues}), do: "  " <> inspect(issues, limit: 5, charlists: :as_lists)
+
+  defp stability(name, opts) do
+    runs = opts[:runs] || 10
+    concurrency = opts[:concurrency] || 4
+    shape = shape(opts)
+    context = context(opts, shape)
+
+    Mix.shell().info(
+      "testing #{name}: #{runs} extraction runs, concurrency #{concurrency}, fixed OCR and boundaries"
+    )
+
+    report = fn
+      {:transcribed, pages} ->
+        Mix.shell().info("  cached transcription: #{pages} pages")
+
+      {:segmented, segments, violations} ->
+        invoices = Enum.count(segments, &(&1.kind == :invoice))
+        Mix.shell().info("  fixed boundaries: #{invoices} invoices")
+        Enum.each(violations, &Mix.shell().error("  violation: #{Discovery.describe(&1)}"))
+
+      {:stability_run, index, total, run} ->
+        slowest = run["calls"] |> Enum.map(& &1["duration_ms"]) |> Enum.max(fn -> 0 end)
+
+        Mix.shell().info(
+          "  run #{index}/#{total}: batch #{run["duration_ms"]}ms, slowest call #{slowest}ms"
+        )
+
+      {:stability_failure, index, total, failure} ->
+        Mix.shell().error("  run #{index}/#{total}: FAILED #{failure["reason"]}")
+    end
+
+    case Nila.Eval.Segmented.stability(name,
+           runs: runs,
+           max_concurrency: concurrency,
+           shape: shape,
+           context: context,
+           on_event: report
+         ) do
+      {:ok, result} ->
+        print_stability(result)
+
+      {:error, reason} ->
+        Mix.raise("stability run failed: #{inspect(reason, limit: 10)}")
+    end
+  end
+
+  defp print_stability(result) do
+    batch = result["latency_ms"]["batch"]
+    call = result["latency_ms"]["call"]
+
+    Mix.shell().info("")
+    print_latency("batch", batch)
+    print_latency("call ", call)
+
+    Mix.shell().info(
+      "outputs: #{result["unique_output_sets"]} unique set(s) across " <>
+        "#{result["successful_runs"]}/#{result["requested_runs"]} successful runs"
+    )
+
+    Enum.each(result["invoices"], fn invoice ->
+      status =
+        case invoice["stable"] do
+          true -> "stable"
+          false -> "UNSTABLE"
+          nil -> "one run"
+        end
+
+      variants = invoice["variants"]
+
+      changed =
+        variants
+        |> Enum.filter(fn {_field, values} -> length(values) > 1 end)
+        |> Enum.map_join(", ", &elem(&1, 0))
+
+      changed = if changed == "", do: "", else: "; changed #{changed}"
+
+      Mix.shell().info(
+        "  pages #{invoice["segment_key"]}: #{status}; " <>
+          "invoice #{inspect(variants["invoice_number"])}; lines #{inspect(variants["line_count"])}; " <>
+          "buyer GSTIN #{inspect(variants["buyer_gstin"])}#{changed}"
+      )
+    end)
+
+    Mix.shell().info("\nraw responses and report → #{result["dir"]}")
+  end
+
+  defp print_latency(label, nil), do: Mix.shell().info("#{label} ms: no successful calls")
+
+  defp print_latency(label, latency) do
+    Mix.shell().info(
+      "#{label} ms: min #{latency["min"]}  p50 #{latency["p50"]}  " <>
+        "p95 #{latency["p95"]}  max #{latency["max"]}"
+    )
+  end
+
+  defp compare_vision(names, opts) do
+    concurrency = opts[:concurrency] || 4
+
+    Mix.shell().info(
+      "comparing Mistral OCR → Small with Qwen direct vision: #{Enum.join(names, ", ")}"
+    )
+
+    report = fn
+      {:comparison_rendered, name, pages, segments} ->
+        Mix.shell().info("  #{name}: rendered #{pages} pages, #{segments} fixed invoice segments")
+
+      {:comparison_segment, approach, name, index, total, status} ->
+        Mix.shell().info("  #{approach} #{name}: #{index}/#{total} #{status}")
+
+      {:comparison_segmentation_page, approach, name, done, total} ->
+        Mix.shell().info("  #{approach} segmentation #{name}: #{done}/#{total}")
+
+      {:comparison_segmentation, approach, name, status} ->
+        Mix.shell().info("  #{approach} segmentation #{name}: #{status}")
+    end
+
+    with {:ok, extraction} <-
+           Nila.Eval.VisionComparison.run(names,
+             max_concurrency: concurrency,
+             on_event: report
+           ),
+         {:ok, result} <-
+           Nila.Eval.VisionComparison.segment(extraction["dir"],
+             max_concurrency: concurrency,
+             on_event: report
+           ) do
+      Mix.shell().info("\ncomparison → #{result["dir"]}/report.html")
+    else
+      {:error, reason} ->
+        Mix.raise("vision comparison failed: #{inspect(reason, limit: 10)}")
+    end
+  end
 
   defp extract(name, opts) do
     shape = shape(opts)

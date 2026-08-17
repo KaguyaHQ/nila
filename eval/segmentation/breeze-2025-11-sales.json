@@ -1,0 +1,21 @@
+{
+  "document": "breeze-2025-11-sales",
+  "pages": 15,
+  "established_by": "The packet owner visually inspected the PDF and confirmed that pages 1-2 are one multi-page invoice and every remaining page is a complete standalone invoice.",
+  "segments": [
+    {"pages": [1, 2], "kind": "invoice", "source": "human_review_multi_page"},
+    {"pages": [3], "kind": "invoice", "source": "human_review_complete_page"},
+    {"pages": [4], "kind": "invoice", "source": "human_review_complete_page"},
+    {"pages": [5], "kind": "invoice", "source": "human_review_complete_page"},
+    {"pages": [6], "kind": "invoice", "source": "human_review_complete_page"},
+    {"pages": [7], "kind": "invoice", "source": "human_review_complete_page"},
+    {"pages": [8], "kind": "invoice", "source": "human_review_complete_page"},
+    {"pages": [9], "kind": "invoice", "source": "human_review_complete_page"},
+    {"pages": [10], "kind": "invoice", "source": "human_review_complete_page"},
+    {"pages": [11], "kind": "invoice", "source": "human_review_complete_page"},
+    {"pages": [12], "kind": "invoice", "source": "human_review_complete_page"},
+    {"pages": [13], "kind": "invoice", "source": "human_review_complete_page"},
+    {"pages": [14], "kind": "invoice", "source": "human_review_complete_page"},
+    {"pages": [15], "kind": "invoice", "source": "human_review_complete_page"}
+  ]
+}

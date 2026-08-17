@@ -33,6 +33,8 @@ defmodule Nila.Eval.Segmented do
   alias Nila.Gst.Extraction.Transcription
 
   @root "tmp/eval/segmented"
+  @stability_root "tmp/eval/stability"
+  @stability_fields ~w(invoice_number line_count buyer_gstin seller_gstin printed_total_taxable printed_total_tax printed_grand_total line_items verification_status verification_flags repairs artifact_sha256)
 
   @doc """
   Transcribe (cached) → discover → extract per segment. Writes a new attempt.
@@ -70,7 +72,7 @@ defmodule Nila.Eval.Segmented do
       invoice_segments = Enum.filter(discovery.segments, &(&1.kind == :invoice))
 
       case capture_segments(kind, transcription, invoice_segments, dir, report, opts) do
-        :ok ->
+        {:ok, _calls} ->
           write_meta!(
             dir,
             doc,
@@ -86,10 +88,112 @@ defmodule Nila.Eval.Segmented do
 
           {:ok, dir}
 
-        {:error, reason} ->
+        {:error, reason, _calls} ->
           File.rm_rf(dir)
           {:error, reason}
       end
+    end
+  end
+
+  @doc "Runs repeated extraction against one transcription and one fixed segment set."
+  def stability(name, opts \\ []) do
+    doc = EvalCorpus.document!(name)
+    kind = kind!(doc)
+    shape = Keyword.get(opts, :shape, :per_page)
+    context = Keyword.get(opts, :context, :paper)
+    runs = Keyword.get(opts, :runs, 10)
+    concurrency = Keyword.get(opts, :max_concurrency, 4)
+    report = Keyword.get(opts, :on_event, fn _event -> :ok end)
+
+    with {:ok, transcription_dir} <- EvalTranscription.ensure(name),
+         {:ok, transcription} <- EvalTranscription.load(transcription_dir),
+         :ok <- report.({:transcribed, Transcription.page_count(transcription)}),
+         {:ok, responses} <- discover(shape, transcription, Keyword.put(opts, :kind, kind)),
+         {:ok, discovery} <- interpret(shape, transcription, responses, kind) do
+      report.({:segmented, discovery.segments, discovery.violations})
+
+      batch_id = stability_batch_id()
+      batch_dir = Path.join([@stability_root, doc["name"], batch_id])
+      client_gstin = Discovery.client_gstin(transcription)
+      invoice_segments = Enum.filter(discovery.segments, &(&1.kind == :invoice))
+      capture_opts = Keyword.put(opts, :max_concurrency, concurrency)
+
+      File.mkdir_p!(batch_dir)
+      write_discovery!(batch_dir, shape, responses, discovery)
+
+      {completed, failures} =
+        Enum.reduce(1..runs, {[], []}, fn index, {completed, failures} ->
+          run_started = System.monotonic_time(:millisecond)
+          run_dir = Path.join([batch_dir, "runs", "run_#{pad(index)}"])
+          File.mkdir_p!(Path.join(run_dir, "raw"))
+          write_segments!(run_dir, discovery)
+
+          capture =
+            capture_segments(
+              kind,
+              transcription,
+              invoice_segments,
+              run_dir,
+              fn _event -> :ok end,
+              capture_opts
+            )
+
+          case capture do
+            {:ok, calls} ->
+              write_meta!(
+                run_dir,
+                doc,
+                kind,
+                shape,
+                context,
+                transcription_dir,
+                transcription,
+                discovery,
+                client_gstin,
+                run_started
+              )
+
+              put_stability_meta!(run_dir, batch_id, index, concurrency)
+
+              case replay(run_dir) do
+                {:ok, assembled} ->
+                  run = stability_run(index, run_dir, calls, assembled)
+                  report.({:stability_run, index, runs, run})
+                  {[run | completed], failures}
+
+                {:error, reason} ->
+                  failure = stability_failure(index, run_dir, {:replay_failed, reason})
+                  write_json!(Path.join(run_dir, "failure.json"), failure)
+                  report.({:stability_failure, index, runs, failure})
+                  {completed, [failure | failures]}
+              end
+
+            {:error, reason, calls} ->
+              failure = stability_failure(index, run_dir, {:extraction_failed, reason}, calls)
+              write_json!(Path.join(run_dir, "failure.json"), failure)
+              report.({:stability_failure, index, runs, failure})
+              {completed, [failure | failures]}
+          end
+        end)
+
+      stability_report =
+        completed
+        |> Enum.reverse()
+        |> build_stability_report(
+          Enum.reverse(failures),
+          runs,
+          doc,
+          kind,
+          shape,
+          context,
+          concurrency,
+          transcription_dir,
+          discovery,
+          batch_dir
+        )
+
+      write_json!(Path.join(batch_dir, "report.json"), stability_report)
+      {:ok, stability_report}
     end
   end
 
@@ -161,6 +265,10 @@ defmodule Nila.Eval.Segmented do
         )
     end
 
+    write_segments!(dir, discovery)
+  end
+
+  defp write_segments!(dir, discovery) do
     File.write!(
       Path.join(dir, "segments.json"),
       Jason.encode!(
@@ -222,33 +330,52 @@ defmodule Nila.Eval.Segmented do
   defp capture_segments(kind, transcription, segments, dir, report, opts) do
     total = length(segments)
 
-    segments
-    |> Enum.with_index(1)
-    |> Task.async_stream(
-      fn {segment, index} ->
-        {index, segment, Segmented.request_segment(kind, transcription, segment, opts)}
-      end,
-      max_concurrency: Keyword.get(opts, :max_concurrency, 4),
-      timeout: :infinity
-    )
-    |> Enum.reduce_while({:ok, 0}, fn {:ok, {index, segment, result}}, {:ok, done} ->
-      case result do
-        {:ok, responses} ->
-          write_segment!(dir, index, segment, responses)
-          report.({:segment, done + 1, total})
-          {:cont, {:ok, done + 1}}
+    {_done, calls, errors} =
+      segments
+      |> Enum.with_index(1)
+      |> Task.async_stream(
+        fn {segment, index} ->
+          {duration_us, result} =
+            :timer.tc(fn -> Segmented.request_segment(kind, transcription, segment, opts) end)
 
-        {:error, reason} ->
-          {:halt, {:error, {:segment_failed, segment.pages, reason}}}
-      end
-    end)
-    |> case do
-      {:ok, _done} -> :ok
-      error -> error
+          {index, segment, div(duration_us, 1_000), result}
+        end,
+        max_concurrency: Keyword.get(opts, :max_concurrency, 4),
+        ordered: false,
+        timeout: :infinity
+      )
+      |> Enum.reduce({0, [], []}, fn
+        {:ok, {index, segment, duration_ms, {:ok, responses}}}, {done, calls, errors} ->
+          call = segment_call(segment, duration_ms, responses)
+          write_segment!(dir, index, segment, duration_ms, responses)
+          report.({:segment, done + 1, total})
+          {done + 1, [call | calls], errors}
+
+        {:ok, {index, segment, duration_ms, {:error, reason, responses}}},
+        {done, calls, errors} ->
+          call =
+            segment_call(segment, duration_ms, responses) |> Map.put("error", inspect(reason))
+
+          write_segment!(dir, index, segment, duration_ms, responses)
+          report.({:segment, done + 1, total})
+
+          {done + 1, [call | calls],
+           [%{"pages" => segment.pages, "reason" => inspect(reason)} | errors]}
+
+        {:exit, reason}, {done, calls, errors} ->
+          report.({:segment, done + 1, total})
+          {done + 1, calls, [%{"pages" => [], "reason" => inspect(reason)} | errors]}
+      end)
+
+    calls = Enum.sort_by(calls, &List.first(&1["pages"]))
+
+    case Enum.reverse(errors) do
+      [] -> {:ok, calls}
+      errors -> {:error, {:segments_failed, errors}, calls}
     end
   end
 
-  defp write_segment!(dir, index, segment, responses) do
+  defp write_segment!(dir, index, segment, duration_ms, responses) do
     responses
     |> Enum.with_index()
     |> Enum.each(fn {%{pages: pages, response: response}, chunk} ->
@@ -262,6 +389,10 @@ defmodule Nila.Eval.Segmented do
           "chunk" => chunk,
           "chunk_pages" => pages,
           "status" => response.status,
+          "segment_duration_ms" => duration_ms,
+          "provider_request_id" => provider_request_id(response.headers),
+          "usage" => response_usage(response),
+          "response_sha256" => sha256(response.body),
           "response_format" =>
             to_string(response.response_format || OpenAICompatibleChat.response_format()),
           "segment" => encode_segment(segment)
@@ -269,6 +400,230 @@ defmodule Nila.Eval.Segmented do
       )
     end)
   end
+
+  defp segment_call(segment, duration_ms, responses) do
+    usage = responses |> Enum.map(&response_usage(&1.response)) |> Segmented.sum_usage()
+
+    %{
+      "invoice" => segment.invoice_no,
+      "pages" => segment.pages,
+      "duration_ms" => duration_ms,
+      "statuses" => Enum.map(responses, & &1.response.status),
+      "usage" => usage,
+      "output_tokens" => usage["completion_tokens"],
+      "provider_request_ids" =>
+        responses |> Enum.map(&provider_request_id(&1.response.headers)) |> Enum.reject(&is_nil/1),
+      "response_sha256" => sha256(Enum.map(responses, & &1.response.body))
+    }
+  end
+
+  defp stability_failure(index, work_dir, reason, calls \\ []) do
+    %{
+      "run" => index,
+      "status" => "failed",
+      "attempt" => work_dir,
+      "reason" => inspect(reason, limit: 20, printable_limit: 2_000),
+      "calls" => calls
+    }
+  end
+
+  defp stability_run(index, run_dir, calls, assembled) do
+    invoices = Enum.map(assembled.pages, &stability_invoice/1)
+    meta = read_json!(Path.join(run_dir, "meta.json"))
+
+    %{
+      "run" => index,
+      "attempt" => run_dir,
+      "duration_ms" => meta["duration_ms"],
+      "calls" => calls,
+      "output_sha256" => invoices |> Jason.encode!() |> sha256(),
+      "invoices" => invoices
+    }
+  end
+
+  defp stability_invoice(artifact) do
+    data = artifact["data"] || %{}
+    verification = artifact["verification"] || %{}
+    semantic_artifact = Map.take(artifact, ["data", "verification", "repairs", "document"])
+
+    %{
+      "segment_key" => Enum.join(artifact["source_pages"], ","),
+      "invoice_number" => data["invoice_number"],
+      "pages" => artifact["source_pages"],
+      "line_count" => length(data["line_items"] || []),
+      "buyer_gstin" => get_in(data, ["buyer", "gstin"]),
+      "seller_gstin" => get_in(data, ["seller", "gstin"]),
+      "printed_total_taxable" => data["printed_total_taxable"],
+      "printed_total_tax" => data["printed_total_tax"],
+      "printed_grand_total" => data["printed_grand_total"],
+      "line_items" => data["line_items"] || [],
+      "verification_status" => verification["status"],
+      "verification_flags" => verification["flags"] || [],
+      "repairs" => artifact["repairs"] || [],
+      "artifact_sha256" => semantic_artifact |> Jason.encode!() |> sha256()
+    }
+  end
+
+  defp build_stability_report(
+         runs,
+         failures,
+         requested_runs,
+         doc,
+         kind,
+         shape,
+         context,
+         concurrency,
+         transcription_dir,
+         discovery,
+         batch_dir
+       ) do
+    summary = summarize_stability(runs)
+
+    Map.merge(summary, %{
+      "document" => doc["name"],
+      "provider" => OpenAICompatibleChat.provider(),
+      "model" => OpenAICompatibleChat.model(),
+      "discovery_shape" => to_string(shape),
+      "discovery_context" => to_string(context),
+      "concurrency" => concurrency,
+      "requested_runs" => requested_runs,
+      "successful_runs" => length(runs),
+      "failed_runs" => length(failures),
+      "failures" => failures,
+      "transcription_attempt" => transcription_dir,
+      "extraction_fingerprint" =>
+        OpenAICompatibleChat.fingerprint(Segmented.prompt(kind), Segmented.schema(kind)),
+      "discovery_fingerprint" => discovery_fingerprint(shape, kind, context),
+      "fixed_segments_sha256" => discovery.segments |> encode_segments() |> sha256(),
+      "dir" => batch_dir,
+      "runs_detail" => runs,
+      "created_at" => stamp()
+    })
+  end
+
+  @doc false
+  def summarize_stability([]) do
+    %{
+      "runs" => 0,
+      "identical_outputs" => false,
+      "unique_output_sets" => 0,
+      "output_frequencies" => %{},
+      "latency_ms" => %{"batch" => nil, "call" => nil},
+      "invoices" => []
+    }
+  end
+
+  def summarize_stability(runs) when is_list(runs) do
+    calls = Enum.flat_map(runs, & &1["calls"])
+    batch_durations = Enum.map(runs, & &1["duration_ms"])
+    call_durations = Enum.map(calls, & &1["duration_ms"])
+    output_hashes = runs |> Enum.map(& &1["output_sha256"]) |> Enum.frequencies()
+
+    segment_keys =
+      runs
+      |> Enum.flat_map(& &1["invoices"])
+      |> Enum.map(& &1["segment_key"])
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    %{
+      "runs" => length(runs),
+      "identical_outputs" => map_size(output_hashes) == 1,
+      "unique_output_sets" => map_size(output_hashes),
+      "output_frequencies" => output_hashes,
+      "latency_ms" => %{
+        "batch" => latency_summary(batch_durations),
+        "call" => latency_summary(call_durations)
+      },
+      "invoices" => Enum.map(segment_keys, &invoice_stability(&1, runs))
+    }
+  end
+
+  defp invoice_stability(segment_key, runs) do
+    snapshots =
+      Enum.map(runs, fn run ->
+        Enum.find(run["invoices"], &(&1["segment_key"] == segment_key))
+      end)
+
+    variants =
+      Map.new(@stability_fields, fn field ->
+        {field, snapshots |> Enum.map(&(&1 && &1[field])) |> Enum.uniq()}
+      end)
+
+    stable =
+      if length(runs) > 1,
+        do: Enum.all?(variants, fn {_field, values} -> length(values) == 1 end),
+        else: nil
+
+    %{
+      "segment_key" => segment_key,
+      "stable" => stable,
+      "missing_runs" => Enum.count(snapshots, &is_nil/1),
+      "variants" => variants
+    }
+  end
+
+  defp latency_summary([]), do: nil
+
+  defp latency_summary(values) do
+    %{
+      "min" => Enum.min(values),
+      "p50" => percentile(values, 0.50),
+      "p95" => percentile(values, 0.95),
+      "max" => Enum.max(values)
+    }
+  end
+
+  defp percentile(values, fraction) do
+    sorted = Enum.sort(values)
+    rank = max(ceil(length(sorted) * fraction), 1)
+    Enum.at(sorted, rank - 1)
+  end
+
+  defp put_stability_meta!(run_dir, batch_id, index, concurrency) do
+    path = Path.join(run_dir, "meta.json")
+
+    path
+    |> read_json!()
+    |> Map.merge(%{
+      "stability_batch" => batch_id,
+      "stability_run" => index,
+      "stability_concurrency" => concurrency,
+      "fixed_discovery" => true
+    })
+    |> then(&write_json!(path, &1))
+  end
+
+  defp response_usage(response) do
+    case Jason.decode(response.body) do
+      {:ok, %{"usage" => usage}} when is_map(usage) -> usage
+      _missing -> %{}
+    end
+  end
+
+  defp provider_request_id(headers) do
+    Enum.find_value(
+      ["x-request-id", "x-ai-gateway-request-id", "x-vercel-id"],
+      &first_header(headers, &1)
+    )
+  end
+
+  defp first_header(headers, name) do
+    case Map.get(headers, name, []) do
+      [value | _rest] -> value
+      value when is_binary(value) -> value
+      _missing -> nil
+    end
+  end
+
+  defp sha256(value) do
+    value
+    |> IO.iodata_to_binary()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+  end
+
+  defp write_json!(path, value), do: File.write!(path, Jason.encode!(value, pretty: true))
 
   @doc """
   Replays a cached attempt into the assembled shape `Nila.Eval` scores.
@@ -426,6 +781,8 @@ defmodule Nila.Eval.Segmented do
     }
   end
 
+  defp encode_segments(segments), do: segments |> Enum.map(&encode_segment/1) |> Jason.encode!()
+
   defp encode_segment(segment) do
     %{
       "pages" => segment.pages,
@@ -509,6 +866,13 @@ defmodule Nila.Eval.Segmented do
     do: raise(ArgumentError, "corpus document #{doc["name"]} has no extractable kind")
 
   defp attempt_id, do: String.replace(stamp(), ":", "-")
+
+  defp stability_batch_id do
+    suffix =
+      System.unique_integer([:positive, :monotonic]) |> to_string() |> String.pad_leading(10, "0")
+
+    "#{attempt_id()}-#{suffix}"
+  end
 
   defp stamp, do: DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 end

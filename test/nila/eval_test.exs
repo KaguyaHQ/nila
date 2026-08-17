@@ -7,7 +7,7 @@ defmodule Nila.EvalTest do
   use ExUnit.Case, async: true
 
   alias Nila.Eval
-  alias Nila.Eval.Segmented
+  alias Nila.Eval.{Segmentation, Segmented}
   alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.Sales.Workings
 
@@ -28,6 +28,83 @@ defmodule Nila.EvalTest do
       paper = Segmented.extract_id(doc, :purchase, :per_page, transcription_dir, :paper)
 
       refute neighbours == paper
+    end
+  end
+
+  describe "extraction stability" do
+    test "represents a batch with no successful runs" do
+      assert Segmented.summarize_stability([]) == %{
+               "runs" => 0,
+               "identical_outputs" => false,
+               "unique_output_sets" => 0,
+               "output_frequencies" => %{},
+               "latency_ms" => %{"batch" => nil, "call" => nil},
+               "invoices" => []
+             }
+    end
+
+    test "summarizes tail latency and semantic variants across runs" do
+      stable_invoice = %{
+        "segment_key" => "1",
+        "invoice_number" => "118/2025-26",
+        "line_count" => 1,
+        "buyer_gstin" => "37AAVCS8021P1ZE",
+        "seller_gstin" => "33BPBPK1081A1ZO",
+        "printed_total_taxable" => 15_000,
+        "printed_total_tax" => 2_700,
+        "printed_grand_total" => 17_700,
+        "artifact_sha256" => "stable"
+      }
+
+      unstable_invoice = %{
+        "segment_key" => "2",
+        "invoice_number" => "119/2025-26",
+        "line_count" => 3,
+        "buyer_gstin" => "37AAVCS8021P1ZE",
+        "seller_gstin" => "33BPBPK1081A1ZO",
+        "printed_total_taxable" => 8_500,
+        "printed_total_tax" => 1_530,
+        "printed_grand_total" => 10_030,
+        "artifact_sha256" => "first"
+      }
+
+      runs = [
+        %{
+          "duration_ms" => 210,
+          "output_sha256" => "run-a",
+          "calls" => [%{"duration_ms" => 100}, %{"duration_ms" => 200}],
+          "invoices" => [stable_invoice, unstable_invoice]
+        },
+        %{
+          "duration_ms" => 410,
+          "output_sha256" => "run-b",
+          "calls" => [%{"duration_ms" => 300}, %{"duration_ms" => 400}],
+          "invoices" => [
+            stable_invoice,
+            %{unstable_invoice | "buyer_gstin" => nil, "artifact_sha256" => "second"}
+          ]
+        }
+      ]
+
+      summary = Segmented.summarize_stability(runs)
+
+      assert summary["latency_ms"]["batch"] == %{
+               "min" => 210,
+               "p50" => 210,
+               "p95" => 410,
+               "max" => 410
+             }
+
+      assert summary["latency_ms"]["call"]["p50"] == 200
+      assert summary["latency_ms"]["call"]["p95"] == 400
+      refute summary["identical_outputs"]
+      assert summary["unique_output_sets"] == 2
+
+      assert [stable, unstable] = summary["invoices"]
+      assert stable["stable"]
+      refute unstable["stable"]
+      assert unstable["variants"]["buyer_gstin"] == ["37AAVCS8021P1ZE", nil]
+      assert unstable["variants"]["line_count"] == [3]
     end
   end
 
@@ -177,6 +254,15 @@ defmodule Nila.EvalTest do
     test "names the month when there is no filed return" do
       assert {:error, {:no_filed_return, "nobody", "1999-01"}} =
                Eval.filed_return("nobody", "1999-01")
+    end
+  end
+
+  describe "segmentation truth" do
+    test "records the Breeze November sales continuation and thirteen standalone invoices" do
+      assert {:ok, truth} = Segmentation.truth("breeze-2025-11-sales")
+      assert length(truth["segments"]) == 14
+      assert hd(truth["segments"])["pages"] == [1, 2]
+      assert Enum.map(tl(truth["segments"]), & &1["pages"]) == Enum.map(3..15, &[&1])
     end
   end
 end
