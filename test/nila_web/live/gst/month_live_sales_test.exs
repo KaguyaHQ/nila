@@ -87,6 +87,33 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
            ]
   end
 
+  test "return workings disclose schedules before contributor rows", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(
+             view,
+             "#gstr1-workings-b2b:not([open]) > summary",
+             "Party-wise B2B working"
+           )
+
+    assert has_element?(view, "#gstr1-workings-b2b > summary", "output tax")
+    assert has_element?(view, "#gstr1-workings-rates:not([open]) > summary", "Rate summary")
+    assert has_element?(view, "#gstr1-workings-rates > summary", "taxable")
+
+    view |> element("#gstr1-workings-b2b > summary") |> render_click()
+
+    assert has_element?(view, "#gstr1-workings-b2b[open]")
+    assert has_element?(view, "#gstr1-workings-b2b-rows")
+    assert has_element?(view, "#gstr1-workings-rates:not([open])")
+
+    view |> element("#gstr1-workings-b2b > summary") |> render_click()
+
+    assert has_element?(view, "#gstr1-workings-b2b:not([open])")
+  end
+
   test "the proposed return shows filing sections without pipeline telemetry or false reconciliation",
        %{
          conn: conn,
@@ -186,7 +213,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert has_element?(view, "#gstr1-filing-b2cs", "B2CS")
     assert has_element?(view, "#gstr1-filing-b2cl", "B2CL")
-    assert has_element?(view, "#gstr1-workings-b2cs")
+    assert has_element?(view, "#gstr1-workings-b2cs:not([open]) > summary", "B2CS working")
+    assert has_element?(view, "#gstr1-workings-b2cl:not([open]) > summary", "B2CL working")
     assert has_element?(view, "#gstr1-workings-b2cl", "INV-B2CL")
     assert has_element?(view, "#gstr1-workings-hsn-b2c", "NOS")
     assert has_element?(view, "#gstr1-inv-INV-B2CS", "Unregistered")

@@ -15,15 +15,11 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   here and the JSON beside it cannot disagree. Empty subsections are omitted
   outright: a month with no B2B shows no B2B heading.
 
-  This is appendix-grade material: a working sheet is dense rows a CA scans in
-  seconds, so every subsection is one `.data_table` and a row expands in place
-  into its contributors — sixteen HSN codes are sixteen lines, not sixteen
-  cards. Card treatment is for things that need a decision; the return needs
-  reading. Which buckets are open is server state (`expanded`): a client-side
-  `JS.toggle` writes an inline `display`, and the next patch — an issue
-  confirmed, a difference accepted, a pile landing on the PubSub — syncs it
-  away and re-collapses everything the reviewer had open. One round trip per
-  expansion is cheaper than losing your place because something else moved.
+  This is appendix-grade material, but it does not dominate the month: each
+  schedule first shows its scope and control total, then opens to one
+  `.data_table`. Aggregate rows can expand again into their contributing
+  invoices. Schedule and row state both live on the server, so a later LiveView
+  patch cannot collapse the reader's place.
   """
 
   alias Nila.Eval.Gstr1Diff
@@ -142,6 +138,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   attr :rippled, :any, default: MapSet.new()
   attr :ripple_seq, :integer, default: 0
   attr :expanded, :any, default: MapSet.new()
+  attr :open_folds, :any, default: MapSet.new()
 
   def workings_body(assigns) do
     assigns =
@@ -195,131 +192,264 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         with the tax recomputed on that total rather than summed from the extracted lines.
       </p>
 
-      <div :if={@b2b != []} id="gstr1-workings-b2b" class="space-y-1.5">
-        <.section_label>B2B — party-wise</.section_label>
-        <.data_table
-          id="gstr1-workings-b2b-rows"
-          rows={@party_rows}
-          row_id={& &1.id}
-          row_class={fn row -> row_class(row, @rippled, @ripple_seq, @expanded) end}
-          row_click={&row_click/1}
-          min_width="min-w-[620px]"
-          dense
+      <div
+        id="gstr1-workings-schedules"
+        class="bg-base-100 border-base-300 divide-base-300 rounded-box divide-y border"
+      >
+        <.fold
+          :if={@b2b != []}
+          id="gstr1-workings-b2b"
+          open={MapSet.member?(@open_folds, "gstr1-workings-b2b")}
+          class="px-4 sm:px-6"
+          summary_class="py-4 text-base-content w-full"
         >
-          <:col :let={row} label="Party">
-            <%!-- Extraction sometimes lands a whole postal address in the buyer
+          <:summary>
+            <div class="grid min-w-0 flex-1 gap-1 sm:grid-cols-2 sm:items-center sm:gap-4">
+              <p class="text-ui font-semibold">Party-wise B2B working</p>
+              <p class="text-ink-muted text-meta tabular-nums">
+                {party_working_summary(@party_rows)}
+              </p>
+            </div>
+            <.badge variant="neutral">Inspect</.badge>
+          </:summary>
+          <div class="pb-4">
+            <.data_table
+              id="gstr1-workings-b2b-rows"
+              rows={@party_rows}
+              row_id={& &1.id}
+              row_class={fn row -> row_class(row, @rippled, @ripple_seq, @expanded) end}
+              row_click={&row_click/1}
+              min_width="min-w-[620px]"
+            >
+              <:col :let={row} label="Party">
+                <%!-- Extraction sometimes lands a whole postal address in the buyer
                   name; a text column that sizes to its content pushes the money
                   off the right edge, so the name truncates and the full string
                   stays one hover away. --%>
-            <div :if={row.kind == :node} class="flex max-w-80 items-center gap-2">
-              <.chevron open={MapSet.member?(@expanded, row.id)} />
-              <span class="text-base-content truncate font-medium" title={row.name}>{row.name}</span>
-            </div>
-            <.contrib_cell :if={row.kind == :contrib} row={row} />
-          </:col>
-          <:col :let={row} label="GSTIN">
-            <span :if={row.kind == :node} class="text-ink-subtle font-mono">
-              {row.gstin || "—"}
-            </span>
-          </:col>
-          <:col :let={row} label="Invoices" align="right">
-            <span :if={row.kind == :node} class="text-ink-subtle">{row.count}</span>
-          </:col>
-          <:col :let={row} label="Taxable" align="right">
-            <.amount_cell row={row} value={row[:taxable]} />
-          </:col>
-          <%!-- Every figure in these workings is the derived per-rate bucket, not
+                <div :if={row.kind == :node} class="flex max-w-80 items-center gap-2">
+                  <.chevron open={MapSet.member?(@expanded, row.id)} />
+                  <span class="text-base-content truncate font-medium" title={row.name}>{row.name}</span>
+                </div>
+                <.contrib_cell :if={row.kind == :contrib} row={row} />
+              </:col>
+              <:col :let={row} label="GSTIN">
+                <span :if={row.kind == :node} class="text-ink-subtle font-mono">
+                  {row.gstin || "—"}
+                </span>
+              </:col>
+              <:col :let={row} label="Invoices" align="right">
+                <span :if={row.kind == :node} class="text-ink-subtle">{row.count}</span>
+              </:col>
+              <:col :let={row} label="Taxable" align="right">
+                <.amount_cell row={row} value={row[:taxable]} />
+              </:col>
+              <%!-- Every figure in these workings is the derived per-rate bucket, not
                 the sum of extracted lines. They differ by rounding, and calling
                 both "Tax" is why nobody could say which one gets filed. --%>
-          <:col :let={row} label="Output tax" align="right">
-            <.amount_cell row={row} value={row[:tax]} />
-          </:col>
-        </.data_table>
-      </div>
+              <:col :let={row} label="Output tax" align="right">
+                <.amount_cell row={row} value={row[:tax]} />
+              </:col>
+            </.data_table>
+          </div>
+        </.fold>
 
-      <div :if={@b2cl_rows != []} id="gstr1-workings-b2cl" class="space-y-1.5">
-        <.section_label>B2CL — large interstate unregistered supplies</.section_label>
-        <.data_table id="gstr1-workings-b2cl-rows" rows={@b2cl_rows} min_width="min-w-[620px]" dense>
-          <:col :let={row} label="Invoice">
-            <span class="text-primary font-mono font-medium">{row.number}</span>
-          </:col>
-          <:col :let={row} label="Date">{row.date}</:col>
-          <:col :let={row} label="POS"><span class="font-mono">{row.pos}</span></:col>
-          <:col :let={row} label="Invoice value" align="right">{Helpers.amount(row.value)}</:col>
-          <:col :let={row} label="Taxable" align="right">{Helpers.amount(row.taxable)}</:col>
-          <:col :let={row} label="Output tax" align="right">{Helpers.amount(row.tax)}</:col>
-        </.data_table>
-      </div>
-
-      <div :if={@b2cs != []} id="gstr1-workings-b2cs" class="space-y-1.5">
-        <.section_label>B2CS — aggregated unregistered supplies</.section_label>
-        <.data_table id="gstr1-workings-b2cs-rows" rows={@b2cs} min_width="min-w-[620px]" dense>
-          <:col :let={row} label="Supply">{row["sply_ty"]}</:col>
-          <:col :let={row} label="POS"><span class="font-mono">{row["pos"]}</span></:col>
-          <:col :let={row} label="Rate" align="right">{Helpers.percent(row["rt"])}</:col>
-          <:col :let={row} label="Taxable" align="right">{Helpers.amount(row["txval"])}</:col>
-          <:col :let={row} label="Output tax" align="right">{Helpers.amount(detail_tax(row))}</:col>
-        </.data_table>
-      </div>
-
-      <div :if={@note_rows != []} id="gstr1-workings-cdnr" class="space-y-1.5">
-        <.section_label>9B — registered credit and debit notes</.section_label>
-        <.data_table
-          id="gstr1-workings-cdnr-rows"
-          rows={@note_rows}
-          row_id={& &1.id}
-          min_width="min-w-[620px]"
-          dense
+        <.fold
+          :if={@b2cl_rows != []}
+          id="gstr1-workings-b2cl"
+          open={MapSet.member?(@open_folds, "gstr1-workings-b2cl")}
+          class="px-4 sm:px-6"
+          summary_class="py-4 text-base-content w-full"
         >
-          <:col :let={row} label="Note">
-            <span class="text-primary font-mono font-medium">{row.number}</span>
-          </:col>
-          <:col :let={row} label="Type">{row.type}</:col>
-          <:col :let={row} label="Date">{row.date}</:col>
-          <:col :let={row} label="Recipient GSTIN">
-            <span class="text-ink-subtle font-mono">{row.gstin}</span>
-          </:col>
-          <:col :let={row} label="Taxable effect" align="right">
-            {Helpers.amount(row.taxable)}
-          </:col>
-          <:col :let={row} label="Output-tax effect" align="right">
-            {Helpers.amount(row.tax)}
-          </:col>
-        </.data_table>
-      </div>
-
-      <div :if={@rates != []} id="gstr1-workings-rates" class="space-y-1.5">
-        <.section_label>Rate summary</.section_label>
-        <.data_table
-          id="gstr1-workings-rates-rows"
-          rows={@rate_rows}
-          row_id={& &1.id}
-          row_class={fn row -> row_class(row, @rippled, @ripple_seq, @expanded) end}
-          row_click={&row_click/1}
-          min_width="min-w-[520px]"
-          dense
-        >
-          <:col :let={row} label="Rate">
-            <div :if={row.kind == :node} class="flex items-center gap-2">
-              <.chevron open={MapSet.member?(@expanded, row.id)} />
-              <span class="text-base-content font-medium">{Helpers.percent(row.rate)}</span>
+          <:summary>
+            <div class="grid min-w-0 flex-1 gap-1 sm:grid-cols-2 sm:items-center sm:gap-4">
+              <p class="text-ui font-semibold">B2CL working</p>
+              <p class="text-ink-muted text-meta tabular-nums">
+                {invoice_working_summary(@b2cl_rows)}
+              </p>
             </div>
-            <.contrib_cell :if={row.kind == :contrib} row={row} />
-          </:col>
-          <:col :let={row} label="Invoices" align="right">
-            <span :if={row.kind == :node} class="text-ink-subtle">{row.count}</span>
-          </:col>
-          <:col :let={row} label="Taxable" align="right">
-            <.amount_cell row={row} value={row[:taxable]} />
-          </:col>
-          <:col :let={row} label="Output tax" align="right">
-            <.amount_cell row={row} value={row[:tax]} />
-          </:col>
-        </.data_table>
+            <.badge variant="neutral">Inspect</.badge>
+          </:summary>
+          <div class="pb-4">
+            <.data_table
+              id="gstr1-workings-b2cl-rows"
+              rows={@b2cl_rows}
+              min_width="min-w-[620px]"
+            >
+              <:col :let={row} label="Invoice">
+                <span class="text-primary font-mono font-medium">{row.number}</span>
+              </:col>
+              <:col :let={row} label="Date">{row.date}</:col>
+              <:col :let={row} label="POS"><span class="font-mono">{row.pos}</span></:col>
+              <:col :let={row} label="Invoice value" align="right">{Helpers.amount(row.value)}</:col>
+              <:col :let={row} label="Taxable" align="right">{Helpers.amount(row.taxable)}</:col>
+              <:col :let={row} label="Output tax" align="right">{Helpers.amount(row.tax)}</:col>
+            </.data_table>
+          </div>
+        </.fold>
+
+        <.fold
+          :if={@b2cs != []}
+          id="gstr1-workings-b2cs"
+          open={MapSet.member?(@open_folds, "gstr1-workings-b2cs")}
+          class="px-4 sm:px-6"
+          summary_class="py-4 text-base-content w-full"
+        >
+          <:summary>
+            <div class="grid min-w-0 flex-1 gap-1 sm:grid-cols-2 sm:items-center sm:gap-4">
+              <p class="text-ui font-semibold">B2CS working</p>
+              <p class="text-ink-muted text-meta tabular-nums">
+                {b2cs_working_summary(@b2cs)}
+              </p>
+            </div>
+            <.badge variant="neutral">Inspect</.badge>
+          </:summary>
+          <div class="pb-4">
+            <.data_table id="gstr1-workings-b2cs-rows" rows={@b2cs} min_width="min-w-[620px]">
+              <:col :let={row} label="Supply">{row["sply_ty"]}</:col>
+              <:col :let={row} label="POS"><span class="font-mono">{row["pos"]}</span></:col>
+              <:col :let={row} label="Rate" align="right">{Helpers.percent(row["rt"])}</:col>
+              <:col :let={row} label="Taxable" align="right">{Helpers.amount(row["txval"])}</:col>
+              <:col :let={row} label="Output tax" align="right">
+                {Helpers.amount(detail_tax(row))}
+              </:col>
+            </.data_table>
+          </div>
+        </.fold>
+
+        <.fold
+          :if={@note_rows != []}
+          id="gstr1-workings-cdnr"
+          open={MapSet.member?(@open_folds, "gstr1-workings-cdnr")}
+          class="px-4 sm:px-6"
+          summary_class="py-4 text-base-content w-full"
+        >
+          <:summary>
+            <div class="grid min-w-0 flex-1 gap-1 sm:grid-cols-2 sm:items-center sm:gap-4">
+              <p class="text-ui font-semibold">Registered notes working</p>
+              <p class="text-ink-muted text-meta tabular-nums">
+                {note_working_summary(@note_rows)}
+              </p>
+            </div>
+            <.badge variant="neutral">Inspect</.badge>
+          </:summary>
+          <div class="pb-4">
+            <.data_table
+              id="gstr1-workings-cdnr-rows"
+              rows={@note_rows}
+              row_id={& &1.id}
+              min_width="min-w-[620px]"
+            >
+              <:col :let={row} label="Note">
+                <span class="text-primary font-mono font-medium">{row.number}</span>
+              </:col>
+              <:col :let={row} label="Type">{row.type}</:col>
+              <:col :let={row} label="Date">{row.date}</:col>
+              <:col :let={row} label="Recipient GSTIN">
+                <span class="text-ink-subtle font-mono">{row.gstin}</span>
+              </:col>
+              <:col :let={row} label="Taxable effect" align="right">
+                {Helpers.amount(row.taxable)}
+              </:col>
+              <:col :let={row} label="Output-tax effect" align="right">
+                {Helpers.amount(row.tax)}
+              </:col>
+            </.data_table>
+          </div>
+        </.fold>
+
+        <.fold
+          :if={@rates != []}
+          id="gstr1-workings-rates"
+          open={MapSet.member?(@open_folds, "gstr1-workings-rates")}
+          class="px-4 sm:px-6"
+          summary_class="py-4 text-base-content w-full"
+        >
+          <:summary>
+            <div class="grid min-w-0 flex-1 gap-1 sm:grid-cols-2 sm:items-center sm:gap-4">
+              <p class="text-ui font-semibold">Rate summary</p>
+              <p class="text-ink-muted text-meta tabular-nums">
+                {rate_working_summary(@rate_rows)}
+              </p>
+            </div>
+            <.badge variant="neutral">Inspect</.badge>
+          </:summary>
+          <div class="pb-4">
+            <.data_table
+              id="gstr1-workings-rates-rows"
+              rows={@rate_rows}
+              row_id={& &1.id}
+              row_class={fn row -> row_class(row, @rippled, @ripple_seq, @expanded) end}
+              row_click={&row_click/1}
+              min_width="min-w-[520px]"
+            >
+              <:col :let={row} label="Rate">
+                <div :if={row.kind == :node} class="flex items-center gap-2">
+                  <.chevron open={MapSet.member?(@expanded, row.id)} />
+                  <span class="text-base-content font-medium">{Helpers.percent(row.rate)}</span>
+                </div>
+                <.contrib_cell :if={row.kind == :contrib} row={row} />
+              </:col>
+              <:col :let={row} label="Invoices" align="right">
+                <span :if={row.kind == :node} class="text-ink-subtle">{row.count}</span>
+              </:col>
+              <:col :let={row} label="Taxable" align="right">
+                <.amount_cell row={row} value={row[:taxable]} />
+              </:col>
+              <:col :let={row} label="Output tax" align="right">
+                <.amount_cell row={row} value={row[:tax]} />
+              </:col>
+            </.data_table>
+          </div>
+        </.fold>
       </div>
     </div>
     """
   end
+
+  defp party_working_summary(rows) do
+    nodes = node_rows(rows)
+
+    "#{length(nodes)} #{plural(length(nodes), "recipient")} · " <>
+      "#{Helpers.rupees(sum(nodes, & &1.tax))} output tax"
+  end
+
+  defp rate_working_summary(rows) do
+    nodes = node_rows(rows)
+
+    lead =
+      case nodes do
+        [row] -> Helpers.percent(row.rate)
+        rows -> "#{length(rows)} #{plural(length(rows), "rate")}"
+      end
+
+    "#{lead} · #{Helpers.rupees(sum(nodes, & &1.taxable))} taxable · " <>
+      "#{Helpers.rupees(sum(nodes, & &1.tax))} tax"
+  end
+
+  defp invoice_working_summary(rows) do
+    "#{length(rows)} #{plural(length(rows), "invoice")} · " <>
+      "#{Helpers.rupees(sum(rows, & &1.taxable))} taxable · " <>
+      "#{Helpers.rupees(sum(rows, & &1.tax))} tax"
+  end
+
+  defp b2cs_working_summary(rows) do
+    "#{length(rows)} #{plural(length(rows), "bucket")} · " <>
+      "#{Helpers.rupees(sum(rows, & &1["txval"]))} taxable · " <>
+      "#{Helpers.rupees(sum(rows, &detail_tax/1))} tax"
+  end
+
+  defp note_working_summary(rows) do
+    "#{length(rows)} #{plural(length(rows), "note")} · " <>
+      "#{Helpers.rupees(sum(rows, & &1.taxable))} taxable effect · " <>
+      "#{Helpers.rupees(sum(rows, & &1.tax))} tax effect"
+  end
+
+  defp node_rows(rows), do: Enum.filter(rows, &(&1.kind == :node))
+  defp sum(rows, value), do: Enum.reduce(rows, 0, &(number(value.(&1)) + &2))
+  defp number(value) when is_number(value), do: value
+  defp number(_value), do: 0
+  defp plural(1, singular), do: singular
+  defp plural(_count, singular), do: singular <> "s"
 
   defp assign_diff(%{diff: nil} = assigns), do: assign(assigns, :mismatches, [])
 

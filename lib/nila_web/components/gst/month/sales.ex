@@ -563,6 +563,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           rippled={@rippled}
           ripple_seq={@ripple_seq}
           expanded={@expanded_nodes}
+          open_folds={@open_folds}
         />
       </section>
 
