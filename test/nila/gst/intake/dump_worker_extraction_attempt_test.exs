@@ -5,7 +5,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
   import Nila.AccountsFixtures
 
   alias Nila.Clients
-  alias Nila.Gst.Extraction.Providers.Mistral
+  alias Nila.Gst.Extraction.Providers.{Mistral, OpenAICompatibleChat}
   alias Nila.Gst.Intake.{DumpWorker, Dumps, ExtractionAttempts}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.PdfFixtures
@@ -255,6 +255,81 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
     assert flag["reason"] =~ "Page 14 of packet.pdf"
   end
 
+  test "the vision default persists segmentation and extraction as separate attempts" do
+    previous = Application.get_env(:nila, :purchase_extractor)
+    Application.put_env(:nila, :purchase_extractor, Nila.Gst.Extraction.Purchase.Vision)
+    on_exit(fn -> Application.put_env(:nila, :purchase_extractor, previous) end)
+
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      request = Jason.decode!(body)
+
+      response =
+        case get_in(request, ["response_format", "json_schema", "name"]) do
+          "nila_packet_page_labels" ->
+            chat_response(%{
+              "pages" => [
+                %{
+                  "page" => 1,
+                  "label" => "start",
+                  "invoice_no" => "DPS-0072",
+                  "reason" => nil
+                }
+              ]
+            })
+
+          "nila_direct_purchase_invoice" ->
+            vision_invoice_response()
+        end
+
+      Req.Test.json(conn, response)
+    end)
+
+    %{user: user, org: org} = user_with_org_fixture()
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Breeze Tech",
+        type: "company",
+        gstin: "33AEWPH4158J1Z3"
+      })
+
+    key = "orgs/#{org.id}/gst/test/vision.jpg"
+    {:ok, _stored} = Storage.put(key, <<0xFF, 0xD8, 0xFF, 0xD9>>)
+
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id, brought_in_by_id: user.id},
+        %{period: "2025-10", kind: "purchase", file_keys: [key]}
+      )
+
+    assert :ok = perform_job(DumpWorker, %{"dump_id" => dump.id})
+
+    attempts = ExtractionAttempts.list_for_dump(dump.id)
+    assert length(attempts) == 2
+    assert Enum.all?(attempts, &(&1.status == "succeeded" and &1.response_artifact_key))
+
+    assert attempts |> Enum.map(& &1.request_metadata["stage"]) |> Enum.sort() ==
+             ["vision_extraction", "vision_segmentation"]
+
+    extraction =
+      Enum.find(attempts, &(&1.request_metadata["stage"] == "vision_extraction"))
+
+    assert [%{"pages" => [1], "status" => 200}] = extraction.request_metadata["responses"]
+
+    assert {:ok, compressed} = Storage.get(extraction.response_artifact_key)
+    assert %{"responses" => [%{"pages" => [1]}]} = Jason.decode!(:zstd.decompress(compressed))
+
+    {:ok, extracted} = Dumps.fetch(org.id, dump.id)
+    assert [%{"invoice_number" => "DPS-0072", "images" => [image]}] = extracted.invoices
+    assert image == "d#{dump.id}_page_01.jpg"
+    refute extracted.meta["evidence_unavailable"]
+
+    assert {:ok, <<0xFF, 0xD8, 0xFF, 0xD9>>} =
+             PurchaseMonths.fetch_evidence(org.id, client.id, "2025-10", image)
+  end
+
   defmodule UnrenderableProvider do
     @behaviour Nila.Gst.Extraction.Purchase
 
@@ -384,6 +459,33 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
         %{"description" => "Battery", "taxable_value" => 10_000, "igst_amount" => 1_800}
       ],
       "printed_grand_total" => 11_800
+    })
+  end
+
+  defp vision_invoice_response do
+    chat_response(%{
+      "document_type" => "invoice",
+      "invoice_number" => "DPS-0072",
+      "invoice_date" => "08/10/2025",
+      "seller" => %{
+        "name" => "Dawn Power",
+        "gstin" => "32AAMFD7558A1ZL",
+        "address" => "Kerala"
+      },
+      "buyer" => %{"name" => "Breeze", "gstin" => "33AEWPH4158J1Z3"},
+      "delivery_address" => nil,
+      "line_items" => [],
+      "printed_subtotal_before_discount" => nil,
+      "printed_discount_amount" => nil,
+      "printed_total_taxable" => 17_000,
+      "printed_cgst" => nil,
+      "printed_sgst" => nil,
+      "printed_igst" => 3_060,
+      "printed_total_tax" => 3_060,
+      "printed_additional_charges" => nil,
+      "printed_rounding_adjustment" => nil,
+      "printed_grand_total" => 20_060,
+      "reverse_charge" => nil
     })
   end
 

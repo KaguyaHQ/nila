@@ -23,7 +23,8 @@ defmodule Nila.Gst.Extraction.Evidence do
   # are per artifact, and both evidence controllers already serve png, jpeg and
   # webp — so moving again is this constant and the render flag.
   @render_format "jpeg"
-  @render_quality "75"
+  @render_quality 75
+  @render_dpi 200
   @extension "jpg"
 
   @doc """
@@ -64,10 +65,19 @@ defmodule Nila.Gst.Extraction.Evidence do
     filename = Keyword.get(opts, :filename, "document.pdf")
     content_type = Keyword.get(opts, :content_type) || Mistral.content_type(filename)
 
-    if content_type == "application/pdf", do: rasterize(bytes), else: {:ok, %{}}
+    if content_type == "application/pdf" do
+      rasterize(
+        bytes,
+        Keyword.get(opts, :dpi, @render_dpi),
+        Keyword.get(opts, :jpeg_quality, @render_quality),
+        Keyword.get(opts, :last_page)
+      )
+    else
+      {:ok, %{}}
+    end
   end
 
-  defp rasterize(bytes) do
+  defp rasterize(bytes, dpi, quality, last_page) do
     dir = Path.join(System.tmp_dir!(), "nila_render_#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
 
@@ -75,15 +85,16 @@ defmodule Nila.Gst.Extraction.Evidence do
       pdf_path = Path.join(dir, "source.pdf")
       File.write!(pdf_path, bytes)
 
-      args = [
-        "-#{@render_format}",
-        "-jpegopt",
-        "quality=#{@render_quality}",
-        "-r",
-        "200",
-        pdf_path,
-        Path.join(dir, "page")
-      ]
+      args =
+        [
+          "-#{@render_format}",
+          "-jpegopt",
+          "quality=#{quality}",
+          "-r",
+          to_string(dpi)
+        ] ++
+          last_page_args(last_page) ++
+          [pdf_path, Path.join(dir, "page")]
 
       case System.cmd(pdftocairo(), args, stderr_to_stdout: true) do
         {_output, 0} -> {:ok, read_rendered(dir)}
@@ -95,6 +106,11 @@ defmodule Nila.Gst.Extraction.Evidence do
       File.rm_rf(dir)
     end
   end
+
+  defp last_page_args(last_page) when is_integer(last_page) and last_page > 0,
+    do: ["-f", "1", "-l", to_string(last_page)]
+
+  defp last_page_args(_last_page), do: []
 
   defp read_rendered(dir) do
     dir

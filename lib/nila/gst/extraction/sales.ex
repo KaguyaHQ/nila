@@ -9,9 +9,9 @@ defmodule Nila.Gst.Extraction.Sales do
 
   The outward mirror of `Nila.Gst.Extraction.Purchase`: the implementation is
   selected via `Application.get_env(:nila, :sales_extractor,
-  Nila.Gst.Extraction.Sales.MistralOCR)`. Mistral handles OCR; an independently
-  configured OpenAI-compatible provider handles text discovery and extraction.
-  Tests may override the full pipeline.
+  Nila.Gst.Extraction.Sales.Vision)`. The production extractor segments rendered
+  pages and reads each invoice with the configured vision model. Tests may override
+  the full pipeline.
 
   A successful `extract/2` returns:
 

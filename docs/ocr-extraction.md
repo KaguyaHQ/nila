@@ -6,10 +6,13 @@ that follows. See `lib/nila/gst/extraction/` for the code and `decisions.md` for
 system-level rationale._
 
 The extraction path turns a dumped PDF (a month of invoices, one or more per page)
-into structured invoice artifacts. Mistral remains the OCR provider; discovery
-and invoice structuring use a separately configurable OpenAI-compatible text
-provider. The former LlamaExtract benchmark path was removed after Mistral proved
-materially cheaper.
+into structured invoice artifacts.
+
+> **Production switch, 2026-08-17.** `Nila.Gst.Extraction.VisionPipeline` now sends
+> packet thumbnails to the configured vision model for segmentation and sends each
+> resulting invoice's full-resolution pages back for extraction. Mistral OCR is no
+> longer on the production path. The measurements below are retained as the history
+> of the superseded OCR architecture and its safeguards.
 
 > **Verification warning, 2026-08-14.** The current lexical source-presence checker
 > is not accounting assurance: on labelled real invoices it deleted correct values,

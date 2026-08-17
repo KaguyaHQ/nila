@@ -386,6 +386,13 @@ defmodule Nila.Gst.Extraction.Segmented do
 
   defp markers(data, :sales), do: data
 
+  @doc "Applies the provider-independent repairs shared by text and vision extraction."
+  def prepare_vision_data(data, kind, client_gstin) do
+    {data, repairs} = data |> markers(kind) |> repair_gstins(kind, client_gstin)
+    {data, redundant} = discard_redundant_taxable_candidates(data)
+    {data, repairs ++ redundant}
+  end
+
   @doc """
   Repairs GSTINs the scanner damaged, on evidence, and records every repair.
 

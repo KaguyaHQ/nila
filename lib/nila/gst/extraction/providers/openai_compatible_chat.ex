@@ -1,10 +1,9 @@
 defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
   @moduledoc """
-  OpenAI-compatible `/chat/completions` with a strict JSON schema: text in, JSON out.
+  OpenAI-compatible `/chat/completions` with a strict JSON schema.
 
-  Mistral remains the OCR provider. The text provider is configured independently,
-  so Mistral, Tencent TokenHub, Z.ai, or another compatible endpoint can be
-  auditioned through the eval harness without changing the extraction pipeline.
+  Messages may contain text or page images. The configured provider therefore owns
+  both direct-vision packet segmentation and invoice structuring.
   """
 
   @default_base_url "https://api.mistral.ai/v1"
