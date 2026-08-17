@@ -278,6 +278,50 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Radix-style executable color scales with Nila's moonlight pigments. Components
+   consume coordinated steps instead of inventing opacity formulas. A context that
+   changes base-content must redeclare the complete ink scale, as `.landing` does. */
+:root,
+.landing {
+  --nila-ink-12: var(--color-base-content);
+  --nila-ink-a12: color-mix(in oklab, var(--color-base-content) 88%, transparent);
+  --nila-ink-a11: color-mix(in oklab, var(--color-base-content) 61%, transparent);
+  --nila-ink-a10: color-mix(in oklab, var(--color-base-content) 49%, transparent);
+  --nila-ink-a8: color-mix(in oklab, var(--color-base-content) 27%, transparent);
+  --nila-ink-a7: color-mix(in oklab, var(--color-base-content) 22%, transparent);
+  --nila-ink-a6: color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  --nila-ink-a4: color-mix(in oklab, var(--color-base-content) 11%, transparent);
+  --nila-ink-a3: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+}
+
+:root {
+  --nila-accent-a3: color-mix(in oklch, var(--color-primary) 10%, transparent);
+  --nila-accent-a4: color-mix(in oklch, var(--color-primary) 15%, transparent);
+  --nila-accent-a5: color-mix(in oklch, var(--color-primary) 20%, transparent);
+  --nila-accent-a7: color-mix(in oklch, var(--color-primary) 28%, transparent);
+  --nila-accent-a8: color-mix(in oklch, var(--color-primary) 65%, transparent);
+  --nila-accent-a11: color-mix(in oklab, var(--color-primary) 78%, var(--color-base-content));
+
+  --nila-info-a3: color-mix(in oklch, var(--color-info) 9%, transparent);
+  --nila-info-a6: color-mix(in oklch, var(--color-info) 22%, transparent);
+  --nila-info-a11: color-mix(in oklab, var(--color-info) 72%, var(--color-base-content));
+  --nila-info-surface: color-mix(in oklch, var(--color-info) 9%, var(--color-base-100));
+
+  --nila-success-a3: color-mix(in oklch, var(--color-success) 9%, transparent);
+  --nila-success-a6: color-mix(in oklch, var(--color-success) 20%, transparent);
+  --nila-success-a11: color-mix(in oklab, var(--color-success) 70%, var(--color-base-content));
+
+  --nila-warning-a3: color-mix(in oklch, var(--color-warning) 10%, transparent);
+  --nila-warning-a6: color-mix(in oklch, var(--color-warning) 22%, transparent);
+  --nila-warning-a11: color-mix(in oklab, var(--color-warning) 62%, var(--color-base-content));
+
+  --nila-error-a3: color-mix(in oklch, var(--color-error) 9%, transparent);
+  --nila-error-a6: color-mix(in oklch, var(--color-error) 22%, transparent);
+  --nila-error-a7: color-mix(in oklch, var(--color-error) 25%, transparent);
+  --nila-error-a11: color-mix(in oklab, var(--color-error) 76%, var(--color-base-content));
+  --nila-error-surface: color-mix(in oklch, var(--color-error) 9%, var(--color-base-100));
+}
+
 /* Radix Themes 3.3 physics, expressed through Nila's semantic palette and type.
    Shared components own these recipes; product markup only selects meaning. */
 .nila-badge {
@@ -297,17 +341,21 @@ body {
   white-space: nowrap;
 }
 
-.nila-badge[data-variant="primary"],
+.nila-badge[data-variant="primary"] {
+  --nila-badge-bg: var(--nila-accent-a3);
+  --nila-badge-ink: var(--nila-accent-a11);
+}
+
 .nila-badge[data-variant="info"] {
-  --nila-badge-bg: color-mix(in oklch, var(--color-primary) 12%, transparent);
-  --nila-badge-ink: color-mix(in oklch, var(--color-primary) 78%, var(--color-base-content));
+  --nila-badge-bg: var(--nila-info-a3);
+  --nila-badge-ink: var(--nila-info-a11);
 }
 
 .nila-badge[data-variant="secondary"],
 .nila-badge[data-variant="neutral"],
 .nila-badge[data-variant="ghost"] {
-  --nila-badge-bg: color-mix(in oklch, var(--color-base-content) 7%, transparent);
-  --nila-badge-ink: var(--color-base-content);
+  --nila-badge-bg: var(--nila-ink-a3);
+  --nila-badge-ink: var(--nila-ink-12);
 }
 
 .nila-badge[data-variant="accent"] {
@@ -316,18 +364,18 @@ body {
 }
 
 .nila-badge[data-variant="success"] {
-  --nila-badge-bg: color-mix(in oklch, var(--color-success) 13%, transparent);
-  --nila-badge-ink: color-mix(in oklch, var(--color-success) 72%, var(--color-base-content));
+  --nila-badge-bg: var(--nila-success-a3);
+  --nila-badge-ink: var(--nila-success-a11);
 }
 
 .nila-badge[data-variant="warning"] {
-  --nila-badge-bg: color-mix(in oklch, var(--color-warning) 16%, transparent);
-  --nila-badge-ink: color-mix(in oklch, var(--color-warning) 64%, var(--color-base-content));
+  --nila-badge-bg: var(--nila-warning-a3);
+  --nila-badge-ink: var(--nila-warning-a11);
 }
 
 .nila-badge[data-variant="error"] {
-  --nila-badge-bg: color-mix(in oklch, var(--color-error) 12%, transparent);
-  --nila-badge-ink: color-mix(in oklch, var(--color-error) 78%, var(--color-base-content));
+  --nila-badge-bg: var(--nila-error-a3);
+  --nila-badge-ink: var(--nila-error-a11);
 }
 
 .nila-button {
@@ -361,26 +409,18 @@ body {
   flex-shrink: 0;
 }
 
-.nila-button:hover:not(:disabled) {
+.nila-button:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--nila-button-hover-bg);
   border-color: var(--nila-button-hover-border, transparent);
 }
 
-.nila-button:active:not(:disabled) {
+.nila-button:active:not(:disabled):not([aria-disabled="true"]) {
   background: var(--nila-button-active-bg, var(--nila-button-hover-bg));
 }
 
 .nila-button:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--color-primary) 65%, transparent);
+  outline: 2px solid var(--nila-accent-a8);
   outline-offset: 2px;
-}
-
-.nila-button:disabled,
-.nila-button[aria-disabled="true"] {
-  background: color-mix(in oklch, var(--color-base-content) 7%, transparent);
-  border-color: transparent;
-  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
-  cursor: not-allowed;
 }
 
 .nila-button[data-size="xs"] {
@@ -405,10 +445,10 @@ body {
 }
 
 .nila-button[data-variant="soft"] {
-  --nila-button-bg: color-mix(in oklch, var(--color-primary) 10%, transparent);
-  --nila-button-hover-bg: color-mix(in oklch, var(--color-primary) 15%, transparent);
-  --nila-button-active-bg: color-mix(in oklch, var(--color-primary) 20%, transparent);
-  --nila-button-ink: color-mix(in oklch, var(--color-primary) 78%, var(--color-base-content));
+  --nila-button-bg: var(--nila-accent-a3);
+  --nila-button-hover-bg: var(--nila-accent-a4);
+  --nila-button-active-bg: var(--nila-accent-a5);
+  --nila-button-ink: var(--nila-accent-a11);
 }
 
 .nila-button[data-variant="outline"] {
@@ -420,13 +460,13 @@ body {
 }
 
 .nila-button[data-variant="outline"]:hover:not(:disabled) {
-  --nila-button-hover-border: color-mix(in oklch, var(--color-base-content) 22%, transparent);
+  --nila-button-hover-border: var(--nila-ink-a7);
 }
 
 .nila-button[data-variant="ghost"] {
   --nila-button-bg: transparent;
-  --nila-button-hover-bg: color-mix(in oklch, var(--color-base-content) 7%, transparent);
-  --nila-button-active-bg: color-mix(in oklch, var(--color-base-content) 11%, transparent);
+  --nila-button-hover-bg: var(--nila-ink-a3);
+  --nila-button-active-bg: var(--nila-ink-a4);
   --nila-button-ink: var(--color-base-content);
 }
 
@@ -451,6 +491,14 @@ body {
   --nila-button-hover-bg: color-mix(in oklch, var(--color-neutral) 88%, var(--color-base-content));
 }
 
+.nila-button:disabled,
+.nila-button[aria-disabled="true"] {
+  background: var(--nila-ink-a3);
+  border-color: transparent;
+  color: var(--nila-ink-a10);
+  cursor: not-allowed;
+}
+
 .nila-segmented {
   display: inline-flex;
   overflow: hidden;
@@ -466,7 +514,7 @@ body {
   justify-content: center;
   border-left: 1px solid var(--color-base-300);
   padding-inline: 0.75rem;
-  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+  color: var(--nila-ink-a11);
   font-size: var(--text-ui);
   font-weight: 500;
   line-height: var(--text-ui--line-height);
@@ -482,14 +530,14 @@ body {
 }
 
 .nila-segmented-item[aria-pressed="true"] {
-  background: color-mix(in oklch, var(--color-primary) 10%, transparent);
-  color: color-mix(in oklch, var(--color-primary) 78%, var(--color-base-content));
+  background: var(--nila-accent-a3);
+  color: var(--nila-accent-a11);
 }
 
 .nila-segmented-item:focus-visible {
   position: relative;
   z-index: 1;
-  outline: 2px solid color-mix(in oklch, var(--color-primary) 65%, transparent);
+  outline: 2px solid var(--nila-accent-a8);
   outline-offset: -2px;
 }
 
@@ -571,27 +619,27 @@ body {
 }
 
 .nila-callout[data-kind="info"] {
-  --nila-callout-bg: color-mix(in oklch, var(--color-info) 8%, transparent);
-  --nila-callout-border: color-mix(in oklch, var(--color-info) 20%, transparent);
-  --nila-callout-ink: color-mix(in oklch, var(--color-info) 72%, var(--color-base-content));
+  --nila-callout-bg: var(--nila-info-a3);
+  --nila-callout-border: var(--nila-info-a6);
+  --nila-callout-ink: var(--nila-info-a11);
 }
 
 .nila-callout[data-kind="warning"] {
-  --nila-callout-bg: color-mix(in oklch, var(--color-warning) 10%, transparent);
-  --nila-callout-border: color-mix(in oklch, var(--color-warning) 22%, transparent);
-  --nila-callout-ink: color-mix(in oklch, var(--color-warning) 62%, var(--color-base-content));
+  --nila-callout-bg: var(--nila-warning-a3);
+  --nila-callout-border: var(--nila-warning-a6);
+  --nila-callout-ink: var(--nila-warning-a11);
 }
 
 .nila-callout[data-kind="error"] {
-  --nila-callout-bg: color-mix(in oklch, var(--color-error) 8%, transparent);
-  --nila-callout-border: color-mix(in oklch, var(--color-error) 20%, transparent);
-  --nila-callout-ink: color-mix(in oklch, var(--color-error) 76%, var(--color-base-content));
+  --nila-callout-bg: var(--nila-error-a3);
+  --nila-callout-border: var(--nila-error-a6);
+  --nila-callout-ink: var(--nila-error-a11);
 }
 
 .nila-callout[data-kind="success"] {
-  --nila-callout-bg: color-mix(in oklch, var(--color-success) 9%, transparent);
-  --nila-callout-border: color-mix(in oklch, var(--color-success) 20%, transparent);
-  --nila-callout-ink: color-mix(in oklch, var(--color-success) 70%, var(--color-base-content));
+  --nila-callout-bg: var(--nila-success-a3);
+  --nila-callout-border: var(--nila-success-a6);
+  --nila-callout-ink: var(--nila-success-a11);
 }
 
 .nila-toast {
@@ -617,15 +665,15 @@ body {
 }
 
 .nila-alert[data-kind="info"] {
-  --nila-alert-bg: color-mix(in oklch, var(--color-info) 10%, var(--color-base-100));
-  --nila-alert-border: color-mix(in oklch, var(--color-info) 24%, transparent);
-  --nila-alert-ink: color-mix(in oklch, var(--color-info) 72%, var(--color-base-content));
+  --nila-alert-bg: var(--nila-info-surface);
+  --nila-alert-border: var(--nila-info-a6);
+  --nila-alert-ink: var(--nila-info-a11);
 }
 
 .nila-alert[data-kind="error"] {
-  --nila-alert-bg: color-mix(in oklch, var(--color-error) 9%, var(--color-base-100));
-  --nila-alert-border: color-mix(in oklch, var(--color-error) 22%, transparent);
-  --nila-alert-ink: color-mix(in oklch, var(--color-error) 76%, var(--color-base-content));
+  --nila-alert-bg: var(--nila-error-surface);
+  --nila-alert-border: var(--nila-error-a6);
+  --nila-alert-ink: var(--nila-error-a11);
 }
 
 .nila-alert-close {
@@ -651,14 +699,31 @@ body {
 }
 
 .nila-menu {
-  position: absolute;
+  position: fixed;
+  inset: auto;
   z-index: 50;
   width: 14rem;
+  margin: 0;
   border: 1px solid var(--color-base-300);
   border-radius: 0.5rem;
   padding: 0.5rem;
   background: var(--color-base-100);
+  color: var(--nila-ink-12);
   box-shadow: var(--shadow-moon);
+}
+
+.nila-menu[data-placement="rail"] {
+  bottom: 4.5rem;
+  left: 0.75rem;
+}
+
+.nila-menu[data-placement="header"] {
+  top: 4rem;
+  right: 1rem;
+}
+
+.nila-account-menu:has(.nila-menu:popover-open) .nila-account-menu-chevron {
+  transform: rotate(180deg);
 }
 
 .nila-menu-item {
@@ -669,7 +734,7 @@ body {
   gap: 0.5rem;
   border-radius: 0.25rem;
   padding-inline: 0.75rem;
-  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+  color: var(--nila-ink-a11);
   font-size: var(--text-ui);
   font-weight: 500;
   line-height: var(--text-ui--line-height);
@@ -681,16 +746,16 @@ body {
 }
 
 .nila-menu-item:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--color-primary) 65%, transparent);
+  outline: 2px solid var(--nila-accent-a8);
   outline-offset: -2px;
 }
 
 .nila-menu-item[data-tone="error"] {
-  color: var(--color-error);
+  color: var(--nila-error-a11);
 }
 
 .nila-menu-item[data-tone="error"]:hover {
-  background: color-mix(in oklch, var(--color-error) 10%, transparent);
+  background: var(--nila-error-a3);
 }
 
 .nila-modal-scrim {
@@ -746,7 +811,7 @@ body {
   justify-content: center;
   gap: 0.25rem;
   border-radius: 0.25rem;
-  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+  color: var(--nila-ink-a10);
 }
 
 .nila-modal-close[data-label="true"] {
@@ -763,7 +828,7 @@ body {
 }
 
 .nila-modal-close:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--color-primary) 65%, transparent);
+  outline: 2px solid var(--nila-accent-a8);
   outline-offset: 2px;
 }
 
@@ -792,7 +857,7 @@ body {
 }
 
 .nila-fold-trigger:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--color-primary) 65%, transparent);
+  outline: 2px solid var(--nila-accent-a8);
   outline-offset: 2px;
 }
 
@@ -842,20 +907,20 @@ body {
 
 .nila-input::placeholder,
 .nila-textarea::placeholder {
-  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+  color: var(--nila-ink-a10);
 }
 
 .nila-input:hover:not(:disabled),
 .nila-select:hover:not(:disabled),
 .nila-textarea:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--color-base-content) 22%, transparent);
+  border-color: var(--nila-ink-a7);
 }
 
 .nila-input:focus,
 .nila-select:focus,
 .nila-textarea:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--color-primary) 28%, transparent);
+  box-shadow: 0 0 0 2px var(--nila-accent-a7);
   outline: none;
 }
 
@@ -863,7 +928,7 @@ body {
 .nila-select:disabled,
 .nila-textarea:disabled {
   background: var(--color-base-200);
-  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+  color: var(--nila-ink-a10);
   cursor: not-allowed;
 }
 
@@ -873,7 +938,7 @@ body {
 
 .nila-input-error:focus {
   border-color: var(--color-error);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--color-error) 25%, transparent);
+  box-shadow: 0 0 0 2px var(--nila-error-a7);
 }
 
 .nila-checkbox-label {
@@ -895,7 +960,7 @@ body {
 }
 
 .nila-checkbox:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--color-primary) 65%, transparent);
+  outline: 2px solid var(--nila-accent-a8);
   outline-offset: 2px;
 }
 
@@ -909,7 +974,7 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 0 0.25rem 0.25rem 0;
-  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+  color: var(--nila-ink-a10);
 }
 
 .nila-field-action:hover {
@@ -917,7 +982,7 @@ body {
 }
 
 .nila-field-action:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--color-primary) 65%, transparent);
+  outline: 2px solid var(--nila-accent-a8);
   outline-offset: -2px;
 }
 
@@ -931,16 +996,16 @@ details[open] > summary .fold-chevron {
    this scale, not typing a number. Same alpha-over-base mechanism as
    text-base-content/NN, so these composite identically on tinted surfaces. */
 @utility text-ink {
-  color: var(--color-base-content);
+  color: var(--nila-ink-12);
 }
 @utility text-ink-muted {
-  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+  color: var(--nila-ink-a11);
 }
 @utility text-ink-subtle {
-  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+  color: var(--nila-ink-a10);
 }
 @utility text-ink-faint {
-  color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+  color: var(--nila-ink-a8);
 }
 
 /* Moonlight ground: a pale cool sea-blue wash with a soft pool of light up top,

@@ -9,6 +9,7 @@ defmodule NilaWeb.CoreComponentsTest do
   import NilaWeb.Components.Button
   import NilaWeb.Components.Input
   import NilaWeb.Components.Fold
+  import NilaWeb.Layouts
   import NilaWeb.Components.Typography
 
   test "page_header renders eyebrow, display title, and intro copy" do
@@ -129,6 +130,24 @@ defmodule NilaWeb.CoreComponentsTest do
     refute html =~ "badge-soft"
     refute html =~ "text-context"
     assert html =~ "Completed"
+  end
+
+  test "account menu uses the native light-dismiss popover contract" do
+    assigns = %{
+      current_scope: %{user: %{name: "Dev Owner"}, current_org: %{name: "Nila CA"}}
+    }
+
+    html =
+      rendered_to_string(~H"""
+      <.account_menu current_scope={@current_scope} placement={:rail} id_prefix="test" />
+      """)
+
+    assert html =~ ~s(<button)
+    assert html =~ ~s(popovertarget="test-account-popover")
+    assert html =~ ~s(id="test-account-popover")
+    assert html =~ ~s(popover="auto")
+    refute html =~ "<details"
+    refute html =~ "<summary"
   end
 
   test "context text owns the restricted 12px role" do

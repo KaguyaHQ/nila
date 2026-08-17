@@ -199,6 +199,7 @@ if Application.compile_env(:nila, :dev_routes, false) or
                       <.button variant="soft">Review next</.button>
                       <.button variant="outline">Export workbook</.button>
                       <.button variant="ghost">View evidence</.button>
+                      <.button variant="soft" disabled>Unavailable</.button>
                     </div>
                     <div class="gap-related flex flex-wrap items-center">
                       <.button size="xs" variant="soft">Compact</.button>

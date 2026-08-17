@@ -290,11 +290,13 @@ defmodule NilaWeb.Layouts do
 
   def account_menu(assigns) do
     ~H"""
-    <details id={"#{@id_prefix}-account-menu"} class="group/account relative">
-      <summary
+    <div id={"#{@id_prefix}-account-menu"} class="nila-account-menu relative">
+      <button
         :if={@placement == :rail}
+        type="button"
         id={"#{@id_prefix}-account-trigger"}
-        class="focus:ring-base-100/25 hover:bg-base-100/10 rounded-field text-base-100/75 text-ui flex h-12 cursor-pointer list-none items-center gap-3 px-2 transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0 focus:ring-2 focus:outline-none [&::-webkit-details-marker]:hidden"
+        popovertarget={"#{@id_prefix}-account-popover"}
+        class="focus:ring-base-100/25 hover:bg-base-100/10 rounded-field text-base-100/75 text-ui flex h-12 w-full cursor-pointer items-center gap-3 px-2 transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0 focus:ring-2 focus:outline-none"
         aria-label="Open account menu"
         title={@current_scope.user.name}
       >
@@ -313,12 +315,14 @@ defmodule NilaWeb.Layouts do
           name="hero-chevron-up-down"
           class="text-base-100/45 size-4 shrink-0 group-data-[rail-collapsed=true]/app:hidden"
         />
-      </summary>
+      </button>
 
-      <summary
+      <button
         :if={@placement == :header}
+        type="button"
         id={"#{@id_prefix}-account-trigger"}
-        class="bg-base-200 focus:ring-primary/20 hover:bg-base-300 hover:text-ink rounded-field text-ink-muted text-ui flex h-9 min-w-0 cursor-pointer list-none items-center gap-2 px-3 transition focus:ring-2 focus:outline-none [&::-webkit-details-marker]:hidden"
+        popovertarget={"#{@id_prefix}-account-popover"}
+        class="bg-base-200 focus:ring-primary/20 hover:bg-base-300 hover:text-ink rounded-field text-ink-muted text-ui flex h-9 min-w-0 cursor-pointer items-center gap-2 px-3 transition focus:ring-2 focus:outline-none"
         aria-label="Open account menu"
         title={@current_scope.user.name}
       >
@@ -330,15 +334,17 @@ defmodule NilaWeb.Layouts do
         </span>
         <.icon
           name="hero-chevron-down"
-          class="text-ink-faint size-4 transition group-open/account:rotate-180"
+          class="nila-account-menu-chevron text-ink-faint size-4 transition"
         />
-      </summary>
+      </button>
 
-      <div class={[
-        "nila-menu",
-        @placement == :rail && "bottom-full left-0 mb-2",
-        @placement == :header && "right-0 mt-2"
-      ]}>
+      <div
+        id={"#{@id_prefix}-account-popover"}
+        popover="auto"
+        data-placement={@placement}
+        class="nila-menu"
+        aria-label="Account actions"
+      >
         <.link
           navigate={~p"/settings/profile"}
           id={"#{@id_prefix}-settings-link"}
@@ -361,7 +367,7 @@ defmodule NilaWeb.Layouts do
           <span>Sign out</span>
         </.link>
       </div>
-    </details>
+    </div>
     """
   end
 

@@ -29,6 +29,9 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     * **Motion** — product transitions use the named fast/calm durations and
       standard easing instead of numeric durations or raw easing utilities.
 
+    * **CSS variables** — every custom property referenced by `app.css` must be
+      defined in that source. A utility class name does not imply a runtime token.
+
   Run with `mix nila.style_guard` (also wired into `mix precommit`).
   """
 
@@ -92,6 +95,11 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
   @ruling_pattern ~r/\b(?:border|divide)-base-content\/\d+\b|\b(?:border|divide)-base-200\b/
   @motion_pattern ~r/\bduration-(?:\d+\b|\[[^\]]+\])|\bease-(?:in-out|in|out)\b/
+  @css_path "assets/css/app.css"
+  @css_variable_definition_pattern ~r/(?:^|[;{])\s*(--[a-zA-Z0-9_-]+)\s*:/m
+  @css_variable_reference_pattern ~r/var\(\s*(--[a-zA-Z0-9_-]+)/
+  @global_css_block_pattern ~r/(?:@plugin[^\{]*|@theme(?:\s+\w+)?\s*|:root(?:\s*,\s*\.landing)?\s*)\{([^{}]*)\}/s
+  @global_css_variable_pattern ~r/^--(?:color|font|text|spacing|radius|shadow|transition|ease|default|nila-(?:ink|accent|info|success|warning|error))-/
 
   # Product-only checks reuse the live/component scope and deliberately exclude
   # public marketing controller templates. Type scale covers the whole web tree.
@@ -117,6 +125,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     spacing = @spacing_globs |> expand() |> Enum.flat_map(&spacing_violations/1)
     ruling = @ruling_globs |> expand() |> Enum.flat_map(&ruling_violations/1)
     motion = @motion_globs |> expand() |> Enum.flat_map(&motion_violations/1)
+    css_variables = css_variable_violations(@css_path)
 
     report(legacy, "legacy hardcoded classes")
     report(type_scale, "raw type sizes — name a role from docs/design/FRONTEND.md#typography")
@@ -134,9 +143,10 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     report(spacing, "off-scale spacing — use the closed primitives and structural roles")
     report(ruling, "off-system ruling — use the base-300 hairline")
     report(motion, "off-system motion — use the named fast/calm transition vocabulary")
+    report(css_variables, "undefined CSS variables — define the token before consuming it")
 
     if legacy != [] or type_scale != [] or context_type != [] or component_recipes != [] or
-         spacing != [] or ruling != [] or motion != [] do
+         spacing != [] or ruling != [] or motion != [] or css_variables != [] do
       Mix.raise("Replace the flagged classes with Nila design-system tokens.")
     end
   end
@@ -214,6 +224,55 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
   defp ruling_violations(path), do: pattern_violations(path, @ruling_pattern)
   defp motion_violations(path), do: pattern_violations(path, @motion_pattern)
+
+  @doc false
+  def css_variable_violations(path) do
+    source = path |> File.read!() |> strip_css_comments() |> strip_css_strings()
+    definitions = css_variable_definitions(source)
+
+    global_definitions =
+      @global_css_block_pattern
+      |> Regex.scan(source)
+      |> Enum.flat_map(fn [_match, body] -> css_variable_definitions(body) end)
+      |> MapSet.new()
+
+    source
+    |> String.split("\n")
+    |> Enum.with_index(1)
+    |> Enum.flat_map(fn {line, line_number} ->
+      @css_variable_reference_pattern
+      |> Regex.scan(line)
+      |> Enum.map(fn [_match, name] -> name end)
+      |> Enum.reject(&css_variable_defined?(&1, definitions, global_definitions))
+      |> Enum.uniq()
+      |> Enum.map(&{path, line_number, &1})
+    end)
+  end
+
+  defp css_variable_definitions(source) do
+    @css_variable_definition_pattern
+    |> Regex.scan(source)
+    |> Enum.map(fn [_match, name] -> name end)
+    |> MapSet.new()
+  end
+
+  defp css_variable_defined?(name, definitions, global_definitions) do
+    if Regex.match?(@global_css_variable_pattern, name) do
+      MapSet.member?(global_definitions, name)
+    else
+      MapSet.member?(definitions, name)
+    end
+  end
+
+  defp strip_css_comments(source) do
+    Regex.replace(~r{/\*.*?\*/}s, source, &preserve_newlines/1)
+  end
+
+  defp strip_css_strings(source) do
+    Regex.replace(~r/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/s, source, &preserve_newlines/1)
+  end
+
+  defp preserve_newlines(value), do: String.replace(value, ~r/[^\n]/, " ")
 
   defp pattern_violations(path, pattern) do
     scan(path, fn line -> pattern |> Regex.scan(line) |> Enum.map(&hd/1) end)

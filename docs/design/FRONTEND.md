@@ -50,13 +50,19 @@ Use semantic daisyUI/Tailwind tokens; never raw hex or palette utilities in mark
 | `info`, `success`, `warning`, `error` | Semantic state and feedback |
 | `scrim` | Full-screen document reader only |
 
-The ink scale is semantic:
+The ink scale is executable, not a naming convention. `--nila-ink-12` and the
+`--nila-ink-a*` steps are Nila's Radix-calibrated foreground scale; accent and feedback
+colors have corresponding coordinated steps. Utilities and closed component recipes
+consume those variables directly.
 
 - `text-base-content` / ordinary inherited ink — required words and values;
-- `text-ink-muted` — supporting explanations;
+- `text-ink-muted` — supporting explanations, backed by `--nila-ink-a11`;
 - `text-ink-subtle` — context and schema that may recede;
 - `text-ink-faint` — icons, rules, and decorative marks only, never words.
 
+A theme context that changes `base-content` must redeclare the complete ink scale rather
+than one primitive. Never infer a CSS variable from a utility name: every `var(--…)`
+reference must have an executable definition and `mix nila.style_guard` enforces that.
 Do not tint every sentence blue. Blue is available for meaning because ordinary text
 stays ink.
 
@@ -177,6 +183,8 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
   typography for operational summaries.
 - **Modals:** `<.modal>` owns scrim, width families, radius, elevation, focus, dismissal,
   and workbench mode. Callers cannot pass arbitrary panel classes.
+- **Menus:** transient action menus use the native `popover="auto"` contract for light
+  dismissal and Escape behavior; `<details>` is a disclosure primitive, not a dropdown.
 - **Feedback:** `<.callout>`, `<.spinner>`, and `<.progress_bar>` own status mechanics;
   `<.flash>` owns floating notifications.
 - **Forms:** `<.input>` for every field, `to_form/2`, and unique form/control IDs.
@@ -211,4 +219,6 @@ shared layout or shell changes plausibly risk catastrophic breakage.
 - No raw daisyUI component classes in product code; daisyUI is theme plumbing only.
 - Closed `nila-*` recipes belong to their component owner and fail `mix nila.style_guard`
   when copied into product markup.
+- Undefined CSS custom-property references fail `mix nila.style_guard`; a Tailwind utility
+  does not create an identically named runtime variable.
 - Do not add exceptions to a guard allowlist merely to silence a violation.
