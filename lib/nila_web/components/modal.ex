@@ -11,9 +11,7 @@ defmodule NilaWeb.Components.Modal do
   @doc """
   Renders a centered modal over an ink scrim. `on_close` is the event fired by
   the close button, click-away, and Escape; the caller controls visibility (use
-  `:if`). `class` sets the panel width (defaults to `max-w-lg`) and may also set
-  a height (`h-[90vh]`) when the content wants to fill the panel and manage its
-  own scrolling.
+  `:if`). `width` and `scrim` expose the only supported visual choices.
 
   Set `variant="workbench"` for a sustained, full-viewport review surface.
   Workbenches never close on click-away. Set `close_on_escape={false}` while an
@@ -44,8 +42,8 @@ defmodule NilaWeb.Components.Modal do
   attr :close_label, :string, default: nil
   attr :close_on_escape, :boolean, default: true
   attr :target, :any, default: nil
-  attr :class, :any, default: nil
-  attr :scrim_class, :any, default: "bg-base-content/40"
+  attr :width, :string, default: "standard", values: ~w(standard wide extra-wide)
+  attr :scrim, :string, default: "standard", values: ~w(standard document)
   slot :header
   slot :inner_block, required: true
 
@@ -53,11 +51,8 @@ defmodule NilaWeb.Components.Modal do
     ~H"""
     <div
       id={@id}
-      class={[
-        @scrim_class,
-        "fixed inset-0 z-50 flex items-center justify-center",
-        @variant == "modal" && "px-4"
-      ]}
+      class={["nila-modal-scrim", @variant == "modal" && "px-4"]}
+      data-scrim={@scrim}
     >
       <.focus_wrap
         id={"#{@id}-focus-wrap"}
@@ -68,13 +63,9 @@ defmodule NilaWeb.Components.Modal do
         role="dialog"
         aria-modal="true"
         aria-labelledby={"#{@id}-title"}
-        class={[
-          "bg-base-100 border-base-300 flex w-full flex-col border p-6",
-          @variant == "modal" && "rounded-box shadow-moon-lg max-h-[90vh]",
-          @variant == "modal" && (@class || "max-w-lg"),
-          @variant == "workbench" && "h-dvh max-h-none max-w-none rounded-none shadow-none",
-          @variant == "workbench" && @class
-        ]}
+        class="nila-modal-panel"
+        data-variant={@variant}
+        data-width={@width}
       >
         <header class="mb-block flex shrink-0 items-start justify-between gap-4">
           <%= if @header == [] do %>
@@ -87,11 +78,8 @@ defmodule NilaWeb.Components.Modal do
             phx-click={@on_close}
             phx-target={@target}
             aria-label={@close_label || "Close #{@title}"}
-            class={[
-              "hover:bg-base-200 hover:text-ink rounded-field text-ink-subtle shrink-0 transition",
-              @close_label && "text-ui flex items-center gap-1 px-2 py-1 font-medium",
-              is_nil(@close_label) && "p-1"
-            ]}
+            class="nila-modal-close"
+            data-label={not is_nil(@close_label)}
           >
             <span :if={@close_label}>{@close_label}</span>
             <.icon name="hero-x-mark" class="size-4" />

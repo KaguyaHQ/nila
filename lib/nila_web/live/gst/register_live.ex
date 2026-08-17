@@ -76,7 +76,12 @@ defmodule NilaWeb.Gst.RegisterLive do
           Recent client periods and their GSTR-1 and GSTR-3B filing status.
         </.page_header>
 
-        <.card :if={@grid.periods == []} id="register-empty" class="py-12 text-center">
+        <.card
+          :if={@grid.periods == []}
+          id="register-empty"
+          padding="roomy"
+          class="text-center"
+        >
           <div class="space-y-block mx-auto max-w-md">
             <p class="text-body text-ink-muted font-light">
               No GST months yet — bring in a client's documents and this view fills itself.

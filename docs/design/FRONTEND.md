@@ -19,9 +19,12 @@ roles and constraints; inspect the executable source for exact values.
 
 ## Stack and shell
 
-Nila uses Phoenix LiveView, Tailwind v4, daisyUI v5, and one light-only `moonlight`
-theme. Keep the Tailwind v4 import/source syntax in `app.css`; there is no
-`tailwind.config.js`. Only `app.js` and `app.css` are supported bundles.
+Nila uses Phoenix LiveView, Tailwind v4, daisyUI v5 token plumbing, and one light-only
+`moonlight` theme. **Radix Themes 3.3 is the mechanical authority for generic UI.** It is
+not a runtime dependency: its coordinated geometry and states are ported into Nila's HEEx
+components. DaisyUI component classes are not product APIs. Keep the Tailwind v4
+import/source syntax in `app.css`; there is no `tailwind.config.js`. Only `app.js` and
+`app.css` are supported bundles.
 
 `Layouts.app/1` owns the desktop rail, product canvas, mobile fallback header, and outer
 gutters. `Layouts.settings/1` adds settings navigation inside that shell. Pages compose
@@ -154,10 +157,17 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
 
 ## Shared component contracts
 
-- **Cards:** `<.card>` owns surface, border, radius, and standard padding.
+- **Cards:** `<.card>` owns surface, border, radius, and controlled padding. Callers may
+  compose content but may not reskin the surface.
 - **Stat tiles:** `<.stat_card>` owns label/value/caption and optional figure treatment.
-- **Buttons:** `<.button>` owns variants and sizes; primary is the default action.
-- **Badges:** `<.badge>` owns semantic status styling and 14px operational type.
+- **Buttons:** `<.button>` owns variant, compact/standard/prominent size, icon spacing,
+  focus, and disabled state. Product callers cannot pass styling classes.
+- **Segmented controls:** `<.segmented_control>` owns mutually exclusive operational
+  filters; never rebuild joined button groups.
+- **Badges:** `<.badge>` owns semantic status styling and 14px operational type. It has one
+  size and no styling escape hatch.
+- **Fields:** `<.input>` owns text, select, textarea, checkbox, date, password, labels,
+  errors, and control geometry. Callers supply content and native attributes, not classes.
 - **Tables:** `<.data_table>` is the only product table. Use `dense` only for material
   scanned in bulk; right-aligned columns are tabular automatically.
 - **Context:** `<.context_text>` is the only route to 12px contextual copy. Its controlled
@@ -165,6 +175,10 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
 - **Folds:** `<.fold>`, never bare `<details>`. Open state lives on the server so LiveView
   patches do not collapse the reader’s place. `<.fold_summary>` owns 14px title/detail
   typography for operational summaries.
+- **Modals:** `<.modal>` owns scrim, width families, radius, elevation, focus, dismissal,
+  and workbench mode. Callers cannot pass arbitrary panel classes.
+- **Feedback:** `<.callout>`, `<.spinner>`, and `<.progress_bar>` own status mechanics;
+  `<.flash>` owns floating notifications.
 - **Forms:** `<.input>` for every field, `to_form/2`, and unique form/control IDs.
 - **Icons:** `<.icon>`, never direct Heroicons modules.
 
@@ -194,4 +208,7 @@ shared layout or shell changes plausibly risk catastrophic breakage.
 - No one-off gradients or shadows outside the named system.
 - No raw `text-context`; use `<.context_text>`.
 - No bare `<details>`, raw product `<input>`, or duplicate component recipes.
+- No raw daisyUI component classes in product code; daisyUI is theme plumbing only.
+- Closed `nila-*` recipes belong to their component owner and fail `mix nila.style_guard`
+  when copied into product markup.
 - Do not add exceptions to a guard allowlist merely to silence a violation.

@@ -689,7 +689,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
             id="month-busy"
             class="text-body text-ink-muted flex items-center gap-2"
           >
-            <span class="loading loading-sm loading-spinner text-moon"></span>
+            <span class="text-moon"><.spinner label="Updating month" /></span>
             This page updates itself as each pile lands.
           </p>
         </div>
@@ -706,7 +706,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp door(%{door: %{kind: :navigate}} = assigns) do
     ~H"""
-    <.button id={@door.id} navigate={@door.to} variant="outline" size="sm" class="gap-2">
+    <.button id={@door.id} navigate={@door.to} variant="outline" size="sm">
       {@door.label} <.icon name="hero-arrow-right-mini" class="size-4" />
     </.button>
     """
@@ -714,7 +714,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp door(%{door: %{kind: :patch}} = assigns) do
     ~H"""
-    <.button id={@door.id} patch={@door.to} variant="outline" size="sm" class="gap-2">
+    <.button id={@door.id} patch={@door.to} variant="outline" size="sm">
       {@door.label} <.icon name="hero-arrow-right-mini" class="size-4" />
     </.button>
     """
@@ -727,7 +727,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       href={@door.to}
       variant="outline"
       size="sm"
-      class="gap-2"
     >
       {@door.label} <.icon name="hero-arrow-right-mini" class="size-4" />
     </.button>
@@ -740,7 +739,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       id={@door.id}
       variant="outline"
       size="sm"
-      class="gap-2"
       phx-click={@door.event}
       {door_values(@door)}
     >

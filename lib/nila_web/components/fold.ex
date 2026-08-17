@@ -27,7 +27,7 @@ defmodule NilaWeb.Components.Fold do
   attr :open, :boolean, default: false
   attr :on_toggle, :string, default: "toggle-fold"
   attr :class, :any, default: nil
-  attr :summary_class, :any, default: "text-ink-muted text-ui"
+  attr :summary_class, :any, default: nil
   attr :rest, :global
 
   slot :summary, required: true
@@ -38,7 +38,7 @@ defmodule NilaWeb.Components.Fold do
     <details id={@id} open={@open} class={["group/fold scroll-mt-28", @class]} {@rest}>
       <summary
         class={[
-          "hover:text-ink flex cursor-pointer list-none items-center gap-2",
+          "hover:text-ink nila-fold-trigger text-ui cursor-pointer list-none gap-2",
           @summary_class
         ]}
         phx-click={JS.push(@on_toggle, value: %{fold: @id})}

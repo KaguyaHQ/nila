@@ -39,10 +39,17 @@ if Application.compile_env(:nila, :dev_routes, false) or
       {:ok,
        socket
        |> assign(:open_folds, MapSet.new(["ds-b2b-schedule"]))
+       |> assign(:show_modal, false)
        |> assign(:rows, @rows)}
     end
 
     @impl true
+    def handle_event("open-design-modal", _params, socket),
+      do: {:noreply, assign(socket, :show_modal, true)}
+
+    def handle_event("close-design-modal", _params, socket),
+      do: {:noreply, assign(socket, :show_modal, false)}
+
     def handle_event("toggle-fold", %{"fold" => fold}, socket) do
       open_folds =
         if MapSet.member?(socket.assigns.open_folds, fold) do
@@ -194,10 +201,9 @@ if Application.compile_env(:nila, :dev_routes, false) or
                       <.button variant="ghost">View evidence</.button>
                     </div>
                     <div class="gap-related flex flex-wrap items-center">
-                      <.button size="xs" variant="soft">Extra small</.button>
-                      <.button size="sm" variant="soft">Small</.button>
-                      <.button variant="soft">Default</.button>
-                      <.button size="lg" variant="soft">Large</.button>
+                      <.button size="xs" variant="soft">Compact</.button>
+                      <.button variant="soft">Standard</.button>
+                      <.button size="lg" variant="soft">Prominent</.button>
                     </div>
                   </.card>
 
@@ -267,6 +273,54 @@ if Application.compile_env(:nila, :dev_routes, false) or
                   </div>
                 </.card>
 
+                <div class="gap-section grid xl:grid-cols-2">
+                  <.card id="ds-feedback" class="space-y-section">
+                    <div>
+                      <h3 class="text-h4 font-semibold">Feedback</h3>
+                      <p class="text-ink-muted text-ui">
+                        Inline messages reserve semantic color for actual state.
+                      </p>
+                    </div>
+                    <div class="space-y-related">
+                      <.callout kind="info" title="Draft prepared">
+                        Return workings are available for inspection.
+                      </.callout>
+                      <.callout kind="warning" title="Review required">
+                        Confirm place of supply before approval.
+                      </.callout>
+                    </div>
+                  </.card>
+
+                  <.card id="ds-overlays" class="space-y-section">
+                    <div>
+                      <h3 class="text-h4 font-semibold">Overlay</h3>
+                      <p class="text-ink-muted text-ui">
+                        Focus, dismissal, and keyboard behavior remain LiveView-owned.
+                      </p>
+                    </div>
+                    <.button id="ds-open-modal" variant="outline" phx-click="open-design-modal">
+                      Open modal
+                    </.button>
+                  </.card>
+                </div>
+
+                <.modal
+                  :if={@show_modal}
+                  id="ds-modal"
+                  title="Review invoice"
+                  on_close="close-design-modal"
+                >
+                  <div class="space-y-block">
+                    <p class="text-body text-ink-muted">
+                      The geometry follows Radix while focus and dismissal remain native LiveView behavior.
+                    </p>
+                    <div class="flex justify-end gap-2">
+                      <.button variant="ghost" phx-click="close-design-modal">Cancel</.button>
+                      <.button phx-click="close-design-modal">Confirm review</.button>
+                    </div>
+                  </div>
+                </.modal>
+
                 <div id="ds-cards" class="gap-section grid md:grid-cols-3">
                   <.stat_card label="Taxable value" figure>
                     {format_money(24_876_000, prefix: "₹")}
@@ -309,7 +363,7 @@ if Application.compile_env(:nila, :dev_routes, false) or
                   A representative GST state built from production primitives.
                 </.section_heading>
 
-                <.card id="ds-workpaper-result" class="overflow-hidden p-0">
+                <.card id="ds-workpaper-result" padding="none" class="overflow-hidden">
                   <div class="moonlight py-region px-6 lg:px-8">
                     <div class="gap-region grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
                       <div class="space-y-block">

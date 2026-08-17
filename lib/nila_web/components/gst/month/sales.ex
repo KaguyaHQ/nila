@@ -519,23 +519,17 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               placeholder="Invoice, buyer or GSTIN"
             />
           </.form>
-          <div id="gstr1-register-filters" class="join">
-            <button
-              :for={
-                {filter, label} <- [
-                  {:review_cases, "Review cases"},
-                  {:no_open_checks, "No open checks"},
-                  {:all, "All"}
-                ]
-              }
-              type="button"
-              phx-click="filter-sales-register"
-              phx-value-filter={filter}
-              class={["btn btn-sm join-item", @register_filter == filter && "btn-active"]}
-            >
-              {label}
-            </button>
-          </div>
+          <.segmented_control
+            id="gstr1-register-filters"
+            items={[
+              {:review_cases, "Review cases"},
+              {:no_open_checks, "No open checks"},
+              {:all, "All"}
+            ]}
+            selected={@register_filter}
+            on_change="filter-sales-register"
+            value_name="filter"
+          />
         </div>
 
         <.invoice_table

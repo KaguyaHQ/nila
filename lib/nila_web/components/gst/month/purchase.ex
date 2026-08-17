@@ -362,38 +362,32 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               placeholder="Invoice, vendor or GSTIN"
             />
           </.form>
-          <div id="purchase-action-filters" class="join overflow-x-auto">
-            <button
-              :for={
-                {filter, label} <- [
-                  {:all, "All actions"},
-                  {:decisions, "Decisions"},
-                  {:documents, "To collect"},
-                  {:waiting, "Waiting"},
-                  {:resolved, "Resolved"}
-                ]
-              }
-              type="button"
-              phx-click="filter-purchase-action"
-              phx-value-filter={filter}
-              class={["btn btn-sm join-item", @action_filter == filter && "btn-active"]}
-            >{label}</button>
+          <div class="overflow-x-auto">
+            <.segmented_control
+              id="purchase-action-filters"
+              items={[
+                {:all, "All actions"},
+                {:decisions, "Decisions"},
+                {:documents, "To collect"},
+                {:waiting, "Waiting"},
+                {:resolved, "Resolved"}
+              ]}
+              selected={@action_filter}
+              on_change="filter-purchase-action"
+              value_name="filter"
+            />
           </div>
-          <div id="purchase-register-sort" class="join">
-            <button
-              :for={
-                {sort, label} <- [
-                  {:register, "Register"},
-                  {:materiality, "Tax high-low"},
-                  {:vendor, "Vendor"}
-                ]
-              }
-              type="button"
-              phx-click="sort-purchase-register"
-              phx-value-sort={sort}
-              class={["btn btn-sm join-item", @register_sort == sort && "btn-active"]}
-            >{label}</button>
-          </div>
+          <.segmented_control
+            id="purchase-register-sort"
+            items={[
+              {:register, "Register"},
+              {:materiality, "Tax high-low"},
+              {:vendor, "Vendor"}
+            ]}
+            selected={@register_sort}
+            on_change="sort-purchase-register"
+            value_name="sort"
+          />
         </div>
 
         <.data_table

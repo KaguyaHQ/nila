@@ -411,16 +411,14 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
             <span id="purchase-review-progress" class="text-ink-subtle text-ui">
               {@review.progress.done} of {@review.progress.total} decisions · {@review.missing_count} bills to collect
             </span>
-            <div id="purchase-review-scope" class="join">
-              <button
-                :for={{scope, label} <- [{:needs_you, "Needs you"}, {:all, "All"}]}
-                type="button"
-                phx-click="scope"
-                phx-value-scope={scope}
-                phx-target={@myself}
-                class={["btn btn-sm join-item", @route.scope == scope && "btn-active"]}
-              >{label}</button>
-            </div>
+            <.segmented_control
+              id="purchase-review-scope"
+              items={[{:needs_you, "Needs you"}, {:all, "All"}]}
+              selected={@route.scope}
+              on_change="scope"
+              value_name="scope"
+              target={@myself}
+            />
             <.button
               id="purchase-review-next"
               variant="outline"

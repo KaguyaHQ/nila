@@ -28,10 +28,11 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
         ]}>
           <div class="flex flex-wrap items-center gap-2">
             <span class="text-base-content text-ui font-semibold">{dump_kind_title(dump.kind)}</span>
-            <span
+            <.spinner
               :if={dump.status in ~w(received extracting)}
-              class="loading loading-spinner loading-xs text-moon"
-            ></span>
+              size="xs"
+              label="Extracting"
+            />
             <.badge :if={MapSet.member?(@superseded_2b_ids, dump.id)} variant="neutral">
               Replaced
             </.badge>

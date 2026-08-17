@@ -24,7 +24,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       id="month-chase-history-modal"
       title={"Asked #{@client.name} · #{period_label(@period)}"}
       on_close="close-chase-history"
-      class="max-w-2xl"
+      width="wide"
     >
       <.chase_history asks={@asks} />
     </.modal>
@@ -53,8 +53,8 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       id="gstr1-duplicate-review-modal"
       title={"Duplicate invoice #{@issue["invoice"]}"}
       on_close="close-duplicate-review"
-      class="max-w-6xl"
-      scrim_class="bg-scrim/70"
+      width="extra-wide"
+      scrim="document"
     >
       <div class="space-y-block">
         <p class="text-body text-ink-muted">

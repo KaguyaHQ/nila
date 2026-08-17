@@ -50,7 +50,9 @@ defmodule NilaWeb.CoreComponentsTest do
     assert html =~ "Work Orders shown"
     assert html =~ ~s(id="work-orders-count")
     assert html =~ "42"
-    assert html =~ "border-base-300"
+    assert html =~ "nila-card"
+    assert html =~ ~s(data-padding="compact")
+    refute html =~ "rounded-box"
     refute html =~ "shadow-"
   end
 
@@ -66,6 +68,25 @@ defmodule NilaWeb.CoreComponentsTest do
     assert html =~ ~s(data-variant="soft")
     assert html =~ ~s(data-size="xs")
     refute html =~ "btn-"
+  end
+
+  test "segmented control owns filter geometry and selected state" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.segmented_control
+        id="filters"
+        items={[{:open, "Open"}, {:all, "All"}]}
+        selected={:open}
+        on_change="filter"
+        value_name="scope"
+      />
+      """)
+
+    assert html =~ "nila-segmented"
+    assert html =~ ~s(phx-value-scope="open")
+    assert html =~ ~s(aria-pressed="true")
   end
 
   test "input family uses the canonical field recipes" do

@@ -335,14 +335,14 @@ defmodule NilaWeb.Layouts do
       </summary>
 
       <div class={[
-        "bg-base-100 border-base-300 rounded-box shadow-moon absolute z-50 w-56 border p-1.5",
+        "nila-menu",
         @placement == :rail && "bottom-full left-0 mb-2",
         @placement == :header && "right-0 mt-2"
       ]}>
         <.link
           navigate={~p"/settings/profile"}
           id={"#{@id_prefix}-settings-link"}
-          class="focus:ring-primary/20 hover:bg-base-200 hover:text-ink rounded-field text-ink-muted text-ui flex h-10 items-center gap-2 px-3 font-medium transition focus:ring-2 focus:outline-none"
+          class="nila-menu-item"
         >
           <.icon name="hero-cog-6-tooth" class="text-ink-subtle size-4" />
           <span>Settings</span>
@@ -354,7 +354,8 @@ defmodule NilaWeb.Layouts do
           href={~p"/users/log_out"}
           method="delete"
           id={"#{@id_prefix}-sign-out-link"}
-          class="focus:ring-error/20 hover:bg-error/10 hover:text-error rounded-field text-ink-muted text-ui flex h-10 items-center gap-2 px-3 font-medium transition focus:ring-2 focus:outline-none"
+          class="nila-menu-item"
+          data-tone="error"
         >
           <.icon name="hero-arrow-right-start-on-rectangle" class="size-4" />
           <span>Sign out</span>

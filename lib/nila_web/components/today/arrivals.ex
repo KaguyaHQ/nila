@@ -10,7 +10,7 @@ defmodule NilaWeb.Components.Today.Arrivals do
     ~H"""
     <section :if={@groups != []} id="pending-arrivals" class="space-y-related">
       <h2 class="text-base-content text-ui font-semibold">New arrivals</h2>
-      <.card class="divide-base-300 divide-y p-0">
+      <.card padding="none" class="divide-base-300 divide-y">
         <button
           :for={group <- @groups}
           type="button"

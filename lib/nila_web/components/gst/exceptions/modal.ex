@@ -14,7 +14,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Modal do
       title="Ask for the missing bill"
       on_close="close-ask"
       target={@target}
-      class="max-w-2xl"
+      width="wide"
     >
       <div class="space-y-block">
         <pre

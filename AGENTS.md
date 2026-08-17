@@ -67,7 +67,7 @@ custom classes must fully style the input
 - For token, class, component, or mechanical UI work, also read `docs/design/FRONTEND.md`.
 - For a new screen, workflow, or substantial restructuring, also read `docs/design/COMPOSITION.md` and `docs/design/TASTE.md`.
 - For public/marketing pages, read `docs/design/MARKETING.md` and `docs/design/TASTE.md`.
-- `assets/css/app.css` is authoritative for token values; `lib/nila_web/components/` owns shared recipes. Token bans are enforced by `mix nila.style_guard`. Use the development-only `/dev/design-system` as the executable component reference.
+- `assets/css/app.css` is authoritative for token values; `lib/nila_web/components/` owns shared recipes. Radix Themes 3.3 is the mechanical authority for generic controls, ported into HEEx with Nila's skin—never invent generic geometry or copy closed `nila-*` recipes into product markup. Token and recipe boundaries are enforced by `mix nila.style_guard`. Use the development-only `/dev/design-system` as the executable component reference.
 - For visible UI changes, inspect the real affected desktop screen before and after editing. Nila is a desktop workbench for CA firms; routine mobile screenshots/parity are not required. Check narrow layouts only when shared shell/layout changes could break catastrophically.
 
 ### JS and CSS guidelines
@@ -81,7 +81,7 @@ custom classes must fully style the input
 
 - **Always use and maintain this import syntax** in the app.css file for projects generated with `phx.new`
 - **Never** use `@apply` when writing raw css
-- This project uses **daisyUI v5 + the bespoke "moonlight" tokens** (see `docs/design/FRONTEND.md`). Build from shared modules in `lib/nila_web/components/`; never hard-code colors or hex. (Overrides the generic phx.new "write your own, no daisyUI" default.)
+- This project uses **daisyUI v5 for bespoke "moonlight" token plumbing**, not as the product component authority (see `docs/design/FRONTEND.md`). Build from shared modules in `lib/nila_web/components/`; never use raw daisyUI component classes or hard-code colors/hex. (Overrides the generic phx.new "write your own, no daisyUI" default.)
 - Out of the box **only the app.js and app.css bundles are supported**
   - You cannot reference an external vendor'd script `src` or link `href` in the layouts
   - You must import the vendor deps into app.js and app.css to use them

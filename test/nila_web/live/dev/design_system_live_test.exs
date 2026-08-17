@@ -18,10 +18,25 @@ defmodule NilaWeb.Dev.DesignSystemLiveTest do
     assert has_element?(view, "#ds-badges .nila-badge[data-variant='warning']", "Needs review")
     assert has_element?(view, "#ds-fields .nila-input")
     assert has_element?(view, "#ds-fields .nila-select")
+    assert has_element?(view, "#ds-feedback .nila-callout[data-kind='warning']")
     assert has_element?(view, "#ds-cards", "₹39,520.80")
     assert has_element?(view, "#ds-register-rows tr", "INV-1048")
     assert has_element?(view, "#ds-workpaper-result", "Draft prepared. One invoice needs you.")
     assert has_element?(view, "#ds-b2b-schedule[open]")
+  end
+
+  test "modal example uses the real LiveView dismissal contract", %{conn: conn} do
+    {:ok, view, _html} = live_isolated(conn, NilaWeb.Dev.DesignSystemLive)
+
+    view |> element("#ds-open-modal") |> render_click()
+
+    assert has_element?(view, "#ds-modal .nila-modal-panel[data-width='standard']")
+
+    view
+    |> element("#ds-modal button[phx-click='close-design-modal']", "Confirm review")
+    |> render_click()
+
+    refute has_element?(view, "#ds-modal")
   end
 
   test "fold examples preserve server-owned open state", %{conn: conn} do

@@ -13,7 +13,7 @@ defmodule NilaWeb.Components.Today.Modals do
       id="today-chase-history-modal"
       title={"Asked #{@chase_history.client_name} · #{@chase_history.period_label}"}
       on_close="close-chase-history"
-      class="max-w-2xl"
+      width="wide"
     >
       <.chase_history asks={@chase_history.asks} />
     </.modal>
@@ -23,7 +23,7 @@ defmodule NilaWeb.Components.Today.Modals do
       id="chase-draft-modal"
       title={"Ask #{@draft.client_name} · #{@draft.period_label}"}
       on_close="close-draft"
-      class="max-w-2xl"
+      width="wide"
     >
       <div class="space-y-block">
         <pre

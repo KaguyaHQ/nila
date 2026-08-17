@@ -1,25 +1,25 @@
 defmodule NilaWeb.Components.Card do
   @moduledoc """
-  Moonlight content card and KPI stat tile.
+  Radix-calibrated content surface and Nila KPI tile.
   """
   use Phoenix.Component
 
   @doc """
-  Renders a moonlight content card: a bordered surface with `rounded-box`
-  corners. Pass `class` to adjust padding/layout and
-  any global attrs (e.g. `id`) flow through.
+  Renders the canonical Nila surface. `padding` owns internal geometry; `class`
+  is reserved for content layout such as stacks, clipping, or dividers.
 
   ## Examples
 
       <.card id="work-order-header" class="space-y-block">…</.card>
   """
+  attr :padding, :string, default: "standard", values: ~w(none compact standard roomy)
   attr :class, :any, default: nil
   attr :rest, :global
   slot :inner_block, required: true
 
   def card(assigns) do
     ~H"""
-    <div class={["bg-base-100 border-base-300 rounded-box border p-6", @class]} {@rest}>
+    <div class={["nila-card", @class]} data-padding={@padding} {@rest}>
       {render_slot(@inner_block)}
     </div>
     """
@@ -48,10 +48,7 @@ defmodule NilaWeb.Components.Card do
 
   def stat_card(assigns) do
     ~H"""
-    <div
-      class={["bg-base-100 border-base-300 rounded-box border px-4 py-3", @class]}
-      {@rest}
-    >
+    <div class={["nila-card", @class]} data-padding="compact" {@rest}>
       <div class="text-ink-subtle text-label font-medium uppercase">{@label}</div>
       <div
         id={@value_id}

@@ -23,8 +23,9 @@ defmodule NilaWeb.Components.ModalTest do
     assert LazyHTML.attribute(focus_wrap, "phx-click-away") == ["close-invoice"]
     assert LazyHTML.attribute(focus_wrap, "phx-window-keydown") == ["close-invoice"]
     assert LazyHTML.attribute(focus_wrap, "phx-key") == ["escape"]
-    assert html =~ "max-h-[90vh]"
-    assert html =~ "max-w-lg"
+    assert html =~ ~s(class="nila-modal-panel")
+    assert html =~ ~s(data-variant="modal")
+    assert html =~ ~s(data-width="standard")
     assert html =~ "Invoice details"
   end
 
@@ -51,9 +52,8 @@ defmodule NilaWeb.Components.ModalTest do
     assert LazyHTML.attribute(focus_wrap, "phx-click-away") == []
     assert LazyHTML.attribute(focus_wrap, "phx-window-keydown") == []
     assert LazyHTML.attribute(focus_wrap, "phx-key") == []
-    assert html =~ "h-dvh"
-    assert html =~ "max-h-none"
-    assert html =~ "max-w-none"
+    assert html =~ ~s(class="nila-modal-panel")
+    assert html =~ ~s(data-variant="workbench")
     refute html =~ "max-h-[90vh]"
 
     assert fragment

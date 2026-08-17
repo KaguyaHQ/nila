@@ -12,8 +12,9 @@ deeper document only when the task calls for it.
 | Aesthetic judgment | [`TASTE.md`](./TASTE.md) |
 
 `assets/css/app.css` is authoritative for token values. Shared component APIs live
-under `lib/nila_web/components/`. This document explains intent; it does not mirror
-executable values.
+under `lib/nila_web/components/`. Radix Themes 3.3 is the authority for generic
+component physics; Nila ports those relationships into HEEx with moonlight colors and
+its own typography. This document explains intent; it does not mirror executable values.
 
 ## Brand
 
@@ -67,6 +68,8 @@ These are not taste preferences. Violating one is almost certainly a product err
 - Operational words and values use readable ink; faint ink never carries required meaning.
 - Product UI is light-only moonlight: no purple, achromatic black, or invented dark theme.
 - Markup uses semantic tokens and shared components; no raw colors or arbitrary type sizes.
+- Generic controls follow the pinned Radix family; product code never invents or overrides
+  their geometry.
 - Twelve-pixel text is restricted context, never a way to make operational information
   look secondary.
 

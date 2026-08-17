@@ -52,4 +52,32 @@ defmodule NilaWeb.Components.Button do
       """
     end
   end
+
+  attr :id, :string, default: nil
+  attr :items, :list, required: true
+  attr :selected, :any, required: true
+  attr :on_change, :string, required: true
+  attr :value_name, :string, required: true
+  attr :target, :any, default: nil
+
+  @doc "Renders a compact set of mutually exclusive operational filters."
+  def segmented_control(assigns) do
+    ~H"""
+    <div id={@id} class="nila-segmented">
+      <button
+        :for={{value, label} <- @items}
+        type="button"
+        class="nila-segmented-item"
+        aria-pressed={to_string(@selected == value)}
+        phx-click={@on_change}
+        phx-target={@target}
+        {value_attribute(@value_name, value)}
+      >
+        {label}
+      </button>
+    </div>
+    """
+  end
+
+  defp value_attribute(name, value), do: %{"phx-value-#{name}" => value}
 end

@@ -61,6 +61,28 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   @context_type_pattern ~r/\btext-context\b/
   @context_type_implementation "lib/nila_web/components/typography.ex"
 
+  @component_recipe_owners %{
+    "nila-badge" => "lib/nila_web/components/badge.ex",
+    "nila-button" => "lib/nila_web/components/button.ex",
+    "nila-segmented" => "lib/nila_web/components/button.ex",
+    "nila-card" => "lib/nila_web/components/card.ex",
+    "nila-field" => "lib/nila_web/components/input.ex",
+    "nila-input" => "lib/nila_web/components/input.ex",
+    "nila-select" => "lib/nila_web/components/input.ex",
+    "nila-textarea" => "lib/nila_web/components/input.ex",
+    "nila-checkbox" => "lib/nila_web/components/input.ex",
+    "nila-table" => "lib/nila_web/components/table.ex",
+    "nila-fold" => "lib/nila_web/components/fold.ex",
+    "nila-modal" => "lib/nila_web/components/modal.ex",
+    "nila-menu" => "lib/nila_web/components/layouts.ex",
+    "nila-callout" => "lib/nila_web/components/feedback.ex",
+    "nila-spinner" => "lib/nila_web/components/feedback.ex",
+    "nila-progress" => "lib/nila_web/components/feedback.ex",
+    "nila-alert" => "lib/nila_web/components/flash.ex",
+    "nila-toast" => "lib/nila_web/components/flash.ex"
+  }
+  @component_recipe_pattern ~r/\bnila-(?:badge|button|segmented|card|field|input|select|textarea|checkbox|table|fold|modal|menu|callout|spinner|progress|alert|toast)(?:-[\w-]+)?\b/
+
   @spacing_pattern ~r/(?<![\w-])-?(?:p[xysetrbl]?|m[xysetrbl]?|gap(?:-[xy])?|space-[xy])-(\[[^\]]+\]|\d+(?:\.\d+)?)/
   @raw_structural_spacing_pattern ~r/(?<![\w-])space-y-(?:2|4|6|8)\b/
   @spacing_values MapSet.new(~w(0 0.5 1 1.5 2 3 4 6 8 12))
@@ -88,6 +110,10 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     legacy = @legacy_globs |> expand() |> Enum.flat_map(&legacy_violations/1)
     type_scale = @type_scale_globs |> expand() |> Enum.flat_map(&type_scale_violations/1)
     context_type = @type_scale_globs |> expand() |> Enum.flat_map(&context_type_violations/1)
+
+    component_recipes =
+      @type_scale_globs |> expand() |> Enum.flat_map(&component_recipe_violations/1)
+
     spacing = @spacing_globs |> expand() |> Enum.flat_map(&spacing_violations/1)
     ruling = @ruling_globs |> expand() |> Enum.flat_map(&ruling_violations/1)
     motion = @motion_globs |> expand() |> Enum.flat_map(&motion_violations/1)
@@ -100,12 +126,17 @@ defmodule Mix.Tasks.Nila.StyleGuard do
       "12px is context only; secondary operational information remains 14px."
     )
 
+    report(
+      component_recipes,
+      "closed component recipe used outside its owner — call the shared component"
+    )
+
     report(spacing, "off-scale spacing — use the closed primitives and structural roles")
     report(ruling, "off-system ruling — use the base-300 hairline")
     report(motion, "off-system motion — use the named fast/calm transition vocabulary")
 
-    if legacy != [] or type_scale != [] or context_type != [] or spacing != [] or ruling != [] or
-         motion != [] do
+    if legacy != [] or type_scale != [] or context_type != [] or component_recipes != [] or
+         spacing != [] or ruling != [] or motion != [] do
       Mix.raise("Replace the flagged classes with Nila design-system tokens.")
     end
   end
@@ -130,6 +161,28 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   def context_type_violations(@context_type_implementation), do: []
 
   def context_type_violations(path), do: pattern_violations(path, @context_type_pattern)
+
+  @doc false
+  def component_recipe_violations(path) do
+    scan(path, fn line ->
+      @component_recipe_pattern
+      |> Regex.scan(line)
+      |> Enum.map(&hd/1)
+      |> Enum.reject(&component_recipe_owner?(&1, path))
+    end)
+  end
+
+  defp recipe_root(token) do
+    Enum.find(Map.keys(@component_recipe_owners), &String.starts_with?(token, &1))
+  end
+
+  defp component_recipe_owner?(token, path) do
+    root = recipe_root(token)
+
+    Map.fetch!(@component_recipe_owners, root) == path or
+      (root in ~w(nila-field nila-input nila-select nila-textarea nila-checkbox) and
+         path == "lib/nila_web/components/form.ex")
+  end
 
   defp spacing_violations(path) do
     scan(path, fn line ->

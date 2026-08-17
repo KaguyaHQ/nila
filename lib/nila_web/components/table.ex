@@ -69,8 +69,6 @@ defmodule NilaWeb.Components.Table do
     doc:
       "top-offset class (e.g. \"xl:top-14\") — keeps the header row pinned while the\n    page scrolls. Applies at xl+ only: sticky needs the wrapper's horizontal overflow\n    relaxed, so narrow screens keep their scroll and wide screens get the pinned header"
 
-  attr :class, :any, default: nil
-
   slot :col do
     attr :label, :string
     attr :align, :string
@@ -94,14 +92,17 @@ defmodule NilaWeb.Components.Table do
 
     ~H"""
     <div class={[
-      "bg-base-100 border-base-300 rounded-box overflow-x-auto border",
-      @sticky_header && "xl:overflow-x-visible",
-      @class
+      "nila-table-shell",
+      @sticky_header && "xl:overflow-x-visible"
     ]}>
       <div :if={@is_empty?} class="text-body text-ink-muted px-4 py-12 text-center">
         {render_slot(@empty)}
       </div>
-      <table :if={!@is_empty?} class={["text-ui w-full text-left", @min_width]}>
+      <table
+        :if={!@is_empty?}
+        class={["nila-table", @min_width]}
+        data-density={if(@dense, do: "dense", else: "standard")}
+      >
         <thead class={[
           "bg-base-200 text-ink-subtle text-label uppercase",
           @sticky_header && ["xl:sticky xl:z-10", @sticky_header]
@@ -144,7 +145,7 @@ defmodule NilaWeb.Components.Table do
               :for={{col, index} <- Enum.with_index(@col)}
               class={[
                 "align-top",
-                (@dense && "px-3 py-1.5") || "px-4 py-3",
+                (@dense && "px-3 py-2") || "px-4 py-3",
                 col[:align] == "right" && "text-right tabular-nums",
                 col[:class]
               ]}

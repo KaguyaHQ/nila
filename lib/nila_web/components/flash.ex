@@ -41,14 +41,10 @@ defmodule NilaWeb.Components.Flash do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-end toast-top z-50"
+      class="nila-toast"
       {@rest}
     >
-      <div class={[
-        "alert w-80 max-w-80 text-wrap sm:w-96 sm:max-w-96",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
-      ]}>
+      <div class="nila-alert" data-kind={@kind}>
         <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
         <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
         <div>
@@ -56,8 +52,8 @@ defmodule NilaWeb.Components.Flash do
           <p>{msg}</p>
         </div>
         <div class="flex-1" />
-        <button type="button" class="group cursor-pointer self-start" aria-label="close">
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <button type="button" class="nila-alert-close" aria-label="close">
+          <.icon name="hero-x-mark" class="size-4" />
         </button>
       </div>
     </div>

@@ -604,7 +604,12 @@ defmodule NilaWeb.Gst.UploadLive do
           Nila extracts it, adds it to the month's pile, and reworks the month.
         </.page_header>
 
-        <.card :if={@clients == [] and @jobs == %{}} id="gst-upload-empty" class="py-12 text-center">
+        <.card
+          :if={@clients == [] and @jobs == %{}}
+          id="gst-upload-empty"
+          padding="roomy"
+          class="text-center"
+        >
           <div class="space-y-block">
             <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
             <.button navigate={~p"/clients/new"} id="gst-upload-add-first-client">
@@ -714,7 +719,7 @@ defmodule NilaWeb.Gst.UploadLive do
               {@error}
             </p>
 
-            <.button type="submit" id="gst-upload-submit" class="w-full">
+            <.button type="submit" id="gst-upload-submit" full_width>
               Bring it in
             </.button>
           </.form>
@@ -738,10 +743,9 @@ defmodule NilaWeb.Gst.UploadLive do
             class="space-y-related"
           >
             <div class="flex items-start gap-3">
-              <span
-                :if={spinning?(job.status)}
-                class="loading loading-sm loading-spinner text-primary mt-0.5 shrink-0"
-              ></span>
+              <div :if={spinning?(job.status)} class="text-primary mt-0.5 shrink-0">
+                <.spinner label="Processing" />
+              </div>
               <.icon
                 :if={job.status == :done and not partial?(job)}
                 name="hero-check-circle"
@@ -798,26 +802,25 @@ defmodule NilaWeb.Gst.UploadLive do
                 >
                   Bring it into the open month →
                 </.link>
-                <.button
-                  :if={job.status == :failed}
-                  id={"gst-dump-try-again-#{dump_id}"}
-                  phx-click="try-again"
-                  variant="soft"
-                  size="xs"
-                  class="mt-related"
-                >
-                  Try again
-                </.button>
+                <div :if={job.status == :failed} class="mt-related">
+                  <.button
+                    id={"gst-dump-try-again-#{dump_id}"}
+                    phx-click="try-again"
+                    variant="soft"
+                    size="xs"
+                  >
+                    Try again
+                  </.button>
+                </div>
               </div>
             </div>
 
             <div :if={job.progress} id={"gst-dump-progress-#{dump_id}"} class="space-y-1.5 pl-8">
-              <progress
+              <.progress_bar
                 :if={progress_bar?(job.progress)}
-                class="progress progress-primary block h-1.5 w-full"
                 value={progress_value(job.progress)}
                 max={progress_max(job.progress)}
-              ></progress>
+              />
               <p class="text-ink-subtle text-ui tabular-nums">
                 {progress_caption(job.progress)}
               </p>
@@ -836,7 +839,7 @@ defmodule NilaWeb.Gst.UploadLive do
             id="gst-upload-open-month"
             phx-click="open-month"
             variant="primary"
-            class="w-full"
+            full_width
             autofocus
           >
             Open the month

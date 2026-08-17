@@ -285,16 +285,14 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
             <span id="sales-review-month-checks" class="text-ink-subtle text-ui">
               {@review.month_issue_count} month checks remain on the month working paper
             </span>
-            <div id="sales-review-scope" class="join">
-              <button
-                :for={{scope, label} <- [{:needs_you, "Needs you"}, {:all, "All"}]}
-                type="button"
-                phx-click="scope"
-                phx-value-scope={scope}
-                phx-target={@myself}
-                class={["btn btn-sm join-item", @route.scope == scope && "btn-active"]}
-              >{label}</button>
-            </div>
+            <.segmented_control
+              id="sales-review-scope"
+              items={[{:needs_you, "Needs you"}, {:all, "All"}]}
+              selected={@route.scope}
+              on_change="scope"
+              value_name="scope"
+              target={@myself}
+            />
           </div>
         </:header>
 

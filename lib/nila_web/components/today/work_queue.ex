@@ -10,7 +10,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
 
   def work_queue(assigns) do
     ~H"""
-    <.card :if={@sections == []} id="today-empty" class="py-12 text-center">
+    <.card :if={@sections == []} id="today-empty" padding="roomy" class="text-center">
       <div class="space-y-block mx-auto max-w-sm">
         <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
         <.button navigate={~p"/clients/new"} id="today-add-first-client">
@@ -48,7 +48,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
             id={"today-processing-#{r.client_id}-#{r.period}"}
             class="text-moon text-ui mr-2 inline-flex items-center gap-1.5"
           >
-            <span class="loading loading-spinner loading-xs"></span> extracting…
+            <.spinner size="xs" label="Extracting" /> extracting…
           </span>
           <span :if={section == :waiting_on_client} class="text-ink-muted text-ui">
             {slots_label(r.slots)}
