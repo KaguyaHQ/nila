@@ -151,11 +151,18 @@ defmodule NilaWeb.Settings.ProfileLive do
             phx-submit="update_email"
             class="space-y-block"
           >
-            <.input field={@email_form[:email]} type="email" label="New email" required />
+            <.input
+              field={@email_form[:email]}
+              type="email"
+              label="New email"
+              autocomplete="email"
+              required
+            />
             <.input
               field={@email_form[:current_password]}
               type="password"
               label="Current password"
+              autocomplete="current-password"
               required
             />
             <.button>

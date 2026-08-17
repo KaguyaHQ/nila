@@ -355,6 +355,12 @@ body {
   user-select: none;
 }
 
+.nila-button > :where(svg, [class^="hero-"], [class*=" hero-"]) {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
 .nila-button:hover:not(:disabled) {
   background: var(--nila-button-hover-bg);
   border-color: var(--nila-button-hover-border, transparent);
