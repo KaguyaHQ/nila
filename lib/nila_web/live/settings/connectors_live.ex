@@ -286,7 +286,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
             >
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
-                  <.badge variant="neutral" class="uppercase">{connection.provider}</.badge>
+                  <.badge variant="neutral">{String.upcase(connection.provider)}</.badge>
                   <.badge variant={connection_status_variant(connection)}>
                     {connection_status(connection)}
                   </.badge>

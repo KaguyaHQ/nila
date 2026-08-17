@@ -6,6 +6,8 @@ defmodule NilaWeb.CoreComponentsTest do
   import NilaWeb.Components.Page
   import NilaWeb.Components.Card
   import NilaWeb.Components.Badge
+  import NilaWeb.Components.Button
+  import NilaWeb.Components.Input
   import NilaWeb.Components.Fold
   import NilaWeb.Components.Typography
 
@@ -52,6 +54,47 @@ defmodule NilaWeb.CoreComponentsTest do
     refute html =~ "shadow-"
   end
 
+  test "button exposes only controlled Radix-calibrated recipes" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.button variant="soft" size="xs" full_width>Review</.button>
+      """)
+
+    assert html =~ ~s(class="nila-button w-full")
+    assert html =~ ~s(data-variant="soft")
+    assert html =~ ~s(data-size="xs")
+    refute html =~ "btn-"
+  end
+
+  test "input family uses the canonical field recipes" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <div>
+        <.input id="invoice" name="invoice" label="Invoice" value="INV-1" />
+        <.input
+          type="select"
+          id="state"
+          name="state"
+          label="State"
+          value="Gujarat"
+          options={["Gujarat"]}
+        />
+        <.input type="checkbox" id="reviewed" name="reviewed" label="Reviewed" value={true} />
+      </div>
+      """)
+
+    assert html =~ "nila-field-label"
+    assert html =~ "nila-input"
+    assert html =~ "nila-select"
+    assert html =~ "nila-checkbox"
+    refute html =~ ~s(class="input)
+    refute html =~ ~s(class="select)
+  end
+
   test "badge renders a soft pill in the given semantic variant" do
     assigns = %{}
 
@@ -60,9 +103,9 @@ defmodule NilaWeb.CoreComponentsTest do
       <.badge variant="success">Completed</.badge>
       """)
 
-    assert html =~ "badge-soft"
-    assert html =~ "badge-success"
-    assert html =~ "text-ui"
+    assert html =~ ~s(class="nila-badge")
+    assert html =~ ~s(data-variant="success")
+    refute html =~ "badge-soft"
     refute html =~ "text-context"
     assert html =~ "Completed"
   end

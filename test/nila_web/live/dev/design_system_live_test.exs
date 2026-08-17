@@ -8,8 +8,16 @@ defmodule NilaWeb.Dev.DesignSystemLiveTest do
 
     assert has_element?(view, "#design-system-reference")
     assert has_element?(view, "#ds-typography #ds-type-context")
-    assert has_element?(view, "#ds-buttons .btn-primary", "Approve GSTR-1")
-    assert has_element?(view, "#ds-badges .badge-warning", "Needs review")
+
+    assert has_element?(
+             view,
+             "#ds-buttons .nila-button[data-variant='primary']",
+             "Approve GSTR-1"
+           )
+
+    assert has_element?(view, "#ds-badges .nila-badge[data-variant='warning']", "Needs review")
+    assert has_element?(view, "#ds-fields .nila-input")
+    assert has_element?(view, "#ds-fields .nila-select")
     assert has_element?(view, "#ds-cards", "₹39,520.80")
     assert has_element?(view, "#ds-register-rows tr", "INV-1048")
     assert has_element?(view, "#ds-workpaper-result", "Draft prepared. One invoice needs you.")

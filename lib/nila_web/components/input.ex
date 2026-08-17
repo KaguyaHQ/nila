@@ -66,8 +66,6 @@ defmodule NilaWeb.Components.Input do
   attr :prompt, :string, default: nil, doc: "the prompt for select inputs"
   attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
   attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
-  attr :class, :any, default: nil, doc: "the input class to use over defaults"
-  attr :error_class, :any, default: nil, doc: "the input error class to use over defaults"
 
   attr :rest, :global,
     include: ~w(accept autocomplete capture cols disabled form list max maxlength min minlength
@@ -97,7 +95,7 @@ defmodule NilaWeb.Components.Input do
       end)
 
     ~H"""
-    <div class="fieldset">
+    <div class="nila-field">
       <label for={@id}>
         <input
           type="hidden"
@@ -106,14 +104,14 @@ defmodule NilaWeb.Components.Input do
           disabled={@rest[:disabled]}
           form={@rest[:form]}
         />
-        <span class="label">
+        <span class="nila-checkbox-label">
           <input
             type="checkbox"
             id={@id}
             name={@name}
             value="true"
             checked={@checked}
-            class={@class || "checkbox checkbox-sm"}
+            class="nila-checkbox"
             {@rest}
           />{@label}
         </span>
@@ -125,13 +123,13 @@ defmodule NilaWeb.Components.Input do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="fieldset">
+    <div class="nila-field">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="nila-field-label">{@label}</span>
         <select
           id={@id}
           name={@name}
-          class={[@class || "select w-full", @errors != [] && (@error_class || "select-error")]}
+          class={["nila-select", @errors != [] && "nila-input-error"]}
           multiple={@multiple}
           {@rest}
         >
@@ -146,16 +144,13 @@ defmodule NilaWeb.Components.Input do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="fieldset">
+    <div class="nila-field">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="nila-field-label">{@label}</span>
         <textarea
           id={@id}
           name={@name}
-          class={[
-            @class || "textarea w-full",
-            @errors != [] && (@error_class || "textarea-error")
-          ]}
+          class={["nila-textarea", @errors != [] && "nila-input-error"]}
           {@rest}
         >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
       </label>
@@ -166,19 +161,15 @@ defmodule NilaWeb.Components.Input do
 
   def input(%{type: "password"} = assigns) do
     ~H"""
-    <div class="fieldset">
-      <label :if={@label} for={@id} class="label mb-1">{@label}</label>
+    <div class="nila-field">
+      <label :if={@label} for={@id} class="nila-field-label">{@label}</label>
       <div class="relative">
         <input
           type="password"
           name={@name}
           id={@id}
           value={Phoenix.HTML.Form.normalize_value("password", @value)}
-          class={[
-            @class || "input w-full",
-            "pr-12",
-            @errors != [] && (@error_class || "input-error")
-          ]}
+          class={["nila-input pr-8", @errors != [] && "nila-input-error"]}
           {@rest}
         />
         <button
@@ -187,11 +178,11 @@ defmodule NilaWeb.Components.Input do
           aria-label="Show password"
           aria-controls={@id}
           aria-pressed="false"
-          class="focus:ring-primary/40 hover:text-ink rounded-r-field text-ink-subtle absolute inset-y-0 right-0 z-10 inline-flex w-11 items-center justify-center transition focus:ring-2 focus:outline-none"
+          class="nila-field-action"
           phx-hook=".PasswordVisibility"
           data-password-input={@id}
         >
-          <.icon name="hero-eye" class="size-5" />
+          <.icon name="hero-eye" class="size-4" />
         </button>
         <script :type={Phoenix.LiveView.ColocatedHook} name=".PasswordVisibility">
           export default {
@@ -233,9 +224,9 @@ defmodule NilaWeb.Components.Input do
     assigns = assign(assigns, iso: iso, display: date_display(iso))
 
     ~H"""
-    <div class="fieldset" id={"#{@id}-field"} phx-hook=".DateField">
+    <div class="nila-field" id={"#{@id}-field"} phx-hook=".DateField">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="nila-field-label">{@label}</span>
         <input
           type="text"
           id={@id}
@@ -246,10 +237,7 @@ defmodule NilaWeb.Components.Input do
           maxlength="10"
           phx-update="ignore"
           data-date-display
-          class={[
-            @class || "input w-full",
-            @errors != [] && (@error_class || "input-error")
-          ]}
+          class={["nila-input", @errors != [] && "nila-input-error"]}
           {@rest}
         />
       </label>
@@ -317,18 +305,15 @@ defmodule NilaWeb.Components.Input do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="fieldset">
+    <div class="nila-field">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="nila-field-label">{@label}</span>
         <input
           type={@type}
           name={@name}
           id={@id}
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-          class={[
-            @class || "input w-full",
-            @errors != [] && (@error_class || "input-error")
-          ]}
+          class={["nila-input", @errors != [] && "nila-input-error"]}
           {@rest}
         />
       </label>

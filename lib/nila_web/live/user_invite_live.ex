@@ -68,7 +68,7 @@ defmodule NilaWeb.UserInviteLive do
               required
             />
 
-            <.button class="w-full">
+            <.button full_width>
               Set password and sign in
             </.button>
           </.form>
@@ -82,12 +82,9 @@ defmodule NilaWeb.UserInviteLive do
               invitation.
             </p>
           </div>
-          <.link
-            navigate={~p"/users/log_in"}
-            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-ink-muted text-ui inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
-          >
+          <.button navigate={~p"/users/log_in"} variant="outline">
             Go to sign in
-          </.link>
+          </.button>
         </div>
       </div>
     </main>

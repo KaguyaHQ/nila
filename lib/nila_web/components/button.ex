@@ -1,31 +1,14 @@
 defmodule NilaWeb.Components.Button do
   @moduledoc """
-  Button component with navigation support, variants, and sizes.
+  Radix-calibrated button with navigation support and Nila semantic variants.
   """
   use Phoenix.Component
-
-  @variants %{
-    "primary" => "btn-primary",
-    "soft" => "btn-soft",
-    "ghost" => "btn-ghost",
-    "outline" => "btn-outline",
-    "error" => "btn-error",
-    "success" => "btn-success",
-    "neutral" => "btn-neutral"
-  }
-
-  @sizes %{
-    "xs" => "btn-xs",
-    "sm" => "btn-sm",
-    "md" => "",
-    "lg" => "btn-lg"
-  }
 
   @doc """
   Renders a button with navigation support.
 
-  The `class` attr is additive — it is appended after the variant/size classes
-  for one-off overrides (e.g. `text-error`, `gap-1`, `w-full`).
+  The component owns typography and geometry. Callers select only meaning,
+  prominence, and whether the control fills its container.
 
   ## Examples
 
@@ -40,28 +23,30 @@ defmodule NilaWeb.Components.Button do
     default: "primary",
     values: ~w(primary soft ghost outline error success neutral)
 
-  attr :size, :string, default: "md", values: ~w(xs sm md lg)
-  attr :class, :any, default: nil
+  attr :size, :string, default: "sm", values: ~w(xs sm lg)
+  attr :full_width, :boolean, default: false
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
-    assigns =
-      assign(assigns, :class, [
-        "btn",
-        Map.fetch!(@variants, assigns.variant),
-        Map.fetch!(@sizes, assigns.size),
-        assigns.class
-      ])
-
     if rest[:href] || rest[:navigate] || rest[:patch] do
       ~H"""
-      <.link class={@class} {@rest}>
+      <.link
+        class={["nila-button", @full_width && "w-full"]}
+        data-variant={@variant}
+        data-size={@size}
+        {@rest}
+      >
         {render_slot(@inner_block)}
       </.link>
       """
     else
       ~H"""
-      <button class={@class} {@rest}>
+      <button
+        class={["nila-button", @full_width && "w-full"]}
+        data-variant={@variant}
+        data-size={@size}
+        {@rest}
+      >
         {render_slot(@inner_block)}
       </button>
       """

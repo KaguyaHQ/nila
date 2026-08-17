@@ -20,7 +20,13 @@ defmodule NilaWeb.UserLoginLive do
         </div>
 
         <.form for={@form} id="login-form" action={~p"/users/log_in"} class="space-y-block">
-          <.input field={@form[:email]} type="email" label="Work email" required />
+          <.input
+            field={@form[:email]}
+            type="email"
+            label="Work email"
+            autocomplete="username"
+            required
+          />
           <.input
             field={@form[:password]}
             type="password"
@@ -35,12 +41,15 @@ defmodule NilaWeb.UserLoginLive do
             Forgot your password?
           </.link>
 
-          <label class="text-ink-muted text-ui flex items-center gap-2">
-            <input type="checkbox" name="user[remember_me]" value="true" class="rounded" />
-            Keep me signed in
-          </label>
+          <.input
+            type="checkbox"
+            id="user-remember-me"
+            name="user[remember_me]"
+            label="Keep me signed in"
+            value={false}
+          />
 
-          <.button class="w-full">
+          <.button full_width>
             Sign in
           </.button>
         </.form>
@@ -63,12 +72,9 @@ defmodule NilaWeb.UserLoginLive do
             <.form :for={user <- @users} for={%{}} action={~p"/users/log_in"} class="inline">
               <input type="hidden" name="dev_login" value="true" />
               <input type="hidden" name="email" value={user.email} />
-              <button
-                type="submit"
-                class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 text-ink-muted text-ui rounded-full border px-3 py-2 font-semibold transition"
-              >
+              <.button type="submit" variant="outline" size="xs">
                 {user.name}
-              </button>
+              </.button>
             </.form>
           </div>
         </section>

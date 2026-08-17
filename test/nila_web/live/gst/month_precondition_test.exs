@@ -68,7 +68,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
     view
     |> render()
     |> LazyHTML.from_fragment()
-    |> LazyHTML.query(".btn-primary")
+    |> LazyHTML.query(".nila-button[data-variant='primary']")
     |> LazyHTML.attribute("id")
   end
 

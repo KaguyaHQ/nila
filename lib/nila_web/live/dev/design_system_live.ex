@@ -219,6 +219,54 @@ if Application.compile_env(:nila, :dev_routes, false) or
                   </.card>
                 </div>
 
+                <.card id="ds-fields" class="space-y-section">
+                  <div>
+                    <h3 class="text-h4 font-semibold">Fields</h3>
+                    <p class="text-ink-muted text-ui">
+                      Standard controls share one 32px working geometry.
+                    </p>
+                  </div>
+                  <div class="gap-section grid md:grid-cols-2">
+                    <.input
+                      id="ds-invoice-number"
+                      name="specimen[invoice_number]"
+                      label="Invoice number"
+                      value="INV-1048"
+                    />
+                    <.input
+                      type="select"
+                      id="ds-place-of-supply"
+                      name="specimen[place_of_supply]"
+                      label="Place of supply"
+                      value="Maharashtra"
+                      options={["Gujarat", "Karnataka", "Maharashtra"]}
+                    />
+                    <.input
+                      type="textarea"
+                      id="ds-review-note"
+                      name="specimen[review_note]"
+                      label="Review note"
+                      value="Place of supply confirmed from the delivery address."
+                    />
+                    <div class="space-y-block">
+                      <.input
+                        type="checkbox"
+                        id="ds-reviewed"
+                        name="specimen[reviewed]"
+                        label="Human review completed"
+                        value={true}
+                      />
+                      <.input
+                        id="ds-disabled-field"
+                        name="specimen[locked]"
+                        label="Filed reference"
+                        value="ARN pending"
+                        disabled
+                      />
+                    </div>
+                  </div>
+                </.card>
+
                 <div id="ds-cards" class="gap-section grid md:grid-cols-3">
                   <.stat_card label="Taxable value" figure>
                     {format_money(24_876_000, prefix: "₹")}

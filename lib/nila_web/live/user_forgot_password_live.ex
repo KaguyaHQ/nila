@@ -46,7 +46,7 @@ defmodule NilaWeb.UserForgotPasswordLive do
           class="space-y-block"
         >
           <.input field={@form[:email]} type="email" label="Work email" required />
-          <.button class="w-full">
+          <.button full_width>
             Send reset instructions
           </.button>
         </.form>

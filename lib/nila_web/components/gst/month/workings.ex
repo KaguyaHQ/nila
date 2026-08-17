@@ -58,11 +58,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:col :let={row} label="HSN/SAC">
             <div class="flex items-center gap-2">
               <span class="font-mono">{row["hsn_sc"]}</span>
-              <.badge
-                :if={MapSet.member?(@novelty_codes, row["hsn_sc"])}
-                variant="neutral"
-                class="badge-xs"
-              >
+              <.badge :if={MapSet.member?(@novelty_codes, row["hsn_sc"])} variant="neutral">
                 New
               </.badge>
             </div>
@@ -91,11 +87,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
             <div :if={row.kind == :node} class="flex items-center gap-2">
               <.chevron open={MapSet.member?(@expanded, row.id)} />
               <span class="text-base-content font-mono font-medium">{row.hsn || "—"}</span>
-              <.badge
-                :if={MapSet.member?(@novelty_codes, row.hsn)}
-                variant="neutral"
-                class="badge-xs"
-              >
+              <.badge :if={MapSet.member?(@novelty_codes, row.hsn)} variant="neutral">
                 New
               </.badge>
             </div>

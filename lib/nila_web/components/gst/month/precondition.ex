@@ -41,7 +41,7 @@ defmodule NilaWeb.Components.Gst.Month.Precondition do
           :for={{answer, label} <- answers(assigns)}
           id={"month-precondition-choose-#{answer}"}
           variant="outline"
-          size="md"
+          size="sm"
           phx-click="precondition-choose"
           phx-value-answer={answer}
         >

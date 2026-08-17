@@ -5,6 +5,7 @@ defmodule NilaWeb.Components.Form do
   """
   use Phoenix.Component
 
+  import NilaWeb.Components.Button
   import NilaWeb.Components.Icon
 
   @doc """
@@ -35,17 +36,18 @@ defmodule NilaWeb.Components.Form do
 
   def save_button(assigns) do
     ~H"""
-    <button
+    <.button
       type="submit"
       id={@id}
       disabled={@disabled}
       phx-disable-with={@loading}
-      class="btn btn-primary btn-sm btn-soft transition-all"
+      variant="soft"
+      size="sm"
       {@rest}
     >
       <.icon name={@icon} class="size-4" />
       <span>{@label}</span>
-    </button>
+    </.button>
     """
   end
 
@@ -66,8 +68,8 @@ defmodule NilaWeb.Components.Form do
 
   def file_drop(assigns) do
     ~H"""
-    <div class="fieldset" id={@id}>
-      <span class="label mb-1">{@label}</span>
+    <div class="nila-field" id={@id}>
+      <span class="nila-field-label">{@label}</span>
 
       <.live_file_input upload={@upload} class="sr-only" />
 

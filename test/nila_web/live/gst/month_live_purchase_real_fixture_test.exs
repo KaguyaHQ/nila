@@ -86,7 +86,12 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     assert doors(view) == ["month-door-sign-r1"]
-    assert has_element?(view, "#gstr1-verdict #month-door-sign-r1.btn-primary")
+
+    assert has_element?(
+             view,
+             "#gstr1-verdict #month-door-sign-r1.nila-button[data-variant='primary']"
+           )
+
     refute has_element?(view, "#month-verdict #month-door-sign-r1")
 
     view |> element("#month-door-sign-r1") |> render_click()
@@ -100,7 +105,12 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
     view |> element("#month-workpaper-tab-gstr3b") |> render_click()
 
     assert doors(view) == ["month-door-sign-3b"]
-    assert has_element?(view, "#month-3b #month-door-sign-3b.btn-primary")
+
+    assert has_element?(
+             view,
+             "#month-3b #month-door-sign-3b.nila-button[data-variant='primary']"
+           )
+
     refute has_element?(view, "#month-verdict #month-door-sign-3b")
 
     view |> element("#month-door-sign-3b") |> render_click()

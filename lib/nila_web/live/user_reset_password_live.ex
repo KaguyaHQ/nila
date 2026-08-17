@@ -86,7 +86,7 @@ defmodule NilaWeb.UserResetPasswordLive do
               label="Confirm password"
               required
             />
-            <.button class="w-full">
+            <.button full_width>
               Reset password
             </.button>
           </.form>
@@ -99,12 +99,9 @@ defmodule NilaWeb.UserResetPasswordLive do
               It may have expired or already been used. Request a fresh reset link.
             </p>
           </div>
-          <.link
-            navigate={~p"/users/reset_password"}
-            class="bg-base-100 border-base-300 hover:bg-base-200 hover:border-base-300 rounded-field text-ink-muted text-ui inline-flex h-10 items-center justify-center border px-4 font-semibold transition"
-          >
+          <.button navigate={~p"/users/reset_password"} variant="outline">
             Request a new link
-          </.link>
+          </.button>
         </div>
       </div>
     </main>
