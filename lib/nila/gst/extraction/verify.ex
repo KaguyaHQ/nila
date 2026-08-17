@@ -60,6 +60,20 @@ defmodule Nila.Gst.Extraction.Verify do
     %{status: status(data, checks, flags), checks: checks, flags: flags}
   end
 
+  @doc "Runs checks that need structured values but no independent OCR transcription."
+  def structured(data, reverse_charge? \\ false) when is_map(data) do
+    checks = arithmetic_checks(data, reverse_charge?) ++ gstin_checks(data)
+    flags = flags(data, checks, "")
+
+    status =
+      case status(data, checks, flags) do
+        :verified -> :unverifiable
+        status -> status
+      end
+
+    %{status: status, checks: checks, flags: flags}
+  end
+
   @doc "Removes extracted numeric candidates whose values do not occur in the source."
   def discard_unobserved_values(data, checks) when is_map(data) and is_list(checks) do
     fields =

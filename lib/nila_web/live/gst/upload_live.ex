@@ -4,7 +4,7 @@ defmodule NilaWeb.Gst.UploadLive do
   @moduledoc """
   Bring in documents — the intake action. Documents arrive as sales bills, a
   shoebox of purchases, portal downloads, and stragglers after the chase. The
-  operator drops the files first: bill PDFs are then labelled Sales or Purchase,
+  operator drops the files first: bill PDFs and images are then labelled Sales or Purchase,
   while portal JSON is identified from its structure. Each file becomes a
   `Nila.Gst.Intake.Dump` and a `DumpWorker` job, and the month re-derives from the
   union of everything that has arrived.
@@ -20,14 +20,13 @@ defmodule NilaWeb.Gst.UploadLive do
   alias Nila.Storage
   alias NilaWeb.Gst.PeriodOptions
 
-  # Mistral's own document limit. Base64's 4/3 expansion would put anything
-  # over ~37.5 MB past this ceiling, so the segmented pipeline uploads large
-  # packets once instead of inlining them. The drop
-  # zone is where a too-large pile should be refused — not a minute later, from
-  # inside extraction, as a provider size error.
+  # Refuse oversized source files at intake rather than after rendering and
+  # base64 expansion inside extraction.
   @max_pdf_bytes 50_000_000
+  @max_image_bytes 20_000_000
   @max_json_bytes 20_000_000
   @max_upload_entries 10
+  @bill_extensions ~w(.pdf .jpg .jpeg .png .webp)
 
   @impl true
   def mount(params, _session, socket) do
@@ -46,7 +45,7 @@ defmodule NilaWeb.Gst.UploadLive do
       |> assign(:jobs, %{})
       |> assign(:pending, nil)
       |> allow_upload(:documents,
-        accept: ~w(.pdf .json),
+        accept: @bill_extensions ++ [".json"],
         max_entries: @max_upload_entries,
         max_file_size: @max_pdf_bytes,
         auto_upload: true,
@@ -105,7 +104,7 @@ defmodule NilaWeb.Gst.UploadLive do
     entry = Enum.find(socket.assigns.uploads.documents.entries, &(&1.ref == ref))
 
     entry_kinds =
-      if entry && entry_extension(entry) == ".pdf" do
+      if entry && bill_entry?(entry) do
         Map.put(socket.assigns.entry_kinds, ref, {:ok, kind})
       else
         socket.assigns.entry_kinds
@@ -239,9 +238,18 @@ defmodule NilaWeb.Gst.UploadLive do
   end
 
   defp validate_document_entry(entry) do
-    if entry_extension(entry) == ".json" and entry.client_size > @max_json_bytes,
-      do: {:error, :json_too_large},
-      else: :ok
+    extension = entry_extension(entry)
+
+    cond do
+      extension == ".json" and entry.client_size > @max_json_bytes ->
+        {:error, :json_too_large}
+
+      extension in (@bill_extensions -- [".pdf"]) and entry.client_size > @max_image_bytes ->
+        {:error, :image_too_large}
+
+      true ->
+        :ok
+    end
   end
 
   defp ready_entries(socket) do
@@ -267,31 +275,31 @@ defmodule NilaWeb.Gst.UploadLive do
   end
 
   defp ready_entry?(entry, entry_kinds) do
-    case {entry_extension(entry), Map.get(entry_kinds, entry.ref)} do
-      {".pdf", {:ok, kind}} when kind in ~w(sales purchase) -> true
-      {".json", {:ok, kind}} when kind in ~w(gstr2b filed_gstr1) -> true
+    case {bill_entry?(entry), entry_extension(entry), Map.get(entry_kinds, entry.ref)} do
+      {true, _extension, {:ok, kind}} when kind in ~w(sales purchase) -> true
+      {false, ".json", {:ok, kind}} when kind in ~w(gstr2b filed_gstr1) -> true
       _ -> false
     end
   end
 
   defp entry_readiness_error(entry, entry_kinds) do
-    case {entry_extension(entry), Map.get(entry_kinds, entry.ref)} do
-      {".pdf", _state} ->
+    case {bill_entry?(entry), entry_extension(entry), Map.get(entry_kinds, entry.ref)} do
+      {true, _extension, _state} ->
         "Choose Sales or Purchase for #{entry.client_name}."
 
-      {".json", {:error, :invalid_json}} ->
+      {false, ".json", {:error, :invalid_json}} ->
         "#{entry.client_name} is not valid JSON."
 
-      {".json", {:error, :ambiguous_structure}} ->
+      {false, ".json", {:error, :ambiguous_structure}} ->
         "#{entry.client_name} matches more than one portal format. Remove it and check the download."
 
-      {".json", {:error, :unreadable}} ->
+      {false, ".json", {:error, :unreadable}} ->
         "Nila could not read #{entry.client_name} back after it uploaded. Remove it and try again."
 
-      {".json", nil} ->
+      {false, ".json", nil} ->
         "Nila could not finish identifying #{entry.client_name}. Remove it and try again."
 
-      {".json", _state} ->
+      {false, ".json", _state} ->
         "#{entry.client_name} is not a GSTR-2B or filed GSTR-1 portal file."
     end
   end
@@ -318,6 +326,8 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp entry_extension(entry),
     do: entry.client_name |> Path.extname() |> String.downcase()
+
+  defp bill_entry?(entry), do: entry_extension(entry) in @bill_extensions
 
   @impl true
   def handle_info({:gst_dump_progress, dump_id, _client_id, _period, _kind, message}, socket) do
@@ -449,13 +459,14 @@ defmodule NilaWeb.Gst.UploadLive do
   defp list_clients(_socket), do: []
 
   defp entry_kind_state(entry_kinds, entry) do
-    case {entry_extension(entry), entry.done?, Map.get(entry_kinds, entry.ref)} do
-      {".pdf", _done?, {:ok, kind}} -> {:pdf, kind}
-      {".pdf", _done?, _state} -> {:pdf, nil}
-      {".json", false, _state} -> :identifying
-      {".json", true, {:ok, kind}} -> {:identified, kind}
-      {".json", true, {:error, reason}} -> {:error, reason}
-      {".json", true, nil} -> :identifying
+    case {bill_entry?(entry), entry_extension(entry), entry.done?,
+          Map.get(entry_kinds, entry.ref)} do
+      {true, _extension, _done?, {:ok, kind}} -> {:bill, kind}
+      {true, _extension, _done?, _state} -> {:bill, nil}
+      {false, ".json", false, _state} -> :identifying
+      {false, ".json", true, {:ok, kind}} -> {:identified, kind}
+      {false, ".json", true, {:error, reason}} -> {:error, reason}
+      {false, ".json", true, nil} -> :identifying
     end
   end
 
@@ -641,12 +652,12 @@ defmodule NilaWeb.Gst.UploadLive do
               id="gst-upload-documents"
               upload={@uploads.documents}
               label="Documents"
-              hint="PDF bills or GST portal JSON · up to 10 files"
+              hint="PDF or image bills, or GST portal JSON · up to 10 files"
               on_cancel="cancel-upload"
             >
               <:entry :let={entry}>
                 <%= case entry_kind_state(@entry_kinds, entry) do %>
-                  <% {:pdf, selected} -> %>
+                  <% {:bill, selected} -> %>
                     <div
                       id={"gst-upload-kind-#{entry.ref}"}
                       class="flex flex-wrap items-center justify-between gap-2"

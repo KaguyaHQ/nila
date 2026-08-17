@@ -71,7 +71,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
 
     assert has_element?(
              view,
-             "#gst-upload-documents input[type=file][accept='.pdf,.json'][multiple]"
+             "#gst-upload-documents input[type=file][accept='.pdf,.jpg,.jpeg,.png,.webp,.json'][multiple]"
            )
 
     refute has_element?(view, "#gst-upload-sales")
@@ -179,6 +179,30 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert dump.kind == "sales"
     assert dump.status == "received"
     assert Dumps.active(org.id, client.id, @period) == [dump]
+    assert_enqueued(worker: DumpWorker, args: %{dump_id: dump.id})
+  end
+
+  test "an invoice image can be classified and queued like a PDF", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload")
+
+    ref = upload_file(view, "invoice.jpg", <<0xFF, 0xD8, 0xFF, 0xD9>>, "image/jpeg")
+    assert has_element?(view, "#gst-upload-sales-#{ref}")
+    assert has_element?(view, "#gst-upload-purchase-#{ref}")
+
+    view
+    |> element("#gst-upload-purchase-#{ref}")
+    |> render_click()
+
+    submit(view, client)
+
+    assert [dump] = Dumps.list(org.id, client.id, @period)
+    assert dump.kind == "purchase"
+    assert [key] = dump.file_keys
+    assert String.ends_with?(key, "/original.jpg")
     assert_enqueued(worker: DumpWorker, args: %{dump_id: dump.id})
   end
 

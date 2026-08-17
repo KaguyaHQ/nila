@@ -39,6 +39,11 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     assert %{status: :verified, flags: []} = Verify.invoice(invoice(%{}), page())
   end
 
+  test "structured-only checks never claim independent source verification" do
+    assert %{status: :unverifiable, flags: [], checks: checks} = Verify.structured(invoice(%{}))
+    assert checks != []
+  end
+
   test "a tax-inclusive line verifies from printed evidence without a taxable total" do
     inclusive = %{
       "invoice_number" => "INV-000005",

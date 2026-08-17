@@ -771,10 +771,10 @@ defmodule Nila.Gst.Intake.DumpWorker do
   end
 
   defp purchase_extractor do
-    Application.get_env(:nila, :purchase_extractor, Nila.Gst.Extraction.Purchase.MistralOCR)
+    Application.get_env(:nila, :purchase_extractor, Nila.Gst.Extraction.Purchase.Vision)
   end
 
   defp sales_extractor do
-    Application.get_env(:nila, :sales_extractor, Nila.Gst.Extraction.Sales.MistralOCR)
+    Application.get_env(:nila, :sales_extractor, Nila.Gst.Extraction.Sales.Vision)
   end
 end
