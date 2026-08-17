@@ -379,7 +379,7 @@ body {
 .nila-button[aria-disabled="true"] {
   background: color-mix(in oklch, var(--color-base-content) 7%, transparent);
   border-color: transparent;
-  color: var(--color-ink-subtle);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
   cursor: not-allowed;
 }
 
@@ -466,7 +466,7 @@ body {
   justify-content: center;
   border-left: 1px solid var(--color-base-300);
   padding-inline: 0.75rem;
-  color: var(--color-ink-muted);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
   font-size: var(--text-ui);
   font-weight: 500;
   line-height: var(--text-ui--line-height);
@@ -669,7 +669,7 @@ body {
   gap: 0.5rem;
   border-radius: 0.25rem;
   padding-inline: 0.75rem;
-  color: var(--color-ink-muted);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
   font-size: var(--text-ui);
   font-weight: 500;
   line-height: var(--text-ui--line-height);
@@ -685,9 +685,12 @@ body {
   outline-offset: -2px;
 }
 
+.nila-menu-item[data-tone="error"] {
+  color: var(--color-error);
+}
+
 .nila-menu-item[data-tone="error"]:hover {
   background: color-mix(in oklch, var(--color-error) 10%, transparent);
-  color: var(--color-error);
 }
 
 .nila-modal-scrim {
@@ -743,7 +746,7 @@ body {
   justify-content: center;
   gap: 0.25rem;
   border-radius: 0.25rem;
-  color: var(--color-ink-subtle);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 
 .nila-modal-close[data-label="true"] {
@@ -839,7 +842,7 @@ body {
 
 .nila-input::placeholder,
 .nila-textarea::placeholder {
-  color: var(--color-ink-subtle);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 
 .nila-input:hover:not(:disabled),
@@ -860,7 +863,7 @@ body {
 .nila-select:disabled,
 .nila-textarea:disabled {
   background: var(--color-base-200);
-  color: var(--color-ink-subtle);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
   cursor: not-allowed;
 }
 
@@ -906,7 +909,7 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 0 0.25rem 0.25rem 0;
-  color: var(--color-ink-subtle);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 
 .nila-field-action:hover {
