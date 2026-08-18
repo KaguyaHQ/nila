@@ -241,10 +241,18 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     assert outline =~ "--nila-button-ink: var(--accent-a11);"
     assert outline =~ "box-shadow: inset 0 0 0 1px var(--accent-a8);"
 
+    disabled =
+      css_rule(
+        css,
+        ".nila-button:disabled, .nila-button[aria-disabled=\"true\"]"
+      )
+
+    assert disabled =~ "box-shadow: none;"
+
     persistent_cards =
       css_rule(
         css,
-        ".nila-sales-review-item[data-selected=\"true\"],\n.nila-purchase-scorecard[data-selected=\"true\"]"
+        ".nila-sales-review-item[data-selected=\"true\"], .nila-purchase-scorecard[data-selected=\"true\"]"
       )
 
     assert persistent_cards =~ "border-color: var(--accent-a8);"
@@ -314,7 +322,9 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
   end
 
   defp css_rule(css, selector) do
-    [_, body] = Regex.run(~r/#{Regex.escape(selector)}\s*\{([^}]*)\}/s, css)
+    normalized_css = String.replace(css, ~r/\s+/, " ")
+    normalized_selector = String.replace(selector, ~r/\s+/, " ")
+    [_, body] = Regex.run(~r/#{Regex.escape(normalized_selector)}\s*\{([^}]*)\}/, normalized_css)
     body
   end
 

@@ -798,13 +798,12 @@ body {
   flex-shrink: 0;
 }
 
-.nila-button:hover:not(:disabled):not([aria-disabled="true"]),
-.nila-button[data-state="open"]:not(:disabled):not([aria-disabled="true"]) {
+.nila-button:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--nila-button-hover-bg);
   border-color: transparent;
 }
 
-.nila-button:active:not([data-state="open"]):not(:disabled):not([aria-disabled="true"]) {
+.nila-button:active:not(:disabled):not([aria-disabled="true"]) {
   background: var(--nila-button-active-bg, var(--nila-button-hover-bg));
 }
 
@@ -888,6 +887,7 @@ body {
   background: var(--nila-ink-a3);
   border-color: transparent;
   color: var(--nila-ink-a10);
+  box-shadow: none;
   cursor: not-allowed;
 }
 
