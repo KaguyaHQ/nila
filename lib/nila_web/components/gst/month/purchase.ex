@@ -31,9 +31,18 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
   def register(assigns) do
     carried_itc = carried_itc(assigns.case_lines, assigns.period)
-    action_counts = action_counts(assigns.review)
+    review_available? = assigns.track_state not in [:awaiting_2b, :need_2b]
 
-    first_action = first_visible_action(assigns.visible_rows, assigns.review)
+    action_counts =
+      if review_available?,
+        do: action_counts(assigns.review),
+        else: %{decisions: 0, documents: 0, waiting: 0, resolved: 0}
+
+    first_action =
+      if review_available?, do: first_visible_action(assigns.visible_rows, assigns.review)
+
+    required_actions =
+      if review_available?, do: Enum.take(assigns.review.needs_you, 8), else: []
 
     assigns =
       assigns
@@ -45,7 +54,8 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       |> assign(:carried_itc, carried_itc)
       |> assign(:action_counts, action_counts)
       |> assign(:scorecards, reconciliation_scorecards(assigns.rows, assigns.review))
-      |> assign(:required_actions, Enum.take(assigns.review.needs_you, 8))
+      |> assign(:required_actions, required_actions)
+      |> assign(:review_available?, review_available?)
       |> assign(:first_action, first_action)
 
     ~H"""
@@ -74,13 +84,16 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               id="purchase-itc-amount-unavailable"
               class="font-display text-base-content text-h3 font-normal"
             >
-              Amount not recorded
+              {@position.unavailable}
             </p>
             <p id="gstr3b-itc-position" class="text-body text-ink-muted max-w-3xl">{@verdict.copy}</p>
           </div>
 
           <div
-            :if={is_map(@itc) and Map.has_key?(@itc, "reported_2b_paise")}
+            :if={
+              not is_nil(@position.amount) and is_map(@itc) and
+                Map.has_key?(@itc, "reported_2b_paise")
+            }
             class="space-y-related"
           >
             <p class="text-ink-subtle text-label font-semibold uppercase">
@@ -129,10 +142,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                 Review next action
               </.button>
               <.button
-                :if={
-                  is_nil(@first_action) and @track_state != :need_2b and
-                    @action_counts.waiting == 0
-                }
+                :if={is_nil(@first_action) and @review_available? and @action_counts.waiting == 0}
                 id="purchase-open-gstr3b"
                 patch={~p"/gst/#{@client.id}/#{@period}?track=gstr3b"}
                 variant="primary"
@@ -149,7 +159,8 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         [
           @required_actions != [] && %{id: "purchase-required-actions", label: "Required actions"},
           %{id: "purchase-controls", label: "Controls"},
-          %{id: "gstr3b-reconciliation-scorecard", label: "Reconciliation detail"},
+          @review_available? &&
+            %{id: "gstr3b-reconciliation-scorecard", label: "Reconciliation detail"},
           %{id: "gstr3b-register", label: "Register"},
           %{id: "gstr3b-source-documents", label: "Evidence"},
           %{id: "purchase-transition", label: "GSTR-3B"}
@@ -243,7 +254,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           </.fold>
 
           <.fold
-            :if={@itc}
+            :if={@review_available? and @itc}
             id="gstr3b-reconciliation"
             open={MapSet.member?(@open_folds, "gstr3b-reconciliation")}
             class="px-4"
@@ -337,7 +348,11 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         </div>
       </section>
 
-      <section id="gstr3b-reconciliation-scorecard" class="space-y-block scroll-mt-28">
+      <section
+        :if={@review_available?}
+        id="gstr3b-reconciliation-scorecard"
+        class="space-y-block scroll-mt-28"
+      >
         <div class="space-y-related">
           <h3 class="text-base-content text-h4 font-semibold">Reconciliation detail</h3>
           <p class="text-ink-muted text-ui">
@@ -400,7 +415,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               placeholder="Invoice, vendor or GSTIN"
             />
           </.form>
-          <div class="overflow-x-auto">
+          <div :if={@review_available?} class="overflow-x-auto">
             <.segmented_control
               id="purchase-action-filters"
               items={[
@@ -432,14 +447,14 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           id="gst-register"
           rows={@visible_rows}
           row_id={fn row -> row["dom_id"] end}
-          row_click={&row_click(&1, @client, @period)}
-          row_class={&row_accent/1}
+          row_click={&row_click(&1, @client, @period, @review_available?)}
+          row_class={&row_accent(&1, @review_available?)}
           min_width="min-w-[1040px]"
         >
           <:col :let={row} label="Document no">
             <div class="flex items-center gap-2">
               <.icon
-                :if={Register.open_row?(row)}
+                :if={@review_available? and Register.open_row?(row)}
                 name="hero-exclamation-triangle-mini"
                 class="text-warning size-4 shrink-0"
               /><span class="font-mono font-medium whitespace-nowrap">{row["invoice_number"] || "—"}</span><span
@@ -460,10 +475,17 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             )}</span>
           </:col>
           <:col :let={row} label="Machine reconciliation">
-            <.badge variant={status_variant(row)}>{row["bucket_label"]}</.badge>
+            <.badge :if={@review_available?} variant={status_variant(row)}>
+              {row["bucket_label"]}
+            </.badge>
+            <span :if={!@review_available?} class="text-ink-muted text-ui">
+              Waiting for GSTR-2B
+            </span>
           </:col>
           <:col :let={row} label="Human action">
-            <span class="text-ink-muted text-ui">{purchase_human_state(row, @review)}</span>
+            <span class="text-ink-muted text-ui">
+              {purchase_human_state(row, @review, @review_available?)}
+            </span>
           </:col>
           <:col :let={row} label="Note" class="max-w-sm">
             <span :if={Register.annotated_row?(row)} class="text-base-content block wrap-break-word">{row[
@@ -516,14 +538,20 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       >
         <div>
           <h3 class="text-base-content text-h4 font-semibold">Continue to GSTR-3B</h3><p class="text-ink-muted text-ui">
-            <%= if @action_counts.waiting > 0 do %>
-              {@action_counts.waiting} {plural(@action_counts.waiting, "document request")} still waiting on the client. GSTR-3B will carry that pending evidence visibly.
-            <% else %>
-              The final return uses this current or frozen ITC position together with outward liability from GSTR-1.
+            <%= cond do %>
+              <% @track_state == :awaiting_2b -> %>
+                GSTR-3B waits until the portal publishes GSTR-2B for this period.
+              <% @track_state == :need_2b -> %>
+                Bring in the published GSTR-2B before continuing to the final return.
+              <% @action_counts.waiting > 0 -> %>
+                {@action_counts.waiting} {plural(@action_counts.waiting, "document request")} still waiting on the client. GSTR-3B will carry that pending evidence visibly.
+              <% true -> %>
+                The final return uses this current or frozen ITC position together with outward liability from GSTR-1.
             <% end %>
           </p>
         </div>
         <.button
+          :if={@review_available?}
           id="purchase-transition-gstr3b"
           patch={~p"/gst/#{@client.id}/#{@period}?track=gstr3b"}
           variant={if @action_counts.waiting > 0, do: "outline", else: "primary"}
@@ -618,7 +646,9 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   defp action_button(%{kind: :gstr2b}), do: "Collect document"
   defp action_button(_item), do: "Review"
 
-  defp purchase_human_state(row, review) do
+  defp purchase_human_state(_row, _review, false), do: "Waiting for GSTR-2B"
+
+  defp purchase_human_state(row, review, true) do
     case Review.lookup(review.all, row["review_item"]) do
       nil -> "No recorded action"
       %{resolved: true, outcome: outcome} -> outcome || "Resolved"
@@ -661,8 +691,14 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   defp carried_status(%{settlement_state: "reserved"}), do: "Reserved by this period's sign-off"
   defp carried_status(_), do: "Carried forward"
 
+  defp position_state(%{track_state: :awaiting_2b}),
+    do: %{label: "ITC position", amount: nil, unavailable: "Awaiting GSTR-2B"}
+
+  defp position_state(%{track_state: :need_2b}),
+    do: %{label: "ITC position", amount: nil, unavailable: "GSTR-2B not imported"}
+
   defp position_state(%{stats: %{itc_money_known?: false}}),
-    do: %{label: "ITC position", amount: nil}
+    do: %{label: "ITC position", amount: nil, unavailable: "Amount not recorded"}
 
   defp position_state(%{itc: %{"claimable_paise" => paise}} = assigns)
        when is_integer(paise) do
@@ -673,13 +709,21 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         true -> "Current proposed ITC"
       end
 
-    %{label: label, amount: Nila.Formatters.format_money_with_paise(paise)}
+    %{
+      label: label,
+      amount: Nila.Formatters.format_money_with_paise(paise),
+      unavailable: nil
+    }
   end
 
-  defp position_state(_assigns), do: %{label: "ITC position", amount: nil}
+  defp position_state(_assigns),
+    do: %{label: "ITC position", amount: nil, unavailable: "Amount not recorded"}
+
+  defp basis_copy(%{track_state: :awaiting_2b}),
+    do: "The portal has not published GSTR-2B for this period, so no comparison exists yet."
 
   defp basis_copy(%{track_state: :need_2b}),
-    do: "GSTR-2B is not in, so no portal comparison is available yet."
+    do: "GSTR-2B is available but not in Nila, so no portal comparison exists yet."
 
   defp basis_copy(%{stats: %{itc_money_known?: false}}),
     do:
@@ -695,6 +739,13 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
   defp basis_copy(_assigns),
     do: "Derived from the current purchase register and the evidence recorded in this workpaper."
+
+  defp primary_blocker(%{track_state: :awaiting_2b}),
+    do: %{
+      label: "Waiting for 2B",
+      variant: "info",
+      copy: "The portal has not published GSTR-2B for this period; nobody can reconcile it yet."
+    }
 
   defp primary_blocker(%{track_state: :need_2b}),
     do: %{
@@ -718,7 +769,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       copy =
         if is_integer(pending) and pending > 0,
           do:
-            "#{display_count} #{plural(display_count, "decision")} withhold #{precise_money(pending)} from the current proposal.",
+            "#{display_count} #{plural(display_count, "decision")} remain open; #{precise_money(pending)} is withheld pending reconciliation decisions.",
           else:
             "#{display_count} #{plural(display_count, "decision")} can still change the purchase treatment."
 
@@ -768,6 +819,9 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         "#{stats.awaiting_bills} #{plural(stats.awaiting_bills, "supply")} appear in GSTR-2B without invoices on file. #{precise_money(stats.awaiting_bills_tax_paise)} remains inside the proposal until possession is resolved."
     }
 
+  defp next_action_copy(_first_action, %{track_state: :awaiting_2b}, _counts),
+    do: "Wait for the portal to publish GSTR-2B for this period."
+
   defp next_action_copy(_first_action, %{track_state: :need_2b}, _counts),
     do: "Bring in GSTR-2B so Nila can compare the register with the portal population."
 
@@ -778,6 +832,14 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
        ),
        do:
          "Collect invoice #{number || "—"} from #{vendor}, or record whether the client holds it."
+
+  defp next_action_copy(
+         %{kind: :itc, invoice_number: number, vendor: vendor},
+         _assigns,
+         _counts
+       ),
+       do:
+         "Review invoice #{number || "—"} from #{vendor} and decide whether to block the credit."
 
   defp next_action_copy(%{invoice_number: number, vendor: vendor}, _assigns, _counts),
     do: "Review invoice #{number || "—"} from #{vendor} and record the purchase treatment."
@@ -794,6 +856,12 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   defp precise_money(paise), do: Nila.Formatters.format_money_with_paise(paise || 0)
 
   defp verdict_state(%{stats: nil}), do: %{copy: nil}
+
+  defp verdict_state(%{track_state: :awaiting_2b}),
+    do: %{copy: "Purchase reconciliation has not started because GSTR-2B is not published yet."}
+
+  defp verdict_state(%{track_state: :need_2b}),
+    do: %{copy: "Purchase reconciliation has not started because GSTR-2B is not in Nila yet."}
 
   defp verdict_state(%{gstr3b_signoff: %{}, purchase_month: %{filed_at: filed_at}, stats: stats})
        when not is_nil(filed_at), do: %{copy: lifecycle_copy(stats, :filed)}
@@ -891,7 +959,9 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   defp document_abbreviation(%{"document_type" => "debit_note"}), do: "DN"
   defp document_abbreviation(_unknown), do: "Document"
 
-  defp row_click(row, client, period) do
+  defp row_click(_row, _client, _period, false), do: nil
+
+  defp row_click(row, client, period, true) do
     scope = if Register.open_row?(row), do: "needs_you", else: "all"
 
     JS.patch(
@@ -906,7 +976,9 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   defp status_variant(%{"bucket" => "value_mismatch"}), do: "error"
   defp status_variant(_row), do: "info"
 
-  defp row_accent(row),
+  defp row_accent(_row, false), do: nil
+
+  defp row_accent(row, true),
     do:
       if(Register.open_row?(row),
         do: "border-l-2 border-l-warning bg-warning/[0.04]",

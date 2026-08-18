@@ -22,6 +22,54 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     %{conn: log_in_user(conn, user), user: user, org: org, client: client}
   end
 
+  test "an unpublished GSTR-2B does not become a zero-valued reconciliation", context do
+    today = Date.utc_today()
+    period = "#{today.year}-#{today.month |> to_string() |> String.pad_leading(2, "0")}"
+    put_books_without_2b!(context, period, "awaiting-2b-1")
+
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{period}?track=purchases")
+
+    assert has_element?(view, "#month-workpaper-tab-purchases", "Waiting for GSTR-2B")
+    assert has_element?(view, "#purchase-itc-amount-unavailable", "Awaiting GSTR-2B")
+    refute has_element?(view, "#purchase-itc-amount")
+    refute has_element?(view, "#purchase-itc-proposal-basis")
+    assert has_element?(view, "#purchase-itc-basis", "has not published GSTR-2B")
+    assert has_element?(view, "#purchase-primary-blocker", "Waiting for 2B")
+    assert has_element?(view, "#purchase-next-action", "Wait for the portal")
+    refute has_element?(view, "#gstr3b-review-required")
+    refute has_element?(view, "#purchase-open-gstr3b")
+    refute has_element?(view, "#purchase-required-actions")
+    refute has_element?(view, "#gstr3b-reconciliation-scorecard")
+    refute has_element?(view, "#purchase-action-filters")
+    refute has_element?(view, "#purchase-transition-gstr3b")
+    assert has_element?(view, "#purchase-transition", "waits until the portal publishes")
+    assert has_element?(view, "#gst-register", "Waiting for GSTR-2B")
+  end
+
+  test "a published but unimported GSTR-2B exposes only the import action", context do
+    period = Nila.Gst.Filing.Calendar.closeable_period(Date.utc_today())
+    put_books_without_2b!(context, period, "need-2b-1")
+
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{period}?track=purchases")
+
+    assert has_element?(view, "#month-workpaper-tab-purchases", "GSTR-2B not in")
+    assert has_element?(view, "#purchase-itc-amount-unavailable", "GSTR-2B not imported")
+    refute has_element?(view, "#purchase-itc-amount")
+    refute has_element?(view, "#purchase-itc-proposal-basis")
+    assert has_element?(view, "#purchase-itc-basis", "available but not in Nila")
+    assert has_element?(view, "#purchase-primary-blocker", "2B not in")
+    assert has_element?(view, "#purchase-next-action", "Bring in GSTR-2B")
+    assert has_element?(view, "#purchase-bring-gstr2b")
+    refute has_element?(view, "#gstr3b-review-required")
+    refute has_element?(view, "#purchase-open-gstr3b")
+    refute has_element?(view, "#purchase-required-actions")
+    refute has_element?(view, "#gstr3b-reconciliation-scorecard")
+    refute has_element?(view, "#purchase-action-filters")
+    refute has_element?(view, "#purchase-transition-gstr3b")
+  end
+
   test "purchase workpaper leads with the ITC conclusion, blocker and next action", context do
     put_month!(
       context,
@@ -259,6 +307,25 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
       end)
 
     assert positions == Enum.sort(positions)
+  end
+
+  defp put_books_without_2b!(context, period, id) do
+    documents = [books(id)]
+    recon = Reconciliation.reconcile(documents, [])
+    rows = Register.rows(documents, recon, %{})
+
+    {:ok, month} =
+      Months.upsert(%{
+        org_id: context.org.id,
+        client_id: context.client.id,
+        period: period,
+        state: "worked",
+        register_rows: rows,
+        recon: recon,
+        summary: Register.summary(rows, Groups.build(recon))
+      })
+
+    month
   end
 
   defp put_month!(context, books, counterparts) do
