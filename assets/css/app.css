@@ -716,8 +716,8 @@
   --spacing-canvas: 4rem;
 }
 
-/* Controlled component families consume these directly through `size` and
-   `dense`; they are measurements, not an inherited page-density mode. */
+/* Controlled component families consume these through their closed recipes;
+   they are measurements, not inherited page-density modes. */
 :root {
   --nila-control-height-compact: 1.75rem;
   --nila-control-height-standard: 2rem;
@@ -725,7 +725,7 @@
   --nila-control-icon-compact: 0.875rem;
   --nila-control-icon-standard: 1rem;
   --nila-control-icon-prominent: 1.25rem;
-  --nila-table-row-height-dense: 2.25rem;
+  --nila-table-row-height-compact: 2.25rem;
   --nila-table-row-height-standard: 2.75rem;
 }
 
@@ -984,6 +984,22 @@ body {
 .nila-exception-outcome,
 .nila-workings-accepted {
   color: var(--success-a11);
+}
+
+/* Bank-statement amounts stay vivid enough to scan by cash direction. Weight,
+   rather than near-black colour, gives them parity with the balance figures. */
+.nila-bank-cash-amount[data-cash-direction="inflow"] {
+  color: var(--success-10);
+  font-weight: 600;
+}
+
+.nila-bank-cash-amount[data-cash-direction="outflow"] {
+  color: var(--error-10);
+  font-weight: 600;
+}
+
+.nila-bank-cash-amount[data-cash-direction="zero"] {
+  color: var(--nila-ink-a10);
 }
 
 .nila-whatsapp-status[data-state="error"] {
@@ -1872,14 +1888,32 @@ body {
   text-align: left;
 }
 
-.nila-table[data-density="dense"] :is(th, td) {
-  height: var(--nila-table-row-height-dense);
-  padding: 0.25rem 0.75rem;
+.nila-table tbody th {
+  font-weight: inherit;
 }
 
-.nila-table[data-density="standard"] :is(th, td) {
+.nila-table[data-mode="scan"] :is(th, td) {
+  height: var(--nila-table-row-height-compact);
+  padding: 0.25rem 0.75rem;
+  vertical-align: middle;
+}
+
+.nila-table[data-mode="worklist"] :is(th, td),
+.nila-table[data-mode="review"] :is(th, td) {
   height: var(--nila-table-row-height-standard);
   padding: 0.5rem 1rem;
+}
+
+.nila-table[data-mode="worklist"] :is(th, td) {
+  vertical-align: middle;
+}
+
+.nila-table[data-mode="review"] thead th {
+  vertical-align: middle;
+}
+
+.nila-table[data-mode="review"] tbody :is(th, td) {
+  vertical-align: top;
 }
 
 .nila-fold-trigger {

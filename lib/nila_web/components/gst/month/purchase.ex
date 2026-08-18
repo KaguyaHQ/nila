@@ -447,9 +447,10 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           row_id={fn row -> row["dom_id"] end}
           row_click={&row_click(&1, @client, @period, @review_available?)}
           row_class={&row_accent(&1, @review_available?)}
+          mode="worklist"
           min_width="min-w-[1040px]"
         >
-          <:col :let={row} label="Document no">
+          <:col :let={row} label="Document no" row_header>
             <div class="flex items-center gap-2">
               <.icon
                 :if={@review_available? and Register.open_row?(row)}

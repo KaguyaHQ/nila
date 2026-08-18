@@ -360,7 +360,7 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     assert css =~ "--nila-control-height-compact: 1.75rem;"
     assert css =~ "--nila-control-height-standard: 2rem;"
     assert css =~ "--nila-control-height-prominent: 2.5rem;"
-    assert css =~ "--nila-table-row-height-dense: 2.25rem;"
+    assert css =~ "--nila-table-row-height-compact: 2.25rem;"
     assert css =~ "--nila-table-row-height-standard: 2.75rem;"
 
     compact_button = css_rule(css, ".nila-button[data-size=\"xs\"]")
@@ -393,13 +393,25 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     segmented = css_rule(css, ".nila-segmented")
     assert segmented =~ "height: var(--nila-control-height-standard);"
 
-    dense_table = css_rule(css, ".nila-table[data-density=\"dense\"] :is(th, td)")
-    assert dense_table =~ "height: var(--nila-table-row-height-dense);"
-    assert dense_table =~ "padding: 0.25rem 0.75rem;"
+    scan_table = css_rule(css, ".nila-table[data-mode=\"scan\"] :is(th, td)")
+    assert scan_table =~ "height: var(--nila-table-row-height-compact);"
+    assert scan_table =~ "padding: 0.25rem 0.75rem;"
+    assert scan_table =~ "vertical-align: middle;"
 
-    standard_table = css_rule(css, ".nila-table[data-density=\"standard\"] :is(th, td)")
+    standard_table =
+      css_rule(
+        css,
+        ".nila-table[data-mode=\"worklist\"] :is(th, td),\n.nila-table[data-mode=\"review\"] :is(th, td)"
+      )
+
     assert standard_table =~ "height: var(--nila-table-row-height-standard);"
     assert standard_table =~ "padding: 0.5rem 1rem;"
+
+    worklist_table = css_rule(css, ".nila-table[data-mode=\"worklist\"] :is(th, td)")
+    assert worklist_table =~ "vertical-align: middle;"
+
+    review_table = css_rule(css, ".nila-table[data-mode=\"review\"] tbody :is(th, td)")
+    assert review_table =~ "vertical-align: top;"
   end
 
   test "rejects undefined CSS variable references" do

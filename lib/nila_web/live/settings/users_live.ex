@@ -150,9 +150,10 @@ defmodule NilaWeb.Settings.UsersLive do
           rows={@members}
           row_id={fn member -> "member-#{member.id}" end}
           empty?={@members == []}
+          mode="review"
           min_width="min-w-[640px]"
         >
-          <:col :let={member} label="Name">
+          <:col :let={member} label="Name" row_header>
             <span class="text-base-content font-medium wrap-break-word">
               {member.user.name}
               <span

@@ -358,9 +358,9 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   ["scroll-mt-4", row.kind == :total && "bg-base-200/40 font-medium"]
                 end
               }
-              dense
+              mode="review"
             >
-              <:col :let={row} label="Item">
+              <:col :let={row} label="Item" row_header>
                 <span :if={row.kind == :total} class="text-base-content">Lines sum</span>
                 <span
                   :if={row.kind == :line}

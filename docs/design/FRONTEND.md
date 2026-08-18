@@ -130,9 +130,11 @@ The parent owns spacing between siblings. Components own their internal padding.
 Outer gaps exceed inner gaps. Product gutters use the shared layout recipe. Raw numeric
 structural stacks and off-scale spacing fail `style_guard`.
 
-Compact geometry is for worklists and working sheets. Standard geometry is for review,
-correction, and signing. Density changes padding, not typography: dense tables remain
-14px working UI.
+Table geometry is selected by the table's job, not assembled from independent density
+and alignment switches. `scan` uses compact geometry for registers and numeric schedules;
+`worklist` uses standard, vertically centred rows for tasks and destinations; `review`
+uses standard, top-aligned rows for multiline evidence and embedded controls. All three
+remain 14px working UI.
 
 ## Ruling, radius, and elevation
 
@@ -180,8 +182,13 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
   size and no styling escape hatch.
 - **Fields:** `<.input>` owns text, select, textarea, checkbox, date, password, labels,
   errors, and control geometry. Callers supply content and native attributes, not classes.
-- **Tables:** `<.data_table>` is the only product table. Use `dense` only for material
-  scanned in bulk; right-aligned columns are tabular automatically.
+- **Tables:** `<.data_table>` is the only product table and requires one closed mode:
+  `scan`, `worklist`, or `review`. The mode owns padding and vertical alignment; callers
+  cannot recombine those decisions. Exactly one column is the semantic `row_header`, and
+  right-aligned columns are tabular automatically. Radix supplies physical calibration.
+  Mature data-table systems such as Primer may inform higher-level behaviour where Radix
+  has no opinion, but the resulting decision must be encoded in Nila's component rather
+  than delegated to product callers.
 - **Context:** `<.context_text>` is the only route to 12px contextual copy. Its controlled
   API prevents competing type roles.
 - **Folds:** `<.fold>`, never bare `<details>`. Open state lives on the server so LiveView

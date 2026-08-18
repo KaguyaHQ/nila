@@ -97,6 +97,7 @@ config :nila, Oban,
   repo: Nila.Repo,
   queues: [
     documents: 5,
+    banking: 2,
     whatsapp: 5,
     workflows: 10,
     reminders: 5,

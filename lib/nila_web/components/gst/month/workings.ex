@@ -54,8 +54,13 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     <div id="gstr1-table-12-rows" class="space-y-block">
       <div :if={@hsn_b2c != []} id="gstr1-workings-hsn-b2c" class="space-y-1.5">
         <.section_label>B2C</.section_label>
-        <.data_table id="gstr1-workings-hsn-b2c-rows" rows={@hsn_b2c} min_width="min-w-[720px]" dense>
-          <:col :let={row} label="HSN/SAC">
+        <.data_table
+          id="gstr1-workings-hsn-b2c-rows"
+          rows={@hsn_b2c}
+          mode="scan"
+          min_width="min-w-[720px]"
+        >
+          <:col :let={row} label="HSN/SAC" row_header>
             <div class="flex items-center gap-2">
               <span class="font-mono">{row["hsn_sc"]}</span>
               <.badge :if={MapSet.member?(@novelty_codes, row["hsn_sc"])} variant="neutral">
@@ -81,9 +86,9 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           row_class={fn row -> row_class(row, @rippled, @ripple_seq, @expanded) end}
           row_click={&row_click/1}
           min_width="min-w-[620px]"
-          dense
+          mode="scan"
         >
-          <:col :let={row} label="HSN/SAC">
+          <:col :let={row} label="HSN/SAC" row_header>
             <div :if={row.kind == :node} class="flex items-center gap-2">
               <.chevron open={MapSet.member?(@expanded, row.id)} />
               <span class="text-base-content font-mono font-medium whitespace-nowrap">{row.hsn || "—"}</span>
@@ -210,9 +215,10 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               row_id={& &1.id}
               row_class={fn row -> row_class(row, @rippled, @ripple_seq, @expanded) end}
               row_click={&row_click/1}
+              mode="scan"
               min_width="min-w-[620px]"
             >
-              <:col :let={row} label="Party">
+              <:col :let={row} label="Party" row_header>
                 <%!-- Extraction sometimes lands a whole postal address in the buyer
                   name; a text column that sizes to its content pushes the money
                   off the right edge, so the name truncates and the full string
@@ -263,9 +269,10 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
             <.data_table
               id="gstr1-workings-b2cl-rows"
               rows={@b2cl_rows}
+              mode="scan"
               min_width="min-w-[620px]"
             >
-              <:col :let={row} label="Invoice">
+              <:col :let={row} label="Invoice" row_header>
                 <span class="text-base-content font-mono font-medium whitespace-nowrap">{row.number}</span>
               </:col>
               <:col :let={row} label="Date">{row.date}</:col>
@@ -293,8 +300,13 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
             </.fold_summary>
           </:summary>
           <div class="pb-4">
-            <.data_table id="gstr1-workings-b2cs-rows" rows={@b2cs} min_width="min-w-[620px]">
-              <:col :let={row} label="Supply">{row["sply_ty"]}</:col>
+            <.data_table
+              id="gstr1-workings-b2cs-rows"
+              rows={@b2cs}
+              mode="scan"
+              min_width="min-w-[620px]"
+            >
+              <:col :let={row} label="Supply" row_header>{row["sply_ty"]}</:col>
               <:col :let={row} label="POS"><span class="font-mono">{row["pos"]}</span></:col>
               <:col :let={row} label="Rate" align="right">{Helpers.percent(row["rt"])}</:col>
               <:col :let={row} label="Taxable" align="right">{Helpers.amount(row["txval"])}</:col>
@@ -325,9 +337,10 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               id="gstr1-workings-cdnr-rows"
               rows={@note_rows}
               row_id={& &1.id}
+              mode="scan"
               min_width="min-w-[620px]"
             >
-              <:col :let={row} label="Note">
+              <:col :let={row} label="Note" row_header>
                 <span class="text-base-content font-mono font-medium whitespace-nowrap">{row.number}</span>
               </:col>
               <:col :let={row} label="Type">{row.type}</:col>
@@ -367,9 +380,10 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               row_id={& &1.id}
               row_class={fn row -> row_class(row, @rippled, @ripple_seq, @expanded) end}
               row_click={&row_click/1}
+              mode="scan"
               min_width="min-w-[520px]"
             >
-              <:col :let={row} label="Rate">
+              <:col :let={row} label="Rate" row_header>
                 <div :if={row.kind == :node} class="flex items-center gap-2">
                   <.chevron open={MapSet.member?(@expanded, row.id)} />
                   <span class="text-base-content font-medium">{Helpers.percent(row.rate)}</span>
