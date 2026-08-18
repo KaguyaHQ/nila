@@ -287,8 +287,8 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
 
     prominent_button = css_rule(css, ".nila-button[data-size=\"lg\"]")
     assert prominent_button =~ "height: var(--nila-control-height-prominent);"
-    refute prominent_button =~ "font-size:"
-    refute prominent_button =~ "line-height:"
+    assert prominent_button =~ "font-size: var(--text-body);"
+    assert prominent_button =~ "line-height: var(--text-body--line-height);"
 
     prominent_icon =
       css_rule(
