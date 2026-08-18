@@ -21,6 +21,8 @@ defmodule NilaWeb.Settings.UsersLiveTest do
       assert has_element?(view, "#settings-users .nila-select")
       refute has_element?(view, "#settings-users .select")
       assert has_element?(view, ~s|a[aria-current="page"][href="/settings/users"]|)
+      assert has_element?(view, "#members .wrap-break-word", owner.name)
+      assert has_element?(view, "#members .wrap-break-word", owner.email)
       assert render(view) =~ owner.name
     end
 

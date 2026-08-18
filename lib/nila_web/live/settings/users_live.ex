@@ -153,7 +153,7 @@ defmodule NilaWeb.Settings.UsersLive do
           min_width="min-w-[640px]"
         >
           <:col :let={member} label="Name">
-            <span class="text-base-content font-medium">
+            <span class="text-base-content font-medium wrap-break-word">
               {member.user.name}
               <span
                 :if={member.user_id == @current_scope.user.id}
@@ -164,7 +164,7 @@ defmodule NilaWeb.Settings.UsersLive do
             </span>
           </:col>
           <:col :let={member} label="Email">
-            <span class="text-ink-muted">{member.user.email}</span>
+            <span class="text-ink-muted wrap-break-word">{member.user.email}</span>
           </:col>
           <:col :let={member} label="Role">
             <form

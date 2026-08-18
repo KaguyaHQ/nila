@@ -61,6 +61,17 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
 
     {:ok, view, _html} = live(context.conn, review_path(context.client))
 
+    assert has_element?(view, "#gst-exception-queue span.truncate[title='Sharma Steels']")
+    assert has_element?(view, "#gst-exception-queue span.truncate[title*='1134']")
+
+    assert has_element?(
+             view,
+             "#gst-exception-queue [id^='queue-tax-'].whitespace-nowrap.tabular-nums"
+           )
+
+    assert has_element?(view, "#gst-exception-detail .wrap-break-word", "1134")
+    assert has_element?(view, "#gst-exception-tax.whitespace-nowrap.tabular-nums")
+
     view |> element("button", "Confirm — same bill") |> render_click()
 
     assert [resolution] = Resolutions.list(month.id)

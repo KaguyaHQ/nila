@@ -29,8 +29,14 @@ defmodule NilaWeb.Settings.ProfileLiveTest do
 
     assert has_element?(view, "#settings-cockpit")
     assert has_element?(view, "#settings-profile")
-    assert has_element?(view, "#profile-name", "Profile Owner")
-    assert has_element?(view, "#profile-email", "profile-owner@example.com")
+    assert has_element?(view, "#profile-name.wrap-break-word:not(.truncate)", "Profile Owner")
+
+    assert has_element?(
+             view,
+             "#profile-email.wrap-break-word:not(.truncate)",
+             "profile-owner@example.com"
+           )
+
     assert has_element?(view, "#profile-workspace", "Profile Test Co")
     assert has_element?(view, "#profile-role", "Admin")
     assert has_element?(view, "#change-email-form")

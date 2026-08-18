@@ -56,6 +56,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert has_element?(
              view,
+             "#gstr1-inv-20\\/2025-26 .whitespace-nowrap.font-mono",
+             "20/2025-26"
+           )
+
+    assert has_element?(
+             view,
              "#gstr1-grouped-review-cases article",
              "Invoice 20/2025-26"
            )
@@ -106,6 +112,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert has_element?(view, "#gstr1-workings-b2b[open]")
     assert has_element?(view, "#gstr1-workings-b2b-rows")
+    assert has_element?(view, "#gstr1-workings-b2b-rows .whitespace-nowrap.font-mono")
     assert has_element?(view, "#gstr1-workings-rates:not([open])")
 
     view |> element("#gstr1-workings-b2b > summary") |> render_click()

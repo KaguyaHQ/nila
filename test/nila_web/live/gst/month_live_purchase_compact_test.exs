@@ -504,7 +504,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     assert has_element?(
              view,
-             "##{dom_id(settled, settled_index)} .truncate",
+             "##{dom_id(settled, settled_index)} .wrap-break-word",
              settled["verdict"]
            )
   end
@@ -534,7 +534,13 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     html = view |> element("##{dom_id(open, index)}") |> render()
     assert html =~ "#{open["verdict"]}"
 
-    assert has_element?(view, "##{dom_id(open, index)}", String.slice(open["next_action"], 0, 40))
+    assert has_element?(
+             view,
+             "##{dom_id(open, index)} .wrap-break-word",
+             String.slice(open["next_action"], 0, 40)
+           )
+
+    refute has_element?(view, "##{dom_id(open, index)} td.max-w-sm .truncate")
 
     # And once it is decided the note goes quiet altogether — a move printed
     # under a settled bill reads as an instruction to redo it. The follow-up
@@ -611,8 +617,9 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     refute row_html =~ "hero-exclamation-triangle-mini"
     refute row_html =~ "border-l-warning"
-    # The note still speaks, because a flag on a matched bill is worth reading.
-    assert row_html =~ "truncate"
+    # The note still speaks in full, because a flag on a matched bill is worth reading.
+    assert row_html =~ "wrap-break-word"
+    refute row_html =~ "truncate"
   end
 
   test "clicking an open register row patches the mounted month into purchase review", %{

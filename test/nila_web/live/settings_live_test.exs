@@ -188,6 +188,19 @@ defmodule NilaWeb.SettingsLiveTest do
       {:ok, view, _html} = live(conn, ~p"/settings/connectors")
 
       assert has_element?(view, "#settings-connection-#{connection.id}")
+
+      assert has_element?(
+               view,
+               "#settings-connection-#{connection.id} h4.wrap-break-word:not(.truncate)",
+               "Caltech invoices"
+             )
+
+      assert has_element?(
+               view,
+               "#settings-connection-#{connection.id} p.wrap-break-word:not(.truncate)",
+               "caltech@example.com"
+             )
+
       assert has_element?(view, "#settings-add-gmail-form")
 
       view

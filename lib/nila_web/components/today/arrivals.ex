@@ -17,16 +17,18 @@ defmodule NilaWeb.Components.Today.Arrivals do
           id={"arrival-group-#{group.id}"}
           phx-click="open-arrivals"
           phx-value-arrival-id={group.id}
-          class="hover:bg-base-200/50 flex w-full items-center gap-3 px-4 py-3 text-left transition"
+          class="hover:bg-base-200/50 flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition"
         >
           <.icon name="hero-inbox-arrow-down" class="text-moon size-5 shrink-0" />
-          <span class="text-base-content text-ui flex-1 font-medium">
+          <span class="text-base-content text-ui min-w-0 flex-1 font-medium wrap-break-word">
             {arrival_label(group)}
           </span>
-          <.context_text>
-            {arrival_age(group.received_at, @now)}
-          </.context_text>
-          <.icon name="hero-chevron-right" class="text-ink-faint size-4" />
+          <span class="shrink-0 whitespace-nowrap">
+            <.context_text>
+              {arrival_age(group.received_at, @now)}
+            </.context_text>
+          </span>
+          <.icon name="hero-chevron-right" class="text-ink-faint size-4 shrink-0" />
         </button>
       </.card>
     </section>
@@ -57,7 +59,10 @@ defmodule NilaWeb.Components.Today.Arrivals do
             <.context_text tag="p">
               From {display_sender(@group)} over {source_label(@group.source)}
             </.context_text>
-            <p :for={arrival <- @group.arrivals} class="text-base-content text-ui mt-1">
+            <p
+              :for={arrival <- @group.arrivals}
+              class="text-base-content text-ui mt-1 wrap-break-word"
+            >
               {arrival.filename}
             </p>
           </div>

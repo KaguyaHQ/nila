@@ -19,6 +19,7 @@ defmodule NilaWeb.ClientsLiveTest do
     assert has_element?(view, "#clients-page")
     assert has_element?(view, "#clients-add")
     assert has_element?(view, "#clients-table")
+    assert has_element?(view, "#clients-table .min-w-0.wrap-break-word", "Breeze Tech")
     assert render(view) =~ "Breeze Tech"
   end
 

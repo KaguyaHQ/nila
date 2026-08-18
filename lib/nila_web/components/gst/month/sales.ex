@@ -206,7 +206,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         class="space-y-block scroll-mt-28"
       >
         <div class="flex flex-wrap items-end justify-between gap-3">
-          <div>
+          <div class="space-y-related">
             <h3 class="text-base-content text-h4 font-semibold">Required review</h3>
             <p class="text-ink-muted text-ui">
               Only work that can block or change the proposed return.
@@ -240,7 +240,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             class="bg-base-100 border-warning/45 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
             <div class="min-w-0 flex-1 space-y-1">
-              <p class="text-base-content text-body font-semibold">
+              <p class="text-base-content text-body font-semibold wrap-break-word">
                 Invoice {review_case.invoice_number}
               </p>
               <p class="text-body text-ink-muted">{review_case.reason}</p>
@@ -276,7 +276,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               <p
                 :if={issue["invoice"]}
                 data-role="issue-invoice"
-                class="text-base-content text-body font-semibold"
+                class="text-base-content text-body font-semibold wrap-break-word"
               >
                 Invoice {issue["invoice"]}
               </p>
@@ -672,7 +672,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
     >
       <:col :let={invoice} label="Document No">
         <span class={[
-          "font-mono",
+          "font-mono whitespace-nowrap",
           if(MapSet.member?(@visited, invoice["id"] || invoice["invoice_number"]),
             do: "text-ink-muted",
             else: "text-base-content font-medium"
@@ -681,16 +681,20 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           {invoice["invoice_number"] || "—"}
         </span>
       </:col>
-      <:col :let={invoice} label="Date">{format_display_date(invoice["invoice_date"])}</:col>
+      <:col :let={invoice} label="Date">
+        <span class="whitespace-nowrap tabular-nums">{format_display_date(invoice["invoice_date"])}</span>
+      </:col>
       <:col :let={invoice} label="Buyer">
         <span class="block max-w-64 truncate" title={invoice["buyer_name"]}>{invoice["buyer_name"] ||
           "—"}</span>
       </:col>
       <:col :let={invoice} label="Recipient">
-        <span class="text-ink-muted font-mono">{invoice["buyer_gstin"] || registration_label(invoice)}</span>
+        <span class="text-ink-muted font-mono whitespace-nowrap">
+          {invoice["buyer_gstin"] || registration_label(invoice)}
+        </span>
       </:col>
       <:col :let={invoice} label="POS">
-        <span class="text-ink-muted font-mono">{invoice["place_of_supply"] || "—"}</span>
+        <span class="text-ink-muted font-mono whitespace-nowrap">{invoice["place_of_supply"] || "—"}</span>
       </:col>
       <:col :let={invoice} label="Taxable" align="right">
         {Helpers.rupees(Gstr1.extracted_totals(invoice).taxable)}

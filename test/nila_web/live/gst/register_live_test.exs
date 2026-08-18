@@ -116,8 +116,17 @@ defmodule NilaWeb.Gst.RegisterLiveTest do
              ~s|#register-link-#{client.id}-2025-08[title="GSTR-1 ARN: R1-ARN-08 · GSTR-3B ARN: 3B-ARN-08"]|
            )
 
-    assert has_element?(view, "#register-r1-#{client.id}-2025-08", "10 Jul")
-    assert has_element?(view, "#register-3b-#{client.id}-2025-08", "18 Jul")
+    assert has_element?(
+             view,
+             "#register-r1-#{client.id}-2025-08.whitespace-nowrap.tabular-nums",
+             "10 Jul"
+           )
+
+    assert has_element?(
+             view,
+             "#register-3b-#{client.id}-2025-08.whitespace-nowrap.tabular-nums",
+             "18 Jul"
+           )
 
     assert has_element?(view, "#register-r1-#{client.id}-2025-07", "10 Jul")
     assert has_element?(view, "#register-3b-#{client.id}-2025-07", "Not filed")

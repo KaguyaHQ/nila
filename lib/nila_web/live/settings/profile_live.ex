@@ -91,15 +91,15 @@ defmodule NilaWeb.Settings.ProfileLive do
         </.settings_header>
 
         <.settings_panel body_class="space-y-block">
-          <div class="flex items-center gap-4">
+          <div class="flex min-w-0 items-center gap-4">
             <div class="bg-primary rounded-field text-body text-primary-content grid size-14 shrink-0 place-items-center font-semibold">
               {user_initials(@current_scope.user)}
             </div>
-            <div class="min-w-0">
-              <h2 id="profile-name" class="text-base-content text-h4 truncate font-semibold">
+            <div class="min-w-0 flex-1">
+              <h2 id="profile-name" class="text-base-content text-h4 font-semibold wrap-break-word">
                 {@current_scope.user.name}
               </h2>
-              <p id="profile-email" class="text-ink-subtle text-ui truncate">
+              <p id="profile-email" class="text-ink-subtle text-ui wrap-break-word">
                 {@current_scope.user.email}
               </p>
             </div>

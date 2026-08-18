@@ -103,14 +103,18 @@ defmodule NilaWeb.ClientsLive do
           empty?={@clients == []}
         >
           <:col :let={client} label="Name">
-            <div class="flex items-center gap-2">
-              <span class="font-medium">{client.name}</span>
-              <.badge :if={!client.gstin} variant="warning">no GSTIN</.badge>
+            <div class="flex min-w-0 items-center gap-2">
+              <span class="min-w-0 font-medium wrap-break-word">{client.name}</span>
+              <span :if={!client.gstin} class="shrink-0">
+                <.badge variant="warning">no GSTIN</.badge>
+              </span>
             </div>
           </:col>
-          <:col :let={client} label="Type">{client.type}</:col>
+          <:col :let={client} label="Type"><span class="whitespace-nowrap">{client.type}</span></:col>
           <:col :let={client} label="Latest month">
-            <span :if={client.period}>{period_label(client.period)}</span>
+            <span :if={client.period} class="whitespace-nowrap tabular-nums">{period_label(
+              client.period
+            )}</span>
             <span :if={!client.period} class="text-ink-subtle">no months yet</span>
           </:col>
           <:col :let={client} label="Status">

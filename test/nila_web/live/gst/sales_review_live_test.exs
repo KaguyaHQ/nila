@@ -98,6 +98,16 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
 
     assert has_element?(
              view,
+             "#sales-review-rail-#{first["id"]} span.truncate[title='#{first["invoice_number"]}']"
+           )
+
+    assert has_element?(
+             view,
+             "#sales-review-rail-#{first["id"]} span.truncate[title='#{first["buyer_name"]}']"
+           )
+
+    assert has_element?(
+             view,
              "#sales-review-rail-#{first["id"]}[data-selected='true'][aria-current='true']"
            )
 

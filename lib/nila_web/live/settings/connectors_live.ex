@@ -268,7 +268,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
             <article
               :for={connection <- @connections}
               id={"settings-connection-#{connection.id}"}
-              class="grid gap-4 px-4 py-3 xl:grid-cols-[1fr_380px]"
+              class="grid min-w-0 gap-4 px-4 py-3 xl:grid-cols-[1fr_380px]"
             >
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
@@ -277,15 +277,15 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                     {connection_status(connection)}
                   </.badge>
                 </div>
-                <h4 class="text-base-content text-ui mt-2 truncate font-semibold">
+                <h4 class="text-base-content text-ui mt-2 font-semibold wrap-break-word">
                   {Connection.display_label(connection)}
                 </h4>
-                <p class="text-ink-muted text-ui mt-1 truncate">
+                <p class="text-ink-muted text-ui mt-1 wrap-break-word">
                   {connection_detail(connection)}
                 </p>
                 <p
                   :if={connection.provider == "whatsapp" && connection.settings["waba_id"]}
-                  class="text-ink-subtle text-ui mt-1"
+                  class="text-ink-subtle text-ui mt-1 wrap-break-word"
                 >
                   WABA {connection.settings["waba_id"]} · Phone ID {connection.external_account_id}
                 </p>

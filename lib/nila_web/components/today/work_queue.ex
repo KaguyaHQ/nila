@@ -34,8 +34,10 @@ defmodule NilaWeb.Components.Today.WorkQueue do
         row_click={fn r -> JS.navigate(r.path) end}
         min_width="min-w-[840px]"
       >
-        <:col :let={r} label="Client">{r.client_name}</:col>
-        <:col :let={r} label="Period">{period_label(r.period)}</:col>
+        <:col :let={r} label="Client"><span class="wrap-break-word">{r.client_name}</span></:col>
+        <:col :let={r} label="Period">
+          <span class="whitespace-nowrap tabular-nums">{period_label(r.period)}</span>
+        </:col>
         <:col :let={r} label="Due">
           <.badge :if={r.deadline} variant={days_left_variant(r.deadline.days_left)}>
             {r.deadline.return} · {days_left_label(r.deadline.days_left)}
@@ -68,7 +70,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
             :if={last_ask_label(r.last_ask_at, @today)}
             type="button"
             id={"last-ask-#{r.client_id}-#{r.period}"}
-            class="hover:text-moon text-ink-muted text-ui cursor-pointer underline decoration-dotted underline-offset-2"
+            class="hover:text-moon text-ink-muted text-ui cursor-pointer whitespace-nowrap underline decoration-dotted underline-offset-2"
             phx-click={
               JS.push("open-chase-history",
                 value: %{"client-id" => to_string(r.client_id), "period" => r.period}
@@ -87,7 +89,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
               :if={r.ask_count > 0}
               type="button"
               id={"automated-chase-#{r.client_id}-#{r.period}"}
-              class="hover:text-moon text-ink-muted text-ui cursor-pointer underline decoration-dotted underline-offset-2"
+              class="hover:text-moon text-ink-muted text-ui cursor-pointer whitespace-nowrap underline decoration-dotted underline-offset-2"
               phx-click={
                 JS.push("open-chase-history",
                   value: %{"client-id" => to_string(r.client_id), "period" => r.period}

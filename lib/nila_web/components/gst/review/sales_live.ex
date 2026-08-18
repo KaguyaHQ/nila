@@ -310,10 +310,16 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
                 data-selected={to_string(@selected_id == item.source_id)}
                 aria-current={@selected_id == item.source_id && "true"}
               >
-                <span class="text-base-content text-ui block truncate font-mono">
+                <span
+                  class="text-base-content text-ui block truncate font-mono"
+                  title={item.invoice["invoice_number"] || "—"}
+                >
                   {item.invoice["invoice_number"] || "—"}
                 </span>
-                <span class="text-ink-subtle text-ui block truncate">
+                <span
+                  class="text-ink-subtle text-ui block truncate"
+                  title={item.invoice["buyer_name"] || item.invoice["buyer_gstin"] || "Unknown buyer"}
+                >
                   {item.invoice["buyer_name"] || item.invoice["buyer_gstin"] || "Unknown buyer"}
                 </span>
                 <% {variant, label} = rail_state(item.state) %>

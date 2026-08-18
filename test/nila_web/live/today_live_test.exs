@@ -84,6 +84,8 @@ defmodule NilaWeb.TodayLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/today")
     assert has_element?(view, "#pending-arrivals", "Breeze Tech sent a file over WhatsApp")
+    assert has_element?(view, "#arrival-group-#{arrival.id}.min-w-0 .wrap-break-word")
+    assert has_element?(view, "#arrival-group-#{arrival.id} .whitespace-nowrap")
 
     view |> element("#arrival-group-#{arrival.id}") |> render_click()
     assert has_element?(view, "#arrival-sort-modal")

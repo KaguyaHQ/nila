@@ -39,7 +39,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           <div class="border-base-300 space-y-1 border-b px-3 py-2">
             <div class="flex items-baseline justify-between gap-2">
               <span class="text-base-content text-ui font-semibold">{group.title}</span>
-              <span class="text-ink-muted text-ui font-mono">
+              <span class="text-ink-muted text-ui font-mono whitespace-nowrap tabular-nums">
                 {group.count} · {format_money(group.tax_paise, prefix: "₹")}
               </span>
             </div>
@@ -73,29 +73,34 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
               <span :if={not item.resolved} class="bg-warning mt-1.5 size-2 shrink-0 rounded-full" />
               <span class="flex min-w-0 flex-1 flex-col gap-1">
                 <span class="flex items-baseline gap-2">
-                  <span class={[
-                    "text-ui min-w-0 flex-1 truncate font-medium",
-                    item.resolved && "text-ink-subtle",
-                    not item.resolved && "text-base-content"
-                  ]}>
+                  <span
+                    class={[
+                      "text-ui min-w-0 flex-1 truncate font-medium",
+                      item.resolved && "text-ink-subtle",
+                      not item.resolved && "text-base-content"
+                    ]}
+                    title={item.vendor}
+                  >
                     {item.vendor}
                   </span>
                   <span
                     :if={item.tax_paise > 0}
                     id={"queue-tax-#{item.id}"}
                     class={[
-                      "text-ui shrink-0 font-mono",
+                      "text-ui shrink-0 font-mono whitespace-nowrap tabular-nums",
                       (item.resolved && "text-ink-subtle") || "text-ink-muted"
                     ]}
                   >
                     {format_money(item.tax_paise, prefix: "₹")}
                   </span>
                 </span>
-                <span class="text-ink-subtle text-ui truncate">
-                  {if item.resolved,
+                <% detail =
+                  if item.resolved,
                     do: item.outcome,
                     else:
-                      "#{document_label(item)} #{item.invoice_number || "without number"} · #{short_type(item.type)}"}
+                      "#{document_label(item)} #{item.invoice_number || "without number"} · #{short_type(item.type)}" %>
+                <span class="text-ink-subtle text-ui truncate" title={detail}>
+                  {detail}
                 </span>
               </span>
             </button>
@@ -150,7 +155,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       <dl class="border-base-300 divide-base-300 rounded-box divide-y border">
         <div class="flex items-center justify-between gap-3 px-4 py-3">
           <dt class="text-ink-muted text-ui">Credit at stake</dt>
-          <dd class="text-base-content font-mono">
+          <dd class="text-base-content text-ui font-mono whitespace-nowrap tabular-nums">
             {format_money(@selected.tax_paise, prefix: "₹")}
           </dd>
         </div>
@@ -201,9 +206,15 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
     ~H"""
     <div class="space-y-section">
       <div>
-        <h3 class="text-base-content text-body flex flex-wrap items-baseline gap-x-3 font-semibold">
-          <span>{document_label(@selected)} {@selected.invoice_number || "—"} · {@selected.vendor}</span>
-          <span :if={@selected.tax_paise > 0} id="gst-exception-tax" class="text-ui font-mono">
+        <h3 class="text-base-content text-body flex min-w-0 flex-wrap items-baseline gap-x-3 font-semibold">
+          <span class="min-w-0 wrap-break-word">
+            {document_label(@selected)} {@selected.invoice_number || "—"} · {@selected.vendor}
+          </span>
+          <span
+            :if={@selected.tax_paise > 0}
+            id="gst-exception-tax"
+            class="text-ui font-mono whitespace-nowrap tabular-nums"
+          >
             <%= if @selected.document_type == "credit_note" do %>
               {format_money(@selected.tax_paise, prefix: "₹")} face tax · −{format_money(
                 @selected.tax_paise,
@@ -230,8 +241,12 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
             id={"gst-exception-books-member-#{books["id"]}"}
             class="flex items-baseline justify-between gap-3 px-3 py-2"
           >
-            <span class="text-base-content text-ui font-medium">{books["vendor_name"]}</span>
-            <span class="text-ink-muted text-ui font-mono">{books["invoice_number"] || "—"}</span>
+            <span class="text-base-content text-ui min-w-0 font-medium wrap-break-word">
+              {books["vendor_name"]}
+            </span>
+            <span class="text-ink-muted text-ui font-mono wrap-break-word">
+              {books["invoice_number"] || "—"}
+            </span>
           </div>
         </div>
       </div>
@@ -503,13 +518,15 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         class="grid grid-cols-[6rem_1fr_1.5rem_1fr] items-center gap-2 px-3 py-2"
       >
         <span class="text-ink-subtle text-label uppercase">{label}</span>
-        <span class="text-base-content text-ui font-mono">{fmt(bv)}</span>
+        <span class="text-base-content text-ui min-w-0 font-mono wrap-break-word tabular-nums">
+          {fmt(bv)}
+        </span>
         <span class="flex justify-center">
           <.icon :if={agree?} name="hero-check-mini" class="text-success size-4" />
           <.icon :if={!agree?} name="hero-x-mark-mini" class="text-error size-4" />
         </span>
         <span class={[
-          "text-ui font-mono",
+          "text-ui min-w-0 font-mono wrap-break-word tabular-nums",
           agree? && "text-base-content",
           !agree? && "text-error"
         ]}>
@@ -549,8 +566,10 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         Reported in GSTR-2B
       </div>
       <div :for={{label, value} <- @fields} class="flex items-center gap-4 px-3 py-2">
-        <span class="text-ink-subtle text-label w-24 uppercase">{label}</span>
-        <span class="text-base-content text-ui font-mono">{fmt(value)}</span>
+        <span class="text-ink-subtle text-label w-24 shrink-0 uppercase">{label}</span>
+        <span class="text-base-content text-ui min-w-0 font-mono wrap-break-word tabular-nums">
+          {fmt(value)}
+        </span>
       </div>
     </div>
     """

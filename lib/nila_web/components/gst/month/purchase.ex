@@ -49,7 +49,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         class="border-base-300 moonlight-soft rounded-box space-y-block border p-6"
       >
         <div class="flex flex-wrap items-start justify-between gap-4">
-          <div class="min-w-0 space-y-1">
+          <div class="space-y-related min-w-0">
             <p class="text-ink-subtle text-label font-semibold uppercase">Purchase position</p>
             <h2 class="font-display text-base-content text-h3 font-normal">Purchases &amp; ITC</h2>
             <p id="gstr3b-itc-position" class="text-body text-ink-muted max-w-3xl">{@verdict.copy}</p>
@@ -124,7 +124,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       } />
 
       <section id="gstr3b-reconciliation-scorecard" class="space-y-block scroll-mt-28">
-        <div>
+        <div class="space-y-related">
           <h3 class="text-base-content text-h4 font-semibold">Reconciliation population</h3>
           <p class="text-ink-muted text-ui">
             Machine matching state for the whole purchase register. Select a bucket to filter the register.
@@ -157,7 +157,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         id="purchase-required-actions"
         class="space-y-block scroll-mt-28"
       >
-        <div>
+        <div class="space-y-related">
           <h3 class="text-base-content text-h4 font-semibold">Required actions</h3>
           <p class="text-ink-muted text-ui">
             Judgement, corrections and missing evidence remain separate from machine matching state.
@@ -172,7 +172,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-2">
                 <.badge variant={action_variant(item)}>{action_label(item)}</.badge>
-                <p class="text-base-content text-ui font-semibold">
+                <p class="text-base-content text-ui min-w-0 font-semibold wrap-break-word">
                   {item.invoice_number || "—"} · {item.vendor}
                 </p>
               </div>
@@ -289,11 +289,14 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                     {carried_origin(line)}
                   </div>
                   <div class="min-w-0">
-                    <div class="text-base-content text-ui truncate font-medium">
+                    <div
+                      class="text-base-content text-ui truncate font-medium"
+                      title={"#{line.invoice_number || "—"} · #{line.vendor}"}
+                    >
                       {line.invoice_number || "—"} · {line.vendor}
                     </div><div class="text-ink-subtle text-ui">{carried_status(line)}</div>
                   </div>
-                  <div class="text-base-content text-ui font-mono">
+                  <div class="text-base-content text-ui font-mono whitespace-nowrap tabular-nums">
                     {format_money(line.tax_paise, prefix: "₹")}
                   </div>
                 </div>
@@ -405,13 +408,15 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                 :if={Register.open_row?(row)}
                 name="hero-exclamation-triangle-mini"
                 class="text-warning size-4 shrink-0"
-              /><span class="font-medium">{row["invoice_number"] || "—"}</span><span
+              /><span class="font-mono font-medium whitespace-nowrap">{row["invoice_number"] || "—"}</span><span
                 :if={row["document_type"] != "invoice"}
                 class="text-ink-subtle text-ui"
               >{document_abbreviation(row)}</span>
             </div>
           </:col>
-          <:col :let={row} label="Vendor">{row["vendor_name"]}</:col>
+          <:col :let={row} label="Vendor">
+            <span class="wrap-break-word">{row["vendor_name"]}</span>
+          </:col>
           <:col :let={row} label="Taxable" align="right">
             {format_money(row["taxable_paise"], prefix: "₹")}
           </:col>
@@ -427,11 +432,11 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             <span class="text-ink-muted text-ui">{purchase_human_state(row, @review)}</span>
           </:col>
           <:col :let={row} label="Note" class="max-w-sm">
-            <span :if={Register.annotated_row?(row)} class="text-base-content block truncate">{row[
+            <span :if={Register.annotated_row?(row)} class="text-base-content block wrap-break-word">{row[
               "verdict"
             ]}</span><span
               :if={Register.annotated_row?(row) and row["next_action"]}
-              class="text-ink-subtle text-ui mt-0.5 block truncate"
+              class="mt-related text-ink-subtle text-ui block wrap-break-word"
             >{row["next_action"]}</span>
           </:col>
           <:empty>No purchase positions match these filters.</:empty>

@@ -639,12 +639,12 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         <h4 class="text-base-content text-ui font-semibold">Source snapshots</h4>
         <dl class="grid gap-4 sm:grid-cols-2">
           <div>
-            <dt class="text-ink-subtle text-label uppercase">GSTR-1</dt><dd class="text-base-content text-ui">
+            <dt class="text-ink-subtle text-label uppercase">GSTR-1</dt><dd class="text-base-content text-ui wrap-break-word">
               {gstr1_snapshot_reference(@r1_signoff, @gstr3b)}
             </dd>
           </div>
           <div>
-            <dt class="text-ink-subtle text-label uppercase">Purchase position</dt><dd class="text-base-content text-ui">
+            <dt class="text-ink-subtle text-label uppercase">Purchase position</dt><dd class="text-base-content text-ui wrap-break-word">
               {purchase_snapshot_reference(@gstr3b_signoff)}
             </dd>
           </div>
@@ -794,7 +794,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       class="border-base-300 moonlight-soft rounded-box space-y-block border p-6"
     >
       <div class="flex flex-wrap items-start justify-between gap-4">
-        <div class="space-y-1">
+        <div class="space-y-related">
           <p class="text-ink-subtle text-label font-semibold uppercase">Final return</p>
           <h3 class="font-display text-base-content text-h3 font-normal">
             {if @signed, do: "Signed GSTR-3B", else: "Proposed GSTR-3B"}
@@ -909,7 +909,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         </div>
         <div :if={@month.filing_arn}>
           <dt class="text-ink-subtle text-label font-semibold uppercase">ARN</dt>
-          <dd class="text-base-content font-mono break-all">{@month.filing_arn}</dd>
+          <dd class="text-base-content font-mono wrap-break-word">{@month.filing_arn}</dd>
         </div>
       </dl>
 

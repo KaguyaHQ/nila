@@ -86,7 +86,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:col :let={row} label="HSN/SAC">
             <div :if={row.kind == :node} class="flex items-center gap-2">
               <.chevron open={MapSet.member?(@expanded, row.id)} />
-              <span class="text-base-content font-mono font-medium">{row.hsn || "—"}</span>
+              <span class="text-base-content font-mono font-medium whitespace-nowrap">{row.hsn || "—"}</span>
               <.badge :if={MapSet.member?(@novelty_codes, row.hsn)} variant="neutral">
                 New
               </.badge>
@@ -217,14 +217,14 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
                   name; a text column that sizes to its content pushes the money
                   off the right edge, so the name truncates and the full string
                   stays one hover away. --%>
-                <div :if={row.kind == :node} class="flex max-w-80 items-center gap-2">
+                <div :if={row.kind == :node} class="flex max-w-80 min-w-0 items-center gap-2">
                   <.chevron open={MapSet.member?(@expanded, row.id)} />
                   <span class="text-base-content truncate font-medium" title={row.name}>{row.name}</span>
                 </div>
                 <.contrib_cell :if={row.kind == :contrib} row={row} />
               </:col>
               <:col :let={row} label="GSTIN">
-                <span :if={row.kind == :node} class="text-ink-subtle font-mono">
+                <span :if={row.kind == :node} class="text-ink-subtle font-mono whitespace-nowrap">
                   {row.gstin || "—"}
                 </span>
               </:col>
@@ -266,7 +266,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               min_width="min-w-[620px]"
             >
               <:col :let={row} label="Invoice">
-                <span class="text-base-content font-mono font-medium">{row.number}</span>
+                <span class="text-base-content font-mono font-medium whitespace-nowrap">{row.number}</span>
               </:col>
               <:col :let={row} label="Date">{row.date}</:col>
               <:col :let={row} label="POS"><span class="font-mono">{row.pos}</span></:col>
@@ -328,12 +328,12 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               min_width="min-w-[620px]"
             >
               <:col :let={row} label="Note">
-                <span class="text-base-content font-mono font-medium">{row.number}</span>
+                <span class="text-base-content font-mono font-medium whitespace-nowrap">{row.number}</span>
               </:col>
               <:col :let={row} label="Type">{row.type}</:col>
               <:col :let={row} label="Date">{row.date}</:col>
               <:col :let={row} label="Recipient GSTIN">
-                <span class="text-ink-subtle font-mono">{row.gstin}</span>
+                <span class="text-ink-subtle font-mono whitespace-nowrap">{row.gstin}</span>
               </:col>
               <:col :let={row} label="Taxable effect" align="right">
                 {Helpers.amount(row.taxable)}
@@ -703,7 +703,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   # aggregate — never a bare number floating under a heading.
   defp contrib_cell(assigns) do
     ~H"""
-    <div class="flex max-w-80 items-baseline gap-2 pl-6">
+    <div class="flex max-w-80 min-w-0 items-baseline gap-2 pl-6">
       <span class="nila-workings-reference shrink-0 font-mono">{@row.inum}</span>
       <span :if={@row.label not in [nil, ""]} class="text-ink-subtle truncate" title={@row.label}>
         {@row.label}

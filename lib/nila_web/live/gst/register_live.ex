@@ -34,7 +34,7 @@ defmodule NilaWeb.Gst.RegisterLive do
 
   defp filing_line(assigns) do
     ~H"""
-    <div id={@id} class="flex min-h-5 items-center gap-2 text-left">
+    <div id={@id} class="flex min-h-5 items-center gap-2 text-left whitespace-nowrap tabular-nums">
       <span class="sr-only">{filing_description(@return, @state)}</span>
       <span aria-hidden="true" class="contents">
         <span class="text-ink-subtle w-6 shrink-0 font-semibold">{@label}</span>
@@ -127,7 +127,7 @@ defmodule NilaWeb.Gst.RegisterLive do
                 id={"register-row-#{row.client_id}"}
                 class="group/register-row last:[&>td]:border-b-0 last:[&>th]:border-b-0"
               >
-                <th class="bg-base-100 border-base-300 group-hover/register-row:bg-base-200/50 sticky left-0 z-10 border-b px-4 py-3 text-left font-medium transition">
+                <th class="bg-base-100 border-base-300 group-hover/register-row:bg-base-200/50 sticky left-0 z-10 border-b px-4 py-3 text-left font-medium wrap-break-word transition">
                   {row.client_name}
                 </th>
                 <td
