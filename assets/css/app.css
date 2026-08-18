@@ -89,6 +89,243 @@
   --slate-contrast: white;
 }
 
+/* Radix Themes 3.3 semantic status light scales, pinned from the official
+   Sky, Green, Amber, and Red token sources. Nila is light-only. */
+:root,
+.light,
+.light-theme {
+  --sky-1: #f9feff;
+  --sky-2: #f1fafd;
+  --sky-3: #e1f6fd;
+  --sky-4: #d1f0fa;
+  --sky-5: #bee7f5;
+  --sky-6: #a9daed;
+  --sky-7: #8dcae3;
+  --sky-8: #60b3d7;
+  --sky-9: #7ce2fe;
+  --sky-10: #74daf8;
+  --sky-11: #00749e;
+  --sky-12: #1d3e56;
+  --sky-a1: #00d5ff06;
+  --sky-a2: #00a4db0e;
+  --sky-a3: #00b3ee1e;
+  --sky-a4: #00ace42e;
+  --sky-a5: #00a1d841;
+  --sky-a6: #0092ca56;
+  --sky-a7: #0089c172;
+  --sky-a8: #0085bf9f;
+  --sky-a9: #00c7fe83;
+  --sky-a10: #00bcf38b;
+  --sky-a11: #00749e;
+  --sky-a12: #002540e2;
+  --sky-surface: #eef9fdcc;
+  --sky-indicator: var(--sky-9);
+  --sky-track: var(--sky-9);
+
+  --green-1: #fbfefc;
+  --green-2: #f4fbf6;
+  --green-3: #e6f6eb;
+  --green-4: #d6f1df;
+  --green-5: #c4e8d1;
+  --green-6: #adddc0;
+  --green-7: #8eceaa;
+  --green-8: #5bb98b;
+  --green-9: #30a46c;
+  --green-10: #2b9a66;
+  --green-11: #218358;
+  --green-12: #193b2d;
+  --green-a1: #00c04004;
+  --green-a2: #00a32f0b;
+  --green-a3: #00a43319;
+  --green-a4: #00a83829;
+  --green-a5: #019c393b;
+  --green-a6: #00963c52;
+  --green-a7: #00914071;
+  --green-a8: #00924ba4;
+  --green-a9: #008f4acf;
+  --green-a10: #008647d4;
+  --green-a11: #00713fde;
+  --green-a12: #002616e6;
+  --green-surface: #f1faf4cc;
+  --green-indicator: var(--green-9);
+  --green-track: var(--green-9);
+
+  --amber-1: #fefdfb;
+  --amber-2: #fefbe9;
+  --amber-3: #fff7c2;
+  --amber-4: #ffee9c;
+  --amber-5: #fbe577;
+  --amber-6: #f3d673;
+  --amber-7: #e9c162;
+  --amber-8: #e2a336;
+  --amber-9: #ffc53d;
+  --amber-10: #ffba18;
+  --amber-11: #ab6400;
+  --amber-12: #4f3422;
+  --amber-a1: #c0800004;
+  --amber-a2: #f4d10016;
+  --amber-a3: #ffde003d;
+  --amber-a4: #ffd40063;
+  --amber-a5: #f8cf0088;
+  --amber-a6: #eab5008c;
+  --amber-a7: #dc9b009d;
+  --amber-a8: #da8a00c9;
+  --amber-a9: #ffb300c2;
+  --amber-a10: #ffb300e7;
+  --amber-a11: #ab6400;
+  --amber-a12: #341500dd;
+  --amber-surface: #fefae4cc;
+  --amber-indicator: var(--amber-9);
+  --amber-track: var(--amber-9);
+
+  --red-1: #fffcfc;
+  --red-2: #fff7f7;
+  --red-3: #feebec;
+  --red-4: #ffdbdc;
+  --red-5: #ffcdce;
+  --red-6: #fdbdbe;
+  --red-7: #f4a9aa;
+  --red-8: #eb8e90;
+  --red-9: #e5484d;
+  --red-10: #dc3e42;
+  --red-11: #ce2c31;
+  --red-12: #641723;
+  --red-a1: #ff000003;
+  --red-a2: #ff000008;
+  --red-a3: #f3000d14;
+  --red-a4: #ff000824;
+  --red-a5: #ff000632;
+  --red-a6: #f8000442;
+  --red-a7: #df000356;
+  --red-a8: #d2000571;
+  --red-a9: #db0007b7;
+  --red-a10: #d10005c1;
+  --red-a11: #c40006d3;
+  --red-a12: #55000de8;
+  --red-surface: #fff5f5cc;
+  --red-indicator: var(--red-9);
+  --red-track: var(--red-9);
+}
+
+@supports (color: color(display-p3 1 1 1)) {
+  @media (color-gamut: p3) {
+    :root,
+    .light,
+    .light-theme {
+      --sky-1: color(display-p3 0.98 0.995 0.999);
+      --sky-2: color(display-p3 0.953 0.98 0.99);
+      --sky-3: color(display-p3 0.899 0.963 0.989);
+      --sky-4: color(display-p3 0.842 0.937 0.977);
+      --sky-5: color(display-p3 0.777 0.9 0.954);
+      --sky-6: color(display-p3 0.701 0.851 0.921);
+      --sky-7: color(display-p3 0.604 0.785 0.879);
+      --sky-8: color(display-p3 0.457 0.696 0.829);
+      --sky-9: color(display-p3 0.585 0.877 0.983);
+      --sky-10: color(display-p3 0.555 0.845 0.959);
+      --sky-11: color(display-p3 0.193 0.448 0.605);
+      --sky-12: color(display-p3 0.145 0.241 0.329);
+      --sky-a1: color(display-p3 0.02 0.804 1 / 0.02);
+      --sky-a2: color(display-p3 0.024 0.592 0.757 / 0.048);
+      --sky-a3: color(display-p3 0.004 0.655 0.886 / 0.102);
+      --sky-a4: color(display-p3 0.004 0.604 0.851 / 0.157);
+      --sky-a5: color(display-p3 0.004 0.565 0.792 / 0.224);
+      --sky-a6: color(display-p3 0.004 0.502 0.737 / 0.299);
+      --sky-a7: color(display-p3 0.004 0.459 0.694 / 0.397);
+      --sky-a8: color(display-p3 0 0.435 0.682 / 0.542);
+      --sky-a9: color(display-p3 0.004 0.71 0.965 / 0.416);
+      --sky-a10: color(display-p3 0.004 0.647 0.914 / 0.444);
+      --sky-a11: color(display-p3 0.193 0.448 0.605);
+      --sky-a12: color(display-p3 0.145 0.241 0.329);
+      --sky-surface: color(display-p3 0.9412 0.9765 0.9843 / 0.8);
+
+      --green-1: color(display-p3 0.986 0.996 0.989);
+      --green-2: color(display-p3 0.963 0.983 0.967);
+      --green-3: color(display-p3 0.913 0.964 0.925);
+      --green-4: color(display-p3 0.859 0.94 0.879);
+      --green-5: color(display-p3 0.796 0.907 0.826);
+      --green-6: color(display-p3 0.718 0.863 0.761);
+      --green-7: color(display-p3 0.61 0.801 0.675);
+      --green-8: color(display-p3 0.451 0.715 0.559);
+      --green-9: color(display-p3 0.332 0.634 0.442);
+      --green-10: color(display-p3 0.308 0.595 0.417);
+      --green-11: color(display-p3 0.19 0.5 0.32);
+      --green-12: color(display-p3 0.132 0.228 0.18);
+      --green-a1: color(display-p3 0.024 0.757 0.267 / 0.016);
+      --green-a2: color(display-p3 0.024 0.565 0.129 / 0.036);
+      --green-a3: color(display-p3 0.012 0.596 0.145 / 0.087);
+      --green-a4: color(display-p3 0.008 0.588 0.145 / 0.142);
+      --green-a5: color(display-p3 0.004 0.541 0.157 / 0.204);
+      --green-a6: color(display-p3 0.004 0.518 0.157 / 0.283);
+      --green-a7: color(display-p3 0.004 0.486 0.165 / 0.389);
+      --green-a8: color(display-p3 0 0.478 0.2 / 0.55);
+      --green-a9: color(display-p3 0 0.455 0.165 / 0.667);
+      --green-a10: color(display-p3 0 0.416 0.153 / 0.691);
+      --green-a11: color(display-p3 0.19 0.5 0.32);
+      --green-a12: color(display-p3 0.132 0.228 0.18);
+      --green-surface: color(display-p3 0.9569 0.9804 0.9608 / 0.8);
+
+      --amber-1: color(display-p3 0.995 0.992 0.985);
+      --amber-2: color(display-p3 0.994 0.986 0.921);
+      --amber-3: color(display-p3 0.994 0.969 0.782);
+      --amber-4: color(display-p3 0.989 0.937 0.65);
+      --amber-5: color(display-p3 0.97 0.902 0.527);
+      --amber-6: color(display-p3 0.936 0.844 0.506);
+      --amber-7: color(display-p3 0.89 0.762 0.443);
+      --amber-8: color(display-p3 0.85 0.65 0.3);
+      --amber-9: color(display-p3 1 0.77 0.26);
+      --amber-10: color(display-p3 0.959 0.741 0.274);
+      --amber-11: color(display-p3 0.64 0.4 0);
+      --amber-12: color(display-p3 0.294 0.208 0.145);
+      --amber-a1: color(display-p3 0.757 0.514 0.024 / 0.016);
+      --amber-a2: color(display-p3 0.902 0.804 0.008 / 0.079);
+      --amber-a3: color(display-p3 0.965 0.859 0.004 / 0.22);
+      --amber-a4: color(display-p3 0.969 0.82 0.004 / 0.35);
+      --amber-a5: color(display-p3 0.933 0.796 0.004 / 0.475);
+      --amber-a6: color(display-p3 0.875 0.682 0.004 / 0.495);
+      --amber-a7: color(display-p3 0.804 0.573 0 / 0.557);
+      --amber-a8: color(display-p3 0.788 0.502 0 / 0.699);
+      --amber-a9: color(display-p3 1 0.686 0 / 0.742);
+      --amber-a10: color(display-p3 0.945 0.643 0 / 0.726);
+      --amber-a11: color(display-p3 0.64 0.4 0);
+      --amber-a12: color(display-p3 0.294 0.208 0.145);
+      --amber-surface: color(display-p3 0.9922 0.9843 0.902 / 0.8);
+
+      --red-1: color(display-p3 0.998 0.989 0.988);
+      --red-2: color(display-p3 0.995 0.971 0.971);
+      --red-3: color(display-p3 0.985 0.925 0.925);
+      --red-4: color(display-p3 0.999 0.866 0.866);
+      --red-5: color(display-p3 0.984 0.812 0.811);
+      --red-6: color(display-p3 0.955 0.751 0.749);
+      --red-7: color(display-p3 0.915 0.675 0.672);
+      --red-8: color(display-p3 0.872 0.575 0.572);
+      --red-9: color(display-p3 0.83 0.329 0.324);
+      --red-10: color(display-p3 0.798 0.294 0.285);
+      --red-11: color(display-p3 0.744 0.234 0.222);
+      --red-12: color(display-p3 0.36 0.115 0.143);
+      --red-a1: color(display-p3 0.675 0.024 0.024 / 0.012);
+      --red-a2: color(display-p3 0.863 0.024 0.024 / 0.028);
+      --red-a3: color(display-p3 0.792 0.008 0.008 / 0.075);
+      --red-a4: color(display-p3 1 0.008 0.008 / 0.134);
+      --red-a5: color(display-p3 0.918 0.008 0.008 / 0.189);
+      --red-a6: color(display-p3 0.831 0.02 0.004 / 0.251);
+      --red-a7: color(display-p3 0.741 0.016 0.004 / 0.33);
+      --red-a8: color(display-p3 0.698 0.012 0.004 / 0.428);
+      --red-a9: color(display-p3 0.749 0.008 0 / 0.675);
+      --red-a10: color(display-p3 0.714 0.012 0 / 0.714);
+      --red-a11: color(display-p3 0.744 0.234 0.222);
+      --red-a12: color(display-p3 0.36 0.115 0.143);
+      --red-surface: color(display-p3 0.9961 0.9647 0.9647 / 0.8);
+    }
+  }
+}
+
+:root {
+  --sky-contrast: #1c2024;
+  --green-contrast: white;
+  --amber-contrast: #21201c;
+  --red-contrast: white;
+}
+
 /* Nila sea-blue candidate generated from #137ba8 with the Radix Colors custom
    palette tool. Saturated solid states retain accessible white working text. */
 :root,
@@ -218,6 +455,125 @@
   --focus-a12: var(--accent-a12);
 }
 
+/* Semantic status roles map once to the selected pinned Radix families. */
+:root {
+  --info-1: var(--sky-1);
+  --info-2: var(--sky-2);
+  --info-3: var(--sky-3);
+  --info-4: var(--sky-4);
+  --info-5: var(--sky-5);
+  --info-6: var(--sky-6);
+  --info-7: var(--sky-7);
+  --info-8: var(--sky-8);
+  --info-9: var(--sky-9);
+  --info-10: var(--sky-10);
+  --info-11: var(--sky-11);
+  --info-12: var(--sky-12);
+  --info-a1: var(--sky-a1);
+  --info-a2: var(--sky-a2);
+  --info-a3: var(--sky-a3);
+  --info-a4: var(--sky-a4);
+  --info-a5: var(--sky-a5);
+  --info-a6: var(--sky-a6);
+  --info-a7: var(--sky-a7);
+  --info-a8: var(--sky-a8);
+  --info-a9: var(--sky-a9);
+  --info-a10: var(--sky-a10);
+  --info-a11: var(--sky-a11);
+  --info-a12: var(--sky-a12);
+  --info-contrast: var(--sky-contrast);
+  --info-surface: var(--sky-surface);
+  --info-indicator: var(--sky-indicator);
+  --info-track: var(--sky-track);
+
+  --success-1: var(--green-1);
+  --success-2: var(--green-2);
+  --success-3: var(--green-3);
+  --success-4: var(--green-4);
+  --success-5: var(--green-5);
+  --success-6: var(--green-6);
+  --success-7: var(--green-7);
+  --success-8: var(--green-8);
+  --success-9: var(--green-9);
+  --success-10: var(--green-10);
+  --success-11: var(--green-11);
+  --success-12: var(--green-12);
+  --success-a1: var(--green-a1);
+  --success-a2: var(--green-a2);
+  --success-a3: var(--green-a3);
+  --success-a4: var(--green-a4);
+  --success-a5: var(--green-a5);
+  --success-a6: var(--green-a6);
+  --success-a7: var(--green-a7);
+  --success-a8: var(--green-a8);
+  --success-a9: var(--green-a9);
+  --success-a10: var(--green-a10);
+  --success-a11: var(--green-a11);
+  --success-a12: var(--green-a12);
+  --success-contrast: var(--green-contrast);
+  --success-surface: var(--green-surface);
+  --success-indicator: var(--green-indicator);
+  --success-track: var(--green-track);
+
+  --warning-1: var(--amber-1);
+  --warning-2: var(--amber-2);
+  --warning-3: var(--amber-3);
+  --warning-4: var(--amber-4);
+  --warning-5: var(--amber-5);
+  --warning-6: var(--amber-6);
+  --warning-7: var(--amber-7);
+  --warning-8: var(--amber-8);
+  --warning-9: var(--amber-9);
+  --warning-10: var(--amber-10);
+  --warning-11: var(--amber-11);
+  --warning-12: var(--amber-12);
+  --warning-a1: var(--amber-a1);
+  --warning-a2: var(--amber-a2);
+  --warning-a3: var(--amber-a3);
+  --warning-a4: var(--amber-a4);
+  --warning-a5: var(--amber-a5);
+  --warning-a6: var(--amber-a6);
+  --warning-a7: var(--amber-a7);
+  --warning-a8: var(--amber-a8);
+  --warning-a9: var(--amber-a9);
+  --warning-a10: var(--amber-a10);
+  --warning-a11: var(--amber-a11);
+  --warning-a12: var(--amber-a12);
+  --warning-contrast: var(--amber-contrast);
+  --warning-surface: var(--amber-surface);
+  --warning-indicator: var(--amber-indicator);
+  --warning-track: var(--amber-track);
+
+  --error-1: var(--red-1);
+  --error-2: var(--red-2);
+  --error-3: var(--red-3);
+  --error-4: var(--red-4);
+  --error-5: var(--red-5);
+  --error-6: var(--red-6);
+  --error-7: var(--red-7);
+  --error-8: var(--red-8);
+  --error-9: var(--red-9);
+  --error-10: var(--red-10);
+  --error-11: var(--red-11);
+  --error-12: var(--red-12);
+  --error-a1: var(--red-a1);
+  --error-a2: var(--red-a2);
+  --error-a3: var(--red-a3);
+  --error-a4: var(--red-a4);
+  --error-a5: var(--red-a5);
+  --error-a6: var(--red-a6);
+  --error-a7: var(--red-a7);
+  --error-a8: var(--red-a8);
+  --error-a9: var(--red-a9);
+  --error-a10: var(--red-a10);
+  --error-a11: var(--red-a11);
+  --error-a12: var(--red-a12);
+  --error-contrast: var(--red-contrast);
+  --error-surface: var(--red-surface);
+  --error-indicator: var(--red-indicator);
+  --error-track: var(--red-track);
+}
+
 /* daisyUI theme plugin. You can update this file by fetching the latest version with:
   curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui-theme.js
   Nila is light-mode only. The palette is "moonlight": a hushed sea-blue on a
@@ -242,14 +598,14 @@
   --color-accent-content: oklch(30% 0.055 233);
   --color-neutral: oklch(33% 0.06 233);
   --color-neutral-content: oklch(98% 0.004 235);
-  --color-info: oklch(55% 0.09 235);
-  --color-info-content: oklch(98% 0.01 235);
-  --color-success: oklch(68% 0.12 162);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(77% 0.13 76);
-  --color-warning-content: oklch(30% 0.055 233);
-  --color-error: oklch(60% 0.17 22);
-  --color-error-content: oklch(98% 0.015 12.422);
+  --color-info: var(--info-9);
+  --color-info-content: var(--info-contrast);
+  --color-success: var(--success-9);
+  --color-success-content: var(--success-contrast);
+  --color-warning: var(--warning-9);
+  --color-warning-content: var(--warning-contrast);
+  --color-error: var(--error-9);
+  --color-error-content: var(--error-contrast);
   --radius-selector: 0.25rem;
   --radius-field: 0.25rem;
   --radius-box: 0.75rem;
@@ -505,27 +861,6 @@ body {
   --nila-ink-a12: var(--slate-a12);
 }
 
-:root {
-  --nila-info-a3: color-mix(in oklch, var(--color-info) 9%, transparent);
-  --nila-info-a6: color-mix(in oklch, var(--color-info) 22%, transparent);
-  --nila-info-a11: color-mix(in oklab, var(--color-info) 72%, var(--color-base-content));
-  --nila-info-surface: color-mix(in oklch, var(--color-info) 9%, var(--color-base-100));
-
-  --nila-success-a3: color-mix(in oklch, var(--color-success) 9%, transparent);
-  --nila-success-a6: color-mix(in oklch, var(--color-success) 20%, transparent);
-  --nila-success-a11: color-mix(in oklab, var(--color-success) 70%, var(--color-base-content));
-
-  --nila-warning-a3: color-mix(in oklch, var(--color-warning) 10%, transparent);
-  --nila-warning-a6: color-mix(in oklch, var(--color-warning) 22%, transparent);
-  --nila-warning-a11: color-mix(in oklab, var(--color-warning) 62%, var(--color-base-content));
-
-  --nila-error-a3: color-mix(in oklch, var(--color-error) 9%, transparent);
-  --nila-error-a6: color-mix(in oklch, var(--color-error) 22%, transparent);
-  --nila-error-a7: color-mix(in oklch, var(--color-error) 25%, transparent);
-  --nila-error-a11: color-mix(in oklab, var(--color-error) 76%, var(--color-base-content));
-  --nila-error-surface: color-mix(in oklch, var(--color-error) 9%, var(--color-base-100));
-}
-
 .sales-overview {
   display: grid;
   overflow: hidden;
@@ -579,16 +914,16 @@ body {
 }
 
 .sales-overview[data-state="provisional"] .sales-readiness-dot {
-  background: var(--color-warning);
+  background: var(--warning-indicator);
 }
 
 .sales-overview[data-state="ready"] .sales-readiness-dot,
 .sales-overview[data-state="approved"] .sales-readiness-dot {
-  background: var(--color-success);
+  background: var(--success-indicator);
 }
 
 .sales-overview[data-state="awaiting_senior"] .sales-readiness-dot {
-  background: var(--color-info);
+  background: var(--info-indicator);
 }
 
 .sales-assurance {
@@ -607,7 +942,7 @@ body {
 }
 
 .sales-before-approval {
-  background: var(--nila-warning-a3);
+  background: var(--warning-a3);
 }
 
 .sales-assurance-item + .sales-assurance-item,
@@ -616,9 +951,124 @@ body {
 }
 
 .sales-change {
-  border-left: 2px solid var(--nila-info-a6);
+  border-left: 2px solid var(--info-a6);
   padding: 0.75rem 1rem;
-  background: var(--nila-info-a3);
+  background: var(--info-a3);
+}
+
+/* Domain-owned status recipes keep readable ink on steps 11/12 and reserve
+   step 9 for solid indicators. Product markup never selects a Radix family. */
+.nila-field-error-copy,
+.nila-file-error,
+.nila-arrival-sort-error,
+.nila-connector-error,
+.nila-upload-error,
+.nila-verdict-alarm,
+.nila-deadline-error,
+.nila-exception-mismatch,
+.nila-itc-value-blocked,
+.nila-itc-status-blocked,
+.nila-gstr1-mismatch,
+.nila-purchase-itc-negative {
+  color: var(--error-a11);
+}
+
+.nila-whatsapp-config-warning,
+.nila-upload-retry,
+.nila-deadline-warning,
+.nila-gstr1-required-link,
+.nila-gstr3b-provisional {
+  color: var(--warning-a11);
+}
+
+.nila-exception-outcome,
+.nila-workings-accepted {
+  color: var(--success-a11);
+}
+
+.nila-whatsapp-status[data-state="error"] {
+  color: var(--error-a11);
+}
+
+.nila-file-remove:hover {
+  background: var(--error-a3);
+  color: var(--error-a11);
+}
+
+.nila-upload-identification[data-kind="info"],
+.nila-upload-job-label[data-kind="info"] {
+  color: var(--info-a11);
+}
+
+.nila-upload-identification[data-kind="success"],
+.nila-upload-job-label[data-kind="success"] {
+  color: var(--success-a11);
+}
+
+.nila-upload-identification[data-kind="warning"],
+.nila-upload-job-label[data-kind="warning"] {
+  color: var(--warning-a11);
+}
+
+.nila-upload-identification[data-kind="error"],
+.nila-upload-job-label[data-kind="error"] {
+  color: var(--error-a11);
+}
+
+.nila-upload-job-label[data-kind="neutral"] {
+  color: var(--nila-ink-a11);
+}
+
+.nila-month-precondition {
+  border-color: var(--warning-a6);
+  background: var(--warning-a3);
+}
+
+.nila-itc-awaiting-document {
+  border-color: var(--warning-a6);
+  background: var(--warning-a3);
+}
+
+.nila-gstr1-blocked-next-move {
+  border-color: var(--error-a6);
+  background: var(--error-a3);
+}
+
+.nila-gstr1-required-item {
+  border-color: var(--warning-a6);
+}
+
+.nila-evidence-issue-chip {
+  background: var(--warning-a3);
+}
+
+.nila-evidence-issue-chip:hover {
+  background: var(--warning-a4);
+}
+
+.nila-evidence-issue-index {
+  background: var(--warning-a4);
+}
+
+.nila-purchase-open-row {
+  border-color: var(--warning-indicator);
+  background: var(--warning-a3);
+}
+
+.nila-status-swatch[data-kind="info"] {
+  background: var(--info-indicator);
+}
+
+.nila-status-swatch[data-kind="success"] {
+  background: var(--success-indicator);
+}
+
+.nila-status-swatch[data-kind="warning"] {
+  background: var(--warning-indicator);
+}
+
+.nila-status-swatch[data-kind="error"] {
+  background: var(--error-indicator);
 }
 
 .nila-file-drop:hover {
@@ -742,8 +1192,8 @@ body {
 }
 
 .nila-badge[data-variant="info"] {
-  --nila-badge-bg: var(--nila-info-a3);
-  --nila-badge-ink: var(--nila-info-a11);
+  --nila-badge-bg: var(--info-a3);
+  --nila-badge-ink: var(--info-a11);
 }
 
 .nila-badge[data-variant="secondary"],
@@ -759,18 +1209,18 @@ body {
 }
 
 .nila-badge[data-variant="success"] {
-  --nila-badge-bg: var(--nila-success-a3);
-  --nila-badge-ink: var(--nila-success-a11);
+  --nila-badge-bg: var(--success-a3);
+  --nila-badge-ink: var(--success-12);
 }
 
 .nila-badge[data-variant="warning"] {
-  --nila-badge-bg: var(--nila-warning-a3);
-  --nila-badge-ink: var(--nila-warning-a11);
+  --nila-badge-bg: var(--warning-a3);
+  --nila-badge-ink: var(--warning-12);
 }
 
 .nila-badge[data-variant="error"] {
-  --nila-badge-bg: var(--nila-error-a3);
-  --nila-badge-ink: var(--nila-error-a11);
+  --nila-badge-bg: var(--error-a3);
+  --nila-badge-ink: var(--error-a11);
 }
 
 .nila-button {
@@ -878,25 +1328,22 @@ body {
   --nila-button-ink: var(--color-base-content);
 }
 
-.nila-button[data-variant="error"],
-.nila-button[data-variant="success"],
-.nila-button[data-variant="neutral"] {
-  --nila-button-ink: var(--color-base-100);
-}
-
 .nila-button[data-variant="error"] {
-  --nila-button-bg: var(--color-error);
-  --nila-button-hover-bg: color-mix(in oklch, var(--color-error) 88%, var(--color-base-content));
+  --nila-button-bg: var(--error-11);
+  --nila-button-hover-bg: var(--error-12);
+  --nila-button-ink: var(--error-contrast);
 }
 
 .nila-button[data-variant="success"] {
-  --nila-button-bg: var(--color-success);
-  --nila-button-hover-bg: color-mix(in oklch, var(--color-success) 88%, var(--color-base-content));
+  --nila-button-bg: var(--success-11);
+  --nila-button-hover-bg: var(--success-12);
+  --nila-button-ink: var(--success-contrast);
 }
 
 .nila-button[data-variant="neutral"] {
   --nila-button-bg: var(--color-neutral);
   --nila-button-hover-bg: color-mix(in oklch, var(--color-neutral) 88%, var(--color-base-content));
+  --nila-button-ink: var(--color-base-100);
 }
 
 .nila-button:disabled,
@@ -1034,27 +1481,27 @@ body {
 }
 
 .nila-callout[data-kind="info"] {
-  --nila-callout-bg: var(--nila-info-a3);
-  --nila-callout-border: var(--nila-info-a6);
-  --nila-callout-ink: var(--nila-info-a11);
+  --nila-callout-bg: var(--info-a3);
+  --nila-callout-border: var(--info-a6);
+  --nila-callout-ink: var(--info-a11);
 }
 
 .nila-callout[data-kind="warning"] {
-  --nila-callout-bg: var(--nila-warning-a3);
-  --nila-callout-border: var(--nila-warning-a6);
-  --nila-callout-ink: var(--nila-warning-a11);
+  --nila-callout-bg: var(--warning-a3);
+  --nila-callout-border: var(--warning-a6);
+  --nila-callout-ink: var(--warning-12);
 }
 
 .nila-callout[data-kind="error"] {
-  --nila-callout-bg: var(--nila-error-a3);
-  --nila-callout-border: var(--nila-error-a6);
-  --nila-callout-ink: var(--nila-error-a11);
+  --nila-callout-bg: var(--error-a3);
+  --nila-callout-border: var(--error-a6);
+  --nila-callout-ink: var(--error-a11);
 }
 
 .nila-callout[data-kind="success"] {
-  --nila-callout-bg: var(--nila-success-a3);
-  --nila-callout-border: var(--nila-success-a6);
-  --nila-callout-ink: var(--nila-success-a11);
+  --nila-callout-bg: var(--success-a3);
+  --nila-callout-border: var(--success-a6);
+  --nila-callout-ink: var(--success-12);
 }
 
 .nila-toast {
@@ -1080,15 +1527,15 @@ body {
 }
 
 .nila-alert[data-kind="info"] {
-  --nila-alert-bg: var(--nila-info-surface);
-  --nila-alert-border: var(--nila-info-a6);
-  --nila-alert-ink: var(--nila-info-a11);
+  --nila-alert-bg: var(--info-surface);
+  --nila-alert-border: var(--info-a6);
+  --nila-alert-ink: var(--info-a11);
 }
 
 .nila-alert[data-kind="error"] {
-  --nila-alert-bg: var(--nila-error-surface);
-  --nila-alert-border: var(--nila-error-a6);
-  --nila-alert-ink: var(--nila-error-a11);
+  --nila-alert-bg: var(--error-surface);
+  --nila-alert-border: var(--error-a6);
+  --nila-alert-ink: var(--error-a11);
 }
 
 .nila-alert-close {
@@ -1166,11 +1613,11 @@ body {
 }
 
 .nila-menu-item[data-tone="error"] {
-  color: var(--nila-error-a11);
+  color: var(--error-a11);
 }
 
 .nila-menu-item[data-tone="error"]:hover {
-  background: var(--nila-error-a3);
+  background: var(--error-a3);
 }
 
 .nila-modal-scrim {
@@ -1522,12 +1969,12 @@ body {
 }
 
 .nila-input-error {
-  border-color: var(--color-error);
+  border-color: var(--error-9);
 }
 
 .nila-input-error:focus {
-  border-color: var(--color-error);
-  box-shadow: 0 0 0 2px var(--nila-error-a7);
+  border-color: var(--error-9);
+  box-shadow: 0 0 0 2px var(--error-a7);
 }
 
 .nila-checkbox-label {
@@ -1827,7 +2274,7 @@ details[open] > summary .fold-chevron {
    glow on a node that is already at rest. */
 @keyframes workings-ripple-0 {
   from {
-    background-color: color-mix(in oklab, var(--color-warning) 22%, transparent);
+    background-color: var(--warning-a5);
   }
   to {
     background-color: transparent;
@@ -1835,7 +2282,7 @@ details[open] > summary .fold-chevron {
 }
 @keyframes workings-ripple-1 {
   from {
-    background-color: color-mix(in oklab, var(--color-warning) 22%, transparent);
+    background-color: var(--warning-a5);
   }
   to {
     background-color: transparent;

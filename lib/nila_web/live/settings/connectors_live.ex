@@ -234,14 +234,14 @@ defmodule NilaWeb.Settings.ConnectorsLive do
               <p
                 :if={@whatsapp_signup_config}
                 data-whatsapp-signup-status
-                class="text-body text-ink-muted"
+                class="nila-whatsapp-status text-body text-ink-muted"
               >
                 Meta signup opens in a secure window.
               </p>
               <p
                 :if={!@whatsapp_signup_config}
                 id="settings-whatsapp-not-configured"
-                class="text-body text-warning"
+                class="nila-whatsapp-config-warning text-body"
               >
                 Embedded Signup is not configured for this environment.
               </p>
@@ -294,7 +294,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                     {activity_label(connection)}: {last_sync_label(connection.last_synced_at)}
                   </.context_text>
                 </div>
-                <p :if={connection.last_error} class="text-body text-error mt-2">
+                <p :if={connection.last_error} class="nila-connector-error text-body mt-2">
                   {connection.last_error}
                 </p>
               </div>

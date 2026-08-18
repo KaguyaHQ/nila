@@ -483,7 +483,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         Ours is right
       </.button>
       <span :if={MapSet.member?(@accepted, @target)} class="flex items-center gap-1.5">
-        <span class="text-success text-ui font-medium">Accepted — ours is right</span>
+        <span class="nila-workings-accepted text-ui font-medium">Accepted — ours is right</span>
         <.button
           :if={not @locked}
           variant="ghost"

@@ -662,7 +662,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
             id="month-headline"
             class={[
               "text-body max-w-3xl font-medium",
-              (@verdict.tone == :alarm && "text-error") || "text-base-content"
+              (@verdict.tone == :alarm && "nila-verdict-alarm") || "text-base-content"
             ]}
           >
             {@verdict.headline}
@@ -759,8 +759,12 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     line |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "-") |> String.slice(0, 24)
   end
 
-  defp deadline_class(%{days_left: days}) when days < 0, do: "text-error font-medium"
-  defp deadline_class(%{days_left: days}) when days <= 5, do: "text-warning font-medium"
+  defp deadline_class(%{days_left: days}) when days < 0,
+    do: "nila-deadline-error font-medium"
+
+  defp deadline_class(%{days_left: days}) when days <= 5,
+    do: "nila-deadline-warning font-medium"
+
   defp deadline_class(_deadline), do: "text-ink-muted"
 
   defp deadline_label(%{days_left: days, due: due}) when days < 0,

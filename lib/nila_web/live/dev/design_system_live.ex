@@ -166,10 +166,10 @@ if Application.compile_env(:nila, :dev_routes, false) or
                       <div class="gap-block grid grid-cols-2 sm:grid-cols-4">
                         <.swatch name="Primary" class="bg-primary text-primary-content" />
                         <.swatch name="Accent" class="bg-accent text-accent-content" />
-                        <.swatch name="Info" class="bg-info text-info-content" />
-                        <.swatch name="Success" class="bg-success text-success-content" />
-                        <.swatch name="Warning" class="bg-warning text-warning-content" />
-                        <.swatch name="Error" class="bg-error text-error-content" />
+                        <.status_swatch name="Info" kind="info" />
+                        <.status_swatch name="Success" kind="success" />
+                        <.status_swatch name="Warning" kind="warning" />
+                        <.status_swatch name="Error" kind="error" />
                         <.swatch name="Canvas" class="bg-base-200 text-base-content" />
                         <.swatch name="Surface" class="bg-base-100 text-base-content" />
                       </div>
@@ -315,8 +315,14 @@ if Application.compile_env(:nila, :dev_routes, false) or
                       <.callout kind="info" title="Draft prepared">
                         Return workings are available for inspection.
                       </.callout>
+                      <.callout kind="success" title="Checks passed">
+                        The reviewed population agrees with the prepared return.
+                      </.callout>
                       <.callout kind="warning" title="Review required">
                         Confirm place of supply before approval.
+                      </.callout>
+                      <.callout kind="error" title="Approval blocked">
+                        Resolve the unsupported document before filing.
                       </.callout>
                     </div>
                   </.card>
@@ -555,6 +561,18 @@ if Application.compile_env(:nila, :dev_routes, false) or
     defp swatch(assigns) do
       ~H"""
       <div class={["rounded-field flex h-20 items-end p-3", @class]}>
+        <span class="text-ui font-semibold">{@name}</span>
+      </div>
+      """
+    end
+
+    attr :name, :string, required: true
+    attr :kind, :string, required: true, values: ~w(info success warning error)
+
+    defp status_swatch(assigns) do
+      ~H"""
+      <div class="space-y-related">
+        <div class="nila-status-swatch rounded-field h-14" data-kind={@kind}></div>
         <span class="text-ui font-semibold">{@name}</span>
       </div>
       """

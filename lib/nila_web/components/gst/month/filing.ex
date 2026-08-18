@@ -526,7 +526,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             <p
               :if={not @signed and @current_itc != @assembled_itc}
               id="gstr3b-itc-provisional-difference"
-              class="text-ui text-warning"
+              class="nila-gstr3b-provisional text-ui"
             >
               The assembled Table 4C currently shows {money_paise(@assembled_itc)}. It remains provisional until the purchase inputs are resolved.
             </p>

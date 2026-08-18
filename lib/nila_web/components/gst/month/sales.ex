@@ -226,7 +226,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         <p
           :if={Map.get(@account.issues.by_kind, :blocked, 0) > 0}
           id="gstr1-blocked-next-move"
-          class="bg-error/5 border-error/30 rounded-box text-base-content text-body border px-4 py-3"
+          class="nila-gstr1-blocked-next-move rounded-box text-base-content text-body border px-4 py-3"
         >
           Nila files taxable B2B and B2C invoices plus registered credit and debit notes, but another document type in this month is unsupported. File {period_label(
             @period
@@ -237,7 +237,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           <article
             :for={review_case <- @grouped_cases}
             id={"gstr1-review-case-#{review_case.source_id}"}
-            class="bg-base-100 border-warning/45 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+            class="bg-base-100 nila-gstr1-required-item rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
             <div class="min-w-0 flex-1 space-y-1">
               <p class="text-base-content text-body font-semibold wrap-break-word">
@@ -270,7 +270,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           <article
             :for={issue <- @standalone_issues}
             id={"gstr1-required-#{:erlang.phash2({SalesWorkings.issue_key(issue), issue["message"]})}"}
-            class="bg-base-100 border-warning/45 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+            class="bg-base-100 nila-gstr1-required-item rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
             <div class="min-w-0 flex-1 space-y-1">
               <p
@@ -448,7 +448,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                 <.link
                   :if={@hsn_issues != []}
                   href="#gstr1-checks-before-filing"
-                  class="text-ui text-warning font-medium underline"
+                  class="nila-gstr1-required-link text-ui font-medium underline"
                 >
                   {length(@hsn_issues)} HSN {plural(length(@hsn_issues), "check")} in required work
                 </.link>

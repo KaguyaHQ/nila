@@ -69,7 +69,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
     <div
       :if={(@itc["awaiting_document_paise"] || 0) > 0}
       id={@id}
-      class="bg-warning/5 border-warning/30 gap-block flex flex-wrap items-start justify-between border-l-2 px-4 py-3"
+      class="gap-block nila-itc-awaiting-document flex flex-wrap items-start justify-between border-l-2 px-4 py-3"
     >
       <div class="min-w-0 space-y-0.5">
         <p class="text-base-content text-ui font-semibold">Supporting invoices pending</p>
@@ -300,7 +300,8 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
                 the alarm colour is earned. --%>
             <span class={[
               "text-ui w-24 text-right font-mono",
-              ((b["state"] == "blocked" and withheld?(b)) && "text-error") || "text-ink-subtle"
+              ((b["state"] == "blocked" and withheld?(b)) && "nila-itc-value-blocked") ||
+                "text-ink-subtle"
             ]}>
               {if withheld?(b), do: "−", else: ""}{itc_money(b["tax_paise"])}
             </span>
@@ -325,7 +326,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
               </.button>
             </span>
             <span :if={b["state"] == "blocked"} class="flex items-center gap-1.5">
-              <span class="text-error text-ui font-medium">Blocked</span>
+              <span class="nila-itc-status-blocked text-ui font-medium">Blocked</span>
               <.button
                 :if={not @signed_off}
                 variant="ghost"

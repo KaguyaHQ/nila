@@ -19,10 +19,20 @@ defmodule NilaWeb.Dev.DesignSystemLiveTest do
     assert has_element?(view, "#ds-buttons .nila-button[data-size='sm']", "Standard")
     assert has_element?(view, "#ds-buttons .nila-button[data-size='lg']", "Prominent")
     assert has_element?(view, "#ds-segmented button[aria-pressed='true']", "Needs you")
-    assert has_element?(view, "#ds-badges .nila-badge[data-variant='warning']", "Needs review")
+
+    for {variant, label} <- [
+          {"info", "Proposed"},
+          {"success", "Reviewed"},
+          {"warning", "Needs review"},
+          {"error", "Blocked"}
+        ] do
+      assert has_element?(view, "#ds-colors .nila-status-swatch[data-kind='#{variant}']")
+      assert has_element?(view, "#ds-badges .nila-badge[data-variant='#{variant}']", label)
+      assert has_element?(view, "#ds-feedback .nila-callout[data-kind='#{variant}']")
+    end
+
     assert has_element?(view, "#ds-fields .nila-input")
     assert has_element?(view, "#ds-fields .nila-select")
-    assert has_element?(view, "#ds-feedback .nila-callout[data-kind='warning']")
     assert has_element?(view, "#ds-cards", "₹39,520.80")
     assert has_element?(view, "#ds-register-rows tr", "INV-1048")
     assert has_element?(view, "#ds-workpaper-result", "Draft prepared. One invoice needs you.")

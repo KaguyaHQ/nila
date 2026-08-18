@@ -89,7 +89,7 @@ defmodule NilaWeb.Components.Today.Arrivals do
             options={arrival_kind_options()}
           />
 
-          <p :if={@error} id="arrival-sort-error" class="text-error text-ui">
+          <p :if={@error} id="arrival-sort-error" class="nila-arrival-sort-error text-ui">
             {@error}
           </p>
 

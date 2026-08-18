@@ -468,7 +468,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             {format_money(row["taxable_paise"], prefix: "₹")}
           </:col>
           <:col :let={row} label="Current ITC" align="right">
-            <span class={row["itc_effect_paise"] < 0 && "text-error"}>{signed_money(
+            <span class={row["itc_effect_paise"] < 0 && "nila-purchase-itc-negative"}>{signed_money(
               row["itc_effect_paise"]
             )}</span>
           </:col>
@@ -979,7 +979,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   defp row_accent(row, true),
     do:
       if(Register.open_row?(row),
-        do: "border-l-2 border-l-warning bg-warning/[0.04]",
+        do: "nila-purchase-open-row border-l-2",
         else: "text-ink-muted"
       )
 

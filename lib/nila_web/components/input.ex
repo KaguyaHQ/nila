@@ -335,7 +335,7 @@ defmodule NilaWeb.Components.Input do
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="text-error text-ui mt-1.5 flex items-center gap-2">
+    <p class="nila-field-error-copy text-ui mt-1.5 flex items-center gap-2">
       <.icon name="hero-exclamation-circle" class="size-5" />
       {render_slot(@inner_block)}
     </p>

@@ -698,7 +698,8 @@ defmodule NilaWeb.Gst.UploadLive do
                   <% {:identified, kind} -> %>
                     <div
                       id={"gst-upload-kind-#{entry.ref}"}
-                      class="text-success text-ui flex items-center gap-1.5"
+                      class="nila-upload-identification text-ui flex items-center gap-1.5"
+                      data-kind="success"
                     >
                       <.icon name="hero-check-circle" class="size-4" />
                       {kind_title(kind)} · detected from the portal structure
@@ -706,7 +707,8 @@ defmodule NilaWeb.Gst.UploadLive do
                   <% {:error, reason} -> %>
                     <div
                       id={"gst-upload-kind-#{entry.ref}"}
-                      class="text-error text-ui flex items-center gap-1.5"
+                      class="nila-upload-identification text-ui flex items-center gap-1.5"
+                      data-kind="error"
                     >
                       <.icon name="hero-exclamation-circle" class="size-4" />
                       {portal_error_label(reason)}
@@ -715,7 +717,7 @@ defmodule NilaWeb.Gst.UploadLive do
               </:entry>
             </.file_drop>
 
-            <p :if={@error} id="gst-upload-error" class="text-error text-ui">
+            <p :if={@error} id="gst-upload-error" class="nila-upload-error text-ui">
               {@error}
             </p>
 
@@ -778,7 +780,7 @@ defmodule NilaWeb.Gst.UploadLive do
               />
               <div class="min-w-0 flex-1">
                 <p class="text-base-content text-ui font-medium">{kind_title(job.kind)}</p>
-                <p class={["text-ui", "text-#{job_variant(job)}"]}>
+                <p class="nila-upload-job-label text-ui" data-kind={job_variant(job)}>
                   {job_label(job)}
                 </p>
                 <p :if={partial?(job)} class="text-body text-ink-subtle">
@@ -824,7 +826,7 @@ defmodule NilaWeb.Gst.UploadLive do
               <p class="text-ink-subtle text-ui tabular-nums">
                 {progress_caption(job.progress)}
               </p>
-              <p :if={job.retrying} class="text-ui text-warning">
+              <p :if={job.retrying} class="nila-upload-retry text-ui">
                 {retry_message(job.retrying)}
               </p>
             </div>

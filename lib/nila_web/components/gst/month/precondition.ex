@@ -30,7 +30,7 @@ defmodule NilaWeb.Components.Gst.Month.Precondition do
     ~H"""
     <section
       id="month-precondition"
-      class="bg-warning/[0.04] border-warning/40 rounded-box space-y-block border p-6"
+      class="nila-month-precondition rounded-box space-y-block border p-6"
     >
       <p class="text-body text-ink-muted">
         {arrival_line(@dump)} Nothing is built from it until you say what it is.

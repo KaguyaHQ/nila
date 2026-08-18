@@ -188,7 +188,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       </div>
 
       <div :if={@selected.resolved} class="border-base-300 pt-block flex items-center gap-3 border-t">
-        <span class="text-success text-ui font-medium">{@selected.outcome}</span>
+        <span class="nila-exception-outcome text-ui font-medium">{@selected.outcome}</span>
         <.button
           :if={not @signed_off}
           variant="ghost"
@@ -312,7 +312,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         id="gst-exception-outcome"
         class="border-base-300 pt-block flex flex-wrap items-center gap-3 border-t"
       >
-        <span class="text-success text-ui flex items-center gap-1.5 font-medium">
+        <span class="nila-exception-outcome text-ui flex items-center gap-1.5 font-medium">
           <.icon name="hero-check-circle-mini" class="size-4" /> {@selected.outcome}
         </span>
         <.button
@@ -528,7 +528,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         <span class={[
           "text-ui min-w-0 font-mono wrap-break-word tabular-nums",
           agree? && "text-base-content",
-          !agree? && "text-error"
+          !agree? && "nila-exception-mismatch"
         ]}>
           {fmt(gv)}
         </span>

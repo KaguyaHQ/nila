@@ -220,6 +220,99 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     assert Enum.any?(violations, &match?({^path, _line, "--accent-a8"}, &1))
   end
 
+  test "accepts semantic status aliases to the pinned Radix families" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-status-scale-#{System.unique_integer([:positive])}.css")
+
+    File.write!(path, valid_status_css())
+    on_exit(fn -> File.rm(path) end)
+
+    assert StyleGuard.status_scale_violations(path) == []
+  end
+
+  test "rejects wrong, formula-generated, missing, and duplicated status aliases" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-status-scale-#{System.unique_integer([:positive])}.css")
+
+    source =
+      valid_status_css()
+      |> String.replace("  --info-11: var(--sky-11);\n", "  --info-11: var(--blue-11);\n")
+      |> String.replace(
+        "  --success-a3: var(--green-a3);\n",
+        "  --success-a3: color-mix(in oklch, var(--color-success) 9%, transparent);\n"
+      )
+      |> String.replace("  --warning-a6: var(--amber-a6);\n", "")
+      |> Kernel.<>(".local { --error-a11: var(--red-a11); }\n")
+
+    File.write!(path, source)
+    on_exit(fn -> File.rm(path) end)
+
+    violations = StyleGuard.status_scale_violations(path)
+    assert Enum.any?(violations, &match?({^path, _line, "--info-11"}, &1))
+    assert Enum.any?(violations, &match?({^path, _line, "--success-a3"}, &1))
+    assert {path, 1, "--warning-a6"} in violations
+    assert Enum.any?(violations, &match?({^path, _line, "--error-a11"}, &1))
+  end
+
+  test "rejects retired generated status tokens in definitions and references" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-status-scale-#{System.unique_integer([:positive])}.css")
+
+    File.write!(
+      path,
+      valid_status_css() <>
+        ".legacy { --nila-warning-a3: yellow; background: var(--nila-error-surface); }\n"
+    )
+
+    on_exit(fn -> File.rm(path) end)
+
+    tokens = Enum.map(StyleGuard.status_scale_violations(path), &elem(&1, 2))
+    assert "--nila-warning-a3" in tokens
+    assert "--nila-error-surface" in tokens
+  end
+
+  test "shared status recipes preserve exact Radix roles" do
+    css = File.read!("assets/css/app.css")
+
+    readable_ink = %{
+      "info" => "--info-a11",
+      "success" => "--success-12",
+      "warning" => "--warning-12",
+      "error" => "--error-a11"
+    }
+
+    for status <- ~w(info success warning error) do
+      badge = css_rule(css, ".nila-badge[data-variant=\"#{status}\"]")
+      assert badge =~ "--nila-badge-bg: var(--#{status}-a3);"
+      assert badge =~ "--nila-badge-ink: var(#{Map.fetch!(readable_ink, status)});"
+
+      callout = css_rule(css, ".nila-callout[data-kind=\"#{status}\"]")
+      assert callout =~ "--nila-callout-bg: var(--#{status}-a3);"
+      assert callout =~ "--nila-callout-border: var(--#{status}-a6);"
+      assert callout =~ "--nila-callout-ink: var(#{Map.fetch!(readable_ink, status)});"
+    end
+
+    info_alert = css_rule(css, ".nila-alert[data-kind=\"info\"]")
+    assert info_alert =~ "--nila-alert-bg: var(--info-surface);"
+    assert info_alert =~ "--nila-alert-border: var(--info-a6);"
+    assert info_alert =~ "--nila-alert-ink: var(--info-a11);"
+
+    error_alert = css_rule(css, ".nila-alert[data-kind=\"error\"]")
+    assert error_alert =~ "--nila-alert-bg: var(--error-surface);"
+    assert error_alert =~ "--nila-alert-border: var(--error-a6);"
+    assert error_alert =~ "--nila-alert-ink: var(--error-a11);"
+
+    error_button = css_rule(css, ".nila-button[data-variant=\"error\"]")
+    assert error_button =~ "--nila-button-bg: var(--error-11);"
+    assert error_button =~ "--nila-button-hover-bg: var(--error-12);"
+    assert error_button =~ "--nila-button-ink: var(--error-contrast);"
+
+    success_button = css_rule(css, ".nila-button[data-variant=\"success\"]")
+    assert success_button =~ "--nila-button-bg: var(--success-11);"
+    assert success_button =~ "--nila-button-hover-bg: var(--success-12);"
+    assert success_button =~ "--nila-button-ink: var(--success-contrast);"
+  end
+
   test "shared interactive recipes preserve exact Radix roles" do
     css = File.read!("assets/css/app.css")
 
@@ -380,6 +473,32 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
         {"--color-base-content", "--slate-12"},
         {"--nila-ink-12", "--slate-12"}
       ] ++ Enum.map(1..12, &{"--nila-ink-a#{&1}", "--slate-a#{&1}"})
+
+    ":root {\n" <>
+      Enum.map_join(aliases, "", fn {name, target} -> "  #{name}: var(#{target});\n" end) <>
+      "}\n"
+  end
+
+  defp valid_status_css do
+    families = %{
+      "info" => "sky",
+      "success" => "green",
+      "warning" => "amber",
+      "error" => "red"
+    }
+
+    aliases =
+      Enum.flat_map(families, fn {status, family} ->
+        Enum.map(1..12, &{"--#{status}-#{&1}", "--#{family}-#{&1}"}) ++
+          Enum.map(1..12, &{"--#{status}-a#{&1}", "--#{family}-a#{&1}"}) ++
+          Enum.map(~w(contrast surface indicator track), fn role ->
+            {"--#{status}-#{role}", "--#{family}-#{role}"}
+          end) ++
+          [
+            {"--color-#{status}", "--#{status}-9"},
+            {"--color-#{status}-content", "--#{status}-contrast"}
+          ]
+      end)
 
     ":root {\n" <>
       Enum.map_join(aliases, "", fn {name, target} -> "  #{name}: var(#{target});\n" end) <>

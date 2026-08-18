@@ -179,7 +179,7 @@ export const WhatsAppEmbeddedSignup = {
     const status = this.el.querySelector("[data-whatsapp-signup-status]")
     if (!status) return
     status.textContent = message
-    status.classList.toggle("text-error", isError)
+    status.dataset.state = isError ? "error" : "idle"
     status.classList.toggle("text-ink-muted", !isError)
   },
 }

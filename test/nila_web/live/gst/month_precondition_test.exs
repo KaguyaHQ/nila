@@ -119,7 +119,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
              "11 of this packet's 14 bills are dated Apr 2026, not Jun 2026."
            )
 
-    refute has_element?(view, "#month-headline.text-error")
+    refute has_element?(view, "#month-headline.nila-verdict-alarm")
   end
 
   test "a duplicate of a filed month says what it cost, in alarm", context do
@@ -133,7 +133,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
              "Apr 2026 is filed, so those are already declared."
            )
 
-    assert has_element?(view, "#month-headline.text-error")
+    assert has_element?(view, "#month-headline.nila-verdict-alarm")
   end
 
   # The grade the old flat error got wrong: two unfiled drafts holding the same
@@ -159,7 +159,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
            )
 
     assert has_element?(view, "#month-headline", "one of the two copies is in the wrong month")
-    refute has_element?(view, "#month-headline.text-error")
+    refute has_element?(view, "#month-headline.nila-verdict-alarm")
   end
 
   # A finding written before the grade was derived knows nothing about the other
@@ -177,7 +177,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
     {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
 
     assert has_element?(view, "#month-headline", "already in Apr 2026")
-    assert has_element?(view, "#month-headline.text-error")
+    assert has_element?(view, "#month-headline.nila-verdict-alarm")
     refute render(view) =~ "is filed, so those are already declared"
     refute render(view) =~ "is not filed"
   end

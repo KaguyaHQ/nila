@@ -242,9 +242,9 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             :for={{issue, index} <- Enum.with_index(@open_issues, 1)}
             type="button"
             data-review-target={issue_focus_target(issue)}
-            class="bg-warning/10 hover:bg-warning/20 rounded-field text-base-content text-ui flex items-center gap-1.5 px-2 py-1 font-medium transition-colors"
+            class="nila-evidence-issue-chip rounded-field text-base-content text-ui flex items-center gap-1.5 px-2 py-1 font-medium transition-colors"
           >
-            <span class="bg-warning/15 rounded-full px-1.5 tabular-nums">{index}</span>
+            <span class="nila-evidence-issue-index rounded-full px-1.5 tabular-nums">{index}</span>
             {issue_chip_label(issue)}
           </button>
         </div>
@@ -595,7 +595,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         </div>
         <div>
           <dt class="text-ink-subtle text-label">Difference</dt>
-          <dd class="font-display text-body text-error mt-1 leading-none tabular-nums">
+          <dd class="font-display nila-gstr1-mismatch text-body mt-1 leading-none tabular-nums">
             {Helpers.rupees(@mismatch.extracted - @mismatch.printed)}
           </dd>
         </div>

@@ -110,7 +110,7 @@ defmodule NilaWeb.Components.Form do
               phx-click={@on_cancel}
               phx-value-ref={entry.ref}
               aria-label={"Remove #{entry.client_name}"}
-              class="hover:bg-error/10 hover:text-error rounded-field text-ink-subtle p-1 transition-colors"
+              class="nila-file-remove rounded-field text-ink-subtle p-1 transition-colors"
             >
               <.icon name="hero-x-mark" class="size-5" />
             </button>
@@ -122,7 +122,7 @@ defmodule NilaWeb.Components.Form do
 
           <p
             :for={err <- upload_errors(@upload, entry)}
-            class="text-error text-ui mt-1.5 flex items-center gap-2"
+            class="nila-file-error text-ui mt-1.5 flex items-center gap-2"
           >
             <.icon name="hero-exclamation-circle" class="size-5" />
             {upload_error_message(err)}
@@ -132,7 +132,7 @@ defmodule NilaWeb.Components.Form do
 
       <p
         :for={err <- upload_errors(@upload)}
-        class="text-error text-ui mt-1.5 flex items-center gap-2"
+        class="nila-file-error text-ui mt-1.5 flex items-center gap-2"
       >
         <.icon name="hero-exclamation-circle" class="size-5" />
         {upload_error_message(err)}

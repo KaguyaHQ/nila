@@ -42,6 +42,10 @@ defmodule Mix.Tasks.Nila.StyleGuard do
       through the blue scale. Product markup selects component meaning instead of
       raw primary text, borders, focus rings, or arbitrary primary opacity.
 
+    * **Status color** — semantic info, success, warning, and error aliases map
+      exactly once to pinned Radix Sky, Green, Amber, and Red. Retired generated
+      `--nila-{status}-*` copies cannot return.
+
   Run with `mix nila.style_guard` (also wired into `mix precommit`).
   """
 
@@ -93,6 +97,8 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "nila-field" => "lib/nila_web/components/input.ex",
     "nila-file-drop" => "lib/nila_web/components/form.ex",
     "nila-file-accent" => "lib/nila_web/components/form.ex",
+    "nila-file-remove" => "lib/nila_web/components/form.ex",
+    "nila-file-error" => "lib/nila_web/components/form.ex",
     "nila-input" => "lib/nila_web/components/input.ex",
     "nila-select" => "lib/nila_web/components/input.ex",
     "nila-textarea" => "lib/nila_web/components/input.ex",
@@ -108,6 +114,34 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "nila-settings-link" => "lib/nila_web/components/layouts.ex",
     "nila-account-trigger" => "lib/nila_web/components/layouts.ex",
     "nila-sales-review-item" => "lib/nila_web/components/gst/review/sales_live.ex",
+    "nila-status-swatch" => "lib/nila_web/live/dev/design_system_live.ex",
+    "nila-arrival-sort-error" => "lib/nila_web/components/today/arrivals.ex",
+    "nila-whatsapp-status" => "lib/nila_web/live/settings/connectors_live.ex",
+    "nila-whatsapp-config-warning" => "lib/nila_web/live/settings/connectors_live.ex",
+    "nila-connector-error" => "lib/nila_web/live/settings/connectors_live.ex",
+    "nila-upload-identification" => "lib/nila_web/live/gst/upload_live.ex",
+    "nila-upload-error" => "lib/nila_web/live/gst/upload_live.ex",
+    "nila-upload-job-label" => "lib/nila_web/live/gst/upload_live.ex",
+    "nila-upload-retry" => "lib/nila_web/live/gst/upload_live.ex",
+    "nila-verdict-alarm" => "lib/nila_web/components/gst/month/verdict.ex",
+    "nila-deadline-error" => "lib/nila_web/components/gst/month/verdict.ex",
+    "nila-deadline-warning" => "lib/nila_web/components/gst/month/verdict.ex",
+    "nila-exception-outcome" => "lib/nila_web/components/gst/exceptions/surface.ex",
+    "nila-exception-mismatch" => "lib/nila_web/components/gst/exceptions/surface.ex",
+    "nila-itc-awaiting-document" => "lib/nila_web/components/gst/exceptions/itc.ex",
+    "nila-itc-value-blocked" => "lib/nila_web/components/gst/exceptions/itc.ex",
+    "nila-itc-status-blocked" => "lib/nila_web/components/gst/exceptions/itc.ex",
+    "nila-evidence-issue-chip" => "lib/nila_web/components/gst/month/evidence.ex",
+    "nila-evidence-issue-index" => "lib/nila_web/components/gst/month/evidence.ex",
+    "nila-gstr1-mismatch" => "lib/nila_web/components/gst/month/evidence.ex",
+    "nila-month-precondition" => "lib/nila_web/components/gst/month/precondition.ex",
+    "nila-purchase-itc-negative" => "lib/nila_web/components/gst/month/purchase.ex",
+    "nila-purchase-open-row" => "lib/nila_web/components/gst/month/purchase.ex",
+    "nila-gstr1-blocked-next-move" => "lib/nila_web/components/gst/month/sales.ex",
+    "nila-gstr1-required-item" => "lib/nila_web/components/gst/month/sales.ex",
+    "nila-gstr1-required-link" => "lib/nila_web/components/gst/month/sales.ex",
+    "nila-workings-accepted" => "lib/nila_web/components/gst/month/workings.ex",
+    "nila-gstr3b-provisional" => "lib/nila_web/components/gst/month/filing.ex",
     "nila-gstr1-handoff" => "lib/nila_web/components/gst/month/filing.ex",
     "nila-sales-register-row" => "lib/nila_web/components/gst/month/sales.ex",
     "nila-workpaper-tab" => "lib/nila_web/components/gst/month/workpaper.ex",
@@ -115,7 +149,14 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "nila-alert" => "lib/nila_web/components/flash.ex",
     "nila-toast" => "lib/nila_web/components/flash.ex"
   }
-  @component_recipe_pattern ~r/\bnila-(?:badge|button|link|segmented|card|field|file-drop|file-accent|input|select|textarea|checkbox|table|fold|modal|menu|callout|spinner|progress|evidence-trigger|settings-link|account-trigger|sales-review-item|gstr1-handoff|sales-register-row|workpaper-tab|workings-reference|alert|toast)(?:-[\w-]+)?\b/
+  @component_recipe_pattern Regex.compile!(
+                              "\\b(?:" <>
+                                (@component_recipe_owners
+                                 |> Map.keys()
+                                 |> Enum.sort_by(&String.length/1, :desc)
+                                 |> Enum.map_join("|", &Regex.escape/1)) <>
+                                ")(?:-[\\w-]+)?\\b"
+                            )
 
   @spacing_pattern ~r/(?<![\w-])-?(?:p[xysetrbl]?|m[xysetrbl]?|gap(?:-[xy])?|space-[xy])-(\[[^\]]+\]|\d+(?:\.\d+)?)/
   @raw_structural_spacing_pattern ~r/(?<![\w-])space-y-(?:2|4|6|8)\b/
@@ -131,7 +172,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   @css_variable_definition_pattern ~r/(?:^|[;{])\s*(--[a-zA-Z0-9_-]+)\s*:/m
   @css_variable_reference_pattern ~r/var\(\s*(--[a-zA-Z0-9_-]+)/
   @global_css_block_pattern ~r/(?:@plugin[^\{]*|@theme(?:\s+\w+)?\s*|:root(?:\s*,\s*\.landing)?\s*)\{([^{}]*)\}/s
-  @global_css_variable_pattern ~r/^--(?:color|font|text|spacing|radius|shadow|transition|ease|default|nila-(?:ink|accent|info|success|warning|error))-/
+  @global_css_variable_pattern ~r/^--(?:color|font|text|spacing|radius|shadow|transition|ease|default|(?:accent|focus|info|success|warning|error)|nila-(?:ink|accent))-/
   @ink_semantic_targets Map.new(
                           [
                             {"--color-base-content", "--slate-12"},
@@ -165,6 +206,34 @@ defmodule Mix.Tasks.Nila.StyleGuard do
                                )
                            )
   @accent_semantic_declaration_pattern ~r/(--(?:accent-(?:a?(?:1[0-2]|[1-9])|contrast|surface|indicator|track)|focus-a?(?:1[0-2]|[1-9])))\s*:\s*([^;]+);/
+  @status_families %{
+    "info" => "sky",
+    "success" => "green",
+    "warning" => "amber",
+    "error" => "red"
+  }
+  @status_semantic_targets Map.new(
+                             Enum.flat_map(@status_families, fn {status, family} ->
+                               for(
+                                 step <- 1..12,
+                                 do: {"--#{status}-#{step}", "--#{family}-#{step}"}
+                               ) ++
+                                 for(
+                                   step <- 1..12,
+                                   do: {"--#{status}-a#{step}", "--#{family}-a#{step}"}
+                                 ) ++
+                                 for(
+                                   role <- ~w(contrast surface indicator track),
+                                   do: {"--#{status}-#{role}", "--#{family}-#{role}"}
+                                 ) ++
+                                 [
+                                   {"--color-#{status}", "--#{status}-9"},
+                                   {"--color-#{status}-content", "--#{status}-contrast"}
+                                 ]
+                             end)
+                           )
+  @status_semantic_declaration_pattern ~r/(--(?:(?:info|success|warning|error)-(?:a?(?:1[0-2]|[1-9])|contrast|surface|indicator|track)|color-(?:info|success|warning|error)(?:-content)?))\s*:\s*([^;]+);/
+  @retired_status_pattern ~r/--nila-(?:info|success|warning|error)-[a-zA-Z0-9_-]+/
 
   # Product-only checks reuse the live/component scope and deliberately exclude
   # public marketing controller templates. Type scale covers the whole web tree.
@@ -199,6 +268,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     css_variables = css_variable_violations(@css_path)
     ink_scale = ink_scale_violations(@css_path)
     accent_scale = accent_scale_violations(@css_path)
+    status_scale = status_scale_violations(@css_path)
 
     report(legacy, "legacy hardcoded classes")
     report(daisy_components, "raw daisyUI component classes — use the shared Nila component")
@@ -235,9 +305,15 @@ defmodule Mix.Tasks.Nila.StyleGuard do
       "off-system interactive scale — alias Radix accent and focus roles exactly once"
     )
 
+    report(
+      status_scale,
+      "off-system status scale — alias pinned Radix status roles once; remove retired copies"
+    )
+
     if legacy != [] or daisy_components != [] or type_scale != [] or context_type != [] or
          component_recipes != [] or spacing != [] or ruling != [] or motion != [] or
-         interactive_color != [] or css_variables != [] or ink_scale != [] or accent_scale != [] do
+         interactive_color != [] or css_variables != [] or ink_scale != [] or accent_scale != [] or
+         status_scale != [] do
       Mix.raise("Replace the flagged classes with Nila design-system tokens.")
     end
   end
@@ -385,7 +461,10 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   end
 
   defp recipe_root(token) do
-    Enum.find(Map.keys(@component_recipe_owners), &String.starts_with?(token, &1))
+    @component_recipe_owners
+    |> Map.keys()
+    |> Enum.sort_by(&String.length/1, :desc)
+    |> Enum.find(&String.starts_with?(token, &1))
   end
 
   defp component_recipe_owner?(token, path) do
@@ -498,6 +577,43 @@ defmodule Mix.Tasks.Nila.StyleGuard do
       end)
 
     Enum.uniq(invalid_mappings ++ cardinality_violations)
+  end
+
+  @doc false
+  def status_scale_violations(path) do
+    source = path |> File.read!() |> strip_css_comments() |> strip_css_strings()
+
+    declarations =
+      source
+      |> String.split("\n")
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {line, line_number} ->
+        @status_semantic_declaration_pattern
+        |> Regex.scan(line)
+        |> Enum.map(fn [_match, name, value] -> {name, String.trim(value), line_number} end)
+      end)
+
+    invalid_mappings =
+      Enum.flat_map(declarations, fn {name, value, line_number} ->
+        expected = "var(#{Map.fetch!(@status_semantic_targets, name)})"
+
+        if value == expected, do: [], else: [{path, line_number, name}]
+      end)
+
+    declarations_by_name = Enum.group_by(declarations, &elem(&1, 0))
+
+    cardinality_violations =
+      Enum.flat_map(@status_semantic_targets, fn {name, _target} ->
+        case Map.get(declarations_by_name, name, []) do
+          [] -> [{path, 1, name}]
+          [_declaration] -> []
+          [_first | duplicates] -> Enum.map(duplicates, &{path, elem(&1, 2), name})
+        end
+      end)
+
+    retired = pattern_violations(path, @retired_status_pattern)
+
+    Enum.uniq(invalid_mappings ++ cardinality_violations ++ retired)
   end
 
   @doc false
