@@ -14,10 +14,23 @@ defmodule NilaWeb.SettingsLiveTest do
       {:ok, conn: log_in_user(conn, user), org: org}
     end
 
-    test "offers a Microsoft consent form on the connectors screen", %{conn: conn} do
+    test "makes provider setup focal when no accounts are connected", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings/connectors")
 
-      assert has_element?(view, "#settings-add-microsoft-form")
+      refute has_element?(view, "#settings-connected-accounts")
+      refute has_element?(view, "#settings-connections-empty")
+      assert has_element?(view, "#settings-add-channel")
+
+      assert has_element?(
+               view,
+               "#settings-add-gmail-disclosure[name='settings-add-provider']:not([open]) #settings-add-gmail-form"
+             )
+
+      assert has_element?(
+               view,
+               "#settings-add-microsoft-disclosure[name='settings-add-provider']:not([open]) #settings-add-microsoft-form"
+             )
+
       assert has_element?(view, "#settings-add-microsoft-tenant")
       assert has_element?(view, "#settings-add-microsoft-mailbox")
       assert has_element?(view, "#settings-add-microsoft[data-variant='soft']")
@@ -141,6 +154,12 @@ defmodule NilaWeb.SettingsLiveTest do
       refute has_element?(view, "#settings-sync-connection-#{connection.id}")
       assert has_element?(view, "#settings-verify-connection-#{connection.id}")
 
+      assert has_element?(
+               view,
+               "#settings-connection-#{connection.id} p.text-ui",
+               "Last received: Never"
+             )
+
       view |> element("#settings-verify-connection-#{connection.id}") |> render_click()
       assert Repo.get!(Integrations.Connection, connection.id).last_status == "connected"
 
@@ -191,7 +210,7 @@ defmodule NilaWeb.SettingsLiveTest do
 
       assert has_element?(
                view,
-               "#settings-connection-#{connection.id} h4.wrap-break-word:not(.truncate)",
+               "#settings-connection-#{connection.id} h3.wrap-break-word:not(.truncate)",
                "Caltech invoices"
              )
 
@@ -201,7 +220,24 @@ defmodule NilaWeb.SettingsLiveTest do
                "caltech@example.com"
              )
 
+      assert has_element?(view, "#settings-connected-accounts + #settings-add-channel")
       assert has_element?(view, "#settings-add-gmail-form")
+
+      assert has_element?(
+               view,
+               "#settings-connection-#{connection.id} p.text-ui",
+               "Last sync: Never"
+             )
+
+      assert has_element?(
+               view,
+               "#settings-save-connection-#{connection.id}[data-variant='ghost']"
+             )
+
+      assert has_element?(
+               view,
+               "#settings-disconnect-connection-#{connection.id}[data-variant='ghost'][data-confirm]"
+             )
 
       view
       |> form("#settings-connection-form-#{connection.id}",

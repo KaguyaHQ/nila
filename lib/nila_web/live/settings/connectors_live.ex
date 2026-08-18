@@ -151,229 +151,262 @@ defmodule NilaWeb.Settings.ConnectorsLive do
           operational views so the team can tell the firm's intake channels apart.
         </.settings_header>
 
-        <.settings_panel>
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div class="space-y-related">
-              <h3 class="text-base-content text-body font-semibold">Add Gmail account</h3>
-              <p class="text-ink-muted text-ui">
-                Name the inbox before starting OAuth.
-              </p>
-            </div>
-            <.form
-              for={@gmail_form}
-              id="settings-add-gmail-form"
-              method="get"
-              action={~p"/integrations/gmail/connect"}
-              class="grid items-end gap-3 sm:grid-cols-[240px_auto]"
-            >
-              <.input
-                field={@gmail_form[:label]}
-                id="settings-add-gmail-label"
-                label="Label"
-                placeholder="Firm intake"
-              />
-              <.button type="submit" id="settings-add-gmail" variant="soft" size="sm">
-                <.icon name="hero-plus" class="size-4" /> Add Gmail
-              </.button>
-            </.form>
+        <section
+          :if={@connections != []}
+          id="settings-connected-accounts"
+          class="space-y-block"
+        >
+          <div class="space-y-related">
+            <h2 class="text-base-content text-h4 font-semibold">Connected accounts</h2>
+            <p class="text-ink-muted text-ui">
+              Connection status, labels, and recent document activity.
+            </p>
           </div>
-        </.settings_panel>
 
-        <.settings_panel>
-          <div class="flex flex-col gap-4">
-            <div class="space-y-related">
-              <h3 class="text-base-content text-body font-semibold">Add Microsoft 365 mailbox</h3>
-              <p class="text-ink-muted text-ui">
-                Nila sends from a shared mailbox once the firm's Microsoft admin approves.
-                Restrict the app to this mailbox in Exchange, or it can send as any mailbox
-                in the tenant.
-              </p>
-            </div>
-            <.form
-              for={@microsoft_form}
-              id="settings-add-microsoft-form"
-              method="get"
-              action={~p"/integrations/microsoft/connect"}
-              class="space-y-block"
-            >
-              <div class="grid gap-4 sm:grid-cols-3">
-                <.input
-                  field={@microsoft_form[:tenant_id]}
-                  id="settings-add-microsoft-tenant"
-                  label="Directory (tenant) ID"
-                  placeholder="00000000-0000-0000-0000-000000000000"
-                />
-                <.input
-                  field={@microsoft_form[:mailbox]}
-                  id="settings-add-microsoft-mailbox"
-                  label="Send from"
-                  placeholder="mail@firm.com"
-                />
-                <.input
-                  field={@microsoft_form[:label]}
-                  id="settings-add-microsoft-label"
-                  label="Label"
-                  placeholder="Firm mailbox"
-                />
-              </div>
-              <.button type="submit" id="settings-add-microsoft" variant="soft" size="sm">
-                <.icon name="hero-plus" class="size-4" /> Start Microsoft consent
-              </.button>
-            </.form>
-          </div>
-        </.settings_panel>
-
-        <.settings_panel>
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div class="space-y-related">
-              <h3 class="text-base-content text-body font-semibold">Connect WhatsApp</h3>
-              <p class="text-ink-muted text-ui max-w-2xl">
-                Authorize Nila through Meta Embedded Signup. Nila verifies the selected business,
-                registers the number, and subscribes it to the existing webhook.
-              </p>
-              <p
-                :if={@whatsapp_signup_config}
-                data-whatsapp-signup-status
-                class="nila-whatsapp-status text-body text-ink-muted"
-              >
-                Meta signup opens in a secure window.
-              </p>
-              <p
-                :if={!@whatsapp_signup_config}
-                id="settings-whatsapp-not-configured"
-                class="nila-whatsapp-config-warning text-body"
-              >
-                Embedded Signup is not configured for this environment.
-              </p>
-            </div>
-            <.button
-              :if={@whatsapp_signup_config}
-              type="button"
-              id="settings-connect-whatsapp"
-              data-whatsapp-launch
-              variant="soft"
-              size="sm"
-            >
-              <.icon name="hero-plus" class="size-4" /> Connect WhatsApp
-            </.button>
-          </div>
-        </.settings_panel>
-
-        <.settings_panel title="Connected accounts" class="overflow-hidden" body_class="-mx-6 -mb-6">
-          <div id="settings-connection-list" class="divide-base-300 divide-y">
-            <div :if={@connections == []} id="settings-connections-empty" class="px-4 py-12">
-              <p class="text-ink-muted text-ui">No connectors yet.</p>
-            </div>
-
+          <div
+            id="settings-connection-list"
+            class="border-base-300 divide-base-300 divide-y border-y"
+          >
             <article
               :for={connection <- @connections}
               id={"settings-connection-#{connection.id}"}
-              class="grid min-w-0 gap-4 px-4 py-3 xl:grid-cols-[1fr_380px]"
+              class="gap-block py-block grid min-w-0 xl:grid-cols-[minmax(0,1fr)_380px]"
             >
-              <div class="min-w-0">
+              <div class="space-y-related min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
                   <.badge variant="neutral">{String.upcase(connection.provider)}</.badge>
                   <.badge variant={connection_status_variant(connection)}>
                     {connection_status(connection)}
                   </.badge>
                 </div>
-                <h4 class="text-base-content text-ui mt-2 font-semibold wrap-break-word">
+                <h3 class="text-base-content text-ui font-semibold wrap-break-word">
                   {Connection.display_label(connection)}
-                </h4>
-                <p class="text-ink-muted text-ui mt-1 wrap-break-word">
+                </h3>
+                <p class="text-ink-muted text-ui wrap-break-word">
                   {connection_detail(connection)}
                 </p>
                 <p
                   :if={connection.provider == "whatsapp" && connection.settings["waba_id"]}
-                  class="text-ink-subtle text-ui mt-1 wrap-break-word"
+                  class="text-ink-subtle text-ui wrap-break-word"
                 >
                   WABA {connection.settings["waba_id"]} · Phone ID {connection.external_account_id}
                 </p>
-                <div class="mt-2">
-                  <.context_text tag="p">
-                    {activity_label(connection)}: {last_sync_label(connection.last_synced_at)}
-                  </.context_text>
-                </div>
-                <p :if={connection.last_error} class="nila-connector-error text-body mt-2">
+                <p class="text-base-content text-ui font-medium">
+                  {activity_label(connection)}: {last_sync_label(connection.last_synced_at)}
+                </p>
+                <p :if={connection.last_error} class="nila-connector-error text-body">
                   {connection.last_error}
                 </p>
               </div>
 
-              <div class="space-y-related">
-                <.form
-                  for={to_form(connection_form_data(connection), as: :connection)}
-                  id={"settings-connection-form-#{connection.id}"}
-                  phx-submit="update_connection"
-                  phx-value-id={connection.id}
-                  class="grid gap-3 sm:grid-cols-2"
-                >
-                  <.input
-                    field={to_form(connection_form_data(connection), as: :connection)[:label]}
-                    id={"settings-connection-label-#{connection.id}"}
-                    label="Label"
-                  />
-                  <div class="flex flex-wrap items-center gap-2 sm:col-span-2">
-                    <.button
-                      type="submit"
-                      id={"settings-save-connection-#{connection.id}"}
-                      variant="soft"
-                      size="sm"
-                    >
-                      <.icon name="hero-check" class="size-4" /> Save
-                    </.button>
-                    <.button
-                      :if={connection.provider == "whatsapp" && connection.status == "active"}
-                      type="button"
-                      id={"settings-verify-connection-#{connection.id}"}
-                      phx-click="verify_whatsapp"
-                      phx-value-id={connection.id}
-                      variant="soft"
-                      size="sm"
-                    >
-                      <.icon name="hero-check-circle" class="size-4" /> Verify readiness
-                    </.button>
-                    <.button
-                      :if={connection.status == "active"}
-                      type="button"
-                      id={"settings-disconnect-connection-#{connection.id}"}
-                      phx-click="disconnect"
-                      phx-value-id={connection.id}
-                      variant="error"
-                      size="sm"
-                    >
-                      <.icon name="hero-no-symbol" class="size-4" /> Disconnect
-                    </.button>
-                    <.button
-                      :if={connection.status != "active" && connection.provider != "whatsapp"}
-                      type="button"
-                      id={"settings-reconnect-connection-#{connection.id}"}
-                      phx-click="reconnect"
-                      phx-value-id={connection.id}
-                      variant="soft"
-                      size="sm"
-                    >
-                      <.icon name="hero-link" class="size-4" /> Reconnect
-                    </.button>
-                    <.button
-                      :if={
-                        connection.status != "active" && connection.provider == "whatsapp" &&
-                          @whatsapp_signup_config
-                      }
-                      type="button"
-                      id={"settings-reconnect-connection-#{connection.id}"}
-                      data-whatsapp-launch
-                      data-whatsapp-connection-id={connection.id}
-                      variant="soft"
-                      size="sm"
-                    >
-                      <.icon name="hero-link" class="size-4" /> Reconnect with Meta
-                    </.button>
-                  </div>
-                </.form>
-              </div>
+              <.form
+                for={to_form(connection_form_data(connection), as: :connection)}
+                id={"settings-connection-form-#{connection.id}"}
+                phx-submit="update_connection"
+                phx-value-id={connection.id}
+                class="space-y-related"
+              >
+                <.input
+                  field={to_form(connection_form_data(connection), as: :connection)[:label]}
+                  id={"settings-connection-label-#{connection.id}"}
+                  label="Label"
+                />
+                <div class="flex flex-wrap items-center gap-2">
+                  <.button
+                    type="submit"
+                    id={"settings-save-connection-#{connection.id}"}
+                    variant="ghost"
+                    size="sm"
+                  >
+                    <.icon name="hero-check" class="size-4" /> Save
+                  </.button>
+                  <.button
+                    :if={connection.provider == "whatsapp" && connection.status == "active"}
+                    type="button"
+                    id={"settings-verify-connection-#{connection.id}"}
+                    phx-click="verify_whatsapp"
+                    phx-value-id={connection.id}
+                    variant="soft"
+                    size="sm"
+                  >
+                    <.icon name="hero-check-circle" class="size-4" /> Verify readiness
+                  </.button>
+                  <.button
+                    :if={connection.status == "active"}
+                    type="button"
+                    id={"settings-disconnect-connection-#{connection.id}"}
+                    phx-click="disconnect"
+                    phx-value-id={connection.id}
+                    data-confirm="Disconnect this account from Nila?"
+                    variant="ghost"
+                    size="sm"
+                  >
+                    <.icon name="hero-no-symbol" class="size-4" /> Disconnect
+                  </.button>
+                  <.button
+                    :if={connection.status != "active" && connection.provider != "whatsapp"}
+                    type="button"
+                    id={"settings-reconnect-connection-#{connection.id}"}
+                    phx-click="reconnect"
+                    phx-value-id={connection.id}
+                    variant="soft"
+                    size="sm"
+                  >
+                    <.icon name="hero-link" class="size-4" /> Reconnect
+                  </.button>
+                  <.button
+                    :if={
+                      connection.status != "active" && connection.provider == "whatsapp" &&
+                        @whatsapp_signup_config
+                    }
+                    type="button"
+                    id={"settings-reconnect-connection-#{connection.id}"}
+                    data-whatsapp-launch
+                    data-whatsapp-connection-id={connection.id}
+                    variant="soft"
+                    size="sm"
+                  >
+                    <.icon name="hero-link" class="size-4" /> Reconnect with Meta
+                  </.button>
+                </div>
+              </.form>
             </article>
           </div>
-        </.settings_panel>
+        </section>
+
+        <section id="settings-add-channel" class="space-y-block">
+          <div class="space-y-related">
+            <h2 class="text-base-content text-h4 font-semibold">Add a channel</h2>
+            <p class="text-ink-muted text-ui">
+              Choose where documents arrive. Configure only the channel you want to add.
+            </p>
+          </div>
+
+          <div class="border-base-300 divide-base-300 divide-y border-y">
+            <details id="settings-add-gmail-disclosure" name="settings-add-provider" class="group">
+              <summary class="hover:text-ink py-block text-base-content text-ui flex cursor-pointer list-none items-center gap-3">
+                <div class="space-y-related min-w-0 flex-1">
+                  <h3 class="font-semibold">Gmail</h3>
+                  <p class="text-ink-muted text-ui">Receive documents from a Google inbox.</p>
+                </div>
+                <.icon
+                  name="hero-chevron-down-mini"
+                  class="text-ink-faint size-4 shrink-0 transition-transform group-open:rotate-180"
+                />
+              </summary>
+              <div class="border-base-300 pb-block pt-block border-t">
+                <.form
+                  for={@gmail_form}
+                  id="settings-add-gmail-form"
+                  method="get"
+                  action={~p"/integrations/gmail/connect"}
+                  class="grid items-end gap-3 sm:grid-cols-[minmax(0,240px)_auto] sm:justify-start"
+                >
+                  <.input
+                    field={@gmail_form[:label]}
+                    id="settings-add-gmail-label"
+                    label="Label"
+                    placeholder="Firm intake"
+                  />
+                  <.button type="submit" id="settings-add-gmail" variant="soft" size="sm">
+                    <.icon name="hero-plus" class="size-4" /> Add Gmail
+                  </.button>
+                </.form>
+              </div>
+            </details>
+
+            <details
+              id="settings-add-microsoft-disclosure"
+              name="settings-add-provider"
+              class="group"
+            >
+              <summary class="hover:text-ink py-block text-base-content text-ui flex cursor-pointer list-none items-center gap-3">
+                <div class="space-y-related min-w-0 flex-1">
+                  <h3 class="font-semibold">Microsoft 365</h3>
+                  <p class="text-ink-muted text-ui">
+                    Receive and send documents through a shared mailbox.
+                  </p>
+                </div>
+                <.icon
+                  name="hero-chevron-down-mini"
+                  class="text-ink-faint size-4 shrink-0 transition-transform group-open:rotate-180"
+                />
+              </summary>
+              <div class="border-base-300 pb-block pt-block space-y-block border-t">
+                <p class="text-ink-muted text-ui max-w-2xl">
+                  Nila sends from a shared mailbox once the firm's Microsoft admin approves.
+                  Restrict the app to this mailbox in Exchange, or it can send as any mailbox
+                  in the tenant.
+                </p>
+                <.form
+                  for={@microsoft_form}
+                  id="settings-add-microsoft-form"
+                  method="get"
+                  action={~p"/integrations/microsoft/connect"}
+                  class="space-y-block"
+                >
+                  <div class="grid gap-4 sm:grid-cols-3">
+                    <.input
+                      field={@microsoft_form[:tenant_id]}
+                      id="settings-add-microsoft-tenant"
+                      label="Directory (tenant) ID"
+                      placeholder="00000000-0000-0000-0000-000000000000"
+                    />
+                    <.input
+                      field={@microsoft_form[:mailbox]}
+                      id="settings-add-microsoft-mailbox"
+                      label="Send from"
+                      placeholder="mail@firm.com"
+                    />
+                    <.input
+                      field={@microsoft_form[:label]}
+                      id="settings-add-microsoft-label"
+                      label="Label"
+                      placeholder="Firm mailbox"
+                    />
+                  </div>
+                  <.button type="submit" id="settings-add-microsoft" variant="soft" size="sm">
+                    <.icon name="hero-plus" class="size-4" /> Start Microsoft consent
+                  </.button>
+                </.form>
+              </div>
+            </details>
+
+            <article class="gap-block py-block flex flex-col lg:flex-row lg:items-center lg:justify-between">
+              <div class="space-y-related min-w-0">
+                <h3 class="text-base-content text-ui font-semibold">WhatsApp</h3>
+                <p class="text-ink-muted text-ui max-w-2xl">
+                  Authorize Nila through Meta Embedded Signup. Nila verifies the selected business,
+                  registers the number, and subscribes it to the existing webhook.
+                </p>
+                <p
+                  :if={@whatsapp_signup_config}
+                  data-whatsapp-signup-status
+                  class="nila-whatsapp-status text-body text-ink-muted"
+                >
+                  Meta signup opens in a secure window.
+                </p>
+                <p
+                  :if={!@whatsapp_signup_config}
+                  id="settings-whatsapp-not-configured"
+                  class="nila-whatsapp-config-warning text-body"
+                >
+                  Embedded Signup is not configured for this environment.
+                </p>
+              </div>
+              <.button
+                :if={@whatsapp_signup_config}
+                type="button"
+                id="settings-connect-whatsapp"
+                data-whatsapp-launch
+                variant="soft"
+                size="sm"
+              >
+                <.icon name="hero-plus" class="size-4" /> Connect WhatsApp
+              </.button>
+            </article>
+          </div>
+        </section>
       </div>
     </Layouts.settings>
     """
