@@ -322,6 +322,132 @@ body {
   --nila-error-surface: color-mix(in oklch, var(--color-error) 9%, var(--color-base-100));
 }
 
+/* Sales workpaper visual proving ground. The local ink scale is Radix Slate 3.3;
+   the composition stays scoped until the rendered workpaper earns promotion. */
+.sales-workpaper {
+  --color-base-content: #1c2024;
+  --nila-ink-12: #1c2024;
+  --nila-ink-a12: #000509e3;
+  --nila-ink-a11: #0007149f;
+  --nila-ink-a10: #00071b7f;
+  --nila-ink-a8: #00083046;
+  --nila-ink-a7: #00062e32;
+  --nila-ink-a6: #00002f26;
+  --nila-ink-a4: #00002d17;
+  --nila-ink-a3: #0000330f;
+}
+
+.sales-overview {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.75rem;
+  background: var(--color-base-100);
+}
+
+.sales-verdict {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 2rem;
+  background:
+    radial-gradient(circle at 98% 4%, var(--nila-accent-a4), transparent 34%),
+    radial-gradient(circle at 92% 108%, color-mix(in oklch, var(--color-accent) 24%, transparent), transparent 38%),
+    linear-gradient(135deg, var(--color-base-100), color-mix(in oklch, var(--color-primary) 5%, var(--color-base-100)));
+}
+
+.sales-verdict-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sales-verdict-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sales-readiness {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--nila-ink-a6);
+}
+
+.sales-readiness-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+  margin-top: 0.5rem;
+  border-radius: 999px;
+  background: var(--nila-ink-a10);
+}
+
+.sales-overview[data-state="provisional"] .sales-readiness-dot {
+  background: var(--color-warning);
+}
+
+.sales-overview[data-state="ready"] .sales-readiness-dot,
+.sales-overview[data-state="approved"] .sales-readiness-dot {
+  background: var(--color-success);
+}
+
+.sales-overview[data-state="awaiting_senior"] .sales-readiness-dot {
+  background: var(--color-info);
+}
+
+.sales-assurance {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  background: color-mix(in oklch, var(--color-base-100) 76%, var(--color-base-200));
+}
+
+.sales-before-approval,
+.sales-assurance-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.5rem;
+}
+
+.sales-before-approval {
+  background: var(--nila-warning-a3);
+}
+
+.sales-assurance-item + .sales-assurance-item,
+.sales-before-approval + .sales-assurance-item {
+  border-top: 1px solid var(--color-base-300);
+}
+
+.sales-change {
+  border-left: 2px solid var(--nila-info-a6);
+  padding: 0.75rem 1rem;
+  background: var(--nila-info-a3);
+}
+
+@media (min-width: 64rem) {
+  .sales-overview {
+    grid-template-columns: minmax(0, 1.65fr) minmax(18rem, 0.85fr);
+  }
+
+  .sales-assurance {
+    border-left: 1px solid var(--color-base-300);
+  }
+}
+
+@media (max-width: 63.999rem) {
+  .sales-assurance {
+    border-top: 1px solid var(--color-base-300);
+  }
+}
+
 /* Radix Themes 3.3 physics, expressed through Nila's semantic palette and type.
    Shared components own these recipes; product markup only selects meaning. */
 .nila-badge {

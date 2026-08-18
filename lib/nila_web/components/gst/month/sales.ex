@@ -91,52 +91,98 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       |> assign(:section_links, section_links(required_issues, assigns.derived))
 
     ~H"""
-    <section id="month-sales" class="space-y-section scroll-mt-28">
-      <section
-        id="gstr1-verdict"
-        class={[
-          "border-base-300 moonlight-soft rounded-box space-y-block border p-6",
-          Workings.ripple_class(@rippled, @ripple_seq, "gstr1-account")
-        ]}
-      >
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <div class="min-w-0 space-y-1">
-            <p class="text-ink-subtle text-label font-semibold uppercase">Sales return</p>
-            <h2 class="font-display text-base-content text-h3 font-normal">
-              {track_title(@sales_month, @r1_signoff)}
-            </h2>
-            <p id="gstr1-filing-status" class="text-body text-ink-muted">{@readiness.status}</p>
-          </div>
-          <div class="flex flex-wrap items-center gap-2">{render_slot(@primary_action)}</div>
-        </div>
-        <p id="gstr1-draft-position" class="text-body text-ink-muted tabular-nums">
-          <span id="gstr1-draft-invoices" class="text-base-content font-medium">
-            {document_mix_label(@active_invoices)} in draft
-          </span>
-          <span aria-hidden="true"> · </span>
-          <span id="gstr1-draft-taxable">{Helpers.rupees(@account.draft.totals.taxable)} taxable</span>
-          <span aria-hidden="true"> · </span>
-          <span id="gstr1-draft-output-tax" class="text-base-content font-medium">
-            {Helpers.rupees(@account.draft.totals.tax)} proposed output tax
-          </span>
-        </p>
-        <p
-          :if={is_nil(@r1_signoff) and @account.issues.required_count > 0}
-          id="gstr1-required-summary"
-          class="text-base-content text-body font-medium"
+    <section id="month-sales" class="sales-workpaper space-y-section scroll-mt-28">
+      <section id="gstr1-overview" class="sales-overview" data-state={@readiness.state}>
+        <section
+          id="gstr1-verdict"
+          class={[
+            "sales-verdict",
+            Workings.ripple_class(@rippled, @ripple_seq, "gstr1-account")
+          ]}
         >
-          {review_summary(
-            length(@grouped_cases),
-            @standalone_blocker_count,
-            length(@standalone_issues) - @standalone_blocker_count
-          )} before approval
-        </p>
+          <div class="sales-verdict-heading">
+            <div class="space-y-related min-w-0">
+              <p class="text-ink-subtle text-label font-semibold uppercase">Sales return</p>
+              <h2 class="text-base-content text-h4 font-semibold">
+                {track_title(@sales_month, @r1_signoff)}
+              </h2>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">{render_slot(@primary_action)}</div>
+          </div>
+
+          <div class="sales-verdict-figure">
+            <p class="text-ink-subtle text-label font-semibold uppercase">
+              {output_tax_label(@sales_month, @r1_signoff)}
+            </p>
+            <p
+              id="gstr1-draft-output-tax"
+              class="font-display text-base-content text-h3 font-normal tabular-nums"
+            >
+              {Helpers.rupees(@account.draft.totals.tax)}
+            </p>
+            <p id="gstr1-draft-position" class="text-body text-ink-muted tabular-nums">
+              <span id="gstr1-draft-invoices" class="text-base-content font-medium">
+                {document_position_label(@active_invoices, @sales_month, @r1_signoff)}
+              </span>
+              <span aria-hidden="true"> · </span>
+              <span id="gstr1-draft-taxable">
+                {Helpers.rupees(@account.draft.totals.taxable)} taxable
+              </span>
+            </p>
+          </div>
+
+          <div class="sales-readiness">
+            <span class="sales-readiness-dot" aria-hidden="true"></span>
+            <p id="gstr1-filing-status" class="text-base-content text-body font-medium">
+              {@readiness.status}
+            </p>
+          </div>
+        </section>
+
+        <section id="gstr1-assurance" class="sales-assurance">
+          <div
+            :if={is_nil(@r1_signoff) and @account.issues.required_count > 0}
+            class="sales-before-approval"
+          >
+            <p class="text-ink-subtle text-label font-semibold uppercase">Before approval</p>
+            <p id="gstr1-required-summary" class="text-base-content text-body font-semibold">
+              {review_summary(
+                length(@grouped_cases),
+                @standalone_blocker_count,
+                length(@standalone_issues) - @standalone_blocker_count
+              )} before approval
+            </p>
+          </div>
+
+          <div class="sales-assurance-item">
+            <p class="text-ink-subtle text-label font-semibold uppercase">Machine review</p>
+            <p class="text-base-content text-ui font-semibold">
+              {length(@active_invoices)} processed · {length(@review.needs_you)} {plural(
+                length(@review.needs_you),
+                "review case"
+              )}
+            </p>
+            <p class="text-ink-muted text-ui">
+              Checks find questions; they do not prove every invoice correct.
+            </p>
+          </div>
+
+          <div class="sales-assurance-item">
+            <p class="text-ink-subtle text-label font-semibold uppercase">Human assurance</p>
+            <p id="gstr1-human-assurance-count" class="text-base-content text-ui font-semibold">
+              {@assured_invoice_count} of {length(@invoices)} invoices have a recorded human action
+            </p>
+            <p id="gstr1-human-assurance-open" class="text-ink-muted text-ui">
+              {@unassured_invoice_count} have no recorded human review. Non-invoice actions do not count toward coverage.
+            </p>
+          </div>
+        </section>
       </section>
 
       <aside
         :if={@change}
         id="gstr1-what-changed"
-        class="bg-info/5 border-info/30 rounded-box flex items-start justify-between gap-4 border px-4 py-3"
+        class="sales-change flex items-start justify-between gap-4"
       >
         <div class="space-y-0.5">
           <p class="text-base-content text-ui font-semibold">{@change.title}</p>
@@ -151,30 +197,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           <.icon name="hero-x-mark" class="size-4" />
         </button>
       </aside>
-
-      <section id="gstr1-assurance" class="border-base-300 rounded-box grid border sm:grid-cols-2">
-        <div class="sm:border-base-300 space-y-1 p-4 sm:border-r">
-          <p class="text-ink-subtle text-label font-semibold uppercase">Machine review</p>
-          <p class="text-base-content text-ui font-semibold">
-            {length(@active_invoices)} processed · {length(@review.needs_you)} {plural(
-              length(@review.needs_you),
-              "review case"
-            )}
-          </p>
-          <p class="text-body text-ink-muted">
-            Checks identify where Nila needs an answer; they do not prove every invoice correct.
-          </p>
-        </div>
-        <div class="border-base-300 space-y-1 border-t p-4 sm:border-t-0">
-          <p class="text-ink-subtle text-label font-semibold uppercase">Human assurance</p>
-          <p id="gstr1-human-assurance-count" class="text-base-content text-ui font-semibold">
-            {@assured_invoice_count} of {length(@invoices)} invoices have a recorded human action
-          </p>
-          <p id="gstr1-human-assurance-open" class="text-body text-ink-muted">
-            {@unassured_invoice_count} have no recorded human review. Non-invoice actions do not count toward coverage.
-          </p>
-        </div>
-      </section>
 
       <Workpaper.section_nav links={@section_links} />
 
@@ -888,6 +910,15 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp track_title(%{filed_at: filed_at}, %{}) when not is_nil(filed_at), do: "GSTR-1 filed"
   defp track_title(_sales_month, %{}), do: "GSTR-1 approved"
   defp track_title(_sales_month, _signoff), do: "GSTR-1 draft"
+
+  defp output_tax_label(_sales_month, %{}), do: "Approved output tax"
+  defp output_tax_label(_sales_month, _signoff), do: "Proposed output tax"
+
+  defp document_position_label(invoices, _sales_month, %{}),
+    do: document_mix_label(invoices) <> " in approved return"
+
+  defp document_position_label(invoices, _sales_month, _signoff),
+    do: document_mix_label(invoices) <> " in draft"
 
   defp filing_summary_rows(derived, invoices) do
     [

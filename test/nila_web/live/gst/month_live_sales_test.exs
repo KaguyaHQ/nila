@@ -49,8 +49,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     refute view |> element("#gstr1-required-summary") |> render() =~ "false"
     assert has_element?(view, "#gstr1-review-required", "Review required items")
     assert has_element?(view, "#gstr1-draft-invoices", "3 invoices in draft")
-    assert has_element?(view, "#gstr1-draft-output-tax", "proposed output tax")
-    assert has_element?(view, "#gstr1-verdict.rounded-box.moonlight-soft")
+    assert has_element?(view, "#gstr1-draft-output-tax", "₹15,615.36")
+    assert has_element?(view, "#gstr1-overview.sales-overview[data-state='provisional']")
     refute has_element?(view, "#month-door-sales-issues")
     assert has_element?(view, "#gstr1-inv-20\\/2025-26", "Review case")
 
@@ -76,8 +76,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
       |> LazyHTML.attribute("id")
 
     assert section_ids == [
-             "gstr1-verdict",
-             "gstr1-assurance",
+             "gstr1-overview",
              "gstr1-checks-before-filing",
              "gstr1-return-controls",
              "gstr1-register",
@@ -1945,8 +1944,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     confirm_all_open_issues(view)
 
     assert has_element?(view, "#month-door-sign-r1", "Approve GSTR-1")
+    assert has_element?(view, "#gstr1-overview[data-state='ready']")
     view |> element("#month-door-sign-r1") |> render_click()
 
+    assert has_element?(view, "#gstr1-overview[data-state='approved']")
+    assert has_element?(view, "#gstr1-verdict", "Approved output tax")
+    assert has_element?(view, "#gstr1-draft-invoices", "in approved return")
     assert has_element?(view, "#gstr1-filing-summary", "Approved GSTR-1")
     assert has_element?(view, "#month-exit-gstr1")
     assert has_element?(view, "#gstr1-invoices #gstr1-inv-20\\/2025-26")
@@ -1981,6 +1984,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     |> element("#gstr1-mark-filed")
     |> render_submit(%{"arn" => "AA331025000001"})
 
+    assert has_element?(view, "#gstr1-overview[data-state='filed']")
+    assert has_element?(view, "#gstr1-verdict", "Approved output tax")
+    assert has_element?(view, "#gstr1-draft-invoices", "in approved return")
     assert has_element?(view, "#gstr1-filing-summary", "Filed GSTR-1")
     assert has_element?(view, "#gstr1-filed-note")
     assert has_element?(view, "#gstr1-invoices #gstr1-inv-20\\/2025-26")
@@ -2000,6 +2006,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     confirm_all_open_issues(view)
 
     refute has_element?(view, "#month-door-sign-r1")
+    assert has_element?(view, "#gstr1-overview[data-state='awaiting_senior']")
     assert has_element?(view, "#gstr1-filing-status", "Draft checks complete — awaiting a senior")
     assert has_element?(view, "#month-exit-gstr1", "Ready · A senior must approve this return")
   end
