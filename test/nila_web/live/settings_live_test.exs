@@ -42,6 +42,21 @@ defmodule NilaWeb.SettingsLiveTest do
 
       assert has_element?(
                view,
+               ~s|img[data-provider-logo="gmail"][src="/images/providers/google-gmail.svg"]|
+             )
+
+      assert has_element?(
+               view,
+               ~s|img[data-provider-logo="microsoft"][src="/images/providers/microsoft.svg"]|
+             )
+
+      assert has_element?(
+               view,
+               ~s|img[data-provider-logo="whatsapp"][src="/images/providers/whatsapp.svg"]|
+             )
+
+      assert has_element?(
+               view,
                ~s|form#settings-add-microsoft-form[action="/integrations/microsoft/connect"]|
              )
     end

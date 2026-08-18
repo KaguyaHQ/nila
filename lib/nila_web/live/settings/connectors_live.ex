@@ -173,7 +173,10 @@ defmodule NilaWeb.Settings.ConnectorsLive do
               class="gap-block py-block grid min-w-0 xl:grid-cols-[minmax(0,1fr)_auto]"
             >
               <div class="space-y-related min-w-0">
-                <.badge variant="neutral">{String.upcase(connection.provider)}</.badge>
+                <div class="flex items-center gap-2">
+                  <.provider_logo provider={connection.provider} />
+                  <.badge variant="neutral">{String.upcase(connection.provider)}</.badge>
+                </div>
                 <h3 class="text-base-content text-ui font-semibold wrap-break-word">
                   {Connection.display_label(connection)}
                 </h3>
@@ -336,6 +339,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
               <div class="border-base-300 divide-base-300 divide-y border-y">
                 <details id="settings-add-gmail-disclosure" name="settings-add-provider" class="group">
                   <summary class="hover:text-ink py-block text-base-content text-ui flex cursor-pointer list-none items-center gap-3">
+                    <.provider_logo provider="gmail" />
                     <div class="space-y-related min-w-0 flex-1">
                       <h3 class="font-semibold">Gmail</h3>
                       <p class="text-ink-muted text-ui">Receive documents from a Google inbox.</p>
@@ -372,6 +376,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                   class="group"
                 >
                   <summary class="hover:text-ink py-block text-base-content text-ui flex cursor-pointer list-none items-center gap-3">
+                    <.provider_logo provider="microsoft" />
                     <div class="space-y-related min-w-0 flex-1">
                       <h3 class="font-semibold">Microsoft 365</h3>
                       <p class="text-ink-muted text-ui">
@@ -425,7 +430,10 @@ defmodule NilaWeb.Settings.ConnectorsLive do
 
                 <article class="gap-block py-block flex flex-col lg:flex-row lg:items-center lg:justify-between">
                   <div class="space-y-related min-w-0">
-                    <h3 class="text-base-content text-ui font-semibold">WhatsApp</h3>
+                    <div class="flex items-center gap-3">
+                      <.provider_logo provider="whatsapp" />
+                      <h3 class="text-base-content text-ui font-semibold">WhatsApp</h3>
+                    </div>
                     <p class="text-ink-muted text-ui max-w-2xl">
                       Authorize Nila through Meta Embedded Signup. Nila verifies the selected business,
                       registers the number, and subscribes it to the existing webhook.
@@ -467,6 +475,28 @@ defmodule NilaWeb.Settings.ConnectorsLive do
     </Layouts.settings>
     """
   end
+
+  attr :provider, :string, required: true, values: ~w(gmail microsoft whatsapp)
+
+  defp provider_logo(assigns) do
+    assigns = assign(assigns, :src, provider_logo_src(assigns.provider))
+
+    ~H"""
+    <img
+      src={@src}
+      alt=""
+      width="20"
+      height="20"
+      class="size-5 shrink-0 object-contain"
+      data-provider-logo={@provider}
+      aria-hidden="true"
+    />
+    """
+  end
+
+  defp provider_logo_src("gmail"), do: ~p"/images/providers/google-gmail.svg"
+  defp provider_logo_src("microsoft"), do: ~p"/images/providers/microsoft.svg"
+  defp provider_logo_src("whatsapp"), do: ~p"/images/providers/whatsapp.svg"
 
   defp assign_whatsapp_signup(%{assigns: %{current_scope: %{current_org: nil}}} = socket) do
     socket
