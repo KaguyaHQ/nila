@@ -112,7 +112,6 @@ defmodule NilaWeb.Components.Table do
               :for={col <- @col}
               class={[
                 "font-semibold",
-                (@dense && "px-3 py-2") || "px-4 py-3",
                 col[:align] == "right" && "text-right tabular-nums"
               ]}
             >
@@ -145,7 +144,6 @@ defmodule NilaWeb.Components.Table do
               :for={{col, index} <- Enum.with_index(@col)}
               class={[
                 "align-top",
-                (@dense && "px-3 py-2") || "px-4 py-3",
                 col[:align] == "right" && "text-right tabular-nums",
                 col[:class]
               ]}

@@ -263,6 +263,54 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     refute css =~ "--nila-accent-"
   end
 
+  test "shared density recipes preserve controlled geometry families" do
+    css = File.read!("assets/css/app.css")
+
+    assert css =~ "--nila-control-height-compact: 1.75rem;"
+    assert css =~ "--nila-control-height-standard: 2rem;"
+    assert css =~ "--nila-control-height-prominent: 2.5rem;"
+    assert css =~ "--nila-table-row-height-dense: 2.25rem;"
+    assert css =~ "--nila-table-row-height-standard: 2.75rem;"
+
+    compact_button = css_rule(css, ".nila-button[data-size=\"xs\"]")
+    assert compact_button =~ "height: var(--nila-control-height-compact);"
+    assert compact_button =~ "gap: 0.25rem;"
+
+    compact_icon =
+      css_rule(
+        css,
+        ".nila-button[data-size=\"xs\"] > :where(svg, [class^=\"hero-\"], [class*=\" hero-\"])"
+      )
+
+    assert compact_icon =~ "width: var(--nila-control-icon-compact);"
+    assert compact_icon =~ "height: var(--nila-control-icon-compact);"
+
+    prominent_button = css_rule(css, ".nila-button[data-size=\"lg\"]")
+    assert prominent_button =~ "height: var(--nila-control-height-prominent);"
+    refute prominent_button =~ "font-size:"
+    refute prominent_button =~ "line-height:"
+
+    prominent_icon =
+      css_rule(
+        css,
+        ".nila-button[data-size=\"lg\"] > :where(svg, [class^=\"hero-\"], [class*=\" hero-\"])"
+      )
+
+    assert prominent_icon =~ "width: var(--nila-control-icon-prominent);"
+    assert prominent_icon =~ "height: var(--nila-control-icon-prominent);"
+
+    segmented = css_rule(css, ".nila-segmented")
+    assert segmented =~ "height: var(--nila-control-height-standard);"
+
+    dense_table = css_rule(css, ".nila-table[data-density=\"dense\"] :is(th, td)")
+    assert dense_table =~ "height: var(--nila-table-row-height-dense);"
+    assert dense_table =~ "padding: 0.25rem 0.75rem;"
+
+    standard_table = css_rule(css, ".nila-table[data-density=\"standard\"] :is(th, td)")
+    assert standard_table =~ "height: var(--nila-table-row-height-standard);"
+    assert standard_table =~ "padding: 0.5rem 1rem;"
+  end
+
   test "rejects undefined CSS variable references" do
     path =
       Path.join(System.tmp_dir!(), "nila-css-variable-#{System.unique_integer([:positive])}.css")

@@ -15,6 +15,10 @@ defmodule NilaWeb.Dev.DesignSystemLiveTest do
              "Approve GSTR-1"
            )
 
+    assert has_element?(view, "#ds-buttons .nila-button[data-size='xs']", "Compact")
+    assert has_element?(view, "#ds-buttons .nila-button[data-size='sm']", "Standard")
+    assert has_element?(view, "#ds-buttons .nila-button[data-size='lg']", "Prominent")
+    assert has_element?(view, "#ds-segmented button[aria-pressed='true']", "Needs you")
     assert has_element?(view, "#ds-badges .nila-badge[data-variant='warning']", "Needs review")
     assert has_element?(view, "#ds-fields .nila-input")
     assert has_element?(view, "#ds-fields .nila-select")
@@ -23,6 +27,15 @@ defmodule NilaWeb.Dev.DesignSystemLiveTest do
     assert has_element?(view, "#ds-register-rows tr", "INV-1048")
     assert has_element?(view, "#ds-workpaper-result", "Draft prepared. One invoice needs you.")
     assert has_element?(view, "#ds-b2b-schedule[open]")
+  end
+
+  test "segmented control keeps selection in the controlled LiveView assign", %{conn: conn} do
+    {:ok, view, _html} = live_isolated(conn, NilaWeb.Dev.DesignSystemLive)
+
+    view |> element("#ds-segmented button", "All") |> render_click()
+
+    assert has_element?(view, "#ds-segmented button[aria-pressed='true']", "All")
+    assert has_element?(view, "#ds-segmented button[aria-pressed='false']", "Needs you")
   end
 
   test "modal example uses the real LiveView dismissal contract", %{conn: conn} do

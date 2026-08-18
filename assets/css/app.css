@@ -360,6 +360,19 @@
   --spacing-canvas: 4rem;
 }
 
+/* Controlled component families consume these directly through `size` and
+   `dense`; they are measurements, not an inherited page-density mode. */
+:root {
+  --nila-control-height-compact: 1.75rem;
+  --nila-control-height-standard: 2rem;
+  --nila-control-height-prominent: 2.5rem;
+  --nila-control-icon-compact: 0.875rem;
+  --nila-control-icon-standard: 1rem;
+  --nila-control-icon-prominent: 1.25rem;
+  --nila-table-row-height-dense: 2.25rem;
+  --nila-table-row-height-standard: 2.75rem;
+}
+
 /* Product motion. Bare transitions are fast by default; deliberate spatial
    movement opts into `duration-calm`. Finite transitions share one curve.
    Named attention effects such as the workings ripple keep their own duration. */
@@ -715,7 +728,7 @@ body {
 
 .nila-badge {
   display: inline-flex;
-  height: 1.75rem;
+  height: var(--nila-control-height-compact);
   flex-shrink: 0;
   align-items: center;
   gap: 0.5rem;
@@ -769,7 +782,7 @@ body {
 
 .nila-button {
   display: inline-flex;
-  height: 2rem;
+  height: var(--nila-control-height-standard);
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
@@ -793,8 +806,8 @@ body {
 }
 
 .nila-button > :where(svg, [class^="hero-"], [class*=" hero-"]) {
-  width: 1rem;
-  height: 1rem;
+  width: var(--nila-control-icon-standard);
+  height: var(--nila-control-icon-standard);
   flex-shrink: 0;
 }
 
@@ -813,17 +826,26 @@ body {
 }
 
 .nila-button[data-size="xs"] {
-  height: 1.75rem;
+  height: var(--nila-control-height-compact);
+  gap: 0.25rem;
   padding-inline: 0.625rem;
 }
 
+.nila-button[data-size="xs"] > :where(svg, [class^="hero-"], [class*=" hero-"]) {
+  width: var(--nila-control-icon-compact);
+  height: var(--nila-control-icon-compact);
+}
+
 .nila-button[data-size="lg"] {
-  height: 2.5rem;
+  height: var(--nila-control-height-prominent);
   gap: 0.75rem;
   border-radius: 0.375rem;
   padding-inline: 1rem;
-  font-size: var(--text-body);
-  line-height: var(--text-body--line-height);
+}
+
+.nila-button[data-size="lg"] > :where(svg, [class^="hero-"], [class*=" hero-"]) {
+  width: var(--nila-control-icon-prominent);
+  height: var(--nila-control-icon-prominent);
 }
 
 .nila-button[data-variant="primary"] {
@@ -893,6 +915,7 @@ body {
 
 .nila-segmented {
   display: inline-flex;
+  height: var(--nila-control-height-standard);
   overflow: hidden;
   border: 1px solid var(--color-base-300);
   border-radius: 0.25rem;
@@ -901,9 +924,10 @@ body {
 
 .nila-segmented-item {
   display: inline-flex;
-  height: 2rem;
+  height: 100%;
   align-items: center;
   justify-content: center;
+  gap: 0.5rem;
   border-left: 1px solid var(--color-base-300);
   padding-inline: 0.75rem;
   color: var(--nila-ink-a11);
@@ -1074,8 +1098,8 @@ body {
 
 .nila-alert-close {
   display: inline-flex;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: var(--nila-control-height-compact);
+  height: var(--nila-control-height-compact);
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
@@ -1125,7 +1149,7 @@ body {
 .nila-menu-item {
   display: flex;
   width: 100%;
-  height: 2rem;
+  height: var(--nila-control-height-standard);
   align-items: center;
   gap: 0.5rem;
   border-radius: 0.25rem;
@@ -1200,8 +1224,8 @@ body {
 
 .nila-modal-close {
   display: inline-flex;
-  width: 2rem;
-  height: 2rem;
+  width: var(--nila-control-height-standard);
+  height: var(--nila-control-height-standard);
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
@@ -1243,10 +1267,20 @@ body {
   text-align: left;
 }
 
+.nila-table[data-density="dense"] :is(th, td) {
+  height: var(--nila-table-row-height-dense);
+  padding: 0.25rem 0.75rem;
+}
+
+.nila-table[data-density="standard"] :is(th, td) {
+  height: var(--nila-table-row-height-standard);
+  padding: 0.5rem 1rem;
+}
+
 .nila-fold-trigger {
   display: flex;
   width: 100%;
-  min-height: 2.5rem;
+  min-height: var(--nila-control-height-prominent);
   align-items: center;
   border-radius: 0.25rem;
   color: var(--color-base-content);
@@ -1291,7 +1325,7 @@ body {
 
 .nila-input,
 .nila-select {
-  height: 2rem;
+  height: var(--nila-control-height-standard);
   padding-inline: 0.5rem;
 }
 
@@ -1348,8 +1382,8 @@ body {
 }
 
 .nila-checkbox {
-  width: 1rem;
-  height: 1rem;
+  width: var(--nila-control-icon-standard);
+  height: var(--nila-control-icon-standard);
   flex-shrink: 0;
   border: 1px solid var(--color-base-300);
   border-radius: 0.1875rem;
@@ -1367,7 +1401,7 @@ body {
   right: 0;
   z-index: 10;
   display: inline-flex;
-  width: 2rem;
+  width: var(--nila-control-height-standard);
   align-items: center;
   justify-content: center;
   border-radius: 0 0.25rem 0.25rem 0;

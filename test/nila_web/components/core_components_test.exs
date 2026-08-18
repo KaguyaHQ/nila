@@ -8,6 +8,7 @@ defmodule NilaWeb.CoreComponentsTest do
   import NilaWeb.Components.Badge
   import NilaWeb.Components.Button
   import NilaWeb.Components.Input
+  import NilaWeb.Components.Table
   import NilaWeb.Components.Fold
   import NilaWeb.Components.Feedback
   import NilaWeb.Layouts
@@ -115,6 +116,27 @@ defmodule NilaWeb.CoreComponentsTest do
     assert html =~ "nila-segmented"
     assert html =~ ~s(phx-value-scope="open")
     assert html =~ ~s(aria-pressed="true")
+  end
+
+  test "table density is owned by the controlled data attribute" do
+    assigns = %{rows: [%{invoice: "INV-1", status: "Reviewed"}]}
+
+    html =
+      rendered_to_string(~H"""
+      <div>
+        <.data_table id="standard-table" rows={@rows}>
+          <:col :let={row} label="Invoice">{row.invoice}</:col>
+        </.data_table>
+        <.data_table id="dense-table" rows={@rows} dense>
+          <:col :let={row} label="Invoice">{row.invoice}</:col>
+        </.data_table>
+      </div>
+      """)
+
+    assert html =~ ~s(data-density="standard")
+    assert html =~ ~s(data-density="dense")
+    refute html =~ "px-3 py-2"
+    refute html =~ "px-4 py-3"
   end
 
   test "input family uses the canonical field recipes" do

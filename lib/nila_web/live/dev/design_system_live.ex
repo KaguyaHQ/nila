@@ -39,6 +39,7 @@ if Application.compile_env(:nila, :dev_routes, false) or
       {:ok,
        socket
        |> assign(:open_folds, MapSet.new(["ds-b2b-schedule"]))
+       |> assign(:review_scope, "needs-you")
        |> assign(:show_modal, false)
        |> assign(:rows, @rows)}
     end
@@ -49,6 +50,9 @@ if Application.compile_env(:nila, :dev_routes, false) or
 
     def handle_event("close-design-modal", _params, socket),
       do: {:noreply, assign(socket, :show_modal, false)}
+
+    def handle_event("set-review-scope", %{"scope" => scope}, socket),
+      do: {:noreply, assign(socket, :review_scope, scope)}
 
     def handle_event("toggle-fold", %{"fold" => fold}, socket) do
       open_folds =
@@ -202,9 +206,27 @@ if Application.compile_env(:nila, :dev_routes, false) or
                       <.button variant="soft" disabled>Unavailable</.button>
                     </div>
                     <div class="gap-related flex flex-wrap items-center">
-                      <.button size="xs" variant="soft">Compact</.button>
-                      <.button variant="soft">Standard</.button>
-                      <.button size="lg" variant="soft">Prominent</.button>
+                      <.button size="xs" variant="soft">
+                        <.icon name="hero-arrow-right-mini" /> Compact
+                      </.button>
+                      <.button variant="soft">
+                        <.icon name="hero-arrow-right-mini" /> Standard
+                      </.button>
+                      <.button size="lg" variant="soft">
+                        <.icon name="hero-arrow-right-mini" /> Prominent
+                      </.button>
+                    </div>
+                    <div class="space-y-related">
+                      <p class="text-ink-subtle text-label font-semibold uppercase">
+                        Operational filter
+                      </p>
+                      <.segmented_control
+                        id="ds-segmented"
+                        items={[{"needs-you", "Needs you"}, {"all", "All"}]}
+                        selected={@review_scope}
+                        on_change="set-review-scope"
+                        value_name="scope"
+                      />
                     </div>
                   </.card>
 
