@@ -110,6 +110,35 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     assert StyleGuard.component_recipe_violations("lib/nila_web/components/badge.ex") == []
   end
 
+  test "rejects raw primary text, borders, rings, and opacity" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-color-guard-#{System.unique_integer([:positive])}.heex")
+
+    File.write!(
+      path,
+      ~s(<div class="text-primary hover:border-primary ring-primary/20 bg-primary/[0.04]"></div>\n)
+    )
+
+    on_exit(fn -> File.rm(path) end)
+
+    assert Enum.map(StyleGuard.interactive_color_violations(path), &elem(&1, 2)) == [
+             "text-primary",
+             "hover:border-primary",
+             "ring-primary/20",
+             "bg-primary/[0.04]"
+           ]
+  end
+
+  test "allows deliberate solid primary surfaces with contrast" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-color-guard-#{System.unique_integer([:positive])}.heex")
+
+    File.write!(path, ~s(<div class="bg-primary text-primary-content"></div>\n))
+    on_exit(fn -> File.rm(path) end)
+
+    assert StyleGuard.interactive_color_violations(path) == []
+  end
+
   test "accepts semantic foreground aliases to the pinned Slate scale" do
     path =
       Path.join(System.tmp_dir!(), "nila-ink-scale-#{System.unique_integer([:positive])}.css")
@@ -145,6 +174,85 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     on_exit(fn -> File.rm(path) end)
 
     assert [{^path, _line, "--nila-ink-a11"}] = StyleGuard.ink_scale_violations(path)
+  end
+
+  test "accepts Radix accent and focus aliases through the blue family" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-accent-scale-#{System.unique_integer([:positive])}.css")
+
+    File.write!(path, valid_accent_css())
+    on_exit(fn -> File.rm(path) end)
+
+    assert StyleGuard.accent_scale_violations(path) == []
+  end
+
+  test "rejects a focus alias that bypasses accent" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-accent-scale-#{System.unique_integer([:positive])}.css")
+
+    source =
+      String.replace(
+        valid_accent_css(),
+        "--focus-8: var(--accent-8);",
+        "--focus-8: var(--blue-8);"
+      )
+
+    File.write!(path, source)
+    on_exit(fn -> File.rm(path) end)
+
+    assert [{^path, _line, "--focus-8"}] = StyleGuard.accent_scale_violations(path)
+  end
+
+  test "rejects missing or duplicated accent aliases" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-accent-scale-#{System.unique_integer([:positive])}.css")
+
+    source =
+      valid_accent_css()
+      |> String.replace("  --accent-a7: var(--blue-a7);\n", "")
+      |> Kernel.<>(".local { --accent-a8: var(--blue-a8); }\n")
+
+    File.write!(path, source)
+    on_exit(fn -> File.rm(path) end)
+
+    violations = StyleGuard.accent_scale_violations(path)
+    assert {path, 1, "--accent-a7"} in violations
+    assert Enum.any?(violations, &match?({^path, _line, "--accent-a8"}, &1))
+  end
+
+  test "shared interactive recipes preserve exact Radix roles" do
+    css = File.read!("assets/css/app.css")
+
+    primary = css_rule(css, ".nila-button[data-variant=\"primary\"]")
+    assert primary =~ "--nila-button-bg: var(--accent-9);"
+    assert primary =~ "--nila-button-hover-bg: var(--accent-10);"
+    assert primary =~ "--nila-button-active-bg: var(--accent-10);"
+    assert primary =~ "--nila-button-ink: var(--accent-contrast);"
+
+    soft = css_rule(css, ".nila-button[data-variant=\"soft\"]")
+    assert soft =~ "--nila-button-bg: var(--accent-a3);"
+    assert soft =~ "--nila-button-hover-bg: var(--accent-a4);"
+    assert soft =~ "--nila-button-active-bg: var(--accent-a5);"
+    assert soft =~ "--nila-button-ink: var(--accent-a11);"
+
+    outline = css_rule(css, ".nila-button[data-variant=\"outline\"]")
+    assert outline =~ "--nila-button-hover-bg: var(--accent-a2);"
+    assert outline =~ "--nila-button-active-bg: var(--accent-a3);"
+    assert outline =~ "--nila-button-ink: var(--accent-a11);"
+    assert outline =~ "box-shadow: inset 0 0 0 1px var(--accent-a8);"
+
+    persistent_cards =
+      css_rule(
+        css,
+        ".nila-sales-review-item[data-selected=\"true\"],\n.nila-purchase-scorecard[data-selected=\"true\"]"
+      )
+
+    assert persistent_cards =~ "border-color: var(--accent-a8);"
+    assert persistent_cards =~ "background: var(--color-base-100);"
+    assert persistent_cards =~ "box-shadow: inset 0 0 0 1px var(--accent-a8);"
+    refute persistent_cards =~ "background: var(--accent-a3);"
+
+    refute css =~ "--nila-accent-"
   end
 
   test "rejects undefined CSS variable references" do
@@ -205,12 +313,35 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     assert StyleGuard.css_variable_violations(path) == [{path, 2, "--missing-ink"}]
   end
 
+  defp css_rule(css, selector) do
+    [_, body] = Regex.run(~r/#{Regex.escape(selector)}\s*\{([^}]*)\}/s, css)
+    body
+  end
+
   defp valid_ink_css do
     aliases =
       [
         {"--color-base-content", "--slate-12"},
         {"--nila-ink-12", "--slate-12"}
       ] ++ Enum.map(1..12, &{"--nila-ink-a#{&1}", "--slate-a#{&1}"})
+
+    ":root {\n" <>
+      Enum.map_join(aliases, "", fn {name, target} -> "  #{name}: var(#{target});\n" end) <>
+      "}\n"
+  end
+
+  defp valid_accent_css do
+    aliases =
+      Enum.map(1..12, &{"--accent-#{&1}", "--blue-#{&1}"}) ++
+        Enum.map(1..12, &{"--accent-a#{&1}", "--blue-a#{&1}"}) ++
+        [
+          {"--accent-contrast", "--blue-contrast"},
+          {"--accent-surface", "--blue-surface"},
+          {"--accent-indicator", "--blue-indicator"},
+          {"--accent-track", "--blue-track"}
+        ] ++
+        Enum.map(1..12, &{"--focus-#{&1}", "--accent-#{&1}"}) ++
+        Enum.map(1..12, &{"--focus-a#{&1}", "--accent-a#{&1}"})
 
     ":root {\n" <>
       Enum.map_join(aliases, "", fn {name, target} -> "  #{name}: var(#{target});\n" end) <>

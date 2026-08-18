@@ -262,12 +262,13 @@ defmodule NilaWeb.Layouts do
     <.link
       navigate={@href}
       class={[
-        "rounded-field text-ui flex h-10 shrink-0 items-center gap-3 px-3 transition",
+        "nila-settings-link rounded-field text-ui flex h-10 shrink-0 items-center gap-3 px-3 transition",
         if(@active,
-          do: "bg-primary/15 text-primary font-semibold",
+          do: "font-semibold",
           else: "hover:bg-base-200 hover:text-ink text-ink-subtle font-medium"
         )
       ]}
+      data-state={if(@active, do: "active", else: "inactive")}
       aria-current={if(@active, do: "page", else: nil)}
     >
       <.icon name={@icon} class="size-5 shrink-0" />
@@ -322,7 +323,7 @@ defmodule NilaWeb.Layouts do
         type="button"
         id={"#{@id_prefix}-account-trigger"}
         popovertarget={"#{@id_prefix}-account-popover"}
-        class="bg-base-200 focus:ring-primary/20 hover:bg-base-300 hover:text-ink rounded-field text-ink-muted text-ui flex h-9 min-w-0 cursor-pointer items-center gap-2 px-3 transition focus:ring-2 focus:outline-none"
+        class="bg-base-200 hover:bg-base-300 hover:text-ink nila-account-trigger rounded-field text-ink-muted text-ui flex h-9 min-w-0 cursor-pointer items-center gap-2 px-3 transition"
         aria-label="Open account menu"
         title={@current_scope.user.name}
       >

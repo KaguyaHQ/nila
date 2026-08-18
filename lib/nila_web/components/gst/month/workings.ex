@@ -266,7 +266,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               min_width="min-w-[620px]"
             >
               <:col :let={row} label="Invoice">
-                <span class="text-primary font-mono font-medium">{row.number}</span>
+                <span class="text-base-content font-mono font-medium">{row.number}</span>
               </:col>
               <:col :let={row} label="Date">{row.date}</:col>
               <:col :let={row} label="POS"><span class="font-mono">{row.pos}</span></:col>
@@ -328,7 +328,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               min_width="min-w-[620px]"
             >
               <:col :let={row} label="Note">
-                <span class="text-primary font-mono font-medium">{row.number}</span>
+                <span class="text-base-content font-mono font-medium">{row.number}</span>
               </:col>
               <:col :let={row} label="Type">{row.type}</:col>
               <:col :let={row} label="Date">{row.date}</:col>
@@ -704,7 +704,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   defp contrib_cell(assigns) do
     ~H"""
     <div class="flex max-w-80 items-baseline gap-2 pl-6">
-      <span class="text-primary shrink-0 font-mono">{@row.inum}</span>
+      <span class="nila-workings-reference shrink-0 font-mono">{@row.inum}</span>
       <span :if={@row.label not in [nil, ""]} class="text-ink-subtle truncate" title={@row.label}>
         {@row.label}
       </span>

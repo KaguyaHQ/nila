@@ -77,8 +77,7 @@ defmodule NilaWeb.Components.Form do
         for={@upload.ref}
         phx-drop-target={@upload.ref}
         class={[
-          "border-base-300 hover:bg-base-200/60 hover:border-primary/50",
-          "[&.phx-drop-target-active]:bg-primary/5 [&.phx-drop-target-active]:border-primary",
+          "border-base-300 nila-file-drop",
           "rounded-box flex cursor-pointer flex-col items-center justify-center gap-2",
           "border border-dashed px-4 text-center transition-colors",
           if(@upload.entries == [], do: "py-region", else: "py-block")
@@ -86,7 +85,7 @@ defmodule NilaWeb.Components.Form do
       >
         <.icon name="hero-arrow-up-tray" class="text-ink-faint size-6" />
         <span class="text-ink-muted text-ui">
-          <span class="text-primary font-semibold">{@prompt}</span> or drag them here
+          <span class="nila-file-accent font-semibold">{@prompt}</span> or drag them here
         </span>
         <span :if={@hint} class="text-ink-muted text-ui">{@hint}</span>
       </label>
@@ -98,7 +97,7 @@ defmodule NilaWeb.Components.Form do
           class="bg-base-200/50 border-base-300 py-related rounded-box border px-3"
         >
           <div class="flex items-center gap-3">
-            <.icon name="hero-document" class="text-primary size-5 shrink-0" />
+            <.icon name="hero-document" class="nila-file-accent size-5 shrink-0" />
             <div class="min-w-0 flex-1">
               <p class="text-base-content text-ui truncate font-medium">{entry.client_name}</p>
               <p class="text-ink-subtle text-ui">

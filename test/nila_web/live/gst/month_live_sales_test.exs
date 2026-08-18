@@ -991,7 +991,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert_patch(view, "/gst/#{client.id}/#{@period}?track=sales")
     refute has_element?(view, "#gstr1-evidence-modal")
-    assert view |> element("#gstr1-inv-20\\/2025-26") |> render() =~ "bg-primary/[0.04]"
+
+    assert view |> element("#gstr1-inv-20\\/2025-26") |> render() =~
+             "nila-sales-register-row-reviewed"
   end
 
   test "previous and next flagged invoice stay inside the route-backed review queue", %{
@@ -1192,7 +1194,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     row = view |> element("#gstr1-inv-21\\/2025-26") |> render()
     refute row =~ "font-medium"
-    assert row =~ "text-primary/60"
+    assert row =~ "text-ink-muted"
   end
 
   test "the workings and single Table 12 show reviewable return figures", %{

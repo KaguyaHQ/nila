@@ -55,9 +55,9 @@ defmodule NilaWeb.UserConfirmationLive do
             </.button>
           </.form>
 
-          <.link navigate={~p"/today"} class="text-primary text-ui inline-flex font-semibold">
+          <.text_link navigate={~p"/today"} class="text-ui inline-flex font-semibold">
             Back to Today
-          </.link>
+          </.text_link>
         </.card>
       </div>
     </Layouts.app>

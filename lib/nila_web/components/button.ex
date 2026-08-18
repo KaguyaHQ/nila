@@ -53,6 +53,20 @@ defmodule NilaWeb.Components.Button do
     end
   end
 
+  attr :rest, :global, include: ~w(href navigate patch method download target rel)
+
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  @doc "Renders inline accent text navigation with the shared Radix link recipe."
+  def text_link(assigns) do
+    ~H"""
+    <.link class={["nila-link", @class]} {@rest}>
+      {render_slot(@inner_block)}
+    </.link>
+    """
+  end
+
   attr :id, :string, default: nil
   attr :items, :list, required: true
   attr :selected, :any, required: true

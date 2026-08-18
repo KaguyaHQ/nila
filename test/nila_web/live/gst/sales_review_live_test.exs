@@ -96,6 +96,11 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     assert has_element?(view, "#sales-review-progress", "0 of 1 checks complete")
     assert has_element?(view, "#sales-review-month-checks", "month checks remain")
 
+    assert has_element?(
+             view,
+             "#sales-review-rail-#{first["id"]}[data-selected='true'][aria-current='true']"
+           )
+
     rail = view |> element("#sales-review-rail") |> render()
     assert position(rail, first["id"]) < position(rail, second["id"])
     assert position(rail, second["id"]) < position(rail, third["id"])
@@ -105,6 +110,11 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     view |> element("#gstr1-review-next") |> render_click()
     assert_patch(view, review_path(context.client, second["id"], "all"))
     assert has_element?(view, "#gstr1-review-previous:not([disabled])")
+
+    assert has_element?(
+             view,
+             "#sales-review-rail-#{second["id"]}[data-selected='true'][aria-current='true']"
+           )
 
     view |> element("#sales-review-scope button", "Needs you") |> render_click()
     assert has_element?(view, "#sales-review-progress", "0 of 1 checks complete")

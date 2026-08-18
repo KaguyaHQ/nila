@@ -664,7 +664,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       row_class={
         fn invoice ->
           (invoice["id"] == @reviewed_invoice or invoice["invoice_number"] == @reviewed_invoice or
-             invoice["pristine_inum"] == @reviewed_invoice) && "bg-primary/[0.04]"
+             invoice["pristine_inum"] == @reviewed_invoice) &&
+            "nila-sales-register-row-reviewed"
         end
       }
       min_width="min-w-[920px]"
@@ -672,8 +673,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <:col :let={invoice} label="Document No">
         <span class={[
           "font-mono",
-          (MapSet.member?(@visited, invoice["id"] || invoice["invoice_number"]) && "text-primary/60") ||
-            "text-primary font-medium"
+          if(MapSet.member?(@visited, invoice["id"] || invoice["invoice_number"]),
+            do: "text-ink-muted",
+            else: "text-base-content font-medium"
+          )
         ]}>
           {invoice["invoice_number"] || "—"}
         </span>

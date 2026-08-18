@@ -23,7 +23,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       :if={@readiness.state == :provisional and @review_case_count > 0}
       id="gstr1-primary-review"
       patch={~p"/gst/#{@sales_month.client_id}/#{@sales_month.period}/review/sales?scope=needs_you"}
-      variant="primary"
+      variant="soft"
       size="sm"
     >
       Review next item
@@ -138,7 +138,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       <section
         :if={@readiness.state in [:approved, :filed] and @handoff}
         id="gstr1-winman-b2b-export"
-        class="bg-primary/[0.025] border-primary/25 rounded-box space-y-block border p-6"
+        class="nila-gstr1-handoff rounded-box space-y-block border p-6"
       >
         <div class="gap-block flex flex-wrap items-start justify-between">
           <div class="space-y-1">

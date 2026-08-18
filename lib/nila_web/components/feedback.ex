@@ -27,12 +27,13 @@ defmodule NilaWeb.Components.Feedback do
   defp callout_icon("error"), do: "hero-exclamation-circle"
 
   attr :size, :string, default: "sm", values: ~w(xs sm)
+  attr :tone, :string, default: "current", values: ~w(current accent)
   attr :label, :string, default: "Working"
 
   @doc "Renders a finite-size indeterminate progress indicator."
   def spinner(assigns) do
     ~H"""
-    <span class="nila-spinner" data-size={@size} role="status">
+    <span class="nila-spinner" data-size={@size} data-tone={@tone} role="status">
       <.icon name="hero-arrow-path" class="nila-spinner-icon motion-safe:animate-spin" />
       <span class="sr-only">{@label}</span>
     </span>

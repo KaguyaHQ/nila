@@ -51,12 +51,12 @@ defmodule NilaWeb.UserForgotPasswordLive do
           </.button>
         </.form>
 
-        <.link
+        <.text_link
           navigate={~p"/users/log_in"}
-          class="mt-block text-primary text-ui inline-flex font-semibold"
+          class="mt-block text-ui inline-flex font-semibold"
         >
           Back to sign in
-        </.link>
+        </.text_link>
       </div>
     </main>
     """

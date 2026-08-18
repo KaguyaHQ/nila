@@ -29,6 +29,28 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     }
   end
 
+  test "purchase reconciliation selection stays an outlined large-card state", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(
+             view,
+             "#purchase-score-all[data-selected='true'][aria-pressed='true'] .nila-purchase-scorecard-label"
+           )
+
+    view |> element("#purchase-score-matched") |> render_click()
+
+    assert has_element?(
+             view,
+             "#purchase-score-matched[data-selected='true'][aria-pressed='true']"
+           )
+
+    refute has_element?(view, "#purchase-score-all[data-selected='true']")
+    assert has_element?(view, "#purchase-score-all[aria-pressed='false']")
+  end
+
   test "the gap between books ITC and the 2B ceiling is a line, not a subtraction", %{
     conn: conn,
     org: org,

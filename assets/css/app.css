@@ -89,6 +89,135 @@
   --slate-contrast: white;
 }
 
+/* Nila sea-blue candidate generated from #137ba8 with the Radix Colors custom
+   palette tool. Saturated solid states retain accessible white working text. */
+:root,
+.light,
+.light-theme {
+  --blue-1: #fafdff;
+  --blue-2: #f3fafe;
+  --blue-3: #e3f5ff;
+  --blue-4: #d3eefe;
+  --blue-5: #c1e5fa;
+  --blue-6: #add8f2;
+  --blue-7: #91c8e7;
+  --blue-8: #65b1db;
+  --blue-9: #137ba8;
+  --blue-10: #006d99;
+  --blue-11: #0375a2;
+  --blue-12: #193e51;
+  --blue-a1: #0099ff05;
+  --blue-a2: #0095ea0c;
+  --blue-a3: #00a4ff1c;
+  --blue-a4: #009dfa2c;
+  --blue-a5: #0095eb3e;
+  --blue-a6: #0086d752;
+  --blue-a7: #0080c86e;
+  --blue-a8: #007ec49a;
+  --blue-a9: #0070a1ec;
+  --blue-a10: #006d99;
+  --blue-a11: #0073a1fc;
+  --blue-a12: #00293ee6;
+  --blue-contrast: #fff;
+  --blue-surface: #f0f9fecc;
+  --blue-indicator: var(--blue-9);
+  --blue-track: var(--blue-9);
+}
+
+@supports (color: color(display-p3 1 1 1)) {
+  @media (color-gamut: p3) {
+    :root,
+    .light,
+    .light-theme {
+      --blue-1: oklch(99.3% 0.0047 234.2);
+      --blue-2: oklch(98% 0.0093 234.2);
+      --blue-3: oklch(96% 0.0238 234.2);
+      --blue-4: oklch(93.4% 0.036 234.2);
+      --blue-5: oklch(90.2% 0.0471 234.2);
+      --blue-6: oklch(86.1% 0.0581 234.2);
+      --blue-7: oklch(80.5% 0.0721 234.2);
+      --blue-8: oklch(72.9% 0.0968 234.2);
+      --blue-9: oklch(55% 0.1104 234.2);
+      --blue-10: oklch(50.4% 0.1104 234.2);
+      --blue-11: oklch(53% 0.1104 234.2);
+      --blue-12: oklch(34.5% 0.0534 234.2);
+      --blue-a1: color(display-p3 0.0235 0.5137 1 / 0.016);
+      --blue-a2: color(display-p3 0.0196 0.5569 0.9137 / 0.044);
+      --blue-a3: color(display-p3 0.0118 0.5647 0.9608 / 0.099);
+      --blue-a4: color(display-p3 0.0039 0.5412 0.9255 / 0.153);
+      --blue-a5: color(display-p3 0.0039 0.5098 0.8745 / 0.216);
+      --blue-a6: color(display-p3 0.0039 0.4549 0.7843 / 0.287);
+      --blue-a7: color(display-p3 0.0039 0.4196 0.7255 / 0.385);
+      --blue-a8: color(display-p3 0 0.4118 0.7059 / 0.534);
+      --blue-a9: color(display-p3 0 0.3255 0.5412 / 0.777);
+      --blue-a10: color(display-p3 0 0.2941 0.4941 / 0.82);
+      --blue-a11: color(display-p3 0 0.3176 0.5255 / 0.804);
+      --blue-a12: color(display-p3 0 0.1176 0.2 / 0.863);
+      --blue-surface: color(display-p3 0.9451 0.9725 0.9922 / 0.8);
+      --blue-indicator: var(--blue-9);
+      --blue-track: var(--blue-9);
+    }
+  }
+}
+
+/* Radix Themes semantic color aliases. Blue is the interactive pigment; focus
+   follows the active accent family rather than a parallel Nila token API. */
+:root {
+  --accent-1: var(--blue-1);
+  --accent-2: var(--blue-2);
+  --accent-3: var(--blue-3);
+  --accent-4: var(--blue-4);
+  --accent-5: var(--blue-5);
+  --accent-6: var(--blue-6);
+  --accent-7: var(--blue-7);
+  --accent-8: var(--blue-8);
+  --accent-9: var(--blue-9);
+  --accent-10: var(--blue-10);
+  --accent-11: var(--blue-11);
+  --accent-12: var(--blue-12);
+  --accent-a1: var(--blue-a1);
+  --accent-a2: var(--blue-a2);
+  --accent-a3: var(--blue-a3);
+  --accent-a4: var(--blue-a4);
+  --accent-a5: var(--blue-a5);
+  --accent-a6: var(--blue-a6);
+  --accent-a7: var(--blue-a7);
+  --accent-a8: var(--blue-a8);
+  --accent-a9: var(--blue-a9);
+  --accent-a10: var(--blue-a10);
+  --accent-a11: var(--blue-a11);
+  --accent-a12: var(--blue-a12);
+  --accent-contrast: var(--blue-contrast);
+  --accent-surface: var(--blue-surface);
+  --accent-indicator: var(--blue-indicator);
+  --accent-track: var(--blue-track);
+
+  --focus-1: var(--accent-1);
+  --focus-2: var(--accent-2);
+  --focus-3: var(--accent-3);
+  --focus-4: var(--accent-4);
+  --focus-5: var(--accent-5);
+  --focus-6: var(--accent-6);
+  --focus-7: var(--accent-7);
+  --focus-8: var(--accent-8);
+  --focus-9: var(--accent-9);
+  --focus-10: var(--accent-10);
+  --focus-11: var(--accent-11);
+  --focus-12: var(--accent-12);
+  --focus-a1: var(--accent-a1);
+  --focus-a2: var(--accent-a2);
+  --focus-a3: var(--accent-a3);
+  --focus-a4: var(--accent-a4);
+  --focus-a5: var(--accent-a5);
+  --focus-a6: var(--accent-a6);
+  --focus-a7: var(--accent-a7);
+  --focus-a8: var(--accent-a8);
+  --focus-a9: var(--accent-a9);
+  --focus-a10: var(--accent-a10);
+  --focus-a11: var(--accent-a11);
+  --focus-a12: var(--accent-a12);
+}
+
 /* daisyUI theme plugin. You can update this file by fetching the latest version with:
   curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui-theme.js
   Nila is light-mode only. The palette is "moonlight": a hushed sea-blue on a
@@ -105,8 +234,8 @@
   --color-base-200: oklch(96.8% 0.007 235);
   --color-base-300: oklch(92% 0.008 235);
   --color-base-content: var(--slate-12);
-  --color-primary: oklch(47% 0.06 232);
-  --color-primary-content: oklch(99% 0.005 235);
+  --color-primary: var(--accent-9);
+  --color-primary-content: var(--accent-contrast);
   --color-secondary: oklch(50% 0.018 258);
   --color-secondary-content: oklch(99% 0.005 235);
   --color-accent: oklch(80% 0.035 78);
@@ -322,7 +451,7 @@
   html {
     -webkit-tap-highlight-color: transparent;
     /* Native checkboxes, radios, and range inputs follow the brand. */
-    accent-color: var(--color-primary);
+    accent-color: var(--accent-indicator);
   }
 }
 
@@ -364,13 +493,6 @@ body {
 }
 
 :root {
-  --nila-accent-a3: color-mix(in oklch, var(--color-primary) 10%, transparent);
-  --nila-accent-a4: color-mix(in oklch, var(--color-primary) 15%, transparent);
-  --nila-accent-a5: color-mix(in oklch, var(--color-primary) 20%, transparent);
-  --nila-accent-a7: color-mix(in oklch, var(--color-primary) 28%, transparent);
-  --nila-accent-a8: color-mix(in oklch, var(--color-primary) 65%, transparent);
-  --nila-accent-a11: color-mix(in oklab, var(--color-primary) 78%, var(--color-base-content));
-
   --nila-info-a3: color-mix(in oklch, var(--color-info) 9%, transparent);
   --nila-info-a6: color-mix(in oklch, var(--color-info) 22%, transparent);
   --nila-info-a11: color-mix(in oklab, var(--color-info) 72%, var(--color-base-content));
@@ -407,9 +529,9 @@ body {
   gap: 2rem;
   padding: 2rem;
   background:
-    radial-gradient(circle at 98% 4%, var(--nila-accent-a4), transparent 34%),
+    radial-gradient(circle at 98% 4%, var(--accent-a3), transparent 34%),
     radial-gradient(circle at 92% 108%, color-mix(in oklch, var(--color-accent) 24%, transparent), transparent 38%),
-    linear-gradient(135deg, var(--color-base-100), color-mix(in oklch, var(--color-primary) 5%, var(--color-base-100)));
+    linear-gradient(135deg, var(--color-base-100), var(--accent-a1));
 }
 
 .sales-verdict-heading {
@@ -486,6 +608,74 @@ body {
   background: var(--nila-info-a3);
 }
 
+.nila-file-drop:hover {
+  border-color: var(--accent-a7);
+  background: var(--color-base-200);
+}
+
+.nila-file-drop.phx-drop-target-active {
+  border-color: var(--accent-a8);
+  background: var(--accent-a3);
+}
+
+.nila-file-accent,
+.nila-workings-reference {
+  color: var(--accent-a11);
+}
+
+.nila-evidence-trigger:hover,
+.nila-sales-review-item:hover,
+.nila-purchase-scorecard:hover {
+  border-color: var(--accent-a7);
+}
+
+.nila-evidence-trigger:focus-visible,
+.nila-account-trigger:focus-visible,
+.nila-sales-review-item:focus-visible,
+.nila-purchase-scorecard:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: -1px;
+}
+
+.nila-settings-link[data-state="active"] {
+  background: var(--accent-a3);
+  color: var(--accent-a11);
+}
+
+.nila-sales-review-item[data-selected="true"],
+.nila-purchase-scorecard[data-selected="true"] {
+  border-color: var(--accent-a8);
+  background: var(--color-base-100);
+  box-shadow: inset 0 0 0 1px var(--accent-a8);
+}
+
+.nila-purchase-scorecard[data-selected="true"] .nila-purchase-scorecard-label {
+  color: var(--accent-a11);
+}
+
+.nila-gstr1-handoff {
+  border-color: var(--accent-a7);
+  background: var(--accent-a2);
+}
+
+.nila-sales-register-row-reviewed {
+  background: var(--accent-a2);
+}
+
+.nila-workpaper-tab[data-state="selected"] {
+  background: var(--color-base-100);
+}
+
+.nila-workpaper-tab[data-state="selected"]::after {
+  position: absolute;
+  inset-inline: 1rem;
+  bottom: 0;
+  height: 0.125rem;
+  border-radius: 999px;
+  background: var(--accent-indicator);
+  content: "";
+}
+
 @media (min-width: 64rem) {
   .sales-overview {
     grid-template-columns: minmax(0, 1.65fr) minmax(18rem, 0.85fr);
@@ -504,6 +694,25 @@ body {
 
 /* Radix Themes 3.3 physics, expressed through Nila's semantic palette and type.
    Shared components own these recipes; product markup only selects meaning. */
+.nila-link {
+  border-radius: 0.07em;
+  color: var(--accent-a11);
+  text-decoration: none;
+  text-decoration-color: var(--accent-a5);
+  text-decoration-thickness: min(2px, max(1px, 0.05em));
+  text-underline-offset: calc(0.025em + 2px);
+}
+
+.nila-link:hover {
+  text-decoration-line: underline;
+}
+
+.nila-link:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: 2px;
+  text-decoration-line: none;
+}
+
 .nila-badge {
   display: inline-flex;
   height: 1.75rem;
@@ -522,8 +731,8 @@ body {
 }
 
 .nila-badge[data-variant="primary"] {
-  --nila-badge-bg: var(--nila-accent-a3);
-  --nila-badge-ink: var(--nila-accent-a11);
+  --nila-badge-bg: var(--accent-a3);
+  --nila-badge-ink: var(--accent-a11);
 }
 
 .nila-badge[data-variant="info"] {
@@ -589,17 +798,18 @@ body {
   flex-shrink: 0;
 }
 
-.nila-button:hover:not(:disabled):not([aria-disabled="true"]) {
+.nila-button:hover:not(:disabled):not([aria-disabled="true"]),
+.nila-button[data-state="open"]:not(:disabled):not([aria-disabled="true"]) {
   background: var(--nila-button-hover-bg);
-  border-color: var(--nila-button-hover-border, transparent);
+  border-color: transparent;
 }
 
-.nila-button:active:not(:disabled):not([aria-disabled="true"]) {
+.nila-button:active:not([data-state="open"]):not(:disabled):not([aria-disabled="true"]) {
   background: var(--nila-button-active-bg, var(--nila-button-hover-bg));
 }
 
 .nila-button:focus-visible {
-  outline: 2px solid var(--nila-accent-a8);
+  outline: 2px solid var(--focus-8);
   outline-offset: 2px;
 }
 
@@ -618,29 +828,31 @@ body {
 }
 
 .nila-button[data-variant="primary"] {
-  --nila-button-bg: var(--color-primary);
-  --nila-button-hover-bg: color-mix(in oklch, var(--color-primary) 90%, var(--color-base-content));
-  --nila-button-active-bg: color-mix(in oklch, var(--color-primary) 82%, var(--color-base-content));
-  --nila-button-ink: var(--color-primary-content);
+  --nila-button-bg: var(--accent-9);
+  --nila-button-hover-bg: var(--accent-10);
+  --nila-button-active-bg: var(--accent-10);
+  --nila-button-ink: var(--accent-contrast);
 }
 
 .nila-button[data-variant="soft"] {
-  --nila-button-bg: var(--nila-accent-a3);
-  --nila-button-hover-bg: var(--nila-accent-a4);
-  --nila-button-active-bg: var(--nila-accent-a5);
-  --nila-button-ink: var(--nila-accent-a11);
+  --nila-button-bg: var(--accent-a3);
+  --nila-button-hover-bg: var(--accent-a4);
+  --nila-button-active-bg: var(--accent-a5);
+  --nila-button-ink: var(--accent-a11);
+}
+
+.nila-button[data-variant="soft"]:focus-visible,
+.nila-button[data-variant="outline"]:focus-visible {
+  outline-offset: -1px;
 }
 
 .nila-button[data-variant="outline"] {
   --nila-button-bg: transparent;
-  --nila-button-hover-bg: var(--color-base-200);
-  --nila-button-active-bg: var(--color-base-300);
-  --nila-button-ink: var(--color-base-content);
-  border-color: var(--color-base-300);
-}
-
-.nila-button[data-variant="outline"]:hover:not(:disabled) {
-  --nila-button-hover-border: var(--nila-ink-a7);
+  --nila-button-hover-bg: var(--accent-a2);
+  --nila-button-active-bg: var(--accent-a3);
+  --nila-button-ink: var(--accent-a11);
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--accent-a8);
 }
 
 .nila-button[data-variant="ghost"] {
@@ -710,14 +922,14 @@ body {
 }
 
 .nila-segmented-item[aria-pressed="true"] {
-  background: var(--nila-accent-a3);
-  color: var(--nila-accent-a11);
+  background: var(--accent-a3);
+  color: var(--accent-a11);
 }
 
 .nila-segmented-item:focus-visible {
   position: relative;
   z-index: 1;
-  outline: 2px solid var(--nila-accent-a8);
+  outline: 2px solid var(--focus-8);
   outline-offset: -2px;
 }
 
@@ -751,8 +963,8 @@ body {
   border: 0;
   border-radius: 999px;
   background: var(--color-base-300);
-  color: var(--color-primary);
-  accent-color: var(--color-primary);
+  color: var(--accent-indicator);
+  accent-color: var(--accent-indicator);
 }
 
 .nila-progress::-webkit-progress-bar {
@@ -760,11 +972,11 @@ body {
 }
 
 .nila-progress::-webkit-progress-value {
-  background: var(--color-primary);
+  background: var(--accent-indicator);
 }
 
 .nila-progress::-moz-progress-bar {
-  background: var(--color-primary);
+  background: var(--accent-indicator);
 }
 
 .nila-spinner {
@@ -773,6 +985,10 @@ body {
   align-items: center;
   justify-content: center;
   color: currentColor;
+}
+
+.nila-spinner[data-tone="accent"] {
+  color: var(--accent-a11);
 }
 
 .nila-spinner-icon {
@@ -926,7 +1142,7 @@ body {
 }
 
 .nila-menu-item:focus-visible {
-  outline: 2px solid var(--nila-accent-a8);
+  outline: 2px solid var(--focus-8);
   outline-offset: -2px;
 }
 
@@ -1008,7 +1224,7 @@ body {
 }
 
 .nila-modal-close:focus-visible {
-  outline: 2px solid var(--nila-accent-a8);
+  outline: 2px solid var(--focus-8);
   outline-offset: 2px;
 }
 
@@ -1037,7 +1253,7 @@ body {
 }
 
 .nila-fold-trigger:focus-visible {
-  outline: 2px solid var(--nila-accent-a8);
+  outline: 2px solid var(--focus-8);
   outline-offset: 2px;
 }
 
@@ -1099,9 +1315,10 @@ body {
 .nila-input:focus,
 .nila-select:focus,
 .nila-textarea:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--nila-accent-a7);
-  outline: none;
+  border-color: var(--focus-8);
+  box-shadow: none;
+  outline: 2px solid var(--focus-8);
+  outline-offset: -1px;
 }
 
 .nila-input:disabled,
@@ -1136,11 +1353,11 @@ body {
   flex-shrink: 0;
   border: 1px solid var(--color-base-300);
   border-radius: 0.1875rem;
-  accent-color: var(--color-primary);
+  accent-color: var(--accent-indicator);
 }
 
 .nila-checkbox:focus-visible {
-  outline: 2px solid var(--nila-accent-a8);
+  outline: 2px solid var(--focus-8);
   outline-offset: 2px;
 }
 
@@ -1162,7 +1379,7 @@ body {
 }
 
 .nila-field-action:focus-visible {
-  outline: 2px solid var(--nila-accent-a8);
+  outline: 2px solid var(--focus-8);
   outline-offset: -2px;
 }
 

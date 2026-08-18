@@ -9,6 +9,7 @@ defmodule NilaWeb.CoreComponentsTest do
   import NilaWeb.Components.Button
   import NilaWeb.Components.Input
   import NilaWeb.Components.Fold
+  import NilaWeb.Components.Feedback
   import NilaWeb.Layouts
   import NilaWeb.Components.Typography
 
@@ -69,6 +70,32 @@ defmodule NilaWeb.CoreComponentsTest do
     assert html =~ ~s(data-variant="soft")
     assert html =~ ~s(data-size="xs")
     refute html =~ "btn-"
+  end
+
+  test "text link owns accent navigation color without raw primary classes" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.text_link navigate="/privacy" class="font-medium">Privacy</.text_link>
+      """)
+
+    assert html =~ ~s(class="nila-link font-medium")
+    assert html =~ ~s(href="/privacy")
+    refute html =~ "text-primary"
+  end
+
+  test "spinner can request the closed accent tone" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.spinner tone="accent" label="Processing" />
+      """)
+
+    assert html =~ ~s(class="nila-spinner")
+    assert html =~ ~s(data-tone="accent")
+    assert html =~ "Processing"
   end
 
   test "segmented control owns filter geometry and selected state" do

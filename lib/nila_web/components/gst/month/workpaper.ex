@@ -20,10 +20,9 @@ defmodule NilaWeb.Components.Gst.Month.Workpaper do
         id={"month-workpaper-tab-#{track}"}
         patch={~p"/gst/#{@client.id}/#{@period}?track=#{track}"}
         aria-current={@selected == track && "page"}
+        data-state={if(@selected == track, do: "selected", else: "idle")}
         class={[
-          "border-base-300 relative min-w-0 border-b px-6 py-4 text-left transition last:border-b-0 md:min-h-20 md:border-r md:border-b-0 md:last:border-r-0",
-          @selected == track &&
-            "after:bg-primary bg-base-100 after:absolute after:inset-x-4 after:bottom-0 after:h-0.5 after:rounded-full",
+          "border-base-300 nila-workpaper-tab relative min-w-0 border-b px-6 py-4 text-left transition last:border-b-0 md:min-h-20 md:border-r md:border-b-0 md:last:border-r-0",
           @selected != track && "hover:bg-base-100/70"
         ]}
       >

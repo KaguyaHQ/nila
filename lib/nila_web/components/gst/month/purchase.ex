@@ -137,12 +137,13 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             id={"purchase-score-#{card.key}"}
             phx-click="filter-purchase-reconciliation"
             phx-value-filter={card.filter}
-            class={[
-              "border-base-300 hover:border-primary/40 rounded-box space-y-1 border p-4 text-left transition",
-              @recon_filter == card.filter && "bg-primary/[0.03] border-primary"
-            ]}
+            class="border-base-300 nila-purchase-scorecard rounded-box space-y-1 border p-4 text-left transition"
+            data-selected={to_string(@recon_filter == card.filter)}
+            aria-pressed={to_string(@recon_filter == card.filter)}
           >
-            <span class="text-ink-subtle text-label font-semibold uppercase">{card.label}</span>
+            <span class="nila-purchase-scorecard-label text-ink-subtle text-label font-semibold uppercase">
+              {card.label}
+            </span>
             <span class="text-base-content text-lead block font-semibold tabular-nums">{card.count}</span>
             <span class="text-ink-muted text-ui block tabular-nums">{format_money(card.tax_paise,
               prefix: "₹"

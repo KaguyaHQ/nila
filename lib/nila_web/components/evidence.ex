@@ -63,7 +63,7 @@ defmodule NilaWeb.Components.Evidence do
         phx-target={@target}
         phx-hook=".EvidenceFrame"
         aria-label="Open the scanned bill full screen"
-        class="bg-base-200 border-base-300 hover:border-primary/40 rounded-box relative block aspect-[1/1.414] w-full cursor-zoom-in overflow-hidden border transition"
+        class="bg-base-200 border-base-300 nila-evidence-trigger rounded-box relative block aspect-[1/1.414] w-full cursor-zoom-in overflow-hidden border transition"
       >
         <span class="absolute inset-0 flex items-center justify-center">
           <.icon

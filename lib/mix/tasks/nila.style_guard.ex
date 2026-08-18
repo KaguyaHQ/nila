@@ -38,6 +38,10 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     * **Foreground scale** — Nila's global semantic ink aliases the pinned Radix
       Slate scale exactly once, without formula-generated or component-local copies.
 
+    * **Interactive color** — Radix `accent` and `focus` aliases map exactly once
+      through the blue scale. Product markup selects component meaning instead of
+      raw primary text, borders, focus rings, or arbitrary primary opacity.
+
   Run with `mix nila.style_guard` (also wired into `mix precommit`).
   """
 
@@ -83,9 +87,12 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   @component_recipe_owners %{
     "nila-badge" => "lib/nila_web/components/badge.ex",
     "nila-button" => "lib/nila_web/components/button.ex",
+    "nila-link" => "lib/nila_web/components/button.ex",
     "nila-segmented" => "lib/nila_web/components/button.ex",
     "nila-card" => "lib/nila_web/components/card.ex",
     "nila-field" => "lib/nila_web/components/input.ex",
+    "nila-file-drop" => "lib/nila_web/components/form.ex",
+    "nila-file-accent" => "lib/nila_web/components/form.ex",
     "nila-input" => "lib/nila_web/components/input.ex",
     "nila-select" => "lib/nila_web/components/input.ex",
     "nila-textarea" => "lib/nila_web/components/input.ex",
@@ -97,10 +104,19 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "nila-callout" => "lib/nila_web/components/feedback.ex",
     "nila-spinner" => "lib/nila_web/components/feedback.ex",
     "nila-progress" => "lib/nila_web/components/feedback.ex",
+    "nila-evidence-trigger" => "lib/nila_web/components/evidence.ex",
+    "nila-settings-link" => "lib/nila_web/components/layouts.ex",
+    "nila-account-trigger" => "lib/nila_web/components/layouts.ex",
+    "nila-sales-review-item" => "lib/nila_web/components/gst/review/sales_live.ex",
+    "nila-purchase-scorecard" => "lib/nila_web/components/gst/month/purchase.ex",
+    "nila-gstr1-handoff" => "lib/nila_web/components/gst/month/filing.ex",
+    "nila-sales-register-row" => "lib/nila_web/components/gst/month/sales.ex",
+    "nila-workpaper-tab" => "lib/nila_web/components/gst/month/workpaper.ex",
+    "nila-workings-reference" => "lib/nila_web/components/gst/month/workings.ex",
     "nila-alert" => "lib/nila_web/components/flash.ex",
     "nila-toast" => "lib/nila_web/components/flash.ex"
   }
-  @component_recipe_pattern ~r/\bnila-(?:badge|button|segmented|card|field|input|select|textarea|checkbox|table|fold|modal|menu|callout|spinner|progress|alert|toast)(?:-[\w-]+)?\b/
+  @component_recipe_pattern ~r/\bnila-(?:badge|button|link|segmented|card|field|file-drop|file-accent|input|select|textarea|checkbox|table|fold|modal|menu|callout|spinner|progress|evidence-trigger|settings-link|account-trigger|sales-review-item|purchase-scorecard|gstr1-handoff|sales-register-row|workpaper-tab|workings-reference|alert|toast)(?:-[\w-]+)?\b/
 
   @spacing_pattern ~r/(?<![\w-])-?(?:p[xysetrbl]?|m[xysetrbl]?|gap(?:-[xy])?|space-[xy])-(\[[^\]]+\]|\d+(?:\.\d+)?)/
   @raw_structural_spacing_pattern ~r/(?<![\w-])space-y-(?:2|4|6|8)\b/
@@ -111,6 +127,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
   @ruling_pattern ~r/\b(?:border|divide)-base-content\/\d+\b|\b(?:border|divide)-base-200\b/
   @motion_pattern ~r/\bduration-(?:\d+\b|\[[^\]]+\])|\bease-(?:in-out|in|out)\b/
+  @interactive_color_pattern ~r/(?<![\w-])(?:[\w\[\].&-]+:)*(?:(?:text|border|ring)-primary(?!-)(?:\/(?:\[[^\]]+\]|[\d.]+))?|[\w-]+-primary\/(?:\[[^\]]+\]|[\d.]+))/
   @css_path "assets/css/app.css"
   @css_variable_definition_pattern ~r/(?:^|[;{])\s*(--[a-zA-Z0-9_-]+)\s*:/m
   @css_variable_reference_pattern ~r/var\(\s*(--[a-zA-Z0-9_-]+)/
@@ -127,6 +144,28 @@ defmodule Mix.Tasks.Nila.StyleGuard do
                             )
                         )
   @ink_semantic_declaration_pattern ~r/(--(?:color-base-content|nila-ink-(?:12|a(?:1[0-2]|[1-9]))))\s*:\s*([^;]+);/
+  @accent_semantic_targets Map.new(
+                             for(step <- 1..12, do: {"--accent-#{step}", "--blue-#{step}"}) ++
+                               for(
+                                 step <- 1..12,
+                                 do: {"--accent-a#{step}", "--blue-a#{step}"}
+                               ) ++
+                               [
+                                 {"--accent-contrast", "--blue-contrast"},
+                                 {"--accent-surface", "--blue-surface"},
+                                 {"--accent-indicator", "--blue-indicator"},
+                                 {"--accent-track", "--blue-track"}
+                               ] ++
+                               for(
+                                 step <- 1..12,
+                                 do: {"--focus-#{step}", "--accent-#{step}"}
+                               ) ++
+                               for(
+                                 step <- 1..12,
+                                 do: {"--focus-a#{step}", "--accent-a#{step}"}
+                               )
+                           )
+  @accent_semantic_declaration_pattern ~r/(--(?:accent-(?:a?(?:1[0-2]|[1-9])|contrast|surface|indicator|track)|focus-a?(?:1[0-2]|[1-9])))\s*:\s*([^;]+);/
 
   # Product-only checks reuse the live/component scope and deliberately exclude
   # public marketing controller templates. Type scale covers the whole web tree.
@@ -139,6 +178,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   @spacing_globs @legacy_globs
   @ruling_globs @legacy_globs
   @motion_globs @legacy_globs
+  @interactive_color_globs @type_scale_globs
 
   @impl Mix.Task
   def run(_args) do
@@ -153,8 +193,13 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     spacing = @spacing_globs |> expand() |> Enum.flat_map(&spacing_violations/1)
     ruling = @ruling_globs |> expand() |> Enum.flat_map(&ruling_violations/1)
     motion = @motion_globs |> expand() |> Enum.flat_map(&motion_violations/1)
+
+    interactive_color =
+      @interactive_color_globs |> expand() |> Enum.flat_map(&interactive_color_violations/1)
+
     css_variables = css_variable_violations(@css_path)
     ink_scale = ink_scale_violations(@css_path)
+    accent_scale = accent_scale_violations(@css_path)
 
     report(legacy, "legacy hardcoded classes")
     report(daisy_components, "raw daisyUI component classes — use the shared Nila component")
@@ -173,6 +218,12 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     report(spacing, "off-scale spacing — use the closed primitives and structural roles")
     report(ruling, "off-system ruling — use the base-300 hairline")
     report(motion, "off-system motion — use the named fast/calm transition vocabulary")
+
+    report(
+      interactive_color,
+      "raw primary role — choose a component meaning instead of pigment or opacity"
+    )
+
     report(css_variables, "undefined CSS variables — define the token before consuming it")
 
     report(
@@ -180,9 +231,14 @@ defmodule Mix.Tasks.Nila.StyleGuard do
       "off-system foreground scale — alias each global ink token to pinned Radix Slate once"
     )
 
+    report(
+      accent_scale,
+      "off-system interactive scale — alias Radix accent and focus roles exactly once"
+    )
+
     if legacy != [] or daisy_components != [] or type_scale != [] or context_type != [] or
          component_recipes != [] or spacing != [] or ruling != [] or motion != [] or
-         css_variables != [] or ink_scale != [] do
+         interactive_color != [] or css_variables != [] or ink_scale != [] or accent_scale != [] do
       Mix.raise("Replace the flagged classes with Nila design-system tokens.")
     end
   end
@@ -373,6 +429,9 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   defp motion_violations(path), do: pattern_violations(path, @motion_pattern)
 
   @doc false
+  def interactive_color_violations(path), do: pattern_violations(path, @interactive_color_pattern)
+
+  @doc false
   def ink_scale_violations(path) do
     source = path |> File.read!() |> strip_css_comments() |> strip_css_strings()
 
@@ -397,6 +456,41 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
     cardinality_violations =
       Enum.flat_map(@ink_semantic_targets, fn {name, _target} ->
+        case Map.get(declarations_by_name, name, []) do
+          [] -> [{path, 1, name}]
+          [_declaration] -> []
+          [_first | duplicates] -> Enum.map(duplicates, &{path, elem(&1, 2), name})
+        end
+      end)
+
+    Enum.uniq(invalid_mappings ++ cardinality_violations)
+  end
+
+  @doc false
+  def accent_scale_violations(path) do
+    source = path |> File.read!() |> strip_css_comments() |> strip_css_strings()
+
+    declarations =
+      source
+      |> String.split("\n")
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {line, line_number} ->
+        @accent_semantic_declaration_pattern
+        |> Regex.scan(line)
+        |> Enum.map(fn [_match, name, value] -> {name, String.trim(value), line_number} end)
+      end)
+
+    invalid_mappings =
+      Enum.flat_map(declarations, fn {name, value, line_number} ->
+        expected = "var(#{Map.fetch!(@accent_semantic_targets, name)})"
+
+        if value == expected, do: [], else: [{path, line_number, name}]
+      end)
+
+    declarations_by_name = Enum.group_by(declarations, &elem(&1, 0))
+
+    cardinality_violations =
+      Enum.flat_map(@accent_semantic_targets, fn {name, _target} ->
         case Map.get(declarations_by_name, name, []) do
           [] -> [{path, 1, name}]
           [_declaration] -> []

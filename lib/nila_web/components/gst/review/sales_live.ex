@@ -306,10 +306,9 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
                 phx-click="select"
                 phx-value-id={item.source_id}
                 phx-target={@myself}
-                class={[
-                  "border-base-300 hover:border-primary/40 rounded-box w-full border p-3 text-left transition",
-                  @selected_id == item.source_id && "bg-primary/[0.04] border-primary"
-                ]}
+                class="border-base-300 nila-sales-review-item rounded-box w-full border p-3 text-left transition"
+                data-selected={to_string(@selected_id == item.source_id)}
+                aria-current={@selected_id == item.source_id && "true"}
               >
                 <span class="text-base-content text-ui block truncate font-mono">
                   {item.invoice["invoice_number"] || "—"}

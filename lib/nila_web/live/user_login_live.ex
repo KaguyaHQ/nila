@@ -34,12 +34,12 @@ defmodule NilaWeb.UserLoginLive do
             autocomplete="current-password"
             required
           />
-          <.link
+          <.text_link
             navigate={~p"/users/reset_password"}
-            class="hover:text-primary/80 text-primary text-ui inline-flex font-semibold transition"
+            class="text-ui inline-flex font-semibold"
           >
             Forgot your password?
-          </.link>
+          </.text_link>
 
           <.input
             type="checkbox"
@@ -56,9 +56,9 @@ defmodule NilaWeb.UserLoginLive do
 
         <p class="mt-block text-ink-muted text-ui">
           Interested in Nila?
-          <.link navigate={~p"/contact"} class="text-primary font-semibold">
+          <.text_link navigate={~p"/contact"} class="font-semibold">
             Arrange a test
-          </.link>
+          </.text_link>
         </p>
 
         <section

@@ -743,8 +743,8 @@ defmodule NilaWeb.Gst.UploadLive do
             class="space-y-related"
           >
             <div class="flex items-start gap-3">
-              <div :if={spinning?(job.status)} class="text-primary mt-0.5 shrink-0">
-                <.spinner label="Processing" />
+              <div :if={spinning?(job.status)} class="mt-0.5 shrink-0">
+                <.spinner tone="accent" label="Processing" />
               </div>
               <.icon
                 :if={job.status == :done and not partial?(job)}
