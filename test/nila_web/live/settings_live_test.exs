@@ -14,12 +14,16 @@ defmodule NilaWeb.SettingsLiveTest do
       {:ok, conn: log_in_user(conn, user), org: org}
     end
 
-    test "makes provider setup focal when no accounts are connected", %{conn: conn} do
+    test "makes Add a channel focal when no channels are configured", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings/connectors")
 
       refute has_element?(view, "#settings-connected-accounts")
-      refute has_element?(view, "#settings-connections-empty")
-      assert has_element?(view, "#settings-add-channel")
+
+      assert has_element?(
+               view,
+               "#settings-add-channel-disclosure[open] > summary h2",
+               "Add a channel"
+             )
 
       assert has_element?(
                view,
@@ -34,7 +38,7 @@ defmodule NilaWeb.SettingsLiveTest do
       assert has_element?(view, "#settings-add-microsoft-tenant")
       assert has_element?(view, "#settings-add-microsoft-mailbox")
       assert has_element?(view, "#settings-add-microsoft[data-variant='soft']")
-      refute has_element?(view, "#settings-connectors .btn-soft")
+      assert has_element?(view, "#settings-connect-whatsapp", "Connect WhatsApp")
 
       assert has_element?(
                view,
@@ -138,21 +142,27 @@ defmodule NilaWeb.SettingsLiveTest do
       assert Integrations.list_connections(org.id) == []
     end
 
-    test "WhatsApp disconnect requires fresh Meta signup and hides mailbox sync", %{
+    test "healthy active WhatsApp is calm and keeps verification subordinate", %{
       conn: conn,
       org: org
     } do
-      {:ok, connection} =
-        Integrations.complete_whatsapp_signup(org.id, "valid-code", %{
-          "business_id" => "111111111",
-          "waba_id" => "222222222",
-          "phone_number_id" => "333333333"
-        })
-
+      connection = whatsapp_connection(org)
       {:ok, view, _html} = live(conn, ~p"/settings/connectors")
 
-      refute has_element?(view, "#settings-sync-connection-#{connection.id}")
-      assert has_element?(view, "#settings-verify-connection-#{connection.id}")
+      assert has_element?(view, "#settings-connected-accounts h2", "Configured channels")
+
+      assert has_element?(
+               view,
+               "#settings-connection-state-#{connection.id}",
+               "Ready to receive documents."
+             )
+
+      refute has_element?(view, "#settings-connection-#{connection.id} [data-primary-action]")
+
+      assert has_element?(
+               view,
+               "#settings-edit-connection-#{connection.id}:not([open]) #settings-verify-connection-#{connection.id}[data-variant='ghost']"
+             )
 
       assert has_element?(
                view,
@@ -160,18 +170,96 @@ defmodule NilaWeb.SettingsLiveTest do
                "Last received: Never"
              )
 
-      view |> element("#settings-verify-connection-#{connection.id}") |> render_click()
-      assert Repo.get!(Integrations.Connection, connection.id).last_status == "connected"
+      assert has_element?(
+               view,
+               "#settings-add-channel-disclosure:not([open]) > summary h2",
+               "Add another channel"
+             )
 
-      view |> element("#settings-disconnect-connection-#{connection.id}") |> render_click()
-      disconnected = Repo.get!(Integrations.Connection, connection.id)
+      assert has_element?(
+               view,
+               "#settings-add-channel-disclosure #settings-connect-whatsapp",
+               "Add another WhatsApp number"
+             )
+    end
+
+    test "degraded active WhatsApp explains the failure and offers only retry verification", %{
+      conn: conn,
+      org: org
+    } do
+      connection = whatsapp_connection(org)
+
+      assert {:ok, _degraded} =
+               Integrations.mark_degraded(connection, :whatsapp_readiness_check_failed)
+
+      {:ok, view, _html} = live(conn, ~p"/settings/connectors")
+
+      assert has_element?(
+               view,
+               "#settings-connection-state-#{connection.id}",
+               "Nila could not verify this WhatsApp connection. Intake may be interrupted."
+             )
+
+      assert has_element?(
+               view,
+               "#settings-verify-connection-#{connection.id}[data-primary-action]",
+               "Retry verification"
+             )
+
+      refute has_element?(view, "#settings-reconnect-connection-#{connection.id}")
+
+      refute has_element?(
+               view,
+               "#settings-connection-#{connection.id} p",
+               ":whatsapp_readiness_check_failed"
+             )
+
+      view |> element("#settings-verify-connection-#{connection.id}") |> render_click()
+
+      verified = Repo.get!(Integrations.Connection, connection.id)
+      assert verified.last_status == "connected"
+      assert verified.last_error == nil
+
+      assert has_element?(
+               view,
+               "#settings-connection-state-#{connection.id}",
+               "Ready to receive documents."
+             )
+
+      refute has_element?(view, "#settings-connection-#{connection.id} [data-primary-action]")
+    end
+
+    test "disconnect after an error clears stale state and makes Meta reconnect primary", %{
+      conn: conn,
+      org: org
+    } do
+      connection = whatsapp_connection(org)
+      assert {:ok, degraded} = Integrations.mark_degraded(connection, "old provider failure")
+
+      {:ok, view, _html} = live(conn, ~p"/settings/connectors")
+
+      view |> element("#settings-disconnect-connection-#{degraded.id}") |> render_click()
+
+      disconnected = Repo.get!(Integrations.Connection, degraded.id)
       assert disconnected.status == "disconnected"
+      assert disconnected.last_status == "revoked"
+      assert disconnected.last_error == nil
       assert disconnected.credentials == %{}
 
       assert has_element?(
                view,
-               "#settings-reconnect-connection-#{connection.id}[data-whatsapp-launch]"
+               "#settings-connection-state-#{connection.id}",
+               "Intake is paused. Reconnect with Meta to resume receiving documents."
              )
+
+      assert has_element?(
+               view,
+               "#settings-reconnect-connection-#{connection.id}[data-whatsapp-launch][data-primary-action]",
+               "Reconnect with Meta"
+             )
+
+      refute has_element?(view, "#settings-verify-connection-#{connection.id}")
+      refute has_element?(view, "#settings-disconnect-connection-#{connection.id}")
 
       render_hook(view, "whatsapp_signup_complete", %{
         "authorization_code" => "valid-code",
@@ -185,9 +273,44 @@ defmodule NilaWeb.SettingsLiveTest do
       })
 
       assert_reply(view, %{ok: false})
-      assert [same_connection] = Integrations.list_connections(org.id)
-      assert same_connection.id == connection.id
-      assert same_connection.status == "disconnected"
+      assert Repo.get!(Integrations.Connection, connection.id).status == "disconnected"
+    end
+
+    test "legacy disconnected WhatsApp hides a stored raw readiness error", %{
+      conn: conn,
+      org: org
+    } do
+      assert {:ok, connection} =
+               Integrations.upsert_connection(%{
+                 org_id: org.id,
+                 provider: "whatsapp",
+                 status: "disconnected",
+                 last_status: "error",
+                 last_error: ":whatsapp_readiness_check_failed",
+                 external_account_id: "919876543210",
+                 credentials: %{},
+                 settings: %{"display_phone_number" => "+91 98765 43210"}
+               })
+
+      {:ok, view, _html} = live(conn, ~p"/settings/connectors")
+
+      assert has_element?(
+               view,
+               "#settings-connection-state-#{connection.id}",
+               "Intake is paused. Reconnect with Meta to resume receiving documents."
+             )
+
+      assert has_element?(
+               view,
+               "#settings-reconnect-connection-#{connection.id}[data-primary-action]",
+               "Reconnect with Meta"
+             )
+
+      refute has_element?(
+               view,
+               "#settings-connection-#{connection.id} p",
+               ":whatsapp_readiness_check_failed"
+             )
     end
 
     test "manages connector labels, entities, disconnect, reconnect, and sync", %{
@@ -221,7 +344,11 @@ defmodule NilaWeb.SettingsLiveTest do
              )
 
       assert has_element?(view, "#settings-connected-accounts + #settings-add-channel")
-      assert has_element?(view, "#settings-add-gmail-form")
+
+      assert has_element?(
+               view,
+               "#settings-add-channel-disclosure:not([open]) #settings-add-gmail-form"
+             )
 
       assert has_element?(
                view,
@@ -231,12 +358,12 @@ defmodule NilaWeb.SettingsLiveTest do
 
       assert has_element?(
                view,
-               "#settings-save-connection-#{connection.id}[data-variant='ghost']"
+               "#settings-edit-connection-#{connection.id}:not([open]) #settings-save-connection-#{connection.id}[data-variant='ghost']"
              )
 
       assert has_element?(
                view,
-               "#settings-disconnect-connection-#{connection.id}[data-variant='ghost'][data-confirm]"
+               "#settings-edit-connection-#{connection.id}:not([open]) #settings-disconnect-connection-#{connection.id}[data-variant='ghost'][data-confirm]"
              )
 
       view
@@ -250,9 +377,25 @@ defmodule NilaWeb.SettingsLiveTest do
       view |> element("#settings-disconnect-connection-#{connection.id}") |> render_click()
       assert Repo.get!(Integrations.Connection, connection.id).status == "disconnected"
 
+      assert has_element?(
+               view,
+               "#settings-reconnect-connection-#{connection.id}[data-primary-action]"
+             )
+
       view |> element("#settings-reconnect-connection-#{connection.id}") |> render_click()
       assert Repo.get!(Integrations.Connection, connection.id).status == "active"
     end
+  end
+
+  defp whatsapp_connection(org) do
+    {:ok, connection} =
+      Integrations.complete_whatsapp_signup(org.id, "valid-code", %{
+        "business_id" => "111111111",
+        "waba_id" => "222222222",
+        "phone_number_id" => "333333333"
+      })
+
+    connection
   end
 
   defp whatsapp_transaction(view) do

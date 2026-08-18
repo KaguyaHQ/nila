@@ -268,7 +268,8 @@ defmodule Nila.Integrations do
       status: "disconnected",
       disconnected_at: now,
       last_status: "revoked",
-      last_status_at: now
+      last_status_at: now,
+      last_error: nil
     })
     |> Repo.update()
   end
@@ -280,7 +281,9 @@ defmodule Nila.Integrations do
     |> Connection.changeset(%{
       status: "disconnected",
       disconnected_at: now,
-      last_status_at: now
+      last_status: "revoked",
+      last_status_at: now,
+      last_error: nil
     })
     |> Repo.update()
   end

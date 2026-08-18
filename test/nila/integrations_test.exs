@@ -146,6 +146,28 @@ defmodule Nila.IntegrationsTest do
     assert verified.settings["readiness_checked_at"] == "2026-08-03T00:00:00Z"
   end
 
+  test "intentional WhatsApp disconnect clears obsolete error state", %{org: org} do
+    assert {:ok, connection} =
+             Integrations.provision_whatsapp(%{
+               org_id: org.id,
+               phone_number_id: "919876543210",
+               access_token: "business-token"
+             })
+
+    assert {:ok, degraded} =
+             Integrations.mark_degraded(connection, :whatsapp_readiness_check_failed)
+
+    assert degraded.last_status == "error"
+    assert degraded.last_error == ":whatsapp_readiness_check_failed"
+
+    assert {:ok, disconnected} = Integrations.disconnect(degraded)
+    assert disconnected.status == "disconnected"
+    assert disconnected.last_status == "revoked"
+    assert disconnected.last_error == nil
+    assert disconnected.disconnected_at
+    assert disconnected.credentials == %{}
+  end
+
   test "a failed reconnect records the reason and leaves the connection retryable", %{org: org} do
     session = %{
       "business_id" => "111111111",
@@ -379,6 +401,8 @@ defmodule Nila.IntegrationsTest do
 
     assert {:ok, disconnected} = Integrations.disconnect(errored)
     assert disconnected.disconnected_at
+    assert disconnected.last_status == "revoked"
+    assert disconnected.last_error == nil
 
     assert {:ok, reconnected} = Integrations.reconnect(disconnected)
     assert reconnected.status == "active"
