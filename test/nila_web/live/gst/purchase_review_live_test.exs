@@ -22,6 +22,77 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     %{conn: log_in_user(conn, user), user: user, org: org, client: client}
   end
 
+  test "purchase workpaper leads with the ITC conclusion, blocker and next action", context do
+    put_month!(
+      context,
+      [books("hierarchy-1", %{"invoice_number" => "1134"})],
+      [gstr2b("CHN-SER-1134")]
+    )
+
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+
+    assert has_element?(view, "#purchase-itc-conclusion", "Current proposed ITC")
+    assert has_element?(view, "#purchase-itc-basis", "reported in GSTR-2B")
+    assert has_element?(view, "#purchase-itc-basis", "not an eligibility assurance")
+    assert has_element?(view, "#purchase-primary-blocker", "Decision required")
+    assert has_element?(view, "#purchase-next-action", "Review invoice")
+    assert has_element?(view, "#gstr3b-review-required")
+
+    assert_dom_order(view, [
+      "purchase-itc-conclusion",
+      "purchase-required-actions",
+      "purchase-controls",
+      "gstr3b-reconciliation-scorecard",
+      "gstr3b-register"
+    ])
+  end
+
+  test "document waiting remains inside the proposal and asks for possession", context do
+    put_month!(context, [], [gstr2b("WAIT-2B-1")])
+
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+
+    assert has_element?(view, "#purchase-itc-conclusion", "Current proposed ITC")
+    assert has_element?(view, "#purchase-primary-blocker", "Evidence pending")
+    assert has_element?(view, "#purchase-primary-blocker", "remains inside the proposal")
+    assert has_element?(view, "#purchase-next-action", "Collect invoice WAIT-2B-1")
+    assert has_element?(view, "#gstr3b-review-required")
+
+    assert_dom_order(view, [
+      "purchase-itc-conclusion",
+      "purchase-required-actions",
+      "purchase-controls",
+      "gstr3b-reconciliation-scorecard",
+      "gstr3b-register"
+    ])
+  end
+
+  test "clear and frozen positions remain distinct without inventing assurance", context do
+    month = put_month!(context, [books("frozen-1")], [gstr2b("INV-001")])
+
+    {:ok, clear, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+
+    assert has_element?(clear, "#purchase-itc-conclusion", "Current proposed ITC")
+    assert has_element?(clear, "#purchase-primary-blocker", "No open blocker")
+    assert has_element?(clear, "#purchase-next-action", "Open GSTR-3B")
+    assert has_element?(clear, "#purchase-open-gstr3b")
+
+    {:ok, _signoff} = Signoffs.sign_off(month, Nila.Accounts.Scope.for_user(context.user))
+
+    {:ok, frozen, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+
+    assert has_element?(frozen, "#purchase-itc-conclusion", "Frozen ITC position")
+    assert has_element?(frozen, "#purchase-itc-basis", "Frozen from")
+    assert has_element?(frozen, "#purchase-primary-blocker", "Position frozen")
+    assert has_element?(frozen, "#purchase-next-action", "frozen return")
+    assert has_element?(frozen, "#purchase-open-gstr3b")
+    refute has_element?(frozen, "#gstr3b-review-required")
+  end
+
   test "deep links validate scope and select a member through the same MonthLive", context do
     first = books("freezelinks-1")
     second = books("freezelinks-2")
@@ -173,6 +244,18 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     assert has_element?(view, "#gst-missing-bill-modal")
     assert has_element?(view, "#gst-missing-bill-draft", "Dear Breeze")
     assert has_element?(view, "#gst-missing-bill-draft", "invoice PORTAL-9")
+  end
+
+  defp assert_dom_order(view, ids) do
+    html = render(view)
+
+    positions =
+      Enum.map(ids, fn id ->
+        {position, _length} = :binary.match(html, ~s(id="#{id}"))
+        position
+      end)
+
+    assert positions == Enum.sort(positions)
   end
 
   defp put_month!(context, books, counterparts) do

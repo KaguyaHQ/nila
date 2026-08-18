@@ -33,124 +33,143 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
     carried_itc = carried_itc(assigns.case_lines, assigns.period)
     action_counts = action_counts(assigns.review)
 
+    first_action = first_visible_action(assigns.visible_rows, assigns.review)
+
     assigns =
       assigns
       |> assign(:verdict, verdict_state(assigns))
+      |> assign(:position, position_state(assigns))
+      |> assign(:basis_copy, basis_copy(assigns))
+      |> assign(:primary_blocker, primary_blocker(assigns))
+      |> assign(:next_action_copy, next_action_copy(first_action, assigns, action_counts))
       |> assign(:carried_itc, carried_itc)
       |> assign(:action_counts, action_counts)
       |> assign(:scorecards, reconciliation_scorecards(assigns.rows, assigns.review))
       |> assign(:required_actions, Enum.take(assigns.review.needs_you, 8))
-      |> assign(:first_action, first_visible_action(assigns.visible_rows, assigns.review))
+      |> assign(:first_action, first_action)
 
     ~H"""
     <section :if={@purchase_month} id="month-register" class="space-y-section">
       <header
         id="gstr3b-verdict"
-        class="border-base-300 moonlight-soft rounded-box space-y-block border p-6"
+        class="bg-base-100 border-base-300 rounded-box grid overflow-hidden border lg:grid-cols-[minmax(0,1.6fr)_minmax(18rem,0.8fr)]"
       >
-        <div class="flex flex-wrap items-start justify-between gap-4">
+        <section class="moonlight-soft space-y-section p-6 lg:p-8">
           <div class="space-y-related min-w-0">
             <p class="text-ink-subtle text-label font-semibold uppercase">Purchase position</p>
-            <h2 class="font-display text-base-content text-h3 font-normal">Purchases &amp; ITC</h2>
-            <p id="gstr3b-itc-position" class="text-body text-ink-muted max-w-3xl">{@verdict.copy}</p>
+            <h2 class="text-base-content text-h4 font-semibold">Purchases &amp; ITC</h2>
+          </div>
+
+          <div id="purchase-itc-conclusion" class="space-y-related">
+            <p class="text-ink-subtle text-label font-semibold uppercase">{@position.label}</p>
             <p
-              :if={
-                @action_counts.decisions > 0 or @action_counts.documents > 0 or
-                  @action_counts.waiting > 0
-              }
-              class="text-base-content text-ui font-medium"
+              :if={@position.amount}
+              id="purchase-itc-amount"
+              class="font-display text-base-content text-h3 font-normal tabular-nums"
             >
-              <span :if={@action_counts.decisions > 0}>{@action_counts.decisions} {plural(
-                @action_counts.decisions,
-                "decision"
-              )}</span>
-              <span :if={@action_counts.decisions > 0 and @action_counts.documents > 0}> · </span>
-              <span :if={@action_counts.documents > 0}>{@action_counts.documents} {plural(
-                @action_counts.documents,
-                "document"
-              )} to collect</span>
-              <span :if={
-                @action_counts.waiting > 0 and
-                  (@action_counts.decisions > 0 or @action_counts.documents > 0)
-              }> · </span>
-              <span :if={@action_counts.waiting > 0}>{@action_counts.waiting} waiting on client</span>
+              {@position.amount}
             </p>
+            <p
+              :if={is_nil(@position.amount)}
+              id="purchase-itc-amount-unavailable"
+              class="font-display text-base-content text-h3 font-normal"
+            >
+              Amount not recorded
+            </p>
+            <p id="gstr3b-itc-position" class="text-body text-ink-muted max-w-3xl">{@verdict.copy}</p>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <.button
-              :if={@track_state == :need_2b}
-              id="purchase-bring-gstr2b"
-              navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}"}
-              variant="primary"
-              size="sm"
-            >
-              Bring in GSTR-2B
-            </.button>
-            <.button
-              :if={@first_action && (@action_counts.decisions > 0 or @action_counts.documents > 0)}
-              id="gstr3b-review-required"
-              patch={purchase_review_path(@client, @period, @first_action.id, :needs_you)}
-              variant="primary"
-              size="sm"
-            >
-              Review next action
-            </.button>
-            <.button
-              :if={
-                is_nil(@first_action) and @track_state != :need_2b and
-                  @action_counts.waiting == 0
-              }
-              id="purchase-open-gstr3b"
-              patch={~p"/gst/#{@client.id}/#{@period}?track=gstr3b"}
-              variant="primary"
-              size="sm"
-            >
-              Open GSTR-3B
-            </.button>
+
+          <p
+            :if={
+              @action_counts.decisions > 0 or @action_counts.documents > 0 or
+                @action_counts.waiting > 0
+            }
+            id="purchase-open-work-summary"
+            class="text-base-content text-ui font-medium"
+          >
+            <span :if={@action_counts.decisions > 0}>{@action_counts.decisions} {plural(
+              @action_counts.decisions,
+              "decision"
+            )}</span>
+            <span :if={@action_counts.decisions > 0 and @action_counts.documents > 0}> · </span>
+            <span :if={@action_counts.documents > 0}>{@action_counts.documents} {plural(
+              @action_counts.documents,
+              "document"
+            )} to collect</span>
+            <span :if={
+              @action_counts.waiting > 0 and
+                (@action_counts.decisions > 0 or @action_counts.documents > 0)
+            }> · </span>
+            <span :if={@action_counts.waiting > 0}>{@action_counts.waiting} waiting on client</span>
+          </p>
+        </section>
+
+        <aside class="border-base-300 divide-base-300 divide-y border-t lg:border-t-0 lg:border-l">
+          <div id="purchase-itc-basis" class="space-y-related p-6">
+            <p class="text-ink-subtle text-label font-semibold uppercase">Current basis</p>
+            <p class="text-base-content text-body font-medium">{@basis_copy}</p>
           </div>
-        </div>
+
+          <div id="purchase-primary-blocker" class="space-y-related p-6">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <p class="text-ink-subtle text-label font-semibold uppercase">Main blocker</p>
+              <.badge variant={@primary_blocker.variant}>{@primary_blocker.label}</.badge>
+            </div>
+            <p class="text-body text-ink-muted">{@primary_blocker.copy}</p>
+          </div>
+
+          <div id="purchase-next-action" class="space-y-block p-6">
+            <div class="space-y-related">
+              <p class="text-ink-subtle text-label font-semibold uppercase">Next human action</p>
+              <p class="text-base-content text-body font-medium">{@next_action_copy}</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <.button
+                :if={@track_state == :need_2b}
+                id="purchase-bring-gstr2b"
+                navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}"}
+                variant="primary"
+                size="sm"
+              >
+                Bring in GSTR-2B
+              </.button>
+              <.button
+                :if={@first_action && (@action_counts.decisions > 0 or @action_counts.documents > 0)}
+                id="gstr3b-review-required"
+                patch={purchase_review_path(@client, @period, @first_action.id, :needs_you)}
+                variant="primary"
+                size="sm"
+              >
+                Review next action
+              </.button>
+              <.button
+                :if={
+                  is_nil(@first_action) and @track_state != :need_2b and
+                    @action_counts.waiting == 0
+                }
+                id="purchase-open-gstr3b"
+                patch={~p"/gst/#{@client.id}/#{@period}?track=gstr3b"}
+                variant="primary"
+                size="sm"
+              >
+                Open GSTR-3B
+              </.button>
+            </div>
+          </div>
+        </aside>
       </header>
 
       <Workpaper.section_nav links={
         [
-          %{id: "gstr3b-reconciliation-scorecard", label: "Reconciliation"},
           @required_actions != [] && %{id: "purchase-required-actions", label: "Required actions"},
           %{id: "purchase-controls", label: "Controls"},
+          %{id: "gstr3b-reconciliation-scorecard", label: "Reconciliation detail"},
           %{id: "gstr3b-register", label: "Register"},
           %{id: "gstr3b-source-documents", label: "Evidence"},
           %{id: "purchase-transition", label: "GSTR-3B"}
         ]
         |> Enum.filter(&is_map/1)
       } />
-
-      <section id="gstr3b-reconciliation-scorecard" class="space-y-block scroll-mt-28">
-        <div class="space-y-related">
-          <h3 class="text-base-content text-h4 font-semibold">Reconciliation population</h3>
-          <p class="text-ink-muted text-ui">
-            Machine matching state for the whole purchase register. Select a bucket to filter the register.
-          </p>
-        </div>
-        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <button
-            :for={card <- @scorecards}
-            type="button"
-            id={"purchase-score-#{card.key}"}
-            phx-click="filter-purchase-reconciliation"
-            phx-value-filter={card.filter}
-            class="border-base-300 nila-purchase-scorecard rounded-box space-y-1 border p-4 text-left transition"
-            data-selected={to_string(@recon_filter == card.filter)}
-            aria-pressed={to_string(@recon_filter == card.filter)}
-          >
-            <span class="nila-purchase-scorecard-label text-ink-subtle text-label font-semibold uppercase">
-              {card.label}
-            </span>
-            <span class="text-base-content text-lead block font-semibold tabular-nums">{card.count}</span>
-            <span class="text-ink-muted text-ui block tabular-nums">{format_money(card.tax_paise,
-              prefix: "₹"
-            )} tax</span>
-          </button>
-        </div>
-      </section>
 
       <section
         :if={@required_actions != []}
@@ -329,6 +348,35 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               />
             </div>
           </.fold>
+        </div>
+      </section>
+
+      <section id="gstr3b-reconciliation-scorecard" class="space-y-block scroll-mt-28">
+        <div class="space-y-related">
+          <h3 class="text-base-content text-h4 font-semibold">Reconciliation detail</h3>
+          <p class="text-ink-muted text-ui">
+            Machine buckets filter the purchase register; they do not establish ITC eligibility. Select one to inspect its rows.
+          </p>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <button
+            :for={card <- @scorecards}
+            type="button"
+            id={"purchase-score-#{card.key}"}
+            phx-click="filter-purchase-reconciliation"
+            phx-value-filter={card.filter}
+            class="border-base-300 nila-purchase-scorecard rounded-box space-y-1 border p-3 text-left transition"
+            data-selected={to_string(@recon_filter == card.filter)}
+            aria-pressed={to_string(@recon_filter == card.filter)}
+          >
+            <span class="nila-purchase-scorecard-label text-ink-subtle text-label font-semibold uppercase">
+              {card.label}
+            </span>
+            <span class="text-base-content text-body block font-semibold tabular-nums">{card.count}</span>
+            <span class="text-ink-muted text-ui block tabular-nums">{format_money(card.tax_paise,
+              prefix: "₹"
+            )} tax</span>
+          </button>
         </div>
       </section>
 
@@ -627,6 +675,138 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
   defp carried_status(%{settlement_state: "reserved"}), do: "Reserved by this period's sign-off"
   defp carried_status(_), do: "Carried forward"
 
+  defp position_state(%{stats: %{itc_money_known?: false}}),
+    do: %{label: "ITC position", amount: nil}
+
+  defp position_state(%{itc: %{"claimable_paise" => paise}} = assigns)
+       when is_integer(paise) do
+    label =
+      cond do
+        not is_nil(assigns.purchase_month.filed_at) -> "ITC in filed GSTR-3B"
+        not is_nil(assigns.gstr3b_signoff) -> "Frozen ITC position"
+        true -> "Current proposed ITC"
+      end
+
+    %{label: label, amount: Nila.Formatters.format_money_with_paise(paise)}
+  end
+
+  defp position_state(_assigns), do: %{label: "ITC position", amount: nil}
+
+  defp basis_copy(%{track_state: :need_2b}),
+    do: "GSTR-2B is not in, so no portal comparison is available yet."
+
+  defp basis_copy(%{stats: %{itc_money_known?: false}}),
+    do:
+      "The register and reconciliation remain available, but this snapshot did not record an ITC amount."
+
+  defp basis_copy(%{gstr3b_signoff: %{}, itc: %{"reported_2b_paise" => reported}}),
+    do:
+      "Frozen from #{precise_money(reported)} reported in GSTR-2B and the decisions recorded at sign-off."
+
+  defp basis_copy(%{itc: %{"reported_2b_paise" => reported}}),
+    do:
+      "Derived from #{precise_money(reported)} reported in GSTR-2B after recorded deductions. This is a proposal, not an eligibility assurance."
+
+  defp basis_copy(_assigns),
+    do: "Derived from the current purchase register and the evidence recorded in this workpaper."
+
+  defp primary_blocker(%{track_state: :need_2b}),
+    do: %{
+      label: "2B not in",
+      variant: "warning",
+      copy:
+        "The purchase register cannot be compared with the portal population until GSTR-2B is brought in."
+    }
+
+  defp primary_blocker(%{stats: %{need_decision: count} = stats, review: review, itc: itc})
+       when count > 0 do
+    decision_count =
+      Enum.count(review.all, &(!&1.resolved and &1.kind != :gstr2b))
+
+    if decision_count == 0 and stats.awaiting_bills > 0 do
+      evidence_blocker(stats)
+    else
+      pending = itc && itc["pending_decision_paise"]
+      display_count = if decision_count > 0, do: decision_count, else: count
+
+      copy =
+        if is_integer(pending) and pending > 0,
+          do:
+            "#{display_count} #{plural(display_count, "decision")} withhold #{precise_money(pending)} from the current proposal.",
+          else:
+            "#{display_count} #{plural(display_count, "decision")} can still change the purchase treatment."
+
+      %{label: "Decision required", variant: "warning", copy: copy}
+    end
+  end
+
+  defp primary_blocker(%{stats: %{awaiting_bills: count} = stats}) when count > 0,
+    do: evidence_blocker(stats)
+
+  defp primary_blocker(%{stats: %{value_disputes: count}}) when count > 0,
+    do: %{
+      label: "Difference disclosed",
+      variant: "info",
+      copy:
+        "#{count} value #{plural(count, "difference")} remain disclosed in the register; the proposal uses the GSTR-2B amount for those supplies."
+    }
+
+  defp primary_blocker(%{track_state: :filed}),
+    do: %{
+      label: "Filed",
+      variant: "neutral",
+      copy:
+        "The recorded GSTR-3B filing now governs; this workpaper remains its supporting evidence."
+    }
+
+  defp primary_blocker(%{track_state: :signed}),
+    do: %{
+      label: "Position frozen",
+      variant: "info",
+      copy:
+        "No purchase decision can change this signed snapshot unless the sign-off is unlocked."
+    }
+
+  defp primary_blocker(_assigns),
+    do: %{
+      label: "No open blocker",
+      variant: "neutral",
+      copy: "No purchase decision or missing-document position remains open in this workpaper."
+    }
+
+  defp evidence_blocker(stats),
+    do: %{
+      label: "Evidence pending",
+      variant: "info",
+      copy:
+        "#{stats.awaiting_bills} #{plural(stats.awaiting_bills, "supply")} appear in GSTR-2B without invoices on file. #{precise_money(stats.awaiting_bills_tax_paise)} remains inside the proposal until possession is resolved."
+    }
+
+  defp next_action_copy(_first_action, %{track_state: :need_2b}, _counts),
+    do: "Bring in GSTR-2B so Nila can compare the register with the portal population."
+
+  defp next_action_copy(
+         %{kind: :gstr2b, invoice_number: number, vendor: vendor},
+         _assigns,
+         _counts
+       ),
+       do:
+         "Collect invoice #{number || "—"} from #{vendor}, or record whether the client holds it."
+
+  defp next_action_copy(%{invoice_number: number, vendor: vendor}, _assigns, _counts),
+    do: "Review invoice #{number || "—"} from #{vendor} and record the purchase treatment."
+
+  defp next_action_copy(nil, _assigns, %{waiting: count}) when count > 0,
+    do: "Wait for the client; #{count} recorded #{plural(count, "request")} remain outstanding."
+
+  defp next_action_copy(nil, %{track_state: state}, _counts) when state in [:signed, :filed],
+    do: "Open GSTR-3B to inspect the frozen return and its filing state."
+
+  defp next_action_copy(nil, _assigns, _counts),
+    do: "Open GSTR-3B and continue the return from this purchase position."
+
+  defp precise_money(paise), do: Nila.Formatters.format_money_with_paise(paise || 0)
+
   defp verdict_state(%{stats: nil}), do: %{copy: nil}
 
   defp verdict_state(%{gstr3b_signoff: %{}, purchase_month: %{filed_at: filed_at}, stats: stats})
@@ -749,5 +929,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
   defp plural(1, word), do: word
   defp plural(_count, "entry"), do: "entries"
+  defp plural(_count, "supply"), do: "supplies"
   defp plural(_count, word), do: word <> "s"
 end
