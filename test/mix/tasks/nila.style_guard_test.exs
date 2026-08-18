@@ -110,6 +110,43 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     assert StyleGuard.component_recipe_violations("lib/nila_web/components/badge.ex") == []
   end
 
+  test "accepts semantic foreground aliases to the pinned Slate scale" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-ink-scale-#{System.unique_integer([:positive])}.css")
+
+    File.write!(path, valid_ink_css())
+    on_exit(fn -> File.rm(path) end)
+
+    assert StyleGuard.ink_scale_violations(path) == []
+  end
+
+  test "rejects formula-generated semantic foreground tokens" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-ink-scale-#{System.unique_integer([:positive])}.css")
+
+    source =
+      String.replace(
+        valid_ink_css(),
+        "--color-base-content: var(--slate-12);",
+        "--color-base-content: color-mix(in oklab, black 80%, transparent);"
+      )
+
+    File.write!(path, source)
+    on_exit(fn -> File.rm(path) end)
+
+    assert [{^path, _line, "--color-base-content"}] = StyleGuard.ink_scale_violations(path)
+  end
+
+  test "rejects local copies of global semantic foreground tokens" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-ink-scale-#{System.unique_integer([:positive])}.css")
+
+    File.write!(path, valid_ink_css() <> ".local { --nila-ink-a11: var(--slate-a11); }\n")
+    on_exit(fn -> File.rm(path) end)
+
+    assert [{^path, _line, "--nila-ink-a11"}] = StyleGuard.ink_scale_violations(path)
+  end
+
   test "rejects undefined CSS variable references" do
     path =
       Path.join(System.tmp_dir!(), "nila-css-variable-#{System.unique_integer([:positive])}.css")
@@ -166,5 +203,17 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     on_exit(fn -> File.rm(path) end)
 
     assert StyleGuard.css_variable_violations(path) == [{path, 2, "--missing-ink"}]
+  end
+
+  defp valid_ink_css do
+    aliases =
+      [
+        {"--color-base-content", "--slate-12"},
+        {"--nila-ink-12", "--slate-12"}
+      ] ++ Enum.map(1..12, &{"--nila-ink-a#{&1}", "--slate-a#{&1}"})
+
+    ":root {\n" <>
+      Enum.map_join(aliases, "", fn {name, target} -> "  #{name}: var(#{target});\n" end) <>
+      "}\n"
   end
 end

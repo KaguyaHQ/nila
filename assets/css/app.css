@@ -17,6 +17,78 @@
   themes: false;
 }
 
+/* Radix Themes 3.3 Slate light scale, pinned from
+   @radix-ui/themes/tokens/colors/slate.css. */
+:root,
+.light,
+.light-theme {
+  --slate-1: #fcfcfd;
+  --slate-2: #f9f9fb;
+  --slate-3: #f0f0f3;
+  --slate-4: #e8e8ec;
+  --slate-5: #e0e1e6;
+  --slate-6: #d9d9e0;
+  --slate-7: #cdced6;
+  --slate-8: #b9bbc6;
+  --slate-9: #8b8d98;
+  --slate-10: #80838d;
+  --slate-11: #60646c;
+  --slate-12: #1c2024;
+  --slate-a1: #00005503;
+  --slate-a2: #00005506;
+  --slate-a3: #0000330f;
+  --slate-a4: #00002d17;
+  --slate-a5: #0009321f;
+  --slate-a6: #00002f26;
+  --slate-a7: #00062e32;
+  --slate-a8: #00083046;
+  --slate-a9: #00051d74;
+  --slate-a10: #00071b7f;
+  --slate-a11: #0007149f;
+  --slate-a12: #000509e3;
+  --slate-surface: #ffffffcc;
+  --slate-indicator: var(--slate-9);
+  --slate-track: var(--slate-9);
+}
+
+@supports (color: color(display-p3 1 1 1)) {
+  @media (color-gamut: p3) {
+    :root,
+    .light,
+    .light-theme {
+      --slate-1: color(display-p3 0.988 0.988 0.992);
+      --slate-2: color(display-p3 0.976 0.976 0.984);
+      --slate-3: color(display-p3 0.94 0.941 0.953);
+      --slate-4: color(display-p3 0.908 0.909 0.925);
+      --slate-5: color(display-p3 0.88 0.881 0.901);
+      --slate-6: color(display-p3 0.85 0.852 0.876);
+      --slate-7: color(display-p3 0.805 0.808 0.838);
+      --slate-8: color(display-p3 0.727 0.733 0.773);
+      --slate-9: color(display-p3 0.547 0.553 0.592);
+      --slate-10: color(display-p3 0.503 0.512 0.549);
+      --slate-11: color(display-p3 0.379 0.392 0.421);
+      --slate-12: color(display-p3 0.113 0.125 0.14);
+      --slate-a1: color(display-p3 0.024 0.024 0.349 / 0.012);
+      --slate-a2: color(display-p3 0.024 0.024 0.349 / 0.024);
+      --slate-a3: color(display-p3 0.004 0.004 0.204 / 0.059);
+      --slate-a4: color(display-p3 0.012 0.012 0.184 / 0.091);
+      --slate-a5: color(display-p3 0.004 0.039 0.2 / 0.122);
+      --slate-a6: color(display-p3 0.008 0.008 0.165 / 0.15);
+      --slate-a7: color(display-p3 0.008 0.027 0.184 / 0.197);
+      --slate-a8: color(display-p3 0.004 0.031 0.176 / 0.275);
+      --slate-a9: color(display-p3 0.004 0.02 0.106 / 0.455);
+      --slate-a10: color(display-p3 0.004 0.027 0.098 / 0.499);
+      --slate-a11: color(display-p3 0 0.02 0.063 / 0.62);
+      --slate-a12: color(display-p3 0 0.012 0.031 / 0.887);
+      --slate-surface: color(display-p3 1 1 1 / 0.8);
+    }
+  }
+}
+
+:root {
+  --slate-contrast: white;
+}
+
 /* daisyUI theme plugin. You can update this file by fetching the latest version with:
   curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui-theme.js
   Nila is light-mode only. The palette is "moonlight": a hushed sea-blue on a
@@ -32,7 +104,7 @@
   --color-base-100: oklch(100% 0 0);
   --color-base-200: oklch(96.8% 0.007 235);
   --color-base-300: oklch(92% 0.008 235);
-  --color-base-content: oklch(30% 0.055 233);
+  --color-base-content: var(--slate-12);
   --color-primary: oklch(47% 0.06 232);
   --color-primary-content: oklch(99% 0.005 235);
   --color-secondary: oklch(50% 0.018 258);
@@ -59,13 +131,9 @@
   --noise: 0;
 }
 
-/* Scrim: the near-black behind a full-screen document reader. `base-content`
-   is midnight ink — a real blue — which is right for text and right for the
-   modal's light 40% dim, but wrong filling a whole screen around a scanned
-   bill: a chromatic surround shifts the paper inside it warmer by simultaneous
-   contrast, and judging that paper is the entire job of the surface it sits
-   behind. Same hue family so it doesn't read as foreign, chroma dropped to a
-   whisper so it stops editorialising about the evidence. */
+/* Scrim: the near-black behind a full-screen document reader. Ordinary dialogs
+   dim with neutral Slate ink; a scanned bill needs a stronger, low-chroma surround
+   so the paper remains the only visual reference. */
 @theme {
   --color-scrim: oklch(20% 0.012 233);
 }
@@ -278,20 +346,21 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Radix-style executable color scales with Nila's moonlight pigments. Components
-   consume coordinated steps instead of inventing opacity formulas. A context that
-   changes base-content must redeclare the complete ink scale, as `.landing` does. */
-:root,
-.landing {
-  --nila-ink-12: var(--color-base-content);
-  --nila-ink-a12: color-mix(in oklab, var(--color-base-content) 88%, transparent);
-  --nila-ink-a11: color-mix(in oklab, var(--color-base-content) 61%, transparent);
-  --nila-ink-a10: color-mix(in oklab, var(--color-base-content) 49%, transparent);
-  --nila-ink-a8: color-mix(in oklab, var(--color-base-content) 27%, transparent);
-  --nila-ink-a7: color-mix(in oklab, var(--color-base-content) 22%, transparent);
-  --nila-ink-a6: color-mix(in oklab, var(--color-base-content) 15%, transparent);
-  --nila-ink-a4: color-mix(in oklab, var(--color-base-content) 11%, transparent);
-  --nila-ink-a3: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+/* Nila's semantic foreground API aliases the pinned Radix Slate scale. */
+:root {
+  --nila-ink-12: var(--slate-12);
+  --nila-ink-a1: var(--slate-a1);
+  --nila-ink-a2: var(--slate-a2);
+  --nila-ink-a3: var(--slate-a3);
+  --nila-ink-a4: var(--slate-a4);
+  --nila-ink-a5: var(--slate-a5);
+  --nila-ink-a6: var(--slate-a6);
+  --nila-ink-a7: var(--slate-a7);
+  --nila-ink-a8: var(--slate-a8);
+  --nila-ink-a9: var(--slate-a9);
+  --nila-ink-a10: var(--slate-a10);
+  --nila-ink-a11: var(--slate-a11);
+  --nila-ink-a12: var(--slate-a12);
 }
 
 :root {
@@ -320,21 +389,6 @@ body {
   --nila-error-a7: color-mix(in oklch, var(--color-error) 25%, transparent);
   --nila-error-a11: color-mix(in oklab, var(--color-error) 76%, var(--color-base-content));
   --nila-error-surface: color-mix(in oklch, var(--color-error) 9%, var(--color-base-100));
-}
-
-/* Sales workpaper visual proving ground. The local ink scale is Radix Slate 3.3;
-   the composition stays scoped until the rendered workpaper earns promotion. */
-.sales-workpaper {
-  --color-base-content: #1c2024;
-  --nila-ink-12: #1c2024;
-  --nila-ink-a12: #000509e3;
-  --nila-ink-a11: #0007149f;
-  --nila-ink-a10: #00071b7f;
-  --nila-ink-a8: #00083046;
-  --nila-ink-a7: #00062e32;
-  --nila-ink-a6: #00002f26;
-  --nila-ink-a4: #00002d17;
-  --nila-ink-a3: #0000330f;
 }
 
 .sales-overview {
@@ -1230,11 +1284,8 @@ details[open] > summary .fold-chevron {
    promoted into the moonlight theme proper. Nothing here may leak into
    product markup. */
 
-/* The room. Ink is pulled toward neutral (chroma 0.055 → 0.02) so the page
-   stops swimming in blue and blue can mean something again. The ink-scale
-   utilities read this variable, so everything inside neutralises at once. */
+/* The room keeps its authored pale ground while using the global Slate ink. */
 .landing {
-  --color-base-content: oklch(25% 0.02 240);
   background-color: oklch(99.2% 0.003 240);
 }
 

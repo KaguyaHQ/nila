@@ -35,6 +35,9 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     * **CSS variables** — every custom property referenced by `app.css` must be
       defined in that source. A utility class name does not imply a runtime token.
 
+    * **Foreground scale** — Nila's global semantic ink aliases the pinned Radix
+      Slate scale exactly once, without formula-generated or component-local copies.
+
   Run with `mix nila.style_guard` (also wired into `mix precommit`).
   """
 
@@ -113,6 +116,17 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   @css_variable_reference_pattern ~r/var\(\s*(--[a-zA-Z0-9_-]+)/
   @global_css_block_pattern ~r/(?:@plugin[^\{]*|@theme(?:\s+\w+)?\s*|:root(?:\s*,\s*\.landing)?\s*)\{([^{}]*)\}/s
   @global_css_variable_pattern ~r/^--(?:color|font|text|spacing|radius|shadow|transition|ease|default|nila-(?:ink|accent|info|success|warning|error))-/
+  @ink_semantic_targets Map.new(
+                          [
+                            {"--color-base-content", "--slate-12"},
+                            {"--nila-ink-12", "--slate-12"}
+                          ] ++
+                            for(
+                              step <- 1..12,
+                              do: {"--nila-ink-a#{step}", "--slate-a#{step}"}
+                            )
+                        )
+  @ink_semantic_declaration_pattern ~r/(--(?:color-base-content|nila-ink-(?:12|a(?:1[0-2]|[1-9]))))\s*:\s*([^;]+);/
 
   # Product-only checks reuse the live/component scope and deliberately exclude
   # public marketing controller templates. Type scale covers the whole web tree.
@@ -140,6 +154,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     ruling = @ruling_globs |> expand() |> Enum.flat_map(&ruling_violations/1)
     motion = @motion_globs |> expand() |> Enum.flat_map(&motion_violations/1)
     css_variables = css_variable_violations(@css_path)
+    ink_scale = ink_scale_violations(@css_path)
 
     report(legacy, "legacy hardcoded classes")
     report(daisy_components, "raw daisyUI component classes — use the shared Nila component")
@@ -160,9 +175,14 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     report(motion, "off-system motion — use the named fast/calm transition vocabulary")
     report(css_variables, "undefined CSS variables — define the token before consuming it")
 
+    report(
+      ink_scale,
+      "off-system foreground scale — alias each global ink token to pinned Radix Slate once"
+    )
+
     if legacy != [] or daisy_components != [] or type_scale != [] or context_type != [] or
          component_recipes != [] or spacing != [] or ruling != [] or motion != [] or
-         css_variables != [] do
+         css_variables != [] or ink_scale != [] do
       Mix.raise("Replace the flagged classes with Nila design-system tokens.")
     end
   end
@@ -351,6 +371,41 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
   defp ruling_violations(path), do: pattern_violations(path, @ruling_pattern)
   defp motion_violations(path), do: pattern_violations(path, @motion_pattern)
+
+  @doc false
+  def ink_scale_violations(path) do
+    source = path |> File.read!() |> strip_css_comments() |> strip_css_strings()
+
+    declarations =
+      source
+      |> String.split("\n")
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {line, line_number} ->
+        @ink_semantic_declaration_pattern
+        |> Regex.scan(line)
+        |> Enum.map(fn [_match, name, value] -> {name, String.trim(value), line_number} end)
+      end)
+
+    invalid_mappings =
+      Enum.flat_map(declarations, fn {name, value, line_number} ->
+        expected = "var(#{Map.fetch!(@ink_semantic_targets, name)})"
+
+        if value == expected, do: [], else: [{path, line_number, name}]
+      end)
+
+    declarations_by_name = Enum.group_by(declarations, &elem(&1, 0))
+
+    cardinality_violations =
+      Enum.flat_map(@ink_semantic_targets, fn {name, _target} ->
+        case Map.get(declarations_by_name, name, []) do
+          [] -> [{path, 1, name}]
+          [_declaration] -> []
+          [_first | duplicates] -> Enum.map(duplicates, &{path, elem(&1, 2), name})
+        end
+      end)
+
+    Enum.uniq(invalid_mappings ++ cardinality_violations)
+  end
 
   @doc false
   def css_variable_violations(path) do
