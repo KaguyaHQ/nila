@@ -79,29 +79,15 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             <p id="gstr3b-itc-position" class="text-body text-ink-muted max-w-3xl">{@verdict.copy}</p>
           </div>
 
-          <p
-            :if={
-              @action_counts.decisions > 0 or @action_counts.documents > 0 or
-                @action_counts.waiting > 0
-            }
-            id="purchase-open-work-summary"
-            class="text-base-content text-ui font-medium"
+          <div
+            :if={is_map(@itc) and Map.has_key?(@itc, "reported_2b_paise")}
+            class="space-y-related"
           >
-            <span :if={@action_counts.decisions > 0}>{@action_counts.decisions} {plural(
-              @action_counts.decisions,
-              "decision"
-            )}</span>
-            <span :if={@action_counts.decisions > 0 and @action_counts.documents > 0}> · </span>
-            <span :if={@action_counts.documents > 0}>{@action_counts.documents} {plural(
-              @action_counts.documents,
-              "document"
-            )} to collect</span>
-            <span :if={
-              @action_counts.waiting > 0 and
-                (@action_counts.decisions > 0 or @action_counts.documents > 0)
-            }> · </span>
-            <span :if={@action_counts.waiting > 0}>{@action_counts.waiting} waiting on client</span>
-          </p>
+            <p class="text-ink-subtle text-label font-semibold uppercase">
+              Basis of current proposal
+            </p>
+            <Itc.itc_bridge itc={@itc} id="purchase-itc-proposal-basis" />
+          </div>
         </section>
 
         <aside class="border-base-300 divide-base-300 divide-y border-t lg:border-t-0 lg:border-l">

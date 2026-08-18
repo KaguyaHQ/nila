@@ -33,6 +33,9 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
       live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     assert has_element?(view, "#purchase-itc-conclusion", "Current proposed ITC")
+    assert has_element?(view, "#purchase-itc-proposal-basis-reported", "Reported in GSTR-2B")
+    assert has_element?(view, "#purchase-itc-proposal-basis-pending", "pending decisions")
+    assert has_element?(view, "#purchase-itc-proposal-basis-claimable", "Current proposed ITC")
     assert has_element?(view, "#purchase-itc-basis", "reported in GSTR-2B")
     assert has_element?(view, "#purchase-itc-basis", "not an eligibility assurance")
     assert has_element?(view, "#purchase-primary-blocker", "Decision required")

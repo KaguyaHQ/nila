@@ -310,6 +310,20 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     assert has_element?(view, "#purchase-itc-basis", "reported in GSTR-2B")
     assert has_element?(view, "#purchase-itc-basis", "not an eligibility assurance")
+
+    assert has_element?(
+             view,
+             "#purchase-itc-proposal-basis-reported",
+             Nila.Formatters.format_money_with_paise(workings.itc["reported_2b_paise"])
+           )
+
+    assert has_element?(
+             view,
+             "#purchase-itc-proposal-basis-claimable",
+             Nila.Formatters.format_money_with_paise(workings.itc["claimable_paise"])
+           )
+
+    refute has_element?(view, "#purchase-open-work-summary")
     assert has_element?(view, "#purchase-primary-blocker", "Decision required")
     assert has_element?(view, "#purchase-next-action", "Review invoice")
     refute has_element?(view, "#gstr3b-completeness")
