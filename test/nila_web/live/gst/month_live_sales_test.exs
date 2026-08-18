@@ -92,6 +92,67 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
            ]
   end
 
+  test "switches between clients in the same period without losing the workpaper", %{
+    conn: conn,
+    org: org,
+    client: client,
+    user: user
+  } do
+    {:ok, caltech} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Caltech",
+        type: "company"
+      })
+
+    {:ok, other_period} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "August Only",
+        type: "company"
+      })
+
+    work_dump!(org, caltech, @period, "sales", "%PDF-1.4 caltech bytes", user.id)
+    work_dump!(org, other_period, "2025-08", "sales", "%PDF-1.4 august bytes", user.id)
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}?track=sales")
+
+    assert has_element?(view, "#open-client-switcher[aria-expanded='false']", "Breeze Tech")
+
+    view |> element("#open-client-switcher") |> render_click()
+
+    assert has_element?(view, "#open-client-switcher[aria-expanded='true']")
+    assert has_element?(view, "#client-switcher-focus-wrap[role='dialog']", "Switch client")
+
+    assert has_element?(
+             view,
+             "#client-switcher-client-#{client.id}[data-state='current']",
+             "Current"
+           )
+
+    assert has_element?(
+             view,
+             "#client-switcher-client-#{caltech.id}[href='/gst/#{caltech.id}/#{@period}?track=sales']",
+             "Caltech"
+           )
+
+    refute has_element?(view, "#client-switcher-client-#{other_period.id}")
+
+    view
+    |> form("#client-switcher-search-form", %{"client_switcher" => %{"query" => "calt"}})
+    |> render_change()
+
+    assert has_element?(view, "#client-switcher-client-#{caltech.id}", "Caltech")
+    refute has_element?(view, "#client-switcher-client-#{client.id}")
+
+    view
+    |> element("#client-switcher button[phx-click='close-client-switcher']")
+    |> render_click()
+
+    refute has_element?(view, "#client-switcher")
+    assert has_element?(view, "#open-client-switcher[aria-expanded='false']")
+  end
+
   test "return workings disclose schedules before contributor rows", %{
     conn: conn,
     client: client

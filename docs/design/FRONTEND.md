@@ -26,6 +26,12 @@ components. DaisyUI component classes are not product APIs. Keep the Tailwind v4
 import/source syntax in `app.css`; there is no `tailwind.config.js`. Only `app.js` and
 `app.css` are supported bundles.
 
+When Radix does not define a higher-level generic pattern, use shadcn as the anatomy and
+interaction reference, then express it with Nila's existing components and Radix-calibrated
+tokens. Do not import shadcn's theme or styling wholesale. In shorthand: **shadcn anatomy,
+Radix/Nila physics.** Radix/Nila always wins for spacing, type, color, radius, borders, and
+elevation.
+
 `Layouts.app/1` owns the desktop rail, product canvas, mobile fallback header, and outer
 gutters. `Layouts.settings/1` adds settings navigation inside that shell. Pages compose
 inside the layout and do not recreate chrome or add a second page gutter.
@@ -181,8 +187,10 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
 - **Folds:** `<.fold>`, never bare `<details>`. Open state lives on the server so LiveView
   patches do not collapse the reader’s place. `<.fold_summary>` owns 14px title/detail
   typography for operational summaries.
-- **Modals:** `<.modal>` owns scrim, width families, radius, elevation, focus, dismissal,
-  and workbench mode. Callers cannot pass arbitrary panel classes.
+- **Modals and sheets:** `<.modal>` owns scrim, width families, radius, elevation, focus,
+  dismissal, sheet side placement, and workbench mode. Use `variant="sheet"` for a focused
+  task attached to a viewport edge; its anatomy follows shadcn Sheet while its visual physics
+  remain Nila/Radix. Callers cannot pass arbitrary panel classes.
 - **Menus:** transient action menus use the native `popover="auto"` contract for light
   dismissal and Escape behavior; `<details>` is a disclosure primitive, not a dropdown.
 - **Feedback:** `<.callout>`, `<.spinner>`, and `<.progress_bar>` own status mechanics;

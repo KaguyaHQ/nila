@@ -41,6 +41,7 @@ if Application.compile_env(:nila, :dev_routes, false) or
        |> assign(:open_folds, MapSet.new(["ds-b2b-schedule"]))
        |> assign(:review_scope, "needs-you")
        |> assign(:show_modal, false)
+       |> assign(:show_sheet, false)
        |> assign(:rows, @rows)}
     end
 
@@ -50,6 +51,12 @@ if Application.compile_env(:nila, :dev_routes, false) or
 
     def handle_event("close-design-modal", _params, socket),
       do: {:noreply, assign(socket, :show_modal, false)}
+
+    def handle_event("open-design-sheet", _params, socket),
+      do: {:noreply, assign(socket, :show_sheet, true)}
+
+    def handle_event("close-design-sheet", _params, socket),
+      do: {:noreply, assign(socket, :show_sheet, false)}
 
     def handle_event("set-review-scope", %{"scope" => scope}, socket),
       do: {:noreply, assign(socket, :review_scope, scope)}
@@ -321,9 +328,14 @@ if Application.compile_env(:nila, :dev_routes, false) or
                         Focus, dismissal, and keyboard behavior remain LiveView-owned.
                       </p>
                     </div>
-                    <.button id="ds-open-modal" variant="outline" phx-click="open-design-modal">
-                      Open modal
-                    </.button>
+                    <div class="gap-related flex flex-wrap">
+                      <.button id="ds-open-modal" variant="outline" phx-click="open-design-modal">
+                        Open modal
+                      </.button>
+                      <.button id="ds-open-sheet" variant="outline" phx-click="open-design-sheet">
+                        Open sheet
+                      </.button>
+                    </div>
                   </.card>
                 </div>
 
@@ -342,6 +354,30 @@ if Application.compile_env(:nila, :dev_routes, false) or
                       <.button phx-click="close-design-modal">Confirm review</.button>
                     </div>
                   </div>
+                </.modal>
+
+                <.modal
+                  :if={@show_sheet}
+                  id="ds-sheet"
+                  title="Switch client"
+                  on_close="close-design-sheet"
+                  variant="sheet"
+                  return_focus="#ds-open-sheet"
+                >
+                  <:header :let={title_id}>
+                    <div class="space-y-related">
+                      <h2 id={title_id} class="font-display text-h4 font-normal">Sheet title</h2>
+                      <p class="text-ink-muted text-ui">Optional supporting context.</p>
+                    </div>
+                  </:header>
+                  <div class="space-y-block p-6">
+                    <p class="text-body text-ink-muted">
+                      Shadcn supplies the edge anatomy; Nila and Radix supply the visual physics.
+                    </p>
+                  </div>
+                  <:footer>
+                    <.button phx-click="close-design-sheet">Done</.button>
+                  </:footer>
                 </.modal>
 
                 <div id="ds-cards" class="gap-section grid md:grid-cols-3">

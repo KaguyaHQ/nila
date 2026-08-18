@@ -1194,6 +1194,28 @@ body {
   background: color-mix(in oklch, var(--color-scrim) 70%, transparent);
 }
 
+/* Radix Themes 3.3 supplies the dialog physics but no Sheet pattern. The sheet
+   ports shadcn's Dialog-derived edge anatomy while retaining Nila tokens. */
+.nila-modal-scrim[data-variant="sheet"] {
+  align-items: stretch;
+}
+
+.nila-modal-scrim[data-variant="sheet"][data-side="right"] {
+  justify-content: flex-end;
+}
+
+.nila-modal-scrim[data-variant="sheet"][data-side="left"] {
+  justify-content: flex-start;
+}
+
+.nila-modal-scrim[data-variant="sheet"][data-side="top"] {
+  align-items: flex-start;
+}
+
+.nila-modal-scrim[data-variant="sheet"][data-side="bottom"] {
+  align-items: flex-end;
+}
+
 .nila-modal-panel {
   display: flex;
   width: 100%;
@@ -1213,6 +1235,74 @@ body {
 
 .nila-modal-panel[data-width="extra-wide"] {
   max-width: 72rem;
+}
+
+.nila-modal-panel[data-variant="sheet"] {
+  border-radius: 0;
+  padding: 0;
+}
+
+.nila-modal-panel[data-variant="sheet"][data-side="right"],
+.nila-modal-panel[data-variant="sheet"][data-side="left"] {
+  width: 75vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+}
+
+.nila-modal-panel[data-variant="sheet"][data-side="right"] {
+  border-width: 0 0 0 1px;
+}
+
+.nila-modal-panel[data-variant="sheet"][data-side="left"] {
+  border-width: 0 1px 0 0;
+}
+
+.nila-modal-panel[data-variant="sheet"][data-side="top"],
+.nila-modal-panel[data-variant="sheet"][data-side="bottom"] {
+  width: 100%;
+  height: auto;
+  max-width: none;
+  max-height: none;
+}
+
+.nila-modal-panel[data-variant="sheet"][data-side="top"] {
+  border-width: 0 0 1px;
+}
+
+.nila-modal-panel[data-variant="sheet"][data-side="bottom"] {
+  border-width: 1px 0 0;
+}
+
+@media (min-width: 40rem) {
+  .nila-modal-panel[data-variant="sheet"][data-side="right"],
+  .nila-modal-panel[data-variant="sheet"][data-side="left"] {
+    max-width: 24rem;
+  }
+}
+
+.nila-modal-panel[data-variant="sheet"] > header {
+  margin-bottom: 0;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--color-base-300);
+}
+
+.nila-modal-panel[data-variant="sheet"] > .nila-modal-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.nila-modal-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.nila-modal-panel[data-variant="sheet"] > .nila-modal-footer {
+  margin-top: auto;
+  padding: 1.5rem;
+  border-top: 1px solid var(--color-base-300);
 }
 
 .nila-modal-panel[data-variant="workbench"] {
@@ -1252,6 +1342,74 @@ body {
 .nila-modal-close:focus-visible {
   outline: 2px solid var(--focus-8);
   outline-offset: 2px;
+}
+
+.client-switcher-trigger {
+  display: inline-flex;
+  min-height: var(--nila-control-height-standard);
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: var(--radius-field);
+  text-align: left;
+}
+
+.client-switcher-trigger:hover h1 {
+  text-decoration: underline;
+  text-decoration-color: var(--accent-a7);
+  text-underline-offset: 0.2em;
+}
+
+.client-switcher-trigger:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: 2px;
+}
+
+.client-switcher-chevron {
+  flex-shrink: 0;
+  color: var(--nila-ink-a9);
+  transition: transform var(--transition-duration-fast) var(--ease-standard);
+}
+
+.client-switcher-trigger[aria-expanded="true"] .client-switcher-chevron {
+  transform: rotate(180deg);
+}
+
+.client-switcher-search {
+  padding: 1rem;
+  border-bottom: 1px solid var(--color-base-300);
+}
+
+.client-switcher-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem;
+}
+
+.client-switcher-option {
+  display: flex;
+  min-height: var(--nila-control-height-prominent);
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-radius: var(--radius-field);
+  padding-inline: 0.75rem;
+  color: var(--color-base-content);
+  font-size: var(--text-ui);
+  line-height: var(--text-ui--line-height);
+}
+
+.client-switcher-option:hover {
+  background: var(--color-base-200);
+}
+
+.client-switcher-option[data-state="current"] {
+  background: var(--accent-a3);
+}
+
+.client-switcher-option:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: -2px;
 }
 
 .nila-table-shell {

@@ -52,6 +52,26 @@ defmodule NilaWeb.Dev.DesignSystemLiveTest do
     refute has_element?(view, "#ds-modal")
   end
 
+  test "sheet example uses the shared edge, anatomy, and dismissal contract", %{conn: conn} do
+    {:ok, view, _html} = live_isolated(conn, NilaWeb.Dev.DesignSystemLive)
+
+    view |> element("#ds-open-sheet") |> render_click()
+
+    assert has_element?(
+             view,
+             "#ds-sheet[data-side='right'] .nila-modal-panel[data-variant='sheet']",
+             "Sheet title"
+           )
+
+    assert has_element?(view, "#ds-sheet .nila-modal-footer", "Done")
+
+    view
+    |> element("#ds-sheet button[phx-click='close-design-sheet']", "Done")
+    |> render_click()
+
+    refute has_element?(view, "#ds-sheet")
+  end
+
   test "fold examples preserve server-owned open state", %{conn: conn} do
     {:ok, view, _html} = live_isolated(conn, NilaWeb.Dev.DesignSystemLive)
 

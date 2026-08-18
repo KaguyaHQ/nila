@@ -11,6 +11,7 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Filing.{Calendar, Signoffs, WinmanGstr1}
   alias Nila.Gst.Intake.{DumpWorker, Dumps, Preconditions}
   alias Nila.Gst.Issues
+  alias Nila.Gst.PeriodClients
   alias Nila.Gst.Purchase.{Groups, ItcCases, Reconciliation, Register, Resolutions, Review}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Sales.{Account, Values}
@@ -23,6 +24,7 @@ defmodule NilaWeb.Gst.MonthLive do
 
   alias NilaWeb.Components.Gst.Month.{
     Arrivals,
+    ClientSwitcher,
     Evidence,
     Filing,
     Helpers,
@@ -46,6 +48,11 @@ defmodule NilaWeb.Gst.MonthLive do
   @impl true
   def mount(%{"client_id" => client_id, "period" => period}, _session, socket) do
     org = socket.assigns.current_scope.current_org
+
+    socket =
+      stream_configure(socket, :client_switcher_clients,
+        dom_id: &"client-switcher-client-#{&1.id}"
+      )
 
     with true <- org != nil,
          {:ok, client} <- Clients.get_client(org.id, client_id),
@@ -80,6 +87,9 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:client, client)
       |> assign(:period, period)
       |> assign(:page_title, "#{client.name} · #{period_label(period)}")
+      |> assign(:client_switcher_open?, false)
+      |> assign(:client_switcher_form, client_switcher_form())
+      |> stream(:client_switcher_clients, [])
       |> assign(:purchase_review_route, nil)
       |> assign(:sales_review_route, nil)
       |> assign(:selected_track, :sales)
@@ -939,6 +949,29 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
+  def handle_event("open-client-switcher", _params, socket) do
+    %{current_scope: %{current_org: %{id: org_id}}, period: period} = socket.assigns
+
+    {:noreply,
+     socket
+     |> assign(:client_switcher_open?, true)
+     |> assign(:client_switcher_form, client_switcher_form())
+     |> stream(:client_switcher_clients, PeriodClients.list(org_id, period), reset: true)}
+  end
+
+  def handle_event("close-client-switcher", _params, socket),
+    do: {:noreply, assign(socket, :client_switcher_open?, false)}
+
+  def handle_event("search-client-switcher", %{"client_switcher" => params}, socket) do
+    %{current_scope: %{current_org: %{id: org_id}}, period: period} = socket.assigns
+    query = Map.get(params, "query", "")
+
+    {:noreply,
+     socket
+     |> assign(:client_switcher_form, client_switcher_form(query))
+     |> stream(:client_switcher_clients, PeriodClients.list(org_id, period, query), reset: true)}
+  end
+
   def handle_event("open-duplicate-review", %{"target" => target}, socket),
     do: {:noreply, assign(socket, :duplicate_review_target, target)}
 
@@ -1470,6 +1503,9 @@ defmodule NilaWeb.Gst.MonthLive do
   defp fallback_track(%{sales_dumps: [_ | _]}), do: :sales
   defp fallback_track(_assigns), do: :purchases
 
+  defp client_switcher_form(query \\ ""),
+    do: to_form(%{"query" => query}, as: :client_switcher)
+
   @impl true
   def render(assigns) do
     duplicate_issue =
@@ -1486,7 +1522,12 @@ defmodule NilaWeb.Gst.MonthLive do
       current_path={assigns[:current_path]}
     >
       <div id="month-page" class="space-y-region mx-auto max-w-7xl">
-        <Verdict.verdict verdict={@global_verdict} client={@client} period={@period} />
+        <Verdict.verdict
+          verdict={@global_verdict}
+          client={@client}
+          period={@period}
+          client_switcher_open?={@client_switcher_open?}
+        />
 
         <Precondition.question
           :if={@verdict[:question]}
@@ -1751,6 +1792,15 @@ defmodule NilaWeb.Gst.MonthLive do
           <% end %>
         </main>
       </div>
+
+      <ClientSwitcher.drawer
+        open?={@client_switcher_open?}
+        client={@client}
+        period={@period}
+        selected_track={@selected_track}
+        form={@client_switcher_form}
+        clients={@streams.client_switcher_clients}
+      />
 
       <.live_component
         :if={(@live_action == :review and @purchase_review_route) && @purchase_month}

@@ -1,6 +1,8 @@
 defmodule NilaWeb.Components.Gst.Month.Verdict do
   use NilaWeb, :html
 
+  alias NilaWeb.Components.Gst.Month.ClientSwitcher
+
   @moduledoc """
   Resolves the two GST tracks into a compact month status and contextual action.
 
@@ -643,18 +645,18 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   attr :verdict, :map, required: true
   attr :client, :map, required: true
   attr :period, :string, required: true
+  attr :client_switcher_open?, :boolean, default: false
 
   def verdict(assigns) do
     ~H"""
     <section id="month-verdict" class="border-base-300 pb-section border-b">
       <div class="gap-block flex flex-col lg:flex-row lg:items-start lg:justify-between">
         <div class="space-y-related min-w-0">
-          <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h1 class="font-display text-base-content text-h4 font-normal">{@client.name}</h1>
-            <span class="text-ink-subtle text-ui font-medium">
-              {Formatters.period_label(@period)}
-            </span>
-          </div>
+          <ClientSwitcher.trigger
+            client={@client}
+            period={@period}
+            open?={@client_switcher_open?}
+          />
           <p
             :if={@verdict.headline}
             id="month-headline"

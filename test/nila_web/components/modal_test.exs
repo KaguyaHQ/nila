@@ -61,6 +61,49 @@ defmodule NilaWeb.Components.ModalTest do
            |> LazyHTML.text() =~ "Done"
   end
 
+  test "sheet retains ordinary dialog dismissal and declares edge geometry" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.modal
+        id="client-sheet"
+        title="Switch client"
+        on_close="close-sheet"
+        variant="sheet"
+        side="left"
+        return_focus="#open-client-switcher"
+      >
+        Client list
+        <:footer>Sheet actions</:footer>
+      </.modal>
+      """)
+
+    fragment = LazyHTML.from_fragment(html)
+    scrim = LazyHTML.query(fragment, "#client-sheet")
+    focus_wrap = LazyHTML.query(fragment, "#client-sheet-focus-wrap")
+
+    assert LazyHTML.attribute(scrim, "data-variant") == ["sheet"]
+    assert LazyHTML.attribute(scrim, "data-side") == ["left"]
+    assert LazyHTML.attribute(scrim, "phx-remove") != []
+    assert LazyHTML.attribute(focus_wrap, "data-variant") == ["sheet"]
+    assert LazyHTML.attribute(focus_wrap, "data-side") == ["left"]
+    assert LazyHTML.attribute(focus_wrap, "phx-click-away") == ["close-sheet"]
+    assert LazyHTML.attribute(focus_wrap, "phx-window-keydown") == ["close-sheet"]
+    assert LazyHTML.attribute(focus_wrap, "phx-key") == ["escape"]
+
+    assert LazyHTML.attribute(
+             LazyHTML.query(fragment, "#client-sheet-focus-wrap > .nila-modal-body"),
+             "class"
+           ) == [
+             "nila-modal-body min-h-0 flex-1 overflow-y-auto"
+           ]
+
+    assert fragment
+           |> LazyHTML.query("#client-sheet-focus-wrap > .nila-modal-footer")
+           |> LazyHTML.text() =~ "Sheet actions"
+  end
+
   test "workbench body retains the scrolling contract" do
     assigns = %{}
 
@@ -76,6 +119,8 @@ defmodule NilaWeb.Components.ModalTest do
       |> LazyHTML.from_fragment()
       |> LazyHTML.query("#review-workbench-focus-wrap > div")
 
-    assert LazyHTML.attribute(body, "class") == ["min-h-0 flex-1 overflow-y-auto"]
+    assert LazyHTML.attribute(body, "class") == [
+             "nila-modal-body min-h-0 flex-1 overflow-y-auto"
+           ]
   end
 end
