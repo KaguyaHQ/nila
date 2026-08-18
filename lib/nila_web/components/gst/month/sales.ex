@@ -410,9 +410,9 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                 rows={filing_summary_rows(@derived, @active_invoices)}
                 row_id={&"gstr1-filing-#{&1.key}"}
                 min_width="min-w-[640px]"
-                dense
+                mode="scan"
               >
-                <:col :let={row} label="Section">
+                <:col :let={row} label="Section" row_header>
                   <span class="text-base-content font-medium">{row.label}</span>
                 </:col>
                 <:col :let={row} label="Invoices / notes" align="right">{row.documents}</:col>
@@ -492,9 +492,9 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                 rows={@document_summary_rows}
                 row_id={&"gstr1-document-series-#{&1.id}"}
                 min_width="min-w-[560px]"
-                dense
+                mode="scan"
               >
-                <:col :let={row} label="Document kind">
+                <:col :let={row} label="Document kind" row_header>
                   <span class="text-base-content font-medium">{row.kind}</span>
                 </:col>
                 <:col :let={row} label="From"><span class="font-mono">{row.from}</span></:col>
@@ -668,9 +668,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             "nila-sales-register-row-reviewed"
         end
       }
+      mode="worklist"
       min_width="min-w-[920px]"
     >
-      <:col :let={invoice} label="Document No">
+      <:col :let={invoice} label="Document No" row_header>
         <span class={[
           "font-mono whitespace-nowrap",
           if(MapSet.member?(@visited, invoice["id"] || invoice["invoice_number"]),

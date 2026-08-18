@@ -8,9 +8,17 @@ defmodule NilaWeb.Components.Table do
   Renders a moonlight data table: hairline rows on a bordered surface.
 
   The single table component for the app. Works with a plain list or a LiveView
-  stream. Each `:col` takes `label`, `align` ("right"), and `class`. The `:empty`
-  slot renders when there are no rows; for streams pass `empty?` explicitly since
-  a stream's size isn't known at render time.
+  stream. Callers choose one product mode; they do not assemble density and row
+  alignment independently:
+
+    * `scan` — compact, vertically centred rows for registers and numeric schedules.
+    * `worklist` — standard, vertically centred rows for tasks and destinations.
+    * `review` — standard, top-aligned rows for multiline evidence or embedded controls.
+
+  Exactly one `:col` must be marked `row_header`; it identifies each row to assistive
+  technology. Each column also accepts `label`, `align` ("left", "center", or
+  "right"), and `class`. The `:empty` slot renders when there are no rows; for streams
+  pass `empty?` explicitly since a stream's size isn't known at render time.
 
   Two ways to make a row live, and the choice is not stylistic:
 
@@ -34,10 +42,11 @@ defmodule NilaWeb.Components.Table do
       <.data_table
         id="invoices"
         rows={@streams.invoices}
+        mode="worklist"
         row_click={fn inv -> JS.navigate(~p"/invoices/\#{inv.id}") end}
         empty?={@visible_count == 0}
       >
-        <:col :let={inv} label="Invoice">{inv.invoice_number}</:col>
+        <:col :let={inv} label="Invoice" row_header>{inv.invoice_number}</:col>
         <:col :let={inv} label="Amount" align="right">{format_money(inv.total_paise, prefix: "₹")}</:col>
         <:empty>Nothing here.</:empty>
       </.data_table>
@@ -59,10 +68,10 @@ defmodule NilaWeb.Components.Table do
   attr :empty?, :any, default: nil, doc: "force the empty state (required for streams)"
   attr :min_width, :string, default: nil, doc: "e.g. min-w-[760px] for horizontal scroll"
 
-  attr :dense, :boolean,
-    default: false,
-    doc:
-      "tighter rows, for working-sheet material read in bulk (the GSTR-1 workings)\n    rather than a worklist of rows that each want a decision"
+  attr :mode, :string,
+    required: true,
+    values: ~w(scan worklist review),
+    doc: "closed table recipe: scan, worklist, or review"
 
   attr :sticky_header, :string,
     default: nil,
@@ -71,14 +80,20 @@ defmodule NilaWeb.Components.Table do
 
   slot :col do
     attr :label, :string
-    attr :align, :string
+    attr :align, :string, values: ~w(left center right)
     attr :class, :any
+    attr :row_header, :boolean
   end
 
   slot :empty
 
   def data_table(assigns) do
     stream? = match?(%Phoenix.LiveView.LiveStream{}, assigns.rows)
+
+    if Enum.count(assigns.col, &Map.get(&1, :row_header, false)) != 1 do
+      raise ArgumentError,
+            "data_table expects exactly one :col with row_header to identify each row"
+    end
 
     assigns =
       assigns
@@ -101,7 +116,7 @@ defmodule NilaWeb.Components.Table do
       <table
         :if={!@is_empty?}
         class={["nila-table", @min_width]}
-        data-density={if(@dense, do: "dense", else: "standard")}
+        data-mode={@mode}
       >
         <thead class={[
           "bg-base-200 text-ink-subtle text-label uppercase",
@@ -110,9 +125,10 @@ defmodule NilaWeb.Components.Table do
           <tr>
             <th
               :for={col <- @col}
+              scope="col"
               class={[
                 "font-semibold",
-                col[:align] == "right" && "text-right tabular-nums"
+                column_alignment(col[:align])
               ]}
             >
               {col[:label]}
@@ -140,26 +156,14 @@ defmodule NilaWeb.Components.Table do
             tabindex={row_command(@row_click, @row_item, row) && "0"}
             role={row_command(@row_click, @row_item, row) && "button"}
           >
-            <td
+            <.table_body_cell
               :for={{col, index} <- Enum.with_index(@col)}
-              class={[
-                "align-top",
-                col[:align] == "right" && "text-right tabular-nums",
-                col[:class]
-              ]}
-            >
-              <%!-- Positioned, so it paints over the cells' ordinary text and
-                    takes their clicks; anything a row wants to keep clickable
-                    raises itself with `relative z-10`. --%>
-              <.link
-                :if={index == 0 && row_href(@row_navigate, @row_item, row)}
-                navigate={row_href(@row_navigate, @row_item, row)}
-                class="absolute inset-0 z-0"
-              >
-                <span class="sr-only">{row_name(@row_label, @row_item, row)}</span>
-              </.link>
-              {render_slot(col, @row_item.(row))}
-            </td>
+              col={col}
+              index={index}
+              item={@row_item.(row)}
+              href={row_href(@row_navigate, @row_item, row)}
+              link_label={row_name(@row_label, @row_item, row)}
+            />
           </tr>
         </tbody>
       </table>
@@ -178,6 +182,65 @@ defmodule NilaWeb.Components.Table do
 
   defp row_name(nil, _row_item, _row), do: nil
   defp row_name(row_label, row_item, row), do: row_label.(row_item.(row))
+
+  defp column_alignment("center"), do: "text-center"
+  defp column_alignment("right"), do: "text-right tabular-nums"
+  defp column_alignment(_align), do: "text-left"
+
+  attr :col, :map, required: true
+  attr :index, :integer, required: true
+  attr :item, :any, required: true
+  attr :href, :any, required: true
+  attr :link_label, :any, required: true
+
+  defp table_body_cell(assigns) do
+    ~H"""
+    <th
+      :if={@col[:row_header]}
+      scope="row"
+      class={[column_alignment(@col[:align]), @col[:class]]}
+    >
+      <.table_cell_content
+        col={@col}
+        index={@index}
+        item={@item}
+        href={@href}
+        link_label={@link_label}
+      />
+    </th>
+    <td :if={!@col[:row_header]} class={[column_alignment(@col[:align]), @col[:class]]}>
+      <.table_cell_content
+        col={@col}
+        index={@index}
+        item={@item}
+        href={@href}
+        link_label={@link_label}
+      />
+    </td>
+    """
+  end
+
+  attr :col, :map, required: true
+  attr :index, :integer, required: true
+  attr :item, :any, required: true
+  attr :href, :any, required: true
+  attr :link_label, :any, required: true
+
+  defp table_cell_content(assigns) do
+    ~H"""
+    <%!-- Positioned, so it paints over the cells' ordinary text and takes their
+          clicks; anything a row wants to keep clickable raises itself with
+          `relative z-10`. --%>
+    <.link
+      :if={@index == 0 && @href}
+      navigate={@href}
+      class="absolute inset-0 z-0"
+    >
+      <span class="sr-only">{@link_label}</span>
+    </.link>
+    {render_slot(@col, @item)}
+    """
+  end
 
   @doc """
   Renders an extracted purchase-order line-items table.
@@ -198,8 +261,8 @@ defmodule NilaWeb.Components.Table do
 
   def extracted_line_items_table(assigns) do
     ~H"""
-    <.data_table id={@id} rows={@line_items} min_width="min-w-[720px]">
-      <:col :let={line} label="Description">{line["description"]}</:col>
+    <.data_table id={@id} rows={@line_items} mode="review" min_width="min-w-[720px]">
+      <:col :let={line} label="Description" row_header>{line["description"]}</:col>
       <:col :let={line} label="HSN/SAC">{line["hsn_sac"]}</:col>
       <:col :let={line} label="Qty">{line["quantity"]} {line["unit"]}</:col>
       <:col :let={line} label="Rate">{line["unit_price"]}</:col>

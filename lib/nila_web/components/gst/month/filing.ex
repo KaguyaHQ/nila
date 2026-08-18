@@ -564,9 +564,9 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               rows={gstr3b_rows(@gstr3b)}
               row_id={&"gst-3b-row-#{&1.key}"}
               min_width="min-w-[640px]"
-              dense
+              mode="scan"
             >
-              <:col :let={row} label="GSTR-3B section">
+              <:col :let={row} label="GSTR-3B section" row_header>
                 <span class={row.strong? && "text-base-content font-semibold"}>{row.label}</span>
               </:col>
               <:col :let={row} label="IGST" align="right">{head_money(row, "igst")}</:col>
@@ -609,9 +609,9 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               rows={@setoff_rows}
               row_id={&"gst-3b-setoff-#{&1.key}"}
               min_width="min-w-[720px]"
-              dense
+              mode="scan"
             >
-              <:col :let={row} label="Liability head">
+              <:col :let={row} label="Liability head" row_header>
                 <span class="text-base-content font-semibold">{row.label}</span>
               </:col>
               <:col :let={row} label="Payable" align="right">{money_paise(row.payable)}</:col>

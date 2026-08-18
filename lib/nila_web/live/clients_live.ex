@@ -101,8 +101,9 @@ defmodule NilaWeb.ClientsLive do
           row_navigate={&row_path/1}
           row_label={fn client -> "Open #{client.name}" end}
           empty?={@clients == []}
+          mode="worklist"
         >
-          <:col :let={client} label="Name">
+          <:col :let={client} label="Name" row_header>
             <div class="flex min-w-0 items-center gap-2">
               <span class="min-w-0 font-medium wrap-break-word">{client.name}</span>
               <span :if={!client.gstin} class="shrink-0">

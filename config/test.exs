@@ -32,7 +32,8 @@ config :nila,
   whatsapp_signup_adapter: Nila.Integrations.WhatsAppSignupStub,
   whatsapp_chase_template: "nila_document_chase",
   purchase_extractor: Nila.Gst.Extraction.Purchase.Stub,
-  sales_extractor: Nila.Gst.Extraction.Sales.Stub
+  sales_extractor: Nila.Gst.Extraction.Sales.Stub,
+  bank_statement_extractor: Nila.Banking.Extractor.Stub
 
 config :nila, Nila.Integrations.WhatsApp,
   graph_url: "https://graph.facebook.com/v26.0/",

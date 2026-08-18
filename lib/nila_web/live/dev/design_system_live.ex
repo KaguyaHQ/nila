@@ -459,24 +459,76 @@ if Application.compile_env(:nila, :dev_routes, false) or
               </section>
 
               <section id="accounting" class="space-y-region scroll-mt-8">
-                <.section_heading eyebrow="Accounting" title="Operational density keeps its hierarchy">
-                  Exact values remain aligned and the unresolved line stays visible.
+                <.section_heading eyebrow="Accounting" title="Three table jobs, one component">
+                  Each mode closes its own geometry and alignment. Product screens choose the job,
+                  not a loose combination of padding and vertical alignment.
                 </.section_heading>
 
-                <.data_table id="ds-register-rows" rows={@rows} dense>
-                  <:col :let={row} label="Invoice">
-                    <span class="font-semibold">{row.invoice}</span>
-                  </:col>
-                  <:col :let={row} label="Party">{row.party}</:col>
-                  <:col :let={row} label="Place of supply">{row.place}</:col>
-                  <:col :let={row} label="Taxable value" align="right">
-                    {format_money(row.taxable_paise, prefix: "₹")}
-                  </:col>
-                  <:col :let={row} label="Rate" align="right">{row.rate}</:col>
-                  <:col :let={row} label="Review">
-                    <.badge variant={row.variant}>{row.status}</.badge>
-                  </:col>
-                </.data_table>
+                <div class="space-y-section">
+                  <div class="space-y-related">
+                    <div>
+                      <h3 class="text-base-content text-ui font-semibold">Scan</h3>
+                      <p class="text-ink-muted text-ui">Compact registers and numeric schedules.</p>
+                    </div>
+                    <.data_table id="ds-register-rows" rows={@rows} mode="scan">
+                      <:col :let={row} label="Invoice" row_header>
+                        <span class="font-semibold">{row.invoice}</span>
+                      </:col>
+                      <:col :let={row} label="Party">{row.party}</:col>
+                      <:col :let={row} label="Place of supply">{row.place}</:col>
+                      <:col :let={row} label="Taxable value" align="right">
+                        {format_money(row.taxable_paise, prefix: "₹")}
+                      </:col>
+                      <:col :let={row} label="Rate" align="right">{row.rate}</:col>
+                      <:col :let={row} label="Review">
+                        <.badge variant={row.variant}>{row.status}</.badge>
+                      </:col>
+                    </.data_table>
+                  </div>
+
+                  <div class="space-y-related">
+                    <div>
+                      <h3 class="text-base-content text-ui font-semibold">Worklist</h3>
+                      <p class="text-ink-muted text-ui">Standard rows for tasks and destinations.</p>
+                    </div>
+                    <.data_table id="ds-worklist-rows" rows={Enum.take(@rows, 2)} mode="worklist">
+                      <:col :let={row} label="Invoice" row_header>
+                        <span class="font-semibold">{row.invoice}</span>
+                      </:col>
+                      <:col :let={row} label="Party">{row.party}</:col>
+                      <:col :let={row} label="Where it stands">
+                        <.badge variant={row.variant}>{row.status}</.badge>
+                      </:col>
+                      <:col :let={row} label="Taxable value" align="right">
+                        {format_money(row.taxable_paise, prefix: "₹")}
+                      </:col>
+                    </.data_table>
+                  </div>
+
+                  <div class="space-y-related">
+                    <div>
+                      <h3 class="text-base-content text-ui font-semibold">Review</h3>
+                      <p class="text-ink-muted text-ui">
+                        Top-aligned rows when evidence needs more than one line.
+                      </p>
+                    </div>
+                    <.data_table id="ds-review-rows" rows={Enum.take(@rows, 2)} mode="review">
+                      <:col :let={row} label="Invoice" row_header>
+                        <span class="font-semibold">{row.invoice}</span>
+                      </:col>
+                      <:col :let={row} label="Extracted evidence">
+                        <span class="text-base-content block">{row.party}</span>
+                        <span class="text-ink-muted block">Place of supply · {row.place}</span>
+                      </:col>
+                      <:col :let={row} label="Taxable value" align="right">
+                        <span class="text-base-content block">
+                          {format_money(row.taxable_paise, prefix: "₹")}
+                        </span>
+                        <span class="text-ink-muted block">Printed amount</span>
+                      </:col>
+                    </.data_table>
+                  </div>
+                </div>
               </section>
 
               <section id="workpaper" class="space-y-region scroll-mt-8">
@@ -543,8 +595,8 @@ if Application.compile_env(:nila, :dev_routes, false) or
                           </.fold_summary>
                         </:summary>
                         <div class="pt-section">
-                          <.data_table id="ds-b2b-rows" rows={Enum.take(@rows, 2)} dense>
-                            <:col :let={row} label="Invoice">{row.invoice}</:col>
+                          <.data_table id="ds-b2b-rows" rows={Enum.take(@rows, 2)} mode="scan">
+                            <:col :let={row} label="Invoice" row_header>{row.invoice}</:col>
                             <:col :let={row} label="Party">{row.party}</:col>
                             <:col :let={row} label="Taxable value" align="right">
                               {format_money(row.taxable_paise, prefix: "₹")}

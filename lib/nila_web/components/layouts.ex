@@ -85,6 +85,12 @@ defmodule NilaWeb.Layouts do
               current_path={@current_path}
             />
             <.rail_link
+              href={~p"/banking"}
+              icon="hero-building-library"
+              label="Banking"
+              current_path={@current_path}
+            />
+            <.rail_link
               href={~p"/register"}
               icon="hero-table-cells"
               label="GST months"

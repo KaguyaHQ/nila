@@ -151,25 +151,43 @@ defmodule NilaWeb.CoreComponentsTest do
     assert LazyHTML.attribute(selected, "aria-current") == ["page"]
   end
 
-  test "table density is owned by the controlled data attribute" do
+  test "table modes own geometry and require a semantic row header" do
     assigns = %{rows: [%{invoice: "INV-1", status: "Reviewed"}]}
 
     html =
       rendered_to_string(~H"""
       <div>
-        <.data_table id="standard-table" rows={@rows}>
-          <:col :let={row} label="Invoice">{row.invoice}</:col>
+        <.data_table id="scan-table" rows={@rows} mode="scan">
+          <:col :let={row} label="Invoice" row_header>{row.invoice}</:col>
         </.data_table>
-        <.data_table id="dense-table" rows={@rows} dense>
-          <:col :let={row} label="Invoice">{row.invoice}</:col>
+        <.data_table id="worklist-table" rows={@rows} mode="worklist">
+          <:col :let={row} label="Invoice" row_header>{row.invoice}</:col>
+        </.data_table>
+        <.data_table id="review-table" rows={@rows} mode="review">
+          <:col :let={row} label="Invoice" row_header>{row.invoice}</:col>
         </.data_table>
       </div>
       """)
 
-    assert html =~ ~s(data-density="standard")
-    assert html =~ ~s(data-density="dense")
+    assert html =~ ~s(data-mode="scan")
+    assert html =~ ~s(data-mode="worklist")
+    assert html =~ ~s(data-mode="review")
+    assert html =~ ~s(<th scope="row" class="text-left">)
+    assert html =~ "INV-1"
     refute html =~ "px-3 py-2"
     refute html =~ "px-4 py-3"
+  end
+
+  test "table rejects ambiguous row-header semantics" do
+    assigns = %{rows: [%{invoice: "INV-1"}]}
+
+    assert_raise ArgumentError, ~r/exactly one :col with row_header/, fn ->
+      rendered_to_string(~H"""
+      <.data_table id="missing-row-header" rows={@rows} mode="scan">
+        <:col :let={row} label="Invoice">{row.invoice}</:col>
+      </.data_table>
+      """)
+    end
   end
 
   test "input family uses the canonical field recipes" do

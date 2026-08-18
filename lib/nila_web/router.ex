@@ -128,6 +128,8 @@ defmodule NilaWeb.Router do
       live "/register", Gst.RegisterLive, :index
       live "/clients/new", ClientNewLive, :new
       live "/clients/:id/edit", ClientEditLive, :edit
+      live "/banking", Banking.UploadLive, :new
+      live "/banking/:id", Banking.StatementLive, :show
       live "/gst/upload", Gst.UploadLive, :new
       live "/gst/:client_id/:period", Gst.MonthLive, :index
       live "/gst/:client_id/:period/review/:lane", Gst.MonthLive, :review
@@ -171,6 +173,17 @@ defmodule NilaWeb.Router do
     ]
 
     get "/:client_id/:period/tally.xml", Gstr1Controller, :tally_download
+  end
+
+  scope "/banking", NilaWeb do
+    pipe_through [
+      :browser,
+      :authenticated_browser,
+      :verified_browser,
+      :require_export
+    ]
+
+    get "/:id/tally.xml", BankingExportController, :tally
   end
 
   if Mix.env() != :prod do

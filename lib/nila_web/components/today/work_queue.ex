@@ -32,9 +32,12 @@ defmodule NilaWeb.Components.Today.WorkQueue do
         rows={rows}
         row_id={fn r -> "today-row-#{r.client_id}-#{r.period}" end}
         row_click={fn r -> JS.navigate(r.path) end}
+        mode="worklist"
         min_width="min-w-[840px]"
       >
-        <:col :let={r} label="Client"><span class="wrap-break-word">{r.client_name}</span></:col>
+        <:col :let={r} label="Client" row_header>
+          <span class="wrap-break-word">{r.client_name}</span>
+        </:col>
         <:col :let={r} label="Period">
           <span class="whitespace-nowrap tabular-nums">{period_label(r.period)}</span>
         </:col>

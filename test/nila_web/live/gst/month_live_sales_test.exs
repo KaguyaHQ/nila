@@ -338,7 +338,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     assert has_element?(view, "#gstr1-register:not(details)")
-    assert has_element?(view, "#gstr1-register table.nila-table[data-density='standard']")
+    assert has_element?(view, "#gstr1-register table.nila-table[data-mode='worklist']")
     assert has_element?(view, "#gstr1-register thead.text-label")
     assert has_element?(view, "#gstr1-invoices #gstr1-inv-20\\/2025-26", "Review case")
     assert has_element?(view, "#gstr1-invoices #gstr1-inv-20\\/2025-26", "No recorded action")
