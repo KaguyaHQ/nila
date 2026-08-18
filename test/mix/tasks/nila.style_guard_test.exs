@@ -249,17 +249,15 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
 
     assert disabled =~ "box-shadow: none;"
 
-    persistent_cards =
-      css_rule(
-        css,
-        ".nila-sales-review-item[data-selected=\"true\"], .nila-purchase-scorecard[data-selected=\"true\"]"
-      )
+    persistent_card =
+      css_rule(css, ".nila-sales-review-item[data-selected=\"true\"]")
 
-    assert persistent_cards =~ "border-color: var(--accent-a8);"
-    assert persistent_cards =~ "background: var(--color-base-100);"
-    assert persistent_cards =~ "box-shadow: inset 0 0 0 1px var(--accent-a8);"
-    refute persistent_cards =~ "background: var(--accent-a3);"
+    assert persistent_card =~ "border-color: var(--accent-a8);"
+    assert persistent_card =~ "background: var(--color-base-100);"
+    assert persistent_card =~ "box-shadow: inset 0 0 0 1px var(--accent-a8);"
+    refute persistent_card =~ "background: var(--accent-a3);"
 
+    refute css =~ "nila-purchase-scorecard"
     refute css =~ "--nila-accent-"
   end
 

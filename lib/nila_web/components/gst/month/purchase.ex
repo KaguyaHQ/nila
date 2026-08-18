@@ -53,7 +53,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       |> assign(:next_action_copy, next_action_copy(first_action, assigns, action_counts))
       |> assign(:carried_itc, carried_itc)
       |> assign(:action_counts, action_counts)
-      |> assign(:scorecards, reconciliation_scorecards(assigns.rows, assigns.review))
+      |> assign(:reconciliation_filters, reconciliation_filters(assigns.rows, assigns.review))
       |> assign(:required_actions, required_actions)
       |> assign(:review_available?, review_available?)
       |> assign(:first_action, first_action)
@@ -159,8 +159,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         [
           @required_actions != [] && %{id: "purchase-required-actions", label: "Required actions"},
           %{id: "purchase-controls", label: "Controls"},
-          @review_available? &&
-            %{id: "gstr3b-reconciliation-scorecard", label: "Reconciliation detail"},
           %{id: "gstr3b-register", label: "Register"},
           %{id: "gstr3b-source-documents", label: "Evidence"},
           %{id: "purchase-transition", label: "GSTR-3B"}
@@ -348,39 +346,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         </div>
       </section>
 
-      <section
-        :if={@review_available?}
-        id="gstr3b-reconciliation-scorecard"
-        class="space-y-block scroll-mt-28"
-      >
-        <div class="space-y-related">
-          <h3 class="text-base-content text-h4 font-semibold">Reconciliation detail</h3>
-          <p class="text-ink-muted text-ui">
-            Machine buckets filter the purchase register; they do not establish ITC eligibility. Select one to inspect its rows.
-          </p>
-        </div>
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <button
-            :for={card <- @scorecards}
-            type="button"
-            id={"purchase-score-#{card.key}"}
-            phx-click="filter-purchase-reconciliation"
-            phx-value-filter={card.filter}
-            class="border-base-300 nila-purchase-scorecard rounded-box space-y-1 border p-3 text-left transition"
-            data-selected={to_string(@recon_filter == card.filter)}
-            aria-pressed={to_string(@recon_filter == card.filter)}
-          >
-            <span class="nila-purchase-scorecard-label text-ink-subtle text-label font-semibold uppercase">
-              {card.label}
-            </span>
-            <span class="text-base-content text-body block font-semibold tabular-nums">{card.count}</span>
-            <span class="text-ink-muted text-ui block tabular-nums">{format_money(card.tax_paise,
-              prefix: "₹"
-            )} tax</span>
-          </button>
-        </div>
-      </section>
-
       <section id="gstr3b-register" class="space-y-block scroll-mt-28">
         <div class="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -399,6 +364,39 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             variant="outline"
             size="xs"
           >Review next</.button>
+        </div>
+
+        <div
+          :if={@review_available?}
+          id="purchase-reconciliation-filters"
+          class="space-y-related"
+        >
+          <div class="flex flex-wrap items-baseline gap-2">
+            <p class="text-base-content text-ui font-semibold">Filter by machine reconciliation</p>
+            <p class="text-ink-muted text-ui">
+              This filters rows; it does not establish ITC eligibility.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-1" role="group" aria-label="Machine reconciliation filter">
+            <.button
+              :for={filter <- @reconciliation_filters}
+              id={"purchase-filter-#{filter.key}"}
+              type="button"
+              phx-click="filter-purchase-reconciliation"
+              phx-value-filter={filter.filter}
+              variant={if(@recon_filter == filter.filter, do: "soft", else: "ghost")}
+              size="xs"
+              aria-pressed={to_string(@recon_filter == filter.filter)}
+            >
+              <span>{filter.label}</span>
+              <span class="text-ink-muted tabular-nums">
+                {filter.count}<span :if={@recon_filter == filter.filter and filter.tax_paise != 0}> · {format_money(
+                  filter.tax_paise,
+                  prefix: "₹"
+                )} tax</span>
+              </span>
+            </.button>
+          </div>
         </div>
 
         <div class="grid gap-3 xl:grid-cols-[minmax(16rem,1fr)_auto_auto] xl:items-end">
@@ -564,16 +562,16 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
     """
   end
 
-  defp reconciliation_scorecards(rows, review) do
+  defp reconciliation_filters(rows, review) do
     definitions = [
-      {:all, "All reconciliation", :all, fn _row -> true end},
+      {:all, "All", :all, fn _row -> true end},
       {:matched, "Matched", :matched, &(&1["bucket"] == "matched")},
-      {:suggested, "Suggested / confirm", :needs_human, &(&1["bucket"] == "needs_human")},
+      {:suggested, "Suggested", :needs_human, &(&1["bucket"] == "needs_human")},
       {:value_difference, "Value difference", :value_mismatch,
        &(&1["bucket"] == "value_mismatch")},
       {:not_in_2b, "Not in GSTR-2B", :in_books_not_2b, &(&1["bucket"] == "in_books_not_2b")},
       {:two_b_only, "GSTR-2B only", :in_2b_not_books, &(&1["bucket"] == "in_2b_not_books")},
-      {:resolved, "Resolved by a human", :resolved, &human_resolved_row?(&1, review)}
+      {:resolved, "Human-resolved", :resolved, &human_resolved_row?(&1, review)}
     ]
 
     Enum.map(definitions, fn {key, label, filter, predicate} ->

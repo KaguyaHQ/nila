@@ -29,7 +29,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     }
   end
 
-  test "purchase reconciliation selection stays an outlined large-card state", %{
+  test "purchase reconciliation behaves as compact register filters", %{
     conn: conn,
     client: client
   } do
@@ -37,18 +37,27 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     assert has_element?(
              view,
-             "#purchase-score-all[data-selected='true'][aria-pressed='true'] .nila-purchase-scorecard-label"
+             "#purchase-reconciliation-filters [role='group'][aria-label='Machine reconciliation filter']"
            )
-
-    view |> element("#purchase-score-matched") |> render_click()
 
     assert has_element?(
              view,
-             "#purchase-score-matched[data-selected='true'][aria-pressed='true']"
+             "#purchase-filter-all[data-variant='soft'][aria-pressed='true']",
+             "All"
            )
 
-    refute has_element?(view, "#purchase-score-all[data-selected='true']")
-    assert has_element?(view, "#purchase-score-all[aria-pressed='false']")
+    assert has_element?(view, "#purchase-filter-all", "tax")
+    view |> element("#purchase-filter-matched") |> render_click()
+
+    assert has_element?(
+             view,
+             "#purchase-filter-matched[data-variant='soft'][aria-pressed='true']"
+           )
+
+    assert has_element?(
+             view,
+             "#purchase-filter-all[data-variant='ghost'][aria-pressed='false']"
+           )
   end
 
   test "the gap between books ITC and the 2B ceiling is a line, not a subtraction", %{
@@ -279,8 +288,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     assert_dom_order(view, [
       "purchase-itc-conclusion",
       "purchase-controls",
-      "gstr3b-reconciliation-scorecard",
-      "gstr3b-register"
+      "gstr3b-register",
+      "purchase-reconciliation-filters"
     ])
   end
 
@@ -333,8 +342,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
       "purchase-itc-conclusion",
       "purchase-required-actions",
       "purchase-controls",
-      "gstr3b-reconciliation-scorecard",
-      "gstr3b-register"
+      "gstr3b-register",
+      "purchase-reconciliation-filters"
     ])
 
     assert need_decision > 0
@@ -801,8 +810,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     assert_dom_order(view, [
       "purchase-itc-conclusion",
       "purchase-controls",
-      "gstr3b-reconciliation-scorecard",
-      "gstr3b-register"
+      "gstr3b-register",
+      "purchase-reconciliation-filters"
     ])
   end
 
@@ -931,8 +940,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     assert_dom_order(view, [
       "purchase-itc-conclusion",
       "purchase-controls",
-      "gstr3b-reconciliation-scorecard",
-      "gstr3b-register"
+      "gstr3b-register",
+      "purchase-reconciliation-filters"
     ])
   end
 

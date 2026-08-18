@@ -40,7 +40,7 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     refute has_element?(view, "#gstr3b-review-required")
     refute has_element?(view, "#purchase-open-gstr3b")
     refute has_element?(view, "#purchase-required-actions")
-    refute has_element?(view, "#gstr3b-reconciliation-scorecard")
+    refute has_element?(view, "#purchase-reconciliation-filters")
     refute has_element?(view, "#purchase-action-filters")
     refute has_element?(view, "#purchase-transition-gstr3b")
     assert has_element?(view, "#purchase-transition", "waits until the portal publishes")
@@ -65,7 +65,7 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     refute has_element?(view, "#gstr3b-review-required")
     refute has_element?(view, "#purchase-open-gstr3b")
     refute has_element?(view, "#purchase-required-actions")
-    refute has_element?(view, "#gstr3b-reconciliation-scorecard")
+    refute has_element?(view, "#purchase-reconciliation-filters")
     refute has_element?(view, "#purchase-action-filters")
     refute has_element?(view, "#purchase-transition-gstr3b")
   end
@@ -94,8 +94,8 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
       "purchase-itc-conclusion",
       "purchase-required-actions",
       "purchase-controls",
-      "gstr3b-reconciliation-scorecard",
-      "gstr3b-register"
+      "gstr3b-register",
+      "purchase-reconciliation-filters"
     ])
   end
 
@@ -115,8 +115,8 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
       "purchase-itc-conclusion",
       "purchase-required-actions",
       "purchase-controls",
-      "gstr3b-reconciliation-scorecard",
-      "gstr3b-register"
+      "gstr3b-register",
+      "purchase-reconciliation-filters"
     ])
   end
 

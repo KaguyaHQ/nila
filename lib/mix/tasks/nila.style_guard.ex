@@ -108,7 +108,6 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "nila-settings-link" => "lib/nila_web/components/layouts.ex",
     "nila-account-trigger" => "lib/nila_web/components/layouts.ex",
     "nila-sales-review-item" => "lib/nila_web/components/gst/review/sales_live.ex",
-    "nila-purchase-scorecard" => "lib/nila_web/components/gst/month/purchase.ex",
     "nila-gstr1-handoff" => "lib/nila_web/components/gst/month/filing.ex",
     "nila-sales-register-row" => "lib/nila_web/components/gst/month/sales.ex",
     "nila-workpaper-tab" => "lib/nila_web/components/gst/month/workpaper.ex",
@@ -116,7 +115,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "nila-alert" => "lib/nila_web/components/flash.ex",
     "nila-toast" => "lib/nila_web/components/flash.ex"
   }
-  @component_recipe_pattern ~r/\bnila-(?:badge|button|link|segmented|card|field|file-drop|file-accent|input|select|textarea|checkbox|table|fold|modal|menu|callout|spinner|progress|evidence-trigger|settings-link|account-trigger|sales-review-item|purchase-scorecard|gstr1-handoff|sales-register-row|workpaper-tab|workings-reference|alert|toast)(?:-[\w-]+)?\b/
+  @component_recipe_pattern ~r/\bnila-(?:badge|button|link|segmented|card|field|file-drop|file-accent|input|select|textarea|checkbox|table|fold|modal|menu|callout|spinner|progress|evidence-trigger|settings-link|account-trigger|sales-review-item|gstr1-handoff|sales-register-row|workpaper-tab|workings-reference|alert|toast)(?:-[\w-]+)?\b/
 
   @spacing_pattern ~r/(?<![\w-])-?(?:p[xysetrbl]?|m[xysetrbl]?|gap(?:-[xy])?|space-[xy])-(\[[^\]]+\]|\d+(?:\.\d+)?)/
   @raw_structural_spacing_pattern ~r/(?<![\w-])space-y-(?:2|4|6|8)\b/

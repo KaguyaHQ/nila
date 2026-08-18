@@ -637,15 +637,13 @@ body {
 }
 
 .nila-evidence-trigger:hover,
-.nila-sales-review-item:hover,
-.nila-purchase-scorecard:hover {
+.nila-sales-review-item:hover {
   border-color: var(--accent-a7);
 }
 
 .nila-evidence-trigger:focus-visible,
 .nila-account-trigger:focus-visible,
-.nila-sales-review-item:focus-visible,
-.nila-purchase-scorecard:focus-visible {
+.nila-sales-review-item:focus-visible {
   outline: 2px solid var(--focus-8);
   outline-offset: -1px;
 }
@@ -655,15 +653,10 @@ body {
   color: var(--accent-a11);
 }
 
-.nila-sales-review-item[data-selected="true"],
-.nila-purchase-scorecard[data-selected="true"] {
+.nila-sales-review-item[data-selected="true"] {
   border-color: var(--accent-a8);
   background: var(--color-base-100);
   box-shadow: inset 0 0 0 1px var(--accent-a8);
-}
-
-.nila-purchase-scorecard[data-selected="true"] .nila-purchase-scorecard-label {
-  color: var(--accent-a11);
 }
 
 .nila-gstr1-handoff {
