@@ -26,6 +26,7 @@ import {hooks as colocatedHooks} from "phoenix-colocated/nila"
 import topbar from "../vendor/topbar"
 import {SubmitOnEnter} from "./hooks/submit_on_enter"
 import {CommandPalette} from "./hooks/command_palette"
+import {SelectableList} from "./hooks/selectable_list"
 import {QuoteLineGrid} from "./hooks/quote_line_grid"
 import {QuoteDraftGuard} from "./hooks/quote_draft_guard"
 import {WhatsAppEmbeddedSignup} from "./hooks/whatsapp_embedded_signup"
@@ -99,6 +100,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     RailCollapse,
     SubmitOnEnter,
     CommandPalette,
+    SelectableList,
     QuoteLineGrid,
     QuoteDraftGuard,
     WhatsAppEmbeddedSignup,

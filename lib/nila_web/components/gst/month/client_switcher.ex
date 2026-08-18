@@ -50,43 +50,67 @@ defmodule NilaWeb.Components.Gst.Month.ClientSwitcher do
             Switch client
           </h2>
           <p class="text-ink-muted text-ui">
-            {period_label(@period)} and {track_label(@selected_track)} will stay selected.
+            {period_label(@period)} · {track_label(@selected_track)}
           </p>
         </div>
       </:header>
 
-      <.form
-        for={@form}
-        id="client-switcher-search-form"
-        phx-change="search-client-switcher"
-        class="client-switcher-search"
+      <div
+        id="client-switcher-navigation"
+        phx-hook="SelectableList"
+        data-loop="true"
+        data-filter-value={@form[:query].value || ""}
       >
-        <.input
-          field={@form[:query]}
-          type="search"
-          placeholder="Search clients"
-          aria-label="Search clients"
-          autocomplete="off"
-          phx-debounce="200"
-          phx-mounted={JS.focus()}
-        />
-      </.form>
-
-      <div id="client-switcher-options" class="client-switcher-options" phx-update="stream">
-        <p id="client-switcher-empty" class="text-ink-muted text-ui hidden only:block">
-          No clients match this search.
-        </p>
-        <.link
-          :for={{dom_id, option} <- @clients}
-          id={dom_id}
-          navigate={client_path(option, @period, @selected_track)}
-          class="client-switcher-option"
-          data-state={if(option.id == @client.id, do: "current", else: "idle")}
-          aria-current={if(option.id == @client.id, do: "page", else: nil)}
+        <.form
+          for={@form}
+          id="client-switcher-search-form"
+          phx-change="search-client-switcher"
+          phx-submit="select-client-switcher"
+          class="client-switcher-search"
         >
-          <span class="truncate font-medium">{option.name}</span>
-          <span :if={option.id == @client.id} class="text-ink-subtle">Current</span>
-        </.link>
+          <.input
+            field={@form[:query]}
+            type="search"
+            placeholder="Search clients"
+            aria-label="Search clients"
+            aria-controls="client-switcher-options"
+            role="combobox"
+            aria-expanded="true"
+            aria-autocomplete="list"
+            autocomplete="off"
+            phx-debounce="200"
+            phx-mounted={JS.focus()}
+            data-selectable-input
+          />
+        </.form>
+
+        <div
+          id="client-switcher-options"
+          class="client-switcher-options"
+          phx-update="stream"
+          role="listbox"
+          aria-label="Clients"
+          data-selectable-list
+        >
+          <p id="client-switcher-empty" class="text-ink-muted text-ui hidden only:block">
+            No clients match this search.
+          </p>
+          <.link
+            :for={{dom_id, option} <- @clients}
+            id={dom_id}
+            navigate={client_path(option, @period, @selected_track)}
+            class="client-switcher-option"
+            data-state={if(option.id == @client.id, do: "current", else: "idle")}
+            aria-current={if(option.id == @client.id, do: "page", else: nil)}
+            role="option"
+            aria-selected="false"
+            tabindex="-1"
+            data-selectable-option
+          >
+            <span class="truncate font-medium">{option.name}</span>
+            <span :if={option.id == @client.id} class="text-ink-subtle">Current</span>
+          </.link>
+        </div>
       </div>
     </.modal>
     """

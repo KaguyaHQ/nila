@@ -193,6 +193,10 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
   remain Nila/Radix. Callers cannot pass arbitrary panel classes.
 - **Menus:** transient action menus use the native `popover="auto"` contract for light
   dismissal and Escape behavior; `<details>` is a disclosure primitive, not a dropdown.
+- **Searchable single-select lists:** use the shared `SelectableList` hook. Keep focus in a
+  combobox input, expose the virtual option through `aria-activedescendant`, and use
+  listbox/option semantics. Arrow keys, Home, End, and Enter stay client-side; a server-filtered
+  form must also provide a `phx-submit` fallback so Enter cannot become a browser reload.
 - **Feedback:** `<.callout>`, `<.spinner>`, and `<.progress_bar>` own status mechanics;
   `<.flash>` owns floating notifications.
 - **Forms:** `<.input>` for every field, `to_form/2`, and unique form/control IDs.

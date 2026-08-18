@@ -5,27 +5,19 @@
 // toggle is reverted by LiveView's DOM patch on the next render (e.g. while typing).
 // Keyboard navigation over result rows stays client-side; rows are <.link navigate>
 // anchors, so activating one is a `.click()` that LiveView turns into SPA navigation.
+import {SelectableListController} from "./selectable_list"
+
 export const CommandPalette = {
   mounted() {
     this.trigger = document.getElementById("command-palette-trigger")
-    this.activeIndex = -1
     this.open = this.isOpen()
-
-    this.rows = () => Array.from(this.el.querySelectorAll("[data-palette-row]"))
-    this.clearActive = () => this.rows().forEach((row) => row.removeAttribute("data-active"))
-
-    this.setActive = (index) => {
-      const rows = this.rows()
-      this.clearActive()
-      if (rows.length === 0) {
-        this.activeIndex = -1
-        return
-      }
-      this.activeIndex = (index + rows.length) % rows.length
-      const row = rows[this.activeIndex]
-      row.setAttribute("data-active", "")
-      row.scrollIntoView({block: "nearest"})
-    }
+    this.selection = new SelectableListController(this.el, {
+      inputSelector: "[data-palette-input]",
+      listSelector: "[data-palette-list]",
+      optionSelector: "[data-palette-row]",
+      loop: true,
+    })
+    this.selection.refresh()
 
     this.onKeydown = (event) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -43,22 +35,23 @@ export const CommandPalette = {
           break
         case "ArrowDown":
           event.preventDefault()
-          this.setActive(this.activeIndex + 1)
+          this.selection.move(1)
           break
         case "ArrowUp":
           event.preventDefault()
-          this.setActive(this.activeIndex - 1)
+          this.selection.move(-1)
           break
-        case "Enter": {
-          const rows = this.rows()
-          const target =
-            this.activeIndex >= 0 ? rows[this.activeIndex] : rows.length === 1 ? rows[0] : null
-          if (target) {
-            event.preventDefault()
-            target.click()
-          }
+        case "Home":
+          event.preventDefault()
+          this.selection.first()
           break
-        }
+        case "End":
+          event.preventDefault()
+          this.selection.last()
+          break
+        case "Enter":
+          if (this.selection.activate({singleFallback: true})) event.preventDefault()
+          break
       }
     }
 
@@ -89,8 +82,7 @@ export const CommandPalette = {
 
     this.open = open
     // Result rows were re-rendered — drop any stale selection.
-    this.activeIndex = -1
-    this.clearActive()
+    this.selection.refresh()
   },
 
   destroyed() {

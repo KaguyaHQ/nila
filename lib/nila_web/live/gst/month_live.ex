@@ -972,6 +972,27 @@ defmodule NilaWeb.Gst.MonthLive do
      |> stream(:client_switcher_clients, PeriodClients.list(org_id, period, query), reset: true)}
   end
 
+  def handle_event("select-client-switcher", %{"client_switcher" => params}, socket) do
+    %{
+      current_scope: %{current_org: %{id: org_id}},
+      period: period,
+      selected_track: track
+    } = socket.assigns
+
+    query = Map.get(params, "query", "")
+
+    case PeriodClients.list(org_id, period, query) do
+      [client | _] ->
+        {:noreply, push_navigate(socket, to: ~p"/gst/#{client.id}/#{period}?track=#{track}")}
+
+      [] ->
+        {:noreply,
+         socket
+         |> assign(:client_switcher_form, client_switcher_form(query))
+         |> stream(:client_switcher_clients, [], reset: true)}
+    end
+  end
+
   def handle_event("open-duplicate-review", %{"target" => target}, socket),
     do: {:noreply, assign(socket, :duplicate_review_target, target)}
 

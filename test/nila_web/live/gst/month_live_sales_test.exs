@@ -126,6 +126,18 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert has_element?(
              view,
+             "#client-switcher-navigation[phx-hook='SelectableList'][data-loop='true']"
+           )
+
+    assert has_element?(
+             view,
+             "#client_switcher_query[role='combobox'][aria-controls='client-switcher-options']"
+           )
+
+    assert has_element?(view, "#client-switcher-options[role='listbox'][aria-label='Clients']")
+
+    assert has_element?(
+             view,
              "#client-switcher-client-#{client.id}[data-state='current']",
              "Current"
            )
@@ -134,6 +146,11 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
              view,
              "#client-switcher-client-#{caltech.id}[href='/gst/#{caltech.id}/#{@period}?track=sales']",
              "Caltech"
+           )
+
+    assert has_element?(
+             view,
+             "#client-switcher-client-#{caltech.id}[role='option'][tabindex='-1'][data-selectable-option]"
            )
 
     refute has_element?(view, "#client-switcher-client-#{other_period.id}")
@@ -151,6 +168,24 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     refute has_element?(view, "#client-switcher")
     assert has_element?(view, "#open-client-switcher[aria-expanded='false']")
+
+    view |> element("#open-client-switcher") |> render_click()
+
+    view
+    |> form("#client-switcher-search-form", %{
+      "client_switcher" => %{"query" => "no-such-client"}
+    })
+    |> render_submit()
+
+    assert has_element?(view, "#client-switcher", "No clients match this search.")
+    assert has_element?(view, "#client_switcher_query[value='no-such-client']")
+    refute has_element?(view, "#client-switcher-options [data-selectable-option]")
+
+    view
+    |> form("#client-switcher-search-form", %{"client_switcher" => %{"query" => "calt"}})
+    |> render_submit()
+
+    assert_redirect(view, ~p"/gst/#{caltech.id}/#{@period}?track=sales")
   end
 
   test "return workings disclose schedules before contributor rows", %{
