@@ -42,10 +42,12 @@ export const CommandPalette = {
           this.selection.move(-1)
           break
         case "Home":
+        case "PageUp":
           event.preventDefault()
           this.selection.first()
           break
         case "End":
+        case "PageDown":
           event.preventDefault()
           this.selection.last()
           break
@@ -89,6 +91,7 @@ export const CommandPalette = {
     document.removeEventListener("keydown", this.onKeydown)
     if (this.trigger) this.trigger.removeEventListener("click", this.onTrigger)
     this.el.removeEventListener("click", this.onBackdrop)
+    this.selection.destroy()
   },
 
   isOpen() {

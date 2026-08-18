@@ -138,7 +138,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert has_element?(
              view,
-             "#client-switcher-client-#{client.id}[data-state='current']",
+             "button#client-switcher-client-#{client.id}[phx-click='close-client-switcher'][data-state='selected'][aria-selected='true']",
              "Current"
            )
 
@@ -150,10 +150,19 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     assert has_element?(
              view,
-             "#client-switcher-client-#{caltech.id}[role='option'][tabindex='-1'][data-selectable-option]"
+             "a#client-switcher-client-#{caltech.id}[role='option'][aria-selected='false'][tabindex='-1'][data-selectable-option]"
            )
 
     refute has_element?(view, "#client-switcher-client-#{other_period.id}")
+
+    view
+    |> element("#client-switcher-client-#{client.id}")
+    |> render_click()
+
+    refute has_element?(view, "#client-switcher")
+    assert has_element?(view, "#open-client-switcher[aria-expanded='false']")
+
+    view |> element("#open-client-switcher") |> render_click()
 
     view
     |> form("#client-switcher-search-form", %{"client_switcher" => %{"query" => "calt"}})

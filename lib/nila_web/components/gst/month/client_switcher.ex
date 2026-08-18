@@ -84,33 +84,30 @@ defmodule NilaWeb.Components.Gst.Month.ClientSwitcher do
           />
         </.form>
 
-        <div
+        <.selectable_listbox
           id="client-switcher-options"
-          class="client-switcher-options"
           phx-update="stream"
-          role="listbox"
-          aria-label="Clients"
-          data-selectable-list
+          label="Clients"
         >
           <p id="client-switcher-empty" class="text-ink-muted text-ui hidden only:block">
             No clients match this search.
           </p>
-          <.link
+          <.selectable_option
             :for={{dom_id, option} <- @clients}
             id={dom_id}
-            navigate={client_path(option, @period, @selected_track)}
-            class="client-switcher-option"
-            data-state={if(option.id == @client.id, do: "current", else: "idle")}
-            aria-current={if(option.id == @client.id, do: "page", else: nil)}
-            role="option"
-            aria-selected="false"
-            tabindex="-1"
-            data-selectable-option
+            navigate={
+              if(option.id != @client.id,
+                do: client_path(option, @period, @selected_track)
+              )
+            }
+            phx-click={if(option.id == @client.id, do: "close-client-switcher")}
+            selected={option.id == @client.id}
+            aria_current={if(option.id == @client.id, do: "page", else: nil)}
           >
-            <span class="truncate font-medium">{option.name}</span>
-            <span :if={option.id == @client.id} class="text-ink-subtle">Current</span>
-          </.link>
-        </div>
+            {option.name}
+            <:meta :if={option.id == @client.id}>Current</:meta>
+          </.selectable_option>
+        </.selectable_listbox>
       </div>
     </.modal>
     """

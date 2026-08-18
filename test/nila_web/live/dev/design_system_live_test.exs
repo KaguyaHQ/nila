@@ -33,6 +33,18 @@ defmodule NilaWeb.Dev.DesignSystemLiveTest do
 
     assert has_element?(view, "#ds-fields .nila-input")
     assert has_element?(view, "#ds-fields .nila-select")
+
+    assert has_element?(
+             view,
+             "#ds-selectable-list #ds-selectable-breeze[data-active][aria-selected='false']"
+           )
+
+    assert has_element?(
+             view,
+             "#ds-selectable-list #ds-selectable-caltech[data-state='selected'][aria-selected='true']",
+             "Current"
+           )
+
     assert has_element?(view, "#ds-cards", "₹39,520.80")
     assert has_element?(view, "#ds-register-rows tr", "INV-1048")
     assert has_element?(view, "#ds-workpaper-result", "Draft prepared. One invoice needs you.")

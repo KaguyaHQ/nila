@@ -13,6 +13,7 @@ defmodule NilaWeb.CoreComponentsTest do
   import NilaWeb.Components.Feedback
   import NilaWeb.Layouts
   import NilaWeb.Components.Typography
+  import NilaWeb.Components.SelectableList
 
   test "page_header renders eyebrow, display title, and intro copy" do
     assigns = %{}
@@ -116,6 +117,38 @@ defmodule NilaWeb.CoreComponentsTest do
     assert html =~ "nila-segmented"
     assert html =~ ~s(phx-value-scope="open")
     assert html =~ ~s(aria-pressed="true")
+  end
+
+  test "selectable options keep selected and keyboard-active states distinct" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.selectable_listbox id="clients" label="Clients">
+        <.selectable_option id="breeze" navigate="/clients/1" active>
+          Breeze Tech
+        </.selectable_option>
+        <.selectable_option id="caltech" phx-click="close-clients" selected aria_current="page">
+          Caltech
+          <:meta>Current</:meta>
+        </.selectable_option>
+      </.selectable_listbox>
+      """)
+
+    fragment = LazyHTML.from_fragment(html)
+    active = LazyHTML.query(fragment, "#breeze")
+    selected = LazyHTML.query(fragment, "button#caltech")
+
+    assert LazyHTML.attribute(active, "class") == ["nila-selectable-option"]
+    assert LazyHTML.attribute(active, "href") == ["/clients/1"]
+    assert LazyHTML.attribute(active, "data-active") == [""]
+    assert LazyHTML.attribute(active, "aria-selected") == ["false"]
+    assert LazyHTML.attribute(selected, "type") == ["button"]
+    assert LazyHTML.attribute(selected, "phx-click") == ["close-clients"]
+    assert LazyHTML.attribute(selected, "href") == []
+    assert LazyHTML.attribute(selected, "data-state") == ["selected"]
+    assert LazyHTML.attribute(selected, "aria-selected") == ["true"]
+    assert LazyHTML.attribute(selected, "aria-current") == ["page"]
   end
 
   test "table density is owned by the controlled data attribute" do

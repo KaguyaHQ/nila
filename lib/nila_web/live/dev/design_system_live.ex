@@ -303,6 +303,62 @@ if Application.compile_env(:nila, :dev_routes, false) or
                   </div>
                 </.card>
 
+                <.card id="ds-selectable-list" class="space-y-section">
+                  <div>
+                    <h3 class="text-h4 font-semibold">Searchable single-select</h3>
+                    <p class="text-ink-muted text-ui">
+                      Focus, keyboard-active, and selected states remain visually distinct.
+                    </p>
+                  </div>
+
+                  <div
+                    id="ds-selectable-navigation"
+                    class="border-base-300 rounded-box max-w-lg overflow-hidden border"
+                    phx-hook="SelectableList"
+                    data-loop="true"
+                  >
+                    <div class="border-base-300 p-block border-b">
+                      <.input
+                        id="ds-selectable-query"
+                        name="selectable_specimen[query]"
+                        type="search"
+                        value=""
+                        placeholder="Search clients"
+                        aria-label="Search clients"
+                        aria-controls="ds-selectable-options"
+                        aria-activedescendant="ds-selectable-breeze"
+                        role="combobox"
+                        aria-expanded="true"
+                        aria-autocomplete="list"
+                        autocomplete="off"
+                        data-selectable-input
+                      />
+                    </div>
+
+                    <.selectable_listbox id="ds-selectable-options" label="Specimen clients">
+                      <.selectable_option
+                        id="ds-selectable-breeze"
+                        navigate="#ds-selectable-list"
+                        active
+                      >
+                        Breeze Tech
+                      </.selectable_option>
+                      <.selectable_option
+                        id="ds-selectable-caltech"
+                        navigate="#ds-selectable-list"
+                        selected
+                        aria_current="page"
+                      >
+                        Caltech
+                        <:meta>Current</:meta>
+                      </.selectable_option>
+                      <.selectable_option id="ds-selectable-abc" navigate="#ds-selectable-list">
+                        ABC Industries
+                      </.selectable_option>
+                    </.selectable_listbox>
+                  </div>
+                </.card>
+
                 <div class="gap-section grid xl:grid-cols-2">
                   <.card id="ds-feedback" class="space-y-section">
                     <div>

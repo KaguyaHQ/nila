@@ -32,6 +32,13 @@ tokens. Do not import shadcn's theme or styling wholesale. In shorthand: **shadc
 Radix/Nila physics.** Radix/Nila always wins for spacing, type, color, radius, borders, and
 elevation.
 
+For dense professional application patterns, use Primer as the behavior and state-model
+reference when it is more specific than Radix. In particular, searchable single-select lists
+follow [Primer ActionList](https://primer.style/product/components/action-list/guidelines/) and
+[SelectPanel](https://primer.style/product/components/select-panel/guidelines/): keyboard-active,
+pointer hover, and persisted selection are distinct states. Primer does not supply Nila's visual
+tokens or component geometry.
+
 `Layouts.app/1` owns the desktop rail, product canvas, mobile fallback header, and outer
 gutters. `Layouts.settings/1` adds settings navigation inside that shell. Pages compose
 inside the layout and do not recreate chrome or add a second page gutter.
@@ -195,8 +202,11 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
   dismissal and Escape behavior; `<details>` is a disclosure primitive, not a dropdown.
 - **Searchable single-select lists:** use the shared `SelectableList` hook. Keep focus in a
   combobox input, expose the virtual option through `aria-activedescendant`, and use
-  listbox/option semantics. Arrow keys, Home, End, and Enter stay client-side; a server-filtered
-  form must also provide a `phx-submit` fallback so Enter cannot become a browser reload.
+  listbox/option semantics. Arrow keys, Home/End, Page Up/Page Down, and Enter stay client-side; a
+  server-filtered form must also provide a `phx-submit` fallback so Enter cannot become a browser
+  reload. Render choices with `<.selectable_listbox>` and `<.selectable_option>`: hover and
+  keyboard-active use the neutral interaction fill, selected uses the accent selection fill, and
+  selected plus active uses the stronger accent fill. Only the combobox draws the focus ring.
 - **Feedback:** `<.callout>`, `<.spinner>`, and `<.progress_bar>` own status mechanics;
   `<.flash>` owns floating notifications.
 - **Forms:** `<.input>` for every field, `to_form/2`, and unique form/control IDs.

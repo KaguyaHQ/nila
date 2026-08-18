@@ -97,6 +97,7 @@ defmodule NilaWeb do
       import NilaWeb.Components.Feedback
       import NilaWeb.Components.ChaseHistory
       import NilaWeb.Components.Evidence
+      import NilaWeb.Components.SelectableList
 
       import Nila.Formatters,
         only: [

@@ -9,6 +9,8 @@ export class SelectableListController {
     this.listSelector = options.listSelector || "[data-selectable-list]"
     this.optionSelector = options.optionSelector || "[data-selectable-option]"
     this.loop = options.loop ?? el.dataset.loop === "true"
+    this.onPointerMove = event => this.pointerMove(event)
+    this.el.addEventListener("pointermove", this.onPointerMove)
   }
 
   input() {
@@ -51,6 +53,7 @@ export class SelectableListController {
       if (!option.id) option.id = `${this.el.id}-option-${index}`
       option.setAttribute("role", "option")
       option.setAttribute("tabindex", "-1")
+      if (!option.hasAttribute("aria-selected")) option.setAttribute("aria-selected", "false")
     })
 
     this.setActive(activateFirst ? this.options()[0] : null, {scroll: false})
@@ -68,7 +71,6 @@ export class SelectableListController {
     this.allOptions().forEach(candidate => {
       const active = candidate === option
       candidate.toggleAttribute("data-active", active)
-      candidate.setAttribute("aria-selected", active ? "true" : "false")
     })
 
     if (!input) return
@@ -114,6 +116,27 @@ export class SelectableListController {
     target.click()
     return true
   }
+
+  pointerMove(event) {
+    if (event.pointerType && event.pointerType !== "mouse") return
+
+    const option = event.target.closest?.(this.optionSelector)
+
+    if (
+      !option ||
+      !this.el.contains(option) ||
+      !this.options().includes(option) ||
+      option === this.activeOption()
+    ) {
+      return
+    }
+
+    this.setActive(option, {scroll: false})
+  }
+
+  destroy() {
+    this.el.removeEventListener("pointermove", this.onPointerMove)
+  }
 }
 
 export const SelectableList = {
@@ -135,10 +158,12 @@ export const SelectableList = {
           this.selection.move(-1)
           break
         case "Home":
+        case "PageUp":
           event.preventDefault()
           this.selection.first()
           break
         case "End":
+        case "PageDown":
           event.preventDefault()
           this.selection.last()
           break
@@ -178,5 +203,6 @@ export const SelectableList = {
 
   destroyed() {
     this.el.removeEventListener("keydown", this.onKeydown)
+    this.selection.destroy()
   },
 }
