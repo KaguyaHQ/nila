@@ -195,17 +195,15 @@ defmodule NilaWeb.Router do
     get "/:id/tally.xml", BankingExportController, :tally
   end
 
-  if Mix.env() != :prod do
-    scope "/gstr1", NilaWeb do
-      pipe_through [
-        :browser,
-        :authenticated_browser,
-        :verified_browser,
-        :require_sign_off
-      ]
+  scope "/gstr1", NilaWeb do
+    pipe_through [
+      :browser,
+      :authenticated_browser,
+      :verified_browser,
+      :require_sign_off
+    ]
 
-      post "/:client_id/:period/tally", Gstr1Controller, :tally_export
-    end
+    post "/:client_id/:period/tally", Gstr1Controller, :tally_export
   end
 
   # Connecting / disconnecting inboxes is a workspace-management action.
