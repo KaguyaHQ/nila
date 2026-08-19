@@ -70,4 +70,52 @@ defmodule Nila.TallyJobsTest do
     assert completed.error["kind"] == "Timeout"
     assert {:ok, nil} = TallyJobs.claim_next(device.id)
   end
+
+  test "queues a company-scoped voucher batch idempotently by source" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [%{"name" => "Nila", "tally_guid" => "nila"}])
+
+    company = Nila.Repo.preload(company, :device)
+
+    xml = "<ENVELOPE><HEADER/><BODY/></ENVELOPE>"
+
+    assert {:ok, first, :created} =
+             TallyJobs.enqueue_import_vouchers(company, xml, 2,
+               source_key: "gstr1:42:company:#{company.id}"
+             )
+
+    assert {:ok, repeated, :existing} =
+             TallyJobs.enqueue_import_vouchers(company, xml, 2,
+               source_key: "gstr1:42:company:#{company.id}"
+             )
+
+    assert repeated.id == first.id
+    assert first.kind == "import_vouchers"
+    assert first.payload["company"] == "Nila"
+    assert first.payload["expected_count"] == 2
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 1
+  end
+
+  test "marks an in-flight job indeterminate when its connector disconnects" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    assert {:ok, job} =
+             TallyJobs.enqueue_create_voucher(device, %{
+               "company" => "Nila",
+               "amount" => "1.00"
+             })
+
+    assert {:ok, running} = TallyJobs.claim_next(device.id)
+    assert running.id == job.id
+    assert {:ok, 1} = TallyJobs.interrupt_running(device.id)
+
+    interrupted = TallyJobs.get_job!(job.id)
+    assert interrupted.status == "indeterminate"
+    assert interrupted.error["kind"] == "ConnectorDisconnected"
+    assert {:ok, nil} = TallyJobs.claim_next(device.id)
+  end
 end

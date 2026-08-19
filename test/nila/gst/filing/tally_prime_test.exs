@@ -105,6 +105,13 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     refute august_id == july_id
   end
 
+  test "builds an explicitly company-scoped connector import" do
+    assert {:ok, xml, 1} =
+             TallyPrime.build_for_company(%{invoices: [invoice()]}, "Nila & Co")
+
+    assert xml =~ "<SVCURRENTCOMPANY>Nila &amp; Co</SVCURRENTCOMPANY>"
+  end
+
   test "accepts Tally's direct response format without a status tag" do
     response = """
     <RESPONSE>

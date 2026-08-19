@@ -3,7 +3,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
   @moduledoc "Audited return actions rendered directly after their evidence."
 
-  alias Nila.Gst.Filing.{Gstr3b, ItcPosition, TallyPrime, WinmanGstr1}
+  alias Nila.Gst.Filing.{Gstr3b, ItcPosition, WinmanGstr1}
   alias Nila.Gst.Sales.Values
   alias NilaWeb.Components.Gst.Month.Helpers
 
@@ -28,6 +28,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     >
       Review next item
     </.button>
+
     <.button
       :if={@readiness.state == :ready}
       id="month-door-sign-r1"
@@ -38,9 +39,11 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     >
       Approve GSTR-1
     </.button>
+
     <.badge :if={@readiness.state == :awaiting_senior} variant="info">
       Awaiting senior approval
     </.badge>
+
     <.button
       :if={@readiness.state == :approved and WinmanGstr1.supported_period?(@sales_month.period)}
       id="gstr1-primary-handoff"
@@ -51,6 +54,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     >
       Download Winman B2B
     </.button>
+
     <.badge :if={@readiness.state == :filed} variant="neutral">Filed</.badge>
     """
   end
@@ -64,12 +68,22 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :derived, :any, default: nil
   attr :readiness, :map, required: true
   attr :handoff, :map, default: nil
+  attr :tally_companies, :list, default: []
 
   def gstr1_actions(assigns) do
     assigns =
       assigns
       |> assign(:filed, assigns.derived && Values.filed_totals(assigns.derived))
-      |> assign(:tally_form, to_form(%{}, as: :tally))
+      |> assign(
+        :tally_form,
+        to_form(
+          %{
+            "company_id" =>
+              assigns.tally_companies |> List.first() |> then(&(&1 && Integer.to_string(&1.id)))
+          },
+          as: :tally
+        )
+      )
 
     ~H"""
     <div id="gstr1-handoff" class="py-section space-y-related">
@@ -82,6 +96,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           class="space-y-1"
         >
           <h3 class="text-base-content text-h4 font-semibold">Approval</h3>
+
           <p id="gstr1-approval-status" class="text-base-content text-body font-medium">
             {@readiness.action_copy}
           </p>
@@ -93,9 +108,11 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         >
           <div class="space-y-1">
             <h3 class="text-base-content text-h4 font-semibold">Approval</h3>
+
             <p id="gstr1-approval-status" class="text-base-content text-body font-medium">
               {@readiness.action_copy}
             </p>
+
             <p :if={@filed} id="month-exit-gstr1-amount" class="text-base-content text-ui">
               Filing <span class="font-mono font-semibold">{Helpers.rupees(@filed.taxable)}</span>
               taxable and <span class="font-mono font-semibold">{Helpers.rupees(@filed.tax)}</span>
@@ -121,6 +138,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <:extra_step>
             <div class="space-y-related">
               <p class="text-ink-subtle text-label font-semibold uppercase">Portal return</p>
+
               <.button
                 id="gstr1-guide-download-json"
                 href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/return.json"}
@@ -143,11 +161,14 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         <div class="gap-block flex flex-wrap items-start justify-between">
           <div class="space-y-1">
             <p class="text-ink-subtle text-label font-semibold uppercase">Primary handoff</p>
+
             <p class="text-base-content text-h4 font-semibold">Winman B2B sheet</p>
+
             <p class="text-body text-ink-subtle">
               Uses the approved snapshot. Only the B2B sheet is populated in this version.
             </p>
           </div>
+
           <.button
             :if={WinmanGstr1.supported_period?(@sales_month.period)}
             id="gstr1-download-winman-b2b"
@@ -158,6 +179,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           >
             Download Winman B2B
           </.button>
+
           <.badge :if={not WinmanGstr1.supported_period?(@sales_month.period)} variant="warning">
             Period not supported by this workbook
           </.badge>
@@ -166,9 +188,11 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         <dl id="gstr1-handoff-manifest" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div>
             <dt class="text-ink-subtle text-label font-semibold uppercase">Included in workbook</dt>
+
             <dd class="text-base-content text-ui font-semibold">
               {@handoff.included_documents} B2B workbook {plural(@handoff.included_documents, "row")}
             </dd>
+
             <p class="text-ink-muted text-ui">
               From {@handoff.included_b2b_invoices} B2B {plural(
                 @handoff.included_b2b_invoices,
@@ -176,14 +200,17 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               )}
             </p>
           </div>
+
           <div>
             <dt class="text-ink-subtle text-label font-semibold uppercase">Recorded review</dt>
+
             <dd class="text-base-content text-ui font-semibold">
               {@handoff.confirmations} {plural(@handoff.confirmations, "confirmation")} · {@handoff.corrections} {plural(
                 @handoff.corrections,
                 "correction"
               )}
             </dd>
+
             <p :if={@handoff.omitted_documents > 0} class="text-ink-muted text-ui">
               {@handoff.omitted_documents} supported {plural(
                 @handoff.omitted_documents,
@@ -195,8 +222,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               )}
             </p>
           </div>
+
           <div>
             <dt class="text-ink-subtle text-label font-semibold uppercase">Held out</dt>
+
             <dd class="text-base-content text-ui font-semibold">
               {@handoff.duplicates_excluded} duplicate {plural(
                 @handoff.duplicates_excluded,
@@ -207,14 +236,17 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
                 "blocker"
               )}
             </dd>
+
             <p :if={@handoff.unsupported_held > 0} class="text-ink-muted text-ui">
               {@handoff.unsupported_held} unsupported {plural(@handoff.unsupported_held, "record")} held
             </p>
           </div>
+
           <div>
             <dt class="text-ink-subtle text-label font-semibold uppercase">
               Winman B2B control totals
             </dt>
+
             <dd class="text-base-content text-ui font-semibold tabular-nums">
               {Helpers.rupees(@handoff.taxable)} taxable · {Helpers.rupees(@handoff.output_tax)} tax
             </dd>
@@ -229,11 +261,15 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       >
         <div class="space-y-1">
           <p class="text-ink-subtle text-label font-semibold uppercase">Accounting handoff</p>
+
           <p class="text-base-content text-ui font-medium">TallyPrime · GL sales vouchers</p>
+
           <p class="text-body text-ink-subtle">
-            Import the XML in TallyPrime. GST return metadata is not included in this version.
+            Send the approved GL sales vouchers through Nila Connector, or download the XML.
+            GST return metadata is not included.
           </p>
         </div>
+
         <div class="flex flex-wrap gap-2">
           <.button
             id="gstr1-download-tally"
@@ -244,23 +280,38 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           >
             Download Tally XML
           </.button>
+
           <.form
-            :if={@can_sign_off and TallyPrime.available?()}
+            :if={@can_sign_off and @tally_companies != []}
             for={@tally_form}
             id="gstr1-send-tally-form"
             action={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/tally"}
             method="post"
+            class="gap-related flex flex-wrap items-end"
           >
+            <.input
+              field={@tally_form[:company_id]}
+              type="select"
+              label="Tally company"
+              options={Enum.map(@tally_companies, &{"#{&1.name} · #{&1.device.name}", &1.id})}
+            />
             <.button
               id="gstr1-send-tally"
               type="submit"
               variant="outline"
               size="xs"
-              data-confirm="Send all active sales vouchers to the company currently open in TallyPrime?"
+              data-confirm="Queue all approved sales vouchers for this Tally company?"
             >
               Send to TallyPrime
             </.button>
           </.form>
+          <p
+            :if={@can_sign_off and @tally_companies == []}
+            id="gstr1-tally-unavailable"
+            class="text-ink-muted text-ui"
+          >
+            Open the company in TallyPrime and keep Nila Connector connected to send directly.
+          </p>
         </div>
       </section>
     </div>
@@ -369,6 +420,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       >
         Sign the GSTR-3B
       </.button>
+
       <.blocker_exit
         :if={is_nil(@gstr3b_signoff) and @first_blocker}
         blocker={@first_blocker}
@@ -406,8 +458,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     <section :if={@blockers != []} id="gstr3b-blockers" class="space-y-block scroll-mt-28">
       <div>
         <h3 class="text-base-content text-h4 font-semibold">What blocks this return</h3>
+
         <p class="text-ink-muted text-ui">Each requirement links to the work that clears it.</p>
       </div>
+
       <ul
         id="month-exit-gstr3b-blocked"
         class="bg-base-100 border-base-300 divide-base-300 rounded-box divide-y border"
@@ -425,6 +479,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           >
             Current next step
           </span>
+
           <.blocker_exit
             :if={is_nil(@primary_blocker) or elem(@primary_blocker, 0) != key}
             blocker={{key, message, exit}}
@@ -469,8 +524,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     <section id="gstr3b-controls" class="space-y-block scroll-mt-28">
       <div>
         <h3 class="text-base-content text-h4 font-semibold">Return controls</h3>
+
         <p class="text-ink-muted text-ui">The sources and arithmetic that assemble this GSTR-3B.</p>
       </div>
+
       <div class="bg-base-100 border-base-300 divide-base-300 rounded-box divide-y border">
         <.fold
           id="gstr3b-control-outward"
@@ -481,6 +538,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <:summary>
             <.fold_summary title="Outward liability source">
               <:detail>{outward_source(@gstr3b)}</:detail>
+
               <:status>
                 <.badge variant={if liability_missing?(@gstr3b), do: "warning", else: "neutral"}>
                   {if liability_missing?(@gstr3b), do: "Pending", else: "Derived"}
@@ -488,6 +546,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               </:status>
             </.fold_summary>
           </:summary>
+
           <div class="grid gap-4 pb-4 sm:grid-cols-4">
             <.head_fact label="Taxable" amount={get_in(@gstr3b, ["liability_31", "a", "txval"])} />
             <.head_fact label="IGST" amount={get_in(@gstr3b, ["liability_31", "a", "igst"])} />
@@ -509,6 +568,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
                   do: "Frozen purchase position",
                   else: "Current purchase and GSTR-2B position"}
               </:detail>
+
               <:status>
                 <.badge variant={if @pending_reason && not @signed, do: "warning", else: "neutral"}>
                   {if @pending_reason && not @signed, do: "Provisional", else: "Derived"}
@@ -516,6 +576,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               </:status>
             </.fold_summary>
           </:summary>
+
           <div class="space-y-related pb-4">
             <p class="text-ink-muted text-ui">
               {if @signed, do: "Frozen net ITC in Table 4C", else: "Current claimable ITC"}:
@@ -523,6 +584,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
                 {money_paise(@current_itc)}
               </span>
             </p>
+
             <p
               :if={not @signed and @current_itc != @assembled_itc}
               id="gstr3b-itc-provisional-difference"
@@ -530,6 +592,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             >
               The assembled Table 4C currently shows {money_paise(@assembled_itc)}. It remains provisional until the purchase inputs are resolved.
             </p>
+
             <.link
               :if={@client_id && @period}
               id="gstr3b-open-purchases"
@@ -550,6 +613,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <:summary>
             <.fold_summary title="GSTR-3B filing-line mapping">
               <:detail>3.1 liability and Table 4 credit by tax head</:detail>
+
               <:status>
                 <.badge variant={if @filing_ready, do: "neutral", else: "warning"}>
                   {if @filing_ready, do: "Derived", else: "Pending inputs"}
@@ -557,6 +621,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               </:status>
             </.fold_summary>
           </:summary>
+
           <div class="pb-4">
             <.data_table
               :if={@filing_ready}
@@ -569,13 +634,18 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               <:col :let={row} label="GSTR-3B section" row_header>
                 <span class={row.strong? && "text-base-content font-semibold"}>{row.label}</span>
               </:col>
+
               <:col :let={row} label="IGST" align="right">{head_money(row, "igst")}</:col>
+
               <:col :let={row} label="CGST" align="right">{head_money(row, "cgst")}</:col>
+
               <:col :let={row} label="SGST" align="right">{head_money(row, "sgst")}</:col>
+
               <:col :let={row} label="Total" align="right">
                 <span class={row.strong? && "text-base-content font-semibold"}>{row_total(row)}</span>
               </:col>
             </.data_table>
+
             <p
               :if={not @filing_ready}
               id="gst-3b-filing-detail-pending"
@@ -595,6 +665,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <:summary>
             <.fold_summary title="Rule 88A set-off and cash">
               <:detail>Credit used and residual cash by liability head</:detail>
+
               <:status>
                 <.badge variant={if @filing_ready, do: "neutral", else: "warning"}>
                   {if @filing_ready, do: "Calculated", else: "Pending inputs"}
@@ -602,6 +673,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               </:status>
             </.fold_summary>
           </:summary>
+
           <div class="pb-4">
             <.data_table
               :if={@setoff_rows != []}
@@ -614,17 +686,24 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               <:col :let={row} label="Liability head" row_header>
                 <span class="text-base-content font-semibold">{row.label}</span>
               </:col>
+
               <:col :let={row} label="Payable" align="right">{money_paise(row.payable)}</:col>
+
               <:col :let={row} label="IGST credit" align="right">{money_paise(row.itc_igst)}</:col>
+
               <:col :let={row} label="CGST credit" align="right">{money_paise(row.itc_cgst)}</:col>
+
               <:col :let={row} label="SGST credit" align="right">{money_paise(row.itc_sgst)}</:col>
+
               <:col :let={row} label="Cash" align="right">
                 <span class="text-base-content font-semibold">{money_paise(row.cash)}</span>
               </:col>
             </.data_table>
+
             <p :if={not @filing_ready} id="gst-3b-setoff-pending" class="text-ink-muted text-ui">
               {@pending_reason}
             </p>
+
             <p :if={@filing_ready and @setoff_rows == []} class="text-ink-muted text-ui">
               No per-head set-off schedule is available in this return projection.
             </p>
@@ -637,12 +716,14 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         class="border-base-300 rounded-box space-y-related border p-4"
       >
         <h4 class="text-base-content text-ui font-semibold">Source snapshots</h4>
+
         <dl class="grid gap-4 sm:grid-cols-2">
           <div>
             <dt class="text-ink-subtle text-label uppercase">GSTR-1</dt><dd class="text-base-content text-ui wrap-break-word">
               {gstr1_snapshot_reference(@r1_signoff, @gstr3b)}
             </dd>
           </div>
+
           <div>
             <dt class="text-ink-subtle text-label uppercase">Purchase position</dt><dd class="text-base-content text-ui wrap-break-word">
               {purchase_snapshot_reference(@gstr3b_signoff)}
@@ -690,13 +771,16 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         <div class="gap-block flex flex-wrap items-start justify-between">
           <div class="space-y-1">
             <h3 class="text-base-content text-h4 font-semibold">Sign-off</h3>
+
             <p :if={@blockers != []} class="text-ink-muted text-ui">
               {length(@blockers)} {plural(length(@blockers), "requirement")} remain before this
               return can be signed.
             </p>
+
             <p :if={@blockers == [] and @can_sign_off} class="text-ink-muted text-ui">
               The assembled return is ready for your signature.
             </p>
+
             <p :if={@blockers == [] and not @can_sign_off} class="text-ink-muted text-ui">
               Ready for a senior to sign GSTR-3B.
             </p>
@@ -750,6 +834,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     >
       {elem(@exit, 1)}
     </.button>
+
     <.button
       :if={elem(@exit, 0) == :patch}
       id={@id}
@@ -759,6 +844,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     >
       {elem(@exit, 1)}
     </.button>
+
     <.button
       :if={elem(@exit, 0) == :click}
       id={@id}
@@ -768,6 +854,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     >
       {elem(@exit, 1)}
     </.button>
+
     <.button
       :if={elem(@exit, 0) == :anchor}
       id={@id}
@@ -796,9 +883,11 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div class="space-y-related">
           <p class="text-ink-subtle text-label font-semibold uppercase">Final return</p>
+
           <h3 class="font-display text-base-content text-h3 font-normal">
             {if @signed, do: "Signed GSTR-3B", else: "Proposed GSTR-3B"}
           </h3>
+
           <p :if={not @signed} id="gstr3b-preview-status" class="text-body text-ink-muted">
             {gstr3b_preview_status(@gstr3b, @stats)}
           </p>
@@ -815,20 +904,24 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             <dt class="text-ink-subtle text-label font-semibold uppercase">
               Outward tax · 3.1(a)
             </dt>
+
             <dd
               :if={not liability_missing?(@gstr3b)}
               class="text-base-content text-lead font-semibold tabular-nums"
             >
               {money_paise(heads_total(@gstr3b["liability_31"]["a"]))}
             </dd>
+
             <dd :if={liability_missing?(@gstr3b)} class="text-ink-muted text-ui font-medium">
               Pending GSTR-1
             </dd>
           </div>
+
           <div class="space-y-1">
             <dt class="text-ink-subtle text-label font-semibold uppercase">
               Current proposed ITC
             </dt>
+
             <dd
               id="gst-3b-current-itc"
               class="text-base-content text-lead font-semibold tabular-nums"
@@ -836,8 +929,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               {money_paise(current_proposed_itc(@gstr3b, @itc, @signed))}
             </dd>
           </div>
+
           <div class="space-y-1">
             <dt class="text-ink-subtle text-label font-semibold uppercase">Cash payable</dt>
+
             <dd
               :if={cash_available?(@gstr3b, @itc, @stats, @signed)}
               id="gst-3b-cash"
@@ -845,6 +940,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             >
               {money_paise(@gstr3b["setoff_61"]["cash_total"])}
             </dd>
+
             <dd
               :if={not cash_available?(@gstr3b, @itc, @stats, @signed)}
               id="gst-3b-cash-pending"
@@ -887,28 +983,37 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <dt class="text-ink-subtle text-label font-semibold uppercase">
             {if @return == "GSTR-1", do: "Approved by", else: "Signed by"}
           </dt>
+
           <dd class="text-base-content font-medium">
             {(@signoff.signed_by && @signoff.signed_by.name) || "—"}
           </dd>
         </div>
+
         <div>
           <dt class="text-ink-subtle text-label font-semibold uppercase">
             {if @return == "GSTR-1", do: "Approved", else: "Signed"}
           </dt>
+
           <dd class="text-ink-muted">{format_display_datetime(@signoff.inserted_at)}</dd>
         </div>
+
         <div :if={@return == "GSTR-1" and @signoff.snapshot["draft_version"]}>
           <dt class="text-ink-subtle text-label font-semibold uppercase">Draft version</dt>
+
           <dd class="text-base-content font-mono">
             {String.slice(@signoff.snapshot["draft_version"], 0, 12)}
           </dd>
         </div>
+
         <div :if={@month.filed_at} id={@filed_note_id}>
           <dt class="text-ink-subtle text-label font-semibold uppercase">Filed</dt>
+
           <dd class="text-base-content font-medium">{format_display_datetime(@month.filed_at)}</dd>
         </div>
+
         <div :if={@month.filing_arn}>
           <dt class="text-ink-subtle text-label font-semibold uppercase">ARN</dt>
+
           <dd class="text-base-content font-mono wrap-break-word">{@month.filing_arn}</dd>
         </div>
       </dl>
@@ -928,6 +1033,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         {render_slot(@extra_step)}
         <div class="space-y-related">
           <p class="text-ink-subtle text-label font-semibold uppercase">GST portal</p>
+
           <a
             href="https://www.gst.gov.in/"
             target="_blank"
@@ -937,6 +1043,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             Open gst.gov.in →
           </a>
         </div>
+
         <form id={@form_id} phx-submit={@filed_event} class="space-y-related">
           <.input
             type="text"
@@ -945,8 +1052,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             value=""
             label="Filing ARN"
             placeholder="Optional"
-          />
-          <.button type="submit" variant="outline" size="xs">Mark filed on portal</.button>
+          /> <.button type="submit" variant="outline" size="xs">Mark filed on portal</.button>
         </form>
       </div>
     </div>

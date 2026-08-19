@@ -8,6 +8,7 @@ defmodule Nila.TallyDevices.Device do
     field :revoked_at, :utc_datetime_usec
 
     belongs_to :org, Nila.Orgs.Org
+    has_many :companies, Nila.TallyDevices.Company
 
     timestamps()
   end

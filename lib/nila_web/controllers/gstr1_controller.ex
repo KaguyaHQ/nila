@@ -8,9 +8,11 @@ defmodule NilaWeb.Gstr1Controller do
   use NilaWeb, :controller
 
   alias Nila.Clients
-  alias Nila.Gst.Filing.{TallyPrime, WinmanGstr1}
+  alias Nila.Gst.Filing.{Signoffs, TallyPrime, WinmanGstr1}
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
+  alias Nila.TallyDevices
+  alias Nila.TallyJobs
 
   def return_json(conn, %{"client_id" => client_id, "period" => period}) do
     org_id = conn.assigns.current_scope.current_org.id
@@ -84,13 +86,36 @@ defmodule NilaWeb.Gstr1Controller do
     end
   end
 
-  def tally_export(conn, %{"client_id" => client_id, "period" => period}) do
+  def tally_export(
+        conn,
+        %{
+          "client_id" => client_id,
+          "period" => period,
+          "tally" => %{"company_id" => company_id}
+        }
+      ) do
     org_id = conn.assigns.current_scope.current_org.id
 
     case SalesMonths.get_by_period(org_id, client_id, period) do
       {:ok, sales_month} ->
         conn
-        |> tally_result(TallyPrime.push(tally_projection(sales_month, period)))
+        |> enqueue_tally_result(sales_month, period, company_id)
+        |> redirect(to: ~p"/gst/#{client_id}/#{period}")
+
+      {:error, _reason} ->
+        conn
+        |> put_status(:not_found)
+        |> text("Not found")
+    end
+  end
+
+  def tally_export(conn, %{"client_id" => client_id, "period" => period}) do
+    org_id = conn.assigns.current_scope.current_org.id
+
+    case SalesMonths.get_by_period(org_id, client_id, period) do
+      {:ok, _sales_month} ->
+        conn
+        |> put_flash(:error, "Choose an open Tally company before sending.")
         |> redirect(to: ~p"/gst/#{client_id}/#{period}")
 
       {:error, _reason} ->
@@ -128,60 +153,63 @@ defmodule NilaWeb.Gstr1Controller do
   defp tally_export_error(:invalid_sales_data),
     do: "Sales data contains fields Tally cannot import"
 
-  defp tally_result(conn, {:ok, result}) do
-    imported = result.created + result.altered + result.combined
-    duplicate = if result.ignored == 1, do: "duplicate", else: "duplicates"
+  defp enqueue_tally_result(conn, sales_month, period, company_id) do
+    org_id = conn.assigns.current_scope.current_org.id
 
-    message =
-      "Tally imported #{imported} sales #{plural(imported, "voucher")}." <>
-        if(result.ignored > 0, do: " Ignored #{result.ignored} #{duplicate}.", else: "")
+    with {company_id, ""} <- Integer.parse(company_id),
+         {:ok, company} <- TallyDevices.get_open_company(org_id, company_id),
+         {:ok, signoff} <- Signoffs.latest_gstr1_signoff(sales_month.id),
+         {:ok, xml, count} <-
+           TallyPrime.build_for_company(tally_projection(sales_month, period), company.name),
+         {:ok, job, disposition} <-
+           TallyJobs.enqueue_import_vouchers(company, xml, count,
+             source_key: "gstr1:#{signoff.id}:company:#{company.id}"
+           ) do
+      put_flash(conn, :info, tally_job_message(job, disposition, count, company.name))
+    else
+      :error ->
+        put_flash(conn, :error, "Choose an open Tally company before sending.")
 
-    put_flash(conn, :info, message)
+      {:error, :not_found} ->
+        put_flash(conn, :error, "That Tally company is no longer available.")
+
+      {:error, :no_active_sales} ->
+        put_flash(conn, :error, "There are no active sales vouchers to send to Tally.")
+
+      {:error, :invalid_sales_data} ->
+        put_flash(conn, :error, "Sales data contains fields Tally cannot import.")
+
+      {:error, :batch_too_large} ->
+        put_flash(
+          conn,
+          :error,
+          "This batch is too large to send directly. Download the Tally XML instead."
+        )
+
+      {:error, _reason} ->
+        put_flash(conn, :error, "Nila could not queue the Tally import.")
+
+      _invalid ->
+        put_flash(conn, :error, "Choose an open Tally company before sending.")
+    end
   end
 
-  defp tally_result(conn, {:error, {:partial_import, result}}) do
-    imported = result.created + result.altered + result.combined
+  defp tally_job_message(%{status: "succeeded"}, :existing, _count, company),
+    do: "These sales vouchers were already sent successfully to #{company}."
 
-    put_flash(
-      conn,
-      :error,
-      "Tally acknowledged only part of the batch (#{imported} imported, #{result.ignored} ignored). Check Tally before retrying."
-    )
-  end
-
-  defp tally_result(conn, {:error, {:tally_rejected, result}}) do
-    imported = result.created + result.altered + result.combined
-
-    detail =
-      case result.line_errors do
-        [] ->
-          failures = max(result.errors, result.exceptions)
-          "Tally rejected the import with #{failures} #{plural(failures, "error")}."
-
-        errors ->
-          errors |> Enum.join("; ") |> String.slice(0, 300)
-      end
-
-    prefix = if imported > 0, do: "Tally imported #{imported} before failing. ", else: ""
-    put_flash(conn, :error, prefix <> detail)
-  end
-
-  defp tally_result(conn, {:error, :no_active_sales}),
-    do: put_flash(conn, :error, "There are no active sales vouchers to send to Tally")
-
-  defp tally_result(conn, {:error, :invalid_sales_data}),
-    do: put_flash(conn, :error, "Sales data contains fields Tally cannot import")
-
-  defp tally_result(conn, {:error, {:http_status, status}}),
-    do: put_flash(conn, :error, "Tally returned HTTP #{status}")
-
-  defp tally_result(conn, {:error, _reason}),
+  defp tally_job_message(%{status: "indeterminate"}, :existing, _count, _company),
     do:
-      put_flash(
-        conn,
-        :error,
-        "TallyPrime did not confirm the import. Check Tally before retrying."
-      )
+      "The previous Tally import has an uncertain outcome. Check Tally and connector diagnostics before retrying."
+
+  defp tally_job_message(%{status: "failed"}, :existing, _count, company),
+    do: "The previous Tally import for #{company} failed. Check connector diagnostics."
+
+  defp tally_job_message(%{status: status}, :existing, _count, company)
+       when status in ["pending", "running"],
+       do: "The Tally import for #{company} is already #{status}."
+
+  defp tally_job_message(_job, :created, count, company),
+    do: "Queued #{count} sales #{plural(count, "voucher")} for #{company}."
 
   defp plural(1, word), do: word
   defp plural(_count, word), do: word <> "s"

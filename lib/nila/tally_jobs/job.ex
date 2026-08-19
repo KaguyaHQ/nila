@@ -5,6 +5,7 @@ defmodule Nila.TallyJobs.Job do
 
   schema "tally_jobs" do
     field :job_key, Ecto.UUID
+    field :source_key, :string
     field :kind, :string
     field :payload, :map
     field :status, :string, default: "pending"
@@ -22,10 +23,12 @@ defmodule Nila.TallyJobs.Job do
 
   def create_changeset(job, attrs) do
     job
-    |> cast(attrs, [:job_key, :kind, :payload])
+    |> cast(attrs, [:job_key, :source_key, :kind, :payload])
     |> validate_required([:org_id, :device_id, :job_key, :kind, :payload])
-    |> validate_inclusion(:kind, ["create_voucher"])
+    |> validate_inclusion(:kind, ["create_voucher", "import_vouchers"])
+    |> validate_length(:source_key, max: 240)
     |> unique_constraint([:org_id, :job_key])
+    |> unique_constraint([:org_id, :source_key])
   end
 
   def transition_changeset(job, attrs) do

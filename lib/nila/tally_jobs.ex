@@ -4,29 +4,45 @@ defmodule Nila.TallyJobs do
   import Ecto.Query
 
   alias Nila.Repo
+  alias Nila.TallyDevices.Company
   alias Nila.TallyDevices.Device
   alias Nila.TallyJobs.Job
 
   def enqueue_create_voucher(%Device{} = device, payload, opts \\ []) when is_map(payload) do
-    job_key = Keyword.get_lazy(opts, :job_key, &Ecto.UUID.generate/0)
-
-    changeset =
-      %Job{org_id: device.org_id, device_id: device.id}
-      |> Job.create_changeset(%{
-        job_key: job_key,
-        kind: "create_voucher",
-        payload: payload
-      })
-
-    case Repo.insert(changeset) do
-      {:ok, job} ->
-        Phoenix.PubSub.broadcast(Nila.PubSub, device_topic(device.id), :tally_job_available)
-        {:ok, job}
-
-      error ->
-        error
+    case insert_job(device, "create_voucher", payload, opts) do
+      {:ok, job, _disposition} -> {:ok, job}
+      error -> error
     end
   end
+
+  def enqueue_import_vouchers(company, xml, expected_count, opts \\ [])
+
+  def enqueue_import_vouchers(
+        %Company{is_open: true, device: %Device{} = device} = company,
+        xml,
+        expected_count,
+        opts
+      )
+      when is_binary(xml) and is_integer(expected_count) and expected_count > 0 do
+    if byte_size(xml) <= 750_000 do
+      insert_job(
+        device,
+        "import_vouchers",
+        %{
+          "company" => company.name,
+          "company_guid" => company.tally_guid,
+          "xml" => xml,
+          "expected_count" => expected_count
+        },
+        opts
+      )
+    else
+      {:error, :batch_too_large}
+    end
+  end
+
+  def enqueue_import_vouchers(%Company{}, _xml, _expected_count, _opts),
+    do: {:error, :company_not_open}
 
   def claim_next(device_id, now \\ DateTime.utc_now()) when is_integer(device_id) do
     Repo.transact(fn ->
@@ -72,6 +88,28 @@ defmodule Nila.TallyJobs do
 
   def get_job!(id), do: Repo.get!(Job, id)
 
+  def interrupt_running(device_id, now \\ DateTime.utc_now()) when is_integer(device_id) do
+    completed_at = DateTime.truncate(now, :microsecond)
+
+    {count, _jobs} =
+      from(job in Job, where: job.device_id == ^device_id and job.status == "running")
+      |> Repo.update_all(
+        set: [
+          status: "indeterminate",
+          result: nil,
+          error: %{
+            "kind" => "ConnectorDisconnected",
+            "message" =>
+              "The connector disconnected before Nila received a definitive Tally result."
+          },
+          completed_at: completed_at,
+          updated_at: completed_at
+        ]
+      )
+
+    {:ok, count}
+  end
+
   def delivery_payload(%Job{} = job) do
     %{
       job_id: job.id,
@@ -82,6 +120,35 @@ defmodule Nila.TallyJobs do
   end
 
   def device_topic(device_id), do: "tally_jobs:device:#{device_id}"
+
+  defp insert_job(%Device{} = device, kind, payload, opts) do
+    job_key = Keyword.get_lazy(opts, :job_key, &Ecto.UUID.generate/0)
+    source_key = Keyword.get(opts, :source_key)
+
+    changeset =
+      %Job{org_id: device.org_id, device_id: device.id}
+      |> Job.create_changeset(%{
+        job_key: job_key,
+        source_key: source_key,
+        kind: kind,
+        payload: payload
+      })
+
+    case Repo.insert(changeset) do
+      {:ok, job} ->
+        Phoenix.PubSub.broadcast(Nila.PubSub, device_topic(device.id), :tally_job_available)
+        {:ok, job, :created}
+
+      {:error, _changeset} = error when is_binary(source_key) ->
+        case Repo.fetch_by(Job, org_id: device.org_id, source_key: source_key) do
+          {:ok, job} -> {:ok, job, :existing}
+          {:error, :not_found} -> error
+        end
+
+      error ->
+        error
+    end
+  end
 
   defp completion_attrs("succeeded", result, now) do
     %{

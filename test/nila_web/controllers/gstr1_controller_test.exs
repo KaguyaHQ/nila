@@ -5,6 +5,8 @@ defmodule NilaWeb.Gstr1ControllerTest do
   alias Nila.Gst.Filing.Signoff
   alias Nila.Gst.Sales.{Gstr1, Months}
   alias Nila.Repo
+  alias Nila.TallyDevices
+  alias Nila.TallyJobs.Job
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
@@ -165,6 +167,54 @@ defmodule NilaWeb.Gstr1ControllerTest do
     assert conn.resp_body =~ "Frozen Tally Customer"
     refute conn.resp_body =~ "INV-001"
     refute conn.resp_body =~ "Customer &amp; Co"
+  end
+
+  test "queues the approved sales vouchers for a selected connector company", %{
+    conn: conn,
+    client: client,
+    month: month,
+    org: org,
+    user: user
+  } do
+    %Signoff{
+      org_id: org.id,
+      sales_month_id: month.id,
+      signed_by_id: user.id
+    }
+    |> Signoff.changeset(%{
+      artifact: "gstr1",
+      snapshot: %{"derived" => month.derived_gstr1, "invoices" => month.invoices}
+    })
+    |> Repo.insert!()
+
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => "Nila", "tally_guid" => "company-nila"}
+      ])
+
+    conn =
+      post(conn, ~p"/gstr1/#{client.id}/2026-07/tally", %{
+        "tally" => %{"company_id" => Integer.to_string(company.id)}
+      })
+
+    assert redirected_to(conn) == ~p"/gst/#{client.id}/2026-07"
+    assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Queued 1 sales voucher for Nila"
+
+    assert job = Repo.one!(Job)
+    assert job.kind == "import_vouchers"
+    assert job.status == "pending"
+    assert job.payload["company"] == "Nila"
+    assert job.payload["expected_count"] == 1
+    assert job.payload["xml"] =~ "<SVCURRENTCOMPANY>Nila</SVCURRENTCOMPANY>"
+
+    _repeated =
+      post(recycle(conn), ~p"/gstr1/#{client.id}/2026-07/tally", %{
+        "tally" => %{"company_id" => Integer.to_string(company.id)}
+      })
+
+    assert Repo.aggregate(Job, :count) == 1
   end
 
   test "does not expose another organisation's workbook", %{client: client} do

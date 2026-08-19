@@ -44,7 +44,10 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
       sales_intake_open: false,
       can_sign_off: true,
       derived: nil,
-      handoff: handoff()
+      handoff: handoff(),
+      tally_companies: [
+        %{id: 7, name: "Nila", device: %{name: "Accounts PC"}}
+      ]
     }
 
     assigns = Map.put(assigns, :readiness, Filing.gstr1_readiness(assigns))
@@ -66,6 +69,8 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
            ]
 
     assert LazyHTML.attribute(form, "method") == ["post"]
+    assert LazyHTML.attribute(LazyHTML.query(form, "select"), "name") == ["tally[company_id]"]
+    assert LazyHTML.text(form) =~ "Nila · Accounts PC"
     assert LazyHTML.text(button) =~ "Send to TallyPrime"
     assert LazyHTML.text(export) =~ "GL sales vouchers"
     assert LazyHTML.text(export) =~ "GST return metadata is not included"

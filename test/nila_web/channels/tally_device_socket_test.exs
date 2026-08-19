@@ -15,7 +15,12 @@ defmodule NilaWeb.TallyDeviceSocketTest do
                socket,
                NilaWeb.TallyDeviceChannel,
                "tally_device:#{device.id}",
-               %{"connector_version" => "0.1.0"}
+               %{
+                 "connector_version" => "0.1.0",
+                 "companies" => [
+                   %{"name" => "Nila", "tally_guid" => "company-nila"}
+                 ]
+               }
              )
 
     assert reply == %{device_id: device.id, org_id: org.id}
@@ -31,6 +36,9 @@ defmodule NilaWeb.TallyDeviceSocketTest do
 
     refreshed = Nila.Repo.reload!(device)
     assert refreshed.last_connected_at
+
+    assert [%{name: "Nila", tally_guid: "company-nila"}] =
+             TallyDevices.list_open_companies(org.id)
 
     NilaWeb.Endpoint.subscribe("tally_devices:#{org.id}")
     Process.unlink(joined_socket.channel_pid)
@@ -49,6 +57,8 @@ defmodule NilaWeb.TallyDeviceSocketTest do
              "tally_devices:#{org.id}",
              Integer.to_string(device.id)
            ) == []
+
+    assert TallyDevices.list_open_companies(org.id) == []
   end
 
   test "rejects invalid and revoked credentials" do

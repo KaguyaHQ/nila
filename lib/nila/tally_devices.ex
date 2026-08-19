@@ -11,6 +11,7 @@ defmodule Nila.TallyDevices do
   alias Nila.Accounts.Scope
   alias Nila.Orgs.Org
   alias Nila.Repo
+  alias Nila.TallyDevices.Company
   alias Nila.TallyDevices.Device
   alias Nila.TallyDevices.Pairing
 
@@ -129,6 +130,84 @@ defmodule Nila.TallyDevices do
     |> Repo.update()
   end
 
+  def report_companies(%Device{} = device, companies, now \\ DateTime.utc_now())
+      when is_list(companies) do
+    with {:ok, companies} <- normalize_companies(companies) do
+      seen_at = DateTime.truncate(now, :microsecond)
+
+      Repo.transact(fn ->
+        from(company in Company, where: company.device_id == ^device.id)
+        |> Repo.update_all(set: [is_open: false, updated_at: seen_at])
+
+        reported =
+          Enum.map(companies, fn company ->
+            identity = company_identity(company)
+
+            %Company{
+              org_id: device.org_id,
+              device_id: device.id,
+              identity: identity,
+              is_open: true,
+              last_seen_at: seen_at
+            }
+            |> Company.changeset(company)
+            |> Repo.insert!(
+              conflict_target: [:device_id, :identity],
+              on_conflict: [
+                set: [
+                  name: company.name,
+                  tally_guid: company.tally_guid,
+                  is_open: true,
+                  last_seen_at: seen_at,
+                  updated_at: seen_at
+                ]
+              ],
+              returning: true
+            )
+          end)
+
+        {:ok, reported}
+      end)
+    end
+  end
+
+  def list_open_companies(org_id) when is_integer(org_id) do
+    Repo.all(
+      from company in Company,
+        join: device in assoc(company, :device),
+        where: company.org_id == ^org_id and company.is_open and is_nil(device.revoked_at),
+        order_by: [asc: company.name, asc: device.name],
+        preload: [device: device]
+    )
+  end
+
+  def get_open_company(org_id, company_id)
+      when is_integer(org_id) and is_integer(company_id) do
+    Repo.fetch_one(
+      from company in Company,
+        join: device in assoc(company, :device),
+        where:
+          company.id == ^company_id and company.org_id == ^org_id and company.is_open and
+            is_nil(device.revoked_at),
+        preload: [device: device]
+    )
+  end
+
+  def get_open_company(_org_id, _company_id), do: {:error, :not_found}
+
+  def mark_companies_closed(device_id, now \\ DateTime.utc_now()) when is_integer(device_id) do
+    closed_at = DateTime.truncate(now, :microsecond)
+
+    from(company in Company,
+      where:
+        company.device_id == ^device_id and company.is_open and
+          company.last_seen_at <= ^closed_at
+    )
+    |> Repo.update_all(set: [is_open: false, updated_at: closed_at])
+
+    :ok
+  end
+
   def revoke_device(%Device{} = device, revoked_at \\ DateTime.utc_now()) do
     result =
       device
@@ -230,4 +309,51 @@ defmodule Nila.TallyDevices do
       %Phoenix.Socket.Broadcast{topic: topic, event: "disconnect", payload: %{}}
     )
   end
+
+  defp normalize_companies(companies) when length(companies) <= 100 do
+    companies
+    |> Enum.reduce_while({:ok, []}, fn company, {:ok, normalized} ->
+      case normalize_company(company) do
+        {:ok, company} -> {:cont, {:ok, [company | normalized]}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, normalized} ->
+        {:ok, normalized |> Enum.reverse() |> Enum.uniq_by(&company_identity/1)}
+
+      error ->
+        error
+    end
+  end
+
+  defp normalize_companies(_companies), do: {:error, :too_many_companies}
+
+  defp normalize_company(%{"name" => name} = company)
+       when is_binary(name) and byte_size(name) <= 200 do
+    name = String.trim(name)
+    tally_guid = normalize_company_guid(company["tally_guid"])
+
+    if name == "" or tally_guid == :invalid do
+      {:error, :invalid_company}
+    else
+      {:ok, %{name: name, tally_guid: tally_guid}}
+    end
+  end
+
+  defp normalize_company(_company), do: {:error, :invalid_company}
+
+  defp normalize_company_guid(nil), do: nil
+
+  defp normalize_company_guid(value) when is_binary(value) and byte_size(value) <= 200 do
+    value = String.trim(value)
+    if value == "", do: nil, else: value
+  end
+
+  defp normalize_company_guid(_value), do: :invalid
+
+  defp company_identity(%{tally_guid: tally_guid}) when is_binary(tally_guid),
+    do: "guid:" <> String.downcase(tally_guid)
+
+  defp company_identity(%{name: name}), do: "name:" <> String.downcase(name)
 end

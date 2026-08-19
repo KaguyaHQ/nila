@@ -8,10 +8,14 @@ defmodule NilaWeb.TallyDeviceChannel do
   @impl true
   def join("tally_device:" <> device_id, payload, socket) do
     authenticated_device = socket.assigns.device
+    connected_at = DateTime.utc_now()
 
     with true <- device_id == Integer.to_string(authenticated_device.id),
          %{} = device <- TallyDevices.get_active_device(authenticated_device.id),
-         {:ok, device} <- TallyDevices.mark_connected(device),
+         {:ok, device} <- TallyDevices.mark_connected(device, connected_at),
+         {:ok, _interrupted_jobs} <- TallyJobs.interrupt_running(device.id, connected_at),
+         {:ok, _companies} <-
+           TallyDevices.report_companies(device, companies(payload), connected_at),
          {:ok, _presence} <-
            Presence.track(
              self(),
@@ -21,12 +25,18 @@ defmodule NilaWeb.TallyDeviceChannel do
                device_id: device.id,
                name: device.name,
                connector_version: connector_version(payload),
-               connected_at: DateTime.utc_now() |> DateTime.to_unix()
+               connected_at: DateTime.to_unix(connected_at)
              }
            ) do
       :ok = Phoenix.PubSub.subscribe(Nila.PubSub, TallyJobs.device_topic(device.id))
       send(self(), :deliver_tally_jobs)
-      {:ok, %{device_id: device.id, org_id: device.org_id}, assign(socket, :device, device)}
+
+      socket =
+        socket
+        |> assign(:device, device)
+        |> assign(:connected_at, connected_at)
+
+      {:ok, %{device_id: device.id, org_id: device.org_id}, socket}
     else
       false -> {:error, %{reason: "unauthorized"}}
       nil -> {:error, %{reason: "unauthorized"}}
@@ -58,6 +68,11 @@ defmodule NilaWeb.TallyDeviceChannel do
     do: {:reply, {:error, %{reason: "invalid_result"}}, socket}
 
   @impl true
+  def terminate(_reason, %{assigns: %{device: device, connected_at: connected_at}}) do
+    TallyDevices.mark_companies_closed(device.id, connected_at)
+  end
+
+  @impl true
   def handle_info(:tally_job_available, socket) do
     send(self(), :deliver_tally_jobs)
     {:noreply, socket}
@@ -82,4 +97,7 @@ defmodule NilaWeb.TallyDeviceChannel do
        do: version
 
   defp connector_version(_payload), do: nil
+
+  defp companies(%{"companies" => companies}) when is_list(companies), do: companies
+  defp companies(_payload), do: []
 end

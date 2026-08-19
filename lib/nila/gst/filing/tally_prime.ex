@@ -35,15 +35,36 @@ defmodule Nila.Gst.Filing.TallyPrime do
   @doc "Builds an accounting-voucher import envelope for all effective active sales documents."
   @spec build(map()) :: {:ok, binary()} | {:error, :no_active_sales | :invalid_sales_data}
   def build(projection) when is_map(projection) do
+    build_envelope(projection, nil)
+  end
+
+  def build(_projection), do: {:error, :invalid_sales_data}
+
+  @doc "Builds a company-scoped voucher envelope and returns its expected import count."
+  def build_for_company(projection, company)
+      when is_map(projection) and is_binary(company) and byte_size(company) <= 200 do
+    company = String.trim(company)
+
+    if company == "" do
+      {:error, :invalid_company}
+    else
+      case build_envelope(projection, company) do
+        {:ok, xml} -> {:ok, xml, length(effective_active_invoices(projection))}
+        error -> error
+      end
+    end
+  end
+
+  def build_for_company(_projection, _company), do: {:error, :invalid_company}
+
+  defp build_envelope(projection, company) do
     active = effective_active_invoices(projection)
 
     with :ok <- require_invoices(active),
          {:ok, vouchers} <- build_vouchers(active, projection[:period] || projection["period"]) do
-      {:ok, envelope(vouchers)}
+      {:ok, envelope(vouchers, company)}
     end
   end
-
-  def build(_projection), do: {:error, :invalid_sales_data}
 
   @doc "Builds and posts the voucher envelope to the local TallyPrime HTTP server."
   @spec push(map(), keyword()) :: {:ok, import_result()} | {:error, term()}
@@ -232,11 +253,15 @@ defmodule Nila.Gst.Filing.TallyPrime do
     ]
   end
 
-  defp envelope(vouchers) do
+  defp envelope(vouchers, company) do
+    company_variable = if company, do: tag("SVCURRENTCOMPANY", company), else: ""
+
     IO.iodata_to_binary([
       "<ENVELOPE>",
       "<HEADER><VERSION>1</VERSION><TALLYREQUEST>Import</TALLYREQUEST><TYPE>Data</TYPE><ID>Vouchers</ID></HEADER>",
-      "<BODY><DESC><STATICVARIABLES><IMPORTDUPS>@@DUPIGNORE</IMPORTDUPS></STATICVARIABLES></DESC>",
+      "<BODY><DESC><STATICVARIABLES><IMPORTDUPS>@@DUPIGNORE</IMPORTDUPS>",
+      company_variable,
+      "</STATICVARIABLES></DESC>",
       "<DATA>",
       vouchers,
       "</DATA></BODY></ENVELOPE>"

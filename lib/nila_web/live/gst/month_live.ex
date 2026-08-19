@@ -20,6 +20,7 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias Nila.Gst.WorkQueue
+  alias Nila.TallyDevices
   alias Nila.Eval.Gstr1Diff
 
   alias NilaWeb.Components.Gst.Month.{
@@ -110,6 +111,7 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:show_chase_history, false)
       |> assign(:precondition_choice, nil)
       |> assign(:can_sign_off, Policy.can?(socket.assigns.current_scope, :sign_off))
+      |> assign(:tally_companies, TallyDevices.list_open_companies(org_id))
       |> assign_month(purchase, sales)
     end
   end
@@ -1549,7 +1551,6 @@ defmodule NilaWeb.Gst.MonthLive do
           period={@period}
           client_switcher_open?={@client_switcher_open?}
         />
-
         <Precondition.question
           :if={@verdict[:question]}
           dump={@verdict.question.dump}
@@ -1557,10 +1558,7 @@ defmodule NilaWeb.Gst.MonthLive do
           period={@period}
           choice={@precondition_choice}
           period_options={@move_options || []}
-        />
-
-        <Arrivals.chase_history_link asks={@asks} />
-
+        /> <Arrivals.chase_history_link asks={@asks} />
         <div
           :if={
             (is_nil(@sales_month) and @sales_dumps != []) or
@@ -1600,7 +1598,6 @@ defmodule NilaWeb.Gst.MonthLive do
           selected={@selected_track}
           states={@workpaper_states}
         />
-
         <main id="month-evidence" class="space-y-canvas min-w-0">
           <%= case @selected_track do %>
             <% :sales -> %>
@@ -1646,6 +1643,7 @@ defmodule NilaWeb.Gst.MonthLive do
                       review_case_count={length(@sales_review.needs_you)}
                     />
                   </:primary_action>
+
                   <:source>
                     <Arrivals.source_record
                       can_sign_off={@can_sign_off}
@@ -1659,6 +1657,7 @@ defmodule NilaWeb.Gst.MonthLive do
                       gstr3b_signoff={@gstr3b_signoff}
                     />
                   </:source>
+
                   <:actions>
                     <Filing.gstr1_actions
                       sales_month={@sales_month}
@@ -1670,6 +1669,7 @@ defmodule NilaWeb.Gst.MonthLive do
                       derived={@derived_gstr1}
                       readiness={@gstr1_readiness}
                       handoff={@gstr1_handoff}
+                      tally_companies={@tally_companies}
                     />
                   </:actions>
                 </Sales.sales_section>
@@ -1763,7 +1763,6 @@ defmodule NilaWeb.Gst.MonthLive do
                     itc={@itc}
                     gstr3b={@gstr3b}
                   />
-
                   <Workpaper.section_nav links={
                     [
                       %{id: "month-3b", label: "Return position"},
@@ -1776,7 +1775,6 @@ defmodule NilaWeb.Gst.MonthLive do
                     ]
                     |> Enum.filter(&is_map/1)
                   } />
-
                   <Filing.gstr3b_controls
                     gstr3b={@gstr3b}
                     itc={@itc}
@@ -1788,7 +1786,6 @@ defmodule NilaWeb.Gst.MonthLive do
                     client_id={@client.id}
                     period={@period}
                   />
-
                   <Filing.gstr3b_actions
                     purchase_month={@purchase_month}
                     sales_month={@sales_month}
@@ -1822,7 +1819,6 @@ defmodule NilaWeb.Gst.MonthLive do
         form={@client_switcher_form}
         clients={@streams.client_switcher_clients}
       />
-
       <.live_component
         :if={(@live_action == :review and @purchase_review_route) && @purchase_month}
         module={PurchaseLive}
@@ -1834,7 +1830,6 @@ defmodule NilaWeb.Gst.MonthLive do
         workings={@purchase_workings}
         signed_off={@gstr3b_signoff != nil}
       />
-
       <.live_component
         :if={(@live_action == :review and @sales_review_route) && @sales_month}
         module={SalesLive}
@@ -1846,7 +1841,6 @@ defmodule NilaWeb.Gst.MonthLive do
         decisions={@sales_decisions}
         signoff={@r1_signoff}
       />
-
       <Evidence.evidence_modals
         show_chase_history={@show_chase_history}
         client={@client}

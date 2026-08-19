@@ -48,4 +48,64 @@ defmodule Nila.TallyDevicesTest do
     assert {:error, changeset} = TallyDevices.create_device(org, %{name: "  "})
     assert "can't be blank" in errors_on(changeset).name
   end
+
+  test "reports the currently open companies and closes companies absent from the next report" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    assert {:ok, [nila, archive]} =
+             TallyDevices.report_companies(device, [
+               %{"name" => "Nila", "tally_guid" => "company-nila"},
+               %{"name" => "Archive", "tally_guid" => "company-archive"}
+             ])
+
+    assert nila.is_open
+    assert archive.is_open
+    assert Enum.map(TallyDevices.list_open_companies(org.id), & &1.name) == ["Archive", "Nila"]
+
+    assert {:ok, [updated]} =
+             TallyDevices.report_companies(device, [
+               %{"name" => "Nila Pvt Ltd", "tally_guid" => "company-nila"}
+             ])
+
+    assert updated.id == nila.id
+    assert updated.name == "Nila Pvt Ltd"
+    assert Enum.map(TallyDevices.list_open_companies(org.id), & &1.name) == ["Nila Pvt Ltd"]
+
+    assert :ok = TallyDevices.mark_companies_closed(device.id)
+    assert TallyDevices.list_open_companies(org.id) == []
+  end
+
+  test "does not resolve another organization's reported company" do
+    %{org: org} = user_with_org_fixture()
+    %{org: other_org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Office PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [%{"name" => "Nila", "tally_guid" => "nila"}])
+
+    assert {:ok, selected} = TallyDevices.get_open_company(org.id, company.id)
+    assert selected.device.id == device.id
+    assert {:error, :not_found} = TallyDevices.get_open_company(other_org.id, company.id)
+  end
+
+  test "an older disconnect cannot close companies from a newer connection" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+    older = ~U[2026-08-19 10:00:00.000000Z]
+    newer = ~U[2026-08-19 10:00:01.000000Z]
+
+    assert {:ok, [_company]} =
+             TallyDevices.report_companies(
+               device,
+               [%{"name" => "Nila", "tally_guid" => "nila"}],
+               newer
+             )
+
+    assert :ok = TallyDevices.mark_companies_closed(device.id, older)
+    assert [_company] = TallyDevices.list_open_companies(org.id)
+
+    assert :ok = TallyDevices.mark_companies_closed(device.id, newer)
+    assert [] = TallyDevices.list_open_companies(org.id)
+  end
 end
