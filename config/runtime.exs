@@ -32,7 +32,7 @@ config :nila, NilaWeb.Endpoint, http: [port: String.to_integer(System.get_env("P
 
 config :phoenix,
        :filter_parameters,
-       ~w(password api_key authorization authorization_code access_token client_secret bearer pin)
+       ~w(password api_key authorization authorization_code access_token client_secret bearer pin device_code approval_code device_token)
 
 # OpenAI-compatible assistant. Provider-agnostic env names so swapping providers
 # (StepFun, OpenAI, Groq, OpenRouter, …) is a secret change, not a code change.

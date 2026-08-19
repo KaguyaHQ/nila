@@ -66,6 +66,14 @@ defmodule NilaWeb.Router do
     get "/health", HealthController, :check
   end
 
+  scope "/api/tally", NilaWeb do
+    pipe_through :api
+
+    post "/pairings", TallyPairingController, :create
+    post "/pairings/exchange", TallyPairingController, :exchange
+    delete "/device", TallyPairingController, :revoke
+  end
+
   # Public legal & contact pages — reachable by everyone, logged in or out.
   scope "/", NilaWeb do
     pipe_through :browser
@@ -160,6 +168,7 @@ defmodule NilaWeb.Router do
       ] do
       live "/settings/workspace", Settings.WorkspaceLive, :index
       live "/settings/connectors", Settings.ConnectorsLive, :index
+      live "/settings/connectors/tally/pair/:approval_code", Settings.TallyPairingLive, :show
       live "/settings/users", Settings.UsersLive, :index
     end
   end

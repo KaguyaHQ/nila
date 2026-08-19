@@ -1,0 +1,36 @@
+defmodule Nila.TallyJobs.Job do
+  use Nila.Schema
+
+  @statuses ~w(pending running succeeded failed indeterminate)
+
+  schema "tally_jobs" do
+    field :job_key, Ecto.UUID
+    field :kind, :string
+    field :payload, :map
+    field :status, :string, default: "pending"
+    field :attempts, :integer, default: 0
+    field :started_at, :utc_datetime_usec
+    field :completed_at, :utc_datetime_usec
+    field :result, :map
+    field :error, :map
+
+    belongs_to :org, Nila.Orgs.Org
+    belongs_to :device, Nila.TallyDevices.Device
+
+    timestamps()
+  end
+
+  def create_changeset(job, attrs) do
+    job
+    |> cast(attrs, [:job_key, :kind, :payload])
+    |> validate_required([:org_id, :device_id, :job_key, :kind, :payload])
+    |> validate_inclusion(:kind, ["create_voucher"])
+    |> unique_constraint([:org_id, :job_key])
+  end
+
+  def transition_changeset(job, attrs) do
+    job
+    |> cast(attrs, [:status, :attempts, :started_at, :completed_at, :result, :error])
+    |> validate_inclusion(:status, @statuses)
+  end
+end
