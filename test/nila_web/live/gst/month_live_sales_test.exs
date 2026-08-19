@@ -7,6 +7,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
   alias Nila.Clients
   alias Nila.Gst.Intake.{Dump, Dumps}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
+  alias Nila.Repo
+  alias Nila.TallyDevices
+  alias Nila.TallyDevices.{SyncRun, SyncedVoucher}
 
   @period "2025-10"
 
@@ -347,6 +350,69 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     refute has_element?(view, "#gstr1-invoices #gstr1-inv-21\\/2025-26", "Verified")
     refute has_element?(view, "#gstr1-invoices #gstr1-inv-22\\/2025-26", "Verified")
     refute has_element?(view, "#gstr1-verified")
+
+    row_ids =
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#gstr1-invoices tr[id^='gstr1-inv-']")
+      |> LazyHTML.attribute("id")
+
+    assert length(row_ids) == 3
+  end
+
+  test "shows a matched Tally voucher in the existing sales register without a duplicate row", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+    {:ok, [company]} = TallyDevices.report_companies(device, [%{"name" => "Breeze Tech"}])
+    company = company |> Ecto.Changeset.change(client_id: client.id) |> Repo.update!()
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    Repo.insert!(%SyncRun{
+      org_id: org.id,
+      device_id: device.id,
+      company_id: company.id,
+      status: "succeeded",
+      masters_status: "succeeded",
+      vouchers_status: "succeeded",
+      period_start: ~D[2025-10-01],
+      period_end: ~D[2025-10-31],
+      started_at: now,
+      completed_at: now
+    })
+
+    Repo.insert!(%SyncedVoucher{
+      org_id: org.id,
+      company_id: company.id,
+      identity: "guid:matched-21",
+      date: ~D[2025-10-10],
+      voucher_type: "Sales",
+      voucher_number: "21/2025-26",
+      data: %{
+        "party_ledger_name" => "PONMANI AND CO",
+        "party_gstin" => "33AABCP9487A1ZG",
+        "place_of_supply" => "33",
+        "line_items" => [
+          %{
+            "description" => "AC service",
+            "hsn_sac" => "8415",
+            "taxable_value" => 12_000.0,
+            "cgst_rate" => 9.0,
+            "cgst_amount" => 1_080.0,
+            "sgst_rate" => 9.0,
+            "sgst_amount" => 1_080.0
+          }
+        ]
+      }
+    })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert has_element?(view, "#gstr1-register", "1 from Tally")
+    assert has_element?(view, "#gstr1-inv-21\\/2025-26", "Tally + document")
 
     row_ids =
       view

@@ -35,6 +35,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   attr :register_form, :any, required: true
   attr :register_filter, :atom, required: true
   attr :review, :any, required: true
+  attr :source_summary, :map, default: nil
   attr :decisions, :map, default: %{}
   attr :change, :any, default: nil
   slot :source
@@ -515,6 +516,12 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             <p class="text-ink-muted text-ui">
               {length(@register_rows)} of {length(@invoices)} documents shown
             </p>
+            <p :if={@source_summary && @source_summary.tally > 0} class="text-ink-subtle text-ui">
+              {@source_summary.tally} from Tally · {@source_summary.matched} matched to documents · {@source_summary.missing_document} missing documents · {@source_summary.missing_tally} not in Tally
+              <span :if={@source_summary.last_synced_at}>
+                · last synced {format_display_datetime(@source_summary.last_synced_at)}
+              </span>
+            </p>
           </div>
           <.button
             :if={@first_review_invoice}
@@ -565,7 +572,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           period={@period}
         />
         <p id="gstr1-register-basis" class="text-ink-subtle text-ui">
-          These are the lines as extracted. The return files a per-rate recomputation, shown under Return workings.
+          Tally values are used as the books record when matched; uploaded documents remain the supporting evidence. The return files a per-rate recomputation, shown under Return workings.
         </p>
       </section>
 
@@ -685,6 +692,9 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <:col :let={invoice} label="Date">
         <span class="whitespace-nowrap tabular-nums">{format_display_date(invoice["invoice_date"])}</span>
       </:col>
+      <:col :let={invoice} label="Source">
+        <span class="text-ink-muted whitespace-nowrap">{source_label(invoice)}</span>
+      </:col>
       <:col :let={invoice} label="Buyer">
         <span class="block max-w-64 truncate" title={invoice["buyer_name"]}>{invoice["buyer_name"] ||
           "—"}</span>
@@ -743,6 +753,9 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp machine_state(_issues_by_invoice, %{"duplicate_copy" => _copy}),
     do: %{variant: "neutral", label: "Duplicate copy"}
 
+  defp machine_state(_issues_by_invoice, %{"sources" => ["tally"]}),
+    do: %{variant: "neutral", label: "Document missing"}
+
   defp machine_state(issues_by_invoice, invoice) do
     issues = Helpers.invoice_issues(issues_by_invoice, invoice)
 
@@ -757,6 +770,16 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       do: %{variant: "warning", label: "Review case"},
       else: %{variant: "neutral", label: "No open checks"}
   end
+
+  defp source_label(%{"sources" => sources}) when is_list(sources) do
+    case Enum.sort(sources) do
+      ["document", "tally"] -> "Tally + document"
+      ["tally"] -> "Tally"
+      _ -> "Document"
+    end
+  end
+
+  defp source_label(_invoice), do: "Document"
 
   defp human_state(issues_by_invoice, decisions, invoice) do
     targets = [

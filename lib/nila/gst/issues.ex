@@ -74,6 +74,9 @@ defmodule Nila.Gst.Issues do
     # The extraction ledger
     "pages_unaccounted" => {"required", :confirmation},
     "evidence_unavailable" => {"required", :confirmation},
+    "sales_not_in_tally" => {"required", :confirmation},
+    "sales_document_missing" => {"advisory", nil},
+    "tally_document_mismatch" => {"required", :decision},
     "cess_unsupported" => {"blocking", nil},
 
     # Documents this return has no table for

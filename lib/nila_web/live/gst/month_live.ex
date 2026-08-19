@@ -471,6 +471,20 @@ defmodule NilaWeb.Gst.MonthLive do
   defp row_dom_id(%{"id" => id}, _index) when is_binary(id), do: "gst-row-#{id}"
   defp row_dom_id(_row, index), do: "gst-row-idx-#{index}"
 
+  defp signed_source_summary(invoices) do
+    %{
+      total: length(invoices),
+      tally: Enum.count(invoices, &("tally" in List.wrap(&1["sources"]))),
+      document: Enum.count(invoices, &("document" in List.wrap(&1["sources"]))),
+      matched:
+        Enum.count(invoices, &(Enum.sort(List.wrap(&1["sources"])) == ["document", "tally"])),
+      missing_document: 0,
+      missing_tally: 0,
+      conflicts: 0,
+      last_synced_at: nil
+    }
+  end
+
   defp assign_sales(socket, sales, workings \\ nil)
 
   defp assign_sales(socket, nil, _workings) do
@@ -491,6 +505,7 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:open_issue_count, 0)
     |> assign(:reviewable, false)
     |> assign(:sales_review, nil)
+    |> assign(:sales_source_summary, nil)
     |> assign(:gstr1_handoff, nil)
     |> assign(:tally_handoffs, [])
   end
@@ -514,7 +529,8 @@ defmodule NilaWeb.Gst.MonthLive do
               printed_active_invoices: signoff.snapshot["printed_invoices"],
               issues: Issues.normalize_all(signoff.snapshot["issues"]),
               flagged: MapSet.new(),
-              derived: signoff.snapshot["derived"]
+              derived: signoff.snapshot["derived"],
+              source_summary: signed_source_summary(source)
             }
         end
 
@@ -524,10 +540,12 @@ defmodule NilaWeb.Gst.MonthLive do
     flagged = workings.flagged
     derived = workings.derived
 
+    pristine_by_id = Map.new(sales.invoices, &{&1["id"], &1})
+
     invoices =
-      sales.invoices
-      |> Enum.zip(source_invoices)
-      |> Enum.map(fn {pristine, effective} ->
+      Enum.map(source_invoices, fn effective ->
+        pristine = pristine_by_id[effective["id"]] || effective
+
         effective
         |> Map.put("pristine_inum", pristine["invoice_number"])
         |> Map.put("image_urls", sales_image_urls(effective, sales))
@@ -551,6 +569,7 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:sales_workings, workings)
     |> assign(:sales_decisions, decisions)
     |> assign(:sales_review, review)
+    |> assign(:sales_source_summary, workings[:source_summary])
     |> assign(:r1_signoff, signoff)
     |> assign(:invoices, invoices)
     |> assign(:active_invoices, active_invoices)
@@ -1660,6 +1679,7 @@ defmodule NilaWeb.Gst.MonthLive do
                   register_form={@sales_register_form}
                   register_filter={@sales_register_filter}
                   review={@sales_review}
+                  source_summary={@sales_source_summary}
                   decisions={@sales_decisions}
                   change={@sales_change}
                   reviewed_invoice={@last_reviewed_inum}

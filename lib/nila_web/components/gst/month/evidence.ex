@@ -905,6 +905,12 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
        when code in ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch),
        do: "Accept the extracted lines"
 
+  defp resolution_action(%{"code" => "tally_document_mismatch"}),
+    do: "Use the Tally books value"
+
+  defp resolution_action(%{"code" => "sales_not_in_tally"}),
+    do: "Confirm this document belongs in sales"
+
   defp resolution_action(_issue), do: "Keep extracted value"
 
   # What accepting actually files, in the figure the portal receives. Silent
@@ -937,6 +943,18 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
        )
        when code in ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch),
        do: "Accepted extracted line total"
+
+  defp decision_summary(
+         %{"code" => "tally_document_mismatch"},
+         %{payload: %{"decision" => "use_extracted_lines"}}
+       ),
+       do: "Kept the Tally books value"
+
+  defp decision_summary(
+         %{"code" => "sales_not_in_tally"},
+         %{payload: %{"decision" => "use_extracted_lines"}}
+       ),
+       do: "Confirmed this document belongs in sales"
 
   defp decision_summary(_issue, %{payload: %{"decision" => "use_extracted_lines"}}),
     do: "Kept extracted value"

@@ -4,6 +4,7 @@ defmodule Nila.TallySync do
   import Ecto.Query
 
   alias Nila.Repo
+  alias Nila.Gst.Sales.{Month, Months}
   alias Nila.TallyDevices.{Company, Device, SyncRun, SyncedMaster, SyncedVoucher}
 
   @max_records 1_000
@@ -74,7 +75,10 @@ defmodule Nila.TallySync do
 
         changes = pipeline_changes(pipeline, run, complete, now)
 
-        run |> Ecto.Changeset.change(changes) |> Repo.update()
+        with {:ok, updated_run} <- run |> Ecto.Changeset.change(changes) |> Repo.update(),
+             :ok <- maybe_refresh_sales_month(updated_run, pipeline, complete) do
+          {:ok, updated_run}
+        end
       else
         nil -> {:error, :not_found}
         error -> error
@@ -295,6 +299,41 @@ defmodule Nila.TallySync do
   defp count_field(:vouchers), do: :vouchers_count
   defp error_field(:masters), do: :masters_error
   defp error_field(:vouchers), do: :vouchers_error
+
+  defp maybe_refresh_sales_month(%SyncRun{} = run, :vouchers, true) do
+    company = Repo.get!(Company, run.company_id)
+
+    if company.client_id do
+      period = Calendar.strftime(run.period_start, "%Y-%m")
+
+      {:ok, month} =
+        Months.upsert(%{
+          org_id: run.org_id,
+          client_id: company.client_id,
+          period: period
+        })
+
+      previous_sync_id = month.summary["tally_sync_id"]
+
+      if is_nil(month.filed_at) and previous_sync_id != run.id do
+        summary =
+          Map.merge(month.summary || %{}, %{
+            "tally_sync_id" => run.id,
+            "tally_last_synced_at" => DateTime.to_iso8601(run.updated_at)
+          })
+
+        state = if month.state == "reviewed", do: "worked", else: month.state
+
+        month
+        |> Month.changeset(%{summary: summary, state: state})
+        |> Repo.update!()
+      end
+    end
+
+    :ok
+  end
+
+  defp maybe_refresh_sales_month(%SyncRun{}, _pipeline, _complete), do: :ok
 
   defp valid?(value, max),
     do: is_binary(value) and String.trim(value) != "" and byte_size(value) <= max
