@@ -13,6 +13,7 @@ defmodule NilaWeb.Gstr1Controller do
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.TallyDevices
   alias Nila.TallyJobs
+  alias Nila.TallySync
 
   def return_json(conn, %{"client_id" => client_id, "period" => period}) do
     org_id = conn.assigns.current_scope.current_org.id
@@ -159,13 +160,14 @@ defmodule NilaWeb.Gstr1Controller do
     with {company_id, ""} <- Integer.parse(company_id),
          {:ok, company} <- TallyDevices.get_open_company(org_id, company_id),
          {:ok, signoff} <- Signoffs.latest_gstr1_signoff(sales_month.id),
-         {:ok, xml, count} <-
-           TallyPrime.build_for_company(tally_projection(sales_month, period), company.name),
-         {:ok, job, disposition} <-
-           TallyJobs.enqueue_import_vouchers(company, xml, count,
-             source_key: "gstr1:#{signoff.id}:company:#{company.id}"
+         {:ok, items} <-
+           TallyPrime.build_items_for_company(tally_projection(sales_month, period), company.name),
+         [] <- TallySync.missing_ledgers(company.id, Enum.flat_map(items, & &1.ledger_names)),
+         {:ok, jobs} <-
+           TallyJobs.enqueue_vouchers(company, items,
+             source_prefix: tally_source_prefix(signoff.id, company.id)
            ) do
-      put_flash(conn, :info, tally_job_message(job, disposition, count, company.name))
+      put_flash(conn, :info, tally_jobs_message(jobs, company.name))
     else
       :error ->
         put_flash(conn, :error, "Choose an open Tally company before sending.")
@@ -186,6 +188,13 @@ defmodule NilaWeb.Gstr1Controller do
           "This batch is too large to send directly. Download the Tally XML instead."
         )
 
+      missing when is_list(missing) and missing != [] ->
+        put_flash(
+          conn,
+          :error,
+          "Not sent. These ledgers are missing in Tally: #{Enum.join(missing, ", ")}. Sync the company after creating or mapping them, then retry."
+        )
+
       {:error, _reason} ->
         put_flash(conn, :error, "Nila could not queue the Tally import.")
 
@@ -194,22 +203,24 @@ defmodule NilaWeb.Gstr1Controller do
     end
   end
 
-  defp tally_job_message(%{status: "succeeded"}, :existing, _count, company),
-    do: "These sales vouchers were already sent successfully to #{company}."
+  defp tally_jobs_message(jobs, company) do
+    queued = Enum.count(jobs, fn {_job, disposition} -> disposition in [:created, :retried] end)
+    existing = length(jobs) - queued
 
-  defp tally_job_message(%{status: "indeterminate"}, :existing, _count, _company),
-    do:
-      "The previous Tally import has an uncertain outcome. Check Tally and connector diagnostics before retrying."
+    cond do
+      queued > 0 and existing > 0 ->
+        "Queued #{queued} sales #{plural(queued, "voucher")} for #{company}; #{existing} already had a result or was in progress."
 
-  defp tally_job_message(%{status: "failed"}, :existing, _count, company),
-    do: "The previous Tally import for #{company} failed. Check connector diagnostics."
+      queued > 0 ->
+        "Queued #{queued} sales #{plural(queued, "voucher")} for #{company}."
 
-  defp tally_job_message(%{status: status}, :existing, _count, company)
-       when status in ["pending", "running"],
-       do: "The Tally import for #{company} is already #{status}."
+      true ->
+        "All #{existing} sales #{plural(existing, "voucher")} already have a result or are in progress for #{company}."
+    end
+  end
 
-  defp tally_job_message(_job, :created, count, company),
-    do: "Queued #{count} sales #{plural(count, "voucher")} for #{company}."
+  defp tally_source_prefix(signoff_id, company_id),
+    do: "gstr1:#{signoff_id}:company:#{company_id}:voucher:"
 
   defp plural(1, word), do: word
   defp plural(_count, word), do: word <> "s"

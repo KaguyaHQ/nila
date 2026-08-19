@@ -25,15 +25,19 @@ defmodule Nila.TallyJobs do
       )
       when is_binary(xml) and is_integer(expected_count) and expected_count > 0 do
     if byte_size(xml) <= 750_000 do
-      insert_job(
-        device,
-        "import_vouchers",
+      payload =
         %{
           "company" => company.name,
           "company_guid" => company.tally_guid,
           "xml" => xml,
           "expected_count" => expected_count
-        },
+        }
+        |> Map.merge(Keyword.get(opts, :metadata, %{}))
+
+      insert_job(
+        device,
+        "import_vouchers",
+        payload,
         opts
       )
     else
@@ -43,6 +47,40 @@ defmodule Nila.TallyJobs do
 
   def enqueue_import_vouchers(%Company{}, _xml, _expected_count, _opts),
     do: {:error, :company_not_open}
+
+  @doc "Queues one durable job per logical voucher and safely retries definite failures."
+  def enqueue_vouchers(%Company{} = company, items, opts \\ []) when is_list(items) do
+    prefix = Keyword.fetch!(opts, :source_prefix)
+
+    Enum.reduce_while(items, {:ok, []}, fn item, {:ok, jobs} ->
+      source_key = prefix <> item.source_id
+
+      case enqueue_import_vouchers(company, item.xml, 1,
+             source_key: source_key,
+             retry_failed: true,
+             metadata: %{
+               "source_id" => item.source_id,
+               "invoice_number" => item.invoice_number
+             }
+           ) do
+        {:ok, job, disposition} -> {:cont, {:ok, [{job, disposition} | jobs]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, jobs} -> {:ok, Enum.reverse(jobs)}
+      error -> error
+    end
+  end
+
+  def list_by_source_prefix(org_id, source_prefix)
+      when is_integer(org_id) and is_binary(source_prefix) do
+    from(j in Job,
+      where: j.org_id == ^org_id and like(j.source_key, ^"#{source_prefix}%"),
+      order_by: [asc: j.id]
+    )
+    |> Repo.all()
+  end
 
   def claim_next(device_id, now \\ DateTime.utc_now()) when is_integer(device_id) do
     Repo.transact(fn ->
@@ -70,20 +108,30 @@ defmodule Nila.TallyJobs do
 
   def complete(device_id, job_id, status, details, now \\ DateTime.utc_now())
       when status in ["succeeded", "failed", "indeterminate"] and is_map(details) do
-    Repo.transact(fn ->
-      with %Job{} = job <-
-             Repo.one(
-               from job in Job,
-                 where:
-                   job.id == ^job_id and job.device_id == ^device_id and
-                     job.status == "running",
-                 lock: "FOR UPDATE"
-             ) || {:error, :not_running},
-           attrs = completion_attrs(status, details, now),
-           {:ok, completed} <- job |> Job.transition_changeset(attrs) |> Repo.update() do
-        {:ok, completed}
-      end
-    end)
+    result =
+      Repo.transact(fn ->
+        with %Job{} = job <-
+               Repo.one(
+                 from job in Job,
+                   where:
+                     job.id == ^job_id and job.device_id == ^device_id and
+                       job.status == "running",
+                   lock: "FOR UPDATE"
+               ) || {:error, :not_running},
+             attrs = completion_attrs(status, details, now),
+             {:ok, completed} <- job |> Job.transition_changeset(attrs) |> Repo.update() do
+          {:ok, completed}
+        end
+      end)
+
+    case result do
+      {:ok, %Job{} = job} ->
+        broadcast_org(job.org_id)
+        result
+
+      _ ->
+        result
+    end
   end
 
   def get_job!(id), do: Repo.get!(Job, id)
@@ -120,6 +168,8 @@ defmodule Nila.TallyJobs do
   end
 
   def device_topic(device_id), do: "tally_jobs:device:#{device_id}"
+  def org_topic(org_id), do: "tally_jobs:org:#{org_id}"
+  def subscribe_org(org_id), do: Phoenix.PubSub.subscribe(Nila.PubSub, org_topic(org_id))
 
   defp insert_job(%Device{} = device, kind, payload, opts) do
     job_key = Keyword.get_lazy(opts, :job_key, &Ecto.UUID.generate/0)
@@ -137,12 +187,46 @@ defmodule Nila.TallyJobs do
     case Repo.insert(changeset) do
       {:ok, job} ->
         Phoenix.PubSub.broadcast(Nila.PubSub, device_topic(device.id), :tally_job_available)
+        broadcast_org(job.org_id)
         {:ok, job, :created}
 
       {:error, _changeset} = error when is_binary(source_key) ->
         case Repo.fetch_by(Job, org_id: device.org_id, source_key: source_key) do
-          {:ok, job} -> {:ok, job, :existing}
-          {:error, :not_found} -> error
+          {:ok, %Job{status: "failed"} = job} ->
+            if Keyword.get(opts, :retry_failed, false) do
+              job
+              |> Job.transition_changeset(%{
+                status: "pending",
+                started_at: nil,
+                completed_at: nil,
+                result: nil,
+                error: nil
+              })
+              |> Repo.update()
+              |> case do
+                {:ok, retried} ->
+                  Phoenix.PubSub.broadcast(
+                    Nila.PubSub,
+                    device_topic(device.id),
+                    :tally_job_available
+                  )
+
+                  broadcast_org(retried.org_id)
+
+                  {:ok, retried, :retried}
+
+                error ->
+                  error
+              end
+            else
+              {:ok, job, :existing}
+            end
+
+          {:ok, job} ->
+            {:ok, job, :existing}
+
+          {:error, :not_found} ->
+            error
         end
 
       error ->
@@ -175,5 +259,9 @@ defmodule Nila.TallyJobs do
       error: error,
       completed_at: DateTime.truncate(now, :microsecond)
     }
+  end
+
+  defp broadcast_org(org_id) do
+    Phoenix.PubSub.broadcast(Nila.PubSub, org_topic(org_id), :tally_jobs_changed)
   end
 end

@@ -9,6 +9,30 @@ defmodule Nila.TallySync do
   @max_records 1_000
   @statuses ~w(pending running succeeded failed)
 
+  @doc "Returns referenced ledger names absent from the latest stored Tally snapshot."
+  def missing_ledgers(company_id, names) when is_integer(company_id) and is_list(names) do
+    requested =
+      names
+      |> Enum.filter(&is_binary/1)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq_by(&String.downcase/1)
+
+    normalized = Enum.map(requested, &String.downcase/1)
+
+    found =
+      from(m in SyncedMaster,
+        where:
+          m.company_id == ^company_id and m.kind == "ledger" and
+            fragment("lower(?)", m.name) in ^normalized,
+        select: fragment("lower(?)", m.name)
+      )
+      |> Repo.all()
+      |> MapSet.new()
+
+    Enum.reject(requested, &MapSet.member?(found, String.downcase(&1)))
+  end
+
   def start(%Device{} = device, company_identity, today \\ Date.utc_today()) do
     with %Company{} = company <-
            Repo.one(

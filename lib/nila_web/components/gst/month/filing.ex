@@ -69,6 +69,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :readiness, :map, required: true
   attr :handoff, :map, default: nil
   attr :tally_companies, :list, default: []
+  attr :tally_handoffs, :list, default: []
 
   def gstr1_actions(assigns) do
     assigns =
@@ -312,6 +313,39 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           >
             Open the company in TallyPrime and keep Nila Connector connected to send directly.
           </p>
+        </div>
+
+        <div :if={@tally_handoffs != []} class="w-full space-y-3 pt-3">
+          <div
+            :for={handoff <- @tally_handoffs}
+            id={"gstr1-tally-status-#{handoff.company_id}"}
+            class="border-base-300 rounded-box border p-4"
+          >
+            <p class="text-base-content text-ui font-semibold">{handoff.company_name}</p>
+            <p class="text-ink-subtle text-ui">
+              {Map.get(handoff.counts, "succeeded", 0)} posted · {Map.get(handoff.counts, "failed", 0)} failed · {Map.get(
+                handoff.counts,
+                "indeterminate",
+                0
+              )} unknown · {Map.get(handoff.counts, "pending", 0) +
+                Map.get(handoff.counts, "running", 0)} queued
+            </p>
+            <div :if={Map.get(handoff.counts, "failed", 0) > 0} class="mt-2 space-y-1">
+              <p
+                :for={job <- Enum.filter(handoff.jobs, &(&1.status == "failed"))}
+                class="text-error text-ui"
+              >
+                {job.payload["invoice_number"] || "Voucher"}: {job.error["message"] ||
+                  "Tally rejected this voucher."}
+              </p>
+            </div>
+            <p
+              :if={Map.get(handoff.counts, "indeterminate", 0) > 0}
+              class="text-ui text-warning mt-2"
+            >
+              Unknown — Nila did not receive a trustworthy response. Verify before retrying.
+            </p>
+          </div>
         </div>
       </section>
     </div>

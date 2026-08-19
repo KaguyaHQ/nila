@@ -112,6 +112,21 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert xml =~ "<SVCURRENTCOMPANY>Nila &amp; Co</SVCURRENTCOMPANY>"
   end
 
+  test "builds one independently identifiable import per voucher" do
+    projection = %{
+      invoices: [invoice(), invoice(%{"id" => "second", "invoice_number" => "INV-002"})],
+      period: "2026-07"
+    }
+
+    assert {:ok, [first, second]} = TallyPrime.build_items_for_company(projection, "Nila")
+    assert first.invoice_number == "INV-001"
+    assert second.invoice_number == "INV-002"
+    assert first.source_id != second.source_id
+    assert first.ledger_names == ["Customer", "Sales", "Output IGST"]
+    assert length(Regex.scan(~r/<TALLYMESSAGE>/, first.xml)) == 1
+    assert first.xml =~ "<SVCURRENTCOMPANY>Nila</SVCURRENTCOMPANY>"
+  end
+
   test "accepts Tally's direct response format without a status tag" do
     response = """
     <RESPONSE>

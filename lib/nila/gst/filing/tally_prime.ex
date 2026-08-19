@@ -57,6 +57,46 @@ defmodule Nila.Gst.Filing.TallyPrime do
 
   def build_for_company(_projection, _company), do: {:error, :invalid_company}
 
+  @doc "Builds one company-scoped import envelope per logical voucher."
+  def build_items_for_company(projection, company)
+      when is_map(projection) and is_binary(company) and byte_size(company) <= 200 do
+    company = String.trim(company)
+    active = effective_active_invoices(projection)
+    period = projection[:period] || projection["period"]
+
+    with true <- company != "",
+         :ok <- require_invoices(active) do
+      active
+      |> Enum.reduce_while({:ok, []}, fn invoice, {:ok, items} ->
+        case voucher(invoice, period) do
+          {:ok, voucher_xml} ->
+            xml = IO.iodata_to_binary(voucher_xml)
+
+            item = %{
+              source_id: remote_id(invoice, period),
+              invoice_number: invoice["invoice_number"],
+              ledger_names: voucher_ledger_names(xml),
+              xml: envelope(xml, company)
+            }
+
+            {:cont, {:ok, [item | items]}}
+
+          error ->
+            {:halt, error}
+        end
+      end)
+      |> case do
+        {:ok, items} -> {:ok, Enum.reverse(items)}
+        error -> error
+      end
+    else
+      false -> {:error, :invalid_company}
+      error -> error
+    end
+  end
+
+  def build_items_for_company(_projection, _company), do: {:error, :invalid_company}
+
   defp build_envelope(projection, company) do
     active = effective_active_invoices(projection)
 
@@ -283,6 +323,13 @@ defmodule Nila.Gst.Filing.TallyPrime do
       )
 
     "nila-" <> Base.encode16(:crypto.hash(:sha256, identity), case: :lower)
+  end
+
+  defp voucher_ledger_names(xml) do
+    ~r/<LEDGERNAME>(.*?)<\/LEDGERNAME>/is
+    |> Regex.scan(xml, capture: :all_but_first)
+    |> Enum.map(fn [name] -> name |> unescape() |> String.trim() end)
+    |> Enum.uniq()
   end
 
   defp post(xml) do

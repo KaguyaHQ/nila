@@ -118,4 +118,49 @@ defmodule Nila.TallyJobsTest do
     assert interrupted.error["kind"] == "ConnectorDisconnected"
     assert {:ok, nil} = TallyJobs.claim_next(device.id)
   end
+
+  test "queues and retries each definite voucher failure independently" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [%{"name" => "Nila", "tally_guid" => "nila"}])
+
+    company = Nila.Repo.preload(company, :device)
+
+    items = [
+      %{
+        source_id: "voucher-one",
+        invoice_number: "INV-001",
+        xml: "<ENVELOPE><TALLYMESSAGE/></ENVELOPE>"
+      },
+      %{
+        source_id: "voucher-two",
+        invoice_number: "INV-002",
+        xml: "<ENVELOPE><TALLYMESSAGE/></ENVELOPE>"
+      }
+    ]
+
+    assert {:ok, [{first, :created}, {second, :created}]} =
+             TallyJobs.enqueue_vouchers(company, items, source_prefix: "gstr1:7:voucher:")
+
+    assert first.payload["invoice_number"] == "INV-001"
+    assert second.payload["invoice_number"] == "INV-002"
+
+    assert {:ok, claimed} = TallyJobs.claim_next(device.id)
+    assert claimed.id == first.id
+
+    assert {:ok, failed} =
+             TallyJobs.complete(device.id, first.id, "failed", %{"message" => "Ledger missing"})
+
+    assert failed.status == "failed"
+
+    assert {:ok, [{retried, :retried}, {same_second, :existing}]} =
+             TallyJobs.enqueue_vouchers(company, items, source_prefix: "gstr1:7:voucher:")
+
+    assert retried.id == first.id
+    assert retried.status == "pending"
+    assert same_second.id == second.id
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 2
+  end
 end

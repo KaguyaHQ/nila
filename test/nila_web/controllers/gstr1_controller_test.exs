@@ -6,6 +6,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
   alias Nila.Gst.Sales.{Gstr1, Months}
   alias Nila.Repo
   alias Nila.TallyDevices
+  alias Nila.TallyDevices.SyncedMaster
   alias Nila.TallyJobs.Job
 
   setup %{conn: conn} do
@@ -194,6 +195,8 @@ defmodule NilaWeb.Gstr1ControllerTest do
         %{"name" => "Nila", "tally_guid" => "company-nila"}
       ])
 
+    seed_ledgers(company, ["Customer & Co", "Sales", "Output IGST"])
+
     conn =
       post(conn, ~p"/gstr1/#{client.id}/2026-07/tally", %{
         "tally" => %{"company_id" => Integer.to_string(company.id)}
@@ -215,6 +218,40 @@ defmodule NilaWeb.Gstr1ControllerTest do
       })
 
     assert Repo.aggregate(Job, :count) == 1
+  end
+
+  test "blocks a voucher before Tally when a referenced ledger is missing", %{
+    conn: conn,
+    client: client,
+    month: month,
+    org: org,
+    user: user
+  } do
+    %Signoff{org_id: org.id, sales_month_id: month.id, signed_by_id: user.id}
+    |> Signoff.changeset(%{
+      artifact: "gstr1",
+      snapshot: %{"derived" => month.derived_gstr1, "invoices" => month.invoices}
+    })
+    |> Repo.insert!()
+
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => "Nila", "tally_guid" => "company-nila"}
+      ])
+
+    seed_ledgers(company, ["Sales", "Output IGST"])
+
+    conn =
+      post(conn, ~p"/gstr1/#{client.id}/2026-07/tally", %{
+        "tally" => %{"company_id" => Integer.to_string(company.id)}
+      })
+
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
+             "These ledgers are missing in Tally: Customer & Co"
+
+    assert Repo.aggregate(Job, :count) == 0
   end
 
   test "does not expose another organisation's workbook", %{client: client} do
@@ -265,5 +302,26 @@ defmodule NilaWeb.Gstr1ControllerTest do
   defp entries(workbook) do
     {:ok, entries} = :zip.extract(workbook, [:memory])
     Map.new(entries, fn {path, bytes} -> {List.to_string(path), bytes} end)
+  end
+
+  defp seed_ledgers(company, names) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    rows =
+      Enum.map(names, fn name ->
+        %{
+          org_id: company.org_id,
+          company_id: company.id,
+          kind: "ledger",
+          identity: String.downcase(name),
+          name: name,
+          data: %{},
+          inserted_at: now,
+          updated_at: now
+        }
+      end)
+
+    {count, _} = Repo.insert_all(SyncedMaster, rows)
+    assert count == length(rows)
   end
 end
