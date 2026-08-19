@@ -195,13 +195,15 @@ defmodule Nila.TallyJobs do
           {:ok, %Job{status: "failed"} = job} ->
             if Keyword.get(opts, :retry_failed, false) do
               job
-              |> Job.transition_changeset(%{
+              |> Ecto.Changeset.change(
+                device_id: device.id,
+                payload: payload,
                 status: "pending",
                 started_at: nil,
                 completed_at: nil,
                 result: nil,
                 error: nil
-              })
+              )
               |> Repo.update()
               |> case do
                 {:ok, retried} ->

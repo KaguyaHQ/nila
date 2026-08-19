@@ -48,8 +48,6 @@ defmodule NilaWeb.Banking.UploadLive do
 
     with {:ok, client} <- fetch_client(org, params["client_id"]),
          {:ok, bank_name} <- fetch_bank(params["bank_code"]),
-         {:ok, bank_ledger_name} <-
-           required(params["bank_ledger_name"], "Enter the bank ledger name used in Tally."),
          {:ok, _entry} <- ready_entry(socket),
          [{key, original_filename}] <- consume_statement(socket),
          {:ok, statement} <-
@@ -58,7 +56,7 @@ defmodule NilaWeb.Banking.UploadLive do
              client.id,
              params,
              bank_name,
-             bank_ledger_name,
+             bank_name,
              key,
              original_filename
            ) do
@@ -158,15 +156,6 @@ defmodule NilaWeb.Banking.UploadLive do
     end
   end
 
-  defp required(value, message) when is_binary(value) do
-    case String.trim(value) do
-      "" -> {:error, message}
-      value -> {:ok, value}
-    end
-  end
-
-  defp required(_value, message), do: {:error, message}
-
   defp credentials(password) when is_binary(password) do
     case String.trim(password) do
       "" -> nil
@@ -183,7 +172,7 @@ defmodule NilaWeb.Banking.UploadLive do
   defp list_clients(_socket), do: []
 
   defp defaults do
-    %{"client_id" => nil, "bank_code" => "hdfc", "bank_ledger_name" => "", "password" => ""}
+    %{"client_id" => nil, "bank_code" => "hdfc", "password" => ""}
   end
 
   @impl true
@@ -219,13 +208,6 @@ defmodule NilaWeb.Banking.UploadLive do
               options={@clients}
             />
             <.input field={@form[:bank_code]} type="select" label="Bank" options={Banking.banks()} />
-            <.input
-              field={@form[:bank_ledger_name]}
-              label="Bank ledger name in Tally"
-              placeholder="For example, HDFC Bank"
-              autocomplete="off"
-              required
-            />
             <.input
               field={@form[:password]}
               type="password"

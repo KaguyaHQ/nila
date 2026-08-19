@@ -155,11 +155,14 @@ defmodule Nila.TallyJobsTest do
 
     assert failed.status == "failed"
 
+    retry_items = put_in(items, [Access.at(0), :xml], "<ENVELOPE><UPDATED/></ENVELOPE>")
+
     assert {:ok, [{retried, :retried}, {same_second, :existing}]} =
-             TallyJobs.enqueue_vouchers(company, items, source_prefix: "gstr1:7:voucher:")
+             TallyJobs.enqueue_vouchers(company, retry_items, source_prefix: "gstr1:7:voucher:")
 
     assert retried.id == first.id
     assert retried.status == "pending"
+    assert retried.payload["xml"] == "<ENVELOPE><UPDATED/></ENVELOPE>"
     assert same_second.id == second.id
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 2
   end

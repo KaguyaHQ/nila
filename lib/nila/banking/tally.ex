@@ -31,6 +31,26 @@ defmodule Nila.Banking.Tally do
     end
   end
 
+  @doc "Builds one deterministic voucher for connector delivery."
+  def build_transaction(statement, transaction, bank_ledger, counter_ledger)
+      when is_binary(bank_ledger) and is_binary(counter_ledger) do
+    with true <- field(statement, :status) == "ready",
+         true <- valid_text?(clean(bank_ledger)),
+         true <- valid_text?(clean(counter_ledger)),
+         type when type in ~w(payment receipt contra_withdrawal contra_deposit) <-
+           field(transaction, :transaction_type),
+         company when is_binary(company) and company != "" <- company_name(statement),
+         %Date{} <- date(field(transaction, :date)) do
+      {:ok,
+       connector_envelope(
+         [voucher(transaction, statement, clean(bank_ledger), clean(counter_ledger), type)],
+         company
+       )}
+    else
+      _ -> {:error, :invalid_transaction}
+    end
+  end
+
   defp voucher(transaction, statement, bank_ledger) do
     withdrawal = integer(transaction, "withdrawal_paise")
     deposit = integer(transaction, "deposit_paise")
@@ -62,6 +82,50 @@ defmodule Nila.Banking.Tally do
       "</VOUCHER></TALLYMESSAGE>"
     ]
   end
+
+  defp voucher(transaction, statement, bank_ledger, counter_ledger, transaction_type) do
+    withdrawal = integer_field(transaction, :withdrawal_paise)
+    deposit = integer_field(transaction, :deposit_paise)
+    {voucher_type, counter_amount} = typed_voucher_amount(transaction_type, withdrawal, deposit)
+    bank_amount = -counter_amount
+    date = transaction |> field(:date) |> date()
+    date_text = Calendar.strftime(date, "%Y%m%d")
+    narration = clean(field(transaction, :narration))
+    reference = clean(field(transaction, :reference)) || ""
+    remote_id = remote_id(statement, transaction)
+
+    [
+      "<TALLYMESSAGE xmlns:UDF=\"TallyUDF\">",
+      "<VOUCHER REMOTEID=\"",
+      remote_id,
+      "\" VCHTYPE=\"",
+      voucher_type,
+      "\" ACTION=\"Create\" OBJVIEW=\"Accounting Voucher View\">",
+      tag("DATE", date_text),
+      tag("GUID", remote_id),
+      tag("VOUCHERTYPENAME", voucher_type),
+      tag("NARRATION", narration),
+      tag("PARTYLEDGERNAME", bank_ledger),
+      tag("EFFECTIVEDATE", date_text),
+      tag("PERSISTEDVIEW", "Accounting Voucher View"),
+      tag("ISINVOICE", "No"),
+      ledger_entry(counter_ledger, counter_amount, false),
+      bank_entry(bank_ledger, bank_amount, date_text, reference),
+      "</VOUCHER></TALLYMESSAGE>"
+    ]
+  end
+
+  defp typed_voucher_amount(type, withdrawal, _deposit)
+       when type in ~w(payment contra_withdrawal),
+       do: {voucher_type(type), -withdrawal}
+
+  defp typed_voucher_amount(type, _withdrawal, deposit)
+       when type in ~w(receipt contra_deposit),
+       do: {voucher_type(type), deposit}
+
+  defp voucher_type(type) when type in ~w(contra_withdrawal contra_deposit), do: "Contra"
+  defp voucher_type("payment"), do: "Payment"
+  defp voucher_type("receipt"), do: "Receipt"
 
   defp voucher_amount(withdrawal, _deposit) when withdrawal != 0,
     do: {"Payment", -withdrawal}
@@ -111,15 +175,38 @@ defmodule Nila.Banking.Tally do
     ]
   end
 
-  defp envelope(messages) do
+  defp envelope(messages, company \\ nil) do
+    company_variable = if company, do: tag("SVCURRENTCOMPANY", company), else: ""
+
     IO.iodata_to_binary([
       "<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>",
       "<BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>All Masters</REPORTNAME>",
-      "<STATICVARIABLES><SVOVERWRITEIMPVCH>Yes</SVOVERWRITEIMPVCH></STATICVARIABLES>",
+      "<STATICVARIABLES>",
+      company_variable,
+      "<SVOVERWRITEIMPVCH>Yes</SVOVERWRITEIMPVCH></STATICVARIABLES>",
       "</REQUESTDESC><REQUESTDATA>",
       messages,
       "</REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>"
     ])
+  end
+
+  defp connector_envelope(messages, company) do
+    IO.iodata_to_binary([
+      "<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Import</TALLYREQUEST>",
+      "<TYPE>Data</TYPE><ID>Vouchers</ID></HEADER><BODY><DESC><STATICVARIABLES>",
+      tag("SVCURRENTCOMPANY", company),
+      "<SVOVERWRITEIMPVCH>Yes</SVOVERWRITEIMPVCH>",
+      "</STATICVARIABLES></DESC><DATA>",
+      messages,
+      "</DATA></BODY></ENVELOPE>"
+    ])
+  end
+
+  defp company_name(statement) do
+    case field(statement, :tally_company) do
+      company when is_map(company) -> company |> field(:name) |> clean()
+      _ -> nil
+    end
   end
 
   defp in_range(transactions, from, to) do
@@ -141,7 +228,8 @@ defmodule Nila.Banking.Tally do
         [
           "nila-bank",
           field(statement, :id) || field(statement, :source_key),
-          value(transaction, "id") || value(transaction, "ordinal")
+          field(transaction, :identity) || value(transaction, "id") ||
+            field(transaction, :ordinal)
         ],
         "|"
       )
@@ -159,6 +247,13 @@ defmodule Nila.Banking.Tally do
     case value(map, key) do
       value when is_integer(value) -> value
       _missing -> 0
+    end
+  end
+
+  defp integer_field(value, key) do
+    case field(value, key) do
+      amount when is_integer(amount) -> amount
+      _ -> 0
     end
   end
 

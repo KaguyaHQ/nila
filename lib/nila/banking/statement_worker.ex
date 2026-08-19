@@ -24,6 +24,7 @@ defmodule Nila.Banking.StatementWorker do
     Banking.broadcast(statement, :extracting)
 
     with {:ok, bytes} <- Storage.get(statement.source_key),
+         {:ok, statement} <- Banking.register_source_hash(statement, bytes),
          {:ok, artifact} <-
            extractor().extract(bytes,
              bank_code: statement.bank_code,

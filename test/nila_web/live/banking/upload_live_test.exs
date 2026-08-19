@@ -7,7 +7,11 @@ defmodule NilaWeb.Banking.UploadLiveTest do
   alias Nila.Banking
   alias Nila.Banking.StatementWorker
   alias Nila.Clients
+  alias Nila.Repo
   alias Nila.Storage
+  alias Nila.TallyDevices
+  alias Nila.TallyDevices.SyncedMaster
+  alias Nila.TallyJobs.Job
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
@@ -36,7 +40,6 @@ defmodule NilaWeb.Banking.UploadLiveTest do
       statement: %{
         client_id: context.client.id,
         bank_code: "kotak",
-        bank_ledger_name: "MY KOTAK",
         password: "short-lived"
       }
     )
@@ -47,7 +50,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert statement.org_id == context.org.id
     assert statement.client_id == context.client.id
     assert statement.bank_code == "kotak"
-    assert statement.bank_ledger_name == "MY KOTAK"
+    assert statement.bank_ledger_name == "Kotak Mahindra Bank / 811"
     assert statement.source_credentials == %{"password" => "short-lived"}
     assert_enqueued(worker: StatementWorker, args: %{statement_id: statement.id})
   end
@@ -74,6 +77,49 @@ defmodule NilaWeb.Banking.UploadLiveTest do
            )
 
     assert render(view) =~ "1 transactions · balances reconcile"
+  end
+
+  test "configures synced ledgers, maps a row, and sends it through the connector", context do
+    {:ok, statement} = ready_statement(context)
+    {:ok, company} = linked_company(context)
+    bank = master(context.org.id, company.id, "hdfc-bank", "HDFC Bank", "Bank Accounts")
+
+    charges =
+      master(context.org.id, company.id, "bank-charges", "Bank Charges", "Indirect Expenses")
+
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+    assert has_element?(view, "#banking-tally-setup")
+
+    view
+    |> form("#banking-tally-setup-form",
+      tally_setup: %{
+        company_id: Integer.to_string(company.id),
+        bank_ledger_identity: bank.identity
+      }
+    )
+    |> render_submit()
+
+    transaction = hd(Banking.list_transactions(context.org.id, statement.id))
+
+    render_submit(view, "bank-transactions", %{
+      "transaction_ids" => [Integer.to_string(transaction.id)],
+      "counter_ledger_identity" => charges.identity,
+      "transaction_type" => "",
+      "action" => "map"
+    })
+
+    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Bank Charges")
+    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Ready")
+
+    render_submit(view, "bank-transactions", %{
+      "transaction_ids" => [Integer.to_string(transaction.id)],
+      "counter_ledger_identity" => "",
+      "transaction_type" => "",
+      "action" => "send"
+    })
+
+    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Queued")
+    assert Repo.one!(Job).source_key == "bank:#{statement.id}:transaction:stub-1"
   end
 
   defp upload_pdf(view, content) do
@@ -109,5 +155,29 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     {:ok, _stored} = Storage.put(statement.source_key, "%PDF", content_type: "application/pdf")
     assert :ok = perform_job(StatementWorker, %{statement_id: statement.id})
     Banking.get_statement(context.org.id, statement.id)
+  end
+
+  defp linked_company(context) do
+    {:ok, device, _token} = TallyDevices.create_device(context.org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => context.client.name, "tally_guid" => "company-breeze"}
+      ])
+
+    company = company |> Ecto.Changeset.change(client_id: context.client.id) |> Repo.update!()
+    {:ok, Repo.preload(company, :device)}
+  end
+
+  defp master(org_id, company_id, identity, name, parent) do
+    %SyncedMaster{
+      org_id: org_id,
+      company_id: company_id,
+      kind: "ledger",
+      identity: identity,
+      name: name,
+      data: %{"parent" => parent}
+    }
+    |> Repo.insert!()
   end
 end
