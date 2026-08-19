@@ -10,6 +10,7 @@ defmodule Nila.TallyDevices.Company do
 
     belongs_to :org, Nila.Orgs.Org
     belongs_to :device, Nila.TallyDevices.Device
+    belongs_to :client, Nila.Clients.Client
 
     timestamps()
   end

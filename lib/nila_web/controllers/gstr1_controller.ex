@@ -158,7 +158,8 @@ defmodule NilaWeb.Gstr1Controller do
     org_id = conn.assigns.current_scope.current_org.id
 
     with {company_id, ""} <- Integer.parse(company_id),
-         {:ok, company} <- TallyDevices.get_open_company(org_id, company_id),
+         {:ok, company} <-
+           TallyDevices.get_open_company(org_id, company_id, sales_month.client_id),
          {:ok, signoff} <- Signoffs.latest_gstr1_signoff(sales_month.id),
          {:ok, items} <-
            TallyPrime.build_items_for_company(tally_projection(sales_month, period), company.name) do

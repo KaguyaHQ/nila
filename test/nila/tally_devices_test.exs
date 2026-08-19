@@ -4,6 +4,7 @@ defmodule Nila.TallyDevicesTest do
   import Nila.AccountsFixtures
 
   alias Nila.TallyDevices
+  alias Nila.Clients
 
   test "creates a device with a one-time credential and authenticates it" do
     %{org: org} = user_with_org_fixture()
@@ -107,5 +108,52 @@ defmodule Nila.TallyDevicesTest do
 
     assert :ok = TallyDevices.mark_companies_closed(device.id, newer)
     assert [] = TallyDevices.list_open_companies(org.id)
+  end
+
+  test "imports selected Tally companies as clients and reuses an existing name" do
+    %{org: org} = user_with_org_fixture()
+
+    {:ok, existing} =
+      Clients.create_client(%{org_id: org.id, name: "Existing Books", type: "company"})
+
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [existing_company, new_company, ignored_company]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => "Existing Books", "tally_guid" => "existing"},
+        %{"name" => "New Client", "tally_guid" => "new"},
+        %{"name" => "Demo Company", "tally_guid" => "demo"}
+      ])
+
+    assert {:ok, result} =
+             TallyDevices.import_companies_as_clients(org.id, [
+               existing_company.id,
+               new_company.id
+             ])
+
+    assert result.created == 1
+    assert result.linked == 1
+    assert Enum.map(result.clients, & &1.name) == ["Existing Books", "New Client"]
+
+    existing_company_id = existing_company.id
+    assert [%{id: ^existing_company_id}] = TallyDevices.list_open_companies(org.id, existing.id)
+
+    assert Enum.map(TallyDevices.list_importable_companies(org.id), & &1.id) == [
+             ignored_company.id
+           ]
+
+    assert length(Clients.list_clients(org.id)) == 2
+  end
+
+  test "does not import another organization's discovered company" do
+    %{org: org} = user_with_org_fixture()
+    %{org: other_org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(other_org, %{name: "Other PC"})
+    {:ok, [company]} = TallyDevices.report_companies(device, [%{"name" => "Other Books"}])
+
+    assert {:error, :companies_changed} =
+             TallyDevices.import_companies_as_clients(org.id, [company.id])
+
+    assert Clients.list_clients(org.id) == []
   end
 end

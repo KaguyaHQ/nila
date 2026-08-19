@@ -117,7 +117,7 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:show_chase_history, false)
       |> assign(:precondition_choice, nil)
       |> assign(:can_sign_off, Policy.can?(socket.assigns.current_scope, :sign_off))
-      |> assign(:tally_companies, TallyDevices.list_open_companies(org_id))
+      |> assign(:tally_companies, TallyDevices.list_open_companies(org_id, client.id))
       |> assign_month(purchase, sales)
     end
   end

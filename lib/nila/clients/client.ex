@@ -20,6 +20,7 @@ defmodule Nila.Clients.Client do
     field :match_hints, {:array, :string}, default: []
 
     belongs_to :org, Nila.Orgs.Org
+    has_many :tally_companies, Nila.TallyDevices.Company
 
     timestamps()
   end

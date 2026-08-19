@@ -9,6 +9,8 @@ defmodule Nila.TallyDevices do
   import Ecto.Query
 
   alias Nila.Accounts.Scope
+  alias Nila.Clients
+  alias Nila.Clients.Client
   alias Nila.Orgs.Org
   alias Nila.Repo
   alias Nila.TallyDevices.Company
@@ -171,29 +173,133 @@ defmodule Nila.TallyDevices do
     end
   end
 
-  def list_open_companies(org_id) when is_integer(org_id) do
-    Repo.all(
+  def list_open_companies(org_id, client_id \\ nil) when is_integer(org_id) do
+    query =
       from company in Company,
         join: device in assoc(company, :device),
         where: company.org_id == ^org_id and company.is_open and is_nil(device.revoked_at),
         order_by: [asc: company.name, asc: device.name],
         preload: [device: device]
+
+    query =
+      if is_integer(client_id) do
+        from company in query, where: company.client_id == ^client_id
+      else
+        query
+      end
+
+    Repo.all(query)
+  end
+
+  def list_importable_companies(org_id) when is_integer(org_id) do
+    Repo.all(
+      from company in Company,
+        join: device in assoc(company, :device),
+        where:
+          company.org_id == ^org_id and company.is_open and is_nil(company.client_id) and
+            is_nil(device.revoked_at),
+        order_by: [asc: company.name, asc: device.name],
+        preload: [device: device]
     )
   end
 
-  def get_open_company(org_id, company_id)
+  @doc "Creates or reuses clients for selected discovered companies and links them atomically."
+  def import_companies_as_clients(org_id, company_ids)
+      when is_integer(org_id) and is_list(company_ids) and company_ids != [] and
+             length(company_ids) <= 100 do
+    ids = company_ids |> Enum.uniq() |> Enum.sort()
+
+    Repo.transact(fn ->
+      companies =
+        Repo.all(
+          from company in Company,
+            join: device in assoc(company, :device),
+            where:
+              company.org_id == ^org_id and company.id in ^ids and company.is_open and
+                is_nil(company.client_id) and is_nil(device.revoked_at),
+            order_by: [asc: company.id],
+            lock: "FOR UPDATE"
+        )
+
+      if length(companies) != length(ids) do
+        {:error, :companies_changed}
+      else
+        Enum.reduce_while(companies, {:ok, %{created: 0, linked: 0, clients: []}}, fn company,
+                                                                                      {:ok, acc} ->
+          case find_or_create_client(org_id, company.name) do
+            {:ok, client, disposition} ->
+              case company |> Ecto.Changeset.change(client_id: client.id) |> Repo.update() do
+                {:ok, _company} ->
+                  {:cont,
+                   {:ok,
+                    %{
+                      created: acc.created + if(disposition == :created, do: 1, else: 0),
+                      linked: acc.linked + if(disposition == :existing, do: 1, else: 0),
+                      clients: [client | acc.clients]
+                    }}}
+
+                error ->
+                  {:halt, error}
+              end
+
+            error ->
+              {:halt, error}
+          end
+        end)
+        |> case do
+          {:ok, result} -> {:ok, %{result | clients: Enum.reverse(result.clients)}}
+          error -> error
+        end
+      end
+    end)
+  end
+
+  def import_companies_as_clients(_org_id, _company_ids), do: {:error, :invalid_companies}
+
+  def get_open_company(org_id, company_id, client_id \\ nil)
+
+  def get_open_company(org_id, company_id, client_id)
       when is_integer(org_id) and is_integer(company_id) do
-    Repo.fetch_one(
+    query =
       from company in Company,
         join: device in assoc(company, :device),
         where:
           company.id == ^company_id and company.org_id == ^org_id and company.is_open and
             is_nil(device.revoked_at),
         preload: [device: device]
-    )
+
+    query =
+      if is_integer(client_id) do
+        from company in query, where: company.client_id == ^client_id
+      else
+        query
+      end
+
+    Repo.fetch_one(query)
   end
 
-  def get_open_company(_org_id, _company_id), do: {:error, :not_found}
+  def get_open_company(_org_id, _company_id, _client_id), do: {:error, :not_found}
+
+  defp find_or_create_client(org_id, name) do
+    normalized_name = String.downcase(name)
+
+    case Repo.one(
+           from client in Client,
+             where:
+               client.org_id == ^org_id and
+                 fragment("lower(?)", client.name) == ^normalized_name,
+             limit: 1
+         ) do
+      %Client{} = client ->
+        {:ok, client, :existing}
+
+      nil ->
+        case Clients.create_client(%{org_id: org_id, name: name, type: "company"}) do
+          {:ok, client} -> {:ok, client, :created}
+          error -> error
+        end
+    end
+  end
 
   def mark_companies_closed(device_id, now \\ DateTime.utc_now()) when is_integer(device_id) do
     closed_at = DateTime.truncate(now, :microsecond)

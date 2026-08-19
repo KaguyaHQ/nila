@@ -4,6 +4,7 @@ defmodule NilaWeb.ClientsLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
+  alias Nila.TallyDevices
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
@@ -112,6 +113,36 @@ defmodule NilaWeb.ClientsLiveTest do
     assert has_element?(view, "#clients-page")
     assert has_element?(view, "#clients-empty", "No clients yet.")
     assert has_element?(view, "#clients-add-first", "Add your first client")
+  end
+
+  test "bulk imports selected discovered Tally companies as clients", %{conn: conn, org: org} do
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [nila, demo]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => "Nila", "tally_guid" => "nila"},
+        %{"name" => "Demo Company", "tally_guid" => "demo"}
+      ])
+
+    {:ok, view, _html} = live(conn, ~p"/clients")
+
+    assert has_element?(view, "#clients-import-tally", "Import clients from Tally")
+    assert has_element?(view, "#clients-tally-company-#{nila.id}", "Nila")
+    assert has_element?(view, "#clients-tally-company-#{demo.id}", "Demo Company")
+
+    view
+    |> form("#clients-import-tally-form", %{"company_ids" => [Integer.to_string(nila.id)]})
+    |> render_submit()
+
+    assert render(view) =~ "Tally companies imported — 1 created"
+    assert render(view) =~ "Nila"
+    refute has_element?(view, "#clients-tally-company-#{nila.id}")
+    assert has_element?(view, "#clients-tally-company-#{demo.id}")
+
+    assert [client] = Clients.list_clients(org.id)
+    assert client.name == "Nila"
+    nila_company_id = nila.id
+    assert [%{id: ^nila_company_id}] = TallyDevices.list_open_companies(org.id, client.id)
   end
 
   test "does not list another org's clients", %{conn: conn} do

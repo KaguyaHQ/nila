@@ -4,14 +4,72 @@ defmodule NilaWeb.ClientsLive do
   alias Nila.Clients
   alias Nila.Gst.Purchase.{Months, Register}
   alias Nila.Gst.Sales.Months, as: SalesMonths
+  alias Nila.TallyDevices
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
      socket
      |> assign(:page_title, "Clients")
-     |> assign(:clients, list_clients(socket))}
+     |> load_clients()}
   end
+
+  @impl true
+  def handle_event("import_tally_companies", params, socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+
+    with {:ok, company_ids} <- parse_company_ids(params["company_ids"]),
+         {:ok, result} <- TallyDevices.import_companies_as_clients(org_id, company_ids) do
+      message =
+        [
+          result.created > 0 && "#{result.created} created",
+          result.linked > 0 && "#{result.linked} matched to existing clients"
+        ]
+        |> Enum.reject(&is_nil/1)
+        |> Enum.join(" · ")
+
+      {:noreply,
+       socket
+       |> put_flash(
+         :info,
+         "Tally companies imported — #{message}. Sync them from Nila Connector."
+       )
+       |> load_clients()}
+    else
+      {:error, :invalid_companies} ->
+        {:noreply, put_flash(socket, :error, "Select at least one Tally company to import.")}
+
+      _error ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Those Tally companies changed. Refresh and try again.")
+         |> load_clients()}
+    end
+  end
+
+  defp load_clients(socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+
+    socket
+    |> assign(:clients, list_clients(socket))
+    |> assign(:importable_tally_companies, TallyDevices.list_importable_companies(org_id))
+  end
+
+  defp parse_company_ids(ids) when is_list(ids) and ids != [] do
+    ids
+    |> Enum.reduce_while({:ok, []}, fn value, {:ok, parsed} ->
+      case Integer.parse(value) do
+        {id, ""} when id > 0 -> {:cont, {:ok, [id | parsed]}}
+        _ -> {:halt, {:error, :invalid_companies}}
+      end
+    end)
+    |> case do
+      {:ok, parsed} -> {:ok, Enum.reverse(parsed)}
+      error -> error
+    end
+  end
+
+  defp parse_company_ids(_ids), do: {:error, :invalid_companies}
 
   defp list_clients(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}) do
     purchase = Months.latest_by_client(org_id)
@@ -21,8 +79,6 @@ defmodule NilaWeb.ClientsLive do
     |> Clients.list_clients()
     |> Enum.map(&client_view(&1, purchase[&1.id], sales[&1.id]))
   end
-
-  defp list_clients(_socket), do: []
 
   # A client's latest month spans both returns, so the row reads both. The
   # status is the *least* advanced of the two sides: a filed purchase month
@@ -93,6 +149,56 @@ defmodule NilaWeb.ClientsLive do
             <.button navigate={~p"/clients/new"} id="clients-add">Add client</.button>
           </:actions>
         </.page_header>
+
+        <section
+          :if={@importable_tally_companies != []}
+          id="clients-import-tally"
+          class="border-base-300 rounded-box space-y-block border p-6"
+        >
+          <div class="space-y-1">
+            <p class="text-ink-subtle text-label font-semibold uppercase">First-time setup</p>
+            <h2 class="text-base-content text-h4 font-semibold">Import clients from Tally</h2>
+            <p class="text-ink-muted text-ui max-w-2xl">
+              Select the businesses this firm manages. Nila creates each client and permanently
+              associates it with the discovered Tally company. Existing clients with the same
+              name are reused.
+            </p>
+          </div>
+
+          <.form
+            for={to_form(%{}, as: :tally_import)}
+            id="clients-import-tally-form"
+            phx-submit="import_tally_companies"
+            class="space-y-block"
+          >
+            <div class="border-base-300 divide-base-300 divide-y border-y">
+              <label
+                :for={company <- @importable_tally_companies}
+                id={"clients-tally-company-#{company.id}"}
+                class="gap-related py-related flex cursor-pointer items-center"
+              >
+                <input
+                  type="checkbox"
+                  name="company_ids[]"
+                  value={company.id}
+                  class="checkbox checkbox-sm"
+                />
+                <span class="min-w-0 flex-1">
+                  <span class="text-base-content text-ui block font-semibold">{company.name}</span>
+                  <span class="text-ink-muted text-ui">{company.device.name}</span>
+                </span>
+                <.badge variant="success">Open in Tally</.badge>
+              </label>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+              <.button type="submit" id="clients-import-tally-submit">
+                Import selected clients
+              </.button>
+              <span class="text-ink-muted text-ui">You can add other clients manually.</span>
+            </div>
+          </.form>
+        </section>
 
         <.data_table
           id="clients-table"

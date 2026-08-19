@@ -195,6 +195,10 @@ defmodule NilaWeb.Gstr1ControllerTest do
         %{"name" => "Nila", "tally_guid" => "company-nila"}
       ])
 
+    company
+    |> Ecto.Changeset.change(client_id: client.id)
+    |> Repo.update!()
+
     seed_ledgers(company, ["Customer & Co", "Sales", "Output IGST"])
 
     conn =
@@ -241,6 +245,10 @@ defmodule NilaWeb.Gstr1ControllerTest do
         %{"name" => "Nila", "tally_guid" => "company-nila"}
       ])
 
+    company
+    |> Ecto.Changeset.change(client_id: client.id)
+    |> Repo.update!()
+
     seed_ledgers(company, ["Sales", "Output IGST"])
 
     conn =
@@ -253,6 +261,44 @@ defmodule NilaWeb.Gstr1ControllerTest do
 
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Customer & Co"
 
+    assert Repo.aggregate(Job, :count) == 0
+  end
+
+  test "does not send a client's sales to another client's linked Tally company", %{
+    conn: conn,
+    client: client,
+    month: month,
+    org: org,
+    user: user
+  } do
+    %Signoff{org_id: org.id, sales_month_id: month.id, signed_by_id: user.id}
+    |> Signoff.changeset(%{
+      artifact: "gstr1",
+      snapshot: %{"derived" => month.derived_gstr1, "invoices" => month.invoices}
+    })
+    |> Repo.insert!()
+
+    {:ok, other_client} =
+      Clients.create_client(%{org_id: org.id, name: "Another Client", type: "company"})
+
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => "Another Client", "tally_guid" => "company-another-client"}
+      ])
+
+    company
+    |> Ecto.Changeset.change(client_id: other_client.id)
+    |> Repo.update!()
+
+    conn =
+      post(conn, ~p"/gstr1/#{client.id}/2026-07/tally", %{
+        "tally" => %{"company_id" => Integer.to_string(company.id)}
+      })
+
+    assert redirected_to(conn) == ~p"/gst/#{client.id}/2026-07"
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "no longer available"
     assert Repo.aggregate(Job, :count) == 0
   end
 
