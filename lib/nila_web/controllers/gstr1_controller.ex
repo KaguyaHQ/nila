@@ -161,13 +161,18 @@ defmodule NilaWeb.Gstr1Controller do
          {:ok, company} <- TallyDevices.get_open_company(org_id, company_id),
          {:ok, signoff} <- Signoffs.latest_gstr1_signoff(sales_month.id),
          {:ok, items} <-
-           TallyPrime.build_items_for_company(tally_projection(sales_month, period), company.name),
-         [] <- TallySync.missing_ledgers(company.id, Enum.flat_map(items, & &1.ledger_names)),
-         {:ok, jobs} <-
-           TallyJobs.enqueue_vouchers(company, items,
-             source_prefix: tally_source_prefix(signoff.id, company.id)
-           ) do
-      put_flash(conn, :info, tally_jobs_message(jobs, company.name))
+           TallyPrime.build_items_for_company(tally_projection(sales_month, period), company.name) do
+      {ready, blocked} = partition_ready_items(company.id, items)
+
+      case enqueue_ready_items(company, signoff.id, ready) do
+        {:ok, jobs} ->
+          conn
+          |> maybe_put_tally_jobs_flash(jobs, company.name)
+          |> maybe_put_blocked_vouchers_flash(blocked)
+
+        {:error, reason} ->
+          tally_enqueue_error(conn, reason)
+      end
     else
       :error ->
         put_flash(conn, :error, "Choose an open Tally company before sending.")
@@ -181,20 +186,6 @@ defmodule NilaWeb.Gstr1Controller do
       {:error, :invalid_sales_data} ->
         put_flash(conn, :error, "Sales data contains fields Tally cannot import.")
 
-      {:error, :batch_too_large} ->
-        put_flash(
-          conn,
-          :error,
-          "This batch is too large to send directly. Download the Tally XML instead."
-        )
-
-      missing when is_list(missing) and missing != [] ->
-        put_flash(
-          conn,
-          :error,
-          "Not sent. These ledgers are missing in Tally: #{Enum.join(missing, ", ")}. Sync the company after creating or mapping them, then retry."
-        )
-
       {:error, _reason} ->
         put_flash(conn, :error, "Nila could not queue the Tally import.")
 
@@ -202,6 +193,67 @@ defmodule NilaWeb.Gstr1Controller do
         put_flash(conn, :error, "Choose an open Tally company before sending.")
     end
   end
+
+  defp partition_ready_items(company_id, items) do
+    missing =
+      company_id
+      |> TallySync.missing_ledgers(Enum.flat_map(items, & &1.ledger_names))
+      |> MapSet.new(&String.downcase/1)
+
+    Enum.reduce(items, {[], []}, fn item, {ready, blocked} ->
+      missing_for_item =
+        Enum.filter(item.ledger_names, &MapSet.member?(missing, String.downcase(&1)))
+
+      if missing_for_item == [] do
+        {[item | ready], blocked}
+      else
+        {ready, [Map.put(item, :missing_ledgers, missing_for_item) | blocked]}
+      end
+    end)
+    |> then(fn {ready, blocked} -> {Enum.reverse(ready), Enum.reverse(blocked)} end)
+  end
+
+  defp enqueue_ready_items(_company, _signoff_id, []), do: {:ok, []}
+
+  defp enqueue_ready_items(company, signoff_id, items) do
+    TallyJobs.enqueue_vouchers(company, items,
+      source_prefix: tally_source_prefix(signoff_id, company.id)
+    )
+  end
+
+  defp maybe_put_tally_jobs_flash(conn, [], _company), do: conn
+
+  defp maybe_put_tally_jobs_flash(conn, jobs, company),
+    do: put_flash(conn, :info, tally_jobs_message(jobs, company))
+
+  defp maybe_put_blocked_vouchers_flash(conn, []), do: conn
+
+  defp maybe_put_blocked_vouchers_flash(conn, blocked) do
+    invoices = Enum.map_join(blocked, ", ", & &1.invoice_number)
+
+    ledgers =
+      blocked
+      |> Enum.flat_map(& &1.missing_ledgers)
+      |> Enum.uniq()
+      |> Enum.join(", ")
+
+    put_flash(
+      conn,
+      :error,
+      "Held back #{length(blocked)} #{plural(length(blocked), "voucher")} (#{invoices}). Resolve #{if(length(blocked) == 1, do: "its", else: "their")} missing Tally ledgers, sync the company, then retry: #{ledgers}."
+    )
+  end
+
+  defp tally_enqueue_error(conn, :batch_too_large) do
+    put_flash(
+      conn,
+      :error,
+      "This voucher is too large to send directly. Download the Tally XML instead."
+    )
+  end
+
+  defp tally_enqueue_error(conn, _reason),
+    do: put_flash(conn, :error, "Nila could not queue the Tally import.")
 
   defp tally_jobs_message(jobs, company) do
     queued = Enum.count(jobs, fn {_job, disposition} -> disposition in [:created, :retried] end)

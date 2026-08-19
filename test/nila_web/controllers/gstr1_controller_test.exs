@@ -249,7 +249,9 @@ defmodule NilaWeb.Gstr1ControllerTest do
       })
 
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
-             "These ledgers are missing in Tally: Customer & Co"
+             "Held back 1 voucher (INV-001)"
+
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Customer & Co"
 
     assert Repo.aggregate(Job, :count) == 0
   end
