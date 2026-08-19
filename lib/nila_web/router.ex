@@ -72,6 +72,10 @@ defmodule NilaWeb.Router do
     post "/pairings", TallyPairingController, :create
     post "/pairings/exchange", TallyPairingController, :exchange
     delete "/device", TallyPairingController, :revoke
+    post "/syncs", TallySyncController, :create
+    put "/syncs/:id/masters", TallySyncController, :masters
+    put "/syncs/:id/vouchers", TallySyncController, :vouchers
+    post "/syncs/:id/fail", TallySyncController, :fail
   end
 
   # Public legal & contact pages — reachable by everyone, logged in or out.

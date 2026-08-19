@@ -1,0 +1,288 @@
+defmodule Nila.TallySync do
+  @moduledoc "Durable, company-scoped snapshots read from Tally by a connector."
+
+  import Ecto.Query
+
+  alias Nila.Repo
+  alias Nila.TallyDevices.{Company, Device, SyncRun, SyncedMaster, SyncedVoucher}
+
+  @max_records 1_000
+  @statuses ~w(pending running succeeded failed)
+
+  def start(%Device{} = device, company_identity, today \\ Date.utc_today()) do
+    with %Company{} = company <-
+           Repo.one(
+             from c in Company,
+               where:
+                 c.device_id == ^device.id and c.org_id == ^device.org_id and c.is_open and
+                   c.identity == ^company_identity
+           ) do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+      period_start = Date.beginning_of_month(today)
+
+      %SyncRun{
+        org_id: device.org_id,
+        device_id: device.id,
+        company_id: company.id,
+        period_start: period_start,
+        period_end: today,
+        started_at: now
+      }
+      |> Repo.insert()
+      |> case do
+        {:ok, run} -> {:ok, Repo.preload(run, :company)}
+        error -> error
+      end
+    else
+      nil -> {:error, :company_not_found}
+    end
+  end
+
+  def put_pipeline(%Device{} = device, run_id, pipeline, records, complete)
+      when pipeline in [:masters, :vouchers] and is_list(records) and
+             length(records) <= @max_records and is_boolean(complete) do
+    Repo.transact(fn ->
+      with %SyncRun{} = run <- lock_run(device, run_id),
+           :ok <- ensure_pipeline_pending(run, pipeline),
+           {:ok, rows} <- normalize_records(pipeline, run, records) do
+        now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+        upsert_records(pipeline, rows, now)
+
+        changes = pipeline_changes(pipeline, run, complete, now)
+
+        run |> Ecto.Changeset.change(changes) |> Repo.update()
+      else
+        nil -> {:error, :not_found}
+        error -> error
+      end
+    end)
+  end
+
+  def put_pipeline(%Device{}, _run_id, _pipeline, _records, _complete),
+    do: {:error, :invalid_records}
+
+  def fail_pipeline(%Device{} = device, run_id, pipeline, error)
+      when pipeline in [:masters, :vouchers] and is_binary(error) do
+    Repo.transact(fn ->
+      case lock_run(device, run_id) do
+        %SyncRun{} = run ->
+          now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+          message = error |> String.trim() |> String.slice(0, 500)
+
+          run
+          |> Ecto.Changeset.change(%{
+            pipeline_status_field(pipeline) => "failed",
+            error_field(pipeline) => message,
+            status: if(other_status(run, pipeline) == "succeeded", do: "partial", else: "failed"),
+            completed_at: now
+          })
+          |> Repo.update()
+
+        nil ->
+          {:error, :not_found}
+      end
+    end)
+  end
+
+  defp lock_run(device, run_id) do
+    Repo.one(
+      from r in SyncRun,
+        where: r.id == ^run_id and r.device_id == ^device.id and r.org_id == ^device.org_id,
+        lock: "FOR UPDATE"
+    )
+  end
+
+  defp ensure_pipeline_pending(run, pipeline) do
+    if Map.fetch!(run, pipeline_status_field(pipeline)) in (@statuses -- ["succeeded"]),
+      do: :ok,
+      else: {:error, :already_completed}
+  end
+
+  defp normalize_records(:masters, run, records) do
+    map_records(records, &normalize_master(&1, run))
+  end
+
+  defp normalize_records(:vouchers, run, records) do
+    map_records(records, &normalize_voucher(&1, run))
+  end
+
+  defp map_records(records, mapper) do
+    Enum.reduce_while(records, {:ok, []}, fn record, {:ok, rows} ->
+      case mapper.(record) do
+        {:ok, row} -> {:cont, {:ok, [row | rows]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, rows} -> {:ok, Enum.reverse(rows)}
+      error -> error
+    end
+  end
+
+  defp normalize_master(%{"kind" => kind, "identity" => identity, "name" => name} = item, run)
+       when is_binary(kind) and is_binary(identity) and is_binary(name) do
+    kind = String.downcase(String.trim(kind))
+    identity = String.trim(identity)
+    name = String.trim(name)
+
+    if kind in ~w(ledger voucher_type stock_item) and valid?(identity, 300) and valid?(name, 300) do
+      {:ok,
+       %{
+         org_id: run.org_id,
+         company_id: run.company_id,
+         last_seen_sync_id: run.id,
+         kind: kind,
+         identity: identity,
+         name: name,
+         tally_guid: optional(item["tally_guid"], 300),
+         alter_id: optional(item["alter_id"], 100),
+         data: safe_data(item["data"])
+       }}
+    else
+      {:error, :invalid_records}
+    end
+  end
+
+  defp normalize_master(_, _), do: {:error, :invalid_records}
+
+  defp normalize_voucher(
+         %{"identity" => identity, "date" => date, "voucher_type" => voucher_type} = item,
+         run
+       )
+       when is_binary(identity) and is_binary(date) and is_binary(voucher_type) do
+    with true <- valid?(identity, 300),
+         true <- valid?(voucher_type, 200),
+         {:ok, parsed_date} <- Date.from_iso8601(date),
+         true <- Date.compare(parsed_date, run.period_start) != :lt,
+         true <- Date.compare(parsed_date, run.period_end) != :gt do
+      {:ok,
+       %{
+         org_id: run.org_id,
+         company_id: run.company_id,
+         last_seen_sync_id: run.id,
+         identity: String.trim(identity),
+         master_id: integer(item["master_id"]),
+         tally_guid: optional(item["tally_guid"], 300),
+         remote_id: optional(item["remote_id"], 300),
+         date: parsed_date,
+         voucher_type: String.trim(voucher_type),
+         voucher_number: optional(item["voucher_number"], 200),
+         narration: optional(item["narration"], 2_000),
+         data: safe_data(item["data"])
+       }}
+    else
+      _ -> {:error, :invalid_records}
+    end
+  end
+
+  defp normalize_voucher(_, _), do: {:error, :invalid_records}
+
+  defp upsert_records(:masters, rows, now) do
+    rows = Enum.map(rows, &Map.merge(&1, %{inserted_at: now, updated_at: now}))
+
+    Repo.insert_all(SyncedMaster, rows,
+      conflict_target: [:company_id, :kind, :identity],
+      on_conflict:
+        {:replace, [:name, :tally_guid, :alter_id, :data, :last_seen_sync_id, :updated_at]}
+    )
+  end
+
+  defp upsert_records(:vouchers, rows, now) do
+    rows = Enum.map(rows, &Map.merge(&1, %{inserted_at: now, updated_at: now}))
+
+    Repo.insert_all(SyncedVoucher, rows,
+      conflict_target: [:company_id, :identity],
+      on_conflict:
+        {:replace,
+         [
+           :master_id,
+           :tally_guid,
+           :remote_id,
+           :date,
+           :voucher_type,
+           :voucher_number,
+           :narration,
+           :data,
+           :last_seen_sync_id,
+           :updated_at
+         ]}
+    )
+  end
+
+  defp remove_stale(:masters, run) do
+    from(m in SyncedMaster,
+      where: m.company_id == ^run.company_id and m.last_seen_sync_id != ^run.id
+    )
+    |> Repo.delete_all()
+  end
+
+  defp remove_stale(:vouchers, run) do
+    from(v in SyncedVoucher,
+      where:
+        v.company_id == ^run.company_id and v.date >= ^run.period_start and
+          v.date <= ^run.period_end and v.last_seen_sync_id != ^run.id
+    )
+    |> Repo.delete_all()
+  end
+
+  defp pipeline_changes(pipeline, _run, false, _now) do
+    %{pipeline_status_field(pipeline) => "running", status: "running"}
+  end
+
+  defp pipeline_changes(pipeline, run, true, now) do
+    remove_stale(pipeline, run)
+    count = pipeline_count(pipeline, run)
+
+    %{pipeline_status_field(pipeline) => "succeeded", count_field(pipeline) => count}
+    |> maybe_complete(run, pipeline, now)
+  end
+
+  defp pipeline_count(:masters, run) do
+    Repo.aggregate(
+      from(m in SyncedMaster,
+        where: m.company_id == ^run.company_id and m.last_seen_sync_id == ^run.id
+      ),
+      :count
+    )
+  end
+
+  defp pipeline_count(:vouchers, run) do
+    Repo.aggregate(
+      from(v in SyncedVoucher,
+        where: v.company_id == ^run.company_id and v.last_seen_sync_id == ^run.id
+      ),
+      :count
+    )
+  end
+
+  defp maybe_complete(changes, run, pipeline, now) do
+    if other_status(run, pipeline) == "succeeded" do
+      Map.merge(changes, %{status: "succeeded", completed_at: now})
+    else
+      Map.put(changes, :status, "running")
+    end
+  end
+
+  defp other_status(run, :masters), do: run.vouchers_status
+  defp other_status(run, :vouchers), do: run.masters_status
+  defp pipeline_status_field(:masters), do: :masters_status
+  defp pipeline_status_field(:vouchers), do: :vouchers_status
+  defp count_field(:masters), do: :masters_count
+  defp count_field(:vouchers), do: :vouchers_count
+  defp error_field(:masters), do: :masters_error
+  defp error_field(:vouchers), do: :vouchers_error
+
+  defp valid?(value, max),
+    do: is_binary(value) and String.trim(value) != "" and byte_size(value) <= max
+
+  defp optional(nil, _max), do: nil
+
+  defp optional(value, max) when is_binary(value) and byte_size(value) <= max,
+    do: value |> String.trim() |> then(&if(&1 == "", do: nil, else: &1))
+
+  defp optional(_, _), do: nil
+  defp integer(value) when is_integer(value) and value > 0, do: value
+  defp integer(_), do: nil
+  defp safe_data(value) when is_map(value), do: value
+  defp safe_data(_), do: %{}
+end
