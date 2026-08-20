@@ -211,7 +211,7 @@ defmodule NilaWeb.Banking.UploadLive do
             <.input
               field={@form[:password]}
               type="password"
-              label="PDF password"
+              label="PDF password (optional)"
               hint="Leave blank if the statement opens without one. Nila erases it after extraction."
               autocomplete="off"
             />

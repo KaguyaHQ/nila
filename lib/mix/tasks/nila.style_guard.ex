@@ -107,6 +107,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "nila-fold" => "lib/nila_web/components/fold.ex",
     "nila-modal" => "lib/nila_web/components/modal.ex",
     "nila-menu" => "lib/nila_web/components/layouts.ex",
+    "nila-picker" => "lib/nila_web/components/selectable_list.ex",
     "nila-callout" => "lib/nila_web/components/feedback.ex",
     "nila-spinner" => "lib/nila_web/components/feedback.ex",
     "nila-progress" => "lib/nila_web/components/feedback.ex",

@@ -1496,6 +1496,20 @@ body {
   line-height: var(--text-ui--line-height);
 }
 
+.nila-callout[data-size="compact"] {
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.nila-callout[data-size="compact"] > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+}
+
 .nila-callout[data-kind="info"] {
   --nila-callout-bg: var(--info-a3);
   --nila-callout-border: var(--info-a6);
@@ -1835,6 +1849,106 @@ body {
   border-bottom: 1px solid var(--color-base-300);
 }
 
+.nila-picker-trigger {
+  display: inline-flex;
+  width: 10.5rem;
+  max-width: 100%;
+  height: var(--nila-control-height-compact);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem;
+  border: 0;
+  border-radius: var(--radius-field);
+  padding-inline: 0.5rem;
+  background: var(--color-base-100);
+  box-shadow: inset 0 0 0 1px var(--nila-ink-a7);
+  color: var(--color-base-content);
+  font-family: var(--font-sans);
+  font-size: var(--text-ui);
+  font-weight: 400;
+  line-height: var(--text-ui--line-height);
+  text-align: left;
+  user-select: none;
+  vertical-align: top;
+}
+
+.nila-picker-trigger:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px var(--nila-ink-a8);
+}
+
+.nila-picker-trigger:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: -1px;
+}
+
+.nila-picker-trigger:disabled {
+  background: var(--color-base-200);
+  box-shadow: inset 0 0 0 1px var(--nila-ink-a6);
+  color: var(--nila-ink-a10);
+  cursor: not-allowed;
+}
+
+.nila-picker-trigger-inner {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nila-picker-trigger[data-placeholder] .nila-picker-trigger-inner {
+  color: var(--nila-ink-a10);
+}
+
+.nila-picker-trigger-icon {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.nila-picker-trigger:disabled .nila-picker-trigger-icon {
+  color: var(--nila-ink-a9);
+}
+
+.nila-picker {
+  position: fixed;
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block, flip-inline;
+  inset: auto;
+  z-index: 50;
+  width: min(22rem, calc(100vw - 2rem));
+  max-height: min(28rem, calc(100dvh - 2rem));
+  margin: 0.25rem 0 0;
+  overflow: hidden;
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.5rem;
+  padding: 0;
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+  box-shadow: var(--shadow-moon);
+}
+
+.nila-picker-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-base-300);
+}
+
+.nila-picker-body {
+  display: flex;
+  max-height: 23rem;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.nila-picker-search {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-base-300);
+}
+
+.nila-picker-options {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .nila-selectable-listbox {
   display: flex;
   flex-direction: column;
@@ -1876,10 +1990,20 @@ body {
 }
 
 .nila-table-shell {
-  overflow-x: auto;
+  overflow: hidden;
   border: 1px solid var(--color-base-300);
   border-radius: 0.5rem;
   background: var(--color-base-100);
+}
+
+.nila-table-toolbar {
+  border-bottom: 1px solid var(--accent-a6);
+  padding: 0.75rem;
+  background: var(--accent-a3);
+}
+
+.nila-table-scroll {
+  overflow-x: auto;
 }
 
 .nila-table {

@@ -17,7 +17,8 @@ defmodule NilaWeb.Components.Button do
       <.button navigate={~p"/"}>Home</.button>
   """
   attr :rest, :global,
-    include: ~w(href navigate patch method download name value disabled type form target rel)
+    include:
+      ~w(href navigate patch method download name value disabled type form target rel popovertarget popovertargetaction)
 
   attr :variant, :string,
     default: "primary",

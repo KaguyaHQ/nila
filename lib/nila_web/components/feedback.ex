@@ -5,14 +5,18 @@ defmodule NilaWeb.Components.Feedback do
   import NilaWeb.Components.Icon
 
   attr :kind, :string, default: "info", values: ~w(info success warning error)
+  attr :size, :string, default: "standard", values: ~w(compact standard)
   attr :title, :string, default: nil
   slot :inner_block, required: true
 
   @doc "Renders a Radix-calibrated inline status message."
   def callout(assigns) do
     ~H"""
-    <div class="nila-callout" data-kind={@kind}>
-      <.icon name={callout_icon(@kind)} class="size-5 shrink-0" />
+    <div class="nila-callout" data-kind={@kind} data-size={@size}>
+      <.icon
+        name={callout_icon(@kind)}
+        class={["shrink-0", if(@size == "compact", do: "size-4", else: "size-5")]}
+      />
       <div>
         <p :if={@title} class="font-semibold">{@title}</p>
         <p>{render_slot(@inner_block)}</p>

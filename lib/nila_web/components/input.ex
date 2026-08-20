@@ -63,6 +63,8 @@ defmodule NilaWeb.Components.Input do
 
   attr :errors, :list, default: []
   attr :checked, :boolean, doc: "the checked flag for checkbox inputs"
+  attr :checkbox_value, :any, default: "true", doc: "submitted value for checkbox inputs"
+  attr :hidden_input, :boolean, default: true, doc: "include the checkbox's hidden false input"
   attr :prompt, :string, default: nil, doc: "the prompt for select inputs"
   attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
   attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
@@ -98,6 +100,7 @@ defmodule NilaWeb.Components.Input do
     <div class="nila-field">
       <label for={@id}>
         <input
+          :if={@hidden_input}
           type="hidden"
           name={@name}
           value="false"
@@ -109,7 +112,7 @@ defmodule NilaWeb.Components.Input do
             type="checkbox"
             id={@id}
             name={@name}
-            value="true"
+            value={@checkbox_value}
             checked={@checked}
             class="nila-checkbox"
             {@rest}

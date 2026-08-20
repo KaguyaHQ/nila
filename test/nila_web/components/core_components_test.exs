@@ -87,6 +87,22 @@ defmodule NilaWeb.CoreComponentsTest do
     refute html =~ "text-primary"
   end
 
+  test "compact callout keeps inline setup feedback dense" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.callout kind="warning" size="compact" title="Tally company not open">
+        Open it in Tally.
+      </.callout>
+      """)
+
+    assert html =~ ~s(class="nila-callout")
+    assert html =~ ~s(data-kind="warning")
+    assert html =~ ~s(data-size="compact")
+    assert html =~ "Tally company not open"
+  end
+
   test "spinner can request the closed accent tone" do
     assigns = %{}
 
@@ -117,6 +133,53 @@ defmodule NilaWeb.CoreComponentsTest do
     assert html =~ "nila-segmented"
     assert html =~ ~s(phx-value-scope="open")
     assert html =~ ~s(aria-pressed="true")
+  end
+
+  test "picker trigger owns Radix select-trigger anatomy" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.picker_trigger
+        id="ledger-trigger"
+        placeholder
+        popovertarget="ledger-picker"
+        disabled
+      >
+        Choose ledger
+      </.picker_trigger>
+      """)
+
+    fragment = LazyHTML.from_fragment(html)
+    trigger = LazyHTML.query(fragment, "#ledger-trigger")
+
+    assert LazyHTML.attribute(trigger, "class") == ["nila-picker-trigger"]
+    assert LazyHTML.attribute(trigger, "popovertarget") == ["ledger-picker"]
+    assert LazyHTML.attribute(trigger, "data-placeholder") == [""]
+    assert LazyHTML.attribute(trigger, "disabled") == [""]
+    assert LazyHTML.query(trigger, ".nila-picker-trigger-inner")
+    assert LazyHTML.query(trigger, ".nila-picker-trigger-icon")
+  end
+
+  test "select panel owns anchored searchable-list anatomy" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.select_panel id="ledger-picker" title="Choose ledger" filter_value="bank">
+        <:search><input data-selectable-input /></:search>
+        <.selectable_listbox id="ledger-options" label="Ledgers">
+          <.selectable_option id="bank-charges">Bank Charges</.selectable_option>
+        </.selectable_listbox>
+      </.select_panel>
+      """)
+
+    assert html =~ ~s(id="ledger-picker")
+    assert html =~ ~s(popover="auto")
+    assert html =~ ~s(phx-hook="NilaWeb.Components.SelectableList.SelectPanelPopover")
+    assert html =~ ~s(id="ledger-picker-navigation")
+    assert html =~ ~s(phx-hook="SelectableList")
+    assert html =~ ~s(data-filter-value="bank")
   end
 
   test "selectable options keep selected and keyboard-active states distinct" do
@@ -178,6 +241,44 @@ defmodule NilaWeb.CoreComponentsTest do
     refute html =~ "px-4 py-3"
   end
 
+  test "table toolbar is attached inside the table surface" do
+    assigns = %{rows: [%{invoice: "INV-1"}]}
+
+    html =
+      rendered_to_string(~H"""
+      <.data_table id="selectable-table" rows={@rows} mode="scan">
+        <:toolbar>
+          <div id="selection-tools">1 selected</div>
+        </:toolbar>
+        <:col :let={row} label="Invoice" row_header>{row.invoice}</:col>
+      </.data_table>
+      """)
+
+    fragment = LazyHTML.from_fragment(html)
+
+    assert LazyHTML.query(fragment, ".nila-table-shell > .nila-table-toolbar #selection-tools")
+    assert LazyHTML.query(fragment, ".nila-table-shell > .nila-table-scroll table")
+  end
+
+  test "table supports an interactive keyed column header" do
+    assigns = %{rows: [%{invoice: "INV-1"}]}
+
+    html =
+      rendered_to_string(~H"""
+      <.data_table id="selectable-table" rows={@rows} mode="scan">
+        <:col_header column="selection">
+          <button id="select-all" type="button">Select all</button>
+        </:col_header>
+        <:col :let={row} key="selection" label="Select">{row.invoice}</:col>
+        <:col :let={row} label="Invoice" row_header>{row.invoice}</:col>
+      </.data_table>
+      """)
+
+    assert html =~ ~s(id="select-all")
+    assert html =~ "Select all"
+    refute html =~ ">Select</th>"
+  end
+
   test "table rejects ambiguous row-header semantics" do
     assigns = %{rows: [%{invoice: "INV-1"}]}
 
@@ -215,6 +316,29 @@ defmodule NilaWeb.CoreComponentsTest do
     assert html =~ "nila-checkbox"
     refute html =~ ~s(class="input)
     refute html =~ ~s(class="select)
+  end
+
+  test "checkbox supports collection values without a hidden false input" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.input
+        type="checkbox"
+        id="transaction-42"
+        name="transaction_ids[]"
+        checkbox_value="42"
+        hidden_input={false}
+        checked
+      />
+      """)
+
+    fragment = LazyHTML.from_fragment(html)
+    checkbox = LazyHTML.query(fragment, "#transaction-42")
+
+    assert LazyHTML.attribute(checkbox, "value") == ["42"]
+    assert LazyHTML.attribute(checkbox, "checked") == [""]
+    refute html =~ ~s(type="hidden")
   end
 
   test "badge renders a soft pill in the given semantic variant" do

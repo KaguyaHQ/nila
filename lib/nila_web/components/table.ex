@@ -16,9 +16,12 @@ defmodule NilaWeb.Components.Table do
     * `review` — standard, top-aligned rows for multiline evidence or embedded controls.
 
   Exactly one `:col` must be marked `row_header`; it identifies each row to assistive
-  technology. Each column also accepts `label`, `align` ("left", "center", or
-  "right"), and `class`. The `:empty` slot renders when there are no rows; for streams
-  pass `empty?` explicitly since a stream's size isn't known at render time.
+  technology. Each column also accepts `key`, `label`, `align` ("left", "center", or
+  "right"), and `class`. Use a `:col_header` slot with the same `column` key when a
+  header needs an interactive control instead of its text label. The optional `:toolbar`
+  slot attaches contextual actions to the table surface above the column headers. The
+  `:empty` slot renders when there are no rows; for streams pass `empty?` explicitly since
+  a stream's size isn't known at render time.
 
   Two ways to make a row live, and the choice is not stylistic:
 
@@ -79,12 +82,18 @@ defmodule NilaWeb.Components.Table do
       "top-offset class (e.g. \"xl:top-14\") — keeps the header row pinned while the\n    page scrolls. Applies at xl+ only: sticky needs the wrapper's horizontal overflow\n    relaxed, so narrow screens keep their scroll and wide screens get the pinned header"
 
   slot :col do
+    attr :key, :string
     attr :label, :string
     attr :align, :string, values: ~w(left center right)
     attr :class, :any
     attr :row_header, :boolean
   end
 
+  slot :col_header do
+    attr :column, :string, required: true
+  end
+
+  slot :toolbar
   slot :empty
 
   def data_table(assigns) do
@@ -106,67 +115,76 @@ defmodule NilaWeb.Components.Table do
       )
 
     ~H"""
-    <div class={[
-      "nila-table-shell",
-      @sticky_header && "xl:overflow-x-visible"
-    ]}>
-      <div :if={@is_empty?} class="text-body text-ink-muted px-4 py-12 text-center">
-        {render_slot(@empty)}
+    <div class="nila-table-shell">
+      <div :if={@toolbar != []} class="nila-table-toolbar">
+        {render_slot(@toolbar)}
       </div>
-      <table
-        :if={!@is_empty?}
-        class={["nila-table", @min_width]}
-        data-mode={@mode}
-      >
-        <thead class={[
-          "bg-base-200 text-ink-subtle text-label uppercase",
-          @sticky_header && ["xl:sticky xl:z-10", @sticky_header]
-        ]}>
-          <tr>
-            <th
-              :for={col <- @col}
-              scope="col"
-              class={[
-                "font-semibold",
-                column_alignment(col[:align])
-              ]}
-            >
-              {col[:label]}
-            </th>
-          </tr>
-        </thead>
-        <tbody id={@id} phx-update={@stream? && "stream"} class="divide-base-300 divide-y">
-          <%!-- The click command is computed once and drives everything: the
+      <div class={[
+        "nila-table-scroll",
+        @sticky_header && "xl:overflow-x-visible"
+      ]}>
+        <div :if={@is_empty?} class="text-body text-ink-muted px-4 py-12 text-center">
+          {render_slot(@empty)}
+        </div>
+        <table
+          :if={!@is_empty?}
+          class={["nila-table", @min_width]}
+          data-mode={@mode}
+        >
+          <thead class={[
+            "bg-base-200 text-ink-subtle text-label uppercase",
+            @sticky_header && ["xl:sticky xl:z-10", @sticky_header]
+          ]}>
+            <tr>
+              <th
+                :for={col <- @col}
+                scope="col"
+                class={[
+                  "font-semibold",
+                  column_alignment(col[:align])
+                ]}
+              >
+                <%= if header = column_header(@col_header, col[:key]) do %>
+                  {render_slot(header)}
+                <% else %>
+                  {col[:label]}
+                <% end %>
+              </th>
+            </tr>
+          </thead>
+          <tbody id={@id} phx-update={@stream? && "stream"} class="divide-base-300 divide-y">
+            <%!-- The click command is computed once and drives everything: the
                 pointer, the hover, the keyboard. A row_click that returns nil
                 for some rows (the workings' diff rows) must not leave those rows
                 wearing a cursor that promises a click they don't have. --%>
-          <tr
-            :for={row <- @rows}
-            id={@row_id && @row_id.(row)}
-            class={[
-              "transition-colors",
-              (row_command(@row_click, @row_item, row) || row_href(@row_navigate, @row_item, row)) &&
-                "hover:bg-base-200/60 cursor-pointer",
-              row_href(@row_navigate, @row_item, row) && "relative",
-              @row_class && @row_class.(@row_item.(row))
-            ]}
-            phx-click={row_command(@row_click, @row_item, row)}
-            phx-keydown={row_command(@row_click, @row_item, row)}
-            phx-key={row_command(@row_click, @row_item, row) && "Enter"}
-            tabindex={row_command(@row_click, @row_item, row) && "0"}
-            role={row_command(@row_click, @row_item, row) && "button"}
-          >
-            <.table_body_cell
-              :for={{col, index} <- Enum.with_index(@col)}
-              col={col}
-              index={index}
-              item={@row_item.(row)}
-              href={row_href(@row_navigate, @row_item, row)}
-              link_label={row_name(@row_label, @row_item, row)}
-            />
-          </tr>
-        </tbody>
-      </table>
+            <tr
+              :for={row <- @rows}
+              id={@row_id && @row_id.(row)}
+              class={[
+                "transition-colors",
+                (row_command(@row_click, @row_item, row) || row_href(@row_navigate, @row_item, row)) &&
+                  "hover:bg-base-200/60 cursor-pointer",
+                row_href(@row_navigate, @row_item, row) && "relative",
+                @row_class && @row_class.(@row_item.(row))
+              ]}
+              phx-click={row_command(@row_click, @row_item, row)}
+              phx-keydown={row_command(@row_click, @row_item, row)}
+              phx-key={row_command(@row_click, @row_item, row) && "Enter"}
+              tabindex={row_command(@row_click, @row_item, row) && "0"}
+              role={row_command(@row_click, @row_item, row) && "button"}
+            >
+              <.table_body_cell
+                :for={{col, index} <- Enum.with_index(@col)}
+                col={col}
+                index={index}
+                item={@row_item.(row)}
+                href={row_href(@row_navigate, @row_item, row)}
+                link_label={row_name(@row_label, @row_item, row)}
+              />
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
     """
   end
@@ -182,6 +200,8 @@ defmodule NilaWeb.Components.Table do
 
   defp row_name(nil, _row_item, _row), do: nil
   defp row_name(row_label, row_item, row), do: row_label.(row_item.(row))
+
+  defp column_header(headers, key), do: Enum.find(headers, &(&1.column == key))
 
   defp column_alignment("center"), do: "text-center"
   defp column_alignment("right"), do: "text-right tabular-nums"
