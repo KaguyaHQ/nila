@@ -172,23 +172,27 @@ defmodule NilaWeb.ClientsLive do
             class="space-y-block"
           >
             <div class="border-base-300 divide-base-300 divide-y border-y">
-              <label
+              <div
                 :for={company <- @importable_tally_companies}
                 id={"clients-tally-company-#{company.id}"}
-                class="gap-related py-related flex cursor-pointer items-center"
+                class="gap-related py-related flex items-center"
               >
-                <input
+                <.input
                   type="checkbox"
+                  id={"clients-tally-company-input-#{company.id}"}
                   name="company_ids[]"
-                  value={company.id}
-                  class="checkbox checkbox-sm"
+                  checkbox_value={company.id}
+                  hidden_input={false}
                 />
-                <span class="min-w-0 flex-1">
+                <label
+                  for={"clients-tally-company-input-#{company.id}"}
+                  class="min-w-0 flex-1 cursor-pointer"
+                >
                   <span class="text-base-content text-ui block font-semibold">{company.name}</span>
                   <span class="text-ink-muted text-ui">{company.device.name}</span>
-                </span>
+                </label>
                 <.badge variant="success">Open in Tally</.badge>
-              </label>
+              </div>
             </div>
 
             <div class="flex flex-wrap items-center gap-3">
