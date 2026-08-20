@@ -2138,7 +2138,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#month-exit-gstr1", "Approved by")
     assert has_element?(view, "#gstr1-guide-download-json[download]", "Download GST JSON")
     assert has_element?(view, "#month-exit-gstr1", "Approved by")
-    assert has_element?(view, "#month-exit-gstr1", "Draft version")
+    refute has_element?(view, "#month-exit-gstr1", "Draft version")
     refute has_element?(view, "#gstr1-download-json")
     assert has_element?(view, "#month-exit-gstr1 a[target='_blank'][rel='noopener']")
     assert has_element?(view, "#gstr1-filed-arn")

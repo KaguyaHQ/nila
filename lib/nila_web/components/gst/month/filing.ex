@@ -1031,14 +1031,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <dd class="text-ink-muted">{format_display_datetime(@signoff.inserted_at)}</dd>
         </div>
 
-        <div :if={@return == "GSTR-1" and @signoff.snapshot["draft_version"]}>
-          <dt class="text-ink-subtle text-label font-semibold uppercase">Draft version</dt>
-
-          <dd class="text-base-content font-mono">
-            {String.slice(@signoff.snapshot["draft_version"], 0, 12)}
-          </dd>
-        </div>
-
         <div :if={@month.filed_at} id={@filed_note_id}>
           <dt class="text-ink-subtle text-label font-semibold uppercase">Filed</dt>
 
@@ -1199,10 +1191,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   defp outward_source(%{"liability_source" => "gstr1_derived"}), do: "Current derived GSTR-1"
   defp outward_source(%{"liability_source" => "missing"}), do: "GSTR-1 liability not available"
   defp outward_source(_gstr3b), do: "Current outward-liability projection"
-
-  defp gstr1_snapshot_reference(%{snapshot: %{"draft_version" => version}}, _gstr3b)
-       when is_binary(version),
-       do: "Approved version #{String.slice(version, 0, 12)}"
 
   defp gstr1_snapshot_reference(_signoff, gstr3b), do: outward_source(gstr3b)
 

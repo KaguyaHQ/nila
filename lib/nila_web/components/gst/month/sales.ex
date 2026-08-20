@@ -485,9 +485,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             </:summary>
             <section id="gstr1-document-summary" class="space-y-related pb-4">
               <h4 class="text-base-content text-body font-semibold">Documents issued · Table 13</h4>
-              <p class="text-ink-muted text-ui">
-                This checks only the extracted numbers for an internal gap. It is not an independent issued-document register and does not prove completeness.
-              </p>
               <.data_table
                 id="gstr1-document-summary-rows"
                 rows={@document_summary_rows}
@@ -610,7 +607,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           >
             <div>
               <p class="text-base-content text-ui font-medium">{action_label(action)}</p>
-              <p class="text-ink-muted text-ui">{action.target}</p>
             </div>
             <.context_text tag="p">
               {(action.decided_by && action.decided_by.name) || "Unknown reviewer"} · {format_display_datetime(
@@ -619,18 +615,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             </.context_text>
           </div>
         </div>
-        <p
-          :if={@r1_signoff && @r1_signoff.snapshot["draft_version"]}
-          id="gstr1-approved-version"
-          class="text-ink-muted text-ui"
-        >
-          Approved version
-          <span class="text-base-content font-mono">{String.slice(
-            @r1_signoff.snapshot["draft_version"],
-            0,
-            12
-          )}</span>
-        </p>
       </section>
 
       {render_slot(@actions)}
