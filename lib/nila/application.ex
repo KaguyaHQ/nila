@@ -17,7 +17,10 @@ defmodule Nila.Application do
           {Oban, Application.fetch_env!(:nila, Oban)},
           {DNSCluster, query: Application.get_env(:nila, :dns_cluster_query) || :ignore},
           {Phoenix.PubSub, name: Nila.PubSub},
-          NilaWeb.Presence,
+          NilaWeb.Presence
+        ] ++
+        dev_tally_children() ++
+        [
           # Start a worker by calling: Nila.Worker.start_link(arg)
           # {Nila.Worker, arg},
           # Start to serve requests, typically the last entry
@@ -47,5 +50,10 @@ defmodule Nila.Application do
     else
       if(config[:start] == false, do: [], else: [Nila.Gst.Extraction.OpenAICompatibleChatFinch])
     end
+  end
+
+  defp dev_tally_children do
+    config = Application.get_env(:nila, :dev_tally_simulator, [])
+    if config[:enabled], do: [{Nila.Dev.TallySimulator, config}], else: []
   end
 end

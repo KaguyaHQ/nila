@@ -68,6 +68,16 @@ config :nila, NilaWeb.Endpoint,
 # Enable development-only operational and design references
 config :nila, dev_routes: true
 
+# TallyPrime does not run on macOS. Keep the complete sales-bills loop available
+# during Mac development by standing in for one connected Tally computer. Set
+# NILA_DEV_TALLY=false when exercising a real Windows connector instead.
+dev_tally_default = if :os.type() == {:unix, :darwin}, do: "true", else: "false"
+
+config :nila, :dev_tally_simulator,
+  enabled: System.get_env("NILA_DEV_TALLY", dev_tally_default) == "true",
+  company_name: System.get_env("NILA_DEV_TALLY_COMPANY", "Breeze Tech"),
+  gstin: System.get_env("NILA_DEV_TALLY_GSTIN", "33AEWPH4158J1Z3")
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 
