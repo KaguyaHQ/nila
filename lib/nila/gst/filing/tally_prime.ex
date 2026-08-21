@@ -9,6 +9,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
 
   alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Sales.Gstr1
+  alias Nila.Gst.StateCodes
 
   @endpoint "http://localhost:9000/"
   @available Mix.env() != :prod
@@ -31,6 +32,22 @@ defmodule Nila.Gst.Filing.TallyPrime do
 
   @doc "Whether direct local TallyPrime writes are available in this deployment."
   def available?, do: @available
+
+  @doc "Requires the selected Tally company to carry the same GSTIN as the Nila client."
+  def validate_company_gstin(%{gstin: nil}, client_gstin) when is_binary(client_gstin),
+    do: {:error, :tally_company_gstin_missing}
+
+  def validate_company_gstin(%{gstin: tally_gstin}, client_gstin)
+      when is_binary(tally_gstin) and is_binary(client_gstin) do
+    if normalize_gstin(tally_gstin) == normalize_gstin(client_gstin) do
+      :ok
+    else
+      {:error, {:tally_company_gstin_mismatch, tally_gstin, client_gstin}}
+    end
+  end
+
+  def validate_company_gstin(_company, _client_gstin),
+    do: {:error, :tally_company_gstin_missing}
 
   @doc "Builds an accounting-voucher import envelope for all effective active sales documents."
   @spec build(map()) :: {:ok, binary()} | {:error, :no_active_sales | :invalid_sales_data}
@@ -191,19 +208,26 @@ defmodule Nila.Gst.Filing.TallyPrime do
          true <- present?(invoice["invoice_number"]),
          true <- present?(voucher_type),
          {:ok, party} <- party_ledger(invoice),
+         {:ok, party_details} <- party_details(invoice),
+         :ok <- validate_tax_jurisdiction(invoice, lines),
          {:ok, amounts} <- amounts(lines),
+         :ok <- validate_printed_grand_total(invoice, amounts),
+         {:ok, sales_entries} <- sales_entries(lines, effect),
          :ok <- valid_text_fields([invoice["seller_gstin"], invoice["invoice_number"], party]) do
       postings =
         [
-          {"Sales", effect * amounts.taxable},
           {"Output CGST", effect * amounts.cgst},
           {"Output SGST", effect * amounts.sgst},
           {"Output IGST", effect * amounts.igst}
         ]
         |> Enum.reject(fn {_name, paise} -> paise == 0 end)
 
-      party_amount = -Enum.sum(Enum.map(postings, &elem(&1, 1)))
-      entries = [ledger_entry(party, party_amount) | Enum.map(postings, &ledger_entry/1)]
+      party_amount =
+        -Enum.sum(Enum.map(sales_entries, & &1.amount) ++ Enum.map(postings, &elem(&1, 1)))
+
+      entries =
+        [party_ledger_entry(party, party_amount, invoice["invoice_number"])] ++
+          Enum.map(sales_entries, &gst_sales_entry/1) ++ Enum.map(postings, &ledger_entry/1)
 
       {:ok,
        [
@@ -212,15 +236,24 @@ defmodule Nila.Gst.Filing.TallyPrime do
          remote_id(invoice, period),
          "\" VCHTYPE=\"",
          xml(voucher_type),
-         "\" ACTION=\"Create\" VIEW=\"Accounting Voucher View\">",
+         "\" ACTION=\"Create\" OBJVIEW=\"Invoice Voucher View\">",
          tag("DATE", Calendar.strftime(date, "%Y%m%d")),
          tag("EFFECTIVEDATE", Calendar.strftime(date, "%Y%m%d")),
          tag("GUID", remote_id(invoice, period)),
          tag("VOUCHERTYPENAME", voucher_type),
          tag("VOUCHERNUMBER", invoice["invoice_number"]),
          tag("PARTYLEDGERNAME", party),
-         tag("PERSISTEDVIEW", "Accounting Voucher View"),
-         tag("ISINVOICE", "No"),
+         tag("PARTYNAME", party),
+         tag("PARTYMAILINGNAME", invoice["buyer_name"] || party),
+         tag("BASICBUYERNAME", invoice["buyer_name"] || party),
+         tag("GSTREGISTRATIONTYPE", party_details.registration_type),
+         optional_tag("PARTYGSTIN", party_details.gstin),
+         tag("PLACEOFSUPPLY", party_details.place_of_supply),
+         tag("STATENAME", party_details.state),
+         tag("COUNTRYOFRESIDENCE", "India"),
+         tag("PERSISTEDVIEW", "Invoice Voucher View"),
+         tag("ISINVOICE", "Yes"),
+         tag("ISGSTOVERRIDDEN", "Yes"),
          tag("NARRATION", "Imported from Nila"),
          entries,
          "</VOUCHER>",
@@ -245,6 +278,31 @@ defmodule Nila.Gst.Filing.TallyPrime do
 
       _unknown ->
         {:error, :invalid_sales_data}
+    end
+  end
+
+  defp party_details(invoice) do
+    registration = Gstr1.recipient_registration(invoice)
+    gstin = blank_to_nil(invoice["buyer_gstin"])
+    state_code = invoice["place_of_supply"] || gstin
+    state = StateCodes.name_for(to_string(state_code || ""))
+
+    cond do
+      registration == "registered" and is_nil(gstin) ->
+        {:error, :invalid_sales_data}
+
+      registration not in ["registered", "unregistered"] or is_nil(state) ->
+        {:error, :invalid_sales_data}
+
+      true ->
+        {:ok,
+         %{
+           registration_type:
+             if(registration == "registered", do: "Regular", else: "Unregistered"),
+           gstin: gstin,
+           place_of_supply: state,
+           state: state
+         }}
     end
   end
 
@@ -283,6 +341,172 @@ defmodule Nila.Gst.Filing.TallyPrime do
 
   defp optional_paise(nil), do: {:ok, 0}
   defp optional_paise(value), do: required_paise(value)
+
+  defp validate_printed_grand_total(%{"printed_grand_total" => nil}, _amounts), do: :ok
+
+  defp validate_printed_grand_total(%{"printed_grand_total" => printed}, amounts) do
+    expected = amounts.taxable + amounts.cgst + amounts.sgst + amounts.igst
+
+    case required_paise(printed) do
+      {:ok, ^expected} -> :ok
+      _mismatch -> {:error, :invalid_sales_data}
+    end
+  end
+
+  defp validate_printed_grand_total(_invoice, _amounts), do: :ok
+
+  defp validate_tax_jurisdiction(invoice, lines) do
+    seller_state = StateCodes.normalize_code(invoice["seller_gstin"] || "")
+
+    place_of_supply =
+      StateCodes.normalize_code(
+        to_string(invoice["place_of_supply"] || invoice["buyer_gstin"] || "")
+      )
+
+    cond do
+      is_nil(seller_state) or is_nil(place_of_supply) ->
+        {:error, :invalid_sales_data}
+
+      seller_state == place_of_supply ->
+        validate_tax_heads(lines, :intrastate)
+
+      true ->
+        validate_tax_heads(lines, :interstate)
+    end
+  end
+
+  defp validate_tax_heads(lines, jurisdiction) do
+    Enum.reduce_while(lines, :ok, fn line, :ok ->
+      with {:ok, cgst} <- optional_paise(line["cgst_amount"]),
+           {:ok, sgst} <- optional_paise(line["sgst_amount"]),
+           {:ok, igst} <- optional_paise(line["igst_amount"]),
+           true <- valid_tax_heads?(jurisdiction, cgst, sgst, igst) do
+        {:cont, :ok}
+      else
+        _invalid -> {:halt, {:error, :invalid_sales_data}}
+      end
+    end)
+  end
+
+  defp valid_tax_heads?(:interstate, cgst, sgst, _igst), do: cgst == 0 and sgst == 0
+
+  defp valid_tax_heads?(:intrastate, cgst, sgst, igst),
+    do: igst == 0 and ((cgst == 0 and sgst == 0) or (cgst > 0 and sgst > 0))
+
+  defp sales_entries(lines, effect) do
+    lines
+    |> Enum.with_index(1)
+    |> Enum.reduce_while({:ok, []}, fn {line, index}, {:ok, entries} ->
+      with {:ok, taxable} <- required_paise(line["taxable_value"]),
+           {:ok, rate} <- gst_rate(line),
+           hsn when is_binary(hsn) and hsn != "" <- blank_to_nil(line["hsn_sac"]),
+           description when is_binary(description) and description != "" <-
+             blank_to_nil(line["description"] || line["item_name"]) do
+        entry = %{
+          amount: effect * taxable,
+          description: description,
+          hsn: hsn,
+          index: index,
+          rate: rate,
+          supply_type: if(String.starts_with?(hsn, "99"), do: "Services", else: "Goods")
+        }
+
+        {:cont, {:ok, [entry | entries]}}
+      else
+        _invalid -> {:halt, {:error, :invalid_sales_data}}
+      end
+    end)
+    |> case do
+      {:ok, entries} -> {:ok, Enum.reverse(entries)}
+      error -> error
+    end
+  end
+
+  defp gst_rate(line) do
+    candidates = [
+      line["igst_rate"],
+      double_rate(line["cgst_rate"]),
+      double_rate(line["sgst_rate"]),
+      line["gst_rate"],
+      inferred_rate(line)
+    ]
+
+    case Enum.find(candidates, &(is_number(&1) and &1 >= 0 and &1 <= 100)) do
+      rate when is_number(rate) -> {:ok, rate}
+      _missing -> {:error, :invalid_sales_data}
+    end
+  end
+
+  defp double_rate(value) when is_number(value), do: value * 2
+  defp double_rate(_value), do: nil
+
+  defp inferred_rate(%{"taxable_value" => taxable} = line)
+       when is_number(taxable) and taxable > 0 do
+    tax =
+      Enum.reduce(~w(cgst_amount sgst_amount igst_amount), 0, fn key, total ->
+        case line[key] do
+          value when is_number(value) -> total + value
+          _missing -> total
+        end
+      end)
+
+    Float.round(tax * 100 / taxable, 4)
+  end
+
+  defp inferred_rate(_line), do: nil
+
+  defp party_ledger_entry(name, amount, invoice_number) do
+    [
+      "<ALLLEDGERENTRIES.LIST>",
+      tag("LEDGERNAME", name),
+      tag("ISDEEMEDPOSITIVE", if(amount < 0, do: "Yes", else: "No")),
+      tag("ISPARTYLEDGER", "Yes"),
+      tag("AMOUNT", money(amount)),
+      "<BILLALLOCATIONS.LIST>",
+      tag("NAME", invoice_number),
+      tag("BILLTYPE", "New Ref"),
+      tag("AMOUNT", money(amount)),
+      "</BILLALLOCATIONS.LIST>",
+      "</ALLLEDGERENTRIES.LIST>"
+    ]
+  end
+
+  defp gst_sales_entry(entry) do
+    half_rate = entry.rate / 2
+
+    [
+      "<ALLLEDGERENTRIES.LIST>",
+      tag("LEDGERNAME", "Sales"),
+      tag("ISDEEMEDPOSITIVE", if(entry.amount < 0, do: "Yes", else: "No")),
+      tag("ISPARTYLEDGER", "No"),
+      tag("GSTOVRDNTAXABILITY", "Taxable"),
+      tag("GSTOVRDNTYPEOFSUPPLY", entry.supply_type),
+      tag("GSTHSNNAME", entry.hsn),
+      tag("GSTHSNDESCRIPTION", entry.description),
+      tag("GSTHSNINFERAPPLICABILITY", "As per Masters/Company"),
+      tag("GSTRATEINFERAPPLICABILITY", "As per Masters/Company"),
+      tag("ISGSTASSESSABLEVALUEOVERRIDDEN", "Yes"),
+      tag("GSTOVRDNASSESSABLEVALUE", money(entry.amount)),
+      rate_detail("CGST", half_rate),
+      rate_detail("SGST/UTGST", half_rate),
+      rate_detail("IGST", entry.rate),
+      tag("AMOUNT", money(entry.amount)),
+      "<BASICUSERDESCRIPTION.LIST>",
+      tag("BASICUSERDESCRIPTION", entry.description),
+      "</BASICUSERDESCRIPTION.LIST>",
+      "</ALLLEDGERENTRIES.LIST>"
+    ]
+  end
+
+  defp rate_detail(head, rate) do
+    [
+      "<RATEDETAILS.LIST>",
+      tag("GSTRATEDUTYHEAD", head),
+      tag("GSTRATEVALUATIONTYPE", "Based on Value"),
+      tag("GSTRATE", decimal(rate)),
+      "</RATEDETAILS.LIST>"
+    ]
+  end
 
   defp ledger_entry({name, amount}), do: ledger_entry(name, amount)
 
@@ -387,6 +611,29 @@ defmodule Nila.Gst.Filing.TallyPrime do
     paise = absolute |> rem(100) |> Integer.to_string() |> String.pad_leading(2, "0")
     sign <> rupees <> "." <> paise
   end
+
+  defp decimal(value) when is_integer(value), do: Integer.to_string(value)
+
+  defp decimal(value) when is_float(value) do
+    value
+    |> :erlang.float_to_binary(decimals: 4)
+    |> String.trim_trailing("0")
+    |> String.trim_trailing(".")
+  end
+
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp blank_to_nil(_value), do: nil
+
+  defp normalize_gstin(value), do: value |> String.trim() |> String.upcase()
+
+  defp optional_tag(_name, nil), do: ""
+  defp optional_tag(name, value), do: tag(name, value)
 
   defp tag(name, value), do: ["<", name, ">", xml(to_string(value)), "</", name, ">"]
 

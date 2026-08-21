@@ -53,6 +53,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     with %{} <- company,
          {:ok, company} <-
            TallyDevices.get_open_company(org_id, company.id, socket.assigns.client.id),
+         :ok <- TallyPrime.validate_company_gstin(company, socket.assigns.client.gstin),
          {:ok, items} <-
            TallyPrime.build_items_for_company(
              %{active_invoices: socket.assigns.packet.invoices},
@@ -76,6 +77,22 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
       {:error, {:incompatible_voucher_numbering, issues}} ->
         {:noreply, assign(socket, :send_error, voucher_numbering_error(issues))}
+
+      {:error, :tally_company_gstin_missing} ->
+        {:noreply,
+         assign(
+           socket,
+           :send_error,
+           "This Tally company has no GSTIN. Configure GST in TallyPrime, sync it, then retry."
+         )}
+
+      {:error, {:tally_company_gstin_mismatch, tally_gstin, client_gstin}} ->
+        {:noreply,
+         assign(
+           socket,
+           :send_error,
+           "This Tally company belongs to GSTIN #{tally_gstin}, not #{client_gstin}."
+         )}
 
       _error ->
         {:noreply, assign(socket, :send_error, "Nila could not send these vouchers to Tally.")}

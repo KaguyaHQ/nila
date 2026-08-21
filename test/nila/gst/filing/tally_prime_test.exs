@@ -3,7 +3,24 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
 
   alias Nila.Gst.Filing.TallyPrime
 
-  test "builds accounting vouchers for every active sales document" do
+  test "requires the selected Tally company to have the client's GSTIN" do
+    assert :ok =
+             TallyPrime.validate_company_gstin(
+               %{gstin: "33aewph4158j1z3"},
+               "33AEWPH4158J1Z3"
+             )
+
+    assert {:error, :tally_company_gstin_missing} =
+             TallyPrime.validate_company_gstin(%{gstin: nil}, "33AEWPH4158J1Z3")
+
+    assert {:error, {:tally_company_gstin_mismatch, _, _}} =
+             TallyPrime.validate_company_gstin(
+               %{gstin: "29AAVCS8021P1ZB"},
+               "33AEWPH4158J1Z3"
+             )
+  end
+
+  test "builds GST-aware accounting invoices for every active sales document" do
     projection = %{
       invoices: [
         invoice(%{
@@ -11,7 +28,13 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
           "invoice_number" => "INV&001",
           "buyer_name" => "Customer & Co",
           "line_items" => [
-            %{"taxable_value" => 1_000, "igst_rate" => 18, "igst_amount" => 180}
+            %{
+              "description" => "Equipment maintenance",
+              "hsn_sac" => "998719",
+              "taxable_value" => 1_000,
+              "igst_rate" => 18,
+              "igst_amount" => 180
+            }
           ]
         }),
         invoice(%{
@@ -20,9 +43,15 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
           "invoice_number" => "CN-001",
           "recipient_registration" => "unregistered",
           "buyer_name" => nil,
+          "buyer_gstin" => nil,
+          "place_of_supply" => "33",
           "line_items" => [
             %{
+              "description" => "Equipment maintenance",
+              "hsn_sac" => "998719",
               "taxable_value" => 200,
+              "cgst_rate" => 9,
+              "sgst_rate" => 9,
               "cgst_amount" => 18,
               "sgst_amount" => 18
             }
@@ -38,12 +67,28 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert xml =~ "<IMPORTDUPS>@@DUPIGNORE</IMPORTDUPS>"
     assert xml =~ ~s(<VOUCHER REMOTEID="nila-)
     assert xml =~ ~r/<GUID>nila-[a-f0-9]{64}<\/GUID>/
-    assert xml =~ ~s(VCHTYPE="Sales" ACTION="Create")
+
+    assert xml =~
+             ~s(VCHTYPE="Sales" ACTION="Create" OBJVIEW="Invoice Voucher View")
+
     assert xml =~ "<VOUCHERNUMBER>INV&amp;001</VOUCHERNUMBER>"
     assert xml =~ "<PARTYLEDGERNAME>Customer &amp; Co</PARTYLEDGERNAME>"
+    assert xml =~ "<PARTYNAME>Customer &amp; Co</PARTYNAME>"
+    assert xml =~ "<PARTYGSTIN>29AAVCS8021P1ZB</PARTYGSTIN>"
+    assert xml =~ "<PLACEOFSUPPLY>Karnataka</PLACEOFSUPPLY>"
+    assert xml =~ "<GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>"
+    assert xml =~ "<ISINVOICE>Yes</ISINVOICE>"
+    assert xml =~ "<PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>"
+    assert xml =~ "<ISGSTOVERRIDDEN>Yes</ISGSTOVERRIDDEN>"
     assert xml =~ "<LEDGERNAME>Customer &amp; Co</LEDGERNAME>"
     assert xml =~ "<AMOUNT>-1180.00</AMOUNT>"
     assert xml =~ "<LEDGERNAME>Sales</LEDGERNAME>"
+    assert xml =~ "<GSTOVRDNTAXABILITY>Taxable</GSTOVRDNTAXABILITY>"
+    assert xml =~ "<GSTOVRDNTYPEOFSUPPLY>Services</GSTOVRDNTYPEOFSUPPLY>"
+    assert xml =~ "<GSTHSNNAME>998719</GSTHSNNAME>"
+    assert xml =~ "<GSTHSNDESCRIPTION>Equipment maintenance</GSTHSNDESCRIPTION>"
+    assert xml =~ "<GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD>"
+    assert xml =~ "<GSTRATE>18</GSTRATE>"
     assert xml =~ "<AMOUNT>1000.00</AMOUNT>"
     assert xml =~ "<LEDGERNAME>Output IGST</LEDGERNAME>"
     assert xml =~ "<AMOUNT>180.00</AMOUNT>"
@@ -198,13 +243,20 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
 
   test "derives the party amount from rounded paise postings so the voucher balances" do
     line = %{
+      "description" => "Equipment maintenance",
+      "hsn_sac" => "998719",
       "taxable_value" => 10.005,
+      "cgst_rate" => 9,
+      "sgst_rate" => 9,
       "cgst_amount" => 0.905,
       "sgst_amount" => 0.905,
       "igst_amount" => nil
     }
 
-    assert {:ok, xml} = TallyPrime.build(%{invoices: [invoice(%{"line_items" => [line]})]})
+    assert {:ok, xml} =
+             TallyPrime.build(%{
+               invoices: [invoice(%{"place_of_supply" => "33", "line_items" => [line]})]
+             })
 
     assert xml =~ "<AMOUNT>-11.83</AMOUNT>"
     assert xml =~ "<AMOUNT>10.01</AMOUNT>"
@@ -218,6 +270,43 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
              TallyPrime.build(%{invoices: [invoice(%{"invoice_date" => nil})]})
   end
 
+  test "refuses contradictory GST tax heads before posting" do
+    mixed_line = %{
+      "description" => "Equipment maintenance",
+      "hsn_sac" => "998719",
+      "taxable_value" => 1_000,
+      "cgst_rate" => 9,
+      "cgst_amount" => 90,
+      "igst_rate" => 18,
+      "igst_amount" => 180
+    }
+
+    assert {:error, :invalid_sales_data} =
+             TallyPrime.build(%{invoices: [invoice(%{"line_items" => [mixed_line]})]})
+
+    intrastate =
+      invoice(%{
+        "place_of_supply" => "33",
+        "line_items" => [
+          %{
+            "description" => "Equipment maintenance",
+            "hsn_sac" => "998719",
+            "taxable_value" => 1_000,
+            "igst_rate" => 18,
+            "igst_amount" => 180
+          }
+        ]
+      })
+
+    assert {:error, :invalid_sales_data} = TallyPrime.build(%{invoices: [intrastate]})
+  end
+
+  test "refuses line postings that do not conserve the printed invoice total" do
+    mismatched = invoice(%{"printed_grand_total" => 1_179})
+
+    assert {:error, :invalid_sales_data} = TallyPrime.build(%{invoices: [mismatched]})
+  end
+
   defp invoice(overrides \\ %{}) do
     Map.merge(
       %{
@@ -229,10 +318,14 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
         "seller_gstin" => "33AEWPH4158J1Z3",
         "buyer_name" => "Customer",
         "buyer_gstin" => "29AAVCS8021P1ZB",
+        "place_of_supply" => "29",
         "recipient_registration" => "registered",
         "line_items" => [
           %{
+            "description" => "Equipment maintenance",
+            "hsn_sac" => "998719",
             "taxable_value" => 1_000,
+            "igst_rate" => 18,
             "cgst_amount" => nil,
             "sgst_amount" => nil,
             "igst_amount" => 180

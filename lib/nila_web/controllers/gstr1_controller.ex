@@ -189,6 +189,8 @@ defmodule NilaWeb.Gstr1Controller do
     with {company_id, ""} <- Integer.parse(company_id),
          {:ok, company} <-
            TallyDevices.get_open_company(org_id, company_id, sales_month.client_id),
+         {:ok, client} <- Clients.get_client(org_id, sales_month.client_id),
+         :ok <- TallyPrime.validate_company_gstin(company, client.gstin),
          {:ok, signoff} <- Signoffs.latest_gstr1_signoff(sales_month.id),
          {:ok, items} <-
            TallyPrime.build_items_for_company(tally_projection(sales_month, period), company.name) do
@@ -215,6 +217,20 @@ defmodule NilaWeb.Gstr1Controller do
 
       {:error, :invalid_sales_data} ->
         put_flash(conn, :error, "Sales data contains fields Tally cannot import.")
+
+      {:error, :tally_company_gstin_missing} ->
+        put_flash(
+          conn,
+          :error,
+          "This Tally company has no GSTIN. Configure its GST registration in TallyPrime, sync it, then retry."
+        )
+
+      {:error, {:tally_company_gstin_mismatch, tally_gstin, client_gstin}} ->
+        put_flash(
+          conn,
+          :error,
+          "This Tally company belongs to GSTIN #{tally_gstin}, not #{client_gstin}. Choose the correct company."
+        )
 
       {:error, _reason} ->
         put_flash(conn, :error, "Nila could not queue the Tally import.")

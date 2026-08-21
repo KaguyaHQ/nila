@@ -35,6 +35,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
           "buyer" => %{"name" => "Customer & Co", "gstin" => "29AAVCS8021P1ZB"},
           "line_items" => [
             %{
+              "description" => "Technical support services",
+              "hsn_sac" => "998719",
               "taxable_value" => 1_000,
               "igst_rate" => 18,
               "igst_amount" => 180

@@ -34,6 +34,8 @@ defmodule NilaWeb.Gstr1ControllerTest do
           "buyer" => %{"name" => "Customer & Co", "gstin" => "29AAVCS8021P1ZB"},
           "line_items" => [
             %{
+              "description" => "Technical support services",
+              "hsn_sac" => "998719",
               "taxable_value" => 1000,
               "igst_rate" => 18,
               "igst_amount" => 180
@@ -192,7 +194,11 @@ defmodule NilaWeb.Gstr1ControllerTest do
 
     {:ok, [company]} =
       TallyDevices.report_companies(device, [
-        %{"name" => "Nila", "tally_guid" => "company-nila"}
+        %{
+          "name" => "Nila",
+          "tally_guid" => "company-nila",
+          "gstin" => client.gstin
+        }
       ])
 
     company
@@ -216,6 +222,9 @@ defmodule NilaWeb.Gstr1ControllerTest do
     assert job.payload["company"] == "Nila"
     assert job.payload["expected_count"] == 1
     assert job.payload["xml"] =~ "<SVCURRENTCOMPANY>Nila</SVCURRENTCOMPANY>"
+    assert job.payload["xml"] =~ "<ISINVOICE>Yes</ISINVOICE>"
+    assert job.payload["xml"] =~ "<PARTYGSTIN>29AAVCS8021P1ZB</PARTYGSTIN>"
+    assert job.payload["xml"] =~ "<GSTHSNNAME>998719</GSTHSNNAME>"
 
     _repeated =
       post(recycle(conn), ~p"/gstr1/#{client.id}/2026-07/tally", %{
@@ -243,7 +252,11 @@ defmodule NilaWeb.Gstr1ControllerTest do
 
     {:ok, [company]} =
       TallyDevices.report_companies(device, [
-        %{"name" => "Nila", "tally_guid" => "company-nila"}
+        %{
+          "name" => "Nila",
+          "tally_guid" => "company-nila",
+          "gstin" => client.gstin
+        }
       ])
 
     company
@@ -262,6 +275,40 @@ defmodule NilaWeb.Gstr1ControllerTest do
 
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Customer & Co"
 
+    assert Repo.aggregate(Job, :count) == 0
+  end
+
+  test "blocks GST vouchers when the linked Tally company has no GST registration", %{
+    conn: conn,
+    client: client,
+    month: month,
+    org: org,
+    user: user
+  } do
+    %Signoff{org_id: org.id, sales_month_id: month.id, signed_by_id: user.id}
+    |> Signoff.changeset(%{
+      artifact: "gstr1",
+      snapshot: %{"derived" => month.derived_gstr1, "invoices" => month.invoices}
+    })
+    |> Repo.insert!()
+
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => "Nila", "tally_guid" => "company-nila"}
+      ])
+
+    company
+    |> Ecto.Changeset.change(client_id: client.id)
+    |> Repo.update!()
+
+    conn =
+      post(conn, ~p"/gstr1/#{client.id}/2026-07/tally", %{
+        "tally" => %{"company_id" => Integer.to_string(company.id)}
+      })
+
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "has no GSTIN"
     assert Repo.aggregate(Job, :count) == 0
   end
 

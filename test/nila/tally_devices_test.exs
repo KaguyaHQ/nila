@@ -116,6 +116,42 @@ defmodule Nila.TallyDevicesTest do
     assert is_nil(company.client_id)
   end
 
+  test "a linked Tally company fills a blank client GSTIN without overwriting one" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    assert {:ok, [company]} =
+             TallyDevices.report_companies(device, [
+               %{"name" => "Caltech", "tally_guid" => "company-caltech"}
+             ])
+
+    assert {:ok, client} = TallyDevices.ensure_company_client(org.id, company.id)
+    assert is_nil(client.gstin)
+
+    assert {:ok, [reported]} =
+             TallyDevices.report_companies(device, [
+               %{
+                 "name" => "Caltech",
+                 "tally_guid" => "company-caltech",
+                 "gstin" => "33BPBPK1081A1ZO"
+               }
+             ])
+
+    assert reported.client_id == client.id
+    assert Nila.Repo.get!(Nila.Clients.Client, client.id).gstin == "33BPBPK1081A1ZO"
+
+    assert {:ok, [_reported]} =
+             TallyDevices.report_companies(device, [
+               %{
+                 "name" => "Caltech",
+                 "tally_guid" => "company-caltech",
+                 "gstin" => "33AEWPH4158J1Z3"
+               }
+             ])
+
+    assert Nila.Repo.get!(Nila.Clients.Client, client.id).gstin == "33BPBPK1081A1ZO"
+  end
+
   test "does not resolve another organization's reported company" do
     %{org: org} = user_with_org_fixture()
     %{org: other_org} = user_with_org_fixture()

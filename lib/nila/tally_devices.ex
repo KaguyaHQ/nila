@@ -177,7 +177,9 @@ defmodule Nila.TallyDevices do
                 returning: true
               )
 
-            maybe_link_company_by_gstin(persisted)
+            persisted
+            |> maybe_link_company_by_gstin()
+            |> maybe_add_gstin_to_linked_client()
           end)
 
         {:ok, reported}
@@ -578,6 +580,27 @@ defmodule Nila.TallyDevices do
   end
 
   defp maybe_link_company_by_gstin(%Company{} = company), do: company
+
+  defp maybe_add_gstin_to_linked_client(
+         %Company{client_id: client_id, gstin: gstin} = company
+       )
+       when is_integer(client_id) and is_binary(gstin) do
+    case Repo.get(Client, client_id) do
+      %Client{gstin: nil} = client ->
+        case Clients.update_client(client, %{gstin: gstin}) do
+          {:ok, _client} -> company
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
+
+      %Client{} ->
+        company
+
+      nil ->
+        company
+    end
+  end
+
+  defp maybe_add_gstin_to_linked_client(%Company{} = company), do: company
 
   defp company_identity(%{tally_guid: tally_guid}) when is_binary(tally_guid),
     do: "guid:" <> String.downcase(tally_guid)
