@@ -168,6 +168,33 @@ defmodule Nila.IntegrationsTest do
     assert disconnected.credentials == %{}
   end
 
+  test "removes only disconnected WhatsApp connections", %{org: org} do
+    assert {:ok, connection} =
+             Integrations.provision_whatsapp(%{
+               org_id: org.id,
+               phone_number_id: "919876543210",
+               access_token: "business-token"
+             })
+
+    assert {:error, :connection_must_be_disconnected} =
+             Integrations.remove_whatsapp_connection(connection)
+
+    assert {:ok, gmail} =
+             Integrations.upsert_connection(%{
+               org_id: org.id,
+               provider: "gmail",
+               external_account_id: "inbox@example.com"
+             })
+
+    assert {:error, :not_whatsapp_connection} =
+             Integrations.remove_whatsapp_connection(gmail)
+
+    assert {:ok, disconnected} = Integrations.disconnect(connection)
+    assert {:ok, removed} = Integrations.remove_whatsapp_connection(disconnected)
+    assert removed.id == connection.id
+    assert {:error, :not_found} = Integrations.get_connection(connection.id)
+  end
+
   test "a failed reconnect records the reason and leaves the connection retryable", %{org: org} do
     session = %{
       "business_id" => "111111111",

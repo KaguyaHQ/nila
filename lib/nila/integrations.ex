@@ -288,6 +288,17 @@ defmodule Nila.Integrations do
     |> Repo.update()
   end
 
+  def remove_whatsapp_connection(
+        %Connection{provider: "whatsapp", status: "disconnected"} = connection
+      ) do
+    Repo.delete(connection)
+  end
+
+  def remove_whatsapp_connection(%Connection{provider: "whatsapp"}),
+    do: {:error, :connection_must_be_disconnected}
+
+  def remove_whatsapp_connection(%Connection{}), do: {:error, :not_whatsapp_connection}
+
   def reconnect(%Connection{provider: "whatsapp"}), do: {:error, :reauthorization_required}
 
   def reconnect(%Connection{} = connection) do

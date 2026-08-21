@@ -10,7 +10,7 @@ defmodule Nila.IntegrationsIngestTest do
   alias Nila.Clients
   alias Nila.Gst.Intake.Arrivals
   alias Nila.Integrations
-  alias Nila.Integrations.WhatsAppIngestWorker
+  alias Nila.Integrations.{WhatsAppEventWorker, WhatsAppIngestWorker}
 
   setup do
     whatsapp_adapter = Application.get_env(:nila, :whatsapp_adapter)
@@ -66,6 +66,24 @@ defmodule Nila.IntegrationsIngestTest do
     refreshed_connection = Integrations.get_connection!(connection.id)
     assert refreshed_connection.last_status == "connected"
     assert refreshed_connection.last_synced_at
+  end
+
+  test "queued WhatsApp jobs stop cleanly after a connection is removed", %{org: org} do
+    connection = connection!(org, "whatsapp", "phone-number-123")
+    {:ok, disconnected} = Integrations.disconnect(connection)
+    {:ok, _removed} = Integrations.remove_whatsapp_connection(disconnected)
+
+    assert :ok =
+             perform_job(WhatsAppIngestWorker, %{
+               "connection_id" => connection.id,
+               "payload" => %{}
+             })
+
+    assert :ok =
+             perform_job(WhatsAppEventWorker, %{
+               "connection_id" => connection.id,
+               "event" => %{}
+             })
   end
 
   test "one failed WhatsApp event does not block siblings", %{org: org} do

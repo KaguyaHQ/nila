@@ -10,8 +10,13 @@ defmodule Nila.Integrations.WhatsAppEventWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"connection_id" => connection_id, "event" => event}}) do
-    connection = Integrations.get_connection!(connection_id)
+    case Integrations.get_connection(connection_id) do
+      {:ok, connection} -> process_event(event, connection)
+      {:error, :not_found} -> :ok
+    end
+  end
 
+  defp process_event(event, connection) do
     case handle_event(event, connection) do
       :ok ->
         _ = Integrations.mark_received(connection)

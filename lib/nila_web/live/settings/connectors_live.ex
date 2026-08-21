@@ -53,6 +53,20 @@ defmodule NilaWeb.Settings.ConnectorsLive do
   end
 
   @impl true
+  def handle_event("remove_whatsapp_connection", %{"id" => id}, socket) do
+    with {:ok, %{provider: "whatsapp"} = connection} <- fetch_current_org_connection(socket, id),
+         {:ok, _connection} <- Integrations.remove_whatsapp_connection(connection) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "WhatsApp connection removed.")
+       |> load_connector_state()}
+    else
+      _error ->
+        {:noreply, put_flash(socket, :error, "Could not remove WhatsApp connection.")}
+    end
+  end
+
+  @impl true
   def handle_event("reconnect", %{"id" => id}, socket) do
     with {:ok, connection} <- fetch_current_org_connection(socket, id),
          {:ok, _connection} <- Integrations.reconnect(connection) do
@@ -262,6 +276,18 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                   size="sm"
                 >
                   <.icon name="hero-link" class="size-4" /> Reconnect
+                </.button>
+                <.button
+                  :if={connection.status == "disconnected" && connection.provider == "whatsapp"}
+                  type="button"
+                  id={"settings-remove-connection-#{connection.id}"}
+                  phx-click="remove_whatsapp_connection"
+                  phx-value-id={connection.id}
+                  data-confirm="Remove this WhatsApp connection from Nila? To receive documents from this number again, you will need to connect it through Meta."
+                  variant="error"
+                  size="sm"
+                >
+                  <.icon name="hero-trash" class="size-4" /> Remove connection
                 </.button>
 
                 <details

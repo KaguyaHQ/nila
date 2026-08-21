@@ -9,8 +9,13 @@ defmodule Nila.Integrations.WhatsAppIngestWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"connection_id" => connection_id, "payload" => payload}}) do
-    connection = Integrations.get_connection!(connection_id)
+    case Integrations.get_connection(connection_id) do
+      {:ok, connection} -> dispatch(payload, connection)
+      {:error, :not_found} -> :ok
+    end
+  end
 
+  defp dispatch(payload, connection) do
     with {:ok, events} <- whatsapp_adapter().normalize(payload, connection: connection),
          {:ok, _jobs} <- enqueue_events(connection.id, events) do
       Logger.info("WhatsApp webhook dispatched",

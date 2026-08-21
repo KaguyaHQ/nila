@@ -309,6 +309,26 @@ defmodule NilaWeb.SettingsLiveTest do
       assert Repo.get!(Integrations.Connection, connection.id).status == "disconnected"
     end
 
+    test "removes a disconnected WhatsApp connection", %{conn: conn, org: org} do
+      connection = whatsapp_connection(org)
+      assert {:ok, _disconnected} = Integrations.disconnect(connection)
+
+      {:ok, view, _html} = live(conn, ~p"/settings/connectors")
+
+      assert has_element?(
+               view,
+               "#settings-remove-connection-#{connection.id}[data-variant='error']",
+               "Remove connection"
+             )
+
+      view |> element("#settings-remove-connection-#{connection.id}") |> render_click()
+
+      assert {:error, :not_found} = Integrations.get_connection(connection.id)
+      refute has_element?(view, "#settings-connection-#{connection.id}")
+      refute has_element?(view, "#settings-connected-accounts")
+      assert has_element?(view, "#settings-add-channel-disclosure[open]")
+    end
+
     test "legacy disconnected WhatsApp hides a stored raw readiness error", %{
       conn: conn,
       org: org
