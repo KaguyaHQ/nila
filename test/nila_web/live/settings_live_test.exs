@@ -21,6 +21,12 @@ defmodule NilaWeb.SettingsLiveTest do
 
       assert has_element?(
                view,
+               "#settings-tally-connector #settings-download-tally-connector[download]",
+               "Download Nila Connector"
+             )
+
+      assert has_element?(
+               view,
                "#settings-add-channel-disclosure[open] > summary h2",
                "Add a channel"
              )

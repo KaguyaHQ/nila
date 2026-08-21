@@ -54,6 +54,35 @@ defmodule NilaWeb.Components.Button do
     end
   end
 
+  attr :href, :string, required: true
+  attr :id, :string, default: nil
+
+  attr :variant, :string,
+    default: "primary",
+    values: ~w(primary soft ghost outline error success neutral)
+
+  attr :size, :string, default: "sm", values: ~w(xs sm lg)
+  attr :full_width, :boolean, default: false
+  attr :rest, :global, include: ~w(target rel)
+  slot :inner_block, required: true
+
+  @doc "Renders a file download without navigating away from the current LiveView."
+  def download_button(assigns) do
+    ~H"""
+    <.button
+      href={@href}
+      id={@id}
+      variant={@variant}
+      size={@size}
+      full_width={@full_width}
+      download
+      {@rest}
+    >
+      {render_slot(@inner_block)}
+    </.button>
+    """
+  end
+
   attr :rest, :global, include: ~w(href navigate patch method download target rel)
 
   attr :class, :any, default: nil

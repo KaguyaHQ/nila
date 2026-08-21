@@ -74,6 +74,18 @@ defmodule NilaWeb.CoreComponentsTest do
     refute html =~ "btn-"
   end
 
+  test "download button cannot navigate as an ordinary link" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.download_button href="/report.xml">Download report</.download_button>
+      """)
+
+    assert html =~ ~s(href="/report.xml")
+    assert html =~ " download"
+  end
+
   test "text link owns accent navigation color without raw primary classes" do
     assigns = %{}
 

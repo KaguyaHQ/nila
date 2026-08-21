@@ -6,6 +6,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
 
   @whatsapp_signup_salt "whatsapp_embedded_signup"
   @signup_max_age 300
+  @tally_connector_download_url "https://github.com/KaguyaHQ/nila-connector/releases/download/v0.3.0/NilaConnector-0.3.0-win-x64-setup.exe"
 
   @impl true
   def mount(_params, _session, socket) do
@@ -13,6 +14,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
      socket
      |> assign(:page_title, "Connector settings")
      |> assign(:settings_section, :connectors)
+     |> assign(:tally_connector_download_url, @tally_connector_download_url)
      |> assign(:gmail_form, to_form(%{}, as: :connection))
      |> assign(:microsoft_form, to_form(%{}, as: :connection))
      |> assign_whatsapp_signup()
@@ -147,9 +149,28 @@ defmodule NilaWeb.Settings.ConnectorsLive do
         data-transaction={@whatsapp_signup_transaction}
       >
         <.settings_header title="Connectors">
-          Connect the inboxes and channels documents arrive on. Labels show up in
-          operational views so the team can tell the firm's intake channels apart.
+          Connect the software and channels Nila receives from and sends work to.
         </.settings_header>
+
+        <section
+          id="settings-tally-connector"
+          class="border-base-300 gap-block py-block flex flex-col border-y lg:flex-row lg:items-center lg:justify-between"
+        >
+          <div class="space-y-related">
+            <h2 class="text-base-content text-h4 font-semibold">TallyPrime</h2>
+            <p class="text-ink-muted text-ui">
+              Connect Nila to TallyPrime on this computer.
+            </p>
+          </div>
+          <.download_button
+            href={@tally_connector_download_url}
+            id="settings-download-tally-connector"
+            target="_blank"
+            rel="noopener"
+          >
+            Download Nila Connector
+          </.download_button>
+        </section>
 
         <section
           :if={@connections != []}
