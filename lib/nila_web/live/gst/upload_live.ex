@@ -773,7 +773,7 @@ defmodule NilaWeb.Gst.UploadLive do
           id="sales-bills-start-connector"
         >
           <p class="text-base-content text-h4 font-semibold">
-            Start Nila Connector on this computer
+            Start Nila Connector on the Tally computer
           </p>
         </.card>
 

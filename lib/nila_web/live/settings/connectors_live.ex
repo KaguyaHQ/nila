@@ -175,7 +175,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
           <div class="space-y-related">
             <h2 class="text-base-content text-h4 font-semibold">TallyPrime</h2>
             <p class="text-ink-muted text-ui">
-              Connect Nila to TallyPrime on this computer.
+              Install Nila Connector on the computer running TallyPrime.
             </p>
           </div>
           <.download_button
