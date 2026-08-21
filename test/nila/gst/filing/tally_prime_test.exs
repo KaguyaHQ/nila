@@ -179,6 +179,16 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert first.xml =~ "<SVCURRENTCOMPANY>Nila</SVCURRENTCOMPANY>"
   end
 
+  test "keeps voucher delivery identity stable across repeated builds" do
+    projection = %{invoices: [invoice()], period: "2026-07"}
+
+    assert {:ok, [first]} = TallyPrime.build_items_for_company(projection, "Nila")
+    assert {:ok, [second]} = TallyPrime.build_items_for_company(projection, "Nila")
+
+    assert first.source_id == second.source_id
+    refute first.xml == second.xml
+  end
+
   test "accepts Tally's direct response format without a status tag" do
     response = """
     <RESPONSE>

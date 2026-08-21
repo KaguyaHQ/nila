@@ -182,7 +182,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp list_tally_jobs(_org_id, nil), do: []
 
   defp list_tally_jobs(org_id, source_prefix),
-    do: TallyJobs.list_by_source_prefix(org_id, source_prefix)
+    do: TallyJobs.list_voucher_deliveries_by_source_prefix(org_id, source_prefix)
 
   defp partition_ready_items(company_id, items) do
     missing =
