@@ -62,25 +62,14 @@ defmodule Nila.TallyJobs do
       Enum.reduce_while(items, {:ok, []}, fn item, {:ok, jobs} ->
         source_key = prefix <> item.source_id
 
-        payload =
-          voucher_payload(company, item.xml, item.source_id, item.invoice_number)
-
-        result =
-          case equivalent_voucher_job(company.org_id, prefix, payload) do
-            %Job{status: "failed"} = job ->
-              retry_failed_job(job, company.device, payload)
-
-            %Job{} = job ->
-              {:ok, job, :existing}
-
-            nil ->
-              insert_job(company.device, "import_vouchers", payload,
-                source_key: source_key,
-                retry_failed: true
-              )
-          end
-
-        case result do
+        case enqueue_import_vouchers(company, item.xml, 1,
+               source_key: source_key,
+               retry_failed: true,
+               metadata: %{
+                 "source_id" => item.source_id,
+                 "invoice_number" => item.invoice_number
+               }
+             ) do
           {:ok, job, disposition} -> {:cont, {:ok, [{job, disposition} | jobs]}}
           error -> {:halt, error}
         end
@@ -104,14 +93,6 @@ defmodule Nila.TallyJobs do
     |> Repo.all()
   end
 
-  @doc "Lists the latest attempt for each equivalent voucher under a delivery source."
-  def list_voucher_deliveries_by_source_prefix(org_id, source_prefix)
-      when is_integer(org_id) and is_binary(source_prefix) do
-    org_id
-    |> list_by_source_prefix(source_prefix)
-    |> latest_equivalent_voucher_jobs()
-  end
-
   @doc "Requeues unknown voucher outcomes for read-only verification by the connector."
   def verify_indeterminate_by_source_prefix(org_id, source_prefix)
       when is_integer(org_id) and is_binary(source_prefix) do
@@ -119,13 +100,12 @@ defmodule Nila.TallyJobs do
       Repo.transact(fn ->
         jobs =
           from(j in Job,
-            where: j.org_id == ^org_id and like(j.source_key, ^"#{source_prefix}%"),
-            order_by: [asc: j.id],
+            where:
+              j.org_id == ^org_id and j.status == "indeterminate" and
+                like(j.source_key, ^"#{source_prefix}%"),
             lock: "FOR UPDATE"
           )
           |> Repo.all()
-          |> latest_equivalent_voucher_jobs()
-          |> Enum.filter(&(&1.status == "indeterminate"))
 
         Enum.reduce_while(jobs, {:ok, []}, fn job, {:ok, verified} ->
           changes = %{
@@ -173,13 +153,12 @@ defmodule Nila.TallyJobs do
       Repo.transact(fn ->
         jobs =
           from(j in Job,
-            where: j.org_id == ^org_id and like(j.source_key, ^"#{source_prefix}%"),
-            order_by: [asc: j.id],
+            where:
+              j.org_id == ^org_id and j.status == "succeeded" and
+                like(j.source_key, ^"#{source_prefix}%"),
             lock: "FOR UPDATE"
           )
           |> Repo.all()
-          |> latest_equivalent_voucher_jobs()
-          |> Enum.filter(&(&1.status == "succeeded"))
 
         Enum.reduce_while(jobs, {:ok, []}, fn job, {:ok, ensured} ->
           payload = Map.delete(job.payload, "mode")
@@ -357,51 +336,6 @@ defmodule Nila.TallyJobs do
   end
 
   defp valid_voucher_item?(_item), do: false
-
-  defp voucher_payload(company, xml, source_id, invoice_number) do
-    %{
-      "company" => company.name,
-      "company_guid" => company.tally_guid,
-      "xml" => xml,
-      "expected_count" => 1,
-      "source_id" => source_id,
-      "invoice_number" => invoice_number
-    }
-  end
-
-  # Source-key encodings can change across connector releases. The normalized
-  # XML fingerprint is the durable identity of the frozen accounting write, so
-  # an equivalent historical job must win before a new key is inserted.
-  defp equivalent_voucher_job(org_id, source_prefix, payload) do
-    proposed_fingerprint = voucher_fingerprint(payload)
-
-    org_id
-    |> list_by_source_prefix(source_prefix)
-    |> Enum.reverse()
-    |> Enum.find(&(voucher_fingerprint(&1) == proposed_fingerprint))
-  end
-
-  defp latest_equivalent_voucher_jobs(jobs) do
-    jobs
-    |> Enum.reduce(%{}, fn job, acc ->
-      Map.put(acc, voucher_fingerprint(job), job)
-    end)
-    |> Map.values()
-    |> Enum.sort_by(& &1.id)
-  end
-
-  defp voucher_fingerprint(%Job{} = job),
-    do: voucher_fingerprint(job.payload) || {:job, job.id}
-
-  defp voucher_fingerprint(%{"invoice_number" => invoice_number} = payload)
-       when is_binary(invoice_number) do
-    case payload_hash(payload) do
-      hash when is_binary(hash) -> :crypto.hash(:sha256, [invoice_number, <<0>>, hash])
-      _ -> nil
-    end
-  end
-
-  defp voucher_fingerprint(_payload), do: nil
 
   defp retry_failed_job(job, device, proposed_payload) do
     proposed_hash = payload_hash(proposed_payload)
