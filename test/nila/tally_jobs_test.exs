@@ -119,6 +119,34 @@ defmodule Nila.TallyJobsTest do
     assert {:ok, nil} = TallyJobs.claim_next(device.id)
   end
 
+  test "requeues an indeterminate voucher for read-only verification" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    assert {:ok, job} =
+             TallyJobs.enqueue_create_voucher(
+               device,
+               %{"company" => "Nila"},
+               source_key: "sales-bills:batch:voucher:INV-001"
+             )
+
+    assert {:ok, _running} = TallyJobs.claim_next(device.id)
+
+    assert {:ok, _unknown} =
+             TallyJobs.complete(device.id, job.id, "indeterminate", %{"kind" => "Disconnected"})
+
+    assert {:ok, 1} =
+             TallyJobs.verify_indeterminate_by_source_prefix(
+               org.id,
+               "sales-bills:batch:voucher:"
+             )
+
+    pending = TallyJobs.get_job!(job.id)
+    assert pending.status == "pending"
+    assert pending.payload["mode"] == "verify_only"
+    assert is_nil(pending.error)
+  end
+
   test "queues and retries each definite voucher failure independently" do
     %{org: org} = user_with_org_fixture()
     {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})

@@ -93,6 +93,59 @@ defmodule Nila.TallyJobs do
     |> Repo.all()
   end
 
+  @doc "Requeues unknown voucher outcomes for read-only verification by the connector."
+  def verify_indeterminate_by_source_prefix(org_id, source_prefix)
+      when is_integer(org_id) and is_binary(source_prefix) do
+    result =
+      Repo.transact(fn ->
+        jobs =
+          from(j in Job,
+            where:
+              j.org_id == ^org_id and j.status == "indeterminate" and
+                like(j.source_key, ^"#{source_prefix}%"),
+            lock: "FOR UPDATE"
+          )
+          |> Repo.all()
+
+        Enum.reduce_while(jobs, {:ok, []}, fn job, {:ok, verified} ->
+          changes = %{
+            status: "pending",
+            payload: Map.put(job.payload, "mode", "verify_only"),
+            started_at: nil,
+            completed_at: nil,
+            result: nil,
+            error: nil
+          }
+
+          payload = Map.put(job.payload, "mode", "verify_only")
+
+          case job
+               |> Job.transition_changeset(Map.delete(changes, :payload))
+               |> Ecto.Changeset.change(payload: payload)
+               |> Repo.update() do
+            {:ok, updated} -> {:cont, {:ok, [updated | verified]}}
+            {:error, changeset} -> {:halt, {:error, changeset}}
+          end
+        end)
+      end)
+
+    case result do
+      {:ok, jobs} ->
+        jobs
+        |> Enum.map(& &1.device_id)
+        |> Enum.uniq()
+        |> Enum.each(fn device_id ->
+          Phoenix.PubSub.broadcast(Nila.PubSub, device_topic(device_id), :tally_job_available)
+        end)
+
+        if jobs != [], do: broadcast_org(org_id)
+        {:ok, length(jobs)}
+
+      error ->
+        error
+    end
+  end
+
   def claim_next(device_id, now \\ DateTime.utc_now()) when is_integer(device_id) do
     Repo.transact(fn ->
       case Repo.one(

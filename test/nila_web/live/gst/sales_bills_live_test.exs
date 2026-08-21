@@ -184,4 +184,29 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert render(view) =~ "Output IGST"
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
   end
+
+  test "offers read-only verification before retrying an unknown outcome", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    device: device
+  } do
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    view |> element("#sales-bills-send-to-tally") |> render_click()
+    assert {:ok, job} = TallyJobs.claim_next(device.id)
+
+    assert {:ok, _job} =
+             TallyJobs.complete(device.id, job.id, "indeterminate", %{"kind" => "Disconnected"})
+
+    assert has_element?(view, "#sales-bills-verify-tally", "Check Tally")
+    refute has_element?(view, "#sales-bills-retry-tally")
+
+    view |> element("#sales-bills-verify-tally") |> render_click()
+
+    pending = TallyJobs.get_job!(job.id)
+    assert pending.status == "pending"
+    assert pending.payload["mode"] == "verify_only"
+  end
 end

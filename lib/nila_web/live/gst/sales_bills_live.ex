@@ -100,6 +100,24 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     end
   end
 
+  def handle_event("verify-tally", _params, socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+
+    case TallyJobs.verify_indeterminate_by_source_prefix(
+           org_id,
+           socket.assigns.tally_source_prefix
+         ) do
+      {:ok, count} when count > 0 ->
+        {:noreply,
+         socket
+         |> assign(:tally_jobs, list_tally_jobs(org_id, socket.assigns.tally_source_prefix))
+         |> assign(:send_error, nil)}
+
+      _ ->
+        {:noreply, assign(socket, :send_error, "Nila could not verify these vouchers in Tally.")}
+    end
+  end
+
   defp voucher_numbering_error(issues) do
     types = issues |> Enum.map(& &1.voucher_type) |> Enum.uniq() |> Enum.join(", ")
 
@@ -207,6 +225,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       Enum.any?(jobs, &(&1.status == "failed")) and
         Enum.all?(jobs, &(&1.status != "indeterminate"))
 
+  defp verifiable?(jobs), do: Enum.any?(jobs, &(&1.status == "indeterminate"))
+
   defp remainder_title(jobs) do
     if Enum.any?(jobs, &(&1.status in ["failed", "indeterminate"])),
       do: "Not added to Tally",
@@ -289,6 +309,15 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               variant="outline"
             >
               Try again
+            </.button>
+            <.button
+              :if={verifiable?(@tally_jobs)}
+              type="button"
+              id="sales-bills-verify-tally"
+              phx-click="verify-tally"
+              variant="outline"
+            >
+              Check Tally
             </.button>
           </div>
 
