@@ -230,4 +230,42 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert pending.status == "pending"
     refute Map.has_key?(pending.payload, "mode")
   end
+
+  test "counts invoices without jobs as not added and can enqueue the remainder", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    device: device
+  } do
+    [invoice] = dump.invoices
+    second_invoice = Map.put(invoice, "invoice_number", "INV-002")
+
+    dump =
+      dump |> Ecto.Changeset.change(invoices: [invoice, second_invoice]) |> Nila.Repo.update!()
+
+    batch_ref = TallyPacket.ref([dump])
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}"
+    {:ok, view, _html} = live(conn, path)
+
+    view |> element("#sales-bills-send-to-tally") |> render_click()
+
+    [first_job, second_job] = Nila.Repo.all(Nila.TallyJobs.Job)
+
+    assert {:ok, running} = TallyJobs.claim_next(device.id)
+    assert running.id == first_job.id
+
+    assert {:ok, _done} =
+             TallyJobs.complete(device.id, first_job.id, "succeeded", %{"master_id" => 42})
+
+    Nila.Repo.delete!(second_job)
+    {:ok, view, _html} = live(conn, path)
+
+    assert has_element?(view, "#sales-bills-partial-tally-result", "1 of 2 added to Tally")
+    assert has_element?(view, "#sales-bills-retry-tally", "Try again")
+    assert render(view) =~ "INV-002"
+
+    view |> element("#sales-bills-retry-tally") |> render_click()
+
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 2
+  end
 end

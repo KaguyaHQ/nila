@@ -169,7 +169,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       |> Enum.filter(&(&1.status in ["failed", "indeterminate"]))
       |> Enum.map(&(&1.payload["invoice_number"] || "Unnumbered bill"))
 
-    Enum.uniq(excluded ++ failed ++ unread ++ not_added)
+    job_invoice_numbers = MapSet.new(tally_jobs, & &1.payload["invoice_number"])
+
+    missing_jobs =
+      packet.invoices
+      |> Enum.map(& &1["invoice_number"])
+      |> Enum.reject(&MapSet.member?(job_invoice_numbers, &1))
+
+    Enum.uniq(excluded ++ failed ++ unread ++ not_added ++ missing_jobs)
   end
 
   defp list_tally_jobs(_org_id, nil), do: []
@@ -224,16 +231,16 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp sending_to_tally?(jobs), do: Enum.any?(jobs, &(&1.status in ["pending", "running"]))
 
-  defp tally_result([]), do: nil
+  defp tally_result([], _expected_count), do: nil
 
-  defp tally_result(jobs) do
+  defp tally_result(jobs, expected_count) do
     added = Enum.count(jobs, &(&1.status == "succeeded"))
     finished = Enum.count(jobs, &(&1.status in ["succeeded", "failed", "indeterminate"]))
 
     cond do
       sending_to_tally?(jobs) -> :sending
-      added == length(jobs) -> :added
-      finished == length(jobs) -> {:partial, added, length(jobs)}
+      added == expected_count and length(jobs) == expected_count -> :added
+      finished == length(jobs) -> {:partial, added, expected_count}
       true -> :sending
     end
   end
@@ -244,6 +251,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         Enum.all?(jobs, &(&1.status != "indeterminate"))
 
   defp verifiable?(jobs), do: Enum.any?(jobs, &(&1.status == "indeterminate"))
+
+  defp missing_delivery_jobs?(packet, jobs), do: length(jobs) < length(packet.invoices)
 
   defp remainder_title(jobs) do
     if Enum.any?(jobs, &(&1.status in ["failed", "indeterminate"])),
@@ -296,7 +305,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           </.button>
 
           <div
-            :if={@packet.invoices != [] and tally_result(@tally_jobs) == :sending}
+            :if={
+              @packet.invoices != [] and
+                tally_result(@tally_jobs, length(@packet.invoices)) == :sending
+            }
             id="sales-bills-sending-to-tally"
             class="text-base-content text-ui flex items-center gap-2 font-semibold"
           >
@@ -304,7 +316,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           </div>
 
           <div
-            :if={@packet.invoices != [] and tally_result(@tally_jobs) == :added}
+            :if={
+              @packet.invoices != [] and
+                tally_result(@tally_jobs, length(@packet.invoices)) == :added
+            }
             id="sales-bills-added-to-tally"
             class="flex items-center gap-3"
           >
@@ -320,15 +335,23 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           </div>
 
           <div
-            :if={match?({:partial, _added, _total}, tally_result(@tally_jobs))}
+            :if={
+              match?(
+                {:partial, _added, _total},
+                tally_result(@tally_jobs, length(@packet.invoices))
+              )
+            }
             id="sales-bills-partial-tally-result"
             class="space-y-related"
           >
             <p class="text-base-content text-ui font-semibold">
-              {elem(tally_result(@tally_jobs), 1)} of {elem(tally_result(@tally_jobs), 2)} added to Tally
+              {elem(tally_result(@tally_jobs, length(@packet.invoices)), 1)} of {elem(
+                tally_result(@tally_jobs, length(@packet.invoices)),
+                2
+              )} added to Tally
             </p>
             <.button
-              :if={retryable?(@tally_jobs)}
+              :if={retryable?(@tally_jobs) or missing_delivery_jobs?(@packet, @tally_jobs)}
               type="button"
               id="sales-bills-retry-tally"
               phx-click="send-to-tally"
