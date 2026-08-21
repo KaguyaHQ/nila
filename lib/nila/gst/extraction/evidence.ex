@@ -115,12 +115,18 @@ defmodule Nila.Gst.Extraction.Evidence do
   defp read_rendered(dir) do
     dir
     |> Path.join("page-*.#{@extension}")
+    |> normalize_glob_path()
     |> Path.wildcard()
     |> Map.new(fn path ->
       [number] = Regex.run(~r/page-(\d+)\.#{@extension}$/, path, capture: :all_but_first)
       {number |> String.to_integer() |> page_basename(), File.read!(path)}
     end)
   end
+
+  # `System.tmp_dir!/0` uses backslashes on Windows while `Path.join/2` adds a
+  # forward slash. Erlang's Windows glob implementation treats that mixed path
+  # as no matches even though Poppler wrote the pages successfully.
+  defp normalize_glob_path(path), do: String.replace(path, "\\", "/")
 
   @doc "The stable evidence basename for a 1-based page number."
   @spec page_basename(pos_integer()) :: String.t()

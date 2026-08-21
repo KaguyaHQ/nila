@@ -282,6 +282,16 @@ defmodule NilaWeb.Gstr1Controller do
     )
   end
 
+  defp tally_enqueue_error(conn, {:incompatible_voucher_numbering, issues}) do
+    types = issues |> Enum.map(& &1.voucher_type) |> Enum.uniq() |> Enum.join(", ")
+
+    put_flash(
+      conn,
+      :error,
+      "#{types} voucher numbering in Tally must be Manual or Automatic (Manual Override). Change it in Tally, sync the company, then retry."
+    )
+  end
+
   defp tally_enqueue_error(conn, _reason),
     do: put_flash(conn, :error, "Nila could not queue the Tally import.")
 

@@ -457,6 +457,6 @@ defmodule Nila.Gst.Intake.Dumps do
   end
 
   defp truncate(error) do
-    error |> to_string() |> String.slice(0, 500)
+    error |> to_string() |> String.slice(0, 255)
   end
 end

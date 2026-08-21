@@ -9,6 +9,10 @@ defmodule Nila.TallySync do
 
   @max_records 1_000
   @statuses ~w(pending running succeeded failed)
+  @voucher_numbering_methods_allowing_imported_numbers [
+    "manual",
+    "automatic (manual override)"
+  ]
 
   @doc "Returns referenced ledger names absent from the latest stored Tally snapshot."
   def missing_ledgers(company_id, names) when is_integer(company_id) and is_list(names) do
@@ -32,6 +36,41 @@ defmodule Nila.TallySync do
       |> MapSet.new()
 
     Enum.reject(requested, &MapSet.member?(found, String.downcase(&1)))
+  end
+
+  @doc "Returns voucher types whose numbering configuration cannot preserve imported numbers."
+  def voucher_numbering_issues(company_id, voucher_types)
+      when is_integer(company_id) and is_list(voucher_types) do
+    requested =
+      voucher_types
+      |> Enum.filter(&is_binary/1)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq_by(&String.downcase/1)
+
+    methods =
+      from(m in SyncedMaster,
+        where:
+          m.company_id == ^company_id and m.kind == "voucher_type" and
+            fragment("lower(?)", m.name) in ^Enum.map(requested, &String.downcase/1),
+        select: {fragment("lower(?)", m.name), m.data}
+      )
+      |> Repo.all()
+      |> Map.new()
+
+    Enum.flat_map(requested, fn voucher_type ->
+      case methods[String.downcase(voucher_type)] do
+        %{"numbering_method" => method} when is_binary(method) ->
+          if String.downcase(String.trim(method)) in @voucher_numbering_methods_allowing_imported_numbers do
+            []
+          else
+            [%{voucher_type: voucher_type, numbering_method: method}]
+          end
+
+        _missing ->
+          [%{voucher_type: voucher_type, numbering_method: nil}]
+      end
+    end)
   end
 
   def start(%Device{} = device, company_identity, today \\ Date.utc_today()) do

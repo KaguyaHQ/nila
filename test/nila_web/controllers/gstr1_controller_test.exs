@@ -200,6 +200,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
     |> Repo.update!()
 
     seed_ledgers(company, ["Customer & Co", "Sales", "Output IGST"])
+    seed_voucher_type(company, "Sales", "Manual")
 
     conn =
       post(conn, ~p"/gstr1/#{client.id}/2026-07/tally", %{
@@ -371,5 +372,20 @@ defmodule NilaWeb.Gstr1ControllerTest do
 
     {count, _} = Repo.insert_all(SyncedMaster, rows)
     assert count == length(rows)
+  end
+
+  defp seed_voucher_type(company, name, numbering_method) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    Repo.insert!(%SyncedMaster{
+      org_id: company.org_id,
+      company_id: company.id,
+      kind: "voucher_type",
+      identity: "name:#{String.downcase(name)}",
+      name: name,
+      data: %{"numbering_method" => numbering_method},
+      inserted_at: now,
+      updated_at: now
+    })
   end
 end

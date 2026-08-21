@@ -4,6 +4,7 @@ defmodule Nila.TallyJobs do
   import Ecto.Query
 
   alias Nila.Repo
+  alias Nila.TallySync
   alias Nila.TallyDevices.Company
   alias Nila.TallyDevices.Device
   alias Nila.TallyJobs.Job
@@ -52,24 +53,34 @@ defmodule Nila.TallyJobs do
   def enqueue_vouchers(%Company{} = company, items, opts \\ []) when is_list(items) do
     prefix = Keyword.fetch!(opts, :source_prefix)
 
-    Enum.reduce_while(items, {:ok, []}, fn item, {:ok, jobs} ->
-      source_key = prefix <> item.source_id
-
-      case enqueue_import_vouchers(company, item.xml, 1,
-             source_key: source_key,
-             retry_failed: true,
-             metadata: %{
-               "source_id" => item.source_id,
-               "invoice_number" => item.invoice_number
-             }
+    with true <- Enum.all?(items, &valid_voucher_item?/1),
+         [] <-
+           TallySync.voucher_numbering_issues(
+             company.id,
+             Enum.map(items, & &1.voucher_type)
            ) do
-        {:ok, job, disposition} -> {:cont, {:ok, [{job, disposition} | jobs]}}
-        error -> {:halt, error}
+      Enum.reduce_while(items, {:ok, []}, fn item, {:ok, jobs} ->
+        source_key = prefix <> item.source_id
+
+        case enqueue_import_vouchers(company, item.xml, 1,
+               source_key: source_key,
+               retry_failed: true,
+               metadata: %{
+                 "source_id" => item.source_id,
+                 "invoice_number" => item.invoice_number
+               }
+             ) do
+          {:ok, job, disposition} -> {:cont, {:ok, [{job, disposition} | jobs]}}
+          error -> {:halt, error}
+        end
+      end)
+      |> case do
+        {:ok, jobs} -> {:ok, Enum.reverse(jobs)}
+        error -> error
       end
-    end)
-    |> case do
-      {:ok, jobs} -> {:ok, Enum.reverse(jobs)}
-      error -> error
+    else
+      false -> {:error, :invalid_voucher_items}
+      issues when is_list(issues) -> {:error, {:incompatible_voucher_numbering, issues}}
     end
   end
 
@@ -235,6 +246,17 @@ defmodule Nila.TallyJobs do
         error
     end
   end
+
+  defp valid_voucher_item?(%{
+         source_id: source_id,
+         invoice_number: invoice_number,
+         voucher_type: voucher_type,
+         xml: xml
+       }) do
+    Enum.all?([source_id, invoice_number, voucher_type, xml], &(is_binary(&1) and &1 != ""))
+  end
+
+  defp valid_voucher_item?(_item), do: false
 
   defp completion_attrs("succeeded", result, now) do
     %{

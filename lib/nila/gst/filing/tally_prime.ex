@@ -75,6 +75,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
             item = %{
               source_id: remote_id(invoice, period),
               invoice_number: invoice["invoice_number"],
+              voucher_type: voucher_type(invoice),
               ledger_names: voucher_ledger_names(xml),
               xml: envelope(xml, company)
             }
@@ -182,8 +183,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
   end
 
   defp voucher(invoice, period) do
-    document_type = Gstr1.document_type(invoice)
-    voucher_type = @voucher_types[document_type]
+    voucher_type = voucher_type(invoice)
     effect = Gstr1.document_effect(invoice)
     lines = List.wrap(invoice["line_items"])
 
@@ -215,6 +215,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
          "\" ACTION=\"Create\" VIEW=\"Accounting Voucher View\">",
          tag("DATE", Calendar.strftime(date, "%Y%m%d")),
          tag("EFFECTIVEDATE", Calendar.strftime(date, "%Y%m%d")),
+         tag("GUID", remote_id(invoice, period)),
          tag("VOUCHERTYPENAME", voucher_type),
          tag("VOUCHERNUMBER", invoice["invoice_number"]),
          tag("PARTYLEDGERNAME", party),
@@ -229,6 +230,8 @@ defmodule Nila.Gst.Filing.TallyPrime do
       _invalid -> {:error, :invalid_sales_data}
     end
   end
+
+  defp voucher_type(invoice), do: @voucher_types[Gstr1.document_type(invoice)]
 
   defp party_ledger(invoice) do
     case Gstr1.recipient_registration(invoice) do

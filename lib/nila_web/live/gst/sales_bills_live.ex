@@ -74,9 +74,18 @@ defmodule NilaWeb.Gst.SalesBillsLive do
          |> assign(:tally_company, nil)
          |> assign(:send_error, "Tally is no longer connected. Download the XML instead.")}
 
+      {:error, {:incompatible_voucher_numbering, issues}} ->
+        {:noreply, assign(socket, :send_error, voucher_numbering_error(issues))}
+
       _error ->
         {:noreply, assign(socket, :send_error, "Nila could not send these vouchers to Tally.")}
     end
+  end
+
+  defp voucher_numbering_error(issues) do
+    types = issues |> Enum.map(& &1.voucher_type) |> Enum.uniq() |> Enum.join(", ")
+
+    "#{types} voucher numbering in Tally must be Manual or Automatic (Manual Override). Change it in Tally, sync the company, then retry."
   end
 
   @impl true

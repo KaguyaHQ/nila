@@ -37,6 +37,7 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert xml =~ "<TALLYREQUEST>Import</TALLYREQUEST>"
     assert xml =~ "<IMPORTDUPS>@@DUPIGNORE</IMPORTDUPS>"
     assert xml =~ ~s(<VOUCHER REMOTEID="nila-)
+    assert xml =~ ~r/<GUID>nila-[a-f0-9]{64}<\/GUID>/
     assert xml =~ ~s(VCHTYPE="Sales" ACTION="Create")
     assert xml =~ "<VOUCHERNUMBER>INV&amp;001</VOUCHERNUMBER>"
     assert xml =~ "<PARTYLEDGERNAME>Customer &amp; Co</PARTYLEDGERNAME>"
@@ -120,6 +121,7 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
 
     assert {:ok, [first, second]} = TallyPrime.build_items_for_company(projection, "Nila")
     assert first.invoice_number == "INV-001"
+    assert first.voucher_type == "Sales"
     assert second.invoice_number == "INV-002"
     assert first.source_id != second.source_id
     assert first.ledger_names == ["Customer", "Sales", "Output IGST"]

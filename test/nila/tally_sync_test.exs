@@ -33,6 +33,26 @@ defmodule Nila.TallySyncTest do
              ["Customer & Co"]
   end
 
+  test "reports voucher numbering that cannot preserve imported invoice numbers" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+    {:ok, [company]} = TallyDevices.report_companies(device, [%{"name" => "Nila"}])
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    Repo.insert_all(SyncedMaster, [
+      voucher_type(company, "Sales", "Default", now),
+      voucher_type(company, "Credit Note", "Automatic (Manual Override)", now),
+      voucher_type(company, "Debit Note", "Manual", now)
+    ])
+
+    assert TallySync.voucher_numbering_issues(company.id, ["Credit Note", "Debit Note"]) == []
+
+    assert TallySync.voucher_numbering_issues(company.id, ["Sales", "Missing Type"]) == [
+             %{voucher_type: "Sales", numbering_method: "Default"},
+             %{voucher_type: "Missing Type", numbering_method: nil}
+           ]
+  end
+
   test "a completed voucher sync opens the linked GST month and invalidates prior review" do
     %{org: org} = user_with_org_fixture()
 
@@ -77,6 +97,19 @@ defmodule Nila.TallySyncTest do
       "voucher_type" => "Sales",
       "voucher_number" => number,
       "data" => %{"ledger_entries" => []}
+    }
+  end
+
+  defp voucher_type(company, name, numbering_method, now) do
+    %{
+      org_id: company.org_id,
+      company_id: company.id,
+      kind: "voucher_type",
+      identity: "name:#{String.downcase(name)}",
+      name: name,
+      data: %{"numbering_method" => numbering_method},
+      inserted_at: now,
+      updated_at: now
     }
   end
 end

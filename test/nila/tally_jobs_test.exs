@@ -127,16 +127,19 @@ defmodule Nila.TallyJobsTest do
       TallyDevices.report_companies(device, [%{"name" => "Nila", "tally_guid" => "nila"}])
 
     company = Nila.Repo.preload(company, :device)
+    insert_voucher_type(company, "Sales", "Manual")
 
     items = [
       %{
         source_id: "voucher-one",
         invoice_number: "INV-001",
+        voucher_type: "Sales",
         xml: "<ENVELOPE><TALLYMESSAGE/></ENVELOPE>"
       },
       %{
         source_id: "voucher-two",
         invoice_number: "INV-002",
+        voucher_type: "Sales",
         xml: "<ENVELOPE><TALLYMESSAGE/></ENVELOPE>"
       }
     ]
@@ -165,5 +168,20 @@ defmodule Nila.TallyJobsTest do
     assert retried.payload["xml"] == "<ENVELOPE><UPDATED/></ENVELOPE>"
     assert same_second.id == second.id
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 2
+  end
+
+  defp insert_voucher_type(company, name, numbering_method) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    Nila.Repo.insert!(%Nila.TallyDevices.SyncedMaster{
+      org_id: company.org_id,
+      company_id: company.id,
+      kind: "voucher_type",
+      identity: "name:#{String.downcase(name)}",
+      name: name,
+      data: %{"numbering_method" => numbering_method},
+      inserted_at: now,
+      updated_at: now
+    })
   end
 end

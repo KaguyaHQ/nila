@@ -7,6 +7,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Sales.{Gstr1, TallyPacket}
   alias Nila.TallyDevices
+  alias Nila.TallyDevices.SyncedMaster
   alias Nila.TallyJobs
 
   setup %{conn: conn} do
@@ -56,7 +57,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Office PC"})
 
-    {:ok, [_company]} =
+    {:ok, [company]} =
       TallyDevices.report_companies(device, [
         %{
           "name" => "Breeze Tech",
@@ -65,11 +66,25 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
         }
       ])
 
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    Nila.Repo.insert!(%SyncedMaster{
+      org_id: org.id,
+      company_id: company.id,
+      kind: "voucher_type",
+      identity: "name:sales",
+      name: "Sales",
+      data: %{"numbering_method" => "Manual"},
+      inserted_at: now,
+      updated_at: now
+    })
+
     %{
       conn: log_in_user(conn, user),
       client: client,
       dump: dump,
-      device: device
+      device: device,
+      company: company
     }
   end
 
@@ -102,5 +117,31 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert render(view) =~ "Added to Tally"
     assert has_element?(view, "#sales-bills-added-to-tally")
+  end
+
+  test "blocks sales vouchers when Tally controls the voucher number", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    company: company
+  } do
+    Nila.Repo.get_by!(SyncedMaster, company_id: company.id, kind: "voucher_type", name: "Sales")
+    |> Ecto.Changeset.change(data: %{"numbering_method" => "Default"})
+    |> Nila.Repo.update!()
+
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    view
+    |> element("#sales-bills-send-to-tally")
+    |> render_click()
+
+    assert has_element?(
+             view,
+             "#sales-bills-send-error",
+             "Sales voucher numbering in Tally must be Manual or Automatic (Manual Override)"
+           )
+
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
   end
 end

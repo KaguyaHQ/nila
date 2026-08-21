@@ -11,6 +11,24 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
   alias Nila.PdfFixtures
   alias Nila.Storage
 
+  test "provider failures are truncated to the database column limit" do
+    %{user: user, org: org} = user_with_org_fixture()
+
+    {:ok, client} =
+      Clients.create_client(%{org_id: org.id, name: "Breeze Tech", type: "company"})
+
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id, brought_in_by_id: user.id},
+        %{period: "2026-06", kind: "sales"}
+      )
+
+    failed = Dumps.mark_failed(dump, String.duplicate("gateway failure ", 50))
+
+    assert failed.status == "failed"
+    assert String.length(failed.error) == 255
+  end
+
   defmodule Provider do
     @behaviour Nila.Gst.Extraction.Purchase
 
