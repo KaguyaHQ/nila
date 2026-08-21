@@ -8,6 +8,7 @@ defmodule Nila.TallyJobs.Job do
     field :source_key, :string
     field :kind, :string
     field :payload, :map
+    field :payload_hash, :binary
     field :status, :string, default: "pending"
     field :attempts, :integer, default: 0
     field :started_at, :utc_datetime_usec
@@ -23,7 +24,7 @@ defmodule Nila.TallyJobs.Job do
 
   def create_changeset(job, attrs) do
     job
-    |> cast(attrs, [:job_key, :source_key, :kind, :payload])
+    |> cast(attrs, [:job_key, :source_key, :kind, :payload, :payload_hash])
     |> validate_required([:org_id, :device_id, :job_key, :kind, :payload])
     |> validate_inclusion(:kind, ["create_voucher", "import_vouchers"])
     |> validate_length(:source_key, max: 240)

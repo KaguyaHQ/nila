@@ -67,10 +67,10 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert xml =~ "<IMPORTDUPS>@@DUPIGNORE</IMPORTDUPS>"
 
     assert xml =~
-             ~r/<VOUCHER REMOTEID="[a-f0-9]{8}-[a-f0-9]{4}-5[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}"/
+             ~r/<VOUCHER REMOTEID="[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}"/
 
     assert xml =~
-             ~r/<GUID>[a-f0-9]{8}-[a-f0-9]{4}-5[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}<\/GUID>/
+             ~r/<GUID>[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}<\/GUID>/
 
     assert xml =~
              ~s(VCHTYPE="Sales" ACTION="Create" OBJVIEW="Invoice Voucher View")
@@ -143,19 +143,16 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert xml =~ "<VOUCHERNUMBER>INV-001</VOUCHERNUMBER>"
   end
 
-  test "scopes stable voucher identity to the filing period" do
-    projection = %{active_invoices: [invoice()], period: "2026-07"}
+  test "generates a real random correlation UUID for each newly built delivery" do
+    assert {:ok, first_xml} = TallyPrime.build(%{active_invoices: [invoice()]})
+    assert {:ok, second_xml} = TallyPrime.build(%{active_invoices: [invoice()]})
 
-    assert {:ok, july_xml} = TallyPrime.build(projection)
-    assert {:ok, repeated_xml} = TallyPrime.build(projection)
-    assert {:ok, august_xml} = TallyPrime.build(%{projection | period: "2026-08"})
+    [first_id] = Regex.run(~r/REMOTEID="([^"]+)"/, first_xml, capture: :all_but_first)
+    [second_id] = Regex.run(~r/REMOTEID="([^"]+)"/, second_xml, capture: :all_but_first)
 
-    [july_id] = Regex.run(~r/REMOTEID="([^"]+)"/, july_xml, capture: :all_but_first)
-    [repeated_id] = Regex.run(~r/REMOTEID="([^"]+)"/, repeated_xml, capture: :all_but_first)
-    [august_id] = Regex.run(~r/REMOTEID="([^"]+)"/, august_xml, capture: :all_but_first)
-
-    assert repeated_id == july_id
-    refute august_id == july_id
+    assert {:ok, decoded} = Ecto.UUID.dump(first_id)
+    assert <<_::48, 4::4, _::12, 2::2, _::62>> = decoded
+    refute second_id == first_id
   end
 
   test "builds an explicitly company-scoped connector import" do
@@ -176,6 +173,7 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert first.voucher_type == "Sales"
     assert second.invoice_number == "INV-002"
     assert first.source_id != second.source_id
+    assert byte_size(first.source_id) == 64
     assert first.ledger_names == ["Customer", "Sales", "Output IGST"]
     assert length(Regex.scan(~r/<TALLYMESSAGE>/, first.xml)) == 1
     assert first.xml =~ "<SVCURRENTCOMPANY>Nila</SVCURRENTCOMPANY>"

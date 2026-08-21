@@ -43,6 +43,38 @@ defmodule Nila.TallyJobsTest do
     assert completed.completed_at
   end
 
+  test "concurrent connector deliveries cannot claim the same logical job twice" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Office PC"})
+
+    assert {:ok, job} =
+             TallyJobs.enqueue_create_voucher(
+               device,
+               %{"company" => "Nila", "amount" => "1.00"},
+               source_key: "sales-bills:race:voucher:INV-001"
+             )
+
+    tasks =
+      for _ <- 1..2 do
+        Task.async(fn ->
+          receive do
+            :claim -> TallyJobs.claim_next(device.id)
+          end
+        end)
+      end
+
+    Enum.each(tasks, fn task ->
+      Ecto.Adapters.SQL.Sandbox.allow(Nila.Repo, self(), task.pid)
+    end)
+
+    Enum.each(tasks, &send(&1.pid, :claim))
+
+    results = Enum.map(tasks, &Task.await/1)
+
+    assert Enum.count(results, &match?({:ok, %{id: id}} when id == job.id, &1)) == 1
+    assert Enum.count(results, &match?({:ok, nil}, &1)) == 1
+  end
+
   test "records an ambiguous Tally outcome without making it retryable" do
     %{org: org} = user_with_org_fixture()
     {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Timeout PC"})
@@ -186,16 +218,89 @@ defmodule Nila.TallyJobsTest do
 
     assert failed.status == "failed"
 
-    retry_items = put_in(items, [Access.at(0), :xml], "<ENVELOPE><UPDATED/></ENVELOPE>")
-
     assert {:ok, [{retried, :retried}, {same_second, :existing}]} =
-             TallyJobs.enqueue_vouchers(company, retry_items, source_prefix: "gstr1:7:voucher:")
+             TallyJobs.enqueue_vouchers(company, items, source_prefix: "gstr1:7:voucher:")
 
     assert retried.id == first.id
     assert retried.status == "pending"
-    assert retried.payload["xml"] == "<ENVELOPE><UPDATED/></ENVELOPE>"
+    assert retried.payload["xml"] == "<ENVELOPE><TALLYMESSAGE/></ENVELOPE>"
+    assert is_binary(retried.payload_hash)
     assert same_second.id == second.id
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 2
+  end
+
+  test "a regenerated correlation UUID does not change the frozen voucher payload" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [%{"name" => "Nila", "tally_guid" => "nila"}])
+
+    company = Nila.Repo.preload(company, :device)
+    insert_voucher_type(company, "Sales", "Manual")
+
+    first_xml = correlated_voucher_xml("11111111-1111-4111-8111-111111111111", "100.00")
+
+    first_item = %{
+      source_id: "voucher-one",
+      invoice_number: "INV-001",
+      voucher_type: "Sales",
+      xml: first_xml
+    }
+
+    assert {:ok, [{job, :created}]} =
+             TallyJobs.enqueue_vouchers(company, [first_item],
+               source_prefix: "gstr1:correlation:voucher:"
+             )
+
+    assert {:ok, _claimed} = TallyJobs.claim_next(device.id)
+    assert {:ok, _failed} = TallyJobs.complete(device.id, job.id, "failed", %{"message" => "No"})
+
+    regenerated = %{
+      first_item
+      | xml: correlated_voucher_xml("22222222-2222-4222-8222-222222222222", "100.00")
+    }
+
+    assert {:ok, [{retried, :retried}]} =
+             TallyJobs.enqueue_vouchers(company, [regenerated],
+               source_prefix: "gstr1:correlation:voucher:"
+             )
+
+    assert retried.id == job.id
+    assert retried.payload["xml"] == first_xml
+  end
+
+  test "refuses to mutate a failed voucher payload under the same source key" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [%{"name" => "Nila", "tally_guid" => "nila"}])
+
+    company = Nila.Repo.preload(company, :device)
+    insert_voucher_type(company, "Sales", "Manual")
+
+    item = %{
+      source_id: "voucher-one",
+      invoice_number: "INV-001",
+      voucher_type: "Sales",
+      xml: "<ENVELOPE><ORIGINAL/></ENVELOPE>"
+    }
+
+    assert {:ok, [{job, :created}]} =
+             TallyJobs.enqueue_vouchers(company, [item], source_prefix: "gstr1:8:voucher:")
+
+    assert {:ok, _claimed} = TallyJobs.claim_next(device.id)
+    assert {:ok, _failed} = TallyJobs.complete(device.id, job.id, "failed", %{"message" => "No"})
+
+    changed = %{item | xml: "<ENVELOPE><CHANGED/></ENVELOPE>"}
+
+    assert {:error, :payload_changed} =
+             TallyJobs.enqueue_vouchers(company, [changed], source_prefix: "gstr1:8:voucher:")
+
+    persisted = TallyJobs.get_job!(job.id)
+    assert persisted.status == "failed"
+    assert persisted.payload["xml"] == item.xml
   end
 
   defp insert_voucher_type(company, name, numbering_method) do
@@ -211,5 +316,16 @@ defmodule Nila.TallyJobsTest do
       inserted_at: now,
       updated_at: now
     })
+  end
+
+  defp correlated_voucher_xml(correlation_id, amount) do
+    """
+    <ENVELOPE>
+      <VOUCHER REMOTEID="#{correlation_id}">
+        <GUID>#{correlation_id}</GUID>
+        <AMOUNT>#{amount}</AMOUNT>
+      </VOUCHER>
+    </ENVELOPE>
+    """
   end
 end

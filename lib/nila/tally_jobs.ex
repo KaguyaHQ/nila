@@ -245,7 +245,8 @@ defmodule Nila.TallyJobs do
         job_key: job_key,
         source_key: source_key,
         kind: kind,
-        payload: payload
+        payload: payload,
+        payload_hash: payload_hash(payload)
       })
 
     case Repo.insert(changeset) do
@@ -258,32 +259,7 @@ defmodule Nila.TallyJobs do
         case Repo.fetch_by(Job, org_id: device.org_id, source_key: source_key) do
           {:ok, %Job{status: "failed"} = job} ->
             if Keyword.get(opts, :retry_failed, false) do
-              job
-              |> Ecto.Changeset.change(
-                device_id: device.id,
-                payload: payload,
-                status: "pending",
-                started_at: nil,
-                completed_at: nil,
-                result: nil,
-                error: nil
-              )
-              |> Repo.update()
-              |> case do
-                {:ok, retried} ->
-                  Phoenix.PubSub.broadcast(
-                    Nila.PubSub,
-                    device_topic(device.id),
-                    :tally_job_available
-                  )
-
-                  broadcast_org(retried.org_id)
-
-                  {:ok, retried, :retried}
-
-                error ->
-                  error
-              end
+              retry_failed_job(job, device, payload)
             else
               {:ok, job, :existing}
             end
@@ -310,6 +286,59 @@ defmodule Nila.TallyJobs do
   end
 
   defp valid_voucher_item?(_item), do: false
+
+  defp retry_failed_job(job, device, proposed_payload) do
+    proposed_hash = payload_hash(proposed_payload)
+    frozen_hash = job.payload_hash || payload_hash(job.payload)
+
+    if frozen_hash == proposed_hash do
+      frozen_payload = Map.delete(job.payload, "mode")
+
+      job
+      |> Ecto.Changeset.change(
+        device_id: device.id,
+        payload: frozen_payload,
+        payload_hash: frozen_hash,
+        status: "pending",
+        started_at: nil,
+        completed_at: nil,
+        result: nil,
+        error: nil
+      )
+      |> Repo.update()
+      |> case do
+        {:ok, retried} ->
+          Phoenix.PubSub.broadcast(
+            Nila.PubSub,
+            device_topic(device.id),
+            :tally_job_available
+          )
+
+          broadcast_org(retried.org_id)
+          {:ok, retried, :retried}
+
+        error ->
+          error
+      end
+    else
+      {:error, :payload_changed}
+    end
+  end
+
+  # Freeze every material field while ignoring the per-build correlation UUID
+  # and insignificant whitespace between XML elements. Retries reuse the
+  # original frozen XML; the connector establishes semantic equivalence by
+  # reading the resulting voucher back from Tally.
+  defp payload_hash(%{"xml" => xml}) when is_binary(xml) do
+    xml
+    |> String.replace(~r/\bREMOTEID\s*=\s*"[^"]*"/i, ~s(REMOTEID="__NILA_CORRELATION__"))
+    |> String.replace(~r/<GUID>[^<]*<\/GUID>/i, "<GUID>__NILA_CORRELATION__</GUID>")
+    |> String.replace(~r/>\s+</, "><")
+    |> String.trim()
+    |> then(&:crypto.hash(:sha256, &1))
+  end
+
+  defp payload_hash(_payload), do: nil
 
   defp completion_attrs("succeeded", result, now) do
     %{

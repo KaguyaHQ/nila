@@ -11,8 +11,6 @@ defmodule Nila.Gst.Filing.TallyPrime do
   alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.StateCodes
 
-  import Bitwise, only: [band: 2, bor: 2]
-
   @endpoint "http://localhost:9000/"
   @available Mix.env() != :prod
   @invalid_xml ~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x{FFFE}\x{FFFF}]/u
@@ -92,7 +90,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
             xml = IO.iodata_to_binary(voucher_xml)
 
             item = %{
-              source_id: remote_id(invoice, period),
+              source_id: source_id(invoice, period),
               invoice_number: invoice["invoice_number"],
               voucher_type: voucher_type(invoice),
               ledger_names: voucher_ledger_names(xml),
@@ -201,10 +199,11 @@ defmodule Nila.Gst.Filing.TallyPrime do
     end
   end
 
-  defp voucher(invoice, period) do
+  defp voucher(invoice, _period) do
     voucher_type = voucher_type(invoice)
     effect = Gstr1.document_effect(invoice)
     lines = List.wrap(invoice["line_items"])
+    correlation_id = Ecto.UUID.generate()
 
     with %Date{} = date <- invoice_date(invoice["invoice_date"]),
          true <- present?(invoice["invoice_number"]),
@@ -235,13 +234,13 @@ defmodule Nila.Gst.Filing.TallyPrime do
        [
          "<TALLYMESSAGE>",
          "<VOUCHER REMOTEID=\"",
-         remote_id(invoice, period),
+         correlation_id,
          "\" VCHTYPE=\"",
          xml(voucher_type),
          "\" ACTION=\"Create\" OBJVIEW=\"Invoice Voucher View\">",
          tag("DATE", Calendar.strftime(date, "%Y%m%d")),
          tag("EFFECTIVEDATE", Calendar.strftime(date, "%Y%m%d")),
-         tag("GUID", remote_id(invoice, period)),
+         tag("GUID", correlation_id),
          tag("VOUCHERTYPENAME", voucher_type),
          tag("VOUCHERNUMBER", invoice["invoice_number"]),
          tag("PARTYLEDGERNAME", party),
@@ -540,7 +539,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
     ])
   end
 
-  defp remote_id(invoice, period) do
+  defp source_id(invoice, period) do
     source_identity =
       invoice["id"] ||
         Enum.join(
@@ -554,21 +553,9 @@ defmodule Nila.Gst.Filing.TallyPrime do
         "|"
       )
 
-    deterministic_uuid(identity)
-  end
-
-  defp deterministic_uuid(identity) do
-    <<time_low::32, time_mid::16, time_hi::16, clock_seq::16, node::48, _::binary>> =
-      :crypto.hash(:sha256, identity)
-
-    time_hi_and_version = bor(band(time_hi, 0x0FFF), 0x5000)
-    clock_seq_and_variant = bor(band(clock_seq, 0x3FFF), 0x8000)
-
-    :io_lib.format(
-      "~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b",
-      [time_low, time_mid, time_hi_and_version, clock_seq_and_variant, node]
-    )
-    |> IO.iodata_to_binary()
+    identity
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
   end
 
   defp voucher_ledger_names(xml) do
