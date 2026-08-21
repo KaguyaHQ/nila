@@ -6,8 +6,10 @@ defmodule NilaWeb.PageControllerTest do
   test "GET /", %{conn: conn} do
     conn = get(conn, ~p"/")
     html = html_response(conn, 200)
-    assert html =~ "It’s done. Review."
-    assert html =~ "Arrange a test on WhatsApp"
+    assert html =~ "GST deadlines"
+    assert html =~ "without the late nights."
+    assert html =~ "Turn sales bills into a Tally register in minutes."
+    assert html =~ "Try one client free"
     assert html =~ "https://wa.me/918148183716"
   end
 
@@ -39,7 +41,7 @@ defmodule NilaWeb.PageControllerTest do
     conn = get(conn, ~p"/contact")
     html = html_response(conn, 200)
 
-    assert html =~ "Give us one filed month."
+    assert html =~ "Try Nila on one client."
     assert html =~ "https://wa.me/918148183716"
     assert html =~ ~s(id="callback-form")
     assert html =~ "hello@nila.tax"
@@ -125,7 +127,7 @@ defmodule NilaWeb.PageControllerTest do
 
     html = html_response(conn, 503)
     assert html =~ "We couldn’t request the callback"
-    assert html =~ "Arrange on WhatsApp"
+    assert html =~ "Try one client free"
     assert html =~ ~s(id="callback-form")
     refute_email_sent()
   end

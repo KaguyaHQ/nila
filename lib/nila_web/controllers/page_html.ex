@@ -10,7 +10,7 @@ defmodule NilaWeb.PageHTML do
 
   @whatsapp_url "https://wa.me/918148183716?text=" <>
                   URI.encode_www_form(
-                    "Hi, I run a CA firm and would like to test Nila with one filed month."
+                    "Hi, I’d like to try Nila free with one client’s sales bills."
                   )
 
   def whatsapp_url, do: @whatsapp_url

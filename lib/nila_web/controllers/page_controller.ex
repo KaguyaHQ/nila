@@ -82,7 +82,7 @@ defmodule NilaWeb.PageController do
     conn
     |> put_flash(
       :error,
-      "We couldn’t request the callback. Please arrange your test on WhatsApp."
+      "We couldn’t request the callback. Please continue on WhatsApp."
     )
     |> put_status(:service_unavailable)
     |> render_contact(changeset)
