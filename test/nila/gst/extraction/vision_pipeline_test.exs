@@ -8,6 +8,13 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
   alias Nila.Gst.Sales.Gstr1
   alias Nila.PdfFixtures
 
+  @line_item_fields ~w(
+    item_name description hsn_sac quantity uom printed_unit_price discount_rate
+    discount_amount printed_line_amount printed_line_total printed_taxable_value
+    line_amount_tax_inclusion cgst_rate cgst_amount sgst_rate sgst_amount igst_rate
+    igst_amount repeat_count
+  )
+
   defp chat_response(content) do
     %{
       "choices" => [%{"message" => %{"content" => Jason.encode!(content)}}],
@@ -81,6 +88,11 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     )
   end
 
+  defp positional_line_item(overrides) do
+    line = line_item(overrides)
+    Enum.map(@line_item_fields, &Map.fetch!(line, &1))
+  end
+
   defp stub(labels, extracted_invoice \\ invoice()) do
     test_pid = self()
 
@@ -138,8 +150,28 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     assert Enum.count(segmentation_content, &(&1["type"] == "image_url")) == 2
 
     assert_receive {:vision_request, "nila_direct_purchase_invoice", extraction_request}
+
+    line_schema =
+      get_in(extraction_request, [
+        "response_format",
+        "json_schema",
+        "schema",
+        "properties",
+        "line_items",
+        "items"
+      ])
+
+    assert line_schema["type"] == "array"
+    assert line_schema["items"] == false
+    assert line_schema["minItems"] == length(@line_item_fields)
+    assert length(line_schema["prefixItems"]) == length(@line_item_fields)
+
     [_system, %{"content" => extraction_content}] = extraction_request["messages"]
     assert Enum.count(extraction_content, &(&1["type"] == "image_url")) == 2
+    instruction = hd(extraction_content)["text"]
+    assert instruction =~ "[#{Enum.join(@line_item_fields, ", ")}]"
+    assert instruction =~ "Preserve nulls so every row has exactly"
+    assert instruction =~ "19 values"
   end
 
   test "one failed invoice call rejects the whole packet and preserves completed responses" do
@@ -231,7 +263,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     extracted =
       sales_invoice()
       |> Map.put("buyer", %{"name" => "Customer", "gstin" => "29AAVCS8021P1ZB"})
-      |> Map.put("line_items", [line_item(%{"repeat_count" => 10})])
+      |> Map.put("line_items", [positional_line_item(%{"repeat_count" => 10})])
       |> Map.merge(%{
         "printed_subtotal_before_discount" => 475_000,
         "printed_total_taxable" => 475_000,

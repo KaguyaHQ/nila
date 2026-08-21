@@ -25,6 +25,12 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
     "image/png" => "png",
     "image/webp" => "webp"
   }
+  @line_item_fields ~w(
+    item_name description hsn_sac quantity uom printed_unit_price discount_rate
+    discount_amount printed_line_amount printed_line_total printed_taxable_value
+    line_amount_tax_inclusion cgst_rate cgst_amount sgst_rate sgst_amount igst_rate
+    igst_amount repeat_count
+  )a
 
   def extract(kind, bytes, opts \\ [])
       when kind in [:purchase, :sales] and is_binary(bytes) do
@@ -387,7 +393,7 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
            ) do
       case OpenAICompatibleChat.decode(response, schema) do
         {:ok, data, usage} ->
-          data = Map.put(data, "usage", usage)
+          data = data |> decode_line_items() |> Map.put("usage", usage)
           {:ok, artifact(kind, data, segment, source, opts), response}
 
         {:error, reason} ->
@@ -438,6 +444,11 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
       value; it must not invent a value absent from the document.
       Set reverse_charge true only when the document positively states that tax is
       payable under reverse charge, false when it explicitly says no, and null otherwise.
+
+      Each line_items entry must be an array with exactly these fields in this exact order:
+      [#{Enum.join(@line_item_fields, ", ")}]
+      Do not emit field names inside line_items. Preserve nulls so every row has exactly
+      #{length(@line_item_fields)} values.
       """)
 
     content =
@@ -458,10 +469,31 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
   defp vision_schema(kind) do
     schema = Segmented.schema(kind)
     reverse_charge = %{anyOf: [%{type: "boolean"}, %{type: "null"}]}
+    line_item = get_in(schema, [:properties, :line_items, :items])
+
+    line_item_tuple = %{
+      type: "array",
+      prefixItems: Enum.map(@line_item_fields, &Map.fetch!(line_item.properties, &1)),
+      items: false,
+      minItems: length(@line_item_fields),
+      maxItems: length(@line_item_fields)
+    }
 
     schema
+    |> put_in([:properties, :line_items, :items], line_item_tuple)
     |> put_in([:properties, :reverse_charge], reverse_charge)
     |> update_in([:required], &(&1 ++ ["reverse_charge"]))
+  end
+
+  defp decode_line_items(data) do
+    Map.update!(data, "line_items", fn rows ->
+      Enum.map(rows, fn values ->
+        @line_item_fields
+        |> Enum.map(&to_string/1)
+        |> Enum.zip(values)
+        |> Map.new()
+      end)
+    end)
   end
 
   defp artifact(kind, data, segment, source, opts) do
