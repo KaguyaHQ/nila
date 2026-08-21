@@ -92,7 +92,9 @@ defmodule NilaWeb.ClientNewLive do
             />
 
             <div class="flex items-center gap-3">
-              <.button type="submit" id="client-submit">Add client</.button>
+              <.button type="submit" id="client-submit">
+                <.icon name="hero-plus" class="size-4" /> Add client
+              </.button>
               <.link
                 navigate={~p"/clients"}
                 id="client-cancel"

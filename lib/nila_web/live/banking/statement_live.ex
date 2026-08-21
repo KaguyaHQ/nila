@@ -611,7 +611,7 @@ defmodule NilaWeb.Banking.StatementLive do
           variant="outline"
           size="sm"
         >
-          Try another PDF
+          <.icon name="hero-arrow-path" class="size-4" /> Try another PDF
         </.button>
 
         <%= if @statement.status == "ready" do %>

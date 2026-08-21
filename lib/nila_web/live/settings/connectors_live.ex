@@ -8,7 +8,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
 
   @whatsapp_signup_salt "whatsapp_embedded_signup"
   @signup_max_age 300
-  @tally_connector_download_url "https://github.com/KaguyaHQ/nila-connector/releases/download/v0.3.0/NilaConnector-0.3.0-win-x64-setup.exe"
+  @tally_connector_download_url "https://github.com/KaguyaHQ/nila-connector/releases/download/v0.4.0/NilaConnector-0.4.0-win-x64-setup.exe"
 
   @impl true
   def mount(_params, _session, socket) do
@@ -184,7 +184,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
             target="_blank"
             rel="noopener"
           >
-            Download Nila Connector
+            <.icon name="hero-arrow-down-tray" class="size-4" /> Download Nila Connector
           </.download_button>
         </section>
 

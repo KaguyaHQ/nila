@@ -87,7 +87,7 @@ defmodule NilaWeb.Gst.RegisterLive do
               No GST months yet — bring in a client's documents and this view fills itself.
             </p>
             <.button navigate={~p"/gst/upload"} id="register-bring-documents">
-              Bring in documents
+              <.icon name="hero-arrow-up-tray" class="size-4" /> Bring in documents
             </.button>
           </div>
         </.card>

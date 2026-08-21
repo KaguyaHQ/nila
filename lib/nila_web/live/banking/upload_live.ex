@@ -188,7 +188,9 @@ defmodule NilaWeb.Banking.UploadLive do
         <.card :if={@clients == []} id="banking-upload-empty" padding="roomy" class="text-center">
           <div class="space-y-block">
             <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
-            <.button navigate={~p"/clients/new"} id="banking-add-first-client">Add your first client</.button>
+            <.button navigate={~p"/clients/new"} id="banking-add-first-client">
+              <.icon name="hero-plus" class="size-4" /> Add your first client
+            </.button>
           </div>
         </.card>
 

@@ -86,7 +86,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             href={~p"/sales-bills/#{@client.id}/batch/#{@batch_ref}/tally.xml"}
             id="sales-bills-download"
           >
-            Download Tally XML
+            <.icon name="hero-arrow-down-tray" class="size-4" /> Download Tally XML
           </.download_button>
         </section>
 

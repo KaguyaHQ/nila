@@ -18,7 +18,9 @@ defmodule NilaWeb.Gst.UploadLive do
   alias Nila.Gst.Intake.{Dumps, DumpWorker}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Storage
+  alias Nila.TallyDevices
   alias NilaWeb.Gst.PeriodOptions
+  alias NilaWeb.Presence
 
   # Refuse oversized source files at intake rather than after rendering and
   # base64 expansion inside extraction.
@@ -36,10 +38,13 @@ defmodule NilaWeb.Gst.UploadLive do
     prefilled = prefill(socket, params)
     sales_intake? = socket.assigns.live_action == :sales
 
+    if connected?(socket) and sales_intake?, do: subscribe_tally(socket)
+
     socket =
       socket
       |> assign(:page_title, if(sales_intake?, do: "Sales bills", else: "Bring in documents"))
       |> assign(:sales_intake?, sales_intake?)
+      |> assign(:tally_state, nil)
       |> assign(:internal_period, prefilled["period"])
       |> assign(:clients, list_clients(socket))
       |> assign(:form, to_form(prefilled, as: :intake))
@@ -57,6 +62,7 @@ defmodule NilaWeb.Gst.UploadLive do
         validator: &validate_document_entry/1,
         external: &presign_upload/2
       )
+      |> load_sales_tally_context()
 
     {:ok, assign(socket, :error, nil)}
   end
@@ -357,6 +363,14 @@ defmodule NilaWeb.Gst.UploadLive do
   defp bill_entry?(entry), do: entry_extension(entry) in @bill_extensions
 
   @impl true
+  def handle_info(
+        %Phoenix.Socket.Broadcast{event: "presence_diff"},
+        %{assigns: %{sales_intake?: true, jobs: jobs}} = socket
+      )
+      when jobs == %{} do
+    {:noreply, load_sales_tally_context(socket)}
+  end
+
   def handle_info({:gst_dump_progress, dump_id, _client_id, _period, _kind, message}, socket) do
     case socket.assigns.jobs do
       %{^dump_id => job} = jobs ->
@@ -511,6 +525,97 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp list_clients(_socket), do: []
 
+  defp load_sales_tally_context(%{assigns: %{sales_intake?: false}} = socket), do: socket
+
+  defp load_sales_tally_context(
+         %{assigns: %{current_scope: %{current_org: %{id: org_id}}}} = socket
+       ) do
+    devices = TallyDevices.list_active_devices(org_id)
+
+    online_device_ids =
+      "tally_devices:#{org_id}"
+      |> Presence.list()
+      |> Map.keys()
+      |> MapSet.new()
+
+    open_companies =
+      org_id
+      |> TallyDevices.list_open_companies()
+      |> Enum.filter(&MapSet.member?(online_device_ids, Integer.to_string(&1.device_id)))
+
+    cond do
+      devices == [] ->
+        assign_sales_tally_state(socket, :connect, [])
+
+      MapSet.size(online_device_ids) == 0 ->
+        assign_sales_tally_state(socket, :start_connector, [])
+
+      open_companies == [] ->
+        assign_sales_tally_state(socket, :open_company, [])
+
+      true ->
+        case ensure_company_clients(org_id, open_companies) do
+          {:ok, company_clients} ->
+            state =
+              case company_clients do
+                [{company, _client}] -> {:ready, company.name}
+                _many -> :choose_company
+              end
+
+            assign_sales_tally_state(socket, state, company_clients)
+
+          {:error, _reason} ->
+            assign_sales_tally_state(socket, :unavailable, [])
+        end
+    end
+  end
+
+  defp load_sales_tally_context(socket), do: assign_sales_tally_state(socket, :connect, [])
+
+  defp ensure_company_clients(org_id, companies) do
+    Enum.reduce_while(companies, {:ok, []}, fn company, {:ok, company_clients} ->
+      case TallyDevices.ensure_company_client(org_id, company.id) do
+        {:ok, client} -> {:cont, {:ok, [{company, client} | company_clients]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, company_clients} -> {:ok, Enum.reverse(company_clients)}
+      error -> error
+    end
+  end
+
+  defp assign_sales_tally_state(socket, state, company_clients) do
+    clients = Enum.map(company_clients, fn {company, client} -> {company.name, client.id} end)
+
+    selected_client_id =
+      case clients do
+        [{_name, client_id}] -> Integer.to_string(client_id)
+        _many -> permitted_client_id(socket.assigns.form[:client_id].value, clients)
+      end
+
+    form_values = %{
+      "client_id" => selected_client_id,
+      "period" => socket.assigns.internal_period
+    }
+
+    socket
+    |> assign(:tally_state, state)
+    |> assign(:clients, clients)
+    |> assign(:form, to_form(form_values, as: :intake))
+  end
+
+  defp permitted_client_id(client_id, clients) do
+    if Enum.any?(clients, fn {_name, id} -> to_string(id) == to_string(client_id) end),
+      do: to_string(client_id),
+      else: nil
+  end
+
+  defp subscribe_tally(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}),
+    do: NilaWeb.Endpoint.subscribe("tally_devices:#{org_id}")
+
+  defp subscribe_tally(_socket), do: :ok
+
   defp entry_kind_state(entry_kinds, entry) do
     case {bill_entry?(entry), entry_extension(entry), entry.done?,
           Map.get(entry_kinds, entry.ref)} do
@@ -654,21 +759,43 @@ defmodule NilaWeb.Gst.UploadLive do
       <div id="sales-bills-page" class="space-y-section mx-auto max-w-2xl">
         <.page_header title="Sales bills to Tally" />
 
-        <.card
-          :if={@clients == [] and @jobs == %{}}
-          id="sales-bills-no-clients"
-          padding="roomy"
-          class="text-center"
-        >
+        <.card :if={@tally_state == :connect and @jobs == %{}} id="sales-bills-connect-tally">
           <div class="space-y-block">
-            <p class="text-base-content text-h4 font-semibold">Add a client first</p>
-            <.button navigate={~p"/clients/new"} id="sales-bills-add-client">
-              Add client
+            <p class="text-base-content text-h4 font-semibold">Connect TallyPrime</p>
+            <.button navigate={~p"/settings/connectors"} id="sales-bills-connect-tally-button">
+              Connect Tally
             </.button>
           </div>
         </.card>
 
-        <.card :if={@clients != [] and @jobs == %{}}>
+        <.card
+          :if={@tally_state == :start_connector and @jobs == %{}}
+          id="sales-bills-start-connector"
+        >
+          <p class="text-base-content text-h4 font-semibold">
+            Start Nila Connector on this computer
+          </p>
+        </.card>
+
+        <.card
+          :if={@tally_state == :open_company and @jobs == %{}}
+          id="sales-bills-open-company"
+        >
+          <p class="text-base-content text-h4 font-semibold">Open the company in TallyPrime</p>
+        </.card>
+
+        <.card
+          :if={@tally_state == :unavailable and @jobs == %{}}
+          id="sales-bills-tally-unavailable"
+        >
+          <p class="text-base-content text-h4 font-semibold">
+            Nila could not use the open Tally company
+          </p>
+        </.card>
+
+        <.card :if={
+          (match?({:ready, _name}, @tally_state) or @tally_state == :choose_company) and @jobs == %{}
+        }>
           <.form
             for={@form}
             id="sales-bills-form"
@@ -676,11 +803,23 @@ defmodule NilaWeb.Gst.UploadLive do
             phx-submit="submit"
             class="space-y-block"
           >
+            <p
+              :if={match?({:ready, _name}, @tally_state)}
+              class="text-base-content text-ui font-semibold"
+            >
+              {elem(@tally_state, 1)} is open in TallyPrime
+            </p>
             <.input
+              :if={match?({:ready, _name}, @tally_state)}
+              field={@form[:client_id]}
+              type="hidden"
+            />
+            <.input
+              :if={@tally_state == :choose_company}
               field={@form[:client_id]}
               type="select"
-              label="Client"
-              prompt="Select a client"
+              label="Tally company"
+              prompt="Select a company"
               options={@clients}
             />
             <.file_drop
@@ -734,7 +873,7 @@ defmodule NilaWeb.Gst.UploadLive do
           <div class="space-y-block">
             <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
             <.button navigate={~p"/clients/new"} id="gst-upload-add-first-client">
-              Add your first client
+              <.icon name="hero-plus" class="size-4" /> Add your first client
             </.button>
           </div>
         </.card>
@@ -843,7 +982,7 @@ defmodule NilaWeb.Gst.UploadLive do
             </p>
 
             <.button type="submit" id="gst-upload-submit" full_width>
-              Bring it in
+              <.icon name="hero-arrow-up-tray" class="size-4" /> Bring it in
             </.button>
           </.form>
         </.card>
@@ -932,7 +1071,7 @@ defmodule NilaWeb.Gst.UploadLive do
                     variant="soft"
                     size="xs"
                   >
-                    Try again
+                    <.icon name="hero-arrow-path" class="size-4" /> Try again
                   </.button>
                 </div>
               </div>

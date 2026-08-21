@@ -279,7 +279,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             variant="outline"
             size="xs"
           >
-            Download Tally XML
+            <.icon name="hero-arrow-down-tray" class="size-4" /> Download Tally XML
           </.button>
 
           <.form

@@ -270,7 +270,9 @@ defmodule NilaWeb.TodayLive do
         <.page_header eyebrow="Today" title="Today">
           Every client's month, led by who it's waiting on.
           <:actions>
-            <.button navigate={~p"/gst/upload"} id="add-month">Bring in documents</.button>
+            <.button navigate={~p"/gst/upload"} id="add-month">
+              <.icon name="hero-arrow-up-tray" class="size-4" /> Bring in documents
+            </.button>
           </:actions>
         </.page_header>
 

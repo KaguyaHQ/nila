@@ -146,7 +146,9 @@ defmodule NilaWeb.ClientsLive do
         <.page_header eyebrow="Clients" title="Clients">
           Every business the firm files for, with where their GST work stands.
           <:actions>
-            <.button navigate={~p"/clients/new"} id="clients-add">Add client</.button>
+            <.button navigate={~p"/clients/new"} id="clients-add">
+              <.icon name="hero-plus" class="size-4" /> Add client
+            </.button>
           </:actions>
         </.page_header>
 
@@ -197,7 +199,7 @@ defmodule NilaWeb.ClientsLive do
 
             <div class="flex flex-wrap items-center gap-3">
               <.button type="submit" id="clients-import-tally-submit">
-                Import selected clients
+                <.icon name="hero-arrow-down-tray" class="size-4" /> Import selected clients
               </.button>
               <span class="text-ink-muted text-ui">You can add other clients manually.</span>
             </div>
@@ -275,7 +277,7 @@ defmodule NilaWeb.ClientsLive do
             <div id="clients-empty" class="space-y-block">
               <p>No clients yet.</p>
               <.button navigate={~p"/clients/new"} id="clients-add-first">
-                Add your first client
+                <.icon name="hero-plus" class="size-4" /> Add your first client
               </.button>
             </div>
           </:empty>
