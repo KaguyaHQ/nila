@@ -34,6 +34,18 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp money(paise), do: Nila.Formatters.format_money_with_paise(paise)
 
+  defp remainder(packet) do
+    excluded =
+      Enum.map(packet.excluded, fn invoice ->
+        invoice["invoice_number"] || invoice["buyer_name"] || "Unnumbered bill"
+      end)
+
+    failed = Enum.map(packet.failed_files, &TallyPacket.original_name/1)
+    unread = Enum.map(packet.unread_pages, &"#{&1.file} · page #{&1.page}")
+
+    excluded ++ failed ++ unread
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -69,79 +81,31 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </p>
           </div>
 
-          <.button
+          <.download_button
             :if={@packet.invoices != []}
             href={~p"/sales-bills/#{@client.id}/batch/#{@batch_ref}/tally.xml"}
             id="sales-bills-download"
           >
             Download Tally XML
-          </.button>
+          </.download_button>
         </section>
 
-        <section :if={@packet.excluded != []} id="sales-bills-excluded" class="space-y-related">
-          <h2 class="text-base-content text-h4 font-semibold">
-            {length(@packet.excluded)} {if(length(@packet.excluded) == 1,
-              do: "bill was",
-              else: "bills were"
-            )} not included
-          </h2>
+        <section :if={remainder(@packet) != []} id="sales-bills-remainder" class="space-y-related">
+          <h2 class="text-base-content text-h4 font-semibold">Not included</h2>
           <ul class="border-base-300 divide-base-300 divide-y border-y">
-            <li
-              :for={invoice <- @packet.excluded}
-              class="text-ui flex items-center justify-between gap-4 py-3"
-            >
-              <span class="text-base-content font-medium">
-                {invoice["invoice_number"] || "Unnumbered bill"}
-              </span>
-              <span class="text-ink-muted truncate">{invoice["buyer_name"] || "—"}</span>
+            <li :for={item <- remainder(@packet)} class="text-base-content text-ui py-3 font-medium">
+              {item}
             </li>
           </ul>
         </section>
 
-        <section
-          :if={@packet.failed_files != []}
-          id="sales-bills-failed-files"
-          class="space-y-related"
-        >
-          <h2 class="text-base-content text-h4 font-semibold">
-            {length(@packet.failed_files)} {if(length(@packet.failed_files) == 1,
-              do: "file was",
-              else: "files were"
-            )} not included
-          </h2>
-          <ul class="border-base-300 divide-base-300 divide-y border-y">
-            <li :for={dump <- @packet.failed_files} class="text-base-content text-ui py-3 font-medium">
-              {TallyPacket.original_name(dump)}
-            </li>
-          </ul>
-        </section>
-
-        <section
-          :if={@packet.unread_pages != []}
-          id="sales-bills-unread-pages"
-          class="space-y-related"
-        >
-          <h2 class="text-base-content text-h4 font-semibold">
-            {length(@packet.unread_pages)} {if(length(@packet.unread_pages) == 1,
-              do: "page was",
-              else: "pages were"
-            )} not included
-          </h2>
-          <ul class="border-base-300 divide-base-300 divide-y border-y">
-            <li :for={item <- @packet.unread_pages} class="text-base-content text-ui py-3">
-              {item.file} · page {item.page}
-            </li>
-          </ul>
-        </section>
-
-        <section :if={@packet.invoices != []} id="sales-bills-vouchers" class="space-y-block">
-          <h2 class="text-base-content text-h4 font-semibold">Prepared vouchers</h2>
+        <section :if={@packet.invoices != []} id="sales-bills-vouchers">
           <.data_table
             id="sales-bills-voucher-table"
             rows={@packet.invoices}
             row_id={fn invoice -> "sales-bill-#{invoice["id"] || invoice["invoice_number"]}" end}
             mode="scan"
-            min_width="min-w-[920px]"
+            min_width="min-w-[760px]"
           >
             <:col :let={invoice} label="Invoice" row_header>
               <span class="font-mono font-medium whitespace-nowrap">
@@ -153,16 +117,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 {format_display_date(invoice["invoice_date"])}
               </span>
             </:col>
-            <:col :let={invoice} label="Customer">
+            <:col :let={invoice} label="Buyer">
               <span class="block max-w-64 truncate" title={invoice["buyer_name"]}>
                 {invoice["buyer_name"] || "—"}
               </span>
-            </:col>
-            <:col :let={invoice} label="GSTIN">
-              <span class="font-mono whitespace-nowrap">{invoice["buyer_gstin"] || "—"}</span>
-            </:col>
-            <:col :let={invoice} label="POS">
-              <span class="whitespace-nowrap">{invoice["place_of_supply"] || "—"}</span>
             </:col>
             <:col :let={invoice} label="Taxable" align="right">
               {rupees(totals(invoice).taxable)}

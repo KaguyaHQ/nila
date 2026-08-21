@@ -360,7 +360,12 @@ defmodule NilaWeb.Gst.UploadLive do
   def handle_info({:gst_dump_progress, dump_id, _client_id, _period, _kind, message}, socket) do
     case socket.assigns.jobs do
       %{^dump_id => job} = jobs ->
-        {:noreply, assign(socket, :jobs, Map.put(jobs, dump_id, apply_progress(job, message)))}
+        jobs = Map.put(jobs, dump_id, apply_progress(job, message))
+
+        {:noreply,
+         socket
+         |> assign(:jobs, jobs)
+         |> open_sales_result_when_finished(jobs)}
 
       _ ->
         {:noreply, socket}
@@ -368,6 +373,22 @@ defmodule NilaWeb.Gst.UploadLive do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp open_sales_result_when_finished(
+         %{assigns: %{sales_intake?: true, pending: pending}} = socket,
+         jobs
+       )
+       when not is_nil(pending) do
+    if not working?(jobs) do
+      push_navigate(socket,
+        to: ~p"/sales-bills/#{pending.client_id}/batch/#{pending.batch_ref}"
+      )
+    else
+      socket
+    end
+  end
+
+  defp open_sales_result_when_finished(socket, _jobs), do: socket
 
   defp apply_progress(job, {:done, _client_id, _period, unaccounted}),
     do: %{
@@ -679,48 +700,11 @@ defmodule NilaWeb.Gst.UploadLive do
           </.form>
         </.card>
 
-        <.card :if={@jobs != %{}} id="sales-bills-progress" class="space-y-block">
-          <div :if={@pending}>
-            <p class="text-base-content text-h4 truncate font-semibold">
-              {client_name(@clients, @pending.client_id)}
-            </p>
+        <.card :if={@jobs != %{}} id="sales-bills-progress">
+          <div class="flex items-center gap-3">
+            <.spinner tone="accent" label="Preparing sales vouchers" />
+            <p class="text-base-content text-h4 font-semibold">Preparing sales vouchers</p>
           </div>
-
-          <div :for={{dump_id, job} <- Enum.sort(@jobs)} id={"sales-bills-job-#{dump_id}"}>
-            <div class="flex items-center gap-3">
-              <.spinner :if={spinning?(job.status)} tone="accent" label="Processing" />
-              <.icon
-                :if={job.status == :done}
-                name="hero-check-circle"
-                class="text-success size-5 shrink-0"
-              />
-              <.icon
-                :if={job.status == :failed}
-                name="hero-exclamation-circle"
-                class="text-error size-5 shrink-0"
-              />
-              <p class="text-base-content text-ui font-medium">{job_label(job)}</p>
-            </div>
-
-            <div :if={job.progress} class="mt-related space-y-1.5 pl-8">
-              <.progress_bar
-                :if={progress_bar?(job.progress)}
-                value={progress_value(job.progress)}
-                max={progress_max(job.progress)}
-              />
-              <p class="text-ink-subtle text-ui tabular-nums">{progress_caption(job.progress)}</p>
-            </div>
-          </div>
-
-          <.button
-            :if={not working?(@jobs) and any_done?(@jobs)}
-            id="sales-bills-open-result"
-            phx-click="open-month"
-            full_width
-            autofocus
-          >
-            View prepared vouchers
-          </.button>
         </.card>
       </div>
     </Layouts.app>
