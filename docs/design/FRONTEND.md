@@ -17,6 +17,14 @@ screen. [`DESIGN.md`](./DESIGN.md) holds the durable product principles.
 Do not duplicate numeric token values in Markdown or markup. This document explains
 roles and constraints; inspect the executable source for exact values.
 
+## Necessity gate
+
+This document governs how an element is implemented, not whether it should exist. Apply
+the deletion test in [`OPINIONS.md`](./OPINIONS.md) first. A component's availability is
+never a reason to use it. Labels, badges, cards, folds, states, motion, and interactions
+all impose cognitive cost; include one only when removing it would prevent the user from
+obtaining or understanding the result.
+
 ## Stack and shell
 
 Nila uses Phoenix LiveView, Tailwind v4, daisyUI v5 token plumbing, and one light-only
@@ -161,7 +169,8 @@ focus, folds, chevrons, and selection. Calm is for deliberate spatial movement s
 rail geometry or modal entrance. Numeric durations and raw easing fail `style_guard`.
 
 Respect reduced motion. Named attention effects such as a finite workings ripple are
-separate from general transitions. Product motion reveals or confirms, then stops.
+allowed only when motion is necessary to locate or understand a state change. Product
+motion reveals or confirms, then stops; delight alone never justifies it.
 
 ## Signature utilities
 
@@ -226,14 +235,16 @@ rotating 90° means a row expands in place. Do not mix those gestures.
 
 For user-visible changes:
 
-1. Inspect the current affected desktop screen.
-2. Inspect analogous components/screens and this document.
-3. Reuse components and tokens unless the relationship is genuinely new.
-4. Implement the smallest coherent change.
-5. Run `mix nila.style_guard` and focused tests.
-6. Render the actual desktop screen at a CA-firm working width.
-7. Inspect hierarchy, type at actual scale, density, clipping, empty regions, and state.
-8. Fix visual problems before completion.
+1. State the required user outcome and delete every element it does not require.
+2. Inspect the current affected desktop screen.
+3. Inspect analogous components/screens and this document.
+4. Reuse components and tokens for what survived; do not add a component to complete a
+   familiar pattern.
+5. Implement the smallest faithful change without adjacent improvements.
+6. Run `mix nila.style_guard` and focused tests.
+7. Render the actual desktop screen at a CA-firm working width.
+8. Inspect hierarchy, type at actual scale, density, clipping, empty regions, and state.
+9. Delete once more before completion.
 
 Routine mobile inspection is not required. Perform a narrow-screen smoke check only when
 shared layout or shell changes plausibly risk catastrophic breakage.

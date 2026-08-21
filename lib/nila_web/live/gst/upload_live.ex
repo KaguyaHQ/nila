@@ -26,6 +26,7 @@ defmodule NilaWeb.Gst.UploadLive do
   @max_image_bytes 20_000_000
   @max_json_bytes 20_000_000
   @max_upload_entries 10
+  @max_sales_upload_entries 50
   @bill_extensions ~w(.pdf .jpg .jpeg .png .webp)
 
   @impl true
@@ -33,10 +34,13 @@ defmodule NilaWeb.Gst.UploadLive do
     if connected?(socket), do: subscribe(socket)
 
     prefilled = prefill(socket, params)
+    sales_intake? = socket.assigns.live_action == :sales
 
     socket =
       socket
-      |> assign(:page_title, "Bring in documents")
+      |> assign(:page_title, if(sales_intake?, do: "Sales bills", else: "Bring in documents"))
+      |> assign(:sales_intake?, sales_intake?)
+      |> assign(:internal_period, prefilled["period"])
       |> assign(:clients, list_clients(socket))
       |> assign(:form, to_form(prefilled, as: :intake))
       |> assign_period_options(prefilled["client_id"])
@@ -45,8 +49,8 @@ defmodule NilaWeb.Gst.UploadLive do
       |> assign(:jobs, %{})
       |> assign(:pending, nil)
       |> allow_upload(:documents,
-        accept: @bill_extensions ++ [".json"],
-        max_entries: @max_upload_entries,
+        accept: if(sales_intake?, do: @bill_extensions, else: @bill_extensions ++ [".json"]),
+        max_entries: if(sales_intake?, do: @max_sales_upload_entries, else: @max_upload_entries),
         max_file_size: @max_pdf_bytes,
         auto_upload: true,
         progress: &handle_upload_progress/3,
@@ -79,6 +83,8 @@ defmodule NilaWeb.Gst.UploadLive do
 
   @impl true
   def handle_event("validate", %{"intake" => params}, socket) do
+    params = with_internal_period(socket, params)
+
     {:noreply,
      socket
      |> assign(:form, to_form(params, as: :intake))
@@ -117,13 +123,15 @@ defmodule NilaWeb.Gst.UploadLive do
 
   def handle_event("submit", %{"intake" => params}, socket) do
     org = socket.assigns.current_scope.current_org
+    params = with_internal_period(socket, params)
 
     with {:ok, client_id} <- fetch_client(org, params["client_id"]),
          {:ok, period} <- fetch_period(params["period"]),
          {:ok, entry_kinds} <- ready_entries(socket) do
+      dumps = create_dumps(socket, org.id, client_id, period, entry_kinds)
+
       jobs =
-        socket
-        |> create_dumps(org.id, client_id, period, entry_kinds)
+        dumps
         |> Map.new(fn dump ->
           {dump.id,
            %{
@@ -145,11 +153,20 @@ defmodule NilaWeb.Gst.UploadLive do
        |> assign(:entry_keys, %{})
        |> assign(:jobs, jobs)
        |> assign(:error, nil)
-       |> assign(:pending, %{client_id: client_id, period: period})}
+       |> assign(:pending, %{
+         client_id: client_id,
+         period: period,
+         batch_ref: Nila.Gst.Sales.TallyPacket.ref(dumps)
+       })}
     else
       {:error, message} ->
         {:noreply, assign(socket, :error, message)}
     end
+  end
+
+  def handle_event("open-month", _params, %{assigns: %{sales_intake?: true}} = socket) do
+    %{client_id: client_id, batch_ref: batch_ref} = socket.assigns.pending
+    {:noreply, push_navigate(socket, to: ~p"/sales-bills/#{client_id}/batch/#{batch_ref}")}
   end
 
   def handle_event("open-month", _params, socket) do
@@ -211,15 +228,20 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp handle_upload_progress(:documents, %{done?: true} = entry, socket) do
     entry_kinds =
-      if entry_extension(entry) == ".json" do
-        classification =
-          consume_uploaded_entry(socket, entry, fn %{key: key} ->
-            {:postpone, classify_portal_file(key)}
-          end)
+      cond do
+        socket.assigns.sales_intake? and bill_entry?(entry) ->
+          Map.put(socket.assigns.entry_kinds, entry.ref, {:ok, "sales"})
 
-        Map.put(socket.assigns.entry_kinds, entry.ref, classification)
-      else
-        socket.assigns.entry_kinds
+        entry_extension(entry) == ".json" ->
+          classification =
+            consume_uploaded_entry(socket, entry, fn %{key: key} ->
+              {:postpone, classify_portal_file(key)}
+            end)
+
+          Map.put(socket.assigns.entry_kinds, entry.ref, classification)
+
+        true ->
+          socket.assigns.entry_kinds
       end
 
     {:noreply, assign(socket, :entry_kinds, entry_kinds)}
@@ -310,13 +332,18 @@ defmodule NilaWeb.Gst.UploadLive do
     socket
     |> consume_uploaded_entries(:documents, fn %{key: key}, entry ->
       {:ok, kind} = Map.fetch!(entry_kinds, entry.ref)
-      {:ok, {kind, key}}
+      {:ok, {kind, key, entry.client_name}}
     end)
-    |> Enum.map(fn {kind, key} ->
+    |> Enum.map(fn {kind, key, original_name} ->
+      meta =
+        if socket.assigns.sales_intake?,
+          do: %{"sales_batch" => true, "original_name" => original_name},
+          else: %{}
+
       {:ok, dump} =
         Dumps.record(
           %{org_id: org_id, client_id: client_id, brought_in_by_id: scope.user.id},
-          %{period: period, kind: kind, file_keys: [key]}
+          %{period: period, kind: kind, file_keys: [key], meta: meta}
         )
 
       {:ok, _job} = Oban.insert(DumpWorker.new(%{dump_id: dump.id}))
@@ -428,6 +455,11 @@ defmodule NilaWeb.Gst.UploadLive do
   end
 
   defp fetch_period(_period), do: {:error, "Pick a period."}
+
+  defp with_internal_period(%{assigns: %{sales_intake?: true}} = socket, params),
+    do: Map.put(params, "period", socket.assigns.internal_period)
+
+  defp with_internal_period(_socket, params), do: params
 
   defp period_values, do: PeriodOptions.periods()
 
@@ -588,6 +620,111 @@ defmodule NilaWeb.Gst.UploadLive do
     Enum.find_value(clients, fn {name, id} ->
       if to_string(id) == to_string(client_id), do: name
     end)
+  end
+
+  @impl true
+  def render(%{sales_intake?: true} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={assigns[:current_path]}
+    >
+      <div id="sales-bills-page" class="space-y-section mx-auto max-w-2xl">
+        <.page_header title="Sales bills to Tally" />
+
+        <.card
+          :if={@clients == [] and @jobs == %{}}
+          id="sales-bills-no-clients"
+          padding="roomy"
+          class="text-center"
+        >
+          <div class="space-y-block">
+            <p class="text-base-content text-h4 font-semibold">Add a client first</p>
+            <.button navigate={~p"/clients/new"} id="sales-bills-add-client">
+              Add client
+            </.button>
+          </div>
+        </.card>
+
+        <.card :if={@clients != [] and @jobs == %{}}>
+          <.form
+            for={@form}
+            id="sales-bills-form"
+            phx-change="validate"
+            phx-submit="submit"
+            class="space-y-block"
+          >
+            <.input
+              field={@form[:client_id]}
+              type="select"
+              label="Client"
+              prompt="Select a client"
+              options={@clients}
+            />
+            <.file_drop
+              id="sales-bills-documents"
+              upload={@uploads.documents}
+              hint="PDF or image · up to 50 files"
+              on_cancel="cancel-upload"
+            />
+
+            <p :if={@error} id="sales-bills-error" class="nila-upload-error text-ui">
+              {@error}
+            </p>
+
+            <.button type="submit" id="sales-bills-submit" full_width>
+              Prepare Tally vouchers
+            </.button>
+          </.form>
+        </.card>
+
+        <.card :if={@jobs != %{}} id="sales-bills-progress" class="space-y-block">
+          <div :if={@pending}>
+            <p class="text-base-content text-h4 truncate font-semibold">
+              {client_name(@clients, @pending.client_id)}
+            </p>
+          </div>
+
+          <div :for={{dump_id, job} <- Enum.sort(@jobs)} id={"sales-bills-job-#{dump_id}"}>
+            <div class="flex items-center gap-3">
+              <.spinner :if={spinning?(job.status)} tone="accent" label="Processing" />
+              <.icon
+                :if={job.status == :done}
+                name="hero-check-circle"
+                class="text-success size-5 shrink-0"
+              />
+              <.icon
+                :if={job.status == :failed}
+                name="hero-exclamation-circle"
+                class="text-error size-5 shrink-0"
+              />
+              <p class="text-base-content text-ui font-medium">{job_label(job)}</p>
+            </div>
+
+            <div :if={job.progress} class="mt-related space-y-1.5 pl-8">
+              <.progress_bar
+                :if={progress_bar?(job.progress)}
+                value={progress_value(job.progress)}
+                max={progress_max(job.progress)}
+              />
+              <p class="text-ink-subtle text-ui tabular-nums">{progress_caption(job.progress)}</p>
+            </div>
+          </div>
+
+          <.button
+            :if={not working?(@jobs) and any_done?(@jobs)}
+            id="sales-bills-open-result"
+            phx-click="open-month"
+            full_width
+            autofocus
+          >
+            View prepared vouchers
+          </.button>
+        </.card>
+      </div>
+    </Layouts.app>
+    """
   end
 
   @impl true

@@ -47,7 +47,7 @@ defmodule NilaWeb.Layouts do
       <aside class="duration-calm fixed inset-y-0 left-0 z-40 hidden w-64 flex-col px-3 py-4 transition-[width] group-data-[rail-collapsed=true]/app:w-16 lg:flex print:hidden">
         <div class="flex items-center justify-between gap-2 px-1 group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:gap-0 group-data-[rail-collapsed=true]/app:px-0">
           <.link
-            navigate={~p"/today"}
+            navigate={~p"/sales-bills"}
             class="flex min-w-0 items-center group-data-[rail-collapsed=true]/app:hidden"
           >
             <.logo class="text-base-100 h-5 w-auto" />
@@ -67,15 +67,9 @@ defmodule NilaWeb.Layouts do
         <nav class="gap-section mt-section flex flex-1 flex-col overflow-y-auto">
           <div class="space-y-1">
             <.rail_link
-              href={~p"/today"}
-              icon="hero-inbox-stack"
-              label="Today"
-              current_path={@current_path}
-            />
-            <.rail_link
-              href={~p"/gst/upload"}
-              icon="hero-arrow-up-tray"
-              label="Bring in documents"
+              href={~p"/sales-bills"}
+              icon="hero-document-text"
+              label="Sales bills"
               current_path={@current_path}
             />
             <.rail_link
@@ -88,12 +82,6 @@ defmodule NilaWeb.Layouts do
               href={~p"/banking"}
               icon="hero-building-library"
               label="Banking"
-              current_path={@current_path}
-            />
-            <.rail_link
-              href={~p"/register"}
-              icon="hero-table-cells"
-              label="GST months"
               current_path={@current_path}
             />
           </div>
@@ -112,7 +100,7 @@ defmodule NilaWeb.Layouts do
                  own masthead names the object — a strip repeating either is chrome. --%>
             <header class="bg-base-100/80 border-base-300 z-30 shrink-0 border-b px-4 py-3 backdrop-blur sm:px-6 lg:hidden print:hidden">
               <div class="flex items-center justify-between gap-4">
-                <.link navigate={~p"/today"} class="flex min-w-0 items-center">
+                <.link navigate={~p"/sales-bills"} class="flex min-w-0 items-center">
                   <.logo class="text-base-content h-5 w-auto" />
                 </.link>
                 <div :if={@current_scope} class="flex items-center gap-2">

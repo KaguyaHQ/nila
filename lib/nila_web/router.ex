@@ -136,6 +136,8 @@ defmodule NilaWeb.Router do
         {NilaWeb.UserAuth, :mount_current_path}
       ] do
       live "/today", TodayLive, :index
+      live "/sales-bills", Gst.UploadLive, :sales
+      live "/sales-bills/:client_id/batch/:batch_ref", Gst.SalesBillsLive, :show
       live "/clients", ClientsLive, :index
       live "/register", Gst.RegisterLive, :index
       live "/clients/new", ClientNewLive, :new
@@ -186,6 +188,17 @@ defmodule NilaWeb.Router do
     ]
 
     get "/:client_id/:period/tally.xml", Gstr1Controller, :tally_download
+  end
+
+  scope "/sales-bills", NilaWeb do
+    pipe_through [
+      :browser,
+      :authenticated_browser,
+      :verified_browser,
+      :require_export
+    ]
+
+    get "/:client_id/batch/:batch_ref/tally.xml", Gstr1Controller, :sales_bills_tally_download
   end
 
   scope "/banking", NilaWeb do

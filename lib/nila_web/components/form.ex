@@ -60,7 +60,7 @@ defmodule NilaWeb.Components.Form do
   """
   attr :id, :string, required: true
   attr :upload, Phoenix.LiveView.UploadConfig, required: true
-  attr :label, :string, required: true
+  attr :label, :string, default: nil
   attr :hint, :string, default: nil
   attr :prompt, :string, default: "Choose files"
   attr :on_cancel, :string, required: true
@@ -69,7 +69,7 @@ defmodule NilaWeb.Components.Form do
   def file_drop(assigns) do
     ~H"""
     <div class="nila-field" id={@id}>
-      <span class="nila-field-label">{@label}</span>
+      <span :if={@label} class="nila-field-label">{@label}</span>
 
       <.live_file_input upload={@upload} class="sr-only" />
 

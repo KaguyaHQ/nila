@@ -55,8 +55,8 @@ defmodule NilaWeb.UserConfirmationLive do
             </.button>
           </.form>
 
-          <.text_link navigate={~p"/today"} class="text-ui inline-flex font-semibold">
-            Back to Today
+          <.text_link navigate={~p"/sales-bills"} class="text-ui inline-flex font-semibold">
+            Sales bills
           </.text_link>
         </.card>
       </div>

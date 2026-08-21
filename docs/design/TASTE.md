@@ -117,3 +117,25 @@ The proving ground is the real client-month verification surface, not
 `/landing`. A CA opens it to verify reconciliations and workings before signing;
 the product succeeds when that conviction is available on the glass without a
 discovery click.
+
+## 2026-08-21 — conceptual inevitability
+
+The deepest preference is not moonlight, delicacy, air, authored moments, or
+interactive pleasure. It is **conceptual inevitability**: the requirement satisfied
+with nothing left to remove.
+
+Every visible label, state, feature, action, and interaction creates cognitive work.
+Even an innocent addition can make the user wonder what it means, whether it needs
+attention, and what happens if they ignore it. That anxiety is product harm.
+
+Therefore:
+
+- Unnecessary complexity is the maximal design failure.
+- Nila absorbs complexity; it never displays its internal model to prove sophistication.
+- Visual delight may refine a necessary element. It cannot justify an element.
+- “Optional,” “potentially useful,” and “more complete” are reasons to omit something.
+- Beauty is the shortest honest path from what the user gave Nila to what Nila finished.
+- If removing an element preserves the outcome and understanding, remove it.
+
+The earlier aesthetic preferences remain materials, not requirements. Necessity decides
+what exists. Composition and taste begin only afterward.

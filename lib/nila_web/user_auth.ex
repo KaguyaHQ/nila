@@ -282,5 +282,5 @@ defmodule NilaWeb.UserAuth do
 
   defp user_sessions_topic(user), do: "users:#{user.id}:sessions"
 
-  defp signed_in_path(_conn_or_socket), do: ~p"/today"
+  defp signed_in_path(_conn_or_socket), do: ~p"/sales-bills"
 end

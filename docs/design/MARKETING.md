@@ -4,9 +4,9 @@ Read this before changing `/`, contact, privacy, terms, data-deletion, or their 
 public shell. Read [`TASTE.md`](./TASTE.md) for aesthetic judgment and
 [`FRONTEND.md`](./FRONTEND.md) for token mechanics.
 
-The old ledger metaphor is dead. Public pages use moonlight: a light room with one
-intentional night moment, delicate type in large space, and the finished product shown
-as evidence rather than described through a wall of claims.
+The old ledger metaphor is dead. Public pages show the finished product as evidence and
+say only what the evidence cannot explain itself. Moonlight styles that necessary content;
+it does not require an additional visual moment.
 
 ## Sources of truth
 
@@ -21,25 +21,27 @@ canvas, or bundle imports.
 
 ## Invariants
 
+- Every section, sentence, artifact, and interaction must survive the deletion test in
+  [`OPINIONS.md`](./OPINIONS.md). Marketing does not earn extra complexity because it is
+  persuasive rather than operational.
 - The product speaks, not the company. Show the finished artifact and what the reader
   gets; do not narrate Nila in the third person.
-- Clarity outranks poetry. A hero needs the authored line, one plain category sentence,
-  and second-person benefit.
+- Clarity outranks poetry. State the category or benefit only when the artifact and
+  headline do not already make it inevitable.
 - Brand appears once through the wordmark. Etymology and vernacular flourishes stay in
   design documentation.
 - Every specimen number, time, sequence, and tax figure is a claim. Audit its arithmetic
   and implied timing.
-- Marketing stays light overall. Midnight-sea is one authored moment with visible
-  luminance, never a dark site or achromatic black.
+- Marketing stays light overall. Midnight-sea may provide one necessary focal ground with
+  visible luminance; never manufacture a section to display it.
 - Motion reveals, then becomes still. No scattered perpetual animation.
 - Use the same semantic moonlight tokens and shared controls as the product; public pages
   do not invent a second palette.
 
 ## Visual defaults
 
-**Delicate type in large space, anticipated intent, one authored moment of light.** The
-page should feel arranged rather than generated: moonlight falling on a finished piece
-of accounting work.
+**Conceptual inevitability, expressed with delicate type and light.** The page should feel
+arranged rather than generated: moonlight falling on a finished piece of accounting work.
 
 - One focal figure or artifact per surface.
 - Air is luxury; delicacy, not mass. Premium means precise, never zoomed-in.
@@ -48,8 +50,8 @@ of accounting work.
 - The lone warm note appears once and for a reason.
 - Evidence beats claims. A finished return state or review artifact explains Nila faster
   than another feature paragraph.
-- Anticipate the visitor’s next questions. Care is felt when the page has already answered
-  what they would otherwise search for.
+- Answer only the next question that prevents understanding or action. Anticipation is care
+  only when it removes thought; speculative answers create it.
 
 The landing-specific utilities in `app.css` are scoped to public pages and must not leak
 into product markup:
@@ -63,14 +65,15 @@ Exact implementation and values remain authoritative in CSS.
 
 ## Hero structure
 
-Use three layers:
+Use the fewest layers that make the value unmistakable:
 
-1. **Poem** — one authored line with emotional intent.
-2. **Category** — one plain sentence saying what Nila is.
-3. **Benefit** — what *you* receive and what *you* do next.
+1. **Result** — preferably the finished product speaking for itself.
+2. **Explanation** — one plain sentence only if the result cannot name the category or
+   benefit unaided.
+3. **Action** — only when the visitor has an actual next step.
 
-Near-diegetic copy is preferred: “It’s done. Review.” A visitor should understand the
-category without surrendering the authored moment.
+Poetry is optional. Near-diegetic copy is preferred: “It’s done. Review.” Do not add a
+poem, category sentence, or benefit merely to complete a template.
 
 ## Page composition
 
@@ -88,8 +91,9 @@ when the visitor came to complete a task.
 Inspect the rendered desktop page and ask:
 
 - Is the category clear without explaining the brand to itself?
-- Is there one authored decision someone visibly stood behind?
 - Does the product artifact do the selling?
+- Can any sentence, section, visual moment, or interaction disappear without weakening
+  understanding or action?
 - Are the figures and times defensible to a skeptical CA?
 - Is the page delicate, or merely sparse?
 - After the reveal, does the page become still?

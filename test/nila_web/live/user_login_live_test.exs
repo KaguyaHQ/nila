@@ -11,7 +11,7 @@ defmodule NilaWeb.UserLoginLiveTest do
         "user" => %{"email" => user.email, "password" => valid_user_password()}
       })
 
-    assert redirected_to(conn) == ~p"/today"
+    assert redirected_to(conn) == ~p"/sales-bills"
   end
 
   test "rejects the wrong password", %{conn: conn} do

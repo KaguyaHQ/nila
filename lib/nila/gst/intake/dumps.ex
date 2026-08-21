@@ -130,6 +130,24 @@ defmodule Nila.Gst.Intake.Dumps do
     Repo.fetch_by(Dump, id: dump_id, org_id: org_id)
   end
 
+  @doc "Fetches one upload batch, preserving the order in which its dump ids were supplied."
+  def fetch_batch(org_id, client_id, dump_ids) when is_list(dump_ids) do
+    ids = Enum.uniq(dump_ids)
+
+    dumps =
+      Repo.all(
+        from d in Dump,
+          where: d.org_id == ^org_id and d.client_id == ^client_id and d.id in ^ids
+      )
+      |> Map.new(&{&1.id, &1})
+
+    if ids != [] and map_size(dumps) == length(ids) do
+      {:ok, Enum.map(ids, &Map.fetch!(dumps, &1))}
+    else
+      {:error, :not_found}
+    end
+  end
+
   @doc """
   The `{client_id, period}` pairs an extracted GSTR-2B has landed for.
 
@@ -287,7 +305,11 @@ defmodule Nila.Gst.Intake.Dumps do
 
   def mark_extracted(%Dump{} = dump, invoices, meta \\ %{}) do
     dump
-    |> Dump.changeset(%{status: "extracted", invoices: invoices, meta: meta})
+    |> Dump.changeset(%{
+      status: "extracted",
+      invoices: invoices,
+      meta: Map.merge(dump.meta || %{}, meta)
+    })
     |> Repo.update!()
   end
 

@@ -12,6 +12,14 @@ commits business truth. We are not building data-entry forms; we are building th
 dump → draft → review loop. When you add a feature, ask "does this make the loop work on
 a new artifact type, or is it just a form?" Build the loop.
 
+## Complexity Rule
+
+**Unnecessary complexity is user harm.** Do not add a label, state, feature, abstraction,
+interaction, explanation, or future-proofing unless the user's job cannot be completed or
+understood without it. If removing something preserves the outcome, remove it. Implement
+the smallest faithful scope; do not “improve” adjacent areas. Nila absorbs complexity—the
+user must not learn Nila's internal model. See `docs/design/OPINIONS.md`.
+
 ## Product Boundary
 
 - Phoenix owns business truth.
@@ -63,7 +71,7 @@ custom classes must fully style the input
 
 ### UI and design routing
 
-- Before changing product UI, read `docs/design/DESIGN.md`; it is the short router and invariant set.
+- Before changing product UI, read `docs/design/DESIGN.md` and `docs/design/OPINIONS.md`.
 - For token, class, component, or mechanical UI work, also read `docs/design/FRONTEND.md`.
 - For a new screen, workflow, or substantial restructuring, also read `docs/design/COMPOSITION.md` and `docs/design/TASTE.md`.
 - For public/marketing pages, read `docs/design/MARKETING.md` and `docs/design/TASTE.md`.

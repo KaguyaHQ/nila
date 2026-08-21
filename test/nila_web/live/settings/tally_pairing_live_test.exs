@@ -40,7 +40,7 @@ defmodule NilaWeb.Settings.TallyPairingLiveTest do
     %{user: user} = user_with_org_fixture(%{role: "member"})
     {:ok, started} = TallyDevices.create_pairing(%{device_name: "Accounts PC"})
 
-    assert {:error, {:redirect, %{to: "/today"}}} =
+    assert {:error, {:redirect, %{to: "/sales-bills"}}} =
              conn
              |> log_in_user(user)
              |> live(~p"/settings/connectors/tally/pair/#{started.approval_code}")

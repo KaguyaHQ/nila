@@ -100,12 +100,20 @@ defmodule Nila.Gst.Intake.DumpWorker do
   # reported success.
   defp do_perform(dump, worker_attempt) do
     with {:ok, dump} <- extract(dump, worker_attempt) do
-      case Preconditions.check(dump) do
-        nil -> dump |> Dumps.clear_precondition() |> settle()
-        finding -> ask(dump, finding)
+      if sales_batch?(dump) do
+        progress(dump, {:done, dump.client_id, dump.period, dump_unaccounted_pages(dump)})
+        :ok
+      else
+        case Preconditions.check(dump) do
+          nil -> dump |> Dumps.clear_precondition() |> settle()
+          finding -> ask(dump, finding)
+        end
       end
     end
   end
+
+  defp sales_batch?(%Dump{kind: "sales", meta: %{"sales_batch" => true}}), do: true
+  defp sales_batch?(_dump), do: false
 
   defp ask(dump, finding) do
     dump = Dumps.mark_needs_confirmation(dump, finding)

@@ -62,16 +62,17 @@ defmodule NilaWeb.Gst.RegisterLiveTest do
     |> Repo.insert!()
   end
 
-  test "mounts for a verified org user and renders the ordered rail", %{conn: conn} do
+  test "mounts for a verified org user without exposing quarantined routes", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/register")
 
     assert has_element?(view, "#register-page")
-    assert has_element?(view, ~s|a[aria-current="page"][href="/register"]|)
 
     nav = view |> element("aside nav") |> render()
 
-    assert nav =~
-             ~r/href="\/today".*href="\/gst\/upload".*href="\/clients".*href="\/register"/s
+    refute nav =~ ~s|href="/today"|
+    refute nav =~ ~s|href="/gst/upload"|
+    refute nav =~ ~s|href="/register"|
+    assert nav =~ ~r/href="\/sales-bills".*href="\/clients".*href="\/banking"/s
   end
 
   test "redirects logged-out visitors to log in" do

@@ -11,6 +11,7 @@ defmodule NilaWeb.Gstr1Controller do
   alias Nila.Gst.Filing.{Signoffs, TallyPrime, WinmanGstr1}
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
+  alias Nila.Gst.Sales.TallyPacket
   alias Nila.TallyDevices
   alias Nila.TallyJobs
   alias Nila.TallySync
@@ -69,6 +70,34 @@ defmodule NilaWeb.Gstr1Controller do
          {:ok, client} <- Clients.get_client(org_id, client_id),
          {:ok, xml} <- TallyPrime.build(tally_projection(sales_month, period)) do
       filename = "sales_#{client.gstin || client.id}_#{period}_tally.xml"
+
+      conn
+      |> put_resp_content_type("application/xml")
+      |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
+      |> send_resp(200, xml)
+    else
+      {:error, reason} when reason in [:no_active_sales, :invalid_sales_data] ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> text(tally_export_error(reason))
+
+      {:error, _reason} ->
+        conn
+        |> put_status(:not_found)
+        |> text("Not found")
+    end
+  end
+
+  def sales_bills_tally_download(conn, %{
+        "client_id" => client_id,
+        "batch_ref" => batch_ref
+      }) do
+    org_id = conn.assigns.current_scope.current_org.id
+
+    with {:ok, dumps} <- TallyPacket.fetch(org_id, client_id, batch_ref),
+         {:ok, client} <- Clients.get_client(org_id, client_id),
+         {:ok, xml} <- TallyPacket.build_xml(dumps) do
+      filename = "sales_#{client.gstin || client.id}_tally.xml"
 
       conn
       |> put_resp_content_type("application/xml")

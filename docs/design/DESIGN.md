@@ -4,6 +4,9 @@ This is the entry point for product design work. It holds the durable identity,
 product principles, and the small set of invariants every UI task needs. Load the
 deeper document only when the task calls for it.
 
+Read [`OPINIONS.md`](./OPINIONS.md) before every visible product change. It decides
+whether an element should exist. The documents below govern only what survives that test.
+
 | Task | Read next |
 | --- | --- |
 | Token, class, component, or mechanical UI edit | [`FRONTEND.md`](./FRONTEND.md) |
@@ -37,6 +40,11 @@ The readers are CAs and their staff: professionals completing accountable work.
 
 Nila drafts, the human reviews, the CA signs. Every screen answers to that loop.
 
+- **Remove before arranging.** Every label, state, action, region, and interaction creates
+  cognitive work. Add one only when the user's job cannot be completed or understood
+  without it.
+- **Absorb complexity.** Nila's internal model belongs in the system. Never make the user
+  learn it merely because the implementation needs it.
 - **Lead with what needs the human.** Show the exception pile and what blocks the close,
   not a feed, dashboard theatre, or another pitch for the product.
 - **Arrive with the work done.** Records begin populated from their source documents.
@@ -53,14 +61,18 @@ Nila drafts, the human reviews, the CA signs. Every screen answers to that loop.
   signing surfaces breathe.
 - **Speak the operator's language.** Use words the accountant says aloud. Align figures,
   use Indian digit grouping, and never replace precision with a score.
-- **Calm is the aesthetic; pleasure is the test.** Restraint is not permission to ship
-  something merely inoffensive. The reviewer should want to look at it.
+- **Conceptual inevitability is beauty.** Visual pleasure cannot justify an unnecessary
+  concept. The finished surface should feel as though nothing could be removed and
+  nothing else needed to be added.
 
 ## Core invariants
 
 These are not taste preferences. Violating one is almost certainly a product error.
 
 - Phoenix owns business truth; UI state never implies a transition that was not recorded.
+- If removing a visible element preserves the outcome, remove it.
+- A visible state must change the user's next action; internal state alone is not a reason
+  to expose it.
 - Machine checks, human assurance, workflow state, and approval remain distinct.
 - Unresolved work never appears verified, approved, reconciled, or complete.
 - A number states its basis. Derived identity is not independent corroboration.
@@ -92,8 +104,8 @@ under a title. A timestamp remains context even when it is numeric.
 The room is cool near-white moonlight with deep midnight-sea ink and one restrained
 warm note. Low chroma, low glare, delicate type, and quiet ruling create calm. Newsreader
 is the display voice for earned human moments and figures; Switzer carries the work.
-Persistent chrome may hold one quiet brand ground. A screen may earn one authored visual
-moment around its focal work; decoration does not.
+Persistent chrome may hold one quiet brand ground. Visual authorship styles necessary
+work; it never earns an additional element.
 
 Use whitespace and hierarchy before adding boxes. Borders are subordinate structure,
 not the composition. Shadows mean a surface floats. Motion reveals or confirms a spatial
@@ -110,14 +122,16 @@ change, then becomes still.
 
 ## Completion loop for visible UI
 
-1. Inspect the affected desktop screen before editing.
-2. Inspect nearby components and analogous product surfaces.
-3. Read the scoped guidance from the table above.
-4. Implement the smallest coherent change with existing components and tokens.
-5. Run `mix nila.style_guard` and focused tests.
-6. Render the real affected desktop screen and inspect hierarchy, density, clipping,
+1. State the user-visible outcome in one sentence.
+2. Remove every proposed element that is not required to obtain or understand it.
+3. Inspect the affected desktop screen, nearby components, and analogous surfaces.
+4. Read the scoped guidance from the table above.
+5. Implement the smallest faithful change with existing components and tokens. Do not
+   improve adjacent areas.
+6. Run `mix nila.style_guard` and focused tests.
+7. Render the real affected desktop screen and inspect hierarchy, density, clipping,
    empty regions, and type at actual scale.
-7. Fix visual problems before calling the work complete.
+8. Delete once more before calling the work complete.
 
 Nila is a desktop workbench for CA firms. Routine mobile parity and screenshots are not
 a completion requirement. Check narrow layouts only when changing shared shell or layout
