@@ -81,6 +81,19 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       updated_at: now
     })
 
+    Enum.each(["Customer & Co", "Sales", "Output IGST"], fn name ->
+      Nila.Repo.insert!(%SyncedMaster{
+        org_id: org.id,
+        company_id: company.id,
+        kind: "ledger",
+        identity: "name:" <> String.downcase(name),
+        name: name,
+        data: %{},
+        inserted_at: now,
+        updated_at: now
+      })
+    end)
+
     %{
       conn: log_in_user(conn, user),
       client: client,
@@ -144,6 +157,31 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
              "Sales voucher numbering in Tally must be Manual or Automatic (Manual Override)"
            )
 
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
+  end
+
+  test "holds a voucher whose referenced Tally ledger is missing", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    company: company
+  } do
+    Nila.Repo.get_by!(SyncedMaster,
+      company_id: company.id,
+      kind: "ledger",
+      name: "Output IGST"
+    )
+    |> Nila.Repo.delete!()
+
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    view
+    |> element("#sales-bills-send-to-tally")
+    |> render_click()
+
+    assert has_element?(view, "#sales-bills-send-error", "Held back 1 voucher (INV-001)")
+    assert render(view) =~ "Output IGST"
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
   end
 end

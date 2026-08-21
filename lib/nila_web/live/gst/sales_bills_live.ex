@@ -59,15 +59,16 @@ defmodule NilaWeb.Gst.SalesBillsLive do
              %{active_invoices: socket.assigns.packet.invoices},
              company.name
            ),
+         {ready, blocked} <- partition_ready_items(company.id, items),
          {:ok, _jobs} <-
-           TallyJobs.enqueue_vouchers(company, items,
+           TallyJobs.enqueue_vouchers(company, ready,
              source_prefix: socket.assigns.tally_source_prefix
            ) do
       {:noreply,
        socket
        |> assign(:tally_company, company)
        |> assign(:tally_jobs, list_tally_jobs(org_id, socket.assigns.tally_source_prefix))
-       |> assign(:send_error, nil)}
+       |> assign(:send_error, missing_ledgers_message(blocked))}
     else
       {:error, :not_found} ->
         {:noreply,
@@ -139,6 +140,43 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp list_tally_jobs(org_id, source_prefix),
     do: TallyJobs.list_by_source_prefix(org_id, source_prefix)
+
+  defp partition_ready_items(company_id, items) do
+    missing =
+      company_id
+      |> Nila.TallySync.missing_ledgers(Enum.flat_map(items, & &1.ledger_names))
+      |> MapSet.new(&String.downcase/1)
+
+    Enum.reduce(items, {[], []}, fn item, {ready, blocked} ->
+      missing_for_item =
+        Enum.filter(item.ledger_names, &MapSet.member?(missing, String.downcase(&1)))
+
+      if missing_for_item == [] do
+        {[item | ready], blocked}
+      else
+        {ready, [Map.put(item, :missing_ledgers, missing_for_item) | blocked]}
+      end
+    end)
+    |> then(fn {ready, blocked} -> {Enum.reverse(ready), Enum.reverse(blocked)} end)
+  end
+
+  defp missing_ledgers_message([]), do: nil
+
+  defp missing_ledgers_message(blocked) do
+    invoices = Enum.map_join(blocked, ", ", & &1.invoice_number)
+
+    ledgers =
+      blocked
+      |> Enum.flat_map(& &1.missing_ledgers)
+      |> Enum.uniq()
+      |> Enum.join(", ")
+
+    "Held back #{length(blocked)} #{plural(length(blocked), "voucher")} (#{invoices}). " <>
+      "Resolve the missing Tally ledgers, sync the company, then retry: #{ledgers}."
+  end
+
+  defp plural(1, singular), do: singular
+  defp plural(_count, singular), do: singular <> "s"
 
   defp tally_source_prefix(batch_ref, company_id) do
     batch_key =
