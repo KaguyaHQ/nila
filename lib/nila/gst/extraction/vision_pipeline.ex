@@ -13,7 +13,6 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
   alias Nila.Gst.Extraction.Segmented
   alias Nila.Gst.Extraction.Verify
 
-  @max_concurrency 4
   @max_pages 100
   @max_thumbnail_bytes 10_000_000
   @max_full_image_bytes 100_000_000
@@ -294,7 +293,7 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
           fn segment ->
             contained(segment, fn -> extract_segment(kind, source, segment, opts) end)
           end,
-          max_concurrency: Keyword.get(opts, :max_concurrency, @max_concurrency),
+          max_concurrency: Keyword.get(opts, :max_concurrency, @max_pages),
           ordered: false,
           timeout: :infinity
         )

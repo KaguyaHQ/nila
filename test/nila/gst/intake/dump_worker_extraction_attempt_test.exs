@@ -75,6 +75,100 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
     end
   end
 
+  defmodule MalformedResponseProvider do
+    @behaviour Nila.Gst.Extraction.Purchase
+
+    def provider, do: "test"
+    def model, do: "test-malformed"
+
+    @impl true
+    def extract(_bytes, _opts) do
+      {:error,
+       {:invoice_segments_failed,
+        [%{pages: [6], reason: {:invalid_text_chat_response, :truncated}}]}}
+    end
+  end
+
+  defmodule TransientResponseProvider do
+    @behaviour Nila.Gst.Extraction.Purchase
+
+    def provider, do: "test"
+    def model, do: "test-transient"
+
+    @impl true
+    def extract(_bytes, _opts), do: {:error, {:text_chat_request_failed, :timeout}}
+  end
+
+  test "an exhausted malformed response does not make Oban repeat the packet" do
+    previous = Application.get_env(:nila, :purchase_extractor)
+    Application.put_env(:nila, :purchase_extractor, MalformedResponseProvider)
+    on_exit(fn -> Application.put_env(:nila, :purchase_extractor, previous) end)
+
+    %{user: user, org: org} = user_with_org_fixture()
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Breeze Tech",
+        type: "company",
+        gstin: "33AEWPH4158J1Z3"
+      })
+
+    key = "orgs/#{org.id}/gst/test/malformed.pdf"
+    {:ok, _stored} = Storage.put(key, "%PDF-1.7 test")
+
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id, brought_in_by_id: user.id},
+        %{period: "2025-10", kind: "purchase", file_keys: [key]}
+      )
+
+    PurchaseMonths.subscribe(org.id)
+    job = %Oban.Job{args: %{"dump_id" => dump.id}, attempt: 1, max_attempts: 3}
+
+    assert :ok = DumpWorker.perform(job)
+
+    assert_receive {:gst_dump_progress, dump_id, _client_id, "2025-10", "purchase",
+                    {:failed, {:invoice_segments_failed, _failures}}}
+
+    assert dump_id == dump.id
+
+    refute_receive {:gst_dump_progress, ^dump_id, _client_id, _period, _kind,
+                    {:worker_retrying, _attempt, _max_attempts}}
+
+    {:ok, failed_dump} = Dumps.fetch(org.id, dump.id)
+    assert failed_dump.status == "failed"
+  end
+
+  test "a returned infrastructure failure remains retryable by Oban" do
+    previous = Application.get_env(:nila, :purchase_extractor)
+    Application.put_env(:nila, :purchase_extractor, TransientResponseProvider)
+    on_exit(fn -> Application.put_env(:nila, :purchase_extractor, previous) end)
+
+    %{user: user, org: org} = user_with_org_fixture()
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Breeze Tech",
+        type: "company",
+        gstin: "33AEWPH4158J1Z3"
+      })
+
+    key = "orgs/#{org.id}/gst/test/transient.pdf"
+    {:ok, _stored} = Storage.put(key, "%PDF-1.7 test")
+
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id, brought_in_by_id: user.id},
+        %{period: "2025-10", kind: "purchase", file_keys: [key]}
+      )
+
+    job = %Oban.Job{args: %{"dump_id" => dump.id}, attempt: 1, max_attempts: 3}
+
+    assert {:error, {:text_chat_request_failed, :timeout}} = DumpWorker.perform(job)
+  end
+
   test "an intermediate worker failure announces its retry without failing the dump" do
     previous = Application.get_env(:nila, :purchase_extractor)
     Application.put_env(:nila, :purchase_extractor, CrashingProvider)
@@ -456,7 +550,12 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
       "seller" => %{"name" => "Dawn Power", "gstin" => "32AAMFD7558A1ZL"},
       "buyer" => %{"name" => "Breeze", "gstin" => "33AEWPH4158J1Z3"},
       "line_items" => [
-        %{"description" => "Battery", "taxable_value" => 10_000, "igst_amount" => 1_800}
+        %{
+          "description" => "Battery",
+          "taxable_value" => 10_000,
+          "igst_amount" => 1_800,
+          "repeat_count" => 1
+        }
       ],
       "printed_grand_total" => 11_800
     })

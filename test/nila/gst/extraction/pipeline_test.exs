@@ -65,7 +65,7 @@ defmodule Nila.Gst.Extraction.PipelineTest do
       conn,
       chat_response(%{
         "invoice_number" => "INV-1",
-        "line_items" => [%{"taxable_value" => 1_000.0}],
+        "line_items" => [%{"taxable_value" => 1_000.0, "repeat_count" => 1}],
         "printed_total_taxable" => 1_000.0,
         "printed_grand_total" => 1_180.0
       })

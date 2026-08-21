@@ -10,6 +10,7 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
   @default_model "mistral-small-latest"
   @default_provider "mistral"
   @json_object_prompt_version 1
+  @invalid_response_retries 1
 
   alias Nila.Gst.Extraction.OpenAICompatibleChatFinch
 
@@ -56,6 +57,8 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
       options,
       payload.model,
       Keyword.get(opts, :max_retries, 8),
+      0,
+      0,
       0,
       schema,
       format
@@ -145,7 +148,16 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
     end
   end
 
-  defp request(options, request_model, max_retries, attempt, schema, format) do
+  defp request(
+         options,
+         request_model,
+         max_retries,
+         transient_attempt,
+         invalid_attempt,
+         retry_count,
+         schema,
+         format
+       ) do
     case Req.post(options) do
       {:ok, %Req.Response{} = response} ->
         raw = %{
@@ -153,23 +165,60 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
           headers: response.headers,
           body: to_binary(response.body),
           response_format: format,
-          retry_count: attempt
+          retry_count: retry_count
         }
 
         cond do
-          retryable_status?(response.status) and attempt < max_retries ->
-            delay = retry_delay(response, attempt)
-            log_retry(request_model, {:http_status, response.status}, attempt, max_retries, delay)
+          retryable_status?(response.status) and transient_attempt < max_retries ->
+            delay = retry_delay(response, transient_attempt)
+
+            log_retry(
+              request_model,
+              {:http_status, response.status},
+              transient_attempt,
+              max_retries,
+              delay
+            )
+
             wait(delay)
-            request(options, request_model, max_retries, attempt + 1, schema, format)
+
+            request(
+              options,
+              request_model,
+              max_retries,
+              transient_attempt + 1,
+              invalid_attempt,
+              retry_count + 1,
+              schema,
+              format
+            )
 
           retryable_status?(response.status) ->
-            log_retry_exhausted(request_model, {:http_status, response.status}, attempt)
+            log_retry_exhausted(
+              request_model,
+              {:http_status, response.status},
+              transient_attempt
+            )
+
             {:ok, raw}
 
           format in [:json_object, :json_schema_local] and response.status in 200..299 and
-            not valid_response?(raw, schema) and attempt < max_retries ->
-            request(options, request_model, max_retries, attempt + 1, schema, format)
+            not valid_response?(raw, schema) and invalid_attempt < @invalid_response_retries ->
+            Logger.warning(
+              "gst_text.invalid_response_retry provider=#{provider()} model=#{request_model} " <>
+                "retry=#{invalid_attempt + 1}/#{@invalid_response_retries}"
+            )
+
+            request(
+              options,
+              request_model,
+              max_retries,
+              transient_attempt,
+              invalid_attempt + 1,
+              retry_count + 1,
+              schema,
+              format
+            )
 
           true ->
             {:ok, raw}
@@ -177,13 +226,23 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
 
       {:error, %Req.HTTPError{protocol: :http2, reason: reason} = error}
       when reason in [:pool_not_available, :connection_not_ready, :unprocessed] ->
-        if attempt < max_retries do
+        if transient_attempt < max_retries do
           delay = jitter(200)
-          log_retry(request_model, {:http2, reason}, attempt, max_retries, delay)
+          log_retry(request_model, {:http2, reason}, transient_attempt, max_retries, delay)
           wait(delay)
-          request(options, request_model, max_retries, attempt + 1, schema, format)
+
+          request(
+            options,
+            request_model,
+            max_retries,
+            transient_attempt + 1,
+            invalid_attempt,
+            retry_count + 1,
+            schema,
+            format
+          )
         else
-          log_retry_exhausted(request_model, {:http2, reason}, attempt)
+          log_retry_exhausted(request_model, {:http2, reason}, transient_attempt)
           {:error, {:text_chat_request_failed, error}}
         end
 

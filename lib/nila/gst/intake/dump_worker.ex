@@ -99,18 +99,41 @@ defmodule Nila.Gst.Intake.DumpWorker do
   # just stopped standing — a silently emptied month, from a re-check that
   # reported success.
   defp do_perform(dump, worker_attempt) do
-    with {:ok, dump} <- extract(dump, worker_attempt) do
-      if sales_batch?(dump) do
-        progress(dump, {:done, dump.client_id, dump.period, dump_unaccounted_pages(dump)})
-        :ok
-      else
-        case Preconditions.check(dump) do
-          nil -> dump |> Dumps.clear_precondition() |> settle()
-          finding -> ask(dump, finding)
+    case extract(dump, worker_attempt) do
+      {:ok, dump} ->
+        if sales_batch?(dump) do
+          progress(dump, {:done, dump.client_id, dump.period, dump_unaccounted_pages(dump)})
+          :ok
+        else
+          case Preconditions.check(dump) do
+            nil -> dump |> Dumps.clear_precondition() |> settle()
+            finding -> ask(dump, finding)
+          end
         end
-      end
+
+      {:error, reason} ->
+        if terminal_extraction_failure?(reason), do: :ok, else: {:error, reason}
     end
   end
+
+  defp terminal_extraction_failure?({:invoice_segments_failed, failures}) do
+    Enum.all?(failures, &terminal_segment_failure?/1)
+  end
+
+  defp terminal_extraction_failure?(reason), do: terminal_response_failure?(reason)
+
+  defp terminal_segment_failure?(%{reason: reason}), do: terminal_response_failure?(reason)
+
+  defp terminal_response_failure?({:invalid_text_chat_response, _reason}), do: true
+  defp terminal_response_failure?({:text_chat_schema_mismatch, _reason}), do: true
+  defp terminal_response_failure?({:unexpected_text_chat_response, _response}), do: true
+  defp terminal_response_failure?(:invalid_text_chat_content), do: true
+
+  defp terminal_response_failure?({:text_chat_failed, status, _body})
+       when status in 400..499 and status != 429,
+       do: true
+
+  defp terminal_response_failure?(_reason), do: false
 
   defp sales_batch?(%Dump{kind: "sales", meta: %{"sales_batch" => true}}), do: true
   defp sales_batch?(_dump), do: false

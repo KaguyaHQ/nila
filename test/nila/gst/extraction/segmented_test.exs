@@ -23,6 +23,11 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
   end
 
   defp reply(conn, invoice) do
+    invoice =
+      Map.update(invoice, "line_items", [], fn lines ->
+        Enum.map(lines, &Map.put_new(&1, "repeat_count", 1))
+      end)
+
     Req.Test.json(conn, %{
       "choices" => [%{"message" => %{"content" => Jason.encode!(invoice)}}],
       "usage" => %{"total_tokens" => 100}
@@ -168,12 +173,16 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
       assert Map.has_key?(properties, "place_of_supply")
       assert Map.has_key?(properties, "document_status")
       assert Map.has_key?(properties, "supply_type")
-      line_properties = get_in(properties, ["line_items", "items", "properties"])
+      line_schema = get_in(properties, ["line_items", "items"])
+      line_properties = line_schema["properties"]
       assert Map.has_key?(line_properties, "item_name")
       assert Map.has_key?(line_properties, "printed_unit_price")
       assert Map.has_key?(line_properties, "printed_line_amount")
       assert Map.has_key?(line_properties, "printed_line_total")
       assert Map.has_key?(line_properties, "printed_taxable_value")
+      assert line_properties["repeat_count"]["minimum"] == 1
+      assert line_properties["repeat_count"]["maximum"] == 1_000
+      assert "repeat_count" in line_schema["required"]
 
       assert line_properties["printed_taxable_value"]["description"] =~
                "Do not duplicate printed_line_amount"
@@ -192,6 +201,8 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
       assert user["content"] =~ "footer captions and amount-in-words labels"
       assert user["content"] =~ "Populate CGST, SGST or IGST only when"
       assert user["content"] =~ "Never select, combine or sum tax-rate or slab-summary rows"
+      assert user["content"] =~ "return one line item with repeat_count equal to"
+      assert user["content"] =~ "Never combine rows that differ"
 
       assert properties["printed_total_taxable"]["description"] =~
                "Return null when no invoice-level aggregate is printed"
@@ -318,7 +329,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
   end
 
   test "a segment too dense for one output budget is split before the call, not after" do
-    rows = Enum.map_join(1..100, "\n", fn n -> "| Item #{n} | 1 | 10.00 |" end)
+    rows = Enum.map_join(1..100, "\n", fn _n -> "| Item | 1 | 10.00 |" end)
     t = transcription([{1, "TAX INVOICE\n" <> rows}, {2, rows <> "\nGrand total 2,000.00"}])
 
     # 200 rows over two pages exceeds the per-call row limit, so the invoice is
@@ -333,7 +344,9 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
       if user["content"] =~ "--- page 1 ---" do
         reply(conn, %{
           "invoice_number" => "BIG-1",
-          "line_items" => Enum.map(1..100, fn _n -> %{"taxable_value" => 10.0} end),
+          "line_items" => [
+            %{"item_name" => "First page", "taxable_value" => 10.0, "repeat_count" => 100}
+          ],
           "printed_total_taxable" => nil
         })
       else
@@ -341,7 +354,9 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
 
         reply(conn, %{
           "invoice_number" => nil,
-          "line_items" => Enum.map(1..100, fn _n -> %{"taxable_value" => 10.0} end),
+          "line_items" => [
+            %{"item_name" => "Second page", "taxable_value" => 10.0, "repeat_count" => 100}
+          ],
           "printed_total_taxable" => 2_000.0
         })
       end
@@ -349,7 +364,10 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
 
     {:ok, artifact} = Segmented.extract_segment(:purchase, t, segment([1, 2], "BIG-1"))
 
-    assert length(artifact["data"]["line_items"]) == 200
+    lines = artifact["data"]["line_items"]
+    assert length(lines) == 200
+    assert Enum.at(lines, 99)["item_name"] == "First page"
+    assert Enum.at(lines, 100)["item_name"] == "Second page"
     assert artifact["data"]["invoice_number"] == "BIG-1"
     assert artifact["data"]["printed_total_taxable"] == 2_000.0
   end

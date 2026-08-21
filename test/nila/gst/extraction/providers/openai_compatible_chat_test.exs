@@ -325,6 +325,35 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatTest do
     assert Agent.get(calls, & &1) == 1
   end
 
+  test "locally validated responses get only one malformed retry" do
+    {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
+      Agent.update(calls, &(&1 + 1))
+
+      Req.Test.json(conn, %{
+        "choices" => [%{"message" => %{"content" => "truncated json"}}]
+      })
+    end)
+
+    log =
+      capture_log(fn ->
+        assert {:ok, response} =
+                 OpenAICompatibleChat.request_raw([], "test", @schema,
+                   response_format: :json_schema_local,
+                   max_retries: 8
+                 )
+
+        assert response.retry_count == 1
+
+        assert {:error, {:invalid_text_chat_response, %Jason.DecodeError{}}} =
+                 OpenAICompatibleChat.decode(response, @schema)
+      end)
+
+    assert log =~ "gst_text.invalid_response_retry"
+    assert Agent.get(calls, & &1) == 2
+  end
+
   test "locally validated strict schema retries a mismatch" do
     {:ok, calls} = Agent.start_link(fn -> 0 end)
 

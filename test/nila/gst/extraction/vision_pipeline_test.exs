@@ -2,8 +2,10 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
   use ExUnit.Case, async: true
 
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
+  alias Nila.Gst.Extraction.Segmented
   alias Nila.Gst.Extraction.VisionPipeline
   alias Nila.Gst.Purchase.Books
+  alias Nila.Gst.Sales.Gstr1
   alias Nila.PdfFixtures
 
   defp chat_response(content) do
@@ -50,6 +52,33 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
       "document_status" => "active",
       "supply_type" => "taxable"
     })
+  end
+
+  defp line_item(overrides) do
+    Map.merge(
+      %{
+        "item_name" => "CAMC for Chiller",
+        "description" => "CAMC for Chiller",
+        "hsn_sac" => "998719",
+        "quantity" => 1,
+        "uom" => nil,
+        "printed_unit_price" => 47_500,
+        "discount_rate" => nil,
+        "discount_amount" => nil,
+        "printed_line_amount" => 47_500,
+        "printed_line_total" => 56_050,
+        "printed_taxable_value" => nil,
+        "line_amount_tax_inclusion" => "exclusive",
+        "cgst_rate" => 9,
+        "cgst_amount" => 4_275,
+        "sgst_rate" => 9,
+        "sgst_amount" => 4_275,
+        "igst_rate" => nil,
+        "igst_amount" => nil,
+        "repeat_count" => 1
+      },
+      overrides
+    )
   end
 
   defp stub(labels, extracted_invoice \\ invoice()) do
@@ -196,6 +225,61 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
            }
 
     assert artifact["data"]["recipient_registration"] == "registered"
+  end
+
+  test "expands repeated rows before verification and sales accounting" do
+    extracted =
+      sales_invoice()
+      |> Map.put("buyer", %{"name" => "Customer", "gstin" => "29AAVCS8021P1ZB"})
+      |> Map.put("line_items", [line_item(%{"repeat_count" => 10})])
+      |> Map.merge(%{
+        "printed_subtotal_before_discount" => 475_000,
+        "printed_total_taxable" => 475_000,
+        "printed_cgst" => 42_750,
+        "printed_sgst" => 42_750,
+        "printed_total_tax" => 85_500,
+        "printed_grand_total" => 560_500
+      })
+
+    stub(
+      [%{"page" => 1, "label" => "start", "invoice_no" => "27/2026-27", "reason" => nil}],
+      extracted
+    )
+
+    assert {:ok, %{pages: [artifact]}} =
+             VisionPipeline.extract(:sales, <<0xFF, 0xD8, 0xFF, 0xD9>>, filename: "sale.jpg")
+
+    assert lines = artifact["data"]["line_items"]
+    assert length(lines) == 10
+    assert Enum.all?(lines, &(&1["item_name"] == "CAMC for Chiller"))
+    assert Enum.all?(lines, &(not Map.has_key?(&1, "repeat_count")))
+    assert artifact["verification"]["flags"] == []
+
+    normalized = Gstr1.normalize_invoice(artifact)
+    assert Gstr1.extracted_totals(normalized) == %{taxable: 475_000, tax: 85_500}
+    assert normalized["printed_grand_total"] == 560_500
+  end
+
+  test "does not collapse distinct or non-consecutive rows" do
+    data = %{
+      "line_items" => [
+        line_item(%{"item_name" => "First", "repeat_count" => 1}),
+        line_item(%{"item_name" => "Second", "repeat_count" => 1}),
+        line_item(%{"item_name" => "First", "repeat_count" => 1})
+      ]
+    }
+
+    assert %{"line_items" => lines} = Segmented.expand_repeated_line_items(data)
+    assert Enum.map(lines, & &1["item_name"]) == ["First", "Second", "First"]
+    assert Enum.all?(lines, &(not Map.has_key?(&1, "repeat_count")))
+  end
+
+  test "rejects a repeat count outside the schema boundary" do
+    data = %{"line_items" => [line_item(%{"repeat_count" => 1_001})]}
+
+    assert_raise ArgumentError, "invalid repeat_count: 1001", fn ->
+      Segmented.expand_repeated_line_items(data)
+    end
   end
 
   test "reports model-proposed non-invoices as unaccounted without independent proof" do

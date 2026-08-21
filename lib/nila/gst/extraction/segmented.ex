@@ -79,8 +79,11 @@ defmodule Nila.Gst.Extraction.Segmented do
     fields only when that invoice-level aggregate is itself printed. Never \
     select, combine or sum tax-rate or slab-summary rows to create an aggregate, \
     and never redistribute summary figures across item rows.
-    - Include every real item row. Never turn a subtotal, total, HSN summary or \
-    amount-in-words row into a line item.
+    - Represent every real item row. Never turn a subtotal, total, HSN summary or \
+    amount-in-words row into a line item. When consecutive printed rows are identical \
+    in every other extracted field, return one line item with repeat_count equal to \
+    the number of those rows. Otherwise use repeat_count 1. Never combine rows that \
+    differ in any extracted field, and never combine non-consecutive rows.
     - The invoice may be internally inconsistent — its own printed total may \
     disagree with its lines. Copy what is printed anyway; a later check names \
     the discrepancy.
@@ -275,8 +278,12 @@ defmodule Nila.Gst.Extraction.Segmented do
     decoded =
       Enum.reduce_while(responses, {:ok, [], []}, fn %{response: response}, {:ok, acc, usage} ->
         case OpenAICompatibleChat.decode(response, schema(kind)) do
-          {:ok, invoice, call_usage} -> {:cont, {:ok, acc ++ [invoice], usage ++ [call_usage]}}
-          {:error, reason} -> {:halt, {:error, reason}}
+          {:ok, invoice, call_usage} ->
+            invoice = expand_repeated_line_items(invoice)
+            {:cont, {:ok, acc ++ [invoice], usage ++ [call_usage]}}
+
+          {:error, reason} ->
+            {:halt, {:error, reason}}
         end
       end)
 
@@ -386,9 +393,29 @@ defmodule Nila.Gst.Extraction.Segmented do
 
   defp markers(data, :sales), do: data
 
+  @doc false
+  def expand_repeated_line_items(data) do
+    Map.update!(data, "line_items", fn lines ->
+      Enum.flat_map(lines, fn line ->
+        count = Map.fetch!(line, "repeat_count")
+
+        if is_integer(count) and count in 1..1_000 do
+          List.duplicate(Map.delete(line, "repeat_count"), count)
+        else
+          raise ArgumentError, "invalid repeat_count: #{inspect(count)}"
+        end
+      end)
+    end)
+  end
+
   @doc "Applies the provider-independent repairs shared by text and vision extraction."
   def prepare_vision_data(data, kind, client_gstin) do
-    {data, repairs} = data |> markers(kind) |> repair_gstins(kind, client_gstin)
+    {data, repairs} =
+      data
+      |> expand_repeated_line_items()
+      |> markers(kind)
+      |> repair_gstins(kind, client_gstin)
+
     {data, redundant} = discard_redundant_taxable_candidates(data)
     {data, repairs ++ redundant}
   end

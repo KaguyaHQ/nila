@@ -249,7 +249,14 @@ defmodule Nila.Gst.Extraction.Providers.Mistral do
       sgst_rate: nullable("number"),
       sgst_amount: nullable("number"),
       igst_rate: nullable("number"),
-      igst_amount: nullable("number")
+      igst_amount: nullable("number"),
+      repeat_count: %{
+        type: "integer",
+        minimum: 1,
+        maximum: 1_000,
+        description:
+          "Number of consecutive printed rows represented by this item. Return one item for each consecutive run whose rows are identical in every other extracted field, using the exact run length. Otherwise use 1. Never combine non-consecutive rows."
+      }
     })
   end
 
