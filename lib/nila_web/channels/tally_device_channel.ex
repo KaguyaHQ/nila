@@ -35,6 +35,7 @@ defmodule NilaWeb.TallyDeviceChannel do
         socket
         |> assign(:device, device)
         |> assign(:connected_at, connected_at)
+        |> assign(:in_flight_job_id, nil)
 
       {:ok, %{device_id: device.id, org_id: device.org_id}, socket}
     else
@@ -50,12 +51,13 @@ defmodule NilaWeb.TallyDeviceChannel do
   def handle_in(
         "job_result",
         %{"job_id" => job_id, "status" => status, "details" => details},
-        socket
+        %{assigns: %{in_flight_job_id: job_id}} = socket
       )
       when is_integer(job_id) and status in ["succeeded", "failed", "indeterminate"] and
              is_map(details) do
     case TallyJobs.complete(socket.assigns.device.id, job_id, status, details) do
       {:ok, _job} ->
+        socket = assign(socket, :in_flight_job_id, nil)
         send(self(), :deliver_tally_jobs)
         {:reply, :ok, socket}
 
@@ -74,23 +76,25 @@ defmodule NilaWeb.TallyDeviceChannel do
 
   @impl true
   def handle_info(:tally_job_available, socket) do
-    send(self(), :deliver_tally_jobs)
+    if is_nil(socket.assigns.in_flight_job_id), do: send(self(), :deliver_tally_jobs)
     {:noreply, socket}
   end
 
-  def handle_info(:deliver_tally_jobs, socket) do
+  def handle_info(:deliver_tally_jobs, %{assigns: %{in_flight_job_id: nil}} = socket) do
     case TallyJobs.claim_next(socket.assigns.device.id) do
       {:ok, nil} ->
         {:noreply, socket}
 
       {:ok, job} ->
         push(socket, "job", TallyJobs.delivery_payload(job))
-        {:noreply, socket}
+        {:noreply, assign(socket, :in_flight_job_id, job.id)}
 
       {:error, _reason} ->
         {:stop, :job_delivery_failed, socket}
     end
   end
+
+  def handle_info(:deliver_tally_jobs, socket), do: {:noreply, socket}
 
   defp connector_version(%{"connector_version" => version})
        when is_binary(version) and byte_size(version) <= 64,

@@ -203,6 +203,53 @@ defmodule NilaWeb.TallyDeviceSocketTest do
     assert second_id == second.id
   end
 
+  test "coalesces job notifications while a delivered job is in flight" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, token} = TallyDevices.create_device(org, %{name: "Burst Job PC"})
+    assert {:ok, socket} = connect(TallySocket, %{}, connect_info: %{auth_token: token})
+
+    assert {:ok, _reply, joined_socket} =
+             subscribe_and_join(
+               socket,
+               NilaWeb.TallyDeviceChannel,
+               "tally_device:#{device.id}",
+               %{}
+             )
+
+    payload = %{
+      "company" => "Nila",
+      "date" => "2026-08-19",
+      "voucher_type" => "Payment",
+      "debit_ledger" => "NILA Playground Customer",
+      "credit_ledger" => "Cash",
+      "amount" => "1.00",
+      "narration" => "Burst delivery test"
+    }
+
+    assert {:ok, first} = TallyJobs.enqueue_create_voucher(device, payload)
+    assert {:ok, second} = TallyJobs.enqueue_create_voucher(device, payload)
+    assert {:ok, third} = TallyJobs.enqueue_create_voucher(device, payload)
+
+    assert_push "job", %{job_id: first_id}
+    assert first_id == first.id
+    refute_push "job", _payload, 100
+    assert TallyJobs.get_job!(second.id).status == "pending"
+    assert TallyJobs.get_job!(third.id).status == "pending"
+
+    ref =
+      push(joined_socket, "job_result", %{
+        "job_id" => first.id,
+        "status" => "succeeded",
+        "details" => %{"created" => 1, "errors" => 0, "last_voucher_id" => 321}
+      })
+
+    assert_reply ref, :ok
+    assert_push "job", %{job_id: second_id}
+    assert second_id == second.id
+    refute_push "job", _payload, 100
+    assert TallyJobs.get_job!(third.id).status == "pending"
+  end
+
   test "the endpoint enables Phoenix transport token extraction" do
     assert {"/connector", TallySocket, options} =
              Enum.find(NilaWeb.Endpoint.__sockets__(), fn {path, _socket, _options} ->
