@@ -457,9 +457,10 @@ defmodule Nila.Gst.Filing.TallyPrime do
 
   defp party_ledger_entry(name, amount, invoice_number) do
     [
-      "<ALLLEDGERENTRIES.LIST>",
+      "<LEDGERENTRIES.LIST>",
       tag("LEDGERNAME", name),
       tag("ISDEEMEDPOSITIVE", if(amount < 0, do: "Yes", else: "No")),
+      tag("ISLASTDEEMEDPOSITIVE", "No"),
       tag("ISPARTYLEDGER", "Yes"),
       tag("AMOUNT", money(amount)),
       "<BILLALLOCATIONS.LIST>",
@@ -467,7 +468,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
       tag("BILLTYPE", "New Ref"),
       tag("AMOUNT", money(amount)),
       "</BILLALLOCATIONS.LIST>",
-      "</ALLLEDGERENTRIES.LIST>"
+      "</LEDGERENTRIES.LIST>"
     ]
   end
 
@@ -475,9 +476,10 @@ defmodule Nila.Gst.Filing.TallyPrime do
     half_rate = entry.rate / 2
 
     [
-      "<ALLLEDGERENTRIES.LIST>",
+      "<LEDGERENTRIES.LIST>",
       tag("LEDGERNAME", "Sales"),
       tag("ISDEEMEDPOSITIVE", if(entry.amount < 0, do: "Yes", else: "No")),
+      tag("ISLASTDEEMEDPOSITIVE", "No"),
       tag("ISPARTYLEDGER", "No"),
       tag("GSTOVRDNTAXABILITY", "Taxable"),
       tag("GSTOVRDNTYPEOFSUPPLY", entry.supply_type),
@@ -494,7 +496,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
       "<BASICUSERDESCRIPTION.LIST>",
       tag("BASICUSERDESCRIPTION", entry.description),
       "</BASICUSERDESCRIPTION.LIST>",
-      "</ALLLEDGERENTRIES.LIST>"
+      "</LEDGERENTRIES.LIST>"
     ]
   end
 
@@ -512,11 +514,12 @@ defmodule Nila.Gst.Filing.TallyPrime do
 
   defp ledger_entry(name, amount) do
     [
-      "<ALLLEDGERENTRIES.LIST>",
+      "<LEDGERENTRIES.LIST>",
       tag("LEDGERNAME", name),
       tag("ISDEEMEDPOSITIVE", if(amount < 0, do: "Yes", else: "No")),
+      tag("ISLASTDEEMEDPOSITIVE", "No"),
       tag("AMOUNT", money(amount)),
-      "</ALLLEDGERENTRIES.LIST>"
+      "</LEDGERENTRIES.LIST>"
     ]
   end
 
