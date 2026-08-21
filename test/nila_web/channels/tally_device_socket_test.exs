@@ -18,7 +18,11 @@ defmodule NilaWeb.TallyDeviceSocketTest do
                %{
                  "connector_version" => "0.1.0",
                  "companies" => [
-                   %{"name" => "Nila", "tally_guid" => "company-nila"}
+                   %{
+                     "name" => "Nila",
+                     "tally_guid" => "company-nila",
+                     "gstin" => "33AEWPH4158J1Z3"
+                   }
                  ]
                }
              )
@@ -37,7 +41,7 @@ defmodule NilaWeb.TallyDeviceSocketTest do
     refreshed = Nila.Repo.reload!(device)
     assert refreshed.last_connected_at
 
-    assert [%{name: "Nila", tally_guid: "company-nila"}] =
+    assert [%{name: "Nila", tally_guid: "company-nila", gstin: "33AEWPH4158J1Z3"}] =
              TallyDevices.list_open_companies(org.id)
 
     NilaWeb.Endpoint.subscribe("tally_devices:#{org.id}")

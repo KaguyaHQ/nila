@@ -145,27 +145,31 @@ defmodule Nila.TallyDevices do
           Enum.map(companies, fn company ->
             identity = company_identity(company)
 
-            %Company{
-              org_id: device.org_id,
-              device_id: device.id,
-              identity: identity,
-              is_open: true,
-              last_seen_at: seen_at
-            }
-            |> Company.changeset(company)
-            |> Repo.insert!(
-              conflict_target: [:device_id, :identity],
-              on_conflict: [
-                set: [
-                  name: company.name,
-                  tally_guid: company.tally_guid,
-                  is_open: true,
-                  last_seen_at: seen_at,
-                  updated_at: seen_at
-                ]
-              ],
-              returning: true
-            )
+            persisted =
+              %Company{
+                org_id: device.org_id,
+                device_id: device.id,
+                identity: identity,
+                is_open: true,
+                last_seen_at: seen_at
+              }
+              |> Company.changeset(company)
+              |> Repo.insert!(
+                conflict_target: [:device_id, :identity],
+                on_conflict: [
+                  set: [
+                    name: company.name,
+                    tally_guid: company.tally_guid,
+                    gstin: company.gstin,
+                    is_open: true,
+                    last_seen_at: seen_at,
+                    updated_at: seen_at
+                  ]
+                ],
+                returning: true
+              )
+
+            maybe_link_company_by_gstin(persisted)
           end)
 
         {:ok, reported}
@@ -439,11 +443,12 @@ defmodule Nila.TallyDevices do
        when is_binary(name) and byte_size(name) <= 200 do
     name = String.trim(name)
     tally_guid = normalize_company_guid(company["tally_guid"])
+    gstin = normalize_company_gstin(company["gstin"])
 
-    if name == "" or tally_guid == :invalid do
+    if name == "" or tally_guid == :invalid or gstin == :invalid do
       {:error, :invalid_company}
     else
-      {:ok, %{name: name, tally_guid: tally_guid}}
+      {:ok, %{name: name, tally_guid: tally_guid, gstin: gstin}}
     end
   end
 
@@ -457,6 +462,45 @@ defmodule Nila.TallyDevices do
   end
 
   defp normalize_company_guid(_value), do: :invalid
+
+  defp normalize_company_gstin(nil), do: nil
+
+  defp normalize_company_gstin(value) when is_binary(value) and byte_size(value) <= 32 do
+    value = value |> String.trim() |> String.upcase()
+
+    cond do
+      value == "" -> nil
+      Nila.Gstin.valid?(value) -> value
+      true -> nil
+    end
+  end
+
+  defp normalize_company_gstin(_value), do: :invalid
+
+  defp maybe_link_company_by_gstin(%Company{client_id: nil, gstin: gstin} = company)
+       when is_binary(gstin) do
+    matches =
+      Repo.all(
+        from client in Client,
+          where:
+            client.org_id == ^company.org_id and
+              fragment("upper(?)", client.gstin) == ^gstin,
+          order_by: [asc: client.id],
+          limit: 2
+      )
+
+    case matches do
+      [%Client{} = client] ->
+        company
+        |> Ecto.Changeset.change(client_id: client.id)
+        |> Repo.update!()
+
+      _ ->
+        company
+    end
+  end
+
+  defp maybe_link_company_by_gstin(%Company{} = company), do: company
 
   defp company_identity(%{tally_guid: tally_guid}) when is_binary(tally_guid),
     do: "guid:" <> String.downcase(tally_guid)

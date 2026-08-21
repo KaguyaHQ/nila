@@ -77,6 +77,45 @@ defmodule Nila.TallyDevicesTest do
     assert TallyDevices.list_open_companies(org.id) == []
   end
 
+  test "stores a valid company GSTIN and links the sole exact client match despite a different name" do
+    %{org: org} = user_with_org_fixture()
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Breeze Tech",
+        type: "company",
+        gstin: "33AEWPH4158J1Z3"
+      })
+
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    assert {:ok, [company]} =
+             TallyDevices.report_companies(device, [
+               %{
+                 "name" => "Broozetech",
+                 "tally_guid" => "company-breeze",
+                 "gstin" => "33aewph4158j1z3"
+               }
+             ])
+
+    assert company.gstin == "33AEWPH4158J1Z3"
+    assert company.client_id == client.id
+  end
+
+  test "does not automatically link an invalid reported GSTIN" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    assert {:ok, [company]} =
+             TallyDevices.report_companies(device, [
+               %{"name" => "Broken GST", "tally_guid" => "broken", "gstin" => "not-a-gstin"}
+             ])
+
+    assert is_nil(company.gstin)
+    assert is_nil(company.client_id)
+  end
+
   test "does not resolve another organization's reported company" do
     %{org: org} = user_with_org_fixture()
     %{org: other_org} = user_with_org_fixture()
