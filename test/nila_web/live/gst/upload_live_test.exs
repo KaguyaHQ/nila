@@ -8,6 +8,8 @@ defmodule NilaWeb.Gst.UploadLiveTest do
   alias Nila.Gst.Filing.Calendar
   alias Nila.Gst.Intake.{Dumps, DumpWorker}
   alias Nila.Storage
+  alias Nila.TallyDevices
+  alias NilaWeb.Presence
 
   @period "2025-10"
 
@@ -60,6 +62,73 @@ defmodule NilaWeb.Gst.UploadLiveTest do
 
   defp upload_json(view, name, content) do
     upload_file(view, name, content, "application/json")
+  end
+
+  defp put_tally_online(org, device) do
+    Presence.track(
+      self(),
+      "tally_devices:#{org.id}",
+      Integer.to_string(device.id),
+      %{device_id: device.id, name: device.name}
+    )
+  end
+
+  test "sales bills leads an unconnected firm to Tally setup", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/sales-bills")
+
+    assert has_element?(view, "#sales-bills-connect-tally", "Connect TallyPrime")
+    assert has_element?(view, "#sales-bills-connect-tally-button[href='/settings/connectors']")
+    refute has_element?(view, "#sales-bills-form")
+  end
+
+  test "sales bills asks for the installed connector to be started", %{conn: conn, org: org} do
+    {:ok, _device, _token} = TallyDevices.create_device(org, %{name: "Office PC"})
+
+    {:ok, view, _html} = live(conn, ~p"/sales-bills")
+
+    assert has_element?(view, "#sales-bills-start-connector", "Start Nila Connector")
+    refute has_element?(view, "#sales-bills-form")
+  end
+
+  test "sales bills asks for a Tally company when the connector is online", %{
+    conn: conn,
+    org: org
+  } do
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Office PC"})
+    {:ok, _presence} = put_tally_online(org, device)
+
+    {:ok, view, _html} = live(conn, ~p"/sales-bills")
+
+    assert has_element?(view, "#sales-bills-open-company", "Open the company in TallyPrime")
+    refute has_element?(view, "#sales-bills-form")
+  end
+
+  test "sales bills silently uses the company open in Tally", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Office PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [
+        %{
+          "name" => "Breeze Tech",
+          "tally_guid" => "breeze-guid",
+          "gstin" => "33AEWPH4158J1Z3"
+        }
+      ])
+
+    {:ok, _presence} = put_tally_online(org, device)
+    {:ok, view, _html} = live(conn, ~p"/sales-bills")
+
+    assert has_element?(view, "#sales-bills-form")
+    assert has_element?(view, "#sales-bills-form", "Breeze Tech is open in TallyPrime")
+    refute has_element?(view, "#sales-bills-form select")
+    assert has_element?(view, "#sales-bills-form input[type='hidden'][value='#{client.id}']")
+
+    assert Nila.Repo.reload!(company).client_id == client.id
+    assert Nila.Repo.reload!(client).gstin == "33AEWPH4158J1Z3"
   end
 
   test "mounts with one shared document drop", %{conn: conn} do

@@ -126,6 +126,14 @@ defmodule Nila.TallyDevices do
     )
   end
 
+  def list_active_devices(org_id) when is_integer(org_id) do
+    Repo.all(
+      from device in Device,
+        where: device.org_id == ^org_id and is_nil(device.revoked_at),
+        order_by: [asc: device.name, asc: device.id]
+    )
+  end
+
   def mark_connected(%Device{} = device, connected_at \\ DateTime.utc_now()) do
     device
     |> Ecto.Changeset.change(last_connected_at: DateTime.truncate(connected_at, :microsecond))
@@ -207,6 +215,28 @@ defmodule Nila.TallyDevices do
     )
   end
 
+  @doc "Returns the client behind an open Tally company, creating and linking it when needed."
+  def ensure_company_client(org_id, company_id)
+      when is_integer(org_id) and is_integer(company_id) do
+    Repo.transact(fn ->
+      with %Company{} = company <-
+             Repo.one(
+               from company in Company,
+                 join: device in assoc(company, :device),
+                 where:
+                   company.id == ^company_id and company.org_id == ^org_id and company.is_open and
+                     is_nil(device.revoked_at),
+                 preload: [:client],
+                 lock: "FOR UPDATE"
+             ) || {:error, :not_found},
+           {:ok, client} <- ensure_company_client_record(company) do
+        {:ok, client}
+      end
+    end)
+  end
+
+  def ensure_company_client(_org_id, _company_id), do: {:error, :not_found}
+
   @doc "Creates or reuses clients for selected discovered companies and links them atomically."
   def import_companies_as_clients(org_id, company_ids)
       when is_integer(org_id) and is_list(company_ids) and company_ids != [] and
@@ -230,7 +260,7 @@ defmodule Nila.TallyDevices do
       else
         Enum.reduce_while(companies, {:ok, %{created: 0, linked: 0, clients: []}}, fn company,
                                                                                       {:ok, acc} ->
-          case find_or_create_client(org_id, company.name) do
+          case find_or_create_client(org_id, company) do
             {:ok, client, disposition} ->
               case company |> Ecto.Changeset.change(client_id: client.id) |> Repo.update() do
                 {:ok, _company} ->
@@ -284,26 +314,73 @@ defmodule Nila.TallyDevices do
 
   def get_open_company(_org_id, _company_id, _client_id), do: {:error, :not_found}
 
-  defp find_or_create_client(org_id, name) do
-    normalized_name = String.downcase(name)
+  defp ensure_company_client_record(%Company{client: %Client{} = client}), do: {:ok, client}
 
-    case Repo.one(
-           from client in Client,
-             where:
-               client.org_id == ^org_id and
-                 fragment("lower(?)", client.name) == ^normalized_name,
-             limit: 1
-         ) do
+  defp ensure_company_client_record(%Company{} = company) do
+    with {:ok, client, _disposition} <- find_or_create_client(company.org_id, company) do
+      company
+      |> Ecto.Changeset.change(client_id: client.id)
+      |> Repo.update!()
+
+      {:ok, client}
+    end
+  end
+
+  defp find_or_create_client(org_id, %Company{} = company) do
+    case client_for_company(org_id, company) do
       %Client{} = client ->
-        {:ok, client, :existing}
+        maybe_add_company_gstin(client, company.gstin)
 
       nil ->
-        case Clients.create_client(%{org_id: org_id, name: name, type: "company"}) do
+        attrs = %{org_id: org_id, name: company.name, type: "company", gstin: company.gstin}
+
+        case Clients.create_client(attrs) do
           {:ok, client} -> {:ok, client, :created}
           error -> error
         end
     end
   end
+
+  defp client_for_company(org_id, %Company{gstin: gstin, name: name}) when is_binary(gstin) do
+    Repo.one(
+      from client in Client,
+        where:
+          client.org_id == ^org_id and
+            fragment("upper(?)", client.gstin) == ^String.upcase(gstin),
+        order_by: [asc: client.id],
+        limit: 1
+    ) || client_by_name(org_id, gstin, name)
+  end
+
+  defp client_for_company(org_id, %Company{name: name}), do: client_by_name(org_id, nil, name)
+
+  defp client_by_name(_org_id, _gstin, nil), do: nil
+
+  defp client_by_name(org_id, gstin, name) do
+    case Repo.one(
+           from client in Client,
+             where:
+               client.org_id == ^org_id and
+                 fragment("lower(?)", client.name) == ^String.downcase(name),
+             order_by: [asc: client.id],
+             limit: 1
+         ) do
+      %Client{gstin: existing} = client when is_binary(gstin) and is_binary(existing) ->
+        if String.upcase(existing) == String.upcase(gstin), do: client
+
+      client ->
+        client
+    end
+  end
+
+  defp maybe_add_company_gstin(%Client{gstin: nil} = client, gstin) when is_binary(gstin) do
+    case Clients.update_client(client, %{gstin: gstin}) do
+      {:ok, client} -> {:ok, client, :existing}
+      error -> error
+    end
+  end
+
+  defp maybe_add_company_gstin(%Client{} = client, _gstin), do: {:ok, client, :existing}
 
   def mark_companies_closed(device_id, now \\ DateTime.utc_now()) when is_integer(device_id) do
     closed_at = DateTime.truncate(now, :microsecond)
