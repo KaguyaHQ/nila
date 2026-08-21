@@ -2,7 +2,9 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   use NilaWeb, :live_view
 
   alias Nila.Clients
+  alias Nila.Gst.Filing.TallyPrime
   alias Nila.Gst.Sales.TallyPacket
+  alias Nila.{TallyDevices, TallyJobs}
 
   @impl true
   def mount(%{"client_id" => client_id, "batch_ref" => batch_ref}, _session, socket) do
@@ -10,12 +12,21 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
     with {:ok, client} <- Clients.get_client(org_id, client_id),
          {:ok, dumps} <- TallyPacket.fetch(org_id, client_id, batch_ref) do
+      if connected?(socket), do: TallyJobs.subscribe_org(org_id)
+
+      company = org_id |> TallyDevices.list_open_companies(client.id) |> List.first()
+      source_prefix = company && tally_source_prefix(batch_ref, company.id)
+
       {:ok,
        socket
        |> assign(:page_title, "Sales bills")
        |> assign(:client, client)
        |> assign(:batch_ref, batch_ref)
-       |> assign(:packet, TallyPacket.prepare(dumps))}
+       |> assign(:packet, TallyPacket.prepare(dumps))
+       |> assign(:tally_company, company)
+       |> assign(:tally_source_prefix, source_prefix)
+       |> assign(:tally_jobs, list_tally_jobs(org_id, source_prefix))
+       |> assign(:send_error, nil)}
     else
       _not_found ->
         {:ok,
@@ -34,7 +45,54 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp money(paise), do: Nila.Formatters.format_money_with_paise(paise)
 
-  defp remainder(packet) do
+  @impl true
+  def handle_event("send-to-tally", _params, socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+    company = socket.assigns.tally_company
+
+    with %{} <- company,
+         {:ok, company} <-
+           TallyDevices.get_open_company(org_id, company.id, socket.assigns.client.id),
+         {:ok, items} <-
+           TallyPrime.build_items_for_company(
+             %{active_invoices: socket.assigns.packet.invoices},
+             company.name
+           ),
+         {:ok, _jobs} <-
+           TallyJobs.enqueue_vouchers(company, items,
+             source_prefix: socket.assigns.tally_source_prefix
+           ) do
+      {:noreply,
+       socket
+       |> assign(:tally_company, company)
+       |> assign(:tally_jobs, list_tally_jobs(org_id, socket.assigns.tally_source_prefix))
+       |> assign(:send_error, nil)}
+    else
+      {:error, :not_found} ->
+        {:noreply,
+         socket
+         |> assign(:tally_company, nil)
+         |> assign(:send_error, "Tally is no longer connected. Download the XML instead.")}
+
+      _error ->
+        {:noreply, assign(socket, :send_error, "Nila could not send these vouchers to Tally.")}
+    end
+  end
+
+  @impl true
+  def handle_info(:tally_jobs_changed, socket) do
+    {:noreply,
+     assign(
+       socket,
+       :tally_jobs,
+       list_tally_jobs(
+         socket.assigns.current_scope.current_org.id,
+         socket.assigns.tally_source_prefix
+       )
+     )}
+  end
+
+  defp remainder(packet, tally_jobs) do
     excluded =
       Enum.map(packet.excluded, fn invoice ->
         invoice["invoice_number"] || invoice["buyer_name"] || "Unnumbered bill"
@@ -43,7 +101,52 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     failed = Enum.map(packet.failed_files, &TallyPacket.original_name/1)
     unread = Enum.map(packet.unread_pages, &"#{&1.file} · page #{&1.page}")
 
-    excluded ++ failed ++ unread
+    not_added =
+      tally_jobs
+      |> Enum.filter(&(&1.status in ["failed", "indeterminate"]))
+      |> Enum.map(&(&1.payload["invoice_number"] || "Unnumbered bill"))
+
+    Enum.uniq(excluded ++ failed ++ unread ++ not_added)
+  end
+
+  defp list_tally_jobs(_org_id, nil), do: []
+
+  defp list_tally_jobs(org_id, source_prefix),
+    do: TallyJobs.list_by_source_prefix(org_id, source_prefix)
+
+  defp tally_source_prefix(batch_ref, company_id) do
+    batch_key =
+      :crypto.hash(:sha256, batch_ref)
+      |> Base.url_encode64(padding: false)
+
+    "sales-bills:#{batch_key}:company:#{company_id}:voucher:"
+  end
+
+  defp sending_to_tally?(jobs), do: Enum.any?(jobs, &(&1.status in ["pending", "running"]))
+
+  defp tally_result([]), do: nil
+
+  defp tally_result(jobs) do
+    added = Enum.count(jobs, &(&1.status == "succeeded"))
+    finished = Enum.count(jobs, &(&1.status in ["succeeded", "failed", "indeterminate"]))
+
+    cond do
+      sending_to_tally?(jobs) -> :sending
+      added == length(jobs) -> :added
+      finished == length(jobs) -> {:partial, added, length(jobs)}
+      true -> :sending
+    end
+  end
+
+  defp retryable?(jobs),
+    do:
+      Enum.any?(jobs, &(&1.status == "failed")) and
+        Enum.all?(jobs, &(&1.status != "indeterminate"))
+
+  defp remainder_title(jobs) do
+    if Enum.any?(jobs, &(&1.status in ["failed", "indeterminate"])),
+      do: "Not added to Tally",
+      else: "Not included"
   end
 
   @impl true
@@ -81,8 +184,52 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </p>
           </div>
 
+          <.button
+            :if={(@packet.invoices != [] and @tally_company) && @tally_jobs == []}
+            type="button"
+            id="sales-bills-send-to-tally"
+            phx-click="send-to-tally"
+          >
+            Send to Tally
+          </.button>
+
+          <div
+            :if={@packet.invoices != [] and tally_result(@tally_jobs) == :sending}
+            id="sales-bills-sending-to-tally"
+            class="text-base-content text-ui flex items-center gap-2 font-semibold"
+          >
+            <.spinner tone="accent" label="Sending to Tally" /> Sending to Tally
+          </div>
+
+          <p
+            :if={@packet.invoices != [] and tally_result(@tally_jobs) == :added}
+            id="sales-bills-added-to-tally"
+            class="text-success text-ui font-semibold"
+          >
+            Added to Tally
+          </p>
+
+          <div
+            :if={match?({:partial, _added, _total}, tally_result(@tally_jobs))}
+            id="sales-bills-partial-tally-result"
+            class="space-y-related"
+          >
+            <p class="text-base-content text-ui font-semibold">
+              {elem(tally_result(@tally_jobs), 1)} of {elem(tally_result(@tally_jobs), 2)} added to Tally
+            </p>
+            <.button
+              :if={retryable?(@tally_jobs)}
+              type="button"
+              id="sales-bills-retry-tally"
+              phx-click="send-to-tally"
+              variant="outline"
+            >
+              Try again
+            </.button>
+          </div>
+
           <.download_button
-            :if={@packet.invoices != []}
+            :if={@packet.invoices != [] and is_nil(@tally_company)}
             href={~p"/sales-bills/#{@client.id}/batch/#{@batch_ref}/tally.xml"}
             id="sales-bills-download"
           >
@@ -90,10 +237,21 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           </.download_button>
         </section>
 
-        <section :if={remainder(@packet) != []} id="sales-bills-remainder" class="space-y-related">
-          <h2 class="text-base-content text-h4 font-semibold">Not included</h2>
+        <p :if={@send_error} id="sales-bills-send-error" class="text-error text-ui">
+          {@send_error}
+        </p>
+
+        <section
+          :if={remainder(@packet, @tally_jobs) != []}
+          id="sales-bills-remainder"
+          class="space-y-related"
+        >
+          <h2 class="text-base-content text-h4 font-semibold">{remainder_title(@tally_jobs)}</h2>
           <ul class="border-base-300 divide-base-300 divide-y border-y">
-            <li :for={item <- remainder(@packet)} class="text-base-content text-ui py-3 font-medium">
+            <li
+              :for={item <- remainder(@packet, @tally_jobs)}
+              class="text-base-content text-ui py-3 font-medium"
+            >
               {item}
             </li>
           </ul>
