@@ -343,7 +343,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
       |> log_in_user(operator)
       |> post(~p"/gstr1/#{client.id}/2026-07/tally")
 
-    assert redirected_to(conn) == ~p"/today"
+    assert redirected_to(conn) == ~p"/sales-bills"
     assert Phoenix.Flash.get(conn.assigns.flash, :error) == "You don't have access to that area."
   end
 
