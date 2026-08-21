@@ -21,7 +21,7 @@ defmodule NilaWeb.SettingsLiveTest do
 
       assert has_element?(
                view,
-               "#settings-tally-connector #settings-download-tally-connector[download]",
+               "#settings-tally-connector #settings-download-tally-connector[download][href='https://github.com/KaguyaHQ/nila-downloads/releases/latest/download/NilaConnector-win-x64-setup.exe']",
                "Download Nila Connector"
              )
 
