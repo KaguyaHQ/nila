@@ -73,16 +73,23 @@ defmodule NilaWeb.SettingsLiveTest do
       assert redirected_to(conn) == ~p"/settings/workspace"
     end
 
-    test "keeps profile and connectors in one LiveView session" do
+    test "keeps product and settings navigation in one LiveView session" do
       sessions =
         NilaWeb.Router.__routes__()
-        |> Enum.filter(&(&1.path in ["/settings/profile", "/settings/connectors"]))
+        |> Enum.filter(
+          &(&1.path in ["/sales-bills", "/settings/profile", "/settings/connectors"])
+        )
         |> Enum.map(fn route ->
           {_view, _action, _opts, session} = route.metadata.phoenix_live_view
-          session.name
+          {route.path, session.name}
         end)
+        |> Map.new()
 
-      assert sessions == [:settings, :settings]
+      assert sessions == %{
+               "/sales-bills" => :require_verified,
+               "/settings/profile" => :require_verified,
+               "/settings/connectors" => :require_verified
+             }
     end
 
     test "renders the firm settings form in the settings shell", %{conn: conn} do
