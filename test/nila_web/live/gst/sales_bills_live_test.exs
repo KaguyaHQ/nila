@@ -209,4 +209,25 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert pending.status == "pending"
     assert pending.payload["mode"] == "verify_only"
   end
+
+  test "offers an idempotent Tally check after successful delivery", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    device: device
+  } do
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    view |> element("#sales-bills-send-to-tally") |> render_click()
+    assert {:ok, job} = TallyJobs.claim_next(device.id)
+    assert {:ok, _job} = TallyJobs.complete(device.id, job.id, "succeeded", %{"master_id" => 42})
+
+    assert has_element?(view, "#sales-bills-ensure-tally", "Check Tally")
+    view |> element("#sales-bills-ensure-tally") |> render_click()
+
+    pending = TallyJobs.get_job!(job.id)
+    assert pending.status == "pending"
+    refute Map.has_key?(pending.payload, "mode")
+  end
 end

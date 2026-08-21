@@ -179,6 +179,32 @@ defmodule Nila.TallyJobsTest do
     assert is_nil(pending.error)
   end
 
+  test "rechecks a successful voucher with its frozen payload in normal delivery mode" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    assert {:ok, job} =
+             TallyJobs.enqueue_create_voucher(
+               device,
+               %{"company" => "Nila", "mode" => "verify_only"},
+               source_key: "sales-bills:batch:voucher:INV-001"
+             )
+
+    assert {:ok, _running} = TallyJobs.claim_next(device.id)
+    assert {:ok, _done} = TallyJobs.complete(device.id, job.id, "succeeded", %{"master_id" => 42})
+
+    assert {:ok, 1} =
+             TallyJobs.ensure_succeeded_by_source_prefix(
+               org.id,
+               "sales-bills:batch:voucher:"
+             )
+
+    pending = TallyJobs.get_job!(job.id)
+    assert pending.status == "pending"
+    refute Map.has_key?(pending.payload, "mode")
+    assert is_nil(pending.result)
+  end
+
   test "queues and retries each definite voucher failure independently" do
     %{org: org} = user_with_org_fixture()
     {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})

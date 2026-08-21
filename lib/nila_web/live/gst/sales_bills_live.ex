@@ -118,6 +118,24 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     end
   end
 
+  def handle_event("ensure-tally", _params, socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+
+    case TallyJobs.ensure_succeeded_by_source_prefix(
+           org_id,
+           socket.assigns.tally_source_prefix
+         ) do
+      {:ok, count} when count > 0 ->
+        {:noreply,
+         socket
+         |> assign(:tally_jobs, list_tally_jobs(org_id, socket.assigns.tally_source_prefix))
+         |> assign(:send_error, nil)}
+
+      _ ->
+        {:noreply, assign(socket, :send_error, "Nila could not check these vouchers in Tally.")}
+    end
+  end
+
   defp voucher_numbering_error(issues) do
     types = issues |> Enum.map(& &1.voucher_type) |> Enum.uniq() |> Enum.join(", ")
 
@@ -285,13 +303,21 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             <.spinner tone="accent" label="Sending to Tally" /> Sending to Tally
           </div>
 
-          <p
+          <div
             :if={@packet.invoices != [] and tally_result(@tally_jobs) == :added}
             id="sales-bills-added-to-tally"
-            class="text-success text-ui font-semibold"
+            class="flex items-center gap-3"
           >
-            Added to Tally
-          </p>
+            <p class="text-success text-ui font-semibold">Added to Tally</p>
+            <.button
+              type="button"
+              id="sales-bills-ensure-tally"
+              phx-click="ensure-tally"
+              variant="outline"
+            >
+              Check Tally
+            </.button>
+          </div>
 
           <div
             :if={match?({:partial, _added, _total}, tally_result(@tally_jobs))}

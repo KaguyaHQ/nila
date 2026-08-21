@@ -146,6 +146,56 @@ defmodule Nila.TallyJobs do
     end
   end
 
+  @doc "Rechecks successful voucher deliveries and restores any vouchers missing from Tally."
+  def ensure_succeeded_by_source_prefix(org_id, source_prefix)
+      when is_integer(org_id) and is_binary(source_prefix) do
+    result =
+      Repo.transact(fn ->
+        jobs =
+          from(j in Job,
+            where:
+              j.org_id == ^org_id and j.status == "succeeded" and
+                like(j.source_key, ^"#{source_prefix}%"),
+            lock: "FOR UPDATE"
+          )
+          |> Repo.all()
+
+        Enum.reduce_while(jobs, {:ok, []}, fn job, {:ok, ensured} ->
+          payload = Map.delete(job.payload, "mode")
+
+          case job
+               |> Job.transition_changeset(%{
+                 status: "pending",
+                 started_at: nil,
+                 completed_at: nil,
+                 result: nil,
+                 error: nil
+               })
+               |> Ecto.Changeset.change(payload: payload)
+               |> Repo.update() do
+            {:ok, updated} -> {:cont, {:ok, [updated | ensured]}}
+            {:error, changeset} -> {:halt, {:error, changeset}}
+          end
+        end)
+      end)
+
+    case result do
+      {:ok, jobs} ->
+        jobs
+        |> Enum.map(& &1.device_id)
+        |> Enum.uniq()
+        |> Enum.each(fn device_id ->
+          Phoenix.PubSub.broadcast(Nila.PubSub, device_topic(device_id), :tally_job_available)
+        end)
+
+        if jobs != [], do: broadcast_org(org_id)
+        {:ok, length(jobs)}
+
+      error ->
+        error
+    end
+  end
+
   def claim_next(device_id, now \\ DateTime.utc_now()) when is_integer(device_id) do
     Repo.transact(fn ->
       case Repo.one(
