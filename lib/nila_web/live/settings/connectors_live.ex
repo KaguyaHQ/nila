@@ -1,6 +1,8 @@
 defmodule NilaWeb.Settings.ConnectorsLive do
   use NilaWeb, :live_view
 
+  on_mount {NilaWeb.UserAuth, {:authorize, :manage_settings}}
+
   alias Nila.Integrations
   alias Nila.Integrations.{Connection, WhatsAppSignup}
 

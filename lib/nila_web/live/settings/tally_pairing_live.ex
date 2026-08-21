@@ -1,6 +1,8 @@
 defmodule NilaWeb.Settings.TallyPairingLive do
   use NilaWeb, :live_view
 
+  on_mount {NilaWeb.UserAuth, {:authorize, :manage_settings}}
+
   alias Nila.TallyDevices
 
   @impl true

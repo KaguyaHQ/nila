@@ -118,11 +118,21 @@ defmodule NilaWeb.UserAuth do
   def on_mount({:require, capability}, _params, session, socket) do
     socket = mount_current_scope(socket, session)
 
+    authorize(socket, capability)
+  end
+
+  def on_mount({:authorize, capability}, _params, _session, socket) do
+    authorize(socket, capability)
+  end
+
+  defp authorize(socket, capability) do
+    scope = socket.assigns[:current_scope]
+
     cond do
-      is_nil(socket.assigns.current_scope) ->
+      is_nil(scope) ->
         {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/users/log_in")}
 
-      not verified?(socket.assigns.current_scope) ->
+      not verified?(scope) ->
         socket =
           socket
           |> Phoenix.LiveView.put_flash(:error, "Verify your email first.")
@@ -130,7 +140,7 @@ defmodule NilaWeb.UserAuth do
 
         {:halt, socket}
 
-      Policy.can?(socket.assigns.current_scope, capability) ->
+      Policy.can?(scope, capability) ->
         {:cont, socket}
 
       true ->

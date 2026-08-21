@@ -148,9 +148,6 @@ defmodule NilaWeb.Router do
       live "/gst/:client_id/:period", Gst.MonthLive, :index
       live "/gst/:client_id/:period/review/:lane", Gst.MonthLive, :review
       live "/gst/:client_id/:period/exceptions", Gst.ExceptionsLive, :index
-      live "/settings/profile", Settings.ProfileLive, :edit
-      live "/settings/profile/confirm_email/:token", Settings.ProfileLive, :confirm_email
-      live "/settings/security", Settings.SecurityLive, :edit
     end
 
     # Tenant-scoped GST evidence: the controller checks the current org owns the
@@ -165,13 +162,16 @@ defmodule NilaWeb.Router do
     post "/settings/security/password", UserSettingsController, :update_password
     post "/settings/security/sessions", UserSettingsController, :delete_sessions
 
-    # Firm settings (workspace, connectors, users) are owner / admin only. The capability guard mounts the scope and redirects everyone
-    # else back to their cockpit.
+    # Every settings page shares one LiveView session so its navigation remains
+    # stable. Firm-only pages attach their capability guard in the LiveView.
     live_session :settings,
       on_mount: [
-        {NilaWeb.UserAuth, {:require, :manage_settings}},
+        {NilaWeb.UserAuth, :require_verified},
         {NilaWeb.UserAuth, :mount_current_path}
       ] do
+      live "/settings/profile", Settings.ProfileLive, :edit
+      live "/settings/profile/confirm_email/:token", Settings.ProfileLive, :confirm_email
+      live "/settings/security", Settings.SecurityLive, :edit
       live "/settings/workspace", Settings.WorkspaceLive, :index
       live "/settings/connectors", Settings.ConnectorsLive, :index
       live "/settings/connectors/tally/pair/:approval_code", Settings.TallyPairingLive, :show

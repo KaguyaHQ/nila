@@ -1,6 +1,8 @@
 defmodule NilaWeb.Settings.UsersLive do
   use NilaWeb, :live_view
 
+  on_mount {NilaWeb.UserAuth, {:authorize, :manage_settings}}
+
   alias Nila.Accounts
   alias Nila.Accounts.Policy
   alias Nila.Orgs
