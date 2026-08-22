@@ -67,7 +67,8 @@ defmodule Nila.TallyJobs do
                retry_failed: true,
                metadata: %{
                  "source_id" => item.source_id,
-                 "invoice_number" => item.invoice_number
+                 "invoice_number" => item.invoice_number,
+                 "party_ledger" => item.party_ledger
                }
              ) do
           {:ok, job, disposition} -> {:cont, {:ok, [{job, disposition} | jobs]}}

@@ -10,7 +10,7 @@ alias Nila.Repo
 org_attrs = %{
   name: "Nila Dev CA",
   legal_name: "Nila Dev CA LLP",
-  gstin: "33AAAAA0000A1Z5",
+  gstin: "33AABCP9487A1ZG",
   address_line1: "1 Marina Boulevard",
   city: "Chennai",
   state: "Tamil Nadu",

@@ -194,6 +194,9 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       missing_for_item =
         Enum.filter(item.ledger_names, &MapSet.member?(missing, String.downcase(&1)))
 
+      creatable = item.party_ledger && String.downcase(item.party_ledger.name)
+      missing_for_item = Enum.reject(missing_for_item, &(String.downcase(&1) == creatable))
+
       if missing_for_item == [] do
         {[item | ready], blocked}
       else
@@ -280,6 +283,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         <section class="gap-region flex flex-col lg:flex-row lg:items-end lg:justify-between">
           <div class="space-y-related">
             <p class="text-ink-muted text-ui">{@client.name}</p>
+
             <h1 class="font-display text-base-content text-statement font-normal">
               <%= case length(@packet.invoices) do %>
                 <% 0 -> %>
@@ -290,6 +294,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   {count} sales vouchers ready
               <% end %>
             </h1>
+
             <p :if={@packet.invoices != []} class="text-ink-muted text-lead tabular-nums">
               {money(@packet.taxable_paise)} taxable · {money(@packet.tax_paise)} tax
             </p>
@@ -324,6 +329,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             class="flex items-center gap-3"
           >
             <p class="text-success text-ui font-semibold">Added to Tally</p>
+
             <.button
               type="button"
               id="sales-bills-ensure-tally"
@@ -350,6 +356,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 2
               )} added to Tally
             </p>
+
             <.button
               :if={retryable?(@tally_jobs) or missing_delivery_jobs?(@packet, @tally_jobs)}
               type="button"
@@ -359,6 +366,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             >
               Try again
             </.button>
+
             <.button
               :if={verifiable?(@tally_jobs)}
               type="button"
@@ -389,6 +397,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           class="space-y-related"
         >
           <h2 class="text-base-content text-h4 font-semibold">{remainder_title(@tally_jobs)}</h2>
+
           <ul class="border-base-300 divide-base-300 divide-y border-y">
             <li
               :for={item <- remainder(@packet, @tally_jobs)}
@@ -412,19 +421,23 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 {invoice["invoice_number"] || "—"}
               </span>
             </:col>
+
             <:col :let={invoice} label="Date">
               <span class="whitespace-nowrap tabular-nums">
                 {format_display_date(invoice["invoice_date"])}
               </span>
             </:col>
+
             <:col :let={invoice} label="Buyer">
               <span class="block max-w-64 truncate" title={invoice["buyer_name"]}>
                 {invoice["buyer_name"] || "—"}
               </span>
             </:col>
+
             <:col :let={invoice} label="Taxable" align="right">
               {rupees(totals(invoice).taxable)}
             </:col>
+
             <:col :let={invoice} label="Tax" align="right">
               {rupees(totals(invoice).tax)}
             </:col>

@@ -175,6 +175,16 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert first.source_id != second.source_id
     assert byte_size(first.source_id) == 64
     assert first.ledger_names == ["Customer", "Sales", "Output IGST"]
+
+    assert first.party_ledger == %{
+             name: "Customer",
+             parent: "Sundry Debtors",
+             gstin: "29AAVCS8021P1ZB",
+             registration_type: "Regular",
+             state: "Karnataka",
+             country: "India"
+           }
+
     assert length(Regex.scan(~r/<TALLYMESSAGE>/, first.xml)) == 1
     assert first.xml =~ "<SVCURRENTCOMPANY>Nila</SVCURRENTCOMPANY>"
   end

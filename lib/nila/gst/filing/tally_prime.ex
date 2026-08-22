@@ -3,8 +3,8 @@ defmodule Nila.Gst.Filing.TallyPrime do
   Imports Nila's effective sales invoices into the TallyPrime company currently
   open on the local machine.
 
-  This first adapter writes accounting vouchers against existing ledgers. It
-  does not create party, sales, or GST ledger masters in TallyPrime.
+  The connector may create a missing registered-party ledger. Sales and GST
+  control ledgers must already exist in TallyPrime.
   """
 
   alias Nila.Gst.Purchase.Books
@@ -94,6 +94,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
               invoice_number: invoice["invoice_number"],
               voucher_type: voucher_type(invoice),
               ledger_names: voucher_ledger_names(xml),
+              party_ledger: party_ledger_master(invoice),
               xml: envelope(xml, company)
             }
 
@@ -304,6 +305,23 @@ defmodule Nila.Gst.Filing.TallyPrime do
            place_of_supply: state,
            state: state
          }}
+    end
+  end
+
+  defp party_ledger_master(invoice) do
+    with "registered" <- Gstr1.recipient_registration(invoice),
+         {:ok, name} <- party_ledger(invoice),
+         {:ok, details} <- party_details(invoice) do
+      %{
+        name: name,
+        parent: "Sundry Debtors",
+        gstin: details.gstin,
+        registration_type: details.registration_type,
+        state: details.state,
+        country: "India"
+      }
+    else
+      _not_registered -> nil
     end
   end
 
