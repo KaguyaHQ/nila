@@ -18,6 +18,7 @@ defmodule NilaWeb.Components.Form do
   """
   attr :id, :string, required: true
   attr :eyebrow, :string, required: true
+  attr :eyebrow_path, :string, default: nil
   attr :title, :string, required: true
   attr :form, :any, required: true
   attr :form_id, :string, required: true
@@ -39,8 +40,8 @@ defmodule NilaWeb.Components.Form do
 
   def importer(assigns) do
     ~H"""
-    <section id={@id} data-importer class="space-y-section max-w-2xl">
-      <.page_header eyebrow={@eyebrow} title={@title}>
+    <section id={@id} data-importer class="space-y-section mx-auto max-w-2xl">
+      <.page_header eyebrow={@eyebrow} eyebrow_path={@eyebrow_path} title={@title}>
         {render_slot(@intro)}
       </.page_header>
 

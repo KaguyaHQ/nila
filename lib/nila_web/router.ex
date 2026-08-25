@@ -137,12 +137,14 @@ defmodule NilaWeb.Router do
       ] do
       live "/today", TodayLive, :index
       live "/sales-bills", Gst.UploadLive, :sales
+      live "/sales-bills/new", Gst.UploadLive, :sales_new
       live "/sales-bills/:client_id/batch/:batch_ref", Gst.SalesBillsLive, :show
       live "/clients", ClientsLive, :index
       live "/register", Gst.RegisterLive, :index
       live "/clients/new", ClientNewLive, :new
       live "/clients/:id/edit", ClientEditLive, :edit
-      live "/banking", Banking.UploadLive, :new
+      live "/banking", Banking.UploadLive, :index
+      live "/banking/new", Banking.UploadLive, :new
       live "/banking/:id", Banking.StatementLive, :show
       live "/gst/upload", Gst.UploadLive, :new
       live "/gst/:client_id/:period", Gst.MonthLive, :index

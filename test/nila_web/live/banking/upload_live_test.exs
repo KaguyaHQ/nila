@@ -23,14 +23,55 @@ defmodule NilaWeb.Banking.UploadLiveTest do
   test "offers the bank-generated PDF workflow from the Banking rail entry", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/banking")
 
-    assert has_element?(view, "#banking-upload-page")
+    assert has_element?(view, "#banking-page")
     assert has_element?(view, "a[aria-current='page']", "Banking")
+    assert has_element?(view, "#banking-importer[data-importer]")
+    assert has_element?(view, "#banking-upload-form-card")
     assert has_element?(view, "#banking-upload-form")
     assert has_element?(view, "#banking-statement-pdf input[type=file][accept='.pdf']")
     assert has_element?(view, "label[for='statement_password']", "PDF password (optional)")
     assert has_element?(view, "#statement_password[type=password]")
+
+    assert has_element?(
+             view,
+             "#banking-upload-submit[phx-disable-with='Reading statement…']",
+             "Read statement"
+           )
+
     assert render(view) =~ "Kotak Mahindra Bank / 811"
     assert render(view) =~ "without OCR"
+  end
+
+  test "banking becomes a statement workspace after the first import", context do
+    {:ok, statement} = ready_statement(context)
+    {:ok, view, _html} = live(context.conn, ~p"/banking")
+
+    assert has_element?(view, "#banking-page", "Bank statements")
+    assert has_element?(view, "#banking-bring-statement[href='/banking/new']")
+    refute has_element?(view, "#banking-importer")
+    refute has_element?(view, "#banking-upload-form")
+
+    assert has_element?(view, "#banking-statements", "Statements")
+    assert has_element?(view, "#banking-statements-table", "statement.pdf")
+    assert has_element?(view, "#banking-statements-table", "Breeze Tech")
+    assert has_element?(view, "#banking-statements-table", "HDFC Bank")
+    assert has_element?(view, "#banking-statements-table", "1 transaction")
+    assert has_element?(view, "#banking-statements-table", "1 needs review")
+
+    assert has_element?(
+             view,
+             "#banking-statement-#{statement.id} a[href='/banking/#{statement.id}']"
+           )
+  end
+
+  test "bring in statement opens the temporary importer", context do
+    {:ok, _statement} = ready_statement(context)
+    {:ok, view, _html} = live(context.conn, ~p"/banking/new")
+
+    assert has_element?(view, "#banking-importer[data-importer]")
+    assert has_element?(view, "#banking-page", "Bring in a bank statement")
+    assert has_element?(view, "#banking-page a[href='/banking']", "Banking")
+    refute has_element?(view, "#banking-statements")
   end
 
   test "uploads one statement, encrypts its password, and queues extraction", context do

@@ -91,7 +91,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     refute has_element?(view, "#sales-bills-form")
   end
 
-  test "sales bills keeps recent imports secondary and opens the batch review", %{
+  test "sales bills becomes a batch workspace after the first import", %{
     conn: conn,
     org: org,
     client: client
@@ -139,18 +139,32 @@ defmodule NilaWeb.Gst.UploadLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/sales-bills")
 
-    assert has_element?(view, "#sales-imports", "Recent imports")
-    assert has_element?(view, "#sales-imports-table", "Breeze Tech")
-    assert has_element?(view, "#sales-imports-table", "1 invoice")
-    assert has_element?(view, "#sales-imports-table", "1 ready")
-    refute has_element?(view, "#sales-imports-table", "INV-104")
-    refute has_element?(view, "#sales-imports-table", "Siemens Healthcare")
-    refute has_element?(view, "#sales-imports-table", "₹10,030.00")
+    assert has_element?(view, "#sales-bills-page", "Sales bills")
+    assert has_element?(view, "#sales-bills-bring-invoices[href='/sales-bills/new']")
+    refute has_element?(view, "#sales-bills-importer")
+    refute has_element?(view, "#sales-bills-form")
+
+    assert has_element?(view, "#sales-batches", "Batches")
+    assert has_element?(view, "#sales-batches-table", "Breeze Tech")
+    assert has_element?(view, "#sales-batches-table", "1 invoice")
+    assert has_element?(view, "#sales-batches-table", "1 ready")
+    refute has_element?(view, "#sales-batches-table", "INV-104")
+    refute has_element?(view, "#sales-batches-table", "Siemens Healthcare")
+    refute has_element?(view, "#sales-batches-table", "₹10,030.00")
 
     assert has_element?(
              view,
              "#sales-import-#{dump.id} a[href='/sales-bills/#{client.id}/batch/#{dump.id}']"
            )
+  end
+
+  test "bring in invoices opens the temporary importer", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/new")
+
+    assert has_element?(view, "#sales-bills-importer[data-importer]")
+    assert has_element?(view, "#sales-bills-page", "Bring in sales invoices")
+    assert has_element?(view, "#sales-bills-page a[href='/sales-bills']", "Sales")
+    refute has_element?(view, "#sales-batches")
   end
 
   test "sales bills asks for the installed connector to be started", %{conn: conn, org: org} do

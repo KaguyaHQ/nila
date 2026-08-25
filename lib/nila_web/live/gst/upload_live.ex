@@ -37,7 +37,7 @@ defmodule NilaWeb.Gst.UploadLive do
     if connected?(socket), do: subscribe(socket)
 
     prefilled = prefill(socket, params)
-    sales_intake? = socket.assigns.live_action == :sales
+    sales_intake? = socket.assigns.live_action in [:sales, :sales_new]
 
     if connected?(socket) and sales_intake?, do: subscribe_tally(socket)
 
@@ -778,6 +778,13 @@ defmodule NilaWeb.Gst.UploadLive do
 
   @impl true
   def render(%{sales_intake?: true} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :sales_workspace?,
+        assigns.live_action == :sales and assigns.sales_imports != []
+      )
+
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -785,9 +792,49 @@ defmodule NilaWeb.Gst.UploadLive do
       current_path={assigns[:current_path]}
     >
       <div id="sales-bills-page" class="space-y-region mx-auto max-w-6xl">
+        <div :if={@sales_workspace?} class="space-y-region max-w-4xl">
+          <.page_header eyebrow="Sales" title="Sales bills">
+            Sales vouchers prepared for Tally, with anything that still needs your review.
+            <:actions>
+              <.button navigate={~p"/sales-bills/new"} id="sales-bills-bring-invoices">
+                <.icon name="hero-plus" class="size-4" /> Bring in invoices
+              </.button>
+            </:actions>
+          </.page_header>
+
+          <section id="sales-batches" class="space-y-block">
+            <h2 class="text-base-content text-h4 font-semibold">Batches</h2>
+            <.data_table
+              id="sales-batches-table"
+              rows={@sales_imports}
+              row_id={& &1.dom_id}
+              row_navigate={&sales_import_path/1}
+              row_label={&"Open #{invoice_count_label(&1.invoice_count)} for #{&1.client_name}"}
+              mode="worklist"
+            >
+              <:col :let={row} label="Imported" row_header>
+                <span class="whitespace-nowrap tabular-nums">
+                  {format_display_datetime(row.imported_at)}
+                </span>
+              </:col>
+              <:col :let={row} label="Company">
+                {row.client_name}
+              </:col>
+              <:col :let={row} label="Invoices" align="right">
+                {invoice_count_label(row.invoice_count)}
+              </:col>
+              <:col :let={row} label="Outcome">
+                {import_outcome(row)}
+              </:col>
+            </.data_table>
+          </section>
+        </div>
+
         <.importer
+          :if={!@sales_workspace?}
           id="sales-bills-importer"
           eyebrow="Sales"
+          eyebrow_path={if(@live_action == :sales_new, do: ~p"/sales-bills")}
           title="Bring in sales invoices"
           form={@form}
           form_id="sales-bills-form"
@@ -868,33 +915,6 @@ defmodule NilaWeb.Gst.UploadLive do
             />
           </:fields>
         </.importer>
-
-        <section :if={@sales_imports != []} id="sales-imports" class="space-y-block max-w-4xl">
-          <h2 class="text-base-content text-h4 font-semibold">Recent imports</h2>
-          <.data_table
-            id="sales-imports-table"
-            rows={@sales_imports}
-            row_id={& &1.dom_id}
-            row_navigate={&sales_import_path/1}
-            row_label={&"Open #{invoice_count_label(&1.invoice_count)} for #{&1.client_name}"}
-            mode="worklist"
-          >
-            <:col :let={row} label="Imported" row_header>
-              <span class="whitespace-nowrap tabular-nums">
-                {format_display_datetime(row.imported_at)}
-              </span>
-            </:col>
-            <:col :let={row} label="Company">
-              {row.client_name}
-            </:col>
-            <:col :let={row} label="Invoices" align="right">
-              {invoice_count_label(row.invoice_count)}
-            </:col>
-            <:col :let={row} label="Outcome">
-              {import_outcome(row)}
-            </:col>
-          </.data_table>
-        </section>
       </div>
     </Layouts.app>
     """

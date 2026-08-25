@@ -53,6 +53,16 @@ defmodule Nila.Banking do
     end
   end
 
+  def recent_statements(org_id) when is_integer(org_id) do
+    Repo.all(
+      from statement in Statement,
+        where: statement.org_id == ^org_id,
+        order_by: [desc: statement.inserted_at, desc: statement.id],
+        limit: 15,
+        preload: [:client, bank_transactions: [:tally_job]]
+    )
+  end
+
   def mark_extracting(%Statement{} = statement) do
     statement
     |> Ecto.Changeset.change(status: "extracting", error: nil)
