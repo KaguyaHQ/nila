@@ -179,6 +179,7 @@ export const WhatsAppEmbeddedSignup = {
     const status = this.el.querySelector("[data-whatsapp-signup-status]")
     if (!status) return
     status.textContent = message
+    status.classList.remove("hidden")
     status.dataset.state = isError ? "error" : "idle"
     status.classList.toggle("text-ink-muted", !isError)
   },
