@@ -63,6 +63,52 @@ defmodule Nila.Gst.Intake.Dumps do
   end
 
   @doc """
+  Fetches one rendered sales-bill page using the dump as the authority.
+
+  Unlike filing-month evidence, a Sales Bills upload does not require a
+  `SalesMonth` row. The requested basename must occur on that exact org/client
+  dump before its storage key is read.
+  """
+  def fetch_sales_evidence(org_id, client_id, dump_id, basename) do
+    with true <- valid_evidence_basename?(basename),
+         {:ok, dump} <- fetch(org_id, dump_id),
+         true <-
+           dump.kind == "sales" and to_string(dump.client_id) == to_string(client_id) and
+             evidence_basename?(dump.invoices, basename),
+         {:ok, bytes} <-
+           Nila.Storage.get(
+             Nila.Gst.Sales.Months.evidence_key(
+               dump.org_id,
+               dump.client_id,
+               dump.period,
+               basename
+             )
+           ) do
+      {:ok, bytes}
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp valid_evidence_basename?(basename) when is_binary(basename) do
+    Path.basename(basename) == basename and
+      Regex.match?(~r/\A[A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp)\z/i, basename)
+  end
+
+  defp valid_evidence_basename?(_basename), do: false
+
+  defp evidence_basename?(invoices, basename) when is_list(invoices) do
+    Enum.any?(invoices, fn invoice ->
+      invoice
+      |> Map.new(fn {key, value} -> {to_string(key), value} end)
+      |> then(&List.wrap(&1["images"] || &1["image"]))
+      |> Enum.any?(&(is_binary(&1) and Path.basename(&1) == basename))
+    end)
+  end
+
+  defp evidence_basename?(_invoices, _basename), do: false
+
+  @doc """
   What each period of a client already holds:
   `%{"2026-04" => %{bills: 14, gstr2b?: true}}`, extracted arrivals only.
 

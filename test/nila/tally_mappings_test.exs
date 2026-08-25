@@ -176,6 +176,57 @@ defmodule Nila.TallyMappingsTest do
              TallyMappings.resolve_party(org.id, company.id, %{name: "Rolled Back Customer"})
   end
 
+  test "remembers a Sales Accounts ledger by normalized HSN and item description" do
+    org = org_fixture()
+    company = company_fixture(org, "Nila")
+    sales = sales_ledger_fixture(org.id, company.id, "material-sales", "Material Sales")
+    line = %{hsn_sac: "8415-90-00", item_name: "Condenser Coil 7.5TR Chiller"}
+
+    assert [^sales] = TallyMappings.list_sales_ledger_choices(org.id, company.id)
+
+    assert {:ok, mapping} =
+             TallyMappings.save_sales_ledger_choice(org.id, company.id, line, sales.identity)
+
+    assert mapping.hsn_sac == "84159000"
+    assert mapping.normalized_description == "condenser coil 7 5tr chiller"
+
+    assert {:ok, %{ledger: ^sales, matched_by: :saved}} =
+             TallyMappings.resolve_sales_ledger(org.id, company.id, %{
+               "hsn_sac" => 84_159_000,
+               "item_name" => "",
+               "description" => "  CONDENSER COIL 7.5TR--CHILLER "
+             })
+
+    assert {:error, :not_found} =
+             TallyMappings.resolve_sales_ledger(org.id, company.id, %{
+               hsn_sac: "84159001",
+               item_name: "Condenser Coil 7.5TR Chiller"
+             })
+  end
+
+  test "rejects non-Sales Accounts and cross-company ledgers for line mappings" do
+    org = org_fixture()
+    company = company_fixture(org, "Nila")
+    other_company = company_fixture(org, "Other")
+    tax = ledger_fixture(org.id, company.id, "output-igst", "Output IGST", nil)
+
+    foreign_sales =
+      sales_ledger_fixture(org.id, other_company.id, "foreign-sales", "Foreign Sales")
+
+    line = %{hsn_sac: "998719", description: "Courier charges"}
+
+    assert {:error, :sales_ledger_not_found} =
+             TallyMappings.save_sales_ledger_choice(org.id, company.id, line, tax.identity)
+
+    assert {:error, :sales_ledger_not_found} =
+             TallyMappings.save_sales_ledger_choice(
+               org.id,
+               company.id,
+               line,
+               foreign_sales.identity
+             )
+  end
+
   defp company_fixture(org, name) do
     {:ok, device, _token} = TallyDevices.create_device(org, %{name: "#{name} Accounts PC"})
     {:ok, [company]} = TallyDevices.report_companies(device, [%{"name" => name}])
@@ -198,6 +249,22 @@ defmodule Nila.TallyMappingsTest do
       identity: identity,
       name: name,
       data: if(gstin, do: %{"gstin" => gstin}, else: %{}),
+      inserted_at: now,
+      updated_at: now
+    }
+    |> Repo.insert!()
+  end
+
+  defp sales_ledger_fixture(org_id, company_id, identity, name) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    %SyncedMaster{
+      org_id: org_id,
+      company_id: company_id,
+      kind: "ledger",
+      identity: identity,
+      name: name,
+      data: %{"parent" => "Sales Accounts"},
       inserted_at: now,
       updated_at: now
     }

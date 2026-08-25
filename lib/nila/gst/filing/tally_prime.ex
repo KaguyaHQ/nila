@@ -28,6 +28,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
   @posting_key_atoms %{
     "party_ledger" => :party_ledger,
     "sales_ledger" => :sales_ledger,
+    "line_sales_ledgers" => :line_sales_ledgers,
     "cgst_ledger" => :cgst_ledger,
     "sgst_ledger" => :sgst_ledger,
     "igst_ledger" => :igst_ledger
@@ -224,22 +225,24 @@ defmodule Nila.Gst.Filing.TallyPrime do
          true <- present?(voucher_type),
          {:ok, party} <- party_ledger(invoice),
          {:ok, party_details} <- party_details(invoice),
-         :ok <- validate_tax_jurisdiction(invoice, lines),
          {:ok, amounts} <- amounts(lines),
-         :ok <- validate_printed_grand_total(invoice, amounts),
          {:ok, sales_ledger} <- posting_ledger(invoice, "sales_ledger"),
-         {:ok, sales_entries} <- sales_entries(lines, effect, sales_ledger),
+         {:ok, sales_entries} <- sales_entries(invoice, lines, effect, sales_ledger),
          {:ok, postings} <- tax_postings(invoice, effect, amounts),
+         {:ok, party_amount} <- balanced_party_amount(sales_entries, postings),
+         narration = blank_to_nil(invoice["narration"]) || "Imported from Nila",
          :ok <-
-           valid_text_fields([
-             invoice["seller_gstin"],
-             invoice["invoice_number"],
-             party,
-             sales_ledger | Enum.map(postings, &elem(&1, 0))
-           ]) do
-      party_amount =
-        -Enum.sum(Enum.map(sales_entries, & &1.amount) ++ Enum.map(postings, &elem(&1, 1)))
-
+           valid_text_fields(
+             [
+               invoice["seller_gstin"],
+               invoice["invoice_number"],
+               party,
+               sales_ledger,
+               narration
+             ] ++
+               Enum.map(sales_entries, & &1.ledger_name) ++
+               Enum.map(postings, &elem(&1, 0))
+           ) do
       entries =
         [party_ledger_entry(party, party_amount, invoice["invoice_number"])] ++
           Enum.map(sales_entries, &gst_sales_entry/1) ++ Enum.map(postings, &ledger_entry/1)
@@ -269,7 +272,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
          tag("PERSISTEDVIEW", "Invoice Voucher View"),
          tag("ISINVOICE", "Yes"),
          tag("ISGSTOVERRIDDEN", "Yes"),
-         tag("NARRATION", "Imported from Nila"),
+         tag("NARRATION", narration),
          entries,
          "</VOUCHER>",
          "</TALLYMESSAGE>"
@@ -335,6 +338,44 @@ defmodule Nila.Gst.Filing.TallyPrime do
       {:ok, postings} -> {:ok, Enum.reverse(postings)}
       error -> error
     end
+  end
+
+  defp balanced_party_amount(sales_entries, postings) do
+    posting_amounts =
+      Enum.map(sales_entries, & &1.amount) ++ Enum.map(postings, &elem(&1, 1))
+
+    party_amount = -Enum.sum(posting_amounts)
+
+    if Enum.sum([party_amount | posting_amounts]) == 0,
+      do: {:ok, party_amount},
+      else: {:error, :invalid_sales_data}
+  end
+
+  defp line_sales_ledgers(invoice) do
+    posting = invoice["tally_posting"] || invoice[:tally_posting]
+
+    case posting do
+      map when is_map(map) ->
+        case Map.get(map, "line_sales_ledgers", Map.get(map, :line_sales_ledgers, %{})) do
+          line_ledgers when is_map(line_ledgers) -> {:ok, line_ledgers}
+          _invalid -> {:error, :invalid_sales_data}
+        end
+
+      _missing ->
+        {:ok, %{}}
+    end
+  end
+
+  defp line_sales_ledger(line_ledgers, line, index, fallback) do
+    keys =
+      [line["id"], line["source_id"], Integer.to_string(index), index]
+      |> Enum.reject(&is_nil/1)
+
+    selected = Enum.find_value(keys, fallback, &Map.get(line_ledgers, &1))
+
+    if present?(selected),
+      do: {:ok, String.trim(selected)},
+      else: {:error, :invalid_sales_data}
   end
 
   defp party_details(invoice) do
@@ -416,84 +457,37 @@ defmodule Nila.Gst.Filing.TallyPrime do
   defp optional_paise(nil), do: {:ok, 0}
   defp optional_paise(value), do: required_paise(value)
 
-  defp validate_printed_grand_total(%{"printed_grand_total" => nil}, _amounts), do: :ok
+  defp sales_entries(invoice, lines, effect, fallback_ledger) do
+    with {:ok, line_ledgers} <- line_sales_ledgers(invoice) do
+      lines
+      |> Enum.with_index(1)
+      |> Enum.reduce_while({:ok, []}, fn {line, index}, {:ok, entries} ->
+        with {:ok, taxable} <- required_paise(line["taxable_value"]),
+             {:ok, rate} <- gst_rate(line),
+             {:ok, ledger_name} <-
+               line_sales_ledger(line_ledgers, line, index, fallback_ledger),
+             hsn when is_binary(hsn) and hsn != "" <- blank_to_nil(line["hsn_sac"]),
+             description when is_binary(description) and description != "" <-
+               blank_to_nil(line["description"] || line["item_name"]) do
+          entry = %{
+            amount: effect * taxable,
+            description: description,
+            hsn: hsn,
+            index: index,
+            ledger_name: ledger_name,
+            rate: rate,
+            supply_type: if(String.starts_with?(hsn, "99"), do: "Services", else: "Goods")
+          }
 
-  defp validate_printed_grand_total(%{"printed_grand_total" => printed}, amounts) do
-    expected = amounts.taxable + amounts.cgst + amounts.sgst + amounts.igst
-
-    case required_paise(printed) do
-      {:ok, ^expected} -> :ok
-      _mismatch -> {:error, :invalid_sales_data}
-    end
-  end
-
-  defp validate_printed_grand_total(_invoice, _amounts), do: :ok
-
-  defp validate_tax_jurisdiction(invoice, lines) do
-    seller_state = StateCodes.normalize_code(invoice["seller_gstin"] || "")
-
-    place_of_supply =
-      StateCodes.normalize_code(
-        to_string(invoice["place_of_supply"] || invoice["buyer_gstin"] || "")
-      )
-
-    cond do
-      is_nil(seller_state) or is_nil(place_of_supply) ->
-        {:error, :invalid_sales_data}
-
-      seller_state == place_of_supply ->
-        validate_tax_heads(lines, :intrastate)
-
-      true ->
-        validate_tax_heads(lines, :interstate)
-    end
-  end
-
-  defp validate_tax_heads(lines, jurisdiction) do
-    Enum.reduce_while(lines, :ok, fn line, :ok ->
-      with {:ok, cgst} <- optional_paise(line["cgst_amount"]),
-           {:ok, sgst} <- optional_paise(line["sgst_amount"]),
-           {:ok, igst} <- optional_paise(line["igst_amount"]),
-           true <- valid_tax_heads?(jurisdiction, cgst, sgst, igst) do
-        {:cont, :ok}
-      else
-        _invalid -> {:halt, {:error, :invalid_sales_data}}
+          {:cont, {:ok, [entry | entries]}}
+        else
+          _invalid -> {:halt, {:error, :invalid_sales_data}}
+        end
+      end)
+      |> case do
+        {:ok, entries} -> {:ok, Enum.reverse(entries)}
+        error -> error
       end
-    end)
-  end
-
-  defp valid_tax_heads?(:interstate, cgst, sgst, _igst), do: cgst == 0 and sgst == 0
-
-  defp valid_tax_heads?(:intrastate, cgst, sgst, igst),
-    do: igst == 0 and ((cgst == 0 and sgst == 0) or (cgst > 0 and sgst > 0))
-
-  defp sales_entries(lines, effect, ledger_name) do
-    lines
-    |> Enum.with_index(1)
-    |> Enum.reduce_while({:ok, []}, fn {line, index}, {:ok, entries} ->
-      with {:ok, taxable} <- required_paise(line["taxable_value"]),
-           {:ok, rate} <- gst_rate(line),
-           hsn when is_binary(hsn) and hsn != "" <- blank_to_nil(line["hsn_sac"]),
-           description when is_binary(description) and description != "" <-
-             blank_to_nil(line["description"] || line["item_name"]) do
-        entry = %{
-          amount: effect * taxable,
-          description: description,
-          hsn: hsn,
-          index: index,
-          ledger_name: ledger_name,
-          rate: rate,
-          supply_type: if(String.starts_with?(hsn, "99"), do: "Services", else: "Goods")
-        }
-
-        {:cont, {:ok, [entry | entries]}}
-      else
-        _invalid -> {:halt, {:error, :invalid_sales_data}}
-      end
-    end)
-    |> case do
-      {:ok, entries} -> {:ok, Enum.reverse(entries)}
-      error -> error
     end
   end
 

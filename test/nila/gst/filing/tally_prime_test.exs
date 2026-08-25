@@ -251,6 +251,88 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
              TallyPrime.build_items_for_company(%{invoices: [selected]}, "Nila")
   end
 
+  test "uses distinct selected Sales ledgers for material, service, and freight lines" do
+    selected =
+      invoice(%{
+        "tally_posting" => %{
+          "sales_ledger" => "General Sales",
+          "line_sales_ledgers" => %{
+            "material-line" => "Material Sales",
+            "2" => "Service Sales",
+            3 => "Freight Recovered"
+          }
+        },
+        "line_items" => [
+          %{
+            "id" => "material-line",
+            "description" => "Condenser Coil",
+            "hsn_sac" => "84159000",
+            "taxable_value" => 1_000,
+            "igst_rate" => 18,
+            "igst_amount" => 180
+          },
+          %{
+            "description" => "Repair service",
+            "hsn_sac" => "998719",
+            "taxable_value" => 500,
+            "igst_rate" => 18,
+            "igst_amount" => 90
+          },
+          %{
+            "description" => "Freight",
+            "hsn_sac" => "996511",
+            "taxable_value" => 100,
+            "igst_rate" => 18,
+            "igst_amount" => 18
+          }
+        ]
+      })
+
+    assert {:ok, [item]} =
+             TallyPrime.build_items_for_company(%{invoices: [selected]}, "Nila")
+
+    assert item.ledger_names == [
+             "Customer",
+             "Material Sales",
+             "Service Sales",
+             "Freight Recovered",
+             "Output IGST"
+           ]
+
+    refute item.xml =~ "<LEDGERNAME>General Sales</LEDGERNAME>"
+  end
+
+  test "falls back to the invoice Sales ledger for unmapped lines" do
+    selected =
+      invoice(%{
+        "tally_posting" => %{
+          "sales_ledger" => "General Sales",
+          "line_sales_ledgers" => %{"1" => "Material Sales"}
+        },
+        "line_items" => [
+          %{
+            "description" => "Condenser Coil",
+            "hsn_sac" => "84159000",
+            "taxable_value" => 1_000,
+            "igst_rate" => 18,
+            "igst_amount" => 180
+          },
+          %{
+            "description" => "Repair service",
+            "hsn_sac" => "998719",
+            "taxable_value" => 500,
+            "igst_rate" => 18,
+            "igst_amount" => 90
+          }
+        ]
+      })
+
+    assert {:ok, [item]} =
+             TallyPrime.build_items_for_company(%{invoices: [selected]}, "Nila")
+
+    assert item.ledger_names == ["Customer", "Material Sales", "General Sales", "Output IGST"]
+  end
+
   test "keeps voucher delivery identity stable across repeated builds" do
     projection = %{invoices: [invoice()], period: "2026-07"}
 
@@ -350,6 +432,35 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert xml =~ "<AMOUNT>0.91</AMOUNT>"
   end
 
+  test "serializes corrected narration and place of supply" do
+    corrected =
+      invoice(%{
+        "narration" => "PO 4455 & corrected by reviewer",
+        "place_of_supply" => "33",
+        "line_items" => [
+          %{
+            "description" => "Equipment maintenance",
+            "hsn_sac" => "998719",
+            "taxable_value" => 1_000,
+            "cgst_rate" => 9,
+            "sgst_rate" => 9,
+            "cgst_amount" => 90,
+            "sgst_amount" => 90
+          }
+        ]
+      })
+
+    assert {:ok, xml} = TallyPrime.build(%{invoices: [corrected]})
+    assert xml =~ "<NARRATION>PO 4455 &amp; corrected by reviewer</NARRATION>"
+    assert xml =~ "<PLACEOFSUPPLY>Tamil Nadu</PLACEOFSUPPLY>"
+    assert xml =~ "<STATENAME>Tamil Nadu</STATENAME>"
+  end
+
+  test "falls back to Nila's narration when the corrected value is blank" do
+    assert {:ok, xml} = TallyPrime.build(%{invoices: [invoice(%{"narration" => "  "})]})
+    assert xml =~ "<NARRATION>Imported from Nila</NARRATION>"
+  end
+
   test "refuses empty or incomplete active sales data before posting" do
     assert {:error, :no_active_sales} = TallyPrime.build(%{invoices: []})
 
@@ -357,7 +468,7 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
              TallyPrime.build(%{invoices: [invoice(%{"invoice_date" => nil})]})
   end
 
-  test "refuses contradictory GST tax heads before posting" do
+  test "does not turn advisory GST-head mismatches into serializer failures" do
     mixed_line = %{
       "description" => "Equipment maintenance",
       "hsn_sac" => "998719",
@@ -368,8 +479,12 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
       "igst_amount" => 180
     }
 
-    assert {:error, :invalid_sales_data} =
+    assert {:ok, mixed_xml} =
              TallyPrime.build(%{invoices: [invoice(%{"line_items" => [mixed_line]})]})
+
+    assert mixed_xml =~ "<LEDGERNAME>Output CGST</LEDGERNAME>"
+    assert mixed_xml =~ "<LEDGERNAME>Output IGST</LEDGERNAME>"
+    assert mixed_xml =~ "<AMOUNT>-1270.00</AMOUNT>"
 
     intrastate =
       invoice(%{
@@ -385,13 +500,34 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
         ]
       })
 
-    assert {:error, :invalid_sales_data} = TallyPrime.build(%{invoices: [intrastate]})
+    assert {:ok, intrastate_xml} = TallyPrime.build(%{invoices: [intrastate]})
+    assert intrastate_xml =~ "<LEDGERNAME>Output IGST</LEDGERNAME>"
   end
 
-  test "refuses line postings that do not conserve the printed invoice total" do
+  test "does not turn advisory printed-total or quantity-rate mismatches into serializer failures" do
     mismatched = invoice(%{"printed_grand_total" => 1_179})
 
-    assert {:error, :invalid_sales_data} = TallyPrime.build(%{invoices: [mismatched]})
+    assert {:ok, printed_xml} = TallyPrime.build(%{invoices: [mismatched]})
+    assert printed_xml =~ "<AMOUNT>-1180.00</AMOUNT>"
+
+    quantity_rate_mismatch =
+      invoice(%{
+        "line_items" => [
+          %{
+            "description" => "Equipment maintenance",
+            "hsn_sac" => "998719",
+            "quantity" => 2,
+            "printed_unit_price" => 500,
+            "taxable_value" => 1_100,
+            "igst_rate" => 18,
+            "igst_amount" => 198
+          }
+        ]
+      })
+
+    assert {:ok, quantity_xml} = TallyPrime.build(%{invoices: [quantity_rate_mismatch]})
+    assert quantity_xml =~ "<AMOUNT>-1298.00</AMOUNT>"
+    assert quantity_xml =~ "<AMOUNT>1100.00</AMOUNT>"
   end
 
   defp invoice(overrides \\ %{}) do
