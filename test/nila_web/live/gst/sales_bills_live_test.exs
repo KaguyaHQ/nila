@@ -211,7 +211,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
              "gstin" => "29AAVCS8021P1ZB",
              "registration_type" => "Regular",
              "state" => "Karnataka",
-             "country" => "India"
+             "country" => "India",
+             "applicable_from" => "2026-07-15"
            }
   end
 

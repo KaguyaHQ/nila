@@ -318,7 +318,8 @@ defmodule Nila.Gst.Filing.TallyPrime do
         gstin: details.gstin,
         registration_type: details.registration_type,
         state: details.state,
-        country: "India"
+        country: "India",
+        applicable_from: invoice["invoice_date"]
       }
     else
       _not_registered -> nil

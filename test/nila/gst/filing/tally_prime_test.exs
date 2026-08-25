@@ -182,7 +182,8 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
              gstin: "29AAVCS8021P1ZB",
              registration_type: "Regular",
              state: "Karnataka",
-             country: "India"
+             country: "India",
+             applicable_from: ~D[2026-07-15]
            }
 
     assert length(Regex.scan(~r/<TALLYMESSAGE>/, first.xml)) == 1
