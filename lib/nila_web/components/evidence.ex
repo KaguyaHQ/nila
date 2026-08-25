@@ -185,7 +185,7 @@ defmodule NilaWeb.Components.Evidence do
             this.level = 0
             this.el.addEventListener("click", (event) => {
               if (event.target.tagName === "IMG") {
-                this.level = (this.level + 1) % 3
+                this.level = (this.level + 1) % 2
                 this.apply()
               } else {
                 document.getElementById(this.el.dataset.closeId)?.click()
@@ -203,11 +203,10 @@ defmodule NilaWeb.Components.Evidence do
               img.style.cursor = "zoom-in"
               return
             }
-            const scale = this.level === 1 ? 1 : 2
             img.style.maxWidth = "none"
             img.style.maxHeight = "none"
-            img.style.width = `${img.naturalWidth * scale}px`
-            img.style.cursor = this.level === 2 ? "zoom-out" : "zoom-in"
+            img.style.width = `${img.naturalWidth}px`
+            img.style.cursor = "zoom-out"
           }
         }
       </script>
