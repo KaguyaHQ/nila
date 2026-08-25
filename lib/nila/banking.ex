@@ -14,8 +14,6 @@ defmodule Nila.Banking do
 
   @banks [{"HDFC Bank", "hdfc"}, {"Kotak Mahindra Bank / 811", "kotak"}]
 
-  def banks, do: @banks
-
   def bank_name(code) do
     Enum.find_value(@banks, fn {name, value} -> value == code && name end)
   end
@@ -87,6 +85,7 @@ defmodule Nila.Banking do
     attrs = %{
       status: "ready",
       source_credentials: nil,
+      bank_code: artifact.bank_code,
       account_number_masked: artifact.account_number_masked,
       statement_from: artifact.statement_from,
       statement_to: artifact.statement_to,
@@ -498,7 +497,7 @@ defmodule Nila.Banking do
     do: "This PDF has no usable text layer. Bring in the bank-generated PDF, not a scan."
 
   defp failure_message(:unsupported_statement),
-    do: "This does not look like the selected bank's statement."
+    do: "Nila does not recognise this bank statement yet."
 
   defp failure_message(:statement_does_not_tally),
     do: "The extracted transactions do not reconcile to the printed running balance."

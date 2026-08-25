@@ -4,6 +4,7 @@ defmodule NilaWeb.ClientEditLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
+  alias Nila.TallyDevices
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
@@ -26,6 +27,13 @@ defmodule NilaWeb.ClientEditLiveTest do
     {:ok, view, _html} = live(conn, ~p"/clients/#{client.id}/edit")
 
     assert has_element?(view, "#client-form")
+    assert has_element?(view, "#client_name")
+    assert has_element?(view, "#client_gstin")
+    assert has_element?(view, "#client_pan")
+    refute has_element?(view, "#client_type")
+    refute has_element?(view, "#client_email")
+    refute has_element?(view, "#client_phone")
+    refute has_element?(view, "#client_chase_channel")
 
     result =
       view
@@ -52,6 +60,39 @@ defmodule NilaWeb.ClientEditLiveTest do
     assert html =~ "can&#39;t be blank"
     assert {:ok, unchanged} = Clients.get_client(org.id, client.id)
     assert unchanged.name == "Aurora Foods"
+  end
+
+  test "connects a manually created client to a previously discovered Tally company", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => "Aurora Books", "tally_guid" => "aurora"}
+      ])
+
+    assert :ok = TallyDevices.mark_companies_closed(device.id)
+    {:ok, view, _html} = live(conn, ~p"/clients/#{client.id}/edit")
+
+    assert has_element?(
+             view,
+             "#client_tally_company_id option[value='#{company.id}']",
+             "Aurora Books · Accounts PC"
+           )
+
+    result =
+      view
+      |> form("#client-form",
+        client: %{name: client.name, tally_company_id: company.id}
+      )
+      |> render_submit()
+
+    assert {:error, {:live_redirect, %{to: "/clients"}}} = result
+    assert [%{id: company_id}] = TallyDevices.list_linked_companies(org.id)
+    assert company_id == company.id
   end
 
   test "a bad GSTIN shows an error and does not persist", %{conn: conn, org: org, client: client} do

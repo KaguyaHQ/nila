@@ -16,6 +16,7 @@ defmodule Nila.Banking.Parsers.HdfcTest do
   test "parses wrapped HDFC rows and proves the running balance" do
     assert {:ok, artifact} = Hdfc.parse(@statement)
 
+    assert artifact.bank_code == "hdfc"
     assert artifact.account_number_masked == "•••• 4587"
     assert artifact.statement_from == ~D[2024-08-08]
     assert artifact.statement_to == ~D[2024-08-31]

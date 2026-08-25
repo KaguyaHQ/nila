@@ -75,7 +75,7 @@ defmodule Nila.Clients do
       Ecto.Changeset.add_error(
         changeset,
         :chase_channel,
-        "requires a connected email account — open Settings → Connectors"
+        "requires a connected email account — open Settings → Connections"
       )
     else
       changeset

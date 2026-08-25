@@ -12,7 +12,6 @@ defmodule Nila.Banking.Statement do
 
   schema "bank_statements" do
     field :bank_code, :string
-    field :bank_name, :string
     field :bank_ledger_name, :string
     field :bank_ledger_identity, :string
     field :status, :string, default: "received"
@@ -47,25 +46,17 @@ defmodule Nila.Banking.Statement do
   def create_changeset(statement, attrs) do
     statement
     |> cast(attrs, [
-      :bank_code,
-      :bank_name,
-      :bank_ledger_name,
       :source_key,
       :original_filename,
       :source_credentials
     ])
-    |> update_change(:bank_ledger_name, &String.trim/1)
     |> validate_required([
       :org_id,
       :client_id,
-      :bank_code,
-      :bank_name,
-      :bank_ledger_name,
       :status,
       :source_key,
       :original_filename
     ])
-    |> validate_inclusion(:bank_code, @bank_codes)
     |> validate_inclusion(:status, @statuses)
   end
 

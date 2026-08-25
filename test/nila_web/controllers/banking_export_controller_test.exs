@@ -15,9 +15,6 @@ defmodule NilaWeb.BankingExportControllerTest do
       Banking.record_statement(
         %{org_id: org.id, client_id: client.id, brought_in_by_id: user.id},
         %{
-          bank_code: "hdfc",
-          bank_name: "HDFC Bank",
-          bank_ledger_name: "HDFC Bank",
           source_key: "orgs/#{org.id}/bank-statements/export/original.pdf",
           original_filename: "statement.pdf"
         }

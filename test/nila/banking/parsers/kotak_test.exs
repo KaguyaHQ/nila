@@ -18,6 +18,7 @@ defmodule Nila.Banking.Parsers.KotakTest do
   test "parses Kotak amount columns and wrapped narration" do
     assert {:ok, artifact} = Kotak.parse(@statement)
 
+    assert artifact.bank_code == "kotak"
     assert artifact.account_number_masked == "•••• 7036"
     assert artifact.opening_balance_paise == 151_974
     assert artifact.closing_balance_paise == 349_101

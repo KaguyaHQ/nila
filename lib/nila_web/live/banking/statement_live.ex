@@ -579,7 +579,7 @@ defmodule NilaWeb.Banking.StatementLive do
     <Layouts.app flash={@flash} current_scope={@current_scope} current_path={assigns[:current_path]}>
       <div id="banking-statement-page" class="space-y-section">
         <.page_header eyebrow="Banking" eyebrow_path={~p"/banking"} title={@statement.client.name}>
-          {@statement.bank_name} statement
+          {Banking.bank_name(@statement.bank_code) || "Bank"} statement
           <span :if={@statement.account_number_masked}> · {@statement.account_number_masked}</span>
         </.page_header>
 

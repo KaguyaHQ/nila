@@ -7,6 +7,7 @@ defmodule Nila.Banking.Extractor.Stub do
   def extract(_bytes, _opts) do
     {:ok,
      %{
+       bank_code: "hdfc",
        account_number_masked: "•••• 4587",
        statement_from: ~D[2026-06-01],
        statement_to: ~D[2026-06-02],

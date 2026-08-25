@@ -59,19 +59,10 @@ defmodule NilaWeb.Banking.UploadLive do
     org = socket.assigns.current_scope.current_org
 
     with {:ok, client} <- fetch_client(org, params["client_id"]),
-         {:ok, bank_name} <- fetch_bank(params["bank_code"]),
          {:ok, _entry} <- ready_entry(socket),
          [{key, original_filename}] <- consume_statement(socket),
          {:ok, statement} <-
-           record_and_enqueue(
-             socket,
-             client.id,
-             params,
-             bank_name,
-             bank_name,
-             key,
-             original_filename
-           ) do
+           record_and_enqueue(socket, client.id, params, key, original_filename) do
       {:noreply, push_navigate(socket, to: ~p"/banking/#{statement.id}")}
     else
       {:error, message} when is_binary(message) -> {:noreply, assign(socket, :error, message)}
@@ -79,7 +70,7 @@ defmodule NilaWeb.Banking.UploadLive do
     end
   end
 
-  defp record_and_enqueue(socket, client_id, params, bank_name, ledger, key, filename) do
+  defp record_and_enqueue(socket, client_id, params, key, filename) do
     scope = socket.assigns.current_scope
 
     Nila.Repo.transact(fn ->
@@ -91,9 +82,6 @@ defmodule NilaWeb.Banking.UploadLive do
                  brought_in_by_id: scope.user.id
                },
                %{
-                 bank_code: params["bank_code"],
-                 bank_name: bank_name,
-                 bank_ledger_name: ledger,
                  source_key: key,
                  original_filename: filename,
                  source_credentials: credentials(params["password"])
@@ -161,13 +149,6 @@ defmodule NilaWeb.Banking.UploadLive do
     end
   end
 
-  defp fetch_bank(code) do
-    case Banking.bank_name(code) do
-      nil -> {:error, "Pick a supported bank."}
-      name -> {:ok, name}
-    end
-  end
-
   defp credentials(password) when is_binary(password) do
     case String.trim(password) do
       "" -> nil
@@ -184,16 +165,21 @@ defmodule NilaWeb.Banking.UploadLive do
   defp list_clients(_socket), do: []
 
   defp defaults do
-    %{"client_id" => nil, "bank_code" => "hdfc", "password" => ""}
+    %{"client_id" => nil, "password" => ""}
   end
 
   defp statement_path(statement), do: "/banking/#{statement.id}"
 
   defp statement_bank(statement) do
+    bank_name = Banking.bank_name(statement.bank_code) || pending_bank_name(statement.status)
+
     if statement.account_number_masked,
-      do: "#{statement.bank_name} · #{statement.account_number_masked}",
-      else: statement.bank_name
+      do: "#{bank_name} · #{statement.account_number_masked}",
+      else: bank_name
   end
+
+  defp pending_bank_name("failed"), do: "Bank not recognised"
+  defp pending_bank_name(_status), do: "Reading statement"
 
   defp statement_period(%{statement_from: %Date{} = from, statement_to: %Date{} = to}),
     do: "#{format_display_date(from)}–#{format_display_date(to)}"
@@ -327,7 +313,6 @@ defmodule NilaWeb.Banking.UploadLive do
               prompt="Select a client"
               options={@clients}
             />
-            <.input field={@form[:bank_code]} type="select" label="Bank" options={Banking.banks()} />
             <.input
               field={@form[:password]}
               type="password"

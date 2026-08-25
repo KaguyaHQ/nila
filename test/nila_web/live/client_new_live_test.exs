@@ -4,63 +4,91 @@ defmodule NilaWeb.ClientNewLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
+  alias Nila.TallyDevices
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
     %{conn: log_in_user(conn, user), org: org}
   end
 
-  test "creates a client and lands in prefilled intake", %{conn: conn, org: org} do
+  test "creates a client manually and returns to the directory", %{conn: conn, org: org} do
     {:ok, view, _html} = live(conn, ~p"/clients/new")
 
     assert has_element?(view, "#client-form")
 
     result =
       view
-      |> form("#client-form", client: %{name: "Aurora Foods", type: "company"})
+      |> form("#client-form", client: %{name: "Aurora Foods"})
       |> render_submit()
 
     assert [client] = Clients.list_clients(org.id)
     assert client.name == "Aurora Foods"
     assert client.org_id == org.id
+    assert client.type == "company"
+    assert client.chase_channel == "none"
 
-    path = "/gst/upload?client_id=#{client.id}"
-    assert {:error, {:live_redirect, %{to: ^path}}} = result
+    assert {:error, {:live_redirect, %{to: "/clients"}}} = result
 
-    {:ok, intake, html} = follow_redirect(result, conn)
-    assert html =~ "Client added — now bring in their documents."
-    assert has_element?(intake, "#gst-upload-form option[selected][value='#{client.id}']")
-
-    closeable = Nila.Gst.Filing.Calendar.closeable_period(Date.utc_today())
-    assert has_element?(intake, "#gst-upload-form option[selected][value='#{closeable}']")
+    {:ok, directory, html} = follow_redirect(result, conn)
+    assert html =~ "Aurora Foods added."
+    assert has_element?(directory, "#clients-table", "Aurora Foods")
   end
 
-  test "chase consent fields render and email points to Connectors when no mailbox is connected",
-       %{
-         conn: conn,
-         org: org
-       } do
+  test "shows only the client details needed at creation", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/clients/new")
 
-    assert has_element?(view, "#client_email")
-    assert has_element?(view, "#client_chase_channel", "We'll send asks ourselves")
-    assert has_element?(view, "#client_chase_channel", "WhatsApp")
+    assert has_element?(view, "#client-new-page h1", "Add client")
+    assert has_element?(view, "#client_name")
+    assert has_element?(view, "#client_gstin")
+    refute has_element?(view, "#client_tally_company_id")
+    refute has_element?(view, "#client_email")
+    refute has_element?(view, "#client_phone")
+    refute has_element?(view, "#client_type")
+    refute has_element?(view, "#client_pan")
+    refute has_element?(view, "#client_chase_channel")
+    refute render(view) =~ "A first-class party"
+  end
+
+  test "connects the new client to a selected Tally company", %{conn: conn, org: org} do
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [
+        %{
+          "name" => "Aurora Books",
+          "tally_guid" => "aurora",
+          "gstin" => "29AAVCS8021P1ZB"
+        }
+      ])
+
+    {:ok, view, _html} = live(conn, ~p"/clients/new")
+
+    assert has_element?(
+             view,
+             "#client_tally_company_id option[value='#{company.id}']",
+             "Aurora Books · Accounts PC"
+           )
 
     html =
       view
-      |> form("#client-form",
-        client: %{
-          name: "Aurora Foods",
-          type: "company",
-          email: "accounts@aurora.example",
-          chase_channel: "email"
-        }
-      )
+      |> form("#client-form", client: %{tally_company_id: company.id})
+      |> render_change()
+
+    assert html =~ ~s(value="Aurora Books")
+    assert html =~ ~s(value="29AAVCS8021P1ZB")
+
+    result =
+      view
+      |> form("#client-form", client: %{tally_company_id: company.id, name: "Aurora Foods"})
       |> render_submit()
 
-    assert html =~ "requires a connected email account"
-    assert html =~ "Settings → Connectors"
-    assert Clients.list_clients(org.id) == []
+    assert [client] = Clients.list_clients(org.id)
+    assert client.name == "Aurora Foods"
+    assert client.gstin == "29AAVCS8021P1ZB"
+    assert [%{id: company_id}] = TallyDevices.list_open_companies(org.id, client.id)
+    assert company_id == company.id
+
+    assert {:error, {:live_redirect, %{to: "/clients"}}} = result
   end
 
   test "a blank name shows an error and creates nothing", %{conn: conn, org: org} do
@@ -68,7 +96,7 @@ defmodule NilaWeb.ClientNewLiveTest do
 
     html =
       view
-      |> form("#client-form", client: %{name: "", type: "company"})
+      |> form("#client-form", client: %{name: ""})
       |> render_submit()
 
     assert html =~ "can&#39;t be blank"
@@ -81,7 +109,7 @@ defmodule NilaWeb.ClientNewLiveTest do
     html =
       view
       |> form("#client-form",
-        client: %{name: "Aurora Foods", type: "company", gstin: "NOTAGSTIN"}
+        client: %{name: "Aurora Foods", gstin: "NOTAGSTIN"}
       )
       |> render_submit()
 

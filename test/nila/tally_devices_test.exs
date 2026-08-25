@@ -152,6 +152,38 @@ defmodule Nila.TallyDevicesTest do
     assert Nila.Repo.get!(Nila.Clients.Client, client.id).gstin == "33BPBPK1081A1ZO"
   end
 
+  test "creates a client from an unlinked company but never repurposes a linked one" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    assert {:ok, [company]} =
+             TallyDevices.report_companies(device, [
+               %{"name" => "Raw Tally Name", "tally_guid" => "new-client"}
+             ])
+
+    assert :ok = TallyDevices.mark_companies_closed(device.id)
+    assert Enum.map(TallyDevices.list_importable_companies(org.id), & &1.id) == [company.id]
+
+    assert {:ok, client} =
+             TallyDevices.create_client_from_company(org.id, company.id, %{
+               org_id: org.id,
+               name: "Caltech Refrigeration",
+               type: "company"
+             })
+
+    assert client.name == "Caltech Refrigeration"
+    assert Nila.Repo.reload!(company).client_id == client.id
+
+    assert {:error, :not_found} =
+             TallyDevices.create_client_from_company(org.id, company.id, %{
+               org_id: org.id,
+               name: "Wrong replacement",
+               type: "company"
+             })
+
+    assert Nila.Repo.reload!(client).name == "Caltech Refrigeration"
+  end
+
   test "does not resolve another organization's reported company" do
     %{org: org} = user_with_org_fixture()
     %{org: other_org} = user_with_org_fixture()

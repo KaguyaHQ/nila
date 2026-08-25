@@ -73,15 +73,15 @@ defmodule NilaWeb.Layouts do
               current_path={@current_path}
             />
             <.rail_link
-              href={~p"/clients"}
-              icon="hero-users"
-              label="Clients"
-              current_path={@current_path}
-            />
-            <.rail_link
               href={~p"/banking"}
               icon="hero-building-library"
               label="Banking"
+              current_path={@current_path}
+            />
+            <.rail_link
+              href={~p"/clients"}
+              icon="hero-users"
+              label="Clients"
               current_path={@current_path}
             />
           </div>
@@ -180,7 +180,7 @@ defmodule NilaWeb.Layouts do
               <.settings_link
                 href={~p"/settings/connectors"}
                 icon="hero-link"
-                label="Connectors"
+                label="Connections"
                 active={@active_section == :connectors}
               />
               <.settings_link

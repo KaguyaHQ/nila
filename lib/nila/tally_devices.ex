@@ -205,13 +205,21 @@ defmodule Nila.TallyDevices do
     Repo.all(query)
   end
 
+  def list_linked_companies(org_id) when is_integer(org_id) do
+    Repo.all(
+      from company in Company,
+        where: company.org_id == ^org_id and not is_nil(company.client_id),
+        order_by: [asc: company.name],
+        preload: [:device]
+    )
+  end
+
   def list_importable_companies(org_id) when is_integer(org_id) do
     Repo.all(
       from company in Company,
         join: device in assoc(company, :device),
         where:
-          company.org_id == ^org_id and company.is_open and is_nil(company.client_id) and
-            is_nil(device.revoked_at),
+          company.org_id == ^org_id and is_nil(company.client_id) and is_nil(device.revoked_at),
         order_by: [asc: company.name, asc: device.name],
         preload: [device: device]
     )
@@ -238,6 +246,55 @@ defmodule Nila.TallyDevices do
   end
 
   def ensure_company_client(_org_id, _company_id), do: {:error, :not_found}
+
+  @doc "Creates a client from an unlinked discovered Tally company and applies its details."
+  def create_client_from_company(org_id, company_id, client_attrs)
+      when is_integer(org_id) and is_integer(company_id) and is_map(client_attrs) do
+    Repo.transact(fn ->
+      with %Company{} = company <-
+             Repo.one(
+               from company in Company,
+                 join: device in assoc(company, :device),
+                 where:
+                   company.id == ^company_id and company.org_id == ^org_id and
+                     is_nil(company.client_id) and is_nil(device.revoked_at),
+                 preload: [:client],
+                 lock: "FOR UPDATE"
+             ) || {:error, :not_found},
+           {:ok, client} <- ensure_company_client_record(company),
+           {:ok, client} <- Clients.update_client(client, client_attrs) do
+        {:ok, client}
+      end
+    end)
+  end
+
+  def create_client_from_company(_org_id, _company_id, _client_attrs),
+    do: {:error, :not_found}
+
+  def update_client_and_link_company(%Client{} = client, company_id, client_attrs)
+      when is_integer(company_id) and is_map(client_attrs) do
+    Repo.transact(fn ->
+      with %Company{} = company <-
+             Repo.one(
+               from company in Company,
+                 join: device in assoc(company, :device),
+                 where:
+                   company.id == ^company_id and company.org_id == ^client.org_id and
+                     is_nil(company.client_id) and is_nil(device.revoked_at),
+                 lock: "FOR UPDATE"
+             ) || {:error, :not_found},
+           {:ok, client} <- Clients.update_client(client, client_attrs) do
+        company
+        |> Ecto.Changeset.change(client_id: client.id)
+        |> Repo.update!()
+
+        {:ok, client}
+      end
+    end)
+  end
+
+  def update_client_and_link_company(_client, _company_id, _client_attrs),
+    do: {:error, :not_found}
 
   @doc "Creates or reuses clients for selected discovered companies and links them atomically."
   def import_companies_as_clients(org_id, company_ids)
@@ -581,9 +638,7 @@ defmodule Nila.TallyDevices do
 
   defp maybe_link_company_by_gstin(%Company{} = company), do: company
 
-  defp maybe_add_gstin_to_linked_client(
-         %Company{client_id: client_id, gstin: gstin} = company
-       )
+  defp maybe_add_gstin_to_linked_client(%Company{client_id: client_id, gstin: gstin} = company)
        when is_integer(client_id) and is_binary(gstin) do
     case Repo.get(Client, client_id) do
       %Client{gstin: nil} = client ->

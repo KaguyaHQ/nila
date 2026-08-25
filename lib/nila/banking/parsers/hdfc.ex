@@ -21,6 +21,7 @@ defmodule Nila.Banking.Parsers.Hdfc do
 
       {:ok,
        %{
+         bank_code: "hdfc",
          account_number_masked: masked_account(text),
          statement_from: first["date"],
          statement_to: last["date"],

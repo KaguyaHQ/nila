@@ -9,6 +9,7 @@ defmodule Nila.Clients.Client do
   def chase_channels, do: @chase_channels
 
   schema "clients" do
+    field :tally_company_id, :integer, virtual: true
     field :name, :string
     field :type, :string
     field :address, :string
@@ -29,6 +30,7 @@ defmodule Nila.Clients.Client do
     client
     |> cast(attrs, [
       :org_id,
+      :tally_company_id,
       :name,
       :type,
       :address,

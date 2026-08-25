@@ -14,20 +14,31 @@ defmodule NilaWeb.SettingsLiveTest do
       {:ok, conn: log_in_user(conn, user), org: org}
     end
 
-    test "makes Add a channel focal when no channels are configured", %{conn: conn} do
+    test "shows the accounting connector while document intake is hidden", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings/connectors")
 
       refute has_element?(view, "#settings-connected-accounts")
 
       assert has_element?(
                view,
-               "#settings-tally-connector #settings-download-tally-connector[download][href='https://github.com/KaguyaHQ/nila-downloads/releases/latest/download/NilaConnector-win-x64-setup.exe']",
-               "Download Nila Connector"
+               "#settings-tally-connector h2",
+               "TallyPrime"
              )
 
       assert has_element?(
                view,
-               "#settings-add-channel-disclosure[open] > summary h2",
+               "#settings-tally-connector #settings-download-tally-connector[download][href='https://github.com/KaguyaHQ/nila-downloads/releases/latest/download/NilaConnector-win-x64-setup.exe']",
+               "Download connector"
+             )
+
+      assert has_element?(view, "#settings-download-tally-connector[data-variant='soft']")
+
+      assert has_element?(view, "#settings-document-intake > h2", "Document intake")
+      assert has_element?(view, "#settings-document-intake.hidden")
+
+      assert has_element?(
+               view,
+               "#settings-add-channel-disclosure:not([open]) > summary h3",
                "Add a channel"
              )
 
@@ -100,33 +111,38 @@ defmodule NilaWeb.SettingsLiveTest do
       assert has_element?(view, "#settings-nav")
       assert has_element?(view, "#settings-workspace")
       assert has_element?(view, "#settings-firm-form")
+      assert has_element?(view, ~s|#settings-firm-form input[name="org[name]"]|)
+      assert has_element?(view, ~s|#settings-firm-form input[name="org[contact_phone]"]|)
+
+      assert has_element?(
+               view,
+               "#settings-save-firm[data-variant='primary']:not([disabled])",
+               "Save changes"
+             )
+
+      refute has_element?(view, ~s|#settings-firm-form input[name="org[legal_name]"]|)
+      refute has_element?(view, ~s|#settings-firm-form input[name="org[gstin]"]|)
+      refute has_element?(view, ~s|#settings-firm-form input[name="org[address_line1]"]|)
       assert has_element?(view, ~s|a[aria-current="page"][href="/settings/workspace"]|)
     end
 
-    test "updates the firm's filing identity", %{conn: conn, org: org} do
+    test "updates the shared firm details", %{conn: conn, org: org} do
       {:ok, view, _html} = live(conn, ~p"/settings/workspace")
 
       view
       |> form("#settings-firm-form",
         org: %{
           name: "Balaji & Associates",
-          legal_name: "Balaji and Associates LLP",
-          gstin: "33BPBPK1081A1ZO",
-          state: "Tamil Nadu",
-          contact_email: "balaji@example.com",
-          contact_phone: "9962550448",
-          address_line1: "No 1 Marina",
-          city: "Chennai",
-          postal_code: "600001"
+          contact_phone: "9962550448"
         }
       )
       |> render_submit()
 
       firm = Orgs.get_org!(org.id)
       assert firm.name == "Balaji & Associates"
-      assert firm.legal_name == "Balaji and Associates LLP"
-      assert firm.gstin == "33BPBPK1081A1ZO"
-      assert firm.city == "Chennai"
+      assert firm.contact_phone == "9962550448"
+      assert firm.legal_name == org.legal_name
+      assert firm.gstin == org.gstin
     end
 
     test "renders Meta Embedded Signup on the connectors screen", %{conn: conn} do
@@ -189,7 +205,7 @@ defmodule NilaWeb.SettingsLiveTest do
       connection = whatsapp_connection(org)
       {:ok, view, _html} = live(conn, ~p"/settings/connectors")
 
-      assert has_element?(view, "#settings-connected-accounts h2", "Configured channels")
+      assert has_element?(view, "#settings-connected-accounts h3", "Configured channels")
 
       assert has_element?(
                view,
@@ -212,7 +228,7 @@ defmodule NilaWeb.SettingsLiveTest do
 
       assert has_element?(
                view,
-               "#settings-add-channel-disclosure:not([open]) > summary h2",
+               "#settings-add-channel-disclosure:not([open]) > summary h3",
                "Add another channel"
              )
 
@@ -333,7 +349,7 @@ defmodule NilaWeb.SettingsLiveTest do
       assert {:error, :not_found} = Integrations.get_connection(connection.id)
       refute has_element?(view, "#settings-connection-#{connection.id}")
       refute has_element?(view, "#settings-connected-accounts")
-      assert has_element?(view, "#settings-add-channel-disclosure[open]")
+      assert has_element?(view, "#settings-add-channel-disclosure:not([open])")
     end
 
     test "legacy disconnected WhatsApp hides a stored raw readiness error", %{

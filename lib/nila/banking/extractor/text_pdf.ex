@@ -1,7 +1,7 @@
 defmodule Nila.Banking.Extractor.TextPdf do
   @moduledoc """
   Extracts a bank-generated PDF's embedded text with Poppler and dispatches it
-  to the selected bank's deterministic layout parser. Scans are deliberately
+  to the matching bank's deterministic layout parser. Scans are deliberately
   rejected; this path never invokes OCR.
   """
 
@@ -12,13 +12,12 @@ defmodule Nila.Banking.Extractor.TextPdf do
 
   @impl true
   def extract(bytes, opts) when is_binary(bytes) do
-    bank_code = Keyword.fetch!(opts, :bank_code)
     password = Keyword.get(opts, :password)
 
     with :ok <- pdf?(bytes),
          {:ok, text} <- text(bytes, password),
          :ok <- usable_text?(text) do
-      parse(bank_code, text)
+      parse_text(text)
     end
   end
 
@@ -36,9 +35,13 @@ defmodule Nila.Banking.Extractor.TextPdf do
     ErlangError -> {:error, :text_extraction_unavailable}
   end
 
-  defp parse("hdfc", text), do: Hdfc.parse(text)
-  defp parse("kotak", text), do: Kotak.parse(text)
-  defp parse(_bank_code, _text), do: {:error, :unsupported_statement}
+  @doc false
+  def parse_text(text) when is_binary(text) do
+    case Hdfc.parse(text) do
+      {:error, :unsupported_statement} -> Kotak.parse(text)
+      result -> result
+    end
+  end
 
   defp pdf?(<<"%PDF-", _rest::binary>>), do: :ok
   defp pdf?(_bytes), do: {:error, :not_text_pdf}

@@ -28,6 +28,8 @@ defmodule Nila.BankingTest do
 
     assert {:ok, ready} = Banking.get_statement(context.org.id, statement.id)
     assert ready.status == "ready"
+    assert ready.bank_code == "hdfc"
+    assert ready.bank_ledger_name == nil
     assert ready.source_credentials == nil
     assert ready.account_number_masked == "•••• 4587"
     assert ready.transaction_count == 1
@@ -162,9 +164,6 @@ defmodule Nila.BankingTest do
       },
       overrides
       |> Enum.into(%{
-        bank_code: "hdfc",
-        bank_name: "HDFC Bank",
-        bank_ledger_name: "HDFC Bank",
         source_key: "orgs/#{context.org.id}/bank-statements/test/original.pdf",
         original_filename: "statement.pdf"
       })

@@ -31,6 +31,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert has_element?(view, "#banking-statement-pdf input[type=file][accept='.pdf']")
     assert has_element?(view, "label[for='statement_password']", "PDF password (optional)")
     assert has_element?(view, "#statement_password[type=password]")
+    refute has_element?(view, "#statement_bank_code")
 
     assert has_element?(
              view,
@@ -38,7 +39,6 @@ defmodule NilaWeb.Banking.UploadLiveTest do
              "Read statement"
            )
 
-    assert render(view) =~ "Kotak Mahindra Bank / 811"
     assert render(view) =~ "without OCR"
   end
 
@@ -82,7 +82,6 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     |> form("#banking-upload-form",
       statement: %{
         client_id: context.client.id,
-        bank_code: "kotak",
         password: "short-lived"
       }
     )
@@ -92,8 +91,8 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert_redirect(view, ~p"/banking/#{statement.id}")
     assert statement.org_id == context.org.id
     assert statement.client_id == context.client.id
-    assert statement.bank_code == "kotak"
-    assert statement.bank_ledger_name == "Kotak Mahindra Bank / 811"
+    assert statement.bank_code == nil
+    assert statement.bank_ledger_name == nil
     assert statement.source_credentials == %{"password" => "short-lived"}
     assert_enqueued(worker: StatementWorker, args: %{statement_id: statement.id})
   end
@@ -370,9 +369,6 @@ defmodule NilaWeb.Banking.UploadLiveTest do
           brought_in_by_id: context.user.id
         },
         %{
-          bank_code: "hdfc",
-          bank_name: "HDFC Bank",
-          bank_ledger_name: "HDFC Bank",
           source_key: "orgs/#{context.org.id}/bank-statements/ready/original.pdf",
           original_filename: "statement.pdf"
         }

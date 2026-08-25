@@ -27,7 +27,6 @@ defmodule Nila.Banking.StatementWorker do
          {:ok, statement} <- Banking.register_source_hash(statement, bytes),
          {:ok, artifact} <-
            extractor().extract(bytes,
-             bank_code: statement.bank_code,
              password: password(statement.source_credentials)
            ) do
       statement = Banking.mark_ready(statement, artifact)

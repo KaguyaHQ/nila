@@ -164,229 +164,237 @@ defmodule NilaWeb.Settings.ConnectorsLive do
         data-graph-version={@whatsapp_signup_config && @whatsapp_signup_config.graph_version}
         data-transaction={@whatsapp_signup_transaction}
       >
-        <.settings_header title="Connectors">
-          Connect the software and channels Nila receives from and sends work to.
+        <.settings_header title="Connections">
+          Connect Nila to your accounting software.
         </.settings_header>
 
-        <section
-          id="settings-tally-connector"
-          class="border-base-300 gap-block py-block flex flex-col border-y lg:flex-row lg:items-center lg:justify-between"
-        >
-          <div class="space-y-related">
-            <h2 class="text-base-content text-h4 font-semibold">TallyPrime</h2>
-            <p class="text-ink-muted text-ui">
-              Install Nila Connector on the computer running TallyPrime.
-            </p>
-          </div>
-          <.download_button
-            href={@tally_connector_download_url}
-            id="settings-download-tally-connector"
-            target="_blank"
-            rel="noopener"
-          >
-            <.icon name="hero-arrow-down-tray" class="size-4" /> Download Nila Connector
-          </.download_button>
-        </section>
-
-        <section
-          :if={@connections != []}
-          id="settings-connected-accounts"
-          class="space-y-block"
-        >
-          <div class="space-y-related">
-            <h2 class="text-base-content text-h4 font-semibold">Configured channels</h2>
-            <p class="text-ink-muted text-ui">
-              Intake state and recent document activity for every configured channel.
-            </p>
-          </div>
-
+        <section id="settings-accounting" class="pt-block max-w-4xl">
           <div
-            id="settings-connection-list"
-            class="border-base-300 divide-base-300 divide-y border-y"
+            id="settings-tally-connector"
+            class="gap-block flex flex-col lg:flex-row lg:items-center lg:justify-between"
           >
-            <article
-              :for={connection <- @connections}
-              id={"settings-connection-#{connection.id}"}
-              class="gap-block py-block grid min-w-0 xl:grid-cols-[minmax(0,1fr)_auto]"
+            <div class="space-y-related">
+              <h2 class="text-base-content text-ui font-semibold">TallyPrime</h2>
+              <p class="text-ink-muted text-ui">
+                Connect using Nila Connector.
+              </p>
+            </div>
+            <.download_button
+              href={@tally_connector_download_url}
+              id="settings-download-tally-connector"
+              target="_blank"
+              rel="noopener"
+              variant="soft"
             >
-              <div class="space-y-related min-w-0">
-                <div class="flex items-center gap-2">
-                  <.provider_logo provider={connection.provider} />
-                  <.badge variant="neutral">{String.upcase(connection.provider)}</.badge>
-                </div>
-                <h3 class="text-base-content text-ui font-semibold wrap-break-word">
-                  {Connection.display_label(connection)}
-                </h3>
-                <p class="text-ink-muted text-ui wrap-break-word">
-                  {connection_detail(connection)}
-                </p>
-                <p
-                  :if={connection.provider == "whatsapp" && connection.settings["waba_id"]}
-                  class="text-ink-subtle text-ui wrap-break-word"
-                >
-                  WABA {connection.settings["waba_id"]} · Phone ID {connection.external_account_id}
-                </p>
-                <p
-                  id={"settings-connection-state-#{connection.id}"}
-                  class={connection_state_class(connection)}
-                >
-                  {connection_state(connection)}
-                </p>
-                <p class="text-ink-muted text-ui">
-                  {activity_label(connection)}: {last_sync_label(connection.last_synced_at)}
-                </p>
-              </div>
-
-              <div class="space-y-related xl:text-right">
-                <.button
-                  :if={whatsapp_needs_verification?(connection)}
-                  type="button"
-                  id={"settings-verify-connection-#{connection.id}"}
-                  phx-click="verify_whatsapp"
-                  phx-value-id={connection.id}
-                  data-primary-action
-                  variant="soft"
-                  size="sm"
-                >
-                  <.icon name="hero-arrow-path" class="size-4" /> Retry verification
-                </.button>
-                <.button
-                  :if={
-                    connection.status == "disconnected" && connection.provider == "whatsapp" &&
-                      @whatsapp_signup_config
-                  }
-                  type="button"
-                  id={"settings-reconnect-connection-#{connection.id}"}
-                  data-whatsapp-launch
-                  data-whatsapp-connection-id={connection.id}
-                  data-primary-action
-                  variant="soft"
-                  size="sm"
-                >
-                  <.icon name="hero-link" class="size-4" /> Reconnect with Meta
-                </.button>
-                <.button
-                  :if={connection.status != "active" && connection.provider != "whatsapp"}
-                  type="button"
-                  id={"settings-reconnect-connection-#{connection.id}"}
-                  phx-click="reconnect"
-                  phx-value-id={connection.id}
-                  data-primary-action
-                  variant="soft"
-                  size="sm"
-                >
-                  <.icon name="hero-link" class="size-4" /> Reconnect
-                </.button>
-                <.button
-                  :if={connection.status == "disconnected" && connection.provider == "whatsapp"}
-                  type="button"
-                  id={"settings-remove-connection-#{connection.id}"}
-                  phx-click="remove_whatsapp_connection"
-                  phx-value-id={connection.id}
-                  data-confirm="Remove this WhatsApp connection from Nila? To receive documents from this number again, you will need to connect it through Meta."
-                  variant="error"
-                  size="sm"
-                >
-                  <.icon name="hero-trash" class="size-4" /> Remove connection
-                </.button>
-
-                <details
-                  id={"settings-edit-connection-#{connection.id}"}
-                  class="group text-left"
-                >
-                  <summary class="hover:text-ink text-moon text-ui inline-flex cursor-pointer list-none items-center gap-2 font-medium">
-                    Edit connection
-                    <.icon
-                      name="hero-chevron-down-mini"
-                      class="text-ink-faint size-4 transition-transform group-open:rotate-180"
-                    />
-                  </summary>
-                  <div class="border-base-300 mt-related pt-related space-y-block border-t xl:w-96">
-                    <.form
-                      for={to_form(connection_form_data(connection), as: :connection)}
-                      id={"settings-connection-form-#{connection.id}"}
-                      phx-submit="update_connection"
-                      phx-value-id={connection.id}
-                      class="space-y-related"
-                    >
-                      <.input
-                        field={to_form(connection_form_data(connection), as: :connection)[:label]}
-                        id={"settings-connection-label-#{connection.id}"}
-                        label="Label"
-                      />
-                      <.button
-                        type="submit"
-                        id={"settings-save-connection-#{connection.id}"}
-                        variant="ghost"
-                        size="sm"
-                      >
-                        <.icon name="hero-check" class="size-4" /> Save label
-                      </.button>
-                    </.form>
-
-                    <div
-                      :if={connection.status != "disconnected"}
-                      class="flex flex-wrap items-center gap-2"
-                    >
-                      <.button
-                        :if={
-                          connection.provider == "whatsapp" &&
-                            !whatsapp_needs_verification?(connection)
-                        }
-                        type="button"
-                        id={"settings-verify-connection-#{connection.id}"}
-                        phx-click="verify_whatsapp"
-                        phx-value-id={connection.id}
-                        variant="ghost"
-                        size="sm"
-                      >
-                        <.icon name="hero-check-circle" class="size-4" /> Verify readiness
-                      </.button>
-                      <.button
-                        type="button"
-                        id={"settings-disconnect-connection-#{connection.id}"}
-                        phx-click="disconnect"
-                        phx-value-id={connection.id}
-                        data-confirm="Disconnect this channel from Nila? Intake will pause until it is reconnected."
-                        variant="ghost"
-                        size="sm"
-                      >
-                        <.icon name="hero-no-symbol" class="size-4" /> Disconnect
-                      </.button>
-                    </div>
-                  </div>
-                </details>
-              </div>
-            </article>
+              <.icon name="hero-arrow-down-tray" class="size-4" /> Download connector
+            </.download_button>
           </div>
         </section>
 
-        <section id="settings-add-channel">
-          <details
-            id="settings-add-channel-disclosure"
-            open={@connections == []}
-            class="group/add-channel"
-          >
-            <summary class="hover:text-ink text-base-content flex cursor-pointer list-none items-center gap-3">
-              <div class="space-y-related min-w-0 flex-1">
-                <h2 class="text-h4 font-semibold">
-                  {if @connections == [], do: "Add a channel", else: "Add another channel"}
-                </h2>
-                <p class="text-ink-muted text-ui">
-                  {if @connections == [],
-                    do: "Choose where documents arrive.",
-                    else: "Configure another inbox or intake number."}
-                </p>
-              </div>
-              <.icon
-                name="hero-chevron-down-mini"
-                class="text-ink-faint size-4 shrink-0 transition-transform group-open/add-channel:rotate-180"
-              />
-            </summary>
+        <section id="settings-document-intake" class="space-y-block hidden">
+          <h2 class="text-base-content text-h4 font-semibold">Document intake</h2>
 
-            <div class="pt-block">
-              <div class="border-base-300 divide-base-300 divide-y border-y">
-                <details id="settings-add-gmail-disclosure" name="settings-add-provider" class="group">
+          <section
+            :if={@connections != []}
+            id="settings-connected-accounts"
+            class="space-y-block"
+          >
+            <div class="space-y-related">
+              <h3 class="text-base-content text-ui font-semibold">Configured channels</h3>
+              <p class="text-ink-muted text-ui">
+                Intake state and recent document activity for every configured channel.
+              </p>
+            </div>
+
+            <div
+              id="settings-connection-list"
+              class="border-base-300 divide-base-300 divide-y border-y"
+            >
+              <article
+                :for={connection <- @connections}
+                id={"settings-connection-#{connection.id}"}
+                class="gap-block py-block grid min-w-0 xl:grid-cols-[minmax(0,1fr)_auto]"
+              >
+                <div class="space-y-related min-w-0">
+                  <div class="flex items-center gap-2">
+                    <.provider_logo provider={connection.provider} />
+                    <.badge variant="neutral">{String.upcase(connection.provider)}</.badge>
+                  </div>
+                  <h3 class="text-base-content text-ui font-semibold wrap-break-word">
+                    {Connection.display_label(connection)}
+                  </h3>
+                  <p class="text-ink-muted text-ui wrap-break-word">
+                    {connection_detail(connection)}
+                  </p>
+                  <p
+                    :if={connection.provider == "whatsapp" && connection.settings["waba_id"]}
+                    class="text-ink-subtle text-ui wrap-break-word"
+                  >
+                    WABA {connection.settings["waba_id"]} · Phone ID {connection.external_account_id}
+                  </p>
+                  <p
+                    id={"settings-connection-state-#{connection.id}"}
+                    class={connection_state_class(connection)}
+                  >
+                    {connection_state(connection)}
+                  </p>
+                  <p class="text-ink-muted text-ui">
+                    {activity_label(connection)}: {last_sync_label(connection.last_synced_at)}
+                  </p>
+                </div>
+
+                <div class="space-y-related xl:text-right">
+                  <.button
+                    :if={whatsapp_needs_verification?(connection)}
+                    type="button"
+                    id={"settings-verify-connection-#{connection.id}"}
+                    phx-click="verify_whatsapp"
+                    phx-value-id={connection.id}
+                    data-primary-action
+                    variant="soft"
+                    size="sm"
+                  >
+                    <.icon name="hero-arrow-path" class="size-4" /> Retry verification
+                  </.button>
+                  <.button
+                    :if={
+                      connection.status == "disconnected" && connection.provider == "whatsapp" &&
+                        @whatsapp_signup_config
+                    }
+                    type="button"
+                    id={"settings-reconnect-connection-#{connection.id}"}
+                    data-whatsapp-launch
+                    data-whatsapp-connection-id={connection.id}
+                    data-primary-action
+                    variant="soft"
+                    size="sm"
+                  >
+                    <.icon name="hero-link" class="size-4" /> Reconnect with Meta
+                  </.button>
+                  <.button
+                    :if={connection.status != "active" && connection.provider != "whatsapp"}
+                    type="button"
+                    id={"settings-reconnect-connection-#{connection.id}"}
+                    phx-click="reconnect"
+                    phx-value-id={connection.id}
+                    data-primary-action
+                    variant="soft"
+                    size="sm"
+                  >
+                    <.icon name="hero-link" class="size-4" /> Reconnect
+                  </.button>
+                  <.button
+                    :if={connection.status == "disconnected" && connection.provider == "whatsapp"}
+                    type="button"
+                    id={"settings-remove-connection-#{connection.id}"}
+                    phx-click="remove_whatsapp_connection"
+                    phx-value-id={connection.id}
+                    data-confirm="Remove this WhatsApp connection from Nila? To receive documents from this number again, you will need to connect it through Meta."
+                    variant="error"
+                    size="sm"
+                  >
+                    <.icon name="hero-trash" class="size-4" /> Remove connection
+                  </.button>
+
+                  <details
+                    id={"settings-edit-connection-#{connection.id}"}
+                    class="group text-left"
+                  >
+                    <summary class="hover:text-ink text-moon text-ui inline-flex cursor-pointer list-none items-center gap-2 font-medium">
+                      Edit connection
+                      <.icon
+                        name="hero-chevron-down-mini"
+                        class="text-ink-faint size-4 transition-transform group-open:rotate-180"
+                      />
+                    </summary>
+                    <div class="border-base-300 mt-related pt-related space-y-block border-t xl:w-96">
+                      <.form
+                        for={to_form(connection_form_data(connection), as: :connection)}
+                        id={"settings-connection-form-#{connection.id}"}
+                        phx-submit="update_connection"
+                        phx-value-id={connection.id}
+                        class="space-y-related"
+                      >
+                        <.input
+                          field={to_form(connection_form_data(connection), as: :connection)[:label]}
+                          id={"settings-connection-label-#{connection.id}"}
+                          label="Label"
+                        />
+                        <.button
+                          type="submit"
+                          id={"settings-save-connection-#{connection.id}"}
+                          variant="ghost"
+                          size="sm"
+                        >
+                          <.icon name="hero-check" class="size-4" /> Save label
+                        </.button>
+                      </.form>
+
+                      <div
+                        :if={connection.status != "disconnected"}
+                        class="flex flex-wrap items-center gap-2"
+                      >
+                        <.button
+                          :if={
+                            connection.provider == "whatsapp" &&
+                              !whatsapp_needs_verification?(connection)
+                          }
+                          type="button"
+                          id={"settings-verify-connection-#{connection.id}"}
+                          phx-click="verify_whatsapp"
+                          phx-value-id={connection.id}
+                          variant="ghost"
+                          size="sm"
+                        >
+                          <.icon name="hero-check-circle" class="size-4" /> Verify readiness
+                        </.button>
+                        <.button
+                          type="button"
+                          id={"settings-disconnect-connection-#{connection.id}"}
+                          phx-click="disconnect"
+                          phx-value-id={connection.id}
+                          data-confirm="Disconnect this channel from Nila? Intake will pause until it is reconnected."
+                          variant="ghost"
+                          size="sm"
+                        >
+                          <.icon name="hero-no-symbol" class="size-4" /> Disconnect
+                        </.button>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section id="settings-add-channel">
+            <details
+              id="settings-add-channel-disclosure"
+              class="border-base-300 group/add-channel border-b"
+            >
+              <summary class="hover:text-ink pb-block text-base-content flex cursor-pointer list-none items-center gap-3">
+                <div class="space-y-related min-w-0 flex-1">
+                  <h3 class="text-ui font-semibold">
+                    {if @connections == [], do: "Add a channel", else: "Add another channel"}
+                  </h3>
+                  <p class="text-ink-muted text-ui">
+                    {if @connections == [],
+                      do: "Connect an inbox or intake number.",
+                      else: "Configure another inbox or intake number."}
+                  </p>
+                </div>
+                <.icon
+                  name="hero-chevron-down-mini"
+                  class="text-ink-faint size-4 shrink-0 transition-transform group-open/add-channel:rotate-180"
+                />
+              </summary>
+
+              <div class="border-base-300 divide-base-300 divide-y border-t">
+                <details
+                  id="settings-add-gmail-disclosure"
+                  name="settings-add-provider"
+                  class="group"
+                >
                   <summary class="hover:text-ink py-block text-base-content text-ui flex cursor-pointer list-none items-center gap-3">
                     <.provider_logo provider="gmail" />
                     <div class="space-y-related min-w-0 flex-1">
@@ -490,9 +498,9 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                     <p
                       :if={@whatsapp_signup_config}
                       data-whatsapp-signup-status
-                      class="nila-whatsapp-status text-body text-ink-muted"
+                      aria-live="polite"
+                      class="nila-whatsapp-status text-ink-muted text-ui hidden"
                     >
-                      Meta signup opens in a secure window.
                     </p>
                     <p
                       :if={!@whatsapp_signup_config}
@@ -517,8 +525,8 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                   </.button>
                 </article>
               </div>
-            </div>
-          </details>
+            </details>
+          </section>
         </section>
       </div>
     </Layouts.settings>
