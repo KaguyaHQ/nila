@@ -3,9 +3,10 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
 
   alias Nila.Gst.Proposals
   alias Nila.Gst.Sales.{Gstr1, Review, Resolutions, Values, Workings}
+  alias Nila.TallyMappings
   alias NilaWeb.Components.Gst.Month.Evidence
 
-  @write_events ~w(resolve-invoice-issue undo start_correct save_correct)
+  @write_events ~w(resolve-invoice-issue undo start_correct save_correct save-tally-posting)
 
   @impl true
   def update(assigns, socket) do
@@ -27,6 +28,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
     correcting = if same_item?, do: socket.assigns[:correcting], else: nil
     evidence_open = same_item? && (socket.assigns[:evidence_open] || false)
     evidence_page = if same_item?, do: socket.assigns[:evidence_page] || 0, else: 0
+    tally_posting = tally_posting(assigns, selected_invoice)
 
     {:ok,
      socket
@@ -42,13 +44,21 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
      |> assign(:decisions, assigns.decisions)
      |> assign(:correcting, correcting)
      |> assign(:correction_form, correction_form(correcting))
+     |> assign(:tally_posting, tally_posting)
      |> assign(:evidence_open, evidence_open)
      |> assign(:evidence_page, evidence_page)}
   end
 
   @impl true
-  def handle_event("done", _params, socket),
-    do: {:noreply, push_patch(socket, to: month_path(socket))}
+  def handle_event("done", _params, socket) do
+    case socket.assigns.route[:return_to] do
+      return_to when is_binary(return_to) ->
+        {:noreply, push_navigate(socket, to: return_to)}
+
+      _month ->
+        {:noreply, push_patch(socket, to: month_path(socket))}
+    end
+  end
 
   def handle_event("scope", %{"scope" => scope}, socket) when scope in ~w(needs_you all) do
     selected =
@@ -150,6 +160,42 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
     do: {:noreply, assign(socket, correcting: nil, correction_form: nil)}
 
   def handle_event(
+        "save-tally-posting",
+        %{"tally_posting" => posting},
+        %{assigns: %{tally_company: %{id: company_id}, selected_invoice: invoice}} = socket
+      ) do
+    org_id = socket.assigns.current_scope.current_org.id
+
+    profile_attrs =
+      posting
+      |> Map.take(
+        ~w(sales_ledger_identity cgst_ledger_identity sgst_ledger_identity igst_ledger_identity)
+      )
+
+    with {:ok, _saved} <-
+           TallyMappings.save_sales_posting(
+             org_id,
+             company_id,
+             party_identity(invoice),
+             posting["party_ledger_identity"],
+             profile_attrs
+           ) do
+      {:noreply,
+       socket
+       |> assign(:tally_posting, tally_posting(socket.assigns, invoice))
+       |> put_flash(:info, "Tally posting saved.")}
+    else
+      {:error, :signed_off} ->
+        {:noreply, put_flash(socket, :error, locked_message(socket))}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Tally posting could not be saved.")}
+    end
+  end
+
+  def handle_event("save-tally-posting", _params, socket), do: {:noreply, socket}
+
+  def handle_event(
         "save_correct",
         %{"correction" => %{"field" => field, "value" => value}},
         socket
@@ -222,6 +268,110 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
     to_form(%{"field" => correcting.field, "value" => correcting.value}, as: :correction)
   end
 
+  defp tally_posting(%{tally_company: nil}, _invoice), do: nil
+  defp tally_posting(_assigns, nil), do: nil
+
+  defp tally_posting(assigns, invoice) do
+    org_id = assigns.current_scope.current_org.id
+    company = assigns.tally_company
+    choices = TallyMappings.list_ledger_choices(org_id, company.id)
+    party = resolved_party(org_id, company.id, invoice)
+    profile = posting_profile(org_id, company.id)
+    tax_heads = applicable_tax_heads(invoice)
+
+    values = %{
+      "party_ledger_identity" => party && party.ledger.identity,
+      "sales_ledger_identity" =>
+        profile_value(profile, :sales_ledger_identity) || default_identity(choices, "Sales"),
+      "cgst_ledger_identity" =>
+        profile_value(profile, :cgst_ledger_identity) || default_identity(choices, "Output CGST"),
+      "sgst_ledger_identity" =>
+        profile_value(profile, :sgst_ledger_identity) || default_identity(choices, "Output SGST"),
+      "igst_ledger_identity" =>
+        profile_value(profile, :igst_ledger_identity) || default_identity(choices, "Output IGST")
+    }
+
+    %{
+      company: company,
+      party_choices: ledger_options(choices, "Sundry Debtors"),
+      sales_choices: ledger_options(choices, "Sales Accounts"),
+      tax_choices: ledger_options(choices, "Duties & Taxes"),
+      form: to_form(values, as: :tally_posting),
+      tax_heads: tax_heads
+    }
+  end
+
+  defp resolved_party(org_id, company_id, invoice) do
+    case TallyMappings.resolve_party(org_id, company_id, party_identity(invoice)) do
+      {:ok, match} -> match
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp posting_profile(org_id, company_id) do
+    case TallyMappings.get_posting_profile(org_id, company_id) do
+      {:ok, profile} -> profile
+      {:error, :not_found} -> nil
+    end
+  end
+
+  defp party_identity(invoice) do
+    %{
+      gstin: invoice["buyer_gstin"],
+      name: invoice["buyer_name"],
+      source_key: invoice["id"] || invoice["invoice_number"]
+    }
+  end
+
+  defp applicable_tax_heads(invoice) do
+    lines = invoice["line_items"] || []
+
+    ~w(cgst sgst igst)
+    |> Enum.filter(fn head ->
+      Enum.any?(lines, fn line ->
+        positive?(line["#{head}_amount"]) or positive?(line["#{head}_rate"])
+      end)
+    end)
+    |> MapSet.new()
+  end
+
+  defp positive?(value) when is_number(value), do: value > 0
+
+  defp positive?(value) when is_binary(value) do
+    case Float.parse(String.replace(value, ",", "")) do
+      {number, ""} -> number > 0
+      _ -> false
+    end
+  end
+
+  defp positive?(_value), do: false
+
+  defp profile_value(nil, _field), do: nil
+  defp profile_value(profile, field), do: Map.get(profile, field)
+
+  defp default_identity(choices, canonical_name) do
+    canonical = String.downcase(canonical_name)
+
+    case Enum.filter(choices, &(String.downcase(String.trim(&1.name)) == canonical)) do
+      [choice] -> choice.identity
+      _ -> nil
+    end
+  end
+
+  defp ledger_options(choices, parent) do
+    matching = Enum.filter(choices, &(normalized_parent(&1) == String.downcase(parent)))
+    choices = if matching == [], do: choices, else: matching
+    Enum.map(choices, &{&1.name, &1.identity})
+  end
+
+  defp normalized_parent(%{data: data}) when is_map(data) do
+    data
+    |> Map.get("parent", "")
+    |> to_string()
+    |> String.trim()
+    |> String.downcase()
+  end
+
   defp image_urls(%{"image" => basename}, month) when is_binary(basename),
     do: ["/gstr1/#{month.client_id}/#{month.period}/evidence/#{basename}"]
 
@@ -236,10 +386,14 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
     do: "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}?track=sales"
 
   defp review_path(socket, item, scope) do
-    params = %{
-      "item" => (item && item.source_id) || "",
-      "scope" => to_string(scope)
-    }
+    params =
+      %{
+        "item" => (item && item.source_id) || "",
+        "scope" => to_string(scope),
+        "return_to" => socket.assigns.route[:return_to]
+      }
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
 
     "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}/review/sales?" <>
       URI.encode_query(params)
@@ -356,6 +510,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
                 flagged={@workings.flagged}
                 correcting={@correcting}
                 correction_form={@correction_form}
+                tally_posting={@tally_posting}
                 derived={@workings.derived}
                 evidence_page={@evidence_page}
                 target={@myself}

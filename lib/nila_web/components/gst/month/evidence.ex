@@ -140,6 +140,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :event_target, :string, required: true
   attr :evidence_page, :integer, default: 0
   attr :correction_form, :any, default: nil
+  attr :tally_posting, :any, default: nil
 
   # The trust atom: the scan big enough to read on the left, the full extracted
   # read beside it, and every check an outcome the validation layer already
@@ -288,6 +289,84 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               {@selected_invoice["buyer_gstin"] || "—"}
             </div>
           </div>
+
+          <.form
+            :if={@tally_posting}
+            for={@tally_posting.form}
+            id="gstr1-tally-posting-form"
+            phx-submit="save-tally-posting"
+            phx-target={@target}
+            class="space-y-block"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <div class="text-ink-subtle text-label font-semibold uppercase">Tally posting</div>
+                <div class="text-base-content text-ui font-medium">
+                  {@tally_posting.company.name}
+                </div>
+              </div>
+              <.button
+                :if={is_nil(@r1_signoff)}
+                id="gstr1-save-tally-posting"
+                type="submit"
+                variant="outline"
+                size="xs"
+              >
+                Save
+              </.button>
+            </div>
+
+            <div class="gap-block grid xl:grid-cols-2">
+              <.input
+                field={@tally_posting.form[:party_ledger_identity]}
+                type="select"
+                label="Party ledger"
+                prompt="Select party ledger"
+                options={@tally_posting.party_choices}
+                required
+                disabled={not is_nil(@r1_signoff)}
+              />
+              <.input
+                field={@tally_posting.form[:sales_ledger_identity]}
+                type="select"
+                label="Sales ledger"
+                prompt="Select sales ledger"
+                options={@tally_posting.sales_choices}
+                required
+                disabled={not is_nil(@r1_signoff)}
+              />
+              <.input
+                :if={MapSet.member?(@tally_posting.tax_heads, "cgst")}
+                field={@tally_posting.form[:cgst_ledger_identity]}
+                type="select"
+                label="CGST ledger"
+                prompt="Select CGST ledger"
+                options={@tally_posting.tax_choices}
+                required
+                disabled={not is_nil(@r1_signoff)}
+              />
+              <.input
+                :if={MapSet.member?(@tally_posting.tax_heads, "sgst")}
+                field={@tally_posting.form[:sgst_ledger_identity]}
+                type="select"
+                label="SGST ledger"
+                prompt="Select SGST ledger"
+                options={@tally_posting.tax_choices}
+                required
+                disabled={not is_nil(@r1_signoff)}
+              />
+              <.input
+                :if={MapSet.member?(@tally_posting.tax_heads, "igst")}
+                field={@tally_posting.form[:igst_ledger_identity]}
+                type="select"
+                label="IGST ledger"
+                prompt="Select IGST ledger"
+                options={@tally_posting.tax_choices}
+                required
+                disabled={not is_nil(@r1_signoff)}
+              />
+            </div>
+          </.form>
 
           <%!-- The decision leads. It used to sit fourth, below a twelve-row line
                 table and below the fold — the reader scrolled past the evidence

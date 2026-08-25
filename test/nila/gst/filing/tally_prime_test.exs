@@ -190,6 +190,67 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert first.xml =~ "<SVCURRENTCOMPANY>Nila</SVCURRENTCOMPANY>"
   end
 
+  test "uses explicit per-invoice Tally posting ledger selections" do
+    selected =
+      invoice(%{
+        "tally_posting" => %{
+          "party_ledger" => "Siemens Healthcare Pvt Ltd - AP",
+          "sales_ledger" => "Material Sales @ 18%",
+          "igst_ledger" => "IGST Output @ 18%"
+        }
+      })
+
+    assert {:ok, [item]} =
+             TallyPrime.build_items_for_company(%{invoices: [selected]}, "Nila")
+
+    assert item.ledger_names == [
+             "Siemens Healthcare Pvt Ltd - AP",
+             "Material Sales @ 18%",
+             "IGST Output @ 18%"
+           ]
+
+    assert item.party_ledger.name == "Siemens Healthcare Pvt Ltd - AP"
+    assert item.xml =~ "<PARTYLEDGERNAME>Siemens Healthcare Pvt Ltd - AP</PARTYLEDGERNAME>"
+    assert item.xml =~ "<LEDGERNAME>Material Sales @ 18%</LEDGERNAME>"
+    assert item.xml =~ "<LEDGERNAME>IGST Output @ 18%</LEDGERNAME>"
+    refute item.xml =~ "<LEDGERNAME>Sales</LEDGERNAME>"
+    refute item.xml =~ "<LEDGERNAME>Output IGST</LEDGERNAME>"
+  end
+
+  test "uses explicit intrastate tax ledger selections" do
+    selected =
+      invoice(%{
+        "place_of_supply" => "33",
+        "tally_posting" => %{
+          "cgst_ledger" => "CGST Payable 9%",
+          "sgst_ledger" => "SGST Payable 9%"
+        },
+        "line_items" => [
+          %{
+            "description" => "Equipment maintenance",
+            "hsn_sac" => "998719",
+            "taxable_value" => 1_000,
+            "cgst_rate" => 9,
+            "sgst_rate" => 9,
+            "cgst_amount" => 90,
+            "sgst_amount" => 90
+          }
+        ]
+      })
+
+    assert {:ok, [item]} =
+             TallyPrime.build_items_for_company(%{invoices: [selected]}, "Nila")
+
+    assert item.ledger_names == ["Customer", "Sales", "CGST Payable 9%", "SGST Payable 9%"]
+  end
+
+  test "rejects an explicitly blank required posting ledger" do
+    selected = invoice(%{"tally_posting" => %{"sales_ledger" => "  "}})
+
+    assert {:error, :invalid_sales_data} =
+             TallyPrime.build_items_for_company(%{invoices: [selected]}, "Nila")
+  end
+
   test "keeps voucher delivery identity stable across repeated builds" do
     projection = %{invoices: [invoice()], period: "2026-07"}
 

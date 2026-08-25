@@ -9,6 +9,11 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
   alias Nila.Gst.Filing.Signoffs
   alias Nila.Gst.Sales.{Gstr1, Resolutions}
   alias Nila.Gst.Sales.Months, as: SalesMonths
+  alias Nila.Repo
+  alias Nila.TallyDevices
+  alias Nila.TallyDevices.SyncedMaster
+  alias Nila.TallyMappings
+  alias Nila.TallyMappings.PartyMapping
 
   @period "2025-10"
 
@@ -61,6 +66,19 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
              live(context.conn, ~p"/gst/#{context.client.id}/#{@period}?invoice=20%2F2025-26")
 
     assert legacy_target == review_path(context.client, open["id"], "needs_you")
+  end
+
+  test "posting review returns to the sales-bill batch", context do
+    [invoice | _] = context.workings.active_invoices
+    return_to = "/sales-bills/#{context.client.id}/batch/demo-batch"
+
+    path =
+      review_path(context.client, invoice["id"], "all") <>
+        "&" <> URI.encode_query(%{"return_to" => return_to})
+
+    {:ok, view, _html} = live(context.conn, path)
+    view |> element("#sales-review button[phx-click='done']") |> render_click()
+    assert_redirect(view, return_to)
   end
 
   test "missing and unknown route state canonicalizes to needs-you first, then all", context do
@@ -214,8 +232,51 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     assert Resolutions.list(context.month.id) == []
   end
 
+  test "review exposes existing Tally posting masters and remembers corrections", context do
+    %{company: company, ledgers: ledgers} = tally_company_with_ledgers!(context)
+    [invoice | _] = context.workings.active_invoices
+    {:ok, view, _html} = live(context.conn, review_path(context.client, invoice["id"], "all"))
+
+    assert has_element?(view, "#gstr1-tally-posting-form", company.name)
+
+    assert has_element?(
+             view,
+             "#tally_posting_party_ledger_identity option[value='party-ponmani'][selected]"
+           )
+
+    assert has_element?(view, "#tally_posting_sales_ledger_identity")
+    assert has_element?(view, "#tally_posting_cgst_ledger_identity")
+    assert has_element?(view, "#tally_posting_sgst_ledger_identity")
+    refute has_element?(view, "#tally_posting_igst_ledger_identity")
+
+    view
+    |> form("#gstr1-tally-posting-form", %{
+      "tally_posting" => %{
+        "party_ledger_identity" => ledgers.other_party.identity,
+        "sales_ledger_identity" => ledgers.sales.identity,
+        "cgst_ledger_identity" => ledgers.cgst.identity,
+        "sgst_ledger_identity" => ledgers.sgst.identity
+      }
+    })
+    |> render_submit()
+
+    assert has_element?(
+             view,
+             "#tally_posting_party_ledger_identity option[value='party-siemens'][selected]"
+           )
+
+    assert %PartyMapping{ledger_identity: "party-siemens"} =
+             Repo.get_by!(PartyMapping, company_id: company.id)
+
+    assert {:ok, profile} = TallyMappings.get_posting_profile(context.org.id, company.id)
+    assert profile.sales_ledger_identity == ledgers.sales.identity
+    assert profile.cgst_ledger_identity == ledgers.cgst.identity
+    assert profile.sgst_ledger_identity == ledgers.sgst.identity
+  end
+
   test "a signed month withdraws every write action from the review surface", context do
     [open | _] = context.workings.active_invoices
+    tally_company_with_ledgers!(context)
     sign_month!(context)
     path = review_path(context.client, open["id"], "all")
     {:ok, signed, _html} = live(context.conn, path)
@@ -227,6 +288,8 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
 
     refute has_element?(signed, "#sales-review-component button[phx-click='undo']")
     refute has_element?(signed, "#sales-review-component button[phx-click='start_correct']")
+    refute has_element?(signed, "#gstr1-save-tally-posting")
+    assert has_element?(signed, "#tally_posting_party_ledger_identity[disabled]")
 
     {:ok, month} = SalesMonths.get_by_period(context.org.id, context.client.id, @period)
     {:ok, _month} = Signoffs.mark_filed(month, Scope.for_user(context.user))
@@ -311,6 +374,51 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
 
   defp review_path(client, item, scope) do
     "/gst/#{client.id}/#{@period}/review/sales?item=#{item}&scope=#{scope}"
+  end
+
+  defp tally_company_with_ledgers!(context) do
+    {:ok, device, _token} = TallyDevices.create_device(context.org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [
+        %{
+          "name" => "Breeze Tech books",
+          "gstin" => context.client.gstin,
+          "tally_guid" => "breeze-books"
+        }
+      ])
+
+    ledgers = %{
+      party:
+        synced_ledger!(context, company, "party-ponmani", "Ponmani and Co", "Sundry Debtors", %{
+          "gstin" => "33AABCP9487A1ZG"
+        }),
+      other_party:
+        synced_ledger!(
+          context,
+          company,
+          "party-siemens",
+          "Siemens Healthcare",
+          "Sundry Debtors",
+          %{"gstin" => "33AAVCS8021P1ZM"}
+        ),
+      sales: synced_ledger!(context, company, "sales", "Material Sales", "Sales Accounts"),
+      cgst: synced_ledger!(context, company, "cgst", "Output CGST", "Duties & Taxes"),
+      sgst: synced_ledger!(context, company, "sgst", "Output SGST", "Duties & Taxes")
+    }
+
+    %{company: company, ledgers: ledgers}
+  end
+
+  defp synced_ledger!(context, company, identity, name, parent, data \\ %{}) do
+    Repo.insert!(%SyncedMaster{
+      org_id: context.org.id,
+      company_id: company.id,
+      kind: "ledger",
+      identity: identity,
+      name: name,
+      data: Map.put(data, "parent", parent)
+    })
   end
 
   defp position(haystack, needle), do: elem(:binary.match(haystack, needle), 0)

@@ -9,6 +9,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
   alias Nila.TallyDevices
   alias Nila.TallyDevices.SyncedMaster
   alias Nila.TallyJobs
+  alias Nila.TallyMappings
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
@@ -116,6 +117,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(view, "#sales-bills-send-to-tally", "Send to Tally")
     refute has_element?(view, "#sales-bills-download")
+    assert has_element?(view, "#sales-bills-voucher-table a", "Review posting")
 
     view
     |> element("#sales-bills-send-to-tally")
@@ -132,6 +134,63 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert render(view) =~ "Added to Tally"
     assert has_element?(view, "#sales-bills-added-to-tally")
+  end
+
+  test "uses the confirmed party and company posting ledgers when sending", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    device: device,
+    company: company
+  } do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    for {identity, name, parent} <- [
+          {"ledger:customer-ap", "Customer & Co - AP", "Sundry Debtors"},
+          {"ledger:material-sales", "Material Sales", "Sales Accounts"},
+          {"ledger:output-igst", "IGST Output @ 18%", "Duties & Taxes"}
+        ] do
+      Nila.Repo.insert!(%SyncedMaster{
+        org_id: company.org_id,
+        company_id: company.id,
+        kind: "ledger",
+        identity: identity,
+        name: name,
+        data: %{"parent" => parent},
+        inserted_at: now,
+        updated_at: now
+      })
+    end
+
+    [invoice] = dump.invoices
+
+    assert {:ok, _mapping} =
+             TallyMappings.save_confirmed_party_choice(
+               company.org_id,
+               company.id,
+               %{
+                 gstin: invoice["buyer_gstin"],
+                 name: invoice["buyer_name"],
+                 source_key: invoice["id"]
+               },
+               "ledger:customer-ap"
+             )
+
+    assert {:ok, _profile} =
+             TallyMappings.save_posting_profile(company.org_id, company.id, %{
+               sales_ledger_identity: "ledger:material-sales",
+               igst_ledger_identity: "ledger:output-igst"
+             })
+
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+    view |> element("#sales-bills-send-to-tally") |> render_click()
+
+    assert {:ok, job} = TallyJobs.claim_next(device.id)
+    assert job.payload["xml"] =~ "<PARTYLEDGERNAME>Customer &amp; Co - AP</PARTYLEDGERNAME>"
+    assert job.payload["xml"] =~ "<LEDGERNAME>Material Sales</LEDGERNAME>"
+    assert job.payload["xml"] =~ "<LEDGERNAME>IGST Output @ 18%</LEDGERNAME>"
+    refute job.payload["xml"] =~ "<LEDGERNAME>Output IGST</LEDGERNAME>"
   end
 
   test "blocks sales vouchers when Tally controls the voucher number", %{

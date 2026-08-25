@@ -4,7 +4,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   alias Nila.Clients
   alias Nila.Gst.Filing.TallyPrime
   alias Nila.Gst.Sales.TallyPacket
-  alias Nila.{TallyDevices, TallyJobs}
+  alias Nila.{TallyDevices, TallyJobs, TallyMappings}
 
   @impl true
   def mount(%{"client_id" => client_id, "batch_ref" => batch_ref}, _session, socket) do
@@ -54,9 +54,11 @@ defmodule NilaWeb.Gst.SalesBillsLive do
          {:ok, company} <-
            TallyDevices.get_open_company(org_id, company.id, socket.assigns.client.id),
          :ok <- TallyPrime.validate_company_gstin(company, socket.assigns.client.gstin),
+         {:ok, invoices} <-
+           apply_tally_posting(org_id, company.id, socket.assigns.packet.invoices),
          {:ok, items} <-
            TallyPrime.build_items_for_company(
-             %{active_invoices: socket.assigns.packet.invoices},
+             %{active_invoices: invoices},
              company.name
            ),
          {ready, blocked} <- partition_ready_items(company.id, items),
@@ -93,6 +95,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
            socket,
            :send_error,
            "This Tally company belongs to GSTIN #{tally_gstin}, not #{client_gstin}."
+         )}
+
+      {:error, :stale_tally_posting_profile} ->
+        {:noreply,
+         assign(
+           socket,
+           :send_error,
+           "A saved posting ledger is no longer in this Tally company. Sync masters and review the posting selections."
          )}
 
       _error ->
@@ -223,6 +233,77 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp plural(1, singular), do: singular
   defp plural(_count, singular), do: singular <> "s"
+
+  defp apply_tally_posting(org_id, company_id, invoices) do
+    ledgers = TallyMappings.list_ledger_choices(org_id, company_id)
+    ledgers_by_identity = Map.new(ledgers, &{&1.identity, &1.name})
+
+    profile =
+      case TallyMappings.get_posting_profile(org_id, company_id) do
+        {:ok, profile} -> profile
+        {:error, :not_found} -> nil
+      end
+
+    with {:ok, profile_posting} <- profile_posting(profile, ledgers_by_identity) do
+      invoices =
+        Enum.map(invoices, fn invoice ->
+          party_posting =
+            case TallyMappings.resolve_party(org_id, company_id, party_identity(invoice)) do
+              {:ok, %{ledger: ledger}} -> %{"party_ledger" => ledger.name}
+              {:error, _reason} -> %{}
+            end
+
+          Map.put(invoice, "tally_posting", Map.merge(profile_posting, party_posting))
+        end)
+
+      {:ok, invoices}
+    end
+  end
+
+  defp profile_posting(nil, _ledgers_by_identity), do: {:ok, %{}}
+
+  defp profile_posting(profile, ledgers_by_identity) do
+    fields = [
+      {:sales_ledger_identity, "sales_ledger"},
+      {:cgst_ledger_identity, "cgst_ledger"},
+      {:sgst_ledger_identity, "sgst_ledger"},
+      {:igst_ledger_identity, "igst_ledger"}
+    ]
+
+    Enum.reduce_while(fields, {:ok, %{}}, fn {field, posting_key}, {:ok, posting} ->
+      case Map.fetch!(profile, field) do
+        nil ->
+          {:cont, {:ok, posting}}
+
+        identity ->
+          case Map.fetch(ledgers_by_identity, identity) do
+            {:ok, name} -> {:cont, {:ok, Map.put(posting, posting_key, name)}}
+            :error -> {:halt, {:error, :stale_tally_posting_profile}}
+          end
+      end
+    end)
+  end
+
+  defp party_identity(invoice) do
+    %{
+      gstin: invoice["buyer_gstin"],
+      name: invoice["buyer_name"],
+      source_key: invoice["id"] || invoice["invoice_number"]
+    }
+  end
+
+  defp posting_review_path(client, batch_ref, invoice) do
+    period = invoice["invoice_date"] |> to_string() |> String.slice(0, 7)
+    return_to = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}"
+
+    params = %{
+      "item" => invoice["id"] || invoice["invoice_number"],
+      "scope" => "all",
+      "return_to" => return_to
+    }
+
+    "/gst/#{client.id}/#{period}/review/sales?" <> URI.encode_query(params)
+  end
 
   defp tally_source_prefix(batch_ref, company_id) do
     batch_key =
@@ -440,6 +521,15 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
             <:col :let={invoice} label="Tax" align="right">
               {rupees(totals(invoice).tax)}
+            </:col>
+
+            <:col :let={invoice} label="Tally">
+              <.text_link
+                navigate={posting_review_path(@client, @batch_ref, invoice)}
+                class="text-ui font-medium whitespace-nowrap"
+              >
+                Review posting
+              </.text_link>
             </:col>
           </.data_table>
         </section>

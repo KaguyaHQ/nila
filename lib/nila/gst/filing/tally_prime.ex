@@ -19,6 +19,19 @@ defmodule Nila.Gst.Filing.TallyPrime do
     "credit_note" => "Credit Note",
     "debit_note" => "Debit Note"
   }
+  @default_posting_ledgers %{
+    "sales_ledger" => "Sales",
+    "cgst_ledger" => "Output CGST",
+    "sgst_ledger" => "Output SGST",
+    "igst_ledger" => "Output IGST"
+  }
+  @posting_key_atoms %{
+    "party_ledger" => :party_ledger,
+    "sales_ledger" => :sales_ledger,
+    "cgst_ledger" => :cgst_ledger,
+    "sgst_ledger" => :sgst_ledger,
+    "igst_ledger" => :igst_ledger
+  }
 
   @type import_result :: %{
           required(:created) => non_neg_integer(),
@@ -214,16 +227,16 @@ defmodule Nila.Gst.Filing.TallyPrime do
          :ok <- validate_tax_jurisdiction(invoice, lines),
          {:ok, amounts} <- amounts(lines),
          :ok <- validate_printed_grand_total(invoice, amounts),
-         {:ok, sales_entries} <- sales_entries(lines, effect),
-         :ok <- valid_text_fields([invoice["seller_gstin"], invoice["invoice_number"], party]) do
-      postings =
-        [
-          {"Output CGST", effect * amounts.cgst},
-          {"Output SGST", effect * amounts.sgst},
-          {"Output IGST", effect * amounts.igst}
-        ]
-        |> Enum.reject(fn {_name, paise} -> paise == 0 end)
-
+         {:ok, sales_ledger} <- posting_ledger(invoice, "sales_ledger"),
+         {:ok, sales_entries} <- sales_entries(lines, effect, sales_ledger),
+         {:ok, postings} <- tax_postings(invoice, effect, amounts),
+         :ok <-
+           valid_text_fields([
+             invoice["seller_gstin"],
+             invoice["invoice_number"],
+             party,
+             sales_ledger | Enum.map(postings, &elem(&1, 0))
+           ]) do
       party_amount =
         -Enum.sum(Enum.map(sales_entries, & &1.amount) ++ Enum.map(postings, &elem(&1, 1)))
 
@@ -269,6 +282,12 @@ defmodule Nila.Gst.Filing.TallyPrime do
   defp voucher_type(invoice), do: @voucher_types[Gstr1.document_type(invoice)]
 
   defp party_ledger(invoice) do
+    with {:ok, default} <- default_party_ledger(invoice) do
+      posting_ledger(invoice, "party_ledger", default)
+    end
+  end
+
+  defp default_party_ledger(invoice) do
     case Gstr1.recipient_registration(invoice) do
       "registered" ->
         if present?(invoice["buyer_name"]),
@@ -280,6 +299,41 @@ defmodule Nila.Gst.Filing.TallyPrime do
 
       _unknown ->
         {:error, :invalid_sales_data}
+    end
+  end
+
+  defp posting_ledger(invoice, key, default \\ nil) do
+    posting = invoice["tally_posting"] || invoice[:tally_posting]
+    default = default || @default_posting_ledgers[key]
+    atom_key = @posting_key_atoms[key]
+
+    value =
+      case posting do
+        map when is_map(map) -> Map.get(map, key, Map.get(map, atom_key, default))
+        _missing -> default
+      end
+
+    if present?(value),
+      do: {:ok, String.trim(value)},
+      else: {:error, :invalid_sales_data}
+  end
+
+  defp tax_postings(invoice, effect, amounts) do
+    [
+      {"cgst_ledger", amounts.cgst},
+      {"sgst_ledger", amounts.sgst},
+      {"igst_ledger", amounts.igst}
+    ]
+    |> Enum.reject(fn {_key, paise} -> paise == 0 end)
+    |> Enum.reduce_while({:ok, []}, fn {key, paise}, {:ok, postings} ->
+      case posting_ledger(invoice, key) do
+        {:ok, name} -> {:cont, {:ok, [{name, effect * paise} | postings]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, postings} -> {:ok, Enum.reverse(postings)}
+      error -> error
     end
   end
 
@@ -413,7 +467,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
   defp valid_tax_heads?(:intrastate, cgst, sgst, igst),
     do: igst == 0 and ((cgst == 0 and sgst == 0) or (cgst > 0 and sgst > 0))
 
-  defp sales_entries(lines, effect) do
+  defp sales_entries(lines, effect, ledger_name) do
     lines
     |> Enum.with_index(1)
     |> Enum.reduce_while({:ok, []}, fn {line, index}, {:ok, entries} ->
@@ -427,6 +481,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
           description: description,
           hsn: hsn,
           index: index,
+          ledger_name: ledger_name,
           rate: rate,
           supply_type: if(String.starts_with?(hsn, "99"), do: "Services", else: "Goods")
         }
@@ -497,7 +552,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
 
     [
       "<LEDGERENTRIES.LIST>",
-      tag("LEDGERNAME", "Sales"),
+      tag("LEDGERNAME", entry.ledger_name),
       tag("ISDEEMEDPOSITIVE", if(entry.amount < 0, do: "Yes", else: "No")),
       tag("ISLASTDEEMEDPOSITIVE", "No"),
       tag("ISPARTYLEDGER", "No"),

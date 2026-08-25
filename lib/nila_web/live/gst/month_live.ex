@@ -150,7 +150,11 @@ defmodule NilaWeb.Gst.MonthLive do
     route = SalesReview.route_state(review, params["item"], params["scope"])
     selected = SalesReview.lookup(review.all, route.item)
     focus = valid_review_focus(selected, params["focus"])
-    route = Map.put(route, :focus, focus)
+
+    route =
+      route
+      |> Map.put(:focus, focus)
+      |> Map.put(:return_to, valid_sales_review_return(params["return_to"]))
 
     socket =
       assign(socket,
@@ -216,8 +220,14 @@ defmodule NilaWeb.Gst.MonthLive do
 
   defp canonical_sales_route?(params, route) do
     params["item"] == route.item and params["scope"] == to_string(route.scope) and
-      params["focus"] == route.focus
+      params["focus"] == route.focus and params["return_to"] == route.return_to
   end
+
+  defp valid_sales_review_return(return_to) when is_binary(return_to) do
+    if Regex.match?(~r|^/sales-bills/[^/?#]+/batch/[^/?#]+$|, return_to), do: return_to
+  end
+
+  defp valid_sales_review_return(_return_to), do: nil
 
   defp valid_invoice_number(_invoices, nil), do: nil
 
@@ -1568,7 +1578,12 @@ defmodule NilaWeb.Gst.MonthLive do
 
   defp sales_review_path(socket, route) do
     params =
-      %{"item" => route.item, "scope" => to_string(route.scope), "focus" => route[:focus]}
+      %{
+        "item" => route.item,
+        "scope" => to_string(route.scope),
+        "focus" => route[:focus],
+        "return_to" => route[:return_to]
+      }
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
       |> Map.new()
 
@@ -1901,6 +1916,7 @@ defmodule NilaWeb.Gst.MonthLive do
         workings={@sales_workings}
         decisions={@sales_decisions}
         signoff={@r1_signoff}
+        tally_company={List.first(@tally_companies)}
       />
       <Evidence.evidence_modals
         show_chase_history={@show_chase_history}
