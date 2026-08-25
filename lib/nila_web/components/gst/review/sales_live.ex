@@ -390,6 +390,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
       %{
         "item" => (item && item.source_id) || "",
         "scope" => to_string(scope),
+        "tally_company_id" => socket.assigns.route[:tally_company_id],
         "return_to" => socket.assigns.route[:return_to]
       }
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)

@@ -155,6 +155,10 @@ defmodule NilaWeb.Gst.MonthLive do
       route
       |> Map.put(:focus, focus)
       |> Map.put(:return_to, valid_sales_review_return(params["return_to"]))
+      |> Map.put(
+        :tally_company_id,
+        valid_sales_review_company(params["tally_company_id"], socket.assigns.tally_companies)
+      )
 
     socket =
       assign(socket,
@@ -220,7 +224,8 @@ defmodule NilaWeb.Gst.MonthLive do
 
   defp canonical_sales_route?(params, route) do
     params["item"] == route.item and params["scope"] == to_string(route.scope) and
-      params["focus"] == route.focus and params["return_to"] == route.return_to
+      params["focus"] == route.focus and params["return_to"] == route.return_to and
+      params["tally_company_id"] == route.tally_company_id
   end
 
   defp valid_sales_review_return(return_to) when is_binary(return_to) do
@@ -228,6 +233,12 @@ defmodule NilaWeb.Gst.MonthLive do
   end
 
   defp valid_sales_review_return(_return_to), do: nil
+
+  defp valid_sales_review_company(company_id, companies) when is_binary(company_id) do
+    if Enum.any?(companies, &(Integer.to_string(&1.id) == company_id)), do: company_id
+  end
+
+  defp valid_sales_review_company(_company_id, _companies), do: nil
 
   defp valid_invoice_number(_invoices, nil), do: nil
 
@@ -1582,6 +1593,7 @@ defmodule NilaWeb.Gst.MonthLive do
         "item" => route.item,
         "scope" => to_string(route.scope),
         "focus" => route[:focus],
+        "tally_company_id" => route[:tally_company_id],
         "return_to" => route[:return_to]
       }
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
@@ -1916,7 +1928,7 @@ defmodule NilaWeb.Gst.MonthLive do
         workings={@sales_workings}
         decisions={@sales_decisions}
         signoff={@r1_signoff}
-        tally_company={List.first(@tally_companies)}
+        tally_company={sales_review_company(@tally_companies, @sales_review_route)}
       />
       <Evidence.evidence_modals
         show_chase_history={@show_chase_history}
@@ -1928,5 +1940,15 @@ defmodule NilaWeb.Gst.MonthLive do
       />
     </Layouts.app>
     """
+  end
+
+  defp sales_review_company(companies, route) do
+    case route[:tally_company_id] do
+      company_id when is_binary(company_id) ->
+        Enum.find(companies, &(Integer.to_string(&1.id) == company_id))
+
+      _missing ->
+        List.first(companies)
+    end
   end
 end

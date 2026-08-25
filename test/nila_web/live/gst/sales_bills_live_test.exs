@@ -244,11 +244,10 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
   end
 
-  test "queues creation details when the registered party ledger is missing", %{
+  test "blocks sending when a registered party cannot be resolved to an existing ledger", %{
     conn: conn,
     client: client,
     dump: dump,
-    device: device,
     company: company
   } do
     Nila.Repo.get_by!(SyncedMaster,
@@ -262,17 +261,19 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
     view |> element("#sales-bills-send-to-tally") |> render_click()
 
-    assert {:ok, job} = TallyJobs.claim_next(device.id)
+    assert has_element?(
+             view,
+             "#sales-bills-send-error",
+             "Choose an existing Tally party for INV-001 before sending."
+           )
 
-    assert job.payload["party_ledger"] == %{
-             "name" => "Customer & Co",
-             "parent" => "Sundry Debtors",
-             "gstin" => "29AAVCS8021P1ZB",
-             "registration_type" => "Regular",
-             "state" => "Karnataka",
-             "country" => "India",
-             "applicable_from" => "2026-07-15"
-           }
+    assert has_element?(
+             view,
+             "#sales-bills-voucher-table a[href*='tally_company_id=#{company.id}']",
+             "Review posting"
+           )
+
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
   end
 
   test "offers read-only verification before retrying an unknown outcome", %{

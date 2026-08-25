@@ -312,7 +312,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 variant="outline"
                 size="xs"
               >
-                Save
+                Save mapping & defaults
               </.button>
             </div>
 
@@ -320,12 +320,20 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               <.input
                 field={@tally_posting.form[:party_ledger_identity]}
                 type="select"
-                label="Party ledger"
+                label="Party ledger for this buyer"
                 prompt="Select party ledger"
                 options={@tally_posting.party_choices}
                 required
                 disabled={not is_nil(@r1_signoff)}
               />
+              <div class="xl:col-span-2">
+                <div class="text-ink-subtle text-label font-semibold uppercase">
+                  Company posting defaults
+                </div>
+                <p class="text-ink-muted text-ui mt-1">
+                  These Sales and GST ledgers apply to every future sales voucher sent to {@tally_posting.company.name}.
+                </p>
+              </div>
               <.input
                 field={@tally_posting.form[:sales_ledger_identity]}
                 type="select"

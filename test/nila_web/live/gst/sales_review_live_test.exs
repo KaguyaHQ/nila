@@ -238,6 +238,8 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     {:ok, view, _html} = live(context.conn, review_path(context.client, invoice["id"], "all"))
 
     assert has_element?(view, "#gstr1-tally-posting-form", company.name)
+    assert has_element?(view, "#gstr1-tally-posting-form", "Company posting defaults")
+    assert has_element?(view, "#gstr1-tally-posting-form", "every future sales voucher")
 
     assert has_element?(
              view,
@@ -272,6 +274,29 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     assert profile.sales_ledger_identity == ledgers.sales.identity
     assert profile.cgst_ledger_identity == ledgers.cgst.identity
     assert profile.sgst_ledger_identity == ledgers.sgst.identity
+  end
+
+  test "posting review uses the explicitly requested open Tally company", context do
+    _first = tally_company_with_ledgers!(context)
+    {:ok, device, _token} = TallyDevices.create_device(context.org, %{name: "Second PC"})
+
+    {:ok, [second]} =
+      TallyDevices.report_companies(device, [
+        %{
+          "name" => "Breeze Tech second books",
+          "gstin" => context.client.gstin,
+          "tally_guid" => "breeze-second-books"
+        }
+      ])
+
+    [invoice | _] = context.workings.active_invoices
+
+    path =
+      review_path(context.client, invoice["id"], "all") <>
+        "&" <> URI.encode_query(%{"tally_company_id" => second.id})
+
+    {:ok, view, _html} = live(context.conn, path)
+    assert has_element?(view, "#gstr1-tally-posting-form", second.name)
   end
 
   test "a signed month withdraws every write action from the review surface", context do

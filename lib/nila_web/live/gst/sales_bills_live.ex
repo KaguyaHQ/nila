@@ -3,7 +3,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   alias Nila.Clients
   alias Nila.Gst.Filing.TallyPrime
-  alias Nila.Gst.Sales.TallyPacket
+  alias Nila.Gst.Sales.{Gstr1, TallyPacket}
   alias Nila.{TallyDevices, TallyJobs, TallyMappings}
 
   @impl true
@@ -103,6 +103,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
            socket,
            :send_error,
            "A saved posting ledger is no longer in this Tally company. Sync masters and review the posting selections."
+         )}
+
+      {:error, {:unresolved_tally_parties, parties}} ->
+        {:noreply,
+         assign(
+           socket,
+           :send_error,
+           "Choose an existing Tally party for #{Enum.join(parties, ", ")} before sending."
          )}
 
       _error ->
@@ -244,20 +252,38 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         {:error, :not_found} -> nil
       end
 
-    with {:ok, profile_posting} <- profile_posting(profile, ledgers_by_identity) do
-      invoices =
-        Enum.map(invoices, fn invoice ->
-          party_posting =
-            case TallyMappings.resolve_party(org_id, company_id, party_identity(invoice)) do
-              {:ok, %{ledger: ledger}} -> %{"party_ledger" => ledger.name}
-              {:error, _reason} -> %{}
-            end
-
-          Map.put(invoice, "tally_posting", Map.merge(profile_posting, party_posting))
-        end)
-
+    with {:ok, profile_posting} <- profile_posting(profile, ledgers_by_identity),
+         {:ok, invoices} <-
+           apply_party_posting(org_id, company_id, invoices, profile_posting) do
       {:ok, invoices}
     end
+  end
+
+  defp apply_party_posting(org_id, company_id, invoices, profile_posting) do
+    {resolved, unresolved} =
+      Enum.reduce(invoices, {[], []}, fn invoice, {resolved, unresolved} ->
+        if Gstr1.recipient_registration(invoice) == "registered" do
+          case TallyMappings.resolve_party(org_id, company_id, party_identity(invoice)) do
+            {:ok, %{ledger: ledger}} ->
+              posting = Map.put(profile_posting, "party_ledger", ledger.name)
+              {[Map.put(invoice, "tally_posting", posting) | resolved], unresolved}
+
+            {:error, _reason} ->
+              {resolved, [invoice_label(invoice) | unresolved]}
+          end
+        else
+          {[Map.put(invoice, "tally_posting", profile_posting) | resolved], unresolved}
+        end
+      end)
+
+    case unresolved do
+      [] -> {:ok, Enum.reverse(resolved)}
+      parties -> {:error, {:unresolved_tally_parties, parties |> Enum.reverse() |> Enum.uniq()}}
+    end
+  end
+
+  defp invoice_label(invoice) do
+    invoice["invoice_number"] || invoice["buyer_name"] || "an unnumbered invoice"
   end
 
   defp profile_posting(nil, _ledgers_by_identity), do: {:ok, %{}}
@@ -292,15 +318,19 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     }
   end
 
-  defp posting_review_path(client, batch_ref, invoice) do
+  defp posting_review_path(client, batch_ref, company, invoice) do
     period = invoice["invoice_date"] |> to_string() |> String.slice(0, 7)
     return_to = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}"
 
-    params = %{
-      "item" => invoice["id"] || invoice["invoice_number"],
-      "scope" => "all",
-      "return_to" => return_to
-    }
+    params =
+      %{
+        "item" => invoice["id"] || invoice["invoice_number"],
+        "scope" => "all",
+        "tally_company_id" => company && company.id,
+        "return_to" => return_to
+      }
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
 
     "/gst/#{client.id}/#{period}/review/sales?" <> URI.encode_query(params)
   end
@@ -525,7 +555,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
             <:col :let={invoice} label="Tally">
               <.text_link
-                navigate={posting_review_path(@client, @batch_ref, invoice)}
+                navigate={posting_review_path(@client, @batch_ref, @tally_company, invoice)}
                 class="text-ui font-medium whitespace-nowrap"
               >
                 Review posting
