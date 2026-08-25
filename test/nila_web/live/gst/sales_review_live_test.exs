@@ -81,6 +81,18 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     assert_redirect(view, return_to)
   end
 
+  test "transaction review returns to the sales bills register", context do
+    [invoice | _] = context.workings.active_invoices
+
+    path =
+      review_path(context.client, invoice["id"], "all") <>
+        "&" <> URI.encode_query(%{"return_to" => "/sales-bills"})
+
+    {:ok, view, _html} = live(context.conn, path)
+    view |> element("#sales-review button[phx-click='done']") |> render_click()
+    assert_redirect(view, "/sales-bills")
+  end
+
   test "missing and unknown route state canonicalizes to needs-you first, then all", context do
     [open | _] = context.workings.active_invoices
     clean = Enum.at(context.workings.active_invoices, 1)

@@ -1,12 +1,87 @@
 defmodule NilaWeb.Components.Form do
   @moduledoc """
-  Settings form actions row, the standard save button, and the moonlight file
-  dropzone.
+  Settings form actions, the standard save button, and Nila's shared document
+  importer primitives.
   """
   use Phoenix.Component
 
   import NilaWeb.Components.Button
+  import NilaWeb.Components.Card
+  import NilaWeb.Components.Feedback
   import NilaWeb.Components.Icon
+  import NilaWeb.Components.Page
+
+  @doc """
+  Renders the shared domain importer operation: page hierarchy, form card,
+  dropzone, error, and primary action. Callers provide only domain fields and
+  any state that temporarily replaces the form.
+  """
+  attr :id, :string, required: true
+  attr :eyebrow, :string, required: true
+  attr :title, :string, required: true
+  attr :form, :any, required: true
+  attr :form_id, :string, required: true
+  attr :show_form, :boolean, default: true
+  attr :upload, Phoenix.LiveView.UploadConfig, required: true
+  attr :upload_id, :string, required: true
+  attr :upload_label, :string, required: true
+  attr :upload_hint, :string, required: true
+  attr :upload_prompt, :string, default: "Choose files"
+  attr :error, :string, default: nil
+  attr :error_id, :string, required: true
+  attr :submit_id, :string, required: true
+  attr :submit_label, :string, required: true
+  attr :loading_label, :string, required: true
+  attr :on_cancel, :string, default: "cancel-upload"
+  slot :intro, required: true
+  slot :state
+  slot :fields, required: true
+
+  def importer(assigns) do
+    ~H"""
+    <section id={@id} data-importer class="space-y-section max-w-2xl">
+      <.page_header eyebrow={@eyebrow} title={@title}>
+        {render_slot(@intro)}
+      </.page_header>
+
+      {render_slot(@state)}
+
+      <.card :if={@show_form} id={"#{@form_id}-card"}>
+        <.form
+          for={@form}
+          id={@form_id}
+          phx-change="validate"
+          phx-submit="submit"
+          class="space-y-block"
+        >
+          {render_slot(@fields)}
+
+          <.file_drop
+            id={@upload_id}
+            upload={@upload}
+            label={@upload_label}
+            hint={@upload_hint}
+            prompt={@upload_prompt}
+            on_cancel={@on_cancel}
+          />
+
+          <div :if={@error} id={@error_id}>
+            <.callout kind="error" size="compact">{@error}</.callout>
+          </div>
+
+          <.button
+            type="submit"
+            id={@submit_id}
+            phx-disable-with={@loading_label}
+            full_width
+          >
+            {@submit_label}
+          </.button>
+        </.form>
+      </.card>
+    </section>
+    """
+  end
 
   @doc """
   Renders the standard right-aligned action row for settings forms.

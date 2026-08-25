@@ -229,7 +229,9 @@ defmodule NilaWeb.Gst.MonthLive do
   end
 
   defp valid_sales_review_return(return_to) when is_binary(return_to) do
-    if Regex.match?(~r|^/sales-bills/[^/?#]+/batch/[^/?#]+$|, return_to), do: return_to
+    if return_to == "/sales-bills" or
+         Regex.match?(~r|^/sales-bills/[^/?#]+/batch/[^/?#]+$|, return_to),
+       do: return_to
   end
 
   defp valid_sales_review_return(_return_to), do: nil

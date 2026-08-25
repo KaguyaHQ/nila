@@ -7,6 +7,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
   alias Nila.Clients
   alias Nila.Gst.Filing.Calendar
   alias Nila.Gst.Intake.{Dumps, DumpWorker}
+  alias Nila.Gst.Sales.Gstr1
   alias Nila.Storage
   alias Nila.TallyDevices
   alias NilaWeb.Presence
@@ -76,9 +77,80 @@ defmodule NilaWeb.Gst.UploadLiveTest do
   test "sales bills leads an unconnected firm to Tally setup", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/sales-bills")
 
+    assert has_element?(view, "#sales-bills-page", "Sales")
+    assert has_element?(view, "#sales-bills-page", "Bring in sales invoices")
+
+    assert has_element?(
+             view,
+             "#sales-bills-page",
+             "Nila reads them, prepares the Tally vouchers, and shows anything that needs your review."
+           )
+
     assert has_element?(view, "#sales-bills-connect-tally", "Connect TallyPrime")
     assert has_element?(view, "#sales-bills-connect-tally-button[href='/settings/connectors']")
     refute has_element?(view, "#sales-bills-form")
+  end
+
+  test "sales bills keeps recent imports secondary and opens the batch review", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    invoice =
+      Gstr1.normalize_invoice(%{
+        "data" => %{
+          "document_type" => "invoice",
+          "document_status" => "active",
+          "supply_type" => "taxable",
+          "recipient_registration" => "registered",
+          "place_of_supply" => "29",
+          "invoice_number" => "INV-104",
+          "invoice_date" => "04.11.2025",
+          "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
+          "buyer" => %{
+            "name" => "Siemens Healthcare",
+            "gstin" => "29AAVCS8021P1ZB"
+          },
+          "line_items" => [
+            %{
+              "description" => "Service",
+              "hsn_sac" => "998719",
+              "taxable_value" => 8_500,
+              "igst_rate" => 18,
+              "igst_amount" => 1_530
+            }
+          ],
+          "printed_grand_total" => 10_030
+        }
+      })
+      |> Map.put("id", "d104_inv_001")
+
+    {:ok, dump} =
+      Dumps.record(
+        %{org_id: org.id, client_id: client.id},
+        %{
+          period: "2025-11",
+          kind: "sales",
+          status: "extracted",
+          invoices: [invoice],
+          meta: %{"sales_batch" => true, "original_name" => "november.pdf"}
+        }
+      )
+
+    {:ok, view, _html} = live(conn, ~p"/sales-bills")
+
+    assert has_element?(view, "#sales-imports", "Recent imports")
+    assert has_element?(view, "#sales-imports-table", "Breeze Tech")
+    assert has_element?(view, "#sales-imports-table", "1 invoice")
+    assert has_element?(view, "#sales-imports-table", "1 ready")
+    refute has_element?(view, "#sales-imports-table", "INV-104")
+    refute has_element?(view, "#sales-imports-table", "Siemens Healthcare")
+    refute has_element?(view, "#sales-imports-table", "₹10,030.00")
+
+    assert has_element?(
+             view,
+             "#sales-import-#{dump.id} a[href='/sales-bills/#{client.id}/batch/#{dump.id}']"
+           )
   end
 
   test "sales bills asks for the installed connector to be started", %{conn: conn, org: org} do
@@ -122,10 +194,18 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     {:ok, _presence} = put_tally_online(org, device)
     {:ok, view, _html} = live(conn, ~p"/sales-bills")
 
+    assert has_element?(view, "#sales-bills-importer[data-importer]")
+    assert has_element?(view, "#sales-bills-form-card")
     assert has_element?(view, "#sales-bills-form")
     assert has_element?(view, "#sales-bills-form", "Breeze Tech is open in TallyPrime")
     refute has_element?(view, "#sales-bills-form select")
     assert has_element?(view, "#sales-bills-form input[type='hidden'][value='#{client.id}']")
+
+    assert has_element?(
+             view,
+             "#sales-bills-submit[phx-disable-with='Preparing Tally vouchers…']",
+             "Prepare Tally vouchers"
+           )
 
     assert Nila.Repo.reload!(company).client_id == client.id
     assert Nila.Repo.reload!(client).gstin == "33AEWPH4158J1Z3"

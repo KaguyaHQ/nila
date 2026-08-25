@@ -165,6 +165,11 @@ defmodule NilaWeb.Router do
     # client_month before streaming, so bills never leak across firms.
     get "/gst/:client_id/:period/evidence/:basename", GstEvidenceController, :show
     get "/gst/:client_id/:period/original/:dump_id/:index", GstEvidenceController, :original
+
+    get "/sales-bills/:client_id/dumps/:dump_id/evidence/:basename",
+        GstEvidenceController,
+        :sales_bill
+
     get "/gstr1/:client_id/:period/return.json", Gstr1Controller, :return_json
     get "/gstr1/:client_id/:period/winman-b2b.xlsm", Gstr1Controller, :winman_b2b
     get "/gstr1/:client_id/:period/evidence/:basename", Gstr1Controller, :evidence

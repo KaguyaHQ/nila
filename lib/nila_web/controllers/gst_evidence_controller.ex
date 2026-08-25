@@ -31,6 +31,28 @@ defmodule NilaWeb.GstEvidenceController do
     end
   end
 
+  @doc "Streams a rendered page belonging to one Sales Bills upload dump."
+  def sales_bill(conn, %{
+        "client_id" => client_id,
+        "dump_id" => dump_id,
+        "basename" => basename
+      }) do
+    org_id = conn.assigns.current_scope.current_org.id
+
+    with {:ok, dump_id} <- parse_int(dump_id),
+         {:ok, bytes} <- Dumps.fetch_sales_evidence(org_id, client_id, dump_id, basename) do
+      conn
+      |> put_resp_content_type(content_type(basename))
+      |> put_resp_header("cache-control", "private, max-age=300")
+      |> send_resp(200, bytes)
+    else
+      _ ->
+        conn
+        |> put_status(:not_found)
+        |> text("Not found")
+    end
+  end
+
   @doc """
   Serves a dump's original file as a download. The dump row is the authority:
   it is fetched by (current org, dump id), and the path's client/period must

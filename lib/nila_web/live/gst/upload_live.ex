@@ -17,6 +17,7 @@ defmodule NilaWeb.Gst.UploadLive do
   alias Nila.Gst.Filing.{Calendar, PortalDocument}
   alias Nila.Gst.Intake.{Dumps, DumpWorker}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
+  alias Nila.Gst.Sales.Imports
   alias Nila.Storage
   alias Nila.TallyDevices
   alias NilaWeb.Gst.PeriodOptions
@@ -62,6 +63,7 @@ defmodule NilaWeb.Gst.UploadLive do
         validator: &validate_document_entry/1,
         external: &presign_upload/2
       )
+      |> assign_sales_imports()
       |> load_sales_tally_context()
 
     {:ok, assign(socket, :error, nil)}
@@ -334,6 +336,7 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp create_dumps(socket, org_id, client_id, period, entry_kinds) do
     scope = socket.assigns.current_scope
+    sales_import_ref = if socket.assigns.sales_intake?, do: Ecto.UUID.generate()
 
     socket
     |> consume_uploaded_entries(:documents, fn %{key: key}, entry ->
@@ -343,7 +346,11 @@ defmodule NilaWeb.Gst.UploadLive do
     |> Enum.map(fn {kind, key, original_name} ->
       meta =
         if socket.assigns.sales_intake?,
-          do: %{"sales_batch" => true, "original_name" => original_name},
+          do: %{
+            "sales_batch" => true,
+            "sales_import_ref" => sales_import_ref,
+            "original_name" => original_name
+          },
           else: %{}
 
       {:ok, dump} =
@@ -525,6 +532,13 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp list_clients(_socket), do: []
 
+  defp assign_sales_imports(%{assigns: %{sales_intake?: true}} = socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+    assign(socket, :sales_imports, Imports.recent(org_id))
+  end
+
+  defp assign_sales_imports(socket), do: assign(socket, :sales_imports, [])
+
   defp load_sales_tally_context(%{assigns: %{sales_intake?: false}} = socket), do: socket
 
   defp load_sales_tally_context(
@@ -604,6 +618,20 @@ defmodule NilaWeb.Gst.UploadLive do
     |> assign(:clients, clients)
     |> assign(:form, to_form(form_values, as: :intake))
   end
+
+  defp sales_import_path(row),
+    do: "/sales-bills/#{row.client_id}/batch/#{row.batch_ref}"
+
+  defp invoice_count_label(1), do: "1 invoice"
+  defp invoice_count_label(count), do: "#{count} invoices"
+
+  defp import_outcome(%{ready_count: ready, review_count: 0}), do: "#{ready} ready"
+
+  defp import_outcome(%{ready_count: ready, review_count: 1}),
+    do: "#{ready} ready · 1 needs review"
+
+  defp import_outcome(%{ready_count: ready, review_count: review}),
+    do: "#{ready} ready · #{review} need review"
 
   defp permitted_client_id(client_id, clients) do
     if Enum.any?(clients, fn {_name, id} -> to_string(id) == to_string(client_id) end),
@@ -756,53 +784,69 @@ defmodule NilaWeb.Gst.UploadLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <div id="sales-bills-page" class="space-y-section mx-auto max-w-2xl">
-        <.page_header title="Sales bills to Tally" />
-
-        <.card :if={@tally_state == :connect and @jobs == %{}} id="sales-bills-connect-tally">
-          <div class="space-y-block">
-            <p class="text-base-content text-h4 font-semibold">Connect TallyPrime</p>
-            <.button navigate={~p"/settings/connectors"} id="sales-bills-connect-tally-button">
-              Connect Tally
-            </.button>
-          </div>
-        </.card>
-
-        <.card
-          :if={@tally_state == :start_connector and @jobs == %{}}
-          id="sales-bills-start-connector"
+      <div id="sales-bills-page" class="space-y-region mx-auto max-w-6xl">
+        <.importer
+          id="sales-bills-importer"
+          eyebrow="Sales"
+          title="Bring in sales invoices"
+          form={@form}
+          form_id="sales-bills-form"
+          show_form={
+            (match?({:ready, _name}, @tally_state) or @tally_state == :choose_company) and
+              @jobs == %{}
+          }
+          upload={@uploads.documents}
+          upload_id="sales-bills-documents"
+          upload_label="Sales invoices"
+          upload_hint="PDF or image · up to 50 files"
+          error={@error}
+          error_id="sales-bills-error"
+          submit_id="sales-bills-submit"
+          submit_label="Prepare Tally vouchers"
+          loading_label="Preparing Tally vouchers…"
         >
-          <p class="text-base-content text-h4 font-semibold">
-            Start Nila Connector on the Tally computer
-          </p>
-        </.card>
-
-        <.card
-          :if={@tally_state == :open_company and @jobs == %{}}
-          id="sales-bills-open-company"
-        >
-          <p class="text-base-content text-h4 font-semibold">Open the company in TallyPrime</p>
-        </.card>
-
-        <.card
-          :if={@tally_state == :unavailable and @jobs == %{}}
-          id="sales-bills-tally-unavailable"
-        >
-          <p class="text-base-content text-h4 font-semibold">
-            Nila could not use the open Tally company
-          </p>
-        </.card>
-
-        <.card :if={
-          (match?({:ready, _name}, @tally_state) or @tally_state == :choose_company) and @jobs == %{}
-        }>
-          <.form
-            for={@form}
-            id="sales-bills-form"
-            phx-change="validate"
-            phx-submit="submit"
-            class="space-y-block"
-          >
+          <:intro>
+            Upload the original sales invoices. Nila reads them, prepares the Tally vouchers, and
+            shows anything that needs your review.
+          </:intro>
+          <:state :if={@tally_state == :connect and @jobs == %{}}>
+            <.card id="sales-bills-connect-tally">
+              <div class="space-y-block">
+                <p class="text-base-content text-h4 font-semibold">Connect TallyPrime</p>
+                <.button navigate={~p"/settings/connectors"} id="sales-bills-connect-tally-button">
+                  Connect Tally
+                </.button>
+              </div>
+            </.card>
+          </:state>
+          <:state :if={@tally_state == :start_connector and @jobs == %{}}>
+            <.card id="sales-bills-start-connector">
+              <p class="text-base-content text-h4 font-semibold">
+                Start Nila Connector on the Tally computer
+              </p>
+            </.card>
+          </:state>
+          <:state :if={@tally_state == :open_company and @jobs == %{}}>
+            <.card id="sales-bills-open-company">
+              <p class="text-base-content text-h4 font-semibold">Open the company in TallyPrime</p>
+            </.card>
+          </:state>
+          <:state :if={@tally_state == :unavailable and @jobs == %{}}>
+            <.card id="sales-bills-tally-unavailable">
+              <p class="text-base-content text-h4 font-semibold">
+                Nila could not use the open Tally company
+              </p>
+            </.card>
+          </:state>
+          <:state :if={@jobs != %{}}>
+            <.card id="sales-bills-progress">
+              <div class="flex items-center gap-3">
+                <.spinner tone="accent" label="Preparing sales vouchers" />
+                <p class="text-base-content text-h4 font-semibold">Preparing sales vouchers</p>
+              </div>
+            </.card>
+          </:state>
+          <:fields>
             <p
               :if={match?({:ready, _name}, @tally_state)}
               class="text-base-content text-ui font-semibold"
@@ -822,29 +866,35 @@ defmodule NilaWeb.Gst.UploadLive do
               prompt="Select a company"
               options={@clients}
             />
-            <.file_drop
-              id="sales-bills-documents"
-              upload={@uploads.documents}
-              hint="PDF or image · up to 50 files"
-              on_cancel="cancel-upload"
-            />
+          </:fields>
+        </.importer>
 
-            <p :if={@error} id="sales-bills-error" class="nila-upload-error text-ui">
-              {@error}
-            </p>
-
-            <.button type="submit" id="sales-bills-submit" full_width>
-              Prepare Tally vouchers
-            </.button>
-          </.form>
-        </.card>
-
-        <.card :if={@jobs != %{}} id="sales-bills-progress">
-          <div class="flex items-center gap-3">
-            <.spinner tone="accent" label="Preparing sales vouchers" />
-            <p class="text-base-content text-h4 font-semibold">Preparing sales vouchers</p>
-          </div>
-        </.card>
+        <section :if={@sales_imports != []} id="sales-imports" class="space-y-block max-w-4xl">
+          <h2 class="text-base-content text-h4 font-semibold">Recent imports</h2>
+          <.data_table
+            id="sales-imports-table"
+            rows={@sales_imports}
+            row_id={& &1.dom_id}
+            row_navigate={&sales_import_path/1}
+            row_label={&"Open #{invoice_count_label(&1.invoice_count)} for #{&1.client_name}"}
+            mode="worklist"
+          >
+            <:col :let={row} label="Imported" row_header>
+              <span class="whitespace-nowrap tabular-nums">
+                {format_display_datetime(row.imported_at)}
+              </span>
+            </:col>
+            <:col :let={row} label="Company">
+              {row.client_name}
+            </:col>
+            <:col :let={row} label="Invoices" align="right">
+              {invoice_count_label(row.invoice_count)}
+            </:col>
+            <:col :let={row} label="Outcome">
+              {import_outcome(row)}
+            </:col>
+          </.data_table>
+        </section>
       </div>
     </Layouts.app>
     """

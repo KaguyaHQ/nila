@@ -5,7 +5,9 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
   alias Nila.Clients
   alias Nila.Gst.Intake.Dumps
+  alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.{Gstr1, TallyPacket}
+  alias Nila.Storage
   alias Nila.TallyDevices
   alias Nila.TallyDevices.SyncedMaster
   alias Nila.TallyJobs
@@ -58,6 +60,9 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
         }
       )
 
+    invoice = Map.put(invoice, "image", "d#{dump.id}_page_01.png")
+    dump = dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+
     {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Office PC"})
 
     {:ok, [company]} =
@@ -83,13 +88,20 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     })
 
     Enum.each(["Customer & Co", "Sales", "Output IGST"], fn name ->
+      parent =
+        case name do
+          "Customer & Co" -> "Sundry Debtors"
+          "Sales" -> "Sales Accounts"
+          "Output IGST" -> "Duties & Taxes"
+        end
+
       Nila.Repo.insert!(%SyncedMaster{
         org_id: org.id,
         company_id: company.id,
         kind: "ledger",
         identity: "name:" <> String.downcase(name),
         name: name,
-        data: %{},
+        data: %{"parent" => parent},
         inserted_at: now,
         updated_at: now
       })
@@ -97,11 +109,43 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     %{
       conn: log_in_user(conn, user),
+      org: org,
       client: client,
       dump: dump,
       device: device,
       company: company
     }
+  end
+
+  test "serves workbench evidence from its dump without requiring a filing month", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    org: org
+  } do
+    basename = "d#{dump.id}_page_01.png"
+    key = SalesMonths.evidence_key(org.id, client.id, dump.period, basename)
+    {:ok, _stored} = Storage.put(key, "sales-evidence")
+
+    conn =
+      get(conn, ~p"/sales-bills/#{client.id}/dumps/#{dump.id}/evidence/#{basename}")
+
+    assert response(conn, 200) == "sales-evidence"
+    assert get_resp_header(conn, "content-type") |> hd() =~ "image/png"
+  end
+
+  test "sales workbench evidence is dump- and tenant-scoped", %{
+    client: client,
+    dump: dump
+  } do
+    %{user: other_user} = user_with_org_fixture(%{org: %{gstin: "27AAPFU0939F1ZV"}})
+    conn = log_in_user(Phoenix.ConnTest.build_conn(), other_user)
+    basename = "d#{dump.id}_page_01.png"
+
+    conn =
+      get(conn, ~p"/sales-bills/#{client.id}/dumps/#{dump.id}/evidence/#{basename}")
+
+    assert response(conn, 404)
   end
 
   test "sends the prepared vouchers to the open Tally company", %{
@@ -117,6 +161,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(view, "#sales-bills-send-to-tally", "Send to Tally")
     refute has_element?(view, "#sales-bills-download")
+    refute has_element?(view, "#sales-bills-remainder")
     assert has_element?(view, "#sales-bills-voucher-table a", "Review posting")
 
     view
@@ -267,13 +312,297 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
              "Choose an existing Tally party for INV-001 before sending."
            )
 
+    view
+    |> element("#sales-bills-voucher-table a", "Review posting")
+    |> render_click()
+
+    assert has_element?(view, "#sales-bill-posting-review[data-variant='workbench']")
+    assert has_element?(view, "#sales-bill-tally-posting-form")
+    assert has_element?(view, "#sales-bill-posting-review", company.name)
+    assert has_element?(view, "#tally_posting_party_ledger_identity")
+    assert has_element?(view, "#sales-bill-evidence-frame")
+    assert has_element?(view, "#sales-bill-proposed-voucher", "Proposed Tally voucher")
+    assert has_element?(view, "#sales-bill-proposed-voucher", "Sales")
+    assert has_element?(view, "#sales-bill-proposed-voucher", "INV-001")
+    assert has_element?(view, "#sales-bill-line-summary-0", "Technical support services")
+    assert has_element?(view, "#sales-bill-line-summary-0", "HSN 998719")
+    refute has_element?(view, "#sales-bill-line-edit-sheet")
+
+    view
+    |> element("#sales-bill-edit-line-0")
+    |> render_click()
+
+    assert has_element?(view, "#sales-bill-line-edit-sheet[data-variant='sheet']")
+    assert has_element?(view, "#line_edit_description[value='Technical support services']")
+    assert has_element?(view, "#line_edit_hsn_sac[value='998719']")
+    assert has_element?(view, "#sales-bill-line-edit-form")
+    assert has_element?(view, "button[form='sales-bill-line-edit-form']", "Save changes")
+    assert has_element?(view, "#tally-posting-line-sales-ledger-0")
+    assert has_element?(view, "#tally-posting-place-of-supply option[selected][value='29']")
+    assert has_element?(view, "#sales-bill-tax-row-igst", "Output IGST")
+    assert has_element?(view, "#sales-bill-save-tally-posting", "Save & Close")
+
+    refute has_element?(
+             view,
+             ".nila-callout[data-kind='warning']",
+             "Posting details required"
+           )
+
+    view |> element("#sales-bill-evidence-frame-open") |> render_click()
+    assert has_element?(view, "#sales-bill-evidence-overlay")
+    view |> element("#sales-bill-evidence-overlay-close") |> render_click()
+    refute has_element?(view, "#sales-bill-evidence-overlay")
+
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
+  end
+
+  test "saves the complete proposed posting and closes the workbench", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    batch_ref = TallyPacket.ref([dump])
+    base_path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}"
+    {:ok, view, _html} = live(conn, base_path)
+
+    view |> element("a[href$='?item=INV-001']", "Review posting") |> render_click()
+
+    view
+    |> form("#sales-bill-tally-posting-form", %{
+      "tally_posting" => %{
+        "party_ledger_identity" => "name:customer & co",
+        "line_sales_ledger_identities" => %{"0" => "name:sales"},
+        "igst_ledger_identity" => "name:output igst"
+      }
+    })
+    |> render_submit()
+
+    assert_patch(view, base_path)
+    refute has_element?(view, "#sales-bill-posting-review")
+  end
+
+  test "saves a line correction without sending or losing posting selections", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    batch_ref = TallyPacket.ref([dump])
+    path = "/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    {:ok, view, _html} = live(conn, path)
+
+    view
+    |> form("#sales-bill-tally-posting-form", %{
+      "tally_posting" => %{
+        "party_ledger_identity" => "name:customer & co",
+        "line_sales_ledger_identities" => %{"0" => "name:sales"},
+        "igst_ledger_identity" => "name:output igst"
+      }
+    })
+    |> render_change()
+
+    view |> element("#sales-bill-edit-line-0") |> render_click()
+
+    view
+    |> form("#sales-bill-line-edit-form", %{
+      "line_edit" => %{
+        "description" => "Corrected support services",
+        "hsn_sac" => "998719",
+        "quantity" => "1",
+        "uom" => "NOS",
+        "rate" => "1000",
+        "taxable_value" => "1000",
+        "igst_rate" => "18",
+        "igst_amount" => "180"
+      }
+    })
+    |> render_submit()
+
+    refute has_element?(view, "#sales-bill-line-edit-sheet")
+    assert has_element?(view, "#sales-bill-line-summary-0", "Corrected support services")
+
     assert has_element?(
              view,
-             "#sales-bills-voucher-table a[href*='tally_company_id=#{company.id}']",
-             "Review posting"
+             "#tally_posting_party_ledger_identity option[selected][value='name:customer & co']"
+           )
+
+    assert has_element?(
+             view,
+             "#tally-posting-line-sales-ledger-0 option[selected][value='name:sales']"
+           )
+
+    assert has_element?(
+             view,
+             "#tally_posting_igst_ledger_identity option[selected][value='name:output igst']"
            )
 
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
+
+    {:ok, reopened, _html} = live(conn, path)
+    assert has_element?(reopened, "#sales-bill-line-summary-0", "Corrected support services")
+  end
+
+  test "keeps batch navigation inside the selected-item query", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    [first] = dump.invoices
+
+    second =
+      first
+      |> Map.put("id", "second-invoice")
+      |> Map.put("invoice_number", "INV-002")
+
+    dump = dump |> Ecto.Changeset.change(invoices: [first, second]) |> Nila.Repo.update!()
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    view |> element("a[href$='?item=INV-001']", "Review posting") |> render_click()
+    assert has_element?(view, "#sales-bill-posting-previous[disabled]")
+    assert has_element?(view, "#sales-bill-posting-next:not([disabled])")
+
+    view |> element("#sales-bill-posting-next") |> render_click()
+
+    assert_patch(
+      view,
+      "/sales-bills/#{client.id}/batch/#{batch_ref}?item=second-invoice"
+    )
+
+    assert has_element?(view, "#sales-bill-posting-review", "INV-002")
+    assert has_element?(view, "#sales-bill-posting-previous:not([disabled])")
+  end
+
+  test "saves corrections and syncs only the selected invoice", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    device: device
+  } do
+    [first] = dump.invoices
+
+    second =
+      first
+      |> Map.put("id", "second-invoice")
+      |> Map.put("invoice_number", "INV-002")
+
+    dump = dump |> Ecto.Changeset.change(invoices: [first, second]) |> Nila.Repo.update!()
+    batch_ref = TallyPacket.ref([dump])
+    path = "/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    {:ok, view, _html} = live(conn, path)
+
+    render_submit(view, "save-tally-posting", %{
+      "tally_action" => "sync",
+      "tally_posting" => %{
+        "party_ledger_identity" => "name:customer & co",
+        "line_sales_ledger_identities" => %{"0" => "name:sales"},
+        "igst_ledger_identity" => "name:output igst",
+        "invoice" => %{
+          "invoice_number" => "INV-001-A",
+          "invoice_date" => "2026-07-16",
+          "buyer_name" => "Customer & Company",
+          "buyer_gstin" => "29AAVCS8021P1ZB",
+          "place_of_supply" => "33",
+          "narration" => "Corrected from invoice",
+          "line_items" => %{
+            "0" => %{
+              "description" => "Corrected technical services",
+              "hsn_sac" => "998713",
+              "quantity" => "2",
+              "uom" => "NOS",
+              "rate" => "500",
+              "taxable_value" => "1000",
+              "igst_rate" => "18",
+              "igst_amount" => "180"
+            }
+          }
+        }
+      }
+    })
+
+    assert_patch(view, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+    refute has_element?(view, "#sales-bill-posting-review")
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Sending")
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 1
+    assert {:ok, job} = TallyJobs.claim_next(device.id)
+    assert job.payload["invoice_number"] == "INV-001-A"
+    assert job.payload["xml"] =~ "<VOUCHERNUMBER>INV-001-A</VOUCHERNUMBER>"
+    assert job.payload["xml"] =~ "Corrected technical services"
+    assert job.payload["xml"] =~ "<GSTHSNNAME>998713</GSTHSNNAME>"
+    assert job.payload["xml"] =~ "<PLACEOFSUPPLY>Tamil Nadu</PLACEOFSUPPLY>"
+
+    assert {:ok, _job} = TallyJobs.complete(device.id, job.id, "succeeded", %{"created" => 1})
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Added")
+
+    {:ok, reopened, _html} = live(conn, path)
+    assert has_element?(reopened, "#tally-posting-invoice-number[value='INV-001-A']")
+    assert has_element?(reopened, "#tally-posting-place-of-supply option[selected][value='33']")
+    assert has_element?(reopened, "#sales-bill-line-summary-0", "Corrected technical services")
+    assert has_element?(reopened, "#sales-bill-line-summary-0", "HSN 998713")
+  end
+
+  test "warns about a printed-total mismatch without blocking sync", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    [invoice] = dump.invoices
+
+    dump =
+      dump
+      |> Ecto.Changeset.change(invoices: [Map.put(invoice, "printed_grand_total", 1_180)])
+      |> Nila.Repo.update!()
+
+    batch_ref = TallyPacket.ref([dump])
+    path = "/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    {:ok, view, _html} = live(conn, path)
+
+    refute has_element?(
+             view,
+             ".nila-callout[data-kind='warning']",
+             "Invoice total does not match"
+           )
+
+    view
+    |> element("#sales-bill-edit-line-0")
+    |> render_click()
+
+    view
+    |> form("#sales-bill-line-edit-form", %{
+      "line_edit" => %{
+        "description" => "Technical support services",
+        "hsn_sac" => "998719",
+        "quantity" => "1",
+        "uom" => "",
+        "rate" => "900",
+        "taxable_value" => "900",
+        "igst_rate" => "18",
+        "igst_amount" => "180"
+      }
+    })
+    |> render_submit()
+
+    refute has_element?(view, "#sales-bill-line-edit-sheet")
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
+
+    assert has_element?(
+             view,
+             ".nila-callout[data-kind='warning']",
+             "The lines calculate to ₹1,080.00; the invoice prints ₹1,180.00."
+           )
+
+    refute has_element?(view, "#sales-bill-save-and-sync[disabled]")
+
+    render_submit(view, "save-tally-posting", %{
+      "tally_action" => "sync",
+      "tally_posting" => %{
+        "party_ledger_identity" => "name:customer & co",
+        "line_sales_ledger_identities" => %{"0" => "name:sales"},
+        "igst_ledger_identity" => "name:output igst"
+      }
+    })
+
+    assert_patch(view, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 1
   end
 
   test "offers read-only verification before retrying an unknown outcome", %{
