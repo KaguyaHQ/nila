@@ -1366,6 +1366,12 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             id="sales-bills-voucher-table"
             rows={@packet.invoices}
             row_id={fn invoice -> "sales-bill-#{invoice["id"] || invoice["invoice_number"]}" end}
+            row_navigate={fn invoice -> posting_review_path(@client, @batch_ref, invoice) end}
+            row_label={
+              fn invoice ->
+                "Review invoice #{invoice["invoice_number"] || "without a number"}"
+              end
+            }
             mode="scan"
             min_width="min-w-[760px]"
           >
@@ -1396,19 +1402,11 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </:col>
 
             <:col :let={invoice} label="Tally">
-              <div class="flex items-center gap-3 whitespace-nowrap">
-                <span id={"sales-bill-delivery-#{invoice_id(invoice)}"}>
-                  <.badge variant={invoice_delivery(invoice, @tally_jobs).variant}>
-                    {invoice_delivery(invoice, @tally_jobs).label}
-                  </.badge>
-                </span>
-                <.text_link
-                  patch={posting_review_path(@client, @batch_ref, invoice)}
-                  class="text-ui font-medium whitespace-nowrap"
-                >
-                  Review posting
-                </.text_link>
-              </div>
+              <span id={"sales-bill-delivery-#{invoice_id(invoice)}"} class="whitespace-nowrap">
+                <.badge variant={invoice_delivery(invoice, @tally_jobs).variant}>
+                  {invoice_delivery(invoice, @tally_jobs).label}
+                </.badge>
+              </span>
             </:col>
           </.data_table>
         </section>

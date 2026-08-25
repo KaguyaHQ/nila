@@ -162,7 +162,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bills-send-to-tally", "Send to Tally")
     refute has_element?(view, "#sales-bills-download")
     refute has_element?(view, "#sales-bills-remainder")
-    assert has_element?(view, "#sales-bills-voucher-table a", "Review posting")
+    assert has_element?(view, "#sales-bills-voucher-table a[href$='?item=INV-001']")
 
     view
     |> element("#sales-bills-send-to-tally")
@@ -312,9 +312,11 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
              "Choose an existing Tally party for INV-001 before sending."
            )
 
-    view
-    |> element("#sales-bills-voucher-table a", "Review posting")
-    |> render_click()
+    {:ok, view, _html} =
+      view
+      |> element("#sales-bills-voucher-table a[href$='?item=INV-001']")
+      |> render_click()
+      |> follow_redirect(conn)
 
     assert has_element?(view, "#sales-bill-posting-review[data-variant='workbench']")
     assert has_element?(view, "#sales-bill-tally-posting-form")
@@ -323,7 +325,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bill-evidence-frame")
     assert has_element?(view, "#sales-bill-proposed-voucher", "Proposed Tally voucher")
     assert has_element?(view, "#sales-bill-proposed-voucher", "Sales")
-    assert has_element?(view, "#sales-bill-proposed-voucher", "INV-001")
+    assert has_element?(view, "#tally-posting-invoice-number[value='INV-001']")
     assert has_element?(view, "#sales-bill-line-summary-0", "Technical support services")
     assert has_element?(view, "#sales-bill-line-summary-0", "HSN 998719")
     refute has_element?(view, "#sales-bill-line-edit-sheet")
@@ -365,7 +367,11 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     base_path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}"
     {:ok, view, _html} = live(conn, base_path)
 
-    view |> element("a[href$='?item=INV-001']", "Review posting") |> render_click()
+    {:ok, view, _html} =
+      view
+      |> element("#sales-bills-voucher-table a[href$='?item=INV-001']")
+      |> render_click()
+      |> follow_redirect(conn)
 
     view
     |> form("#sales-bill-tally-posting-form", %{
@@ -457,7 +463,12 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     batch_ref = TallyPacket.ref([dump])
     {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
 
-    view |> element("a[href$='?item=INV-001']", "Review posting") |> render_click()
+    {:ok, view, _html} =
+      view
+      |> element("#sales-bills-voucher-table a[href$='?item=INV-001']")
+      |> render_click()
+      |> follow_redirect(conn)
+
     assert has_element?(view, "#sales-bill-posting-previous[disabled]")
     assert has_element?(view, "#sales-bill-posting-next:not([disabled])")
 
