@@ -6,7 +6,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
   alias Nila.Clients
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Sales.Months, as: SalesMonths
-  alias Nila.Gst.Sales.{Gstr1, TallyPacket}
+  alias Nila.Gst.Sales.{Gstr1, InvoiceRemoval, TallyPacket}
   alias Nila.Storage
   alias Nila.TallyDevices
   alias Nila.TallyDevices.SyncedMaster
@@ -179,6 +179,71 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert render(view) =~ "Added to Tally"
     assert has_element?(view, "#sales-bills-added-to-tally")
+  end
+
+  test "closes invoice review with Escape", %{conn: conn, client: client, dump: dump} do
+    batch_ref = TallyPacket.ref([dump])
+
+    {:ok, view, _html} =
+      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001")
+
+    assert has_element?(
+             view,
+             "#sales-bill-posting-review-focus-wrap[phx-window-keydown='close-posting-review'][phx-key='escape']"
+           )
+  end
+
+  test "removes an invoice from Nila without touching its source or Tally voucher", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    device: device,
+    org: org
+  } do
+    batch_ref = TallyPacket.ref([dump])
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}"
+    {:ok, view, _html} = live(conn, path)
+
+    assert has_element?(view, "#sales-bill-actions-INV-001-trigger[aria-label]")
+
+    view |> element("#sales-bill-remove-INV-001") |> render_click()
+
+    assert has_element?(view, "#sales-bill-remove-dialog", "Remove invoice?")
+
+    assert has_element?(
+             view,
+             "#sales-bill-remove-dialog",
+             "It won’t affect anything already added to Tally."
+           )
+
+    view |> element("#sales-bill-remove-cancel") |> render_click()
+    refute has_element?(view, "#sales-bill-remove-dialog")
+
+    view |> element("#sales-bills-send-to-tally") |> render_click()
+    assert {:ok, job} = TallyJobs.claim_next(device.id)
+    assert {:ok, job} = TallyJobs.complete(device.id, job.id, "succeeded", %{"created" => 1})
+
+    view |> element("#sales-bill-remove-INV-001") |> render_click()
+    view |> element("#sales-bill-remove-confirm") |> render_click()
+
+    assert has_element?(view, "#sales-bills-result", "No sales vouchers ready")
+    refute has_element?(view, "#sales-bills-voucher-table")
+    refute has_element?(view, "#sales-bill-remove-dialog")
+
+    removal = Nila.Repo.one!(InvoiceRemoval)
+    assert removal.org_id == org.id
+    assert removal.client_id == client.id
+    assert removal.batch_ref == batch_ref
+    assert removal.source_id == "INV-001"
+    assert removal.removed_at
+
+    assert [source_invoice] = Nila.Repo.reload!(dump).invoices
+    assert source_invoice["invoice_number"] == "INV-001"
+    assert TallyJobs.get_job!(job.id).status == "succeeded"
+
+    {:ok, reopened, _html} = live(conn, path)
+    assert has_element?(reopened, "#sales-bills-result", "No sales vouchers ready")
+    refute has_element?(reopened, "#sales-bills-voucher-table")
   end
 
   test "uses the confirmed party and company posting ledgers when sending", %{
@@ -471,6 +536,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(view, "#sales-bill-posting-previous[disabled]")
     assert has_element?(view, "#sales-bill-posting-next:not([disabled])")
+    assert has_element?(view, "#sales-bill-posting-position", "1 of 2")
+    assert has_element?(view, "#sales-bill-posting-back", "Back to batch")
 
     view |> element("#sales-bill-posting-next") |> render_click()
 
@@ -481,6 +548,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(view, "#sales-bill-posting-review", "INV-002")
     assert has_element?(view, "#sales-bill-posting-previous:not([disabled])")
+    assert has_element?(view, "#sales-bill-posting-next[disabled]")
+    assert has_element?(view, "#sales-bill-posting-position", "2 of 2")
   end
 
   test "saves corrections and syncs only the selected invoice", %{

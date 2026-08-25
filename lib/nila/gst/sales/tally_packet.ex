@@ -6,7 +6,7 @@ defmodule Nila.Gst.Sales.TallyPacket do
 
   alias Nila.Gst.Filing.TallyPrime
   alias Nila.Gst.Intake.{Dump, Dumps}
-  alias Nila.Gst.Sales.{Gstr1, InvoiceCorrections}
+  alias Nila.Gst.Sales.{Gstr1, InvoiceCorrections, InvoiceRemovals}
 
   def fetch(org_id, client_id, batch_ref) do
     with {:ok, dump_ids} <- decode_ref(batch_ref),
@@ -65,7 +65,11 @@ defmodule Nila.Gst.Sales.TallyPacket do
 
   defp effective_invoices(invoices, [%Dump{org_id: org_id, client_id: client_id} | _], dumps) do
     if Enum.all?(dumps, &(&1.org_id == org_id and &1.client_id == client_id)) do
-      InvoiceCorrections.apply(org_id, client_id, ref(dumps), invoices)
+      batch_ref = ref(dumps)
+
+      org_id
+      |> InvoiceCorrections.apply(client_id, batch_ref, invoices)
+      |> then(&InvoiceRemovals.reject_removed(org_id, client_id, batch_ref, &1))
     else
       invoices
     end

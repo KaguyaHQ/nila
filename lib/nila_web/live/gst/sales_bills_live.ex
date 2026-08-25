@@ -3,7 +3,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   alias Nila.Clients
   alias Nila.Gst.Filing.TallyPrime
-  alias Nila.Gst.Sales.{Gstr1, InvoiceCorrections, TallyPacket}
+  alias Nila.Gst.Sales.{Gstr1, InvoiceCorrections, InvoiceRemovals, TallyPacket}
   alias Nila.Gst.StateCodes
   alias Nila.{TallyDevices, TallyJobs, TallyMappings}
 
@@ -30,13 +30,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
        |> assign(:selected_invoice, nil)
        |> assign(:posting_preview_invoice, nil)
        |> assign(:tally_posting, nil)
-       |> assign(:posting_navigation, %{previous: nil, next: nil})
+       |> assign(:posting_navigation, %{previous: nil, next: nil, position: 0, total: 0})
        |> assign(:evidence_open, false)
        |> assign(:evidence_page, 0)
        |> assign(:editing_line_index, nil)
        |> assign(:line_edit_row, nil)
        |> assign(:line_edit_form, nil)
        |> assign(:line_edit_error, nil)
+       |> assign(:removing_invoice, nil)
        |> assign(:send_error, nil)}
     else
       _not_found ->
@@ -251,6 +252,48 @@ defmodule NilaWeb.Gst.SalesBillsLive do
        to: ~p"/sales-bills/#{socket.assigns.client.id}/batch/#{socket.assigns.batch_ref}"
      )}
   end
+
+  def handle_event("open-remove-invoice", %{"id" => source_id}, socket) do
+    invoice = Enum.find(socket.assigns.packet.invoices, &(invoice_id(&1) == source_id))
+    {:noreply, assign(socket, :removing_invoice, invoice)}
+  end
+
+  def handle_event("close-remove-invoice", _params, socket),
+    do: {:noreply, assign(socket, :removing_invoice, nil)}
+
+  def handle_event(
+        "remove-invoice",
+        _params,
+        %{assigns: %{removing_invoice: invoice}} = socket
+      )
+      when not is_nil(invoice) do
+    scope = socket.assigns.current_scope
+    org_id = scope.current_org.id
+
+    with {:ok, _removal} <-
+           InvoiceRemovals.remove(
+             org_id,
+             socket.assigns.client.id,
+             socket.assigns.batch_ref,
+             invoice_id(invoice),
+             scope.user.id
+           ),
+         {:ok, dumps} <-
+           TallyPacket.fetch(org_id, socket.assigns.client.id, socket.assigns.batch_ref) do
+      {:noreply,
+       socket
+       |> assign(:packet, prepare_packet(dumps, socket.assigns.client.id))
+       |> assign(:removing_invoice, nil)}
+    else
+      _error ->
+        {:noreply,
+         socket
+         |> assign(:removing_invoice, nil)
+         |> put_flash(:error, "That invoice could not be removed.")}
+    end
+  end
+
+  def handle_event("remove-invoice", _params, socket), do: {:noreply, socket}
 
   def handle_event("navigate-posting-review", %{"item" => source_id}, socket) do
     case Enum.find(socket.assigns.packet.invoices, &(invoice_id(&1) == source_id)) do
@@ -1125,12 +1168,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp posting_navigation(invoices, invoice) do
     case Enum.find_index(invoices, &(invoice_id(&1) == invoice_id(invoice))) do
       nil ->
-        %{previous: nil, next: nil}
+        %{previous: nil, next: nil, position: 0, total: length(invoices)}
 
       index ->
         %{
           previous: if(index > 0, do: Enum.at(invoices, index - 1)),
-          next: Enum.at(invoices, index + 1)
+          next: Enum.at(invoices, index + 1),
+          position: index + 1,
+          total: length(invoices)
         }
     end
   end
@@ -1223,6 +1268,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       flash={@flash}
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
+      active_client={@client}
     >
       <div id="sales-bills-result" class="space-y-region mx-auto max-w-6xl">
         <.link
@@ -1408,9 +1454,56 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 </.badge>
               </span>
             </:col>
+
+            <:col :let={invoice} label="" align="right">
+              <.action_menu
+                id={"sales-bill-actions-#{invoice_id(invoice)}"}
+                label={"Actions for invoice #{invoice["invoice_number"] || "without a number"}"}
+              >
+                <:item
+                  id={"sales-bill-remove-#{invoice_id(invoice)}"}
+                  label="Remove"
+                  icon="hero-trash"
+                  tone="error"
+                  on_click="open-remove-invoice"
+                  value={invoice_id(invoice)}
+                />
+              </.action_menu>
+            </:col>
           </.data_table>
         </section>
       </div>
+
+      <.modal
+        :if={@removing_invoice}
+        id="sales-bill-remove-dialog"
+        title="Remove invoice?"
+        on_close="close-remove-invoice"
+        return_focus={"#sales-bill-actions-#{invoice_id(@removing_invoice)}-trigger"}
+      >
+        <p class="text-base-content text-body">
+          This removes the invoice from Nila. It won’t affect anything already added to Tally.
+        </p>
+
+        <:footer>
+          <.button
+            id="sales-bill-remove-cancel"
+            type="button"
+            variant="ghost"
+            phx-click="close-remove-invoice"
+          >
+            Cancel
+          </.button>
+          <.button
+            id="sales-bill-remove-confirm"
+            type="button"
+            variant="error"
+            phx-click="remove-invoice"
+          >
+            Remove
+          </.button>
+        </:footer>
+      </.modal>
 
       <.modal
         :if={@selected_invoice}
@@ -1418,36 +1511,57 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         title={"Invoice #{@selected_invoice["invoice_number"] || "without a number"}"}
         on_close="close-posting-review"
         variant="workbench"
-        close_label="Close"
-        close_on_escape={false}
+        close_on_escape={is_nil(@editing_line_index) and not @evidence_open}
       >
         <:header :let={title_id}>
           <div class="grid items-center gap-3 lg:grid-cols-[1fr_auto_1fr]">
-            <button
-              type="button"
-              id="sales-bill-posting-previous"
-              phx-click="navigate-posting-review"
-              phx-value-item={invoice_id(@posting_navigation.previous)}
-              disabled={is_nil(@posting_navigation.previous)}
-              class="hover:text-ink text-ink-subtle text-ui justify-self-start transition disabled:opacity-30"
-            >
-              ← Previous
-            </button>
+            <div class="justify-self-start">
+              <.button
+                id="sales-bill-posting-back"
+                type="button"
+                variant="ghost"
+                size="xs"
+                phx-click="close-posting-review"
+              >
+                <.icon name="hero-arrow-left" class="size-4" /> Back to batch
+              </.button>
+            </div>
             <div class="text-center">
               <h2 id={title_id} class="text-base-content text-body font-semibold">
                 Invoice {@selected_invoice["invoice_number"] || "without a number"}
               </h2>
             </div>
-            <button
-              type="button"
-              id="sales-bill-posting-next"
-              phx-click="navigate-posting-review"
-              phx-value-item={invoice_id(@posting_navigation.next)}
-              disabled={is_nil(@posting_navigation.next)}
-              class="hover:text-ink text-ink-subtle text-ui justify-self-end transition disabled:opacity-30"
-            >
-              Next →
-            </button>
+            <div class="border-base-300 gap-related flex items-center justify-self-end border-r pr-4">
+              <.button
+                id="sales-bill-posting-previous"
+                type="button"
+                variant="ghost"
+                size="xs"
+                phx-click="navigate-posting-review"
+                phx-value-item={invoice_id(@posting_navigation.previous)}
+                disabled={is_nil(@posting_navigation.previous)}
+                aria-label="Previous invoice"
+                title="Previous invoice"
+              >
+                <.icon name="hero-chevron-left" class="size-4" />
+              </.button>
+              <span id="sales-bill-posting-position" class="text-ink-subtle text-ui tabular-nums">
+                {@posting_navigation.position} of {@posting_navigation.total}
+              </span>
+              <.button
+                id="sales-bill-posting-next"
+                type="button"
+                variant="ghost"
+                size="xs"
+                phx-click="navigate-posting-review"
+                phx-value-item={invoice_id(@posting_navigation.next)}
+                disabled={is_nil(@posting_navigation.next)}
+                aria-label="Next invoice"
+                title="Next invoice"
+              >
+                <.icon name="hero-chevron-right" class="size-4" />
+              </.button>
+            </div>
           </div>
         </:header>
 

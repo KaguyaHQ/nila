@@ -92,6 +92,7 @@ defmodule NilaWeb do
       import NilaWeb.Components.Fold
       import NilaWeb.Components.Typography
       import NilaWeb.Components.Table
+      import NilaWeb.Components.Menu
       import NilaWeb.Components.Page
       import NilaWeb.Components.Form
       import NilaWeb.Components.Feedback
