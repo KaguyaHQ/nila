@@ -124,6 +124,11 @@ defmodule NilaWeb.SettingsLiveTest do
       refute has_element?(view, ~s|#settings-firm-form input[name="org[gstin]"]|)
       refute has_element?(view, ~s|#settings-firm-form input[name="org[address_line1]"]|)
       assert has_element?(view, ~s|a[aria-current="page"][href="/settings/workspace"]|)
+
+      settings_nav = view |> element("#settings-nav") |> render()
+
+      assert settings_nav =~
+               ~r|href="/settings/workspace".*href="/settings/users".*href="/settings/connectors"|s
     end
 
     test "updates the shared firm details", %{conn: conn, org: org} do

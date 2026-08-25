@@ -254,7 +254,11 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert html =~ "Oct 2025 — nothing in yet"
   end
 
-  test "with no client picked yet the periods stay bare", %{conn: conn, org: org, client: client} do
+  test "the active client is preselected with its period context", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
     {:ok, _bills} =
       Dumps.record(
         %{org_id: org.id, client_id: client.id},
@@ -269,8 +273,8 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     {:ok, view, _html} = live(conn, ~p"/gst/upload")
     html = view |> element("#gst-upload-form") |> render()
 
-    assert html =~ "Sep 2025"
-    refute html =~ "Sep 2025 —"
+    assert html =~ ~s(<option selected="" value="#{client.id}">)
+    assert html =~ "Sep 2025 — 1 bill"
   end
 
   test "shows an add-client empty state instead of an unusable form", %{

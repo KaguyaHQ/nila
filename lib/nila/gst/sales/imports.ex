@@ -11,16 +11,23 @@ defmodule Nila.Gst.Sales.Imports do
   @recent_import_limit 15
 
   def recent(org_id) when is_integer(org_id) do
+    recent(org_id, nil)
+  end
+
+  def recent(org_id, client_id) when is_integer(org_id) do
+    query =
+      from d in Dump,
+        where:
+          d.org_id == ^org_id and d.kind == "sales" and
+            d.status in ["extracted", "failed"],
+        order_by: [desc: d.inserted_at, desc: d.id],
+        limit: @recent_dump_limit,
+        preload: [:client]
+
+    query = if client_id, do: where(query, [d], d.client_id == ^client_id), else: query
+
     dumps =
-      Repo.all(
-        from d in Dump,
-          where:
-            d.org_id == ^org_id and d.kind == "sales" and
-              d.status in ["extracted", "failed"],
-          order_by: [desc: d.inserted_at, desc: d.id],
-          limit: @recent_dump_limit,
-          preload: [:client]
-      )
+      Repo.all(query)
 
     groups = Enum.group_by(dumps, &import_key/1)
 

@@ -7,6 +7,7 @@ defmodule NilaWeb.UserAuth do
   alias Nila.Accounts
   alias Nila.Accounts.Policy
   alias Nila.Accounts.Scope
+  alias Nila.Clients
 
   @max_age 60 * 60 * 24 * 60
   @remember_me_cookie "_nila_web_user_remember_me"
@@ -49,7 +50,7 @@ defmodule NilaWeb.UserAuth do
     user = user_token && Accounts.get_user_by_session_token(user_token)
 
     conn
-    |> assign(:current_scope, Scope.for_user(user))
+    |> assign(:current_scope, scope_for_user(user, get_session(conn, :current_client_id)))
     |> assign(:current_user, user)
   end
 
@@ -58,15 +59,18 @@ defmodule NilaWeb.UserAuth do
   end
 
   @doc """
-  Tracks the current request path in `:current_path` so the shell can
-  highlight the active sidebar entry. Re-runs on every `live_patch` /
-  `live_navigate` via the attached `handle_params` hook.
+  Tracks the current request target in `:current_path` so the shell can both
+  highlight the active sidebar entry and preserve relevant query context when
+  switching clients. Re-runs on every `live_patch` / `live_navigate` via the
+  attached `handle_params` hook.
   """
   def on_mount(:mount_current_path, _params, _session, socket) do
     socket =
       Phoenix.LiveView.attach_hook(socket, :mount_current_path, :handle_params, fn
         _params, url, socket ->
-          {:cont, Phoenix.Component.assign(socket, :current_path, URI.parse(url).path)}
+          uri = URI.parse(url)
+          request_target = uri.path <> if(uri.query, do: "?#{uri.query}", else: "")
+          {:cont, Phoenix.Component.assign(socket, :current_path, request_target)}
       end)
 
     {:cont, socket}
@@ -229,7 +233,7 @@ defmodule NilaWeb.UserAuth do
       Phoenix.Component.assign_new(socket, :current_scope, fn ->
         with token when not is_nil(token) <- session["user_token"],
              user when not is_nil(user) <- Accounts.get_user_by_session_token(token) do
-          Scope.for_user(user)
+          scope_for_user(user, session["current_client_id"])
         end
       end)
 
@@ -251,6 +255,38 @@ defmodule NilaWeb.UserAuth do
   end
 
   defp mount_session_disconnect(socket), do: socket
+
+  defp scope_for_user(nil, _client_id), do: nil
+
+  defp scope_for_user(user, client_id) do
+    scope = Scope.for_user(user)
+
+    current_client =
+      with %{current_org: %{id: org_id}} <- scope,
+           {:ok, client} <- selected_or_first_client(org_id, client_id) do
+        client
+      else
+        _ -> nil
+      end
+
+    %{scope | current_client: current_client}
+  end
+
+  defp selected_or_first_client(org_id, client_id) when client_id not in [nil, ""] do
+    case Clients.get_client(org_id, client_id) do
+      {:ok, client} -> {:ok, client}
+      {:error, :not_found} -> first_client(org_id)
+    end
+  end
+
+  defp selected_or_first_client(org_id, _client_id), do: first_client(org_id)
+
+  defp first_client(org_id) do
+    case Clients.list_clients(org_id) do
+      [client | _] -> {:ok, client}
+      [] -> {:error, :not_found}
+    end
+  end
 
   defp ensure_user_token(conn) do
     if token = get_session(conn, :user_token) do

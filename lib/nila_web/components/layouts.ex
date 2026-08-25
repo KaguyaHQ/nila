@@ -32,6 +32,7 @@ defmodule NilaWeb.Layouts do
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
   attr :current_path, :string, default: nil, doc: "drives the active sidebar highlight"
+  attr :active_client, :map, default: nil, doc: "client that owns the current work surface"
 
   slot :inner_block, required: true
 
@@ -63,6 +64,15 @@ defmodule NilaWeb.Layouts do
             <.icon name="nila-panel-left" class="size-4" />
           </button>
         </div>
+
+        <.live_component
+          :if={@current_scope && (@active_client || @current_scope.current_client)}
+          module={NilaWeb.ClientSwitcherComponent}
+          id="shell-client-switcher-component"
+          current_scope={@current_scope}
+          current_path={@current_path}
+          active_client={@active_client}
+        />
 
         <nav class="gap-section mt-section flex flex-1 flex-col overflow-y-auto">
           <div class="space-y-1">
@@ -178,16 +188,16 @@ defmodule NilaWeb.Layouts do
                 active={@active_section == :workspace}
               />
               <.settings_link
-                href={~p"/settings/connectors"}
-                icon="hero-link"
-                label="Connections"
-                active={@active_section == :connectors}
-              />
-              <.settings_link
                 href={~p"/settings/users"}
                 icon="hero-users"
                 label="Users"
                 active={@active_section == :users}
+              />
+              <.settings_link
+                href={~p"/settings/connectors"}
+                icon="hero-link"
+                label="Connections"
+                active={@active_section == :connectors}
               />
             </div>
           </nav>
@@ -242,7 +252,8 @@ defmodule NilaWeb.Layouts do
   # matching everything.
   defp rail_active?(nil, _href), do: false
 
-  defp rail_active?(path, href) do
+  defp rail_active?(request_target, href) do
+    path = URI.parse(request_target).path
     path == href or String.starts_with?(path, href <> "/")
   end
 

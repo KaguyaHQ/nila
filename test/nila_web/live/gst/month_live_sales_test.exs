@@ -35,7 +35,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
     assert has_element?(view, "#month-page")
     assert has_element?(view, "#month-sales")
     assert has_element?(view, "#gstr1-inv-20\\/2025-26")
-    assert has_element?(view, "#month-verdict h1.text-h4", "Breeze Tech")
+    assert has_element?(view, "#shell-client-switcher-trigger", "Breeze Tech")
+    assert has_element?(view, "#month-verdict h1.text-h4", "Oct 2025")
     refute has_element?(view, "#month-headline")
     assert has_element?(view, "#month-deadline-sales", "GSTR-1")
     refute has_element?(view, "#month-deadline-purchase")
@@ -95,7 +96,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
            ]
   end
 
-  test "switches between clients in the same period without losing the workpaper", %{
+  test "opens the global client switcher from a client month", %{
     conn: conn,
     org: org,
     client: client,
@@ -108,96 +109,67 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
         type: "company"
       })
 
-    {:ok, other_period} =
-      Clients.create_client(%{
-        org_id: org.id,
-        name: "August Only",
-        type: "company"
-      })
-
     work_dump!(org, caltech, @period, "sales", "%PDF-1.4 caltech bytes", user.id)
-    work_dump!(org, other_period, "2025-08", "sales", "%PDF-1.4 august bytes", user.id)
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}?track=sales")
 
-    assert has_element?(view, "#open-client-switcher[aria-expanded='false']", "Breeze Tech")
+    assert has_element?(
+             view,
+             "#shell-client-switcher-trigger[aria-expanded='false']",
+             "Breeze Tech"
+           )
 
-    view |> element("#open-client-switcher") |> render_click()
+    view |> element("#shell-client-switcher-trigger") |> render_click()
 
-    assert has_element?(view, "#open-client-switcher[aria-expanded='true']")
-    assert has_element?(view, "#client-switcher-focus-wrap[role='dialog']", "Switch client")
+    assert has_element?(view, "#shell-client-switcher-trigger[aria-expanded='true']")
 
     assert has_element?(
              view,
-             "#client-switcher-navigation[phx-hook='SelectableList'][data-loop='true']"
+             "#shell-client-switcher-sheet-focus-wrap[role='dialog']",
+             "Switch client"
            )
 
     assert has_element?(
              view,
-             "#client_switcher_query[role='combobox'][aria-controls='client-switcher-options']"
+             "#shell-client-switcher-navigation[phx-hook='SelectableList'][data-loop='true']"
            )
-
-    assert has_element?(view, "#client-switcher-options[role='listbox'][aria-label='Clients']")
 
     assert has_element?(
              view,
-             "button#client-switcher-client-#{client.id}[phx-click='close-client-switcher'][data-state='selected'][aria-selected='true']",
+             "#client_switcher_query[role='combobox'][aria-controls='shell-client-switcher-options']"
+           )
+
+    assert has_element?(
+             view,
+             "#shell-client-switcher-options[role='listbox'][aria-label='Clients']"
+           )
+
+    assert has_element?(
+             view,
+             "button#shell-client-switcher-client-#{client.id}[data-state='selected'][aria-selected='true']",
              "Current"
            )
 
     assert has_element?(
              view,
-             "#client-switcher-client-#{caltech.id}[href='/gst/#{caltech.id}/#{@period}?track=sales']",
+             "#shell-client-switcher-client-#{caltech.id}[href*='/clients/#{caltech.id}/select']",
              "Caltech"
            )
 
-    assert has_element?(
-             view,
-             "a#client-switcher-client-#{caltech.id}[role='option'][aria-selected='false'][tabindex='-1'][data-selectable-option]"
-           )
-
-    refute has_element?(view, "#client-switcher-client-#{other_period.id}")
-
     view
-    |> element("#client-switcher-client-#{client.id}")
-    |> render_click()
-
-    refute has_element?(view, "#client-switcher")
-    assert has_element?(view, "#open-client-switcher[aria-expanded='false']")
-
-    view |> element("#open-client-switcher") |> render_click()
-
-    view
-    |> form("#client-switcher-search-form", %{"client_switcher" => %{"query" => "calt"}})
+    |> form("#shell-client-switcher-search-form", %{
+      "client_switcher" => %{"query" => "calt"}
+    })
     |> render_change()
 
-    assert has_element?(view, "#client-switcher-client-#{caltech.id}", "Caltech")
-    refute has_element?(view, "#client-switcher-client-#{client.id}")
+    assert has_element?(view, "#shell-client-switcher-client-#{caltech.id}", "Caltech")
+    refute has_element?(view, "#shell-client-switcher-client-#{client.id}")
 
     view
-    |> element("#client-switcher button[phx-click='close-client-switcher']")
+    |> element("#shell-client-switcher-sheet button[phx-click='close']")
     |> render_click()
 
-    refute has_element?(view, "#client-switcher")
-    assert has_element?(view, "#open-client-switcher[aria-expanded='false']")
-
-    view |> element("#open-client-switcher") |> render_click()
-
-    view
-    |> form("#client-switcher-search-form", %{
-      "client_switcher" => %{"query" => "no-such-client"}
-    })
-    |> render_submit()
-
-    assert has_element?(view, "#client-switcher", "No clients match this search.")
-    assert has_element?(view, "#client_switcher_query[value='no-such-client']")
-    refute has_element?(view, "#client-switcher-options [data-selectable-option]")
-
-    view
-    |> form("#client-switcher-search-form", %{"client_switcher" => %{"query" => "calt"}})
-    |> render_submit()
-
-    assert_redirect(view, ~p"/gst/#{caltech.id}/#{@period}?track=sales")
+    refute has_element?(view, "#shell-client-switcher-sheet")
   end
 
   test "return workings disclose schedules before contributor rows", %{

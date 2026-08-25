@@ -70,10 +70,17 @@ defmodule NilaWeb.Gst.UploadLive do
         else: Calendar.closeable_period(Date.utc_today())
 
     %{
-      "client_id" => permitted_client(socket, params["client_id"]),
+      "client_id" =>
+        permitted_client(
+          socket,
+          params["client_id"] || active_client_id(socket)
+        ),
       "period" => period
     }
   end
+
+  defp active_client_id(%{assigns: %{current_scope: %{current_client: %{id: id}}}}), do: id
+  defp active_client_id(_socket), do: nil
 
   defp permitted_client(socket, client_id) do
     if Enum.any?(socket.assigns[:clients] || list_clients(socket), fn {_name, id} ->
@@ -520,7 +527,7 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp assign_sales_imports(%{assigns: %{sales_intake?: true}} = socket) do
     org_id = socket.assigns.current_scope.current_org.id
-    assign(socket, :sales_imports, Imports.recent(org_id))
+    assign(socket, :sales_imports, Imports.recent(org_id, active_client_id(socket)))
   end
 
   defp assign_sales_imports(socket), do: assign(socket, :sales_imports, [])
@@ -685,6 +692,7 @@ defmodule NilaWeb.Gst.UploadLive do
       flash={@flash}
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
+      active_client={@current_scope.current_client}
     >
       <div id="sales-bills-page" class="space-y-region mx-auto max-w-6xl">
         <div :if={@sales_workspace?} class="space-y-region max-w-4xl">
@@ -711,9 +719,6 @@ defmodule NilaWeb.Gst.UploadLive do
                 <span class="whitespace-nowrap tabular-nums">
                   {format_display_datetime(row.imported_at)}
                 </span>
-              </:col>
-              <:col :let={row} label="Company">
-                {row.client_name}
               </:col>
               <:col :let={row} label="Invoices" align="right">
                 {invoice_count_label(row.invoice_count)}

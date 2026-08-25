@@ -52,13 +52,21 @@ defmodule Nila.Banking do
   end
 
   def recent_statements(org_id) when is_integer(org_id) do
-    Repo.all(
+    recent_statements(org_id, nil)
+  end
+
+  def recent_statements(org_id, client_id) when is_integer(org_id) do
+    query =
       from statement in Statement,
         where: statement.org_id == ^org_id,
         order_by: [desc: statement.inserted_at, desc: statement.id],
         limit: 15,
         preload: [:client, bank_transactions: [:tally_job]]
-    )
+
+    query =
+      if client_id, do: where(query, [statement], statement.client_id == ^client_id), else: query
+
+    Repo.all(query)
   end
 
   def mark_extracting(%Statement{} = statement) do

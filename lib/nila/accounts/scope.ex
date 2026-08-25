@@ -2,7 +2,7 @@ defmodule Nila.Accounts.Scope do
   alias Nila.Accounts.User
   alias Nila.Repo
 
-  defstruct user: nil, current_org: nil, membership: nil
+  defstruct user: nil, current_org: nil, current_client: nil, membership: nil
 
   def for_user(nil), do: nil
 

@@ -17,8 +17,8 @@ defmodule NilaWeb.Banking.UploadLive do
       socket
       |> assign(:page_title, "Banking")
       |> assign(:clients, list_clients(socket))
-      |> assign(:statements, Banking.recent_statements(org.id))
-      |> assign(:form, to_form(defaults(), as: :statement))
+      |> assign(:statements, Banking.recent_statements(org.id, active_client_id(socket)))
+      |> assign(:form, to_form(defaults(socket), as: :statement))
       |> assign(:entry_keys, %{})
       |> assign(:error, nil)
       |> allow_upload(:statement,
@@ -35,7 +35,9 @@ defmodule NilaWeb.Banking.UploadLive do
   @impl true
   def handle_info({:bank_statement_progress, _statement_id, _state}, socket) do
     org_id = socket.assigns.current_scope.current_org.id
-    {:noreply, assign(socket, :statements, Banking.recent_statements(org_id))}
+
+    {:noreply,
+     assign(socket, :statements, Banking.recent_statements(org_id, active_client_id(socket)))}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -164,9 +166,10 @@ defmodule NilaWeb.Banking.UploadLive do
 
   defp list_clients(_socket), do: []
 
-  defp defaults do
-    %{"client_id" => nil, "password" => ""}
-  end
+  defp defaults(socket), do: %{"client_id" => active_client_id(socket), "password" => ""}
+
+  defp active_client_id(%{assigns: %{current_scope: %{current_client: %{id: id}}}}), do: id
+  defp active_client_id(_socket), do: nil
 
   defp statement_path(statement), do: "/banking/#{statement.id}"
 
@@ -227,7 +230,12 @@ defmodule NilaWeb.Banking.UploadLive do
       )
 
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current_path={assigns[:current_path]}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={assigns[:current_path]}
+      active_client={@current_scope.current_client}
+    >
       <div id="banking-page" class="space-y-region mx-auto max-w-6xl">
         <div :if={@banking_workspace?} class="space-y-region max-w-5xl">
           <.page_header eyebrow="Banking" title="Bank statements">
@@ -251,9 +259,6 @@ defmodule NilaWeb.Banking.UploadLive do
             >
               <:col :let={statement} label="Statement" row_header>
                 {statement.original_filename}
-              </:col>
-              <:col :let={statement} label="Client">
-                {statement.client.name}
               </:col>
               <:col :let={statement} label="Bank">
                 {statement_bank(statement)}

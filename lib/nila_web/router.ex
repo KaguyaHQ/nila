@@ -177,6 +177,7 @@ defmodule NilaWeb.Router do
     get "/gstr1/:client_id/:period/evidence/:basename", Gstr1Controller, :evidence
 
     get "/settings", SettingsController, :index
+    post "/clients/:id/select", ClientContextController, :update
     post "/settings/security/password", UserSettingsController, :update_password
     post "/settings/security/sessions", UserSettingsController, :delete_sessions
   end
