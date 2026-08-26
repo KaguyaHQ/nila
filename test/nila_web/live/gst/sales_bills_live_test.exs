@@ -586,6 +586,11 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bill-posting-position", "1 of 2")
     assert has_element?(view, "#sales-bill-posting-back", "Back to batch")
 
+    assert has_element?(
+             view,
+             "#sales-bill-posting-review-keys[phx-hook='NilaWeb.Gst.SalesBillsLive.SalesBillPostingReviewKeys'][data-next-item='second-invoice'][data-navigation-enabled='true']"
+           )
+
     view |> element("#sales-bill-posting-next") |> render_click()
 
     assert_patch(
@@ -597,6 +602,11 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bill-posting-previous:not([disabled])")
     assert has_element?(view, "#sales-bill-posting-next[disabled]")
     assert has_element?(view, "#sales-bill-posting-position", "2 of 2")
+
+    assert has_element?(
+             view,
+             "#sales-bill-posting-review-keys[data-previous-item='INV-001']:not([data-next-item])"
+           )
   end
 
   test "saves corrections and syncs only the selected invoice", %{

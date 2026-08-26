@@ -76,7 +76,6 @@ custom classes must fully style the input
 - For a new screen, workflow, or substantial restructuring, also read `docs/design/COMPOSITION.md` and `docs/design/TASTE.md`.
 - For public/marketing pages, read `docs/design/MARKETING.md` and `docs/design/TASTE.md`.
 - `assets/css/app.css` is authoritative for token values; `lib/nila_web/components/` owns shared recipes. Radix Themes 3.3 is the mechanical authority for generic controls, ported into HEEx with Nila's skin—never invent generic geometry or copy closed `nila-*` recipes into product markup. Token and recipe boundaries are enforced by `mix nila.style_guard`. Use the development-only `/dev/design-system` as the executable component reference.
-- For visible UI changes, inspect the real affected desktop screen before and after editing. Nila is a desktop workbench for CA firms; routine mobile screenshots/parity are not required. Check narrow layouts only when shared shell/layout changes could break catastrophically.
 
 ### JS and CSS guidelines
 

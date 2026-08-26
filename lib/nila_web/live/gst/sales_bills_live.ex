@@ -1627,7 +1627,16 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           </div>
         </:header>
 
-        <div class="gap-block grid h-full min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:grid-rows-[minmax(0,1fr)]">
+        <div
+          id="sales-bill-posting-review-keys"
+          phx-hook=".SalesBillPostingReviewKeys"
+          data-previous-item={invoice_id(@posting_navigation.previous)}
+          data-next-item={invoice_id(@posting_navigation.next)}
+          data-navigation-enabled={
+            if(is_nil(@editing_line_index) and not @evidence_open, do: "true", else: "false")
+          }
+          class="gap-block grid h-full min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:grid-rows-[minmax(0,1fr)]"
+        >
           <section id="sales-bill-original" class="min-h-0 overflow-y-auto">
             <.evidence_frame
               :if={@selected_invoice["image_urls"] != []}
@@ -2107,6 +2116,41 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </.callout>
           </section>
         </div>
+
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".SalesBillPostingReviewKeys">
+          export default {
+            mounted() {
+              this.onKeydown = event => {
+                if (
+                  this.el.dataset.navigationEnabled !== "true" ||
+                  event.defaultPrevented ||
+                  event.altKey ||
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  event.shiftKey ||
+                  event.target.closest("input, textarea, select, [contenteditable='true']")
+                ) return
+
+                const item = event.key === "ArrowLeft"
+                  ? this.el.dataset.previousItem
+                  : event.key === "ArrowRight"
+                    ? this.el.dataset.nextItem
+                    : null
+
+                if (!item) return
+
+                event.preventDefault()
+                this.pushEvent("navigate-posting-review", {item})
+              }
+
+              window.addEventListener("keydown", this.onKeydown)
+            },
+
+            destroyed() {
+              window.removeEventListener("keydown", this.onKeydown)
+            }
+          }
+        </script>
       </.modal>
 
       <.evidence_overlay
