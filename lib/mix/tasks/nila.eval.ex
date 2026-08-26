@@ -13,6 +13,7 @@ defmodule Mix.Tasks.Nila.Eval do
       mix nila.eval transcribe <name>          # pure OCR, no annotation, cached
       mix nila.eval segment <name> [--runs 5] [--shape per_page|whole_dump] [--context neighbours|paper]
       mix nila.eval stability <name> [--runs 10] [--concurrency 4]
+      mix nila.eval vision-schema <name> --pages 7 [--runs 3] [--source packet.pdf]
       mix nila.eval compare-vision <name> [<name> ...] [--concurrency 4]
       mix nila.eval source-quality <name> [--transcription-attempt DIR]
 
@@ -47,6 +48,8 @@ defmodule Mix.Tasks.Nila.Eval do
           shape: :string,
           context: :string,
           concurrency: :integer,
+          pages: :string,
+          source: :string,
           transcription_attempt: :string
         ]
       )
@@ -66,6 +69,7 @@ defmodule Mix.Tasks.Nila.Eval do
       ["transcribe", name] -> transcribe(name)
       ["segment", name] -> segment(name, opts)
       ["stability", name] -> stability(name, opts)
+      ["vision-schema", name] -> vision_schema(name, opts)
       ["compare-vision" | names] when names != [] -> compare_vision(names, opts)
       ["source-quality", name] -> source_quality(name, opts)
       ["score", name] -> score_months([name], opts)
@@ -91,6 +95,14 @@ defmodule Mix.Tasks.Nila.Eval do
     if opts[:runs], do: Mix.raise("--runs does not apply to compare-vision")
     if opts[:shape], do: Mix.raise("--shape does not apply to compare-vision")
     if opts[:context], do: Mix.raise("--context does not apply to compare-vision")
+  end
+
+  defp validate_options!(["vision-schema", _name], opts) do
+    reject_non_positive!(opts)
+    if is_nil(opts[:pages]), do: Mix.raise("vision-schema requires --pages")
+    if opts[:shape], do: Mix.raise("--shape does not apply to vision-schema")
+    if opts[:context], do: Mix.raise("--context does not apply to vision-schema")
+    if opts[:concurrency], do: Mix.raise("--concurrency does not apply to vision-schema")
   end
 
   defp validate_options!([command, _name], opts) when command in ~w(segment stability) do
@@ -307,6 +319,50 @@ defmodule Mix.Tasks.Nila.Eval do
         Mix.raise("stability run failed: #{inspect(reason, limit: 10)}")
     end
   end
+
+  defp vision_schema(name, opts) do
+    runs = opts[:runs] || 3
+    pages = parse_pages!(opts[:pages])
+
+    Mix.shell().info(
+      "testing production vision schema on #{name}, pages #{Enum.join(pages, ",")}, #{runs} run(s)"
+    )
+
+    run_opts = [runs: runs] |> maybe_put(:source, opts[:source])
+    {:ok, report} = Nila.Eval.VisionSchema.run(name, pages, run_opts)
+
+    Enum.each(report["results"], fn result ->
+      if result["status"] == "ok" do
+        Mix.shell().info(
+          "  run #{result["run"]}/#{runs}: #{result["line_count"]} lines, " <>
+            "taxable #{result["taxable_total"]}, tax #{result["tax_total"]}"
+        )
+      else
+        Mix.shell().error("  run #{result["run"]}/#{runs}: FAILED #{result["error"]}")
+      end
+    end)
+
+    Mix.shell().info("\nraw responses and report → #{report["dir"]}")
+  end
+
+  defp parse_pages!(value) do
+    pages =
+      value
+      |> String.split(",", trim: true)
+      |> Enum.map(fn page ->
+        case Integer.parse(String.trim(page)) do
+          {number, ""} when number > 0 -> number
+          _invalid -> Mix.raise("invalid --pages #{inspect(value)}; use 7 or 7,8")
+        end
+      end)
+
+    if pages == Enum.sort(Enum.uniq(pages)),
+      do: pages,
+      else: Mix.raise("--pages must be unique and ascending")
+  end
+
+  defp maybe_put(opts, _key, nil), do: opts
+  defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp print_stability(result) do
     batch = result["latency_ms"]["batch"]

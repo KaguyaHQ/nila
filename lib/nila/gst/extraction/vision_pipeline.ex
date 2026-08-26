@@ -49,6 +49,55 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
     end
   end
 
+  @doc """
+  Runs invoice extraction against fixed, human-selected page groups.
+
+  This is the eval seam for schema experiments: it deliberately skips model
+  segmentation while retaining the exact production render, vision prompt,
+  tuple schema, decoder, repairs, and verification path.
+  """
+  def extract_fixed_segments(kind, bytes, page_groups, opts \\ [])
+      when kind in [:purchase, :sales] and is_binary(bytes) and is_list(page_groups) do
+    hooks = %{
+      per_call: Keyword.get(opts, :per_call) || (&call_through/2),
+      on_progress: Keyword.get(opts, :on_progress) || (&ignore_progress/1)
+    }
+
+    with {:ok, source} <- render(bytes, opts),
+         {:ok, segments} <- fixed_segments(page_groups, source.page_count),
+         {:ok, result} <- read_segments(kind, source, %{segments: segments}, opts, hooks) do
+      {:ok, result}
+    else
+      {:error, reason, _audit} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp fixed_segments(page_groups, page_count) do
+    valid? =
+      page_groups != [] and
+        Enum.all?(page_groups, fn pages ->
+          is_list(pages) and pages != [] and
+            Enum.all?(pages, &(is_integer(&1) and &1 in 1..page_count)) and
+            pages == Enum.sort(Enum.uniq(pages))
+        end)
+
+    if valid? do
+      {:ok,
+       Enum.map(page_groups, fn pages ->
+         %{
+           pages: pages,
+           kind: :invoice,
+           invoice_no: nil,
+           reason: "fixed_eval_boundary",
+           issues: []
+         }
+       end)}
+    else
+      {:error, {:invalid_fixed_segments, page_groups, page_count}}
+    end
+  end
+
   defp render(bytes, opts) do
     filename = Keyword.get(opts, :filename, "document.pdf")
     content_type = Keyword.get(opts, :content_type) || Mistral.content_type(filename)

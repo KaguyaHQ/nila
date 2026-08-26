@@ -126,11 +126,7 @@ defmodule Nila.Gst.Extraction.Verify do
       end)
 
     identifiers =
-      [
-        {"invoice_number", data["invoice_number"]},
-        {"seller.gstin", get_in(data, ["seller", "gstin"])},
-        {"buyer.gstin", get_in(data, ["buyer", "gstin"])}
-      ]
+      [{"invoice_number", data["invoice_number"]} | party_identifiers(data)]
       |> Enum.reject(fn {_field, value} -> is_nil(value) or value == "" end)
       |> Enum.map(fn {field, value} ->
         case repaired[field] do
@@ -348,14 +344,25 @@ defmodule Nila.Gst.Extraction.Verify do
   end
 
   defp gstin_checks(data) do
-    [
-      {"seller.gstin", get_in(data, ["seller", "gstin"])},
-      {"buyer.gstin", get_in(data, ["buyer", "gstin"])}
-    ]
+    party_identifiers(data)
     |> Enum.reject(fn {_field, value} -> is_nil(value) or value == "" end)
     |> Enum.map(fn {field, value} ->
       check(:gstin, field, Gstin.valid?(value), %{value: value})
     end)
+  end
+
+  defp party_identifiers(%{"supplier" => supplier, "bill_to" => bill_to}) do
+    [
+      {"supplier.gstin", get_in(supplier, ["gstin"])},
+      {"bill_to.gstin", get_in(bill_to, ["gstin"])}
+    ]
+  end
+
+  defp party_identifiers(data) do
+    [
+      {"seller.gstin", get_in(data, ["seller", "gstin"])},
+      {"buyer.gstin", get_in(data, ["buyer", "gstin"])}
+    ]
   end
 
   defp sum_taxable(lines) do

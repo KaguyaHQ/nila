@@ -51,11 +51,23 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
 
   defp sales_invoice do
     invoice()
-    |> Map.put("seller", %{"name" => "Breeze", "gstin" => "33AEWPH4158J1Z3"})
-    |> Map.put("buyer", %{"name" => "Customer", "gstin" => "33AAHFC9048D1Z4"})
+    |> Map.drop(["seller", "buyer", "delivery_address"])
     |> Map.merge(%{
+      "supplier" => %{
+        "name" => "Breeze",
+        "gstin" => "33AEWPH4158J1Z3",
+        "address" => "Chennai",
+        "state_code" => "33"
+      },
+      "bill_to" => %{
+        "name" => "Customer",
+        "gstin" => "33AAHFC9048D1Z4",
+        "address" => "Chennai",
+        "state_code" => "33"
+      },
+      "ship_to" => nil,
       "recipient_registration" => "registered",
-      "place_of_supply" => "Tamil Nadu",
+      "printed_place_of_supply" => nil,
       "document_status" => "active",
       "supply_type" => "taxable"
     })
@@ -259,10 +271,35 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     assert artifact["data"]["recipient_registration"] == "registered"
   end
 
+  test "fixed-segment extraction skips discovery but retains the production vision path" do
+    stub([], sales_invoice())
+
+    assert {:ok, %{pages: [artifact]}} =
+             VisionPipeline.extract_fixed_segments(
+               :sales,
+               <<0xFF, 0xD8, 0xFF, 0xD9>>,
+               [[1]],
+               filename: "sale.jpg",
+               client_gstin: "33AEWPH4158J1Z3"
+             )
+
+    assert artifact["data"]["invoice_number"] == "INV-1"
+    assert_receive {:vision_request, "nila_direct_sales_invoice", _request}
+    refute_receive {:vision_request, "nila_packet_page_labels", _request}
+  end
+
   test "expands repeated rows before verification and sales accounting" do
     extracted =
       sales_invoice()
-      |> Map.put("buyer", %{"name" => "Customer", "gstin" => "29AAVCS8021P1ZB"})
+      |> put_in(
+        ["bill_to"],
+        %{
+          "name" => "Customer",
+          "gstin" => "29AAVCS8021P1ZB",
+          "address" => "Karnataka",
+          "state_code" => "29"
+        }
+      )
       |> Map.put("line_items", [positional_line_item(%{"repeat_count" => 10})])
       |> Map.merge(%{
         "printed_subtotal_before_discount" => 475_000,

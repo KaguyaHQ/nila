@@ -170,7 +170,12 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
       assert properties["recipient_registration"]["enum"] ==
                ["registered", "unregistered", "unknown"]
 
-      assert Map.has_key?(properties, "place_of_supply")
+      assert Map.has_key?(properties, "supplier")
+      assert Map.has_key?(properties, "bill_to")
+      assert Map.has_key?(properties, "ship_to")
+      assert Map.has_key?(properties, "printed_place_of_supply")
+      refute Map.has_key?(properties, "place_of_supply")
+      refute Map.has_key?(properties, "delivery_address")
       assert Map.has_key?(properties, "document_status")
       assert Map.has_key?(properties, "supply_type")
       line_schema = get_in(properties, ["line_items", "items"])
@@ -213,13 +218,24 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
       reply(conn, %{
         "document_type" => "debit_note",
         "recipient_registration" => "registered",
-        "place_of_supply" => "Karnataka",
+        "printed_place_of_supply" => nil,
         "document_status" => "active",
         "supply_type" => "taxable",
         "invoice_number" => "CDN-000001",
         "invoice_date" => "10/08/2026",
-        "seller" => %{"name" => "Seller", "gstin" => "33AEWPH4158J1Z3"},
-        "buyer" => %{"name" => "Buyer", "gstin" => "29AAVCS8021P1ZB"},
+        "supplier" => %{
+          "name" => "Seller",
+          "gstin" => "33AEWPH4158J1Z3",
+          "address" => nil,
+          "state_code" => "33"
+        },
+        "bill_to" => %{
+          "name" => "Buyer",
+          "gstin" => "29AAVCS8021P1ZB",
+          "address" => nil,
+          "state_code" => "29"
+        },
+        "ship_to" => nil,
         "line_items" => [
           %{
             "hsn_sac" => "998719",
@@ -393,13 +409,16 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
     end
 
     test "on a sales pile it is the seller" do
-      data = %{"seller" => %{"gstin" => @damaged}, "buyer" => %{"gstin" => @damaged}}
+      data = %{
+        "supplier" => %{"gstin" => @damaged},
+        "bill_to" => %{"gstin" => @damaged}
+      }
 
       {repaired, repairs} = Segmented.repair_gstins(data, :sales, @client)
 
-      assert repaired["seller"]["gstin"] == @client
-      assert repaired["buyer"]["gstin"] == @damaged
-      assert [%{"field" => "seller.gstin", "basis" => "known_client"}] = repairs
+      assert repaired["supplier"]["gstin"] == @client
+      assert repaired["bill_to"]["gstin"] == @damaged
+      assert [%{"field" => "supplier.gstin", "basis" => "known_client"}] = repairs
     end
   end
 

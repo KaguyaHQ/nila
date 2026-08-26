@@ -453,7 +453,18 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert {:ok, xml} = TallyPrime.build(%{invoices: [corrected]})
     assert xml =~ "<NARRATION>PO 4455 &amp; corrected by reviewer</NARRATION>"
     assert xml =~ "<PLACEOFSUPPLY>Tamil Nadu</PLACEOFSUPPLY>"
-    assert xml =~ "<STATENAME>Tamil Nadu</STATENAME>"
+    assert xml =~ "<STATENAME>Karnataka</STATENAME>"
+  end
+
+  test "keeps a registered party ledger in its GSTIN state when voucher POS differs" do
+    invoice = invoice(%{"place_of_supply" => "37"})
+
+    assert {:ok, [item]} =
+             TallyPrime.build_items_for_company(%{invoices: [invoice]}, "Nila")
+
+    assert item.party_ledger.state == "Karnataka"
+    assert item.xml =~ "<PLACEOFSUPPLY>Andhra Pradesh</PLACEOFSUPPLY>"
+    assert item.xml =~ "<STATENAME>Karnataka</STATENAME>"
   end
 
   test "falls back to Nila's narration when the corrected value is blank" do

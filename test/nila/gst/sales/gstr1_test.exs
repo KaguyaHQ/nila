@@ -41,6 +41,46 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   end
 
   describe "normalize_invoice/1" do
+    test "preserves sales party roles without treating ship-to as place of supply" do
+      invoice =
+        Gstr1.normalize_invoice(%{
+          "data" => %{
+            "document_type" => "invoice",
+            "document_status" => "active",
+            "supply_type" => "taxable",
+            "recipient_registration" => "registered",
+            "invoice_number" => "38/2026-27",
+            "invoice_date" => "09.06.2026",
+            "supplier" => %{
+              "name" => "Breeze Tech",
+              "gstin" => "33AEWPH4158J1Z3",
+              "address" => "Chennai",
+              "state_code" => "33"
+            },
+            "bill_to" => %{
+              "name" => "Philips India Ltd",
+              "gstin" => "33AABCP9487A1ZG",
+              "address" => "Chennai",
+              "state_code" => "33"
+            },
+            "ship_to" => %{
+              "name" => "Osmania General Hospital",
+              "gstin" => nil,
+              "address" => "Hyderabad",
+              "state_code" => "36"
+            },
+            "printed_place_of_supply" => nil,
+            "line_items" => []
+          }
+        })
+
+      assert invoice["seller_gstin"] == "33AEWPH4158J1Z3"
+      assert invoice["buyer_gstin"] == "33AABCP9487A1ZG"
+      assert invoice["bill_to"]["state_code"] == "33"
+      assert invoice["ship_to"]["state_code"] == "36"
+      assert invoice["place_of_supply"] == nil
+    end
+
     test "drops degenerate lines and lifts nested seller/buyer" do
       raw = %{
         "page" => 1,

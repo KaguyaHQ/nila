@@ -162,8 +162,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   def normalize_invoice(raw) when is_map(raw) do
     data = raw["data"] || raw["extract_result"] || raw["result"] || raw
-    seller = data["seller"] || %{}
-    buyer = data["buyer"] || data["bill_to"] || %{}
+    seller = data["supplier"] || data["seller"] || %{}
+    buyer = data["bill_to"] || data["buyer"] || %{}
+    ship_to = normalize_party(data["ship_to"])
     document = raw["document"] || %{}
     document_type = normalize_document_type(data["document_type"], document)
 
@@ -185,13 +186,19 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "seller_gstin" => value(data, ["seller_gstin"]) || seller["gstin"],
       "buyer_name" => value(data, ["buyer_name"]) || buyer["name"],
       "buyer_gstin" => blank_to_nil(value(data, ["buyer_gstin"]) || buyer["gstin"]),
+      "supplier" => normalize_party(seller),
+      "bill_to" => normalize_party(buyer),
+      "ship_to" => ship_to,
       "recipient_registration" =>
         normalize_recipient_registration(
           data["recipient_registration"],
           value(data, ["buyer_gstin"]) || buyer["gstin"]
         ),
       "place_of_supply" =>
-        normalize_place_of_supply(data["place_of_supply"] || buyer["place_of_supply"]),
+        normalize_place_of_supply(
+          data["printed_place_of_supply"] || data["place_of_supply"] ||
+            buyer["place_of_supply"]
+        ),
       "document_status" => normalize_document_status(data["document_status"]),
       "supply_type" => normalize_supply_type(data["supply_type"], document),
       "line_items" => line_items,
@@ -204,6 +211,15 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "document" => document
     }
   end
+
+  defp normalize_party(party) when is_map(party) do
+    party
+    |> Map.take(["name", "gstin", "address", "state_code"])
+    |> Enum.reject(fn {_key, value} -> is_nil(value) or value == "" end)
+    |> Map.new()
+  end
+
+  defp normalize_party(_party), do: nil
 
   @doc "The canonical source-document classification used by filing and accounting."
   def document_type(invoice), do: invoice["document_type"] || "invoice"
@@ -1068,6 +1084,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   defp verification_field(%{"field" => "seller.gstin"}), do: "seller_gstin"
   defp verification_field(%{"field" => "buyer.gstin"}), do: "buyer_gstin"
+  defp verification_field(%{"field" => "supplier.gstin"}), do: "seller_gstin"
+  defp verification_field(%{"field" => "bill_to.gstin"}), do: "buyer_gstin"
   defp verification_field(%{"field" => field}) when is_binary(field), do: field
   defp verification_field(_check), do: nil
 

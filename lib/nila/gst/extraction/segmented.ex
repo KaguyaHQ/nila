@@ -21,8 +21,8 @@ defmodule Nila.Gst.Extraction.Segmented do
   """
 
   alias Nila.Gst.Extraction.Discovery.Features
+  alias Nila.Gst.Extraction.InvoiceSchema
   alias Nila.Gst.Extraction.LineAmounts
-  alias Nila.Gst.Extraction.Providers.Mistral
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.Transcription
   alias Nila.Gst.Extraction.Verify
@@ -35,7 +35,7 @@ defmodule Nila.Gst.Extraction.Segmented do
   def row_limit, do: @row_limit
 
   @doc "The single-invoice schema this stage is constrained to."
-  def schema(kind), do: Mistral.invoice_schema(kind)
+  def schema(kind), do: InvoiceSchema.invoice_schema(kind)
 
   @doc "The instruction block for one invoice."
   def prompt(kind) do
@@ -111,8 +111,9 @@ defmodule Nila.Gst.Extraction.Segmented do
     unregistered only when the document positively identifies an unregistered or \
     consumer recipient. A missing or unreadable GSTIN alone is unknown, never a \
     silent B2C inference.
-    - Copy the printed place of supply exactly. Do not substitute the billing or \
-    shipping state when the document does not state its place of supply.
+    - Read supplier, Bill To and Ship To/Deliver To into their matching fields. \
+    Populate printed_place_of_supply only from an explicitly printed Place of \
+    Supply field; otherwise return null.
     - Preserve nil-rated, exempt, non-GST, export and SEZ treatment in supply_type. \
     Never coerce one of them to an ordinary taxable sale.
     - CGST and SGST printed as stacked sub-rows under one item are that item's \
@@ -440,16 +441,22 @@ defmodule Nila.Gst.Extraction.Segmented do
   purchase attributed to a supplier who does not exist.
   """
   def repair_gstins(data, kind, client_gstin) do
+    {seller_key, buyer_key} = party_keys(kind)
+
     {seller, seller_repair} =
-      repair_party(data["seller"], "seller.gstin", known(kind, :seller, client_gstin))
+      repair_party(
+        data[seller_key],
+        "#{seller_key}.gstin",
+        known(kind, :seller, client_gstin)
+      )
 
     {buyer, buyer_repair} =
-      repair_party(data["buyer"], "buyer.gstin", known(kind, :buyer, client_gstin))
+      repair_party(data[buyer_key], "#{buyer_key}.gstin", known(kind, :buyer, client_gstin))
 
     data =
       data
-      |> maybe_put("seller", seller)
-      |> maybe_put("buyer", buyer)
+      |> maybe_put(seller_key, seller)
+      |> maybe_put(buyer_key, buyer)
 
     {data, Enum.reject([seller_repair, buyer_repair], &is_nil/1)}
   end
@@ -464,6 +471,9 @@ defmodule Nila.Gst.Extraction.Segmented do
   defp known(:purchase, :buyer, gstin), do: gstin
   defp known(:sales, :seller, gstin), do: gstin
   defp known(_kind, _party, _gstin), do: nil
+
+  defp party_keys(:purchase), do: {"seller", "buyer"}
+  defp party_keys(:sales), do: {"supplier", "bill_to"}
 
   defp maybe_put(data, _key, nil), do: data
   defp maybe_put(data, key, value), do: Map.put(data, key, value)
