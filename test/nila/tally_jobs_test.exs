@@ -235,6 +235,8 @@ defmodule Nila.TallyJobsTest do
 
     assert first.payload["invoice_number"] == "INV-001"
     assert second.payload["invoice_number"] == "INV-002"
+    assert is_nil(first.payload["party_ledger"])
+    assert is_nil(second.payload["party_ledger"])
 
     assert {:ok, claimed} = TallyJobs.claim_next(device.id)
     assert claimed.id == first.id
