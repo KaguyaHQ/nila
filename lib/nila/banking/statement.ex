@@ -8,7 +8,7 @@ defmodule Nila.Banking.Statement do
   use Nila.Schema
 
   @statuses ~w(received extracting ready failed)
-  @bank_codes ~w(hdfc kotak)
+  @bank_codes ~w(hdfc iob kotak)
 
   schema "bank_statements" do
     field :bank_code, :string

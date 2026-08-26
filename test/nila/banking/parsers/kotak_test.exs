@@ -31,4 +31,20 @@ defmodule Nila.Banking.Parsers.KotakTest do
     assert card["reference"] == "615572081464"
     assert credit["reference"] == "UPI-615612757894"
   end
+
+  test "classifies a wide credit by its distance from the balance column" do
+    statement = """
+    Account Statement
+    Account No. 5556555511
+    Kotak Mahindra Bank Ltd.
+    Current Account Transactions
+    # Date Description Chq/Ref. No. Withdrawal (Dr.) Deposit (Cr.) Balance
+    - - Opening Balance - - - 2,44,345.64
+    122     16 Oct 2025   NEFT IOBAN25289074643 BREEZE TECH       NEFTINW-1367738637                 5,00,000.00   7,44,345.64
+    """
+
+    assert {:ok, artifact} = Kotak.parse(statement)
+    assert [transaction] = artifact.transactions
+    assert transaction["deposit_paise"] == 50_000_000
+  end
 end

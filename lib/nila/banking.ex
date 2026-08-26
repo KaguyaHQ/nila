@@ -12,7 +12,11 @@ defmodule Nila.Banking do
   alias Nila.{TallyJobs, TallySync}
   alias Nila.Banking.Tally
 
-  @banks [{"HDFC Bank", "hdfc"}, {"Kotak Mahindra Bank / 811", "kotak"}]
+  @banks [
+    {"HDFC Bank", "hdfc"},
+    {"Indian Overseas Bank", "iob"},
+    {"Kotak Mahindra Bank / 811", "kotak"}
+  ]
 
   def bank_name(code) do
     Enum.find_value(@banks, fn {name, value} -> value == code && name end)
