@@ -207,7 +207,7 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
         minimum: 1,
         maximum: 1_000,
         description:
-          "Number of consecutive printed rows represented by this item. Return one item for each consecutive run whose rows are identical in every other extracted field, using the exact run length. Otherwise use 1. Never combine non-consecutive rows."
+          "Number of consecutive identical printed rows represented by this tuple, including itself. Use more than 1 only when their other tuples are omitted from line_items."
       }
     })
   end
