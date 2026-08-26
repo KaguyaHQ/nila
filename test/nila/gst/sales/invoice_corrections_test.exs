@@ -144,6 +144,40 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
              )
   end
 
+  test "holds an unexportable invoice with its structured issue until corrected", ctx do
+    invalid_invoice = Map.put(ctx.invoice, "place_of_supply", "Chennai")
+
+    ctx.dump
+    |> Ecto.Changeset.change(invoices: [invalid_invoice])
+    |> Repo.update!()
+
+    packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
+
+    assert packet.invoices == []
+    assert [held] = packet.needs_review
+    assert held.invoice["invoice_number"] == "INV-001"
+
+    assert [%{"code" => "invalid_place_of_supply", "fields" => ["place_of_supply"]}] =
+             held.issues
+
+    assert {:ok, %{invoice: corrected}} =
+             InvoiceCorrections.save(
+               ctx.org.id,
+               ctx.client.id,
+               ctx.batch_ref,
+               "source-1",
+               %{"place_of_supply" => "Karnataka"},
+               ctx.user.id
+             )
+
+    assert corrected["place_of_supply"] == "29"
+
+    packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
+    assert [ready] = packet.invoices
+    assert ready["place_of_supply"] == "29"
+    assert packet.needs_review == []
+  end
+
   test "saves one complete invoice workbench submission atomically", ctx do
     company = company_fixture(ctx.org, "Nila")
     party = ledger_fixture(ctx.org.id, company.id, "party", "Customer AP", %{})

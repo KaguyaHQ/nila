@@ -77,6 +77,7 @@ defmodule Nila.Gst.Issues do
     "sales_not_in_tally" => {"required", :confirmation},
     "sales_document_missing" => {"advisory", nil},
     "tally_document_mismatch" => {"required", :decision},
+    "tally_export_failed" => {"blocking", nil},
     "cess_unsupported" => {"blocking", nil},
 
     # Documents this return has no table for

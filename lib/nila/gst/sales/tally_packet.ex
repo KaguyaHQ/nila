@@ -6,6 +6,7 @@ defmodule Nila.Gst.Sales.TallyPacket do
 
   alias Nila.Gst.Filing.TallyPrime
   alias Nila.Gst.Intake.{Dump, Dumps}
+  alias Nila.Gst.Issues
   alias Nila.Gst.Sales.{Gstr1, InvoiceCorrections, InvoiceRemovals}
 
   def fetch(org_id, client_id, batch_ref) do
@@ -26,8 +27,14 @@ defmodule Nila.Gst.Sales.TallyPacket do
       |> Enum.map(&Dumps.rehydrate/1)
       |> effective_invoices(active, dumps)
 
-    {invoices, excluded} =
-      Enum.split_with(source_invoices, &exportable?/1)
+    issues =
+      source_invoices
+      |> Gstr1.validation_issues()
+      |> Enum.concat(Gstr1.blocking_issues(source_invoices))
+      |> Issues.normalize_all()
+      |> Enum.filter(&Issues.gating?/1)
+
+    {invoices, needs_review} = classify(source_invoices, issues)
 
     totals =
       Enum.reduce(invoices, %{taxable_paise: 0, tax_paise: 0}, fn invoice, totals ->
@@ -41,7 +48,9 @@ defmodule Nila.Gst.Sales.TallyPacket do
 
     Map.merge(totals, %{
       invoices: invoices,
-      excluded: excluded,
+      all_invoices: source_invoices,
+      needs_review: needs_review,
+      excluded: Enum.map(needs_review, & &1.invoice),
       failed_files: Enum.reject(dumps, &(&1.status == "extracted")),
       unread_pages: unread_pages(active)
     })
@@ -77,11 +86,44 @@ defmodule Nila.Gst.Sales.TallyPacket do
 
   defp effective_invoices(invoices, _active, _dumps), do: invoices
 
-  defp exportable?(invoice) do
-    match?(
-      {:ok, _xml},
-      TallyPrime.build(%{active_invoices: [invoice]})
-    )
+  defp classify(invoices, issues) do
+    invoices
+    |> Enum.reduce({[], []}, fn invoice, {ready, needs_review} ->
+      invoice_issues = issues_for_invoice(issues, invoice)
+
+      case TallyPrime.build(%{active_invoices: [invoice]}) do
+        {:ok, _xml} ->
+          {[invoice | ready], needs_review}
+
+        {:error, _reason} ->
+          review_issues =
+            if invoice_issues == [], do: [tally_export_issue(invoice)], else: invoice_issues
+
+          {ready, [%{invoice: invoice, issues: review_issues} | needs_review]}
+      end
+    end)
+    |> then(fn {ready, needs_review} ->
+      {Enum.reverse(ready), Enum.reverse(needs_review)}
+    end)
+  end
+
+  defp issues_for_invoice(issues, invoice) do
+    source_id = Gstr1.source_id(invoice)
+
+    Enum.filter(issues, fn issue ->
+      issue["source_id"] == source_id or source_id in List.wrap(issue["source_ids"])
+    end)
+  end
+
+  defp tally_export_issue(invoice) do
+    %{
+      "invoice" => invoice["invoice_number"],
+      "source_id" => Gstr1.source_id(invoice),
+      "code" => "tally_export_failed",
+      "message" => "Nila could not prepare this invoice as a Tally voucher.",
+      "fields" => [],
+      "level" => Issues.level_for("tally_export_failed")
+    }
   end
 
   defp decode_ref(batch_ref) when is_binary(batch_ref) do

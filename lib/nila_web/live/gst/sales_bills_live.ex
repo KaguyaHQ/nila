@@ -59,7 +59,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
         source_id ->
           Enum.find(
-            socket.assigns.packet.invoices,
+            socket.assigns.packet.all_invoices,
             &((&1["id"] || &1["invoice_number"]) == source_id)
           )
       end
@@ -69,7 +69,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
      |> assign(:selected_invoice, invoice)
      |> assign(:posting_preview_invoice, invoice)
      |> assign(:tally_posting, tally_posting(socket.assigns, invoice))
-     |> assign(:posting_navigation, posting_navigation(socket.assigns.packet.invoices, invoice))
+     |> assign(
+       :posting_navigation,
+       posting_navigation(socket.assigns.packet.all_invoices, invoice)
+     )
      |> assign(
        :editing_line_index,
        if(previous_id == invoice_id(invoice), do: socket.assigns.editing_line_index, else: nil)
@@ -254,7 +257,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   def handle_event("open-remove-invoice", %{"id" => source_id}, socket) do
-    invoice = Enum.find(socket.assigns.packet.invoices, &(invoice_id(&1) == source_id))
+    invoice = Enum.find(socket.assigns.packet.all_invoices, &(invoice_id(&1) == source_id))
     {:noreply, assign(socket, :removing_invoice, invoice)}
   end
 
@@ -296,7 +299,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   def handle_event("remove-invoice", _params, socket), do: {:noreply, socket}
 
   def handle_event("navigate-posting-review", %{"item" => source_id}, socket) do
-    case Enum.find(socket.assigns.packet.invoices, &(invoice_id(&1) == source_id)) do
+    case Enum.find(socket.assigns.packet.all_invoices, &(invoice_id(&1) == source_id)) do
       nil ->
         {:noreply, socket}
 
@@ -482,35 +485,24 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   def handle_event("save-tally-posting", _params, socket), do: {:noreply, socket}
 
   defp replace_selected_invoice(socket, corrected_invoice) do
-    selected_invoice = socket.assigns.selected_invoice
-    source_id = Gstr1.source_id(selected_invoice)
-
-    corrected_invoice =
-      Map.merge(corrected_invoice, Map.take(selected_invoice, ["image", "image_urls"]))
-
-    invoices =
-      Enum.map(socket.assigns.packet.invoices, fn invoice ->
-        if Gstr1.source_id(invoice) == source_id, do: corrected_invoice, else: invoice
-      end)
+    source_id = Gstr1.source_id(corrected_invoice)
+    socket = reload_packet(socket)
+    corrected_invoice = find_packet_invoice(socket.assigns.packet, source_id, corrected_invoice)
 
     socket
     |> assign(:selected_invoice, corrected_invoice)
     |> assign(:posting_preview_invoice, corrected_invoice)
-    |> assign(:packet, %{socket.assigns.packet | invoices: invoices})
+    |> assign(
+      :posting_navigation,
+      posting_navigation(socket.assigns.packet.all_invoices, corrected_invoice)
+    )
     |> assign(:tally_posting, tally_posting(socket.assigns, corrected_invoice))
   end
 
   defp replace_selected_invoice(socket, corrected_invoice, posting) do
-    selected_invoice = socket.assigns.selected_invoice
-    source_id = Gstr1.source_id(selected_invoice)
-
-    corrected_invoice =
-      Map.merge(corrected_invoice, Map.take(selected_invoice, ["image", "image_urls"]))
-
-    invoices =
-      Enum.map(socket.assigns.packet.invoices, fn invoice ->
-        if Gstr1.source_id(invoice) == source_id, do: corrected_invoice, else: invoice
-      end)
+    source_id = Gstr1.source_id(corrected_invoice)
+    socket = reload_packet(socket)
+    corrected_invoice = find_packet_invoice(socket.assigns.packet, source_id, corrected_invoice)
 
     preview_invoice = preview_invoice(corrected_invoice, posting["invoice"] || %{})
     identities = posting["line_sales_ledger_identities"] || %{}
@@ -534,7 +526,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     socket
     |> assign(:selected_invoice, corrected_invoice)
     |> assign(:posting_preview_invoice, preview_invoice)
-    |> assign(:packet, %{socket.assigns.packet | invoices: invoices})
+    |> assign(
+      :posting_navigation,
+      posting_navigation(socket.assigns.packet.all_invoices, corrected_invoice)
+    )
     |> assign(:tally_posting, tally_posting)
   end
 
@@ -765,11 +760,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp remainder(packet, tally_jobs) do
-    excluded =
-      Enum.map(packet.excluded, fn invoice ->
-        invoice["invoice_number"] || invoice["buyer_name"] || "Unnumbered bill"
-      end)
-
     failed = Enum.map(packet.failed_files, &TallyPacket.original_name/1)
     unread = Enum.map(packet.unread_pages, &"#{&1.file} · page #{&1.page}")
 
@@ -780,7 +770,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
     missing_jobs = missing_job_invoice_numbers(packet.invoices, tally_jobs)
 
-    Enum.uniq(excluded ++ failed ++ unread ++ not_added ++ missing_jobs)
+    Enum.uniq(failed ++ unread ++ not_added ++ missing_jobs)
   end
 
   defp missing_job_invoice_numbers(_invoices, []), do: []
@@ -1130,8 +1120,30 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp prepare_packet(dumps, client_id) do
     packet = TallyPacket.prepare(dumps)
-    invoices = Enum.map(packet.invoices, &attach_image_urls(&1, dumps, client_id))
-    %{packet | invoices: invoices}
+    all_invoices = Enum.map(packet.all_invoices, &attach_image_urls(&1, dumps, client_id))
+    invoices_by_id = Map.new(all_invoices, &{Gstr1.source_id(&1), &1})
+
+    invoices = Enum.map(packet.invoices, &Map.fetch!(invoices_by_id, Gstr1.source_id(&1)))
+
+    needs_review =
+      Enum.map(packet.needs_review, fn review_case ->
+        %{review_case | invoice: Map.fetch!(invoices_by_id, Gstr1.source_id(review_case.invoice))}
+      end)
+
+    %{packet | all_invoices: all_invoices, invoices: invoices, needs_review: needs_review}
+  end
+
+  defp reload_packet(socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+
+    case TallyPacket.fetch(org_id, socket.assigns.client.id, socket.assigns.batch_ref) do
+      {:ok, dumps} -> assign(socket, :packet, prepare_packet(dumps, socket.assigns.client.id))
+      {:error, _reason} -> socket
+    end
+  end
+
+  defp find_packet_invoice(packet, source_id, fallback) do
+    Enum.find(packet.all_invoices, &(Gstr1.source_id(&1) == source_id)) || fallback
   end
 
   defp attach_image_urls(invoice, dumps, client_id) do
@@ -1238,11 +1250,11 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp invoice_delivery(invoice, jobs) do
     case selected_delivery_state(selected_tally_job(jobs, invoice)) do
-      :sending -> %{label: "Sending", variant: "info"}
+      :sending -> %{label: "Adding…", variant: "info"}
       :added -> %{label: "Added", variant: "success"}
-      :unknown -> %{label: "Check Tally", variant: "warning"}
-      :failed -> %{label: "Not added", variant: "error"}
-      nil -> %{label: "Not sent", variant: "neutral"}
+      :unknown -> %{label: "Check in Tally", variant: "warning"}
+      :failed -> %{label: "Couldn't add", variant: "error"}
+      nil -> %{label: "Ready", variant: "neutral"}
     end
   end
 
@@ -1254,6 +1266,24 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp verifiable?(jobs), do: Enum.any?(jobs, &(&1.status == "indeterminate"))
 
   defp missing_delivery_jobs?(packet, jobs), do: length(jobs) < length(packet.invoices)
+
+  defp review_reason(%{issues: issues}) do
+    issues
+    |> Enum.map(& &1["message"])
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
+  end
+
+  defp review_issues(_packet, nil), do: []
+
+  defp review_issues(packet, invoice) do
+    source_id = Gstr1.source_id(invoice)
+
+    case Enum.find(packet.needs_review, &(Gstr1.source_id(&1.invoice) == source_id)) do
+      nil -> []
+      review_case -> review_case.issues
+    end
+  end
 
   defp remainder_title(jobs) do
     if Enum.any?(jobs, &(&1.status in ["failed", "indeterminate"])),
@@ -1389,6 +1419,38 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         <p :if={@send_error} id="sales-bills-send-error" class="text-error text-ui">
           {@send_error}
         </p>
+
+        <section
+          :if={@packet.needs_review != []}
+          id="sales-bills-needs-review"
+          class="space-y-related"
+        >
+          <h2 class="text-base-content text-h4 font-semibold">
+            {length(@packet.needs_review)} {plural(length(@packet.needs_review), "invoice")} {if(
+              length(@packet.needs_review) == 1,
+              do: "needs",
+              else: "need"
+            )} review
+          </h2>
+
+          <ul class="border-base-300 divide-base-300 divide-y border-y">
+            <li :for={review_case <- @packet.needs_review}>
+              <.link
+                id={"sales-bill-review-#{invoice_id(review_case.invoice)}"}
+                patch={posting_review_path(@client, @batch_ref, review_case.invoice)}
+                class="gap-block group flex items-center justify-between py-3"
+              >
+                <div class="min-w-0">
+                  <p class="text-base-content text-ui font-mono font-medium">
+                    {review_case.invoice["invoice_number"] || "Unnumbered bill"}
+                  </p>
+                  <p class="text-ink-muted text-ui">{review_reason(review_case)}</p>
+                </div>
+                <.icon name="hero-chevron-right-mini" class="text-ink-faint size-4 shrink-0" />
+              </.link>
+            </li>
+          </ul>
+        </section>
 
         <section
           :if={remainder(@packet, @tally_jobs) != []}
@@ -1586,6 +1648,16 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           </section>
 
           <section id="sales-bill-proposed-voucher" class="min-h-0 overflow-y-auto">
+            <div
+              :if={review_issues(@packet, @selected_invoice) != []}
+              id="sales-bill-review-issues"
+              class="border-warning mb-block text-base-content text-ui border-l-2 pl-3"
+            >
+              {review_issues(@packet, @selected_invoice)
+              |> Enum.map(& &1["message"])
+              |> Enum.join(" ")}
+            </div>
+
             <div class="border-base-300 mb-block flex flex-wrap items-end justify-between gap-3 border-b pb-3">
               <div>
                 <div class="text-ink-subtle text-label font-semibold uppercase">
