@@ -45,6 +45,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
        |> assign(:line_edit_form, nil)
        |> assign(:line_edit_error, nil)
        |> assign(:removing_invoice, nil)
+       |> assign(:confirming_tally_send, false)
        |> assign(:send_holds, current_send_holds(org_id, company, packet))
        |> assign(:send_error, nil)}
     else
@@ -194,65 +195,18 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     end
   end
 
-  def handle_event("send-to-tally", _params, socket) do
-    org_id = socket.assigns.current_scope.current_org.id
-    company = socket.assigns.tally_company
-
-    with %{} <- company,
-         {:ok, company} <- online_tally_company(org_id, socket.assigns.client.id, company.id),
-         :ok <- TallyPrime.validate_company_gstin(company, socket.assigns.client.gstin),
-         {:ok, invoices, unresolved_parties} <-
-           apply_tally_posting(org_id, company.id, socket.assigns.packet.invoices),
-         {items, unbuildable} <- build_tally_items(invoices, company.name),
-         {ready, blocked} <- partition_ready_items(company.id, items),
-         {:ok, _jobs} <-
-           TallyJobs.enqueue_vouchers(company, ready,
-             source_prefix: socket.assigns.tally_source_prefix
-           ) do
-      {:noreply,
-       socket
-       |> assign(:tally_company, company)
-       |> assign(:tally_jobs, list_tally_jobs(org_id, socket.assigns.tally_source_prefix))
-       |> assign(:send_holds, send_holds(unresolved_parties, unbuildable, blocked))
-       |> assign(:send_error, send_blocked_message(unresolved_parties, unbuildable, blocked))}
+  def handle_event("request-send-to-tally", _params, socket) do
+    if socket.assigns.packet.warnings == [] do
+      send_to_tally(socket)
     else
-      {:error, :not_found} ->
-        {:noreply,
-         socket
-         |> assign(:tally_company, nil)
-         |> assign(:send_error, "Tally is no longer connected. Download the XML instead.")}
-
-      {:error, {:incompatible_voucher_numbering, issues}} ->
-        {:noreply, assign(socket, :send_error, voucher_numbering_error(issues))}
-
-      {:error, :tally_company_gstin_missing} ->
-        {:noreply,
-         assign(
-           socket,
-           :send_error,
-           "This Tally company has no GSTIN. Configure GST in TallyPrime, sync it, then retry."
-         )}
-
-      {:error, {:tally_company_gstin_mismatch, tally_gstin, client_gstin}} ->
-        {:noreply,
-         assign(
-           socket,
-           :send_error,
-           "This Tally company belongs to GSTIN #{tally_gstin}, not #{client_gstin}."
-         )}
-
-      {:error, :stale_tally_posting_profile} ->
-        {:noreply,
-         assign(
-           socket,
-           :send_error,
-           "A saved posting ledger is no longer in this Tally company. Sync masters and review the posting selections."
-         )}
-
-      _error ->
-        {:noreply, assign(socket, :send_error, "Nila could not send these vouchers to Tally.")}
+      {:noreply, assign(socket, :confirming_tally_send, true)}
     end
   end
+
+  def handle_event("cancel-send-to-tally", _params, socket),
+    do: {:noreply, assign(socket, :confirming_tally_send, false)}
+
+  def handle_event("send-to-tally", _params, socket), do: send_to_tally(socket)
 
   def handle_event("verify-tally", _params, socket) do
     org_id = socket.assigns.current_scope.current_org.id
@@ -529,6 +483,67 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   def handle_event("save-tally-posting", _params, socket), do: {:noreply, socket}
+
+  defp send_to_tally(socket) do
+    socket = assign(socket, :confirming_tally_send, false)
+    org_id = socket.assigns.current_scope.current_org.id
+    company = socket.assigns.tally_company
+
+    with %{} <- company,
+         {:ok, company} <- online_tally_company(org_id, socket.assigns.client.id, company.id),
+         :ok <- TallyPrime.validate_company_gstin(company, socket.assigns.client.gstin),
+         {:ok, invoices, unresolved_parties} <-
+           apply_tally_posting(org_id, company.id, socket.assigns.packet.invoices),
+         {items, unbuildable} <- build_tally_items(invoices, company.name),
+         {ready, blocked} <- partition_ready_items(company.id, items),
+         {:ok, _jobs} <-
+           TallyJobs.enqueue_vouchers(company, ready,
+             source_prefix: socket.assigns.tally_source_prefix
+           ) do
+      {:noreply,
+       socket
+       |> assign(:tally_company, company)
+       |> assign(:tally_jobs, list_tally_jobs(org_id, socket.assigns.tally_source_prefix))
+       |> assign(:send_holds, send_holds(unresolved_parties, unbuildable, blocked))
+       |> assign(:send_error, send_blocked_message(unresolved_parties, unbuildable, blocked))}
+    else
+      {:error, :not_found} ->
+        {:noreply,
+         socket
+         |> assign(:tally_company, nil)
+         |> assign(:send_error, "Tally is no longer connected. Download the XML instead.")}
+
+      {:error, {:incompatible_voucher_numbering, issues}} ->
+        {:noreply, assign(socket, :send_error, voucher_numbering_error(issues))}
+
+      {:error, :tally_company_gstin_missing} ->
+        {:noreply,
+         assign(
+           socket,
+           :send_error,
+           "This Tally company has no GSTIN. Configure GST in TallyPrime, sync it, then retry."
+         )}
+
+      {:error, {:tally_company_gstin_mismatch, tally_gstin, client_gstin}} ->
+        {:noreply,
+         assign(
+           socket,
+           :send_error,
+           "This Tally company belongs to GSTIN #{tally_gstin}, not #{client_gstin}."
+         )}
+
+      {:error, :stale_tally_posting_profile} ->
+        {:noreply,
+         assign(
+           socket,
+           :send_error,
+           "A saved posting ledger is no longer in this Tally company. Sync masters and review the posting selections."
+         )}
+
+      _error ->
+        {:noreply, assign(socket, :send_error, "Nila could not send these vouchers to Tally.")}
+    end
+  end
 
   defp save_tally_posting(socket, posting, _params, company_id, invoice) do
     org_id = socket.assigns.current_scope.current_org.id
@@ -1487,24 +1502,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     Enum.find(cases, &(Gstr1.source_id(&1.invoice) == source_id))
   end
 
-  defp batch_warning_confirm([]), do: nil
-
-  defp batch_warning_confirm(warnings) do
-    count = length(warnings)
-
-    details =
-      warnings
-      |> Enum.take(5)
-      |> Enum.map_join("\n", fn warning ->
-        number = warning.invoice["invoice_number"] || "Unnumbered invoice"
-        "• #{number} — #{review_reason(warning)}"
-      end)
-
-    remainder = if count > 5, do: "\n• #{count - 5} more", else: ""
-
-    "Heads up — #{count} #{plural(count, "invoice")} #{if(count == 1, do: "has", else: "have")} unresolved warnings.\n\n#{details}#{remainder}\n\nSend the batch to Tally anyway?"
-  end
-
   defp review_presentation(%{invoice: invoice, issues: issues}),
     do: SalesIssuePresentation.for_invoice(invoice, issues)
 
@@ -1580,8 +1577,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             <.button
               type="button"
               id="sales-bills-send-to-tally"
-              phx-click="send-to-tally"
-              data-confirm={batch_warning_confirm(@packet.warnings)}
+              phx-click="request-send-to-tally"
             >
               Send to Tally
             </.button>
@@ -1639,9 +1635,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               :if={retryable?(@tally_jobs) or missing_delivery_jobs?(@packet, @tally_jobs)}
               type="button"
               id="sales-bills-retry-tally"
-              phx-click="send-to-tally"
+              phx-click="request-send-to-tally"
               variant="outline"
-              data-confirm={batch_warning_confirm(@packet.warnings)}
             >
               Try again
             </.button>
@@ -1797,6 +1792,45 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           </.data_table>
         </section>
       </div>
+
+      <.modal
+        :if={@confirming_tally_send}
+        id="sales-bills-tally-warning-dialog"
+        title={
+          "#{length(@packet.warnings)} #{plural(length(@packet.warnings), "invoice")} still #{if(length(@packet.warnings) == 1, do: "needs", else: "need")} review"
+        }
+        on_close="cancel-send-to-tally"
+        return_focus="#sales-bills-send-to-tally, #sales-bills-retry-tally"
+      >
+        <ul class="border-base-300 divide-base-300 divide-y border-y">
+          <li :for={warning <- @packet.warnings} class="space-y-related py-3">
+            <p class="text-base-content text-ui font-mono font-medium">
+              {warning.invoice["invoice_number"] || "Unnumbered invoice"}
+            </p>
+            <p class="text-ink-muted text-ui">{review_reason(warning)}</p>
+          </li>
+        </ul>
+
+        <:footer>
+          <div class="gap-related flex justify-end">
+            <.button
+              id="sales-bills-tally-warning-cancel"
+              type="button"
+              variant="ghost"
+              phx-click="cancel-send-to-tally"
+            >
+              Cancel
+            </.button>
+            <.button
+              id="sales-bills-tally-warning-confirm"
+              type="button"
+              phx-click="send-to-tally"
+            >
+              Send {length(@packet.invoices)} anyway
+            </.button>
+          </div>
+        </:footer>
+      </.modal>
 
       <.modal
         :if={@removing_invoice}

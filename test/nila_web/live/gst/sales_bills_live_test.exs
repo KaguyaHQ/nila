@@ -257,12 +257,20 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bill-delivery-source-warning", "Needs review")
     assert has_element?(view, "#sales-bill-delivery-source-blocked", "Cannot send")
 
+    view |> element("#sales-bills-send-to-tally") |> render_click()
+
     assert has_element?(
              view,
-             "#sales-bills-send-to-tally[data-confirm*='1 invoice has unresolved warnings']"
+             "#sales-bills-tally-warning-dialog",
+             "1 invoice still needs review"
            )
 
-    view |> element("#sales-bills-send-to-tally") |> render_click()
+    assert has_element?(view, "#sales-bills-tally-warning-dialog", "INV-WARNING")
+    assert has_element?(view, "#sales-bills-tally-warning-cancel", "Cancel")
+    assert has_element?(view, "#sales-bills-tally-warning-confirm", "Send 2 anyway")
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
+
+    view |> element("#sales-bills-tally-warning-confirm") |> render_click()
 
     jobs = Nila.Repo.all(Nila.TallyJobs.Job)
 
@@ -1055,12 +1063,15 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert_patch(view, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
 
-    assert has_element?(
-             view,
-             "#sales-bills-send-to-tally[data-confirm*='1 invoice has unresolved warnings']"
-           )
+    view |> element("#sales-bills-send-to-tally") |> render_click()
+    assert has_element?(view, "#sales-bills-tally-warning-dialog", "1 invoice still needs review")
+
+    view |> element("#sales-bills-tally-warning-cancel") |> render_click()
+    refute has_element?(view, "#sales-bills-tally-warning-dialog")
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
 
     view |> element("#sales-bills-send-to-tally") |> render_click()
+    view |> element("#sales-bills-tally-warning-confirm") |> render_click()
     refute has_element?(view, "#sales-bills-send-error")
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 1
   end
