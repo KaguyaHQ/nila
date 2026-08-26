@@ -368,6 +368,26 @@ defmodule NilaWeb.CoreComponentsTest do
     refute html =~ ~s(type="hidden")
   end
 
+  test "number inputs render server numeric values without exponent notation" do
+    assigns = %{float: 3_000.0, decimal: Decimal.new("3.0e3")}
+
+    html =
+      rendered_to_string(~H"""
+      <div>
+        <.input type="number" id="float-amount" name="float_amount" value={@float} />
+        <.input type="number" id="decimal-amount" name="decimal_amount" value={@decimal} />
+      </div>
+      """)
+
+    fragment = LazyHTML.from_fragment(html)
+
+    assert fragment |> LazyHTML.query("#float-amount") |> LazyHTML.attribute("value") == ["3000"]
+
+    assert fragment |> LazyHTML.query("#decimal-amount") |> LazyHTML.attribute("value") == [
+             "3000"
+           ]
+  end
+
   test "badge renders a soft pill in the given semantic variant" do
     assigns = %{}
 

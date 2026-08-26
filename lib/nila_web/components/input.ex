@@ -315,7 +315,7 @@ defmodule NilaWeb.Components.Input do
           type={@type}
           name={@name}
           id={@id}
-          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+          value={normalize_value(@type, @value)}
           class={["nila-input", @errors != [] && "nila-input-error"]}
           {@rest}
         />
@@ -325,6 +325,14 @@ defmodule NilaWeb.Components.Input do
     </div>
     """
   end
+
+  defp normalize_value("number", %Decimal{} = value),
+    do: Decimal.to_string(value, :normal)
+
+  defp normalize_value("number", value) when is_float(value),
+    do: value |> Decimal.from_float() |> Decimal.to_string(:normal)
+
+  defp normalize_value(type, value), do: Phoenix.HTML.Form.normalize_value(type, value)
 
   # ISO `2026-06-11` -> the operator-facing `11/06/2026`. Passes through anything
   # that isn't a well-formed ISO date so a bad value stays visible, not swallowed.

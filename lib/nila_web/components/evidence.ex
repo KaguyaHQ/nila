@@ -61,7 +61,6 @@ defmodule NilaWeb.Components.Evidence do
         id={"#{@id}-open"}
         phx-click={@on_open}
         phx-target={@target}
-        phx-hook=".EvidenceFrame"
         aria-label="Open the scanned bill full screen"
         class="bg-base-200 border-base-300 nila-evidence-trigger rounded-box relative block aspect-[1/1.414] w-full cursor-zoom-in overflow-hidden border transition"
       >
@@ -80,23 +79,6 @@ defmodule NilaWeb.Components.Evidence do
       </button>
 
       <p class="text-ink-muted text-ui">Click to read it full screen.</p>
-
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".EvidenceFrame">
-        export default {
-          mounted() { this.settle() },
-          updated() { this.settle() },
-          settle() {
-            const img = this.el.querySelector("img")
-            if (!img) return
-            const fit = () => {
-              if (!img.naturalWidth || !img.naturalHeight) return
-              this.el.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`
-            }
-            if (img.complete) fit()
-            else img.addEventListener("load", fit, { once: true })
-          }
-        }
-      </script>
     </div>
     """
   end

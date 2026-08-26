@@ -559,6 +559,41 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(reopened, "#sales-bill-line-summary-0", "Corrected support services")
   end
 
+  test "shows ordinary decimal values in the line editor", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    [invoice] = dump.invoices
+    [line] = invoice["line_items"]
+
+    line =
+      Map.merge(line, %{
+        "quantity" => 1.0,
+        "printed_unit_price" => 3_000.0,
+        "taxable_value" => 3_000.0,
+        "igst_rate" => 9.0,
+        "igst_amount" => 270.0
+      })
+
+    dump
+    |> Ecto.Changeset.change(invoices: [Map.put(invoice, "line_items", [line])])
+    |> Nila.Repo.update!()
+
+    batch_ref = TallyPacket.ref([dump])
+
+    {:ok, view, _html} =
+      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001")
+
+    view |> element("#sales-bill-edit-line-0") |> render_click()
+
+    assert has_element?(view, "#line_edit_quantity[value='1.0']")
+    assert has_element?(view, "#line_edit_rate[value='3000']")
+    assert has_element?(view, "#line_edit_taxable_value[value='3000']")
+    assert has_element?(view, "#line_edit_igst_rate[value='9.0']")
+    assert has_element?(view, "#line_edit_igst_amount[value='270.0']")
+  end
+
   test "keeps batch navigation inside the selected-item query", %{
     conn: conn,
     client: client,
