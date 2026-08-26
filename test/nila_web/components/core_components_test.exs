@@ -15,6 +15,21 @@ defmodule NilaWeb.CoreComponentsTest do
   import NilaWeb.Components.Typography
   import NilaWeb.Components.SelectableList
 
+  test "flash group presents one neutral reconnect state" do
+    html = render_component(&flash_group/1, flash: %{})
+    fragment = LazyHTML.from_fragment(html)
+    reconnect = LazyHTML.query(fragment, "#connection-error")
+
+    assert LazyHTML.text(reconnect) =~ "Connection lost"
+    assert LazyHTML.text(reconnect) =~ "Reconnecting…"
+    assert LazyHTML.attribute(reconnect, "phx-disconnected") != []
+    assert LazyHTML.attribute(reconnect, "phx-connected") != []
+    refute html =~ "client-error"
+    refute html =~ "server-error"
+    refute html =~ "find the internet"
+    refute html =~ "Something went wrong"
+  end
+
   test "page_header renders eyebrow, display title, and intro copy" do
     assigns = %{}
 

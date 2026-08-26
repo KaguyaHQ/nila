@@ -407,27 +407,14 @@ defmodule NilaWeb.Layouts do
       <.flash kind={:error} flash={@flash} />
 
       <.flash
-        id="client-error"
+        id="connection-error"
         kind={:error}
-        title="We can't find the internet"
-        phx-disconnected={show(".phx-client-error #client-error") |> JS.remove_attribute("hidden")}
-        phx-connected={hide("#client-error") |> JS.set_attribute({"hidden", ""})}
+        title="Connection lost"
+        phx-disconnected={show("#connection-error") |> JS.remove_attribute("hidden")}
+        phx-connected={hide("#connection-error") |> JS.set_attribute({"hidden", ""})}
         hidden
       >
-        Attempting to reconnect
-        <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
-      </.flash>
-
-      <.flash
-        id="server-error"
-        kind={:error}
-        title="Something went wrong!"
-        phx-disconnected={show(".phx-server-error #server-error") |> JS.remove_attribute("hidden")}
-        phx-connected={hide("#server-error") |> JS.set_attribute({"hidden", ""})}
-        hidden
-      >
-        Attempting to reconnect
-        <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
+        Reconnecting… <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
       </.flash>
     </div>
     """
