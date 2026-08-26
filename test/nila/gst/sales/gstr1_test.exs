@@ -768,8 +768,24 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert issue = Enum.find(issues, &(&1["code"] == "mixed_tax_heads"))
       assert issue["fields"] == ["line_items"]
       assert issue["message"] =~ "one supply has one place of supply"
+      assert issue["tax_heads"] == ["igst", "cgst", "sgst"]
+      assert issue["igst"] == 900.0
+      assert issue["split_tax"] == 900.0
       assert Nila.Gst.Issues.gating?(issue)
       assert Nila.Gst.Issues.resolution_kind(issue) == :decision
+    end
+
+    test "tax-head evidence lists only heads with positive extracted amounts" do
+      invoice =
+        mixed_head_invoice()
+        |> put_in(["line_items", Access.at(1), "sgst_amount"], 0)
+
+      issue =
+        invoice
+        |> then(&Gstr1.validation_issues([&1]))
+        |> Enum.find(&(&1["code"] == "mixed_tax_heads"))
+
+      assert issue["tax_heads"] == ["igst", "cgst"]
     end
 
     # This is why the check has to exist: every other signal reads clean while
@@ -821,10 +837,45 @@ defmodule Nila.Gst.Sales.Gstr1Test do
           }
         })
 
-      codes = Gstr1.validation_issues([intra_on_interstate]) |> Enum.map(& &1["code"])
+      issues = Gstr1.validation_issues([intra_on_interstate])
+      codes = Enum.map(issues, & &1["code"])
 
       refute "mixed_tax_heads" in codes
       assert "tax_split_mismatch" in codes
+
+      mismatch = Enum.find(issues, &(&1["code"] == "tax_split_mismatch"))
+      assert mismatch["seller_state"] == "29"
+      assert mismatch["place_of_supply"] == "33"
+      assert mismatch["place_field"] == "buyer_gstin"
+      assert mismatch["tax_heads"] == ["cgst", "sgst"]
+    end
+
+    test "tax-split evidence excludes a zero-valued split head" do
+      invoice =
+        Gstr1.normalize_invoice(%{
+          "data" => %{
+            "invoice_number" => "SPLIT-2",
+            "invoice_date" => "04.05.2026",
+            "seller" => %{"gstin" => "29AAVCS8021P1ZB"},
+            "buyer" => %{"gstin" => "33AEWPH4158J1Z3"},
+            "line_items" => [
+              %{
+                "taxable_value" => 10_000,
+                "cgst_rate" => 9,
+                "cgst_amount" => 900,
+                "sgst_rate" => 9,
+                "sgst_amount" => 0
+              }
+            ]
+          }
+        })
+
+      issue =
+        invoice
+        |> then(&Gstr1.validation_issues([&1]))
+        |> Enum.find(&(&1["code"] == "tax_split_mismatch"))
+
+      assert issue["tax_heads"] == ["cgst"]
     end
 
     test "an ordinary single-head bill raises neither" do
@@ -870,8 +921,12 @@ defmodule Nila.Gst.Sales.Gstr1Test do
           }
         })
 
-      codes = Gstr1.validation_issues([invoice]) |> Enum.map(& &1["code"])
-      assert "grand_total_mismatch" in codes
+      issue =
+        invoice
+        |> then(&Gstr1.validation_issues([&1]))
+        |> Enum.find(&(&1["code"] == "grand_total_mismatch"))
+
+      assert issue["operands"] == %{"printed" => 275_000.0, "derived" => 76_171.36}
     end
 
     test "flags implausible invoice numbers as correctable issues" do
@@ -1075,6 +1130,8 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert issue["message"] =~ "printed bill total"
       assert issue["message"] =~ "printed 1280.0, derived 1180.0"
       assert "printed_grand_total" in issue["fields"]
+      assert issue["operands"] == %{"printed" => 1100, "derived" => 1000}
+      assert issue["grand_total_operands"] == %{"printed" => 1280, "derived" => 1180}
     end
 
     test "a bill total wrong on its own stays its own issue" do

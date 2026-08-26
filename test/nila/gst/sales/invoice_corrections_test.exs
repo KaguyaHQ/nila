@@ -4,7 +4,7 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
   alias Nila.Clients
   alias Nila.Accounts.User
   alias Nila.Gst.Intake.Dumps
-  alias Nila.Gst.Sales.{InvoiceCorrection, InvoiceCorrections, TallyPacket}
+  alias Nila.Gst.Sales.{InvoiceCorrection, InvoiceCorrections, Month, TallyPacket}
   alias Nila.Orgs.Org
   alias Nila.Orgs.Membership
   alias Nila.Repo
@@ -132,7 +132,13 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
              )
 
     assert effective["place_of_supply"] == "33"
-    assert hd(TallyPacket.prepare([Repo.reload!(ctx.dump)]).invoices)["place_of_supply"] == "33"
+    packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
+    assert hd(packet.all_invoices)["place_of_supply"] == "33"
+    assert [sendable] = packet.invoices
+    assert sendable["place_of_supply"] == "33"
+    assert [warning] = packet.warnings
+    assert Enum.any?(warning.issues, &(&1["code"] == "tax_split_mismatch"))
+    assert packet.blocked == []
 
     assert {:error, {:invalid_correction, "place_of_supply", :invalid_place_of_supply}} =
              InvoiceCorrections.save(
@@ -154,11 +160,15 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
     packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
 
     assert packet.invoices == []
-    assert [held] = packet.needs_review
+    assert [held] = packet.blocked
     assert held.invoice["invoice_number"] == "INV-001"
 
-    assert [%{"code" => "invalid_place_of_supply", "fields" => ["place_of_supply"]}] =
-             held.issues
+    assert Enum.any?(held.issues, fn issue ->
+             issue["code"] == "invalid_place_of_supply" and
+               issue["fields"] == ["place_of_supply"]
+           end)
+
+    assert Enum.any?(held.issues, &(&1["code"] == "tally_export_failed"))
 
     assert {:ok, %{invoice: corrected}} =
              InvoiceCorrections.save(
@@ -176,6 +186,159 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
     assert [ready] = packet.invoices
     assert ready["place_of_supply"] == "29"
     assert packet.needs_review == []
+  end
+
+  test "keeps a serializer-valid invoice sendable when readiness finds an amount warning", ctx do
+    invalid_invoice = Map.put(ctx.invoice, "printed_total_taxable", 900)
+
+    ctx.dump
+    |> Ecto.Changeset.change(invoices: [invalid_invoice])
+    |> Repo.update!()
+
+    packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
+
+    assert [sendable] = packet.invoices
+    assert sendable["invoice_number"] == "INV-001"
+    assert [warning] = packet.warnings
+    assert packet.blocked == []
+    assert Enum.any?(warning.issues, &(&1["code"] == "printed_taxable_mismatch"))
+    refute Enum.any?(warning.issues, &(&1["code"] == "tally_export_failed"))
+  end
+
+  test "keeps missing HSN/SAC sendable as a named warning", ctx do
+    invoice = put_in(ctx.invoice, ["line_items", Access.at(0), "hsn_sac"], nil)
+
+    ctx.dump
+    |> Ecto.Changeset.change(invoices: [invoice])
+    |> Repo.update!()
+
+    packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
+
+    assert [sendable] = packet.invoices
+    assert sendable["invoice_number"] == "INV-001"
+    assert [held] = packet.warnings
+    assert packet.blocked == []
+
+    assert [%{"code" => "missing_hsn_sac", "lines" => [1]}] = held.issues
+    refute Enum.any?(held.issues, &(&1["code"] == "tally_export_failed"))
+  end
+
+  test "does not apply month sequence controls to an arbitrary Tally batch", ctx do
+    later =
+      ctx.invoice
+      |> Map.put("id", "source-3")
+      |> Map.put("invoice_number", "INV-003")
+
+    ctx.dump
+    |> Ecto.Changeset.change(invoices: [ctx.invoice, later])
+    |> Repo.update!()
+
+    packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
+
+    assert Enum.map(packet.invoices, & &1["invoice_number"]) == ["INV-001", "INV-003"]
+    assert packet.needs_review == []
+  end
+
+  test "evaluates rate history relative to each invoice month in a mixed-period batch", ctx do
+    historical =
+      ctx.invoice
+      |> Map.put("id", "historical-source")
+      |> Map.put("invoice_number", "OLD-001")
+      |> Map.put("invoice_date", ~D[2026-05-01])
+      |> put_in(["line_items", Access.at(0), "igst_rate"], 5)
+      |> put_in(["line_items", Access.at(0), "igst_amount"], 50)
+
+    Repo.insert!(%Month{
+      org_id: ctx.org.id,
+      client_id: ctx.client.id,
+      period: "2026-05",
+      invoices: [historical]
+    })
+
+    may =
+      ctx.invoice
+      |> Map.put("id", "may-source")
+      |> Map.put("invoice_number", "MAY-001")
+      |> Map.put("invoice_date", ~D[2026-05-15])
+
+    june =
+      ctx.invoice
+      |> Map.put("id", "june-source")
+      |> Map.put("invoice_number", "JUNE-001")
+      |> Map.put("invoice_date", ~D[2026-06-15])
+
+    ctx.dump
+    |> Ecto.Changeset.change(invoices: [may, june])
+    |> Repo.update!()
+
+    packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
+
+    assert Enum.map(packet.invoices, & &1["invoice_number"]) == ["MAY-001", "JUNE-001"]
+    assert [%{invoice: %{"invoice_number" => "JUNE-001"}, issues: issues}] = packet.warnings
+    assert Enum.any?(issues, &(&1["code"] == "rate_history_conflict"))
+  end
+
+  test "does not block a Tally credit note merely because GSTR-1 lacks CDNUR", ctx do
+    note =
+      ctx.invoice
+      |> Map.put("document_type", "credit_note")
+      |> Map.put("recipient_registration", "unregistered")
+      |> Map.put("buyer_gstin", nil)
+
+    ctx.dump
+    |> Ecto.Changeset.change(invoices: [note])
+    |> Repo.update!()
+
+    assert Enum.any?(Nila.Gst.Sales.Gstr1.blocking_issues([note]), fn issue ->
+             issue["code"] == "cdnur_unsupported"
+           end)
+
+    packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
+
+    assert [ready] = packet.invoices
+    assert ready["document_type"] == "credit_note"
+    assert packet.needs_review == []
+  end
+
+  test "keeps exempt supply blocked while Tally XML hardcodes taxable treatment", ctx do
+    invoice =
+      update_in(ctx.invoice, ["line_items", Access.at(0)], fn line ->
+        line
+        |> Map.put("igst_rate", 0)
+        |> Map.put("igst_amount", 0)
+      end)
+      |> Map.put("supply_type", "exempt")
+
+    ctx.dump
+    |> Ecto.Changeset.change(invoices: [invoice])
+    |> Repo.update!()
+
+    assert Enum.any?(Nila.Gst.Sales.Gstr1.blocking_issues([invoice]), fn issue ->
+             issue["code"] == "exempt_supply_unsupported"
+           end)
+
+    packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
+
+    assert packet.invoices == []
+    assert [held] = packet.blocked
+    assert Enum.any?(held.issues, &(&1["code"] == "exempt_supply_unsupported"))
+  end
+
+  test "keeps unsupported Tally output treatments as target-specific blockers", ctx do
+    export =
+      ctx.invoice
+      |> Map.put("supply_type", "export")
+      |> Map.put("document", %{"export" => true})
+
+    ctx.dump
+    |> Ecto.Changeset.change(invoices: [export])
+    |> Repo.update!()
+
+    packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
+
+    assert packet.invoices == []
+    assert [held] = packet.blocked
+    assert Enum.any?(held.issues, &(&1["code"] == "export_supply_unsupported"))
   end
 
   test "saves one complete invoice workbench submission atomically", ctx do

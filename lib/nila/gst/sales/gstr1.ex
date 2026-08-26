@@ -276,9 +276,14 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   def validation_issues(invoices) do
-    invoice_issues = Enum.flat_map(invoices, &invoice_issues/1)
-    sequence_issues(invoices) ++ invoice_issues
+    month_validation_issues(invoices) ++ invoice_validation_issues(invoices)
   end
+
+  @doc "Issues intrinsic to the supplied invoices, independent of month completeness."
+  def invoice_validation_issues(invoices), do: Enum.flat_map(invoices, &invoice_issues/1)
+
+  @doc "Controls that are meaningful only for a complete sales month."
+  def month_validation_issues(invoices), do: sequence_issues(invoices)
 
   @doc """
   Issues that must be answered before a GSTR-1 can be signed, not merely read.
@@ -294,8 +299,12 @@ defmodule Nila.Gst.Sales.Gstr1 do
   gets built when a real document asks for it rather than from imagination.
   """
   def blocking_issues(invoices) do
-    Enum.flat_map(invoices, &unsupported_document_issues/1) ++ duplicate_number_issues(invoices)
+    gstr1_capability_issues(invoices) ++ duplicate_number_issues(invoices)
   end
+
+  @doc "Document treatments the current GSTR-1 projection cannot represent."
+  def gstr1_capability_issues(invoices),
+    do: Enum.flat_map(invoices, &unsupported_document_issues/1)
 
   @doc "One blocking issue per duplicate active invoice-number group."
   def duplicate_number_issues(invoices) do
@@ -860,17 +869,21 @@ defmodule Nila.Gst.Sales.Gstr1 do
         " — and the printed bill total, which is taxable + tax, is out by exactly that much " <>
         "(printed #{round2(ops["printed"])}, derived #{round2(ops["derived"])})"
 
-    issue(
-      invoice,
+    invoice
+    |> issue(
       code,
       message,
       [component, grand] |> Enum.flat_map(& &1["fields"]) |> Enum.uniq(),
       Issues.level_for(code)
     )
+    |> Map.put("operands", component["operands"])
+    |> Map.put("grand_total_operands", grand["operands"])
   end
 
   defp check_issue(invoice, %{"code" => code, "fields" => fields} = check) do
-    issue(invoice, code, check_message(check), fields, Issues.level_for(code))
+    invoice
+    |> issue(code, check_message(check), fields, Issues.level_for(code))
+    |> Map.put("operands", check["operands"])
   end
 
   defp check_message(%{"code" => "line_arithmetic", "line" => index, "operands" => ops}) do
@@ -1080,8 +1093,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
           indexes = Enum.map(lines, fn {_line, index} -> index end)
 
           [
-            issue(
-              invoice,
+            invoice
+            |> issue(
               "missing_uom",
               "B2C HSN lines #{Enum.map_join(indexes, ", ", &(&1 + 1))} have no unit of measurement; confirm the item name and UQC before filing",
               Enum.flat_map(
@@ -1093,6 +1106,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
               ),
               Issues.level_for("missing_uom")
             )
+            |> Map.put("lines", Enum.map(indexes, &(&1 + 1)))
           ]
       end
     else
@@ -1343,13 +1357,14 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
       lines ->
         [
-          issue(
-            invoice,
+          invoice
+          |> issue(
             code,
             line_issue_message(code, lines),
             ["line_items"],
             Issues.level_for(code)
           )
+          |> Map.put("lines", lines)
         ]
     end
   end
@@ -1407,13 +1422,18 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
     if igst > 0 and split > 0 do
       [
-        issue(
-          invoice,
+        invoice
+        |> issue(
           "mixed_tax_heads",
           "invoice carries both IGST (#{round2(igst)}) and CGST/SGST (#{round2(split)}) — one supply has one place of supply, so only one head can be correct",
           ["line_items"],
           Issues.level_for("mixed_tax_heads")
         )
+        |> Map.merge(%{
+          "tax_heads" => positive_tax_heads(invoice),
+          "igst" => round2(igst),
+          "split_tax" => round2(split)
+        })
       ]
     else
       []
@@ -1422,6 +1442,16 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   defp split_tax(invoice),
     do: sum(invoice["line_items"], "cgst_amount") + sum(invoice["line_items"], "sgst_amount")
+
+  defp positive_tax_heads(invoice) do
+    [
+      {"igst", sum(invoice["line_items"], "igst_amount")},
+      {"cgst", sum(invoice["line_items"], "cgst_amount")},
+      {"sgst", sum(invoice["line_items"], "sgst_amount")}
+    ]
+    |> Enum.filter(fn {_head, amount} -> amount > 0 end)
+    |> Enum.map(&elem(&1, 0))
+  end
 
   defp consistency_issues(invoice) do
     seller_state = state_code(invoice["seller_gstin"])
@@ -1443,24 +1473,36 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
       interstate? and igst <= 0 and split > 0 ->
         [
-          issue(
-            invoice,
+          invoice
+          |> issue(
             "tax_split_mismatch",
             "place of supply #{place_of_supply} differs from seller state #{seller_state}, but tax is CGST/SGST",
             [place_field, "line_items"],
             Issues.level_for("tax_split_mismatch")
           )
+          |> Map.merge(%{
+            "seller_state" => seller_state,
+            "place_of_supply" => place_of_supply,
+            "place_field" => place_field,
+            "tax_heads" => positive_tax_heads(invoice)
+          })
         ]
 
       not interstate? and split <= 0 and igst > 0 ->
         [
-          issue(
-            invoice,
+          invoice
+          |> issue(
             "tax_split_mismatch",
             "place of supply #{place_of_supply} equals seller state #{seller_state}, but tax is IGST",
             [place_field, "line_items"],
             Issues.level_for("tax_split_mismatch")
           )
+          |> Map.merge(%{
+            "seller_state" => seller_state,
+            "place_of_supply" => place_of_supply,
+            "place_field" => place_field,
+            "tax_heads" => positive_tax_heads(invoice)
+          })
         ]
 
       true ->

@@ -37,24 +37,53 @@ defmodule Nila.Gst.Sales.InvoiceRemovals do
   def remove(_org_id, _client_id, _batch_ref, _source_id, _removed_by_id),
     do: {:error, :not_found}
 
-  def reject_removed(org_id, client_id, batch_ref, invoices)
+  def restore(org_id, client_id, batch_ref, source_id, restored_by_id)
       when is_integer(org_id) and is_integer(client_id) and is_binary(batch_ref) and
-             is_list(invoices) do
-    removed_ids =
-      Repo.all(
-        from removal in InvoiceRemoval,
-          where:
-            removal.org_id == ^org_id and removal.client_id == ^client_id and
-              removal.batch_ref == ^batch_ref,
-          select: removal.source_id
-      )
-      |> MapSet.new()
-
-    Enum.reject(invoices, &MapSet.member?(removed_ids, Gstr1.source_id(&1)))
+             is_binary(source_id) and is_integer(restored_by_id) do
+    Repo.transact(fn ->
+      with :ok <- validate_remover(org_id, restored_by_id),
+           {:ok, dumps} <- TallyPacket.fetch(org_id, client_id, batch_ref),
+           canonical_ref = TallyPacket.ref(dumps),
+           true <- source_invoice?(dumps, source_id),
+           {1, _} <-
+             Repo.delete_all(
+               from removal in InvoiceRemoval,
+                 where:
+                   removal.org_id == ^org_id and removal.client_id == ^client_id and
+                     removal.batch_ref == ^canonical_ref and removal.source_id == ^source_id
+             ) do
+        {:ok, :restored}
+      else
+        false -> {:error, :not_found}
+        {0, _} -> {:error, :not_found}
+        error -> error
+      end
+    end)
   end
 
-  def reject_removed(_org_id, _client_id, _batch_ref, invoices) when is_list(invoices),
-    do: invoices
+  def restore(_org_id, _client_id, _batch_ref, _source_id, _restored_by_id),
+    do: {:error, :not_found}
+
+  def partition_removed(org_id, client_id, batch_ref, invoices)
+      when is_integer(org_id) and is_integer(client_id) and is_binary(batch_ref) and
+             is_list(invoices) do
+    removed_ids = removed_ids(org_id, client_id, batch_ref)
+    Enum.split_with(invoices, &(not MapSet.member?(removed_ids, Gstr1.source_id(&1))))
+  end
+
+  def partition_removed(_org_id, _client_id, _batch_ref, invoices) when is_list(invoices),
+    do: {invoices, []}
+
+  defp removed_ids(org_id, client_id, batch_ref) do
+    Repo.all(
+      from removal in InvoiceRemoval,
+        where:
+          removal.org_id == ^org_id and removal.client_id == ^client_id and
+            removal.batch_ref == ^batch_ref,
+        select: removal.source_id
+    )
+    |> MapSet.new()
+  end
 
   defp validate_remover(org_id, user_id) do
     if Repo.exists?(

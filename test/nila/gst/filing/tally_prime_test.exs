@@ -530,6 +530,42 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert quantity_xml =~ "<AMOUNT>1100.00</AMOUNT>"
   end
 
+  test "builds a sendable accounting voucher when HSN/SAC is missing" do
+    missing_hsn =
+      invoice(%{
+        "line_items" => [
+          %{
+            "description" => "Equipment maintenance",
+            "hsn_sac" => nil,
+            "taxable_value" => 1_000,
+            "igst_rate" => 18,
+            "igst_amount" => 180
+          }
+        ]
+      })
+
+    assert {:ok, xml} = TallyPrime.build(%{invoices: [missing_hsn]})
+    assert xml =~ "<VOUCHERNUMBER>INV-001</VOUCHERNUMBER>"
+    assert xml =~ "<GSTOVRDNASSESSABLEVALUE>1000.00</GSTOVRDNASSESSABLEVALUE>"
+    assert xml =~ "<GSTRATE>18</GSTRATE>"
+    assert xml =~ "<BASICUSERDESCRIPTION>Equipment maintenance</BASICUSERDESCRIPTION>"
+    refute xml =~ "<GSTHSNNAME>"
+    refute xml =~ "<GSTHSNDESCRIPTION>"
+    refute xml =~ "<GSTHSNINFERAPPLICABILITY>"
+    refute xml =~ "<GSTOVRDNTYPEOFSUPPLY>"
+  end
+
+  test "keeps HSN/SAC overrides when the line has a valid code" do
+    assert {:ok, xml} = TallyPrime.build(%{invoices: [invoice()]})
+
+    assert xml =~ "<GSTOVRDNTYPEOFSUPPLY>Services</GSTOVRDNTYPEOFSUPPLY>"
+    assert xml =~ "<GSTHSNNAME>998719</GSTHSNNAME>"
+    assert xml =~ "<GSTHSNDESCRIPTION>Equipment maintenance</GSTHSNDESCRIPTION>"
+
+    assert xml =~
+             "<GSTHSNINFERAPPLICABILITY>As per Masters/Company</GSTHSNINFERAPPLICABILITY>"
+  end
+
   defp invoice(overrides \\ %{}) do
     Map.merge(
       %{

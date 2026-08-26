@@ -138,6 +138,19 @@ defmodule Nila.Gst.Hsn.ValidationTest do
     assert issue["hsn_codes"] == []
   end
 
+  test "missing codes are knowable without an HSN directory" do
+    invoices = [
+      %{
+        "id" => "inv_01",
+        "invoice_number" => "135/2025-26",
+        "line_items" => [%{"description" => "Service", "hsn_sac" => "  "}]
+      }
+    ]
+
+    assert [%{"code" => "missing_hsn_sac", "lines" => [1]}] =
+             Validation.sales_issues(invoices)
+  end
+
   test "an inferred code that is also new is asked once, at the level that gates" do
     invoices = [
       %{

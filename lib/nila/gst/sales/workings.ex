@@ -18,14 +18,9 @@ defmodule Nila.Gst.Sales.Workings do
   target wins (append-only store, so ordering is by insertion).
   """
 
-  alias Nila.Gst.Cess
-  alias Nila.Gst.Hsn.DescriptionSignal
-  alias Nila.Gst.Hsn.Validation
   alias Nila.Gst.Issues
-  alias Nila.Gst.RateHistory
-  alias Nila.Gst.Rates.Validation, as: RateValidation
   alias Nila.Gst.Replay
-  alias Nila.Gst.Sales.Gstr1
+  alias Nila.Gst.Sales.{Gstr1, Gstr1Readiness, InvoiceReadiness}
 
   @doc """
   Applies resolutions (append-only, oldest first) to a sales month's invoices,
@@ -54,7 +49,7 @@ defmodule Nila.Gst.Sales.Workings do
       invoices
       |> ensure_source_ids(Keyword.get(opts, :source_namespace, "legacy"))
       |> Enum.map(&Gstr1.resolve_line_amounts/1)
-      |> annotate_compliance(compliance)
+      |> InvoiceReadiness.annotate(compliance)
 
     effective = Replay.drop_reopened(resolutions, "target")
     decisions = Replay.decisions(resolutions, "target")
@@ -66,10 +61,9 @@ defmodule Nila.Gst.Sales.Workings do
       |> effective_corrections()
 
     correction_issues =
-      Gstr1.validation_issues(pristine_source_invoices) ++
-        Gstr1.blocking_issues(pristine_source_invoices) ++
-        compliance_issues(pristine_source_invoices, compliance) ++
-        cess_issues(pristine_source_invoices)
+      pristine_source_invoices
+      |> InvoiceReadiness.issues(compliance)
+      |> Enum.concat(Gstr1Readiness.issues(pristine_source_invoices))
 
     source_flagged = Gstr1.flagged_fields(pristine_source_invoices, correction_issues)
 
@@ -81,7 +75,7 @@ defmodule Nila.Gst.Sales.Workings do
     {corrected, _applied, [], _flags} =
       Gstr1.apply_corrections(pristine_source_invoices, legit, source_flagged)
 
-    corrected = annotate_compliance(corrected, compliance)
+    corrected = InvoiceReadiness.annotate(corrected, compliance)
 
     exclusions = Enum.filter(effective, &(&1["verb"] == "exclude_duplicate_copy"))
     {source_invoices, active_invoices, duplicate_copies} = apply_exclusions(corrected, exclusions)
@@ -93,10 +87,9 @@ defmodule Nila.Gst.Sales.Workings do
 
     raw_issues =
       active_invoices
-      |> Gstr1.validation_issues()
-      |> Enum.concat(compliance_issues(active_invoices, compliance))
-      |> Enum.concat(Gstr1.blocking_issues(active_invoices))
-      |> Enum.concat(cess_issues(active_invoices))
+      |> InvoiceReadiness.issues(compliance)
+      |> Enum.concat(Gstr1Readiness.issues(active_invoices))
+      |> Enum.concat(Gstr1.month_validation_issues(active_invoices))
       |> Enum.concat(document_issues)
       |> Issues.normalize_all()
       |> collapse_by_target()
@@ -149,82 +142,6 @@ defmodule Nila.Gst.Sales.Workings do
         "#{namespace}_inv_#{String.pad_leading(to_string(ordinal), 2, "0")}"
       )
     end)
-  end
-
-  defp annotate_compliance(invoices, compliance) do
-    invoices
-    |> annotate_hsn(compliance)
-    |> annotate_rates(compliance)
-  end
-
-  defp annotate_hsn(invoices, %{directory: directory}) do
-    invoices
-    |> Validation.annotate_invoices(directory)
-    # Shadow only: measured, never rendered. See `DescriptionSignal` for why the
-    # staging matters — a false description conflict at `required` would
-    # withhold a filing over a naming style.
-    |> DescriptionSignal.observe(%{track: :sales})
-  end
-
-  defp annotate_hsn(invoices, _compliance), do: invoices
-
-  defp annotate_rates(invoices, %{rate_directory: directory}),
-    do: RateValidation.annotate_invoices(invoices, directory)
-
-  defp annotate_rates(invoices, _compliance), do: invoices
-
-  # Cess is screened, not asked about: a month with no cess-bearing HSN raises
-  # nothing, which post-02/2025 is nearly every month.
-  #
-  # A hit blocks rather than asking, because there is no answer worth taking.
-  # `derive_invoice` hardcodes `"csamt" => 0` and no part of the chain —
-  # extraction, derivation, 3B, the cess credit pool — carries cess, so this
-  # return cannot be filed either way. Asking a reviewer to certify that no cess
-  # applies would trade a fact we screened for an assertion we cannot check, and
-  # file understated tax under his signature when he gets it wrong. The way out
-  # of a misread code is correcting the code, which the flagged HSN path allows.
-  defp cess_issues(invoices) do
-    Enum.flat_map(invoices, fn invoice ->
-      case Cess.hits(invoice) do
-        [] -> []
-        hits -> [cess_blocker(invoice, hits)]
-      end
-    end)
-  end
-
-  defp cess_blocker(invoice, hits) do
-    lines =
-      Enum.map_join(hits, " ", fn hit ->
-        described = if hit.description, do: " #{inspect(hit.description)}", else: ""
-        "Line #{hit.line}#{described} is HSN #{hit.hsn}."
-      end)
-
-    %{
-      "invoice" => invoice["invoice_number"],
-      "source_id" => invoice["id"],
-      "code" => "cess_unsupported",
-      "level" => Issues.level_for("cess_unsupported"),
-      "message" =>
-        "#{lines} That heading carried compensation cess on this invoice's date, " <>
-          "and GSTR-1 derivation carries no cess — it would file every line at csamt 0.",
-      # The line's own HSN path, not a bare `line_items`: this is what
-      # `flagged_fields` authorizes and `correctable_field?` accepts, and a
-      # misread code is the only way out of a supply this return cannot carry.
-      "fields" => Enum.map(hits, &"line_items[#{&1.line - 1}].hsn_sac"),
-      "lines" => Enum.map(hits, & &1.line)
-    }
-  end
-
-  defp compliance_issues(invoices, compliance) do
-    hsn_issues = if compliance[:directory], do: Validation.sales_issues(invoices), else: []
-
-    statutory_issues =
-      if compliance[:rate_directory], do: RateValidation.sales_issues(invoices), else: []
-
-    history = compliance[:rate_history] || []
-    summary_issues = Validation.summary_issues(invoices, history)
-    history_issues = RateHistory.issues(invoices, history)
-    hsn_issues ++ statutory_issues ++ summary_issues ++ history_issues
   end
 
   @doc """

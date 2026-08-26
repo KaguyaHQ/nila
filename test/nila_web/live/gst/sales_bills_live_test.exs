@@ -12,6 +12,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
   alias Nila.TallyDevices.SyncedMaster
   alias Nila.TallyJobs
   alias Nila.TallyMappings
+  alias NilaWeb.Presence
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
@@ -74,38 +75,15 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
         }
       ])
 
-    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+    {:ok, _presence_ref} =
+      Presence.track(
+        self(),
+        "tally_devices:#{org.id}",
+        Integer.to_string(device.id),
+        %{device_id: device.id, name: device.name}
+      )
 
-    Nila.Repo.insert!(%SyncedMaster{
-      org_id: org.id,
-      company_id: company.id,
-      kind: "voucher_type",
-      identity: "name:sales",
-      name: "Sales",
-      data: %{"numbering_method" => "Manual"},
-      inserted_at: now,
-      updated_at: now
-    })
-
-    Enum.each(["Customer & Co", "Sales", "Output IGST"], fn name ->
-      parent =
-        case name do
-          "Customer & Co" -> "Sundry Debtors"
-          "Sales" -> "Sales Accounts"
-          "Output IGST" -> "Duties & Taxes"
-        end
-
-      Nila.Repo.insert!(%SyncedMaster{
-        org_id: org.id,
-        company_id: company.id,
-        kind: "ledger",
-        identity: "name:" <> String.downcase(name),
-        name: name,
-        data: %{"parent" => parent},
-        inserted_at: now,
-        updated_at: now
-      })
-    end)
+    sync_demo_masters(org.id, company.id)
 
     %{
       conn: log_in_user(conn, user),
@@ -182,6 +160,118 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bills-added-to-tally")
   end
 
+  test "offers only connected destinations and sends to the selected company", %{
+    conn: conn,
+    org: org,
+    client: client,
+    dump: dump
+  } do
+    {:ok, second_device, _token} = TallyDevices.create_device(org, %{name: "Second PC"})
+
+    {:ok, [second_company]} =
+      TallyDevices.report_companies(second_device, [
+        %{
+          "name" => "Dummy Run Company",
+          "tally_guid" => "dummy-guid",
+          "gstin" => client.gstin
+        }
+      ])
+
+    {:ok, _presence_ref} =
+      Presence.track(
+        self(),
+        "tally_devices:#{org.id}",
+        Integer.to_string(second_device.id),
+        %{device_id: second_device.id, name: second_device.name}
+      )
+
+    sync_demo_masters(org.id, second_company.id)
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    assert has_element?(view, "#sales-bills-tally-company-form")
+
+    view
+    |> form("#sales-bills-tally-company-form",
+      tally_company: %{company_id: second_company.id}
+    )
+    |> render_change()
+
+    view |> element("#sales-bills-send-to-tally") |> render_click()
+
+    assert [%{device_id: device_id, payload: payload}] = Nila.Repo.all(Nila.TallyJobs.Job)
+    assert device_id == second_device.id
+    assert payload["company"] == "Dummy Run Company"
+  end
+
+  test "does not offer a stale open company whose connector is offline", %{
+    conn: conn,
+    org: org,
+    client: client,
+    dump: dump,
+    device: device
+  } do
+    :ok =
+      Presence.untrack(
+        self(),
+        "tally_devices:#{org.id}",
+        Integer.to_string(device.id)
+      )
+
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    refute has_element?(view, "#sales-bills-send-to-tally")
+    assert has_element?(view, "#sales-bills-download")
+  end
+
+  test "confirms once and sends ready plus warned invoices while skipping blocked invoices", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    [invoice] = dump.invoices
+
+    warned =
+      invoice
+      |> Map.put("id", "source-warning")
+      |> Map.put("invoice_number", "INV-WARNING")
+      |> Map.put("printed_total_taxable", 900)
+
+    blocked =
+      invoice
+      |> Map.put("id", "source-blocked")
+      |> Map.put("invoice_number", "INV-BLOCKED")
+      |> Map.put("supply_type", "export")
+      |> Map.put("document", %{"export" => true})
+
+    dump =
+      dump
+      |> Ecto.Changeset.change(invoices: [invoice, warned, blocked])
+      |> Nila.Repo.update!()
+
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Ready")
+    assert has_element?(view, "#sales-bill-delivery-source-warning", "Needs review")
+    assert has_element?(view, "#sales-bill-delivery-source-blocked", "Cannot send")
+
+    assert has_element?(
+             view,
+             "#sales-bills-send-to-tally[data-confirm*='1 invoice has unresolved warnings']"
+           )
+
+    view |> element("#sales-bills-send-to-tally") |> render_click()
+
+    jobs = Nila.Repo.all(Nila.TallyJobs.Job)
+
+    assert jobs |> Enum.map(& &1.payload["invoice_number"]) |> Enum.sort() == [
+             "INV-001",
+             "INV-WARNING"
+           ]
+  end
+
   test "closes invoice review with Escape", %{conn: conn, client: client, dump: dump} do
     batch_ref = TallyPacket.ref([dump])
 
@@ -211,12 +301,13 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     {:ok, view, _html} = live(conn, path)
 
     assert has_element?(view, "#sales-bills-result", "No sales vouchers ready")
-    refute has_element?(view, "#sales-bills-voucher-table")
+    assert has_element?(view, "#sales-bills-voucher-table", "INV-001")
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Cannot send")
 
     assert has_element?(
              view,
              "#sales-bills-needs-review",
-             ~s(place of supply "Chennai" is not a known GST state code)
+             "Tally export and place of supply need review."
            )
 
     view |> element("#sales-bill-review-INV-001") |> render_click()
@@ -240,11 +331,125 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bills-voucher-table", "INV-001")
   end
 
-  test "removes an invoice from Nila without touching its source or Tally voucher", %{
+  test "summarizes arithmetic failures instead of dumping validator calculations", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    [invoice] = dump.invoices
+    [line] = invoice["line_items"]
+
+    line =
+      Map.merge(line, %{
+        "hsn_sac" => nil,
+        "taxable_value" => 6_388_200.0,
+        "printed_line_amount" => 6_388_200.0,
+        "igst_amount" => 1_152.9
+      })
+
+    invoice =
+      Map.merge(invoice, %{
+        "line_items" => [line],
+        "printed_total_taxable" => 1_000.0,
+        "printed_total_tax" => 180.0,
+        "printed_grand_total" => 1_180.0
+      })
+
+    dump = dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+    batch_ref = TallyPacket.ref([dump])
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}"
+    {:ok, view, _html} = live(conn, path)
+
+    assert has_element?(
+             view,
+             "#sales-bill-review-INV-001",
+             "Invoice totals, tax calculations, and HSN/SAC need review."
+           )
+
+    refute has_element?(view, "#sales-bills-needs-review", "does not match")
+
+    view |> element("#sales-bill-review-INV-001") |> render_click()
+
+    assert has_element?(
+             view,
+             "#sales-bill-review-issues",
+             "Printed taxable is ₹1,000.00; extracted lines total ₹63,88,200.00."
+           )
+
+    assert has_element?(
+             view,
+             "#sales-bill-review-issues",
+             "Printed tax is ₹180.00; extracted lines total ₹1,152.90."
+           )
+
+    assert has_element?(view, "#sales-bill-review-issues", "1 line needs review.")
+    assert has_element?(view, "#sales-bill-review-issues", "HSN/SAC is missing on 1 line.")
+    refute has_element?(view, "#sales-bill-review-issues", "does not match")
+  end
+
+  test "names missing HSN/SAC in the review queue", %{conn: conn, client: client, dump: dump} do
+    [invoice] = dump.invoices
+    invoice = put_in(invoice, ["line_items", Access.at(0), "hsn_sac"], nil)
+    dump = dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+
+    {:ok, view, _html} =
+      live(conn, ~p"/sales-bills/#{client.id}/batch/#{TallyPacket.ref([dump])}")
+
+    assert has_element?(
+             view,
+             "#sales-bill-review-INV-001",
+             "HSN/SAC is missing on 1 line."
+           )
+
+    refute has_element?(view, "#sales-bills-needs-review", "could not prepare")
+  end
+
+  test "presents a tax-head conflict as tax treatment, not an amount mismatch", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    [invoice] = dump.invoices
+    [line] = invoice["line_items"]
+
+    line =
+      line
+      |> Map.drop(~w(igst_rate igst_amount))
+      |> Map.merge(%{
+        "cgst_rate" => 9,
+        "cgst_amount" => 90,
+        "sgst_rate" => 9,
+        "sgst_amount" => 90
+      })
+
+    invoice = invoice |> Map.put("place_of_supply", "36") |> Map.put("line_items", [line])
+    dump = dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    assert has_element?(
+             view,
+             "#sales-bill-review-INV-001",
+             "Tax treatment doesn’t match the place of supply."
+           )
+
+    refute has_element?(view, "#sales-bills-needs-review", "Line amounts")
+
+    view |> element("#sales-bill-review-INV-001") |> render_click()
+
+    assert has_element?(
+             view,
+             "#sales-bill-review-issues",
+             "Seller state is Tamil Nadu and place of supply is Telangana, but the invoice uses CGST/SGST."
+           )
+
+    refute has_element?(view, "#sales-bill-review-issues", "Nila read")
+  end
+
+  test "excludes and restores an unsent invoice without touching its source", %{
     conn: conn,
     client: client,
     dump: dump,
-    device: device,
     org: org
   } do
     batch_ref = TallyPacket.ref([dump])
@@ -255,26 +460,24 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     view |> element("#sales-bill-remove-INV-001") |> render_click()
 
-    assert has_element?(view, "#sales-bill-remove-dialog", "Remove invoice?")
+    assert has_element?(view, "#sales-bill-remove-dialog", "Leave invoice out?")
 
     assert has_element?(
              view,
              "#sales-bill-remove-dialog",
-             "It won’t affect anything already added to Tally."
+             "It won’t be sent to Tally. You can include it again before sending."
            )
 
     view |> element("#sales-bill-remove-cancel") |> render_click()
     refute has_element?(view, "#sales-bill-remove-dialog")
 
-    view |> element("#sales-bills-send-to-tally") |> render_click()
-    assert {:ok, job} = TallyJobs.claim_next(device.id)
-    assert {:ok, job} = TallyJobs.complete(device.id, job.id, "succeeded", %{"created" => 1})
-
     view |> element("#sales-bill-remove-INV-001") |> render_click()
     view |> element("#sales-bill-remove-confirm") |> render_click()
 
     assert has_element?(view, "#sales-bills-result", "No sales vouchers ready")
-    refute has_element?(view, "#sales-bills-voucher-table")
+    assert has_element?(view, "#sales-bills-voucher-table", "INV-001")
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Not included")
+    assert has_element?(view, "#sales-bill-restore-INV-001", "Include")
     refute has_element?(view, "#sales-bill-remove-dialog")
 
     removal = Nila.Repo.one!(InvoiceRemoval)
@@ -286,11 +489,40 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert [source_invoice] = Nila.Repo.reload!(dump).invoices
     assert source_invoice["invoice_number"] == "INV-001"
-    assert TallyJobs.get_job!(job.id).status == "succeeded"
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
 
     {:ok, reopened, _html} = live(conn, path)
     assert has_element?(reopened, "#sales-bills-result", "No sales vouchers ready")
-    refute has_element?(reopened, "#sales-bills-voucher-table")
+    assert has_element?(reopened, "#sales-bill-delivery-INV-001", "Not included")
+
+    reopened |> element("#sales-bill-restore-INV-001") |> render_click()
+
+    assert has_element?(reopened, "#sales-bill-delivery-INV-001", "Ready")
+    refute has_element?(reopened, "#sales-bill-restore-INV-001")
+    assert Nila.Repo.aggregate(InvoiceRemoval, :count) == 0
+  end
+
+  test "locks invoice editing and removal after the batch is queued", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    batch_ref = TallyPacket.ref([dump])
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}"
+    {:ok, view, _html} = live(conn, path)
+
+    view |> element("#sales-bills-send-to-tally") |> render_click()
+
+    refute has_element?(view, "#sales-bill-actions-INV-001-trigger")
+
+    {:ok, view, _html} =
+      view
+      |> element("#sales-bills-voucher-table a[href$='?item=INV-001']")
+      |> render_click()
+      |> follow_redirect(conn)
+
+    assert has_element?(view, "#sales-bill-edit-line-0[disabled]")
+    assert has_element?(view, "#sales-bill-save-tally-posting[disabled]")
   end
 
   test "uses the confirmed party and company posting ledgers when sending", %{
@@ -397,6 +629,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     |> render_click()
 
     assert has_element?(view, "#sales-bills-send-error", "Held back 1 voucher (INV-001)")
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Needs review")
     assert render(view) =~ "Output IGST"
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
   end
@@ -423,6 +656,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
              "#sales-bills-send-error",
              "Choose an existing Tally party for INV-001 before sending."
            )
+
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Needs review")
 
     {:ok, view, _html} =
       view
@@ -468,6 +703,52 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     refute has_element?(view, "#sales-bill-evidence-overlay")
 
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
+  end
+
+  test "an unresolved party does not prevent resolved vouchers from being queued", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    company: company
+  } do
+    [invoice] = dump.invoices
+
+    unresolved =
+      invoice
+      |> Map.put("id", "source-unresolved")
+      |> Map.put("invoice_number", "INV-002")
+      |> Map.put("buyer_name", "New Customer Pvt Ltd")
+      |> Map.put("buyer_gstin", "29AAACB2894G1ZJ")
+
+    dump =
+      dump
+      |> Ecto.Changeset.change(invoices: [invoice, unresolved])
+      |> Nila.Repo.update!()
+
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+    view |> element("#sales-bills-send-to-tally") |> render_click()
+
+    assert has_element?(
+             view,
+             "#sales-bills-send-error",
+             "Choose an existing Tally party for INV-002 before sending."
+           )
+
+    assert has_element?(view, "#sales-bill-delivery-source-unresolved", "Needs review")
+    assert has_element?(view, "#sales-bills-remainder", "Not added to Tally")
+    assert has_element?(view, "#sales-bill-actions-source-unresolved-trigger")
+
+    assert [job] = Nila.Repo.all(Nila.TallyJobs.Job)
+    assert job.payload["invoice_number"] == "INV-001"
+
+    {:ok, reopened, _html} =
+      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=source-unresolved")
+
+    assert has_element?(reopened, "#sales-bill-delivery-source-unresolved", "Needs review")
+    refute has_element?(reopened, "#sales-bill-edit-line-0[disabled]")
+    refute has_element?(reopened, "#sales-bill-save-tally-posting[disabled]")
+    assert has_element?(reopened, "#sales-bill-posting-review", company.name)
   end
 
   test "saves the complete proposed posting and closes the workbench", %{
@@ -644,7 +925,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
            )
   end
 
-  test "saves corrections and syncs only the selected invoice", %{
+  test "saves corrections before sending the whole batch", %{
     conn: conn,
     client: client,
     dump: dump,
@@ -663,7 +944,6 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     {:ok, view, _html} = live(conn, path)
 
     render_submit(view, "save-tally-posting", %{
-      "tally_action" => "sync",
       "tally_posting" => %{
         "party_ledger_identity" => "name:customer & co",
         "line_sales_ledger_identities" => %{"0" => "name:sales"},
@@ -673,7 +953,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
           "invoice_date" => "2026-07-16",
           "buyer_name" => "Customer & Company",
           "buyer_gstin" => "29AAVCS8021P1ZB",
-          "place_of_supply" => "33",
+          "place_of_supply" => "29",
           "narration" => "Corrected from invoice",
           "line_items" => %{
             "0" => %{
@@ -693,26 +973,29 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert_patch(view, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
     refute has_element?(view, "#sales-bill-posting-review")
+
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
+    view |> element("#sales-bills-send-to-tally") |> render_click()
     assert has_element?(view, "#sales-bill-delivery-INV-001", "Adding…")
-    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 1
+    assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 2
     assert {:ok, job} = TallyJobs.claim_next(device.id)
     assert job.payload["invoice_number"] == "INV-001-A"
     assert job.payload["xml"] =~ "<VOUCHERNUMBER>INV-001-A</VOUCHERNUMBER>"
     assert job.payload["xml"] =~ "Corrected technical services"
     assert job.payload["xml"] =~ "<GSTHSNNAME>998713</GSTHSNNAME>"
-    assert job.payload["xml"] =~ "<PLACEOFSUPPLY>Tamil Nadu</PLACEOFSUPPLY>"
+    assert job.payload["xml"] =~ "<PLACEOFSUPPLY>Karnataka</PLACEOFSUPPLY>"
 
     assert {:ok, _job} = TallyJobs.complete(device.id, job.id, "succeeded", %{"created" => 1})
     assert has_element?(view, "#sales-bill-delivery-INV-001", "Added")
 
     {:ok, reopened, _html} = live(conn, path)
     assert has_element?(reopened, "#tally-posting-invoice-number[value='INV-001-A']")
-    assert has_element?(reopened, "#tally-posting-place-of-supply option[selected][value='33']")
+    assert has_element?(reopened, "#tally-posting-place-of-supply option[selected][value='29']")
     assert has_element?(reopened, "#sales-bill-line-summary-0", "Corrected technical services")
     assert has_element?(reopened, "#sales-bill-line-summary-0", "HSN 998713")
   end
 
-  test "warns about a printed-total mismatch without blocking sync", %{
+  test "saves a warning and confirms it at the batch send boundary", %{
     conn: conn,
     client: client,
     dump: dump
@@ -762,10 +1045,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
              "The lines calculate to ₹1,080.00; the invoice prints ₹1,180.00."
            )
 
-    refute has_element?(view, "#sales-bill-save-and-sync[disabled]")
-
     render_submit(view, "save-tally-posting", %{
-      "tally_action" => "sync",
       "tally_posting" => %{
         "party_ledger_identity" => "name:customer & co",
         "line_sales_ledger_identities" => %{"0" => "name:sales"},
@@ -774,6 +1054,14 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     })
 
     assert_patch(view, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    assert has_element?(
+             view,
+             "#sales-bills-send-to-tally[data-confirm*='1 invoice has unresolved warnings']"
+           )
+
+    view |> element("#sales-bills-send-to-tally") |> render_click()
+    refute has_element?(view, "#sales-bills-send-error")
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 1
   end
 
@@ -860,5 +1148,40 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     view |> element("#sales-bills-retry-tally") |> render_click()
 
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 2
+  end
+
+  defp sync_demo_masters(org_id, company_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    Nila.Repo.insert!(%SyncedMaster{
+      org_id: org_id,
+      company_id: company_id,
+      kind: "voucher_type",
+      identity: "name:sales",
+      name: "Sales",
+      data: %{"numbering_method" => "Manual"},
+      inserted_at: now,
+      updated_at: now
+    })
+
+    Enum.each(["Customer & Co", "Sales", "Output IGST"], fn name ->
+      parent =
+        case name do
+          "Customer & Co" -> "Sundry Debtors"
+          "Sales" -> "Sales Accounts"
+          "Output IGST" -> "Duties & Taxes"
+        end
+
+      Nila.Repo.insert!(%SyncedMaster{
+        org_id: org_id,
+        company_id: company_id,
+        kind: "ledger",
+        identity: "name:" <> String.downcase(name),
+        name: name,
+        data: %{"parent" => parent},
+        inserted_at: now,
+        updated_at: now
+      })
+    end)
   end
 end

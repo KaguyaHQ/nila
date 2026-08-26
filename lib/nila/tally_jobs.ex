@@ -67,6 +67,7 @@ defmodule Nila.TallyJobs do
                retry_failed: true,
                metadata: %{
                  "source_id" => item.source_id,
+                 "invoice_source_id" => Map.get(item, :invoice_source_id),
                  "invoice_number" => item.invoice_number,
                  "party_ledger" => Map.get(item, :party_ledger)
                }
@@ -339,40 +340,54 @@ defmodule Nila.TallyJobs do
   defp valid_voucher_item?(_item), do: false
 
   defp retry_failed_job(job, device, proposed_payload) do
-    proposed_hash = payload_hash(proposed_payload)
-    frozen_hash = job.payload_hash || payload_hash(job.payload)
+    result =
+      Repo.transact(fn ->
+        current = Repo.one!(from j in Job, where: j.id == ^job.id, lock: "FOR UPDATE")
 
-    if frozen_hash == proposed_hash do
-      frozen_payload = Map.delete(job.payload, "mode")
+        if current.status == "failed" do
+          proposed_hash = payload_hash(proposed_payload)
+          frozen_hash = current.payload_hash || payload_hash(current.payload)
 
-      job
-      |> Ecto.Changeset.change(
-        device_id: device.id,
-        payload: frozen_payload,
-        payload_hash: frozen_hash,
-        status: "pending",
-        started_at: nil,
-        completed_at: nil,
-        result: nil,
-        error: nil
-      )
-      |> Repo.update()
-      |> case do
-        {:ok, retried} ->
-          Phoenix.PubSub.broadcast(
-            Nila.PubSub,
-            device_topic(device.id),
-            :tally_job_available
-          )
+          if frozen_hash == proposed_hash do
+            retried =
+              current
+              |> Ecto.Changeset.change(
+                device_id: device.id,
+                payload: Map.delete(current.payload, "mode"),
+                payload_hash: frozen_hash,
+                status: "pending",
+                started_at: nil,
+                completed_at: nil,
+                result: nil,
+                error: nil
+              )
+              |> Repo.update!()
 
-          broadcast_org(retried.org_id)
-          {:ok, retried, :retried}
+            {:ok, {retried, :retried}}
+          else
+            {:error, :payload_changed}
+          end
+        else
+          {:ok, {current, :existing}}
+        end
+      end)
 
-        error ->
-          error
-      end
-    else
-      {:error, :payload_changed}
+    case result do
+      {:ok, {retried, :retried}} ->
+        Phoenix.PubSub.broadcast(
+          Nila.PubSub,
+          device_topic(device.id),
+          :tally_job_available
+        )
+
+        broadcast_org(retried.org_id)
+        {:ok, retried, :retried}
+
+      {:ok, {current, :existing}} ->
+        {:ok, current, :existing}
+
+      error ->
+        error
     end
   end
 

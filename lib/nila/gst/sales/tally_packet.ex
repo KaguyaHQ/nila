@@ -5,9 +5,19 @@ defmodule Nila.Gst.Sales.TallyPacket do
   """
 
   alias Nila.Gst.Filing.TallyPrime
+  alias Nila.Gst.Hsn.Directory, as: HsnDirectory
   alias Nila.Gst.Intake.{Dump, Dumps}
   alias Nila.Gst.Issues
-  alias Nila.Gst.Sales.{Gstr1, InvoiceCorrections, InvoiceRemovals}
+  alias Nila.Gst.RateHistory
+  alias Nila.Gst.Rates.Directory, as: RateDirectory
+
+  alias Nila.Gst.Sales.{
+    Gstr1,
+    InvoiceCorrections,
+    InvoiceReadiness,
+    InvoiceRemovals,
+    TallyReadiness
+  }
 
   def fetch(org_id, client_id, batch_ref) do
     with {:ok, dump_ids} <- decode_ref(batch_ref),
@@ -21,20 +31,25 @@ defmodule Nila.Gst.Sales.TallyPacket do
   def prepare(dumps) when is_list(dumps) do
     active = Enum.filter(dumps, &(&1.status == "extracted"))
 
-    source_invoices =
+    {all_invoices, source_invoices, excluded} =
       active
       |> Enum.flat_map(& &1.invoices)
       |> Enum.map(&Dumps.rehydrate/1)
-      |> effective_invoices(active, dumps)
+      |> prepared_invoices(active, dumps)
 
-    issues =
-      source_invoices
-      |> Gstr1.validation_issues()
-      |> Enum.concat(Gstr1.blocking_issues(source_invoices))
-      |> Issues.normalize_all()
-      |> Enum.filter(&Issues.gating?/1)
+    readiness = InvoiceReadiness.evaluate(source_invoices, compliance(active, source_invoices))
+    source_invoices = readiness.invoices
+    active_by_id = Map.new(source_invoices, &{Gstr1.source_id(&1), &1})
 
-    {invoices, needs_review} = classify(source_invoices, issues)
+    all_invoices =
+      Enum.map(all_invoices, fn invoice ->
+        Map.get(active_by_id, Gstr1.source_id(invoice), invoice)
+      end)
+
+    warning_issues = Enum.filter(readiness.issues, &Issues.gating?/1)
+    blocking_issues = TallyReadiness.issues(source_invoices)
+
+    {invoices, warnings, blocked} = classify(source_invoices, warning_issues, blocking_issues)
 
     totals =
       Enum.reduce(invoices, %{taxable_paise: 0, tax_paise: 0}, fn invoice, totals ->
@@ -48,9 +63,11 @@ defmodule Nila.Gst.Sales.TallyPacket do
 
     Map.merge(totals, %{
       invoices: invoices,
-      all_invoices: source_invoices,
-      needs_review: needs_review,
-      excluded: Enum.map(needs_review, & &1.invoice),
+      all_invoices: all_invoices,
+      excluded: excluded,
+      warnings: warnings,
+      blocked: blocked,
+      needs_review: warnings ++ blocked,
       failed_files: Enum.reject(dumps, &(&1.status == "extracted")),
       unread_pages: unread_pages(active)
     })
@@ -72,38 +89,51 @@ defmodule Nila.Gst.Sales.TallyPacket do
     end
   end
 
-  defp effective_invoices(invoices, [%Dump{org_id: org_id, client_id: client_id} | _], dumps) do
+  defp prepared_invoices(invoices, [%Dump{org_id: org_id, client_id: client_id} | _], dumps) do
     if Enum.all?(dumps, &(&1.org_id == org_id and &1.client_id == client_id)) do
       batch_ref = ref(dumps)
+      all_invoices = InvoiceCorrections.apply(org_id, client_id, batch_ref, invoices)
 
-      org_id
-      |> InvoiceCorrections.apply(client_id, batch_ref, invoices)
-      |> then(&InvoiceRemovals.reject_removed(org_id, client_id, batch_ref, &1))
+      {active, excluded} =
+        InvoiceRemovals.partition_removed(org_id, client_id, batch_ref, all_invoices)
+
+      {all_invoices, active, excluded}
     else
-      invoices
+      {invoices, invoices, []}
     end
   end
 
-  defp effective_invoices(invoices, _active, _dumps), do: invoices
+  defp prepared_invoices(invoices, _active, _dumps), do: {invoices, invoices, []}
 
-  defp classify(invoices, issues) do
+  defp classify(invoices, warning_issues, blocking_issues) do
     invoices
-    |> Enum.reduce({[], []}, fn invoice, {ready, needs_review} ->
-      invoice_issues = issues_for_invoice(issues, invoice)
+    |> Enum.reduce({[], [], []}, fn invoice, {sendable, warnings, blocked} ->
+      invoice_warnings = issues_for_invoice(warning_issues, invoice)
+      invoice_blockers = issues_for_invoice(blocking_issues, invoice)
 
-      case TallyPrime.build(%{active_invoices: [invoice]}) do
-        {:ok, _xml} ->
-          {[invoice | ready], needs_review}
+      cond do
+        invoice_blockers != [] ->
+          {sendable, warnings, [%{invoice: invoice, issues: invoice_blockers} | blocked]}
 
-        {:error, _reason} ->
-          review_issues =
-            if invoice_issues == [], do: [tally_export_issue(invoice)], else: invoice_issues
+        true ->
+          case TallyPrime.build(%{active_invoices: [invoice]}) do
+            {:ok, _xml} when invoice_warnings == [] ->
+              {[invoice | sendable], warnings, blocked}
 
-          {ready, [%{invoice: invoice, issues: review_issues} | needs_review]}
+            {:ok, _xml} ->
+              {[invoice | sendable], [%{invoice: invoice, issues: invoice_warnings} | warnings],
+               blocked}
+
+            {:error, reason} ->
+              issue = tally_export_issue(invoice, reason)
+
+              {sendable, warnings,
+               [%{invoice: invoice, issues: invoice_warnings ++ [issue]} | blocked]}
+          end
       end
     end)
-    |> then(fn {ready, needs_review} ->
-      {Enum.reverse(ready), Enum.reverse(needs_review)}
+    |> then(fn {sendable, warnings, blocked} ->
+      {Enum.reverse(sendable), Enum.reverse(warnings), Enum.reverse(blocked)}
     end)
   end
 
@@ -115,16 +145,58 @@ defmodule Nila.Gst.Sales.TallyPacket do
     end)
   end
 
-  defp tally_export_issue(invoice) do
+  defp tally_export_issue(invoice, reason) do
     %{
       "invoice" => invoice["invoice_number"],
       "source_id" => Gstr1.source_id(invoice),
       "code" => "tally_export_failed",
       "message" => "Nila could not prepare this invoice as a Tally voucher.",
+      "reason" => inspect(reason),
       "fields" => [],
       "level" => Issues.level_for("tally_export_failed")
     }
   end
+
+  defp compliance([], _invoices), do: %{}
+
+  defp compliance([%Dump{org_id: org_id, client_id: client_id} | _] = dumps, invoices) do
+    %{}
+    |> maybe_put_active_directory(:directory, HsnDirectory)
+    |> maybe_put_active_directory(:rate_directory, RateDirectory)
+    |> Map.put(
+      :rate_history_by_period,
+      rate_history_by_period(dumps, invoices, org_id, client_id)
+    )
+  end
+
+  defp maybe_put_active_directory(compliance, key, directory_module) do
+    case directory_module.active() do
+      {:ok, directory} -> Map.put(compliance, key, directory)
+      {:error, :not_found} -> compliance
+    end
+  end
+
+  defp rate_history_by_period(dumps, invoices, org_id, client_id) do
+    if Enum.all?(dumps, &(&1.org_id == org_id and &1.client_id == client_id)) do
+      invoices
+      |> Enum.map(&invoice_period/1)
+      |> Enum.filter(&is_binary/1)
+      |> Enum.uniq()
+      |> Map.new(&{&1, RateHistory.prior_observations(org_id, client_id, &1)})
+    else
+      %{}
+    end
+  end
+
+  defp invoice_period(%{"invoice_date" => %Date{} = date}),
+    do: Calendar.strftime(date, "%Y-%m")
+
+  defp invoice_period(%{
+         "invoice_date" => <<year::binary-size(4), "-", month::binary-size(2), _rest::binary>>
+       }),
+       do: year <> "-" <> month
+
+  defp invoice_period(_invoice), do: nil
 
   defp decode_ref(batch_ref) when is_binary(batch_ref) do
     ids =

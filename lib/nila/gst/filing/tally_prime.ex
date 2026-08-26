@@ -466,9 +466,10 @@ defmodule Nila.Gst.Filing.TallyPrime do
              {:ok, rate} <- gst_rate(line),
              {:ok, ledger_name} <-
                line_sales_ledger(line_ledgers, line, index, fallback_ledger),
-             hsn when is_binary(hsn) and hsn != "" <- blank_to_nil(line["hsn_sac"]),
              description when is_binary(description) and description != "" <-
                blank_to_nil(line["description"] || line["item_name"]) do
+          hsn = blank_to_nil(line["hsn_sac"])
+
           entry = %{
             amount: effect * taxable,
             description: description,
@@ -476,7 +477,10 @@ defmodule Nila.Gst.Filing.TallyPrime do
             index: index,
             ledger_name: ledger_name,
             rate: rate,
-            supply_type: if(String.starts_with?(hsn, "99"), do: "Services", else: "Goods")
+            supply_type:
+              if(is_binary(hsn),
+                do: if(String.starts_with?(hsn, "99"), do: "Services", else: "Goods")
+              )
           }
 
           {:cont, {:ok, [entry | entries]}}
@@ -551,10 +555,8 @@ defmodule Nila.Gst.Filing.TallyPrime do
       tag("ISLASTDEEMEDPOSITIVE", "No"),
       tag("ISPARTYLEDGER", "No"),
       tag("GSTOVRDNTAXABILITY", "Taxable"),
-      tag("GSTOVRDNTYPEOFSUPPLY", entry.supply_type),
-      tag("GSTHSNNAME", entry.hsn),
-      tag("GSTHSNDESCRIPTION", entry.description),
-      tag("GSTHSNINFERAPPLICABILITY", "As per Masters/Company"),
+      optional_tag("GSTOVRDNTYPEOFSUPPLY", entry.supply_type),
+      hsn_tags(entry),
       tag("GSTRATEINFERAPPLICABILITY", "As per Masters/Company"),
       tag("ISGSTASSESSABLEVALUEOVERRIDDEN", "Yes"),
       tag("GSTOVRDNASSESSABLEVALUE", money(entry.amount)),
@@ -566,6 +568,16 @@ defmodule Nila.Gst.Filing.TallyPrime do
       tag("BASICUSERDESCRIPTION", entry.description),
       "</BASICUSERDESCRIPTION.LIST>",
       "</LEDGERENTRIES.LIST>"
+    ]
+  end
+
+  defp hsn_tags(%{hsn: nil}), do: ""
+
+  defp hsn_tags(entry) do
+    [
+      tag("GSTHSNNAME", entry.hsn),
+      tag("GSTHSNDESCRIPTION", entry.description),
+      tag("GSTHSNINFERAPPLICABILITY", "As per Masters/Company")
     ]
   end
 

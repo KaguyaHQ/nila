@@ -76,9 +76,17 @@ defmodule Nila.Gst.Hsn.Validation do
         [%{status: status, line: index, code: line["hsn_sac"], description: description(line)}]
 
       _valid_or_not_checked ->
-        []
+        if blank?(line["hsn_sac"]) do
+          [%{status: "missing", line: index, code: nil, description: description(line)}]
+        else
+          []
+        end
     end
   end
+
+  defp blank?(nil), do: true
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(_value), do: false
 
   defp sales_issue(invoice, status, findings) do
     code = issue_code(status)

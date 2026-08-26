@@ -47,7 +47,7 @@ defmodule Nila.Gst.Sales.Imports do
     packet = TallyPacket.prepare(dumps)
 
     review_count =
-      length(packet.excluded) + length(packet.failed_files) + length(packet.unread_pages)
+      length(packet.needs_review) + length(packet.failed_files) + length(packet.unread_pages)
 
     %{
       dom_id: "sales-import-#{TallyPacket.ref(dumps)}",
@@ -55,7 +55,7 @@ defmodule Nila.Gst.Sales.Imports do
       client_id: first.client_id,
       client_name: first.client.name,
       imported_at: Enum.max_by(dumps, & &1.inserted_at).inserted_at,
-      invoice_count: length(packet.invoices) + length(packet.excluded),
+      invoice_count: length(packet.all_invoices),
       ready_count: length(packet.invoices),
       review_count: review_count
     }

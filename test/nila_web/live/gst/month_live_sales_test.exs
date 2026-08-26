@@ -1212,6 +1212,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
 
     line = %{
       "description" => "Service",
+      "hsn_sac" => "998719",
       "taxable_value" => 1.06,
       "cgst_rate" => 9,
       "cgst_amount" => 0.10,
