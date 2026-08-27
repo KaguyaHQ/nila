@@ -1,35 +1,9 @@
 defmodule Nila.Banking.Tally do
   @moduledoc """
-  Builds compact TallyPrime Payment and Receipt vouchers from a reconciled
-  bank statement. Counter-postings land in a generated Suspense ledger; the
-  bank ledger name must match the ledger already present in Tally.
+  Builds compact TallyPrime Payment, Receipt, and Contra vouchers for connector delivery.
   """
 
   @invalid_xml ~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x{FFFE}\x{FFFF}]/u
-
-  @spec build(map(), keyword()) ::
-          {:ok, binary()} | {:error, :invalid_statement | :no_transactions}
-  def build(statement, opts \\ []) do
-    ledger =
-      opts |> Keyword.get(:bank_ledger_name, field(statement, :bank_ledger_name)) |> clean()
-
-    from = Keyword.get(opts, :from, field(statement, :statement_from))
-    to = Keyword.get(opts, :to, field(statement, :statement_to))
-
-    with true <- field(statement, :status) == "ready",
-         true <- valid_text?(ledger),
-         %Date{} = from <- date(from),
-         %Date{} = to <- date(to),
-         true <- Date.compare(from, to) != :gt,
-         transactions when is_list(transactions) <- field(statement, :transactions),
-         [_first | _rest] = selected <- in_range(transactions, from, to) do
-      messages = [suspense_ledger() | Enum.map(selected, &voucher(&1, statement, ledger))]
-      {:ok, envelope(messages)}
-    else
-      [] -> {:error, :no_transactions}
-      _invalid -> {:error, :invalid_statement}
-    end
-  end
 
   @doc "Builds one deterministic voucher for connector delivery."
   def build_transaction(statement, transaction, bank_ledger, counter_ledger)
@@ -51,38 +25,6 @@ defmodule Nila.Banking.Tally do
     end
   end
 
-  defp voucher(transaction, statement, bank_ledger) do
-    withdrawal = integer(transaction, "withdrawal_paise")
-    deposit = integer(transaction, "deposit_paise")
-    {voucher_type, suspense_amount} = voucher_amount(withdrawal, deposit)
-    bank_amount = -suspense_amount
-    date = transaction |> value("date") |> date()
-    date_text = Calendar.strftime(date, "%Y%m%d")
-    narration = clean(value(transaction, "narration"))
-    reference = clean(value(transaction, "reference")) || ""
-    remote_id = remote_id(statement, transaction)
-
-    [
-      "<TALLYMESSAGE xmlns:UDF=\"TallyUDF\">",
-      "<VOUCHER REMOTEID=\"",
-      remote_id,
-      "\" VCHTYPE=\"",
-      voucher_type,
-      "\" ACTION=\"Create\" OBJVIEW=\"Accounting Voucher View\">",
-      tag("DATE", date_text),
-      tag("GUID", remote_id),
-      tag("VOUCHERTYPENAME", voucher_type),
-      tag("NARRATION", narration),
-      tag("PARTYLEDGERNAME", bank_ledger),
-      tag("EFFECTIVEDATE", date_text),
-      tag("PERSISTEDVIEW", "Accounting Voucher View"),
-      tag("ISINVOICE", "No"),
-      ledger_entry("Suspense", suspense_amount, false),
-      bank_entry(bank_ledger, bank_amount, date_text, reference),
-      "</VOUCHER></TALLYMESSAGE>"
-    ]
-  end
-
   defp voucher(transaction, statement, bank_ledger, counter_ledger, transaction_type) do
     withdrawal = integer_field(transaction, :withdrawal_paise)
     deposit = integer_field(transaction, :deposit_paise)
@@ -92,17 +34,15 @@ defmodule Nila.Banking.Tally do
     date_text = Calendar.strftime(date, "%Y%m%d")
     narration = clean(field(transaction, :narration))
     reference = clean(field(transaction, :reference)) || ""
-    remote_id = remote_id(statement, transaction)
+    remote_alt_guid = remote_alt_guid(statement, transaction)
 
     [
       "<TALLYMESSAGE xmlns:UDF=\"TallyUDF\">",
-      "<VOUCHER REMOTEID=\"",
-      remote_id,
-      "\" VCHTYPE=\"",
+      "<VOUCHER VCHTYPE=\"",
       voucher_type,
       "\" ACTION=\"Create\" OBJVIEW=\"Accounting Voucher View\">",
+      tag("REMOTEALTGUID", remote_alt_guid),
       tag("DATE", date_text),
-      tag("GUID", remote_id),
       tag("VOUCHERTYPENAME", voucher_type),
       tag("NARRATION", narration),
       tag("PARTYLEDGERNAME", bank_ledger),
@@ -110,7 +50,7 @@ defmodule Nila.Banking.Tally do
       tag("PERSISTEDVIEW", "Accounting Voucher View"),
       tag("ISINVOICE", "No"),
       ledger_entry(counter_ledger, counter_amount, false),
-      bank_entry(bank_ledger, bank_amount, date_text, reference),
+      bank_entry(bank_ledger, counter_ledger, bank_amount, date_text, reference),
       "</VOUCHER></TALLYMESSAGE>"
     ]
   end
@@ -127,11 +67,6 @@ defmodule Nila.Banking.Tally do
   defp voucher_type("payment"), do: "Payment"
   defp voucher_type("receipt"), do: "Receipt"
 
-  defp voucher_amount(withdrawal, _deposit) when withdrawal != 0,
-    do: {"Payment", -withdrawal}
-
-  defp voucher_amount(_withdrawal, deposit), do: {"Receipt", deposit}
-
   defp ledger_entry(name, amount, party?) do
     [
       "<ALLLEDGERENTRIES.LIST>",
@@ -143,7 +78,7 @@ defmodule Nila.Banking.Tally do
     ]
   end
 
-  defp bank_entry(name, amount, date, reference) do
+  defp bank_entry(name, counter_ledger, amount, date, reference) do
     [
       "<ALLLEDGERENTRIES.LIST>",
       tag("LEDGERNAME", name),
@@ -154,40 +89,14 @@ defmodule Nila.Banking.Tally do
       tag("DATE", date),
       tag("INSTRUMENTDATE", date),
       tag("TRANSACTIONTYPE", "Cheque"),
-      tag("PAYMENTFAVOURING", "Suspense"),
+      tag("PAYMENTFAVOURING", counter_ledger),
       tag("INSTRUMENTNUMBER", reference),
       tag("PAYMENTMODE", "Transacted"),
-      tag("BANKPARTYNAME", "Suspense"),
+      tag("BANKPARTYNAME", counter_ledger),
       tag("AMOUNT", money(amount)),
       "</BANKALLOCATIONS.LIST>",
       "</ALLLEDGERENTRIES.LIST>"
     ]
-  end
-
-  defp suspense_ledger do
-    [
-      "<TALLYMESSAGE xmlns:UDF=\"TallyUDF\">",
-      "<LEDGER NAME=\"Suspense\" ACTION=\"Create\">",
-      tag("NAME", "Suspense"),
-      tag("PARENT", "Suspense A/c"),
-      tag("ISBILLWISEON", "No"),
-      "</LEDGER></TALLYMESSAGE>"
-    ]
-  end
-
-  defp envelope(messages, company \\ nil) do
-    company_variable = if company, do: tag("SVCURRENTCOMPANY", company), else: ""
-
-    IO.iodata_to_binary([
-      "<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>",
-      "<BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>All Masters</REPORTNAME>",
-      "<STATICVARIABLES>",
-      company_variable,
-      "<SVOVERWRITEIMPVCH>Yes</SVOVERWRITEIMPVCH></STATICVARIABLES>",
-      "</REQUESTDESC><REQUESTDATA>",
-      messages,
-      "</REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>"
-    ])
   end
 
   defp connector_envelope(messages, company) do
@@ -209,20 +118,7 @@ defmodule Nila.Banking.Tally do
     end
   end
 
-  defp in_range(transactions, from, to) do
-    Enum.filter(transactions, fn transaction ->
-      case date(value(transaction, "date")) do
-        %Date{} = transaction_date ->
-          Date.compare(transaction_date, from) != :lt and
-            Date.compare(transaction_date, to) != :gt
-
-        nil ->
-          false
-      end
-    end)
-  end
-
-  defp remote_id(statement, transaction) do
+  defp remote_alt_guid(statement, transaction) do
     identity =
       Enum.join(
         [
@@ -234,21 +130,18 @@ defmodule Nila.Banking.Tally do
         "|"
       )
 
-    "nila-bank-" <> Base.encode16(:crypto.hash(:sha256, identity), case: :lower)
+    digest = Base.encode16(:crypto.hash(:sha256, identity), case: :lower)
+
+    <<a::binary-size(8), b::binary-size(4), _::binary-size(1), c::binary-size(3),
+      _::binary-size(1), d::binary-size(3), e::binary-size(12), _::binary>> = digest
+
+    "#{a}-#{b}-8#{c}-8#{d}-#{e}"
   end
 
   defp field(struct, key) when is_struct(struct), do: Map.get(struct, key)
   defp field(map, key) when is_map(map), do: Map.get(map, key) || Map.get(map, to_string(key))
 
   defp value(map, key) when is_map(map), do: Map.get(map, key)
-  defp value(_map, _key), do: nil
-
-  defp integer(map, key) do
-    case value(map, key) do
-      value when is_integer(value) -> value
-      _missing -> 0
-    end
-  end
 
   defp integer_field(value, key) do
     case field(value, key) do

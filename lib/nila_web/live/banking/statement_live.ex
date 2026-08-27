@@ -32,10 +32,6 @@ defmodule NilaWeb.Banking.StatementLive do
   end
 
   @impl true
-  def handle_event("validate-export", %{"export" => params}, socket) do
-    {:noreply, assign(socket, :export_form, to_form(params, as: :export))}
-  end
-
   def handle_event("select-tally-company", %{"tally_setup" => params}, socket) do
     company_id = positive_integer(params["company_id"])
 
@@ -207,7 +203,6 @@ defmodule NilaWeb.Banking.StatementLive do
     |> assign(:tally_setup_form, tally_setup_form(statement, selected_company_id))
     |> reset_ledger_picker()
     |> assign(:transaction_form, transaction_form())
-    |> assign(:export_form, export_form(statement))
     |> assign_filtered_transactions(transactions, filters, MapSet.new())
   end
 
@@ -551,20 +546,6 @@ defmodule NilaWeb.Banking.StatementLive do
   defp status_variant("queued"), do: "accent"
   defp status_variant(_status), do: "neutral"
 
-  defp export_form(statement) do
-    to_form(
-      %{
-        "bank_ledger_name" => statement.bank_ledger_name,
-        "from" => iso(statement.statement_from),
-        "to" => iso(statement.statement_to)
-      },
-      as: :export
-    )
-  end
-
-  defp iso(%Date{} = date), do: Date.to_iso8601(date)
-  defp iso(_date), do: ""
-
   defp money(paise), do: Nila.Formatters.format_money_with_paise(paise, prefix: "₹")
 
   defp cash_direction(:withdrawal, amount) when amount > 0, do: :outflow
@@ -625,40 +606,6 @@ defmodule NilaWeb.Banking.StatementLive do
             <.stat_card label="Withdrawals">{money(@statement.total_withdrawal_paise)}</.stat_card>
             <.stat_card label="Deposits">{money(@statement.total_deposit_paise)}</.stat_card>
           </div>
-
-          <.card id="banking-tally-export" class="space-y-block">
-            <div class="gap-block flex flex-col lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <h2 class="text-base-content text-h4 font-semibold">Tally import</h2>
-                <p class="text-ink-muted text-ui mt-1">
-                  Creates Payment and Receipt vouchers against Suspense. The bank ledger must already exist in Tally.
-                </p>
-              </div>
-              <.badge variant="success">
-                {@transaction_count} transactions · balances reconcile
-              </.badge>
-            </div>
-
-            <.form
-              for={@export_form}
-              id="banking-export-form"
-              action={~p"/banking/#{@statement.id}/tally.xml"}
-              method="get"
-              phx-change="validate-export"
-              class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,13rem)_minmax(0,13rem)_auto] lg:items-end"
-            >
-              <.input
-                field={@export_form[:bank_ledger_name]}
-                label="Bank ledger name in Tally"
-                required
-              />
-              <.input field={@export_form[:from]} type="date" label="From date" required />
-              <.input field={@export_form[:to]} type="date" label="To date" required />
-              <.button type="submit" id="banking-download-tally">
-                <.icon name="hero-arrow-down-tray" class="size-4" /> Download Tally XML
-              </.button>
-            </.form>
-          </.card>
 
           <section id="banking-transactions" class="space-y-related">
             <div class="flex items-end justify-between gap-4">

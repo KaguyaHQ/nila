@@ -204,17 +204,6 @@ defmodule NilaWeb.Router do
     get "/:client_id/batch/:batch_ref/tally.xml", Gstr1Controller, :sales_bills_tally_download
   end
 
-  scope "/banking", NilaWeb do
-    pipe_through [
-      :browser,
-      :authenticated_browser,
-      :verified_browser,
-      :require_export
-    ]
-
-    get "/:id/tally.xml", BankingExportController, :tally
-  end
-
   scope "/gstr1", NilaWeb do
     pipe_through [
       :browser,

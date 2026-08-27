@@ -275,7 +275,8 @@ defmodule Nila.Banking do
                  metadata: %{
                    "source_id" => transaction.identity,
                    "bank_statement_id" => statement.id,
-                   "bank_transaction_id" => transaction.id
+                   "bank_transaction_id" => transaction.id,
+                   "voucher_number_mode" => "tally"
                  }
                ),
              {:ok, transaction} <-
@@ -464,7 +465,7 @@ defmodule Nila.Banking do
   defp maybe_put_result(attrs, %{status: "succeeded", result: result}) when is_map(result) do
     attrs
     |> Map.put(:tally_master_id, result["last_voucher_id"] || result["master_id"])
-    |> Map.put(:tally_guid, result["guid"])
+    |> Map.put(:tally_guid, result["tally_guid"] || result["guid"])
   end
 
   defp maybe_put_result(attrs, _job), do: attrs

@@ -103,8 +103,8 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
 
     assert has_element?(view, "#banking-statement-summary", "Opening balance")
-    assert has_element?(view, "#banking-export-form")
-    assert has_element?(view, "#banking-download-tally", "Download Tally XML")
+    refute has_element?(view, "#banking-export-form")
+    refute has_element?(view, "#banking-download-tally")
     assert has_element?(view, "#banking-transaction-rows tr", "Test credit")
     assert has_element?(view, "#banking-select-all-transactions:not([checked])")
     refute has_element?(view, "#banking-selection-toolbar")
@@ -136,8 +136,6 @@ defmodule NilaWeb.Banking.UploadLiveTest do
              "#banking-transaction-rows .nila-bank-cash-amount[data-cash-direction='inflow']",
              "₹25.00"
            )
-
-    assert render(view) =~ "1 transactions · balances reconcile"
   end
 
   test "filters transactions and selects only the filtered rows", context do

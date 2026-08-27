@@ -77,20 +77,29 @@ defmodule Nila.BankingTest do
     job = TallyJobs.get_job!(queued.tally_job_id)
     assert job.source_key == "bank:#{statement.id}:transaction:stub-1"
     assert job.payload["company"] == company.name
+    assert job.payload["voucher_number_mode"] == "tally"
     assert job.payload["xml"] =~ "<LEDGERNAME>Bank Charges</LEDGERNAME>"
     assert job.payload["xml"] =~ "<VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME>"
+    refute job.payload["xml"] =~ "<VOUCHERNUMBER>"
+    assert job.payload["xml"] =~ "<REMOTEALTGUID>"
+    refute job.payload["xml"] =~ "REMOTEID="
+    refute job.payload["xml"] =~ "<REFERENCE>"
 
     assert {:ok, claimed} = TallyJobs.claim_next(company.device_id)
 
     assert {:ok, _completed} =
              TallyJobs.complete(company.device_id, claimed.id, "succeeded", %{
-               "last_voucher_id" => 321
+               "master_id" => 321,
+               "tally_guid" => "tally-bank-guid",
+               "remote_alt_guid" => "d852c969-e235-8279-8a28-6604139d9010",
+               "voucher_number" => "87"
              })
 
     assert {:ok, refreshed} = Banking.get_statement(context.org.id, statement.id)
     assert [posted] = refreshed.bank_transactions
     assert posted.status == "posted"
     assert posted.tally_master_id == 321
+    assert posted.tally_guid == "tally-bank-guid"
   end
 
   test "failed extraction records an actionable error and erases the password", context do
