@@ -85,6 +85,12 @@ defmodule Nila.Banking.Parser do
   defp opening_balance(%{opening_balance_paise: opening}, _rows) when is_integer(opening),
     do: {:ok, opening}
 
+  defp opening_balance(_metadata, [
+         %{"signed_amount_paise" => amount, "balance_paise" => balance} | _rest
+       ])
+       when is_integer(amount) and is_integer(balance),
+       do: {:ok, balance - amount}
+
   defp opening_balance(_metadata, [first | _rest]) do
     with {:ok, withdrawal, deposit} <- explicit_amounts(first) do
       {:ok, first["balance_paise"] + withdrawal - deposit}
@@ -103,6 +109,7 @@ defmodule Nila.Banking.Parser do
             transaction =
               row
               |> Map.delete("amount_paise")
+              |> Map.delete("signed_amount_paise")
               |> Map.put("withdrawal_paise", withdrawal)
               |> Map.put("deposit_paise", deposit)
               |> Map.put("ordinal", ordinal)
@@ -131,6 +138,13 @@ defmodule Nila.Banking.Parser do
       previous + amount == balance -> {:ok, 0, amount}
       true -> {:error, previous - amount}
     end
+  end
+
+  defp resolve_amounts(%{"signed_amount_paise" => amount}, _previous)
+       when is_integer(amount) do
+    if amount < 0,
+      do: {:ok, abs(amount), 0},
+      else: {:ok, 0, amount}
   end
 
   defp resolve_amounts(row, _previous), do: explicit_amounts(row)
