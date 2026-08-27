@@ -4,7 +4,6 @@ defmodule NilaWeb.Banking.StatementLive do
   alias Nila.Accounts.Policy
   alias Nila.Banking
   alias Nila.Banking.Transaction
-  alias Nila.TallyDevices
   alias Nila.TallyJobs
 
   @impl true
@@ -32,39 +31,24 @@ defmodule NilaWeb.Banking.StatementLive do
   end
 
   @impl true
-  def handle_event("select-tally-company", %{"tally_setup" => params}, socket) do
-    company_id = positive_integer(params["company_id"])
-
-    bank_ledgers =
-      if company_id, do: Banking.list_tally_bank_ledgers(org_id(socket), company_id), else: []
-
-    {:noreply,
-     socket
-     |> assign(:selected_company_id, company_id)
-     |> assign(:tally_bank_ledgers, bank_ledgers)
-     |> assign(
-       :tally_ledgers,
-       if(company_id, do: Banking.list_tally_ledgers(org_id(socket), company_id), else: [])
-     )
-     |> assign(:tally_setup_form, to_form(params, as: :tally_setup))}
-  end
-
   def handle_event("configure-tally", %{"tally_setup" => params}, socket) do
     with true <- Policy.can?(socket.assigns.current_scope, :edit_records),
-         company_id when is_integer(company_id) <- positive_integer(params["company_id"]),
          ledger_identity when is_binary(ledger_identity) and ledger_identity != "" <-
            params["bank_ledger_identity"],
          {:ok, _statement} <-
            Banking.configure_tally(
              org_id(socket),
              socket.assigns.statement.id,
-             company_id,
              ledger_identity
            ) do
       {:noreply, socket |> put_flash(:info, "Tally destination saved.") |> reload_statement()}
     else
-      false -> {:noreply, put_flash(socket, :error, "You cannot change banking records.")}
-      _ -> {:noreply, put_flash(socket, :error, "Choose an open Tally company and bank ledger.")}
+      false ->
+        {:noreply, put_flash(socket, :error, "You cannot change banking records.")}
+
+      _ ->
+        {:noreply,
+         put_flash(socket, :error, "Connect the client to Tally and choose a bank ledger.")}
     end
   end
 
@@ -167,16 +151,11 @@ defmodule NilaWeb.Banking.StatementLive do
 
   defp assign_statement(socket, statement) do
     transactions = if statement.status == "ready", do: statement.bank_transactions, else: []
-    companies = TallyDevices.list_open_companies(statement.org_id, statement.client_id)
+    tally_company = statement.client.active_tally_company
     can_edit = Policy.can?(socket.assigns.current_scope, :edit_records)
     filters = socket.assigns[:transaction_filters] || default_transaction_filters()
 
-    selected_company_id =
-      statement.tally_company_id ||
-        case companies do
-          [company] -> company.id
-          _ -> nil
-        end
+    selected_company_id = tally_company && tally_company.id
 
     ledgers =
       if selected_company_id do
@@ -196,11 +175,11 @@ defmodule NilaWeb.Banking.StatementLive do
     |> assign(:statement, statement)
     |> assign(:can_edit, can_edit)
     |> assign(:transaction_count, length(transactions))
-    |> assign(:tally_companies, companies)
+    |> assign(:tally_company, tally_company)
     |> assign(:selected_company_id, selected_company_id)
     |> assign(:tally_ledgers, ledgers)
     |> assign(:tally_bank_ledgers, bank_ledgers)
-    |> assign(:tally_setup_form, tally_setup_form(statement, selected_company_id))
+    |> assign(:tally_setup_form, tally_setup_form(statement))
     |> reset_ledger_picker()
     |> assign(:transaction_form, transaction_form())
     |> assign_filtered_transactions(transactions, filters, MapSet.new())
@@ -359,10 +338,9 @@ defmodule NilaWeb.Banking.StatementLive do
 
   defp ledger_parent(ledger), do: get_in(ledger.data || %{}, ["parent"])
 
-  defp tally_setup_form(statement, selected_company_id) do
+  defp tally_setup_form(statement) do
     to_form(
       %{
-        "company_id" => selected_company_id,
         "bank_ledger_identity" => statement.bank_ledger_identity
       },
       as: :tally_setup
@@ -554,14 +532,44 @@ defmodule NilaWeb.Banking.StatementLive do
   defp cash_direction(:deposit, amount) when amount < 0, do: :outflow
   defp cash_direction(_column, _amount), do: :zero
 
+  defp statement_title(statement) do
+    bank = Banking.bank_name(statement.bank_code) || "Bank"
+
+    if statement.account_number_masked,
+      do: "#{bank} · #{statement.account_number_masked}",
+      else: "#{bank} statement"
+  end
+
+  defp statement_context(statement, transaction_count) do
+    [
+      statement.client.name,
+      statement_period(statement),
+      if(statement.status == "ready", do: transaction_count_text(transaction_count))
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" · ")
+  end
+
+  defp statement_period(%{statement_from: %Date{} = from, statement_to: %Date{} = to}) do
+    "#{format_display_date(from)}–#{format_display_date(to)}"
+  end
+
+  defp statement_period(_statement), do: nil
+
+  defp transaction_count_text(1), do: "1 transaction"
+  defp transaction_count_text(count), do: "#{count} transactions"
+
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} current_path={assigns[:current_path]}>
       <div id="banking-statement-page" class="space-y-section">
-        <.page_header eyebrow="Banking" eyebrow_path={~p"/banking"} title={@statement.client.name}>
-          {Banking.bank_name(@statement.bank_code) || "Bank"} statement
-          <span :if={@statement.account_number_masked}> · {@statement.account_number_masked}</span>
+        <.page_header
+          eyebrow="Banking"
+          eyebrow_path={~p"/banking"}
+          title={statement_title(@statement)}
+        >
+          {statement_context(@statement, @transaction_count)}
         </.page_header>
 
         <.card
@@ -611,48 +619,36 @@ defmodule NilaWeb.Banking.StatementLive do
             <div class="flex items-end justify-between gap-4">
               <div>
                 <h2 class="text-base-content text-h4 font-semibold">Extracted transactions</h2>
-                <p class="text-ink-muted text-ui mt-1">
-                  {format_display_date(@statement.statement_from)}–{format_display_date(
-                    @statement.statement_to
-                  )}
-                  <span aria-hidden="true"> · </span>
-                  <span id="banking-visible-transaction-count">
-                    <%= if @visible_transaction_count == @transaction_count do %>
-                      {@transaction_count} transactions
-                    <% else %>
-                      {@visible_transaction_count} of {@transaction_count} transactions shown
-                    <% end %>
-                  </span>
+                <p id="banking-visible-transaction-count" class="text-ink-muted text-ui mt-1">
+                  <%= if @visible_transaction_count == @transaction_count do %>
+                    {transaction_count_text(@transaction_count)}
+                  <% else %>
+                    {@visible_transaction_count} of {@transaction_count} transactions shown
+                  <% end %>
                 </p>
               </div>
             </div>
 
             <div id="banking-tally-setup">
-              <div :if={@tally_companies == []}>
-                <.callout kind="warning" size="compact" title="Tally company not open">
-                  Open the client company in Tally, then sync Nila Connector.
+              <div :if={is_nil(@tally_company)}>
+                <.callout kind="warning" size="compact" title="Tally company not connected">
+                  Connect {@statement.client.name} to a Tally company from Clients.
                 </.callout>
               </div>
 
               <.form
-                :if={@tally_companies != []}
+                :if={not is_nil(@tally_company)}
                 for={@tally_setup_form}
                 id="banking-tally-setup-form"
-                phx-change="select-tally-company"
                 phx-submit="configure-tally"
-                class="bg-base-100 border-base-300 rounded-box grid gap-3 border p-3 lg:grid-cols-[auto_minmax(0,18rem)_minmax(0,18rem)_auto] lg:items-end"
+                class="bg-base-100 border-base-300 rounded-box grid gap-3 border p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)_auto] lg:items-end"
               >
                 <div class="pb-1 lg:pr-3">
                   <p class="text-base-content text-ui font-semibold">Tally destination</p>
-                  <p class="text-ink-muted text-ui">Company and bank ledger</p>
+                  <p id="banking-tally-company" class="text-ink-muted text-ui">
+                    {@tally_company.name}
+                  </p>
                 </div>
-                <.input
-                  field={@tally_setup_form[:company_id]}
-                  type="select"
-                  label="Tally company"
-                  prompt="Choose company"
-                  options={Enum.map(@tally_companies, &{&1.name, &1.id})}
-                />
                 <.input
                   field={@tally_setup_form[:bank_ledger_identity]}
                   type="select"
@@ -664,8 +660,9 @@ defmodule NilaWeb.Banking.StatementLive do
                   type="submit"
                   id="banking-save-tally-destination"
                   disabled={not @can_edit}
+                  size="sm"
                 >
-                  Save destination
+                  Save
                 </.button>
               </.form>
             </div>

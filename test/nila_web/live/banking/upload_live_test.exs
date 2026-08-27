@@ -306,11 +306,21 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
     assert has_element?(view, "#banking-transactions > #banking-tally-setup")
     refute has_element?(view, "#banking-tally-setup.nila-card")
+    assert has_element?(view, "#banking-statement-page h1", "HDFC Bank · •••• 4587")
+
+    assert has_element?(
+             view,
+             "#banking-statement-page",
+             "Breeze Tech · 01 Jun 2026–02 Jun 2026 · 1 transaction"
+           )
+
+    assert has_element?(view, "#banking-tally-company", company.name)
+    refute has_element?(view, "#banking-tally-setup-form select[name='tally_setup[company_id]']")
+    assert has_element?(view, "#banking-save-tally-destination", "Save")
 
     view
     |> form("#banking-tally-setup-form",
       tally_setup: %{
-        company_id: Integer.to_string(company.id),
         bank_ledger_identity: bank.identity
       }
     )

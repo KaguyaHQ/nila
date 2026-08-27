@@ -39,8 +39,8 @@ defmodule Nila.Banking do
         from statement in Statement,
           where: statement.org_id == ^org_id and statement.id == ^id,
           preload: [
-            :client,
             :brought_in_by,
+            client: [active_tally_company: [:device]],
             tally_company: [:device],
             bank_transactions: [:tally_job]
           ]
@@ -161,10 +161,12 @@ defmodule Nila.Banking do
     )
   end
 
-  def configure_tally(org_id, statement_id, company_id, bank_ledger_identity) do
+  def configure_tally(org_id, statement_id, bank_ledger_identity) do
     Repo.transact(fn ->
       with {:ok, statement} <- get_statement(org_id, statement_id),
            :ok <- ensure_posting_not_started(statement.id),
+           company_id when is_integer(company_id) <-
+             statement.client.active_tally_company_id,
            %Company{} = company <-
              Repo.one(
                from company in Company,
@@ -173,7 +175,7 @@ defmodule Nila.Banking do
                  on: client.active_tally_company_id == company.id,
                  where:
                    company.id == ^company_id and company.org_id == ^org_id and
-                     client.id == ^statement.client_id and company.is_open and
+                     client.id == ^statement.client_id and
                      is_nil(device.revoked_at),
                  preload: [device: device]
              ) || {:error, :company_not_available},

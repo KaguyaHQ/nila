@@ -52,7 +52,7 @@ defmodule Nila.BankingTest do
     charges = master(context.org.id, company.id, "charges", "Bank Charges", "Indirect Expenses")
 
     assert {:ok, configured} =
-             Banking.configure_tally(context.org.id, statement.id, company.id, bank.identity)
+             Banking.configure_tally(context.org.id, statement.id, bank.identity)
 
     assert configured.tally_company_id == company.id
     assert configured.bank_ledger_name == "HDFC Bank"
