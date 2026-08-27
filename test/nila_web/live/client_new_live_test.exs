@@ -63,6 +63,9 @@ defmodule NilaWeb.ClientNewLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/clients/new")
 
+    assert has_element?(view, "label", "Start from Tally (optional)")
+    assert has_element?(view, "#client_name[placeholder='Enter client name']")
+
     assert has_element?(
              view,
              "#client_tally_company_id option[value='#{company.id}']",

@@ -31,6 +31,8 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert has_element?(view, "#banking-statement-pdf input[type=file][accept='.pdf']")
     assert has_element?(view, "label[for='statement_password']", "PDF password (optional)")
     assert has_element?(view, "#statement_password[type=password]")
+    refute has_element?(view, "#banking-upload-form label", "Client")
+    refute has_element?(view, "#banking-upload-form select[name='statement[client_id]']")
     refute has_element?(view, "#statement_bank_code")
 
     assert has_element?(
@@ -39,7 +41,17 @@ defmodule NilaWeb.Banking.UploadLiveTest do
              "Read statement"
            )
 
-    assert render(view) =~ "without OCR"
+    assert has_element?(
+             view,
+             "#banking-importer",
+             "Upload the original bank-generated PDF for Breeze Tech. Nila verifies the balances and prepares the Tally vouchers."
+           )
+
+    assert has_element?(
+             view,
+             "#banking-statement-pdf",
+             "Original text PDF · scans are not accepted · up to 20 MB"
+           )
   end
 
   test "banking becomes a statement workspace after the first import", context do
@@ -75,17 +87,18 @@ defmodule NilaWeb.Banking.UploadLiveTest do
   end
 
   test "uploads one statement, encrypts its password, and queues extraction", context do
+    {:ok, other_client} =
+      Clients.create_client(%{org_id: context.org.id, name: "Caltech", type: "company"})
+
     {:ok, view, _html} = live(context.conn, ~p"/banking")
     upload_pdf(view, "%PDF-1.5 text statement")
 
-    view
-    |> form("#banking-upload-form",
-      statement: %{
-        client_id: context.client.id,
-        password: "short-lived"
+    render_submit(view, "submit", %{
+      "statement" => %{
+        "client_id" => other_client.id,
+        "password" => "short-lived"
       }
-    )
-    |> render_submit()
+    })
 
     assert [statement] = Nila.Repo.all(Nila.Banking.Statement)
     assert_redirect(view, ~p"/banking/#{statement.id}")

@@ -60,7 +60,7 @@ defmodule NilaWeb.Banking.UploadLive do
   def handle_event("submit", %{"statement" => params}, socket) do
     org = socket.assigns.current_scope.current_org
 
-    with {:ok, client} <- fetch_client(org, params["client_id"]),
+    with {:ok, client} <- fetch_client(org, active_client_id(socket)),
          {:ok, _entry} <- ready_entry(socket),
          [{key, original_filename}] <- consume_statement(socket),
          {:ok, statement} <-
@@ -166,10 +166,18 @@ defmodule NilaWeb.Banking.UploadLive do
 
   defp list_clients(_socket), do: []
 
-  defp defaults(socket), do: %{"client_id" => active_client_id(socket), "password" => ""}
+  defp defaults(_socket), do: %{"password" => ""}
 
   defp active_client_id(%{assigns: %{current_scope: %{current_client: %{id: id}}}}), do: id
   defp active_client_id(_socket), do: nil
+
+  defp banking_intake_intro(%{current_client: %{name: name}}) do
+    "Upload the original bank-generated PDF for #{name}. Nila verifies the balances and prepares the Tally vouchers."
+  end
+
+  defp banking_intake_intro(_scope) do
+    "Upload the original bank-generated PDF. Nila verifies the balances and prepares the Tally vouchers."
+  end
 
   defp statement_path(statement), do: "/banking/#{statement.id}"
 
@@ -297,8 +305,7 @@ defmodule NilaWeb.Banking.UploadLive do
           loading_label="Reading statement…"
         >
           <:intro>
-            Drop the original bank-generated PDF. Nila reads its text, checks every running balance,
-            and prepares Tally vouchers without OCR.
+            {banking_intake_intro(@current_scope)}
           </:intro>
           <:state :if={@clients == []}>
             <.card id="banking-upload-empty" padding="roomy" class="text-center">
@@ -311,13 +318,6 @@ defmodule NilaWeb.Banking.UploadLive do
             </.card>
           </:state>
           <:fields>
-            <.input
-              field={@form[:client_id]}
-              type="select"
-              label="Client"
-              prompt="Select a client"
-              options={@clients}
-            />
             <.input
               field={@form[:password]}
               type="password"

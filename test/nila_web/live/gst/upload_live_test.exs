@@ -63,7 +63,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     upload_file(view, name, content, "application/json")
   end
 
-  test "sales bills accepts a client without requiring Tally", %{conn: conn, client: client} do
+  test "sales bills accepts a client without requiring Tally", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/sales-bills")
 
     assert has_element?(view, "#sales-bills-page", "Sales")
@@ -72,13 +72,14 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert has_element?(
              view,
              "#sales-bills-page",
-             "Nila reads them, prepares the Tally vouchers, and shows anything that needs your review."
+             "Upload original sales invoices for Breeze Tech. Nila reads them, prepares the Tally vouchers, and shows anything that needs your review."
            )
 
     assert has_element?(view, "#sales-bills-form")
-    assert has_element?(view, "#sales-bills-form label", "Client")
-    assert has_element?(view, "#sales-bills-form option[value='#{client.id}']", "Breeze Tech")
+    refute has_element?(view, "#sales-bills-form label", "Client")
+    refute has_element?(view, "#sales-bills-form select[name='intake[client_id]']")
     refute has_element?(view, "#sales-bills-connect-tally")
+    assert has_element?(view, "#app-shell nav", "Firm")
   end
 
   test "sales bills starts processing without a Tally connection", %{
@@ -99,13 +100,41 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     render_upload(upload, "sales.pdf", 100)
 
     view
-    |> form("#sales-bills-form", intake: %{client_id: client.id})
+    |> form("#sales-bills-form", intake: %{})
     |> render_submit()
 
     period = Calendar.closeable_period(Date.utc_today())
     assert [%{kind: "sales", client_id: client_id}] = Dumps.list(org.id, client.id, period)
     assert client_id == client.id
     assert has_element?(view, "#sales-bills-progress", "Preparing sales vouchers")
+  end
+
+  test "sales bills ignores a submitted client and uses the active workspace", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, other_client} =
+      Clients.create_client(%{org_id: org.id, name: "Caltech", type: "company"})
+
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/new?client_id=#{other_client.id}")
+
+    upload =
+      file_input(view, "#sales-bills-form", :documents, [
+        %{name: "sales.pdf", content: "%PDF-1.4 fake bills", type: "application/pdf"}
+      ])
+
+    render_upload(upload, "sales.pdf", 0)
+    ref = hd(upload.entries)["ref"]
+    {:ok, _stored} = Storage.put(presigned_key(view, ref), "%PDF-1.4 fake bills")
+    render_upload(upload, "sales.pdf", 100)
+
+    render_submit(view, "submit", %{"intake" => %{"client_id" => other_client.id}})
+
+    period = Calendar.closeable_period(Date.utc_today())
+    assert [%{client_id: active_id}] = Dumps.list(org.id, client.id, period)
+    assert active_id == client.id
+    assert Dumps.list(org.id, other_client.id, period) == []
   end
 
   test "sales bills becomes a batch workspace after the first import", %{

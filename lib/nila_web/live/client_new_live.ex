@@ -144,19 +144,19 @@ defmodule NilaWeb.ClientNewLive do
               <.input
                 field={@form[:tally_company_id]}
                 type="select"
-                label="Tally company (optional)"
-                prompt="Select from Nila Connector"
+                label="Start from Tally (optional)"
+                prompt="Select a company from Nila Connector"
                 options={tally_company_options(@tally_companies)}
               />
               <p class="text-ink-muted text-ui">
-                Select one to fill the client details, or add the client manually.
+                Selecting one fills the client details and connects it to this client.
               </p>
             </div>
 
             <.input
               field={@form[:name]}
               label="Client name"
-              placeholder="Caltech Refrigeration"
+              placeholder="Enter client name"
               autocomplete="organization"
               required
             />

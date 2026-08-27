@@ -69,12 +69,15 @@ defmodule NilaWeb.Gst.UploadLive do
         do: params["period"],
         else: Calendar.closeable_period(Date.utc_today())
 
+    client_id =
+      if socket.assigns.live_action in [:sales, :sales_new] do
+        active_client_id(socket)
+      else
+        params["client_id"] || active_client_id(socket)
+      end
+
     %{
-      "client_id" =>
-        permitted_client(
-          socket,
-          params["client_id"] || active_client_id(socket)
-        ),
+      "client_id" => permitted_client(socket, client_id),
       "period" => period
     }
   end
@@ -130,7 +133,8 @@ defmodule NilaWeb.Gst.UploadLive do
 
   def handle_event("choose-kind", _params, socket), do: {:noreply, socket}
 
-  def handle_event("submit", %{"intake" => params}, socket) do
+  def handle_event("submit", submitted, socket) do
+    params = Map.get(submitted, "intake", %{})
     org = socket.assigns.current_scope.current_org
     params = with_internal_period(socket, params)
 
@@ -491,8 +495,12 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp fetch_period(_period), do: {:error, "Pick a period."}
 
-  defp with_internal_period(%{assigns: %{sales_intake?: true}} = socket, params),
-    do: Map.put(params, "period", socket.assigns.internal_period)
+  defp with_internal_period(%{assigns: %{sales_intake?: true}} = socket, params) do
+    Map.merge(params, %{
+      "client_id" => active_client_id(socket),
+      "period" => socket.assigns.internal_period
+    })
+  end
 
   defp with_internal_period(_socket, params), do: params
 
@@ -678,6 +686,14 @@ defmodule NilaWeb.Gst.UploadLive do
     end)
   end
 
+  defp sales_intake_intro(%{current_client: %{name: name}}) do
+    "Upload original sales invoices for #{name}. Nila reads them, prepares the Tally vouchers, and shows anything that needs your review."
+  end
+
+  defp sales_intake_intro(_scope) do
+    "Upload original sales invoices. Nila reads them, prepares the Tally vouchers, and shows anything that needs your review."
+  end
+
   @impl true
   def render(%{sales_intake?: true} = assigns) do
     assigns =
@@ -750,8 +766,7 @@ defmodule NilaWeb.Gst.UploadLive do
           loading_label="Preparing Tally vouchers…"
         >
           <:intro>
-            Upload the original sales invoices. Nila reads them, prepares the Tally vouchers, and
-            shows anything that needs your review.
+            {sales_intake_intro(@current_scope)}
           </:intro>
           <:state :if={@clients == [] and @jobs == %{}}>
             <.card id="sales-bills-empty" padding="roomy" class="text-center">
@@ -771,15 +786,6 @@ defmodule NilaWeb.Gst.UploadLive do
               </div>
             </.card>
           </:state>
-          <:fields>
-            <.input
-              field={@form[:client_id]}
-              type="select"
-              label="Client"
-              prompt="Select a client"
-              options={@clients}
-            />
-          </:fields>
         </.importer>
       </div>
     </Layouts.app>

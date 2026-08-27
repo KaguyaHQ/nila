@@ -29,7 +29,7 @@ defmodule NilaWeb.ClientEditLiveTest do
     assert has_element?(view, "#client-form")
     assert has_element?(view, "#client_name")
     assert has_element?(view, "#client_gstin")
-    assert has_element?(view, "#client_pan")
+    refute has_element?(view, "#client_pan")
     refute has_element?(view, "#client_type")
     refute has_element?(view, "#client_email")
     refute has_element?(view, "#client_phone")
@@ -113,8 +113,20 @@ defmodule NilaWeb.ClientEditLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/clients/#{client.id}/edit")
 
-    assert has_element?(view, "#client-edit-page", "Aurora Old · Accounts PC")
-    assert has_element?(view, "#client_tally_company_id", "Keep current company")
+    assert has_element?(
+             view,
+             "#client_tally_company_id option[value='#{old_company.id}'][selected]",
+             "Aurora Old · Accounts PC"
+           )
+
+    assert has_element?(
+             view,
+             "#client_tally_company_id option[value='#{new_company.id}']",
+             "Aurora Current · Accounts PC"
+           )
+
+    refute has_element?(view, "#client-change-tally-company")
+    refute has_element?(view, "#client-cancel-tally-company-change")
 
     result =
       view

@@ -36,7 +36,7 @@ defmodule NilaWeb.Components.Form do
   attr :on_cancel, :string, default: "cancel-upload"
   slot :intro, required: true
   slot :state
-  slot :fields, required: true
+  slot :fields
 
   def importer(assigns) do
     ~H"""

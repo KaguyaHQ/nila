@@ -11,6 +11,7 @@ defmodule NilaWeb.ClientEditLive do
     case Clients.get_client(org.id, id) do
       {:ok, client} ->
         tally_company = linked_company(org.id, client.id)
+        form_attrs = %{tally_company_id: tally_company && tally_company.id}
 
         {:ok,
          socket
@@ -18,7 +19,7 @@ defmodule NilaWeb.ClientEditLive do
          |> assign(:client, client)
          |> assign(:tally_company, tally_company)
          |> assign(:available_tally_companies, TallyDevices.list_importable_companies(org.id))
-         |> assign(:form, to_form(Clients.change_client(client)))}
+         |> assign(:form, to_form(Clients.change_client(client, form_attrs)))}
 
       {:error, :not_found} ->
         {:ok,
@@ -72,7 +73,11 @@ defmodule NilaWeb.ClientEditLive do
   defp update_client(client, %{"tally_company_id" => company_id} = params)
        when company_id not in [nil, ""] do
     with {company_id, ""} <- Integer.parse(company_id) do
-      TallyDevices.update_client_and_link_company(client, company_id, params)
+      if client.active_tally_company_id == company_id do
+        Clients.update_client(client, params)
+      else
+        TallyDevices.update_client_and_link_company(client, company_id, params)
+      end
     else
       _ -> {:error, :not_found}
     end
@@ -86,8 +91,12 @@ defmodule NilaWeb.ClientEditLive do
     |> Enum.find(&(&1.client.id == client_id))
   end
 
-  defp tally_company_options(companies) do
-    Enum.map(companies, fn company ->
+  defp tally_company_options(current_company, available_companies) do
+    current_company
+    |> List.wrap()
+    |> Kernel.++(available_companies)
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.map(fn company ->
       {"#{company.name} · #{company.device.name}", company.id}
     end)
   end
@@ -113,27 +122,18 @@ defmodule NilaWeb.ClientEditLive do
           >
             <.input field={@form[:name]} label="Client name" required />
             <.input field={@form[:gstin]} label="GSTIN (optional)" />
-            <.input field={@form[:pan]} label="PAN (optional)" />
 
-            <.input
-              :if={@available_tally_companies != []}
-              field={@form[:tally_company_id]}
-              type="select"
-              label={
-                if @tally_company,
-                  do: "Change Tally company (optional)",
-                  else: "Connect Tally company (optional)"
-              }
-              prompt={if @tally_company, do: "Keep current company", else: "Not connected"}
-              options={tally_company_options(@available_tally_companies)}
-            />
+            <section id="client-tally" class="border-base-300 pt-block space-y-block border-t">
+              <h2 class="text-base-content text-h4 font-semibold">Tally</h2>
 
-            <div :if={@tally_company} class="space-y-1">
-              <p class="text-base-content text-ui font-semibold">Tally company</p>
-              <p class="text-ink-muted text-ui">
-                {@tally_company.name} · {@tally_company.device.name}
-              </p>
-            </div>
+              <.input
+                field={@form[:tally_company_id]}
+                type="select"
+                label="Tally company"
+                prompt="Not connected"
+                options={tally_company_options(@tally_company, @available_tally_companies)}
+              />
+            </section>
 
             <div class="flex items-center gap-3">
               <.button type="submit" id="client-submit">Save changes</.button>

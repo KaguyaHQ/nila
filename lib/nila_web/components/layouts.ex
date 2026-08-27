@@ -88,6 +88,11 @@ defmodule NilaWeb.Layouts do
               label="Banking"
               current_path={@current_path}
             />
+          </div>
+          <div class="border-base-100/10 space-y-1 border-t pt-3">
+            <span class="text-base-100/55 text-label block px-3 pb-1 font-semibold uppercase group-data-[rail-collapsed=true]/app:hidden">
+              Firm
+            </span>
             <.rail_link
               href={~p"/clients"}
               icon="hero-users"
