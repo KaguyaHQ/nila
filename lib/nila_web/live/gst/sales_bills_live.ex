@@ -17,8 +17,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
          {:ok, dumps} <- TallyPacket.fetch(org_id, client_id, batch_ref) do
       if connected?(socket), do: TallyJobs.subscribe_org(org_id)
 
-      companies = online_tally_companies(org_id, client.id)
-      company = List.first(companies)
+      company = online_tally_destination(org_id, client.id)
       source_prefix = company && tally_source_prefix(batch_ref, company.id)
       packet = prepare_packet(dumps, client.id)
       tally_jobs = list_tally_jobs(org_id, source_prefix)
@@ -29,9 +28,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
        |> assign(:client, client)
        |> assign(:batch_ref, batch_ref)
        |> assign(:packet, packet)
-       |> assign(:tally_companies, companies)
        |> assign(:tally_company, company)
-       |> assign(:tally_company_form, tally_company_form(company))
        |> assign(:tally_source_prefix, source_prefix)
        |> assign(:tally_jobs, tally_jobs)
        |> assign(:selected_invoice, nil)
@@ -153,48 +150,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp money(paise), do: Nila.Formatters.format_money_with_paise(paise)
 
   @impl true
-  def handle_event(
-        "select-tally-company",
-        %{"tally_company" => %{"company_id" => company_id}},
-        socket
-      ) do
-    org_id = socket.assigns.current_scope.current_org.id
-    companies = online_tally_companies(org_id, socket.assigns.client.id)
-
-    company =
-      with {company_id, ""} <- Integer.parse(company_id) do
-        Enum.find(companies, &(&1.id == company_id))
-      else
-        _invalid -> nil
-      end
-
-    if company && socket.assigns.tally_jobs == [] do
-      source_prefix = tally_source_prefix(socket.assigns.batch_ref, company.id)
-
-      socket =
-        socket
-        |> assign(:tally_companies, companies)
-        |> assign(:tally_company, company)
-        |> assign(:tally_company_form, tally_company_form(company))
-        |> assign(:tally_source_prefix, source_prefix)
-        |> assign(:tally_jobs, [])
-        |> assign(:send_holds, current_send_holds(org_id, company, socket.assigns.packet))
-        |> assign(:send_error, nil)
-
-      {:noreply,
-       assign(
-         socket,
-         :tally_posting,
-         tally_posting(socket.assigns, socket.assigns.selected_invoice)
-       )}
-    else
-      {:noreply,
-       socket
-       |> assign(:tally_companies, companies)
-       |> assign(:send_error, "Choose a currently connected Tally company.")}
-    end
-  end
-
   def handle_event("request-send-to-tally", _params, socket) do
     if socket.assigns.packet.warnings == [] do
       send_to_tally(socket)
@@ -858,17 +813,18 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     |> Enum.filter(&MapSet.member?(online_device_ids, &1.device_id))
   end
 
+  defp online_tally_destination(org_id, client_id) do
+    org_id
+    |> online_tally_companies(client_id)
+    |> List.first()
+  end
+
   defp online_tally_company(org_id, client_id, company_id) do
     case Enum.find(online_tally_companies(org_id, client_id), &(&1.id == company_id)) do
       nil -> {:error, :not_found}
       company -> {:ok, company}
     end
   end
-
-  defp tally_company_form(nil), do: to_form(%{"company_id" => nil}, as: :tally_company)
-
-  defp tally_company_form(company),
-    do: to_form(%{"company_id" => Integer.to_string(company.id)}, as: :tally_company)
 
   defp partition_ready_items(company_id, items) do
     missing =
@@ -1555,22 +1511,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             id="sales-bills-tally-destination"
             class="flex items-end gap-3"
           >
-            <.form
-              :if={length(@tally_companies) > 1}
-              for={@tally_company_form}
-              id="sales-bills-tally-company-form"
-              phx-change="select-tally-company"
-              class="min-w-64"
-            >
-              <.input
-                field={@tally_company_form[:company_id]}
-                type="select"
-                label="Tally company"
-                options={Enum.map(@tally_companies, &{&1.name, &1.id})}
-              />
-            </.form>
-
-            <p :if={length(@tally_companies) == 1} class="text-ink-muted text-ui pb-2">
+            <p class="text-ink-muted text-ui pb-2">
               Sending to <span class="text-base-content font-semibold">{@tally_company.name}</span>
             </p>
 

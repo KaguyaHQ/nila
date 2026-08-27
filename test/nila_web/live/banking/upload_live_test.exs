@@ -385,7 +385,10 @@ defmodule NilaWeb.Banking.UploadLiveTest do
         %{"name" => context.client.name, "tally_guid" => "company-breeze"}
       ])
 
-    company = company |> Ecto.Changeset.change(client_id: context.client.id) |> Repo.update!()
+    context.client
+    |> Ecto.Changeset.change(active_tally_company_id: company.id)
+    |> Repo.update!()
+
     {:ok, Repo.preload(company, :device)}
   end
 

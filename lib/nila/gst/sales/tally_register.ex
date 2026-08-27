@@ -40,7 +40,9 @@ defmodule Nila.Gst.Sales.TallyRegister do
   defp linked_companies(month) do
     Repo.all(
       from c in Company,
-        where: c.org_id == ^month.org_id and c.client_id == ^month.client_id,
+        join: client in Nila.Clients.Client,
+        on: client.active_tally_company_id == c.id,
+        where: c.org_id == ^month.org_id and client.id == ^month.client_id,
         order_by: [asc: c.id]
     )
   end

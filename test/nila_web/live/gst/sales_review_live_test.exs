@@ -288,8 +288,8 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     assert profile.sgst_ledger_identity == ledgers.sgst.identity
   end
 
-  test "posting review uses the explicitly requested open Tally company", context do
-    _first = tally_company_with_ledgers!(context)
+  test "posting review rejects an open company that is not the client's destination", context do
+    first = tally_company_with_ledgers!(context)
     {:ok, device, _token} = TallyDevices.create_device(context.org, %{name: "Second PC"})
 
     {:ok, [second]} =
@@ -307,8 +307,11 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
       review_path(context.client, invoice["id"], "all") <>
         "&" <> URI.encode_query(%{"tally_company_id" => second.id})
 
-    {:ok, view, _html} = live(context.conn, path)
-    assert has_element?(view, "#gstr1-tally-posting-form", second.name)
+    assert {:error, {:live_redirect, %{to: canonical_path}}} = live(context.conn, path)
+    refute canonical_path =~ "tally_company_id"
+
+    {:ok, view, _html} = live(context.conn, canonical_path)
+    assert has_element?(view, "#gstr1-tally-posting-form", first.company.name)
   end
 
   test "a signed month withdraws every write action from the review surface", context do

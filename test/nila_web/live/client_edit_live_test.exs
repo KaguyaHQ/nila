@@ -95,6 +95,38 @@ defmodule NilaWeb.ClientEditLiveTest do
     assert company_id == company.id
   end
 
+  test "changing the Tally company replaces the current destination", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [old_company, new_company]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => "Aurora Old", "tally_guid" => "aurora-old"},
+        %{"name" => "Aurora Current", "tally_guid" => "aurora-current"}
+      ])
+
+    assert {:ok, _client} =
+             TallyDevices.update_client_and_link_company(client, old_company.id, %{})
+
+    {:ok, view, _html} = live(conn, ~p"/clients/#{client.id}/edit")
+
+    assert has_element?(view, "#client-edit-page", "Aurora Old · Accounts PC")
+    assert has_element?(view, "#client_tally_company_id", "Keep current company")
+
+    result =
+      view
+      |> form("#client-form",
+        client: %{name: client.name, tally_company_id: new_company.id}
+      )
+      |> render_submit()
+
+    assert {:error, {:live_redirect, %{to: "/clients"}}} = result
+    assert Nila.Repo.reload!(client).active_tally_company_id == new_company.id
+  end
+
   test "a bad GSTIN shows an error and does not persist", %{conn: conn, org: org, client: client} do
     {:ok, view, _html} = live(conn, ~p"/clients/#{client.id}/edit")
 

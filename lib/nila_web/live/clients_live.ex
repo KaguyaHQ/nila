@@ -13,10 +13,10 @@ defmodule NilaWeb.ClientsLive do
   end
 
   defp list_clients(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}) do
-    companies_by_client =
+    company_by_client =
       org_id
       |> TallyDevices.list_linked_companies()
-      |> Enum.group_by(& &1.client_id)
+      |> Map.new(&{&1.client.id, &1})
 
     org_id
     |> Clients.list_clients()
@@ -25,13 +25,13 @@ defmodule NilaWeb.ClientsLive do
         id: client.id,
         name: client.name,
         gstin: client.gstin,
-        tally_company: tally_company_label(companies_by_client[client.id] || [])
+        tally_company: tally_company_label(company_by_client[client.id])
       }
     end)
   end
 
-  defp tally_company_label([]), do: nil
-  defp tally_company_label([company | _others]), do: "Connected · #{company.name}"
+  defp tally_company_label(nil), do: nil
+  defp tally_company_label(company), do: company.name
 
   @impl true
   def render(assigns) do

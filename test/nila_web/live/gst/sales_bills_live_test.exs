@@ -160,11 +160,12 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bills-added-to-tally")
   end
 
-  test "offers only connected destinations and sends to the selected company", %{
+  test "ignores other open companies and sends only to the client's destination", %{
     conn: conn,
     org: org,
     client: client,
-    dump: dump
+    dump: dump,
+    device: device
   } do
     {:ok, second_device, _token} = TallyDevices.create_device(org, %{name: "Second PC"})
 
@@ -189,19 +190,19 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     batch_ref = TallyPacket.ref([dump])
     {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
 
-    assert has_element?(view, "#sales-bills-tally-company-form")
+    refute has_element?(view, "#sales-bills-tally-company-form")
+    assert has_element?(view, "#sales-bills-tally-destination", "Sending to Breeze Tech")
 
-    view
-    |> form("#sales-bills-tally-company-form",
-      tally_company: %{company_id: second_company.id}
-    )
-    |> render_change()
+    refute Enum.any?(
+             TallyDevices.list_linked_companies(org.id),
+             &(&1.id == second_company.id)
+           )
 
     view |> element("#sales-bills-send-to-tally") |> render_click()
 
     assert [%{device_id: device_id, payload: payload}] = Nila.Repo.all(Nila.TallyJobs.Job)
-    assert device_id == second_device.id
-    assert payload["company"] == "Dummy Run Company"
+    assert device_id == device.id
+    assert payload["company"] == "Breeze Tech"
   end
 
   test "does not offer a stale open company whose connector is offline", %{

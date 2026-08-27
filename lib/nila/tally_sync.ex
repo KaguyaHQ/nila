@@ -340,15 +340,15 @@ defmodule Nila.TallySync do
   defp error_field(:vouchers), do: :vouchers_error
 
   defp maybe_refresh_sales_month(%SyncRun{} = run, :vouchers, true) do
-    company = Repo.get!(Company, run.company_id)
+    company = Company |> Repo.get!(run.company_id) |> Repo.preload(:client)
 
-    if company.client_id do
+    if company.client do
       period = Calendar.strftime(run.period_start, "%Y-%m")
 
       {:ok, month} =
         Months.upsert(%{
           org_id: run.org_id,
-          client_id: company.client_id,
+          client_id: company.client.id,
           period: period
         })
 

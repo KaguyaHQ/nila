@@ -24,7 +24,7 @@ defmodule Nila.Gst.Sales.TallyRegisterTest do
 
     {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
     {:ok, [company]} = TallyDevices.report_companies(device, [%{"name" => "ABC Traders"}])
-    company = company |> Ecto.Changeset.change(client_id: client.id) |> Repo.update!()
+    client |> Ecto.Changeset.change(active_tally_company_id: company.id) |> Repo.update!()
 
     Repo.insert!(%SyncRun{
       org_id: org.id,

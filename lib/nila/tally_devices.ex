@@ -197,7 +197,10 @@ defmodule Nila.TallyDevices do
 
     query =
       if is_integer(client_id) do
-        from company in query, where: company.client_id == ^client_id
+        from company in query,
+          join: client in Client,
+          on: client.active_tally_company_id == company.id,
+          where: client.id == ^client_id and client.org_id == ^org_id
       else
         query
       end
@@ -208,9 +211,11 @@ defmodule Nila.TallyDevices do
   def list_linked_companies(org_id) when is_integer(org_id) do
     Repo.all(
       from company in Company,
-        where: company.org_id == ^org_id and not is_nil(company.client_id),
+        join: client in Client,
+        on: client.active_tally_company_id == company.id,
+        where: company.org_id == ^org_id and client.org_id == ^org_id,
         order_by: [asc: company.name],
-        preload: [:device]
+        preload: [:device, client: client]
     )
   end
 
@@ -218,8 +223,9 @@ defmodule Nila.TallyDevices do
     Repo.all(
       from company in Company,
         join: device in assoc(company, :device),
-        where:
-          company.org_id == ^org_id and is_nil(company.client_id) and is_nil(device.revoked_at),
+        left_join: client in Client,
+        on: client.active_tally_company_id == company.id,
+        where: company.org_id == ^org_id and is_nil(client.id) and is_nil(device.revoked_at),
         order_by: [asc: company.name, asc: device.name],
         preload: [device: device]
     )
@@ -257,10 +263,11 @@ defmodule Nila.TallyDevices do
                  join: device in assoc(company, :device),
                  where:
                    company.id == ^company_id and company.org_id == ^org_id and
-                     is_nil(company.client_id) and is_nil(device.revoked_at),
+                     is_nil(device.revoked_at),
                  preload: [:client],
                  lock: "FOR UPDATE"
              ) || {:error, :not_found},
+           :ok <- company_available_to_client(company.id, nil),
            {:ok, client} <- ensure_company_client_record(company),
            {:ok, client} <- Clients.update_client(client, client_attrs) do
         {:ok, client}
@@ -280,13 +287,21 @@ defmodule Nila.TallyDevices do
                  join: device in assoc(company, :device),
                  where:
                    company.id == ^company_id and company.org_id == ^client.org_id and
-                     is_nil(company.client_id) and is_nil(device.revoked_at),
+                     is_nil(device.revoked_at),
                  lock: "FOR UPDATE"
              ) || {:error, :not_found},
+           %Client{} = client <-
+             Repo.one(
+               from locked_client in Client,
+                 where: locked_client.id == ^client.id and locked_client.org_id == ^client.org_id,
+                 lock: "FOR UPDATE"
+             ) || {:error, :not_found},
+           :ok <- company_available_to_client(company.id, client.id),
            {:ok, client} <- Clients.update_client(client, client_attrs) do
-        company
-        |> Ecto.Changeset.change(client_id: client.id)
-        |> Repo.update!()
+        client =
+          client
+          |> Ecto.Changeset.change(active_tally_company_id: company.id)
+          |> Repo.update!()
 
         {:ok, client}
       end
@@ -309,20 +324,28 @@ defmodule Nila.TallyDevices do
             join: device in assoc(company, :device),
             where:
               company.org_id == ^org_id and company.id in ^ids and company.is_open and
-                is_nil(company.client_id) and is_nil(device.revoked_at),
+                is_nil(device.revoked_at),
             order_by: [asc: company.id],
             lock: "FOR UPDATE"
         )
 
-      if length(companies) != length(ids) do
+      unavailable? =
+        Repo.exists?(
+          from client in Client,
+            where: client.active_tally_company_id in ^ids
+        )
+
+      if length(companies) != length(ids) or unavailable? do
         {:error, :companies_changed}
       else
         Enum.reduce_while(companies, {:ok, %{created: 0, linked: 0, clients: []}}, fn company,
                                                                                       {:ok, acc} ->
           case find_or_create_client(org_id, company) do
             {:ok, client, disposition} ->
-              case company |> Ecto.Changeset.change(client_id: client.id) |> Repo.update() do
-                {:ok, _company} ->
+              case client
+                   |> Ecto.Changeset.change(active_tally_company_id: company.id)
+                   |> Repo.update() do
+                {:ok, _client} ->
                   {:cont,
                    {:ok,
                     %{
@@ -349,6 +372,17 @@ defmodule Nila.TallyDevices do
 
   def import_companies_as_clients(_org_id, _company_ids), do: {:error, :invalid_companies}
 
+  defp company_available_to_client(company_id, client_id) do
+    owner_id =
+      Repo.one(
+        from client in Client,
+          where: client.active_tally_company_id == ^company_id,
+          select: client.id
+      )
+
+    if is_nil(owner_id) or owner_id == client_id, do: :ok, else: {:error, :not_found}
+  end
+
   def get_open_company(org_id, company_id, client_id \\ nil)
 
   def get_open_company(org_id, company_id, client_id)
@@ -363,7 +397,10 @@ defmodule Nila.TallyDevices do
 
     query =
       if is_integer(client_id) do
-        from company in query, where: company.client_id == ^client_id
+        from company in query,
+          join: client in Client,
+          on: client.active_tally_company_id == company.id,
+          where: client.id == ^client_id and client.org_id == ^org_id
       else
         query
       end
@@ -377,8 +414,8 @@ defmodule Nila.TallyDevices do
 
   defp ensure_company_client_record(%Company{} = company) do
     with {:ok, client, _disposition} <- find_or_create_client(company.org_id, company) do
-      company
-      |> Ecto.Changeset.change(client_id: client.id)
+      client
+      |> Ecto.Changeset.change(active_tally_company_id: company.id)
       |> Repo.update!()
 
       {:ok, client}
@@ -405,7 +442,8 @@ defmodule Nila.TallyDevices do
       from client in Client,
         where:
           client.org_id == ^org_id and
-            fragment("upper(?)", client.gstin) == ^String.upcase(gstin),
+            fragment("upper(?)", client.gstin) == ^String.upcase(gstin) and
+            is_nil(client.active_tally_company_id),
         order_by: [asc: client.id],
         limit: 1
     ) || client_by_name(org_id, gstin, name)
@@ -420,7 +458,8 @@ defmodule Nila.TallyDevices do
            from client in Client,
              where:
                client.org_id == ^org_id and
-                 fragment("lower(?)", client.name) == ^String.downcase(name),
+                 fragment("lower(?)", client.name) == ^String.downcase(name) and
+                 is_nil(client.active_tally_company_id),
              order_by: [asc: client.id],
              limit: 1
          ) do
@@ -613,34 +652,41 @@ defmodule Nila.TallyDevices do
 
   defp normalize_company_gstin(_value), do: :invalid
 
-  defp maybe_link_company_by_gstin(%Company{client_id: nil, gstin: gstin} = company)
-       when is_binary(gstin) do
+  defp maybe_link_company_by_gstin(%Company{gstin: gstin} = company) when is_binary(gstin) do
     matches =
       Repo.all(
         from client in Client,
           where:
             client.org_id == ^company.org_id and
-              fragment("upper(?)", client.gstin) == ^gstin,
+              fragment("upper(?)", client.gstin) == ^gstin and
+              is_nil(client.active_tally_company_id),
           order_by: [asc: client.id],
           limit: 2
       )
 
     case matches do
       [%Client{} = client] ->
-        company
-        |> Ecto.Changeset.change(client_id: client.id)
-        |> Repo.update!()
+        now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+        from(candidate in Client,
+          where: candidate.id == ^client.id and is_nil(candidate.active_tally_company_id)
+        )
+        |> Repo.update_all(set: [active_tally_company_id: company.id, updated_at: now])
 
       _ ->
-        company
+        :ok
     end
+
+    Repo.preload(company, :client, force: true)
   end
 
   defp maybe_link_company_by_gstin(%Company{} = company), do: company
 
-  defp maybe_add_gstin_to_linked_client(%Company{client_id: client_id, gstin: gstin} = company)
-       when is_integer(client_id) and is_binary(gstin) do
-    case Repo.get(Client, client_id) do
+  defp maybe_add_gstin_to_linked_client(
+         %Company{client: %Client{} = linked_client, gstin: gstin} = company
+       )
+       when is_binary(gstin) do
+    case Repo.get(Client, linked_client.id) do
       %Client{gstin: nil} = client ->
         case Clients.update_client(client, %{gstin: gstin}) do
           {:ok, _client} -> company

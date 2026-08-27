@@ -10,13 +10,13 @@ defmodule NilaWeb.ClientEditLive do
 
     case Clients.get_client(org.id, id) do
       {:ok, client} ->
-        linked_company_names = linked_company_names(org.id, client.id)
+        tally_company = linked_company(org.id, client.id)
 
         {:ok,
          socket
          |> assign(:page_title, "Edit client")
          |> assign(:client, client)
-         |> assign(:tally_company_names, linked_company_names)
+         |> assign(:tally_company, tally_company)
          |> assign(:available_tally_companies, TallyDevices.list_importable_companies(org.id))
          |> assign(:form, to_form(Clients.change_client(client)))}
 
@@ -80,12 +80,10 @@ defmodule NilaWeb.ClientEditLive do
 
   defp update_client(client, params), do: Clients.update_client(client, params)
 
-  defp linked_company_names(org_id, client_id) do
+  defp linked_company(org_id, client_id) do
     org_id
     |> TallyDevices.list_linked_companies()
-    |> Enum.filter(&(&1.client_id == client_id))
-    |> Enum.map(& &1.name)
-    |> Enum.uniq()
+    |> Enum.find(&(&1.client.id == client_id))
   end
 
   defp tally_company_options(companies) do
@@ -121,17 +119,19 @@ defmodule NilaWeb.ClientEditLive do
               :if={@available_tally_companies != []}
               field={@form[:tally_company_id]}
               type="select"
-              label="Connect Tally company (optional)"
-              prompt="Keep current connections"
+              label={
+                if @tally_company,
+                  do: "Change Tally company (optional)",
+                  else: "Connect Tally company (optional)"
+              }
+              prompt={if @tally_company, do: "Keep current company", else: "Not connected"}
               options={tally_company_options(@available_tally_companies)}
             />
 
-            <div :if={@tally_company_names != []} class="space-y-1">
-              <p class="text-base-content text-ui font-semibold">
-                {if length(@tally_company_names) == 1, do: "Tally company", else: "Tally companies"}
-              </p>
-              <p :for={name <- @tally_company_names} class="text-ink-muted text-ui">
-                {name}
+            <div :if={@tally_company} class="space-y-1">
+              <p class="text-base-content text-ui font-semibold">Tally company</p>
+              <p class="text-ink-muted text-ui">
+                {@tally_company.name} · {@tally_company.device.name}
               </p>
             </div>
 

@@ -100,7 +100,40 @@ defmodule Nila.TallyDevicesTest do
              ])
 
     assert company.gstin == "33AEWPH4158J1Z3"
-    assert company.client_id == client.id
+    assert Nila.Repo.reload!(client).active_tally_company_id == company.id
+  end
+
+  test "does not attach a second discovered company to a client that already has a destination" do
+    %{org: org} = user_with_org_fixture()
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Breeze Tech",
+        type: "company",
+        gstin: "33AEWPH4158J1Z3"
+      })
+
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    assert {:ok, [primary, copy]} =
+             TallyDevices.report_companies(device, [
+               %{
+                 "name" => "Breeze Tech",
+                 "tally_guid" => "breeze-primary",
+                 "gstin" => "33AEWPH4158J1Z3"
+               },
+               %{
+                 "name" => "Breeze Tech Copy",
+                 "tally_guid" => "breeze-copy",
+                 "gstin" => "33AEWPH4158J1Z3"
+               }
+             ])
+
+    assert Nila.Repo.reload!(client).active_tally_company_id == primary.id
+    refute Enum.any?(TallyDevices.list_linked_companies(org.id), &(&1.id == copy.id))
+    assert [%{id: id}] = TallyDevices.list_linked_companies(org.id)
+    assert id == primary.id
   end
 
   test "does not automatically link an invalid reported GSTIN" do
@@ -113,7 +146,7 @@ defmodule Nila.TallyDevicesTest do
              ])
 
     assert is_nil(company.gstin)
-    assert is_nil(company.client_id)
+    refute Enum.any?(TallyDevices.list_linked_companies(org.id), &(&1.id == company.id))
   end
 
   test "a linked Tally company fills a blank client GSTIN without overwriting one" do
@@ -137,7 +170,7 @@ defmodule Nila.TallyDevicesTest do
                }
              ])
 
-    assert reported.client_id == client.id
+    assert Nila.Repo.reload!(client).active_tally_company_id == reported.id
     assert Nila.Repo.get!(Nila.Clients.Client, client.id).gstin == "33BPBPK1081A1ZO"
 
     assert {:ok, [_reported]} =
@@ -172,7 +205,7 @@ defmodule Nila.TallyDevicesTest do
              })
 
     assert client.name == "Caltech Refrigeration"
-    assert Nila.Repo.reload!(company).client_id == client.id
+    assert Nila.Repo.reload!(client).active_tally_company_id == company.id
 
     assert {:error, :not_found} =
              TallyDevices.create_client_from_company(org.id, company.id, %{
@@ -182,6 +215,31 @@ defmodule Nila.TallyDevicesTest do
              })
 
     assert Nila.Repo.reload!(client).name == "Caltech Refrigeration"
+  end
+
+  test "linking another Tally company replaces the client's current destination" do
+    %{org: org} = user_with_org_fixture()
+
+    {:ok, client} =
+      Clients.create_client(%{org_id: org.id, name: "Breeze Tech", type: "company"})
+
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    assert {:ok, [old_company, new_company]} =
+             TallyDevices.report_companies(device, [
+               %{"name" => "Breeze Old", "tally_guid" => "breeze-old"},
+               %{"name" => "Breeze Current", "tally_guid" => "breeze-current"}
+             ])
+
+    assert {:ok, _client} =
+             TallyDevices.update_client_and_link_company(client, old_company.id, %{})
+
+    assert {:ok, _client} =
+             TallyDevices.update_client_and_link_company(client, new_company.id, %{})
+
+    assert Nila.Repo.reload!(client).active_tally_company_id == new_company.id
+    assert [%{id: id}] = TallyDevices.list_linked_companies(org.id)
+    assert id == new_company.id
   end
 
   test "does not resolve another organization's reported company" do

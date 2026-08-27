@@ -66,7 +66,7 @@ defmodule Nila.TallySyncTest do
 
     {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
     {:ok, [company]} = TallyDevices.report_companies(device, [%{"name" => "ABC Traders"}])
-    company |> Ecto.Changeset.change(client_id: client.id) |> Repo.update!()
+    client |> Ecto.Changeset.change(active_tally_company_id: company.id) |> Repo.update!()
 
     {:ok, first_run} = TallySync.start(device, company.identity, ~D[2026-08-19])
     {:ok, _run} = TallySync.put_pipeline(device, first_run.id, :masters, [], true)

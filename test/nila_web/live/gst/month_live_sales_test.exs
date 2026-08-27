@@ -340,7 +340,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesTest do
   } do
     {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
     {:ok, [company]} = TallyDevices.report_companies(device, [%{"name" => "Breeze Tech"}])
-    company = company |> Ecto.Changeset.change(client_id: client.id) |> Repo.update!()
+    client |> Ecto.Changeset.change(active_tally_company_id: company.id) |> Repo.update!()
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
     Repo.insert!(%SyncRun{

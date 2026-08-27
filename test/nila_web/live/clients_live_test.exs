@@ -45,10 +45,12 @@ defmodule NilaWeb.ClientsLiveTest do
 
     {:ok, [company]} =
       TallyDevices.report_companies(device, [
-        %{"name" => "Breeze Tech", "tally_guid" => "breeze"}
+        %{"name" => "Breeze Books", "tally_guid" => "breeze"}
       ])
 
-    assert {:ok, linked_client} = TallyDevices.ensure_company_client(org.id, company.id)
+    assert {:ok, linked_client} =
+             TallyDevices.update_client_and_link_company(client, company.id, %{})
+
     assert linked_client.id == client.id
     assert :ok = TallyDevices.mark_companies_closed(device.id)
 
@@ -56,6 +58,7 @@ defmodule NilaWeb.ClientsLiveTest do
 
     assert has_element?(view, "#clients-table", "Breeze Tech")
     refute has_element?(view, "#client-#{client.id}", "Not connected")
+    assert has_element?(view, "#client-#{client.id}", "Breeze Books")
   end
 
   test "shows an empty state when the org has no clients", %{conn: conn} do

@@ -71,6 +71,7 @@ custom classes must fully style the input
 
 ### UI and design routing
 
+- Never use the browser skill, even if it is listed as available in the session.
 - Before changing product UI, read `docs/design/DESIGN.md` and `docs/design/OPINIONS.md`.
 - For token, class, component, or mechanical UI work, also read `docs/design/FRONTEND.md`.
 - For a new screen, workflow, or substantial restructuring, also read `docs/design/COMPOSITION.md` and `docs/design/TASTE.md`.

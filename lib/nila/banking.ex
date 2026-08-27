@@ -7,6 +7,7 @@ defmodule Nila.Banking do
   import Ecto.Query
 
   alias Nila.Banking.{Statement, Transaction}
+  alias Nila.Clients.Client
   alias Nila.Repo
   alias Nila.TallyDevices.{Company, SyncedMaster}
   alias Nila.{TallyJobs, TallySync}
@@ -168,9 +169,11 @@ defmodule Nila.Banking do
              Repo.one(
                from company in Company,
                  join: device in assoc(company, :device),
+                 join: client in Client,
+                 on: client.active_tally_company_id == company.id,
                  where:
                    company.id == ^company_id and company.org_id == ^org_id and
-                     company.client_id == ^statement.client_id and company.is_open and
+                     client.id == ^statement.client_id and company.is_open and
                      is_nil(device.revoked_at),
                  preload: [device: device]
              ) || {:error, :company_not_available},

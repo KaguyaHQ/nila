@@ -201,8 +201,8 @@ defmodule NilaWeb.Gstr1ControllerTest do
         }
       ])
 
-    company
-    |> Ecto.Changeset.change(client_id: client.id)
+    client
+    |> Ecto.Changeset.change(active_tally_company_id: company.id)
     |> Repo.update!()
 
     seed_ledgers(company, ["Customer & Co", "Sales", "Output IGST"])
@@ -259,8 +259,8 @@ defmodule NilaWeb.Gstr1ControllerTest do
         }
       ])
 
-    company
-    |> Ecto.Changeset.change(client_id: client.id)
+    client
+    |> Ecto.Changeset.change(active_tally_company_id: company.id)
     |> Repo.update!()
 
     seed_ledgers(company, ["Sales", "Output IGST"])
@@ -299,8 +299,8 @@ defmodule NilaWeb.Gstr1ControllerTest do
         %{"name" => "Nila", "tally_guid" => "company-nila"}
       ])
 
-    company
-    |> Ecto.Changeset.change(client_id: client.id)
+    client
+    |> Ecto.Changeset.change(active_tally_company_id: company.id)
     |> Repo.update!()
 
     conn =
@@ -336,8 +336,8 @@ defmodule NilaWeb.Gstr1ControllerTest do
         %{"name" => "Another Client", "tally_guid" => "company-another-client"}
       ])
 
-    company
-    |> Ecto.Changeset.change(client_id: other_client.id)
+    other_client
+    |> Ecto.Changeset.change(active_tally_company_id: company.id)
     |> Repo.update!()
 
     conn =
