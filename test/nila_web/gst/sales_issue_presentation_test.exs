@@ -37,6 +37,8 @@ defmodule NilaWeb.Gst.SalesIssuePresentationTest do
     assert presentation.details == [
              "Seller state is Tamil Nadu and place of supply is Telangana, but the invoice uses CGST/SGST."
            ]
+
+    assert [%{target: :place_of_supply, lines: []}] = presentation.items
   end
 
   test "does not present mixed tax heads as a place-of-supply mismatch" do
@@ -133,6 +135,7 @@ defmodule NilaWeb.Gst.SalesIssuePresentationTest do
 
     assert presentation.summary == "HSN/SAC and GST rates need review."
     assert presentation.details == ["HSN/SAC: 8415. Rates in evidence: 12%, 18%."]
+    assert [%{target: :lines, lines: [1]}] = presentation.items
   end
 
   test "unknown gating codes use neutral review wording" do

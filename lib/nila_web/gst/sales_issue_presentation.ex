@@ -16,6 +16,14 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
     exempt_supply_unsupported non_gst_supply_unsupported outward_reverse_charge_unsupported
     cdnur_unsupported cancelled_document_unsupported amendment_document_unsupported
   )
+  @place_of_supply_codes ~w(tax_split_mismatch invalid_place_of_supply missing_place_of_supply)
+  @fact_codes ~w(
+    invalid_gstin recipient_registration_conflict unknown_recipient_registration
+    unreadable_invoice_date missing_invoice_number implausible_invoice_number duplicate_invoice_number
+  )
+  @allocation_codes ~w(
+    printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch mixed_tax_heads
+  )
 
   def for_invoice(invoice, issues) when is_map(invoice) and is_list(issues) do
     items =
@@ -31,11 +39,31 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
       |> add_document_items(issues)
       |> add_unknown_item(issues)
 
+    items = attach_context(items, issues)
+
     %{
       summary: summary(items),
       details: details(items),
       items: items
     }
+  end
+
+  defp attach_context(items, issues) do
+    Enum.map(items, fn item ->
+      related = Enum.filter(issues, &(&1["code"] in item.codes))
+      lines = related |> Enum.flat_map(&List.wrap(&1["lines"])) |> Enum.uniq() |> Enum.sort()
+
+      target =
+        cond do
+          Enum.any?(item.codes, &(&1 in @place_of_supply_codes)) -> :place_of_supply
+          Enum.any?(item.codes, &(&1 in @fact_codes)) -> :facts
+          lines != [] -> :lines
+          Enum.any?(item.codes, &(&1 in @allocation_codes)) -> :allocations
+          true -> :global
+        end
+
+      Map.merge(item, %{target: target, lines: lines})
+    end)
   end
 
   defp add_capability_items(items, issues) do

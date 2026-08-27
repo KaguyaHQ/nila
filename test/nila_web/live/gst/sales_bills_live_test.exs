@@ -393,6 +393,14 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(view, "#sales-bill-review-issues", "1 line needs review.")
     assert has_element?(view, "#sales-bill-review-issues", "HSN/SAC is missing on 1 line.")
+    assert has_element?(view, "#sales-bill-ledger-allocations .nila-callout[data-kind='warning']")
+
+    assert has_element?(
+             view,
+             "#sales-bill-line-summary-0",
+             "HSN/SAC is missing on 1 line."
+           )
+
     refute has_element?(view, "#sales-bill-review-issues", "does not match")
   end
 
@@ -451,6 +459,20 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
              "#sales-bill-review-issues",
              "Seller state is Tamil Nadu and place of supply is Telangana, but the invoice uses CGST/SGST."
            )
+
+    assert has_element?(
+             view,
+             "#sales-bill-invoice-facts .nila-callout[data-kind='warning']",
+             "Tax treatment doesn’t match the place of supply."
+           )
+
+    assert has_element?(view, "#sales-bill-place-of-supply", "Telangana")
+    refute has_element?(view, "#tally-posting-place-of-supply")
+
+    view |> element("#sales-bill-fix-place-of-supply-0") |> render_click()
+
+    assert has_element?(view, "#sales-bill-invoice-facts-sheet[data-variant='sheet']")
+    assert has_element?(view, "#invoice_facts_place_of_supply[autofocus]")
 
     refute has_element?(view, "#sales-bill-review-issues", "Nila read")
   end
@@ -679,12 +701,39 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bill-posting-review", company.name)
     assert has_element?(view, "#tally_posting_party_ledger_identity")
     assert has_element?(view, "#sales-bill-evidence-frame")
-    assert has_element?(view, "#sales-bill-proposed-voucher", "Proposed Tally voucher")
-    assert has_element?(view, "#sales-bill-proposed-voucher", "Sales")
-    assert has_element?(view, "#tally-posting-invoice-number[value='INV-001']")
+    assert has_element?(view, "#sales-bill-proposed-voucher", "Sales invoice")
+    assert has_element?(view, "#sales-bill-proposed-voucher", "Tally · #{company.name}")
+    assert has_element?(view, "#sales-bill-invoice-facts")
+    assert has_element?(view, "#sales-bill-party-mapping", "Tally party ledger")
+    assert has_element?(view, "#sales-bill-tax-posting", "Tax ledgers")
+    assert has_element?(view, "#sales-bill-mappings-remaining", "required")
+    assert has_element?(view, "#sales-bill-invoice-identity", "INV-001")
+    assert has_element?(view, "#sales-bill-buyer-identity", "Customer & Co")
+    assert has_element?(view, "#sales-bill-edit-invoice-facts", "Edit invoice facts")
+    refute has_element?(view, "label[for='tally-posting-invoice-number']")
+    assert has_element?(view, "#tally-posting-invoice-number-value[value='INV-001']")
     assert has_element?(view, "#sales-bill-line-summary-0", "Technical support services")
     assert has_element?(view, "#sales-bill-line-summary-0", "HSN 998719")
     refute has_element?(view, "#sales-bill-line-edit-sheet")
+
+    view |> element("#sales-bill-edit-invoice-facts") |> render_click()
+
+    assert has_element?(view, "#sales-bill-invoice-facts-sheet[data-variant='sheet']")
+    assert has_element?(view, "label[for='invoice_facts_invoice_number']", "Invoice number")
+    assert has_element?(view, "#invoice_facts_invoice_number[value='INV-001']")
+
+    view |> element("#sales-bill-invoice-facts-sheet button", "Cancel") |> render_click()
+
+    assert has_element?(view, "#sales-bill-invoice-identity", "INV-001")
+    refute has_element?(view, "#sales-bill-invoice-facts-sheet")
+
+    assert has_element?(view, "#sales-bill-narration-value", "Imported from Nila")
+    refute has_element?(view, "#tally-posting-narration")
+
+    view |> element("#sales-bill-edit-narration") |> render_click()
+    assert has_element?(view, "#tally-posting-narration")
+    view |> element("#sales-bill-finish-narration") |> render_click()
+    refute has_element?(view, "#tally-posting-narration")
 
     view
     |> element("#sales-bill-edit-line-0")
@@ -696,9 +745,17 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bill-line-edit-form")
     assert has_element?(view, "button[form='sales-bill-line-edit-form']", "Save changes")
     assert has_element?(view, "#tally-posting-line-sales-ledger-0")
-    assert has_element?(view, "#tally-posting-place-of-supply option[selected][value='29']")
+    assert has_element?(view, "#sales-bill-place-of-supply", "Karnataka")
+    assert has_element?(view, "#tally-posting-place-of-supply-value[value='29']")
     assert has_element?(view, "#sales-bill-tax-row-igst", "Output IGST")
-    assert has_element?(view, "#sales-bill-save-tally-posting", "Save & Close")
+
+    assert has_element?(
+             view,
+             "#sales-bill-next-required-mapping",
+             "Choose the Tally party ledger"
+           )
+
+    refute has_element?(view, "#sales-bill-save-tally-posting")
 
     refute has_element?(
              view,
@@ -712,6 +769,105 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     refute has_element?(view, "#sales-bill-evidence-overlay")
 
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
+  end
+
+  test "reviews only invoices with missing posting mappings and saves through the queue", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    company: company
+  } do
+    Nila.Repo.get_by!(SyncedMaster,
+      company_id: company.id,
+      kind: "ledger",
+      name: "Customer & Co"
+    )
+    |> Nila.Repo.delete!()
+
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    chosen_party =
+      Nila.Repo.insert!(%SyncedMaster{
+        org_id: company.org_id,
+        company_id: company.id,
+        kind: "ledger",
+        identity: "ledger:chosen-customer",
+        name: "Chosen Customer",
+        data: %{"parent" => "Sundry Debtors"},
+        inserted_at: now,
+        updated_at: now
+      })
+
+    [first] = dump.invoices
+
+    second =
+      first
+      |> Map.put("id", "source-inv-002")
+      |> Map.put("invoice_number", "INV-002")
+      |> Map.put("buyer_name", "Second Customer")
+      |> Map.put("buyer_gstin", "29AAACB2894G1ZJ")
+
+    dump =
+      dump
+      |> Ecto.Changeset.change(invoices: [first, second])
+      |> Nila.Repo.update!()
+
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    assert has_element?(view, "#sales-bills-required-mappings", "2 invoices need Tally details")
+    assert has_element?(view, "#sales-bills-review-required", "Review 2")
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Needs review")
+    assert has_element?(view, "#sales-bill-delivery-source-inv-002", "Needs review")
+    assert has_element?(view, "#sales-bills-result", "No sales vouchers ready")
+
+    view |> element("#sales-bills-review-required") |> render_click()
+
+    assert has_element?(view, "#sales-bill-posting-review", "Review · 2 invoices left")
+
+    assert has_element?(
+             view,
+             "#sales-bill-next-required-mapping",
+             "Next: Choose the Tally party ledger"
+           )
+
+    refute has_element?(view, "#sales-bill-save-tally-posting")
+
+    view
+    |> form("#sales-bill-tally-posting-form", %{
+      "tally_posting" => %{"party_ledger_identity" => chosen_party.identity}
+    })
+    |> render_change()
+
+    assert has_element?(view, "#sales-bill-posting-ready")
+    assert has_element?(view, "#sales-bill-save-tally-posting", "Save & next")
+
+    view
+    |> form("#sales-bill-tally-posting-form", %{
+      "tally_posting" => %{"party_ledger_identity" => chosen_party.identity}
+    })
+    |> render_submit()
+
+    assert has_element?(view, "#sales-bill-posting-review", "Invoice INV-002")
+    assert has_element?(view, "#sales-bill-posting-review", "Review · 1 invoice left")
+
+    view
+    |> form("#sales-bill-tally-posting-form", %{
+      "tally_posting" => %{"party_ledger_identity" => chosen_party.identity}
+    })
+    |> render_change()
+
+    view
+    |> form("#sales-bill-tally-posting-form", %{
+      "tally_posting" => %{"party_ledger_identity" => chosen_party.identity}
+    })
+    |> render_submit()
+
+    refute has_element?(view, "#sales-bill-posting-review")
+    refute has_element?(view, "#sales-bills-required-mappings")
+    assert has_element?(view, "#sales-bills-result", "2 sales vouchers ready")
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Ready")
+    assert has_element?(view, "#sales-bill-delivery-source-inv-002", "Ready")
   end
 
   test "an unresolved party does not prevent resolved vouchers from being queued", %{
@@ -998,10 +1154,67 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bill-delivery-INV-001", "Added")
 
     {:ok, reopened, _html} = live(conn, path)
-    assert has_element?(reopened, "#tally-posting-invoice-number[value='INV-001-A']")
-    assert has_element?(reopened, "#tally-posting-place-of-supply option[selected][value='29']")
+    assert has_element?(reopened, "#tally-posting-invoice-number-value[value='INV-001-A']")
+    assert has_element?(reopened, "#tally-posting-place-of-supply-value[value='29']")
+    assert has_element?(reopened, "#sales-bill-place-of-supply", "Karnataka")
     assert has_element?(reopened, "#sales-bill-line-summary-0", "Corrected technical services")
     assert has_element?(reopened, "#sales-bill-line-summary-0", "HSN 998713")
+  end
+
+  test "saves invoice facts in the sheet without losing posting mappings", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    batch_ref = TallyPacket.ref([dump])
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    {:ok, view, _html} = live(conn, path)
+
+    render_change(view, "preview-tally-posting", %{
+      "tally_posting" => %{
+        "party_ledger_identity" => "name:customer & co",
+        "line_sales_ledger_identities" => %{"0" => "name:sales"},
+        "igst_ledger_identity" => "name:output igst",
+        "invoice" => %{
+          "invoice_number" => "INV-001",
+          "invoice_date" => "2026-07-15",
+          "buyer_name" => "Customer & Co",
+          "buyer_gstin" => "29AAVCS8021P1ZB",
+          "place_of_supply" => "29"
+        }
+      }
+    })
+
+    view |> element("#sales-bill-edit-invoice-facts") |> render_click()
+
+    view
+    |> form("#sales-bill-invoice-facts-form",
+      invoice_facts: %{
+        invoice_number: "INV-001-A",
+        invoice_date: "2026-07-15",
+        buyer_name: "Customer & Company",
+        buyer_gstin: "29AAVCS8021P1ZB",
+        place_of_supply: "29"
+      }
+    )
+    |> render_submit()
+
+    refute has_element?(view, "#sales-bill-invoice-facts-sheet")
+    assert has_element?(view, "#sales-bill-invoice-identity", "INV-001-A · 15 Jul 2026")
+    assert has_element?(view, "#sales-bill-buyer-identity", "Customer & Company")
+    assert has_element?(view, "#sales-bill-place-of-supply", "Karnataka")
+
+    assert has_element?(
+             view,
+             "#tally_posting_party_ledger_identity option[selected]",
+             "Customer & Co"
+           )
+
+    assert has_element?(
+             view,
+             "#tally-posting-line-sales-ledger-0 option[selected]",
+             "Sales"
+           )
   end
 
   test "saves a warning and confirms it at the batch send boundary", %{

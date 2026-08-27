@@ -22,29 +22,40 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       packet = prepare_packet(dumps, client.id)
       tally_jobs = list_tally_jobs(org_id, source_prefix)
 
-      {:ok,
-       socket
-       |> assign(:page_title, "Sales bills")
-       |> assign(:client, client)
-       |> assign(:batch_ref, batch_ref)
-       |> assign(:packet, packet)
-       |> assign(:tally_company, company)
-       |> assign(:tally_source_prefix, source_prefix)
-       |> assign(:tally_jobs, tally_jobs)
-       |> assign(:selected_invoice, nil)
-       |> assign(:posting_preview_invoice, nil)
-       |> assign(:tally_posting, nil)
-       |> assign(:posting_navigation, %{previous: nil, next: nil, position: 0, total: 0})
-       |> assign(:evidence_open, false)
-       |> assign(:evidence_page, 0)
-       |> assign(:editing_line_index, nil)
-       |> assign(:line_edit_row, nil)
-       |> assign(:line_edit_form, nil)
-       |> assign(:line_edit_error, nil)
-       |> assign(:removing_invoice, nil)
-       |> assign(:confirming_tally_send, false)
-       |> assign(:send_holds, current_send_holds(org_id, company, packet))
-       |> assign(:send_error, nil)}
+      socket =
+        socket
+        |> assign(:page_title, "Sales bills")
+        |> assign(:client, client)
+        |> assign(:batch_ref, batch_ref)
+        |> assign(:packet, packet)
+        |> assign(:tally_company, company)
+        |> assign(:tally_source_prefix, source_prefix)
+        |> assign(:tally_jobs, tally_jobs)
+        |> assign(:selected_invoice, nil)
+        |> assign(:posting_preview_invoice, nil)
+        |> assign(:tally_posting, nil)
+        |> assign(:required_mapping_invoices, [])
+        |> assign(:review_mode?, false)
+        |> assign(:posting_navigation, %{previous: nil, next: nil, position: 0, total: 0})
+        |> assign(:evidence_open, false)
+        |> assign(:evidence_page, 0)
+        |> assign(:editing_line_index, nil)
+        |> assign(:editing_invoice_facts?, false)
+        |> assign(:invoice_facts_form, nil)
+        |> assign(:invoice_facts_focus, nil)
+        |> assign(:invoice_facts_return_focus, nil)
+        |> assign(:invoice_facts_error, nil)
+        |> assign(:editing_narration?, false)
+        |> assign(:line_edit_row, nil)
+        |> assign(:line_edit_form, nil)
+        |> assign(:line_edit_error, nil)
+        |> assign(:removing_invoice, nil)
+        |> assign(:confirming_tally_send, false)
+        |> assign(:send_holds, current_send_holds(org_id, company, packet))
+        |> assign(:send_error, nil)
+        |> refresh_required_mapping_invoices()
+
+      {:ok, socket}
     else
       _not_found ->
         {:ok,
@@ -57,6 +68,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   @impl true
   def handle_params(params, _uri, socket) do
     previous_id = invoice_id(socket.assigns.selected_invoice)
+    review_mode? = params["review"] == "required"
 
     invoice =
       case params["item"] do
@@ -72,19 +84,52 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
     selected_review = selected_review(socket.assigns.packet, invoice)
 
+    navigation_invoices =
+      if review_mode?,
+        do: socket.assigns.required_mapping_invoices,
+        else: socket.assigns.packet.all_invoices
+
     {:noreply,
      socket
+     |> assign(:review_mode?, review_mode?)
      |> assign(:selected_invoice, invoice)
      |> assign(:selected_review, selected_review)
      |> assign(:posting_preview_invoice, invoice)
      |> assign(:tally_posting, tally_posting(socket.assigns, invoice))
      |> assign(
        :posting_navigation,
-       posting_navigation(socket.assigns.packet.all_invoices, invoice)
+       posting_navigation(navigation_invoices, invoice)
      )
      |> assign(
        :editing_line_index,
        if(previous_id == invoice_id(invoice), do: socket.assigns.editing_line_index, else: nil)
+     )
+     |> assign(
+       :editing_invoice_facts?,
+       previous_id == invoice_id(invoice) && socket.assigns.editing_invoice_facts?
+     )
+     |> assign(
+       :invoice_facts_form,
+       if(previous_id == invoice_id(invoice), do: socket.assigns.invoice_facts_form, else: nil)
+     )
+     |> assign(
+       :invoice_facts_focus,
+       if(previous_id == invoice_id(invoice), do: socket.assigns.invoice_facts_focus, else: nil)
+     )
+     |> assign(
+       :invoice_facts_return_focus,
+       if(previous_id == invoice_id(invoice),
+         do: socket.assigns.invoice_facts_return_focus,
+         else: nil
+       )
+     )
+     |> assign(
+       :invoice_facts_error,
+       if(previous_id == invoice_id(invoice), do: socket.assigns.invoice_facts_error, else: nil)
+     )
+     |> assign(
+       :editing_narration?,
+       previous_id == invoice_id(invoice) && socket.assigns.editing_narration?
      )
      |> assign(
        :line_edit_row,
@@ -112,6 +157,12 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp state_options, do: Enum.map(StateCodes.all(), &{&1, StateCodes.code_for(&1)})
+
+  defp place_of_supply_label(nil), do: "Not identified"
+
+  defp place_of_supply_label(value) do
+    StateCodes.name_for(to_string(value)) || to_string(value)
+  end
 
   defp printed_total(invoice), do: invoice["printed_grand_total"]
 
@@ -301,7 +352,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       invoice ->
         {:noreply,
          push_patch(socket,
-           to: posting_review_path(socket.assigns.client, socket.assigns.batch_ref, invoice)
+           to:
+             posting_review_path(
+               socket.assigns.client,
+               socket.assigns.batch_ref,
+               invoice,
+               socket.assigns.review_mode?
+             )
          )}
     end
   end
@@ -311,6 +368,80 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   def handle_event("close-posting-evidence", _params, socket),
     do: {:noreply, assign(socket, :evidence_open, false)}
+
+  def handle_event("edit-invoice-facts", params, socket) do
+    if not invoice_frozen_now?(socket, socket.assigns.selected_invoice) do
+      {:noreply,
+       socket
+       |> assign(:editing_invoice_facts?, true)
+       |> assign(
+         :invoice_facts_form,
+         to_form(invoice_facts_values(socket.assigns.posting_preview_invoice), as: :invoice_facts)
+       )
+       |> assign(:invoice_facts_focus, params["field"])
+       |> assign(
+         :invoice_facts_return_focus,
+         params["return_to"] || "#sales-bill-edit-invoice-facts"
+       )
+       |> assign(:invoice_facts_error, nil)}
+    else
+      {:noreply, put_flash(socket, :error, "Sent invoice data is locked to its Tally job.")}
+    end
+  end
+
+  def handle_event("close-invoice-facts", _params, socket),
+    do: {:noreply, close_invoice_facts_editor(socket)}
+
+  def handle_event(
+        "save-invoice-facts",
+        %{"invoice_facts" => attrs},
+        %{
+          assigns: %{
+            selected_invoice: invoice,
+            tally_posting: tally_posting,
+            current_scope: current_scope
+          }
+        } = socket
+      )
+      when not is_nil(invoice) and not is_nil(tally_posting) do
+    if not invoice_frozen_now?(socket, invoice) do
+      org_id = current_scope.current_org.id
+      source_id = Gstr1.source_id(invoice)
+
+      case InvoiceCorrections.save(
+             org_id,
+             socket.assigns.client.id,
+             socket.assigns.batch_ref,
+             source_id,
+             attrs,
+             current_scope.user.id
+           ) do
+        {:ok, %{invoice: corrected_invoice}} ->
+          posting = put_invoice_facts(tally_posting.form.params, attrs)
+
+          {:noreply,
+           socket
+           |> replace_selected_invoice(corrected_invoice, posting)
+           |> close_invoice_facts_editor()}
+
+        {:error, _reason} ->
+          {:noreply,
+           socket
+           |> assign(:invoice_facts_form, to_form(attrs, as: :invoice_facts))
+           |> assign(:invoice_facts_error, "Those invoice facts could not be saved.")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Sent invoice data is locked to its Tally job.")}
+    end
+  end
+
+  def handle_event("save-invoice-facts", _params, socket), do: {:noreply, socket}
+
+  def handle_event("edit-narration", _params, socket),
+    do: {:noreply, assign(socket, :editing_narration?, true)}
+
+  def handle_event("finish-narration", _params, socket),
+    do: {:noreply, assign(socket, :editing_narration?, false)}
 
   def handle_event("posting-evidence-page", %{"page" => page}, socket) do
     count = length(socket.assigns.selected_invoice["image_urls"] || [])
@@ -538,12 +669,24 @@ defmodule NilaWeb.Gst.SalesBillsLive do
            ) do
       socket = replace_selected_invoice(socket, corrected_invoice)
 
+      destination =
+        case {socket.assigns.review_mode?, socket.assigns.required_mapping_invoices} do
+          {true, [next_invoice | _]} ->
+            posting_review_path(
+              socket.assigns.client,
+              socket.assigns.batch_ref,
+              next_invoice,
+              true
+            )
+
+          _finished_or_direct ->
+            ~p"/sales-bills/#{socket.assigns.client.id}/batch/#{socket.assigns.batch_ref}"
+        end
+
       {:noreply,
        socket
        |> put_flash(:info, "Tally posting saved.")
-       |> push_patch(
-         to: ~p"/sales-bills/#{socket.assigns.client.id}/batch/#{socket.assigns.batch_ref}"
-       )}
+       |> push_patch(to: destination)}
     else
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "That Tally posting could not be saved.")}
@@ -609,6 +752,21 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     |> assign(:line_edit_error, nil)
   end
 
+  defp close_invoice_facts_editor(socket) do
+    socket
+    |> assign(:editing_invoice_facts?, false)
+    |> assign(:invoice_facts_form, nil)
+    |> assign(:invoice_facts_focus, nil)
+    |> assign(:invoice_facts_return_focus, nil)
+    |> assign(:invoice_facts_error, nil)
+  end
+
+  defp put_invoice_facts(posting, attrs) do
+    posting = posting || %{}
+    invoice = Map.get(posting, "invoice", %{})
+    Map.put(posting, "invoice", Map.merge(invoice, attrs))
+  end
+
   defp put_line_edit(posting, index, attrs) do
     posting = posting || %{}
     invoice = Map.get(posting, "invoice", %{})
@@ -636,6 +794,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         |> Map.put("#{tax.head}_amount", tax.amount)
       end)
     end)
+  end
+
+  defp invoice_facts_values(invoice) do
+    Map.take(
+      invoice || %{},
+      ~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply)
+    )
   end
 
   defp tax_edit_field("cgst", :rate), do: :cgst_rate
@@ -1041,9 +1206,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     }
   end
 
-  defp posting_review_path(client, batch_ref, invoice) do
-    item = URI.encode_query(%{"item" => invoice["id"] || invoice["invoice_number"]})
-    "/sales-bills/#{client.id}/batch/#{batch_ref}?#{item}"
+  defp posting_review_path(client, batch_ref, invoice, review_mode? \\ false) do
+    params = %{"item" => invoice["id"] || invoice["invoice_number"]}
+    params = if review_mode?, do: Map.put(params, "review", "required"), else: params
+    "/sales-bills/#{client.id}/batch/#{batch_ref}?#{URI.encode_query(params)}"
   end
 
   defp tally_posting(_assigns, nil), do: nil
@@ -1104,6 +1270,92 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       line_rows: line_rows,
       tax_rows: tax_rows
     }
+  end
+
+  defp refresh_required_mapping_invoices(%{assigns: %{tally_company: nil}} = socket),
+    do: assign(socket, :required_mapping_invoices, [])
+
+  defp refresh_required_mapping_invoices(socket) do
+    invoices =
+      Enum.filter(socket.assigns.packet.invoices, fn invoice ->
+        not invoice_frozen?(
+          socket.assigns.tally_jobs,
+          invoice,
+          socket.assigns.packet.all_invoices
+        ) and
+          socket.assigns
+          |> tally_posting(invoice)
+          |> posting_requirements()
+          |> Enum.any?()
+      end)
+
+    assign(socket, :required_mapping_invoices, invoices)
+  end
+
+  defp posting_requirements(nil), do: []
+
+  defp posting_requirements(posting) do
+    party =
+      if blank_identity?(posting.form[:party_ledger_identity].value) do
+        [
+          %{
+            key: :party_ledger,
+            label: "Choose the Tally party ledger",
+            target: "#tally_posting_party_ledger_identity"
+          }
+        ]
+      else
+        []
+      end
+
+    sales =
+      posting.line_rows
+      |> Enum.filter(&blank_identity?(&1.sales_ledger_identity))
+      |> Enum.map(fn row ->
+        description = row.line["description"] || row.line["item_name"] || "unnamed line"
+
+        %{
+          key: {:sales_ledger, row.index},
+          label: "Choose the sales ledger for “#{description}”",
+          target: "#tally-posting-line-sales-ledger-#{row.index}"
+        }
+      end)
+
+    tax =
+      posting.tax_rows
+      |> Enum.filter(&blank_identity?(posting.form[&1.field].value))
+      |> Enum.map(fn row ->
+        %{
+          key: {:tax_ledger, row.head},
+          label: "Choose the #{row.label} ledger",
+          target: "#tally_posting_#{row.head}_ledger_identity"
+        }
+      end)
+
+    party ++ sales ++ tax
+  end
+
+  defp next_posting_requirement(posting), do: List.first(posting_requirements(posting))
+
+  defp ready_invoice_count(packet, required_mapping_invoices) do
+    max(length(packet.invoices) - length(required_mapping_invoices), 0)
+  end
+
+  defp ready_totals(packet, required_mapping_invoices) do
+    packet.invoices
+    |> Enum.reject(&required_mapping_invoice?(required_mapping_invoices, &1))
+    |> Enum.reduce(%{taxable_paise: 0, tax_paise: 0}, fn invoice, amounts ->
+      invoice_totals = totals(invoice)
+
+      %{
+        taxable_paise: amounts.taxable_paise + round(number(invoice_totals.taxable) * 100),
+        tax_paise: amounts.tax_paise + round(number(invoice_totals.tax) * 100)
+      }
+    end)
+  end
+
+  defp required_mapping_invoice?(invoices, invoice) do
+    Enum.any?(invoices, &(Gstr1.source_id(&1) == Gstr1.source_id(invoice)))
   end
 
   defp resolved_party(org_id, company_id, invoice) do
@@ -1179,6 +1431,37 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     |> Map.get("line_items", [])
     |> Enum.reduce(0.0, fn line, total -> total + number(line["#{head}_amount"]) end)
   end
+
+  defp tax_posting_label(invoice, head, fallback) do
+    rates =
+      invoice
+      |> Map.get("line_items", [])
+      |> Enum.map(&number(&1["#{head}_rate"]))
+      |> Enum.filter(&(&1 > 0))
+      |> Enum.uniq()
+
+    case rates do
+      [rate] -> "#{fallback} #{working_number(rate)}%"
+      _ -> fallback
+    end
+  end
+
+  defp missing_mapping_text(posting) do
+    identities =
+      [posting.form[:party_ledger_identity].value] ++
+        Enum.map(posting.line_rows, & &1.sales_ledger_identity) ++
+        Enum.map(posting.tax_rows, fn row -> posting.form[row.field].value end)
+
+    case Enum.count(identities, &blank_identity?/1) do
+      0 -> "Complete"
+      1 -> "1 required"
+      count -> "#{count} required"
+    end
+  end
+
+  defp blank_identity?(nil), do: true
+  defp blank_identity?(identity) when is_binary(identity), do: String.trim(identity) == ""
+  defp blank_identity?(_identity), do: false
 
   defp tax_ledger_field("cgst"), do: :cgst_ledger_identity
   defp tax_ledger_field("sgst"), do: :sgst_ledger_identity
@@ -1267,6 +1550,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         socket
         |> assign(:packet, packet)
         |> assign(:send_holds, current_send_holds(org_id, socket.assigns.tally_company, packet))
+        |> refresh_required_mapping_invoices()
 
       {:error, _reason} ->
         socket
@@ -1401,17 +1685,17 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp selected_delivery_state(%{status: "indeterminate"}), do: :unknown
   defp selected_delivery_state(%{status: "failed"}), do: :failed
 
-  defp invoice_delivery(invoice, jobs, packet, send_holds) do
+  defp invoice_delivery(invoice, jobs, packet, send_holds, required_mapping_invoices) do
     case selected_delivery_state(selected_tally_job(jobs, invoice, packet.all_invoices)) do
       :sending -> %{label: "Adding…", variant: "info"}
       :added -> %{label: "Added", variant: "success"}
       :unknown -> %{label: "Check in Tally", variant: "warning"}
       :failed -> %{label: "Couldn't add", variant: "error"}
-      nil -> invoice_readiness_delivery(packet, invoice, send_holds)
+      nil -> invoice_readiness_delivery(packet, invoice, send_holds, required_mapping_invoices)
     end
   end
 
-  defp invoice_readiness_delivery(packet, invoice, send_holds) do
+  defp invoice_readiness_delivery(packet, invoice, send_holds, required_mapping_invoices) do
     cond do
       Enum.any?(packet.excluded, &(Gstr1.source_id(&1) == Gstr1.source_id(invoice))) ->
         %{label: "Not included", variant: "neutral"}
@@ -1423,6 +1707,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         %{label: "Cannot send", variant: "error"}
 
       Map.get(send_holds, Gstr1.source_id(invoice)) == :needs_review or
+        required_mapping_invoice?(required_mapping_invoices, invoice) or
           invoice_case(packet.warnings, invoice) ->
         %{label: "Needs review", variant: "warning"}
 
@@ -1448,6 +1733,43 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     case invoice_case(packet.needs_review, invoice) do
       nil -> nil
       review_case -> review_presentation(review_case)
+    end
+  end
+
+  defp review_items(nil, _target), do: []
+  defp review_items(review, target), do: Enum.filter(review.items, &(&1.target == target))
+
+  defp review_line_items(nil, _index), do: []
+
+  defp review_line_items(review, index) do
+    line_number = index + 1
+    Enum.filter(review.items, &(&1.target == :lines and line_number in &1.lines))
+  end
+
+  defp review_item_copy(%{detail: detail}) when is_binary(detail), do: detail
+  defp review_item_copy(_item), do: "Review this value before saving."
+
+  defp review_item_focus(%{target: :place_of_supply}), do: "place_of_supply"
+
+  defp review_item_focus(%{codes: codes}) do
+    cond do
+      Enum.any?(codes, &(&1 in ~w(unreadable_invoice_date))) ->
+        "invoice_date"
+
+      Enum.any?(
+        codes,
+        &(&1 in ~w(missing_invoice_number implausible_invoice_number duplicate_invoice_number))
+      ) ->
+        "invoice_number"
+
+      Enum.any?(
+        codes,
+        &(&1 in ~w(invalid_gstin recipient_registration_conflict unknown_recipient_registration))
+      ) ->
+        "buyer_gstin"
+
+      true ->
+        "invoice_number"
     end
   end
 
@@ -1491,7 +1813,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             <p class="text-ink-muted text-ui">{@client.name}</p>
 
             <h1 class="font-display text-base-content text-statement font-normal">
-              <%= case length(@packet.invoices) do %>
+              <%= case ready_invoice_count(@packet, @required_mapping_invoices) do %>
                 <% 0 -> %>
                   No sales vouchers ready
                 <% 1 -> %>
@@ -1501,8 +1823,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               <% end %>
             </h1>
 
-            <p :if={@packet.invoices != []} class="text-ink-muted text-lead tabular-nums">
-              {money(@packet.taxable_paise)} taxable · {money(@packet.tax_paise)} tax
+            <p
+              :if={ready_invoice_count(@packet, @required_mapping_invoices) > 0}
+              class="text-ink-muted text-lead tabular-nums"
+            >
+              {money(ready_totals(@packet, @required_mapping_invoices).taxable_paise)} taxable · {money(
+                ready_totals(@packet, @required_mapping_invoices).tax_paise
+              )} tax
             </p>
           </div>
 
@@ -1607,6 +1934,38 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         </p>
 
         <section
+          :if={@required_mapping_invoices != []}
+          id="sales-bills-required-mappings"
+          class="gap-block flex items-center justify-between"
+        >
+          <div class="space-y-related">
+            <h2 class="text-base-content text-h4 font-semibold">
+              {length(@required_mapping_invoices)} {plural(
+                length(@required_mapping_invoices),
+                "invoice"
+              )} {if(length(@required_mapping_invoices) == 1, do: "needs", else: "need")} Tally details
+            </h2>
+            <p class="text-ink-muted text-ui">
+              Choose only the posting ledgers Nila could not determine.
+            </p>
+          </div>
+
+          <.button
+            id="sales-bills-review-required"
+            patch={
+              posting_review_path(
+                @client,
+                @batch_ref,
+                List.first(@required_mapping_invoices),
+                true
+              )
+            }
+          >
+            Review {length(@required_mapping_invoices)}
+          </.button>
+        </section>
+
+        <section
           :if={@packet.needs_review != []}
           id="sales-bills-needs-review"
           class="space-y-related"
@@ -1699,8 +2058,22 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
             <:col :let={invoice} label="Tally">
               <span id={"sales-bill-delivery-#{invoice_id(invoice)}"} class="whitespace-nowrap">
-                <.badge variant={invoice_delivery(invoice, @tally_jobs, @packet, @send_holds).variant}>
-                  {invoice_delivery(invoice, @tally_jobs, @packet, @send_holds).label}
+                <.badge variant={
+                  invoice_delivery(
+                    invoice,
+                    @tally_jobs,
+                    @packet,
+                    @send_holds,
+                    @required_mapping_invoices
+                  ).variant
+                }>
+                  {invoice_delivery(
+                    invoice,
+                    @tally_jobs,
+                    @packet,
+                    @send_holds,
+                    @required_mapping_invoices
+                  ).label}
                 </.badge>
               </span>
             </:col>
@@ -1810,7 +2183,9 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         title={"Invoice #{@selected_invoice["invoice_number"] || "without a number"}"}
         on_close="close-posting-review"
         variant="workbench"
-        close_on_escape={is_nil(@editing_line_index) and not @evidence_open}
+        close_on_escape={
+          is_nil(@editing_line_index) and not @editing_invoice_facts? and not @evidence_open
+        }
       >
         <:header :let={title_id}>
           <div class="grid items-center gap-3 lg:grid-cols-[1fr_auto_1fr]">
@@ -1826,6 +2201,12 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               </.button>
             </div>
             <div class="text-center">
+              <p :if={@review_mode?} class="text-ink-muted text-ui">
+                Review · {length(@required_mapping_invoices)} {plural(
+                  length(@required_mapping_invoices),
+                  "invoice"
+                )} left
+              </p>
               <h2 id={title_id} class="text-base-content text-body font-semibold">
                 Invoice {@selected_invoice["invoice_number"] || "without a number"}
               </h2>
@@ -1870,7 +2251,11 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           data-previous-item={invoice_id(@posting_navigation.previous)}
           data-next-item={invoice_id(@posting_navigation.next)}
           data-navigation-enabled={
-            if(is_nil(@editing_line_index) and not @evidence_open, do: "true", else: "false")
+            if(
+              is_nil(@editing_line_index) and not @editing_invoice_facts? and not @evidence_open,
+              do: "true",
+              else: "false"
+            )
           }
           class="gap-block grid h-full min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:grid-rows-[minmax(0,1fr)]"
         >
@@ -1897,29 +2282,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             <div
               :if={@selected_review}
               id="sales-bill-review-issues"
-              class="border-warning mb-block space-y-related border-l-2 pl-3"
+              class="mb-block max-w-3xl"
             >
-              <p class="text-base-content text-ui font-medium">{@selected_review.summary}</p>
-              <ul
-                :if={@selected_review.details != []}
-                class="text-ink-muted text-ui space-y-1"
-              >
-                <li :for={detail <- @selected_review.details}>{detail}</li>
-              </ul>
-            </div>
-
-            <div class="border-base-300 mb-block flex flex-wrap items-end justify-between gap-3 border-b pb-3">
-              <div>
-                <div class="text-ink-subtle text-label font-semibold uppercase">
-                  Proposed Tally voucher
+              <div class="text-warning flex items-start gap-3">
+                <.icon name="hero-exclamation-triangle" class="mt-0.5 size-5 shrink-0" />
+                <div>
+                  <p class="text-ui font-semibold">{@selected_review.summary}</p>
+                  <p :for={detail <- @selected_review.details} class="text-ui mt-1">{detail}</p>
                 </div>
-                <div class="text-base-content text-h4 mt-1 font-semibold">
-                  {voucher_type(@selected_invoice)} invoice
-                </div>
-              </div>
-              <div :if={@tally_company} class="text-right">
-                <div class="text-ink-subtle text-label font-semibold uppercase">Company</div>
-                <div class="text-base-content text-ui mt-1 font-medium">{@tally_company.name}</div>
               </div>
             </div>
 
@@ -1929,312 +2299,502 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               id="sales-bill-tally-posting-form"
               phx-submit="save-tally-posting"
               phx-change="preview-tally-posting"
-              class="space-y-block"
             >
-              <section class="space-y-related">
-                <h3 class="text-base-content text-ui font-semibold">Voucher details</h3>
-                <div class="gap-block grid sm:grid-cols-3">
-                  <.input
-                    id="tally-posting-invoice-number"
-                    name="tally_posting[invoice][invoice_number]"
-                    value={@posting_preview_invoice["invoice_number"]}
-                    label="Voucher number"
-                    required
-                  />
-                  <.input
-                    id="tally-posting-invoice-date"
-                    name="tally_posting[invoice][invoice_date]"
-                    value={@posting_preview_invoice["invoice_date"]}
-                    type="date"
-                    label="Voucher date"
-                    required
-                  />
-                  <.input
-                    id="tally-posting-place-of-supply"
-                    name="tally_posting[invoice][place_of_supply]"
-                    value={@posting_preview_invoice["place_of_supply"]}
-                    type="select"
-                    label="Place of supply"
-                    prompt="Select state / UT"
-                    options={state_options()}
-                    required
-                  />
-                </div>
-              </section>
-
-              <section class="border-base-300 space-y-related border-t pt-4">
-                <h3 class="text-base-content text-ui font-semibold">Party</h3>
-                <div class="gap-block grid sm:grid-cols-2">
-                  <.input
-                    id="tally-posting-buyer-name"
-                    name="tally_posting[invoice][buyer_name]"
-                    value={@posting_preview_invoice["buyer_name"]}
-                    label="Buyer name"
-                    required
-                  />
-                  <.input
-                    id="tally-posting-buyer-gstin"
-                    name="tally_posting[invoice][buyer_gstin]"
-                    value={@posting_preview_invoice["buyer_gstin"]}
-                    label="Buyer GSTIN"
-                  />
-                </div>
-                <.input
-                  field={@tally_posting.form[:party_ledger_identity]}
-                  type="select"
-                  label="Tally party ledger"
-                  prompt="Select party ledger"
-                  options={@tally_posting.party_choices}
-                  required
-                />
-              </section>
-
-              <section
-                id="sales-bill-ledger-allocations"
-                class="border-base-300 space-y-related border-t pt-4"
-              >
-                <div class="flex items-baseline justify-between gap-3">
-                  <h3 class="text-base-content text-ui font-semibold">Ledger allocations</h3>
-                  <span class="text-ink-subtle text-ui">
-                    {length(@tally_posting.line_rows)} {plural(
-                      length(@tally_posting.line_rows),
-                      "line"
-                    )}
-                  </span>
-                </div>
-                <.data_table
-                  id="sales-bill-posting-lines"
-                  rows={@tally_posting.line_rows}
-                  row_id={fn row -> "sales-bill-posting-line-#{row.index}" end}
-                  mode="review"
-                  min_width="min-w-[760px]"
-                >
-                  <:col :let={row} label="Invoice line" row_header class="min-w-72">
-                    <div id={"sales-bill-line-summary-#{row.index}"} class="space-y-1">
-                      <p class="text-base-content text-ui font-medium">
-                        {row.line["description"] || row.line["item_name"] || "Unnamed line"}
+              <div class="pb-canvas space-y-section">
+                <section id="sales-bill-invoice-facts" class="space-y-block max-w-3xl">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 class="text-base-content text-h4 font-semibold">
+                        {voucher_type(@selected_invoice)} invoice
+                      </h3>
+                      <p :if={@tally_company} class="text-ink-muted text-ui mt-1">
+                        Tally · {@tally_company.name}
                       </p>
-                      <p class="text-ink-muted text-ui">
-                        HSN {row.line["hsn_sac"] || "—"} · {working_number(row.line["quantity"])} {row.line[
-                          "uom"
-                        ]} × {rupees(
-                          row.line["printed_unit_price"] || row.line["unit_price"] ||
-                            row.line["rate"]
-                        )}
-                      </p>
-                      <.input
-                        type="hidden"
-                        name={"tally_posting[invoice][line_items][#{row.index}][description]"}
-                        value={row.line["description"] || row.line["item_name"]}
-                      />
-                      <.input
-                        type="hidden"
-                        name={"tally_posting[invoice][line_items][#{row.index}][hsn_sac]"}
-                        value={row.line["hsn_sac"]}
-                      />
-                      <.input
-                        type="hidden"
-                        name={"tally_posting[invoice][line_items][#{row.index}][quantity]"}
-                        value={row.line["quantity"]}
-                      />
-                      <.input
-                        type="hidden"
-                        name={"tally_posting[invoice][line_items][#{row.index}][uom]"}
-                        value={row.line["uom"]}
-                      />
-                      <.input
-                        type="hidden"
-                        name={"tally_posting[invoice][line_items][#{row.index}][rate]"}
-                        value={
-                          row.line["printed_unit_price"] || row.line["unit_price"] ||
-                            row.line["rate"]
-                        }
-                      />
                     </div>
-                  </:col>
-                  <:col :let={row} label="Taxable" align="right" class="w-32">
-                    <div class="space-y-1 tabular-nums">
-                      <span class="text-base-content text-ui block font-medium">
-                        {rupees(row.line["taxable_value"])}
-                      </span>
-                      <span class="text-ink-muted text-ui block">Taxable</span>
+                    <.button
+                      id="sales-bill-edit-invoice-facts"
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      phx-click="edit-invoice-facts"
+                      phx-value-return_to="#sales-bill-edit-invoice-facts"
+                    >
+                      <.icon name="hero-pencil-square" class="size-4" /> Edit invoice facts
+                    </.button>
+                  </div>
+
+                  <.callout
+                    :for={{item, index} <- Enum.with_index(review_items(@selected_review, :facts))}
+                    kind="warning"
+                    size="compact"
+                    title={item.summary}
+                  >
+                    <div class="gap-related flex items-start justify-between">
+                      <span>{review_item_copy(item)}</span>
+                      <.button
+                        id={"sales-bill-fix-invoice-fact-#{index}"}
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        phx-click="edit-invoice-facts"
+                        phx-value-field={review_item_focus(item)}
+                        phx-value-return_to={"#sales-bill-fix-invoice-fact-#{index}"}
+                      >
+                        Fix
+                      </.button>
                     </div>
+                  </.callout>
+
+                  <div>
                     <.input
+                      id="tally-posting-invoice-number-value"
+                      name="tally_posting[invoice][invoice_number]"
+                      value={@posting_preview_invoice["invoice_number"]}
                       type="hidden"
-                      name={"tally_posting[invoice][line_items][#{row.index}][taxable_value]"}
-                      value={row.line["taxable_value"]}
                     />
-                  </:col>
-                  <:col :let={row} label="GST" class="min-w-36">
-                    <div class="space-y-related">
-                      <span :if={row.tax_rows == []} class="text-ink-muted text-ui">—</span>
-                      <div :for={tax <- row.tax_rows} class="text-ui tabular-nums">
-                        <span class="text-base-content block font-medium">
-                          {tax.label} {working_number(tax.rate)}%
+                    <.input
+                      id="tally-posting-invoice-date-value"
+                      name="tally_posting[invoice][invoice_date]"
+                      value={@posting_preview_invoice["invoice_date"]}
+                      type="hidden"
+                    />
+                    <.input
+                      id="tally-posting-buyer-name-value"
+                      name="tally_posting[invoice][buyer_name]"
+                      value={@posting_preview_invoice["buyer_name"]}
+                      type="hidden"
+                    />
+                    <.input
+                      id="tally-posting-buyer-gstin-value"
+                      name="tally_posting[invoice][buyer_gstin]"
+                      value={@posting_preview_invoice["buyer_gstin"]}
+                      type="hidden"
+                    />
+                    <.input
+                      id="tally-posting-place-of-supply-value"
+                      name="tally_posting[invoice][place_of_supply]"
+                      value={@posting_preview_invoice["place_of_supply"]}
+                      type="hidden"
+                    />
+                  </div>
+
+                  <div class="gap-block grid items-end lg:grid-cols-[minmax(0,1fr)_20rem]">
+                    <div class="space-y-1 self-center">
+                      <p
+                        id="sales-bill-invoice-identity"
+                        class="text-base-content text-ui font-medium"
+                      >
+                        {@posting_preview_invoice["invoice_number"] || "Invoice without a number"}
+                        <span :if={@posting_preview_invoice["invoice_date"]}>
+                          · {format_display_date(@posting_preview_invoice["invoice_date"])}
                         </span>
-                        <span class="text-ink-muted">{rupees(tax.amount)}</span>
-                        <.input
-                          type="hidden"
-                          name={"tally_posting[invoice][line_items][#{row.index}][#{tax.head}_rate]"}
-                          value={tax.rate}
-                        />
-                        <.input
-                          type="hidden"
-                          name={"tally_posting[invoice][line_items][#{row.index}][#{tax.head}_amount]"}
-                          value={tax.amount}
-                        />
+                      </p>
+                      <p id="sales-bill-buyer-identity" class="text-ink-muted text-ui">
+                        {@posting_preview_invoice["buyer_name"] || "Buyer not identified"}
+                        <span :if={@posting_preview_invoice["buyer_gstin"]}>
+                          · {@posting_preview_invoice["buyer_gstin"]}
+                        </span>
+                      </p>
+                    </div>
+
+                    <div class="space-y-related">
+                      <.callout
+                        :for={
+                          {item, index} <-
+                            Enum.with_index(review_items(@selected_review, :place_of_supply))
+                        }
+                        kind="warning"
+                        size="compact"
+                        title={item.summary}
+                      >
+                        <div class="gap-related flex items-start justify-between">
+                          <span>{review_item_copy(item)}</span>
+                          <.button
+                            id={"sales-bill-fix-place-of-supply-#{index}"}
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            phx-click="edit-invoice-facts"
+                            phx-value-field="place_of_supply"
+                            phx-value-return_to={"#sales-bill-fix-place-of-supply-#{index}"}
+                          >
+                            Fix
+                          </.button>
+                        </div>
+                      </.callout>
+                      <div>
+                        <p class="text-ink-muted text-ui">Place of supply</p>
+                        <p
+                          id="sales-bill-place-of-supply"
+                          class="text-base-content text-ui font-medium"
+                        >
+                          {place_of_supply_label(@posting_preview_invoice["place_of_supply"])}
+                        </p>
                       </div>
                     </div>
-                  </:col>
-                  <:col :let={row} label="Tally sales ledger" class="min-w-48 align-middle">
-                    <.input
-                      id={"tally-posting-line-sales-ledger-#{row.index}"}
-                      name={"tally_posting[line_sales_ledger_identities][#{row.index}]"}
-                      value={row.sales_ledger_identity}
-                      type="select"
-                      prompt="Select ledger"
-                      options={@tally_posting.sales_choices}
-                      aria-label={"Line #{row.index + 1} Tally sales ledger"}
-                      required
-                    />
-                  </:col>
-                  <:col :let={row} label="" align="center" class="w-10 align-middle">
-                    <button
-                      id={"sales-bill-edit-line-#{row.index}"}
-                      type="button"
-                      class={[
-                        "focus-visible:outline-focus rounded-field text-ink-subtle grid size-8 place-items-center transition focus-visible:outline-2 focus-visible:outline-offset-2",
-                        not invoice_frozen?(
-                          @tally_jobs,
-                          @selected_invoice,
-                          @packet.all_invoices
-                        ) &&
-                          "hover:bg-base-200 hover:text-ink cursor-pointer",
-                        invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices) &&
-                          "cursor-not-allowed opacity-50"
-                      ]}
-                      phx-click="edit-posting-line"
-                      phx-value-index={row.index}
-                      disabled={invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices)}
-                      aria-label={"Edit invoice line #{row.index + 1}"}
-                      title={
-                        if(
-                          invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices),
-                          do: "Locked after sending",
-                          else: "Edit line"
-                        )
-                      }
-                    >
-                      <.icon name="hero-pencil-square" class="size-4" />
-                    </button>
-                  </:col>
-                </.data_table>
-              </section>
-
-              <section class="border-base-300 space-y-related border-t pt-4">
-                <h3 class="text-base-content text-ui font-semibold">Tax posting</h3>
-                <div
-                  :for={row <- @tally_posting.tax_rows}
-                  id={"sales-bill-tax-row-#{row.head}"}
-                  class="gap-block grid items-end sm:grid-cols-[minmax(0,1fr)_auto]"
-                >
-                  <.input
-                    field={@tally_posting.form[row.field]}
-                    type="select"
-                    label={"#{row.label} ledger"}
-                    prompt={"Select #{row.label} ledger"}
-                    options={@tally_posting.tax_choices}
-                    required
-                  />
-                  <div class="text-ui pb-2 text-right tabular-nums">
-                    <span class="text-ink-subtle block">Amount</span>
-                    <span class="text-base-content font-medium">{rupees(row.amount)}</span>
                   </div>
+                </section>
+
+                <section id="sales-bill-accounting-mappings" class="space-y-block">
+                  <div class="space-y-related max-w-3xl">
+                    <div class="gap-related flex items-baseline">
+                      <h3 class="text-base-content text-h4 font-semibold">Accounting mappings</h3>
+                      <span id="sales-bill-mappings-remaining" class="text-ink-muted text-ui">
+                        {missing_mapping_text(@tally_posting)}
+                      </span>
+                    </div>
+
+                    <div id="sales-bill-party-mapping" class="max-w-lg">
+                      <.input
+                        field={@tally_posting.form[:party_ledger_identity]}
+                        type="select"
+                        label="Tally party ledger"
+                        prompt="Select party ledger"
+                        options={@tally_posting.party_choices}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <section id="sales-bill-ledger-allocations" class="space-y-related">
+                    <div class="flex items-baseline justify-between gap-3">
+                      <h3 class="text-base-content text-ui font-semibold">Ledger allocations</h3>
+                      <span class="text-ink-subtle text-ui">
+                        {length(@tally_posting.line_rows)} {plural(
+                          length(@tally_posting.line_rows),
+                          "line"
+                        )}
+                      </span>
+                    </div>
+                    <.callout
+                      :for={item <- review_items(@selected_review, :allocations)}
+                      kind="warning"
+                      size="compact"
+                      title={item.summary}
+                    >
+                      {review_item_copy(item)}
+                    </.callout>
+                    <.data_table
+                      id="sales-bill-posting-lines"
+                      rows={@tally_posting.line_rows}
+                      row_id={fn row -> "sales-bill-posting-line-#{row.index}" end}
+                      mode="review"
+                      min_width="min-w-[760px]"
+                    >
+                      <:col :let={row} label="Invoice line" row_header class="w-2/5 min-w-72">
+                        <div id={"sales-bill-line-summary-#{row.index}"} class="space-y-1">
+                          <p class="text-base-content text-ui font-medium">
+                            {row.line["description"] || row.line["item_name"] || "Unnamed line"}
+                          </p>
+                          <p class="text-ink-muted text-ui">
+                            HSN {row.line["hsn_sac"] || "—"} · {working_number(row.line["quantity"])} {row.line[
+                              "uom"
+                            ]} × {rupees(
+                              row.line["printed_unit_price"] || row.line["unit_price"] ||
+                                row.line["rate"]
+                            )}
+                          </p>
+                          <p
+                            :for={item <- review_line_items(@selected_review, row.index)}
+                            class="text-ui text-warning font-medium"
+                          >
+                            {item.summary}
+                          </p>
+                          <.input
+                            type="hidden"
+                            name={"tally_posting[invoice][line_items][#{row.index}][description]"}
+                            value={row.line["description"] || row.line["item_name"]}
+                          />
+                          <.input
+                            type="hidden"
+                            name={"tally_posting[invoice][line_items][#{row.index}][hsn_sac]"}
+                            value={row.line["hsn_sac"]}
+                          />
+                          <.input
+                            type="hidden"
+                            name={"tally_posting[invoice][line_items][#{row.index}][quantity]"}
+                            value={row.line["quantity"]}
+                          />
+                          <.input
+                            type="hidden"
+                            name={"tally_posting[invoice][line_items][#{row.index}][uom]"}
+                            value={row.line["uom"]}
+                          />
+                          <.input
+                            type="hidden"
+                            name={"tally_posting[invoice][line_items][#{row.index}][rate]"}
+                            value={
+                              row.line["printed_unit_price"] || row.line["unit_price"] ||
+                                row.line["rate"]
+                            }
+                          />
+                        </div>
+                      </:col>
+                      <:col :let={row} label="Taxable" align="right" class="w-32">
+                        <div class="tabular-nums">
+                          <span class="text-base-content text-ui block font-medium">
+                            {rupees(row.line["taxable_value"])}
+                          </span>
+                        </div>
+                        <.input
+                          type="hidden"
+                          name={"tally_posting[invoice][line_items][#{row.index}][taxable_value]"}
+                          value={row.line["taxable_value"]}
+                        />
+                      </:col>
+                      <:col :let={row} label="GST" align="right" class="w-44">
+                        <div class="space-y-1 text-right tabular-nums">
+                          <span :if={row.tax_rows == []} class="text-ink-muted text-ui">—</span>
+                          <div
+                            :for={tax <- row.tax_rows}
+                            class="text-ui flex items-baseline justify-end gap-1 whitespace-nowrap tabular-nums"
+                          >
+                            <span class="text-base-content font-medium whitespace-nowrap">
+                              {tax.label} {working_number(tax.rate)}%
+                            </span>
+                            <span class="text-ink-muted whitespace-nowrap">
+                              · {rupees(tax.amount)}
+                            </span>
+                            <.input
+                              type="hidden"
+                              name={"tally_posting[invoice][line_items][#{row.index}][#{tax.head}_rate]"}
+                              value={tax.rate}
+                            />
+                            <.input
+                              type="hidden"
+                              name={"tally_posting[invoice][line_items][#{row.index}][#{tax.head}_amount]"}
+                              value={tax.amount}
+                            />
+                          </div>
+                        </div>
+                      </:col>
+                      <:col :let={row} label="Tally sales ledger" class="w-1/4 min-w-60 align-middle">
+                        <.input
+                          id={"tally-posting-line-sales-ledger-#{row.index}"}
+                          name={"tally_posting[line_sales_ledger_identities][#{row.index}]"}
+                          value={row.sales_ledger_identity}
+                          type="select"
+                          prompt="Select ledger"
+                          options={@tally_posting.sales_choices}
+                          aria-label={"Line #{row.index + 1} Tally sales ledger"}
+                          required
+                        />
+                      </:col>
+                      <:col :let={row} label="" align="center" class="w-10 align-middle">
+                        <button
+                          id={"sales-bill-edit-line-#{row.index}"}
+                          type="button"
+                          class={[
+                            "focus-visible:outline-focus rounded-field text-ink-subtle grid size-8 place-items-center transition focus-visible:outline-2 focus-visible:outline-offset-2",
+                            not invoice_frozen?(
+                              @tally_jobs,
+                              @selected_invoice,
+                              @packet.all_invoices
+                            ) &&
+                              "hover:bg-base-200 hover:text-ink cursor-pointer",
+                            invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices) &&
+                              "cursor-not-allowed opacity-50"
+                          ]}
+                          phx-click="edit-posting-line"
+                          phx-value-index={row.index}
+                          disabled={
+                            invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices)
+                          }
+                          aria-label={"Edit invoice line #{row.index + 1}"}
+                          title={
+                            if(
+                              invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices),
+                              do: "Locked after sending",
+                              else: "Edit line"
+                            )
+                          }
+                        >
+                          <.icon name="hero-pencil-square" class="size-4" />
+                        </button>
+                      </:col>
+                    </.data_table>
+                  </section>
+
+                  <section id="sales-bill-tax-posting" class="space-y-related max-w-3xl">
+                    <h3 class="text-base-content text-ui font-semibold">Tax ledgers</h3>
+                    <div
+                      :for={row <- @tally_posting.tax_rows}
+                      id={"sales-bill-tax-row-#{row.head}"}
+                      class="gap-block grid items-center sm:grid-cols-[7rem_minmax(0,32rem)_auto]"
+                    >
+                      <span class="text-base-content text-ui font-medium">
+                        {tax_posting_label(@posting_preview_invoice, row.head, row.label)}
+                      </span>
+                      <.input
+                        field={@tally_posting.form[row.field]}
+                        type="select"
+                        prompt={"Select #{row.label} ledger"}
+                        options={@tally_posting.tax_choices}
+                        aria-label={"#{row.label} ledger"}
+                        required
+                      />
+                      <span class="text-base-content text-ui text-right font-medium tabular-nums">
+                        {rupees(row.amount)}
+                      </span>
+                    </div>
+                  </section>
+                </section>
+
+                <section id="sales-bill-narration" class="space-y-related max-w-3xl">
+                  <div class="flex items-center justify-between gap-3">
+                    <h3 class="text-base-content text-ui font-semibold">Narration</h3>
+                    <.button
+                      :if={not @editing_narration?}
+                      id="sales-bill-edit-narration"
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      phx-click="edit-narration"
+                    >
+                      Edit
+                    </.button>
+                    <.button
+                      :if={@editing_narration?}
+                      id="sales-bill-finish-narration"
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      phx-click="finish-narration"
+                    >
+                      Done
+                    </.button>
+                  </div>
+
+                  <p
+                    :if={not @editing_narration?}
+                    id="sales-bill-narration-value"
+                    class="text-ink-muted text-ui"
+                  >
+                    {narration(@posting_preview_invoice)}
+                  </p>
+                  <.input
+                    :if={not @editing_narration?}
+                    id="tally-posting-narration-value"
+                    name="tally_posting[invoice][narration]"
+                    value={narration(@posting_preview_invoice)}
+                    type="hidden"
+                  />
+                  <.input
+                    :if={@editing_narration?}
+                    id="tally-posting-narration"
+                    name="tally_posting[invoice][narration]"
+                    value={narration(@posting_preview_invoice)}
+                    type="textarea"
+                    aria-label="Narration"
+                    rows="2"
+                  />
+                </section>
+
+                <.callout
+                  :if={total_mismatch?(@posting_preview_invoice)}
+                  kind="warning"
+                  size="compact"
+                  title="Invoice total does not match the lines"
+                >
+                  The lines calculate to {rupees(invoice_total(@posting_preview_invoice))}; the invoice
+                  prints {rupees(printed_total(@posting_preview_invoice))}. Review the figures, or sync if
+                  this is the voucher the accountant intends to post.
+                </.callout>
+
+                <p
+                  :if={@send_error}
+                  id="sales-bill-posting-send-error"
+                  class="text-error text-ui"
+                >
+                  {@send_error}
+                </p>
+
+                <div
+                  :if={
+                    selected_delivery_state(
+                      selected_tally_job(@tally_jobs, @selected_invoice, @packet.all_invoices)
+                    ) ==
+                      :sending
+                  }
+                  id="sales-bill-posting-sending"
+                  class="text-base-content text-ui flex items-center gap-2 font-semibold"
+                >
+                  <.spinner tone="accent" label="Sending to Tally" /> Sending to Tally
                 </div>
-              </section>
-
-              <section class="border-base-300 border-t pt-4">
-                <.input
-                  id="tally-posting-narration"
-                  name="tally_posting[invoice][narration]"
-                  value={narration(@posting_preview_invoice)}
-                  type="textarea"
-                  label="Narration"
-                  rows="3"
-                />
-              </section>
-
-              <.callout
-                :if={total_mismatch?(@posting_preview_invoice)}
-                kind="warning"
-                size="compact"
-                title="Invoice total does not match the lines"
-              >
-                The lines calculate to {rupees(invoice_total(@posting_preview_invoice))}; the invoice
-                prints {rupees(printed_total(@posting_preview_invoice))}. Review the figures, or sync if
-                this is the voucher the accountant intends to post.
-              </.callout>
-
-              <p
-                :if={@send_error}
-                id="sales-bill-posting-send-error"
-                class="text-error text-ui"
-              >
-                {@send_error}
-              </p>
-
-              <div
-                :if={
-                  selected_delivery_state(
-                    selected_tally_job(@tally_jobs, @selected_invoice, @packet.all_invoices)
-                  ) ==
-                    :sending
-                }
-                id="sales-bill-posting-sending"
-                class="text-base-content text-ui flex items-center gap-2 font-semibold"
-              >
-                <.spinner tone="accent" label="Sending to Tally" /> Sending to Tally
+                <p
+                  :if={
+                    selected_delivery_state(
+                      selected_tally_job(@tally_jobs, @selected_invoice, @packet.all_invoices)
+                    ) ==
+                      :added
+                  }
+                  id="sales-bill-posting-added"
+                  class="text-success text-ui font-semibold"
+                >
+                  Added to Tally and verified
+                </p>
+                <.callout
+                  :if={
+                    selected_delivery_state(
+                      selected_tally_job(@tally_jobs, @selected_invoice, @packet.all_invoices)
+                    ) ==
+                      :unknown
+                  }
+                  kind="warning"
+                  size="compact"
+                  title="Tally outcome needs verification"
+                >
+                  Nila could not confirm whether this voucher was added. Use Check Tally from the batch.
+                </.callout>
+                <p
+                  :if={
+                    selected_delivery_state(
+                      selected_tally_job(@tally_jobs, @selected_invoice, @packet.all_invoices)
+                    ) ==
+                      :failed
+                  }
+                  id="sales-bill-posting-failed"
+                  class="text-error text-ui"
+                >
+                  This voucher was not added to Tally. Correct it and try again.
+                </p>
               </div>
-              <p
-                :if={
-                  selected_delivery_state(
-                    selected_tally_job(@tally_jobs, @selected_invoice, @packet.all_invoices)
-                  ) ==
-                    :added
-                }
-                id="sales-bill-posting-added"
-                class="text-success text-ui font-semibold"
-              >
-                Added to Tally and verified
-              </p>
-              <.callout
-                :if={
-                  selected_delivery_state(
-                    selected_tally_job(@tally_jobs, @selected_invoice, @packet.all_invoices)
-                  ) ==
-                    :unknown
-                }
-                kind="warning"
-                size="compact"
-                title="Tally outcome needs verification"
-              >
-                Nila could not confirm whether this voucher was added. Use Check Tally from the batch.
-              </.callout>
-              <p
-                :if={
-                  selected_delivery_state(
-                    selected_tally_job(@tally_jobs, @selected_invoice, @packet.all_invoices)
-                  ) ==
-                    :failed
-                }
-                id="sales-bill-posting-failed"
-                class="text-error text-ui"
-              >
-                This voucher was not added to Tally. Correct it and try again.
-              </p>
 
               <div class="bg-base-100 border-base-300 sticky bottom-0 border-t py-4">
-                <div class="gap-block flex flex-col lg:flex-row lg:items-end lg:justify-between">
+                <div
+                  :if={next_posting_requirement(@tally_posting)}
+                  id="sales-bill-next-required-mapping"
+                  class="gap-block flex flex-col lg:flex-row lg:items-center lg:justify-between"
+                >
+                  <div class="min-w-0">
+                    <p class="text-base-content text-ui font-semibold">
+                      {length(posting_requirements(@tally_posting))} required
+                    </p>
+                    <p class="text-ink-muted text-ui truncate">
+                      Next: {next_posting_requirement(@tally_posting).label}
+                    </p>
+                  </div>
+
+                  <div class="gap-block flex items-center justify-end">
+                    <p class="text-base-content text-ui font-semibold tabular-nums">
+                      {rupees(invoice_total(@posting_preview_invoice))}
+                    </p>
+                    <.button
+                      id="sales-bill-go-to-required-mapping"
+                      type="button"
+                      variant="outline"
+                      phx-click={JS.focus(to: next_posting_requirement(@tally_posting).target)}
+                    >
+                      Go to
+                    </.button>
+                  </div>
+                </div>
+
+                <div
+                  :if={is_nil(next_posting_requirement(@tally_posting))}
+                  id="sales-bill-posting-ready"
+                  class="gap-block flex flex-col lg:flex-row lg:items-end lg:justify-between"
+                >
                   <dl class="text-ui grid flex-1 grid-cols-3 gap-3">
                     <div>
                       <dt class="text-ink-subtle">Taxable</dt>
@@ -2262,12 +2822,87 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       type="submit"
                       disabled={invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices)}
                     >
-                      Save & Close
+                      {if(@review_mode?, do: "Save & next", else: "Save & Close")}
                     </.button>
                   </div>
                 </div>
               </div>
             </.form>
+
+            <.modal
+              :if={@editing_invoice_facts? && @invoice_facts_form}
+              id="sales-bill-invoice-facts-sheet"
+              title="Edit invoice facts"
+              on_close="close-invoice-facts"
+              variant="sheet"
+              side="right"
+              return_focus={@invoice_facts_return_focus}
+            >
+              <.form
+                for={@invoice_facts_form}
+                id="sales-bill-invoice-facts-form"
+                phx-hook=".InvoiceFactsFocus"
+                data-focus-field={@invoice_facts_focus}
+                phx-submit="save-invoice-facts"
+                class="space-y-block p-6"
+              >
+                <div class="gap-block grid grid-cols-2">
+                  <.input
+                    field={@invoice_facts_form[:invoice_number]}
+                    label="Invoice number"
+                    required
+                    autofocus={@invoice_facts_focus == "invoice_number"}
+                  />
+                  <.input
+                    field={@invoice_facts_form[:invoice_date]}
+                    type="date"
+                    label="Invoice date"
+                    required
+                    autofocus={@invoice_facts_focus == "invoice_date"}
+                  />
+                </div>
+
+                <.input
+                  field={@invoice_facts_form[:buyer_name]}
+                  label="Buyer name"
+                  required
+                  autofocus={@invoice_facts_focus == "buyer_name"}
+                />
+                <.input
+                  field={@invoice_facts_form[:buyer_gstin]}
+                  label="Buyer GSTIN"
+                  autofocus={@invoice_facts_focus == "buyer_gstin"}
+                />
+                <.input
+                  field={@invoice_facts_form[:place_of_supply]}
+                  type="select"
+                  label="Place of supply"
+                  prompt="Select state / UT"
+                  options={state_options()}
+                  required
+                  autofocus={@invoice_facts_focus == "place_of_supply"}
+                />
+
+                <p
+                  :if={@invoice_facts_error}
+                  id="sales-bill-invoice-facts-error"
+                  class="text-error text-ui"
+                >
+                  {@invoice_facts_error}
+                </p>
+              </.form>
+
+              <:footer>
+                <div class="gap-related flex justify-end">
+                  <.button type="button" variant="ghost" phx-click="close-invoice-facts">
+                    Cancel
+                  </.button>
+                  <.button type="submit" form="sales-bill-invoice-facts-form">
+                    Save changes
+                  </.button>
+                </div>
+              </:footer>
+            </.modal>
 
             <.modal
               :if={@line_edit_form && @line_edit_row}
@@ -2404,6 +3039,19 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
             destroyed() {
               window.removeEventListener("keydown", this.onKeydown)
+            }
+          }
+        </script>
+
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".InvoiceFactsFocus">
+          export default {
+            mounted() {
+              const field = this.el.dataset.focusField
+              const target = field
+                ? this.el.querySelector(`[name="invoice_facts[${field}]"]`)
+                : this.el.querySelector("input, select, textarea")
+
+              requestAnimationFrame(() => target?.focus())
             }
           }
         </script>
