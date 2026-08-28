@@ -86,6 +86,7 @@ defmodule Nila.IntegrationsIngestTest do
              })
   end
 
+  @tag :capture_log
   test "one failed WhatsApp event does not block siblings", %{org: org} do
     Application.put_env(:nila, :whatsapp_adapter, Nila.Integrations.WhatsAppStub)
     connection = connection!(org, "whatsapp", "phone-number-123")

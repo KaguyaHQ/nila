@@ -422,6 +422,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
     end
   end
 
+  @tag :capture_log
   test "one failed segment prevents partial extraction from leaving the stage" do
     t = transcription([{1, invoice_page(1)}, {2, invoice_page(2)}])
 

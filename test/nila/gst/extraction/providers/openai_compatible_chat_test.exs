@@ -357,6 +357,7 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatTest do
     assert Agent.get(calls, & &1) == 2
   end
 
+  @tag :capture_log
   test "locally validated strict schema retries a mismatch" do
     {:ok, calls} = Agent.start_link(fn -> 0 end)
 
@@ -388,6 +389,7 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatTest do
     })
   end
 
+  @tag :capture_log
   test "json_object retries a schema mismatch through the normal request path" do
     {:ok, calls} = Agent.start_link(fn -> 0 end)
 

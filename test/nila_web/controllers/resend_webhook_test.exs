@@ -127,6 +127,7 @@ defmodule NilaWeb.ResendWebhookTest do
     assert json_response(conn, 200) == %{"ok" => true}
   end
 
+  @tag :capture_log
   test "an event we do not handle is acknowledged without enqueueing", %{conn: conn} do
     body = Jason.encode!(%{"type" => "email.delivered", "data" => %{"email_id" => "email_x"}})
 
@@ -136,6 +137,7 @@ defmodule NilaWeb.ResendWebhookTest do
     assert Repo.aggregate(Oban.Job, :count) == 0
   end
 
+  @tag :capture_log
   test "a webhook we cannot enqueue asks Resend to retry", %{conn: conn} do
     Application.put_env(:nila, :resend_job_inserter, FailingInserter)
     body = Jason.encode!(payload())
@@ -146,6 +148,7 @@ defmodule NilaWeb.ResendWebhookTest do
     assert Repo.aggregate(Oban.Job, :count) == 0
   end
 
+  @tag :capture_log
   test "an unconfigured webhook refuses rather than trusting the payload", %{conn: conn} do
     Application.put_env(:nila, NilaWeb.Webhooks.ResendController, signing_secret: nil)
     body = Jason.encode!(payload())

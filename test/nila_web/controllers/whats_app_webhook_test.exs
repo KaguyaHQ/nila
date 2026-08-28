@@ -182,6 +182,7 @@ defmodule NilaWeb.WhatsAppWebhookTest do
            ]) == "wamid.phone-2"
   end
 
+  @tag :capture_log
   test "returns 503 so Meta retries when the ingest job cannot be enqueued", %{conn: conn} do
     org =
       Orgs.create_org!(%{

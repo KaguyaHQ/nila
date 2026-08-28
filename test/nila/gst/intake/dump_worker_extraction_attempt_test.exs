@@ -186,6 +186,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
     assert {:error, {:text_chat_request_failed, :timeout}} = DumpWorker.perform(job)
   end
 
+  @tag :capture_log
   test "an intermediate worker failure announces its retry without failing the dump" do
     previous = Application.get_env(:nila, :purchase_extractor)
     Application.put_env(:nila, :purchase_extractor, CrashingProvider)

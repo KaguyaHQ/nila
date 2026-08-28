@@ -195,6 +195,7 @@ defmodule Nila.IntegrationsTest do
     assert {:error, :not_found} = Integrations.get_connection(connection.id)
   end
 
+  @tag :capture_log
   test "a failed reconnect records the reason and leaves the connection retryable", %{org: org} do
     session = %{
       "business_id" => "111111111",
@@ -243,6 +244,7 @@ defmodule Nila.IntegrationsTest do
     refute degraded.last_error =~ "fbtrace_id"
   end
 
+  @tag :capture_log
   test "a failed signup leaves an active connection untouched", %{org: org} do
     session = %{
       "business_id" => "111111111",

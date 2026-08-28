@@ -64,6 +64,7 @@ defmodule NilaWeb.IntegrationsControllerTest do
     assert is_nil(Integrations.first_active_connection(org.id, "microsoft"))
   end
 
+  @tag :capture_log
   test "forged state binds nothing", %{conn: conn, org: org} do
     conn =
       get(conn, ~p"/integrations/microsoft/callback", %{
