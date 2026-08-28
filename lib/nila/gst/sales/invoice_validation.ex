@@ -17,7 +17,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   alias Nila.Gst.Sales.Invoice
 
   @money_tolerance_paise 50
-  @diff_tolerance 0.01
+  @bucket_tolerance_paise 1
   @printed_total_codes ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch)
 
   @doc "Arithmetic outcomes for one invoice, including passed checks."
@@ -38,12 +38,12 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
     invoices = Enum.map(invoices, &InvoiceFacts.sales!/1)
 
     invoices
-    |> Enum.filter(&(is_binary(&1["invoice_number"]) and String.trim(&1["invoice_number"]) != ""))
-    |> Enum.group_by(&{document_type(&1), InvoiceNumber.key(&1["invoice_number"])})
+    |> Enum.filter(&(is_binary(&1.number) and String.trim(&1.number) != ""))
+    |> Enum.group_by(&{document_type(&1), InvoiceNumber.key(&1.number)})
     |> Enum.filter(fn {_key, members} -> length(members) > 1 end)
     |> Enum.map(fn {_key, members} ->
-      invoice_number = members |> hd() |> then(& &1["invoice_number"])
-      source_ids = members |> Enum.map(&Invoice.source_id/1) |> Enum.sort()
+      invoice_number = hd(members).number
+      source_ids = members |> Enum.map(&(&1.id || &1.number)) |> Enum.sort()
 
       %{
         "invoice" => invoice_number,
@@ -82,28 +82,27 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   end
 
   defp line_arithmetic_checks(invoice) do
-    invoice["line_items"]
-    |> List.wrap()
+    invoice.lines
     |> Enum.with_index(1)
     |> Enum.flat_map(fn {line, index} ->
-      taxable = line["taxable_value"]
-      taxable_paise = paise(taxable)
+      taxable_paise = line.taxable_paise
       tax_paise = line_tax_paise(line)
       rate = line_rate(line)
 
-      if is_nil(taxable_paise) or (taxable_paise == 0 and tax_paise == 0 and rate == 0) do
+      if is_nil(taxable_paise) or
+           (taxable_paise == 0 and tax_paise == 0 and Decimal.equal?(rate, 0)) do
         []
       else
         expected_paise =
-          Decimal.mult(Decimal.new(taxable_paise), decimal(rate)) |> Decimal.div(100)
+          Decimal.mult(Decimal.new(taxable_paise), rate) |> Decimal.div(100)
 
         [
           %{
             "code" => "line_arithmetic",
             "line" => index,
             "operands" => %{
-              "taxable" => taxable,
-              "rate" => rate,
+              "taxable" => rupee_number(taxable_paise),
+              "rate" => decimal_number(rate),
               "expected" => rupee_number(expected_paise),
               "actual" => rupee_number(tax_paise)
             },
@@ -122,12 +121,17 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   end
 
   defp taxable_correction_fields(line, index) do
-    case line["taxable_value_basis"] do
-      "printed_taxable_value" ->
+    case line.taxable_value_basis do
+      :printed_taxable_value ->
         ["line_items[#{index}].printed_taxable_value"]
 
       basis
-      when basis in ~w(derived_from_inclusive_line_amount printed_exclusive_line_amount line_amount_plus_tax_equals_total line_amount_times_rate_equals_tax) ->
+      when basis in [
+             :derived_from_inclusive_line_amount,
+             :printed_exclusive_line_amount,
+             :line_amount_plus_tax_equals_total,
+             :line_amount_times_rate_equals_tax
+           ] ->
         [
           "line_items[#{index}].printed_line_amount",
           "line_items[#{index}].line_amount_tax_inclusion"
@@ -139,13 +143,12 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   end
 
   defp split_equality_checks(invoice) do
-    invoice["line_items"]
-    |> List.wrap()
+    invoice.lines
     |> Enum.with_index(1)
     |> Enum.flat_map(fn {line, index} ->
-      if is_number(line["cgst_amount"]) and is_number(line["sgst_amount"]) do
-        cgst_paise = Money.paise(line["cgst_amount"])
-        sgst_paise = Money.paise(line["sgst_amount"])
+      if is_integer(line.tax_paise.cgst) and is_integer(line.tax_paise.sgst) do
+        cgst_paise = line.tax_paise.cgst
+        sgst_paise = line.tax_paise.sgst
 
         [
           %{
@@ -169,19 +172,20 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   end
 
   defp printed_total_checks(invoice) do
-    totals = Invoice.extracted_totals_paise(invoice)
+    totals = invoice_totals(invoice)
 
     [
-      {"printed_taxable_mismatch", invoice["printed_total_taxable"], totals.taxable_paise,
+      {"printed_taxable_mismatch", invoice.printed_taxable_paise, totals.taxable_paise,
        ["printed_total_taxable", "line_items"]},
-      {"printed_tax_mismatch", invoice["printed_total_tax"], totals.tax_paise,
+      {"printed_tax_mismatch", invoice.printed_tax_paise, totals.tax_paise,
        ["printed_total_tax", "line_items"]},
-      {"grand_total_mismatch", invoice["printed_grand_total"],
+      {"grand_total_mismatch", invoice.printed_total_paise,
        add_paise(totals.taxable_paise, totals.tax_paise), ["printed_grand_total", "line_items"]}
     ]
     |> Enum.flat_map(fn {code, printed, derived_paise, fields} ->
-      case {Money.paise_or_error(printed), derived_paise} do
-        {{:ok, printed_paise}, derived_paise} when is_integer(derived_paise) ->
+      case {printed, derived_paise} do
+        {printed_paise, derived_paise}
+        when is_integer(printed_paise) and is_integer(derived_paise) ->
           [
             %{
               "code" => code,
@@ -239,11 +243,11 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   defp grand_total_explained?(_invoice, []), do: false
 
   defp grand_total_explained?(invoice, [%{"operands" => ops}]) do
-    totals = Invoice.extracted_totals_paise(invoice)
+    totals = invoice_totals(invoice)
 
     explained =
-      printed_delta(invoice["printed_total_taxable"], totals.taxable_paise) +
-        printed_delta(invoice["printed_total_tax"], totals.tax_paise)
+      printed_delta(invoice.printed_taxable_paise, totals.taxable_paise) +
+        printed_delta(invoice.printed_tax_paise, totals.tax_paise)
 
     grand_delta = Money.paise(ops["printed"]) - Money.paise(ops["derived"])
     abs(grand_delta - explained) <= 2 * @money_tolerance_paise
@@ -251,7 +255,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
 
   defp printed_delta(nil, _derived_paise), do: 0
   defp printed_delta(_printed, nil), do: 0
-  defp printed_delta(printed, derived_paise), do: Money.paise(printed) - derived_paise
+  defp printed_delta(printed_paise, derived_paise), do: printed_paise - derived_paise
 
   defp collapsed_printed_issue(invoice, %{"code" => code} = component, [grand]) do
     ops = grand["operands"]
@@ -303,8 +307,8 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
 
   defp issue(invoice, code, message, fields, level) do
     %{
-      "invoice" => invoice["invoice_number"],
-      "source_id" => Invoice.source_id(invoice),
+      "invoice" => invoice.number,
+      "source_id" => invoice.id || invoice.number,
       "code" => code,
       "message" => message,
       "fields" => fields,
@@ -312,18 +316,21 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
     }
   end
 
-  defp document_type(invoice), do: invoice["document_type"] || "invoice"
+  defp document_type(invoice), do: invoice.document_type || "invoice"
 
   defp recipient_registration(invoice) do
-    invoice["recipient_registration"] ||
-      if(is_nil(blank_to_nil(invoice["buyer_gstin"])), do: "unknown", else: "registered")
+    invoice.evidence["recipient_registration"] ||
+      if(is_nil(blank_to_nil(party_gstin(invoice.recipient))),
+        do: "unknown",
+        else: "registered"
+      )
   end
 
-  defp document_status(invoice), do: invoice["document_status"] || "active"
+  defp document_status(invoice), do: invoice.evidence["document_status"] || "active"
 
   defp supply_type(invoice) do
-    invoice["supply_type"] ||
-      if(get_in(invoice, ["document", "export"]), do: "export", else: "taxable")
+    invoice.evidence["supply_type"] ||
+      if(get_in(invoice.evidence, ["document", "export"]), do: "export", else: "taxable")
   end
 
   defp marker_document_type(%{"credit_note" => true, "debit_note" => true}), do: nil
@@ -335,40 +342,59 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   defp state_code(gstin), do: StateCodes.from_gstin(gstin)
 
   defp effective_place_of_supply(invoice) do
-    case invoice["place_of_supply"] do
+    case invoice.place_of_supply do
       pos when is_binary(pos) -> if(StateCodes.name_for(pos), do: pos)
-      _missing -> state_code(invoice["buyer_gstin"])
+      _missing -> state_code(party_gstin(invoice.recipient))
     end
   end
 
-  defp taxable_values_complete?(invoice), do: Invoice.taxable_values_complete?(invoice)
-  defp field_value(invoice, field), do: Invoice.field_value(invoice, field)
+  defp taxable_values_complete?(invoice),
+    do: Enum.all?(invoice.lines, &is_integer(&1.taxable_paise))
 
-  defp sum(lines, field), do: lines |> List.wrap() |> Enum.map(&num(&1[field])) |> Enum.sum()
+  defp field_value(invoice, "seller_gstin"), do: party_gstin(invoice.issuer)
+  defp field_value(invoice, "buyer_gstin"), do: party_gstin(invoice.recipient)
+  defp field_value(invoice, "invoice_number"), do: invoice.number
+  defp field_value(invoice, "invoice_date"), do: invoice.date || invoice.unreadable_date
+  defp field_value(invoice, "place_of_supply"), do: invoice.place_of_supply
 
-  defp computed_bucket_tax([], _rate, _mode), do: %{txval: 0, camt: 0, samt: 0, iamt: 0}
+  defp field_value(invoice, field) do
+    invoice
+    |> InvoiceFacts.to_sales_map()
+    |> Invoice.field_value(field)
+  end
+
+  defp computed_bucket_tax([], _rate, _mode),
+    do: %{taxable_paise: 0, cgst_paise: 0, sgst_paise: 0, igst_paise: 0}
 
   defp computed_bucket_tax(lines, rate, :interstate) do
-    txval = round2(sum(lines, "taxable_value"))
-    %{txval: txval, camt: 0, samt: 0, iamt: round2(txval * num(rate) / 100)}
+    taxable_paise = sum_line_paise(lines, :taxable)
+    igst_paise = Decimal.mult(Decimal.new(taxable_paise), rate) |> Decimal.div(100)
+
+    %{taxable_paise: taxable_paise, cgst_paise: 0, sgst_paise: 0, igst_paise: igst_paise}
   end
 
   defp computed_bucket_tax(lines, rate, :intrastate) do
-    txval = round2(sum(lines, "taxable_value"))
-    side_tax = round2(txval * num(rate) / 200)
-    %{txval: txval, camt: side_tax, samt: side_tax, iamt: 0}
+    taxable_paise = sum_line_paise(lines, :taxable)
+    side_paise = Decimal.mult(Decimal.new(taxable_paise), rate) |> Decimal.div(200)
+
+    %{
+      taxable_paise: taxable_paise,
+      cgst_paise: side_paise,
+      sgst_paise: side_paise,
+      igst_paise: 0
+    }
   end
 
   defp tax_mode(line) do
-    if num(line["igst_amount"]) > 0 or num(line["igst_rate"]) > 0,
+    if optional_paise(line.tax_paise.igst) > 0 or decimal_positive?(line.igst_rate),
       do: :interstate,
       else: :intrastate
   end
 
   defp degenerate_line?(line) do
-    zeroish?(line["taxable_value"]) and zeroish?(line["quantity"]) and
-      zeroish?(line["cgst_amount"]) and zeroish?(line["sgst_amount"]) and
-      zeroish?(line["igst_amount"])
+    zeroish_paise?(line.taxable_paise) and decimal_zeroish?(line.quantity) and
+      zeroish_paise?(line.tax_paise.cgst) and zeroish_paise?(line.tax_paise.sgst) and
+      zeroish_paise?(line.tax_paise.igst)
   end
 
   defp furniture_description?(description) do
@@ -378,8 +404,9 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
       String.match?(description, ~r/amount.*\bwords\b/i)
   end
 
-  defp zeroish?(value), do: is_nil(value) or num(value) == 0
-  defp close?(left, right, tolerance), do: abs(num(left) - num(right)) <= tolerance + 0.000001
+  defp zeroish_paise?(value), do: is_nil(value) or value == 0
+  defp decimal_zeroish?(nil), do: true
+  defp decimal_zeroish?(value), do: Decimal.equal?(value, 0)
 
   defp hsn_code(nil), do: nil
   defp hsn_code(hsn), do: hsn |> to_string() |> String.replace(~r/\D/, "")
@@ -396,7 +423,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   defp blank_to_nil(value), do: value
 
   defp document_type_issues(invoice) do
-    document = invoice["document"] || %{}
+    document = invoice.evidence["document"] || %{}
     marked_type = marker_document_type(document)
     extracted_type = document["extracted_type"]
     canonical = document_type(invoice)
@@ -455,8 +482,8 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
 
   defp filing_classification_issues(invoice) do
     registration = recipient_registration(invoice)
-    buyer_gstin = invoice["buyer_gstin"]
-    pos = invoice["place_of_supply"]
+    buyer_gstin = party_gstin(invoice.recipient)
+    pos = invoice.place_of_supply
 
     []
     |> maybe_classification_issue(
@@ -519,8 +546,8 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
 
   defp verification_issues(invoice) do
     fields =
-      invoice
-      |> get_in(["verification", "failed_checks"])
+      invoice.verification
+      |> Map.get("failed_checks")
       |> List.wrap()
       |> Enum.filter(&(&1["kind"] in ~w(source_presence grounding)))
       |> Enum.map(&Invoice.verification_field/1)
@@ -547,14 +574,13 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
     if recipient_registration(invoice) == "unregistered" and document_type(invoice) == "invoice" and
          document_status(invoice) == "active" and supply_type(invoice) == "taxable" do
       missing =
-        invoice["line_items"]
-        |> List.wrap()
+        invoice.lines
         |> Enum.with_index()
         |> Enum.filter(fn {line, _index} ->
-          hsn = hsn_code(line["hsn_sac"])
+          hsn = hsn_code(line.hsn_sac)
 
           is_binary(hsn) and not String.starts_with?(hsn, "99") and
-            is_nil(blank_to_nil(line["uom"]))
+            is_nil(blank_to_nil(line.uom))
         end)
 
       case missing do
@@ -588,10 +614,9 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
 
   defp missing_taxable_value_issues(invoice) do
     missing =
-      invoice["line_items"]
-      |> List.wrap()
+      invoice.lines
       |> Enum.with_index(1)
-      |> Enum.filter(fn {line, _index} -> is_nil(line["taxable_value"]) end)
+      |> Enum.filter(fn {line, _index} -> is_nil(line.taxable_paise) end)
 
     case missing do
       [] ->
@@ -627,7 +652,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   defp line_word(_many), do: "lines"
 
   defp invoice_date_issues(invoice) do
-    printed = invoice["invoice_date"]
+    printed = invoice.date || invoice.unreadable_date
 
     cond do
       match?(%Date{}, printed) ->
@@ -669,8 +694,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   defp blank_date?(_value), do: false
 
   defp invoice_number_issues(invoice) do
-    smell =
-      InvoiceNumber.smell(invoice["invoice_number"], sales_invoice_has_values?(invoice))
+    smell = InvoiceNumber.smell(invoice.number, sales_invoice_has_values?(invoice))
 
     case smell do
       nil ->
@@ -681,7 +705,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
           issue(
             invoice,
             "implausible_invoice_number",
-            smell_message(smell, invoice["invoice_number"]),
+            smell_message(smell, invoice.number),
             ["invoice_number"],
             Issues.level_for("implausible_invoice_number")
           )
@@ -702,21 +726,21 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   defp sales_invoice_has_values?(invoice) do
     Enum.any?(
       [
-        invoice["printed_total_taxable"],
-        invoice["printed_total_tax"],
-        invoice["printed_grand_total"]
+        invoice.printed_taxable_paise,
+        invoice.printed_tax_paise,
+        invoice.printed_total_paise
       ],
-      &(num(&1) != 0)
+      &(optional_paise(&1) != 0)
     ) or
-      Enum.any?(invoice["line_items"] || [], fn line ->
-        num(line["taxable_value"]) != 0 or num(line["cgst_amount"]) != 0 or
-          num(line["sgst_amount"]) != 0 or num(line["igst_amount"]) != 0
+      Enum.any?(invoice.lines, fn line ->
+        optional_paise(line.taxable_paise) != 0 or optional_paise(line.tax_paise.cgst) != 0 or
+          optional_paise(line.tax_paise.sgst) != 0 or optional_paise(line.tax_paise.igst) != 0
       end)
   end
 
   defp furniture_row_issues(invoice) do
     line_issue(invoice, "furniture_row_with_values", fn line ->
-      furniture_description?(line["description"]) and not degenerate_line?(line)
+      furniture_description?(line.description) and not degenerate_line?(line)
     end)
   end
 
@@ -729,9 +753,11 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   end
 
   defp bucket_rounding_issues_for_complete_invoice(invoice) do
-    invoice["line_items"]
-    |> Enum.group_by(&line_rate/1)
+    invoice.lines
+    |> Enum.group_by(&(line_rate(&1) |> Decimal.normalize() |> Decimal.to_string(:normal)))
     |> Enum.flat_map(fn {rate, lines} ->
+      rate = Decimal.new(rate)
+
       lines
       |> Enum.group_by(&tax_mode/1)
       |> Enum.flat_map(fn {mode, mode_lines} ->
@@ -744,8 +770,8 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
               rate,
               mode_lines,
               "iamt",
-              sum(mode_lines, "igst_amount"),
-              bucket_tax.iamt
+              sum_line_paise(mode_lines, :igst),
+              bucket_tax.igst_paise
             )
 
           :intrastate ->
@@ -754,35 +780,39 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
               rate,
               mode_lines,
               "camt",
-              sum(mode_lines, "cgst_amount"),
-              bucket_tax.camt
+              sum_line_paise(mode_lines, :cgst),
+              bucket_tax.cgst_paise
             ) ++
               rounding_issue(
                 invoice,
                 rate,
                 mode_lines,
                 "samt",
-                sum(mode_lines, "sgst_amount"),
-                bucket_tax.samt
+                sum_line_paise(mode_lines, :sgst),
+                bucket_tax.sgst_paise
               )
         end
       end)
     end)
   end
 
-  defp rounding_issue(invoice, rate, lines, field, extracted, computed) do
-    delta = round2(extracted - computed)
+  defp rounding_issue(invoice, rate, lines, field, extracted_paise, computed_paise) do
+    delta_paise = Decimal.sub(Decimal.new(extracted_paise), decimal(computed_paise))
+    delta = delta_paise |> rupee_number() |> round2()
+    extracted = extracted_paise |> rupee_number() |> round2()
+    computed = computed_paise |> rupee_number() |> round2()
+    display_rate = decimal_number(rate)
 
     cond do
-      close?(extracted, computed, @diff_tolerance) ->
+      decimal_abs_lte?(delta_paise, Decimal.new(@bucket_tolerance_paise)) ->
         []
 
-      abs(delta) <= rounding_variance_bound(lines) ->
+      decimal_abs_lte?(delta_paise, rounding_variance_bound_paise(lines)) ->
         [
           issue(
             invoice,
             "rounding_variance",
-            "#{field} line-tax sum #{round2(extracted)} differs from bucket taxable × #{rate}% #{round2(computed)} by #{delta}, within per-line rounding bound",
+            "#{field} line-tax sum #{extracted} differs from bucket taxable × #{display_rate}% #{computed} by #{delta}, within per-line rounding bound",
             ["line_items"],
             Issues.level_for("rounding_variance")
           )
@@ -793,7 +823,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
           issue(
             invoice,
             "bucket_tax_mismatch",
-            "#{field} line-tax sum #{round2(extracted)} differs from bucket taxable × #{rate}% #{round2(computed)} by #{delta}, beyond per-line rounding bound",
+            "#{field} line-tax sum #{extracted} differs from bucket taxable × #{display_rate}% #{computed} by #{delta}, beyond per-line rounding bound",
             ["line_items"],
             Issues.level_for("bucket_tax_mismatch")
           )
@@ -801,7 +831,8 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
     end
   end
 
-  defp rounding_variance_bound(lines), do: 0.005 * length(lines) + 0.000001
+  defp rounding_variance_bound_paise(lines),
+    do: Decimal.mult(Decimal.new("0.5"), length(lines))
 
   # A real intra-state line always carries both CGST and SGST. Lines with
   # exactly one of them (and no IGST) mean the extractor split one printed
@@ -809,8 +840,8 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   # failure mode. One issue per invoice, not per line.
   defp lopsided_split_issues(invoice) do
     line_issue(invoice, "lopsided_tax_split", fn line ->
-      is_nil(line["igst_amount"]) and
-        is_nil(line["cgst_amount"]) != is_nil(line["sgst_amount"])
+      is_nil(line.tax_paise.igst) and
+        is_nil(line.tax_paise.cgst) != is_nil(line.tax_paise.sgst)
     end)
   end
 
@@ -819,7 +850,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   # because the reviewer's question is the same every time — which rows?
   defp line_issue(invoice, code, predicate) do
     lines =
-      (invoice["line_items"] || [])
+      invoice.lines
       |> Enum.with_index(1)
       |> Enum.filter(fn {line, _index} -> predicate.(line) end)
       |> Enum.map(fn {_line, index} -> index end)
@@ -851,10 +882,13 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
       "lines #{Enum.join(lines, ", ")} carry only one of CGST/SGST — stacked tax sub-rows were likely split into separate line items"
 
   defp gstin_issues(invoice) do
-    ([{"seller_gstin", invoice["seller_gstin"]}] ++
-       if(is_nil(invoice["buyer_gstin"]),
+    seller_gstin = party_gstin(invoice.issuer)
+    buyer_gstin = party_gstin(invoice.recipient)
+
+    ([{"seller_gstin", seller_gstin}] ++
+       if(is_nil(buyer_gstin),
          do: [],
-         else: [{"buyer_gstin", invoice["buyer_gstin"]}]
+         else: [{"buyer_gstin", buyer_gstin}]
        ))
     |> Enum.flat_map(fn {field, gstin} ->
       if valid_gstin?(gstin) do
@@ -890,22 +924,25 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   # is wrong: tax was collected under a head that will not be remitted, and the
   # buyer's 2B will not match the paper in their hands.
   defp mixed_head_issues(invoice) do
-    igst = sum(invoice["line_items"], "igst_amount")
+    igst_paise = sum_line_paise(invoice.lines, :igst)
     split = split_tax(invoice)
 
-    if igst > 0 and split > 0 do
+    if igst_paise > 0 and split > 0 do
+      igst = rupee_number(igst_paise)
+      split_rupees = rupee_number(split)
+
       [
         invoice
         |> issue(
           "mixed_tax_heads",
-          "invoice carries both IGST (#{round2(igst)}) and CGST/SGST (#{round2(split)}) — one supply has one place of supply, so only one head can be correct",
+          "invoice carries both IGST (#{round2(igst)}) and CGST/SGST (#{round2(split_rupees)}) — one supply has one place of supply, so only one head can be correct",
           ["line_items"],
           Issues.level_for("mixed_tax_heads")
         )
         |> Map.merge(%{
           "tax_heads" => positive_tax_heads(invoice),
           "igst" => round2(igst),
-          "split_tax" => round2(split)
+          "split_tax" => round2(split_rupees)
         })
       ]
     else
@@ -914,24 +951,24 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   end
 
   defp split_tax(invoice),
-    do: sum(invoice["line_items"], "cgst_amount") + sum(invoice["line_items"], "sgst_amount")
+    do: sum_line_paise(invoice.lines, :cgst) + sum_line_paise(invoice.lines, :sgst)
 
   defp positive_tax_heads(invoice) do
     [
-      {"igst", sum(invoice["line_items"], "igst_amount")},
-      {"cgst", sum(invoice["line_items"], "cgst_amount")},
-      {"sgst", sum(invoice["line_items"], "sgst_amount")}
+      {"igst", sum_line_paise(invoice.lines, :igst)},
+      {"cgst", sum_line_paise(invoice.lines, :cgst)},
+      {"sgst", sum_line_paise(invoice.lines, :sgst)}
     ]
     |> Enum.filter(fn {_head, amount} -> amount > 0 end)
     |> Enum.map(&elem(&1, 0))
   end
 
   defp consistency_issues(invoice) do
-    seller_state = state_code(invoice["seller_gstin"])
+    seller_state = state_code(party_gstin(invoice.issuer))
     place_of_supply = effective_place_of_supply(invoice)
-    place_field = if(invoice["place_of_supply"], do: "place_of_supply", else: "buyer_gstin")
+    place_field = if(invoice.place_of_supply, do: "place_of_supply", else: "buyer_gstin")
     interstate? = seller_state && place_of_supply && seller_state != place_of_supply
-    igst = sum(invoice["line_items"], "igst_amount")
+    igst = sum_line_paise(invoice.lines, :igst)
     split = split_tax(invoice)
 
     cond do
@@ -984,12 +1021,14 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   end
 
   defp line_tax_paise(line) do
-    Money.paise(line["cgst_amount"]) + Money.paise(line["sgst_amount"]) +
-      Money.paise(line["igst_amount"])
+    optional_paise(line.tax_paise.cgst) + optional_paise(line.tax_paise.sgst) +
+      optional_paise(line.tax_paise.igst)
   end
 
   defp line_rate(line) do
-    number(line["cgst_rate"]) + number(line["sgst_rate"]) + number(line["igst_rate"])
+    [line.cgst_rate, line.sgst_rate, line.igst_rate]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.reduce(Decimal.new(0), &Decimal.add/2)
   end
 
   defp close_paise?(left, right) do
@@ -1003,13 +1042,6 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
     |> then(&(&1 in [:lt, :eq]))
   end
 
-  defp paise(value) do
-    case Money.paise_or_error(value) do
-      {:ok, paise} -> paise
-      _missing_or_unreadable -> nil
-    end
-  end
-
   defp add_paise(nil, _right), do: nil
   defp add_paise(left, right), do: left + right
 
@@ -1017,15 +1049,45 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   defp decimal(value) when is_integer(value), do: Decimal.new(value)
   defp decimal(value) when is_float(value), do: Decimal.from_float(value)
 
-  defp number(nil), do: 0
-  defp number(value) when is_number(value), do: value
-  defp number(value) when is_binary(value), do: Money.rupee_number(value) || 0
-
-  defp num(value), do: number(value)
-
   defp rupee_number(%Decimal{} = paise),
     do: paise |> Decimal.div(100) |> Decimal.to_float()
 
   defp rupee_number(paise) when is_integer(paise), do: paise / 100
+
+  defp decimal_number(%Decimal{} = value) do
+    if Decimal.equal?(value, Decimal.round(value, 0)) do
+      Decimal.to_integer(value)
+    else
+      Decimal.to_float(value)
+    end
+  end
+
+  defp optional_paise(nil), do: 0
+  defp optional_paise(value), do: value
+
+  defp sum_line_paise(lines, :taxable),
+    do: Enum.sum(Enum.map(lines, &optional_paise(&1.taxable_paise)))
+
+  defp sum_line_paise(lines, head),
+    do: Enum.sum(Enum.map(lines, &optional_paise(Map.fetch!(&1.tax_paise, head))))
+
+  defp invoice_totals(invoice) do
+    taxable_paise =
+      if taxable_values_complete?(invoice), do: sum_line_paise(invoice.lines, :taxable)
+
+    %{taxable_paise: taxable_paise, tax_paise: line_tax_paise_sum(invoice.lines)}
+  end
+
+  defp line_tax_paise_sum(lines), do: Enum.sum(Enum.map(lines, &line_tax_paise/1))
+
+  defp decimal_positive?(nil), do: false
+  defp decimal_positive?(value), do: Decimal.compare(value, 0) == :gt
+
+  defp decimal_abs_lte?(left, right),
+    do: left |> Decimal.abs() |> Decimal.compare(right) |> then(&(&1 in [:lt, :eq]))
+
+  defp party_gstin(nil), do: nil
+  defp party_gstin(party), do: party.gstin
+
   defp round2(value), do: Float.round(value / 1, 2)
 end

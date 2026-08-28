@@ -33,7 +33,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   alias Nila.Gst.Money
   alias Nila.Gst.StateCodes
   alias Nila.Gst.Purchase.Books
-  alias Nila.Gst.Sales.{Invoice, InvoiceValidation}
+  alias Nila.Gst.Sales.{Gstr1Readiness, Invoice, InvoiceValidation}
 
   @confidence_threshold 0.90
   @correctable_invoice_fields ~w(
@@ -262,49 +262,10 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   @doc "Document treatments the current GSTR-1 projection cannot represent."
-  def gstr1_capability_issues(invoices),
-    do: Enum.flat_map(invoices, &unsupported_document_issues/1)
+  defdelegate gstr1_capability_issues(invoices), to: Gstr1Readiness, as: :capability_issues
 
   @doc "One blocking issue per duplicate active invoice-number group."
   defdelegate duplicate_number_issues(invoices), to: InvoiceValidation
-
-  defp unsupported_document_issues(invoice) do
-    document = invoice["document"] || %{}
-    note? = document_type(invoice) in ~w(credit_note debit_note)
-
-    [
-      {document["export"] || supply_type(invoice) == "export", "export_supply_unsupported",
-       "this document is an export supply, and GSTR-1 derivation has no exp table",
-       ["supply_type"]},
-      {supply_type(invoice) == "sez", "sez_supply_unsupported",
-       "this document is an SEZ supply, and GSTR-1 derivation has no SEZ treatment",
-       ["supply_type"]},
-      {supply_type(invoice) == "nil_rated", "nil_rated_supply_unsupported",
-       "this document is nil-rated, and GSTR-1 derivation has no nil-supply table",
-       ["supply_type"]},
-      {supply_type(invoice) == "exempt", "exempt_supply_unsupported",
-       "this document is exempt, and GSTR-1 derivation has no exempt-supply table",
-       ["supply_type"]},
-      {supply_type(invoice) == "non_gst", "non_gst_supply_unsupported",
-       "this document is non-GST, and GSTR-1 derivation has no non-GST table", ["supply_type"]},
-      {document["reverse_charge"], "outward_reverse_charge_unsupported",
-       "this bill says the recipient pays the tax, and derivation files every invoice rchrg \"N\"",
-       ["invoice_number"]},
-      {note? and recipient_registration(invoice) == "unregistered", "cdnur_unsupported",
-       "this is a note to an unregistered recipient, and GSTR-1 derivation has no cdnur table",
-       ["recipient_registration", "buyer_gstin"]},
-      {document_status(invoice) == "cancelled", "cancelled_document_unsupported",
-       "this document is cancelled; Nila accounts for its number but does not yet derive cancellation filing treatment",
-       ["document_status"]},
-      {document_status(invoice) == "amendment", "amendment_document_unsupported",
-       "this document amends a prior filing, and Nila does not yet derive amendment tables",
-       ["document_status"]}
-    ]
-    |> Enum.filter(fn {present?, _code, _message, _fields} -> present? == true end)
-    |> Enum.map(fn {_present?, code, message, fields} ->
-      issue(invoice, code, message, fields, Issues.level_for(code))
-    end)
-  end
 
   def flagged_fields(invoices, issues) do
     low_conf =
@@ -647,21 +608,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
         }
       ]
     end
-  end
-
-  # `level` is positional and required. A default of any value reinstates the
-  # defect this replaced: a newly added check silently becomes filing-gating
-  # because its author forgot to classify it. Compile-time arity is the
-  # enforcement; `Nila.Gst.Issues` is where the classification is decided.
-  defp issue(invoice, code, message, fields, level) do
-    %{
-      "invoice" => invoice["invoice_number"],
-      "source_id" => source_id(invoice),
-      "code" => code,
-      "message" => message,
-      "fields" => fields,
-      "level" => level
-    }
   end
 
   defp derive_invoice(invoice, seller_state) do

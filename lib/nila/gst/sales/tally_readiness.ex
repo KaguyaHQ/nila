@@ -1,8 +1,8 @@
 defmodule Nila.Gst.Sales.TallyReadiness do
   @moduledoc "Capabilities required to represent an invoice faithfully in Nila's Tally voucher."
 
-  alias Nila.Gst.Issues
-  alias Nila.Gst.Sales.{Invoice, OutputIssues}
+  alias Nila.Gst.{InvoiceFacts, Issues}
+  alias Nila.Gst.Sales.{OutputCapabilities, OutputIssues}
 
   @messages %{
     "export_supply_unsupported" =>
@@ -24,36 +24,18 @@ defmodule Nila.Gst.Sales.TallyReadiness do
 
   def issues(invoices) when is_list(invoices) do
     invoices
-    |> Enum.flat_map(&capability_issues/1)
+    |> Enum.flat_map(fn invoice ->
+      invoice = InvoiceFacts.sales!(invoice)
+      Enum.map(OutputCapabilities.common(invoice), &issue(invoice, &1.code, &1.fields))
+    end)
     |> Enum.concat(OutputIssues.cess(invoices))
     |> Issues.normalize_all()
   end
 
-  defp capability_issues(invoice) do
-    document = invoice["document"] || %{}
-    supply_type = invoice["supply_type"] || if(document["export"], do: "export", else: "taxable")
-    document_status = invoice["document_status"] || "active"
-
-    [
-      {document["export"] || supply_type == "export", "export_supply_unsupported",
-       ["supply_type"]},
-      {supply_type == "sez", "sez_supply_unsupported", ["supply_type"]},
-      {supply_type == "nil_rated", "nil_rated_supply_unsupported", ["supply_type"]},
-      {supply_type == "exempt", "exempt_supply_unsupported", ["supply_type"]},
-      {supply_type == "non_gst", "non_gst_supply_unsupported", ["supply_type"]},
-      {document["reverse_charge"] == true, "outward_reverse_charge_unsupported",
-       ["invoice_number"]},
-      {document_status == "cancelled", "cancelled_document_unsupported", ["document_status"]},
-      {document_status == "amendment", "amendment_document_unsupported", ["document_status"]}
-    ]
-    |> Enum.filter(fn {present?, _code, _fields} -> present? == true end)
-    |> Enum.map(fn {_present?, code, fields} -> issue(invoice, code, fields) end)
-  end
-
   defp issue(invoice, code, fields) do
     %{
-      "invoice" => invoice["invoice_number"],
-      "source_id" => Invoice.source_id(invoice),
+      "invoice" => invoice.number,
+      "source_id" => invoice.id || invoice.number,
       "code" => code,
       "level" => Issues.level_for(code),
       "message" => Map.fetch!(@messages, code),

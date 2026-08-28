@@ -26,6 +26,28 @@ defmodule Nila.Gst.Sales.InvoiceValidationTest do
              InvoiceValidation.duplicate_number_issues(invoices)
   end
 
+  test "bucket rounding uses canonical Decimal rates and paise" do
+    lines =
+      for index <- 1..3 do
+        %{
+          "description" => "Small item #{index}",
+          "taxable_value" => 0.03,
+          "cgst_rate" => if(index == 1, do: "9", else: 9.0),
+          "cgst_amount" => if(index < 3, do: 0.01, else: 0),
+          "sgst_rate" => if(index == 1, do: Decimal.new("9.00"), else: 9),
+          "sgst_amount" => if(index < 3, do: 0.01, else: 0)
+        }
+      end
+
+    issues =
+      invoice(%{"line_items" => lines})
+      |> then(&InvoiceValidation.issues([&1]))
+      |> Enum.filter(&(&1["code"] == "rounding_variance"))
+
+    assert length(issues) == 2
+    assert Enum.all?(issues, &String.contains?(&1["message"], "× 18%"))
+  end
+
   defp invoice(overrides \\ %{}, line_overrides \\ %{}) do
     Map.merge(
       %{
