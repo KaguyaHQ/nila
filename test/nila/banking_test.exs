@@ -4,6 +4,7 @@ defmodule Nila.BankingTest do
 
   alias Nila.Banking
   alias Nila.Banking.StatementWorker
+  alias Nila.Banking.Transaction
   alias Nila.Clients
   alias Nila.Repo
   alias Nila.Storage
@@ -162,6 +163,132 @@ defmodule Nila.BankingTest do
 
     assert {:ok, _statement} = Banking.get_statement(context.org.id, statement.id)
     assert {:error, :not_found} = Banking.get_statement(other_org.id, statement.id)
+  end
+
+  test "voucher override derives direction, including reversals, and preserves mapping",
+       context do
+    {:ok, statement} = statement_fixture(context)
+
+    rows =
+      for {withdrawal, deposit, type, ordinal} <- [
+            {100, 0, "payment", 1},
+            {0, 200, "receipt", 2},
+            {-100, 0, "payment", 3},
+            {0, -200, "receipt", 4}
+          ] do
+        Repo.insert!(%Transaction{
+          org_id: context.org.id,
+          statement_id: statement.id,
+          identity: "transfer-#{ordinal}",
+          ordinal: ordinal,
+          date: ~D[2026-06-01],
+          narration: "Transfer",
+          withdrawal_paise: withdrawal,
+          deposit_paise: deposit,
+          balance_paise: 10_000,
+          transaction_type: type,
+          status: "ready",
+          counter_ledger_identity: "ledger-#{ordinal}",
+          counter_ledger_name: "Ledger #{ordinal}"
+        })
+      end
+
+    ids = Enum.map(rows, & &1.id)
+
+    assert {:ok, changed} =
+             Banking.change_voucher_type(context.org.id, statement.id, ids, "contra")
+
+    assert Enum.map(changed, & &1.transaction_type) ==
+             ~w(contra_withdrawal contra_deposit contra_withdrawal contra_deposit)
+
+    for {original, updated} <- Enum.zip(rows, changed) do
+      assert updated.counter_ledger_identity == original.counter_ledger_identity
+      assert updated.counter_ledger_name == original.counter_ledger_name
+      assert updated.status == original.status
+    end
+
+    assert {:ok, restored} =
+             Banking.change_voucher_type(context.org.id, statement.id, ids, "payment_receipt")
+
+    assert Enum.map(restored, & &1.transaction_type) == ~w(payment receipt payment receipt)
+  end
+
+  test "voucher override rejects protected or foreign selections without partial changes",
+       context do
+    {:ok, statement} = statement_fixture(context)
+    {:ok, other_statement} = statement_fixture(context, source_key: "other.pdf")
+    %{org: other_org} = Nila.AccountsFixtures.user_with_org_fixture()
+
+    rows =
+      for {status, ordinal} <- Enum.with_index(~w(unassigned ignored queued posted verifying), 1) do
+        Repo.insert!(%Transaction{
+          org_id: context.org.id,
+          statement_id: statement.id,
+          identity: "row-#{ordinal}",
+          ordinal: ordinal,
+          date: ~D[2026-06-01],
+          narration: "Transfer",
+          deposit_paise: 100,
+          balance_paise: 10_000,
+          transaction_type: "receipt",
+          status: status
+        })
+      end
+
+    [editable | protected] = rows
+
+    for row <- protected do
+      assert {:error, :transactions_changed} =
+               Banking.change_voucher_type(
+                 context.org.id,
+                 statement.id,
+                 [editable.id, row.id],
+                 "contra"
+               )
+
+      assert Repo.get!(Transaction, editable.id).transaction_type == "receipt"
+    end
+
+    assert {:error, :not_found} =
+             Banking.change_voucher_type(other_org.id, statement.id, [editable.id], "contra")
+
+    assert {:error, :transactions_changed} =
+             Banking.change_voucher_type(
+               context.org.id,
+               other_statement.id,
+               [editable.id],
+               "contra"
+             )
+
+    assert {:error, :invalid_transactions} =
+             Banking.change_voucher_type(context.org.id, statement.id, [editable.id], "journal")
+  end
+
+  test "normal ledger assignment preserves a Contra override", context do
+    {:ok, statement} = statement_fixture(context)
+    {:ok, _} = Storage.put(statement.source_key, "%PDF", content_type: "application/pdf")
+    assert :ok = perform_job(StatementWorker, %{statement_id: statement.id})
+    {:ok, statement} = Banking.get_statement(context.org.id, statement.id)
+    [transaction] = statement.bank_transactions
+    {:ok, company} = linked_company(context)
+    bank = master(context.org.id, company.id, "bank", "HDFC Bank", "Bank Accounts")
+    cash = master(context.org.id, company.id, "cash", "Cash", "Cash-in-Hand")
+    assert {:ok, _} = Banking.configure_tally(context.org.id, statement.id, bank.identity)
+
+    assert {:ok, [_]} =
+             Banking.change_voucher_type(context.org.id, statement.id, [transaction.id], "contra")
+
+    assert {:ok, [mapped]} =
+             Banking.map_transactions(
+               context.org.id,
+               statement.id,
+               [transaction.id],
+               cash.identity
+             )
+
+    assert mapped.transaction_type == "contra_deposit"
+    assert mapped.counter_ledger_identity == cash.identity
+    assert mapped.status == "ready"
   end
 
   defp statement_fixture(context, overrides \\ []) do

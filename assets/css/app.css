@@ -803,6 +803,48 @@
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
+/* Keep the final rows reachable above floating actions, including when the
+   controls wrap. Reserve this space even without a selection so toggling the
+   bar cannot change the scroll position at the end of the table. */
+.nila-work-area-with-bottom-bar {
+  padding-bottom: calc(var(--spacing-canvas) * 4);
+}
+
+/* Floating actions use the shell's sea-blue ground. Inputs keep their light
+   surfaces; only transparent controls need inverse ink and interaction fills. */
+.nila-bottom-bar .nila-button:is([data-variant="ghost"], [data-variant="outline"]) {
+  --nila-button-ink: var(--color-neutral-content);
+  --nila-button-hover-bg: color-mix(in oklch, var(--color-neutral-content) 12%, transparent);
+  --nila-button-active-bg: color-mix(in oklch, var(--color-neutral-content) 18%, transparent);
+}
+
+.nila-bottom-bar .nila-button[data-variant="outline"]:not(:disabled):not([aria-disabled="true"]) {
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-neutral-content) 50%, transparent);
+}
+
+.nila-bottom-bar .nila-button:focus-visible {
+  outline-color: var(--color-neutral-content);
+}
+
+.nila-bottom-bar .nila-button:disabled,
+.nila-bottom-bar .nila-button[aria-disabled="true"],
+.nila-bottom-bar .nila-badge[data-variant="neutral"] {
+  background: var(--color-base-200);
+  color: var(--nila-ink-a11);
+}
+
+@media (min-width: 40rem) {
+  .nila-work-area-with-bottom-bar {
+    padding-bottom: calc(var(--spacing-canvas) * 2.5);
+  }
+}
+
+@media (min-width: 80rem) {
+  .nila-work-area-with-bottom-bar {
+    padding-bottom: calc(var(--spacing-canvas) * 2);
+  }
+}
+
 /* Restore pointer cursor on buttons — Tailwind v4 Preflight follows the
    browser default (arrow), but users expect pointer on web controls. */
 @layer base {
@@ -1764,9 +1806,12 @@ body {
 
 .nila-modal-footer {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-related);
+  margin-top: var(--spacing-section);
 }
 
 .nila-modal-panel[data-variant="sheet"] > .nila-modal-footer {
@@ -2153,6 +2198,28 @@ body {
   border: 1px solid var(--color-base-300);
   border-radius: 0.1875rem;
   accent-color: var(--accent-indicator);
+}
+
+.nila-checkbox-target {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.nila-checkbox-target::before {
+  content: "";
+  position: absolute;
+  inset: calc((var(--nila-control-icon-standard) - var(--nila-control-height-standard)) / 2);
+}
+
+.nila-checkbox-target .nila-checkbox {
+  position: relative;
+  cursor: inherit;
+}
+
+.nila-checkbox-target:has(:disabled) {
+  cursor: not-allowed;
 }
 
 .nila-checkbox:focus-visible {

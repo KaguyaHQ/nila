@@ -25,37 +25,35 @@ defmodule NilaWeb.Components.Today.Modals do
       on_close="close-draft"
       width="wide"
     >
-      <div class="space-y-block">
-        <pre
-          id="chase-draft-body"
-          class="bg-base-200/40 border-base-300 rounded-box text-base-content text-ui overflow-x-auto border p-4 font-sans whitespace-pre-wrap"
-        >{@draft.body}</pre>
+      <pre
+        id="chase-draft-body"
+        class="bg-base-200/40 border-base-300 rounded-box text-base-content text-ui overflow-x-auto border p-4 font-sans whitespace-pre-wrap"
+      >{@draft.body}</pre>
 
-        <div class="flex items-center justify-end gap-2">
-          <.button
-            id="chase-copy-button"
-            variant="soft"
-            size="sm"
-            phx-hook=".CopyDraft"
-            type="button"
-          >
-            <.icon name="hero-clipboard-document" class="size-4" /> Copy
-          </.button>
-          <.button id="chase-mark-sent" variant="primary" size="sm" phx-click="mark-sent">
-            Mark as sent
-          </.button>
-        </div>
-        <script :type={Phoenix.LiveView.ColocatedHook} name=".CopyDraft">
-          export default {
-            mounted() {
-              this.el.addEventListener("click", () => {
-                const body = document.getElementById("chase-draft-body")
-                if (body) navigator.clipboard.writeText(body.textContent)
-              })
-            }
+      <:footer>
+        <.button
+          id="chase-copy-button"
+          variant="soft"
+          size="sm"
+          phx-hook=".CopyDraft"
+          type="button"
+        >
+          <.icon name="hero-clipboard-document" class="size-4" /> Copy
+        </.button>
+        <.button id="chase-mark-sent" variant="primary" size="sm" phx-click="mark-sent">
+          Mark as sent
+        </.button>
+      </:footer>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".CopyDraft">
+        export default {
+          mounted() {
+            this.el.addEventListener("click", () => {
+              const body = document.getElementById("chase-draft-body")
+              if (body) navigator.clipboard.writeText(body.textContent)
+            })
           }
-        </script>
-      </div>
+        }
+      </script>
     </.modal>
     """
   end

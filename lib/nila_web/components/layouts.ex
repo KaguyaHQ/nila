@@ -36,6 +36,8 @@ defmodule NilaWeb.Layouts do
 
   slot :inner_block, required: true
 
+  slot :bottom_bar, doc: "Content rendered with bottom_bar/1 over the work area"
+
   def app(assigns) do
     ~H"""
     <div
@@ -109,7 +111,7 @@ defmodule NilaWeb.Layouts do
 
       <div class="lg:duration-calm lg:pl-64 lg:transition-[padding] group-data-[rail-collapsed=true]/app:lg:pl-16">
         <div class="h-screen lg:p-3">
-          <div class="bg-base-200 lg:rounded-box text-base-content flex h-full flex-col overflow-hidden lg:ring-1 lg:ring-white/40">
+          <div class="bg-base-200 lg:rounded-box text-base-content relative flex h-full flex-col overflow-hidden lg:ring-1 lg:ring-white/40">
             <%!-- Mobile only: the rail is hidden below lg, so this carries the brand and
                  the account menu. On desktop the rail states the section and the page's
                  own masthead names the object — a strip repeating either is chrome. --%>
@@ -128,17 +130,34 @@ defmodule NilaWeb.Layouts do
               </div>
             </header>
 
-            <main class="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+            <main class={[
+              "flex-1 overflow-y-auto px-4 pt-6 sm:px-6 lg:px-8",
+              if(@bottom_bar == [], do: "pb-6", else: "nila-work-area-with-bottom-bar")
+            ]}>
               <div class="mx-auto max-w-[1480px]">
                 {render_slot(@inner_block)}
               </div>
             </main>
+            {render_slot(@bottom_bar)}
           </div>
         </div>
       </div>
     </div>
 
     <.flash_group flash={@flash} />
+    """
+  end
+
+  @doc "Pins actions over the app work area without shifting its scrolling content."
+  slot :inner_block, required: true
+
+  def bottom_bar(assigns) do
+    ~H"""
+    <div class="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-4 sm:px-6 lg:px-8 print:hidden">
+      <div class="bg-neutral border-neutral nila-bottom-bar rounded-box shadow-moon text-neutral-content pointer-events-auto mx-auto max-w-[1480px] border p-3">
+        {render_slot(@inner_block)}
+      </div>
+    </div>
     """
   end
 

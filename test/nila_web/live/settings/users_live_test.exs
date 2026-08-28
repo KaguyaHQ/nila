@@ -31,6 +31,13 @@ defmodule NilaWeb.Settings.UsersLiveTest do
 
       view |> element("#invite-user-button") |> render_click()
 
+      assert has_element?(view, "#invite-modal .nila-modal-footer > #invite-cancel")
+
+      assert has_element?(
+               view,
+               "#invite-modal .nila-modal-footer > #invite-submit[form='invite-form'][type='submit']"
+             )
+
       view
       |> form("#invite-form",
         invite: %{name: "Jaimathi", email: "jaimathi@example.com", role: "member"}

@@ -122,23 +122,44 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert has_element?(view, "#banking-select-all-transactions:not([checked])")
     refute has_element?(view, "#banking-selection-toolbar")
     refute has_element?(view, "#banking-send-tally")
+    assert_push_event(view, "banking-selection", %{ids: []})
 
     view |> element("#banking-select-all-transactions") |> render_click()
 
-    assert has_element?(view, "#banking-select-all-transactions[checked]")
-    assert has_element?(view, "#banking-selection-toolbar")
+    assert has_element?(view, "#banking-selection[data-phx-component] #banking-selection-toolbar")
+    refute has_element?(view, "main #banking-selection-toolbar")
+    refute has_element?(view, "#banking-transactions .nila-table-toolbar")
+    assert has_element?(view, "#banking-send-tally[form='banking-transaction-form']")
+    assert has_element?(view, "#banking-counter-ledger[form='banking-transaction-form']")
+
+    assert has_element?(
+             view,
+             "#banking-bulk-ledger-trigger[title='Choose ledger']",
+             "Choose ledger"
+           )
+
+    refute has_element?(view, "#banking-transaction-type")
+    assert has_element?(view, "#banking-more-trigger", "More")
+    assert has_element?(view, "#banking-more-popover #banking-change-voucher-type")
+
+    assert has_element?(
+             view,
+             "#banking-more-popover #banking-ignore-selected[form='banking-transaction-form']"
+           )
+
     assert has_element?(view, "#banking-send-tally")
     assert has_element?(view, "#banking-ignore-selected")
     refute has_element?(view, "#banking-restore-selected")
-    assert has_element?(view, "#banking-select-transaction-#{transaction.id}[checked]")
+    assert_push_event(view, "banking-selection", %{ids: [selected_id]})
+    assert selected_id == transaction.id
 
     view |> element("#banking-select-transaction-#{transaction.id}") |> render_click()
 
     assert has_element?(view, "#banking-select-all-transactions:not([checked])")
-    refute has_element?(view, "#banking-select-transaction-#{transaction.id}[checked]")
+    assert_push_event(view, "banking-selection", %{ids: []})
     refute has_element?(view, "#banking-selection-toolbar")
 
-    assert has_element?(
+    refute has_element?(
              view,
              "#banking-transaction-rows .nila-bank-cash-amount[data-cash-direction='zero']",
              "₹0.00"
@@ -149,6 +170,45 @@ defmodule NilaWeb.Banking.UploadLiveTest do
              "#banking-transaction-rows .nila-bank-cash-amount[data-cash-direction='inflow']",
              "₹25.00"
            )
+
+    assert has_element?(view, "#banking-transactions thead th:nth-child(5)", "Amount")
+    assert has_element?(view, "#banking-transactions thead th:nth-child(6)", "Ledger")
+  end
+
+  test "changes voucher type from More without assigning a ledger", context do
+    {:ok, statement} = ready_statement(context)
+    [transaction] = statement.bank_transactions
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+
+    view |> element("#banking-select-all-transactions") |> render_click()
+    view |> element("#banking-change-voucher-type") |> render_click()
+    assert has_element?(view, "#banking-voucher-type-modal", "Counter-ledgers stay unchanged")
+    view |> element("#banking-cancel-voucher-type") |> render_click()
+    refute has_element?(view, "#banking-voucher-type-modal")
+    assert Repo.get!(Transaction, transaction.id).transaction_type == "receipt"
+
+    view |> element("#banking-change-voucher-type") |> render_click()
+
+    view
+    |> form("#banking-voucher-type-form", voucher_type: %{voucher_type: "contra"})
+    |> render_submit()
+
+    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Contra deposit")
+    refute has_element?(view, "#banking-voucher-type-modal")
+    updated = Repo.get!(Transaction, transaction.id)
+    assert updated.transaction_type == "contra_deposit"
+    assert updated.counter_ledger_identity == nil
+    assert updated.status == "unassigned"
+
+    view |> element("#banking-select-all-transactions") |> render_click()
+    view |> element("#banking-change-voucher-type") |> render_click()
+
+    view
+    |> form("#banking-voucher-type-form", voucher_type: %{voucher_type: "payment_receipt"})
+    |> render_submit()
+
+    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Receipt")
+    assert Repo.get!(Transaction, transaction.id).transaction_type == "receipt"
   end
 
   test "filters transactions and selects only the filtered rows", context do
@@ -191,7 +251,8 @@ defmodule NilaWeb.Banking.UploadLiveTest do
 
     view |> element("#banking-select-all-transactions") |> render_click()
 
-    assert has_element?(view, "#banking-select-transaction-#{salary.id}[checked]")
+    assert_push_event(view, "banking-selection", %{ids: [selected_id]})
+    assert selected_id == salary.id
     assert has_element?(view, "#banking-selected-transaction-count", "1 selected")
 
     view
@@ -200,8 +261,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     )
     |> render_change()
 
-    assert has_element?(view, "#banking-select-transaction-#{salary.id}[checked]")
-    assert has_element?(view, "#banking-select-all-transactions[data-indeterminate='true']")
+    assert_push_event(view, "banking-selection", %{ids: [^selected_id]})
 
     view
     |> form("#banking-transaction-filters",
@@ -221,6 +281,75 @@ defmodule NilaWeb.Banking.UploadLiveTest do
 
     assert has_element?(view, "#bank-transaction-#{salary.id}")
     refute has_element?(view, "#bank-transaction-#{original.id}")
+  end
+
+  test "groups attention statuses without allowing uncertain entries to be selected", context do
+    {:ok, statement} = ready_statement(context)
+    original = hd(statement.bank_transactions)
+
+    rows =
+      for {status, ordinal} <-
+            Enum.with_index(~w(ready queued posted failed verifying ignored), 2),
+          into: %{} do
+        transaction =
+          Repo.insert!(%Transaction{
+            org_id: context.org.id,
+            statement_id: statement.id,
+            identity: "status-#{status}",
+            ordinal: ordinal,
+            date: original.date,
+            narration: "Status example #{status}",
+            withdrawal_paise: 0,
+            deposit_paise: 100,
+            balance_paise: 2_600,
+            transaction_type: "receipt",
+            status: status
+          })
+
+        {status, transaction}
+      end
+
+    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}")
+    assert has_element?(view, "#bank-transaction-#{rows["queued"].id}", "Sending")
+    refute has_element?(view, "#transaction_filters_status option[value='queued']")
+    refute has_element?(view, "#transaction_filters_status option[value='failed']")
+    refute has_element?(view, "#transaction_filters_status option[value='verifying']")
+
+    view
+    |> form("#banking-transaction-filters", transaction_filters: %{status: "needs_attention"})
+    |> render_change()
+
+    assert has_element?(view, "#banking-visible-transaction-count", "2 of 7 transactions shown")
+    assert has_element?(view, "#bank-transaction-#{rows["failed"].id}", "Send failed")
+    assert has_element?(view, "#bank-transaction-#{rows["verifying"].id}", "Confirmation pending")
+    assert has_element?(view, "#banking-select-transaction-#{rows["verifying"].id}[disabled]")
+    refute has_element?(view, "#bank-transaction-#{original.id}")
+
+    view |> element("#banking-select-all-transactions") |> render_click()
+    assert_push_event(view, "banking-selection", %{ids: [selected_id]})
+    assert selected_id == rows["failed"].id
+
+    for {status, label, transaction} <- [
+          {"unassigned", "Needs ledger", original},
+          {"ready", "Ready to send", rows["ready"]},
+          {"posted", "In Tally", rows["posted"]},
+          {"ignored", "Ignored", rows["ignored"]}
+        ] do
+      view
+      |> form("#banking-transaction-filters", transaction_filters: %{status: status})
+      |> render_change()
+
+      assert has_element?(view, "#banking-visible-transaction-count", "1 of 7 transactions shown")
+      assert has_element?(view, "#bank-transaction-#{transaction.id}", label)
+      refute has_element?(view, "#bank-transaction-#{rows["failed"].id}")
+    end
+
+    view
+    |> form("#banking-transaction-filters", transaction_filters: %{status: "all"})
+    |> render_change()
+
+    assert has_element?(view, "#banking-visible-transaction-count", "7 transactions")
+    assert has_element?(view, "#bank-transaction-#{rows["queued"].id}", "Sending")
   end
 
   test "shows only actions relevant to the selected transaction status", context do
@@ -249,6 +378,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     view |> element("#banking-select-transaction-#{transaction.id}") |> render_click()
 
     assert has_element?(view, "#banking-restore-selected")
+    refute has_element?(view, "#banking-change-voucher-type")
     refute has_element?(view, "#banking-assign-selected")
     refute has_element?(view, "#banking-ignore-selected")
     refute has_element?(view, "#banking-send-tally")
@@ -260,7 +390,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
       "action" => "restore"
     })
 
-    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Unassigned")
+    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Needs ledger")
   end
 
   test "keeps assignment and sending out of mixed-status selections", context do
@@ -291,6 +421,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert has_element?(view, "#banking-selection-toolbar", "Mixed statuses")
     assert has_element?(view, "#banking-ignore-selected", "Ignore active")
     assert has_element?(view, "#banking-restore-selected", "Restore ignored")
+    refute has_element?(view, "#banking-change-voucher-type")
     refute has_element?(view, "#banking-assign-selected")
     refute has_element?(view, "#banking-send-tally")
   end
@@ -345,7 +476,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     |> render_click()
 
     assert has_element?(view, "#bank-transaction-#{transaction.id}", "Bank Charges")
-    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Ready")
+    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Ready to send")
 
     render_submit(view, "bank-transactions", %{
       "transaction_ids" => [Integer.to_string(transaction.id)],
@@ -355,7 +486,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     })
 
     assert has_element?(view, "#bank-transaction-#{transaction.id}", "Bank Charges")
-    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Ready")
+    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Ready to send")
 
     render_submit(view, "bank-transactions", %{
       "transaction_ids" => [Integer.to_string(transaction.id)],
@@ -364,8 +495,142 @@ defmodule NilaWeb.Banking.UploadLiveTest do
       "action" => "send"
     })
 
-    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Queued")
+    assert has_element?(view, "#bank-transaction-#{transaction.id}", "Sending")
     assert Repo.one!(Job).source_key == "bank:#{statement.id}:transaction:stub-1"
+  end
+
+  test "searches bulk ledgers and assigns only the selected filtered transactions", context do
+    {:ok, statement} = ready_statement(context)
+    original = hd(statement.bank_transactions)
+    {:ok, company} = linked_company(context)
+    bank = master(context.org.id, company.id, "hdfc-bank", "HDFC Bank", "Bank Accounts")
+    charges = master(context.org.id, company.id, "charges", "Bank Charges", "Indirect Expenses")
+    _rent = master(context.org.id, company.id, "rent", "Office Rent", "Indirect Expenses")
+    {:ok, _} = Banking.configure_tally(context.org.id, statement.id, bank.identity)
+
+    matching =
+      Repo.insert!(%Transaction{
+        org_id: context.org.id,
+        statement_id: statement.id,
+        identity: "second-test-credit",
+        ordinal: 2,
+        date: original.date,
+        narration: "Test credit second",
+        withdrawal_paise: 0,
+        deposit_paise: 500,
+        balance_paise: 3_000,
+        transaction_type: "receipt",
+        status: "unassigned"
+      })
+
+    excluded =
+      Repo.insert!(%Transaction{
+        org_id: context.org.id,
+        statement_id: statement.id,
+        identity: "unrelated-payment",
+        ordinal: 3,
+        date: original.date,
+        narration: "Unrelated payment",
+        withdrawal_paise: 100,
+        deposit_paise: 0,
+        balance_paise: 2_900,
+        transaction_type: "payment",
+        status: "unassigned"
+      })
+
+    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}")
+
+    view
+    |> form("#banking-transaction-filters", transaction_filters: %{query: "test credit"})
+    |> render_change()
+
+    view |> element("#banking-select-all-transactions") |> render_click()
+    assert has_element?(view, "#banking-selected-transaction-count", "2 selected")
+    assert has_element?(view, "#banking-assign-selected[disabled]")
+    view |> element("#banking-bulk-ledger-trigger") |> render_click()
+    refute has_element?(view, "#banking-ledger-options", "HDFC Bank")
+
+    view
+    |> form("#banking-ledger-filter-form", ledger_filter: %{query: "no such ledger"})
+    |> render_change()
+
+    assert has_element?(view, "#banking-ledger-options-empty", "No ledgers match")
+
+    view
+    |> form("#banking-ledger-filter-form", ledger_filter: %{query: "CHARGES"})
+    |> render_change()
+
+    assert has_element?(view, "#banking-ledger-options", "Bank Charges")
+    refute has_element?(view, "#banking-ledger-options", "Office Rent")
+    view |> form("#banking-ledger-filter-form") |> render_submit()
+
+    assert has_element?(view, "#banking-bulk-ledger-trigger", "Bank Charges")
+    assert has_element?(view, "#banking-counter-ledger[value='charges']")
+    assert has_element?(view, "#banking-assign-selected:not([disabled])")
+    assert is_nil(Repo.get!(Transaction, original.id).counter_ledger_identity)
+
+    view |> element("#banking-bulk-ledger-trigger") |> render_click()
+    assert has_element?(view, "#banking-ledger-options [aria-selected='true']", "Bank Charges")
+    view |> element("#banking-ledger-options [phx-value-identity='charges']") |> render_click()
+
+    view
+    |> form("#banking-transaction-form", transaction_ids: [original.id, matching.id])
+    |> render_submit(%{"action" => "map"})
+
+    for transaction <- [original, matching] do
+      assert Repo.get!(Transaction, transaction.id).counter_ledger_identity == charges.identity
+      assert has_element?(view, "#bank-transaction-#{transaction.id}", "Bank Charges")
+    end
+
+    assert is_nil(Repo.get!(Transaction, excluded.id).counter_ledger_identity)
+    refute has_element?(view, "#bank-transaction-#{excluded.id}")
+  end
+
+  test "does not open a bulk picker without a destination or an active selection", context do
+    {:ok, statement} = ready_statement(context)
+    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}")
+    view |> element("#banking-select-all-transactions") |> render_click()
+    assert has_element?(view, "#banking-bulk-ledger-trigger[disabled]")
+    render_click(view, "open-bulk-ledger-picker")
+    refute has_element?(view, "#banking-ledger-options [data-selectable-option]")
+  end
+
+  test "the single amount column preserves reversal signs and cash direction", context do
+    {:ok, statement} = ready_statement(context)
+    original = hd(statement.bank_transactions)
+
+    original =
+      original
+      |> Ecto.Changeset.change(
+        withdrawal_paise: -100,
+        deposit_paise: 0,
+        transaction_type: "payment"
+      )
+      |> Repo.update!()
+
+    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}")
+
+    assert has_element?(
+             view,
+             "#bank-transaction-#{original.id} [data-cash-direction='inflow']",
+             "-1.00"
+           )
+
+    original
+    |> Ecto.Changeset.change(
+      withdrawal_paise: 0,
+      deposit_paise: -200,
+      transaction_type: "receipt"
+    )
+    |> Repo.update!()
+
+    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}")
+
+    assert has_element?(
+             view,
+             "#bank-transaction-#{original.id} [data-cash-direction='outflow']",
+             "-2.00"
+           )
   end
 
   defp upload_pdf(view, content) do

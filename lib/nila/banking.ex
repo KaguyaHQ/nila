@@ -253,6 +253,47 @@ defmodule Nila.Banking do
   def map_transactions(_org_id, _statement_id, _ids, _ledger, _type),
     do: {:error, :invalid_transactions}
 
+  def change_voucher_type(org_id, statement_id, transaction_ids, voucher_type)
+      when is_list(transaction_ids) and transaction_ids != [] and
+             length(transaction_ids) <= 1_000 and voucher_type in ["payment_receipt", "contra"] do
+    transaction_ids = Enum.uniq(transaction_ids)
+
+    Repo.transact(fn ->
+      with {:ok, statement} <- get_statement(org_id, statement_id),
+           transactions when length(transactions) == length(transaction_ids) <-
+             editable_transactions(org_id, statement.id, transaction_ids) do
+        Enum.reduce_while(transactions, {:ok, []}, fn transaction, {:ok, updated} ->
+          type = voucher_transaction_type(transaction, voucher_type)
+
+          case transaction
+               |> Transaction.mapping_changeset(%{transaction_type: type})
+               |> Repo.update() do
+            {:ok, saved} -> {:cont, {:ok, [saved | updated]}}
+            error -> {:halt, error}
+          end
+        end)
+        |> case do
+          {:ok, updated} -> {:ok, Enum.reverse(updated)}
+          error -> error
+        end
+      else
+        transactions when is_list(transactions) -> {:error, :transactions_changed}
+        error -> error
+      end
+    end)
+  end
+
+  def change_voucher_type(_org_id, _statement_id, _ids, _type),
+    do: {:error, :invalid_transactions}
+
+  defp voucher_transaction_type(transaction, "contra") do
+    if transaction.withdrawal_paise != 0, do: "contra_withdrawal", else: "contra_deposit"
+  end
+
+  defp voucher_transaction_type(transaction, "payment_receipt") do
+    if transaction.withdrawal_paise != 0, do: "payment", else: "receipt"
+  end
+
   def enqueue_transactions(org_id, statement_id, transaction_ids)
       when is_list(transaction_ids) and transaction_ids != [] do
     with {:ok, statement} <- get_statement(org_id, statement_id),

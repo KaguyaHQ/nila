@@ -64,6 +64,14 @@ defmodule NilaWeb.Banking.StatementLive do
      )}
   end
 
+  def handle_event("open-bulk-ledger-picker", _params, socket) do
+    if bulk_ledger_available?(socket.assigns) do
+      {:noreply, assign_ledger_picker(socket, :bulk, "")}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("open-ledger-picker", %{"id" => value}, socket) do
     with true <- socket.assigns.can_edit,
          id when is_integer(id) <- positive_integer(value),
@@ -80,6 +88,9 @@ defmodule NilaWeb.Banking.StatementLive do
 
   def handle_event("filter-ledger-picker", %{"ledger_filter" => params}, socket) do
     case active_ledger_transaction(socket) do
+      :bulk ->
+        {:noreply, assign_ledger_picker(socket, :bulk, Map.get(params, "query", ""))}
+
       %Transaction{} = transaction ->
         {:noreply, assign_ledger_picker(socket, transaction, Map.get(params, "query", ""))}
 
@@ -104,10 +115,7 @@ defmodule NilaWeb.Banking.StatementLive do
         do: MapSet.new(),
         else: socket.assigns.selectable_transaction_ids
 
-    {:noreply,
-     socket
-     |> assign_transaction_selection(selected_ids)
-     |> refresh_transaction_rows(socket.assigns.selectable_transaction_ids)}
+    {:noreply, assign_transaction_selection(socket, selected_ids)}
   end
 
   def handle_event("toggle-transaction", %{"id" => value}, socket) do
@@ -115,10 +123,7 @@ defmodule NilaWeb.Banking.StatementLive do
          true <- MapSet.member?(socket.assigns.selectable_transaction_ids, id) do
       selected_ids = toggle_id(socket.assigns.selected_transaction_ids, id)
 
-      {:noreply,
-       socket
-       |> assign_transaction_selection(selected_ids)
-       |> refresh_transaction_rows(MapSet.new([id]))}
+      {:noreply, assign_transaction_selection(socket, selected_ids)}
     else
       _ -> {:noreply, socket}
     end
@@ -146,6 +151,24 @@ defmodule NilaWeb.Banking.StatementLive do
   end
 
   def handle_info(:tally_jobs_changed, socket), do: {:noreply, reload_statement(socket)}
+
+  def handle_info({:change_bank_voucher_type, ids, type}, socket) do
+    if Policy.can?(socket.assigns.current_scope, :edit_records) do
+      case Banking.change_voucher_type(org_id(socket), socket.assigns.statement.id, ids, type) do
+        {:ok, transactions} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Voucher type updated for #{length(transactions)} transactions.")
+           |> reload_statement()}
+
+        {:error, _reason} ->
+          {:noreply,
+           put_flash(socket, :error, "Voucher type could not be changed. Check the selection.")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "You cannot change banking records.")}
+    end
+  end
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
@@ -181,6 +204,7 @@ defmodule NilaWeb.Banking.StatementLive do
     |> assign(:tally_bank_ledgers, bank_ledgers)
     |> assign(:tally_setup_form, tally_setup_form(statement))
     |> reset_ledger_picker()
+    |> assign(:bulk_ledger, nil)
     |> assign(:transaction_form, transaction_form())
     |> assign_filtered_transactions(transactions, filters, MapSet.new())
   end
@@ -189,6 +213,18 @@ defmodule NilaWeb.Banking.StatementLive do
     case Banking.get_statement(org_id(socket), socket.assigns.statement.id) do
       {:ok, statement} -> assign_statement(socket, statement)
       {:error, :not_found} -> push_navigate(socket, to: ~p"/banking")
+    end
+  end
+
+  defp select_ledger(%{assigns: %{ledger_picker_transaction_id: :bulk}} = socket, identity)
+       when is_binary(identity) do
+    with true <- bulk_ledger_available?(socket.assigns),
+         ledger when not is_nil(ledger) <-
+           Enum.find(socket.assigns.tally_ledgers, &(&1.identity == identity)) do
+      {:noreply, socket |> assign(:bulk_ledger, ledger) |> reset_ledger_picker()}
+    else
+      _ ->
+        {:noreply, put_flash(socket, :error, "Choose a synced ledger for selected transactions.")}
     end
   end
 
@@ -217,14 +253,11 @@ defmodule NilaWeb.Banking.StatementLive do
     do: {:noreply, put_flash(socket, :error, "Choose a synced ledger.")}
 
   defp handle_transaction_action("map", ids, params, socket) do
-    type = blank_to_nil(params["transaction_type"])
-
     case Banking.map_transactions(
            org_id(socket),
            socket.assigns.statement.id,
            ids,
-           params["counter_ledger_identity"],
-           type
+           params["counter_ledger_identity"]
          ) do
       {:ok, transactions} ->
         {:noreply,
@@ -291,15 +324,28 @@ defmodule NilaWeb.Banking.StatementLive do
     |> assign(:ledger_filter_form, to_form(%{"query" => ""}, as: :ledger_filter))
   end
 
+  defp assign_ledger_picker(socket, :bulk, query) do
+    identity = socket.assigns.bulk_ledger && socket.assigns.bulk_ledger.identity
+
+    socket
+    |> assign(:ledger_picker_transaction_id, :bulk)
+    |> assign_ledger_options(query, identity)
+  end
+
   defp assign_ledger_picker(socket, transaction, query) do
+    socket
+    |> assign(:ledger_picker_transaction_id, transaction.id)
+    |> assign_ledger_options(query, transaction.counter_ledger_identity)
+  end
+
+  defp assign_ledger_options(socket, query, selected_identity) do
     query = String.trim(query)
 
     socket
-    |> assign(:ledger_picker_transaction_id, transaction.id)
-    |> assign(:ledger_picker_selected_identity, transaction.counter_ledger_identity)
+    |> assign(:ledger_picker_selected_identity, selected_identity)
     |> assign(
       :ledger_picker_options,
-      filter_ledgers(socket.assigns.tally_ledgers, query, transaction.counter_ledger_identity)
+      filter_ledgers(socket.assigns.tally_ledgers, query, selected_identity)
     )
     |> assign(:ledger_filter_form, to_form(%{"query" => query}, as: :ledger_filter))
   end
@@ -328,9 +374,18 @@ defmodule NilaWeb.Banking.StatementLive do
 
   defp active_ledger_transaction(socket) do
     case socket.assigns.ledger_picker_transaction_id do
+      :bulk -> if bulk_ledger_available?(socket.assigns), do: :bulk
       id when is_integer(id) -> transaction_by_id(socket, id)
       nil -> nil
     end
+  end
+
+  defp bulk_ledger_available?(assigns) do
+    assigns.can_edit and assigns.selected_active_count > 0 and
+      assigns.selected_ignored_count == 0 and
+      is_integer(assigns.statement.tally_company_id) and
+      is_binary(assigns.statement.bank_ledger_identity) and
+      assigns.tally_ledgers != []
   end
 
   defp ledger_option_dom_id(ledger),
@@ -348,7 +403,7 @@ defmodule NilaWeb.Banking.StatementLive do
   end
 
   defp transaction_form do
-    to_form(%{"counter_ledger_identity" => "", "transaction_type" => ""},
+    to_form(%{"counter_ledger_identity" => ""},
       as: :bank_actions
     )
   end
@@ -395,7 +450,8 @@ defmodule NilaWeb.Banking.StatementLive do
   defp normalize_transaction_filters(params) do
     %{
       "query" => params |> Map.get("query", "") |> String.trim(),
-      "status" => valid_filter(Map.get(params, "status"), Transaction.statuses()),
+      "status" =>
+        valid_filter(Map.get(params, "status"), Enum.map(status_filter_options(), &elem(&1, 1))),
       "type" => valid_filter(Map.get(params, "type"), Transaction.types())
     }
   end
@@ -407,7 +463,7 @@ defmodule NilaWeb.Banking.StatementLive do
 
     Enum.filter(transactions, fn transaction ->
       matches_transaction_query?(transaction, query) and
-        matches_filter?(transaction.status, filters["status"]) and
+        matches_status_filter?(transaction.status, filters["status"]) and
         matches_filter?(transaction.transaction_type, filters["type"])
     end)
   end
@@ -425,6 +481,9 @@ defmodule NilaWeb.Banking.StatementLive do
   defp matches_filter?(_value, "all"), do: true
   defp matches_filter?(value, filter), do: value == filter
 
+  defp matches_status_filter?(status, "needs_attention"), do: status in ["failed", "verifying"]
+  defp matches_status_filter?(status, filter), do: matches_filter?(status, filter)
+
   defp assign_transaction_selection(socket, selected_ids) do
     selectable_ids = socket.assigns.selectable_transaction_ids
     selected_ids = MapSet.intersection(selected_ids, selectable_ids)
@@ -436,6 +495,18 @@ defmodule NilaWeb.Banking.StatementLive do
         transaction.status == "ignored" and MapSet.member?(selected_ids, transaction.id)
       end)
 
+    # Keep checkbox events out of the page render. Only this small component
+    # gets a DOM patch and synchronizes the native form controls in the same update.
+    if connected?(socket) do
+      send_update(NilaWeb.Banking.SelectionToolbarComponent,
+        id: "banking-selection",
+        selected_ids: Enum.to_list(selected_ids),
+        selected_count: selected_count,
+        selected_active_count: selected_count - selected_ignored_count,
+        selected_ignored_count: selected_ignored_count
+      )
+    end
+
     socket
     |> assign(:selected_transaction_ids, selected_ids)
     |> assign(:selected_ignored_count, selected_ignored_count)
@@ -443,10 +514,6 @@ defmodule NilaWeb.Banking.StatementLive do
     |> assign(
       :all_transactions_selected,
       selectable_count > 0 and selected_count == selectable_count
-    )
-    |> assign(
-      :some_transactions_selected,
-      selected_count > 0 and selected_count < selectable_count
     )
   end
 
@@ -468,14 +535,6 @@ defmodule NilaWeb.Banking.StatementLive do
     if MapSet.member?(ids, id), do: MapSet.delete(ids, id), else: MapSet.put(ids, id)
   end
 
-  defp refresh_transaction_rows(socket, ids) do
-    Enum.reduce(socket.assigns.statement.bank_transactions, socket, fn transaction, socket ->
-      if MapSet.member?(ids, transaction.id),
-        do: stream_insert(socket, :transactions, transaction),
-        else: socket
-    end)
-  end
-
   defp selectable_transaction?(transaction),
     do: transaction.status not in ["queued", "posted", "verifying"]
 
@@ -489,28 +548,31 @@ defmodule NilaWeb.Banking.StatementLive do
   end
 
   defp positive_integer(_value), do: nil
-  defp blank_to_nil(""), do: nil
-  defp blank_to_nil(value), do: value
   defp org_id(socket), do: socket.assigns.current_scope.current_org.id
 
   defp ledger_options(ledgers), do: Enum.map(ledgers, &{&1.name, &1.identity})
 
   defp status_filter_options do
-    [{"All statuses", "all"} | Enum.map(Transaction.statuses(), &{humanize_type(&1), &1})]
+    [
+      {"All transactions", "all"},
+      {"Needs ledger", "unassigned"},
+      {"Ready to send", "ready"},
+      {"Needs attention", "needs_attention"},
+      {"In Tally", "posted"},
+      {"Ignored", "ignored"}
+    ]
   end
+
+  defp status_label("unassigned"), do: "Needs ledger"
+  defp status_label("ready"), do: "Ready to send"
+  defp status_label("queued"), do: "Sending"
+  defp status_label("posted"), do: "In Tally"
+  defp status_label("failed"), do: "Send failed"
+  defp status_label("verifying"), do: "Confirmation pending"
+  defp status_label("ignored"), do: "Ignored"
 
   defp type_filter_options do
     [{"All types", "all"} | Enum.map(Transaction.types(), &{humanize_type(&1), &1})]
-  end
-
-  defp transaction_type_options do
-    [
-      {"Keep Payment / Receipt", ""},
-      {"Payment", "payment"},
-      {"Receipt", "receipt"},
-      {"Contra withdrawal", "contra_withdrawal"},
-      {"Contra deposit", "contra_deposit"}
-    ]
   end
 
   defp humanize_type(value) when is_binary(value) do
@@ -525,6 +587,18 @@ defmodule NilaWeb.Banking.StatementLive do
   defp status_variant(_status), do: "neutral"
 
   defp money(paise), do: Nila.Formatters.format_money_with_paise(paise, prefix: "₹")
+
+  defp transaction_amount(transaction) do
+    if transaction.withdrawal_paise != 0,
+      do: transaction.withdrawal_paise,
+      else: transaction.deposit_paise
+  end
+
+  defp transaction_cash_direction(transaction) do
+    if transaction.withdrawal_paise != 0,
+      do: cash_direction(:withdrawal, transaction.withdrawal_paise),
+      else: cash_direction(:deposit, transaction.deposit_paise)
+  end
 
   defp cash_direction(:withdrawal, amount) when amount > 0, do: :outflow
   defp cash_direction(:withdrawal, amount) when amount < 0, do: :inflow
@@ -581,6 +655,7 @@ defmodule NilaWeb.Banking.StatementLive do
             <.spinner tone="accent" label="Reading statement" />
             <div>
               <h2 class="text-base-content text-h4 font-semibold">Reading the statement</h2>
+
               <p class="text-body text-ink-muted mt-1">
                 Nila is extracting the embedded text and checking the running balance. No OCR is used.
               </p>
@@ -593,6 +668,7 @@ defmodule NilaWeb.Banking.StatementLive do
             {@statement.error}
           </.callout>
         </div>
+
         <.button
           :if={@statement.status == "failed"}
           navigate={~p"/banking"}
@@ -608,10 +684,13 @@ defmodule NilaWeb.Banking.StatementLive do
             <.stat_card label="Opening balance">
               {money(@statement.opening_balance_paise)}
             </.stat_card>
+
             <.stat_card label="Closing balance">
               {money(@statement.closing_balance_paise)}
             </.stat_card>
+
             <.stat_card label="Withdrawals">{money(@statement.total_withdrawal_paise)}</.stat_card>
+
             <.stat_card label="Deposits">{money(@statement.total_deposit_paise)}</.stat_card>
           </div>
 
@@ -619,6 +698,7 @@ defmodule NilaWeb.Banking.StatementLive do
             <div class="flex items-end justify-between gap-4">
               <div>
                 <h2 class="text-base-content text-h4 font-semibold">Extracted transactions</h2>
+
                 <p id="banking-visible-transaction-count" class="text-ink-muted text-ui mt-1">
                   <%= if @visible_transaction_count == @transaction_count do %>
                     {transaction_count_text(@transaction_count)}
@@ -645,10 +725,12 @@ defmodule NilaWeb.Banking.StatementLive do
               >
                 <div class="pb-1 lg:pr-3">
                   <p class="text-base-content text-ui font-semibold">Tally destination</p>
+
                   <p id="banking-tally-company" class="text-ink-muted text-ui">
                     {@tally_company.name}
                   </p>
                 </div>
+
                 <.input
                   field={@tally_setup_form[:bank_ledger_identity]}
                   type="select"
@@ -698,148 +780,98 @@ defmodule NilaWeb.Banking.StatementLive do
               for={@transaction_form}
               id="banking-transaction-form"
               phx-submit="bank-transactions"
+              phx-hook=".TransactionSelection"
             >
+              <script :type={Phoenix.LiveView.ColocatedHook} name=".TransactionSelection">
+                export default {
+                  mounted() {
+                    this.selectedIds = new Set()
+                    this.handleEvent("banking-selection", ({ids}) => {
+                      this.selectedIds = new Set(ids.map(String))
+                      this.syncSelection()
+                    })
+                  },
+                  updated() { this.syncSelection() },
+                  syncSelection() {
+                    let selectableCount = 0
+                    let selectedCount = 0
+                    this.el.querySelectorAll("[data-transaction-selection]").forEach(input => {
+                      input.checked = !input.disabled && this.selectedIds.has(input.value)
+                      if (!input.disabled) selectableCount++
+                      if (input.checked) selectedCount++
+                    })
+                    const header = this.el.querySelector("#banking-select-all-transactions")
+                    if (!header) return
+                    header.checked = selectableCount > 0 && selectedCount === selectableCount
+                    header.indeterminate = selectedCount > 0 && selectedCount < selectableCount
+                    header.dataset.indeterminate = String(header.indeterminate)
+                    header.setAttribute("aria-label", header.checked
+                      ? "Clear filtered transaction selection"
+                      : "Select all filtered transactions")
+                  }
+                }
+              </script>
+
               <.data_table
                 id="banking-transaction-rows"
                 rows={@streams.transactions}
                 empty?={@visible_transaction_count == 0}
                 mode="scan"
-                min_width="min-w-[1240px]"
+                min_width="min-w-[1100px]"
               >
-                <:toolbar :if={@can_edit && MapSet.size(@selected_transaction_ids) > 0}>
-                  <div
-                    id="banking-selection-toolbar"
-                    class="gap-related flex flex-wrap items-center"
-                  >
-                    <p
-                      id="banking-selected-transaction-count"
-                      class="text-base-content text-ui min-w-20 font-semibold"
-                      aria-live="polite"
-                    >
-                      {MapSet.size(@selected_transaction_ids)} selected
-                    </p>
-
-                    <%= if @selected_ignored_count == 0 do %>
-                      <div class="w-64">
-                        <.input
-                          type="select"
-                          id="banking-counter-ledger"
-                          name="counter_ledger_identity"
-                          aria-label="Ledger for selected transactions"
-                          prompt="Assign ledger"
-                          options={ledger_options(@tally_ledgers)}
-                          value=""
-                        />
-                      </div>
-                      <div class="w-52">
-                        <.input
-                          type="select"
-                          id="banking-transaction-type"
-                          name="transaction_type"
-                          aria-label="Transaction type for selected transactions"
-                          options={transaction_type_options()}
-                          value=""
-                        />
-                      </div>
-                      <.button
-                        id="banking-assign-selected"
-                        type="submit"
-                        name="action"
-                        value="map"
-                        variant="outline"
-                      >
-                        Assign
-                      </.button>
-                    <% else %>
-                      <.badge variant="neutral">
-                        {if @selected_active_count > 0, do: "Mixed statuses", else: "Ignored"}
-                      </.badge>
-                    <% end %>
-
-                    <div class="gap-related ml-auto flex items-center">
-                      <.button
-                        :if={@selected_active_count > 0}
-                        id="banking-ignore-selected"
-                        type="submit"
-                        name="action"
-                        value="ignore"
-                        variant="ghost"
-                      >
-                        {if @selected_ignored_count > 0, do: "Ignore active", else: "Ignore"}
-                      </.button>
-                      <.button
-                        :if={@selected_ignored_count > 0}
-                        id="banking-restore-selected"
-                        type="submit"
-                        name="action"
-                        value="restore"
-                        variant="ghost"
-                      >
-                        {if @selected_active_count > 0, do: "Restore ignored", else: "Restore"}
-                      </.button>
-                      <.button
-                        :if={@selected_ignored_count == 0}
-                        type="submit"
-                        name="action"
-                        value="send"
-                        id="banking-send-tally"
-                      >
-                        Send selected to Tally
-                      </.button>
-                    </div>
-                  </div>
-                </:toolbar>
                 <:col_header column="selection">
                   <.input
                     type="checkbox"
                     id="banking-select-all-transactions"
+                    checkbox_hit_area="large"
                     name="select_all_transactions"
                     hidden_input={false}
-                    checked={@all_transactions_selected}
                     disabled={MapSet.size(@selectable_transaction_ids) == 0}
                     phx-click="toggle-all-transactions"
-                    phx-hook=".IndeterminateCheckbox"
-                    data-indeterminate={to_string(@some_transactions_selected)}
-                    aria-label={
-                      if @all_transactions_selected,
-                        do: "Clear filtered transaction selection",
-                        else: "Select all filtered transactions"
-                    }
+                    aria-label="Select all filtered transactions"
                   />
-                  <script
-                    :type={Phoenix.LiveView.ColocatedHook}
-                    name=".IndeterminateCheckbox"
-                  >
-                    export default {
-                      mounted() { this.sync() },
-                      updated() { this.sync() },
-                      sync() { this.el.indeterminate = this.el.dataset.indeterminate === "true" }
-                    }
-                  </script>
                 </:col_header>
+
                 <:col :let={transaction} key="selection" label="Select">
                   <.input
                     type="checkbox"
                     id={"banking-select-transaction-#{transaction.id}"}
+                    checkbox_hit_area="large"
+                    data-transaction-selection
                     name="transaction_ids[]"
                     checkbox_value={transaction.id}
                     hidden_input={false}
-                    checked={MapSet.member?(@selected_transaction_ids, transaction.id)}
                     disabled={not @can_edit or not selectable_transaction?(transaction)}
                     phx-click="toggle-transaction"
                     phx-value-id={transaction.id}
                     aria-label={"Select transaction from #{format_display_date(transaction.date)}"}
                   />
                 </:col>
-                <:col :let={transaction} label="Date">
+
+                <:col :let={transaction} label="Date" class="whitespace-nowrap">
                   {format_display_date(transaction.date)}
                 </:col>
+
                 <:col :let={transaction} label="Narration" class="max-w-xl" row_header>
                   <span class="text-base-content">{transaction.narration}</span>
                   <span :if={transaction.error} class="text-error text-ui mt-1 block">
                     {transaction.error["message"] || "Tally could not post this transaction."}
                   </span>
                 </:col>
+
+                <:col :let={transaction} label="Type" class="whitespace-nowrap">
+                  {humanize_type(transaction.transaction_type)}
+                </:col>
+
+                <:col :let={transaction} label="Amount" align="right">
+                  <span
+                    data-cash-direction={transaction_cash_direction(transaction)}
+                    class="nila-bank-cash-amount"
+                  >
+                    {money(transaction_amount(transaction))}
+                  </span>
+                </:col>
+
                 <:col :let={transaction} label="Ledger">
                   <.picker_trigger
                     id={"banking-ledger-trigger-#{transaction.id}"}
@@ -859,36 +891,21 @@ defmodule NilaWeb.Banking.StatementLive do
                     {transaction.counter_ledger_name || "Choose ledger"}
                   </.picker_trigger>
                 </:col>
-                <:col :let={transaction} label="Type">
-                  {humanize_type(transaction.transaction_type)}
-                </:col>
+
                 <:col :let={transaction} label="Status">
                   <.badge variant={status_variant(transaction.status)}>
-                    {humanize_type(transaction.status)}
+                    {status_label(transaction.status)}
                   </.badge>
                 </:col>
+
                 <:col :let={transaction} label="Chq. / Ref.">
                   {transaction.reference || "—"}
                 </:col>
-                <:col :let={transaction} label="Withdrawal" align="right">
-                  <span
-                    data-cash-direction={cash_direction(:withdrawal, transaction.withdrawal_paise)}
-                    class="nila-bank-cash-amount"
-                  >
-                    {money(transaction.withdrawal_paise)}
-                  </span>
-                </:col>
-                <:col :let={transaction} label="Deposit" align="right">
-                  <span
-                    data-cash-direction={cash_direction(:deposit, transaction.deposit_paise)}
-                    class="nila-bank-cash-amount"
-                  >
-                    {money(transaction.deposit_paise)}
-                  </span>
-                </:col>
+
                 <:col :let={transaction} label="Balance" align="right">
                   {money(transaction.balance_paise)}
                 </:col>
+
                 <:empty>
                   {if @transaction_count == 0,
                     do: "No transactions were extracted.",
@@ -899,7 +916,11 @@ defmodule NilaWeb.Banking.StatementLive do
 
             <.select_panel
               id="banking-ledger-picker"
-              title="Choose ledger"
+              title={
+                if @ledger_picker_transaction_id == :bulk,
+                  do: "Ledger for selected transactions",
+                  else: "Choose ledger"
+              }
               filter_value={@ledger_filter_form[:query].value || ""}
             >
               <:search>
@@ -930,12 +951,14 @@ defmodule NilaWeb.Banking.StatementLive do
                 >
                   No ledgers match this search.
                 </p>
+
                 <p
                   :if={is_nil(@ledger_picker_transaction_id)}
                   class="text-ink-muted text-ui px-3 py-6 text-center"
                 >
                   Loading ledgers…
                 </p>
+
                 <.selectable_option
                   :for={ledger <- @ledger_picker_options}
                   id={ledger_option_dom_id(ledger)}
@@ -953,6 +976,19 @@ defmodule NilaWeb.Banking.StatementLive do
           </section>
         <% end %>
       </div>
+
+      <:bottom_bar>
+        <.live_component
+          module={NilaWeb.Banking.SelectionToolbarComponent}
+          id="banking-selection"
+          can_edit={@can_edit}
+          ledger_configured={
+            is_integer(@statement.tally_company_id) and
+              is_binary(@statement.bank_ledger_identity) and @tally_ledgers != []
+          }
+          bulk_ledger={@bulk_ledger}
+        />
+      </:bottom_bar>
     </Layouts.app>
     """
   end

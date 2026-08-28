@@ -65,6 +65,12 @@ defmodule NilaWeb.Components.Input do
   attr :checked, :boolean, doc: "the checked flag for checkbox inputs"
   attr :checkbox_value, :any, default: "true", doc: "submitted value for checkbox inputs"
   attr :hidden_input, :boolean, default: true, doc: "include the checkbox's hidden false input"
+
+  attr :checkbox_hit_area, :string,
+    default: "default",
+    values: ~w(default large),
+    doc: "larger click target for standalone checkboxes without increasing their layout size"
+
   attr :prompt, :string, default: nil, doc: "the prompt for select inputs"
   attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
   attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
@@ -98,7 +104,10 @@ defmodule NilaWeb.Components.Input do
 
     ~H"""
     <div class="nila-field">
-      <label for={@id}>
+      <label
+        for={@id}
+        class={@checkbox_hit_area == "large" && is_nil(@label) && "nila-checkbox-target"}
+      >
         <input
           :if={@hidden_input}
           type="hidden"

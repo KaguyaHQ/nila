@@ -14,6 +14,46 @@ defmodule NilaWeb.CoreComponentsTest do
   import NilaWeb.Layouts
   import NilaWeb.Components.Typography
   import NilaWeb.Components.SelectableList
+  import NilaWeb.Components.Menu
+
+  test "action menus support labelled triggers and external form actions alongside event actions" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.action_menu id="more" label="More selection actions" trigger_label="More">
+        <:item id="change-type" label="Change voucher type" on_click="change-type" target={1} />
+        <:item id="ignore" label="Ignore selected" form="transactions" name="action" value="ignore" />
+      </.action_menu>
+      <.action_menu id="row" label="Row actions">
+        <:item id="edit-row" label="Edit" on_click="edit" value="123" />
+      </.action_menu>
+      """)
+
+    fragment = LazyHTML.from_fragment(html)
+    assert LazyHTML.text(LazyHTML.query(fragment, "#more-trigger")) =~ "More"
+
+    assert [_] =
+             LazyHTML.query(
+               fragment,
+               "#more-popover #ignore[type='submit'][form='transactions'][name='action'][value='ignore']"
+             )
+             |> LazyHTML.to_tree()
+
+    assert [_] =
+             LazyHTML.query(
+               fragment,
+               "#change-type[type='button'][phx-click='change-type'][phx-target='1']"
+             )
+             |> LazyHTML.to_tree()
+
+    assert [_] =
+             LazyHTML.query(
+               fragment,
+               "#edit-row[type='button'][phx-click='edit'][phx-value-id='123']"
+             )
+             |> LazyHTML.to_tree()
+  end
 
   test "flash group presents one neutral reconnect state" do
     html = render_component(&flash_group/1, flash: %{})
@@ -160,6 +200,29 @@ defmodule NilaWeb.CoreComponentsTest do
     assert html =~ "nila-segmented"
     assert html =~ ~s(phx-value-scope="open")
     assert html =~ ~s(aria-pressed="true")
+  end
+
+  test "standalone checkbox can expand its native label hit area" do
+    html =
+      render_component(&input/1,
+        type: "checkbox",
+        id: "select-row",
+        name: "rows[]",
+        checkbox_value: "42",
+        checkbox_hit_area: "large",
+        hidden_input: false,
+        checked: true,
+        disabled: true,
+        "aria-label": "Select transaction"
+      )
+
+    fragment = LazyHTML.from_fragment(html)
+    label = LazyHTML.query(fragment, "label[for='select-row'].nila-checkbox-target")
+    checkbox = LazyHTML.query(label, "#select-row[type='checkbox']")
+    assert LazyHTML.attribute(checkbox, "value") == ["42"]
+    assert LazyHTML.attribute(checkbox, "aria-label") == ["Select transaction"]
+    assert LazyHTML.attribute(checkbox, "checked") == [""]
+    assert LazyHTML.attribute(checkbox, "disabled") == [""]
   end
 
   test "picker trigger owns Radix select-trigger anatomy" do

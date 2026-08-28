@@ -2264,23 +2264,21 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         </ul>
 
         <:footer>
-          <div class="gap-related flex justify-end">
-            <.button
-              id="sales-bills-tally-warning-cancel"
-              type="button"
-              variant="ghost"
-              phx-click="cancel-send-to-tally"
-            >
-              Cancel
-            </.button>
-            <.button
-              id="sales-bills-tally-warning-confirm"
-              type="button"
-              phx-click="send-to-tally"
-            >
-              Send {length(@packet.invoices)} anyway
-            </.button>
-          </div>
+          <.button
+            id="sales-bills-tally-warning-cancel"
+            type="button"
+            variant="ghost"
+            phx-click="cancel-send-to-tally"
+          >
+            Cancel
+          </.button>
+          <.button
+            id="sales-bills-tally-warning-confirm"
+            type="button"
+            phx-click="send-to-tally"
+          >
+            Send {length(@packet.invoices)} anyway
+          </.button>
         </:footer>
       </.modal>
 
@@ -3078,14 +3076,12 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               </.form>
 
               <:footer>
-                <div class="gap-related flex justify-end">
-                  <.button type="button" variant="ghost" phx-click="close-invoice-facts">
-                    Cancel
-                  </.button>
-                  <.button type="submit" form="sales-bill-invoice-facts-form">
-                    Save changes
-                  </.button>
-                </div>
+                <.button type="button" variant="ghost" phx-click="close-invoice-facts">
+                  Cancel
+                </.button>
+                <.button type="submit" form="sales-bill-invoice-facts-form">
+                  Save changes
+                </.button>
               </:footer>
             </.modal>
 
@@ -3171,14 +3167,12 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               </.form>
 
               <:footer>
-                <div class="gap-related flex justify-end">
-                  <.button type="button" variant="ghost" phx-click="close-posting-line">
-                    Cancel
-                  </.button>
-                  <.button type="submit" form="sales-bill-line-edit-form">
-                    Save changes
-                  </.button>
-                </div>
+                <.button type="button" variant="ghost" phx-click="close-posting-line">
+                  Cancel
+                </.button>
+                <.button type="submit" form="sales-bill-line-edit-form">
+                  Save changes
+                </.button>
               </:footer>
             </.modal>
           </section>

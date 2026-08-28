@@ -213,7 +213,9 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
 - **Modals and sheets:** `<.modal>` owns scrim, width families, radius, elevation, focus,
   dismissal, sheet side placement, and workbench mode. Use `variant="sheet"` for a focused
   task attached to a viewport edge; its anatomy follows shadcn Sheet while its visual physics
-  remain Nila/Radix. Callers cannot pass arbitrary panel classes.
+  remain Nila/Radix. Callers cannot pass arbitrary panel classes. Put ordinary dialog
+  actions directly in `:footer`, secondary action first; the component owns alignment,
+  spacing, and wrapping. Body forms use `form="form-id"` on footer submit buttons.
 - **Menus:** transient action menus use the native `popover="auto"` contract for light
   dismissal and Escape behavior; `<details>` is a disclosure primitive, not a dropdown.
 - **Searchable single-select lists:** use the shared `SelectableList` hook. Keep focus in a

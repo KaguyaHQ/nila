@@ -245,18 +245,19 @@ defmodule NilaWeb.Settings.UsersLive do
             admins manage the firm; operators run the day-to-day work and approvals;
             viewers can only read and export.
           </p>
-          <div class="flex justify-end gap-2">
-            <.button
-              type="button"
-              phx-click="close_invite"
-              variant="ghost"
-              size="sm"
-            >
-              Cancel
-            </.button>
-            <.button type="submit" variant="primary">Send invitation</.button>
-          </div>
         </.form>
+        <:footer>
+          <.button
+            id="invite-cancel"
+            type="button"
+            phx-click="close_invite"
+            variant="ghost"
+            size="sm"
+          >
+            Cancel
+          </.button>
+          <.button id="invite-submit" type="submit" form="invite-form" variant="primary">Send invitation</.button>
+        </:footer>
       </.modal>
     </Layouts.settings>
     """

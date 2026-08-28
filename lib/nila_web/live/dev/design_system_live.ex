@@ -407,15 +407,13 @@ if Application.compile_env(:nila, :dev_routes, false) or
                   title="Review invoice"
                   on_close="close-design-modal"
                 >
-                  <div class="space-y-block">
-                    <p class="text-body text-ink-muted">
-                      The geometry follows Radix while focus and dismissal remain native LiveView behavior.
-                    </p>
-                    <div class="flex justify-end gap-2">
-                      <.button variant="ghost" phx-click="close-design-modal">Cancel</.button>
-                      <.button phx-click="close-design-modal">Confirm review</.button>
-                    </div>
-                  </div>
+                  <p class="text-body text-ink-muted">
+                    The geometry follows Radix while focus and dismissal remain native LiveView behavior.
+                  </p>
+                  <:footer>
+                    <.button id="ds-modal-cancel" variant="ghost" phx-click="close-design-modal">Cancel</.button>
+                    <.button id="ds-modal-confirm" phx-click="close-design-modal">Confirm review</.button>
+                  </:footer>
                 </.modal>
 
                 <.modal

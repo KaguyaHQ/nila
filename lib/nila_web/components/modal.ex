@@ -23,6 +23,10 @@ defmodule NilaWeb.Components.Modal do
   Workbenches never close on click-away. Set `close_on_escape={false}` while an
   edit is active, and use `close_label="Done"` for an explicit exit affordance.
 
+  Put dialog actions directly in `:footer`, secondary action first. The footer
+  owns right alignment, spacing, and wrapping; callers do not need a layout wrapper.
+  For forms in the body, associate submit buttons using the form's DOM `id`.
+
   ## Examples
 
       <.modal :if={@show_form} id="invoice-form-modal" title="Add Invoice" on_close="close-invoice-form">
