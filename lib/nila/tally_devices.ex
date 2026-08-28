@@ -219,6 +219,21 @@ defmodule Nila.TallyDevices do
     )
   end
 
+  @doc "Returns the Tally company configured as a client's accounting destination."
+  def get_client_company(org_id, client_id)
+      when is_integer(org_id) and is_integer(client_id) do
+    Repo.fetch_one(
+      from company in Company,
+        join: client in Client,
+        on: client.active_tally_company_id == company.id,
+        join: device in assoc(company, :device),
+        where: company.org_id == ^org_id and client.org_id == ^org_id and client.id == ^client_id,
+        preload: [device: device]
+    )
+  end
+
+  def get_client_company(_org_id, _client_id), do: {:error, :not_found}
+
   def list_importable_companies(org_id) when is_integer(org_id) do
     Repo.all(
       from company in Company,

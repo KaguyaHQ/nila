@@ -3,7 +3,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   alias Nila.Clients
   alias Nila.Gst.Filing.TallyPrime
-  alias Nila.Gst.Sales.{Gstr1, InvoiceCorrections, InvoiceRemovals, TallyPacket}
+  alias Nila.Gst.Sales.{Gstr1, Invoice, InvoiceCorrections, InvoiceRemovals, TallyPacket}
   alias Nila.Gst.StateCodes
   alias Nila.{TallyDevices, TallyJobs, TallyMappings}
   alias NilaWeb.Gst.SalesIssuePresentation
@@ -15,9 +15,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
     with {:ok, client} <- Clients.get_client(org_id, client_id),
          {:ok, dumps} <- TallyPacket.fetch(org_id, client_id, batch_ref) do
-      if connected?(socket), do: TallyJobs.subscribe_org(org_id)
+      if connected?(socket) do
+        TallyJobs.subscribe_org(org_id)
+        Phoenix.PubSub.subscribe(Nila.PubSub, tally_presence_topic(org_id))
+      end
 
-      company = online_tally_destination(org_id, client.id)
+      company = tally_destination(org_id, client.id)
+      tally_masters = tally_masters(org_id, company)
       source_prefix = company && tally_source_prefix(batch_ref, company.id)
       packet = prepare_packet(dumps, client.id)
       tally_jobs = list_tally_jobs(org_id, source_prefix)
@@ -29,6 +33,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         |> assign(:batch_ref, batch_ref)
         |> assign(:packet, packet)
         |> assign(:tally_company, company)
+        |> assign(:tally_masters, tally_masters)
+        |> assign(:tally_masters_available?, tally_masters != [])
+        |> assign(:tally_masters_synced_at, latest_master_sync(tally_masters))
+        |> assign_tally_availability(org_id, company)
         |> assign(:tally_source_prefix, source_prefix)
         |> assign(:tally_jobs, tally_jobs)
         |> assign(:selected_invoice, nil)
@@ -147,7 +155,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
      )}
   end
 
-  defp totals(invoice), do: Nila.Gst.Sales.Gstr1.extracted_totals(invoice)
+  defp totals(invoice), do: Invoice.extracted_totals(invoice)
 
   defp invoice_total(invoice) do
     amounts = totals(invoice)
@@ -406,7 +414,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       when not is_nil(invoice) and not is_nil(tally_posting) do
     if not invoice_frozen_now?(socket, invoice) do
       org_id = current_scope.current_org.id
-      source_id = Gstr1.source_id(invoice)
+      source_id = Invoice.source_id(invoice)
 
       case InvoiceCorrections.save(
              org_id,
@@ -523,7 +531,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       when is_integer(index) and not is_nil(invoice) do
     if not invoice_frozen_now?(socket, invoice) do
       org_id = current_scope.current_org.id
-      source_id = Gstr1.source_id(invoice)
+      source_id = Invoice.source_id(invoice)
       changes = %{"line_items" => %{to_string(index) => attrs}}
 
       case InvoiceCorrections.save(
@@ -558,7 +566,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   def handle_event(
         "save-tally-posting",
         %{"tally_posting" => posting} = params,
-        %{assigns: %{tally_company: %{id: company_id}, selected_invoice: invoice}} = socket
+        %{
+          assigns: %{
+            tally_company: %{id: company_id},
+            tally_masters_available?: true,
+            selected_invoice: invoice
+          }
+        } = socket
       )
       when not is_nil(invoice) do
     if invoice_frozen_now?(socket, invoice) do
@@ -576,6 +590,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     company = socket.assigns.tally_company
 
     with %{} <- company,
+         true <- socket.assigns.tally_masters_available?,
          {:ok, company} <- online_tally_company(org_id, socket.assigns.client.id, company.id),
          :ok <- TallyPrime.validate_company_gstin(company, socket.assigns.client.gstin),
          {:ok, invoices, unresolved_parties} <-
@@ -596,8 +611,19 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       {:error, :not_found} ->
         {:noreply,
          socket
-         |> assign(:tally_company, nil)
-         |> assign(:send_error, "Tally is no longer connected. Download the XML instead.")}
+         |> assign(:tally_online?, false)
+         |> assign(
+           :send_error,
+           "#{company.name} is unavailable. Reconnect it in TallyPrime, then try again."
+         )}
+
+      false ->
+        {:noreply,
+         assign(
+           socket,
+           :send_error,
+           "Sync this Tally company's masters before sending vouchers."
+         )}
 
       {:error, {:incompatible_voucher_numbering, issues}} ->
         {:noreply, assign(socket, :send_error, voucher_numbering_error(issues))}
@@ -657,7 +683,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
              org_id,
              socket.assigns.client.id,
              socket.assigns.batch_ref,
-             Gstr1.source_id(invoice),
+             Invoice.source_id(invoice),
              company_id,
              %{
                invoice: posting["invoice"] || editable_invoice_values(invoice),
@@ -694,7 +720,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp replace_selected_invoice(socket, corrected_invoice) do
-    source_id = Gstr1.source_id(corrected_invoice)
+    source_id = Invoice.source_id(corrected_invoice)
     socket = reload_packet(socket)
     corrected_invoice = find_packet_invoice(socket.assigns.packet, source_id, corrected_invoice)
 
@@ -710,7 +736,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp replace_selected_invoice(socket, corrected_invoice, posting) do
-    source_id = Gstr1.source_id(corrected_invoice)
+    source_id = Invoice.source_id(corrected_invoice)
     socket = reload_packet(socket)
     corrected_invoice = find_packet_invoice(socket.assigns.packet, source_id, corrected_invoice)
 
@@ -934,6 +960,19 @@ defmodule NilaWeb.Gst.SalesBillsLive do
      )}
   end
 
+  def handle_info(
+        %Phoenix.Socket.Broadcast{event: "presence_diff"},
+        socket
+      ) do
+    org_id = socket.assigns.current_scope.current_org.id
+    company = tally_destination(org_id, socket.assigns.client.id)
+
+    {:noreply,
+     socket
+     |> assign(:tally_company, company)
+     |> assign_tally_availability(org_id, company)}
+  end
+
   defp remainder(packet, tally_jobs) do
     failed = Enum.map(packet.failed_files, &TallyPacket.original_name/1)
     unread = Enum.map(packet.unread_pages, &"#{&1.file} · page #{&1.page}")
@@ -978,10 +1017,47 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     |> Enum.filter(&MapSet.member?(online_device_ids, &1.device_id))
   end
 
-  defp online_tally_destination(org_id, client_id) do
-    org_id
-    |> online_tally_companies(client_id)
-    |> List.first()
+  defp tally_presence_topic(org_id), do: "tally_devices:#{org_id}"
+
+  defp tally_destination(org_id, client_id) do
+    case TallyDevices.get_client_company(org_id, client_id) do
+      {:ok, company} -> company
+      {:error, :not_found} -> nil
+    end
+  end
+
+  defp tally_masters(_org_id, nil), do: []
+  defp tally_masters(org_id, company), do: TallyMappings.list_ledger_choices(org_id, company.id)
+
+  defp latest_master_sync([]), do: nil
+
+  defp latest_master_sync(masters) do
+    masters
+    |> Enum.map(& &1.updated_at)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max_by(&DateTime.to_unix(&1, :microsecond), fn -> nil end)
+  end
+
+  defp assign_tally_availability(socket, _org_id, nil) do
+    socket
+    |> assign(:tally_device_online?, false)
+    |> assign(:tally_company_open?, false)
+    |> assign(:tally_online?, false)
+  end
+
+  defp assign_tally_availability(socket, org_id, company) do
+    device_online? = tally_device_online?(org_id, company.device_id)
+
+    socket
+    |> assign(:tally_device_online?, device_online?)
+    |> assign(:tally_company_open?, company.is_open)
+    |> assign(:tally_online?, device_online? and company.is_open)
+  end
+
+  defp tally_device_online?(org_id, device_id) do
+    tally_presence_topic(org_id)
+    |> Presence.get_by_key(Integer.to_string(device_id))
+    |> Enum.any?()
   end
 
   defp online_tally_company(org_id, client_id, company_id) do
@@ -1121,7 +1197,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             {:error, _reason} ->
               {resolved,
                [
-                 %{source_id: Gstr1.source_id(invoice), label: invoice_label(invoice)}
+                 %{source_id: Invoice.source_id(invoice), label: invoice_label(invoice)}
                  | unresolved
                ]}
           end
@@ -1144,13 +1220,17 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     Enum.reduce(invoices, {[], []}, fn invoice, {items, blocked} ->
       case TallyPrime.build_items_for_company(%{active_invoices: [invoice]}, company_name) do
         {:ok, [item]} ->
-          item = Map.put(item, :invoice_source_id, Gstr1.source_id(invoice))
+          item = Map.put(item, :invoice_source_id, Invoice.source_id(invoice))
           {[item | items], blocked}
 
         {:error, reason} ->
           {items,
            [
-             %{source_id: Gstr1.source_id(invoice), label: invoice_label(invoice), reason: reason}
+             %{
+               source_id: Invoice.source_id(invoice),
+               label: invoice_label(invoice),
+               reason: reason
+             }
              | blocked
            ]}
       end
@@ -1213,14 +1293,20 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp tally_posting(_assigns, nil), do: nil
-  defp tally_posting(%{tally_company: nil}, _invoice), do: nil
 
   defp tally_posting(assigns, invoice) do
     org_id = assigns.current_scope.current_org.id
     company = assigns.tally_company
-    choices = TallyMappings.list_ledger_choices(org_id, company.id)
-    party = resolved_party(org_id, company.id, invoice)
-    profile = posting_profile(org_id, company.id)
+    choices = assigns.tally_masters
+
+    {party, profile} =
+      case company do
+        nil ->
+          {nil, nil}
+
+        company ->
+          {resolved_party(org_id, company.id, invoice), posting_profile(org_id, company.id)}
+      end
 
     values = %{
       "party_ledger_identity" => party && party.ledger.identity,
@@ -1228,13 +1314,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         profile_value(profile, :sales_ledger_identity) || default_identity(choices, "Sales"),
       "cgst_ledger_identity" =>
         profile_value(profile, :cgst_ledger_identity) ||
-          resolved_tax_ledger_identity(org_id, company.id, :cgst),
+          resolved_tax_ledger_identity(org_id, company, :cgst),
       "sgst_ledger_identity" =>
         profile_value(profile, :sgst_ledger_identity) ||
-          resolved_tax_ledger_identity(org_id, company.id, :sgst),
+          resolved_tax_ledger_identity(org_id, company, :sgst),
       "igst_ledger_identity" =>
         profile_value(profile, :igst_ledger_identity) ||
-          resolved_tax_ledger_identity(org_id, company.id, :igst)
+          resolved_tax_ledger_identity(org_id, company, :igst)
     }
 
     line_rows =
@@ -1246,7 +1332,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           index: index,
           line: line,
           sales_ledger_identity:
-            resolved_sales_identity(org_id, company.id, line) || values["sales_ledger_identity"],
+            resolved_sales_identity(org_id, company, line) || values["sales_ledger_identity"],
           tax_rows: line_tax_rows(line)
         }
       end)
@@ -1275,8 +1361,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     }
   end
 
-  defp refresh_required_mapping_invoices(%{assigns: %{tally_company: nil}} = socket),
-    do: assign(socket, :required_mapping_invoices, [])
+  defp refresh_required_mapping_invoices(%{assigns: %{tally_masters_available?: false}} = socket) do
+    invoices =
+      Enum.reject(socket.assigns.packet.invoices, fn invoice ->
+        invoice_frozen?(socket.assigns.tally_jobs, invoice, socket.assigns.packet.all_invoices)
+      end)
+
+    assign(socket, :required_mapping_invoices, invoices)
+  end
 
   defp refresh_required_mapping_invoices(socket) do
     invoices =
@@ -1358,7 +1450,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp required_mapping_invoice?(invoices, invoice) do
-    Enum.any?(invoices, &(Gstr1.source_id(&1) == Gstr1.source_id(invoice)))
+    Enum.any?(invoices, &(Invoice.source_id(&1) == Invoice.source_id(invoice)))
   end
 
   defp resolved_party(org_id, company_id, invoice) do
@@ -1368,19 +1460,29 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     end
   end
 
-  defp resolved_sales_identity(org_id, company_id, line) do
+  defp resolved_sales_identity(org_id, company_id, line) when is_integer(company_id) do
     case TallyMappings.resolve_sales_ledger(org_id, company_id, line) do
       {:ok, %{ledger: ledger}} -> ledger.identity
       {:error, _reason} -> nil
     end
   end
 
-  defp resolved_tax_ledger_identity(org_id, company_id, head) do
+  defp resolved_sales_identity(_org_id, nil, _line), do: nil
+
+  defp resolved_sales_identity(org_id, company, line),
+    do: resolved_sales_identity(org_id, company.id, line)
+
+  defp resolved_tax_ledger_identity(org_id, company_id, head) when is_integer(company_id) do
     case TallyMappings.resolve_tax_ledger(org_id, company_id, head) do
       {:ok, %{ledger: ledger}} -> ledger.identity
       {:error, _reason} -> nil
     end
   end
+
+  defp resolved_tax_ledger_identity(_org_id, nil, _head), do: nil
+
+  defp resolved_tax_ledger_identity(org_id, company, head),
+    do: resolved_tax_ledger_identity(org_id, company.id, head)
 
   defp posting_profile(org_id, company_id) do
     case TallyMappings.get_posting_profile(org_id, company_id) do
@@ -1525,19 +1627,22 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp prepare_packet(dumps, client_id) do
     packet = TallyPacket.prepare(dumps)
     all_invoices = Enum.map(packet.all_invoices, &attach_image_urls(&1, dumps, client_id))
-    invoices_by_id = Map.new(all_invoices, &{Gstr1.source_id(&1), &1})
+    invoices_by_id = Map.new(all_invoices, &{Invoice.source_id(&1), &1})
 
-    invoices = Enum.map(packet.invoices, &Map.fetch!(invoices_by_id, Gstr1.source_id(&1)))
+    invoices = Enum.map(packet.invoices, &Map.fetch!(invoices_by_id, Invoice.source_id(&1)))
 
     attach_reviews = fn reviews ->
       Enum.map(reviews, fn review_case ->
-        %{review_case | invoice: Map.fetch!(invoices_by_id, Gstr1.source_id(review_case.invoice))}
+        %{
+          review_case
+          | invoice: Map.fetch!(invoices_by_id, Invoice.source_id(review_case.invoice))
+        }
       end)
     end
 
     warnings = attach_reviews.(packet.warnings)
     blocked = attach_reviews.(packet.blocked)
-    excluded = Enum.map(packet.excluded, &Map.fetch!(invoices_by_id, Gstr1.source_id(&1)))
+    excluded = Enum.map(packet.excluded, &Map.fetch!(invoices_by_id, Invoice.source_id(&1)))
 
     %{
       packet
@@ -1568,7 +1673,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp find_packet_invoice(packet, source_id, fallback) do
-    Enum.find(packet.all_invoices, &(Gstr1.source_id(&1) == source_id)) || fallback
+    Enum.find(packet.all_invoices, &(Invoice.source_id(&1) == source_id)) || fallback
   end
 
   defp attach_image_urls(invoice, dumps, client_id) do
@@ -1655,7 +1760,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp selected_tally_job(_jobs, nil, _all_invoices), do: nil
 
   defp selected_tally_job(jobs, invoice, all_invoices) do
-    source_id = Gstr1.source_id(invoice)
+    source_id = Invoice.source_id(invoice)
     invoice_number = invoice["invoice_number"]
 
     Enum.find(jobs, &(&1.payload["invoice_source_id"] == source_id)) ||
@@ -1707,16 +1812,16 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp invoice_readiness_delivery(packet, invoice, send_holds, required_mapping_invoices) do
     cond do
-      Enum.any?(packet.excluded, &(Gstr1.source_id(&1) == Gstr1.source_id(invoice))) ->
+      Enum.any?(packet.excluded, &(Invoice.source_id(&1) == Invoice.source_id(invoice))) ->
         %{label: "Not included", variant: "neutral"}
 
-      Map.get(send_holds, Gstr1.source_id(invoice)) == :cannot_send ->
+      Map.get(send_holds, Invoice.source_id(invoice)) == :cannot_send ->
         %{label: "Cannot send", variant: "error"}
 
       invoice_case(packet.blocked, invoice) ->
         %{label: "Cannot send", variant: "error"}
 
-      Map.get(send_holds, Gstr1.source_id(invoice)) == :needs_review or
+      Map.get(send_holds, Invoice.source_id(invoice)) == :needs_review or
         required_mapping_invoice?(required_mapping_invoices, invoice) or
           invoice_case(packet.warnings, invoice) ->
         %{label: "Needs review", variant: "warning"}
@@ -1786,8 +1891,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp invoice_case(_cases, nil), do: nil
 
   defp invoice_case(cases, invoice) do
-    source_id = Gstr1.source_id(invoice)
-    Enum.find(cases, &(Gstr1.source_id(&1.invoice) == source_id))
+    source_id = Invoice.source_id(invoice)
+    Enum.find(cases, &(Invoice.source_id(&1.invoice) == source_id))
   end
 
   defp review_presentation(%{invoice: invoice, issues: issues}),
@@ -1799,6 +1904,37 @@ defmodule NilaWeb.Gst.SalesBillsLive do
        do: "Not added to Tally",
        else: "Not included"
   end
+
+  defp tally_unavailable_title(assigns) do
+    cond do
+      not assigns.tally_device_online? ->
+        "Nila Connector is offline"
+
+      not assigns.tally_company_open? ->
+        "#{assigns.tally_company.name} isn't open in TallyPrime"
+
+      true ->
+        "#{assigns.tally_company.name} is unavailable"
+    end
+  end
+
+  defp tally_master_sync_instruction(assigns) do
+    cond do
+      not assigns.tally_device_online? ->
+        "Open #{assigns.tally_company.name} in TallyPrime, start Nila Connector, and sync its masters before choosing posting ledgers."
+
+      not assigns.tally_company_open? ->
+        "Open #{assigns.tally_company.name} in TallyPrime and sync its masters before choosing posting ledgers."
+
+      true ->
+        "Sync #{assigns.tally_company.name} from Nila Connector before choosing posting ledgers."
+    end
+  end
+
+  defp format_master_sync(nil), do: "previously"
+
+  defp format_master_sync(datetime),
+    do: Nila.Formatters.format_display_datetime_with_time(datetime)
 
   @impl true
   def render(assigns) do
@@ -1849,13 +1985,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             class="flex items-end gap-3"
           >
             <p class="text-ink-muted text-ui pb-2">
-              Sending to <span class="text-base-content font-semibold">{@tally_company.name}</span>
+              Tally · <span class="text-base-content font-semibold">{@tally_company.name}</span>
             </p>
 
             <.button
               type="button"
               id="sales-bills-send-to-tally"
               phx-click="request-send-to-tally"
+              disabled={not @tally_online? or not @tally_masters_available?}
             >
               Send to Tally
             </.button>
@@ -1915,6 +2052,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               id="sales-bills-retry-tally"
               phx-click="request-send-to-tally"
               variant="outline"
+              disabled={not @tally_online? or not @tally_masters_available?}
             >
               Try again
             </.button>
@@ -2303,6 +2441,34 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               </div>
             </div>
 
+            <div
+              :if={@tally_company && not @tally_online? && @tally_masters_available?}
+              id="sales-bill-tally-offline"
+            >
+              <.callout kind="warning" size="compact" title={tally_unavailable_title(assigns)}>
+                Using masters synced {format_master_sync(@tally_masters_synced_at)}. You can keep
+                reviewing and save mappings; reconnect before sending vouchers to Tally.
+              </.callout>
+            </div>
+
+            <div
+              :if={@tally_company && not @tally_masters_available?}
+              id="sales-bill-tally-masters-unavailable"
+            >
+              <.callout kind="warning" size="compact" title="Tally masters need syncing">
+                {tally_master_sync_instruction(assigns)}
+              </.callout>
+            </div>
+
+            <div
+              :if={is_nil(@tally_company)}
+              id="sales-bill-tally-company-unavailable"
+            >
+              <.callout kind="warning" size="compact" title="No Tally company selected">
+                Select this client's Tally company to choose posting ledgers and send vouchers.
+              </.callout>
+            </div>
+
             <.form
               :if={@tally_posting}
               for={@tally_posting.form}
@@ -2450,7 +2616,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     <div class="gap-related flex items-baseline">
                       <h3 class="text-base-content text-h4 font-semibold">Accounting mappings</h3>
                       <span id="sales-bill-mappings-remaining" class="text-ink-muted text-ui">
-                        {missing_mapping_text(@tally_posting)}
+                        {if(@tally_masters_available?,
+                          do: missing_mapping_text(@tally_posting),
+                          else: "Available after master sync"
+                        )}
                       </span>
                     </div>
 
@@ -2462,6 +2631,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         prompt="Select party ledger"
                         options={@tally_posting.party_choices}
                         required
+                        disabled={not @tally_masters_available?}
                       />
                     </div>
                   </div>
@@ -2588,6 +2758,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                           options={@tally_posting.sales_choices}
                           aria-label={"Line #{row.index + 1} Tally sales ledger"}
                           required
+                          disabled={not @tally_masters_available?}
                         />
                       </:col>
                       <:col :let={row} label="" align="center" class="w-10 align-middle">
@@ -2642,6 +2813,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         options={@tally_posting.tax_choices}
                         aria-label={"#{row.label} ledger"}
                         required
+                        disabled={not @tally_masters_available?}
                       />
                       <span class="text-base-content text-ui text-right font-medium tabular-nums">
                         {rupees(row.amount)}
@@ -2772,7 +2944,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
               <div class="bg-base-100 border-base-300 sticky bottom-0 border-t py-4">
                 <div
-                  :if={next_posting_requirement(@tally_posting)}
+                  :if={@tally_masters_available? && next_posting_requirement(@tally_posting)}
                   id="sales-bill-next-required-mapping"
                   class="gap-block flex flex-col lg:flex-row lg:items-center lg:justify-between"
                 >
@@ -2801,7 +2973,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 </div>
 
                 <div
-                  :if={is_nil(next_posting_requirement(@tally_posting))}
+                  :if={@tally_masters_available? && is_nil(next_posting_requirement(@tally_posting))}
                   id="sales-bill-posting-ready"
                   class="gap-block flex flex-col lg:flex-row lg:items-end lg:justify-between"
                 >
@@ -2835,6 +3007,19 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       {if(@review_mode?, do: "Save & next", else: "Save & Close")}
                     </.button>
                   </div>
+                </div>
+
+                <div
+                  :if={not @tally_masters_available?}
+                  id="sales-bill-posting-awaiting-masters"
+                  class="gap-block flex items-end justify-between"
+                >
+                  <p class="text-ink-muted text-ui">
+                    Tally mappings are available after the first master sync.
+                  </p>
+                  <p class="text-base-content text-ui font-semibold tabular-nums">
+                    {rupees(invoice_total(@posting_preview_invoice))}
+                  </p>
                 </div>
               </div>
             </.form>
@@ -3006,15 +3191,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 </div>
               </:footer>
             </.modal>
-
-            <.callout
-              :if={is_nil(@tally_posting)}
-              kind="warning"
-              size="compact"
-              title="Tally company not connected"
-            >
-              Open the matching company in TallyPrime and sync its masters to choose posting ledgers.
-            </.callout>
           </section>
         </div>
 

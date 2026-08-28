@@ -1,6 +1,7 @@
 defmodule NilaWeb.Gst.SalesBillsLiveTest do
   use NilaWeb.ConnCase, async: true
 
+  import Ecto.Query
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
@@ -191,7 +192,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
 
     refute has_element?(view, "#sales-bills-tally-company-form")
-    assert has_element?(view, "#sales-bills-tally-destination", "Sending to Breeze Tech")
+    assert has_element?(view, "#sales-bills-tally-destination", "Tally · Breeze Tech")
 
     refute Enum.any?(
              TallyDevices.list_linked_companies(org.id),
@@ -205,7 +206,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert payload["company"] == "Breeze Tech"
   end
 
-  test "does not offer a stale open company whose connector is offline", %{
+  test "keeps cached Tally mappings available while the connector is offline", %{
     conn: conn,
     org: org,
     client: client,
@@ -220,9 +221,112 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       )
 
     batch_ref = TallyPacket.ref([dump])
-    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
 
-    refute has_element?(view, "#sales-bills-send-to-tally")
+    {:ok, view, _html} =
+      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001")
+
+    assert has_element?(view, "#sales-bills-send-to-tally[disabled]")
+    refute has_element?(view, "#sales-bills-download")
+    assert has_element?(view, "#sales-bill-tally-offline", "Nila Connector is offline")
+    assert has_element?(view, "#sales-bill-tally-posting-form")
+    refute has_element?(view, "#tally_posting_party_ledger_identity[disabled]")
+    refute has_element?(view, "#tally-posting-line-sales-ledger-0[disabled]")
+
+    render_submit(view, "save-tally-posting", %{
+      "tally_posting" => %{
+        "party_ledger_identity" => "name:customer & co",
+        "sales_ledger_identity" => "name:sales",
+        "igst_ledger_identity" => "name:output igst",
+        "line_sales_ledger_identities" => %{"0" => "name:sales"},
+        "invoice" => %{}
+      }
+    })
+
+    assert_patch(view, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    {:ok, _presence_ref} =
+      Presence.track(
+        self(),
+        "tally_devices:#{org.id}",
+        Integer.to_string(device.id),
+        %{device_id: device.id, name: device.name}
+      )
+
+    _ = :sys.get_state(view.pid)
+    refute has_element?(view, "#sales-bills-send-to-tally[disabled]")
+  end
+
+  test "shows invoice facts but disables Tally mappings before the first master sync", %{
+    conn: conn,
+    org: org,
+    client: client,
+    dump: dump,
+    company: company
+  } do
+    Nila.Repo.delete_all(
+      from master in SyncedMaster,
+        where: master.org_id == ^org.id and master.company_id == ^company.id
+    )
+
+    batch_ref = TallyPacket.ref([dump])
+
+    {:ok, view, _html} =
+      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001")
+
+    assert has_element?(view, "#sales-bill-tally-posting-form")
+    assert has_element?(view, "#sales-bill-invoice-identity", "INV-001")
+
+    assert has_element?(
+             view,
+             "#sales-bill-tally-masters-unavailable",
+             "Tally masters need syncing"
+           )
+
+    assert has_element?(view, "#tally_posting_party_ledger_identity[disabled]")
+    assert has_element?(view, "#tally-posting-line-sales-ledger-0[disabled]")
+    assert has_element?(view, "#tally_posting_igst_ledger_identity[disabled]")
+    assert has_element?(view, "#sales-bill-posting-awaiting-masters")
+    refute has_element?(view, "#sales-bill-save-tally-posting")
+
+    view |> element("#sales-bill-edit-invoice-facts") |> render_click()
+
+    render_submit(view, "save-invoice-facts", %{
+      "invoice_facts" => %{
+        "invoice_number" => "INV-001",
+        "invoice_date" => "2026-07-15",
+        "buyer_name" => "Corrected Customer",
+        "buyer_gstin" => "29AAVCS8021P1ZB",
+        "place_of_supply" => "29"
+      }
+    })
+
+    assert has_element?(view, "#sales-bill-buyer-identity", "Corrected Customer")
+  end
+
+  test "keeps the proposed voucher visible before a Tally company is selected", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    Nila.Repo.get!(Nila.Clients.Client, client.id)
+    |> Ecto.Changeset.change(active_tally_company_id: nil)
+    |> Nila.Repo.update!()
+
+    batch_ref = TallyPacket.ref([dump])
+
+    {:ok, view, _html} =
+      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001")
+
+    assert has_element?(view, "#sales-bill-tally-posting-form")
+    assert has_element?(view, "#sales-bill-invoice-identity", "INV-001")
+
+    assert has_element?(
+             view,
+             "#sales-bill-tally-company-unavailable",
+             "No Tally company selected"
+           )
+
+    assert has_element?(view, "#tally_posting_party_ledger_identity[disabled]")
     assert has_element?(view, "#sales-bills-download")
   end
 
