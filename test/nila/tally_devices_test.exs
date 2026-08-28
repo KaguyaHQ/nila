@@ -4,7 +4,10 @@ defmodule Nila.TallyDevicesTest do
   import Nila.AccountsFixtures
 
   alias Nila.TallyDevices
+  alias Nila.TallyDevices.{Company, CompanyDevice}
+  alias Nila.TallySync
   alias Nila.Clients
+  alias Nila.Repo
 
   test "creates a device with a one-time credential and authenticates it" do
     %{org: org} = user_with_org_fixture()
@@ -75,6 +78,50 @@ defmodule Nila.TallyDevicesTest do
 
     assert :ok = TallyDevices.mark_companies_closed(device.id)
     assert TallyDevices.list_open_companies(org.id) == []
+  end
+
+  test "the same Tally GUID stays one company when another connector exposes it" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, first_device, _token} = TallyDevices.create_device(org, %{name: "Old PC"})
+    {:ok, second_device, _token} = TallyDevices.create_device(org, %{name: "New PC"})
+
+    assert {:ok, [first]} =
+             TallyDevices.report_companies(first_device, [
+               %{"name" => "Breeze Tech", "tally_guid" => "stable-books-guid"}
+             ])
+
+    assert {:ok, client} = TallyDevices.ensure_company_client(org.id, first.id)
+    linked_company_id = Repo.reload!(client).active_tally_company_id
+
+    assert {:ok, [second]} =
+             TallyDevices.report_companies(second_device, [
+               %{"name" => "Breeze Tech", "tally_guid" => "stable-books-guid"}
+             ])
+
+    assert second.id == first.id
+    assert Repo.reload!(client).active_tally_company_id == linked_company_id
+    assert Repo.aggregate(Company, :count) == 1
+    assert Repo.aggregate(CompanyDevice, :count) == 2
+
+    assert {:ok, sync_run} = TallySync.start(second_device, second.identity)
+    assert sync_run.company_id == linked_company_id
+    assert sync_run.device_id == second_device.id
+  end
+
+  test "same-name companies without a Tally GUID remain device-scoped" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, first_device, _token} = TallyDevices.create_device(org, %{name: "First PC"})
+    {:ok, second_device, _token} = TallyDevices.create_device(org, %{name: "Second PC"})
+
+    assert {:ok, [first]} =
+             TallyDevices.report_companies(first_device, [%{"name" => "No GUID Books"}])
+
+    assert {:ok, [second]} =
+             TallyDevices.report_companies(second_device, [%{"name" => "No GUID Books"}])
+
+    refute first.id == second.id
+    assert String.starts_with?(first.identity, "device:#{first_device.id}:")
+    assert String.starts_with?(second.identity, "device:#{second_device.id}:")
   end
 
   test "stores a valid company GSTIN and links the sole exact client match despite a different name" do

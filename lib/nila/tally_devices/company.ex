@@ -6,11 +6,16 @@ defmodule Nila.TallyDevices.Company do
     field :name, :string
     field :tally_guid, :string
     field :gstin, :string
-    field :is_open, :boolean, default: false
-    field :last_seen_at, :utc_datetime_usec
+    # Compatibility projection for callers that need the currently selected route.
+    # Company identity is independent of connector installations; these fields are
+    # populated by Nila.TallyDevices from a CompanyDevice route.
+    field :is_open, :boolean, virtual: true, default: false
+    field :last_seen_at, :utc_datetime_usec, virtual: true
+    field :device_id, :integer, virtual: true
+    field :device, :map, virtual: true
 
     belongs_to :org, Nila.Orgs.Org
-    belongs_to :device, Nila.TallyDevices.Device
+    has_many :device_routes, Nila.TallyDevices.CompanyDevice
     has_one :client, Nila.Clients.Client, foreign_key: :active_tally_company_id
 
     timestamps()
@@ -22,12 +27,12 @@ defmodule Nila.TallyDevices.Company do
     |> update_change(:name, &String.trim/1)
     |> update_change(:tally_guid, &normalize_optional/1)
     |> update_change(:gstin, &normalize_optional/1)
-    |> validate_required([:org_id, :device_id, :identity, :name, :last_seen_at])
+    |> validate_required([:org_id, :identity, :name])
     |> validate_length(:identity, max: 260)
     |> validate_length(:name, max: 200)
     |> validate_length(:tally_guid, max: 200)
     |> validate_length(:gstin, max: 15)
-    |> unique_constraint([:device_id, :identity])
+    |> unique_constraint([:org_id, :identity])
   end
 
   defp normalize_optional(nil), do: nil

@@ -110,8 +110,6 @@ defmodule Nila.TallyJobsTest do
     {:ok, [company]} =
       TallyDevices.report_companies(device, [%{"name" => "Nila", "tally_guid" => "nila"}])
 
-    company = Nila.Repo.preload(company, :device)
-
     xml = "<ENVELOPE><HEADER/><BODY/></ENVELOPE>"
 
     assert {:ok, first, :created} =
@@ -212,7 +210,6 @@ defmodule Nila.TallyJobsTest do
     {:ok, [company]} =
       TallyDevices.report_companies(device, [%{"name" => "Nila", "tally_guid" => "nila"}])
 
-    company = Nila.Repo.preload(company, :device)
     insert_voucher_type(company, "Sales", "Manual")
 
     items = [
@@ -264,7 +261,6 @@ defmodule Nila.TallyJobsTest do
     {:ok, [company]} =
       TallyDevices.report_companies(device, [%{"name" => "Nila", "tally_guid" => "nila"}])
 
-    company = Nila.Repo.preload(company, :device)
     insert_voucher_type(company, "Sales", "Manual")
 
     first_xml = correlated_voucher_xml("11111111-1111-4111-8111-111111111111", "100.00")
@@ -305,7 +301,6 @@ defmodule Nila.TallyJobsTest do
     {:ok, [company]} =
       TallyDevices.report_companies(device, [%{"name" => "Nila", "tally_guid" => "nila"}])
 
-    company = Nila.Repo.preload(company, :device)
     insert_voucher_type(company, "Sales", "Manual")
 
     item = %{

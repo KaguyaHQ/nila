@@ -318,7 +318,7 @@ defmodule Nila.BankingTest do
     |> Ecto.Changeset.change(active_tally_company_id: company.id)
     |> Repo.update!()
 
-    {:ok, Repo.preload(company, :device)}
+    {:ok, company}
   end
 
   defp master(org_id, company_id, identity, name, parent) do

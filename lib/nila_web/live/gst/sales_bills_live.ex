@@ -1008,7 +1008,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       end)
 
     org_id
-    |> TallyDevices.list_open_companies(client_id)
+    |> TallyDevices.list_open_company_routes(client_id)
     |> Enum.filter(&MapSet.member?(online_device_ids, &1.device_id))
   end
 
@@ -1041,18 +1041,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp assign_tally_availability(socket, org_id, company) do
-    device_online? = tally_device_online?(org_id, company.device_id)
+    online_company = online_tally_company(org_id, socket.assigns.client.id, company.id)
+    online? = match?({:ok, _company}, online_company)
 
     socket
-    |> assign(:tally_device_online?, device_online?)
-    |> assign(:tally_company_open?, company.is_open)
-    |> assign(:tally_online?, device_online? and company.is_open)
-  end
-
-  defp tally_device_online?(org_id, device_id) do
-    tally_presence_topic(org_id)
-    |> Presence.get_by_key(Integer.to_string(device_id))
-    |> Enum.any?()
+    |> assign(:tally_device_online?, online?)
+    |> assign(:tally_company_open?, online?)
+    |> assign(:tally_online?, online?)
   end
 
   defp online_tally_company(org_id, client_id, company_id) do

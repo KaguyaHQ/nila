@@ -14,6 +14,7 @@ defmodule Nila.TallyDevices do
   alias Nila.Orgs.Org
   alias Nila.Repo
   alias Nila.TallyDevices.Company
+  alias Nila.TallyDevices.CompanyDevice
   alias Nila.TallyDevices.Device
   alias Nila.TallyDevices.Pairing
 
@@ -146,33 +147,39 @@ defmodule Nila.TallyDevices do
       seen_at = DateTime.truncate(now, :microsecond)
 
       Repo.transact(fn ->
-        from(company in Company, where: company.device_id == ^device.id)
+        from(route in CompanyDevice, where: route.device_id == ^device.id)
         |> Repo.update_all(set: [is_open: false, updated_at: seen_at])
 
         reported =
           Enum.map(companies, fn company ->
-            identity = company_identity(company)
+            identity = company_identity(company, device.id)
 
             persisted =
               %Company{
                 org_id: device.org_id,
-                device_id: device.id,
-                identity: identity,
-                is_open: true,
-                last_seen_at: seen_at
+                identity: identity
               }
               |> Company.changeset(company)
               |> Repo.insert!(
-                conflict_target: [:device_id, :identity],
+                conflict_target: [:org_id, :identity],
                 on_conflict: [
                   set: [
                     name: company.name,
                     tally_guid: company.tally_guid,
                     gstin: company.gstin,
-                    is_open: true,
-                    last_seen_at: seen_at,
                     updated_at: seen_at
                   ]
+                ],
+                returning: true
+              )
+
+            route =
+              %CompanyDevice{company_id: persisted.id, device_id: device.id}
+              |> CompanyDevice.changeset(%{is_open: true, last_seen_at: seen_at})
+              |> Repo.insert!(
+                conflict_target: [:company_id, :device_id],
+                on_conflict: [
+                  set: [is_open: true, last_seen_at: seen_at, updated_at: seen_at]
                 ],
                 returning: true
               )
@@ -180,6 +187,7 @@ defmodule Nila.TallyDevices do
             persisted
             |> maybe_link_company_by_gstin()
             |> maybe_add_gstin_to_linked_client()
+            |> attach_route(route, device)
           end)
 
         {:ok, reported}
@@ -188,16 +196,24 @@ defmodule Nila.TallyDevices do
   end
 
   def list_open_companies(org_id, client_id \\ nil) when is_integer(org_id) do
+    org_id
+    |> list_open_company_routes(client_id)
+    |> Enum.uniq_by(& &1.id)
+  end
+
+  @doc "Returns one projected company per currently open connector route."
+  def list_open_company_routes(org_id, client_id \\ nil) when is_integer(org_id) do
     query =
-      from company in Company,
-        join: device in assoc(company, :device),
-        where: company.org_id == ^org_id and company.is_open and is_nil(device.revoked_at),
-        order_by: [asc: company.name, asc: device.name],
-        preload: [device: device]
+      from route in CompanyDevice,
+        join: company in assoc(route, :company),
+        join: device in assoc(route, :device),
+        where: company.org_id == ^org_id and route.is_open and is_nil(device.revoked_at),
+        order_by: [asc: company.name, desc: route.last_seen_at, asc: device.name],
+        preload: [company: company, device: device]
 
     query =
       if is_integer(client_id) do
-        from company in query,
+        from [route, company, device] in query,
           join: client in Client,
           on: client.active_tally_company_id == company.id,
           where: client.id == ^client_id and client.org_id == ^org_id
@@ -205,45 +221,57 @@ defmodule Nila.TallyDevices do
         query
       end
 
-    Repo.all(query)
+    query
+    |> Repo.all()
+    |> Enum.map(&attach_route(&1.company, &1, &1.device))
   end
 
   def list_linked_companies(org_id) when is_integer(org_id) do
-    Repo.all(
-      from company in Company,
-        join: client in Client,
-        on: client.active_tally_company_id == company.id,
-        where: company.org_id == ^org_id and client.org_id == ^org_id,
-        order_by: [asc: company.name],
-        preload: [:device, client: client]
-    )
+    companies =
+      Repo.all(
+        from company in Company,
+          join: client in Client,
+          on: client.active_tally_company_id == company.id,
+          where: company.org_id == ^org_id and client.org_id == ^org_id,
+          order_by: [asc: company.name],
+          preload: [client: client, device_routes: :device]
+      )
+
+    Enum.map(companies, &attach_best_route/1)
   end
 
   @doc "Returns the Tally company configured as a client's accounting destination."
   def get_client_company(org_id, client_id)
       when is_integer(org_id) and is_integer(client_id) do
-    Repo.fetch_one(
-      from company in Company,
-        join: client in Client,
-        on: client.active_tally_company_id == company.id,
-        join: device in assoc(company, :device),
-        where: company.org_id == ^org_id and client.org_id == ^org_id and client.id == ^client_id,
-        preload: [device: device]
-    )
+    case Repo.fetch_one(
+           from company in Company,
+             join: client in Client,
+             on: client.active_tally_company_id == company.id,
+             where:
+               company.org_id == ^org_id and client.org_id == ^org_id and client.id == ^client_id,
+             preload: [device_routes: :device]
+         ) do
+      {:ok, company} -> {:ok, attach_best_route(company)}
+      error -> error
+    end
   end
 
   def get_client_company(_org_id, _client_id), do: {:error, :not_found}
 
   def list_importable_companies(org_id) when is_integer(org_id) do
-    Repo.all(
-      from company in Company,
-        join: device in assoc(company, :device),
-        left_join: client in Client,
-        on: client.active_tally_company_id == company.id,
-        where: company.org_id == ^org_id and is_nil(client.id) and is_nil(device.revoked_at),
-        order_by: [asc: company.name, asc: device.name],
-        preload: [device: device]
-    )
+    companies =
+      Repo.all(
+        from company in Company,
+          left_join: client in Client,
+          on: client.active_tally_company_id == company.id,
+          where: company.org_id == ^org_id and is_nil(client.id),
+          order_by: [asc: company.name],
+          preload: [device_routes: :device]
+      )
+
+    companies
+    |> Enum.map(&attach_best_route/1)
+    |> Enum.reject(&is_nil(&1.device))
   end
 
   @doc "Returns the client behind an open Tally company, creating and linking it when needed."
@@ -253,11 +281,13 @@ defmodule Nila.TallyDevices do
       with %Company{} = company <-
              Repo.one(
                from company in Company,
-                 join: device in assoc(company, :device),
+                 join: route in assoc(company, :device_routes),
+                 join: device in assoc(route, :device),
                  where:
-                   company.id == ^company_id and company.org_id == ^org_id and company.is_open and
+                   company.id == ^company_id and company.org_id == ^org_id and route.is_open and
                      is_nil(device.revoked_at),
                  preload: [:client],
+                 limit: 1,
                  lock: "FOR UPDATE"
              ) || {:error, :not_found},
            {:ok, client} <- ensure_company_client_record(company) do
@@ -275,11 +305,13 @@ defmodule Nila.TallyDevices do
       with %Company{} = company <-
              Repo.one(
                from company in Company,
-                 join: device in assoc(company, :device),
+                 join: route in assoc(company, :device_routes),
+                 join: device in assoc(route, :device),
                  where:
                    company.id == ^company_id and company.org_id == ^org_id and
                      is_nil(device.revoked_at),
                  preload: [:client],
+                 limit: 1,
                  lock: "FOR UPDATE"
              ) || {:error, :not_found},
            :ok <- company_available_to_client(company.id, nil),
@@ -299,10 +331,12 @@ defmodule Nila.TallyDevices do
       with %Company{} = company <-
              Repo.one(
                from company in Company,
-                 join: device in assoc(company, :device),
+                 join: route in assoc(company, :device_routes),
+                 join: device in assoc(route, :device),
                  where:
                    company.id == ^company_id and company.org_id == ^client.org_id and
                      is_nil(device.revoked_at),
+                 limit: 1,
                  lock: "FOR UPDATE"
              ) || {:error, :not_found},
            %Client{} = client <-
@@ -333,13 +367,22 @@ defmodule Nila.TallyDevices do
     ids = company_ids |> Enum.uniq() |> Enum.sort()
 
     Repo.transact(fn ->
+      open_ids =
+        Repo.all(
+          from route in CompanyDevice,
+            join: company in assoc(route, :company),
+            join: device in assoc(route, :device),
+            where:
+              company.org_id == ^org_id and company.id in ^ids and route.is_open and
+                is_nil(device.revoked_at),
+            distinct: true,
+            select: company.id
+        )
+
       companies =
         Repo.all(
           from company in Company,
-            join: device in assoc(company, :device),
-            where:
-              company.org_id == ^org_id and company.id in ^ids and company.is_open and
-                is_nil(device.revoked_at),
+            where: company.org_id == ^org_id and company.id in ^open_ids,
             order_by: [asc: company.id],
             lock: "FOR UPDATE"
         )
@@ -403,16 +446,19 @@ defmodule Nila.TallyDevices do
   def get_open_company(org_id, company_id, client_id)
       when is_integer(org_id) and is_integer(company_id) do
     query =
-      from company in Company,
-        join: device in assoc(company, :device),
+      from route in CompanyDevice,
+        join: company in assoc(route, :company),
+        join: device in assoc(route, :device),
         where:
-          company.id == ^company_id and company.org_id == ^org_id and company.is_open and
+          company.id == ^company_id and company.org_id == ^org_id and route.is_open and
             is_nil(device.revoked_at),
-        preload: [device: device]
+        order_by: [desc: route.last_seen_at],
+        limit: 1,
+        preload: [company: company, device: device]
 
     query =
       if is_integer(client_id) do
-        from company in query,
+        from [route, company, device] in query,
           join: client in Client,
           on: client.active_tally_company_id == company.id,
           where: client.id == ^client_id and client.org_id == ^org_id
@@ -420,7 +466,10 @@ defmodule Nila.TallyDevices do
         query
       end
 
-    Repo.fetch_one(query)
+    case Repo.fetch_one(query) do
+      {:ok, route} -> {:ok, attach_route(route.company, route, route.device)}
+      error -> error
+    end
   end
 
   def get_open_company(_org_id, _company_id, _client_id), do: {:error, :not_found}
@@ -498,10 +547,10 @@ defmodule Nila.TallyDevices do
   def mark_companies_closed(device_id, now \\ DateTime.utc_now()) when is_integer(device_id) do
     closed_at = DateTime.truncate(now, :microsecond)
 
-    from(company in Company,
+    from(route in CompanyDevice,
       where:
-        company.device_id == ^device_id and company.is_open and
-          company.last_seen_at <= ^closed_at
+        route.device_id == ^device_id and route.is_open and
+          route.last_seen_at <= ^closed_at
     )
     |> Repo.update_all(set: [is_open: false, updated_at: closed_at])
 
@@ -620,7 +669,10 @@ defmodule Nila.TallyDevices do
     end)
     |> case do
       {:ok, normalized} ->
-        {:ok, normalized |> Enum.reverse() |> Enum.uniq_by(&company_identity/1)}
+        {:ok,
+         normalized
+         |> Enum.reverse()
+         |> Enum.uniq_by(fn company -> company_identity(company, nil) end)}
 
       error ->
         error
@@ -718,8 +770,33 @@ defmodule Nila.TallyDevices do
 
   defp maybe_add_gstin_to_linked_client(%Company{} = company), do: company
 
-  defp company_identity(%{tally_guid: tally_guid}) when is_binary(tally_guid),
+  defp company_identity(%{tally_guid: tally_guid}, _device_id) when is_binary(tally_guid),
     do: "guid:" <> String.downcase(tally_guid)
 
-  defp company_identity(%{name: name}), do: "name:" <> String.downcase(name)
+  defp company_identity(%{name: name}, device_id),
+    do: "device:#{device_id}:name:" <> String.downcase(name)
+
+  defp attach_best_route(%Company{device_routes: routes} = company) when is_list(routes) do
+    route =
+      routes
+      |> Enum.reject(&is_nil(&1.device))
+      |> Enum.reject(& &1.device.revoked_at)
+      |> Enum.sort_by(
+        &{if(&1.is_open, do: 1, else: 0), DateTime.to_unix(&1.last_seen_at, :microsecond)},
+        :desc
+      )
+      |> List.first()
+
+    if route, do: attach_route(company, route, route.device), else: company
+  end
+
+  defp attach_route(%Company{} = company, %CompanyDevice{} = route, %Device{} = device) do
+    %{
+      company
+      | device_id: device.id,
+        device: device,
+        is_open: route.is_open,
+        last_seen_at: route.last_seen_at
+    }
+  end
 end

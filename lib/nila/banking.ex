@@ -7,10 +7,9 @@ defmodule Nila.Banking do
   import Ecto.Query
 
   alias Nila.Banking.{Statement, Transaction}
-  alias Nila.Clients.Client
   alias Nila.Repo
   alias Nila.TallyDevices.{Company, SyncedMaster}
-  alias Nila.{TallyJobs, TallySync}
+  alias Nila.{TallyDevices, TallyJobs, TallySync}
   alias Nila.Banking.Tally
 
   @banks [
@@ -40,8 +39,8 @@ defmodule Nila.Banking do
           where: statement.org_id == ^org_id and statement.id == ^id,
           preload: [
             :brought_in_by,
-            client: [active_tally_company: [:device]],
-            tally_company: [:device],
+            client: [:active_tally_company],
+            tally_company: [],
             bank_transactions: [:tally_job]
           ]
       )
@@ -167,18 +166,8 @@ defmodule Nila.Banking do
            :ok <- ensure_posting_not_started(statement.id),
            company_id when is_integer(company_id) <-
              statement.client.active_tally_company_id,
-           %Company{} = company <-
-             Repo.one(
-               from company in Company,
-                 join: device in assoc(company, :device),
-                 join: client in Client,
-                 on: client.active_tally_company_id == company.id,
-                 where:
-                   company.id == ^company_id and company.org_id == ^org_id and
-                     client.id == ^statement.client_id and
-                     is_nil(device.revoked_at),
-                 preload: [device: device]
-             ) || {:error, :company_not_available},
+           {:ok, %Company{id: ^company_id} = company} <-
+             TallyDevices.get_client_company(org_id, statement.client_id),
            %SyncedMaster{} = ledger <- bank_ledger(org_id, company.id, bank_ledger_identity),
            {:ok, saved} <-
              statement
@@ -297,7 +286,9 @@ defmodule Nila.Banking do
   def enqueue_transactions(org_id, statement_id, transaction_ids)
       when is_list(transaction_ids) and transaction_ids != [] do
     with {:ok, statement} <- get_statement(org_id, statement_id),
-         %Company{is_open: true, device: %{}} = company <- statement.tally_company,
+         company_id when is_integer(company_id) <- statement.tally_company_id,
+         {:ok, %Company{} = company} <-
+           TallyDevices.get_open_company(org_id, company_id, statement.client_id),
          true <- is_binary(statement.bank_ledger_identity) || {:error, :tally_not_configured},
          transactions when transactions != [] <-
            ready_transactions(org_id, statement.id, transaction_ids),

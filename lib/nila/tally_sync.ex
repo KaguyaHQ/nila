@@ -5,7 +5,7 @@ defmodule Nila.TallySync do
 
   alias Nila.Repo
   alias Nila.Gst.Sales.{Month, Months}
-  alias Nila.TallyDevices.{Company, Device, SyncRun, SyncedMaster, SyncedVoucher}
+  alias Nila.TallyDevices.{Company, CompanyDevice, Device, SyncRun, SyncedMaster, SyncedVoucher}
 
   @max_records 1_000
   @statuses ~w(pending running succeeded failed)
@@ -76,10 +76,12 @@ defmodule Nila.TallySync do
   def start(%Device{} = device, company_identity, today \\ Date.utc_today()) do
     with %Company{} = company <-
            Repo.one(
-             from c in Company,
+             from route in CompanyDevice,
+               join: c in assoc(route, :company),
                where:
-                 c.device_id == ^device.id and c.org_id == ^device.org_id and c.is_open and
-                   c.identity == ^company_identity
+                 route.device_id == ^device.id and route.is_open and c.org_id == ^device.org_id and
+                   c.identity == ^company_identity,
+               select: c
            ) do
       now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
       period_start = Date.beginning_of_month(today)
