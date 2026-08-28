@@ -49,11 +49,11 @@ defmodule Nila.Gst.Sales.TallyPacket do
 
     totals =
       Enum.reduce(invoices, %{taxable_paise: 0, tax_paise: 0}, fn invoice, totals ->
-        amounts = Invoice.extracted_totals(invoice)
+        amounts = Invoice.extracted_totals_paise(invoice)
 
         %{
-          taxable_paise: totals.taxable_paise + paise(amounts.taxable),
-          tax_paise: totals.tax_paise + paise(amounts.tax)
+          taxable_paise: totals.taxable_paise + (amounts.taxable_paise || 0),
+          tax_paise: totals.tax_paise + amounts.tax_paise
         }
       end)
 
@@ -193,7 +193,4 @@ defmodule Nila.Gst.Sales.TallyPacket do
        do: year <> "-" <> month
 
   defp invoice_period(_invoice), do: nil
-
-  defp paise(value) when is_number(value), do: round(value * 100)
-  defp paise(_value), do: 0
 end

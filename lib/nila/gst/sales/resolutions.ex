@@ -19,7 +19,7 @@ defmodule Nila.Gst.Sales.Resolutions do
   alias Nila.Gst.RateHistory
   alias Nila.Gst.Rates.Directory, as: RateDirectory
   alias Nila.Gst.Replay
-  alias Nila.Gst.Sales.{Gstr1, Month, Resolution, TallyRegister, Workings}
+  alias Nila.Gst.Sales.{Gstr1, InvoiceCorrections, Month, Resolution, TallyRegister, Workings}
   alias Nila.Repo
 
   @doc "The frozen approved projection when signed, otherwise the current effective workings."
@@ -168,9 +168,12 @@ defmodule Nila.Gst.Sales.Resolutions do
     resolutions = month.id |> list() |> Enum.map(&resolution_map/1)
     tally = TallyRegister.project(month)
 
+    invoices =
+      InvoiceCorrections.apply_sources(month.org_id, month.client_id, tally.invoices)
+
     workings =
       Workings.materialize(
-        tally.invoices,
+        invoices,
         resolutions,
         header(month),
         document_issues(month) ++ tally.issues,

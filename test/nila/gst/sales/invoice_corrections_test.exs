@@ -4,7 +4,7 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
   alias Nila.Clients
   alias Nila.Accounts.User
   alias Nila.Gst.Intake.Dumps
-  alias Nila.Gst.Sales.{InvoiceCorrection, InvoiceCorrections, Month, TallyPacket}
+  alias Nila.Gst.Sales.{InvoiceCorrection, InvoiceCorrections, Month, Resolutions, TallyPacket}
   alias Nila.Orgs.Org
   alias Nila.Orgs.Membership
   alias Nila.Repo
@@ -438,6 +438,62 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
       InvoiceCorrections.apply(ctx.org.id, ctx.client.id, ctx.batch_ref, [ctx.invoice])
 
     assert effective["buyer_name"] == "Final correction"
+  end
+
+  test "a correction follows its source into a different batch", ctx do
+    assert {:ok, _} =
+             InvoiceCorrections.save(
+               ctx.org.id,
+               ctx.client.id,
+               ctx.batch_ref,
+               "source-1",
+               %{buyer_name: "Corrected once"}
+             )
+
+    second_invoice =
+      ctx.invoice
+      |> Map.put("id", "source-2")
+      |> Map.put("invoice_number", "INV-002")
+
+    {:ok, second_dump} =
+      Dumps.record(
+        %{org_id: ctx.org.id, client_id: ctx.client.id},
+        %{
+          period: "2026-07",
+          kind: "sales",
+          status: "extracted",
+          invoices: [second_invoice]
+        }
+      )
+
+    expanded_batch = [Repo.reload!(ctx.dump), second_dump]
+    packet = TallyPacket.prepare(expanded_batch)
+
+    corrected = Enum.find(packet.all_invoices, &(&1["id"] == "source-1"))
+    assert corrected["buyer_name"] == "Corrected once"
+    refute TallyPacket.ref(expanded_batch) == ctx.batch_ref
+  end
+
+  test "a source correction is replayed by the month projection", ctx do
+    assert {:ok, _} =
+             InvoiceCorrections.save(
+               ctx.org.id,
+               ctx.client.id,
+               ctx.batch_ref,
+               "source-1",
+               %{buyer_name: "Corrected customer"}
+             )
+
+    month =
+      Repo.insert!(%Month{
+        org_id: ctx.org.id,
+        client_id: ctx.client.id,
+        period: "2026-07",
+        invoices: [ctx.invoice]
+      })
+
+    assert [effective] = Resolutions.workings(month).source_invoices
+    assert effective["buyer_name"] == "Corrected customer"
   end
 
   test "invalid fields and values roll back the whole correction set", ctx do

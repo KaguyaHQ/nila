@@ -7,6 +7,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
   control ledgers must already exist in TallyPrime.
   """
 
+  alias Nila.Gst.Money
   alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.StateCodes
@@ -457,7 +458,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
   end
 
   defp required_paise(value) do
-    case Books.paise_or_error(value) do
+    case Money.paise_or_error(value) do
       {:ok, paise} when paise >= 0 -> {:ok, paise}
       _missing_or_invalid -> {:error, :invalid_sales_data}
     end

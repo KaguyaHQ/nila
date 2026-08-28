@@ -22,31 +22,43 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
   )
   @max_corrections 100
 
-  @doc "Correction events for one invoice, oldest first."
-  def list(org_id, client_id, batch_ref, source_id)
-      when is_integer(org_id) and is_integer(client_id) and is_binary(batch_ref) and
-             is_binary(source_id) do
+  @doc "Correction events for one source invoice, oldest first."
+  def list(org_id, client_id, source_id)
+      when is_integer(org_id) and is_integer(client_id) and is_binary(source_id) do
     Repo.all(
       from correction in InvoiceCorrection,
         where:
           correction.org_id == ^org_id and correction.client_id == ^client_id and
-            correction.batch_ref == ^batch_ref and correction.source_id == ^source_id,
+            correction.source_id == ^source_id,
         order_by: [asc: correction.inserted_at, asc: correction.id]
     )
   end
 
-  def list(_org_id, _client_id, _batch_ref, _source_id), do: []
+  def list(_org_id, _client_id, _source_id), do: []
+
+  @doc "Compatibility form; `batch_ref` is provenance, not correction identity."
+  def list(org_id, client_id, _batch_ref, source_id), do: list(org_id, client_id, source_id)
 
   @doc "Layers the latest saved value per field over pristine invoices."
   def apply(org_id, client_id, batch_ref, invoices)
       when is_integer(org_id) and is_integer(client_id) and is_binary(batch_ref) and
              is_list(invoices) do
+    apply_sources(org_id, client_id, invoices)
+  end
+
+  def apply(_org_id, _client_id, _batch_ref, invoices) when is_list(invoices), do: invoices
+
+  @doc "Layers source-scoped corrections over invoices regardless of the batch viewing them."
+  def apply_sources(org_id, client_id, invoices)
+      when is_integer(org_id) and is_integer(client_id) and is_list(invoices) do
+    source_ids = invoices |> Enum.map(&Invoice.source_id/1) |> Enum.uniq()
+
     corrections =
       Repo.all(
         from correction in InvoiceCorrection,
           where:
             correction.org_id == ^org_id and correction.client_id == ^client_id and
-              correction.batch_ref == ^batch_ref,
+              correction.source_id in ^source_ids,
           order_by: [asc: correction.inserted_at, asc: correction.id]
       )
       |> Enum.group_by(& &1.source_id)
@@ -61,7 +73,7 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
     end)
   end
 
-  def apply(_org_id, _client_id, _batch_ref, invoices) when is_list(invoices), do: invoices
+  def apply_sources(_org_id, _client_id, invoices) when is_list(invoices), do: invoices
 
   @doc "Validates and atomically records one invoice's changed fields."
   def save(org_id, client_id, batch_ref, source_id, changes, corrected_by_id \\ nil)

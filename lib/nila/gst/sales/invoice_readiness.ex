@@ -12,7 +12,7 @@ defmodule Nila.Gst.Sales.InvoiceReadiness do
   alias Nila.Gst.Issues
   alias Nila.Gst.RateHistory
   alias Nila.Gst.Rates.Validation, as: RateValidation
-  alias Nila.Gst.Sales.Gstr1
+  alias Nila.Gst.Sales.InvoiceValidation
 
   @doc "Annotates invoices with the active HSN and statutory-rate directories."
   def annotate(invoices, compliance \\ %{}) when is_list(invoices) do
@@ -31,8 +31,8 @@ defmodule Nila.Gst.Sales.InvoiceReadiness do
   @doc "Returns issues for invoices already annotated by `annotate/2`."
   def issues(invoices, compliance \\ %{}) when is_list(invoices) do
     invoices
-    |> Gstr1.invoice_validation_issues()
-    |> Enum.concat(Gstr1.duplicate_number_issues(invoices))
+    |> InvoiceValidation.issues()
+    |> Enum.concat(InvoiceValidation.duplicate_number_issues(invoices))
     |> Enum.concat(compliance_issues(invoices, compliance))
     |> Issues.normalize_all()
   end

@@ -11,6 +11,7 @@ defmodule Nila.Gst.Purchase.Books do
   """
 
   alias Nila.Gst.Extraction.LineAmounts
+  alias Nila.Gst.Money
   alias Nila.Gst.InvoiceNumber
 
   @doc """
@@ -143,12 +144,7 @@ defmodule Nila.Gst.Purchase.Books do
   callers that only need a number to sum, and wrong for anyone deciding whether
   a figure was *read* — use `paise_or_error/1` for that.
   """
-  def paise(value) do
-    case paise_or_error(value) do
-      {:ok, paise} -> paise
-      _missing_or_unreadable -> 0
-    end
-  end
+  defdelegate paise(value), to: Money
 
   @doc """
   Rupees to paise, keeping the three outcomes apart: `{:ok, paise}`,
@@ -161,51 +157,7 @@ defmodule Nila.Gst.Purchase.Books do
   reported a line-vs-invoice mismatch — blaming the arithmetic for a character
   the OCR never read. The reviewer got sent to the wrong question.
   """
-  def paise_or_error(nil), do: :missing
-  def paise_or_error(value) when is_integer(value), do: {:ok, value * 100}
-  def paise_or_error(value) when is_float(value), do: {:ok, round(value * 100)}
-
-  def paise_or_error(value) when is_binary(value) do
-    case String.trim(value) do
-      "" -> :missing
-      trimmed -> parse_rupee_text(trimmed)
-    end
-  end
-
-  def paise_or_error(_value), do: :unreadable
-
-  # Currency marks are noise; anything else that is not part of a number means
-  # the number was not read.
-  #
-  # The old rule deleted every character outside `[0-9.\-]` and parsed whatever
-  # survived, which is two silent wrongs. `"Rs. 1,275.00"` kept the dot from
-  # `Rs.`, became `".1275.00"`, failed `Float.parse` and was booked as ₹0 — a
-  # rupee prefix, on a real bill, zeroing the line. And `"1,2SO.OO"` — an OCR
-  # that read S for 5 and O for 0 — collapsed to `"12."` and was booked as ₹12,
-  # a number small enough to look like a cheap item and never be questioned.
-  # Both now say so instead.
-  @currency_prefix ~r/^(rs\.?|inr|₹)\s*/i
-  @grouping ~r/[\s,]/
-  @number ~r/^-?\d+(\.\d+)?$/
-
-  defp parse_rupee_text(trimmed) do
-    cleaned =
-      trimmed
-      |> String.replace(@currency_prefix, "")
-      |> String.replace(@grouping, "")
-
-    cond do
-      cleaned == "" ->
-        :unreadable
-
-      not Regex.match?(@number, cleaned) ->
-        :unreadable
-
-      true ->
-        {number, ""} = Float.parse(cleaned)
-        {:ok, round(number * 100)}
-    end
-  end
+  defdelegate paise_or_error(value), to: Money
 
   defp normalize_page(artifact) do
     data = clear_unobserved(artifact["data"] || %{}, artifact["verification"] || %{})

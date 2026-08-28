@@ -35,10 +35,17 @@ defmodule Nila.Gst.Sales.InvoiceTest do
     }
 
     assert Invoice.extracted_totals(complete) == %{taxable: 100.0, tax: 18.0}
+
+    assert Invoice.extracted_totals_paise(complete) == %{
+             taxable_paise: 10_000,
+             tax_paise: 1_800
+           }
+
     assert Invoice.taxable_values_complete?(complete)
 
     incomplete = put_in(complete, ["line_items", Access.at(0), "taxable_value"], nil)
     assert Invoice.extracted_totals(incomplete) == %{taxable: nil, tax: 18.0}
+    assert Invoice.extracted_totals_paise(incomplete) == %{taxable_paise: nil, tax_paise: 1_800}
     refute Invoice.taxable_values_complete?(incomplete)
   end
 

@@ -243,8 +243,8 @@ defmodule Nila.Gst.Sales.TallyRegister do
       [
         {"buyer GSTIN", document["buyer_gstin"], tally["buyer_gstin"]},
         {"place of supply", document["place_of_supply"], tally["place_of_supply"]},
-        {"taxable value", totals(document).taxable, totals(tally).taxable},
-        {"GST", totals(document).tax, totals(tally).tax}
+        {"taxable value", totals(document).taxable_paise, totals(tally).taxable_paise},
+        {"GST", totals(document).tax_paise, totals(tally).tax_paise}
       ]
       |> Enum.filter(fn {_label, left, right} -> materially_different?(left, right) end)
       |> Enum.map(&elem(&1, 0))
@@ -354,10 +354,10 @@ defmodule Nila.Gst.Sales.TallyRegister do
     if number == "" or is_nil(date), do: nil, else: {number, date}
   end
 
-  defp totals(invoice), do: Invoice.extracted_totals(invoice)
+  defp totals(invoice), do: Invoice.extracted_totals_paise(invoice)
 
   defp materially_different?(left, right) when is_number(left) and is_number(right),
-    do: abs(left - right) > 1.0
+    do: abs(left - right) > 100
 
   defp materially_different?(left, right) do
     present?(left) and present?(right) and
