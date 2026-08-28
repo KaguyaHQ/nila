@@ -1227,11 +1227,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       "sales_ledger_identity" =>
         profile_value(profile, :sales_ledger_identity) || default_identity(choices, "Sales"),
       "cgst_ledger_identity" =>
-        profile_value(profile, :cgst_ledger_identity) || default_identity(choices, "Output CGST"),
+        profile_value(profile, :cgst_ledger_identity) ||
+          resolved_tax_ledger_identity(org_id, company.id, :cgst),
       "sgst_ledger_identity" =>
-        profile_value(profile, :sgst_ledger_identity) || default_identity(choices, "Output SGST"),
+        profile_value(profile, :sgst_ledger_identity) ||
+          resolved_tax_ledger_identity(org_id, company.id, :sgst),
       "igst_ledger_identity" =>
-        profile_value(profile, :igst_ledger_identity) || default_identity(choices, "Output IGST")
+        profile_value(profile, :igst_ledger_identity) ||
+          resolved_tax_ledger_identity(org_id, company.id, :igst)
     }
 
     line_rows =
@@ -1367,6 +1370,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp resolved_sales_identity(org_id, company_id, line) do
     case TallyMappings.resolve_sales_ledger(org_id, company_id, line) do
+      {:ok, %{ledger: ledger}} -> ledger.identity
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp resolved_tax_ledger_identity(org_id, company_id, head) do
+    case TallyMappings.resolve_tax_ledger(org_id, company_id, head) do
       {:ok, %{ledger: ledger}} -> ledger.identity
       {:error, _reason} -> nil
     end

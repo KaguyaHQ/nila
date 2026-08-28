@@ -26,6 +26,23 @@ defmodule Nila.TallyMappings do
 
   def list_sales_ledger_choices(_org_id, _company_id), do: []
 
+  def resolve_tax_ledger(org_id, company_id, head)
+      when is_integer(org_id) and is_integer(company_id) do
+    with {:ok, normalized_head} <- normalize_tax_head(head),
+         {:ok, _company} <- company(org_id, company_id) do
+      org_id
+      |> list_ledger_choices(company_id)
+      |> unique_match(&tax_ledger_for_head?(&1, normalized_head))
+      |> case do
+        {:ok, ledger} -> {:ok, %{ledger: ledger, matched_by: :gst_duty_head}}
+        :none -> {:error, :not_found}
+        {:ambiguous, matches} -> {:error, {:ambiguous, matches}}
+      end
+    end
+  end
+
+  def resolve_tax_ledger(_org_id, _company_id, _head), do: {:error, :invalid_tax_head}
+
   def resolve_party(org_id, company_id, identity)
       when is_integer(org_id) and is_integer(company_id) and is_map(identity) do
     with {:ok, normalized} <- normalize_identity(identity),
@@ -354,6 +371,34 @@ defmodule Nila.TallyMappings do
     parent = ledger.data["parent"] || ledger.data[:parent]
     is_binary(parent) and String.downcase(String.trim(parent)) == "sales accounts"
   end
+
+  defp tax_ledger_for_head?(ledger, head) do
+    tax_type = ledger.data["tax_type"] || ledger.data[:tax_type]
+    duty_head = ledger.data["gst_duty_head"] || ledger.data[:gst_duty_head]
+
+    normalize_name(tax_type) == "gst" and normalize_tax_head_value(duty_head) == head
+  end
+
+  defp normalize_tax_head(head) do
+    case normalize_tax_head_value(head) do
+      nil -> {:error, :invalid_tax_head}
+      normalized -> {:ok, normalized}
+    end
+  end
+
+  defp normalize_tax_head_value(value) when is_atom(value),
+    do: value |> Atom.to_string() |> normalize_tax_head_value()
+
+  defp normalize_tax_head_value(value) when is_binary(value) do
+    case normalize_name(value) do
+      head when head in ["cgst", "central tax"] -> :cgst
+      head when head in ["sgst", "state tax"] -> :sgst
+      head when head in ["igst", "integrated tax"] -> :igst
+      _ -> nil
+    end
+  end
+
+  defp normalize_tax_head_value(_value), do: nil
 
   defp ledger_query(org_id, company_id) do
     from master in SyncedMaster,

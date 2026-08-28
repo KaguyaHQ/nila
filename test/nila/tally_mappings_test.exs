@@ -145,6 +145,51 @@ defmodule Nila.TallyMappingsTest do
     assert updated.igst_ledger_identity == igst.identity
   end
 
+  test "resolves an unambiguous GST ledger from its structured duty head" do
+    org = org_fixture()
+    company = company_fixture(org, "Nila")
+
+    target =
+      ledger_fixture(org.id, company.id, "central-tax", "Tax payable", nil,
+        tax_type: "GST",
+        gst_duty_head: "Central Tax"
+      )
+
+    _other =
+      ledger_fixture(org.id, company.id, "integrated-tax", "Another tax", nil,
+        tax_type: "GST",
+        gst_duty_head: "Integrated Tax"
+      )
+
+    assert {:ok, %{ledger: ^target, matched_by: :gst_duty_head}} =
+             TallyMappings.resolve_tax_ledger(org.id, company.id, :cgst)
+  end
+
+  test "does not guess a GST duty head from the ledger name" do
+    org = org_fixture()
+    company = company_fixture(org, "Nila")
+    _named = ledger_fixture(org.id, company.id, "output-igst", "Output IGST", nil)
+
+    assert {:error, :not_found} = TallyMappings.resolve_tax_ledger(org.id, company.id, :igst)
+  end
+
+  test "leaves duplicate structured GST duty heads ambiguous" do
+    org = org_fixture()
+    company = company_fixture(org, "Nila")
+
+    for identity <- ~w(first second) do
+      ledger_fixture(org.id, company.id, identity, "#{identity} output", nil,
+        tax_type: "GST",
+        gst_duty_head: "IGST"
+      )
+    end
+
+    assert {:error, {:ambiguous, matches}} =
+             TallyMappings.resolve_tax_ledger(org.id, company.id, "Integrated Tax")
+
+    assert length(matches) == 2
+  end
+
   test "saves a confirmed party and posting defaults atomically" do
     org = org_fixture()
     company = company_fixture(org, "Nila")
@@ -239,8 +284,13 @@ defmodule Nila.TallyMappingsTest do
     |> Repo.insert!()
   end
 
-  defp ledger_fixture(org_id, company_id, identity, name, gstin) do
+  defp ledger_fixture(org_id, company_id, identity, name, gstin, opts \\ []) do
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    data =
+      opts
+      |> Enum.into(%{}, fn {key, value} -> {Atom.to_string(key), value} end)
+      |> then(&if(gstin, do: Map.put(&1, "gstin", gstin), else: &1))
 
     %SyncedMaster{
       org_id: org_id,
@@ -248,7 +298,7 @@ defmodule Nila.TallyMappingsTest do
       kind: "ledger",
       identity: identity,
       name: name,
-      data: if(gstin, do: %{"gstin" => gstin}, else: %{}),
+      data: data,
       inserted_at: now,
       updated_at: now
     }

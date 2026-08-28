@@ -1403,7 +1403,15 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
         kind: "ledger",
         identity: "name:" <> String.downcase(name),
         name: name,
-        data: %{"parent" => parent},
+        data:
+          if(name == "Output IGST",
+            do: %{
+              "parent" => parent,
+              "tax_type" => "GST",
+              "gst_duty_head" => "Integrated Tax"
+            },
+            else: %{"parent" => parent}
+          ),
         inserted_at: now,
         updated_at: now
       })

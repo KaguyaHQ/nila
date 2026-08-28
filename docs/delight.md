@@ -17,6 +17,8 @@ the accountant never hunts for what survived.
 The first residual-review slice is implemented:
 
 - exact, company-scoped party, sales-line, and posting-profile mappings are reused;
+- a first-time GST ledger is selected when synced Tally metadata exposes exactly one
+  ledger for the required CGST, SGST, or IGST duty head;
 - the batch excludes mapping-incomplete invoices from its ready count and exposes
   **Review N**;
 - review mode contains only invoices still missing required Tally mappings;
@@ -51,7 +53,8 @@ directly.
 ### Make obvious work disappear
 
 1. Reuse an exact party match from the buyer GSTIN.
-2. Reuse the company's confirmed tax-ledger profile for the tax heads present.
+2. Resolve a unique first-time GST ledger from Tally's structured `GSTDutyHead`, then
+   reuse the company's confirmed tax-ledger profile.
 3. Reuse confirmed sales-ledger mappings for exact normalized HSN/SAC and description.
 4. Reuse an identical resolved sales line within the current batch when that choice is
    already known from the company mapping store.
@@ -86,13 +89,6 @@ fully consolidating their presentation remains a gap below.
 
 These are not speculative workflow features. They are common work or trust boundaries
 that the current slice still exposes.
-
-### Match first-time GST ledgers when Tally makes the answer unambiguous
-
-Nila currently reuses a confirmed company posting profile. A new company still requires
-the accountant to choose CGST, SGST, or IGST ledgers manually. When synced Tally master
-metadata identifies exactly one compatible ledger for a tax head, Nila should select it.
-Ambiguous candidates must remain a human choice.
 
 ### Remove repeated sales-ledger choices without fuzzy guessing
 
