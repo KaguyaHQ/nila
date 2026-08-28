@@ -30,15 +30,12 @@ config :nila, Nila.Assistant,
   max_tool_iterations: 8,
   receive_timeout: 60_000
 
-config :nila, Nila.Gst.Extraction.Providers.Mistral,
-  base_url: "https://api.mistral.ai",
-  receive_timeout: 300_000
-
 config :nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChat,
-  provider: "mistral",
-  base_url: "https://api.mistral.ai/v1",
-  model: "mistral-small-latest",
-  response_format: :json_schema,
+  provider: "vercel-ai-gateway",
+  base_url: "https://ai-gateway.vercel.sh/v1",
+  model: "alibaba/qwen3.7-flash",
+  response_format: :json_schema_local,
+  provider_options: %{"alibaba" => %{"enableThinking" => false}},
   receive_timeout: 300_000
 
 config :nila, Nila.Gst.Extraction.OpenAICompatibleChatFinch, protocol: :http2

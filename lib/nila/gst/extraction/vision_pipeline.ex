@@ -8,7 +8,6 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
 
   alias Nila.Gst.Extraction.Discovery.PageLabels
   alias Nila.Gst.Extraction.Evidence
-  alias Nila.Gst.Extraction.Providers.Mistral
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.Segmented
   alias Nila.Gst.Extraction.Verify
@@ -100,7 +99,7 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
 
   defp render(bytes, opts) do
     filename = Keyword.get(opts, :filename, "document.pdf")
-    content_type = Keyword.get(opts, :content_type) || Mistral.content_type(filename)
+    content_type = Keyword.get(opts, :content_type) || Evidence.content_type(filename)
 
     cond do
       content_type == "application/pdf" ->

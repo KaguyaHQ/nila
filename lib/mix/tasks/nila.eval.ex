@@ -6,19 +6,17 @@ defmodule Mix.Tasks.Nila.Eval do
   parsing and printing, mirroring the `Nila.EvalCorpus` / `mix nila.eval_corpus`
   split.
 
-      mix nila.eval extract <name>   # run the production extractor, cache it
+      mix nila.eval extract <name>   # replay cached OCR through the retired text path
       mix nila.eval score <name>     # score the newest cached extraction
       mix nila.eval score --all
 
-      mix nila.eval transcribe <name>          # pure OCR, no annotation, cached
       mix nila.eval segment <name> [--runs 5] [--shape per_page|whole_dump] [--context neighbours|paper]
       mix nila.eval stability <name> [--runs 10] [--concurrency 4]
       mix nila.eval vision-schema <name> --pages 7 [--runs 3] [--source packet.pdf]
-      mix nila.eval compare-vision <name> [<name> ...] [--concurrency 4]
       mix nila.eval source-quality <name> [--transcription-attempt DIR]
 
-  `extract` runs the production transcribe → discover → extract → verify path
-  and writes a new attempt under `tmp/eval/segmented/`. Attempts are never
+  `extract` replays a historical cached transcription through the former
+  segmented text path and writes a new attempt under `tmp/eval/segmented/`. Attempts are never
   overwritten because the model is non-deterministic and an overwritten attempt
   is a rewritten history.
 
@@ -66,11 +64,9 @@ defmodule Mix.Tasks.Nila.Eval do
 
     case positional do
       ["extract", name] -> extract(name, opts)
-      ["transcribe", name] -> transcribe(name)
       ["segment", name] -> segment(name, opts)
       ["stability", name] -> stability(name, opts)
       ["vision-schema", name] -> vision_schema(name, opts)
-      ["compare-vision" | names] when names != [] -> compare_vision(names, opts)
       ["source-quality", name] -> source_quality(name, opts)
       ["score", name] -> score_months([name], opts)
       ["score"] -> score_all(opts)
@@ -84,17 +80,6 @@ defmodule Mix.Tasks.Nila.Eval do
 
     if opts[:concurrency], do: Mix.raise("--concurrency applies only to stability")
     if opts[:runs], do: Mix.raise("--runs applies only to segment or stability")
-  end
-
-  defp validate_options!(["compare-vision" | _names], opts) do
-    reject_non_positive!(opts)
-
-    if opts[:transcription_attempt],
-      do: Mix.raise("--transcription-attempt applies only to source-quality")
-
-    if opts[:runs], do: Mix.raise("--runs does not apply to compare-vision")
-    if opts[:shape], do: Mix.raise("--shape does not apply to compare-vision")
-    if opts[:context], do: Mix.raise("--context does not apply to compare-vision")
   end
 
   defp validate_options!(["vision-schema", _name], opts) do
@@ -133,20 +118,6 @@ defmodule Mix.Tasks.Nila.Eval do
 
     if opts[:concurrency] && opts[:concurrency] < 1,
       do: Mix.raise("--concurrency must be positive")
-  end
-
-  defp transcribe(name) do
-    Mix.shell().info("transcribing #{name} (pure OCR, no annotation)")
-
-    case Nila.Eval.Transcription.run(name) do
-      {:ok, dir} ->
-        meta = dir |> Path.join("meta.json") |> File.read!() |> Jason.decode!()
-        Mix.shell().info("  #{meta["pages"]} pages in #{meta["duration_ms"]}ms")
-        Mix.shell().info("\ncached → #{dir}")
-
-      {:error, reason} ->
-        Mix.raise("transcription failed: #{inspect(reason, limit: 8)}")
-    end
   end
 
   # Segmentation on its own, scored against adjudicated boundaries and against
@@ -411,44 +382,6 @@ defmodule Mix.Tasks.Nila.Eval do
       "#{label} ms: min #{latency["min"]}  p50 #{latency["p50"]}  " <>
         "p95 #{latency["p95"]}  max #{latency["max"]}"
     )
-  end
-
-  defp compare_vision(names, opts) do
-    concurrency = opts[:concurrency] || 4
-
-    Mix.shell().info(
-      "comparing Mistral OCR → Small with Qwen direct vision: #{Enum.join(names, ", ")}"
-    )
-
-    report = fn
-      {:comparison_rendered, name, pages, segments} ->
-        Mix.shell().info("  #{name}: rendered #{pages} pages, #{segments} fixed invoice segments")
-
-      {:comparison_segment, approach, name, index, total, status} ->
-        Mix.shell().info("  #{approach} #{name}: #{index}/#{total} #{status}")
-
-      {:comparison_segmentation_page, approach, name, done, total} ->
-        Mix.shell().info("  #{approach} segmentation #{name}: #{done}/#{total}")
-
-      {:comparison_segmentation, approach, name, status} ->
-        Mix.shell().info("  #{approach} segmentation #{name}: #{status}")
-    end
-
-    with {:ok, extraction} <-
-           Nila.Eval.VisionComparison.run(names,
-             max_concurrency: concurrency,
-             on_event: report
-           ),
-         {:ok, result} <-
-           Nila.Eval.VisionComparison.segment(extraction["dir"],
-             max_concurrency: concurrency,
-             on_event: report
-           ) do
-      Mix.shell().info("\ncomparison → #{result["dir"]}/report.html")
-    else
-      {:error, reason} ->
-        Mix.raise("vision comparison failed: #{inspect(reason, limit: 10)}")
-    end
   end
 
   defp extract(name, opts) do

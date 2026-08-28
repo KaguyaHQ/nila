@@ -6,9 +6,9 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
   both direct-vision packet segmentation and invoice structuring.
   """
 
-  @default_base_url "https://api.mistral.ai/v1"
-  @default_model "mistral-small-latest"
-  @default_provider "mistral"
+  @default_base_url "https://ai-gateway.vercel.sh/v1"
+  @default_model "alibaba/qwen3.7-flash"
+  @default_provider "vercel-ai-gateway"
   @json_object_prompt_version 1
   @invalid_response_retries 1
 
@@ -20,7 +20,7 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
   def model, do: config()[:model] || @default_model
   def provider, do: config()[:provider] || @default_provider
   def base_url, do: config()[:base_url] || @default_base_url
-  def response_format, do: config()[:response_format] || :json_schema
+  def response_format, do: config()[:response_format] || :json_schema_local
 
   @doc """
   One completion constrained to `schema`, returning the raw response.

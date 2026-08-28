@@ -10,7 +10,7 @@ defmodule Nila.Gst.Extraction.OpenAICompatibleChatFinchTest do
     assert options[:name] == OpenAICompatibleChatFinch
 
     assert options[:pools] == %{
-             "https://api.mistral.ai" => [
+             "https://ai-gateway.vercel.sh" => [
                protocols: [:http2],
                http2: [ping_interval: :timer.seconds(30)]
              ]

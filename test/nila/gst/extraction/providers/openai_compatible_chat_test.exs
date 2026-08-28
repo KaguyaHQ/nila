@@ -320,7 +320,10 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatTest do
     end)
 
     assert {:ok, _response} =
-             OpenAICompatibleChat.request_raw([], "test", @schema, max_retries: 2)
+             OpenAICompatibleChat.request_raw([], "test", @schema,
+               response_format: :json_schema,
+               max_retries: 2
+             )
 
     assert Agent.get(calls, & &1) == 1
   end

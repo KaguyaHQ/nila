@@ -71,26 +71,16 @@ if config_env() in [:prod, :dev] do
 end
 
 # One vision-capable OpenAI-compatible provider segments page images and structures
-# each invoice. Mistral is optional and retained only for the legacy OCR extractor.
+# each invoice. Production is pinned to Vercel AI Gateway and Qwen.
 if config_env() in [:prod, :dev] do
-  mistral_key = env!("MISTRAL_API_KEY", :string, nil)
-
-  if mistral_key do
-    config :nila, Nila.Gst.Extraction.Providers.Mistral, api_key: mistral_key
-  end
-
-  mistral_base_url = env!("MISTRAL_BASE_URL", :string, "https://api.mistral.ai")
-  config :nila, Nila.Gst.Extraction.Providers.Mistral, base_url: mistral_base_url
-
   production_vision? = config_env() == :prod
-  default_provider = if production_vision?, do: "vercel-ai-gateway", else: "mistral"
-  default_model = if production_vision?, do: "alibaba/qwen3.7-flash", else: "mistral-small-latest"
-  default_format = if production_vision?, do: "json_schema_local", else: "json_schema"
+  default_provider = "vercel-ai-gateway"
+  default_model = "alibaba/qwen3.7-flash"
+  default_format = "json_schema_local"
 
   text_provider = env!("GST_TEXT_PROVIDER", :string, default_provider)
   text_model = env!("GST_TEXT_MODEL", :string, default_model)
   text_key = env!("GST_TEXT_API_KEY", :string, nil)
-  text_key = if text_provider == "mistral", do: text_key || mistral_key, else: text_key
 
   if production_vision? and (is_nil(text_key) or String.trim(text_key) == "") do
     raise "GST_TEXT_API_KEY is required for GST vision extraction"
@@ -117,11 +107,7 @@ if config_env() in [:prod, :dev] do
     end
 
   default_text_base_url =
-    case text_provider do
-      "mistral" -> String.trim_trailing(mistral_base_url, "/") <> "/v1"
-      "vercel-ai-gateway" -> "https://ai-gateway.vercel.sh/v1"
-      _provider -> nil
-    end
+    if text_provider == "vercel-ai-gateway", do: "https://ai-gateway.vercel.sh/v1"
 
   text_base_url = env!("GST_TEXT_BASE_URL", :string, default_text_base_url)
 
@@ -130,12 +116,14 @@ if config_env() in [:prod, :dev] do
     raise "production GST vision extraction requires https://ai-gateway.vercel.sh/v1"
   end
 
-  if config_env() == :prod and is_nil(text_base_url) do
-    raise "GST_TEXT_BASE_URL is required when GST_TEXT_PROVIDER is not mistral"
+  if is_nil(text_base_url) do
+    raise "GST_TEXT_BASE_URL is required when GST_TEXT_PROVIDER is not vercel-ai-gateway"
   end
 
   default_provider_options =
-    if production_vision?, do: %{"alibaba" => %{"enableThinking" => false}}, else: nil
+    if {text_provider, text_model} == {"vercel-ai-gateway", "alibaba/qwen3.7-flash"},
+      do: %{"alibaba" => %{"enableThinking" => false}},
+      else: nil
 
   text_provider_options =
     case env!("GST_TEXT_PROVIDER_OPTIONS", :string, nil) do

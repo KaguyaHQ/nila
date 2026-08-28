@@ -275,7 +275,6 @@ Unless noted, absence disables the feature or leaves the compiled default:
 | `GST_TEXT_RESPONSE_FORMAT` | Use `json_schema_local` for Vercel so Nila validates every response locally. |
 | `GST_TEXT_HTTP_PROTOCOL` | Provider transport; Vercel uses `http2`. |
 | `GST_TEXT_PROVIDER_OPTIONS` | JSON sent as Vercel `providerOptions`; production disables Qwen thinking with `{"alibaba":{"enableThinking":false}}`. |
-| `MISTRAL_API_KEY` / `MISTRAL_BASE_URL` | Optional legacy OCR extractor credentials and endpoint. |
 | `RESEND_API_KEY` | Switches `Nila.Mailer` to Resend and configures inbound Resend API access. **Unset means invite emails are silently dropped in prod**, so this is effectively required to onboard teammates. |
 | `MAIL_FROM` / `MAIL_FROM_NAME` | Sender for outgoing mail (default `Nila <onboarding@resend.dev>`). `nila.tax` is verified; production should use `MAIL_FROM=noreply@nila.tax`. Read only when `RESEND_API_KEY` is set. |
 | `INBOUND_EMAIL_DOMAIN` / `INBOUND_EMAIL_SECRET` | Overrides the compiled inbound-address domain and signing secret. Runtime requires the secret when the domain override is set. If both are omitted, the current compiled development defaults remain active—do not mistake omission for disabling inbound. |

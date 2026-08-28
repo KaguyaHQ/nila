@@ -47,6 +47,10 @@ config :nila, Nila.Integrations.WhatsAppSignup,
   graph_url: "https://graph.facebook.com/v26.0/",
   req_options: [plug: {Req.Test, Nila.Integrations.WhatsAppSignup}]
 
+config :nila, NilaWeb.Webhooks.WhatsAppController,
+  app_secret: "dev-whatsapp-app-secret",
+  verify_token: "dev-whatsapp-verify-token"
+
 config :nila, Nila.Integrations.Gmail, req_options: [plug: {Req.Test, Nila.Integrations.Gmail}]
 
 config :nila, Nila.Integrations.Microsoft,
@@ -85,18 +89,13 @@ config :phoenix_live_view,
 config :phoenix,
   sort_verified_routes_query_params: true
 
-config :nila, Nila.Gst.Extraction.Providers.Mistral,
-  api_key: "test-mistral-key",
-  req_options: [plug: {Req.Test, Nila.Gst.Extraction.Providers.Mistral}]
-
-# The segmented pipeline's text calls get their own stub, so an OCR expectation
-# and a chat expectation can never satisfy each other.
 config :nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChat,
-  provider: "mistral",
-  base_url: "https://api.mistral.ai/v1",
-  api_key: "test-mistral-key",
-  model: "mistral-small-latest",
+  provider: "vercel-ai-gateway",
+  base_url: "https://ai-gateway.vercel.sh/v1",
+  api_key: "test-gateway-key",
+  model: "alibaba/qwen3.7-flash",
   response_format: :json_schema,
+  provider_options: %{"alibaba" => %{"enableThinking" => false}},
   req_options: [plug: {Req.Test, Nila.Gst.Extraction.Providers.OpenAICompatibleChat}]
 
 # Req.Test replaces the adapter, so an eager real H2 connection would only add

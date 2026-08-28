@@ -66,7 +66,6 @@ defmodule Nila.MixProject do
       {:bcrypt_elixir, "~> 3.0"},
       {:nimble_csv, "~> 1.2"},
       {:req, "~> 0.7"},
-      {:hackney, "~> 4.0"},
       {:hammer, "~> 6.2"},
       {:dotenvy, "~> 1.1"},
       {:telemetry_metrics, "~> 1.0"},

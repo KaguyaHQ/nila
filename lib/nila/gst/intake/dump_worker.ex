@@ -19,9 +19,8 @@ defmodule Nila.Gst.Intake.DumpWorker do
   (`PurchaseMonths.broadcast_progress/2`, message `{:gst_dump_progress, ...}`)
   and terminal failure marks the dump `failed` so intake surfaces can show
   which arrival broke. The extractor reports each unit as it lands, so the
-  coarse `:extracting` stage is followed by `{:extracting, progress}` counts
-  (`t:Nila.Gst.Extraction.Pipeline.progress/0`) and the wait is narrated in
-  pages labelled and bills read rather than a spinner.
+  coarse `:extracting` stage is followed by `{:extracting, progress}` counts,
+  and the wait is narrated in pages labelled and bills read rather than a spinner.
   """
   use Oban.Worker, queue: :documents, max_attempts: 3
 

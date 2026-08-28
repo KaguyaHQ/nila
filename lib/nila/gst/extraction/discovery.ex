@@ -474,7 +474,7 @@ defmodule Nila.Gst.Extraction.Discovery do
   It is printed on nearly every page of their own packet — as the buyer on a
   purchase pile, as the seller on a sales one — which is exactly what makes it
   identifiable without being told: it is the one GSTIN that is everywhere. (In
-  production the client record already knows it, and `Nila.Gst.Extraction.Pipeline`
+  production the client record already knows it, and `Nila.Gst.Extraction.VisionPipeline`
   passes it; this is the oracle for the same fact when nobody has.)
   """
   def client_gstin(transcription) do

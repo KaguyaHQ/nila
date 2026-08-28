@@ -203,8 +203,8 @@ as zero-tax invoices — the model's "is this an invoice" threshold wobbles on
 non-invoice pages; either path is safe (flag or zero-tax record), but review sees
 both shapes.
 
-> **Superseded, 2026-07-30.** Production now reads packets through
-> `Nila.Gst.Extraction.Pipeline`: transcribe with annotation off, label each page
+> **Superseded, 2026-07-30.** Production then read packets through the now-retired
+> segmented OCR pipeline: transcribe with annotation off, label each page
 > against its neighbours to find the bill boundaries, then extract one bill per
 > call and ground every printed number in that bill's own text. The mechanism
 > below is still the reason — the annotation half of `/v1/ocr` carries the output
@@ -278,7 +278,7 @@ value was on the page, read correctly, and then replaced downstream.
 
 `invoice_schema/1` is sent with `strict: true`, and strict structured-output mode
 requires **every** property to appear in `required` — so `strict_object/1` lists
-them all (`mistral.ex:186`). Optionality is expressed as
+them all (`invoice_schema.ex`). Optionality is expressed as
 `anyOf: [%{type: "number"}, %{type: "null"}]`.
 
 Formally that is correct and `null` validates cleanly: `required` constrains key
@@ -433,8 +433,8 @@ itself — that gap is real but has not been observed.
 
 ## Status
 
-- [x] **Segment-then-extract shipped and switched on** (2026-07-30):
-      `Nila.Gst.Extraction.Pipeline` is the sole production reader.
+- [x] **Direct vision shipped and switched on** (2026-08-17):
+      `Nila.Gst.Extraction.VisionPipeline` is the sole production reader.
 - [x] Evidence rendering lives independently in `Nila.Gst.Extraction.Evidence`.
 - [x] Every extracted value is grounded through `Nila.Gst.Extraction.Verify`.
 - [x] Provider behaviour was characterised and whole-packet degradation was

@@ -7,8 +7,6 @@ defmodule Nila.Gst.Extraction.Evidence do
   from stored originals without asking a provider to extract them again.
   """
 
-  alias Nila.Gst.Extraction.Providers.Mistral
-
   require Logger
 
   # A packet is photographs of paper, and PNG is a lossless format built for
@@ -63,7 +61,7 @@ defmodule Nila.Gst.Extraction.Evidence do
   @spec render_pages(binary(), keyword()) :: {:ok, %{String.t() => binary()}} | {:error, term()}
   def render_pages(bytes, opts \\ []) do
     filename = Keyword.get(opts, :filename, "document.pdf")
-    content_type = Keyword.get(opts, :content_type) || Mistral.content_type(filename)
+    content_type = Keyword.get(opts, :content_type) || content_type(filename)
 
     if content_type == "application/pdf" do
       rasterize(
@@ -127,6 +125,20 @@ defmodule Nila.Gst.Extraction.Evidence do
   # forward slash. Erlang's Windows glob implementation treats that mixed path
   # as no matches even though Poppler wrote the pages successfully.
   defp normalize_glob_path(path), do: String.replace(path, "\\", "/")
+
+  @doc "Content type inferred from a filename's extension."
+  def content_type(filename) do
+    case filename |> Path.extname() |> String.downcase() do
+      ".pdf" -> "application/pdf"
+      ext when ext in [".jpg", ".jpeg"] -> "image/jpeg"
+      ".png" -> "image/png"
+      ".webp" -> "image/webp"
+      ".avif" -> "image/avif"
+      ".heic" -> "image/heic"
+      ".heif" -> "image/heif"
+      _ -> "application/octet-stream"
+    end
+  end
 
   @doc "The stable evidence basename for a 1-based page number."
   @spec page_basename(pos_integer()) :: String.t()
