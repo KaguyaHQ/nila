@@ -47,6 +47,8 @@ defmodule NilaWeb.Banking.UploadLive do
     {:noreply, socket |> assign(:form, to_form(params, as: :statement)) |> assign(:error, nil)}
   end
 
+  def handle_event("validate", _params, socket), do: {:noreply, socket}
+
   def handle_event("cancel-upload", %{"ref" => ref}, socket) do
     {key, entry_keys} = Map.pop(socket.assigns.entry_keys, ref)
     if key, do: Storage.delete(key)

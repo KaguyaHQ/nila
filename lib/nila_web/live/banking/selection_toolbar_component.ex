@@ -147,6 +147,7 @@ defmodule NilaWeb.Banking.SelectionToolbarComponent do
               name="action"
               value="send"
               id="banking-send-tally"
+              disabled={not @balance_check_passed}
             >
               Send selected to Tally
             </.button>
