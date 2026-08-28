@@ -32,7 +32,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   alias Nila.Gst.Issues
   alias Nila.Gst.StateCodes
   alias Nila.Gst.Purchase.Books
-  alias Nila.Gst.Purchase.Flags
+  alias Nila.Gst.Sales.Invoice
 
   @confidence_threshold 0.90
   @money_tolerance 0.5
@@ -47,8 +47,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
     printed_line_total printed_taxable_value line_amount_tax_inclusion taxable_value
     cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount
   )
-  @numeric_correction_field ~r/^(printed_total_taxable|printed_total_tax|printed_grand_total)$|\.(taxable_value|printed_(unit_price|line_amount|line_total|taxable_value)|quantity|[csi]gst_(rate|amount))$/
-
   @doc "Returns the flagged scalar fields that may be corrected for a source invoice."
   def correctable_fields(flagged, pristine_source_id) do
     flagged
@@ -63,7 +61,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   def correctable_field?(field) when field in @correctable_invoice_fields, do: true
 
   def correctable_field?(field) when is_binary(field) do
-    case parse_field_path(field) do
+    case Invoice.parse_field_path(field) do
       {:line, _index, line_field} -> line_field in @correctable_line_fields
       {:invoice, _field} -> false
     end
@@ -87,78 +85,22 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   @doc "Stable source identity when present, otherwise the legacy invoice-number identity."
-  def source_id(invoice), do: invoice["id"] || invoice["invoice_number"]
+  defdelegate source_id(invoice), to: Invoice
 
   @doc "Reads a scalar invoice field, including `line_items[index].field` paths."
-  def field_value(invoice, field_path) do
-    case parse_field_path(field_path) do
-      {:line, index, line_field} ->
-        line = Enum.at(invoice["line_items"] || [], index) || %{}
-        line[line_field]
-
-      {:invoice, field} ->
-        invoice[field]
-    end
-  end
-
-  # The one reading of a correction's field path. It was written out three
-  # times — twice with a capture group and once without, and only one of the
-  # three tolerated a nil path, so `field_value/2` raised on input the sibling
-  # writer accepted.
-  defp parse_field_path(field_path) do
-    case Regex.run(~r/^line_items\[(\d+)\]\.(.+)$/, field_path || "") do
-      [_, index, line_field] -> {:line, String.to_integer(index), line_field}
-      _not_a_line_path -> {:invoice, field_path}
-    end
-  end
+  defdelegate field_value(invoice, field_path), to: Invoice
 
   @doc "Coerces correction text for the numeric fields accepted by the review UI."
-  def coerce_correction(field_path, text) do
-    cond do
-      Regex.match?(@numeric_correction_field, field_path) and String.trim(text) == "" ->
-        nil
-
-      Regex.match?(@numeric_correction_field, field_path) ->
-        case Float.parse(text) do
-          {number, ""} -> number
-          _invalid -> text
-        end
-
-      true ->
-        text
-    end
-  end
+  defdelegate coerce_correction(field_path, text), to: Invoice
 
   @doc "Sums extracted taxable and tax amounts without deriving or rounding them."
-  def extracted_totals(invoice) do
-    lines = List.wrap(invoice["line_items"])
-
-    taxable =
-      if Enum.all?(lines, &is_number(&1["taxable_value"])),
-        do: Enum.sum(Enum.map(lines, & &1["taxable_value"])),
-        else: nil
-
-    tax =
-      Enum.reduce(lines, 0, fn line, total ->
-        total + extracted_number(line["cgst_amount"]) + extracted_number(line["sgst_amount"]) +
-          extracted_number(line["igst_amount"])
-      end)
-
-    %{taxable: taxable, tax: tax}
-  end
-
-  defp extracted_number(value) when is_number(value), do: value
-  defp extracted_number(_value), do: 0
+  defdelegate extracted_totals(invoice), to: Invoice
 
   @doc "Re-resolves normalized line amounts from their preserved printed evidence."
-  def resolve_line_amounts(invoice) do
-    Map.update(invoice, "line_items", [], fn lines -> Enum.map(lines, &resolve_line_amount/1) end)
-  end
+  defdelegate resolve_line_amounts(invoice), to: Invoice
 
   @doc "Whether every line has a known taxable value, including a genuine zero."
-  def taxable_values_complete?(invoice) do
-    Enum.all?(List.wrap(invoice["line_items"]), &is_number(&1["taxable_value"]))
-  end
+  defdelegate taxable_values_complete?(invoice), to: Invoice
 
   def normalize_invoice(raw) when is_map(raw) do
     data = raw["data"] || raw["extract_result"] || raw["result"] || raw
@@ -627,23 +569,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
     }
   end
 
-  defp resolve_line_amount(line) do
-    amounts = LineAmounts.normalize(line)
-
-    Map.merge(line, %{
-      "printed_unit_price" => amounts.printed_unit_price,
-      "printed_line_amount" => amounts.printed_line_amount,
-      "printed_line_total" => amounts.printed_line_total,
-      "printed_taxable_value" => amounts.printed_taxable_value,
-      "line_amount_tax_inclusion_candidate" => amounts.line_amount_tax_inclusion_candidate,
-      "line_amount_tax_inclusion" => amounts.line_amount_tax_inclusion,
-      "line_amount_tax_inclusion_basis" => amounts.line_amount_tax_inclusion_basis,
-      "line_amount_tax_inclusion_evidence" => amounts.line_amount_tax_inclusion_evidence,
-      "line_amount_tax_inclusion_disagreement" => amounts.line_amount_tax_inclusion_disagreement,
-      "taxable_value" => amounts.taxable_value,
-      "taxable_value_basis" => amounts.taxable_value_basis
-    })
-  end
+  defp resolve_line_amount(line), do: Invoice.resolve_line_amount(line)
 
   defp invoice_issues(invoice) do
     check_issues =
@@ -1215,7 +1141,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   defp invoice_number_issues(invoice) do
     smell =
-      Flags.invoice_number_smell(invoice["invoice_number"], sales_invoice_has_values?(invoice))
+      InvoiceNumber.smell(invoice["invoice_number"], sales_invoice_has_values?(invoice))
 
     case smell do
       nil ->
@@ -2013,7 +1939,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp put_field(invoice, field, value) do
-    case parse_field_path(field) do
+    case Invoice.parse_field_path(field) do
       {:line, index, line_field} ->
         invoice
         |> update_in(["line_items", Access.at(index)], fn line ->

@@ -12,21 +12,17 @@ defmodule Nila.Gst.Sales.TallyPacket do
   alias Nila.Gst.Rates.Directory, as: RateDirectory
 
   alias Nila.Gst.Sales.{
-    Gstr1,
+    Batch,
+    Invoice,
     InvoiceCorrections,
     InvoiceReadiness,
     InvoiceRemovals,
     TallyReadiness
   }
 
-  def fetch(org_id, client_id, batch_ref) do
-    with {:ok, dump_ids} <- decode_ref(batch_ref),
-         {:ok, dumps} <- Dumps.fetch_batch(org_id, client_id, dump_ids) do
-      {:ok, dumps}
-    end
-  end
+  defdelegate fetch(org_id, client_id, batch_ref), to: Batch
 
-  def ref(dumps) when is_list(dumps), do: Enum.map_join(dumps, "-", & &1.id)
+  defdelegate ref(dumps), to: Batch
 
   def prepare(dumps) when is_list(dumps) do
     active = Enum.filter(dumps, &(&1.status == "extracted"))
@@ -39,11 +35,11 @@ defmodule Nila.Gst.Sales.TallyPacket do
 
     readiness = InvoiceReadiness.evaluate(source_invoices, compliance(active, source_invoices))
     source_invoices = readiness.invoices
-    active_by_id = Map.new(source_invoices, &{Gstr1.source_id(&1), &1})
+    active_by_id = Map.new(source_invoices, &{Invoice.source_id(&1), &1})
 
     all_invoices =
       Enum.map(all_invoices, fn invoice ->
-        Map.get(active_by_id, Gstr1.source_id(invoice), invoice)
+        Map.get(active_by_id, Invoice.source_id(invoice), invoice)
       end)
 
     warning_issues = Enum.filter(readiness.issues, &Issues.gating?/1)
@@ -53,7 +49,7 @@ defmodule Nila.Gst.Sales.TallyPacket do
 
     totals =
       Enum.reduce(invoices, %{taxable_paise: 0, tax_paise: 0}, fn invoice, totals ->
-        amounts = Gstr1.extracted_totals(invoice)
+        amounts = Invoice.extracted_totals(invoice)
 
         %{
           taxable_paise: totals.taxable_paise + paise(amounts.taxable),
@@ -138,7 +134,7 @@ defmodule Nila.Gst.Sales.TallyPacket do
   end
 
   defp issues_for_invoice(issues, invoice) do
-    source_id = Gstr1.source_id(invoice)
+    source_id = Invoice.source_id(invoice)
 
     Enum.filter(issues, fn issue ->
       issue["source_id"] == source_id or source_id in List.wrap(issue["source_ids"])
@@ -148,7 +144,7 @@ defmodule Nila.Gst.Sales.TallyPacket do
   defp tally_export_issue(invoice, reason) do
     %{
       "invoice" => invoice["invoice_number"],
-      "source_id" => Gstr1.source_id(invoice),
+      "source_id" => Invoice.source_id(invoice),
       "code" => "tally_export_failed",
       "message" => "Nila could not prepare this invoice as a Tally voucher.",
       "reason" => inspect(reason),
@@ -197,21 +193,6 @@ defmodule Nila.Gst.Sales.TallyPacket do
        do: year <> "-" <> month
 
   defp invoice_period(_invoice), do: nil
-
-  defp decode_ref(batch_ref) when is_binary(batch_ref) do
-    ids =
-      batch_ref
-      |> String.split("-", trim: true)
-      |> Enum.map(&Integer.parse/1)
-
-    if ids != [] and Enum.all?(ids, &match?({_, ""}, &1)) do
-      {:ok, Enum.map(ids, &elem(&1, 0))}
-    else
-      {:error, :not_found}
-    end
-  end
-
-  defp decode_ref(_batch_ref), do: {:error, :not_found}
 
   defp paise(value) when is_number(value), do: round(value * 100)
   defp paise(_value), do: 0

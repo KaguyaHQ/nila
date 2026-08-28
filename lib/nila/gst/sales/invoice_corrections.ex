@@ -4,7 +4,7 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
   import Ecto.Query
 
   alias Nila.Gst.Intake.Dumps
-  alias Nila.Gst.Sales.{Gstr1, InvoiceCorrection, TallyPacket}
+  alias Nila.Gst.Sales.{Batch, Invoice, InvoiceCorrection}
   alias Nila.Gst.StateCodes
   alias Nila.Gstin
   alias Nila.Repo
@@ -52,7 +52,7 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
       |> Enum.group_by(& &1.source_id)
 
     Enum.map(invoices, fn invoice ->
-      source_id = Gstr1.source_id(invoice)
+      source_id = Invoice.source_id(invoice)
 
       invoice
       |> Map.put_new("id", source_id)
@@ -150,13 +150,13 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
   def save_in_transaction(org_id, client_id, batch_ref, source_id, changes, corrected_by_id) do
     with :ok <- validate_corrector(org_id, corrected_by_id),
          {:ok, dumps} <- fetch_sales_batch(org_id, client_id, batch_ref),
-         canonical_ref <- TallyPacket.ref(dumps),
+         canonical_ref <- Batch.ref(dumps),
          {:ok, pristine} <- source_invoice(dumps, source_id),
          current <- apply(org_id, client_id, canonical_ref, [pristine]) |> hd(),
          {:ok, corrections} <- normalize_changes(current, changes) do
       events =
         Enum.flat_map(corrections, fn {field_path, value} ->
-          previous = field_value(current, field_path)
+          previous = Invoice.field_value(current, field_path)
 
           if equivalent?(previous, value) do
             []
@@ -184,8 +184,7 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
   end
 
   defp fetch_sales_batch(org_id, client_id, batch_ref) do
-    with {:ok, ids} <- decode_ref(batch_ref),
-         {:ok, dumps} <- Dumps.fetch_batch(org_id, client_id, ids),
+    with {:ok, dumps} <- Batch.fetch(org_id, client_id, batch_ref),
          true <- Enum.all?(dumps, &(&1.kind == "sales")) do
       {:ok, dumps}
     else
@@ -212,7 +211,7 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
       |> Enum.filter(&(&1.status == "extracted"))
       |> Enum.flat_map(& &1.invoices)
       |> Enum.map(&Dumps.rehydrate/1)
-      |> Enum.filter(&(Gstr1.source_id(&1) == source_id))
+      |> Enum.filter(&(Invoice.source_id(&1) == source_id))
 
     case matches do
       [invoice] -> {:ok, invoice}
@@ -368,33 +367,8 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
 
   defp apply_events(invoice, events) do
     Enum.reduce(events, invoice, fn event, effective ->
-      put_field(effective, event.field_path, event.payload["to"])
+      Invoice.put_field(effective, event.field_path, event.payload["to"])
     end)
-  end
-
-  defp put_field(invoice, field, value) when field in @top_fields,
-    do: Map.put(invoice, field, value)
-
-  defp put_field(invoice, field, value) do
-    [_, index, line_field] = Regex.run(~r/^line_items\[(\d+)\]\.([a-z_]+)$/, field)
-    index = String.to_integer(index)
-
-    Map.update!(
-      invoice,
-      "line_items",
-      &List.update_at(&1, index, fn line -> Map.put(line, line_field, value) end)
-    )
-  end
-
-  defp field_value(invoice, field) when field in @top_fields, do: invoice[field]
-
-  defp field_value(invoice, field) do
-    [_, index, line_field] = Regex.run(~r/^line_items\[(\d+)\]\.([a-z_]+)$/, field)
-
-    invoice
-    |> Map.get("line_items", [])
-    |> Enum.at(String.to_integer(index))
-    |> Map.get(line_field)
   end
 
   defp equivalent?(%Date{} = left, right) do
@@ -452,16 +426,5 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
       name: invoice["buyer_name"],
       source_key: source_id
     }
-  end
-
-  defp decode_ref(batch_ref) do
-    ids =
-      batch_ref
-      |> String.split("-", trim: true)
-      |> Enum.map(&Integer.parse/1)
-
-    if ids != [] and Enum.all?(ids, &match?({id, ""} when id > 0, &1)),
-      do: {:ok, Enum.map(ids, &elem(&1, 0))},
-      else: {:error, :not_found}
   end
 end

@@ -12,6 +12,7 @@ defmodule Nila.Gst.Purchase.Flags do
   alias Nila.Formatters
   alias Nila.Fuzzy
   alias Nila.Gst.Hsn.Validation
+  alias Nila.Gst.InvoiceNumber
   alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Rates.Validation, as: RateValidation
   alias Nila.Gst.StateCodes
@@ -245,28 +246,6 @@ defmodule Nila.Gst.Purchase.Flags do
     (tax["cgst"] || 0) + (tax["sgst"] || 0) + (tax["igst"] || 0)
   end
 
-  @doc "Narrow smell check shared by purchase and sales invoice validation."
-  def invoice_number_smell(invoice_number, row_has_values?) do
-    normalized = invoice_number |> to_string() |> String.trim()
-
-    cond do
-      normalized == "" and row_has_values? ->
-        :missing
-
-      Regex.match?(~r/^[6-9]\d{9}$/, normalized) ->
-        :phone_number
-
-      Regex.match?(
-        ~r/^(?:\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2})$/,
-        normalized
-      ) ->
-        :date
-
-      true ->
-        nil
-    end
-  end
-
   defp check_document_type(invoice, _ctx, _dir) do
     type = invoice["document_type"] || "invoice"
     document = invoice["document"] || %{}
@@ -434,7 +413,7 @@ defmodule Nila.Gst.Purchase.Flags do
   defp amount_label("igst_amount"), do: "IGST"
 
   defp check_invoice_number(invoice, _entity_ctx, _vendor_dir) do
-    smell = invoice_number_smell(invoice["invoice_number"], invoice_has_values?(invoice))
+    smell = InvoiceNumber.smell(invoice["invoice_number"], invoice_has_values?(invoice))
 
     if smell do
       [

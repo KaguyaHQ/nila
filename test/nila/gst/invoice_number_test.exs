@@ -44,4 +44,19 @@ defmodule Nila.Gst.InvoiceNumberTest do
       assert InvoiceNumber.store(nil) == nil
     end
   end
+
+  describe "smell/2" do
+    test "distinguishes a missing number from an empty row" do
+      assert InvoiceNumber.smell(nil, true) == :missing
+      assert InvoiceNumber.smell("", true) == :missing
+      assert InvoiceNumber.smell(nil, false) == nil
+    end
+
+    test "recognizes phone numbers and dates without rejecting ordinary series" do
+      assert InvoiceNumber.smell("9876543210", true) == :phone_number
+      assert InvoiceNumber.smell("28/08/2026", true) == :date
+      assert InvoiceNumber.smell("2026-08-28", true) == :date
+      assert InvoiceNumber.smell("INV/2026-27/008", true) == nil
+    end
+  end
 end

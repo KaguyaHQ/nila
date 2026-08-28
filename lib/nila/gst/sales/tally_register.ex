@@ -10,7 +10,7 @@ defmodule Nila.Gst.Sales.TallyRegister do
   import Ecto.Query, only: [from: 2]
 
   alias Nila.Clients
-  alias Nila.Gst.Sales.{Gstr1, Month}
+  alias Nila.Gst.Sales.{Invoice, Month}
   alias Nila.Gst.StateCodes
   alias Nila.Repo
   alias Nila.TallyDevices.{Company, SyncRun, SyncedVoucher}
@@ -354,7 +354,7 @@ defmodule Nila.Gst.Sales.TallyRegister do
     if number == "" or is_nil(date), do: nil, else: {number, date}
   end
 
-  defp totals(invoice), do: Gstr1.extracted_totals(invoice)
+  defp totals(invoice), do: Invoice.extracted_totals(invoice)
 
   defp materially_different?(left, right) when is_number(left) and is_number(right),
     do: abs(left - right) > 1.0

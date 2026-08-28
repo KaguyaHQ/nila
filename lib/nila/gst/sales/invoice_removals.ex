@@ -4,7 +4,7 @@ defmodule Nila.Gst.Sales.InvoiceRemovals do
   import Ecto.Query
 
   alias Nila.Gst.Intake.Dumps
-  alias Nila.Gst.Sales.{Gstr1, InvoiceRemoval, TallyPacket}
+  alias Nila.Gst.Sales.{Batch, Invoice, InvoiceRemoval}
   alias Nila.Repo
 
   def remove(org_id, client_id, batch_ref, source_id, removed_by_id)
@@ -12,9 +12,9 @@ defmodule Nila.Gst.Sales.InvoiceRemovals do
              is_binary(source_id) and is_integer(removed_by_id) do
     Repo.transact(fn ->
       with :ok <- validate_remover(org_id, removed_by_id),
-           {:ok, dumps} <- TallyPacket.fetch(org_id, client_id, batch_ref),
+           {:ok, dumps} <- Batch.fetch(org_id, client_id, batch_ref),
            true <- Enum.all?(dumps, &(&1.kind == "sales")),
-           canonical_ref = TallyPacket.ref(dumps),
+           canonical_ref = Batch.ref(dumps),
            true <- source_invoice?(dumps, source_id) do
         %InvoiceRemoval{
           org_id: org_id,
@@ -42,8 +42,8 @@ defmodule Nila.Gst.Sales.InvoiceRemovals do
              is_binary(source_id) and is_integer(restored_by_id) do
     Repo.transact(fn ->
       with :ok <- validate_remover(org_id, restored_by_id),
-           {:ok, dumps} <- TallyPacket.fetch(org_id, client_id, batch_ref),
-           canonical_ref = TallyPacket.ref(dumps),
+           {:ok, dumps} <- Batch.fetch(org_id, client_id, batch_ref),
+           canonical_ref = Batch.ref(dumps),
            true <- source_invoice?(dumps, source_id),
            {1, _} <-
              Repo.delete_all(
@@ -68,7 +68,7 @@ defmodule Nila.Gst.Sales.InvoiceRemovals do
       when is_integer(org_id) and is_integer(client_id) and is_binary(batch_ref) and
              is_list(invoices) do
     removed_ids = removed_ids(org_id, client_id, batch_ref)
-    Enum.split_with(invoices, &(not MapSet.member?(removed_ids, Gstr1.source_id(&1))))
+    Enum.split_with(invoices, &(not MapSet.member?(removed_ids, Invoice.source_id(&1))))
   end
 
   def partition_removed(_org_id, _client_id, _batch_ref, invoices) when is_list(invoices),
@@ -99,7 +99,7 @@ defmodule Nila.Gst.Sales.InvoiceRemovals do
   defp source_invoice?(dumps, source_id) do
     Enum.any?(dumps, fn dump ->
       dump.status == "extracted" and
-        Enum.any?(dump.invoices, &(Gstr1.source_id(Dumps.rehydrate(&1)) == source_id))
+        Enum.any?(dump.invoices, &(Invoice.source_id(Dumps.rehydrate(&1)) == source_id))
     end)
   end
 end

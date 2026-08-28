@@ -20,7 +20,7 @@ defmodule Nila.Gst.Sales.Workings do
 
   alias Nila.Gst.Issues
   alias Nila.Gst.Replay
-  alias Nila.Gst.Sales.{Gstr1, Gstr1Readiness, InvoiceReadiness}
+  alias Nila.Gst.Sales.{Gstr1, Gstr1Readiness, Invoice, InvoiceReadiness}
 
   @doc """
   Applies resolutions (append-only, oldest first) to a sales month's invoices,
@@ -48,7 +48,7 @@ defmodule Nila.Gst.Sales.Workings do
     pristine_source_invoices =
       invoices
       |> ensure_source_ids(Keyword.get(opts, :source_namespace, "legacy"))
-      |> Enum.map(&Gstr1.resolve_line_amounts/1)
+      |> Enum.map(&Invoice.resolve_line_amounts/1)
       |> InvoiceReadiness.annotate(compliance)
 
     effective = Replay.drop_reopened(resolutions, "target")

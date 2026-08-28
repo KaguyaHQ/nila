@@ -58,4 +58,26 @@ defmodule Nila.Gst.InvoiceNumber do
   """
   def store(nil), do: nil
   def store(invoice_number), do: invoice_number |> to_string() |> String.trim() |> String.upcase()
+
+  @doc "Classifies a missing or obviously misread invoice number."
+  def smell(invoice_number, row_has_values?) do
+    normalized = invoice_number |> to_string() |> String.trim()
+
+    cond do
+      normalized == "" and row_has_values? ->
+        :missing
+
+      Regex.match?(~r/^[6-9]\d{9}$/, normalized) ->
+        :phone_number
+
+      Regex.match?(
+        ~r/^(?:\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2})$/,
+        normalized
+      ) ->
+        :date
+
+      true ->
+        nil
+    end
+  end
 end

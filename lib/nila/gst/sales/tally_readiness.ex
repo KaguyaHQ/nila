@@ -2,7 +2,7 @@ defmodule Nila.Gst.Sales.TallyReadiness do
   @moduledoc "Capabilities required to represent an invoice faithfully in Nila's Tally voucher."
 
   alias Nila.Gst.Issues
-  alias Nila.Gst.Sales.{Gstr1, OutputIssues}
+  alias Nila.Gst.Sales.{Invoice, OutputIssues}
 
   @messages %{
     "export_supply_unsupported" =>
@@ -53,7 +53,7 @@ defmodule Nila.Gst.Sales.TallyReadiness do
   defp issue(invoice, code, fields) do
     %{
       "invoice" => invoice["invoice_number"],
-      "source_id" => Gstr1.source_id(invoice),
+      "source_id" => Invoice.source_id(invoice),
       "code" => code,
       "level" => Issues.level_for(code),
       "message" => Map.fetch!(@messages, code),
