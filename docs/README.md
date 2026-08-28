@@ -8,6 +8,7 @@ What's in here. Open the one that answers your question.
 - [`decisions.md`](./decisions.md) — system-level decisions and their reasoning (monolith, Postgres-as-truth, Oban, R2 storage, transactional code).
 - [`ocr-extraction.md`](./ocr-extraction.md) — OCR/extraction provider behaviour: measured latency, why whole-packet extraction drops invoices past ~15 pages, and the chunking mandate. Extensible experiment log.
 - [`verification-spike-retrospective.md`](./verification-spike-retrospective.md) — the 2026-08-14 verifier A/B, discarded Binder architecture, current production risk, lessons, and next-agent handoff.
+- [`mistral-http-transport.md`](./mistral-http-transport.md) — historical stale-connection investigation, retry semantics, rejected alternatives, and transport lessons from the retired Mistral path.
 - [`design/DESIGN.md`](./design/DESIGN.md) — short UI router, brand, product principles, and invariants.
 - [`design/FRONTEND.md`](./design/FRONTEND.md) — executable token/component contracts and visible-UI workflow.
 - [`design/COMPOSITION.md`](./design/COMPOSITION.md) — screen hierarchy and workbench composition judgment.
