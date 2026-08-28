@@ -30,6 +30,12 @@ defmodule Nila.Gstin do
 
   def valid?(_), do: false
 
+  @doc "Validates extracted GSTIN text after harmless case and whitespace normalization."
+  def valid_extracted?(gstin) when is_binary(gstin),
+    do: gstin |> String.trim() |> String.upcase() |> valid?()
+
+  def valid_extracted?(_gstin), do: false
+
   @doc """
   Changeset validator. Rejects a non-nil, non-blank `field` value that fails
   `valid?/1`; nil/blank pass through (use `validate_required/2` separately when

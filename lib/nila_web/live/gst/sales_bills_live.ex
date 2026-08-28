@@ -3,6 +3,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   alias Nila.Clients
   alias Nila.Gst.Filing.TallyPrime
+  alias Nila.Gst.Money
   alias Nila.Gst.Sales.{Gstr1, Invoice, InvoiceCorrections, InvoiceRemovals, TallyPacket}
   alias Nila.Gst.StateCodes
   alias Nila.{TallyDevices, TallyJobs, TallyMappings}
@@ -175,23 +176,23 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp printed_total(invoice), do: invoice["printed_grand_total"]
 
   defp total_mismatch?(invoice) do
-    calculated = invoice_total(invoice)
-    printed = printed_total(invoice)
+    totals = Invoice.extracted_totals_paise(invoice)
 
-    is_number(calculated) and is_number(printed) and abs(calculated - printed) > 0.01
-  end
+    case {totals.taxable_paise, Money.paise_or_error(printed_total(invoice))} do
+      {taxable_paise, {:ok, printed_paise}} when is_integer(taxable_paise) ->
+        abs(taxable_paise + totals.tax_paise - printed_paise) > 1
 
-  defp rupees(value) when is_number(value),
-    do: Nila.Formatters.format_money_with_paise(round(value * 100))
-
-  defp rupees(value) when is_binary(value) do
-    case Float.parse(String.replace(String.trim(value), ",", "")) do
-      {number, ""} -> rupees(number)
-      _invalid -> "—"
+      _incomplete ->
+        false
     end
   end
 
-  defp rupees(_value), do: "—"
+  defp rupees(value) do
+    case Money.paise_or_error(value) do
+      {:ok, paise} -> Nila.Formatters.format_money_with_paise(paise)
+      _missing_or_unreadable -> "—"
+    end
+  end
 
   defp working_number(value) when is_integer(value), do: Integer.to_string(value)
 
@@ -899,13 +900,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp preview_number(value) when is_number(value), do: value
-
-  defp preview_number(value) when is_binary(value) do
-    case Float.parse(String.trim(value)) do
-      {number, ""} -> number
-      _invalid -> nil
-    end
-  end
+  defp preview_number(value) when is_binary(value), do: Money.rupee_number(value)
 
   defp preview_number(_value), do: nil
 
@@ -1440,11 +1435,11 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     packet.invoices
     |> Enum.reject(&required_mapping_invoice?(required_mapping_invoices, &1))
     |> Enum.reduce(%{taxable_paise: 0, tax_paise: 0}, fn invoice, amounts ->
-      invoice_totals = totals(invoice)
+      invoice_totals = Invoice.extracted_totals_paise(invoice)
 
       %{
-        taxable_paise: amounts.taxable_paise + round(number(invoice_totals.taxable) * 100),
-        tax_paise: amounts.tax_paise + round(number(invoice_totals.tax) * 100)
+        taxable_paise: amounts.taxable_paise + (invoice_totals.taxable_paise || 0),
+        tax_paise: amounts.tax_paise + invoice_totals.tax_paise
       }
     end)
   end
@@ -1530,9 +1525,9 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp positive?(value) when is_number(value), do: value > 0
 
   defp positive?(value) when is_binary(value) do
-    case Float.parse(String.replace(value, ",", "")) do
-      {number, ""} -> number > 0
-      _ -> false
+    case Money.decimal_or_error(value) do
+      {:ok, decimal} -> Decimal.positive?(decimal)
+      _missing_or_unreadable -> false
     end
   end
 
@@ -1581,12 +1576,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp number(value) when is_number(value), do: value * 1.0
 
-  defp number(value) when is_binary(value) do
-    case Float.parse(String.replace(value, ",", "")) do
-      {number, ""} -> number
-      _ -> 0.0
-    end
-  end
+  defp number(value) when is_binary(value), do: Money.rupee_number(value) || 0.0
 
   defp number(_value), do: 0.0
 

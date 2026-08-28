@@ -11,6 +11,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   alias Nila.Gst.InvoiceNumber
   alias Nila.Gst.Money
   alias Nila.Gst.StateCodes
+  alias Nila.Gstin
   alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Sales.Invoice
 
@@ -323,17 +324,8 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   defp marker_document_type(%{"debit_note" => true}), do: "debit_note"
   defp marker_document_type(_document), do: nil
 
-  defp valid_gstin?(gstin) when is_binary(gstin),
-    do: gstin |> String.trim() |> String.upcase() |> Nila.Gstin.valid?()
-
-  defp valid_gstin?(_gstin), do: false
-
-  defp state_code(nil), do: nil
-
-  defp state_code(gstin) do
-    gstin = to_string(gstin)
-    if String.length(gstin) >= 2, do: String.slice(gstin, 0, 2)
-  end
+  defp valid_gstin?(gstin), do: Gstin.valid_extracted?(gstin)
+  defp state_code(gstin), do: StateCodes.from_gstin(gstin)
 
   defp effective_place_of_supply(invoice) do
     case invoice["place_of_supply"] do
@@ -1019,13 +1011,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
 
   defp number(nil), do: 0
   defp number(value) when is_number(value), do: value
-
-  defp number(value) when is_binary(value) do
-    case Float.parse(value) do
-      {number, ""} -> number
-      _unreadable -> 0
-    end
-  end
+  defp number(value) when is_binary(value), do: Money.rupee_number(value) || 0
 
   defp num(value), do: number(value)
 

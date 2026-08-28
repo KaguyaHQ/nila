@@ -14,6 +14,14 @@ defmodule Nila.Gst.MoneyTest do
     assert Money.paise_or_error(nil) == :missing
     assert Money.paise_or_error("  ") == :missing
     assert Money.paise_or_error("1,2SO.OO") == :unreadable
+    assert Money.decimal_or_error("invoice 12.00") == :unreadable
+  end
+
+  test "exposes the same strict parser for normalized legacy JSON numbers" do
+    assert Money.rupee_number(1275) === 1275
+    assert Money.rupee_number("1,275.125") == 1275.125
+    assert Money.rupee_number("1.0e3") == 1000.0
+    assert Money.rupee_number("1,2SO.OO") == nil
   end
 
   test "converts paise back to an exact Decimal rupee value" do

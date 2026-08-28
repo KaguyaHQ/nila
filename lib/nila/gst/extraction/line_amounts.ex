@@ -273,19 +273,7 @@ defmodule Nila.Gst.Extraction.LineAmounts do
     num(line["cgst_rate"]) + num(line["sgst_rate"]) + num(line["igst_rate"])
   end
 
-  defp money(nil), do: nil
-  defp money(value) when is_number(value), do: value
-
-  defp money(value) when is_binary(value) do
-    value = String.replace(value, ~r/[^0-9.\-]/, "")
-
-    case Float.parse(value) do
-      {number, _rest} -> number
-      :error -> nil
-    end
-  end
-
-  defp money(_value), do: nil
+  defp money(value), do: Nila.Gst.Money.rupee_number(value)
   defp num(value), do: money(value) || 0
   defp nonzero?(value), do: abs(value) > @tolerance
   defp close?(left, right), do: abs(left - right) <= @tolerance + 0.000001

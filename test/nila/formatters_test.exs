@@ -47,6 +47,7 @@ defmodule Nila.FormattersTest do
       assert Formatters.parse_rupees("") == nil
       assert Formatters.parse_rupees("₹") == nil
       assert Formatters.parse_rupees(nil) == nil
+      assert Formatters.parse_rupees("1,2SO.OO") == nil
     end
 
     test "round-trips into format_money_with_paise" do

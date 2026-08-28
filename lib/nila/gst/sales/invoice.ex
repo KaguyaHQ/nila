@@ -55,10 +55,7 @@ defmodule Nila.Gst.Sales.Invoice do
         nil
 
       Regex.match?(@numeric_correction_field, field_path) ->
-        case Float.parse(text) do
-          {number, ""} -> number
-          _invalid -> text
-        end
+        Money.rupee_number(text) || text
 
       true ->
         text

@@ -14,6 +14,8 @@ defmodule Nila.Gst.Filing.Gstr2b do
   `items` instead — both are handled, invoice-level fields winning when present.
   """
 
+  alias Nila.Gst.Money
+
   @doc """
   Parses a GSTR-2B document (decoded map or JSON binary) into
   `{:ok, [invoice]}` where each invoice is:
@@ -147,8 +149,7 @@ defmodule Nila.Gst.Filing.Gstr2b do
     Enum.reduce(items, 0, fn item, acc -> acc + paise(item[key]) end)
   end
 
-  defp paise(value) when is_number(value), do: round(value * 100)
-  defp paise(_), do: 0
+  defp paise(value), do: Money.paise(value)
 
   defp pos(nil), do: nil
   defp pos(value), do: to_string(value)

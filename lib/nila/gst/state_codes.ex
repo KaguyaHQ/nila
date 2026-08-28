@@ -92,4 +92,14 @@ defmodule Nila.Gst.StateCodes do
   end
 
   def normalize_code(_), do: nil
+
+  @doc "Returns the leading GST state code from GSTIN text, or nil when absent."
+  def from_gstin(gstin) when is_binary(gstin) do
+    case String.trim(gstin) do
+      <<code::binary-size(2), _rest::binary>> -> code
+      _missing -> nil
+    end
+  end
+
+  def from_gstin(_gstin), do: nil
 end

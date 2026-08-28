@@ -30,6 +30,14 @@ defmodule Nila.GstinTest do
     end
   end
 
+  describe "valid_extracted?/1" do
+    test "normalizes harmless OCR casing without weakening the canonical validator" do
+      assert Gstin.valid_extracted?(" 33aabcp9487a1zg ")
+      refute Gstin.valid?("33aabcp9487a1zg")
+      refute Gstin.valid_extracted?("33AABCZ9377E1ZW")
+    end
+  end
+
   describe "validate_gstin/2" do
     import Ecto.Changeset
 

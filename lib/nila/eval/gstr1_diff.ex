@@ -401,9 +401,6 @@ defmodule Nila.Eval.Gstr1Diff do
   defp num(value) when is_float(value), do: value
 
   defp num(value) when is_binary(value) do
-    case value |> String.replace(",", "") |> String.replace(~r/[^0-9.\-]/, "") |> Float.parse() do
-      {number, _rest} -> number
-      :error -> 0
-    end
+    Nila.Gst.Money.rupee_number(value) || 0
   end
 end

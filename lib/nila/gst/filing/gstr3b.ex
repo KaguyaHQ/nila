@@ -38,6 +38,7 @@ defmodule Nila.Gst.Filing.Gstr3b do
   """
 
   alias Nila.Gst.Filing.ItcPosition
+  alias Nila.Gst.Money
   alias Nila.Gst.Purchase.Workings
   alias Nila.Gst.Sales.Gstr1
 
@@ -272,13 +273,13 @@ defmodule Nila.Gst.Filing.Gstr3b do
   # -- money ----------------------------------------------------------------
 
   defp round_rupee(paise), do: round(paise / 100) * 100
-  defp rupees_to_paise(rupees), do: round(rupees * 100)
+  defp rupees_to_paise(rupees), do: Money.paise(rupees)
 
   defp add(a, b), do: Map.new(@heads, fn h -> {h, a[h] + b[h]} end)
   defp subtract(a, b), do: Map.new(@heads, fn h -> {h, a[h] - b[h]} end)
 
   defp bump(acc, key, value) when is_number(value),
-    do: Map.update!(acc, key, &(&1 + round(value * 100)))
+    do: Map.update!(acc, key, &(&1 + Money.paise(value)))
 
   defp bump(acc, _key, _value), do: acc
 end

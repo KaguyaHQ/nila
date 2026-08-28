@@ -4,6 +4,7 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
   import Ecto.Query
 
   alias Nila.Gst.Intake.Dumps
+  alias Nila.Gst.Money
   alias Nila.Gst.Sales.{Batch, Invoice, InvoiceCorrection}
   alias Nila.Gst.StateCodes
   alias Nila.Gstin
@@ -363,19 +364,20 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
   defp coerce_number(value) when is_float(value) and value >= 0, do: {:ok, value}
 
   defp coerce_number(value) when is_binary(value) do
-    case String.trim(value) do
-      "" ->
-        {:ok, nil}
-
-      value ->
-        case Float.parse(value) do
-          {number, ""} when number >= 0 -> {:ok, number}
-          _invalid -> {:error, :invalid_number}
-        end
+    case Money.decimal_or_error(value) do
+      :missing -> {:ok, nil}
+      {:ok, decimal} -> nonnegative_number(decimal)
+      :unreadable -> {:error, :invalid_number}
     end
   end
 
   defp coerce_number(_value), do: {:error, :invalid_number}
+
+  defp nonnegative_number(decimal) do
+    if Decimal.negative?(decimal),
+      do: {:error, :invalid_number},
+      else: {:ok, Decimal.to_float(decimal)}
+  end
 
   defp apply_events(invoice, events) do
     Enum.reduce(events, invoice, fn event, effective ->

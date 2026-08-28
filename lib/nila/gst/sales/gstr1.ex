@@ -29,6 +29,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   """
   alias Nila.Gst.Extraction.LineAmounts
   alias Nila.Gst.Issues
+  alias Nila.Gst.Money
   alias Nila.Gst.StateCodes
   alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Sales.{Invoice, InvoiceValidation}
@@ -1445,31 +1446,12 @@ defmodule Nila.Gst.Sales.Gstr1 do
   lowercase one. Purchase does the same thing in `Books.clean_gstin/1`.
   """
   def valid_gstin?(gstin) when is_binary(gstin),
-    do: gstin |> String.trim() |> String.upcase() |> Nila.Gstin.valid?()
+    do: Nila.Gstin.valid_extracted?(gstin)
 
   def valid_gstin?(_), do: false
 
-  defp state_code(nil), do: nil
-
-  defp state_code(gstin) do
-    gstin = to_string(gstin)
-
-    if String.length(gstin) >= 2 do
-      String.slice(gstin, 0, 2)
-    end
-  end
-
-  defp money(nil), do: nil
-  defp money(value) when is_number(value), do: value
-
-  defp money(value) when is_binary(value) do
-    value = String.replace(value, ~r/[^0-9.\-]/, "")
-
-    case Float.parse(value) do
-      {number, _} -> number
-      :error -> nil
-    end
-  end
+  defp state_code(gstin), do: StateCodes.from_gstin(gstin)
+  defp money(value), do: Money.rupee_number(value)
 
   defp num(nil), do: 0
   defp num(value) when is_integer(value), do: value / 1

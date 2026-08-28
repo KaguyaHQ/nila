@@ -51,6 +51,8 @@ defmodule Nila.Gst.Sales.InvoiceTest do
 
   test "coerces review text according to the invoice field" do
     assert Invoice.coerce_correction("line_items[0].igst_amount", "12.50") == 12.5
+    assert Invoice.coerce_correction("line_items[0].taxable_value", "1,275.50") == 1275.5
+    assert Invoice.coerce_correction("line_items[0].taxable_value", "1,2SO.OO") == "1,2SO.OO"
     assert Invoice.coerce_correction("printed_grand_total", "") == nil
     assert Invoice.coerce_correction("invoice_number", "0012") == "0012"
   end

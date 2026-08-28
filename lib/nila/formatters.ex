@@ -3,6 +3,8 @@ defmodule Nila.Formatters do
   Shared display formatting for values used across Nila.
   """
 
+  alias Nila.Gst.Money
+
   def format_money(paise, opts \\ []) do
     prefix = Keyword.get(opts, :prefix, "INR ")
     rupees = div(paise || 0, 100)
@@ -30,23 +32,11 @@ defmodule Nila.Formatters do
   like `"₹1,23,456.78"` or `"1234.5"` both parse. Pairs with
   `format_money_with_paise/2` (which also treats `nil` as "unknown").
   """
-  def parse_rupees(n) when is_integer(n), do: n * 100
-  def parse_rupees(n) when is_float(n), do: float_to_paise(n)
-
-  def parse_rupees(s) when is_binary(s) do
-    case s |> String.replace(~r/[^0-9.\-]/, "") |> Float.parse() do
-      {f, _rest} -> float_to_paise(f)
-      :error -> nil
+  def parse_rupees(value) do
+    case Money.paise_or_error(value) do
+      {:ok, paise} -> paise
+      _missing_or_unreadable -> nil
     end
-  end
-
-  def parse_rupees(_), do: nil
-
-  # round/1 carries 99.5+ paise up into the next rupee on its own, so
-  # rupees * 100 + paise stays correct without a special carry clause.
-  defp float_to_paise(f) do
-    rupees = trunc(f)
-    rupees * 100 + round((f - rupees) * 100)
   end
 
   # Operator language: what a CA-firm junior would say out loud, not the

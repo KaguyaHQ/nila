@@ -391,10 +391,7 @@ defmodule Nila.Gst.Sales.TallyRegister do
   defp number(value) when is_float(value), do: value
 
   defp number(value) when is_binary(value) do
-    case value |> String.replace(~r/[^0-9.\-]/, "") |> Float.parse() do
-      {parsed, _} -> parsed
-      :error -> 0.0
-    end
+    Nila.Gst.Money.rupee_number(value) || 0.0
   end
 
   defp number(_), do: 0.0

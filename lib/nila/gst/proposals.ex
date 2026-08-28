@@ -58,6 +58,8 @@ defmodule Nila.Gst.Proposals do
   of what the human was told, nothing more.
   """
 
+  alias Nila.Gst.Money
+
   @rule_version "2026-08-03"
   @effect_schema_version 1
 
@@ -193,7 +195,7 @@ defmodule Nila.Gst.Proposals do
     }
   end
 
-  defp rupees_to_paise(rupees) when is_number(rupees), do: round(rupees * 100)
+  defp rupees_to_paise(rupees) when is_number(rupees), do: Money.paise(rupees)
 
   defp noun(1, "bill"), do: "bill"
   defp noun(_n, "bill"), do: "bills"
