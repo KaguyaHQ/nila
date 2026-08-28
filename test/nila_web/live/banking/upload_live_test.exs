@@ -116,6 +116,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
 
     assert has_element?(view, "#banking-statement-summary", "Opening balance")
+    assert has_element?(view, "#banking-balance-check", "Running balances match")
     refute has_element?(view, "#banking-export-form")
     refute has_element?(view, "#banking-download-tally")
     assert has_element?(view, "#banking-transaction-rows tr", "Test credit")
@@ -173,6 +174,30 @@ defmodule NilaWeb.Banking.UploadLiveTest do
 
     assert has_element?(view, "#banking-transactions thead th:nth-child(5)", "Amount")
     assert has_element?(view, "#banking-transactions thead th:nth-child(6)", "Ledger")
+  end
+
+  test "balance confirmation covers the full statement and is absent for inconsistent saved rows",
+       context do
+    {:ok, statement} = ready_statement(context)
+    [transaction] = statement.bank_transactions
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+
+    view
+    |> form("#banking-transaction-filters",
+      transaction_filters: %{query: "no matching transactions", status: "all", type: "all"}
+    )
+    |> render_change()
+
+    refute has_element?(view, "#bank-transaction-#{transaction.id}")
+    assert has_element?(view, "#banking-balance-check", "Running balances match")
+
+    transaction
+    |> Ecto.Changeset.change(balance_paise: transaction.balance_paise + 1)
+    |> Repo.update!()
+
+    {:ok, reopened, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+    assert has_element?(reopened, "#bank-transaction-#{transaction.id}")
+    refute has_element?(reopened, "#banking-balance-check")
   end
 
   test "changes voucher type from More without assigning a ledger", context do

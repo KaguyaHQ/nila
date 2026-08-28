@@ -4,6 +4,7 @@ defmodule Nila.BankingTest do
 
   alias Nila.Banking
   alias Nila.Banking.StatementWorker
+  alias Nila.Banking.Statement
   alias Nila.Banking.Transaction
   alias Nila.Clients
   alias Nila.Repo
@@ -289,6 +290,72 @@ defmodule Nila.BankingTest do
     assert mapped.transaction_type == "contra_deposit"
     assert mapped.counter_ledger_identity == cash.identity
     assert mapped.status == "ready"
+  end
+
+  test "running balances check every row in statement order, including ignored rows and reversals" do
+    statement = balance_check_statement()
+    assert Banking.running_balances_match?(statement)
+    [last, middle, first] = statement.bank_transactions
+
+    # The opening, closing, and totals still agree, but the middle balance is wrong.
+    refute Banking.running_balances_match?(%{
+             statement
+             | bank_transactions: [last, %{middle | balance_paise: 1_151}, first]
+           })
+
+    refute Banking.running_balances_match?(%{statement | closing_balance_paise: 1_201})
+    refute Banking.running_balances_match?(%{statement | total_withdrawal_paise: 51})
+    refute Banking.running_balances_match?(%{statement | total_deposit_paise: 251})
+  end
+
+  test "incomplete or unready statements cannot claim matching running balances" do
+    statement = balance_check_statement()
+    [last | remaining] = statement.bank_transactions
+
+    refute Banking.running_balances_match?(%Statement{})
+    refute Banking.running_balances_match?(%{statement | status: "extracting"})
+    refute Banking.running_balances_match?(%{statement | opening_balance_paise: nil})
+
+    refute Banking.running_balances_match?(%{
+             statement
+             | bank_transactions: [],
+               transaction_count: 0
+           })
+
+    refute Banking.running_balances_match?(%{statement | bank_transactions: remaining})
+
+    refute Banking.running_balances_match?(%{
+             statement
+             | bank_transactions: [%{last | deposit_paise: nil} | remaining]
+           })
+  end
+
+  defp balance_check_statement do
+    %Statement{
+      status: "ready",
+      opening_balance_paise: 1_000,
+      closing_balance_paise: 1_200,
+      total_withdrawal_paise: 50,
+      total_deposit_paise: 250,
+      transaction_count: 3,
+      bank_transactions: [
+        %Transaction{
+          ordinal: 3,
+          withdrawal_paise: -50,
+          deposit_paise: 0,
+          balance_paise: 1_200,
+          status: "posted"
+        },
+        %Transaction{
+          ordinal: 2,
+          withdrawal_paise: 100,
+          deposit_paise: 0,
+          balance_paise: 1_150,
+          status: "ignored"
+        },
+        %Transaction{ordinal: 1, withdrawal_paise: 0, deposit_paise: 250, balance_paise: 1_250}
+      ]
+    }
   end
 
   defp statement_fixture(context, overrides \\ []) do

@@ -196,6 +196,7 @@ defmodule NilaWeb.Banking.StatementLive do
 
     socket
     |> assign(:statement, statement)
+    |> assign(:running_balances_match, Banking.running_balances_match?(statement))
     |> assign(:can_edit, can_edit)
     |> assign(:transaction_count, length(transactions))
     |> assign(:tally_company, tally_company)
@@ -680,18 +681,28 @@ defmodule NilaWeb.Banking.StatementLive do
         </.button>
 
         <%= if @statement.status == "ready" do %>
-          <div id="banking-statement-summary" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <.stat_card label="Opening balance">
-              {money(@statement.opening_balance_paise)}
-            </.stat_card>
+          <div class="space-y-related">
+            <div id="banking-statement-summary" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <.stat_card label="Opening balance">
+                {money(@statement.opening_balance_paise)}
+              </.stat_card>
 
-            <.stat_card label="Closing balance">
-              {money(@statement.closing_balance_paise)}
-            </.stat_card>
+              <.stat_card label="Closing balance">
+                {money(@statement.closing_balance_paise)}
+              </.stat_card>
 
-            <.stat_card label="Withdrawals">{money(@statement.total_withdrawal_paise)}</.stat_card>
+              <.stat_card label="Withdrawals">{money(@statement.total_withdrawal_paise)}</.stat_card>
 
-            <.stat_card label="Deposits">{money(@statement.total_deposit_paise)}</.stat_card>
+              <.stat_card label="Deposits">{money(@statement.total_deposit_paise)}</.stat_card>
+            </div>
+            <p
+              :if={@running_balances_match}
+              id="banking-balance-check"
+              class="gap-related text-ui flex items-center"
+            >
+              <.icon name="hero-check-circle-mini" class="text-success size-4 shrink-0" />
+              Running balances match
+            </p>
           </div>
 
           <section id="banking-transactions" class="space-y-related">

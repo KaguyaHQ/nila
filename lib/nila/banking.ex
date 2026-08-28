@@ -135,6 +135,40 @@ defmodule Nila.Banking do
     |> Repo.all()
   end
 
+  @doc "Checks the saved statement's arithmetic, not ledger correctness or source completeness."
+  def running_balances_match?(%Statement{
+        status: "ready",
+        opening_balance_paise: opening,
+        closing_balance_paise: closing,
+        total_withdrawal_paise: withdrawals,
+        total_deposit_paise: deposits,
+        transaction_count: count,
+        bank_transactions: [_ | _] = transactions
+      })
+      when is_integer(opening) and is_integer(closing) and is_integer(withdrawals) and
+             is_integer(deposits) and length(transactions) == count do
+    result =
+      transactions
+      |> Enum.sort_by(& &1.ordinal)
+      |> Enum.reduce_while({opening, 0, 0}, fn
+        %{withdrawal_paise: withdrawal, deposit_paise: deposit, balance_paise: balance},
+        {previous, total_withdrawal, total_deposit}
+        when is_integer(withdrawal) and is_integer(deposit) and is_integer(balance) ->
+          if previous - withdrawal + deposit == balance do
+            {:cont, {balance, total_withdrawal + withdrawal, total_deposit + deposit}}
+          else
+            {:halt, :mismatch}
+          end
+
+        _transaction, _totals ->
+          {:halt, :mismatch}
+      end)
+
+    result == {closing, withdrawals, deposits}
+  end
+
+  def running_balances_match?(_statement), do: false
+
   def list_tally_ledgers(org_id, company_id) do
     Repo.all(
       from master in SyncedMaster,
