@@ -70,6 +70,18 @@ defmodule NilaWeb.CoreComponentsTest do
     refute html =~ "Something went wrong"
   end
 
+  test "flash group stacks compact notices and dismisses only from the close control" do
+    html = render_component(&flash_group/1, flash: %{"info" => "Client updated."})
+    fragment = LazyHTML.from_fragment(html)
+    group = LazyHTML.query(fragment, "#flash-group.nila-flash-group[aria-live='polite']")
+    notice = LazyHTML.query(group, "#flash-info.nila-toast")
+    close = LazyHTML.query(notice, ".nila-alert-close[aria-label='Close notification']")
+
+    assert LazyHTML.text(notice) =~ "Client updated."
+    assert LazyHTML.attribute(notice, "phx-click") == []
+    assert LazyHTML.attribute(close, "phx-click") != []
+  end
+
   test "page_header renders eyebrow, display title, and intro copy" do
     assigns = %{}
 

@@ -1576,12 +1576,23 @@ body {
   --nila-callout-ink: var(--success-12);
 }
 
-.nila-toast {
+.nila-flash-group {
   position: fixed;
   top: 1rem;
   right: 1rem;
   z-index: 50;
+  display: flex;
   width: min(24rem, calc(100vw - 2rem));
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
+  pointer-events: none;
+}
+
+.nila-toast {
+  width: fit-content;
+  max-width: 100%;
+  pointer-events: auto;
 }
 
 .nila-alert {
@@ -1590,12 +1601,17 @@ body {
   gap: 0.75rem;
   border: 1px solid var(--nila-alert-border);
   border-radius: 0.5rem;
-  padding: 1rem;
+  padding: 0.75rem;
   background: var(--nila-alert-bg);
   color: var(--nila-alert-ink);
   box-shadow: var(--shadow-moon);
   font-size: var(--text-ui);
   line-height: var(--text-ui--line-height);
+}
+
+.nila-alert-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .nila-alert[data-kind="info"] {

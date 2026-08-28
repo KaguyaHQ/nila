@@ -148,6 +148,8 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "nila-workpaper-tab" => "lib/nila_web/components/gst/month/workpaper.ex",
     "nila-workings-reference" => "lib/nila_web/components/gst/month/workings.ex",
     "nila-alert" => "lib/nila_web/components/flash.ex",
+    "nila-alert-copy" => "lib/nila_web/components/flash.ex",
+    "nila-flash-group" => "lib/nila_web/components/layouts.ex",
     "nila-toast" => "lib/nila_web/components/flash.ex"
   }
   @component_recipe_pattern Regex.compile!(

@@ -302,6 +302,17 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     assert error_alert =~ "--nila-alert-border: var(--error-a6);"
     assert error_alert =~ "--nila-alert-ink: var(--error-a11);"
 
+    flash_group = css_rule(css, ".nila-flash-group")
+    assert flash_group =~ "display: flex;"
+    assert flash_group =~ "pointer-events: none;"
+
+    toast = css_rule(css, ".nila-toast")
+    assert toast =~ "width: fit-content;"
+    assert toast =~ "max-width: 100%;"
+
+    alert = css_rule(css, ".nila-alert")
+    assert alert =~ "padding: 0.75rem;"
+
     error_button = css_rule(css, ".nila-button[data-variant=\"error\"]")
     assert error_button =~ "--nila-button-bg: var(--error-11);"
     assert error_button =~ "--nila-button-hover-bg: var(--error-12);"

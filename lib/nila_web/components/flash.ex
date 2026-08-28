@@ -39,7 +39,6 @@ defmodule NilaWeb.Components.Flash do
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
-      phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
       class="nila-toast"
       {@rest}
@@ -47,12 +46,17 @@ defmodule NilaWeb.Components.Flash do
       <div class="nila-alert" data-kind={@kind}>
         <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
         <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
+        <div class="nila-alert-copy">
           <p :if={@title} class="font-semibold">{@title}</p>
           <p>{msg}</p>
         </div>
         <div class="flex-1" />
-        <button type="button" class="nila-alert-close" aria-label="close">
+        <button
+          type="button"
+          class="nila-alert-close"
+          aria-label="Close notification"
+          phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
+        >
           <.icon name="hero-x-mark" class="size-4" />
         </button>
       </div>
