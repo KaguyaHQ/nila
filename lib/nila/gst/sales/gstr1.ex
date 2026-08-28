@@ -28,6 +28,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   `Nila.Eval.Gstr1Diff`, not here.
   """
   alias Nila.Gst.Extraction.LineAmounts
+  alias Nila.Gst.InvoiceFacts
   alias Nila.Gst.Issues
   alias Nila.Gst.Money
   alias Nila.Gst.StateCodes
@@ -150,6 +151,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "verification" => non_empty_map(raw["verification"]),
       "document" => document
     }
+    |> InvoiceFacts.from_sales_map!()
+    |> InvoiceFacts.to_sales_map()
   end
 
   defp normalize_party(party) when is_map(party) do

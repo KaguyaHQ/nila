@@ -33,6 +33,7 @@ defmodule Nila.Gst.Purchase.Reconciliation do
 
   alias Nila.Formatters
   alias Nila.Fuzzy
+  alias Nila.Gst.InvoiceFacts
   alias Nila.Gst.InvoiceNumber
   alias Nila.Gstin
 
@@ -78,12 +79,15 @@ defmodule Nila.Gst.Purchase.Reconciliation do
   `"next_action"`.
   """
   def reconcile(books_invoices, gstr2b_invoices, opts \\ []) do
+    books_invoices = Enum.map(books_invoices, &InvoiceFacts.purchase!/1)
+    gstr2b_invoices = Enum.map(gstr2b_invoices, &InvoiceFacts.purchase!/1)
+
     opts = opts(opts)
 
     g2b =
       gstr2b_invoices
       |> Enum.with_index()
-      |> Enum.map(fn {g, i} -> Map.put(g, @ix, i) end)
+      |> Enum.map(fn {g, i} -> InvoiceFacts.put_evidence(g, @ix, i) end)
 
     {gstin_books, no_gstin_books} =
       Enum.split_with(books_invoices, &Gstin.valid?(&1["vendor_gstin"]))
@@ -145,8 +149,10 @@ defmodule Nila.Gst.Purchase.Reconciliation do
   in shape to an auto-matched one. `basis` records that a human made the call.
   """
   def manual_pair(b, g, opts \\ []) do
+    b = InvoiceFacts.purchase!(b)
+    g = InvoiceFacts.purchase!(g)
     o = opts(opts)
-    row = %{"books" => b, "gstr2b" => strip(g), "deltas" => deltas(b, g)}
+    row = %{"books" => project(b), "gstr2b" => strip(g), "deltas" => deltas(b, g)}
     basis = ["human_confirmed"]
 
     if values_close?(b, g, o) do
@@ -366,7 +372,7 @@ defmodule Nila.Gst.Purchase.Reconciliation do
 
   defp emit_pair(acc, b, g, basis, opts) do
     row = %{
-      "books" => b,
+      "books" => project(b),
       "gstr2b" => strip(g),
       "deltas" => deltas(b, g)
     }
@@ -398,19 +404,22 @@ defmodule Nila.Gst.Purchase.Reconciliation do
 
   defp tax(inv, key), do: get_in(inv, ["tax_paise", key]) || 0
 
-  defp dates_close?(%{"invoice_date" => %Date{} = d1}, %{"invoice_date" => %Date{} = d2}, opts),
-    do: abs(Date.diff(d1, d2)) <= opts.date_window
-
-  defp dates_close?(_b, _g, _opts), do: false
+  defp dates_close?(b, g, opts) do
+    case {b["invoice_date"], g["invoice_date"]} do
+      {%Date{} = d1, %Date{} = d2} -> abs(Date.diff(d1, d2)) <= opts.date_window
+      _missing_or_unreadable -> false
+    end
+  end
 
   defp document_number_key(document),
     do: {document_type(document), norm_inum(document["invoice_number"])}
 
-  defp document_type(%{"document_type" => type})
-       when type in ~w(invoice credit_note debit_note),
-       do: type
-
-  defp document_type(_legacy_invoice), do: "invoice"
+  defp document_type(document) do
+    case document["document_type"] do
+      type when type in ~w(invoice credit_note debit_note) -> type
+      _legacy_invoice -> "invoice"
+    end
+  end
 
   defp norm_inum(inum), do: InvoiceNumber.key(inum)
 
@@ -430,7 +439,7 @@ defmodule Nila.Gst.Purchase.Reconciliation do
 
   defp needs_human_row(b, candidates, code, message) do
     %{
-      "books" => b,
+      "books" => project(b),
       "candidates" => Enum.map(candidates, &strip/1),
       "reason" => %{"code" => code, "message" => message},
       "next_action" => "Review manually: " <> message
@@ -443,10 +452,11 @@ defmodule Nila.Gst.Purchase.Reconciliation do
   confirmation displaces a books row from an existing machine match.
   """
   def books_residual(b) do
+    b = InvoiceFacts.purchase!(b)
     label = document_label(b)
 
     %{
-      "books" => b,
+      "books" => project(b),
       "reason" => %{
         "code" => "no_confident_gstr2b_match",
         "message" => "No confident GSTR-2B match was found automatically."
@@ -472,9 +482,13 @@ defmodule Nila.Gst.Purchase.Reconciliation do
     }
   end
 
-  defp document_label(%{"document_type" => "credit_note"}), do: "credit note"
-  defp document_label(%{"document_type" => "debit_note"}), do: "debit note"
-  defp document_label(_invoice), do: "invoice"
+  defp document_label(invoice) do
+    case invoice["document_type"] do
+      "credit_note" -> "credit note"
+      "debit_note" -> "debit note"
+      _invoice -> "invoice"
+    end
+  end
 
   defp push(acc, bucket, row), do: Map.update!(acc, bucket, &[row | &1])
 
@@ -482,5 +496,14 @@ defmodule Nila.Gst.Purchase.Reconciliation do
 
   defp reject_used(g2b, used), do: Enum.reject(g2b, &MapSet.member?(used, &1[@ix]))
 
+  defp strip(%InvoiceFacts{} = g) do
+    g
+    |> Map.update!(:evidence, &Map.delete(&1, @ix))
+    |> InvoiceFacts.to_purchase_map()
+  end
+
   defp strip(g), do: Map.delete(g, @ix)
+
+  defp project(%InvoiceFacts{} = invoice), do: InvoiceFacts.to_purchase_map(invoice)
+  defp project(invoice), do: invoice
 end

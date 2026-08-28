@@ -12,6 +12,7 @@ defmodule Nila.Gst.Purchase.Flags do
   alias Nila.Formatters
   alias Nila.Fuzzy
   alias Nila.Gst.Hsn.Validation
+  alias Nila.Gst.InvoiceFacts
   alias Nila.Gst.InvoiceNumber
   alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Rates.Validation, as: RateValidation
@@ -55,6 +56,8 @@ defmodule Nila.Gst.Purchase.Flags do
   ]
 
   def evaluate(invoice, entity_ctx, vendor_dir \\ %{}) do
+    invoice = InvoiceFacts.purchase!(invoice)
+
     [
       &check_document_type/3,
       &check_source_attribution/3,
@@ -76,6 +79,8 @@ defmodule Nila.Gst.Purchase.Flags do
   end
 
   def evaluate_all(invoices, entity_ctx, vendor_dir \\ %{}) do
+    invoices = Enum.map(invoices, &InvoiceFacts.purchase!/1)
+
     duplicates = duplicate_flags(invoices)
     blurry = ocr_outlier_flags(invoices)
 
@@ -285,29 +290,35 @@ defmodule Nila.Gst.Purchase.Flags do
     end
   end
 
-  defp document_label(%{"document_type" => "credit_note"}), do: "Credit note"
-  defp document_label(%{"document_type" => "debit_note"}), do: "Debit note"
-  defp document_label(_invoice), do: "Invoice"
-
-  defp check_source_attribution(%{"source_attribution" => attribution} = invoice, _ctx, _dir)
-       when is_map(attribution) do
-    if attribution["status"] == "verified" do
-      []
-    else
-      [
-        flag(
-          invoice,
-          "source_attribution_uncertain",
-          source_attribution_reason(attribution),
-          nil,
-          ["source_attribution"],
-          1.0
-        )
-      ]
+  defp document_label(invoice) do
+    case invoice["document_type"] do
+      "credit_note" -> "Credit note"
+      "debit_note" -> "Debit note"
+      _invoice -> "Invoice"
     end
   end
 
-  defp check_source_attribution(_invoice, _ctx, _dir), do: []
+  defp check_source_attribution(invoice, _ctx, _dir) do
+    case invoice["source_attribution"] do
+      %{"status" => "verified"} ->
+        []
+
+      attribution when is_map(attribution) ->
+        [
+          flag(
+            invoice,
+            "source_attribution_uncertain",
+            source_attribution_reason(attribution),
+            nil,
+            ["source_attribution"],
+            1.0
+          )
+        ]
+
+      _missing ->
+        []
+    end
+  end
 
   defp source_attribution_reason(%{"status" => "ambiguous", "candidate_pages" => pages}) do
     "This invoice matches multiple source pages (#{Enum.join(pages, ", ")}) — open the original document and confirm the right pages."
@@ -321,24 +332,22 @@ defmodule Nila.Gst.Purchase.Flags do
     "No source page could be resolved for this invoice — open the original document and attach the right page."
   end
 
-  defp check_arithmetic_basis(
-         %{"arithmetic_basis" => "printed_final_reconciled"} = invoice,
-         _ctx,
-         _dir
-       ) do
-    [
-      flag(
-        invoice,
-        "subtotal_breakdown_uncertain",
-        "Taxable value, tax and grand total reconcile, but the printed subtotal/discount breakdown does not — confirm the source invoice.",
-        nil,
-        ["taxable_paise", "tax_paise", "total_paise"],
-        1.0
-      )
-    ]
+  defp check_arithmetic_basis(invoice, _ctx, _dir) do
+    if invoice["arithmetic_basis"] == "printed_final_reconciled" do
+      [
+        flag(
+          invoice,
+          "subtotal_breakdown_uncertain",
+          "Taxable value, tax and grand total reconcile, but the printed subtotal/discount breakdown does not — confirm the source invoice.",
+          nil,
+          ["taxable_paise", "tax_paise", "total_paise"],
+          1.0
+        )
+      ]
+    else
+      []
+    end
   end
-
-  defp check_arithmetic_basis(_invoice, _ctx, _dir), do: []
 
   # A purchase row with no taxable value and no tax is not a bill — it is a page
   # the extractor produced nothing from. Rendering it in the register as ₹0 / ₹0
@@ -366,46 +375,53 @@ defmodule Nila.Gst.Purchase.Flags do
   # makes `Reconciliation.dates_close?/3` false, so the match ladder quietly
   # stops corroborating by date and the row lands in `needs_human` for a reason
   # that appears nowhere. Naming it is the whole fix.
-  defp check_invoice_date(%{"unreadable_invoice_date" => text} = invoice, _ctx, _dir)
-       when is_binary(text) do
-    [
-      flag(
-        invoice,
-        "unreadable_invoice_date",
-        "The invoice date reads #{inspect(text)}, which is not a date. Nila cannot " <>
-          "corroborate this bill against the 2B by date, and the tax period it belongs " <>
-          "to is unconfirmed — read the date off the scan and correct it.",
-        nil,
-        ["invoice_date"],
-        1.0
-      )
-    ]
-  end
+  defp check_invoice_date(invoice, _ctx, _dir) do
+    case invoice["unreadable_invoice_date"] do
+      text when is_binary(text) ->
+        [
+          flag(
+            invoice,
+            "unreadable_invoice_date",
+            "The invoice date reads #{inspect(text)}, which is not a date. Nila cannot " <>
+              "corroborate this bill against the 2B by date, and the tax period it belongs " <>
+              "to is unconfirmed — read the date off the scan and correct it.",
+            nil,
+            ["invoice_date"],
+            1.0
+          )
+        ]
 
-  defp check_invoice_date(_invoice, _ctx, _dir), do: []
+      _readable_or_missing ->
+        []
+    end
+  end
 
   # An amount that was printed and could not be read is counted as ₹0 so the
   # invoice still totals to something — but a zero that came from a failed read
   # is not a zero the supplier wrote. Left unnamed it surfaces as a tax
   # arithmetic complaint against a line whose arithmetic was never in question.
-  defp check_unreadable_amounts(%{"unreadable_amounts" => [_ | _] = fields} = invoice, _ctx, _dir) do
-    [
-      flag(
-        invoice,
-        "unreadable_amount",
-        "#{Enum.map_join(fields, ", ", &amount_label/1)} could not be read as " <>
-          "#{if length(fields) == 1, do: "a number", else: "numbers"} on this bill and " <>
-          "#{if length(fields) == 1, do: "was", else: "were"} counted as zero. Any total, " <>
-          "tax split or 2B comparison below is short by whatever was actually printed — " <>
-          "read the figure off the scan before trusting this row.",
-        nil,
-        ["line_items", "taxable_paise", "tax_paise"],
-        1.0
-      )
-    ]
-  end
+  defp check_unreadable_amounts(invoice, _ctx, _dir) do
+    case invoice["unreadable_amounts"] do
+      [_ | _] = fields ->
+        [
+          flag(
+            invoice,
+            "unreadable_amount",
+            "#{Enum.map_join(fields, ", ", &amount_label/1)} could not be read as " <>
+              "#{if length(fields) == 1, do: "a number", else: "numbers"} on this bill and " <>
+              "#{if length(fields) == 1, do: "was", else: "were"} counted as zero. Any total, " <>
+              "tax split or 2B comparison below is short by whatever was actually printed — " <>
+              "read the figure off the scan before trusting this row.",
+            nil,
+            ["line_items", "taxable_paise", "tax_paise"],
+            1.0
+          )
+        ]
 
-  defp check_unreadable_amounts(_invoice, _ctx, _dir), do: []
+      _clean ->
+        []
+    end
+  end
 
   defp amount_label("taxable_value"), do: "Taxable value"
   defp amount_label("cgst_amount"), do: "CGST"
@@ -607,6 +623,7 @@ defmodule Nila.Gst.Purchase.Flags do
 
       directory ->
         invoice
+        |> InvoiceFacts.to_purchase_map()
         |> then(&Validation.annotate_invoices([&1], directory))
         |> hd()
         |> Validation.purchase_flags()
@@ -617,6 +634,7 @@ defmodule Nila.Gst.Purchase.Flags do
     with %{} = hsn_directory <- entity_ctx["hsn_directory"],
          %{} = rate_directory <- entity_ctx["rate_directory"] do
       invoice
+      |> InvoiceFacts.to_purchase_map()
       |> then(&Validation.annotate_invoices([&1], hsn_directory))
       |> RateValidation.annotate_invoices(rate_directory)
       |> hd()
@@ -632,7 +650,8 @@ defmodule Nila.Gst.Purchase.Flags do
     if prefixes == [] do
       []
     else
-      for %{"hsn_sac" => hsn} = line <- invoice["line_items"] || [],
+      for line <- invoice["line_items"] || [],
+          hsn = line["hsn_sac"],
           is_binary(hsn) and hsn != "",
           not Enum.any?(prefixes, &String.starts_with?(hsn, &1)) do
         flag(

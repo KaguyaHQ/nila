@@ -11,8 +11,9 @@ defmodule Nila.Gst.Purchase.Books do
   """
 
   alias Nila.Gst.Extraction.LineAmounts
-  alias Nila.Gst.Money
+  alias Nila.Gst.InvoiceFacts
   alias Nila.Gst.InvoiceNumber
+  alias Nila.Gst.Money
 
   @doc """
   Groups page artifacts into invoices and normalizes each to:
@@ -383,6 +384,8 @@ defmodule Nila.Gst.Purchase.Books do
       "arithmetic_basis" => arithmetic_basis,
       "confidence" => first["confidence"]
     }
+    |> InvoiceFacts.from_purchase_map!()
+    |> InvoiceFacts.to_purchase_map()
   end
 
   defp materialize_exclusive_lines(line_items, printed) do

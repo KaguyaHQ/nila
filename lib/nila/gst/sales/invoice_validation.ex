@@ -8,6 +8,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   """
 
   alias Nila.Gst.Issues
+  alias Nila.Gst.InvoiceFacts
   alias Nila.Gst.InvoiceNumber
   alias Nila.Gst.Money
   alias Nila.Gst.StateCodes
@@ -21,21 +22,27 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
 
   @doc "Arithmetic outcomes for one invoice, including passed checks."
   def checks(invoice) do
+    invoice = InvoiceFacts.sales!(invoice)
+
     line_arithmetic_checks(invoice) ++
       split_equality_checks(invoice) ++ printed_total_checks(invoice)
   end
 
   @doc "Every invoice-level issue, independent of month and output completeness."
-  def issues(invoices) when is_list(invoices), do: Enum.flat_map(invoices, &invoice_issues/1)
+  def issues(invoices) when is_list(invoices) do
+    Enum.flat_map(invoices, fn invoice -> invoice |> InvoiceFacts.sales!() |> invoice_issues() end)
+  end
 
   @doc "One blocking issue per duplicate active invoice-number group."
   def duplicate_number_issues(invoices) do
+    invoices = Enum.map(invoices, &InvoiceFacts.sales!/1)
+
     invoices
     |> Enum.filter(&(is_binary(&1["invoice_number"]) and String.trim(&1["invoice_number"]) != ""))
     |> Enum.group_by(&{document_type(&1), InvoiceNumber.key(&1["invoice_number"])})
     |> Enum.filter(fn {_key, members} -> length(members) > 1 end)
     |> Enum.map(fn {_key, members} ->
-      invoice_number = members |> hd() |> Map.fetch!("invoice_number")
+      invoice_number = members |> hd() |> then(& &1["invoice_number"])
       source_ids = members |> Enum.map(&Invoice.source_id/1) |> Enum.sort()
 
       %{
@@ -619,12 +626,13 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   defp line_word([_one]), do: "line"
   defp line_word(_many), do: "lines"
 
-  defp invoice_date_issues(%{"invoice_date" => %Date{}}), do: []
-
   defp invoice_date_issues(invoice) do
     printed = invoice["invoice_date"]
 
     cond do
+      match?(%Date{}, printed) ->
+        []
+
       not sales_invoice_has_values?(invoice) ->
         []
 
