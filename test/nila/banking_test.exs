@@ -72,11 +72,23 @@ defmodule Nila.BankingTest do
     assert mapped.status == "ready"
     assert mapped.counter_ledger_name == "Bank Charges"
 
+    # Revalidate at send time even if the UI was opened before the balance changed.
+    inconsistent =
+      mapped |> Ecto.Changeset.change(balance_paise: mapped.balance_paise + 1) |> Repo.update!()
+
+    assert {:error, :balance_check_failed} =
+             Banking.enqueue_transactions(context.org.id, statement.id, [transaction.id])
+
+    assert Repo.all(Nila.TallyJobs.Job) == []
+    assert Repo.get!(Transaction, transaction.id).status == "ready"
+    inconsistent |> Ecto.Changeset.change(balance_paise: mapped.balance_paise) |> Repo.update!()
+
     assert {:ok, [queued]} =
              Banking.enqueue_transactions(context.org.id, statement.id, [transaction.id])
 
     assert queued.status == "queued"
     job = TallyJobs.get_job!(queued.tally_job_id)
+    assert job.company_id == company.id
     assert job.source_key == "bank:#{statement.id}:transaction:stub-1"
     assert job.payload["company"] == company.name
     assert job.payload["voucher_number_mode"] == "tally"

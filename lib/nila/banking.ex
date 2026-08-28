@@ -194,14 +194,20 @@ defmodule Nila.Banking do
     )
   end
 
+  @doc "The books this statement is pinned to, falling back to the client's default for a draft."
+  def tally_destination(%Statement{tally_company: %Company{} = company}), do: company
+
+  def tally_destination(%Statement{client: %{active_tally_company: %Company{} = company}}),
+    do: company
+
+  def tally_destination(%Statement{}), do: nil
+
   def configure_tally(org_id, statement_id, bank_ledger_identity) do
     Repo.transact(fn ->
       with {:ok, statement} <- get_statement(org_id, statement_id),
            :ok <- ensure_posting_not_started(statement.id),
-           company_id when is_integer(company_id) <-
-             statement.client.active_tally_company_id,
-           {:ok, %Company{id: ^company_id} = company} <-
-             TallyDevices.get_client_company(org_id, statement.client_id),
+           %Company{} = destination <- tally_destination(statement),
+           {:ok, %Company{} = company} <- TallyDevices.get_company(org_id, destination.id),
            %SyncedMaster{} = ledger <- bank_ledger(org_id, company.id, bank_ledger_identity),
            {:ok, saved} <-
              statement
@@ -211,22 +217,6 @@ defmodule Nila.Banking do
                bank_ledger_name: ledger.name
              )
              |> Repo.update() do
-        if statement.tally_company_id && statement.tally_company_id != company.id do
-          from(transaction in Transaction,
-            where:
-              transaction.statement_id == ^statement.id and
-                transaction.status in ["unassigned", "ready", "failed"]
-          )
-          |> Repo.update_all(
-            set: [
-              counter_ledger_identity: nil,
-              counter_ledger_name: nil,
-              status: "unassigned",
-              updated_at: DateTime.utc_now()
-            ]
-          )
-        end
-
         {:ok, saved}
       else
         nil -> {:error, :ledger_not_found}
@@ -320,9 +310,9 @@ defmodule Nila.Banking do
   def enqueue_transactions(org_id, statement_id, transaction_ids)
       when is_list(transaction_ids) and transaction_ids != [] do
     with {:ok, statement} <- get_statement(org_id, statement_id),
+         true <- running_balances_match?(statement) || {:error, :balance_check_failed},
          company_id when is_integer(company_id) <- statement.tally_company_id,
-         {:ok, %Company{} = company} <-
-           TallyDevices.get_open_company(org_id, company_id, statement.client_id),
+         {:ok, %Company{} = company} <- TallyDevices.get_open_company(org_id, company_id),
          true <- is_binary(statement.bank_ledger_identity) || {:error, :tally_not_configured},
          transactions when transactions != [] <-
            ready_transactions(org_id, statement.id, transaction_ids),

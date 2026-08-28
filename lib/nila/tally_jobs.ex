@@ -4,6 +4,7 @@ defmodule Nila.TallyJobs do
   import Ecto.Query
 
   alias Nila.Repo
+  alias Nila.Gst.Sales.Batch
   alias Nila.TallySync
   alias Nila.TallyDevices.Company
   alias Nila.TallyDevices.Device
@@ -39,7 +40,7 @@ defmodule Nila.TallyJobs do
         device,
         "import_vouchers",
         payload,
-        opts
+        Keyword.put(opts, :company_id, company.id)
       )
     else
       {:error, :batch_too_large}
@@ -65,6 +66,7 @@ defmodule Nila.TallyJobs do
         case enqueue_import_vouchers(company, item.xml, 1,
                source_key: source_key,
                retry_failed: true,
+               sales_batch_id: Keyword.get(opts, :sales_batch_id),
                metadata: %{
                  "source_id" => item.source_id,
                  "invoice_source_id" => Map.get(item, :invoice_source_id),
@@ -90,6 +92,15 @@ defmodule Nila.TallyJobs do
       when is_integer(org_id) and is_binary(source_prefix) do
     from(j in Job,
       where: j.org_id == ^org_id and like(j.source_key, ^"#{source_prefix}%"),
+      order_by: [asc: j.id]
+    )
+    |> Repo.all()
+  end
+
+  def list_by_sales_batch(org_id, sales_batch_id)
+      when is_integer(org_id) and is_integer(sales_batch_id) do
+    from(j in Job,
+      where: j.org_id == ^org_id and j.sales_batch_id == ^sales_batch_id,
       order_by: [asc: j.id]
     )
     |> Repo.all()
@@ -148,6 +159,11 @@ defmodule Nila.TallyJobs do
     end
   end
 
+  def verify_indeterminate_by_sales_batch(org_id, sales_batch_id)
+      when is_integer(org_id) and is_integer(sales_batch_id) do
+    transition_batch_jobs(org_id, sales_batch_id, "indeterminate", "verify_only")
+  end
+
   @doc "Rechecks successful voucher deliveries and restores any vouchers missing from Tally."
   def ensure_succeeded_by_source_prefix(org_id, source_prefix)
       when is_integer(org_id) and is_binary(source_prefix) do
@@ -196,6 +212,11 @@ defmodule Nila.TallyJobs do
       error ->
         error
     end
+  end
+
+  def ensure_succeeded_by_sales_batch(org_id, sales_batch_id)
+      when is_integer(org_id) and is_integer(sales_batch_id) do
+    transition_batch_jobs(org_id, sales_batch_id, "succeeded", nil)
   end
 
   def claim_next(device_id, now \\ DateTime.utc_now()) when is_integer(device_id) do
@@ -292,7 +313,12 @@ defmodule Nila.TallyJobs do
     source_key = Keyword.get(opts, :source_key)
 
     changeset =
-      %Job{org_id: device.org_id, device_id: device.id}
+      %Job{
+        org_id: device.org_id,
+        device_id: device.id,
+        company_id: Keyword.get(opts, :company_id),
+        sales_batch_id: Keyword.get(opts, :sales_batch_id)
+      }
       |> Job.create_changeset(%{
         job_key: job_key,
         source_key: source_key,
@@ -310,18 +336,121 @@ defmodule Nila.TallyJobs do
       {:error, _changeset} = error when is_binary(source_key) ->
         case Repo.fetch_by(Job, org_id: device.org_id, source_key: source_key) do
           {:ok, %Job{status: "failed"} = job} ->
-            if Keyword.get(opts, :retry_failed, false) do
-              retry_failed_job(job, device, payload)
-            else
-              {:ok, job, :existing}
+            with {:ok, job} <- ensure_destination(job, opts) do
+              if Keyword.get(opts, :retry_failed, false) do
+                retry_failed_job(job, device, payload)
+              else
+                {:ok, job, :existing}
+              end
             end
 
           {:ok, job} ->
-            {:ok, job, :existing}
+            with {:ok, job} <- ensure_destination(job, opts), do: {:ok, job, :existing}
 
           {:error, :not_found} ->
             error
         end
+
+      error ->
+        error
+    end
+  end
+
+  defp ensure_destination(job, opts) do
+    company_id = Keyword.get(opts, :company_id)
+    sales_batch_id = Keyword.get(opts, :sales_batch_id)
+
+    Repo.transact(fn ->
+      current = Repo.one!(from current in Job, where: current.id == ^job.id, lock: "FOR UPDATE")
+
+      with :ok <- compatible_destination(current.company_id, company_id),
+           :ok <- compatible_destination(current.sales_batch_id, sales_batch_id),
+           :ok <- validate_requested_destination(current.org_id, company_id, sales_batch_id) do
+        current
+        |> Ecto.Changeset.change(
+          company_id: current.company_id || company_id,
+          sales_batch_id: current.sales_batch_id || sales_batch_id
+        )
+        |> Repo.update()
+      end
+    end)
+  end
+
+  defp compatible_destination(nil, _requested), do: :ok
+  defp compatible_destination(_stored, nil), do: :ok
+  defp compatible_destination(stored, stored), do: :ok
+  defp compatible_destination(_stored, _requested), do: {:error, :destination_changed}
+
+  defp validate_requested_destination(org_id, company_id, nil) do
+    validate_company(org_id, company_id)
+  end
+
+  defp validate_requested_destination(org_id, company_id, sales_batch_id)
+       when is_integer(company_id) and is_integer(sales_batch_id) do
+    with :ok <- validate_company(org_id, company_id),
+         {:ok, %Batch{tally_company_id: ^company_id}} <-
+           Repo.fetch_by(Batch, id: sales_batch_id, org_id: org_id) do
+      :ok
+    else
+      _invalid -> {:error, :invalid_destination}
+    end
+  end
+
+  defp validate_requested_destination(_org_id, _company_id, _sales_batch_id),
+    do: {:error, :invalid_destination}
+
+  defp validate_company(_org_id, nil), do: :ok
+
+  defp validate_company(org_id, company_id) when is_integer(company_id) do
+    case Repo.fetch_by(Company, id: company_id, org_id: org_id) do
+      {:ok, _company} -> :ok
+      {:error, :not_found} -> {:error, :invalid_destination}
+    end
+  end
+
+  defp transition_batch_jobs(org_id, sales_batch_id, status, mode) do
+    result =
+      Repo.transact(fn ->
+        jobs =
+          from(j in Job,
+            where:
+              j.org_id == ^org_id and j.sales_batch_id == ^sales_batch_id and
+                j.status == ^status,
+            lock: "FOR UPDATE"
+          )
+          |> Repo.all()
+
+        Enum.reduce_while(jobs, {:ok, []}, fn job, {:ok, transitioned} ->
+          payload =
+            if mode, do: Map.put(job.payload, "mode", mode), else: Map.delete(job.payload, "mode")
+
+          case job
+               |> Job.transition_changeset(%{
+                 status: "pending",
+                 started_at: nil,
+                 completed_at: nil,
+                 result: nil,
+                 error: nil
+               })
+               |> Ecto.Changeset.change(payload: payload)
+               |> Repo.update() do
+            {:ok, updated} -> {:cont, {:ok, [updated | transitioned]}}
+            {:error, changeset} -> {:halt, {:error, changeset}}
+          end
+        end)
+      end)
+
+    case result do
+      {:ok, jobs} ->
+        jobs
+        |> Enum.map(& &1.device_id)
+        |> Enum.uniq()
+        |> Enum.each(fn device_id ->
+          Phoenix.PubSub.broadcast(Nila.PubSub, device_topic(device_id), :tally_job_available)
+        end)
+
+        if jobs != [], do: broadcast_org(org_id)
+        {:ok, length(jobs)}
 
       error ->
         error

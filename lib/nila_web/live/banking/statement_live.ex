@@ -174,7 +174,7 @@ defmodule NilaWeb.Banking.StatementLive do
 
   defp assign_statement(socket, statement) do
     transactions = if statement.status == "ready", do: statement.bank_transactions, else: []
-    tally_company = statement.client.active_tally_company
+    tally_company = Banking.tally_destination(statement)
     can_edit = Policy.can?(socket.assigns.current_scope, :edit_records)
     filters = socket.assigns[:transaction_filters] || default_transaction_filters()
 
@@ -285,6 +285,14 @@ defmodule NilaWeb.Banking.StatementLive do
 
       {:error, :no_ready_transactions} ->
         {:noreply, put_flash(socket, :error, "Map the selected transactions before sending.")}
+
+      {:error, :balance_check_failed} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Balance check failed. Review the statement before sending to Tally."
+         )}
 
       _ ->
         {:noreply, put_flash(socket, :error, "Tally is unavailable or the selection changed.")}
@@ -681,28 +689,14 @@ defmodule NilaWeb.Banking.StatementLive do
         </.button>
 
         <%= if @statement.status == "ready" do %>
-          <div class="space-y-related">
-            <div id="banking-statement-summary" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <.stat_card label="Opening balance">
-                {money(@statement.opening_balance_paise)}
-              </.stat_card>
-
-              <.stat_card label="Closing balance">
-                {money(@statement.closing_balance_paise)}
-              </.stat_card>
-
-              <.stat_card label="Withdrawals">{money(@statement.total_withdrawal_paise)}</.stat_card>
-
-              <.stat_card label="Deposits">{money(@statement.total_deposit_paise)}</.stat_card>
-            </div>
-            <p
-              :if={@running_balances_match}
-              id="banking-balance-check"
-              class="gap-related text-ui flex items-center"
-            >
-              <.icon name="hero-check-circle-mini" class="text-success size-4 shrink-0" />
-              Running balances match
-            </p>
+          <div
+            :if={not @running_balances_match}
+            id="banking-balance-check-failed"
+          >
+            <.callout kind="error" title="Balances could not be verified">
+              The saved transaction sequence and statement totals could not be reconciled.
+              Sending to Tally is blocked. Check the source statement before continuing.
+            </.callout>
           </div>
 
           <section id="banking-transactions" class="space-y-related">
@@ -993,6 +987,7 @@ defmodule NilaWeb.Banking.StatementLive do
           module={NilaWeb.Banking.SelectionToolbarComponent}
           id="banking-selection"
           can_edit={@can_edit}
+          balance_check_passed={@running_balances_match}
           ledger_configured={
             is_integer(@statement.tally_company_id) and
               is_binary(@statement.bank_ledger_identity) and @tally_ledgers != []

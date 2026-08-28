@@ -47,6 +47,7 @@ defmodule Nila.Gst.Intake.Dump do
     belongs_to :org, Nila.Orgs.Org
     belongs_to :client, Nila.Clients.Client
     belongs_to :brought_in_by, Nila.Accounts.User
+    belongs_to :sales_batch, Nila.Gst.Sales.Batch
 
     has_many :extraction_attempts, Nila.Gst.Intake.ExtractionAttempt, foreign_key: :gst_dump_id
 

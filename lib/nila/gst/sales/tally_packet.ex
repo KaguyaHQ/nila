@@ -21,6 +21,7 @@ defmodule Nila.Gst.Sales.TallyPacket do
   }
 
   defdelegate fetch(org_id, client_id, batch_ref), to: Batch
+  defdelegate fetch_with_record(org_id, client_id, batch_ref), to: Batch
 
   defdelegate ref(dumps), to: Batch
 

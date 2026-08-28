@@ -27,14 +27,32 @@ defmodule Nila.Gst.Intake.Dumps do
   (`brought_in_by_id`) are set on the struct, never cast.
   """
   def record(%{org_id: org_id, client_id: client_id} = scope, attrs) do
-    %Dump{
-      org_id: org_id,
-      client_id: client_id,
-      brought_in_by_id: scope[:brought_in_by_id]
-    }
-    |> Dump.changeset(attrs)
-    |> Repo.insert()
+    with {:ok, sales_batch_id} <- sales_batch_id(scope, attrs) do
+      %Dump{
+        org_id: org_id,
+        client_id: client_id,
+        brought_in_by_id: scope[:brought_in_by_id],
+        sales_batch_id: sales_batch_id
+      }
+      |> Dump.changeset(attrs)
+      |> Repo.insert()
+    end
   end
+
+  defp sales_batch_id(%{sales_batch_id: sales_batch_id}, _attrs)
+       when is_integer(sales_batch_id),
+       do: {:ok, sales_batch_id}
+
+  defp sales_batch_id(scope, %{kind: "sales", meta: %{"sales_batch" => true} = meta}) do
+    import_ref = Map.get(meta, "sales_import_ref") || Ecto.UUID.generate()
+
+    case Nila.Gst.Sales.Batch.create(scope.org_id, scope.client_id, import_ref) do
+      {:ok, batch} -> {:ok, batch.id}
+      error -> error
+    end
+  end
+
+  defp sales_batch_id(_scope, _attrs), do: {:ok, nil}
 
   @doc "All dumps for `(org, client, period)`, oldest first (arrival order)."
   def list(org_id, client_id, period) do

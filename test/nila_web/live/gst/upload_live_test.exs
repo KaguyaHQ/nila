@@ -104,8 +104,16 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     |> render_submit()
 
     period = Calendar.closeable_period(Date.utc_today())
-    assert [%{kind: "sales", client_id: client_id}] = Dumps.list(org.id, client.id, period)
+
+    assert [%{kind: "sales", client_id: client_id, sales_batch_id: batch_id}] =
+             Dumps.list(org.id, client.id, period)
+
     assert client_id == client.id
+    assert is_integer(batch_id)
+
+    assert %Nila.Gst.Sales.Batch{client_id: ^client_id, tally_company_id: nil} =
+             Nila.Repo.get!(Nila.Gst.Sales.Batch, batch_id)
+
     assert has_element?(view, "#sales-bills-progress", "Preparing sales vouchers")
   end
 
@@ -211,6 +219,19 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert has_element?(view, "#sales-bills-page", "Bring in sales invoices")
     assert has_element?(view, "#sales-bills-page a[href='/sales-bills']", "Sales")
     refute has_element?(view, "#sales-batches")
+  end
+
+  test "partial sales bill validation events do not crash the importer", %{
+    conn: conn
+  } do
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/new")
+
+    upload_html = render_change(view, "validate", %{"_target" => ["documents"]})
+    partial_html = render_change(view, "validate", %{})
+
+    assert upload_html =~ "Bring in sales invoices"
+    assert partial_html =~ "Bring in sales invoices"
+    assert has_element?(view, "#sales-bills-form")
   end
 
   test "sales bills shows the same add-client empty state as Banking", %{

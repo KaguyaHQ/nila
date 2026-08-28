@@ -3,6 +3,9 @@ defmodule Nila.TallyJobsTest do
 
   import Nila.AccountsFixtures
 
+  alias Nila.Clients
+  alias Nila.Gst.Sales.Batch
+  alias Nila.Repo
   alias Nila.TallyDevices
   alias Nila.TallyJobs
 
@@ -124,9 +127,64 @@ defmodule Nila.TallyJobsTest do
 
     assert repeated.id == first.id
     assert first.kind == "import_vouchers"
+    assert first.company_id == company.id
     assert first.payload["company"] == "Nila"
     assert first.payload["expected_count"] == 2
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 1
+  end
+
+  test "does not reuse an idempotency key for a different Tally company" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [first_company, second_company]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => "First Books", "tally_guid" => "first-books"},
+        %{"name" => "Second Books", "tally_guid" => "second-books"}
+      ])
+
+    assert {:ok, _job, :created} =
+             TallyJobs.enqueue_import_vouchers(first_company, "<ENVELOPE/>", 1,
+               source_key: "same-source"
+             )
+
+    assert {:error, :destination_changed} =
+             TallyJobs.enqueue_import_vouchers(second_company, "<ENVELOPE/>", 1,
+               source_key: "same-source"
+             )
+  end
+
+  test "claims missing legacy destination provenance when reusing a job" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, client} = Clients.create_client(%{org_id: org.id, name: "Breeze", type: "company"})
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+
+    {:ok, [company]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => "Breeze Books", "tally_guid" => "breeze-books"}
+      ])
+
+    {:ok, batch} = Batch.create(org.id, client.id, Ecto.UUID.generate())
+    {:ok, batch} = Batch.pin_destination(org.id, batch.id, company.id)
+
+    assert {:ok, job, :created} =
+             TallyJobs.enqueue_import_vouchers(company, "<ENVELOPE/>", 1,
+               source_key: "legacy-source",
+               sales_batch_id: batch.id
+             )
+
+    job
+    |> Ecto.Changeset.change(company_id: nil, sales_batch_id: nil)
+    |> Repo.update!()
+
+    assert {:ok, reused, :existing} =
+             TallyJobs.enqueue_import_vouchers(company, "<ENVELOPE/>", 1,
+               source_key: "legacy-source",
+               sales_batch_id: batch.id
+             )
+
+    assert reused.company_id == company.id
+    assert reused.sales_batch_id == batch.id
   end
 
   test "marks an in-flight job indeterminate when its connector disconnects" do

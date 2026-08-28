@@ -7,7 +7,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
   alias Nila.Clients
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Sales.Months, as: SalesMonths
-  alias Nila.Gst.Sales.{Gstr1, InvoiceRemoval, TallyPacket}
+  alias Nila.Gst.Sales.{Gstr1, Invoice, InvoiceRemoval, TallyPacket}
   alias Nila.Storage
   alias Nila.TallyDevices
   alias Nila.TallyDevices.SyncedMaster
@@ -111,6 +111,55 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert response(conn, 200) == "sales-evidence"
     assert get_resp_header(conn, "content-type") |> hd() =~ "image/png"
+  end
+
+  test "a batch with Tally jobs stays pinned to that company after the client default changes",
+       context do
+    {:ok, [new_default]} =
+      TallyDevices.report_companies(context.device, [
+        %{
+          "name" => "Breezetech Replacement",
+          "tally_guid" => "breeze-replacement",
+          "gstin" => context.client.gstin
+        }
+      ])
+
+    batch_ref = TallyPacket.ref([context.dump])
+
+    {:ok, batch, _dumps} =
+      Nila.Gst.Sales.Batch.fetch_with_record(context.org.id, context.client.id, batch_ref)
+
+    {:ok, batch} =
+      Nila.Gst.Sales.Batch.pin_destination(context.org.id, batch.id, context.company.id)
+
+    source_prefix = Nila.Gst.Sales.Batch.source_prefix(batch)
+
+    assert {:ok, _job, _disposition} =
+             TallyJobs.enqueue_import_vouchers(context.company, "<ENVELOPE/>", 1,
+               source_key: source_prefix <> "invoice-1",
+               sales_batch_id: batch.id,
+               metadata: %{
+                 "invoice_source_id" => "invoice-1",
+                 "invoice_number" => "INV-001"
+               }
+             )
+
+    context.client
+    |> Ecto.Changeset.change(active_tally_company_id: new_default.id)
+    |> Nila.Repo.update!()
+
+    invoice = hd(context.dump.invoices)
+    source_id = Invoice.source_id(invoice)
+
+    {:ok, view, _html} =
+      live(
+        context.conn,
+        "/sales-bills/#{context.client.id}/batch/#{batch_ref}?item=#{URI.encode(source_id)}"
+      )
+
+    selected_company = :sys.get_state(view.pid).socket.assigns.tally_company
+    assert selected_company.id == context.company.id
+    refute selected_company.id == new_default.id
   end
 
   test "sales workbench evidence is dump- and tenant-scoped", %{

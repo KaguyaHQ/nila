@@ -18,6 +18,8 @@ defmodule Nila.TallyJobs.Job do
 
     belongs_to :org, Nila.Orgs.Org
     belongs_to :device, Nila.TallyDevices.Device
+    belongs_to :company, Nila.TallyDevices.Company
+    belongs_to :sales_batch, Nila.Gst.Sales.Batch
 
     timestamps()
   end

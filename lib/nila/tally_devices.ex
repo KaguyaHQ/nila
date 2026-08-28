@@ -258,6 +258,20 @@ defmodule Nila.TallyDevices do
 
   def get_client_company(_org_id, _client_id), do: {:error, :not_found}
 
+  @doc "Returns a persistent Tally company independently of the client currently linked to it."
+  def get_company(org_id, company_id) when is_integer(org_id) and is_integer(company_id) do
+    case Repo.fetch_by(Company, org_id: org_id, id: company_id) do
+      {:ok, company} ->
+        company = Repo.preload(company, device_routes: :device)
+        {:ok, attach_best_route(company)}
+
+      error ->
+        error
+    end
+  end
+
+  def get_company(_org_id, _company_id), do: {:error, :not_found}
+
   def list_importable_companies(org_id) when is_integer(org_id) do
     companies =
       Repo.all(

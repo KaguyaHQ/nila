@@ -4,7 +4,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   alias Nila.Clients
   alias Nila.Gst.Filing.TallyPrime
   alias Nila.Gst.Money
-  alias Nila.Gst.Sales.{Gstr1, Invoice, InvoiceCorrections, InvoiceRemovals, TallyPacket}
+  alias Nila.Gst.Sales.{Batch, Gstr1, Invoice, InvoiceCorrections, InvoiceRemovals, TallyPacket}
   alias Nila.Gst.StateCodes
   alias Nila.{TallyDevices, TallyJobs, TallyMappings}
   alias NilaWeb.Gst.SalesIssuePresentation
@@ -15,22 +15,23 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     org_id = socket.assigns.current_scope.current_org.id
 
     with {:ok, client} <- Clients.get_client(org_id, client_id),
-         {:ok, dumps} <- TallyPacket.fetch(org_id, client_id, batch_ref) do
+         {:ok, batch, dumps} <- TallyPacket.fetch_with_record(org_id, client_id, batch_ref) do
       if connected?(socket) do
         TallyJobs.subscribe_org(org_id)
         Phoenix.PubSub.subscribe(Nila.PubSub, tally_presence_topic(org_id))
       end
 
-      company = tally_destination(org_id, client.id)
+      company = tally_destination(org_id, client.id, batch)
       tally_masters = tally_masters(org_id, company)
-      source_prefix = company && tally_source_prefix(batch_ref, company.id)
+      source_prefix = Batch.source_prefix(batch)
       packet = prepare_packet(dumps, client.id)
-      tally_jobs = list_tally_jobs(org_id, source_prefix)
+      tally_jobs = list_tally_jobs(org_id, batch)
 
       socket =
         socket
         |> assign(:page_title, "Sales bills")
         |> assign(:client, client)
+        |> assign(:sales_batch, batch)
         |> assign(:batch_ref, batch_ref)
         |> assign(:packet, packet)
         |> assign(:tally_company, company)
@@ -226,14 +227,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   def handle_event("verify-tally", _params, socket) do
     org_id = socket.assigns.current_scope.current_org.id
 
-    case TallyJobs.verify_indeterminate_by_source_prefix(
+    case TallyJobs.verify_indeterminate_by_sales_batch(
            org_id,
-           socket.assigns.tally_source_prefix
+           socket.assigns.sales_batch.id
          ) do
       {:ok, count} when count > 0 ->
         {:noreply,
          socket
-         |> assign(:tally_jobs, list_tally_jobs(org_id, socket.assigns.tally_source_prefix))
+         |> assign(:tally_jobs, list_tally_jobs(org_id, socket.assigns.sales_batch))
          |> assign(:send_error, nil)}
 
       _ ->
@@ -244,14 +245,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   def handle_event("ensure-tally", _params, socket) do
     org_id = socket.assigns.current_scope.current_org.id
 
-    case TallyJobs.ensure_succeeded_by_source_prefix(
+    case TallyJobs.ensure_succeeded_by_sales_batch(
            org_id,
-           socket.assigns.tally_source_prefix
+           socket.assigns.sales_batch.id
          ) do
       {:ok, count} when count > 0 ->
         {:noreply,
          socket
-         |> assign(:tally_jobs, list_tally_jobs(org_id, socket.assigns.tally_source_prefix))
+         |> assign(:tally_jobs, list_tally_jobs(org_id, socket.assigns.sales_batch))
          |> assign(:send_error, nil)}
 
       _ ->
@@ -598,14 +599,18 @@ defmodule NilaWeb.Gst.SalesBillsLive do
            apply_tally_posting(org_id, company.id, socket.assigns.packet.invoices),
          {items, unbuildable} <- build_tally_items(invoices, company.name),
          {ready, blocked} <- partition_ready_items(company.id, items),
+         {:ok, batch} <-
+           Batch.pin_destination(org_id, socket.assigns.sales_batch.id, company.id),
          {:ok, _jobs} <-
            TallyJobs.enqueue_vouchers(company, ready,
-             source_prefix: socket.assigns.tally_source_prefix
+             source_prefix: Batch.source_prefix(batch),
+             sales_batch_id: batch.id
            ) do
       {:noreply,
        socket
+       |> assign(:sales_batch, batch)
        |> assign(:tally_company, company)
-       |> assign(:tally_jobs, list_tally_jobs(org_id, socket.assigns.tally_source_prefix))
+       |> assign(:tally_jobs, list_tally_jobs(org_id, batch))
        |> assign(:send_holds, send_holds(unresolved_parties, unbuildable, blocked))
        |> assign(:send_error, send_blocked_message(unresolved_parties, unbuildable, blocked))}
     else
@@ -679,11 +684,12 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         identity -> Map.put_new(profile_attrs, "sales_ledger_identity", identity)
       end
 
-    with {:ok, %{invoice: corrected_invoice}} <-
-           InvoiceCorrections.save_workbench(
+    with {:ok, %{invoice: corrected_invoice, sales_batch: batch}} <-
+           InvoiceCorrections.save_batch_workbench(
              org_id,
              socket.assigns.client.id,
              socket.assigns.batch_ref,
+             socket.assigns.sales_batch.id,
              Invoice.source_id(invoice),
              company_id,
              %{
@@ -694,7 +700,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
              },
              socket.assigns.current_scope.user.id
            ) do
-      socket = replace_selected_invoice(socket, corrected_invoice)
+      socket =
+        socket
+        |> assign(:sales_batch, batch)
+        |> replace_selected_invoice(corrected_invoice)
 
       destination =
         case {socket.assigns.review_mode?, socket.assigns.required_mapping_invoices} do
@@ -950,7 +959,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
        :tally_jobs,
        list_tally_jobs(
          socket.assigns.current_scope.current_org.id,
-         socket.assigns.tally_source_prefix
+         socket.assigns.sales_batch
        )
      )}
   end
@@ -960,7 +969,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         socket
       ) do
     org_id = socket.assigns.current_scope.current_org.id
-    company = tally_destination(org_id, socket.assigns.client.id)
+    company = tally_destination(org_id, socket.assigns.client.id, socket.assigns.sales_batch)
 
     {:noreply,
      socket
@@ -990,12 +999,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     |> Enum.map(& &1["invoice_number"])
   end
 
-  defp list_tally_jobs(_org_id, nil), do: []
+  defp list_tally_jobs(org_id, %Batch{id: batch_id}),
+    do: TallyJobs.list_by_sales_batch(org_id, batch_id)
 
-  defp list_tally_jobs(org_id, source_prefix),
-    do: TallyJobs.list_by_source_prefix(org_id, source_prefix)
-
-  defp online_tally_companies(org_id, client_id) do
+  defp online_tally_companies(org_id) do
     online_device_ids =
       "tally_devices:#{org_id}"
       |> Presence.list()
@@ -1008,16 +1015,25 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       end)
 
     org_id
-    |> TallyDevices.list_open_company_routes(client_id)
+    |> TallyDevices.list_open_company_routes()
     |> Enum.filter(&MapSet.member?(online_device_ids, &1.device_id))
   end
 
   defp tally_presence_topic(org_id), do: "tally_devices:#{org_id}"
 
-  defp tally_destination(org_id, client_id) do
-    case TallyDevices.get_client_company(org_id, client_id) do
-      {:ok, company} -> company
-      {:error, :not_found} -> nil
+  defp tally_destination(org_id, client_id, %Batch{tally_company_id: company_id}) do
+    case company_id do
+      nil ->
+        case TallyDevices.get_client_company(org_id, client_id) do
+          {:ok, company} -> company
+          {:error, :not_found} -> nil
+        end
+
+      company_id ->
+        case TallyDevices.get_company(org_id, company_id) do
+          {:ok, company} -> company
+          {:error, :not_found} -> nil
+        end
     end
   end
 
@@ -1050,8 +1066,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     |> assign(:tally_online?, online?)
   end
 
-  defp online_tally_company(org_id, client_id, company_id) do
-    case Enum.find(online_tally_companies(org_id, client_id), &(&1.id == company_id)) do
+  defp online_tally_company(org_id, _client_id, company_id) do
+    case Enum.find(online_tally_companies(org_id), &(&1.id == company_id)) do
       nil -> {:error, :not_found}
       company -> {:ok, company}
     end
@@ -1718,14 +1734,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp narration(invoice),
     do: invoice["narration"] || invoice["remarks"] || invoice["notes"] || "Imported from Nila"
 
-  defp tally_source_prefix(batch_ref, company_id) do
-    batch_key =
-      :crypto.hash(:sha256, batch_ref)
-      |> Base.url_encode64(padding: false)
-
-    "sales-bills:#{batch_key}:company:#{company_id}:voucher:"
-  end
-
   defp sending_to_tally?(jobs), do: Enum.any?(jobs, &(&1.status in ["pending", "running"]))
 
   defp tally_result([], _expected_count), do: nil
@@ -1772,7 +1780,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     org_id = socket.assigns.current_scope.current_org.id
 
     org_id
-    |> list_tally_jobs(socket.assigns.tally_source_prefix)
+    |> list_tally_jobs(socket.assigns.sales_batch)
     |> invoice_frozen?(invoice, socket.assigns.packet.all_invoices)
   end
 

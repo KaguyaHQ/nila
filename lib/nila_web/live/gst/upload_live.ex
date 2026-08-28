@@ -17,6 +17,7 @@ defmodule NilaWeb.Gst.UploadLive do
   alias Nila.Gst.Filing.{Calendar, PortalDocument}
   alias Nila.Gst.Intake.{Dumps, DumpWorker}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
+  alias Nila.Gst.Sales.Batch
   alias Nila.Gst.Sales.Imports
   alias Nila.Storage
   alias NilaWeb.Gst.PeriodOptions
@@ -102,6 +103,8 @@ defmodule NilaWeb.Gst.UploadLive do
      |> assign(:form, to_form(params, as: :intake))
      |> assign_period_options(params["client_id"])}
   end
+
+  def handle_event("validate", _params, socket), do: {:noreply, socket}
 
   # Removing a row now has to take the object with it. The file reached the
   # bucket the moment it was dropped, and the dump row that would have pointed
@@ -343,6 +346,12 @@ defmodule NilaWeb.Gst.UploadLive do
     scope = socket.assigns.current_scope
     sales_import_ref = if socket.assigns.sales_intake?, do: Ecto.UUID.generate()
 
+    sales_batch =
+      if sales_import_ref do
+        {:ok, batch} = Batch.create(org_id, client_id, sales_import_ref)
+        batch
+      end
+
     socket
     |> consume_uploaded_entries(:documents, fn %{key: key}, entry ->
       {:ok, kind} = Map.fetch!(entry_kinds, entry.ref)
@@ -360,7 +369,12 @@ defmodule NilaWeb.Gst.UploadLive do
 
       {:ok, dump} =
         Dumps.record(
-          %{org_id: org_id, client_id: client_id, brought_in_by_id: scope.user.id},
+          %{
+            org_id: org_id,
+            client_id: client_id,
+            brought_in_by_id: scope.user.id,
+            sales_batch_id: sales_batch && sales_batch.id
+          },
           %{period: period, kind: kind, file_keys: [key], meta: meta}
         )
 

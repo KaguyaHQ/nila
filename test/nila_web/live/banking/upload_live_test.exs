@@ -86,6 +86,17 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     refute has_element?(view, "#banking-statements")
   end
 
+  test "partial banking validation events do not crash the importer", context do
+    {:ok, view, _html} = live(context.conn, ~p"/banking/new")
+
+    upload_html = render_change(view, "validate", %{"_target" => ["statement"]})
+    partial_html = render_change(view, "validate", %{})
+
+    assert upload_html =~ "Bring in a bank statement"
+    assert partial_html =~ "Bring in a bank statement"
+    assert has_element?(view, "#banking-upload-form")
+  end
+
   test "uploads one statement, encrypts its password, and queues extraction", context do
     {:ok, other_client} =
       Clients.create_client(%{org_id: context.org.id, name: "Caltech", type: "company"})
@@ -115,8 +126,9 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     transaction = hd(statement.bank_transactions)
     {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
 
-    assert has_element?(view, "#banking-statement-summary", "Opening balance")
-    assert has_element?(view, "#banking-balance-check", "Running balances match")
+    refute has_element?(view, "#banking-balance-check")
+    refute has_element?(view, "#banking-balance-equation")
+    refute has_element?(view, "#banking-balance-check-failed")
     refute has_element?(view, "#banking-export-form")
     refute has_element?(view, "#banking-download-tally")
     assert has_element?(view, "#banking-transaction-rows tr", "Test credit")
@@ -176,20 +188,9 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert has_element?(view, "#banking-transactions thead th:nth-child(6)", "Ledger")
   end
 
-  test "balance confirmation covers the full statement and is absent for inconsistent saved rows",
-       context do
+  test "balance failures remain visible and block sending", context do
     {:ok, statement} = ready_statement(context)
     [transaction] = statement.bank_transactions
-    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
-
-    view
-    |> form("#banking-transaction-filters",
-      transaction_filters: %{query: "no matching transactions", status: "all", type: "all"}
-    )
-    |> render_change()
-
-    refute has_element?(view, "#bank-transaction-#{transaction.id}")
-    assert has_element?(view, "#banking-balance-check", "Running balances match")
 
     transaction
     |> Ecto.Changeset.change(balance_paise: transaction.balance_paise + 1)
@@ -198,6 +199,24 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     {:ok, reopened, _html} = live(context.conn, ~p"/banking/#{statement.id}")
     assert has_element?(reopened, "#bank-transaction-#{transaction.id}")
     refute has_element?(reopened, "#banking-balance-check")
+    refute has_element?(reopened, "#banking-balance-equation")
+
+    assert has_element?(
+             reopened,
+             "#banking-balance-check-failed",
+             "Balances could not be verified"
+           )
+
+    reopened |> element("#banking-select-all-transactions") |> render_click()
+    assert has_element?(reopened, "#banking-send-tally[disabled]")
+
+    render_submit(reopened, "bank-transactions", %{
+      "transaction_ids" => [to_string(transaction.id)],
+      "action" => "send"
+    })
+
+    assert has_element?(reopened, "#flash-error", "Balance check failed")
+    assert Repo.all(Job) == []
   end
 
   test "changes voucher type from More without assigning a ledger", context do
@@ -522,6 +541,49 @@ defmodule NilaWeb.Banking.UploadLiveTest do
 
     assert has_element?(view, "#bank-transaction-#{transaction.id}", "Sending")
     assert Repo.one!(Job).source_key == "bank:#{statement.id}:transaction:stub-1"
+  end
+
+  test "a configured statement keeps using its saved company after the client default changes",
+       context do
+    {:ok, statement} = ready_statement(context)
+    {:ok, device, _token} = TallyDevices.create_device(context.org, %{name: "Accounts PC"})
+
+    {:ok, [saved_company, new_default]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => "Dummy Run Company", "tally_guid" => "dummy-run"},
+        %{"name" => "Breezetech Manual", "tally_guid" => "breezetech-manual"}
+      ])
+
+    saved_bank =
+      master(context.org.id, saved_company.id, "dummy-bank", "HDFC Bank - 0443", "Bank Accounts")
+
+    _saved_igst =
+      master(context.org.id, saved_company.id, "dummy-igst", "IGST", "Duties & Taxes")
+
+    _new_igst =
+      master(context.org.id, new_default.id, "breeze-igst", "Breeze IGST", "Duties & Taxes")
+
+    context.client
+    |> Ecto.Changeset.change(active_tally_company_id: saved_company.id)
+    |> Repo.update!()
+
+    assert {:ok, _configured} =
+             Banking.configure_tally(context.org.id, statement.id, saved_bank.identity)
+
+    context.client
+    |> Ecto.Changeset.change(active_tally_company_id: new_default.id)
+    |> Repo.update!()
+
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+
+    assert has_element?(view, "#banking-tally-company", "Dummy Run Company")
+    assert has_element?(view, "#banking-tally-setup-form", "HDFC Bank - 0443")
+
+    transaction = hd(statement.bank_transactions)
+    view |> element("#banking-ledger-trigger-#{transaction.id}") |> render_click()
+
+    assert has_element?(view, "#banking-ledger-options", "IGST")
+    refute has_element?(view, "#banking-ledger-options", "Breeze IGST")
   end
 
   test "searches bulk ledgers and assigns only the selected filtered transactions", context do

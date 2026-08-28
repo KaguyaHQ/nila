@@ -4,7 +4,16 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
   alias Nila.Clients
   alias Nila.Accounts.User
   alias Nila.Gst.Intake.Dumps
-  alias Nila.Gst.Sales.{InvoiceCorrection, InvoiceCorrections, Month, Resolutions, TallyPacket}
+
+  alias Nila.Gst.Sales.{
+    Batch,
+    InvoiceCorrection,
+    InvoiceCorrections,
+    Month,
+    Resolutions,
+    TallyPacket
+  }
+
   alias Nila.Orgs.Org
   alias Nila.Orgs.Membership
   alias Nila.Repo
@@ -407,6 +416,43 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
     assert Repo.aggregate(PartyMapping, :count) == 0
     assert Repo.aggregate(PostingProfile, :count) == 0
     assert Repo.aggregate(SalesLineMapping, :count) == 0
+  end
+
+  test "does not pin a Sales batch when its posting submission rolls back", ctx do
+    company = company_fixture(ctx.org, "Nila")
+    party = ledger_fixture(ctx.org.id, company.id, "party", "Customer AP", %{})
+
+    sales =
+      ledger_fixture(ctx.org.id, company.id, "sales", "Material Sales", %{
+        "parent" => "Sales Accounts"
+      })
+
+    invalid = ledger_fixture(ctx.org.id, company.id, "tax", "Output IGST", %{})
+    {:ok, batch} = Batch.create(ctx.org.id, ctx.client.id, Ecto.UUID.generate())
+
+    ctx.dump
+    |> Ecto.Changeset.change(sales_batch_id: batch.id)
+    |> Repo.update!()
+
+    assert {:error, {:sales_ledger_not_found, 0}} =
+             InvoiceCorrections.save_batch_workbench(
+               ctx.org.id,
+               ctx.client.id,
+               ctx.batch_ref,
+               batch.id,
+               "source-1",
+               company.id,
+               %{
+                 invoice: %{"invoice_number" => "MUST-ROLL-BACK"},
+                 party_ledger_identity: party.identity,
+                 posting_profile: %{sales_ledger_identity: sales.identity},
+                 line_sales_ledger_identities: %{"0" => invalid.identity}
+               },
+               ctx.user.id
+             )
+
+    assert Repo.reload!(batch).tally_company_id == nil
+    assert Repo.aggregate(InvoiceCorrection, :count) == 0
   end
 
   test "latest append-only event wins and records its prior effective value", ctx do
