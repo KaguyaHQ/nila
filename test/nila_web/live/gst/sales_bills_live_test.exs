@@ -279,7 +279,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(
              view,
              "#sales-bill-tally-masters-unavailable",
-             "Tally masters need syncing"
+             "Import Tally ledgers to get started"
            )
 
     assert has_element?(view, "#tally_posting_party_ledger_identity[disabled]")

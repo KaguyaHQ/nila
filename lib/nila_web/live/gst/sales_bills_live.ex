@@ -1906,13 +1906,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp tally_master_sync_instruction(assigns) do
     cond do
       not assigns.tally_device_online? ->
-        "Open #{assigns.tally_company.name} in TallyPrime, start Nila Connector, and sync its masters before choosing posting ledgers."
+        "Open #{assigns.tally_company.name} in TallyPrime, start Nila Connector, and sync once so Nila can use its ledgers."
 
       not assigns.tally_company_open? ->
-        "Open #{assigns.tally_company.name} in TallyPrime and sync its masters before choosing posting ledgers."
+        "Open #{assigns.tally_company.name} in TallyPrime and sync once so Nila can use its ledgers."
 
       true ->
-        "Sync #{assigns.tally_company.name} from Nila Connector before choosing posting ledgers."
+        "Sync #{assigns.tally_company.name} once so Nila can use its ledgers."
     end
   end
 
@@ -2438,7 +2438,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               :if={@tally_company && not @tally_masters_available?}
               id="sales-bill-tally-masters-unavailable"
             >
-              <.callout kind="warning" size="compact" title="Tally masters need syncing">
+              <.callout kind="warning" size="compact" title="Import Tally ledgers to get started">
                 {tally_master_sync_instruction(assigns)}
               </.callout>
             </div>
