@@ -2630,12 +2630,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               </.button>
             </div>
             <div class="text-center">
-              <p :if={@review_mode?} class="text-ink-muted text-ui">
-                Review · {attention_invoice_count(@packet, @required_mapping_invoices)} {plural(
-                  attention_invoice_count(@packet, @required_mapping_invoices),
-                  "invoice"
-                )} left
-              </p>
               <h2 id={title_id} class="text-base-content text-body font-semibold">
                 Invoice {@selected_invoice["invoice_number"] || "without a number"}
               </h2>

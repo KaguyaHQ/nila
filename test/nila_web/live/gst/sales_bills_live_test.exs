@@ -1130,7 +1130,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     view |> element("#sales-bills-review-required") |> render_click()
 
-    assert has_element?(view, "#sales-bill-posting-review", "Review · 2 invoices left")
+    assert has_element?(view, "#sales-bill-posting-position", "1 of 2")
+    refute has_element?(view, "#sales-bill-posting-review", "invoices left")
 
     assert has_element?(
              view,
@@ -1156,7 +1157,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     |> render_submit()
 
     assert has_element?(view, "#sales-bill-posting-review", "Invoice INV-002")
-    assert has_element?(view, "#sales-bill-posting-review", "Review · 1 invoice left")
+    assert has_element?(view, "#sales-bill-posting-position", "1 of 1")
+    refute has_element?(view, "#sales-bill-posting-review", "invoice left")
 
     view
     |> form("#sales-bill-tally-posting-form", %{
