@@ -315,6 +315,9 @@ defmodule NilaWeb.CoreComponentsTest do
         on_select="choose-ledger"
         on_close="close-ledger-picker"
       />
+      <.ledger_picker_shortcut id="choose-ledger" trigger_id="party-ledger">
+        Choose ledger
+      </.ledger_picker_shortcut>
       """)
 
     fragment = LazyHTML.from_fragment(html)
@@ -329,6 +332,11 @@ defmodule NilaWeb.CoreComponentsTest do
     assert LazyHTML.attribute(option, "phx-value-identity") == ["ledger:siemens"]
     assert LazyHTML.attribute(option, "aria-selected") == ["true"]
     assert html =~ ~s(data-on-close="close-ledger-picker")
+    assert html =~ ~s(data-trigger-id="party-ledger")
+
+    assert html =~
+             ~s(phx-hook="NilaWeb.Components.LedgerPicker.LedgerPickerShortcut")
+
     assert html =~ ~s(id="ledger-picker-search-form")
     refute html =~ "<select"
   end

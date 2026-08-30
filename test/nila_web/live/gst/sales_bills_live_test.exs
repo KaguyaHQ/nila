@@ -1140,7 +1140,11 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
              "1 mapping left Next: Choose the Tally party ledger"
            )
 
-    assert has_element?(view, "#sales-bill-go-to-required-mapping", "Choose ledger")
+    assert has_element?(
+             view,
+             "#sales-bill-go-to-required-mapping[data-trigger-id='tally_posting_party_ledger_identity']",
+             "Choose ledger"
+           )
 
     refute has_element?(view, "#sales-bill-save-tally-posting")
 

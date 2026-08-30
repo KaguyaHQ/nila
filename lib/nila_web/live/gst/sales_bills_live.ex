@@ -1454,7 +1454,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           %{
             key: :party_ledger,
             label: "Choose the Tally party ledger",
-            picker: "party"
+            trigger_id: "tally_posting_party_ledger_identity"
           }
         ]
       else
@@ -1470,7 +1470,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         %{
           key: {:sales_ledger, row.index},
           label: "Choose the sales ledger for “#{description}”",
-          picker: "sales:#{row.index}"
+          trigger_id: "tally-posting-line-sales-ledger-#{row.index}"
         }
       end)
 
@@ -1481,7 +1481,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         %{
           key: {:tax_ledger, row.head},
           label: "Choose the #{row.label} ledger",
-          picker: "tax:#{row.head}"
+          trigger_id: "tally_posting_#{row.head}_ledger_identity"
         }
       end)
 
@@ -3433,16 +3433,12 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     <p class="text-base-content text-ui font-semibold tabular-nums">
                       {rupees(invoice_total(@posting_preview_invoice))}
                     </p>
-                    <.button
+                    <.ledger_picker_shortcut
                       id="sales-bill-go-to-required-mapping"
-                      type="button"
-                      variant="outline"
-                      phx-click="open-ledger-picker"
-                      phx-value-picker={next_posting_requirement(@tally_posting).picker}
-                      popovertarget="sales-bill-ledger-picker"
+                      trigger_id={next_posting_requirement(@tally_posting).trigger_id}
                     >
                       Choose ledger
-                    </.button>
+                    </.ledger_picker_shortcut>
                   </div>
                 </div>
 

@@ -3,6 +3,7 @@ defmodule NilaWeb.Components.LedgerPicker do
 
   use Phoenix.Component
 
+  import NilaWeb.Components.Button
   import NilaWeb.Components.Input
   import NilaWeb.Components.SelectableList
 
@@ -97,6 +98,42 @@ defmodule NilaWeb.Components.LedgerPicker do
         </.selectable_option>
       </.selectable_listbox>
     </.select_panel>
+    """
+  end
+
+  @doc "Opens a ledger picker through its field trigger so the panel stays field-anchored."
+  attr :id, :string, required: true
+  attr :trigger_id, :string, required: true
+  slot :inner_block, required: true
+
+  def ledger_picker_shortcut(assigns) do
+    ~H"""
+    <.button
+      id={@id}
+      type="button"
+      variant="outline"
+      phx-hook=".LedgerPickerShortcut"
+      data-trigger-id={@trigger_id}
+    >
+      {render_slot(@inner_block)}
+    </.button>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".LedgerPickerShortcut">
+      export default {
+        mounted() {
+          this.onClick = () => {
+            const trigger = document.getElementById(this.el.dataset.triggerId)
+            if (!trigger || trigger.disabled) return
+
+            trigger.scrollIntoView({block: "nearest", inline: "nearest"})
+            window.requestAnimationFrame(() => trigger.click())
+          }
+          this.el.addEventListener("click", this.onClick)
+        },
+        destroyed() {
+          this.el.removeEventListener("click", this.onClick)
+        }
+      }
+    </script>
     """
   end
 
