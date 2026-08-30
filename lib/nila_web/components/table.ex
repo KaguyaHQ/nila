@@ -82,9 +82,9 @@ defmodule NilaWeb.Components.Table do
   attr :min_width, :string, default: nil, doc: "e.g. min-w-[760px] for horizontal scroll"
 
   attr :surface, :string,
-    default: "contained",
-    values: ~w(contained workbench evidence),
-    doc: "contained card, ruled workbench, or subordinate evidence surface"
+    default: "surface",
+    values: ~w(surface ghost),
+    doc: "Radix surface table or borderless ghost table"
 
   attr :mode, :string,
     required: true,
@@ -157,7 +157,7 @@ defmodule NilaWeb.Components.Table do
           data-mode={@mode}
         >
           <thead class={[
-            "bg-base-200 text-ink-subtle text-label uppercase",
+            "text-ink-subtle text-label uppercase",
             @sticky_header && ["xl:sticky xl:z-10", @sticky_header]
           ]}>
             <tr>
@@ -177,7 +177,7 @@ defmodule NilaWeb.Components.Table do
               </th>
             </tr>
           </thead>
-          <tbody id={@id} phx-update={@stream? && "stream"} class="divide-base-300 divide-y">
+          <tbody id={@id} phx-update={@stream? && "stream"}>
             <%!-- The click command is computed once and drives everything: the
                 pointer, the hover, the keyboard. A row_click that returns nil
                 for some rows (the workings' diff rows) must not leave those rows
@@ -188,7 +188,7 @@ defmodule NilaWeb.Components.Table do
                 class={[
                   "transition-colors",
                   (row_command(@row_click, @row_item, row) || row_href(@row_navigate, @row_item, row)) &&
-                    "hover:bg-base-200/60 cursor-pointer",
+                    "nila-table-row-interactive cursor-pointer",
                   row_href(@row_navigate, @row_item, row) && "relative",
                   @row_class && @row_class.(@row_item.(row))
                 ]}
@@ -210,7 +210,6 @@ defmodule NilaWeb.Components.Table do
               <tr
                 :if={show_detail?(@detail_for, @row_item, row)}
                 id={detail_row_id(@row_id, row)}
-                class="bg-base-100"
               >
                 <td colspan={length(@col)} class="h-auto! p-0!">
                   {render_slot(@detail, @row_item.(row))}

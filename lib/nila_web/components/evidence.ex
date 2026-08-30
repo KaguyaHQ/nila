@@ -62,7 +62,7 @@ defmodule NilaWeb.Components.Evidence do
         phx-click={@on_open}
         phx-target={@target}
         aria-label="Open the scanned bill full screen"
-        class="bg-base-200 border-base-300 nila-evidence-trigger rounded-box relative block aspect-[1/1.414] w-full cursor-zoom-in overflow-hidden border transition"
+        class="bg-quiet border-rule nila-evidence-trigger rounded-box relative block aspect-[1/1.414] w-full cursor-zoom-in overflow-hidden border transition"
       >
         <span class="absolute inset-0 flex items-center justify-center">
           <.icon
@@ -108,7 +108,7 @@ defmodule NilaWeb.Components.Evidence do
       phx-target={@target}
     >
       <div class="flex shrink-0 items-center justify-between gap-4 px-4 py-3">
-        <span class="text-base-100 text-ui min-w-0 truncate font-medium">{@title}</span>
+        <span class="text-inverse text-ui min-w-0 truncate font-medium">{@title}</span>
         <div class="flex shrink-0 items-center gap-4">
           <.page_nav
             :if={@count > 1}
@@ -126,7 +126,7 @@ defmodule NilaWeb.Components.Evidence do
             phx-click={@on_close}
             phx-target={@target}
             aria-label="Close the scanned bill"
-            class="hover:text-base-100 rounded-field text-base-100/60 p-1 transition"
+            class="hover:text-inverse rounded-field text-inverse/60 p-1 transition"
           >
             <.icon name="hero-x-mark" class="size-5" />
           </button>
@@ -157,7 +157,7 @@ defmodule NilaWeb.Components.Evidence do
         />
       </div>
 
-      <p class="text-base-100/50 text-ui shrink-0 px-4 py-3 text-center">
+      <p class="text-inverse/50 text-ui shrink-0 px-4 py-3 text-center">
         Click the bill to zoom · click outside it or press Esc to close
       </p>
 
@@ -209,7 +209,7 @@ defmodule NilaWeb.Components.Evidence do
     ~H"""
     <div id={@id} class="space-y-related">
       <span class="text-ink-subtle text-label font-medium uppercase">{@label}</span>
-      <div class="border-base-300 rounded-box space-y-3 border border-dashed p-4">
+      <div class="border-rule rounded-box space-y-3 border border-dashed p-4">
         <p class="text-base-content text-ui flex items-start gap-2 font-medium">
           <.icon name="hero-exclamation-triangle" class="text-warning mt-0.5 size-4 shrink-0" />
           <span>The pages of this bill couldn't be rendered.</span>
@@ -270,10 +270,10 @@ defmodule NilaWeb.Components.Evidence do
     """
   end
 
-  defp nav_tone("dark"), do: "text-base-100/60 hover:text-base-100"
+  defp nav_tone("dark"), do: "text-inverse/60 hover:text-inverse"
   defp nav_tone("light"), do: "text-ink-subtle hover:text-ink"
 
-  defp count_tone("dark"), do: "text-base-100/60"
+  defp count_tone("dark"), do: "text-inverse/60"
   defp count_tone("light"), do: "text-ink-subtle"
 
   defp page_alt(label, _page, 1), do: label

@@ -27,7 +27,7 @@ defmodule NilaWeb.Components.Today.Modals do
     >
       <pre
         id="chase-draft-body"
-        class="bg-base-200/40 border-base-300 rounded-box text-base-content text-ui overflow-x-auto border p-4 font-sans whitespace-pre-wrap"
+        class="bg-quiet border-rule rounded-box text-base-content text-ui overflow-x-auto border p-4 font-sans whitespace-pre-wrap"
       >{@draft.body}</pre>
 
       <:footer>

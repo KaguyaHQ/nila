@@ -79,7 +79,7 @@ if Application.compile_env(:nila, :dev_routes, false) or
         <div id="design-system-reference" class="h-full overflow-y-auto">
           <main class="lg:py-canvas py-region mx-auto max-w-7xl px-6 lg:px-8">
             <div class="space-y-canvas">
-              <header class="border-base-300 moonlight py-region rounded-box border px-6 lg:px-8">
+              <header class="border-rule moonlight py-region rounded-box border px-6 lg:px-8">
                 <div class="gap-region grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
                   <div class="space-y-related">
                     <p class="text-eyebrow text-moon font-semibold uppercase">Development reference</p>
@@ -165,13 +165,24 @@ if Application.compile_env(:nila, :dev_routes, false) or
                       </div>
                       <div class="gap-block grid grid-cols-2 sm:grid-cols-4">
                         <.swatch name="Primary" class="bg-primary text-primary-content" />
-                        <.swatch name="Accent" class="bg-accent text-accent-content" />
                         <.status_swatch name="Info" kind="info" />
                         <.status_swatch name="Success" kind="success" />
                         <.status_swatch name="Warning" kind="warning" />
                         <.status_swatch name="Error" kind="error" />
-                        <.swatch name="Canvas" class="bg-base-200 text-base-content" />
-                        <.swatch name="Surface" class="bg-base-100 text-base-content" />
+                        <.swatch name="Canvas" class="bg-canvas border-rule text-ink border" />
+                        <.swatch name="Panel" class="bg-panel-surface border-rule text-ink border" />
+                        <.swatch
+                          name="Translucent panel"
+                          class="bg-panel-translucent-surface border-rule text-ink border"
+                        />
+                        <.swatch
+                          name="Control"
+                          class="bg-control-surface border-rule text-ink border"
+                        />
+                        <.swatch name="Quiet fill" class="bg-quiet text-ink" />
+                        <.swatch name="Interaction" class="bg-interactive text-ink" />
+                        <.swatch name="Rule" class="bg-rule text-ink" />
+                        <.swatch name="Inverse" class="bg-neutral text-inverse" />
                       </div>
                     </.card>
 
@@ -313,11 +324,11 @@ if Application.compile_env(:nila, :dev_routes, false) or
 
                   <div
                     id="ds-selectable-navigation"
-                    class="border-base-300 rounded-box max-w-lg overflow-hidden border"
+                    class="border-rule rounded-box max-w-lg overflow-hidden border"
                     phx-hook="SelectableList"
                     data-loop="true"
                   >
-                    <div class="border-base-300 p-block border-b">
+                    <div class="border-rule p-block border-b">
                       <.input
                         id="ds-selectable-query"
                         name="selectable_specimen[query]"
@@ -577,7 +588,7 @@ if Application.compile_env(:nila, :dev_routes, false) or
                       </div>
                     </div>
 
-                    <div class="border-base-300 pt-section border-t">
+                    <div class="border-rule pt-section border-t">
                       <.fold
                         id="ds-b2b-schedule"
                         open={MapSet.member?(@open_folds, "ds-b2b-schedule")}
@@ -605,7 +616,7 @@ if Application.compile_env(:nila, :dev_routes, false) or
                       </.fold>
                     </div>
 
-                    <div class="border-base-300 pt-section border-t">
+                    <div class="border-rule pt-section border-t">
                       <.fold
                         id="ds-rate-summary"
                         open={MapSet.member?(@open_folds, "ds-rate-summary")}
@@ -691,7 +702,7 @@ if Application.compile_env(:nila, :dev_routes, false) or
       ~H"""
       <div class="gap-block grid grid-cols-[5rem_minmax(0,1fr)] items-center">
         <span class="text-ui font-medium">{@name}</span>
-        <div class="bg-base-200 rounded-field h-6">
+        <div class="bg-quiet rounded-field h-6">
           <div class={["bg-primary rounded-field h-full", @width]}></div>
         </div>
       </div>

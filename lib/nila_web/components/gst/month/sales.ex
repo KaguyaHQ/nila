@@ -238,7 +238,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           <article
             :for={review_case <- @grouped_cases}
             id={"gstr1-review-case-#{review_case.source_id}"}
-            class="bg-base-100 nila-gstr1-required-item rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+            class="bg-panel-surface nila-gstr1-required-item rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
             <div class="min-w-0 flex-1 space-y-1">
               <p class="text-base-content text-body font-semibold wrap-break-word">
@@ -271,7 +271,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           <article
             :for={issue <- @standalone_issues}
             id={"gstr1-required-#{:erlang.phash2({SalesWorkings.issue_key(issue), issue["message"]})}"}
-            class="bg-base-100 nila-gstr1-required-item rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+            class="bg-panel-surface nila-gstr1-required-item rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
             <div class="min-w-0 flex-1 space-y-1">
               <p
@@ -383,7 +383,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           </p>
         </div>
 
-        <div class="bg-base-100 border-base-300 divide-base-300 rounded-box divide-y border">
+        <div class="bg-panel-surface border-rule divide-rule rounded-box divide-y border">
           <.fold
             :if={@derived}
             id="gstr1-filing-summary"
@@ -599,7 +599,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         <div
           :if={@human_actions != []}
           id="gstr1-action-history"
-          class="border-base-300 divide-base-300 rounded-box divide-y border"
+          class="border-rule divide-rule rounded-box divide-y border"
         >
           <div
             :for={action <- @human_actions}

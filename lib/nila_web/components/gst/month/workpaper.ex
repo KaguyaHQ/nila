@@ -13,7 +13,7 @@ defmodule NilaWeb.Components.Gst.Month.Workpaper do
     <nav
       id="month-workpapers"
       aria-label="Client-month workpapers"
-      class="bg-base-100/40 border-base-300 rounded-box grid overflow-hidden border md:grid-cols-3"
+      class="bg-panel-translucent-surface border-rule rounded-box grid overflow-hidden border md:grid-cols-3"
     >
       <.link
         :for={{track, label} <- tracks()}
@@ -22,8 +22,8 @@ defmodule NilaWeb.Components.Gst.Month.Workpaper do
         aria-current={@selected == track && "page"}
         data-state={if(@selected == track, do: "selected", else: "idle")}
         class={[
-          "border-base-300 nila-workpaper-tab relative min-w-0 border-b px-6 py-4 text-left transition last:border-b-0 md:min-h-20 md:border-r md:border-b-0 md:last:border-r-0",
-          @selected != track && "hover:bg-base-100/70"
+          "border-rule nila-workpaper-tab relative min-w-0 border-b px-6 py-4 text-left transition last:border-b-0 md:min-h-20 md:border-r md:border-b-0 md:last:border-r-0",
+          @selected != track && "hover:bg-interactive"
         ]}
       >
         <span class={[
@@ -49,14 +49,14 @@ defmodule NilaWeb.Components.Gst.Month.Workpaper do
     <nav
       :if={@links != []}
       aria-label="Workpaper sections"
-      class="bg-base-100/95 border-base-300 rounded-box shadow-moon sticky top-2 z-10 ml-auto w-full overflow-x-auto border p-1 backdrop-blur sm:w-fit"
+      class="bg-panel-translucent-surface border-rule rounded-box shadow-moon sticky top-2 z-10 ml-auto w-full overflow-x-auto border p-1 backdrop-blur sm:w-fit"
     >
       <div class="flex min-w-max items-center gap-1">
         <.link
           :for={link <- @links}
           id={"workpaper-section-#{link.id}"}
           href={"##{link.id}"}
-          class="hover:bg-base-200 hover:text-base-content rounded-field text-ink-muted text-ui px-3 py-1.5 font-semibold"
+          class="hover:bg-interactive hover:text-base-content rounded-field text-ink-muted text-ui px-3 py-1.5 font-semibold"
         >
           {link.label}
         </.link>
@@ -77,7 +77,7 @@ defmodule NilaWeb.Components.Gst.Month.Workpaper do
     ~H"""
     <section
       id={"month-workpaper-empty-#{@track}"}
-      class="border-base-300 p-section rounded-box space-y-block border"
+      class="border-rule p-section rounded-box space-y-block border"
     >
       <div class="space-y-1">
         <h2 class="text-base-content text-h4 font-semibold">{@copy.title}</h2>

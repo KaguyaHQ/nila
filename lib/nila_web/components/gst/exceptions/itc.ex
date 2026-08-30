@@ -29,9 +29,9 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
     <div
       :if={@bridge}
       id={@id}
-      class={["border-base-300 w-full max-w-5xl border-y", @class]}
+      class={["border-rule w-full max-w-5xl border-y", @class]}
     >
-      <dl class="divide-base-300 divide-y">
+      <dl class="divide-rule divide-y">
         <div
           :for={line <- @bridge.lines}
           id={"#{@id}-#{line.key}"}
@@ -177,7 +177,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
         sign: "",
         total?: false,
         subtotal?: true,
-        emphasis: "border-base-300 border-t-2"
+        emphasis: "border-rule border-t-2"
       }
     ] ++
       deduction(
@@ -207,7 +207,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           paise: itc["claimable_paise"],
           sign: "",
           total?: true,
-          emphasis: "border-base-300 border-t-2"
+          emphasis: "border-rule border-t-2"
         }
       ]
   end
@@ -245,7 +245,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
       />
       <div
         :if={is_nil(@itc["reported_2b_paise"])}
-        class="border-base-300 rounded-box flex items-center justify-between border px-4 py-3"
+        class="border-rule rounded-box flex items-center justify-between border px-4 py-3"
       >
         <span class="text-ink-muted text-ui">
           Current proposed ITC (2B ceiling, no blocked credits)
@@ -273,10 +273,10 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
         id="gst-itc-supporting-evidence"
       />
 
-      <div class="border-base-300 rounded-box border">
+      <div class="border-rule rounded-box border">
         <div
           :if={is_nil(@itc["reported_2b_paise"])}
-          class="border-base-300 flex items-center justify-between border-b px-4 py-3"
+          class="border-rule flex items-center justify-between border-b px-4 py-3"
         >
           <div class="text-ink-subtle text-label font-medium uppercase">Current proposed ITC</div>
           <div id="gst-itc-claimable" class="text-base-content text-lead font-mono font-semibold">
@@ -284,7 +284,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
           </div>
         </div>
 
-        <div class="divide-base-300 divide-y">
+        <div class="divide-rule divide-y">
           <div
             :for={b <- @itc["blocks"]}
             id={"itc-block-#{b["block_id"]}"}
@@ -355,7 +355,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
         <div
           :if={(@itc["blocked_outside_ceiling_paise"] || 0) > 0}
           id="gst-itc-blocked-outside-ceiling"
-          class="border-base-300 text-body text-ink-subtle border-t px-4 py-3"
+          class="border-rule text-body text-ink-subtle border-t px-4 py-3"
         >
           {itc_money(@itc["blocked_outside_ceiling_paise"])} of the above sits outside the 2B
           ceiling — the portal never reported that credit, so blocking it withholds nothing and

@@ -208,7 +208,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
 
             <div
               id="settings-connection-list"
-              class="border-base-300 divide-base-300 divide-y border-y"
+              class="border-rule divide-rule divide-y border-y"
             >
               <article
                 :for={connection <- @connections}
@@ -307,7 +307,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                         class="text-ink-faint size-4 transition-transform group-open:rotate-180"
                       />
                     </summary>
-                    <div class="border-base-300 mt-related pt-related space-y-block border-t xl:w-96">
+                    <div class="border-rule mt-related pt-related space-y-block border-t xl:w-96">
                       <.form
                         for={to_form(connection_form_data(connection), as: :connection)}
                         id={"settings-connection-form-#{connection.id}"}
@@ -370,7 +370,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
           <section id="settings-add-channel">
             <details
               id="settings-add-channel-disclosure"
-              class="border-base-300 group/add-channel border-b"
+              class="border-rule group/add-channel border-b"
             >
               <summary class="hover:text-ink pb-block text-base-content flex cursor-pointer list-none items-center gap-3">
                 <div class="space-y-related min-w-0 flex-1">
@@ -389,7 +389,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                 />
               </summary>
 
-              <div class="border-base-300 divide-base-300 divide-y border-t">
+              <div class="border-rule divide-rule divide-y border-t">
                 <details
                   id="settings-add-gmail-disclosure"
                   name="settings-add-provider"
@@ -406,7 +406,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                       class="text-ink-faint size-4 shrink-0 transition-transform group-open:rotate-180"
                     />
                   </summary>
-                  <div class="border-base-300 pb-block pt-block border-t">
+                  <div class="border-rule pb-block pt-block border-t">
                     <.form
                       for={@gmail_form}
                       id="settings-add-gmail-form"
@@ -445,7 +445,7 @@ defmodule NilaWeb.Settings.ConnectorsLive do
                       class="text-ink-faint size-4 shrink-0 transition-transform group-open:rotate-180"
                     />
                   </summary>
-                  <div class="border-base-300 pb-block pt-block space-y-block border-t">
+                  <div class="border-rule pb-block pt-block space-y-block border-t">
                     <p class="text-ink-muted text-ui max-w-2xl">
                       Nila sends from a shared mailbox once the firm's Microsoft admin approves.
                       Restrict the app to this mailbox in Exchange, or it can send as any mailbox

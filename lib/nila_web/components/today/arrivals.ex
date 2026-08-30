@@ -10,14 +10,14 @@ defmodule NilaWeb.Components.Today.Arrivals do
     ~H"""
     <section :if={@groups != []} id="pending-arrivals" class="space-y-related">
       <h2 class="text-base-content text-ui font-semibold">New arrivals</h2>
-      <.card padding="none" class="divide-base-300 divide-y">
+      <.card padding="none" class="divide-rule divide-y">
         <button
           :for={group <- @groups}
           type="button"
           id={"arrival-group-#{group.id}"}
           phx-click="open-arrivals"
           phx-value-arrival-id={group.id}
-          class="hover:bg-base-200/50 flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition"
+          class="hover:bg-interactive flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition"
         >
           <.icon name="hero-inbox-arrow-down" class="text-moon size-5 shrink-0" />
           <span class="text-base-content text-ui min-w-0 flex-1 font-medium wrap-break-word">
@@ -55,7 +55,7 @@ defmodule NilaWeb.Components.Today.Arrivals do
         phx-submit="route-arrivals"
       >
         <div class="space-y-block">
-          <div class="bg-base-200/40 rounded-box px-3 py-2">
+          <div class="bg-quiet rounded-box px-3 py-2">
             <.context_text tag="p">
               From {display_sender(@group)} over {source_label(@group.source)}
             </.context_text>

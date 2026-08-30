@@ -626,7 +626,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
 
     assert has_element?(
              view,
-             "#banking-suggested-group-rows > tr[id$='-detail'] .nila-table-shell[data-surface='evidence']"
+             "#banking-suggested-group-rows > tr[id$='-detail'] .nila-table-shell[data-surface='ghost']"
            )
 
     assert has_element?(

@@ -37,13 +37,13 @@ defmodule NilaWeb.PageHTML do
     <header class={@class}>
       <div class="mx-auto flex h-20 max-w-5xl items-center justify-between px-6">
         <.link navigate={~p"/"} class="inline-flex items-center">
-          <.logo class={["h-6 w-auto", @inverted && "text-base-100/90", !@inverted && "text-ink"]} />
+          <.logo class={["h-6 w-auto", @inverted && "text-inverse/90", !@inverted && "text-ink"]} />
         </.link>
         <.link
           navigate={~p"/users/log_in"}
           class={[
             "text-ui font-medium transition",
-            @inverted && "hover:text-base-100 text-base-100/60",
+            @inverted && "hover:text-inverse text-inverse/60",
             !@inverted && "hover:text-ink text-ink-subtle"
           ]}
         >
@@ -79,7 +79,7 @@ defmodule NilaWeb.PageHTML do
   def page_footer(assigns) do
     ~H"""
     <footer class="mx-auto max-w-5xl px-6 pb-10">
-      <div class="border-base-300/60 flex flex-col items-center gap-4 border-t pt-8 sm:flex-row sm:justify-between">
+      <div class="border-rule/60 flex flex-col items-center gap-4 border-t pt-8 sm:flex-row sm:justify-between">
         <.link navigate={~p"/"} class="inline-flex items-center">
           <.logo class="text-ink-subtle h-5 w-auto" />
         </.link>

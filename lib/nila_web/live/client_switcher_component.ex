@@ -91,21 +91,21 @@ defmodule NilaWeb.ClientSwitcherComponent do
         id="shell-client-switcher-trigger"
         phx-click="open"
         phx-target={@myself}
-        class="focus-visible:outline-base-100/40 hover:bg-base-100/10 rounded-field text-base-100/80 text-ui flex h-10 w-full items-center gap-3 px-2 text-left transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0 focus-visible:outline-2 focus-visible:outline-offset-2"
+        class="focus-visible:outline-inverse/40 hover:bg-inverse/10 rounded-field text-inverse/80 text-ui flex h-10 w-full items-center gap-3 px-2 text-left transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0 focus-visible:outline-2 focus-visible:outline-offset-2"
         aria-haspopup="dialog"
         aria-controls="shell-client-switcher-sheet"
         aria-expanded={to_string(@open?)}
         title={@active_client.name}
       >
-        <span class="bg-base-100/10 text-base-100/70 grid size-8 shrink-0 place-items-center rounded-full">
+        <span class="bg-inverse/10 text-inverse/70 grid size-8 shrink-0 place-items-center rounded-full">
           <.icon name="hero-building-office-2" class="size-4" />
         </span>
-        <span class="text-base-100 min-w-0 flex-1 truncate font-semibold group-data-[rail-collapsed=true]/app:hidden">
+        <span class="text-inverse min-w-0 flex-1 truncate font-semibold group-data-[rail-collapsed=true]/app:hidden">
           {@active_client.name}
         </span>
         <.icon
           name="hero-chevron-up-down"
-          class="text-base-100/45 size-4 shrink-0 group-data-[rail-collapsed=true]/app:hidden"
+          class="text-inverse/45 size-4 shrink-0 group-data-[rail-collapsed=true]/app:hidden"
         />
       </button>
 

@@ -105,7 +105,7 @@ defmodule NilaWeb.Settings.ProfileLive do
             </div>
           </div>
 
-          <dl class="border-base-300 pt-block grid gap-4 border-t sm:grid-cols-2">
+          <dl class="border-rule pt-block grid gap-4 border-t sm:grid-cols-2">
             <div class="space-y-related">
               <dt class="text-ink-subtle text-label font-medium uppercase">
                 Firm

@@ -15,7 +15,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
 
   def source_record(assigns) do
     ~H"""
-    <div :if={@dumps != []} id={@id} class="border-base-300 divide-base-300 divide-y border-y">
+    <div :if={@dumps != []} id={@id} class="border-rule divide-rule divide-y border-y">
       <article
         :for={dump <- @dumps}
         id={"month-arrived-#{dump.id}"}

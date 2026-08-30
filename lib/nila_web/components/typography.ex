@@ -28,7 +28,7 @@ defmodule NilaWeb.Components.Typography do
   defp tone_class("muted"), do: "text-ink-muted"
   defp tone_class("subtle"), do: "text-ink-subtle"
   defp tone_class("moon"), do: "text-moon"
-  defp tone_class("inverse"), do: "text-base-100/55"
+  defp tone_class("inverse"), do: "text-inverse/55"
 
   defp weight_class("normal"), do: nil
   defp weight_class("medium"), do: "font-medium"

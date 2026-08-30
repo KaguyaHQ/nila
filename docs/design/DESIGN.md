@@ -14,10 +14,11 @@ whether an element should exist. The documents below govern only what survives t
 | Public or marketing page | [`MARKETING.md`](./MARKETING.md) and [`TASTE.md`](./TASTE.md) |
 | Aesthetic judgment | [`TASTE.md`](./TASTE.md) |
 
-`assets/css/app.css` is authoritative for token values. Shared component APIs live
-under `lib/nila_web/components/`. Radix Themes 3.3 is the authority for generic
-component physics; Nila ports those relationships into HEEx with moonlight colors and
-its own typography. This document explains intent; it does not mirror executable values.
+`assets/css/app.css` is authoritative for pinned token values. Shared component APIs live
+under `lib/nila_web/components/`. Radix Themes 3.3 is the authority for generic color and
+component physics; Nila ports those relationships into HEEx and owns product composition,
+typography, one validated blue family, and the small brand-exception registry in
+`FRONTEND.md`. This document explains intent; it does not mirror executable values.
 
 ## Brand
 
@@ -78,7 +79,8 @@ These are not taste preferences. Violating one is almost certainly a product err
 - A number states its basis. Derived identity is not independent corroboration.
 - Source evidence and attributed human actions remain connected to the result they support.
 - Operational words and values use readable ink; faint ink never carries required meaning.
-- Product UI is light-only moonlight: no purple, achromatic black, or invented dark theme.
+- Product UI is light-only: generic surfaces and states come from pinned Radix semantics;
+  brand-dark chrome is an explicitly scoped exception, not a second product theme.
 - Markup uses semantic tokens and shared components; no raw colors or arbitrary type sizes.
 - Generic controls follow the pinned Radix family; product code never invents or overrides
   their geometry.
@@ -101,8 +103,8 @@ under a title. A timestamp remains context even when it is numeric.
 
 ## Visual character
 
-The room is cool near-white moonlight with deep midnight-sea ink and one restrained
-warm note. Low chroma, low glare, delicate type, and quiet ruling create calm. Newsreader
+The room is Radix's quiet light surface system with deep Slate ink and one restrained Nila
+blue. Low chroma, low glare, delicate type, and quiet ruling create calm. Newsreader
 is the display voice for earned human moments and figures; Switzer carries the work.
 Persistent chrome may hold one quiet brand ground. Visual authorship styles necessary
 work; it never earns an additional element.

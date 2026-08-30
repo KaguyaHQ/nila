@@ -64,13 +64,13 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           <article
             :for={invoice <- @members}
             id={"gstr1-duplicate-source-#{invoice["id"]}"}
-            class="border-base-300 rounded-box space-y-block border p-4"
+            class="border-rule rounded-box space-y-block border p-4"
           >
             <img
               :if={List.first(invoice["image_urls"])}
               src={List.first(invoice["image_urls"])}
               alt={"Source document for invoice #{invoice["invoice_number"]}"}
-              class="border-base-300 rounded-box max-h-80 w-full border object-contain"
+              class="border-rule rounded-box max-h-80 w-full border object-contain"
             />
             <dl class="text-ui grid gap-3 sm:grid-cols-2">
               <div>
@@ -273,7 +273,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           />
           <div
             :if={@selected_invoice["image_urls"] == []}
-            class="border-base-300 rounded-box text-body text-ink-muted flex h-40 items-center justify-center border border-dashed"
+            class="border-rule rounded-box text-body text-ink-muted flex h-40 items-center justify-center border border-dashed"
           >
             No page image for this invoice.
           </div>
@@ -385,7 +385,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           <div
             :if={@failed_checks != [] or @other_issues != []}
             id="gstr1-decisions"
-            class="bg-base-100 space-y-related pb-3"
+            class="bg-panel-surface space-y-related pb-3"
           >
             <div :if={@failed_checks != []} id="gstr1-checks" class="space-y-related">
               <div class="text-ink-subtle text-label font-semibold uppercase">
@@ -442,7 +442,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               row_id={& &1.dom_id}
               row_class={
                 fn row ->
-                  ["scroll-mt-4", row.kind == :total && "bg-base-200/40 font-medium"]
+                  ["scroll-mt-4", row.kind == :total && "bg-quiet font-medium"]
                 end
               }
               mode="review"
@@ -652,7 +652,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
     ~H"""
     <div
       id={@id}
-      class="bg-base-200/40 border-base-300 rounded-box scroll-mt-4 border p-3 transition-colors"
+      class="bg-quiet border-rule rounded-box scroll-mt-4 border p-3 transition-colors"
     >
       <.badge variant={
         if @issue["status"] == "resolved",
@@ -667,7 +667,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
       <%!-- The difference is the entire reason this card is open, so it is a
             term of the reading rather than subtraction left to the reader. --%>
-      <dl :if={@mismatch} class="border-base-300 mt-block grid gap-2 border-y py-3 sm:grid-cols-3">
+      <dl :if={@mismatch} class="border-rule mt-block grid gap-2 border-y py-3 sm:grid-cols-3">
         <div>
           <dt class="text-ink-subtle text-label">{@mismatch.printed_label}</dt>
           <dd class="font-display text-base-content text-body mt-1 leading-none tabular-nums">
@@ -695,7 +695,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       <div
         :if={@proposal && @issue["status"] == "open"}
         id={"#{@id}-proposal"}
-        class="border-base-300 mt-block rounded-box border p-3"
+        class="border-rule mt-block rounded-box border p-3"
       >
         <div class="text-ink-subtle text-label font-semibold uppercase">Nila's read</div>
         <%!-- The action line used to sit here in prose, above buttons of equal

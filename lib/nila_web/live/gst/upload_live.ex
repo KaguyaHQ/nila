@@ -918,7 +918,7 @@ defmodule NilaWeb.Gst.UploadLive do
           <div
             :if={@pending}
             id="gst-upload-progress-header"
-            class="border-base-300 pb-block flex items-baseline justify-between gap-4 border-b"
+            class="border-rule pb-block flex items-baseline justify-between gap-4 border-b"
           >
             <p class="text-base-content text-h4 truncate font-semibold">
               {client_name(@clients, @pending.client_id) || "This client"}

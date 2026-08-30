@@ -90,7 +90,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     <div id="gstr1-handoff" class="py-section space-y-related">
       <section
         id="month-exit-gstr1"
-        class="border-base-300 pt-block scroll-mt-28 border-t"
+        class="border-rule pt-block scroll-mt-28 border-t"
       >
         <div
           :if={@readiness.state == :provisional}
@@ -319,7 +319,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <div
             :for={handoff <- @tally_handoffs}
             id={"gstr1-tally-status-#{handoff.company_id}"}
-            class="border-base-300 rounded-box border p-4"
+            class="border-rule rounded-box border p-4"
           >
             <p class="text-base-content text-ui font-semibold">{handoff.company_name}</p>
             <p class="text-ink-subtle text-ui">
@@ -498,7 +498,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
       <ul
         id="month-exit-gstr3b-blocked"
-        class="bg-base-100 border-base-300 divide-base-300 rounded-box divide-y border"
+        class="bg-panel-surface border-rule divide-rule rounded-box divide-y border"
       >
         <li
           :for={{key, message, exit} <- @blockers}
@@ -562,7 +562,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         <p class="text-ink-muted text-ui">The sources and arithmetic that assemble this GSTR-3B.</p>
       </div>
 
-      <div class="bg-base-100 border-base-300 divide-base-300 rounded-box divide-y border">
+      <div class="bg-panel-surface border-rule divide-rule rounded-box divide-y border">
         <.fold
           id="gstr3b-control-outward"
           open={MapSet.member?(@open_folds, "gstr3b-control-outward")}
@@ -747,7 +747,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
       <section
         id="gstr3b-source-references"
-        class="border-base-300 rounded-box space-y-related border p-4"
+        class="border-rule rounded-box space-y-related border p-4"
       >
         <h4 class="text-base-content text-ui font-semibold">Source snapshots</h4>
 
@@ -799,7 +799,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     <section
       :if={not is_nil(@gstr3b_signoff) or @blockers == []}
       id="month-exit-gstr3b"
-      class="bg-base-100 border-base-300 rounded-box scroll-mt-28 border p-6"
+      class="bg-panel-surface border-rule rounded-box scroll-mt-28 border p-6"
     >
       <div :if={is_nil(@gstr3b_signoff)} class="space-y-block">
         <div class="gap-block flex flex-wrap items-start justify-between">
@@ -912,7 +912,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     <section
       :if={show_gstr3b_evidence?(@gstr3b, @stats, @signed)}
       id="month-3b"
-      class="border-base-300 moonlight-soft rounded-box space-y-block border p-6"
+      class="bg-quiet border-rule rounded-box space-y-block border p-6"
     >
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div class="space-y-related">
@@ -932,7 +932,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       <div class="space-y-related">
         <dl
           id="gst-3b-position"
-          class="border-base-300 gap-block py-block grid border-y sm:grid-cols-3"
+          class="border-rule gap-block py-block grid border-y sm:grid-cols-3"
         >
           <div class="space-y-1">
             <dt class="text-ink-subtle text-label font-semibold uppercase">

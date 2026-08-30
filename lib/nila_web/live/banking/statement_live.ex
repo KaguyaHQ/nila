@@ -1351,7 +1351,7 @@ defmodule NilaWeb.Banking.StatementLive do
                 for={@tally_setup_form}
                 id="banking-tally-setup-form"
                 phx-submit="configure-tally"
-                class="bg-base-100 border-base-300 rounded-box grid gap-3 border p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)_auto] lg:items-end"
+                class="bg-panel-surface border-rule rounded-box grid gap-3 border p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)_auto] lg:items-end"
               >
                 <div class="pb-1 lg:pr-3">
                   <p class="text-base-content text-ui font-semibold">Tally destination</p>
@@ -1381,7 +1381,7 @@ defmodule NilaWeb.Banking.StatementLive do
               <div
                 :if={not is_nil(@tally_company) and @tally_destination_locked}
                 id="banking-tally-setup-locked"
-                class="bg-base-100 border-base-300 rounded-box grid gap-3 border p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)_auto] lg:items-center"
+                class="bg-panel-surface border-rule rounded-box grid gap-3 border p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)_auto] lg:items-center"
               >
                 <div class="lg:pr-3">
                   <p class="text-base-content text-ui font-semibold">Tally destination</p>
@@ -1489,7 +1489,7 @@ defmodule NilaWeb.Banking.StatementLive do
                 empty?={@transaction_group_count == 0}
                 mode="review"
                 min_width="min-w-[920px]"
-                surface="workbench"
+                surface="surface"
                 detail_for={
                   fn row ->
                     MapSet.member?(@expanded_transaction_groups, row.group.key)
@@ -1565,7 +1565,7 @@ defmodule NilaWeb.Banking.StatementLive do
                 </:col>
 
                 <:detail :let={row}>
-                  <div class="bg-base-200/50 p-3">
+                  <div class="p-3">
                     <.data_table
                       id={"banking-transaction-group-detail-#{row.group.key}"}
                       rows={
@@ -1576,7 +1576,7 @@ defmodule NilaWeb.Banking.StatementLive do
                       }
                       row_id={&transaction_row_dom_id/1}
                       mode="review"
-                      surface="evidence"
+                      surface="ghost"
                       min_width="min-w-[760px]"
                     >
                       <:col :let={member} key="include" label="Include">
@@ -1681,7 +1681,7 @@ defmodule NilaWeb.Banking.StatementLive do
                   end
                 }
                 mode="review"
-                surface="workbench"
+                surface="surface"
                 min_width={
                   if @transaction_filters["status"] == "unassigned" and
                        @transaction_filters["review"] == "groups",

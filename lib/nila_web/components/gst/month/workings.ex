@@ -191,7 +191,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
 
       <div
         id="gstr1-workings-schedules"
-        class="bg-base-100 border-base-300 divide-base-300 rounded-box divide-y border"
+        class="bg-panel-surface border-rule divide-rule rounded-box divide-y border"
       >
         <.fold
           :if={@b2b != []}
@@ -752,7 +752,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
 
   defp row_class(row, _rippled, _seq, expanded) do
     [
-      "bg-base-200/30 contrib-of-#{row.parent}",
+      "bg-quiet contrib-of-#{row.parent}",
       if(MapSet.member?(expanded, row.parent), do: "", else: "hidden")
     ]
   end

@@ -1569,7 +1569,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp batch_row_class(packet, invoice) do
-    if excluded_invoice?(packet, invoice), do: "bg-base-200/40 text-ink-muted"
+    if excluded_invoice?(packet, invoice), do: "bg-quiet text-ink-muted"
   end
 
   defp ready_totals(packet, required_mapping_invoices) do
@@ -2614,7 +2614,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         >
           <h2 class="text-base-content text-h4 font-semibold">Couldn't read</h2>
 
-          <ul class="border-base-300 divide-base-300 divide-y border-y">
+          <ul class="border-rule divide-rule divide-y border-y">
             <li
               :for={dump <- @packet.failed_files}
               id={"sales-bills-failed-file-#{dump.id}"}
@@ -2645,7 +2645,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             {remainder_title(@packet, @tally_jobs, @send_holds)}
           </h2>
 
-          <ul class="border-base-300 divide-base-300 divide-y border-y">
+          <ul class="border-rule divide-rule divide-y border-y">
             <li
               :for={item <- remainder(@packet, @tally_jobs)}
               class="text-base-content text-ui py-3 font-medium"
@@ -2774,7 +2774,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         on_close="cancel-send-to-tally"
         return_focus="#sales-bills-send-to-tally, #sales-bills-retry-tally"
       >
-        <ul class="border-base-300 divide-base-300 divide-y border-y">
+        <ul class="border-rule divide-rule divide-y border-y">
           <li :for={warning <- @packet.warnings} class="space-y-related py-3">
             <p class="text-base-content text-ui font-mono font-medium">
               {warning.invoice["invoice_number"] || "Unnumbered invoice"}
@@ -2829,7 +2829,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 <.icon name="hero-arrow-left" class="size-4" /> Back to batch
               </.button>
             </div>
-            <div class="border-base-300 gap-related flex items-center border-r pr-4">
+            <div class="border-rule gap-related flex items-center border-r pr-4">
               <.button
                 id="sales-bill-posting-previous"
                 type="button"
@@ -2890,7 +2890,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             <div
               :if={@selected_invoice["image_urls"] == []}
               id="sales-bill-evidence-unavailable"
-              class="border-base-300 rounded-box text-body text-ink-muted flex h-full min-h-48 items-center justify-center border border-dashed"
+              class="border-rule rounded-box text-body text-ink-muted flex h-full min-h-48 items-center justify-center border border-dashed"
             >
               No rendered invoice page is available.
             </div>
@@ -3202,7 +3202,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                               @selected_invoice,
                               @packet.all_invoices
                             ) &&
-                              "hover:bg-base-200 hover:text-ink cursor-pointer",
+                              "hover:bg-interactive hover:text-ink cursor-pointer",
                             invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices) &&
                               "cursor-not-allowed opacity-50"
                           ]}
@@ -3376,7 +3376,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 </p>
               </div>
 
-              <div class="bg-base-100 border-base-300 sticky bottom-0 border-t py-4">
+              <div class="bg-panel-surface border-rule sticky bottom-0 border-t py-4">
                 <div
                   :if={@selected_review}
                   id="sales-bill-next-review-issue"
@@ -3625,7 +3625,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
                 <section
                   :if={@line_edit_row.tax_rows != []}
-                  class="border-base-300 space-y-related border-t pt-4"
+                  class="border-rule space-y-related border-t pt-4"
                 >
                   <h4 class="text-base-content text-ui font-semibold">GST</h4>
                   <div

@@ -810,7 +810,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(
              view,
-             "#sales-bill-INV-001[class~='bg-base-200/40'][class~='text-ink-muted']"
+             "#sales-bill-INV-001[class~='bg-quiet'][class~='text-ink-muted']"
            )
 
     refute has_element?(view, "#sales-bill-INV-001 a")

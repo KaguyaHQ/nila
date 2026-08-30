@@ -20,7 +20,7 @@ defmodule NilaWeb.Components.ChaseHistory do
       <div
         :for={ask <- @asks}
         id={"chase-ask-#{ask.id}"}
-        class="border-base-300 rounded-box border px-4 py-3"
+        class="border-rule rounded-box border px-4 py-3"
       >
         <div class="flex flex-wrap items-center gap-2">
           <.badge variant={channel_variant(ask.channel)}>{channel_label(ask.channel)}</.badge>
@@ -29,7 +29,7 @@ defmodule NilaWeb.Components.ChaseHistory do
             {format_display_datetime_with_time(ask.inserted_at)} · sent by {sender_name(ask)}
           </.context_text>
         </div>
-        <pre class="bg-base-200/40 border-base-300 mt-related rounded-box text-base-content text-body overflow-x-auto border p-4 font-sans whitespace-pre-wrap">{ask.body}</pre>
+        <pre class="bg-quiet border-rule mt-related rounded-box text-base-content text-body overflow-x-auto border p-4 font-sans whitespace-pre-wrap">{ask.body}</pre>
       </div>
     </div>
     """

@@ -7,7 +7,7 @@ defmodule NilaWeb.UserLoginLive do
     ~H"""
     <Layouts.flash_group flash={@flash} />
 
-    <main class="bg-base-200 text-base-content min-h-screen">
+    <main class="bg-canvas text-base-content min-h-screen">
       <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
         <div class="mb-section">
           <.link navigate={~p"/"} class="inline-flex items-center">
@@ -63,7 +63,7 @@ defmodule NilaWeb.UserLoginLive do
 
         <section
           :if={@users != []}
-          class="border-base-300 mt-section pt-block space-y-related border-t"
+          class="border-rule mt-section pt-block space-y-related border-t"
         >
           <p class="text-ink-subtle text-label font-semibold uppercase">
             Quick login

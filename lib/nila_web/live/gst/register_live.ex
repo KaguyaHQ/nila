@@ -98,24 +98,24 @@ defmodule NilaWeb.Gst.RegisterLive do
         <div
           :if={@grid.rows != []}
           id="register-table-wrap"
-          class="bg-base-100 border-base-300 rounded-box overflow-x-auto border"
+          class="bg-panel-surface border-rule rounded-box overflow-x-auto border"
         >
           <table id="register-table" class="text-ui min-w-full border-separate border-spacing-0">
             <thead>
-              <tr class="bg-base-200/80 text-ink-subtle text-label uppercase">
-                <th class="bg-base-200 border-base-300 sticky left-0 z-20 min-w-52 border-b px-4 py-3 text-left font-semibold">
+              <tr class="bg-quiet text-ink-subtle text-label uppercase">
+                <th class="bg-quiet border-rule sticky left-0 z-20 min-w-52 border-b px-4 py-3 text-left font-semibold">
                   Client
                 </th>
                 <th
                   :if={@grid.periods == []}
-                  class="border-base-300 min-w-36 border-b px-4 py-3 text-center font-semibold"
+                  class="border-rule min-w-36 border-b px-4 py-3 text-center font-semibold"
                 >
                   Period
                 </th>
                 <th
                   :for={period <- @grid.periods}
                   id={"register-period-#{period}"}
-                  class="border-base-300 min-w-36 border-b px-4 py-3 text-center font-semibold"
+                  class="border-rule min-w-36 border-b px-4 py-3 text-center font-semibold"
                 >
                   {period_label(period)}
                 </th>
@@ -127,27 +127,27 @@ defmodule NilaWeb.Gst.RegisterLive do
                 id={"register-row-#{row.client_id}"}
                 class="group/register-row last:[&>td]:border-b-0 last:[&>th]:border-b-0"
               >
-                <th class="bg-base-100 border-base-300 group-hover/register-row:bg-base-200/50 sticky left-0 z-10 border-b px-4 py-3 text-left font-medium wrap-break-word transition">
+                <th class="bg-panel-surface border-rule group-hover/register-row:bg-interactive sticky left-0 z-10 border-b px-4 py-3 text-left font-medium wrap-break-word transition">
                   {row.client_name}
                 </th>
                 <td
                   :if={@grid.periods == []}
                   id={"register-cell-#{row.client_id}-none"}
-                  class="border-base-300 group-hover/register-row:bg-base-200/50 text-ink-faint border-b px-4 py-3 text-center transition"
+                  class="border-rule group-hover/register-row:bg-interactive text-ink-faint border-b px-4 py-3 text-center transition"
                 >
                   —
                 </td>
                 <td
                   :for={period <- @grid.periods}
                   id={"register-cell-#{row.client_id}-#{period}"}
-                  class="border-base-300 group-hover/register-row:bg-base-200/50 border-b p-0 text-center transition"
+                  class="border-rule group-hover/register-row:bg-interactive border-b p-0 text-center transition"
                 >
                   <%= if cell = row.cells[period] do %>
                     <.link
                       navigate={~p"/gst/#{row.client_id}/#{period}"}
                       id={"register-link-#{row.client_id}-#{period}"}
                       title={cell_title(cell)}
-                      class="hover:bg-base-200/70 text-ui flex min-h-14 flex-col justify-center px-4 py-3 transition"
+                      class="hover:bg-interactive text-ui flex min-h-14 flex-col justify-center px-4 py-3 transition"
                     >
                       <.filing_line
                         id={"register-r1-#{row.client_id}-#{period}"}

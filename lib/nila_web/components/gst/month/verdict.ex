@@ -645,7 +645,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   def verdict(assigns) do
     ~H"""
-    <section id="month-verdict" class="border-base-300 pb-section border-b">
+    <section id="month-verdict" class="border-rule pb-section border-b">
       <div class="gap-block flex flex-col lg:flex-row lg:items-start lg:justify-between">
         <div class="space-y-related min-w-0">
           <h1 class="font-display text-base-content text-h4 font-normal">

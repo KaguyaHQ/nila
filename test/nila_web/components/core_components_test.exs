@@ -420,12 +420,12 @@ defmodule NilaWeb.CoreComponentsTest do
     assert LazyHTML.query(fragment, ".nila-table-shell > .nila-table-scroll table")
   end
 
-  test "table supports a ruled workbench surface without changing its schema" do
+  test "table supports a ruled Radix surface without changing its schema" do
     assigns = %{rows: [%{invoice: "INV-1"}]}
 
     html =
       rendered_to_string(~H"""
-      <.data_table id="workbench-table" rows={@rows} mode="review" surface="workbench">
+      <.data_table id="surface-table" rows={@rows} mode="review" surface="surface">
         <:col :let={row} label="Invoice" row_header>{row.invoice}</:col>
       </.data_table>
       """)
@@ -433,7 +433,7 @@ defmodule NilaWeb.CoreComponentsTest do
     fragment = LazyHTML.from_fragment(html)
 
     assert LazyHTML.attribute(LazyHTML.query(fragment, ".nila-table-shell"), "data-surface") == [
-             "workbench"
+             "surface"
            ]
   end
 
@@ -484,7 +484,7 @@ defmodule NilaWeb.CoreComponentsTest do
     fragment = LazyHTML.from_fragment(html)
     detail = LazyHTML.query(fragment, "#master-one-detail")
 
-    assert LazyHTML.attribute(detail, "class") == ["bg-base-100"]
+    assert LazyHTML.attribute(detail, "class") == []
     assert LazyHTML.attribute(LazyHTML.query(detail, "td"), "colspan") == ["2"]
     assert LazyHTML.query(detail, "#detail-content-one")
     assert fragment |> LazyHTML.query("#master-two-detail") |> LazyHTML.to_html() == ""

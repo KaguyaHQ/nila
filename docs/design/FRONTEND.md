@@ -28,8 +28,8 @@ obtaining or understanding the result.
 ## Stack and shell
 
 Nila uses Phoenix LiveView, Tailwind v4, daisyUI v5 token plumbing, and one light-only
-`moonlight` theme. **Radix Themes 3.3 is the mechanical authority for generic UI.** It is
-not a runtime dependency: its coordinated geometry and states are ported into Nila's HEEx
+theme. **Pinned Radix Themes 3.3 is the color and mechanical authority for generic UI.**
+It is not a runtime dependency: its coordinated semantic colors, geometry, and states are ported into Nila's HEEx
 components. DaisyUI component classes are not product APIs. Keep the Tailwind v4
 import/source syntax in `app.css`; there is no `tailwind.config.js`. Only `app.js` and
 `app.css` are supported bundles.
@@ -37,8 +37,9 @@ import/source syntax in `app.css`; there is no `tailwind.config.js`. Only `app.j
 When Radix does not define a higher-level generic pattern, use shadcn as the anatomy and
 interaction reference, then express it with Nila's existing components and Radix-calibrated
 tokens. Do not import shadcn's theme or styling wholesale. In shorthand: **shadcn anatomy,
-Radix/Nila physics.** Radix/Nila always wins for spacing, type, color, radius, borders, and
-elevation.
+Radix physics, Nila composition.** Radix wins for generic color relationships, radius,
+borders, elevation, control spacing, and control states. Nila owns product composition,
+typography, and the explicitly registered brand exceptions below.
 
 For dense professional application patterns, use Primer as the behavior and state-model
 reference when it is more specific than Radix. In particular, searchable single-select lists
@@ -55,26 +56,52 @@ Shared components own internal geometry. Callers own composition and gaps around
 A repeated domain relationship—coverage, reconciliation, sequence—is not a generic
 cockpit abstraction and belongs in `components/` when it recurs.
 
-## Color and ink
+## Color authority and ink
 
-Use semantic daisyUI/Tailwind tokens; never raw hex or palette utilities in markup.
-`app.css` defines the moonlight values.
+Use semantic Tailwind tokens; never raw hex, OKLCH, palette utilities, or arbitrary neutral
+mixtures in product markup. `app.css` pins the exact Radix Themes 3.3 light contract with
+Slate as `grayColor`. The isolated upstream reference lives at
+`tmp/design-references/radix-themes-reference`; it is evidence, not a production dependency.
+`mix nila.style_guard` pins the normalized Radix substrate/status blocks and every registered
+authored-pigment block by SHA-256. Updating one is a deliberate source migration: compare the
+upstream 3.3 source or owned artwork, update the rendered reference, then update the digest.
 
 | Role | Use |
 | --- | --- |
-| `base-100` | Bright content surface |
-| `base-200` | Cool canvas and quiet fills |
-| `base-300` | Ordinary borders and dividers |
-| `base-content` | Primary midnight ink |
-| `primary` | Primary action and interactive emphasis |
-| `accent` | Rare warm note, never decoration by default |
-| `info`, `success`, `warning`, `error` | Semantic state and feedback |
-| `scrim` | Full-screen document reader only |
+| `canvas` | Page/work-area background (`--color-background`) |
+| `panel-surface` | Solid card, table, dialog, and popover panel |
+| `panel-translucent-surface` | Deliberately translucent floating or sticky panel |
+| `control-surface` | Input and select surface |
+| `quiet` | Non-interactive quiet fill and table header |
+| `interactive` | Neutral hover/open fill |
+| `rule` | Ordinary border, row rule, and divider |
+| `inverse` | Text, icons, and translucent fills on brand-dark chrome |
+| `primary` | Primary action and interactive emphasis from Nila blue |
+| `info`, `success`, `warning`, `error` | Pinned Radix semantic feedback families |
+| `scrim` | Strong document-reader overlay only |
+
+The daisyUI `base-*` tokens are compatibility aliases required by the plumbing, not product
+composition APIs. New or migrated markup must use the roles above. Generic component recipes
+consume Radix variables directly (`--gray-*`, `--color-panel-solid`, `--color-surface`, and
+the pinned shadow scale).
+
+The only permitted authored pigments are registered here:
+
+| Exception | Owner | Scope and justification |
+| --- | --- | --- |
+| Validated Nila blue scale | Brand | `accent`, focus, primary actions, and restrained brand emphasis; generated as a coordinated scale and contrast-tested |
+| `.moonlight-night` | Brand chrome | Persistent navigation rail and deliberate marketing inverse composition; never a generic panel |
+| `.moonlight` | Brand atmosphere | Scoped pale brand ground for deliberate hero/error/reference compositions; never a reusable product surface or component state |
+| `.landing-*` artwork | Marketing | Scoped authored illustration/composition; never reusable product surfaces or component states |
+| Newsreader and Switzer | Typography | Brand typefaces; unrelated to generic color relationships |
+
+No other custom pigment is implicitly grandfathered. A new exception requires a named owner,
+a scope that cannot be satisfied by Radix, rendered evidence, contrast verification, and an
+update to this registry plus `mix nila.style_guard`.
 
 The ink scale is executable, not a naming convention. `--nila-ink-12` and the
-`--nila-ink-a*` steps are Nila's Radix-calibrated foreground scale; accent and feedback
-colors have corresponding coordinated steps. Utilities and closed component recipes
-consume those variables directly.
+`--nila-ink-a*` steps alias Radix `--gray-*`; accent and feedback colors have corresponding
+coordinated steps. Utilities and closed component recipes consume those variables directly.
 
 - `text-base-content` / ordinary inherited ink — required words and values;
 - `text-ink-muted` — supporting explanations, backed by `--nila-ink-a11`;
@@ -153,7 +180,7 @@ remain 14px working UI.
 
 ## Ruling, radius, and elevation
 
-Ordinary product borders and dividers use the `base-300` hairline. Card-like containers
+Ordinary product borders and dividers use the `rule` hairline. Card-like containers
 use `rounded-box`; interactive controls use `rounded-field`. Exact radius and border
 values live in `app.css`.
 
@@ -179,11 +206,10 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
 | Utility | Use |
 | --- | --- |
 | `.moonlight` | Hero ground: pale cool wash and soft light |
-| `.moonlight-soft` | Quieter section wash |
 | `.moonlight-night` | Persistent midnight-sea shell ground |
-| `.text-moon` | Low-chroma sea-blue accent text |
-| `.shadow-moon` | Floating dropdown, popover, or toast |
-| `.shadow-moon-lg` | Modal |
+| `.text-moon` | Validated Nila blue brand emphasis |
+| `.shadow-moon` | Compatibility alias to Radix floating elevation |
+| `.shadow-moon-lg` | Compatibility alias to Radix modal elevation |
 
 ## Shared component contracts
 
@@ -253,7 +279,8 @@ shared layout or shell changes plausibly risk catastrophic breakage.
 
 ## Mechanical prohibitions
 
-- No hard-coded colors, raw type sizes, arbitrary tracking/leading, or dark theme.
+- No hard-coded generic colors, raw type sizes, arbitrary tracking/leading, or invented dark theme.
+- No neutral `color-mix()` outside an exact pinned Radix recipe. Authored marketing artwork is scoped by the exception registry.
 - No `@apply`, `tailwind.config.js`, or external script/link tags in layouts.
 - No one-off gradients or shadows outside the named system.
 - No raw `text-context`; use `<.context_text>`.

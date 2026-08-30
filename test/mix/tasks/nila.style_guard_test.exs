@@ -156,7 +156,7 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     source =
       String.replace(
         valid_ink_css(),
-        "--color-base-content: var(--slate-12);",
+        "--color-base-content: var(--gray-12);",
         "--color-base-content: color-mix(in oklab, black 80%, transparent);"
       )
 
@@ -170,10 +170,77 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
     path =
       Path.join(System.tmp_dir!(), "nila-ink-scale-#{System.unique_integer([:positive])}.css")
 
-    File.write!(path, valid_ink_css() <> ".local { --nila-ink-a11: var(--slate-a11); }\n")
+    File.write!(path, valid_ink_css() <> ".local { --nila-ink-a11: var(--gray-a11); }\n")
     on_exit(fn -> File.rm(path) end)
 
     assert [{^path, _line, "--nila-ink-a11"}] = StyleGuard.ink_scale_violations(path)
+  end
+
+  test "accepts the pinned Radix semantic surface contract" do
+    assert StyleGuard.surface_scale_violations("assets/css/app.css") == []
+    assert StyleGuard.pinned_color_contract_violations("assets/css/app.css") == []
+  end
+
+  test "rejects drift in pinned Radix pigment and registered authored color" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-pinned-color-#{System.unique_integer([:positive])}.css")
+
+    source =
+      "assets/css/app.css"
+      |> File.read!()
+      |> String.replace("--slate-2: #f9f9fb;", "--slate-2: hotpink;", global: false)
+      |> String.replace("--amber-2: #fefbe9;", "--amber-2: hotpink;", global: false)
+      |> String.replace(
+        "background-color: oklch(98.5% 0.005 235);",
+        "background-color: oklch(50% 0.3 20);",
+        global: false
+      )
+
+    File.write!(path, source)
+    on_exit(fn -> File.rm(path) end)
+
+    violations = StyleGuard.pinned_color_contract_violations(path)
+    assert {path, 1, "radix-themes-3.3-substrate"} in violations
+    assert {path, 1, "radix-themes-3.3-status-scales"} in violations
+    assert {path, 1, "brand-atmosphere"} in violations
+  end
+
+  test "rejects a semantic surface that drifts from Radix" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-surface-scale-#{System.unique_integer([:positive])}.css")
+
+    source =
+      "assets/css/app.css"
+      |> File.read!()
+      |> String.replace("--color-background: white;", "--color-background: var(--gray-1);",
+        global: false
+      )
+
+    File.write!(path, source)
+    on_exit(fn -> File.rm(path) end)
+
+    assert Enum.any?(
+             StyleGuard.surface_scale_violations(path),
+             &match?({^path, _line, "--color-background"}, &1)
+           )
+  end
+
+  test "rejects unauthorized neutral mixtures and authored pigment" do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "nila-authored-color-#{System.unique_integer([:positive])}.css"
+      )
+
+    File.write!(
+      path,
+      ".local { background: color-mix(in oklab, white 80%, black); color: oklch(50% 0.1 240); }\n"
+    )
+
+    on_exit(fn -> File.rm(path) end)
+
+    assert [{^path, 1, "color-mix("}] = StyleGuard.neutral_mix_violations(path)
+    assert [{^path, 1, "oklch("}] = StyleGuard.authored_color_violations(path)
   end
 
   test "accepts Radix accent and focus aliases through the blue family" do
@@ -357,7 +424,7 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
       css_rule(css, ".nila-sales-review-item[data-selected=\"true\"]")
 
     assert persistent_card =~ "border-color: var(--accent-a8);"
-    assert persistent_card =~ "background: var(--color-base-100);"
+    assert persistent_card =~ "background: var(--color-panel-solid);"
     assert persistent_card =~ "box-shadow: inset 0 0 0 1px var(--accent-a8);"
     refute persistent_card =~ "background: var(--accent-a3);"
 
@@ -493,9 +560,9 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
   defp valid_ink_css do
     aliases =
       [
-        {"--color-base-content", "--slate-12"},
-        {"--nila-ink-12", "--slate-12"}
-      ] ++ Enum.map(1..12, &{"--nila-ink-a#{&1}", "--slate-a#{&1}"})
+        {"--color-base-content", "--gray-12"},
+        {"--nila-ink-12", "--gray-12"}
+      ] ++ Enum.map(1..12, &{"--nila-ink-a#{&1}", "--gray-a#{&1}"})
 
     ":root {\n" <>
       Enum.map_join(aliases, "", fn {name, target} -> "  #{name}: var(#{target});\n" end) <>

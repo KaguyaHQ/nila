@@ -17,7 +17,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
     <div
       :if={@queue == []}
       id="gst-exceptions-empty"
-      class="border-base-300 rounded-box border border-dashed px-4 py-12 text-center"
+      class="border-rule rounded-box border border-dashed px-4 py-12 text-center"
     >
       <.icon name="hero-check-circle" class="text-success mx-auto size-10" />
       <p class="mt-related text-base-content text-body font-medium">No exceptions</p>
@@ -34,9 +34,9 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         <div
           :for={group <- @groups}
           id={"gst-exception-group-#{group.key}"}
-          class="border-base-300 rounded-box border"
+          class="border-rule rounded-box border"
         >
-          <div class="border-base-300 space-y-1 border-b px-3 py-2">
+          <div class="border-rule space-y-1 border-b px-3 py-2">
             <div class="flex items-baseline justify-between gap-2">
               <span class="text-base-content text-ui font-semibold">{group.title}</span>
               <span class="text-ink-muted text-ui font-mono whitespace-nowrap tabular-nums">
@@ -51,7 +51,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
               {group.proposal.action}
             </p>
           </div>
-          <div class="divide-base-300 divide-y">
+          <div class="divide-rule divide-y">
             <button
               :for={item <- group.items}
               type="button"
@@ -61,8 +61,8 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
               phx-value-id={item.id}
               class={[
                 "flex w-full items-start gap-2 px-3 py-2 text-left transition",
-                item.id == @selected_id && "bg-base-200",
-                item.id != @selected_id && "hover:bg-base-200/50"
+                item.id == @selected_id && "bg-quiet",
+                item.id != @selected_id && "hover:bg-interactive"
               ]}
             >
               <.icon
@@ -110,7 +110,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
 
       <div
         id="gst-exception-detail"
-        class="border-base-300 rounded-box min-h-0 overflow-y-auto border p-6"
+        class="border-rule rounded-box min-h-0 overflow-y-auto border p-6"
       >
         <.detail
           selected={@selected}
@@ -152,7 +152,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         <p class="text-ink-muted text-ui mt-1">{@selected.reason}</p>
       </div>
 
-      <dl class="border-base-300 divide-base-300 rounded-box divide-y border">
+      <dl class="border-rule divide-rule rounded-box divide-y border">
         <div class="flex items-center justify-between gap-3 px-4 py-3">
           <dt class="text-ink-muted text-ui">Credit at stake</dt>
           <dd class="text-base-content text-ui font-mono whitespace-nowrap tabular-nums">
@@ -167,7 +167,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
 
       <div
         :if={not @selected.resolved and not @signed_off}
-        class="border-base-300 pt-block flex flex-wrap gap-2 border-t"
+        class="border-rule pt-block flex flex-wrap gap-2 border-t"
       >
         <.button
           id="gst-itc-block"
@@ -187,7 +187,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         >Keep credit</.button>
       </div>
 
-      <div :if={@selected.resolved} class="border-base-300 pt-block flex items-center gap-3 border-t">
+      <div :if={@selected.resolved} class="border-rule pt-block flex items-center gap-3 border-t">
         <span class="nila-exception-outcome text-ui font-medium">{@selected.outcome}</span>
         <.button
           :if={not @signed_off}
@@ -234,7 +234,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
         <div
           :if={length(@selected.books_members) > 1}
           id="gst-exception-books-members"
-          class="border-base-300 rounded-box mt-3 divide-y border"
+          class="border-rule rounded-box mt-3 divide-y border"
         >
           <div
             :for={books <- @selected.books_members}
@@ -310,7 +310,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       <div
         :if={@selected.resolved}
         id="gst-exception-outcome"
-        class="border-base-300 pt-block flex flex-wrap items-center gap-3 border-t"
+        class="border-rule pt-block flex flex-wrap items-center gap-3 border-t"
       >
         <span class="nila-exception-outcome text-ui flex items-center gap-1.5 font-medium">
           <.icon name="hero-check-circle-mini" class="size-4" /> {@selected.outcome}
@@ -340,7 +340,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
 
       <div
         :if={@selected.action == :ambiguous and not @selected.resolved and not @signed_off}
-        class="border-base-300 pt-block flex border-t"
+        class="border-rule pt-block flex border-t"
       >
         <.button
           id="gst-reject-all-candidates"
@@ -357,7 +357,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
           @selected.kind == :books and @selected.action in [:pair, :unmatched] and
             not @selected.resolved and not @signed_off
         }
-        class="border-base-300 pt-block flex flex-wrap gap-2 border-t"
+        class="border-rule pt-block flex flex-wrap gap-2 border-t"
       >
         <%= if @correcting && @correcting.id in @selected.member_ids do %>
           <.correction_form selected={@selected} target={@target} />
@@ -440,7 +440,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
 
       <div
         :if={@selected.action == :gstr2b and not @selected.resolved and not @signed_off}
-        class="border-base-300 pt-block flex flex-wrap gap-2 border-t"
+        class="border-rule pt-block flex flex-wrap gap-2 border-t"
       >
         <.button
           id="gst-ask-client"
@@ -505,7 +505,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
     ~H"""
     <div
       id={"gst-candidate-#{@index}"}
-      class="border-base-300 divide-base-300 rounded-box divide-y border"
+      class="border-rule divide-rule rounded-box divide-y border"
     >
       <div class="grid grid-cols-[6rem_1fr_1.5rem_1fr] items-center gap-2 px-3 py-2">
         <span class="text-ink-subtle text-label">Candidate {@index}</span>
@@ -561,7 +561,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Surface do
       ])
 
     ~H"""
-    <div id="gst-exception-gstr2b" class="border-base-300 divide-base-300 rounded-box divide-y border">
+    <div id="gst-exception-gstr2b" class="border-rule divide-rule rounded-box divide-y border">
       <div class="text-ink-subtle text-label px-3 py-2 font-medium uppercase">
         Reported in GSTR-2B
       </div>

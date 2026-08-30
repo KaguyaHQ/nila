@@ -462,7 +462,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
         </:header>
 
         <div class="gap-block grid h-full min-h-0 lg:grid-cols-[18rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
-          <aside id="sales-review-rail" class="border-base-300 min-h-0 overflow-y-auto border-r pr-4">
+          <aside id="sales-review-rail" class="border-rule min-h-0 overflow-y-auto border-r pr-4">
             <div class="space-y-related">
               <button
                 :for={item <- @queue}
@@ -471,7 +471,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
                 phx-click="select"
                 phx-value-id={item.source_id}
                 phx-target={@myself}
-                class="border-base-300 nila-sales-review-item rounded-box w-full border p-3 text-left transition"
+                class="border-rule nila-sales-review-item rounded-box w-full border p-3 text-left transition"
                 data-selected={to_string(@selected_id == item.source_id)}
                 aria-current={@selected_id == item.source_id && "true"}
               >
@@ -506,7 +506,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
               <div
                 :if={@selected_item.state == :unreviewed}
                 id="sales-review-clean-treatment"
-                class="border-base-300 mb-block rounded-box shrink-0 border p-3"
+                class="border-rule mb-block rounded-box shrink-0 border p-3"
               >
                 <p class="text-ink-muted text-ui">Nila found no invoice check requiring an answer.</p>
               </div>

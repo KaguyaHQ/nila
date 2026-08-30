@@ -26,8 +26,8 @@ defmodule Mix.Tasks.Nila.StyleGuard do
       numeric structural stacks. Components keep a small primitive scale for
       geometry; composition names `related`, `block`, `section`, or `region`.
 
-    * **Ruling** — ordinary product borders and dividers use the `base-300`
-      hairline instead of `base-200` or raw `base-content/NN` mixtures.
+    * **Ruling** — ordinary product borders and dividers use the semantic `rule`
+      hairline instead of compatibility tokens or raw mixtures.
 
     * **Motion** — product transitions use the named fast/calm durations and
       standard easing instead of numeric durations or raw easing utilities.
@@ -37,6 +37,14 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
     * **Foreground scale** — Nila's global semantic ink aliases the pinned Radix
       Slate scale exactly once, without formula-generated or component-local copies.
+
+    * **Surface authority** — Radix Slate aliases, light semantic surfaces, and
+      daisyUI compatibility names map exactly once to the pinned Radix contract.
+      The upstream substrate and registered authored-color recipes are pinned by
+      content digest so their pigments cannot drift behind valid aliases.
+
+    * **Authored pigment** — raw OKLCH and neutral `color-mix()` are confined to
+      exact Radix recipes or the documented brand-composition sections.
 
     * **Interactive color** — Radix `accent` and `focus` aliases map exactly once
       through the blue scale. Product markup selects component meaning instead of
@@ -56,6 +64,14 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "text-slate",
     "border-slate",
     "bg-white",
+    "bg-base-100",
+    "bg-base-200",
+    "bg-base-300",
+    "text-base-100",
+    "border-base-300",
+    "divide-base-300",
+    "ring-base-300",
+    "moonlight-soft",
     "rounded-md",
     "shadow-sm"
   ]
@@ -178,12 +194,12 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   @global_css_variable_pattern ~r/^--(?:color|font|text|spacing|radius|shadow|transition|ease|default|(?:accent|focus|info|success|warning|error)|nila-(?:ink|accent))-/
   @ink_semantic_targets Map.new(
                           [
-                            {"--color-base-content", "--slate-12"},
-                            {"--nila-ink-12", "--slate-12"}
+                            {"--color-base-content", "--gray-12"},
+                            {"--nila-ink-12", "--gray-12"}
                           ] ++
                             for(
                               step <- 1..12,
-                              do: {"--nila-ink-a#{step}", "--slate-a#{step}"}
+                              do: {"--nila-ink-a#{step}", "--gray-a#{step}"}
                             )
                         )
   @ink_semantic_declaration_pattern ~r/(--(?:color-base-content|nila-ink-(?:12|a(?:1[0-2]|[1-9]))))\s*:\s*([^;]+);/
@@ -215,6 +231,75 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "warning" => "amber",
     "error" => "red"
   }
+  @surface_semantic_targets Map.new(
+                              for(step <- 1..12, do: {"--gray-#{step}", "var(--slate-#{step})"}) ++
+                                for(
+                                  step <- 1..12,
+                                  do: {"--gray-a#{step}", "var(--slate-a#{step})"}
+                                ) ++
+                                [
+                                  {"--gray-contrast", "var(--slate-contrast)"},
+                                  {"--gray-surface", "var(--slate-surface)"},
+                                  {"--gray-indicator", "var(--slate-indicator)"},
+                                  {"--gray-track", "var(--slate-track)"},
+                                  {"--color-background", "white"},
+                                  {"--color-overlay", "var(--black-a6)"},
+                                  {"--color-panel-solid", "white"},
+                                  {"--color-panel-translucent", "rgba(255, 255, 255, 0.7)"},
+                                  {"--color-panel", "var(--color-panel-solid)"},
+                                  {"--color-surface", "rgba(255, 255, 255, 0.85)"},
+                                  {"--color-base-100", "var(--color-panel-solid)"},
+                                  {"--color-base-200", "var(--gray-2)"},
+                                  {"--color-base-300", "var(--gray-a5)"},
+                                  {"--color-secondary", "var(--gray-9)"},
+                                  {"--color-secondary-content", "var(--gray-contrast)"},
+                                  {"--color-accent", "var(--accent-9)"},
+                                  {"--color-accent-content", "var(--accent-contrast)"},
+                                  {"--color-neutral", "var(--gray-12)"},
+                                  {"--color-neutral-content", "var(--gray-contrast)"},
+                                  {"--color-canvas", "var(--color-background)"},
+                                  {"--color-panel-surface", "var(--color-panel-solid)"},
+                                  {"--color-panel-translucent-surface",
+                                   "var(--color-panel-translucent)"},
+                                  {"--color-control-surface", "var(--color-surface)"},
+                                  {"--color-quiet", "var(--gray-a2)"},
+                                  {"--color-interactive", "var(--gray-a3)"},
+                                  {"--color-rule", "var(--gray-a5)"},
+                                  {"--color-inverse", "var(--gray-contrast)"},
+                                  {"--color-scrim", "var(--black-a8)"},
+                                  {"--shadow-moon", "var(--shadow-5)"},
+                                  {"--shadow-moon-lg", "var(--shadow-6)"}
+                                ]
+                            )
+  @surface_semantic_declaration_pattern ~r/(--(?:gray-(?:a?(?:1[0-2]|[1-9])|contrast|surface|indicator|track)|color-(?:background|overlay|panel(?:-solid|-translucent|-surface|-translucent-surface)?|surface|base-(?:100|200|300)|secondary(?:-content)?|accent(?:-content)?|neutral(?:-content)?|canvas|control-surface|quiet|interactive|rule|inverse|scrim)|shadow-moon(?:-lg)?))\s*:\s*([^;]+);/
+  @allowed_color_mix_fragments [
+    "@supports (color: color-mix(in oklab, white, black))",
+    "@supports (box-shadow: 0 0 0 1px color-mix(in oklab, white, black))",
+    "color-mix(in oklab, var(--gray-a3), var(--gray-3) 25%)",
+    "color-mix(in oklab, var(--gray-a5), var(--gray-6))",
+    "color-mix(in oklab, var(--gray-12) 4.5%, transparent)"
+  ]
+  @authored_color_sections [
+    {"/* Nila sea-blue candidate", "/* Radix Themes semantic color aliases."},
+    {"/* Moonlight ground:", "/* Compatibility names for the pinned Radix elevation scale."},
+    {"/* ── Moonlight marketing homepage", "/* Correction ripple:"}
+  ]
+  @pinned_color_contracts [
+    {"radix-themes-3.3-substrate", "/* Radix Themes 3.3 Slate light scale",
+     "/* Radix Themes 3.3 semantic status",
+     "d33a0da7bd26d0a06a586c0ed1aa4987d604ec586118fceaf784c99fd80bed55"},
+    {"radix-themes-3.3-status-scales", "/* Radix Themes 3.3 semantic status",
+     "/* Nila sea-blue candidate",
+     "dcdb5dcb83dcf78a7cae1badd83bff67ff1b5cdf658839e6bb8db7b8688a9856"},
+    {"validated-nila-blue", "/* Nila sea-blue candidate",
+     "/* Radix Themes semantic color aliases.",
+     "65610732d7d0c75897575ca5d0d0ae06f4c83a9941410bf82c6f88e1af8e9be2"},
+    {"brand-atmosphere", "/* Moonlight ground:",
+     "/* Compatibility names for the pinned Radix elevation scale.",
+     "1c03c571e780beecf3edd9beb5a93c6c7b35edce5bf7c28dba015257aaa765e6"},
+    {"landing-artwork", "/* ── Moonlight marketing homepage", "/* Correction ripple:",
+     "ab9be7541db5813c7eb742a5f224da40d25e8df06c3f7cf3510399bd2c1ffe46"}
+  ]
   @status_semantic_targets Map.new(
                              Enum.flat_map(@status_families, fn {status, family} ->
                                for(
@@ -270,6 +355,10 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
     css_variables = css_variable_violations(@css_path)
     ink_scale = ink_scale_violations(@css_path)
+    surface_scale = surface_scale_violations(@css_path)
+    pinned_color_contract = pinned_color_contract_violations(@css_path)
+    neutral_mix = neutral_mix_violations(@css_path)
+    authored_color = authored_color_violations(@css_path)
     accent_scale = accent_scale_violations(@css_path)
     status_scale = status_scale_violations(@css_path)
 
@@ -288,7 +377,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     )
 
     report(spacing, "off-scale spacing — use the closed primitives and structural roles")
-    report(ruling, "off-system ruling — use the base-300 hairline")
+    report(ruling, "off-system ruling — use the semantic rule hairline")
     report(motion, "off-system motion — use the named fast/calm transition vocabulary")
 
     report(
@@ -304,6 +393,26 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     )
 
     report(
+      surface_scale,
+      "off-system surfaces — preserve the pinned Radix Slate and semantic surface contract"
+    )
+
+    report(
+      pinned_color_contract,
+      "pinned color contract drift — update from the named upstream/owned source deliberately"
+    )
+
+    report(
+      neutral_mix,
+      "unauthorized neutral color-mix — use an exact Radix recipe or semantic token"
+    )
+
+    report(
+      authored_color,
+      "unregistered authored pigment — scope it to a documented brand composition"
+    )
+
+    report(
       accent_scale,
       "off-system interactive scale — alias Radix accent and focus roles exactly once"
     )
@@ -316,7 +425,8 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     if legacy != [] or daisy_components != [] or type_scale != [] or context_type != [] or
          component_recipes != [] or spacing != [] or ruling != [] or motion != [] or
          interactive_color != [] or css_variables != [] or ink_scale != [] or accent_scale != [] or
-         status_scale != [] do
+         surface_scale != [] or pinned_color_contract != [] or neutral_mix != [] or
+         authored_color != [] or status_scale != [] do
       Mix.raise("Replace the flagged classes with Nila design-system tokens.")
     end
   end
@@ -548,6 +658,65 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   end
 
   @doc false
+  def surface_scale_violations(path) do
+    exact_semantic_violations(
+      path,
+      @surface_semantic_declaration_pattern,
+      @surface_semantic_targets
+    )
+  end
+
+  @doc false
+  def pinned_color_contract_violations(path) do
+    source = path |> File.read!() |> String.replace("\r\n", "\n")
+
+    Enum.flat_map(@pinned_color_contracts, fn {name, start_marker, end_marker, expected} ->
+      case marked_section(source, start_marker, end_marker) do
+        {:ok, section} ->
+          actual =
+            section
+            |> String.trim()
+            |> then(&:crypto.hash(:sha256, &1))
+            |> Base.encode16(case: :lower)
+
+          if actual == expected, do: [], else: [{path, 1, name}]
+
+        :error ->
+          [{path, 1, name}]
+      end
+    end)
+  end
+
+  @doc false
+  def neutral_mix_violations(path) do
+    scan(path, fn line ->
+      if String.contains?(line, "color-mix(") and
+           not Enum.any?(@allowed_color_mix_fragments, &String.contains?(line, &1)) do
+        ["color-mix("]
+      else
+        []
+      end
+    end)
+  end
+
+  @doc false
+  def authored_color_violations(path) do
+    source = File.read!(path)
+
+    stripped =
+      Enum.reduce(@authored_color_sections, source, fn {start_marker, end_marker}, acc ->
+        strip_marked_section(acc, start_marker, end_marker)
+      end)
+
+    stripped
+    |> String.split("\n")
+    |> Enum.with_index(1)
+    |> Enum.flat_map(fn {line, line_number} ->
+      if String.contains?(line, "oklch("), do: [{path, line_number, "oklch("}], else: []
+    end)
+  end
+
+  @doc false
   def accent_scale_violations(path) do
     source = path |> File.read!() |> strip_css_comments() |> strip_css_strings()
 
@@ -572,6 +741,39 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
     cardinality_violations =
       Enum.flat_map(@accent_semantic_targets, fn {name, _target} ->
+        case Map.get(declarations_by_name, name, []) do
+          [] -> [{path, 1, name}]
+          [_declaration] -> []
+          [_first | duplicates] -> Enum.map(duplicates, &{path, elem(&1, 2), name})
+        end
+      end)
+
+    Enum.uniq(invalid_mappings ++ cardinality_violations)
+  end
+
+  defp exact_semantic_violations(path, declaration_pattern, targets) do
+    source = path |> File.read!() |> strip_css_comments() |> strip_css_strings()
+
+    declarations =
+      source
+      |> String.split("\n")
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {line, line_number} ->
+        declaration_pattern
+        |> Regex.scan(line)
+        |> Enum.map(fn [_match, name, value] -> {name, String.trim(value), line_number} end)
+      end)
+
+    invalid_mappings =
+      Enum.flat_map(declarations, fn {name, value, line_number} ->
+        expected = Map.fetch!(targets, name)
+        if value == expected, do: [], else: [{path, line_number, name}]
+      end)
+
+    declarations_by_name = Enum.group_by(declarations, &elem(&1, 0))
+
+    cardinality_violations =
+      Enum.flat_map(targets, fn {name, _target} ->
         case Map.get(declarations_by_name, name, []) do
           [] -> [{path, 1, name}]
           [_declaration] -> []
@@ -660,6 +862,23 @@ defmodule Mix.Tasks.Nila.StyleGuard do
 
   defp strip_css_comments(source) do
     Regex.replace(~r{/\*.*?\*/}s, source, &preserve_newlines/1)
+  end
+
+  defp strip_marked_section(source, start_marker, end_marker) do
+    pattern =
+      ~r/#{Regex.escape(start_marker)}.*?(?=#{Regex.escape(end_marker)})/s
+
+    Regex.replace(pattern, source, &preserve_newlines/1)
+  end
+
+  defp marked_section(source, start_marker, end_marker) do
+    with {start, _length} <- :binary.match(source, start_marker),
+         {finish, _length} <-
+           :binary.match(source, end_marker, scope: {start, byte_size(source) - start}) do
+      {:ok, binary_part(source, start, finish - start)}
+    else
+      :nomatch -> :error
+    end
   end
 
   defp strip_css_strings(source) do

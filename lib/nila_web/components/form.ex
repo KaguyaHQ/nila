@@ -110,7 +110,7 @@ defmodule NilaWeb.Components.Form do
         for={@upload.ref}
         phx-drop-target={@upload.ref}
         class={[
-          "border-base-300 nila-file-drop",
+          "border-rule nila-file-drop",
           "rounded-box flex cursor-pointer flex-col items-center justify-center gap-2",
           "border border-dashed px-4 text-center transition-colors",
           if(@upload.entries == [], do: "py-region", else: "py-block")
@@ -127,7 +127,7 @@ defmodule NilaWeb.Components.Form do
         <div
           :for={entry <- @upload.entries}
           id={"#{@id}-entry-#{entry.ref}"}
-          class="bg-base-200/50 border-base-300 py-related rounded-box border px-3"
+          class="bg-quiet border-rule py-related rounded-box border px-3"
         >
           <div class="flex items-center gap-3">
             <.icon name="hero-document" class="nila-file-accent size-5 shrink-0" />

@@ -50,7 +50,7 @@ defmodule NilaWeb.UserResetPasswordLive do
     ~H"""
     <Layouts.flash_group flash={@flash} />
 
-    <main class="bg-base-200 text-base-content min-h-screen">
+    <main class="bg-canvas text-base-content min-h-screen">
       <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
         <div class="mb-section">
           <.link navigate={~p"/"} class="inline-flex items-center">

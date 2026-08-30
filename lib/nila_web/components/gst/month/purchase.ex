@@ -62,9 +62,9 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
     <section :if={@purchase_month} id="month-register" class="space-y-section">
       <header
         id="gstr3b-verdict"
-        class="bg-base-100 border-base-300 rounded-box grid overflow-hidden border lg:grid-cols-[minmax(0,1.6fr)_minmax(18rem,0.8fr)]"
+        class="bg-panel-surface border-rule rounded-box grid overflow-hidden border lg:grid-cols-[minmax(0,1.6fr)_minmax(18rem,0.8fr)]"
       >
-        <section class="moonlight-soft space-y-section p-6 lg:p-8">
+        <section class="bg-quiet space-y-section p-6 lg:p-8">
           <div class="space-y-related min-w-0">
             <p class="text-ink-subtle text-label font-semibold uppercase">Purchase position</p>
             <h2 class="text-base-content text-h4 font-semibold">Purchases &amp; ITC</h2>
@@ -103,7 +103,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           </div>
         </section>
 
-        <aside class="border-base-300 divide-base-300 divide-y border-t lg:border-t-0 lg:border-l">
+        <aside class="border-rule divide-rule divide-y border-t lg:border-t-0 lg:border-l">
           <div id="purchase-itc-basis" class="space-y-related p-6">
             <p class="text-ink-subtle text-label font-semibold uppercase">Current basis</p>
             <p class="text-base-content text-body font-medium">{@basis_copy}</p>
@@ -177,7 +177,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             Judgement, corrections and missing evidence remain separate from machine matching state.
           </p>
         </div>
-        <div class="bg-base-100 border-base-300 divide-base-300 rounded-box divide-y border">
+        <div class="bg-panel-surface border-rule divide-rule rounded-box divide-y border">
           <article
             :for={item <- @required_actions}
             id={"purchase-required-#{item.id}"}
@@ -213,7 +213,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             Open the bridge or evidence population when you need the supporting schedule.
           </p>
         </div>
-        <div class="bg-base-100 border-base-300 divide-base-300 rounded-box divide-y border">
+        <div class="bg-panel-surface border-rule divide-rule rounded-box divide-y border">
           <.fold
             id="purchase-control-coverage"
             open={MapSet.member?(@open_folds, "purchase-control-coverage")}
@@ -293,7 +293,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             </:summary>
             <div id="gstr3b-carried-itc" class="space-y-related pb-4">
               <h4 class="text-base-content text-body font-semibold">Prior-period ITC</h4>
-              <div class="border-base-300 divide-base-300 rounded-box divide-y border">
+              <div class="border-rule divide-rule rounded-box divide-y border">
                 <div
                   :for={line <- @carried_itc}
                   id={"gstr3b-carried-itc-#{line.case_id}"}
@@ -522,7 +522,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
           <div
             :for={{flag, index} <- Enum.with_index(@document_flags)}
             id={"gst-document-flag-#{index}"}
-            class="border-base-300 rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
+            class="border-rule rounded-box flex flex-wrap items-center gap-3 border px-4 py-3"
           >
             <span class="text-ink-subtle text-ui font-medium">{issue_label(flag["code"])}</span><span class="text-body text-ink-muted min-w-0 flex-1">{flag[
               "reason"
@@ -533,7 +533,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
       <section
         id="purchase-transition"
-        class="border-base-300 rounded-box flex scroll-mt-28 flex-wrap items-center justify-between gap-4 border p-6"
+        class="border-rule rounded-box flex scroll-mt-28 flex-wrap items-center justify-between gap-4 border p-6"
       >
         <div>
           <h3 class="text-base-content text-h4 font-semibold">Continue to GSTR-3B</h3><p class="text-ink-muted text-ui">
