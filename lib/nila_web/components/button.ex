@@ -4,6 +4,8 @@ defmodule NilaWeb.Components.Button do
   """
   use Phoenix.Component
 
+  import NilaWeb.Components.Icon, only: [icon: 1]
+
   @doc """
   Renders a button with navigation support.
 
@@ -145,6 +147,36 @@ defmodule NilaWeb.Components.Button do
         <span class="nila-tab-count">{item.count}</span>
       </.link>
     </nav>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :expanded, :boolean, required: true
+  attr :label, :string, required: true
+  attr :rest, :global
+  slot :title, required: true
+  slot :detail, required: true
+
+  @doc "Renders a table-row disclosure whose identity and chevron form one target."
+  def row_disclosure(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id={@id}
+      class="nila-row-disclosure"
+      aria-expanded={to_string(@expanded)}
+      aria-label={@label}
+      {@rest}
+    >
+      <.icon
+        name="hero-chevron-right"
+        class={["nila-row-disclosure-icon size-4", @expanded && "rotate-90"]}
+      />
+      <span class="min-w-0">
+        <span class="nila-row-disclosure-title">{render_slot(@title)}</span>
+        <span class="nila-row-disclosure-detail">{render_slot(@detail)}</span>
+      </span>
+    </button>
     """
   end
 

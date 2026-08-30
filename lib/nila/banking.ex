@@ -571,7 +571,7 @@ defmodule Nila.Banking do
     do: "This PDF has no usable text layer. Bring in the bank-generated PDF, not a scan."
 
   defp failure_message(:unsupported_statement),
-    do: "Nila does not recognise this bank statement yet."
+    do: "We couldn’t identify the bank or statement layout. Nothing was imported."
 
   defp failure_message(:statement_does_not_tally),
     do: "The extracted transactions do not reconcile to the printed running balance."

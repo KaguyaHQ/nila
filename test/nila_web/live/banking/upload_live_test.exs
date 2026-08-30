@@ -121,6 +121,37 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert_enqueued(worker: StatementWorker, args: %{statement_id: statement.id})
   end
 
+  test "explains an unsupported statement without implying anything was imported", context do
+    {:ok, statement} =
+      Banking.record_statement(
+        %{
+          org_id: context.org.id,
+          client_id: context.client.id,
+          brought_in_by_id: context.user.id
+        },
+        %{
+          source_key: "orgs/#{context.org.id}/bank-statements/unsupported/original.pdf",
+          original_filename: "statement.pdf"
+        }
+      )
+
+    Banking.mark_failed(statement, :unsupported_statement)
+
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}?status=all")
+
+    assert has_element?(
+             view,
+             "#banking-statement-failed",
+             "This statement format isn’t supported yet"
+           )
+
+    assert has_element?(
+             view,
+             "#banking-statement-failed",
+             "We couldn’t identify the bank or statement layout. Nothing was imported."
+           )
+  end
+
   test "shows the extracted table and Tally controls", context do
     {:ok, statement} = ready_statement(context)
     transaction = hd(statement.bank_transactions)
@@ -137,7 +168,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     refute has_element?(view, "#banking-send-tally")
     assert_push_event(view, "banking-selection", %{ids: []})
 
-    view |> element("#banking-select-all-transactions") |> render_click()
+    view |> element("#banking-select-transaction-#{transaction.id}") |> render_click()
 
     assert has_element?(view, "#banking-selection[data-phx-component] #banking-selection-toolbar")
     refute has_element?(view, "main #banking-selection-toolbar")
@@ -209,7 +240,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
              "Balances could not be verified"
            )
 
-    reopened |> element("#banking-select-all-transactions") |> render_click()
+    reopened |> element("#banking-select-transaction-#{transaction.id}") |> render_click()
     assert has_element?(reopened, "#banking-send-tally[disabled]")
 
     render_submit(reopened, "bank-transactions", %{
@@ -226,7 +257,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     [transaction] = statement.bank_transactions
     {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}?status=needs_ledger")
 
-    view |> element("#banking-select-all-transactions") |> render_click()
+    view |> element("#banking-select-transaction-#{transaction.id}") |> render_click()
     view |> element("#banking-change-voucher-type") |> render_click()
     assert has_element?(view, "#banking-voucher-type-modal", "Counter-ledgers stay unchanged")
     view |> element("#banking-cancel-voucher-type") |> render_click()
@@ -246,7 +277,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert updated.counter_ledger_identity == nil
     assert updated.status == "unassigned"
 
-    view |> element("#banking-select-all-transactions") |> render_click()
+    view |> element("#banking-select-transaction-#{transaction.id}") |> render_click()
     view |> element("#banking-change-voucher-type") |> render_click()
 
     view
@@ -333,7 +364,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert {:error, {:live_redirect, %{to: path}}} =
              live(context.conn, ~p"/banking/#{statement.id}")
 
-    assert path == ~p"/banking/#{statement.id}?status=needs_ledger"
+    assert path == ~p"/banking/#{statement.id}?review=individual&status=needs_ledger"
 
     {:ok, view, _html} = live(context.conn, path)
 
@@ -342,6 +373,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert has_element?(view, "#banking-view-ready-to-send", "0")
     assert has_element?(view, "#banking-view-sent", "0")
     assert has_element?(view, "#banking-view-all", "1")
+    assert has_element?(view, "#banking-review-individual-transactions[aria-current='page']")
     assert has_element?(view, "#banking-transaction-form thead", "Action")
     refute has_element?(view, "#banking-transaction-form thead", "Status")
 
@@ -439,27 +471,32 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     {:ok, view, _html} =
       live(context.conn, ~p"/banking/#{statement.id}?status=needs_ledger")
 
-    assert has_element?(
-             view,
-             "#banking-transaction-group-count",
-             "1 group · 2 transactions grouped"
-           )
+    assert has_element?(view, "#banking-review-suggested-groups[aria-current='page']", "1")
+    assert has_element?(view, "#banking-review-individual-transactions", "2")
 
     assert has_element?(
              view,
-             "#banking-transaction-rows > tr[id^='banking-transaction-group-']",
+             "#banking-suggested-group-rows > tr[id^='banking-transaction-group-']",
              "Same payee and payment pattern · COMPRESSOR PURCHASE"
            )
 
     refute has_element?(
              view,
-             "#banking-transaction-rows > tr[id^='banking-transaction-group-']",
+             "#banking-suggested-group-rows > tr[id^='banking-transaction-group-']",
              "MK18248883@OKHDFCBANK"
            )
 
+    refute has_element?(view, "#bank-transaction-#{salary.id}")
+    refute has_element?(view, "#bank-transaction-#{spares.id}")
+    refute has_element?(view, "#banking-transaction-group-member-#{original.id}")
+
+    view |> element("#banking-review-individual-transactions") |> render_click()
+
     assert has_element?(view, "#bank-transaction-#{salary.id}")
     assert has_element?(view, "#bank-transaction-#{spares.id}")
-    refute has_element?(view, "#banking-transaction-group-member-#{original.id}")
+    refute has_element?(view, "[id^='banking-transaction-group-']")
+
+    view |> element("#banking-review-suggested-groups") |> render_click()
 
     view
     |> element("[id^='banking-transaction-group-toggle-']")
@@ -491,7 +528,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     |> element("#banking-transaction-group-member-select-#{original.id}")
     |> render_click()
 
-    assert has_element?(view, "[id^='banking-transaction-group-apply-']", "Apply to 1")
+    assert has_element?(view, "[id^='banking-transaction-group-apply-']", "Assign 1")
 
     view
     |> element("[id^='banking-transaction-group-ledger-']")
@@ -512,12 +549,130 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert %{status: "ready", counter_ledger_identity: "compressor-purchases"} =
              Repo.get!(Transaction, matching.id)
 
-    assert has_element?(view, "#bank-transaction-#{original.id}")
-    refute has_element?(view, "#banking-transaction-rows > tr[id^='banking-transaction-group-']")
+    refute has_element?(
+             view,
+             "#banking-suggested-group-rows > tr[id^='banking-transaction-group-']"
+           )
+
+    assert has_element?(view, "#banking-review-individual-transactions", "3")
     assert has_element?(view, "#flash-info", "Applied Compressor Purchases to 1 transaction.")
+
+    view |> element("#banking-review-individual-transactions") |> render_click()
+    assert has_element?(view, "#bank-transaction-#{original.id}")
     assert has_element?(view, "#banking-view-needs-ledger", "3")
     assert has_element?(view, "#banking-view-ready-to-send", "1")
     assert has_element?(view, "#banking-view-all", "4")
+  end
+
+  test "previews four group members before revealing the complete inspection list", context do
+    {:ok, statement} = ready_statement(context)
+    original = hd(statement.bank_transactions)
+
+    original =
+      original
+      |> Ecto.Changeset.change(
+        narration:
+          "UPI-MUTHUKUMAR M-MK18248883@OKHDFCBANK-HDFC0001254-102475830728-COMPRESSOR PURCHASE",
+        reference: "102475830728",
+        withdrawal_paise: 380_000,
+        deposit_paise: 0,
+        transaction_type: "payment"
+      )
+      |> Repo.update!()
+
+    additional =
+      for ordinal <- 2..6 do
+        reference = Integer.to_string(102_475_830_728 + ordinal)
+
+        Repo.insert!(%Transaction{
+          org_id: context.org.id,
+          statement_id: statement.id,
+          identity: "compressor-purchase-#{ordinal}",
+          ordinal: ordinal,
+          date: Date.add(~D[2026-06-02], ordinal),
+          narration:
+            "UPI-MUTHUKUMAR M-MK18248883@OKHDFCBANK-HDFC0001254-#{reference}-COMPRESSOR PURCHASE",
+          reference: reference,
+          withdrawal_paise: 100_000 * ordinal,
+          deposit_paise: 0,
+          balance_paise: 20_000_000 - 100_000 * ordinal,
+          transaction_type: "payment",
+          status: "unassigned"
+        })
+      end
+
+    {:ok, view, _html} =
+      live(context.conn, ~p"/banking/#{statement.id}?status=needs_ledger")
+
+    assert has_element?(
+             view,
+             "#banking-suggested-group-rows > tr[id^='banking-transaction-group-'] th [id^='banking-transaction-group-toggle-']",
+             "Muthukumar M"
+           )
+
+    refute has_element?(
+             view,
+             "#banking-suggested-group-rows > tr[id^='banking-transaction-group-'] > td:first-child [id^='banking-transaction-group-toggle-']"
+           )
+
+    view
+    |> element("[id^='banking-transaction-group-toggle-']")
+    |> render_click()
+
+    assert has_element?(
+             view,
+             "#banking-suggested-group-rows > tr[id$='-detail'] > td[colspan='4']"
+           )
+
+    assert has_element?(
+             view,
+             "#banking-suggested-group-rows > tr[id$='-detail'] .nila-table-shell[data-surface='evidence']"
+           )
+
+    assert has_element?(
+             view,
+             "#banking-suggested-group-rows > tr[id$='-detail'] thead",
+             "Narration"
+           )
+
+    assert has_element?(
+             view,
+             "#banking-suggested-group-rows > tr[id$='-detail'] thead",
+             "Chq. / Ref."
+           )
+
+    previewed = [original | Enum.take(additional, 3)]
+    hidden = Enum.drop(additional, 3)
+
+    for transaction <- previewed do
+      assert has_element?(view, "#banking-transaction-group-member-#{transaction.id}")
+    end
+
+    for transaction <- hidden do
+      refute has_element?(view, "#banking-transaction-group-member-#{transaction.id}")
+    end
+
+    assert has_element?(
+             view,
+             "[id^='banking-transaction-group-show-all-']",
+             "Show remaining 2 transactions"
+           )
+
+    view
+    |> element("[id^='banking-transaction-group-show-all-']")
+    |> render_click()
+
+    for transaction <- additional do
+      assert has_element?(view, "#banking-transaction-group-member-#{transaction.id}")
+    end
+
+    refute has_element?(view, "[id^='banking-transaction-group-show-all-']")
+
+    view
+    |> element("[id^='banking-transaction-group-toggle-']")
+    |> render_click()
+
+    refute has_element?(view, "[id^='banking-transaction-group-member-']")
   end
 
   test "groups attention statuses without allowing uncertain entries to be selected", context do
@@ -907,8 +1062,9 @@ defmodule NilaWeb.Banking.UploadLiveTest do
 
   test "does not open a bulk picker without a destination or an active selection", context do
     {:ok, statement} = ready_statement(context)
+    [transaction] = statement.bank_transactions
     {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}?status=needs_ledger")
-    view |> element("#banking-select-all-transactions") |> render_click()
+    view |> element("#banking-select-transaction-#{transaction.id}") |> render_click()
     assert has_element?(view, "#banking-bulk-ledger-trigger[disabled]")
     render_click(view, "open-bulk-ledger-picker")
     refute has_element?(view, "#banking-ledger-options [data-selectable-option]")

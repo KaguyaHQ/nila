@@ -11,6 +11,7 @@ defmodule Nila.Banking.Parsers.HdfcV2 do
   alias Nila.Banking.Parser
 
   @date ~r/^\d{2}\/\d{2}\/\d{4}$/
+  @narration_wrap_width 40
   @inline_row ~r/^(?<date>\d{2}\/\d{2}\/\d{4})\s+(?<narration>.+?)\s+(?<value_date>\d{2}\/\d{2}\/\d{4})\s+(?<withdrawal>[\d,]+\.\d{2})\s+(?<deposit>[\d,]+\.\d{2})\s+(?<balance>[\d,]+\.\d{2})$/
   @amount_row ~r/^(?:(?<reference>\S+)\s+)?(?<value_date>\d{2}\/\d{2}\/\d{4})\s+(?<withdrawal>[\d,]+\.\d{2})\s+(?<deposit>[\d,]+\.\d{2})\s+(?<balance>[\d,]+\.\d{2})$/
 
@@ -93,7 +94,7 @@ defmodule Nila.Banking.Parsers.HdfcV2 do
           lines
           |> Enum.take_while(&(Regex.named_captures(@amount_row, &1) == nil))
           |> Enum.reject(&ignored_line?/1)
-          |> Enum.join(" ")
+          |> join_narration_lines()
           |> Parser.normalize_narration()
 
         %{
@@ -118,6 +119,19 @@ defmodule Nila.Banking.Parsers.HdfcV2 do
       "deposit_paise" => Parser.amount_paise!(fields["deposit"]),
       "balance_paise" => Parser.amount_paise!(fields["balance"])
     }
+  end
+
+  defp join_narration_lines(lines) do
+    lines
+    |> Enum.reduce({"", nil}, fn line, {narration, previous_line} ->
+      separator =
+        if is_binary(previous_line) and String.length(previous_line) < @narration_wrap_width,
+          do: " ",
+          else: ""
+
+      {narration <> separator <> line, line}
+    end)
+    |> elem(0)
   end
 
   defp ignored_line?(line) do

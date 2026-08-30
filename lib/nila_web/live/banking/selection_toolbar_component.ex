@@ -77,7 +77,6 @@ defmodule NilaWeb.Banking.SelectionToolbarComponent do
                 id="banking-bulk-ledger-trigger"
                 phx-click="open-bulk-ledger-picker"
                 popovertarget="banking-ledger-picker"
-                popovertargetaction="show"
                 placeholder={is_nil(@bulk_ledger)}
                 title={if @bulk_ledger, do: @bulk_ledger.name, else: "Choose ledger"}
                 disabled={

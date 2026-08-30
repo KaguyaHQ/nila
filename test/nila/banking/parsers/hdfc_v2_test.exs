@@ -30,4 +30,30 @@ defmodule Nila.Banking.Parsers.HdfcV2Test do
     assert payment["reference"] == "102405015912"
     assert refund["narration"] == "CRV POS CARD REFUND"
   end
+
+  test "rejoins words split at HDFC's fixed narration width" do
+    statement = """
+    Statement From : 01/04/25 TO : 31/03/26
+    Account number : 99999962550443
+    Date Narration Chq. / Ref No. Value Date Withdrawal Amount Deposit Amount Closing Balance*
+    21/04/2025
+    ME DC SI 416021XXXXXX5696 OPENAI *CHATGP
+    T SUBSCR
+    511111838489 21/04/2025 1,710.60 0.00 2,95,766.45
+    22/04/2025
+    DEBIT CARD ISSUANCE FEE
+    090824-MIR2524292468307
+    MIR2524292468307 22/04/2025 413.00 0.00 2,95,353.45
+    HDFC BANK LIMITED
+    """
+
+    assert {:ok, artifact} = HdfcV2.parse(statement)
+    assert [transaction, ordinary_wrap] = artifact.transactions
+
+    assert transaction["narration"] ==
+             "ME DC SI 416021XXXXXX5696 OPENAI *CHATGPT SUBSCR"
+
+    assert ordinary_wrap["narration"] ==
+             "DEBIT CARD ISSUANCE FEE 090824-MIR2524292468307"
+  end
 end

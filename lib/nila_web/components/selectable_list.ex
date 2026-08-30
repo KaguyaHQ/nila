@@ -30,6 +30,7 @@ defmodule NilaWeb.Components.SelectableList do
       data-full-width={@full_width}
       disabled={@disabled}
       aria-haspopup="dialog"
+      popovertargetaction="toggle"
       {@rest}
     >
       <span class="nila-picker-trigger-inner">{render_slot(@inner_block)}</span>

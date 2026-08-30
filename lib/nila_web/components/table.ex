@@ -23,6 +23,11 @@ defmodule NilaWeb.Components.Table do
   `:empty` slot renders when there are no rows; for streams pass `empty?` explicitly since
   a stream's size isn't known at render time.
 
+  For bounded master-detail collections, pass `detail_for` and a `:detail` slot.
+  The detail renders in a full-width sibling row, so it may contain an independent
+  table with a different schema. Detail rows intentionally reject LiveView streams:
+  a derived sibling cannot be deleted atomically with its streamed master row.
+
   Two ways to make a row live, and the choice is not stylistic:
 
     * `row_navigate` — a function returning a path. The row becomes a real link
@@ -68,8 +73,18 @@ defmodule NilaWeb.Components.Table do
     doc: "fn item -> the row link's accessible name, e.g. fn c -> \"Open \#{c.name}\" end"
 
   attr :row_class, :any, default: nil, doc: "fn item -> extra class string for the <tr>"
+
+  attr :detail_for, :any,
+    default: nil,
+    doc: "fn item -> boolean; renders the :detail slot as a full-width sibling row"
+
   attr :empty?, :any, default: nil, doc: "force the empty state (required for streams)"
   attr :min_width, :string, default: nil, doc: "e.g. min-w-[760px] for horizontal scroll"
+
+  attr :surface, :string,
+    default: "contained",
+    values: ~w(contained workbench evidence),
+    doc: "contained card, ruled workbench, or subordinate evidence surface"
 
   attr :mode, :string,
     required: true,
@@ -94,10 +109,20 @@ defmodule NilaWeb.Components.Table do
   end
 
   slot :toolbar
+  slot :detail
   slot :empty
 
   def data_table(assigns) do
     stream? = match?(%Phoenix.LiveView.LiveStream{}, assigns.rows)
+
+    if is_nil(assigns.detail_for) != (assigns.detail == []) do
+      raise ArgumentError, "data_table expects detail_for and the :detail slot together"
+    end
+
+    if stream? and assigns.detail != [] do
+      raise ArgumentError,
+            "data_table detail rows require a bounded list; streamed sibling rows cannot be deleted atomically"
+    end
 
     if Enum.count(assigns.col, &Map.get(&1, :row_header, false)) != 1 do
       raise ArgumentError,
@@ -115,7 +140,7 @@ defmodule NilaWeb.Components.Table do
       )
 
     ~H"""
-    <div class="nila-table-shell">
+    <div class="nila-table-shell" data-surface={@surface}>
       <div :if={@toolbar != []} class="nila-table-toolbar">
         {render_slot(@toolbar)}
       </div>
@@ -157,31 +182,41 @@ defmodule NilaWeb.Components.Table do
                 pointer, the hover, the keyboard. A row_click that returns nil
                 for some rows (the workings' diff rows) must not leave those rows
                 wearing a cursor that promises a click they don't have. --%>
-            <tr
-              :for={row <- @rows}
-              id={@row_id && @row_id.(row)}
-              class={[
-                "transition-colors",
-                (row_command(@row_click, @row_item, row) || row_href(@row_navigate, @row_item, row)) &&
-                  "hover:bg-base-200/60 cursor-pointer",
-                row_href(@row_navigate, @row_item, row) && "relative",
-                @row_class && @row_class.(@row_item.(row))
-              ]}
-              phx-click={row_command(@row_click, @row_item, row)}
-              phx-keydown={row_command(@row_click, @row_item, row)}
-              phx-key={row_command(@row_click, @row_item, row) && "Enter"}
-              tabindex={row_command(@row_click, @row_item, row) && "0"}
-              role={row_command(@row_click, @row_item, row) && "button"}
-            >
-              <.table_body_cell
-                :for={{col, index} <- Enum.with_index(@col)}
-                col={col}
-                index={index}
-                item={@row_item.(row)}
-                href={row_href(@row_navigate, @row_item, row)}
-                link_label={row_name(@row_label, @row_item, row)}
-              />
-            </tr>
+            <%= for row <- @rows do %>
+              <tr
+                id={@row_id && @row_id.(row)}
+                class={[
+                  "transition-colors",
+                  (row_command(@row_click, @row_item, row) || row_href(@row_navigate, @row_item, row)) &&
+                    "hover:bg-base-200/60 cursor-pointer",
+                  row_href(@row_navigate, @row_item, row) && "relative",
+                  @row_class && @row_class.(@row_item.(row))
+                ]}
+                phx-click={row_command(@row_click, @row_item, row)}
+                phx-keydown={row_command(@row_click, @row_item, row)}
+                phx-key={row_command(@row_click, @row_item, row) && "Enter"}
+                tabindex={row_command(@row_click, @row_item, row) && "0"}
+                role={row_command(@row_click, @row_item, row) && "button"}
+              >
+                <.table_body_cell
+                  :for={{col, index} <- Enum.with_index(@col)}
+                  col={col}
+                  index={index}
+                  item={@row_item.(row)}
+                  href={row_href(@row_navigate, @row_item, row)}
+                  link_label={row_name(@row_label, @row_item, row)}
+                />
+              </tr>
+              <tr
+                :if={show_detail?(@detail_for, @row_item, row)}
+                id={detail_row_id(@row_id, row)}
+                class="bg-base-100"
+              >
+                <td colspan={length(@col)} class="h-auto! p-0!">
+                  {render_slot(@detail, @row_item.(row))}
+                </td>
+              </tr>
+            <% end %>
           </tbody>
         </table>
       </div>
@@ -200,6 +235,14 @@ defmodule NilaWeb.Components.Table do
 
   defp row_name(nil, _row_item, _row), do: nil
   defp row_name(row_label, row_item, row), do: row_label.(row_item.(row))
+
+  defp show_detail?(nil, _row_item, _row), do: false
+
+  defp show_detail?(detail_for, row_item, row),
+    do: detail_for.(row_item.(row))
+
+  defp detail_row_id(nil, _row), do: nil
+  defp detail_row_id(row_id, row), do: "#{row_id.(row)}-detail"
 
   defp column_header(headers, key), do: Enum.find(headers, &(&1.column == key))
 

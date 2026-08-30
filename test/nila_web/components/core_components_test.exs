@@ -258,6 +258,7 @@ defmodule NilaWeb.CoreComponentsTest do
 
     assert LazyHTML.attribute(trigger, "class") == ["nila-picker-trigger"]
     assert LazyHTML.attribute(trigger, "popovertarget") == ["ledger-picker"]
+    assert LazyHTML.attribute(trigger, "popovertargetaction") == ["toggle"]
     assert LazyHTML.attribute(trigger, "data-placeholder") == [""]
     assert LazyHTML.attribute(trigger, "disabled") == [""]
     assert LazyHTML.query(trigger, ".nila-picker-trigger-inner")
@@ -419,6 +420,23 @@ defmodule NilaWeb.CoreComponentsTest do
     assert LazyHTML.query(fragment, ".nila-table-shell > .nila-table-scroll table")
   end
 
+  test "table supports a ruled workbench surface without changing its schema" do
+    assigns = %{rows: [%{invoice: "INV-1"}]}
+
+    html =
+      rendered_to_string(~H"""
+      <.data_table id="workbench-table" rows={@rows} mode="review" surface="workbench">
+        <:col :let={row} label="Invoice" row_header>{row.invoice}</:col>
+      </.data_table>
+      """)
+
+    fragment = LazyHTML.from_fragment(html)
+
+    assert LazyHTML.attribute(LazyHTML.query(fragment, ".nila-table-shell"), "data-surface") == [
+             "workbench"
+           ]
+  end
+
   test "table supports an interactive keyed column header" do
     assigns = %{rows: [%{invoice: "INV-1"}]}
 
@@ -436,6 +454,40 @@ defmodule NilaWeb.CoreComponentsTest do
     assert html =~ ~s(id="select-all")
     assert html =~ "Select all"
     refute html =~ ">Select</th>"
+  end
+
+  test "table renders bounded master-detail content in an independent full-width row" do
+    assigns = %{
+      rows: [
+        %{id: "one", name: "Group one", open?: true},
+        %{id: "two", name: "Group two", open?: false}
+      ]
+    }
+
+    html =
+      rendered_to_string(~H"""
+      <.data_table
+        id="master-rows"
+        rows={@rows}
+        row_id={fn row -> "master-#{row.id}" end}
+        detail_for={& &1.open?}
+        mode="review"
+      >
+        <:col :let={row} label="Group" row_header>{row.name}</:col>
+        <:col :let={row} label="Action">Assign {row.id}</:col>
+        <:detail :let={row}>
+          <div id={"detail-content-#{row.id}"}>Evidence</div>
+        </:detail>
+      </.data_table>
+      """)
+
+    fragment = LazyHTML.from_fragment(html)
+    detail = LazyHTML.query(fragment, "#master-one-detail")
+
+    assert LazyHTML.attribute(detail, "class") == ["bg-base-100"]
+    assert LazyHTML.attribute(LazyHTML.query(detail, "td"), "colspan") == ["2"]
+    assert LazyHTML.query(detail, "#detail-content-one")
+    assert fragment |> LazyHTML.query("#master-two-detail") |> LazyHTML.to_html() == ""
   end
 
   test "table rejects ambiguous row-header semantics" do
