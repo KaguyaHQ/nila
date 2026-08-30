@@ -341,13 +341,6 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   defp valid_gstin?(gstin), do: Gstin.valid_extracted?(gstin)
   defp state_code(gstin), do: StateCodes.from_gstin(gstin)
 
-  defp effective_place_of_supply(invoice) do
-    case invoice.place_of_supply do
-      pos when is_binary(pos) -> if(StateCodes.name_for(pos), do: pos)
-      _missing -> state_code(party_gstin(invoice.recipient))
-    end
-  end
-
   defp taxable_values_complete?(invoice),
     do: Enum.all?(invoice.lines, &is_integer(&1.taxable_paise))
 
@@ -965,58 +958,84 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
 
   defp consistency_issues(invoice) do
     seller_state = state_code(party_gstin(invoice.issuer))
-    place_of_supply = effective_place_of_supply(invoice)
-    place_field = if(invoice.place_of_supply, do: "place_of_supply", else: "buyer_gstin")
+    buyer_state = state_code(party_gstin(invoice.recipient))
+    ship_to_state = ship_to_state(invoice)
+    place_of_supply = invoice.place_of_supply || buyer_state
     interstate? = seller_state && place_of_supply && seller_state != place_of_supply
     igst = sum_line_paise(invoice.lines, :igst)
     split = split_tax(invoice)
 
     cond do
-      is_nil(seller_state) or is_nil(place_of_supply) ->
-        []
-
       # Both heads present is `mixed_tax_heads`, which says something stronger
       # and does not depend on the GSTINs being right. Raising both would ask a
       # reviewer to answer the same malformed invoice twice.
       igst > 0 and split > 0 ->
         []
 
-      interstate? and igst <= 0 and split > 0 ->
+      (is_nil(invoice.place_of_supply) and buyer_state) && ship_to_state &&
+          buyer_state != ship_to_state ->
         [
           invoice
           |> issue(
-            "tax_split_mismatch",
-            "place of supply #{place_of_supply} differs from seller state #{seller_state}, but tax is CGST/SGST",
-            [place_field, "line_items"],
-            Issues.level_for("tax_split_mismatch")
+            "place_of_supply_uncertain",
+            "bill-to and ship-to point to different states; confirm the GST destination",
+            ["place_of_supply", "bill_to", "ship_to"],
+            Issues.level_for("place_of_supply_uncertain")
           )
           |> Map.merge(%{
-            "seller_state" => seller_state,
-            "place_of_supply" => place_of_supply,
-            "place_field" => place_field,
-            "tax_heads" => positive_tax_heads(invoice)
+            "buyer_state" => buyer_state,
+            "ship_to_state" => ship_to_state
           })
         ]
 
+      is_nil(seller_state) or is_nil(place_of_supply) ->
+        []
+
+      interstate? and igst <= 0 and split > 0 ->
+        tax_treatment_issue(invoice, seller_state, place_of_supply, "igst")
+
       not interstate? and split <= 0 and igst > 0 ->
-        [
-          invoice
-          |> issue(
-            "tax_split_mismatch",
-            "place of supply #{place_of_supply} equals seller state #{seller_state}, but tax is IGST",
-            [place_field, "line_items"],
-            Issues.level_for("tax_split_mismatch")
-          )
-          |> Map.merge(%{
-            "seller_state" => seller_state,
-            "place_of_supply" => place_of_supply,
-            "place_field" => place_field,
-            "tax_heads" => positive_tax_heads(invoice)
-          })
-        ]
+        tax_treatment_issue(invoice, seller_state, place_of_supply, "cgst_sgst")
 
       true ->
         []
+    end
+  end
+
+  defp tax_treatment_issue(invoice, seller_state, place_of_supply, suggested_treatment) do
+    inferred? = is_nil(invoice.place_of_supply)
+    code = if(inferred?, do: "tax_treatment_uncertain", else: "tax_split_mismatch")
+
+    message =
+      if inferred?,
+        do: "party GSTIN states and extracted tax heads disagree; confirm the tax treatment",
+        else: "place of supply and extracted tax heads disagree"
+
+    [
+      invoice
+      |> issue(
+        code,
+        message,
+        [if(inferred?, do: "buyer_gstin", else: "place_of_supply"), "line_items"],
+        Issues.level_for(code)
+      )
+      |> Map.merge(%{
+        "seller_state" => seller_state,
+        "place_of_supply" => place_of_supply,
+        "place_field" => if(inferred?, do: "buyer_gstin", else: "place_of_supply"),
+        "tax_heads" => positive_tax_heads(invoice),
+        "suggested_tax_treatment" => suggested_treatment
+      })
+    ]
+  end
+
+  defp ship_to_state(invoice) do
+    case invoice.evidence["ship_to"] do
+      %{} = ship_to ->
+        StateCodes.normalize_code(ship_to["state_code"]) || state_code(ship_to["gstin"])
+
+      _missing ->
+        nil
     end
   end
 

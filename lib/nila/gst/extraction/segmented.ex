@@ -24,6 +24,7 @@ defmodule Nila.Gst.Extraction.Segmented do
   alias Nila.Gst.Extraction.InvoiceSchema
   alias Nila.Gst.Extraction.LineAmounts
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
+  alias Nila.Gst.Extraction.TaxComponents
   alias Nila.Gst.Extraction.Transcription
   alias Nila.Gst.Extraction.Verify
   alias Nila.Gstin
@@ -58,9 +59,10 @@ defmodule Nila.Gst.Extraction.Segmented do
     printed_taxable_value is a distinct source field that separately prints the \
     pre-GST value. Never duplicate printed_line_amount into \
     printed_taxable_value merely because the line amount is tax-exclusive.
-    - Use headings, table structure and same-row relationships to identify \
-    roles, regardless of vendor wording. Populate CGST, SGST or IGST only when \
-    the document identifies that tax head.
+    - For every line-level tax type or tax column, copy its printed label, rate \
+    and amount into printed_tax_components. Preserve the printed label instead \
+    of deciding which canonical GST field it belongs to. Never infer a tax head \
+    from party or delivery addresses or accounting rules.
     - Arithmetic may classify what a printed amount means. For example, a row \
     amount plus separately printed GST equalling its gross total establishes \
     tax-exclusive pricing. Never use arithmetic to populate any extracted \
@@ -75,10 +77,12 @@ defmodule Nila.Gst.Extraction.Segmented do
     - Set line_amount_tax_inclusion from labels, structure or visible arithmetic. \
     Use unknown when evidence is incomplete or conflicting. Do not calculate \
     taxable_value; a later deterministic step does that.
-    - Populate singular invoice-level printed_total_* and printed tax-head \
-    fields only when that invoice-level aggregate is itself printed. Never \
-    select, combine or sum tax-rate or slab-summary rows to create an aggregate, \
-    and never redistribute summary figures across item rows.
+    - Populate singular invoice-level printed_total_* fields only when that \
+    invoice-level aggregate is itself printed. Copy every invoice-level tax total, \
+    including generic Tax Amount totals, once into printed_tax_totals. Never \
+    select, combine or sum tax-rate or \
+    slab-summary rows to create an aggregate, and never redistribute summary \
+    figures across item rows.
     - Represent every real item row. Never turn a subtotal, total, HSN summary or \
     amount-in-words row into a line item. When consecutive printed rows are identical \
     in every other extracted field, return one line item with repeat_count equal to \
@@ -111,13 +115,12 @@ defmodule Nila.Gst.Extraction.Segmented do
     unregistered only when the document positively identifies an unregistered or \
     consumer recipient. A missing or unreadable GSTIN alone is unknown, never a \
     silent B2C inference.
-    - Read supplier, Bill To and Ship To/Deliver To into their matching fields. \
-    Populate printed_place_of_supply only from an explicitly printed Place of \
-    Supply field; otherwise return null.
+    - Read supplier, Bill To and Ship To/Deliver To into their matching fields.
     - Preserve nil-rated, exempt, non-GST, export and SEZ treatment in supply_type. \
     Never coerce one of them to an ordinary taxable sale.
-    - CGST and SGST printed as stacked sub-rows under one item are that item's \
-    tax, not two items. Never split them, and never split a total row.
+    - CGST and SGST printed as stacked sub-rows under one item are two printed \
+    tax components of that item, not two items. Never split them, and never split \
+    a total row.
     """
   end
 
@@ -280,7 +283,7 @@ defmodule Nila.Gst.Extraction.Segmented do
       Enum.reduce_while(responses, {:ok, [], []}, fn %{response: response}, {:ok, acc, usage} ->
         case OpenAICompatibleChat.decode(response, schema(kind)) do
           {:ok, invoice, call_usage} ->
-            invoice = expand_repeated_line_items(invoice)
+            invoice = invoice |> TaxComponents.project() |> expand_repeated_line_items()
             {:cont, {:ok, acc ++ [invoice], usage ++ [call_usage]}}
 
           {:error, reason} ->
@@ -413,6 +416,7 @@ defmodule Nila.Gst.Extraction.Segmented do
   def prepare_vision_data(data, kind, client_gstin) do
     {data, repairs} =
       data
+      |> TaxComponents.project()
       |> expand_repeated_line_items()
       |> markers(kind)
       |> repair_gstins(kind, client_gstin)

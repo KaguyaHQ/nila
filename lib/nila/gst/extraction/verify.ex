@@ -476,6 +476,21 @@ defmodule Nila.Gst.Extraction.Verify do
         {:arithmetic_mismatch, Enum.map(failed_arithmetic, & &1.field)}
     end)
     |> Enum.concat(gstin_flags(checks))
+    |> Enum.concat(tax_component_flags(data))
+  end
+
+  defp tax_component_flags(data) do
+    line_issues =
+      data
+      |> Map.get("line_items", [])
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {line, index} ->
+        Enum.map(line["tax_component_issues"] || [], &Map.put(&1, "line", index))
+      end)
+
+    issues = (data["tax_total_issues"] || []) ++ line_issues
+
+    if issues == [], do: [], else: [{:tax_component_issue, issues}]
   end
 
   defp gstin_flags(checks) do
@@ -557,6 +572,7 @@ defmodule Nila.Gst.Extraction.Verify do
       Enum.any?(flags, &match?({:value_not_on_page, _}, &1)) -> :flagged
       Enum.any?(checks, &(&1.kind == :arithmetic and not &1.ok?)) -> :flagged
       Enum.any?(flags, &match?({:invalid_gstin, _}, &1)) -> :flagged
+      Enum.any?(flags, &match?({:tax_component_issue, _}, &1)) -> :flagged
       nothing_to_check?(data, checks) -> :unverifiable
       true -> :verified
     end

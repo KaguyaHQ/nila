@@ -145,6 +145,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "line_items" => line_items,
       "printed_total_taxable" =>
         money(value(data, ["printed_total_taxable", "total_net_amount"])),
+      "printed_tax_totals" => data["printed_tax_totals"],
+      "tax_total_issues" => data["tax_total_issues"],
       "printed_total_tax" => money(value(data, ["printed_total_tax", "total_tax_amount"])),
       "printed_grand_total" => money(value(data, ["printed_grand_total", "total_gross_amount"])),
       "confidence" => non_empty_map(raw["confidence"]) || build_confidence(raw),
@@ -499,6 +501,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "line_amount_tax_inclusion_disagreement" => amounts.line_amount_tax_inclusion_disagreement,
       "taxable_value" => amounts.taxable_value,
       "taxable_value_basis" => amounts.taxable_value_basis,
+      "printed_tax_components" => line["printed_tax_components"],
+      "tax_component_issues" => line["tax_component_issues"],
       "cgst_rate" => cgst_rate,
       "cgst_amount" => money(line["cgst_amount"] || cgst["amount"] || line["camt"]),
       "sgst_rate" => sgst_rate,
@@ -1121,27 +1125,35 @@ defmodule Nila.Gst.Sales.Gstr1 do
     %{txval: txval, camt: side_tax, samt: side_tax, iamt: 0}
   end
 
-  # Which government gets paid. Two sources can answer and they do not always
-  # agree: the two GSTINs, and whichever head the supplier actually populated on
-  # the bill. When they disagree, `Values.head_reassignment/2` names it and
-  # `tax_split_mismatch` (or `mixed_tax_heads`) gates the month, so no return is
-  # filed on an unreviewed guess.
-  #
-  # The GSTIN pair wins here, and that is a deliberate default rather than an
-  # accident of ordering. It is an *inference* about place of supply and it is
-  # wrong in real cases — bill-to/ship-to under s.10(1)(b), goods delivered out
-  # of state — but it is the only source available for an invoice whose heads
-  # were never populated, and it is the reading the portal itself applies. The
-  # extracted heads are the supplier's own declaration and are used only when
-  # the states cannot be read at all.
-  #
-  # Changing this changes what gets filed. It is not a refactor.
-  defp invoice_tax_mode(lines, seller_state, buyer_state) do
-    cond do
-      seller_state && buyer_state && seller_state != buyer_state -> :interstate
-      seller_state && buyer_state -> :intrastate
-      true -> tax_mode(List.first(lines) || %{})
+  # The supplier's printed heads are the source fact Nila is transcribing. A
+  # place-of-supply default may complete a voucher, but it is not strong enough
+  # to silently rewrite IGST into CGST/SGST (or the reverse). Only when the
+  # source carries no head at all do the party states provide a completion
+  # fallback; any disagreement is held by invoice validation for a reviewer.
+  defp invoice_tax_mode(lines, seller_state, place_of_supply) do
+    source_tax_mode(lines) || inferred_tax_mode(seller_state, place_of_supply)
+  end
+
+  defp source_tax_mode(lines) do
+    igst? = Enum.any?(lines, &(num(&1["igst_amount"]) > 0 or num(&1["igst_rate"]) > 0))
+
+    split? =
+      Enum.any?(lines, fn line ->
+        num(line["cgst_amount"]) > 0 or num(line["cgst_rate"]) > 0 or
+          num(line["sgst_amount"]) > 0 or num(line["sgst_rate"]) > 0
+      end)
+
+    case {igst?, split?} do
+      {true, false} -> :interstate
+      {false, true} -> :intrastate
+      _missing_or_mixed -> nil
     end
+  end
+
+  defp inferred_tax_mode(seller_state, place_of_supply) do
+    if seller_state && place_of_supply && seller_state != place_of_supply,
+      do: :interstate,
+      else: :intrastate
   end
 
   defp tax_mode(line) do

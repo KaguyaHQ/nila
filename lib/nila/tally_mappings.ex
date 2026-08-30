@@ -392,7 +392,7 @@ defmodule Nila.TallyMappings do
   defp normalize_tax_head_value(value) when is_binary(value) do
     case normalize_name(value) do
       head when head in ["cgst", "central tax"] -> :cgst
-      head when head in ["sgst", "state tax"] -> :sgst
+      head when head in ["sgst", "sgst utgst", "state tax"] -> :sgst
       head when head in ["igst", "integrated tax"] -> :igst
       _ -> nil
     end

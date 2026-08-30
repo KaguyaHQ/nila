@@ -48,6 +48,37 @@ defmodule Nila.Gst.Sales.InvoiceValidationTest do
     assert Enum.all?(issues, &String.contains?(&1["message"], "× 18%"))
   end
 
+  test "bill-to and ship-to disagreement requires a destination decision" do
+    invoice =
+      Gstr1.normalize_invoice(%{
+        "data" => %{
+          "invoice_number" => "PHILIPS-1",
+          "invoice_date" => "15.07.2026",
+          "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
+          "buyer" => %{"gstin" => "33AABCP9487A1ZG"},
+          "ship_to" => %{"state" => "Telangana", "state_code" => "36"},
+          "line_items" => [
+            %{
+              "description" => "Equipment",
+              "taxable_value" => 100,
+              "igst_rate" => 18,
+              "igst_amount" => 18
+            }
+          ]
+        }
+      })
+
+    issues = InvoiceValidation.issues([invoice])
+    codes = Enum.map(issues, & &1["code"])
+
+    assert "place_of_supply_uncertain" in codes
+    refute "tax_treatment_uncertain" in codes
+
+    issue = Enum.find(issues, &(&1["code"] == "place_of_supply_uncertain"))
+    assert issue["buyer_state"] == "33"
+    assert issue["ship_to_state"] == "36"
+  end
+
   defp invoice(overrides \\ %{}, line_overrides \\ %{}) do
     Map.merge(
       %{

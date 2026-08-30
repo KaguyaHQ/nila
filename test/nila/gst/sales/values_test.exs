@@ -251,11 +251,10 @@ defmodule Nila.Gst.Sales.ValuesTest do
     end
   end
 
-  describe "head reassignment" do
-    test "the return moves tax between heads with no total-level disagreement" do
-      # Both GSTINs are 29, so the supply is intrastate and the return files
-      # CGST+SGST. The extraction read the tax as IGST. The totals agree
-      # exactly, so no printed_* check fires — this is the only signal.
+  describe "tax-head fidelity" do
+    test "the return preserves printed heads when an inferred place of supply disagrees" do
+      # Both GSTINs are 29, but the source carries IGST. The GSTIN-derived place
+      # of supply is only an operational default, so it must not rewrite tax.
       inv =
         invoice(%{
           "printed_total_tax" => 1800.0,
@@ -268,10 +267,10 @@ defmodule Nila.Gst.Sales.ValuesTest do
       assert values.filed.tax == 1800.0
       assert values.extracted_vs_filed.tax == 0.0
 
-      reassignment = values.head_reassignment
-      assert reassignment.heads == [:igst, :cgst, :sgst]
-      assert reassignment.from == %{igst: 1800.0, cgst: 0.0, sgst: 0.0}
-      assert reassignment.to == %{igst: 0.0, cgst: 900.0, sgst: 900.0}
+      assert values.filed.igst == 1800.0
+      assert values.filed.cgst == 0.0
+      assert values.filed.sgst == 0.0
+      refute values.head_reassignment
 
       # The total-level check passes, which is the whole point: nothing else on
       # the page can see this.
@@ -281,15 +280,7 @@ defmodule Nila.Gst.Sales.ValuesTest do
              )
     end
 
-    test "the GSTIN pair decides the heads, and it is not filed unreviewed" do
-      # Two sources can say which government gets paid, and they disagree here:
-      # both GSTINs read 29 (intrastate), the supplier populated IGST. The pair
-      # wins — an inference about place of supply, wrong in real cases
-      # (bill-to/ship-to, out-of-state delivery), but the only source available
-      # when heads were never populated and the reading the portal applies.
-      #
-      # This is the line that decides what gets filed, so it is pinned: an edit
-      # that flips it is a filing-behaviour change, not a refactor.
+    test "the GSTIN pair raises uncertainty without deciding the heads" do
       inv =
         invoice(%{
           "printed_total_tax" => 1800.0,
@@ -298,14 +289,14 @@ defmodule Nila.Gst.Sales.ValuesTest do
 
       filed = Values.for_invoice(inv, derive([inv])).filed
 
-      assert filed.igst == 0.0
-      assert filed.cgst == 900.0
-      assert filed.sgst == 900.0
+      assert filed.igst == 1800.0
+      assert filed.cgst == 0.0
+      assert filed.sgst == 0.0
 
       # And it is never a silent default: the disagreement gates the month, so
       # no return leaves on the inference without a reviewer seeing it.
       codes = Enum.map(Gstr1.validation_issues([inv]), & &1["code"])
-      assert "tax_split_mismatch" in codes or "mixed_tax_heads" in codes
+      assert "tax_treatment_uncertain" in codes
     end
 
     test "agreeing heads report no reassignment" do

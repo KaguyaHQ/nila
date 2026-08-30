@@ -855,9 +855,9 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       refute "tax_split_mismatch" in codes
     end
 
-    test "one head only is left to the GSTIN check" do
-      # Interstate parties, CGST/SGST only: that is `tax_split_mismatch`'s job
-      # and this check must stay quiet.
+    test "one head only is left as inferred tax-treatment uncertainty" do
+      # Interstate parties, CGST/SGST only: the recipient GSTIN is a useful
+      # default, not proof that the source invoice is wrong.
       intra_on_interstate =
         Gstr1.normalize_invoice(%{
           "data" => %{
@@ -881,9 +881,9 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       codes = Enum.map(issues, & &1["code"])
 
       refute "mixed_tax_heads" in codes
-      assert "tax_split_mismatch" in codes
+      assert "tax_treatment_uncertain" in codes
 
-      mismatch = Enum.find(issues, &(&1["code"] == "tax_split_mismatch"))
+      mismatch = Enum.find(issues, &(&1["code"] == "tax_treatment_uncertain"))
       assert mismatch["seller_state"] == "29"
       assert mismatch["place_of_supply"] == "33"
       assert mismatch["place_field"] == "buyer_gstin"
@@ -913,7 +913,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       issue =
         invoice
         |> then(&Gstr1.validation_issues([&1]))
-        |> Enum.find(&(&1["code"] == "tax_split_mismatch"))
+        |> Enum.find(&(&1["code"] == "tax_treatment_uncertain"))
 
       assert issue["tax_heads"] == ["cgst"]
     end

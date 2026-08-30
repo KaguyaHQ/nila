@@ -27,8 +27,7 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
   @line_item_fields ~w(
     item_name description hsn_sac quantity uom printed_unit_price discount_rate
     discount_amount printed_line_amount printed_line_total printed_taxable_value
-    line_amount_tax_inclusion cgst_rate cgst_amount sgst_rate sgst_amount igst_rate
-    igst_amount repeat_count
+    line_amount_tax_inclusion printed_tax_components repeat_count
   )a
 
   def extract(kind, bytes, opts \\ [])

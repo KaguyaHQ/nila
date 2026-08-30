@@ -11,8 +11,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
   @line_item_fields ~w(
     item_name description hsn_sac quantity uom printed_unit_price discount_rate
     discount_amount printed_line_amount printed_line_total printed_taxable_value
-    line_amount_tax_inclusion cgst_rate cgst_amount sgst_rate sgst_amount igst_rate
-    igst_amount repeat_count
+    line_amount_tax_inclusion printed_tax_components repeat_count
   )
 
   defp chat_response(content) do
@@ -38,10 +37,11 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
       "printed_subtotal_before_discount" => nil,
       "printed_discount_amount" => nil,
       "printed_total_taxable" => 1_000.0,
-      "printed_cgst" => 90.0,
-      "printed_sgst" => 90.0,
-      "printed_igst" => nil,
-      "printed_total_tax" => 180.0,
+      "printed_tax_totals" => [
+        %{"printed_label" => "CGST", "printed_amount" => 90.0},
+        %{"printed_label" => "SGST", "printed_amount" => 90.0},
+        %{"printed_label" => "Total Tax", "printed_amount" => 180.0}
+      ],
       "printed_additional_charges" => nil,
       "printed_rounding_adjustment" => nil,
       "printed_grand_total" => 1_180.0,
@@ -67,7 +67,6 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
       },
       "ship_to" => nil,
       "recipient_registration" => "registered",
-      "printed_place_of_supply" => nil,
       "document_status" => "active",
       "supply_type" => "taxable"
     })
@@ -88,12 +87,10 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
         "printed_line_total" => 56_050,
         "printed_taxable_value" => nil,
         "line_amount_tax_inclusion" => "exclusive",
-        "cgst_rate" => 9,
-        "cgst_amount" => 4_275,
-        "sgst_rate" => 9,
-        "sgst_amount" => 4_275,
-        "igst_rate" => nil,
-        "igst_amount" => nil,
+        "printed_tax_components" => [
+          %{"printed_label" => "CGST", "printed_rate" => 9, "printed_amount" => 4_275},
+          %{"printed_label" => "SGST", "printed_rate" => 9, "printed_amount" => 4_275}
+        ],
         "repeat_count" => 1
       },
       overrides
@@ -178,12 +175,31 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     assert line_schema["minItems"] == length(@line_item_fields)
     assert length(line_schema["prefixItems"]) == length(@line_item_fields)
 
+    component_schema = Enum.at(line_schema["prefixItems"], 12)
+    assert component_schema["type"] == "array"
+
+    assert MapSet.new(component_schema["items"]["required"]) ==
+             MapSet.new(~w(printed_amount printed_label printed_rate))
+
+    assert component_schema["description"] =~ "Copy each label"
+
+    root_properties = extraction_request["response_format"]["json_schema"]["schema"]["properties"]
+    assert Map.has_key?(root_properties, "printed_tax_totals")
+    assert root_properties["line_items"]["description"] =~ "append it to that item's description"
+
+    assert MapSet.new(root_properties["printed_tax_totals"]["items"]["required"]) ==
+             MapSet.new(~w(printed_amount printed_label))
+
+    refute Map.has_key?(root_properties, "printed_cgst")
+    refute Map.has_key?(root_properties, "printed_sgst")
+    refute Map.has_key?(root_properties, "printed_igst")
+
     [_system, %{"content" => extraction_content}] = extraction_request["messages"]
     assert Enum.count(extraction_content, &(&1["type"] == "image_url")) == 2
     instruction = hd(extraction_content)["text"]
     assert instruction =~ "[#{Enum.join(@line_item_fields, ", ")}]"
     assert instruction =~ "Preserve nulls so every row has exactly"
-    assert instruction =~ "19 values"
+    assert instruction =~ "14 values"
   end
 
   test "one failed invoice call rejects the whole packet and preserves completed responses" do
@@ -304,9 +320,20 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
       |> Map.merge(%{
         "printed_subtotal_before_discount" => 475_000,
         "printed_total_taxable" => 475_000,
-        "printed_cgst" => 42_750,
-        "printed_sgst" => 42_750,
-        "printed_total_tax" => 85_500,
+        "printed_tax_totals" => [
+          %{
+            "printed_label" => "CGST",
+            "printed_amount" => 42_750
+          },
+          %{
+            "printed_label" => "SGST",
+            "printed_amount" => 42_750
+          },
+          %{
+            "printed_label" => "Total Tax",
+            "printed_amount" => 85_500
+          }
+        ],
         "printed_grand_total" => 560_500
       })
 
@@ -322,11 +349,28 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     assert length(lines) == 10
     assert Enum.all?(lines, &(&1["item_name"] == "CAMC for Chiller"))
     assert Enum.all?(lines, &(not Map.has_key?(&1, "repeat_count")))
+    assert Enum.all?(lines, &(&1["cgst_rate"] == 9 and &1["sgst_rate"] == 9))
     assert artifact["verification"]["flags"] == []
 
     normalized = Gstr1.normalize_invoice(artifact)
     assert Gstr1.extracted_totals(normalized) == %{taxable: 475_000, tax: 85_500}
     assert normalized["printed_grand_total"] == 560_500
+
+    assert Enum.all?(
+             normalized["line_items"],
+             &(&1["printed_tax_components"] == [
+                 %{
+                   "printed_label" => "CGST",
+                   "printed_rate" => 9,
+                   "printed_amount" => 4_275
+                 },
+                 %{
+                   "printed_label" => "SGST",
+                   "printed_rate" => 9,
+                   "printed_amount" => 4_275
+                 }
+               ])
+           )
   end
 
   test "does not collapse distinct or non-consecutive rows" do

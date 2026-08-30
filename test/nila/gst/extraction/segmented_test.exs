@@ -173,7 +173,7 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
       assert Map.has_key?(properties, "supplier")
       assert Map.has_key?(properties, "bill_to")
       assert Map.has_key?(properties, "ship_to")
-      assert Map.has_key?(properties, "printed_place_of_supply")
+      refute Map.has_key?(properties, "printed_place_of_supply")
       refute Map.has_key?(properties, "place_of_supply")
       refute Map.has_key?(properties, "delivery_address")
       assert Map.has_key?(properties, "document_status")
@@ -199,12 +199,12 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
                "labels, table structure or visible same-row arithmetic"
 
       [_system, user] = Jason.decode!(body)["messages"]
-      assert user["content"] =~ "regardless of vendor wording"
+      assert user["content"] =~ "copy its printed label, rate and amount"
       assert user["content"] =~ "Never use arithmetic to populate any extracted numeric field"
       assert user["content"] =~ "line_amount_tax_inclusion is an inferred semantic field"
       assert user["content"] =~ "Never duplicate printed_line_amount"
       assert user["content"] =~ "footer captions and amount-in-words labels"
-      assert user["content"] =~ "Populate CGST, SGST or IGST only when"
+      assert user["content"] =~ "Never infer a tax head"
       assert user["content"] =~ "Never select, combine or sum tax-rate or slab-summary rows"
       assert user["content"] =~ "return one line item with repeat_count equal to"
       assert user["content"] =~ "Never combine rows that differ"
@@ -218,7 +218,6 @@ defmodule Nila.Gst.Extraction.SegmentedTest do
       reply(conn, %{
         "document_type" => "debit_note",
         "recipient_registration" => "registered",
-        "printed_place_of_supply" => nil,
         "document_status" => "active",
         "supply_type" => "taxable",
         "invoice_number" => "CDN-000001",

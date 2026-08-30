@@ -3,11 +3,9 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
   Provider-neutral schema for one extracted GST invoice.
 
   Keep semantic roles explicit here before compensating in prompts or adding
-  confidence fields. In two production regressions, the smallest effective fix
-  was a schema change: distinguishing invoice-level tax totals from summary rows,
-  and distinguishing Bill To, Ship To, and an explicitly printed place of supply.
-  The latter returned the correct roles in all three repeated target-invoice runs,
-  while the ambiguous schema inferred Ship To as place of supply in all three.
+  confidence fields. Invoice-level tax totals remain distinct from summary rows,
+  and sales parties remain split into Bill To and Ship To instead of asking the
+  model to determine tax treatment from their addresses.
   """
 
   @doc "The structured schema shared by text and vision extraction."
@@ -28,7 +26,7 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
       line_items: %{
         type: "array",
         description:
-          "One row per actual goods/services item. Exclude totals, HSN summaries, tax recapitulations and amount-in-words rows.",
+          "One row per actual goods/services item. Text without its own serial number or amount is not a separate item; when structurally attached to the preceding item, append it to that item's description. Exclude totals, HSN summaries, tax recapitulations and amount-in-words rows.",
         items: line_item_schema()
       },
       printed_subtotal_before_discount:
@@ -46,26 +44,7 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
           "number",
           "Copy only a final invoice-level taxable turnover aggregate that is itself printed after discount. A subtotal labelled tax-inclusive and individual tax-rate or slab-summary taxable rows are not this aggregate. Return null when no invoice-level aggregate is printed; never select, combine or calculate one from item or summary rows."
         ),
-      printed_cgst:
-        described_nullable(
-          "number",
-          "A single invoice-level CGST aggregate that is itself printed in a totals or tax-summary area rather than an individual item or tax-rate row — for example a row labelled Total CGST. Return null when no invoice-level aggregate is printed; never select, combine or calculate one from summary rows."
-        ),
-      printed_sgst:
-        described_nullable(
-          "number",
-          "A single invoice-level SGST aggregate that is itself printed in a totals or tax-summary area rather than an individual item or tax-rate row — for example a row labelled Total SGST. Return null when no invoice-level aggregate is printed; never select, combine or calculate one from summary rows."
-        ),
-      printed_igst:
-        described_nullable(
-          "number",
-          "A single invoice-level IGST aggregate that is itself printed in a totals or tax-summary area rather than an individual item or tax-rate row. Return null when no invoice-level aggregate is printed; never select, combine or calculate one from summary rows."
-        ),
-      printed_total_tax:
-        described_nullable(
-          "number",
-          "The combined invoice-level total GST only when that aggregate is itself printed. Return null when none is printed; never derive it from item rows, tax-rate summaries or the CGST/SGST/IGST fields."
-        ),
+      printed_tax_totals: printed_tax_totals_schema(),
       printed_additional_charges:
         described_nullable(
           "number",
@@ -99,11 +78,6 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
       supplier: sales_party_schema(),
       bill_to: sales_party_schema(),
       ship_to: nullable_object(sales_party_properties()),
-      printed_place_of_supply:
-        described_nullable(
-          "string",
-          "Value from an explicitly printed Place of Supply field; otherwise null."
-        ),
       recipient_registration: %{
         type: "string",
         enum: ["registered", "unregistered", "unknown"],
@@ -196,12 +170,7 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
         description:
           "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Labels apply only at their structural scope; invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion. Use unknown when evidence is incomplete or conflicting."
       },
-      cgst_rate: nullable("number"),
-      cgst_amount: nullable("number"),
-      sgst_rate: nullable("number"),
-      sgst_amount: nullable("number"),
-      igst_rate: nullable("number"),
-      igst_amount: nullable("number"),
+      printed_tax_components: printed_tax_components_schema(:line),
       repeat_count: %{
         type: "integer",
         minimum: 1,
@@ -210,6 +179,41 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
           "Number of consecutive identical printed rows represented by this tuple, including itself. Use more than 1 only when their other tuples are omitted from line_items."
       }
     })
+  end
+
+  defp printed_tax_components_schema(:line) do
+    %{
+      type: "array",
+      description:
+        "Tax components printed for this item. Copy each label, rate and amount as printed; return an empty list when none is printed.",
+      items:
+        strict_object(%{
+          printed_label:
+            described_nullable(
+              "string",
+              "Literal tax type or tax-column label printed for this component, such as IGST, CGST or SGST."
+            ),
+          printed_rate: described_nullable("number", "Tax rate printed for this component."),
+          printed_amount: described_nullable("number", "Tax amount printed for this component.")
+        })
+    }
+  end
+
+  defp printed_tax_totals_schema do
+    %{
+      type: "array",
+      description:
+        "Invoice-level tax totals as printed, including separate tax-head totals and a generic Tax Amount or Total Tax. Copy each printed total once; return an empty list when none is printed.",
+      items:
+        strict_object(%{
+          printed_label:
+            described_nullable(
+              "string",
+              "Literal label printed for this invoice-level tax total."
+            ),
+          printed_amount: described_nullable("number", "Tax total printed with this label.")
+        })
+    }
   end
 
   defp nullable_object(properties) do

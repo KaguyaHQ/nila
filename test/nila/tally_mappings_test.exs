@@ -165,6 +165,20 @@ defmodule Nila.TallyMappingsTest do
              TallyMappings.resolve_tax_ledger(org.id, company.id, :cgst)
   end
 
+  test "resolves Tally's SGST/UTGST duty-head literal" do
+    org = org_fixture()
+    company = company_fixture(org, "Nila")
+
+    target =
+      ledger_fixture(org.id, company.id, "state-tax", "SGST", nil,
+        tax_type: "GST",
+        gst_duty_head: "SGST/UTGST"
+      )
+
+    assert {:ok, %{ledger: ^target, matched_by: :gst_duty_head}} =
+             TallyMappings.resolve_tax_ledger(org.id, company.id, :sgst)
+  end
+
   test "does not guess a GST duty head from the ledger name" do
     org = org_fixture()
     company = company_fixture(org, "Nila")
