@@ -1952,14 +1952,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     end
   end
 
-  defp voucher_type(invoice) do
-    case Gstr1.document_type(invoice) do
-      "credit_note" -> "Credit Note"
-      "debit_note" -> "Debit Note"
-      _ -> "Sales"
-    end
-  end
-
   defp narration(invoice),
     do: invoice["narration"] || invoice["remarks"] || invoice["notes"] || "Imported from Nila"
 
@@ -2617,8 +2609,11 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         }
       >
         <:header :let={title_id}>
-          <div class="grid items-center gap-3 lg:grid-cols-[1fr_auto_1fr]">
-            <div class="justify-self-start">
+          <div class="flex items-center justify-between gap-3">
+            <h2 id={title_id} class="sr-only">
+              Invoice {@selected_invoice["invoice_number"] || "without a number"}
+            </h2>
+            <div>
               <.button
                 id="sales-bill-posting-back"
                 type="button"
@@ -2629,12 +2624,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 <.icon name="hero-arrow-left" class="size-4" /> Back to batch
               </.button>
             </div>
-            <div class="text-center">
-              <h2 id={title_id} class="text-base-content text-body font-semibold">
-                Invoice {@selected_invoice["invoice_number"] || "without a number"}
-              </h2>
-            </div>
-            <div class="border-base-300 gap-related flex items-center justify-self-end border-r pr-4">
+            <div class="border-base-300 gap-related flex items-center border-r pr-4">
               <.button
                 id="sales-bill-posting-previous"
                 type="button"
@@ -2729,12 +2719,28 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             >
               <div class="pb-canvas space-y-section">
                 <section id="sales-bill-invoice-facts" class="space-y-block max-w-3xl">
-                  <div class="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 class="text-base-content text-h4 font-semibold">
-                        {voucher_type(@selected_invoice)} invoice
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="space-y-related">
+                      <h3
+                        id="sales-bill-invoice-identity"
+                        class="text-base-content text-h4 font-semibold"
+                      >
+                        Invoice {@posting_preview_invoice["invoice_number"] || "without a number"}
                       </h3>
-                      <p :if={@tally_company} class="text-ink-muted text-ui mt-1">
+                      <p id="sales-bill-buyer-identity" class="text-ink-muted text-ui">
+                        <span :if={@posting_preview_invoice["invoice_date"]}>
+                          {format_display_date(@posting_preview_invoice["invoice_date"])} ·
+                        </span>
+                        {@posting_preview_invoice["buyer_name"] || "Buyer not identified"}
+                      </p>
+                      <p
+                        :if={@posting_preview_invoice["buyer_gstin"]}
+                        id="sales-bill-buyer-gstin"
+                        class="text-ink-muted text-ui"
+                      >
+                        {@posting_preview_invoice["buyer_gstin"]}
+                      </p>
+                      <p :if={@tally_company} class="text-ink-muted text-ui">
                         Tally · {@tally_company.name}
                         <span
                           :if={not @tally_online? && @tally_masters_available?}
@@ -2804,26 +2810,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       value={@posting_preview_invoice["buyer_gstin"]}
                       type="hidden"
                     />
-                  </div>
-
-                  <div>
-                    <div class="space-y-1 self-center">
-                      <p
-                        id="sales-bill-invoice-identity"
-                        class="text-base-content text-ui font-medium"
-                      >
-                        {@posting_preview_invoice["invoice_number"] || "Invoice without a number"}
-                        <span :if={@posting_preview_invoice["invoice_date"]}>
-                          · {format_display_date(@posting_preview_invoice["invoice_date"])}
-                        </span>
-                      </p>
-                      <p id="sales-bill-buyer-identity" class="text-ink-muted text-ui">
-                        {@posting_preview_invoice["buyer_name"] || "Buyer not identified"}
-                        <span :if={@posting_preview_invoice["buyer_gstin"]}>
-                          · {@posting_preview_invoice["buyer_gstin"]}
-                        </span>
-                      </p>
-                    </div>
                   </div>
                 </section>
 
