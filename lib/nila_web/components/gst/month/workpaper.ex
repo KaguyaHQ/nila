@@ -108,7 +108,7 @@ defmodule NilaWeb.Components.Gst.Month.Workpaper do
   defp state_dot("warning"), do: "bg-warning"
   defp state_dot("error"), do: "bg-error"
   defp state_dot("info"), do: "bg-info"
-  defp state_dot(_variant), do: "bg-neutral/55"
+  defp state_dot(_variant), do: "bg-muted-indicator"
 
   defp empty_copy(:sales, _purchase_present),
     do: %{

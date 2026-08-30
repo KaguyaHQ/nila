@@ -75,6 +75,36 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "rounded-md",
     "shadow-sm"
   ]
+  @raw_palette_families ~w(white black slate gray zinc neutral stone red orange amber yellow lime green emerald teal cyan sky blue indigo violet purple fuchsia pink rose)
+  @color_utility_prefix "(?:bg|text|placeholder|border(?:-[xytrblse])?|divide|ring(?:-offset)?|inset-ring|outline|shadow|drop-shadow|inset-shadow|text-shadow|fill|stroke|from|via|to|caret|accent|decoration)"
+  @opacity_suffix "(?:/(?:\\[[^]]+\\]|\\(--[^)]+\\)|[0-9.]+))?"
+  @raw_palette_utility_pattern Regex.compile!(
+                                 "\\b" <>
+                                   @color_utility_prefix <>
+                                   "-(?:" <>
+                                   Enum.join(@raw_palette_families, "|") <>
+                                   ")(?:-\\d{1,3})?" <>
+                                   @opacity_suffix <>
+                                   "(?![\\w-])"
+                               )
+  @daisy_plumbing_utility_pattern Regex.compile!(
+                                    "\\b" <>
+                                      @color_utility_prefix <>
+                                      "-(?:base-(?:100|200|300|content)|neutral(?:-content)?|secondary(?:-content)?)" <>
+                                      @opacity_suffix <>
+                                      "(?![\\w-])"
+                                  )
+  @semantic_scale_utility_pattern Regex.compile!(
+                                    "\\b" <>
+                                      @color_utility_prefix <>
+                                      "-(?:accent|focus|info|success|warning|error)-(?:a?(?:1[0-2]|[1-9])|contrast|surface|indicator|track)" <>
+                                      @opacity_suffix <>
+                                      "(?![\\w-])"
+                                  )
+  @arbitrary_pigment_utility_pattern Regex.compile!(
+                                       "\\b" <> @color_utility_prefix <> "-\\[[^]]+\\]"
+                                     )
+  @direct_color_scale_variable_pattern ~r/var\(\s*--(?:gray|slate|blue|accent|focus|info|success|warning|error|sky|green|amber|red|black|white)-(?:a?(?:1[0-2]|[1-9])|contrast|surface|indicator|track)\s*\)/
   @daisy_component_classes MapSet.new(
                              ~w(btn badge card input textarea select file-input checkbox radio toggle range join alert loading progress radial-progress tooltip drawer dropdown modal swap collapse indicator table tabs tab menu)
                            )
@@ -266,23 +296,26 @@ defmodule Mix.Tasks.Nila.StyleGuard do
                                   {"--color-interactive", "var(--gray-a3)"},
                                   {"--color-rule", "var(--gray-a5)"},
                                   {"--color-inverse", "var(--gray-contrast)"},
+                                  {"--color-inverse-surface", "var(--gray-12)"},
+                                  {"--color-muted-indicator", "var(--gray-indicator)"},
+                                  {"--color-focus", "var(--focus-8)"},
                                   {"--color-scrim", "var(--black-a8)"},
                                   {"--shadow-moon", "var(--shadow-5)"},
                                   {"--shadow-moon-lg", "var(--shadow-6)"}
                                 ]
                             )
-  @surface_semantic_declaration_pattern ~r/(--(?:gray-(?:a?(?:1[0-2]|[1-9])|contrast|surface|indicator|track)|color-(?:background|overlay|panel(?:-solid|-translucent|-surface|-translucent-surface)?|surface|base-(?:100|200|300)|secondary(?:-content)?|accent(?:-content)?|neutral(?:-content)?|canvas|control-surface|quiet|interactive|rule|inverse|scrim)|shadow-moon(?:-lg)?))\s*:\s*([^;]+);/
+  @surface_semantic_declaration_pattern ~r/(--(?:gray-(?:a?(?:1[0-2]|[1-9])|contrast|surface|indicator|track)|color-(?:background|overlay|panel(?:-solid|-translucent|-surface|-translucent-surface)?|surface|base-(?:100|200|300)|secondary(?:-content)?|accent(?:-content)?|neutral(?:-content)?|canvas|control-surface|quiet|interactive|rule|inverse(?:-surface)?|muted-indicator|focus|scrim)|shadow-moon(?:-lg)?))\s*:\s*([^;]+);/
+  @css_named_colors ~w(aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen)
+  @raw_css_pigment_pattern Regex.compile!(
+                             "#[0-9a-fA-F]{3,8}(?![\\w-])|(?<![\\w-])(?:rgba?|hsla?|hwb|device-cmyk|oklch|oklab|lab|lch|color)\\(|(?<![\\w-])(?:" <>
+                               Enum.join(@css_named_colors, "|") <> ")(?![\\w-])"
+                           )
   @allowed_color_mix_fragments [
     "@supports (color: color-mix(in oklab, white, black))",
     "@supports (box-shadow: 0 0 0 1px color-mix(in oklab, white, black))",
     "color-mix(in oklab, var(--gray-a3), var(--gray-3) 25%)",
     "color-mix(in oklab, var(--gray-a5), var(--gray-6))",
     "color-mix(in oklab, var(--gray-12) 4.5%, transparent)"
-  ]
-  @authored_color_sections [
-    {"/* Nila sea-blue candidate", "/* Radix Themes semantic color aliases."},
-    {"/* Moonlight ground:", "/* Compatibility names for the pinned Radix elevation scale."},
-    {"/* ── Moonlight marketing homepage", "/* Correction ripple:"}
   ]
   @pinned_color_contracts [
     {"radix-themes-3.3-substrate", "/* Radix Themes 3.3 Slate light scale",
@@ -331,6 +364,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "lib/nila_web/components/**/*.ex"
   ]
   @type_scale_globs ["lib/nila_web/**/*.heex", "lib/nila_web/**/*.ex"]
+  @raw_palette_globs @type_scale_globs
   @spacing_globs @legacy_globs
   @ruling_globs @legacy_globs
   @motion_globs @legacy_globs
@@ -339,6 +373,20 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   @impl Mix.Task
   def run(_args) do
     legacy = @legacy_globs |> expand() |> Enum.flat_map(&legacy_violations/1)
+    raw_palette = @raw_palette_globs |> expand() |> Enum.flat_map(&raw_palette_violations/1)
+
+    daisy_plumbing =
+      @raw_palette_globs |> expand() |> Enum.flat_map(&daisy_plumbing_violations/1)
+
+    semantic_scale =
+      @raw_palette_globs |> expand() |> Enum.flat_map(&semantic_scale_violations/1)
+
+    arbitrary_pigment =
+      @raw_palette_globs |> expand() |> Enum.flat_map(&arbitrary_pigment_violations/1)
+
+    direct_color_scale =
+      @raw_palette_globs |> expand() |> Enum.flat_map(&direct_color_scale_violations/1)
+
     daisy_components = @legacy_globs |> expand() |> Enum.flat_map(&daisy_component_violations/1)
     type_scale = @type_scale_globs |> expand() |> Enum.flat_map(&type_scale_violations/1)
     context_type = @type_scale_globs |> expand() |> Enum.flat_map(&context_type_violations/1)
@@ -363,6 +411,11 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     status_scale = status_scale_violations(@css_path)
 
     report(legacy, "legacy hardcoded classes")
+    report(raw_palette, "raw palette utility — use a semantic product color role")
+    report(daisy_plumbing, "daisyUI plumbing color — use a semantic product color role")
+    report(semantic_scale, "raw semantic scale step — use the unstepped semantic role")
+    report(arbitrary_pigment, "arbitrary pigment utility — use a semantic product color role")
+    report(direct_color_scale, "direct color-scale variable — use a semantic product role")
     report(daisy_components, "raw daisyUI component classes — use the shared Nila component")
     report(type_scale, "raw type sizes — name a role from docs/design/FRONTEND.md#typography")
 
@@ -422,7 +475,9 @@ defmodule Mix.Tasks.Nila.StyleGuard do
       "off-system status scale — alias pinned Radix status roles once; remove retired copies"
     )
 
-    if legacy != [] or daisy_components != [] or type_scale != [] or context_type != [] or
+    if legacy != [] or raw_palette != [] or daisy_plumbing != [] or semantic_scale != [] or
+         arbitrary_pigment != [] or direct_color_scale != [] or daisy_components != [] or
+         type_scale != [] or
          component_recipes != [] or spacing != [] or ruling != [] or motion != [] or
          interactive_color != [] or css_variables != [] or ink_scale != [] or accent_scale != [] or
          surface_scale != [] or pinned_color_contract != [] or neutral_mix != [] or
@@ -440,43 +495,88 @@ defmodule Mix.Tasks.Nila.StyleGuard do
   end
 
   @doc false
+  def raw_palette_violations(path) do
+    color_class_violations(path, @raw_palette_utility_pattern)
+  end
+
+  @doc false
+  def daisy_plumbing_violations(path) do
+    path
+    |> color_class_violations(@daisy_plumbing_utility_pattern)
+    |> Enum.reject(&match?({_path, _line, "text-base-content"}, &1))
+  end
+
+  @doc false
+  def semantic_scale_violations(path) do
+    color_class_violations(path, @semantic_scale_utility_pattern)
+  end
+
+  @doc false
+  def arbitrary_pigment_violations(path) do
+    color_class_violations(path, @arbitrary_pigment_utility_pattern)
+  end
+
+  @doc false
+  def direct_color_scale_violations(path) do
+    pattern_violations(path, @direct_color_scale_variable_pattern)
+  end
+
+  defp color_class_violations(path, pattern) do
+    direct = pattern_violations(path, pattern)
+
+    parsed =
+      class_token_violations(path, fn token ->
+        pattern |> Regex.scan(token) |> Enum.map(&hd/1)
+      end)
+
+    Enum.uniq(direct ++ parsed)
+  end
+
+  @doc false
   def daisy_component_violations(path) do
-    source = path |> File.read!() |> strip_heex_comments()
-
     class_violations =
-      @class_attribute_start_pattern
-      |> Regex.scan(source, return: :index)
-      |> Enum.flat_map(fn [{attribute_start, attribute_length}] ->
-        value_start = attribute_start + attribute_length
-
-        source
-        |> binary_part(value_start, byte_size(source) - value_start)
-        |> class_attribute_source()
-        |> case do
-          nil ->
-            []
-
-          attribute_source ->
-            @class_string_pattern
-            |> Regex.scan(attribute_source, return: :index)
-            |> Enum.reject(fn [{quoted_start, _quoted_length}, _string] ->
-              comparison_operand?(attribute_source, quoted_start)
-            end)
-            |> Enum.flat_map(fn [_full, {string_start, string_length}] ->
-              attribute_source
-              |> binary_part(string_start, string_length)
-              |> String.split()
-              |> Enum.filter(&daisy_component_class?/1)
-              |> Enum.map(fn token ->
-                {path, line_number(source, value_start + string_start), token}
-              end)
-            end)
-        end
+      class_token_violations(path, fn token ->
+        if daisy_component_class?(token), do: [token], else: []
       end)
 
     data_tip_violations = pattern_violations(path, @data_tip_pattern)
 
     Enum.uniq(class_violations ++ data_tip_violations)
+  end
+
+  defp class_token_violations(path, finder) do
+    source = path |> File.read!() |> strip_heex_comments()
+
+    @class_attribute_start_pattern
+    |> Regex.scan(source, return: :index)
+    |> Enum.flat_map(fn [{attribute_start, attribute_length}] ->
+      value_start = attribute_start + attribute_length
+
+      source
+      |> binary_part(value_start, byte_size(source) - value_start)
+      |> class_attribute_source()
+      |> case do
+        nil ->
+          []
+
+        attribute_source ->
+          @class_string_pattern
+          |> Regex.scan(attribute_source, return: :index)
+          |> Enum.reject(fn [{quoted_start, _quoted_length}, _string] ->
+            comparison_operand?(attribute_source, quoted_start)
+          end)
+          |> Enum.flat_map(fn [_full, {string_start, string_length}] ->
+            line = line_number(source, value_start + string_start)
+
+            attribute_source
+            |> binary_part(string_start, string_length)
+            |> String.split()
+            |> Enum.flat_map(finder)
+            |> Enum.map(&{path, line, &1})
+          end)
+      end
+    end)
+    |> Enum.uniq()
   end
 
   defp class_attribute_source(<<"\"", _rest::binary>> = source) do
@@ -704,15 +804,26 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     source = File.read!(path)
 
     stripped =
-      Enum.reduce(@authored_color_sections, source, fn {start_marker, end_marker}, acc ->
-        strip_marked_section(acc, start_marker, end_marker)
+      Enum.reduce(@pinned_color_contracts, source, fn
+        {_name, start_marker, end_marker, _digest}, acc ->
+          strip_marked_section(acc, start_marker, end_marker)
       end)
+
+    stripped =
+      @allowed_color_mix_fragments
+      |> Enum.reduce(stripped, fn fragment, acc ->
+        String.replace(acc, fragment, preserve_newlines(fragment))
+      end)
+      |> strip_css_comments()
+      |> strip_css_strings()
 
     stripped
     |> String.split("\n")
     |> Enum.with_index(1)
     |> Enum.flat_map(fn {line, line_number} ->
-      if String.contains?(line, "oklch("), do: [{path, line_number, "oklch("}], else: []
+      @raw_css_pigment_pattern
+      |> Regex.scan(line)
+      |> Enum.map(fn [match] -> {path, line_number, match} end)
     end)
   end
 

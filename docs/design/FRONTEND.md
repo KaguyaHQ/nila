@@ -76,6 +76,9 @@ upstream 3.3 source or owned artwork, update the rendered reference, then update
 | `interactive` | Neutral hover/open fill |
 | `rule` | Ordinary border, row rule, and divider |
 | `inverse` | Text, icons, and translucent fills on brand-dark chrome |
+| `inverse-surface` | Deliberate solid inverse action or floating action surface |
+| `muted-indicator` | Neutral status dot or compact state indicator |
+| `focus` | Focus outline color from the validated interactive scale |
 | `primary` | Primary action and interactive emphasis from Nila blue |
 | `info`, `success`, `warning`, `error` | Pinned Radix semantic feedback families |
 | `scrim` | Strong document-reader overlay only |

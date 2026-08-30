@@ -111,7 +111,7 @@ defmodule NilaWeb.Layouts do
 
       <div class="lg:duration-calm lg:pl-64 lg:transition-[padding] group-data-[rail-collapsed=true]/app:lg:pl-16">
         <div class="h-screen lg:p-3">
-          <div class="bg-canvas lg:rounded-box text-base-content relative flex h-full flex-col overflow-hidden lg:ring-1 lg:ring-white/40">
+          <div class="bg-canvas lg:ring-inverse/40 lg:rounded-box text-base-content relative flex h-full flex-col overflow-hidden lg:ring-1">
             <%!-- Mobile only: the rail is hidden below lg, so this carries the brand and
                  the account menu. On desktop the rail states the section and the page's
                  own masthead names the object — a strip repeating either is chrome. --%>
@@ -154,7 +154,7 @@ defmodule NilaWeb.Layouts do
   def bottom_bar(assigns) do
     ~H"""
     <div class="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-4 sm:px-6 lg:px-8 print:hidden">
-      <div class="bg-neutral border-neutral nila-bottom-bar rounded-box shadow-moon text-neutral-content pointer-events-auto mx-auto max-w-[1480px] border p-3">
+      <div class="bg-inverse-surface border-inverse/10 nila-bottom-bar rounded-box shadow-moon text-inverse pointer-events-auto mx-auto max-w-[1480px] border p-3">
         {render_slot(@inner_block)}
       </div>
     </div>
@@ -250,7 +250,7 @@ defmodule NilaWeb.Layouts do
       class={[
         "rounded-field text-ui flex h-10 items-center gap-3 px-3 transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0",
         if(@active,
-          do: "bg-inverse/15 text-inverse font-semibold ring-1 ring-white/8 ring-inset",
+          do: "bg-inverse/15 ring-inverse/8 text-inverse font-semibold ring-1 ring-inset",
           else: "hover:bg-inverse/10 hover:text-inverse text-inverse/65 font-medium"
         )
       ]}

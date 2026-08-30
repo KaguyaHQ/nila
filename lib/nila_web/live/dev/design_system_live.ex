@@ -182,7 +182,7 @@ if Application.compile_env(:nila, :dev_routes, false) or
                         <.swatch name="Quiet fill" class="bg-quiet text-ink" />
                         <.swatch name="Interaction" class="bg-interactive text-ink" />
                         <.swatch name="Rule" class="bg-rule text-ink" />
-                        <.swatch name="Inverse" class="bg-neutral text-inverse" />
+                        <.swatch name="Inverse" class="bg-inverse-surface text-inverse" />
                       </div>
                     </.card>
 

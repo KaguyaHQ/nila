@@ -785,6 +785,9 @@
   --color-interactive: var(--gray-a3);
   --color-rule: var(--gray-a5);
   --color-inverse: var(--gray-contrast);
+  --color-inverse-surface: var(--gray-12);
+  --color-muted-indicator: var(--gray-indicator);
+  --color-focus: var(--focus-8);
   --color-scrim: var(--black-a8);
 }
 
@@ -2853,7 +2856,7 @@ details[open] > summary .fold-chevron {
   body {
     width: 210mm;
     min-height: 297mm;
-    background: white !important;
+    background: var(--color-background) !important;
   }
 
   body {

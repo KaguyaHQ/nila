@@ -26,6 +26,119 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
              ])
   end
 
+  test "rejects raw palette utilities across properties and variants" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-raw-palette-#{System.unique_integer([:positive])}.heex")
+
+    File.write!(
+      path,
+      """
+      <div class="ring-white/(--shell-ring) hover:bg-slate-2 text-red-500 border-t-black/10 fill-blue-9 from-amber-3 inset-ring-rose-500 text-shadow-gray-900"></div>
+      """
+    )
+
+    on_exit(fn -> File.rm(path) end)
+
+    assert Enum.map(StyleGuard.raw_palette_violations(path), &elem(&1, 2)) == [
+             "ring-white/(--shell-ring)",
+             "bg-slate-2",
+             "text-red-500",
+             "border-t-black/10",
+             "fill-blue-9",
+             "from-amber-3",
+             "inset-ring-rose-500",
+             "text-shadow-gray-900"
+           ]
+  end
+
+  test "rejects raw color classes returned by helper functions" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-helper-color-#{System.unique_integer([:positive])}.ex")
+
+    File.write!(path, ~s(defp state_class, do: "bg-red-500 ring-white/20"\n))
+    on_exit(fn -> File.rm(path) end)
+
+    assert Enum.map(StyleGuard.raw_palette_violations(path), &elem(&1, 2)) == [
+             "bg-red-500",
+             "ring-white/20"
+           ]
+  end
+
+  test "allows product roles and rejects daisyUI color plumbing" do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "nila-semantic-color-#{System.unique_integer([:positive])}.heex"
+      )
+
+    File.write!(
+      path,
+      ~s(<div class="bg-inverse-surface text-inverse border-rule bg-muted-indicator text-neutral-content"></div>\n)
+    )
+
+    on_exit(fn -> File.rm(path) end)
+    assert StyleGuard.raw_palette_violations(path) == []
+    assert [{^path, 1, "text-neutral-content"}] = StyleGuard.daisy_plumbing_violations(path)
+
+    File.write!(
+      path,
+      ~s(<div class="text-base-content bg-base-content border-secondary fill-neutral"></div>\n)
+    )
+
+    assert Enum.map(StyleGuard.daisy_plumbing_violations(path), &elem(&1, 2)) == [
+             "bg-base-content",
+             "border-secondary",
+             "fill-neutral"
+           ]
+  end
+
+  test "rejects semantic scale steps and arbitrary pigment utilities" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-color-role-#{System.unique_integer([:positive])}.heex")
+
+    File.write!(
+      path,
+      """
+      <div class="outline-focus-8 bg-error-a3 placeholder-red-500 bg-[#fff] text-[rgb(1,2,3)] outline-focus text-error"></div>
+      """
+    )
+
+    on_exit(fn -> File.rm(path) end)
+
+    assert Enum.map(StyleGuard.semantic_scale_violations(path), &elem(&1, 2)) == [
+             "outline-focus-8",
+             "bg-error-a3"
+           ]
+
+    assert Enum.map(StyleGuard.raw_palette_violations(path), &elem(&1, 2)) == [
+             "placeholder-red-500"
+           ]
+
+    assert Enum.map(StyleGuard.arbitrary_pigment_violations(path), &elem(&1, 2)) == [
+             "bg-[#fff]",
+             "text-[rgb(1,2,3)]"
+           ]
+  end
+
+  test "rejects direct Radix and semantic scale variables in product source" do
+    path =
+      Path.join(System.tmp_dir!(), "nila-direct-scale-#{System.unique_integer([:positive])}.heex")
+
+    File.write!(
+      path,
+      """
+      <div style="color: var(--gray-3)" class="bg-[var(--accent-a6)]"></div>
+      """
+    )
+
+    on_exit(fn -> File.rm(path) end)
+
+    assert Enum.map(StyleGuard.direct_color_scale_violations(path), &elem(&1, 2)) == [
+             "var(--gray-3)",
+             "var(--accent-a6)"
+           ]
+  end
+
   test "rejects daisyUI classes in multiline HEEx class expressions" do
     path =
       Path.join(System.tmp_dir!(), "nila-daisy-guard-#{System.unique_integer([:positive])}.heex")
@@ -225,7 +338,7 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
            )
   end
 
-  test "rejects unauthorized neutral mixtures and authored pigment" do
+  test "rejects unauthorized mixtures and every raw CSS pigment syntax" do
     path =
       Path.join(
         System.tmp_dir!(),
@@ -234,13 +347,28 @@ defmodule Mix.Tasks.Nila.StyleGuardTest do
 
     File.write!(
       path,
-      ".local { background: color-mix(in oklab, white 80%, black); color: oklch(50% 0.1 240); }\n"
+      """
+      .a { background: color-mix(in oklab, white 80%, black); color: oklch(50% 0.1 240); }
+      .b { color: #fff; background: rgb(1 2 3); border-color: color(display-p3 1 0 0); }
+      .c { color: white; background: hwb(20 10% 20%); border-color: device-cmyk(0 1 1 0); }
+      .d { color: rebeccapurple; background: red; }
+      """
     )
 
     on_exit(fn -> File.rm(path) end)
 
     assert [{^path, 1, "color-mix("}] = StyleGuard.neutral_mix_violations(path)
-    assert [{^path, 1, "oklch("}] = StyleGuard.authored_color_violations(path)
+
+    matches = Enum.map(StyleGuard.authored_color_violations(path), &elem(&1, 2))
+    assert "oklch(" in matches
+    assert "#fff" in matches
+    assert "rgb(" in matches
+    assert "color(" in matches
+    assert "white" in matches
+    assert "hwb(" in matches
+    assert "device-cmyk(" in matches
+    assert "rebeccapurple" in matches
+    assert "red" in matches
   end
 
   test "accepts Radix accent and focus aliases through the blue family" do

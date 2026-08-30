@@ -60,7 +60,7 @@ defmodule NilaWeb.Components.Menu do
           value={item[:form] && item[:value]}
           id={item.id}
           role="menuitem"
-          class="data-[tone=error]:hover:bg-error/10 data-[tone=error]:text-error focus-visible:outline-focus-8 hover:bg-interactive hover:text-base-content rounded-field text-ink-muted text-ui flex h-9 w-full items-center gap-2 px-3 font-medium focus-visible:outline-2 focus-visible:-outline-offset-2"
+          class="data-[tone=error]:hover:bg-error/10 data-[tone=error]:text-error focus-visible:outline-focus hover:bg-interactive hover:text-base-content rounded-field text-ink-muted text-ui flex h-9 w-full items-center gap-2 px-3 font-medium focus-visible:outline-2 focus-visible:-outline-offset-2"
           data-tone={item[:tone]}
           phx-click={item[:on_click]}
           phx-value-id={!item[:form] && item[:value]}
