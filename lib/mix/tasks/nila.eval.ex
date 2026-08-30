@@ -13,6 +13,7 @@ defmodule Mix.Tasks.Nila.Eval do
       mix nila.eval segment <name> [--runs 5] [--shape per_page|whole_dump] [--context neighbours|paper]
       mix nila.eval stability <name> [--runs 10] [--concurrency 4]
       mix nila.eval vision-schema <name> --pages 7 [--runs 3] [--source packet.pdf]
+      mix nila.eval vision-schema-batch <name> [--runs 2] [--concurrency 4]
       mix nila.eval source-quality <name> [--transcription-attempt DIR]
 
   `extract` replays a historical cached transcription through the former
@@ -67,6 +68,7 @@ defmodule Mix.Tasks.Nila.Eval do
       ["segment", name] -> segment(name, opts)
       ["stability", name] -> stability(name, opts)
       ["vision-schema", name] -> vision_schema(name, opts)
+      ["vision-schema-batch", name] -> vision_schema_batch(name, opts)
       ["source-quality", name] -> source_quality(name, opts)
       ["score", name] -> score_months([name], opts)
       ["score"] -> score_all(opts)
@@ -88,6 +90,18 @@ defmodule Mix.Tasks.Nila.Eval do
     if opts[:shape], do: Mix.raise("--shape does not apply to vision-schema")
     if opts[:context], do: Mix.raise("--context does not apply to vision-schema")
     if opts[:concurrency], do: Mix.raise("--concurrency does not apply to vision-schema")
+  end
+
+  defp validate_options!(["vision-schema-batch", _name], opts) do
+    reject_non_positive!(opts)
+    if opts[:pages], do: Mix.raise("--pages does not apply to vision-schema-batch")
+    if opts[:source], do: Mix.raise("--source does not apply to vision-schema-batch")
+    if opts[:shape], do: Mix.raise("--shape does not apply to vision-schema-batch")
+    if opts[:context], do: Mix.raise("--context does not apply to vision-schema-batch")
+
+    if opts[:transcription_attempt] do
+      Mix.raise("--transcription-attempt does not apply to vision-schema-batch")
+    end
   end
 
   defp validate_options!([command, _name], opts) when command in ~w(segment stability) do
@@ -307,6 +321,35 @@ defmodule Mix.Tasks.Nila.Eval do
         Mix.shell().info(
           "  run #{result["run"]}/#{runs}: #{result["line_count"]} lines, " <>
             "taxable #{result["taxable_total"]}, tax #{result["tax_total"]}"
+        )
+      else
+        Mix.shell().error("  run #{result["run"]}/#{runs}: FAILED #{result["error"]}")
+      end
+    end)
+
+    Mix.shell().info("\nraw responses and report → #{report["dir"]}")
+  end
+
+  defp vision_schema_batch(name, opts) do
+    runs = opts[:runs] || 2
+    concurrency = opts[:concurrency] || 4
+
+    Mix.shell().info(
+      "testing production vision schema on fixed #{name} boundaries, " <>
+        "#{runs} run(s), concurrency #{concurrency}"
+    )
+
+    {:ok, report} =
+      Nila.Eval.VisionSchemaBatch.run(name,
+        runs: runs,
+        max_concurrency: concurrency
+      )
+
+    Enum.each(report["results"], fn result ->
+      if result["status"] == "ok" do
+        Mix.shell().info(
+          "  run #{result["run"]}/#{runs}: #{result["invoice_count"]} invoices, " <>
+            "#{result["line_count"]} lines, #{result["flagged_count"]} flagged"
         )
       else
         Mix.shell().error("  run #{result["run"]}/#{runs}: FAILED #{result["error"]}")

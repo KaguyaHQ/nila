@@ -305,7 +305,7 @@ defmodule Nila.EvalCorpus do
       scheme: "https://",
       host: URI.parse(setting!(cfg, :endpoint, "R2_ENDPOINT")).host,
       port: 443,
-      http_client: ExAws.Request.Req
+      http_client: Nila.Storage.ExAwsClient
     ]
   end
 
