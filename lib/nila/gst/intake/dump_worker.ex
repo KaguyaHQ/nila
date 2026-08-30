@@ -72,7 +72,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
     case Nila.Repo.fetch(Dump, dump_id) do
       {:ok, dump} ->
         try do
-          do_perform(dump, job.attempt)
+          do_perform(dump, job)
         rescue
           exception ->
             handle_failure(dump, job, Exception.format(:error, exception, __STACKTRACE__))
@@ -97,8 +97,8 @@ defmodule Nila.Gst.Intake.DumpWorker do
   # rebuilds the month from every effective dump except the one whose question
   # just stopped standing — a silently emptied month, from a re-check that
   # reported success.
-  defp do_perform(dump, worker_attempt) do
-    case extract(dump, worker_attempt) do
+  defp do_perform(dump, job) do
+    case extract(dump, job.attempt) do
       {:ok, dump} ->
         if sales_batch?(dump) do
           progress(dump, {:done, dump.client_id, dump.period, dump_unaccounted_pages(dump)})
@@ -111,7 +111,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
         end
 
       {:error, reason} ->
-        if terminal_extraction_failure?(reason), do: :ok, else: {:error, reason}
+        handle_returned_failure(dump, job, reason)
     end
   end
 
@@ -127,6 +127,10 @@ defmodule Nila.Gst.Intake.DumpWorker do
   defp terminal_response_failure?({:text_chat_schema_mismatch, _reason}), do: true
   defp terminal_response_failure?({:unexpected_text_chat_response, _response}), do: true
   defp terminal_response_failure?(:invalid_text_chat_content), do: true
+  defp terminal_response_failure?(:invalid_json), do: true
+  defp terminal_response_failure?(:unrecognized_structure), do: true
+  defp terminal_response_failure?(:ambiguous_structure), do: true
+  defp terminal_response_failure?(:not_a_filed_gstr1), do: true
 
   defp terminal_response_failure?({:text_chat_failed, status, _body})
        when status in 400..499 and status != 429,
@@ -255,10 +259,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
     with {:ok, invoices, meta} <- extract_kind(dump, worker_attempt) do
       {:ok, Dumps.mark_extracted(dump, invoices, meta)}
     else
-      {:error, reason} ->
-        Dumps.mark_failed(dump, inspect(reason))
-        progress(dump, {:failed, reason})
-        {:error, reason}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -791,6 +792,24 @@ defmodule Nila.Gst.Intake.DumpWorker do
     end
 
     :ok
+  end
+
+  defp handle_returned_failure(dump, job, reason) do
+    cond do
+      terminal_extraction_failure?(reason) ->
+        Dumps.mark_failed(dump, inspect(reason))
+        progress(dump, {:failed, reason})
+        :ok
+
+      job.attempt >= job.max_attempts ->
+        Dumps.mark_failed(dump, inspect(reason))
+        progress(dump, {:failed, reason})
+        {:error, reason}
+
+      true ->
+        progress(dump, {:worker_retrying, job.attempt + 1, job.max_attempts})
+        {:error, reason}
+    end
   end
 
   defp progress(dump, message) do

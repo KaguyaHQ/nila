@@ -267,8 +267,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
          tag("BASICBUYERNAME", invoice["buyer_name"] || party),
          tag("GSTREGISTRATIONTYPE", party_details.registration_type),
          optional_tag("PARTYGSTIN", party_details.gstin),
-         tag("PLACEOFSUPPLY", party_details.place_of_supply),
-         tag("STATENAME", party_details.state),
+         optional_tag("STATENAME", party_details.state),
          tag("COUNTRYOFRESIDENCE", "India"),
          tag("PERSISTEDVIEW", "Invoice Voucher View"),
          tag("ISINVOICE", "Yes"),
@@ -383,22 +382,15 @@ defmodule Nila.Gst.Filing.TallyPrime do
     registration = Gstr1.recipient_registration(invoice)
     gstin = blank_to_nil(invoice["buyer_gstin"])
 
-    place_of_supply =
-      StateCodes.name_for(to_string(invoice["place_of_supply"] || gstin || ""))
-
     party_state =
-      StateCodes.name_for(
-        to_string(
-          if(registration == "registered", do: gstin, else: invoice["place_of_supply"]) || ""
-        )
-      )
+      if registration == "registered", do: StateCodes.name_for(to_string(gstin || ""))
 
     cond do
       registration == "registered" and is_nil(gstin) ->
         {:error, :invalid_sales_data}
 
-      registration not in ["registered", "unregistered"] or is_nil(place_of_supply) or
-          is_nil(party_state) ->
+      registration not in ["registered", "unregistered"] or
+          (registration == "registered" and is_nil(party_state)) ->
         {:error, :invalid_sales_data}
 
       true ->
@@ -407,7 +399,6 @@ defmodule Nila.Gst.Filing.TallyPrime do
            registration_type:
              if(registration == "registered", do: "Regular", else: "Unregistered"),
            gstin: gstin,
-           place_of_supply: place_of_supply,
            state: party_state
          }}
     end

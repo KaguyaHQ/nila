@@ -114,7 +114,12 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert %Nila.Gst.Sales.Batch{client_id: ^client_id, tally_company_id: nil} =
              Nila.Repo.get!(Nila.Gst.Sales.Batch, batch_id)
 
-    assert has_element?(view, "#sales-bills-progress", "Preparing sales vouchers")
+    [dump] = Dumps.list(org.id, client.id, period)
+
+    assert_redirect(
+      view,
+      ~p"/sales-bills/#{client.id}/batch/#{Nila.Gst.Sales.TallyPacket.ref([dump])}"
+    )
   end
 
   test "sales bills ignores a submitted client and uses the active workspace", %{

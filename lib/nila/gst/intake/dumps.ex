@@ -367,6 +367,11 @@ defmodule Nila.Gst.Intake.Dumps do
   def mark_extracting(%Dump{} = dump),
     do: dump |> Dump.changeset(%{status: "extracting", error: nil}) |> Repo.update!()
 
+  def retry_failed(%Dump{status: "failed"} = dump),
+    do: dump |> Dump.changeset(%{status: "received", error: nil}) |> Repo.update()
+
+  def retry_failed(%Dump{}), do: {:error, :not_failed}
+
   def mark_extracted(%Dump{} = dump, invoices, meta \\ %{}) do
     dump
     |> Dump.changeset(%{

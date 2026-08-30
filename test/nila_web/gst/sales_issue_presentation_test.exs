@@ -22,7 +22,7 @@ defmodule NilaWeb.Gst.SalesIssuePresentationTest do
     ]
   }
 
-  test "uses the validator's tax-split operands rather than recomputing from the invoice" do
+  test "does not surface place-of-supply tax inference in the sales-bill workbench" do
     issue = %{
       "code" => "tax_split_mismatch",
       "seller_state" => "33",
@@ -32,13 +32,8 @@ defmodule NilaWeb.Gst.SalesIssuePresentationTest do
 
     presentation = SalesIssuePresentation.for_invoice(@invoice, [issue])
 
-    assert presentation.summary == "Tax treatment doesn’t match the place of supply."
-
-    assert presentation.details == [
-             "Seller state is Tamil Nadu and place of supply is Telangana, but the invoice uses CGST/SGST."
-           ]
-
-    assert [%{target: :place_of_supply, lines: []}] = presentation.items
+    assert presentation.items == []
+    assert presentation.details == []
   end
 
   test "does not present mixed tax heads as a place-of-supply mismatch" do
@@ -55,6 +50,46 @@ defmodule NilaWeb.Gst.SalesIssuePresentationTest do
              "Invoice uses both IGST and CGST/SGST; one tax treatment must be corrected."
 
     assert presentation.details == ["Invoice carries ₹180.00 IGST and ₹180.00 CGST/SGST."]
+  end
+
+  test "keeps source-level tax arithmetic checks while ignoring inferred treatment" do
+    issues = [
+      %{
+        "code" => "tax_treatment_uncertain",
+        "seller_state" => "33",
+        "place_of_supply" => "29",
+        "tax_heads" => ["sgst"],
+        "suggested_tax_treatment" => "igst"
+      },
+      %{"code" => "lopsided_tax_split", "lines" => [1, 2, 3, 4]},
+      %{"code" => "bucket_tax_mismatch"},
+      %{"code" => "bucket_tax_mismatch"}
+    ]
+
+    presentation = SalesIssuePresentation.for_invoice(@invoice, issues)
+
+    assert presentation.summary == "Tax calculations need review."
+    assert [%{topic: "tax calculations"}] = presentation.items
+    refute Enum.any?(presentation.items, &("tax_treatment_uncertain" in &1.codes))
+  end
+
+  test "keeps an independent arithmetic issue after ignoring inferred treatment" do
+    issues = [
+      %{
+        "code" => "tax_treatment_uncertain",
+        "seller_state" => "33",
+        "place_of_supply" => "29",
+        "tax_heads" => ["sgst"],
+        "suggested_tax_treatment" => "igst"
+      },
+      %{"code" => "lopsided_tax_split", "lines" => [1]},
+      %{"code" => "bucket_tax_mismatch"},
+      %{"code" => "line_arithmetic", "lines" => [2]}
+    ]
+
+    presentation = SalesIssuePresentation.for_invoice(@invoice, issues)
+
+    assert Enum.any?(presentation.items, &("line_arithmetic" in &1.codes))
   end
 
   test "renders printed totals from issue operands without consulting the invoice" do
@@ -107,10 +142,9 @@ defmodule NilaWeb.Gst.SalesIssuePresentationTest do
     presentation = SalesIssuePresentation.for_invoice(@invoice, issues)
 
     assert presentation.summary =~ "Unsupported voucher treatment"
-    assert presentation.summary =~ "tax treatment"
     assert presentation.summary =~ "invoice totals"
     assert presentation.summary =~ "HSN/SAC"
-    assert length(presentation.details) == 4
+    assert length(presentation.details) == 3
     assert Enum.any?(presentation.details, &String.contains?(&1, "compensation cess"))
     assert Enum.any?(presentation.details, &String.contains?(&1, "missing on 2 lines"))
   end
@@ -144,6 +178,27 @@ defmodule NilaWeb.Gst.SalesIssuePresentationTest do
 
     assert presentation.summary == "Invoice needs review before Tally."
     refute presentation.summary =~ "correction"
+  end
+
+  test "does not let ignored POS validation hide a real Tally export failure" do
+    issues = [
+      %{"code" => "invalid_place_of_supply", "fields" => ["place_of_supply"]},
+      %{"code" => "tally_export_failed"}
+    ]
+
+    presentation = SalesIssuePresentation.for_invoice(@invoice, issues)
+
+    assert Enum.any?(presentation.items, &("tally_export_failed" in &1.codes))
+    refute Enum.any?(presentation.items, &("invalid_place_of_supply" in &1.codes))
+  end
+
+  test "keeps a sole Tally export failure as one global decision card" do
+    presentation =
+      SalesIssuePresentation.for_invoice(@invoice, [%{"code" => "tally_export_failed"}])
+
+    assert [item] = presentation.items
+    assert item.target == :global
+    assert item.summary == "Nila could not prepare this invoice as a Tally voucher."
   end
 
   defp invalid_gstin(fields), do: %{"code" => "invalid_gstin", "fields" => fields}

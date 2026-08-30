@@ -400,6 +400,8 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
     end
   end
 
+  defp coerce("place_of_supply", value) when value in [nil, ""], do: {:ok, nil}
+
   defp coerce("place_of_supply", value) when is_binary(value) do
     value = String.trim(value)
     code = StateCodes.code_for(value) || StateCodes.normalize_code(value)

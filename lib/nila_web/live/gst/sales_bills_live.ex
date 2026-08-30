@@ -3,9 +3,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   alias Nila.Clients
   alias Nila.Gst.Filing.TallyPrime
+  alias Nila.Gst.Intake.{Dumps, DumpWorker}
   alias Nila.Gst.Money
+  alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Gst.Sales.{Batch, Gstr1, Invoice, InvoiceCorrections, InvoiceRemovals, TallyPacket}
-  alias Nila.Gst.StateCodes
   alias Nila.{TallyDevices, TallyJobs, TallyMappings}
   alias NilaWeb.Gst.SalesIssuePresentation
   alias NilaWeb.Presence
@@ -13,6 +14,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   @impl true
   def mount(%{"client_id" => client_id, "batch_ref" => batch_ref}, _session, socket) do
     org_id = socket.assigns.current_scope.current_org.id
+
+    if connected?(socket), do: ClientMonths.subscribe(org_id)
 
     with {:ok, client} <- Clients.get_client(org_id, client_id),
          {:ok, batch, dumps} <- TallyPacket.fetch_with_record(org_id, client_id, batch_ref) do
@@ -34,6 +37,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         |> assign(:sales_batch, batch)
         |> assign(:batch_ref, batch_ref)
         |> assign(:packet, packet)
+        |> assign(:processing_jobs, processing_jobs(dumps))
         |> assign(:tally_company, company)
         |> assign(:tally_masters, tally_masters)
         |> assign(:tally_masters_available?, tally_masters != [])
@@ -45,6 +49,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         |> assign(:posting_preview_invoice, nil)
         |> assign(:tally_posting, nil)
         |> assign(:required_mapping_invoices, [])
+        |> assign(:required_mapping_counts, %{})
         |> assign(:review_mode?, false)
         |> assign(:posting_navigation, %{previous: nil, next: nil, position: 0, total: 0})
         |> assign(:evidence_open, false)
@@ -59,7 +64,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         |> assign(:line_edit_row, nil)
         |> assign(:line_edit_form, nil)
         |> assign(:line_edit_error, nil)
-        |> assign(:removing_invoice, nil)
         |> assign(:confirming_tally_send, false)
         |> assign(:send_holds, current_send_holds(org_id, company, packet))
         |> assign(:send_error, nil)
@@ -96,7 +100,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
     navigation_invoices =
       if review_mode?,
-        do: socket.assigns.required_mapping_invoices,
+        do: attention_invoices(socket.assigns.packet, socket.assigns.required_mapping_invoices),
         else: socket.assigns.packet.all_invoices
 
     {:noreply,
@@ -166,14 +170,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       do: amounts.taxable + amounts.tax
   end
 
-  defp state_options, do: Enum.map(StateCodes.all(), &{&1, StateCodes.code_for(&1)})
-
-  defp place_of_supply_label(nil), do: "Not identified"
-
-  defp place_of_supply_label(value) do
-    StateCodes.name_for(to_string(value)) || to_string(value)
-  end
-
   defp printed_total(invoice), do: invoice["printed_grand_total"]
 
   defp total_mismatch?(invoice) do
@@ -224,6 +220,22 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   def handle_event("send-to-tally", _params, socket), do: send_to_tally(socket)
 
+  def handle_event("retry-failed-file", %{"dump-id" => dump_id}, socket) do
+    with {dump_id, ""} <- Integer.parse(dump_id),
+         %{} = dump <- Enum.find(socket.assigns.packet.failed_files, &(&1.id == dump_id)),
+         {:ok, _dump} <-
+           Nila.Repo.transact(fn ->
+             with {:ok, retried} <- Dumps.retry_failed(dump),
+                  {:ok, _job} <- Oban.insert(DumpWorker.new(%{dump_id: dump.id})) do
+               {:ok, retried}
+             end
+           end) do
+      {:noreply, reload_processing_result(socket)}
+    else
+      _reason -> {:noreply, put_flash(socket, :error, "Nila couldn't try that file again.")}
+    end
+  end
+
   def handle_event("verify-tally", _params, socket) do
     org_id = socket.assigns.current_scope.current_org.id
 
@@ -267,59 +279,32 @@ defmodule NilaWeb.Gst.SalesBillsLive do
      )}
   end
 
-  def handle_event("open-remove-invoice", %{"id" => source_id}, socket) do
+  def handle_event("remove-invoice", %{"id" => source_id}, socket) do
     invoice = Enum.find(socket.assigns.packet.all_invoices, &(invoice_id(&1) == source_id))
 
-    if invoice && not invoice_frozen_now?(socket, invoice) do
-      {:noreply, assign(socket, :removing_invoice, invoice)}
-    else
-      {:noreply,
-       put_flash(socket, :error, "Invoices cannot be removed after this batch is sent.")}
-    end
-  end
+    cond do
+      is_nil(invoice) ->
+        {:noreply, socket}
 
-  def handle_event("close-remove-invoice", _params, socket),
-    do: {:noreply, assign(socket, :removing_invoice, nil)}
+      invoice_frozen_now?(socket, invoice) ->
+        {:noreply, put_flash(socket, :error, "Sent invoices cannot be changed.")}
 
-  def handle_event(
-        "remove-invoice",
-        _params,
-        %{assigns: %{removing_invoice: invoice}} = socket
-      )
-      when not is_nil(invoice) do
-    scope = socket.assigns.current_scope
-    org_id = scope.current_org.id
-
-    with false <- invoice_frozen_now?(socket, invoice),
-         {:ok, _removal} <-
-           InvoiceRemovals.remove(
-             org_id,
-             socket.assigns.client.id,
-             socket.assigns.batch_ref,
-             invoice_id(invoice),
-             scope.user.id
-           ),
-         {:ok, dumps} <-
-           TallyPacket.fetch(org_id, socket.assigns.client.id, socket.assigns.batch_ref) do
-      {:noreply,
-       socket
-       |> assign(:packet, prepare_packet(dumps, socket.assigns.client.id))
-       |> assign(:removing_invoice, nil)}
-    else
       true ->
-        {:noreply,
-         socket
-         |> assign(:removing_invoice, nil)
-         |> put_flash(
-           :error,
-           "This invoice was sent while the dialog was open, so it was not removed."
-         )}
+        scope = socket.assigns.current_scope
 
-      _error ->
-        {:noreply,
-         socket
-         |> assign(:removing_invoice, nil)
-         |> put_flash(:error, "That invoice could not be removed.")}
+        case InvoiceRemovals.remove(
+               scope.current_org.id,
+               socket.assigns.client.id,
+               socket.assigns.batch_ref,
+               source_id,
+               scope.user.id
+             ) do
+          {:ok, _removal} ->
+            {:noreply, reload_packet(socket)}
+
+          {:error, _reason} ->
+            {:noreply, put_flash(socket, :error, "That invoice could not be excluded.")}
+        end
     end
   end
 
@@ -835,7 +820,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp invoice_facts_values(invoice) do
     Map.take(
       invoice || %{},
-      ~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply)
+      ~w(invoice_number invoice_date buyer_name buyer_gstin)
     )
   end
 
@@ -852,7 +837,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       "invoice_date" => invoice["invoice_date"],
       "buyer_name" => invoice["buyer_name"],
       "buyer_gstin" => invoice["buyer_gstin"],
-      "place_of_supply" => invoice["place_of_supply"],
       "narration" => narration(invoice),
       "line_items" =>
         invoice
@@ -869,7 +853,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp preview_invoice(invoice, changes) do
     invoice =
       Enum.reduce(
-        ~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply narration),
+        ~w(invoice_number invoice_date buyer_name buyer_gstin narration),
         invoice,
         fn field, current ->
           if Map.has_key?(changes, field),
@@ -952,6 +936,22 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   @impl true
+  def handle_info(
+        {:gst_dump_progress, dump_id, _client_id, _period, "sales", message},
+        socket
+      ) do
+    case socket.assigns.processing_jobs do
+      %{^dump_id => job} = jobs ->
+        jobs = Map.put(jobs, dump_id, apply_processing_progress(job, message))
+        socket = assign(socket, :processing_jobs, jobs)
+
+        {:noreply, if(processing?(jobs), do: socket, else: reload_processing_result(socket))}
+
+      _not_this_batch ->
+        {:noreply, socket}
+    end
+  end
+
   def handle_info(:tally_jobs_changed, socket) do
     {:noreply,
      assign(
@@ -978,7 +978,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp remainder(packet, tally_jobs) do
-    failed = Enum.map(packet.failed_files, &TallyPacket.original_name/1)
     unread = Enum.map(packet.unread_pages, &"#{&1.file} · page #{&1.page}")
 
     not_added =
@@ -988,7 +987,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
     missing_jobs = missing_job_invoice_numbers(packet.invoices, tally_jobs)
 
-    Enum.uniq(failed ++ unread ++ not_added ++ missing_jobs)
+    Enum.uniq(unread ++ not_added ++ missing_jobs)
   end
 
   defp missing_job_invoice_numbers(_invoices, []), do: []
@@ -1373,24 +1372,38 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         invoice_frozen?(socket.assigns.tally_jobs, invoice, socket.assigns.packet.all_invoices)
       end)
 
-    assign(socket, :required_mapping_invoices, invoices)
+    socket
+    |> assign(:required_mapping_invoices, invoices)
+    |> assign(:required_mapping_counts, %{})
   end
 
   defp refresh_required_mapping_invoices(socket) do
-    invoices =
-      Enum.filter(socket.assigns.packet.invoices, fn invoice ->
-        not invoice_frozen?(
+    invoices_with_counts =
+      socket.assigns.packet.invoices
+      |> Enum.reject(fn invoice ->
+        invoice_frozen?(
           socket.assigns.tally_jobs,
           invoice,
           socket.assigns.packet.all_invoices
-        ) and
+        )
+      end)
+      |> Enum.map(fn invoice ->
+        requirement_count =
           socket.assigns
           |> tally_posting(invoice)
           |> posting_requirements()
-          |> Enum.any?()
-      end)
+          |> length()
 
-    assign(socket, :required_mapping_invoices, invoices)
+        {invoice, requirement_count}
+      end)
+      |> Enum.reject(fn {_invoice, requirement_count} -> requirement_count == 0 end)
+
+    socket
+    |> assign(:required_mapping_invoices, Enum.map(invoices_with_counts, &elem(&1, 0)))
+    |> assign(
+      :required_mapping_counts,
+      Map.new(invoices_with_counts, fn {invoice, count} -> {Invoice.source_id(invoice), count} end)
+    )
   end
 
   defp posting_requirements(nil), do: []
@@ -1439,12 +1452,95 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp next_posting_requirement(posting), do: List.first(posting_requirements(posting))
 
   defp ready_invoice_count(packet, required_mapping_invoices) do
-    max(length(packet.invoices) - length(required_mapping_invoices), 0)
+    max(
+      length(packet.invoices) - length(attention_invoices(packet, required_mapping_invoices)),
+      0
+    )
+  end
+
+  defp attention_invoices(packet, required_mapping_invoices) do
+    attention_ids =
+      packet.needs_review
+      |> Enum.map(&Invoice.source_id(&1.invoice))
+      |> Kernel.++(Enum.map(required_mapping_invoices, &Invoice.source_id/1))
+      |> MapSet.new()
+
+    Enum.filter(packet.invoices, &(Invoice.source_id(&1) in attention_ids))
+  end
+
+  defp attention_invoice_count(packet, required_mapping_invoices) do
+    packet.needs_review
+    |> Enum.map(&Invoice.source_id(&1.invoice))
+    |> Kernel.++(Enum.map(required_mapping_invoices, &Invoice.source_id/1))
+    |> Enum.uniq()
+    |> length()
+  end
+
+  defp batch_result_title(packet, required_mapping_invoices) do
+    ready = ready_invoice_count(packet, required_mapping_invoices)
+    attention = attention_invoice_count(packet, required_mapping_invoices)
+
+    cond do
+      ready == 0 and attention == 1 -> "1 invoice needs attention"
+      ready == 0 and attention > 1 -> "#{attention} invoices need attention"
+      ready == 0 -> "No sales vouchers ready"
+      ready == 1 -> "1 sales voucher ready"
+      true -> "#{ready} sales vouchers ready"
+    end
+  end
+
+  defp attention_summary(packet, required_mapping_invoices) do
+    mapping_ids = MapSet.new(required_mapping_invoices, &Invoice.source_id/1)
+    review_ids = MapSet.new(packet.needs_review, &Invoice.source_id(&1.invoice))
+    overlap = mapping_ids |> MapSet.intersection(review_ids) |> MapSet.size()
+    review_only = MapSet.size(review_ids) - overlap
+
+    review_label =
+      if Enum.all?(packet.needs_review, &tax_review_case?/1), do: "tax review", else: "review"
+
+    [
+      count_work(MapSet.size(mapping_ids), "needs Tally mappings", "need Tally mappings"),
+      count_work(overlap, "also needs #{review_label}", "also need #{review_label}"),
+      count_work(review_only, "needs #{review_label}", "need #{review_label}"),
+      excluded_summary(packet)
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" · ")
+  end
+
+  defp count_work(0, _singular, _plural), do: nil
+  defp count_work(1, singular, _plural), do: "1 #{singular}"
+  defp count_work(count, _singular, plural), do: "#{count} #{plural}"
+
+  defp excluded_summary(%{excluded: []}), do: nil
+  defp excluded_summary(packet), do: "#{length(packet.excluded)} excluded"
+
+  defp batch_table_invoices(packet) do
+    Enum.reject(packet.all_invoices, &excluded_invoice?(packet, &1)) ++ packet.excluded
+  end
+
+  defp excluded_invoice?(packet, invoice) do
+    Enum.any?(packet.excluded, &(Invoice.source_id(&1) == Invoice.source_id(invoice)))
+  end
+
+  defp batch_row_path(packet, client, batch_ref, invoice) do
+    if excluded_invoice?(packet, invoice),
+      do: nil,
+      else: posting_review_path(client, batch_ref, invoice)
+  end
+
+  defp batch_row_class(packet, invoice) do
+    if excluded_invoice?(packet, invoice), do: "bg-base-200/40 text-ink-muted"
   end
 
   defp ready_totals(packet, required_mapping_invoices) do
+    attention_ids =
+      packet
+      |> attention_invoices(required_mapping_invoices)
+      |> MapSet.new(&Invoice.source_id/1)
+
     packet.invoices
-    |> Enum.reject(&required_mapping_invoice?(required_mapping_invoices, &1))
+    |> Enum.reject(&(Invoice.source_id(&1) in attention_ids))
     |> Enum.reduce(%{taxable_paise: 0, tax_paise: 0}, fn invoice, amounts ->
       invoice_totals = Invoice.extracted_totals_paise(invoice)
 
@@ -1673,6 +1769,139 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     end
   end
 
+  defp reload_processing_result(socket) do
+    org_id = socket.assigns.current_scope.current_org.id
+
+    case TallyPacket.fetch(org_id, socket.assigns.client.id, socket.assigns.batch_ref) do
+      {:ok, dumps} ->
+        socket
+        |> assign(:processing_jobs, processing_jobs(dumps))
+        |> reload_packet()
+
+      {:error, _reason} ->
+        socket
+    end
+  end
+
+  defp processing_jobs(dumps) do
+    Map.new(dumps, fn dump ->
+      {dump.id,
+       %{
+         status: processing_status(dump.status),
+         progress: nil,
+         bill_count: if(dump.status == "extracted", do: length(dump.invoices), else: nil),
+         page_count: Map.get(dump.meta || %{}, "source_page_count"),
+         retrying: nil,
+         worker_retry: nil
+       }}
+    end)
+  end
+
+  defp processing_status("received"), do: :queued
+  defp processing_status("extracting"), do: :extracting
+  defp processing_status("extracted"), do: :done
+  defp processing_status("failed"), do: :failed
+  defp processing_status("held"), do: :held
+  defp processing_status("after_filing"), do: :after_filing
+  defp processing_status("needs_confirmation"), do: :needs_confirmation
+  defp processing_status("discarded"), do: :failed
+
+  defp apply_processing_progress(job, {:done, _client_id, _period, _unaccounted}),
+    do: %{job | status: :done, progress: nil, retrying: nil, worker_retry: nil}
+
+  defp apply_processing_progress(job, {:failed, _reason}),
+    do: %{job | status: :failed, progress: nil, retrying: nil, worker_retry: nil}
+
+  defp apply_processing_progress(job, {:worker_retrying, attempt, max_attempts}),
+    do: %{
+      job
+      | status: :extracting,
+        retrying: nil,
+        worker_retry: %{attempt: attempt, max_attempts: max_attempts}
+    }
+
+  defp apply_processing_progress(job, :extracting),
+    do: %{job | status: :extracting, retrying: nil}
+
+  defp apply_processing_progress(job, {:extracting, progress}) when is_map(progress),
+    do: %{
+      job
+      | status: :extracting,
+        progress: progress,
+        bill_count: processing_bill_count(progress, job.bill_count),
+        page_count: processing_page_count(progress, job.page_count),
+        retrying: nil
+    }
+
+  defp apply_processing_progress(job, {:extracting_retry, pages}),
+    do: %{job | status: :extracting, retrying: pages}
+
+  defp apply_processing_progress(job, status) when is_atom(status),
+    do: %{job | status: status, retrying: nil, worker_retry: nil}
+
+  defp processing_bill_count(%{stage: :reading, total: total}, _previous), do: total
+  defp processing_bill_count(_progress, previous), do: previous
+
+  defp processing_page_count(%{page_count: count}, _previous) when is_integer(count), do: count
+  defp processing_page_count(%{stage: :segmenting, total: total}, _previous), do: total
+  defp processing_page_count(_progress, previous), do: previous
+
+  @settled_processing_statuses [:done, :failed, :held, :after_filing, :needs_confirmation]
+
+  defp processing?(jobs),
+    do: Enum.any?(jobs, fn {_id, job} -> job.status not in @settled_processing_statuses end)
+
+  defp processing_invoice_progress(jobs) do
+    jobs = jobs |> Map.values() |> Enum.reject(&(&1.status == :failed))
+
+    if jobs != [] and Enum.all?(jobs, &is_integer(&1.bill_count)) do
+      total = Enum.sum(Enum.map(jobs, & &1.bill_count))
+
+      done =
+        Enum.sum(
+          Enum.map(jobs, fn
+            %{status: :done, bill_count: count} -> count
+            %{progress: %{stage: :reading, done: count}} -> count
+            _job -> 0
+          end)
+        )
+
+      %{done: done, total: total}
+    end
+  end
+
+  defp processing_progress_label(jobs) do
+    case processing_invoice_progress(jobs) do
+      %{done: done, total: total} -> "#{done} of #{total} read"
+      nil -> "Finding invoices…"
+    end
+  end
+
+  defp processing_source_label(jobs) do
+    jobs = Map.values(jobs)
+
+    if jobs != [] and Enum.all?(jobs, &is_integer(&1.page_count)) do
+      pages = Enum.sum(Enum.map(jobs, & &1.page_count))
+      "#{pages} #{plural(pages, "page")} uploaded"
+    else
+      files = length(jobs)
+      "#{files} #{plural(files, "file")} uploaded"
+    end
+  end
+
+  defp processing_retry_label(jobs) do
+    cond do
+      Enum.any?(jobs, fn {_id, job} -> job.worker_retry end) ->
+        "Processing was interrupted. Nila is trying again."
+
+      Enum.any?(jobs, fn {_id, job} -> job.retrying end) ->
+        "One read took longer. Nila is asking again."
+
+      true ->
+        nil
+    end
+  end
+
   defp find_packet_invoice(packet, source_id, fallback) do
     Enum.find(packet.all_invoices, &(Invoice.source_id(&1) == source_id)) || fallback
   end
@@ -1806,7 +2035,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp invoice_readiness_delivery(packet, invoice, send_holds, required_mapping_invoices) do
     cond do
       Enum.any?(packet.excluded, &(Invoice.source_id(&1) == Invoice.source_id(invoice))) ->
-        %{label: "Not included", variant: "neutral"}
+        %{label: "Excluded", variant: "neutral"}
 
       Map.get(send_holds, Invoice.source_id(invoice)) == :cannot_send ->
         %{label: "Cannot send", variant: "error"}
@@ -1814,10 +2043,17 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       invoice_case(packet.blocked, invoice) ->
         %{label: "Cannot send", variant: "error"}
 
-      Map.get(send_holds, Invoice.source_id(invoice)) == :needs_review or
-        required_mapping_invoice?(required_mapping_invoices, invoice) or
-          invoice_case(packet.warnings, invoice) ->
-        %{label: "Needs review", variant: "warning"}
+      review_case = invoice_case(packet.warnings, invoice) ->
+        %{
+          label: if(tax_review_case?(review_case), do: "Tax review", else: "Review needed"),
+          variant: "warning"
+        }
+
+      required_mapping_invoice?(required_mapping_invoices, invoice) ->
+        %{label: "Mapping needed", variant: "warning"}
+
+      Map.get(send_holds, Invoice.source_id(invoice)) == :needs_review ->
+        %{label: "Review needed", variant: "warning"}
 
       true ->
         %{label: "Ready", variant: "neutral"}
@@ -1834,6 +2070,42 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp missing_delivery_jobs?(packet, jobs), do: length(jobs) < length(packet.invoices)
 
   defp review_reason(review_case), do: review_presentation(review_case).summary
+
+  defp tax_review_case?(review_case) do
+    review_case
+    |> review_presentation()
+    |> Map.fetch!(:items)
+    |> Enum.any?(
+      &(&1.topic in ["tax treatment", "place of supply", "tax calculations", "GST rates"])
+    )
+  end
+
+  defp invoice_attention_reason(
+         packet,
+         required_mapping_invoices,
+         required_mapping_counts,
+         invoice
+       ) do
+    case invoice_case(packet.needs_review, invoice) do
+      nil ->
+        if required_mapping_invoice?(required_mapping_invoices, invoice) do
+          case Map.get(required_mapping_counts, Invoice.source_id(invoice)) do
+            1 -> "1 ledger missing"
+            count when is_integer(count) -> "#{count} ledgers missing"
+            _unknown -> "Tally mappings needed"
+          end
+        end
+
+      review_case ->
+        review_case
+        |> review_presentation()
+        |> Map.fetch!(:items)
+        |> case do
+          [%{queue_detail: detail}] -> detail
+          _items -> review_reason(review_case)
+        end
+    end
+  end
 
   defp selected_review(_packet, nil), do: nil
 
@@ -1857,7 +2129,15 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp review_item_copy(%{detail: detail}) when is_binary(detail), do: detail
   defp review_item_copy(_item), do: "Review this value before saving."
 
-  defp review_item_focus(%{target: :place_of_supply}), do: "place_of_supply"
+  defp next_review_item(review), do: List.first(review.items)
+
+  defp review_item_target(%{target: :allocations}), do: "#sales-bill-review-allocation-0"
+
+  defp review_item_target(%{target: :lines, lines: [line | _]}),
+    do: "#sales-bill-posting-line-#{line - 1}"
+
+  defp review_item_target(%{target: :facts}), do: "#sales-bill-edit-invoice-facts"
+  defp review_item_target(_item), do: "#sales-bill-review-global-0"
 
   defp review_item_focus(%{codes: codes}) do
     cond do
@@ -1898,19 +2178,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
        else: "Not included"
   end
 
-  defp tally_unavailable_title(assigns) do
-    cond do
-      not assigns.tally_device_online? ->
-        "Nila Connector is offline"
-
-      not assigns.tally_company_open? ->
-        "#{assigns.tally_company.name} isn't open in TallyPrime"
-
-      true ->
-        "#{assigns.tally_company.name} is unavailable"
-    end
-  end
-
   defp tally_master_sync_instruction(assigns) do
     cond do
       not assigns.tally_device_online? ->
@@ -1947,20 +2214,65 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           <.icon name="hero-arrow-left-mini" class="size-4" /> Sales bills
         </.link>
 
-        <section class="gap-region flex flex-col lg:flex-row lg:items-end lg:justify-between">
+        <section :if={processing?(@processing_jobs)} id="sales-bills-processing">
+          <div class="space-y-related">
+            <p class="text-ink-muted text-ui">{@client.name}</p>
+            <h1 class="text-base-content text-h2 font-semibold">
+              Reading invoices
+            </h1>
+            <p class="text-ink-muted text-ui tabular-nums">
+              {processing_source_label(@processing_jobs)}
+            </p>
+          </div>
+
+          <div class="mt-section space-y-related max-w-2xl">
+            <p
+              id="sales-bills-processing-progress"
+              class="text-base-content text-h4 font-semibold tabular-nums"
+            >
+              {processing_progress_label(@processing_jobs)}
+            </p>
+            <%= if progress = processing_invoice_progress(@processing_jobs) do %>
+              <.progress_bar
+                id="sales-bills-processing-bar"
+                value={progress.done}
+                max={max(progress.total, 1)}
+              />
+            <% end %>
+            <p
+              :if={processing_retry_label(@processing_jobs)}
+              id="sales-bills-processing-retry"
+              class="text-ui text-warning"
+            >
+              {processing_retry_label(@processing_jobs)}
+            </p>
+            <p class="text-ink-muted text-ui">
+              You can leave this page — processing will continue.
+            </p>
+          </div>
+        </section>
+
+        <section
+          :if={not processing?(@processing_jobs)}
+          class="gap-region flex flex-col lg:flex-row lg:items-end lg:justify-between"
+        >
           <div class="space-y-related">
             <p class="text-ink-muted text-ui">{@client.name}</p>
 
-            <h1 class="font-display text-base-content text-statement font-normal">
-              <%= case ready_invoice_count(@packet, @required_mapping_invoices) do %>
-                <% 0 -> %>
-                  No sales vouchers ready
-                <% 1 -> %>
-                  1 sales voucher ready
-                <% count -> %>
-                  {count} sales vouchers ready
-              <% end %>
+            <h1 class="text-base-content text-h2 font-semibold">
+              {batch_result_title(@packet, @required_mapping_invoices)}
             </h1>
+
+            <p
+              :if={
+                ready_invoice_count(@packet, @required_mapping_invoices) == 0 and
+                  (attention_invoice_count(@packet, @required_mapping_invoices) > 0 or
+                     @packet.excluded != [])
+              }
+              class="text-body text-ink-muted tabular-nums"
+            >
+              {attention_summary(@packet, @required_mapping_invoices)}
+            </p>
 
             <p
               :if={ready_invoice_count(@packet, @required_mapping_invoices) > 0}
@@ -1968,7 +2280,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             >
               {money(ready_totals(@packet, @required_mapping_invoices).taxable_paise)} taxable · {money(
                 ready_totals(@packet, @required_mapping_invoices).tax_paise
-              )} tax
+              )} tax<span :if={@packet.excluded != []}> · {excluded_summary(@packet)}</span>
             </p>
           </div>
 
@@ -1982,6 +2294,31 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </p>
 
             <.button
+              :if={attention_invoice_count(@packet, @required_mapping_invoices) > 0}
+              id="sales-bills-review-required"
+              variant={
+                if(ready_invoice_count(@packet, @required_mapping_invoices) > 0,
+                  do: "outline",
+                  else: "primary"
+                )
+              }
+              patch={
+                posting_review_path(
+                  @client,
+                  @batch_ref,
+                  List.first(attention_invoices(@packet, @required_mapping_invoices)),
+                  true
+                )
+              }
+            >
+              Review {attention_invoice_count(@packet, @required_mapping_invoices)}
+            </.button>
+
+            <.button
+              :if={
+                ready_invoice_count(@packet, @required_mapping_invoices) > 0 or
+                  @required_mapping_invoices == []
+              }
               type="button"
               id="sales-bills-send-to-tally"
               phx-click="request-send-to-tally"
@@ -2075,71 +2412,36 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         </p>
 
         <section
-          :if={@required_mapping_invoices != []}
-          id="sales-bills-required-mappings"
-          class="gap-block flex items-center justify-between"
-        >
-          <div class="space-y-related">
-            <h2 class="text-base-content text-h4 font-semibold">
-              {length(@required_mapping_invoices)} {plural(
-                length(@required_mapping_invoices),
-                "invoice"
-              )} {if(length(@required_mapping_invoices) == 1, do: "needs", else: "need")} Tally details
-            </h2>
-            <p class="text-ink-muted text-ui">
-              Choose only the posting ledgers Nila could not determine.
-            </p>
-          </div>
-
-          <.button
-            id="sales-bills-review-required"
-            patch={
-              posting_review_path(
-                @client,
-                @batch_ref,
-                List.first(@required_mapping_invoices),
-                true
-              )
-            }
-          >
-            Review {length(@required_mapping_invoices)}
-          </.button>
-        </section>
-
-        <section
-          :if={@packet.needs_review != []}
-          id="sales-bills-needs-review"
+          :if={not processing?(@processing_jobs) and @packet.failed_files != []}
+          id="sales-bills-failed-files"
           class="space-y-related"
         >
-          <h2 class="text-base-content text-h4 font-semibold">
-            {length(@packet.needs_review)} {plural(length(@packet.needs_review), "invoice")} {if(
-              length(@packet.needs_review) == 1,
-              do: "needs",
-              else: "need"
-            )} review
-          </h2>
+          <h2 class="text-base-content text-h4 font-semibold">Couldn't read</h2>
 
           <ul class="border-base-300 divide-base-300 divide-y border-y">
-            <li :for={review_case <- @packet.needs_review}>
-              <.link
-                id={"sales-bill-review-#{invoice_id(review_case.invoice)}"}
-                patch={posting_review_path(@client, @batch_ref, review_case.invoice)}
-                class="gap-block group flex items-center justify-between py-3"
+            <li
+              :for={dump <- @packet.failed_files}
+              id={"sales-bills-failed-file-#{dump.id}"}
+              class="gap-block flex items-center justify-between py-3"
+            >
+              <span class="text-base-content text-ui font-medium">
+                {TallyPacket.original_name(dump)}
+              </span>
+              <.button
+                type="button"
+                id={"sales-bills-retry-file-#{dump.id}"}
+                phx-click="retry-failed-file"
+                phx-value-dump-id={dump.id}
+                variant="outline"
               >
-                <div class="min-w-0">
-                  <p class="text-base-content text-ui font-mono font-medium">
-                    {review_case.invoice["invoice_number"] || "Unnumbered bill"}
-                  </p>
-                  <p class="text-ink-muted text-ui">{review_reason(review_case)}</p>
-                </div>
-                <.icon name="hero-chevron-right-mini" class="text-ink-faint size-4 shrink-0" />
-              </.link>
+                Try again
+              </.button>
             </li>
           </ul>
         </section>
 
         <section
-          :if={remainder(@packet, @tally_jobs) != []}
+          :if={not processing?(@processing_jobs) and remainder(@packet, @tally_jobs) != []}
           id="sales-bills-remainder"
           class="space-y-related"
         >
@@ -2160,9 +2462,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         <section :if={@packet.all_invoices != []} id="sales-bills-vouchers">
           <.data_table
             id="sales-bills-voucher-table"
-            rows={@packet.all_invoices}
+            rows={batch_table_invoices(@packet)}
             row_id={fn invoice -> "sales-bill-#{invoice["id"] || invoice["invoice_number"]}" end}
-            row_navigate={fn invoice -> posting_review_path(@client, @batch_ref, invoice) end}
+            row_navigate={fn invoice -> batch_row_path(@packet, @client, @batch_ref, invoice) end}
+            row_class={fn invoice -> batch_row_class(@packet, invoice) end}
             row_label={
               fn invoice ->
                 "Review invoice #{invoice["invoice_number"] || "without a number"}"
@@ -2197,7 +2500,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               {rupees(totals(invoice).tax)}
             </:col>
 
-            <:col :let={invoice} label="Tally">
+            <:col :let={invoice} label="Status">
               <span id={"sales-bill-delivery-#{invoice_id(invoice)}"} class="whitespace-nowrap">
                 <.badge variant={
                   invoice_delivery(
@@ -2217,6 +2520,25 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   ).label}
                 </.badge>
               </span>
+              <p
+                :if={
+                  invoice_attention_reason(
+                    @packet,
+                    @required_mapping_invoices,
+                    @required_mapping_counts,
+                    invoice
+                  )
+                }
+                id={"sales-bill-attention-#{invoice_id(invoice)}"}
+                class="text-ink-muted text-ui mt-1 max-w-64 whitespace-normal"
+              >
+                {invoice_attention_reason(
+                  @packet,
+                  @required_mapping_invoices,
+                  @required_mapping_counts,
+                  invoice
+                )}
+              </p>
             </:col>
 
             <:col :let={invoice} label="" align="right">
@@ -2228,16 +2550,15 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 <:item
                   :if={not Enum.member?(@packet.excluded, invoice)}
                   id={"sales-bill-remove-#{invoice_id(invoice)}"}
-                  label="Don’t include"
-                  icon="hero-trash"
-                  tone="error"
-                  on_click="open-remove-invoice"
+                  label="Exclude from batch"
+                  icon="hero-minus-circle"
+                  on_click="remove-invoice"
                   value={invoice_id(invoice)}
                 />
                 <:item
                   :if={Enum.member?(@packet.excluded, invoice)}
                   id={"sales-bill-restore-#{invoice_id(invoice)}"}
-                  label="Include"
+                  label="Include in batch"
                   icon="hero-arrow-uturn-left"
                   on_click="restore-invoice"
                   value={invoice_id(invoice)}
@@ -2286,37 +2607,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       </.modal>
 
       <.modal
-        :if={@removing_invoice}
-        id="sales-bill-remove-dialog"
-        title="Leave invoice out?"
-        on_close="close-remove-invoice"
-        return_focus={"#sales-bill-actions-#{invoice_id(@removing_invoice)}-trigger"}
-      >
-        <p class="text-base-content text-body">
-          It won’t be sent to Tally. You can include it again before sending.
-        </p>
-
-        <:footer>
-          <.button
-            id="sales-bill-remove-cancel"
-            type="button"
-            variant="ghost"
-            phx-click="close-remove-invoice"
-          >
-            Cancel
-          </.button>
-          <.button
-            id="sales-bill-remove-confirm"
-            type="button"
-            variant="error"
-            phx-click="remove-invoice"
-          >
-            Don’t include
-          </.button>
-        </:footer>
-      </.modal>
-
-      <.modal
         :if={@selected_invoice}
         id="sales-bill-posting-review"
         title={"Invoice #{@selected_invoice["invoice_number"] || "without a number"}"}
@@ -2341,8 +2631,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </div>
             <div class="text-center">
               <p :if={@review_mode?} class="text-ink-muted text-ui">
-                Review · {length(@required_mapping_invoices)} {plural(
-                  length(@required_mapping_invoices),
+                Review · {attention_invoice_count(@packet, @required_mapping_invoices)} {plural(
+                  attention_invoice_count(@packet, @required_mapping_invoices),
                   "invoice"
                 )} left
               </p>
@@ -2419,30 +2709,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
           <section id="sales-bill-proposed-voucher" class="min-h-0 overflow-y-auto">
             <div
-              :if={@selected_review}
-              id="sales-bill-review-issues"
-              class="mb-block max-w-3xl"
-            >
-              <div class="text-warning flex items-start gap-3">
-                <.icon name="hero-exclamation-triangle" class="mt-0.5 size-5 shrink-0" />
-                <div>
-                  <p class="text-ui font-semibold">{@selected_review.summary}</p>
-                  <p :for={detail <- @selected_review.details} class="text-ui mt-1">{detail}</p>
-                </div>
-              </div>
-            </div>
-
-            <div
-              :if={@tally_company && not @tally_online? && @tally_masters_available?}
-              id="sales-bill-tally-offline"
-            >
-              <.callout kind="warning" size="compact" title={tally_unavailable_title(assigns)}>
-                Using masters synced {format_master_sync(@tally_masters_synced_at)}. You can keep
-                reviewing and save mappings; reconnect before sending vouchers to Tally.
-              </.callout>
-            </div>
-
-            <div
               :if={@tally_company && not @tally_masters_available?}
               id="sales-bill-tally-masters-unavailable"
             >
@@ -2476,6 +2742,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       </h3>
                       <p :if={@tally_company} class="text-ink-muted text-ui mt-1">
                         Tally · {@tally_company.name}
+                        <span
+                          :if={not @tally_online? && @tally_masters_available?}
+                          id="sales-bill-tally-offline"
+                          class="text-warning"
+                        >
+                          · Offline — masters synced {format_master_sync(@tally_masters_synced_at)}
+                        </span>
                       </p>
                     </div>
                     <.button
@@ -2537,15 +2810,9 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       value={@posting_preview_invoice["buyer_gstin"]}
                       type="hidden"
                     />
-                    <.input
-                      id="tally-posting-place-of-supply-value"
-                      name="tally_posting[invoice][place_of_supply]"
-                      value={@posting_preview_invoice["place_of_supply"]}
-                      type="hidden"
-                    />
                   </div>
 
-                  <div class="gap-block grid items-end lg:grid-cols-[minmax(0,1fr)_20rem]">
+                  <div>
                     <div class="space-y-1 self-center">
                       <p
                         id="sales-bill-invoice-identity"
@@ -2563,42 +2830,21 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         </span>
                       </p>
                     </div>
+                  </div>
+                </section>
 
-                    <div class="space-y-related">
-                      <.callout
-                        :for={
-                          {item, index} <-
-                            Enum.with_index(review_items(@selected_review, :place_of_supply))
-                        }
-                        kind="warning"
-                        size="compact"
-                        title={item.summary}
-                      >
-                        <div class="gap-related flex items-start justify-between">
-                          <span>{review_item_copy(item)}</span>
-                          <.button
-                            id={"sales-bill-fix-place-of-supply-#{index}"}
-                            type="button"
-                            variant="ghost"
-                            size="xs"
-                            phx-click="edit-invoice-facts"
-                            phx-value-field="place_of_supply"
-                            phx-value-return_to={"#sales-bill-fix-place-of-supply-#{index}"}
-                          >
-                            Fix
-                          </.button>
-                        </div>
-                      </.callout>
-                      <div>
-                        <p class="text-ink-muted text-ui">Place of supply</p>
-                        <p
-                          id="sales-bill-place-of-supply"
-                          class="text-base-content text-ui font-medium"
-                        >
-                          {place_of_supply_label(@posting_preview_invoice["place_of_supply"])}
-                        </p>
-                      </div>
-                    </div>
+                <section
+                  :if={review_items(@selected_review, :global) != []}
+                  id="sales-bill-global-review"
+                  class="space-y-related max-w-3xl"
+                >
+                  <div
+                    :for={{item, index} <- Enum.with_index(review_items(@selected_review, :global))}
+                    id={"sales-bill-review-global-#{index}"}
+                  >
+                    <.callout kind="warning" size="compact" title={item.summary}>
+                      <span :if={item.detail}>{item.detail}</span>
+                    </.callout>
                   </div>
                 </section>
 
@@ -2637,14 +2883,17 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         )}
                       </span>
                     </div>
-                    <.callout
-                      :for={item <- review_items(@selected_review, :allocations)}
-                      kind="warning"
-                      size="compact"
-                      title={item.summary}
+                    <div
+                      :for={
+                        {item, index} <-
+                          Enum.with_index(review_items(@selected_review, :allocations))
+                      }
+                      id={"sales-bill-review-allocation-#{index}"}
                     >
-                      {review_item_copy(item)}
-                    </.callout>
+                      <.callout kind="warning" size="compact" title={item.summary}>
+                        <span>{review_item_copy(item)}</span>
+                      </.callout>
+                    </div>
                     <.data_table
                       id="sales-bill-posting-lines"
                       rows={@tally_posting.line_rows}
@@ -2935,7 +3184,42 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
               <div class="bg-base-100 border-base-300 sticky bottom-0 border-t py-4">
                 <div
-                  :if={@tally_masters_available? && next_posting_requirement(@tally_posting)}
+                  :if={@selected_review}
+                  id="sales-bill-next-review-issue"
+                  class="gap-block flex flex-col lg:flex-row lg:items-center lg:justify-between"
+                >
+                  <div class="min-w-0">
+                    <p class="text-base-content text-ui font-semibold">
+                      {length(@selected_review.items)} {plural(
+                        length(@selected_review.items),
+                        "review issue"
+                      )}
+                    </p>
+                    <p class="text-ink-muted text-ui truncate">
+                      Next: {next_review_item(@selected_review).summary}
+                    </p>
+                  </div>
+
+                  <div class="gap-block flex items-center justify-end">
+                    <p class="text-base-content text-ui font-semibold tabular-nums">
+                      {rupees(invoice_total(@posting_preview_invoice))}
+                    </p>
+                    <.button
+                      id="sales-bill-go-to-review-issue"
+                      type="button"
+                      variant="outline"
+                      phx-click={JS.focus(to: review_item_target(next_review_item(@selected_review)))}
+                    >
+                      Review
+                    </.button>
+                  </div>
+                </div>
+
+                <div
+                  :if={
+                    is_nil(@selected_review) && @tally_masters_available? &&
+                      next_posting_requirement(@tally_posting)
+                  }
                   id="sales-bill-next-required-mapping"
                   class="gap-block flex flex-col lg:flex-row lg:items-center lg:justify-between"
                 >
@@ -2964,7 +3248,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 </div>
 
                 <div
-                  :if={@tally_masters_available? && is_nil(next_posting_requirement(@tally_posting))}
+                  :if={
+                    is_nil(@selected_review) && @tally_masters_available? &&
+                      is_nil(next_posting_requirement(@tally_posting))
+                  }
                   id="sales-bill-posting-ready"
                   class="gap-block flex flex-col lg:flex-row lg:items-end lg:justify-between"
                 >
@@ -3059,16 +3346,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   label="Buyer GSTIN"
                   autofocus={@invoice_facts_focus == "buyer_gstin"}
                 />
-                <.input
-                  field={@invoice_facts_form[:place_of_supply]}
-                  type="select"
-                  label="Place of supply"
-                  prompt="Select state / UT"
-                  options={state_options()}
-                  required
-                  autofocus={@invoice_facts_focus == "place_of_supply"}
-                />
-
                 <p
                   :if={@invoice_facts_error}
                   id="sales-bill-invoice-facts-error"

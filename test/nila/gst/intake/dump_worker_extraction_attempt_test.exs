@@ -181,9 +181,24 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
         %{period: "2025-10", kind: "purchase", file_keys: [key]}
       )
 
+    PurchaseMonths.subscribe(org.id)
     job = %Oban.Job{args: %{"dump_id" => dump.id}, attempt: 1, max_attempts: 3}
 
     assert {:error, {:text_chat_request_failed, :timeout}} = DumpWorker.perform(job)
+
+    assert_receive {:gst_dump_progress, dump_id, _client_id, "2025-10", "purchase",
+                    {:worker_retrying, 2, 3}}
+
+    assert dump_id == dump.id
+    assert {:ok, %{status: "extracting", error: nil}} = Dumps.fetch(org.id, dump.id)
+
+    final_job = %{job | attempt: 3}
+    assert {:error, {:text_chat_request_failed, :timeout}} = DumpWorker.perform(final_job)
+
+    assert_receive {:gst_dump_progress, ^dump_id, _client_id, "2025-10", "purchase",
+                    {:failed, {:text_chat_request_failed, :timeout}}}
+
+    assert {:ok, %{status: "failed"}} = Dumps.fetch(org.id, dump.id)
   end
 
   @tag :capture_log
@@ -423,10 +438,9 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
       "printed_subtotal_before_discount" => nil,
       "printed_discount_amount" => nil,
       "printed_total_taxable" => 17_000,
-      "printed_cgst" => nil,
-      "printed_sgst" => nil,
-      "printed_igst" => 3_060,
-      "printed_total_tax" => 3_060,
+      "printed_tax_totals" => [
+        %{"printed_label" => "IGST", "printed_amount" => 3_060}
+      ],
       "printed_additional_charges" => nil,
       "printed_rounding_adjustment" => nil,
       "printed_grand_total" => 20_060,

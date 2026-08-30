@@ -79,7 +79,7 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert xml =~ "<PARTYLEDGERNAME>Customer &amp; Co</PARTYLEDGERNAME>"
     assert xml =~ "<PARTYNAME>Customer &amp; Co</PARTYNAME>"
     assert xml =~ "<PARTYGSTIN>29AAVCS8021P1ZB</PARTYGSTIN>"
-    assert xml =~ "<PLACEOFSUPPLY>Karnataka</PLACEOFSUPPLY>"
+    refute xml =~ "<PLACEOFSUPPLY>"
     assert xml =~ "<GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>"
     assert xml =~ "<ISINVOICE>Yes</ISINVOICE>"
     assert xml =~ "<PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>"
@@ -432,7 +432,7 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert xml =~ "<AMOUNT>0.91</AMOUNT>"
   end
 
-  test "serializes corrected narration and place of supply" do
+  test "serializes corrected narration without overriding Tally's place of supply" do
     corrected =
       invoice(%{
         "narration" => "PO 4455 & corrected by reviewer",
@@ -452,18 +452,18 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
 
     assert {:ok, xml} = TallyPrime.build(%{invoices: [corrected]})
     assert xml =~ "<NARRATION>PO 4455 &amp; corrected by reviewer</NARRATION>"
-    assert xml =~ "<PLACEOFSUPPLY>Tamil Nadu</PLACEOFSUPPLY>"
+    refute xml =~ "<PLACEOFSUPPLY>"
     assert xml =~ "<STATENAME>Karnataka</STATENAME>"
   end
 
-  test "keeps a registered party ledger in its GSTIN state when voucher POS differs" do
+  test "keeps a registered party ledger in its GSTIN state without exporting voucher POS" do
     invoice = invoice(%{"place_of_supply" => "37"})
 
     assert {:ok, [item]} =
              TallyPrime.build_items_for_company(%{invoices: [invoice]}, "Nila")
 
     assert item.party_ledger.state == "Karnataka"
-    assert item.xml =~ "<PLACEOFSUPPLY>Andhra Pradesh</PLACEOFSUPPLY>"
+    refute item.xml =~ "<PLACEOFSUPPLY>"
     assert item.xml =~ "<STATENAME>Karnataka</STATENAME>"
   end
 
@@ -575,6 +575,15 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
 
     assert xml =~
              "<GSTHSNINFERAPPLICABILITY>As per Masters/Company</GSTHSNINFERAPPLICABILITY>"
+  end
+
+  test "builds a registered sales voucher without place of supply" do
+    invoice = Map.delete(invoice(), "place_of_supply")
+
+    assert {:ok, xml} = TallyPrime.build(%{invoices: [invoice]})
+    assert xml =~ "<PARTYGSTIN>29AAVCS8021P1ZB</PARTYGSTIN>"
+    assert xml =~ "<STATENAME>Karnataka</STATENAME>"
+    refute xml =~ "<PLACEOFSUPPLY>"
   end
 
   defp invoice(overrides \\ %{}) do

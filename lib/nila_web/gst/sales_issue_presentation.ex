@@ -2,8 +2,6 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
   @moduledoc "Builds bounded, human-facing copy from structured sales readiness issues."
 
   alias Nila.Formatters
-  alias Nila.Gst.StateCodes
-
   @printed_total_codes ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch)
   @tax_calculation_codes ~w(
     line_arithmetic cgst_sgst_unequal bucket_tax_mismatch lopsided_tax_split
@@ -16,7 +14,10 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
     exempt_supply_unsupported non_gst_supply_unsupported outward_reverse_charge_unsupported
     cdnur_unsupported cancelled_document_unsupported amendment_document_unsupported
   )
-  @place_of_supply_codes ~w(tax_split_mismatch invalid_place_of_supply missing_place_of_supply)
+  @ignored_sales_bill_codes ~w(
+    tax_split_mismatch tax_treatment_uncertain place_of_supply_uncertain
+    invalid_place_of_supply missing_place_of_supply
+  )
   @fact_codes ~w(
     invalid_gstin recipient_registration_conflict unknown_recipient_registration
     unreadable_invoice_date missing_invoice_number implausible_invoice_number duplicate_invoice_number
@@ -26,11 +27,12 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
   )
 
   def for_invoice(invoice, issues) when is_map(invoice) and is_list(issues) do
+    issues = Enum.reject(issues, &(&1["code"] in @ignored_sales_bill_codes))
+
     items =
       []
       |> add_capability_items(issues)
       |> add_mixed_tax_item(issues)
-      |> add_tax_split_item(issues)
       |> add_printed_total_item(issues)
       |> add_tax_calculation_item(issues)
       |> add_hsn_items(issues)
@@ -55,7 +57,6 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
 
       target =
         cond do
-          Enum.any?(item.codes, &(&1 in @place_of_supply_codes)) -> :place_of_supply
           Enum.any?(item.codes, &(&1 in @fact_codes)) -> :facts
           lines != [] -> :lines
           Enum.any?(item.codes, &(&1 in @allocation_codes)) -> :allocations
@@ -80,14 +81,18 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
         ["cess_unsupported"]
       )
     end)
-    |> maybe_add(issue?(issues, "tally_export_failed"), fn ->
-      item(
-        "Tally export",
-        "Nila could not prepare this invoice as a Tally voucher.",
-        "The structured checks passed, but voucher generation still failed.",
-        ["tally_export_failed"]
-      )
-    end)
+    |> maybe_add(
+      issue?(issues, "tally_export_failed") and
+        Enum.all?(issues, &(&1["code"] == "tally_export_failed")),
+      fn ->
+        item(
+          "Tally export",
+          "Nila could not prepare this invoice as a Tally voucher.",
+          "The structured checks passed, but voucher generation still failed.",
+          ["tally_export_failed"]
+        )
+      end
+    )
     |> then(fn current ->
       Enum.reduce(@capability_codes, current, fn code, acc ->
         maybe_add(acc, issue?(issues, code), fn -> capability_item(code) end)
@@ -167,22 +172,6 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
     end)
   end
 
-  defp add_tax_split_item(items, issues) do
-    maybe_add(items, issue?(issues, "tax_split_mismatch"), fn ->
-      issue = find(issues, "tax_split_mismatch")
-      seller = state_name(issue["seller_state"])
-      place = state_name(issue["place_of_supply"])
-      heads = tax_heads(issue["tax_heads"])
-
-      item(
-        "tax treatment",
-        "Tax treatment doesn’t match the place of supply.",
-        "Seller state is #{seller} and place of supply is #{place}, but the invoice uses #{heads}.",
-        ["tax_split_mismatch"]
-      )
-    end)
-  end
-
   defp add_printed_total_item(items, issues) do
     family = matching(issues, @printed_total_codes)
 
@@ -204,7 +193,7 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
   end
 
   defp add_tax_calculation_item(items, issues) do
-    family = matching(issues, @tax_calculation_codes)
+    family = tax_calculation_family(issues)
 
     maybe_add(items, family != [], fn ->
       item(
@@ -214,6 +203,10 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
         Enum.map(family, & &1["code"])
       )
     end)
+  end
+
+  defp tax_calculation_family(issues) do
+    matching(issues, @tax_calculation_codes)
   end
 
   defp add_hsn_items(items, issues) do
@@ -292,7 +285,7 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
     end)
   end
 
-  defp add_identity_items(items, invoice, issues) do
+  defp add_identity_items(items, _invoice, issues) do
     items
     |> maybe_add(issue?(issues, "invalid_gstin"), fn ->
       fields = issues |> matching(["invalid_gstin"]) |> Enum.flat_map(&List.wrap(&1["fields"]))
@@ -306,17 +299,6 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
         end
 
       item("GSTIN", label, nil, ["invalid_gstin"])
-    end)
-    |> maybe_add(issue?(issues, "invalid_place_of_supply"), fn ->
-      item(
-        "place of supply",
-        "Place of supply #{inspect(invoice["place_of_supply"])} is not a GST state.",
-        nil,
-        ["invalid_place_of_supply"]
-      )
-    end)
-    |> maybe_add(issue?(issues, "missing_place_of_supply"), fn ->
-      item("place of supply", "Place of supply is missing.", nil, ["missing_place_of_supply"])
     end)
     |> maybe_add(issue?(issues, "recipient_registration_conflict"), fn ->
       item(
@@ -366,7 +348,12 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
   end
 
   defp add_unknown_item(items, issues) do
-    covered = items |> Enum.flat_map(& &1.codes) |> MapSet.new()
+    covered =
+      items
+      |> Enum.flat_map(& &1.codes)
+      |> MapSet.new()
+      |> MapSet.union(collapsed_issue_codes(issues))
+
     unknown = Enum.reject(issues, &MapSet.member?(covered, &1["code"]))
 
     maybe_add(items, unknown != [], fn ->
@@ -377,6 +364,16 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
         Enum.map(unknown, & &1["code"])
       )
     end)
+  end
+
+  defp collapsed_issue_codes(issues) do
+    codes =
+      if issue?(issues, "tally_export_failed") and
+           Enum.any?(issues, &(&1["code"] != "tally_export_failed")),
+         do: ["tally_export_failed"],
+         else: []
+
+    MapSet.new(codes)
   end
 
   defp summary([]), do: "Invoice needs review before Tally."
@@ -465,12 +462,6 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
          "Printed invoice total is #{rupees(printed)}; extracted lines total #{rupees(derived)}."
 
   defp grand_total_difference(_operands), do: nil
-
-  defp state_name(code), do: StateCodes.name_for(to_string(code || "")) || "unknown"
-
-  defp tax_heads(["cgst", "sgst"]), do: "CGST/SGST"
-  defp tax_heads(["igst"]), do: "IGST"
-  defp tax_heads(heads), do: heads |> List.wrap() |> Enum.map(&String.upcase/1) |> Enum.join("/")
 
   defp rate(value) when is_number(value) and value == trunc(value), do: "#{trunc(value)}%"
   defp rate(value), do: "#{value}%"

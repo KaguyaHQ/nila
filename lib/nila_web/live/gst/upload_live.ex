@@ -146,43 +146,41 @@ defmodule NilaWeb.Gst.UploadLive do
          {:ok, entry_kinds} <- ready_entries(socket) do
       dumps = create_dumps(socket, org.id, client_id, period, entry_kinds)
 
-      jobs =
-        dumps
-        |> Map.new(fn dump ->
-          {dump.id,
-           %{
-             kind: dump.kind,
-             status: :queued,
-             progress: nil,
-             bill_count: nil,
-             retrying: nil,
-             worker_retry: nil,
-             unaccounted: [],
-             client_id: client_id,
-             period: period
-           }}
-        end)
+      socket =
+        socket
+        |> assign(:entry_kinds, %{})
+        |> assign(:entry_keys, %{})
+        |> assign(:error, nil)
 
-      {:noreply,
-       socket
-       |> assign(:entry_kinds, %{})
-       |> assign(:entry_keys, %{})
-       |> assign(:jobs, jobs)
-       |> assign(:error, nil)
-       |> assign(:pending, %{
-         client_id: client_id,
-         period: period,
-         batch_ref: Nila.Gst.Sales.TallyPacket.ref(dumps)
-       })}
+      if socket.assigns.sales_intake? do
+        batch_ref = Nila.Gst.Sales.TallyPacket.ref(dumps)
+        {:noreply, push_navigate(socket, to: ~p"/sales-bills/#{client_id}/batch/#{batch_ref}")}
+      else
+        jobs =
+          Map.new(dumps, fn dump ->
+            {dump.id,
+             %{
+               kind: dump.kind,
+               status: :queued,
+               progress: nil,
+               bill_count: nil,
+               retrying: nil,
+               worker_retry: nil,
+               unaccounted: [],
+               client_id: client_id,
+               period: period
+             }}
+          end)
+
+        {:noreply,
+         socket
+         |> assign(:jobs, jobs)
+         |> assign(:pending, %{client_id: client_id, period: period})}
+      end
     else
       {:error, message} ->
         {:noreply, assign(socket, :error, message)}
     end
-  end
-
-  def handle_event("open-month", _params, %{assigns: %{sales_intake?: true}} = socket) do
-    %{client_id: client_id, batch_ref: batch_ref} = socket.assigns.pending
-    {:noreply, push_navigate(socket, to: ~p"/sales-bills/#{client_id}/batch/#{batch_ref}")}
   end
 
   def handle_event("open-month", _params, socket) do
@@ -394,10 +392,7 @@ defmodule NilaWeb.Gst.UploadLive do
       %{^dump_id => job} = jobs ->
         jobs = Map.put(jobs, dump_id, apply_progress(job, message))
 
-        {:noreply,
-         socket
-         |> assign(:jobs, jobs)
-         |> open_sales_result_when_finished(jobs)}
+        {:noreply, assign(socket, :jobs, jobs)}
 
       _ ->
         {:noreply, socket}
@@ -405,22 +400,6 @@ defmodule NilaWeb.Gst.UploadLive do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
-
-  defp open_sales_result_when_finished(
-         %{assigns: %{sales_intake?: true, pending: pending}} = socket,
-         jobs
-       )
-       when not is_nil(pending) do
-    if not working?(jobs) do
-      push_navigate(socket,
-        to: ~p"/sales-bills/#{pending.client_id}/batch/#{pending.batch_ref}"
-      )
-    else
-      socket
-    end
-  end
-
-  defp open_sales_result_when_finished(socket, _jobs), do: socket
 
   defp apply_progress(job, {:done, _client_id, _period, unaccounted}),
     do: %{
@@ -789,14 +768,6 @@ defmodule NilaWeb.Gst.UploadLive do
                 <.button navigate={~p"/clients/new"} id="sales-bills-add-first-client">
                   <.icon name="hero-plus" class="size-4" /> Add your first client
                 </.button>
-              </div>
-            </.card>
-          </:state>
-          <:state :if={@jobs != %{}}>
-            <.card id="sales-bills-progress">
-              <div class="flex items-center gap-3">
-                <.spinner tone="accent" label="Preparing sales vouchers" />
-                <p class="text-base-content text-h4 font-semibold">Preparing sales vouchers</p>
               </div>
             </.card>
           </:state>

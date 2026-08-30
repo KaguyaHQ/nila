@@ -176,6 +176,125 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert response(conn, 404)
   end
 
+  test "the batch truthfully becomes the result while extraction runs", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    invoice = hd(dump.invoices)
+
+    dump =
+      dump
+      |> Ecto.Changeset.change(status: "received", invoices: [])
+      |> Nila.Repo.update!()
+
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    assert has_element?(view, "#sales-bills-processing", "Reading invoices")
+    assert has_element?(view, "#sales-bills-processing", "1 file uploaded")
+    assert has_element?(view, "#sales-bills-processing-progress", "Finding invoices…")
+
+    assert has_element?(
+             view,
+             "#sales-bills-processing",
+             "You can leave this page — processing will continue."
+           )
+
+    refute has_element?(view, "#sales-bills-result", "No sales vouchers ready")
+    refute has_element?(view, "#sales-bills-remainder")
+
+    segmenting = %{stage: :segmenting, done: 15, total: 15, page_count: 15}
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, dump.period, "sales", {:extracting, segmenting}}
+    )
+
+    assert has_element?(view, "#sales-bills-processing", "15 pages uploaded")
+    assert has_element?(view, "#sales-bills-processing-progress", "Finding invoices…")
+
+    reading = %{stage: :reading, done: 13, total: 14}
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, dump.period, "sales", {:extracting, reading}}
+    )
+
+    assert has_element?(view, "#sales-bills-processing", "Reading invoices")
+    assert has_element?(view, "#sales-bills-processing-progress", "13 of 14 read")
+    assert has_element?(view, "#sales-bills-processing-bar[value='13'][max='14']")
+    refute has_element?(view, "#sales-bills-voucher-table")
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, dump.period, "sales", {:extracting_retry, "14"}}
+    )
+
+    assert has_element?(
+             view,
+             "#sales-bills-processing-retry",
+             "One read took longer. Nila is asking again."
+           )
+
+    dump
+    |> Ecto.Changeset.change(
+      status: "extracted",
+      invoices: [invoice],
+      meta: Map.put(dump.meta, "source_page_count", 15)
+    )
+    |> Nila.Repo.update!()
+
+    send(
+      view.pid,
+      {:gst_dump_progress, dump.id, client.id, dump.period, "sales",
+       {:done, client.id, dump.period, []}}
+    )
+
+    refute has_element?(view, "#sales-bills-processing")
+    assert has_element?(view, "#sales-bills-result", "1 sales voucher ready")
+    assert has_element?(view, "#sales-bills-voucher-table", "INV-001")
+  end
+
+  test "a failed file is explained and can be tried again", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    dump =
+      dump
+      |> Ecto.Changeset.change(
+        status: "failed",
+        invoices: [],
+        error: ~s({:page_render_failed, -1073741502, ""})
+      )
+      |> Nila.Repo.update!()
+
+    batch_ref = TallyPacket.ref([dump])
+    {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
+
+    assert has_element?(view, "#sales-bills-result", "No sales vouchers ready")
+    assert has_element?(view, "#sales-bills-failed-files", "Couldn't read")
+    assert has_element?(view, "#sales-bills-failed-file-#{dump.id}", "sales.pdf")
+    refute has_element?(view, "#sales-bills-remainder", "Not included")
+
+    view
+    |> element("#sales-bills-retry-file-#{dump.id}")
+    |> render_click()
+
+    assert {:ok, %{status: "received", error: nil}} = Dumps.fetch(dump.org_id, dump.id)
+
+    assert Nila.Repo.exists?(
+             from job in Oban.Job,
+               where:
+                 job.worker == "Nila.Gst.Intake.DumpWorker" and
+                   fragment("?->>'dump_id'", job.args) == ^to_string(dump.id)
+           )
+
+    assert has_element?(view, "#sales-bills-processing", "Reading invoices")
+    refute has_element?(view, "#sales-bills-failed-files")
+  end
+
   test "sends the prepared vouchers to the open Tally company", %{
     conn: conn,
     client: client,
@@ -190,6 +309,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bills-send-to-tally", "Send to Tally")
     refute has_element?(view, "#sales-bills-download")
     refute has_element?(view, "#sales-bills-remainder")
+    assert has_element?(view, "#sales-bills-vouchers thead", "Status")
+    refute has_element?(view, "#sales-bills-vouchers thead", "Tally")
     assert has_element?(view, "#sales-bills-voucher-table a[href$='?item=INV-001']")
     assert has_element?(view, "#sales-bill-delivery-INV-001", "Ready")
 
@@ -276,7 +397,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(view, "#sales-bills-send-to-tally[disabled]")
     refute has_element?(view, "#sales-bills-download")
-    assert has_element?(view, "#sales-bill-tally-offline", "Nila Connector is offline")
+    assert has_element?(view, "#sales-bill-tally-offline", "Offline — masters synced")
     assert has_element?(view, "#sales-bill-tally-posting-form")
     refute has_element?(view, "#tally_posting_party_ledger_identity[disabled]")
     refute has_element?(view, "#tally-posting-line-sales-ledger-0[disabled]")
@@ -408,7 +529,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
 
     assert has_element?(view, "#sales-bill-delivery-INV-001", "Ready")
-    assert has_element?(view, "#sales-bill-delivery-source-warning", "Needs review")
+    assert has_element?(view, "#sales-bill-delivery-source-warning", "Review needed")
     assert has_element?(view, "#sales-bill-delivery-source-blocked", "Cannot send")
 
     view |> element("#sales-bills-send-to-tally") |> render_click()
@@ -446,11 +567,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
            )
   end
 
-  test "shows an unexportable invoice as review work and makes it ready after correction", %{
-    conn: conn,
-    client: client,
-    dump: dump
-  } do
+  test "ignores a legacy place of supply when preparing the Tally packet", %{dump: dump} do
     [invoice] = dump.invoices
 
     dump =
@@ -458,39 +575,12 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       |> Ecto.Changeset.change(invoices: [Map.put(invoice, "place_of_supply", "Chennai")])
       |> Nila.Repo.update!()
 
-    batch_ref = TallyPacket.ref([dump])
-    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}"
-    {:ok, view, _html} = live(conn, path)
+    packet = TallyPacket.prepare([dump])
 
-    assert has_element?(view, "#sales-bills-result", "No sales vouchers ready")
-    assert has_element?(view, "#sales-bills-voucher-table", "INV-001")
-    assert has_element?(view, "#sales-bill-delivery-INV-001", "Cannot send")
-
-    assert has_element?(
-             view,
-             "#sales-bills-needs-review",
-             "Tally export and place of supply need review."
-           )
-
-    view |> element("#sales-bill-review-INV-001") |> render_click()
-
-    assert_patch(view, path <> "?item=INV-001")
-    assert has_element?(view, "#sales-bill-posting-review")
-    assert has_element?(view, "#sales-bill-review-issues", "Chennai")
-
-    render_submit(view, "save-tally-posting", %{
-      "tally_posting" => %{
-        "party_ledger_identity" => "name:customer & co",
-        "sales_ledger_identity" => "name:sales",
-        "igst_ledger_identity" => "name:output igst",
-        "line_sales_ledger_identities" => %{"0" => "name:sales"},
-        "invoice" => %{"place_of_supply" => "29"}
-      }
-    })
-
-    assert_patch(view, path)
-    refute has_element?(view, "#sales-bills-needs-review")
-    assert has_element?(view, "#sales-bills-voucher-table", "INV-001")
+    assert packet.warnings == []
+    assert packet.blocked == []
+    assert {:ok, xml} = TallyPacket.build_xml([dump])
+    refute xml =~ "<PLACEOFSUPPLY>"
   end
 
   test "summarizes arithmetic failures instead of dumping validator calculations", %{
@@ -524,28 +614,33 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(
              view,
-             "#sales-bill-review-INV-001",
+             "#sales-bill-attention-INV-001",
              "Invoice totals, tax calculations, and HSN/SAC need review."
            )
 
-    refute has_element?(view, "#sales-bills-needs-review", "does not match")
+    refute has_element?(view, "#sales-bill-attention-INV-001", "does not match")
 
-    view |> element("#sales-bill-review-INV-001") |> render_click()
+    {:ok, view, _html} =
+      view
+      |> element("#sales-bills-voucher-table a[href$='?item=INV-001']")
+      |> render_click()
+      |> follow_redirect(conn)
+
+    refute has_element?(view, "#sales-bill-global-review")
 
     assert has_element?(
              view,
-             "#sales-bill-review-issues",
+             "#sales-bill-ledger-allocations",
              "Printed taxable is ₹1,000.00; extracted lines total ₹63,88,200.00."
            )
 
     assert has_element?(
              view,
-             "#sales-bill-review-issues",
+             "#sales-bill-ledger-allocations",
              "Printed tax is ₹180.00; extracted lines total ₹1,152.90."
            )
 
-    assert has_element?(view, "#sales-bill-review-issues", "1 line needs review.")
-    assert has_element?(view, "#sales-bill-review-issues", "HSN/SAC is missing on 1 line.")
+    assert has_element?(view, "#sales-bill-line-summary-0", "Tax calculations need review.")
     assert has_element?(view, "#sales-bill-ledger-allocations .nila-callout[data-kind='warning']")
 
     assert has_element?(
@@ -554,7 +649,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
              "HSN/SAC is missing on 1 line."
            )
 
-    refute has_element?(view, "#sales-bill-review-issues", "does not match")
+    refute has_element?(view, "#sales-bill-global-review")
   end
 
   test "names missing HSN/SAC in the review queue", %{conn: conn, client: client, dump: dump} do
@@ -567,14 +662,14 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(
              view,
-             "#sales-bill-review-INV-001",
+             "#sales-bill-attention-INV-001",
              "HSN/SAC is missing on 1 line."
            )
 
-    refute has_element?(view, "#sales-bills-needs-review", "could not prepare")
+    refute has_element?(view, "#sales-bill-attention-INV-001", "could not prepare")
   end
 
-  test "presents a tax-head conflict as tax treatment, not an amount mismatch", %{
+  test "does not turn a stored place of supply into a tax-treatment review", %{
     conn: conn,
     client: client,
     dump: dump
@@ -597,37 +692,87 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     batch_ref = TallyPacket.ref([dump])
     {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
 
-    assert has_element?(
-             view,
-             "#sales-bill-review-INV-001",
-             "Tax treatment doesn’t match the place of supply."
-           )
+    refute has_element?(view, "#sales-bill-attention-INV-001", "Tax review")
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Mapping needed")
 
-    refute has_element?(view, "#sales-bills-needs-review", "Line amounts")
+    {:ok, view, _html} =
+      view
+      |> element("#sales-bills-voucher-table a[href$='?item=INV-001']")
+      |> render_click()
+      |> follow_redirect(conn)
 
-    view |> element("#sales-bill-review-INV-001") |> render_click()
+    refute has_element?(view, "#sales-bill-global-review")
 
-    assert has_element?(
-             view,
-             "#sales-bill-review-issues",
-             "Seller state is Tamil Nadu and place of supply is Telangana, but the invoice uses CGST/SGST."
-           )
+    refute has_element?(view, "#sales-bill-invoice-facts .nila-callout[data-kind='warning']")
+    refute has_element?(view, "#sales-bill-place-of-supply")
+    refute has_element?(view, "#tally-posting-place-of-supply-value")
+    assert has_element?(view, "#sales-bill-posting-lines", "CGST 9%")
+    assert has_element?(view, "#sales-bill-posting-lines", "SGST 9%")
+    refute has_element?(view, "#sales-bill-global-review")
+  end
 
-    assert has_element?(
-             view,
-             "#sales-bill-invoice-facts .nila-callout[data-kind='warning']",
-             "Tax treatment doesn’t match the place of supply."
-           )
+  test "does not infer tax treatment from seller and buyer states", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    [invoice] = dump.invoices
+    [source_line] = invoice["line_items"]
 
-    assert has_element?(view, "#sales-bill-place-of-supply", "Telangana")
-    refute has_element?(view, "#tally-posting-place-of-supply")
+    lines =
+      for index <- 1..4 do
+        source_line
+        |> Map.drop(~w(igst_rate igst_amount))
+        |> Map.merge(%{
+          "description" => "Taxable item #{index}",
+          "cgst_rate" => 9,
+          "cgst_amount" => 90,
+          "sgst_rate" => 9,
+          "sgst_amount" => 90
+        })
+      end
 
-    view |> element("#sales-bill-fix-place-of-supply-0") |> render_click()
+    invoice =
+      invoice
+      |> Map.drop(
+        ~w(printed_total_taxable printed_tax_totals printed_total_tax printed_grand_total)
+      )
+      |> Map.put("buyer_name", "Siemens Healthcare")
+      |> Map.put("place_of_supply", nil)
+      |> Map.put("line_items", lines)
 
-    assert has_element?(view, "#sales-bill-invoice-facts-sheet[data-variant='sheet']")
-    assert has_element?(view, "#invoice_facts_place_of_supply[autofocus]")
+    dump = dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+    batch_ref = TallyPacket.ref([dump])
 
-    refute has_element?(view, "#sales-bill-review-issues", "Nila read")
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}"
+    {:ok, view, _html} = live(conn, path)
+
+    assert has_element?(view, "#sales-bills-result", "1 invoice needs attention")
+
+    assert has_element?(view, "#sales-bills-result", "1 needs Tally mappings")
+    refute has_element?(view, "#sales-bills-result", "tax review")
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Mapping needed")
+
+    {:ok, view, _html} =
+      view
+      |> element("#sales-bills-voucher-table a[href$='?item=INV-001']")
+      |> render_click()
+      |> follow_redirect(conn)
+
+    refute has_element?(view, "#sales-bill-next-review-issue")
+    refute has_element?(view, "#sales-bill-global-review")
+    assert has_element?(view, "#sales-bill-next-required-mapping")
+    refute has_element?(view, "#sales-bill-place-of-supply")
+    refute has_element?(view, "#sales-bill-posting-lines", "Tax calculations need review")
+
+    packet = TallyPacket.prepare([Nila.Repo.reload!(dump)])
+    [prepared_invoice] = packet.invoices
+
+    assert Enum.all?(prepared_invoice["line_items"], fn line ->
+             line["cgst_rate"] == 9 and line["cgst_amount"] == 90 and
+               line["sgst_rate"] == 9 and line["sgst_amount"] == 90 and
+               is_nil(line["igst_amount"])
+           end)
   end
 
   test "excludes and restores an unsent invoice without touching its source", %{
@@ -636,33 +781,49 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     dump: dump,
     org: org
   } do
+    [invoice] = dump.invoices
+
+    second_invoice =
+      invoice
+      |> Map.put("id", "source-inv-002")
+      |> Map.put("invoice_number", "INV-002")
+
+    dump =
+      dump
+      |> Ecto.Changeset.change(invoices: [invoice, second_invoice])
+      |> Nila.Repo.update!()
+
     batch_ref = TallyPacket.ref([dump])
     path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}"
     {:ok, view, _html} = live(conn, path)
 
     assert has_element?(view, "#sales-bill-actions-INV-001-trigger[aria-label]")
 
+    assert has_element?(view, "#sales-bill-remove-INV-001", "Exclude from batch")
     view |> element("#sales-bill-remove-INV-001") |> render_click()
 
-    assert has_element?(view, "#sales-bill-remove-dialog", "Leave invoice out?")
+    assert has_element?(view, "#sales-bills-result", "1 sales voucher ready")
+    assert has_element?(view, "#sales-bills-result", "1 excluded")
+    assert has_element?(view, "#sales-bills-voucher-table", "INV-001")
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Excluded")
+    assert has_element?(view, "#sales-bill-restore-INV-001", "Include in batch")
 
     assert has_element?(
              view,
-             "#sales-bill-remove-dialog",
-             "It won’t be sent to Tally. You can include it again before sending."
+             "#sales-bill-INV-001[class~='bg-base-200/40'][class~='text-ink-muted']"
            )
 
-    view |> element("#sales-bill-remove-cancel") |> render_click()
+    refute has_element?(view, "#sales-bill-INV-001 a")
     refute has_element?(view, "#sales-bill-remove-dialog")
 
-    view |> element("#sales-bill-remove-INV-001") |> render_click()
-    view |> element("#sales-bill-remove-confirm") |> render_click()
+    row_ids =
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#sales-bills-voucher-table > tr")
+      |> LazyHTML.attribute("id")
 
-    assert has_element?(view, "#sales-bills-result", "No sales vouchers ready")
-    assert has_element?(view, "#sales-bills-voucher-table", "INV-001")
-    assert has_element?(view, "#sales-bill-delivery-INV-001", "Not included")
-    assert has_element?(view, "#sales-bill-restore-INV-001", "Include")
-    refute has_element?(view, "#sales-bill-remove-dialog")
+    assert row_ids == ["sales-bill-source-inv-002", "sales-bill-INV-001"]
 
     removal = Nila.Repo.one!(InvoiceRemoval)
     assert removal.org_id == org.id
@@ -671,13 +832,14 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert removal.source_id == "INV-001"
     assert removal.removed_at
 
-    assert [source_invoice] = Nila.Repo.reload!(dump).invoices
+    assert [source_invoice, source_second_invoice] = Nila.Repo.reload!(dump).invoices
     assert source_invoice["invoice_number"] == "INV-001"
+    assert source_second_invoice["invoice_number"] == "INV-002"
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
 
     {:ok, reopened, _html} = live(conn, path)
-    assert has_element?(reopened, "#sales-bills-result", "No sales vouchers ready")
-    assert has_element?(reopened, "#sales-bill-delivery-INV-001", "Not included")
+    assert has_element?(reopened, "#sales-bills-result", "1 sales voucher ready")
+    assert has_element?(reopened, "#sales-bill-delivery-INV-001", "Excluded")
 
     reopened |> element("#sales-bill-restore-INV-001") |> render_click()
 
@@ -808,13 +970,10 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     batch_ref = TallyPacket.ref([dump])
     {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
 
-    view
-    |> element("#sales-bills-send-to-tally")
-    |> render_click()
-
-    assert has_element?(view, "#sales-bills-send-error", "Held back 1 voucher (INV-001)")
-    assert has_element?(view, "#sales-bill-delivery-INV-001", "Needs review")
-    assert render(view) =~ "Output IGST"
+    assert has_element?(view, "#sales-bills-review-required", "Review 1")
+    refute has_element?(view, "#sales-bills-send-to-tally")
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Mapping needed")
+    assert has_element?(view, "#sales-bill-attention-INV-001", "1 ledger missing")
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
   end
 
@@ -833,15 +992,9 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     batch_ref = TallyPacket.ref([dump])
     {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
-    view |> element("#sales-bills-send-to-tally") |> render_click()
-
-    assert has_element?(
-             view,
-             "#sales-bills-send-error",
-             "Choose an existing Tally party for INV-001 before sending."
-           )
-
-    assert has_element?(view, "#sales-bill-delivery-INV-001", "Needs review")
+    assert has_element?(view, "#sales-bills-review-required", "Review 1")
+    refute has_element?(view, "#sales-bills-send-to-tally")
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Mapping needed")
 
     {:ok, view, _html} =
       view
@@ -898,8 +1051,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bill-line-edit-form")
     assert has_element?(view, "button[form='sales-bill-line-edit-form']", "Save changes")
     assert has_element?(view, "#tally-posting-line-sales-ledger-0")
-    assert has_element?(view, "#sales-bill-place-of-supply", "Karnataka")
-    assert has_element?(view, "#tally-posting-place-of-supply-value[value='29']")
+    refute has_element?(view, "#sales-bill-place-of-supply")
+    refute has_element?(view, "#tally-posting-place-of-supply-value")
     assert has_element?(view, "#sales-bill-tax-row-igst", "Output IGST")
 
     assert has_element?(
@@ -968,11 +1121,12 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     batch_ref = TallyPacket.ref([dump])
     {:ok, view, _html} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}")
 
-    assert has_element?(view, "#sales-bills-required-mappings", "2 invoices need Tally details")
     assert has_element?(view, "#sales-bills-review-required", "Review 2")
-    assert has_element?(view, "#sales-bill-delivery-INV-001", "Needs review")
-    assert has_element?(view, "#sales-bill-delivery-source-inv-002", "Needs review")
-    assert has_element?(view, "#sales-bills-result", "No sales vouchers ready")
+    refute has_element?(view, "#sales-bills-required-mappings")
+    refute has_element?(view, "#sales-bills-send-to-tally")
+    assert has_element?(view, "#sales-bill-delivery-INV-001", "Mapping needed")
+    assert has_element?(view, "#sales-bill-delivery-source-inv-002", "Mapping needed")
+    assert has_element?(view, "#sales-bills-result", "2 invoices need attention")
 
     view |> element("#sales-bills-review-required") |> render_click()
 
@@ -1017,7 +1171,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     |> render_submit()
 
     refute has_element?(view, "#sales-bill-posting-review")
-    refute has_element?(view, "#sales-bills-required-mappings")
+    refute has_element?(view, "#sales-bills-review-required")
     assert has_element?(view, "#sales-bills-result", "2 sales vouchers ready")
     assert has_element?(view, "#sales-bill-delivery-INV-001", "Ready")
     assert has_element?(view, "#sales-bill-delivery-source-inv-002", "Ready")
@@ -1053,7 +1207,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
              "Choose an existing Tally party for INV-002 before sending."
            )
 
-    assert has_element?(view, "#sales-bill-delivery-source-unresolved", "Needs review")
+    assert has_element?(view, "#sales-bill-delivery-source-unresolved", "Mapping needed")
     assert has_element?(view, "#sales-bills-remainder", "Not added to Tally")
     assert has_element?(view, "#sales-bill-actions-source-unresolved-trigger")
 
@@ -1063,7 +1217,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     {:ok, reopened, _html} =
       live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=source-unresolved")
 
-    assert has_element?(reopened, "#sales-bill-delivery-source-unresolved", "Needs review")
+    assert has_element?(reopened, "#sales-bill-delivery-source-unresolved", "Mapping needed")
     refute has_element?(reopened, "#sales-bill-edit-line-0[disabled]")
     refute has_element?(reopened, "#sales-bill-save-tally-posting[disabled]")
     assert has_element?(reopened, "#sales-bill-posting-review", company.name)
@@ -1271,7 +1425,6 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
           "invoice_date" => "2026-07-16",
           "buyer_name" => "Customer & Company",
           "buyer_gstin" => "29AAVCS8021P1ZB",
-          "place_of_supply" => "29",
           "narration" => "Corrected from invoice",
           "line_items" => %{
             "0" => %{
@@ -1301,15 +1454,15 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert job.payload["xml"] =~ "<VOUCHERNUMBER>INV-001-A</VOUCHERNUMBER>"
     assert job.payload["xml"] =~ "Corrected technical services"
     assert job.payload["xml"] =~ "<GSTHSNNAME>998713</GSTHSNNAME>"
-    assert job.payload["xml"] =~ "<PLACEOFSUPPLY>Karnataka</PLACEOFSUPPLY>"
+    refute job.payload["xml"] =~ "<PLACEOFSUPPLY>"
 
     assert {:ok, _job} = TallyJobs.complete(device.id, job.id, "succeeded", %{"created" => 1})
     assert has_element?(view, "#sales-bill-delivery-INV-001", "Added")
 
     {:ok, reopened, _html} = live(conn, path)
     assert has_element?(reopened, "#tally-posting-invoice-number-value[value='INV-001-A']")
-    assert has_element?(reopened, "#tally-posting-place-of-supply-value[value='29']")
-    assert has_element?(reopened, "#sales-bill-place-of-supply", "Karnataka")
+    refute has_element?(reopened, "#tally-posting-place-of-supply-value")
+    refute has_element?(reopened, "#sales-bill-place-of-supply")
     assert has_element?(reopened, "#sales-bill-line-summary-0", "Corrected technical services")
     assert has_element?(reopened, "#sales-bill-line-summary-0", "HSN 998713")
   end
@@ -1332,8 +1485,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
           "invoice_number" => "INV-001",
           "invoice_date" => "2026-07-15",
           "buyer_name" => "Customer & Co",
-          "buyer_gstin" => "29AAVCS8021P1ZB",
-          "place_of_supply" => "29"
+          "buyer_gstin" => "29AAVCS8021P1ZB"
         }
       }
     })
@@ -1346,8 +1498,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
         invoice_number: "INV-001-A",
         invoice_date: "2026-07-15",
         buyer_name: "Customer & Company",
-        buyer_gstin: "29AAVCS8021P1ZB",
-        place_of_supply: "29"
+        buyer_gstin: "29AAVCS8021P1ZB"
       }
     )
     |> render_submit()
@@ -1355,7 +1506,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     refute has_element?(view, "#sales-bill-invoice-facts-sheet")
     assert has_element?(view, "#sales-bill-invoice-identity", "INV-001-A · 15 Jul 2026")
     assert has_element?(view, "#sales-bill-buyer-identity", "Customer & Company")
-    assert has_element?(view, "#sales-bill-place-of-supply", "Karnataka")
+    refute has_element?(view, "#sales-bill-place-of-supply")
+    refute has_element?(view, "#tally-posting-place-of-supply-value")
 
     assert has_element?(
              view,

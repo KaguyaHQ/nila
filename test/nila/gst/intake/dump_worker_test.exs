@@ -354,7 +354,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
   } do
     dump = bring_in(org, client, user, "filed_gstr1", gstr2b_json())
 
-    assert {:error, :not_a_filed_gstr1} = run(dump)
+    assert :ok = run(dump)
 
     {:ok, dump} = Dumps.fetch(org.id, dump.id)
     assert dump.status == "failed"
@@ -368,7 +368,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
   } do
     dump = bring_in(org, client, user, "gstr2b", "not json at all")
 
-    assert {:error, _} = run(dump)
+    assert :ok = run(dump)
 
     {:ok, dump} = Dumps.fetch(org.id, dump.id)
     assert dump.status == "failed"

@@ -130,7 +130,7 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
     refute xml =~ "<VOUCHERNUMBER>INV-001</VOUCHERNUMBER>"
   end
 
-  test "canonicalizes a corrected place of supply and keeps it after reload", ctx do
+  test "keeps a legacy place-of-supply correction without gating Tally", ctx do
     assert {:ok, %{invoice: effective}} =
              InvoiceCorrections.save(
                ctx.org.id,
@@ -145,9 +145,10 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
     assert hd(packet.all_invoices)["place_of_supply"] == "33"
     assert [sendable] = packet.invoices
     assert sendable["place_of_supply"] == "33"
-    assert [warning] = packet.warnings
-    assert Enum.any?(warning.issues, &(&1["code"] == "tax_split_mismatch"))
+    assert packet.warnings == []
     assert packet.blocked == []
+    assert {:ok, xml} = TallyPacket.build_xml([Repo.reload!(ctx.dump)])
+    refute xml =~ "<PLACEOFSUPPLY>"
 
     assert {:error, {:invalid_correction, "place_of_supply", :invalid_place_of_supply}} =
              InvoiceCorrections.save(
@@ -159,7 +160,28 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
              )
   end
 
-  test "holds an unexportable invoice with its structured issue until corrected", ctx do
+  test "does not require place of supply when correcting an unrelated invoice fact", ctx do
+    invoice_without_pos = Map.put(ctx.invoice, "place_of_supply", nil)
+
+    ctx.dump
+    |> Ecto.Changeset.change(invoices: [invoice_without_pos])
+    |> Repo.update!()
+
+    assert {:ok, %{invoice: corrected}} =
+             InvoiceCorrections.save(
+               ctx.org.id,
+               ctx.client.id,
+               ctx.batch_ref,
+               "source-1",
+               %{"invoice_number" => "INV-001-A", "place_of_supply" => ""},
+               ctx.user.id
+             )
+
+    assert corrected["invoice_number"] == "INV-001-A"
+    assert corrected["place_of_supply"] == nil
+  end
+
+  test "ignores an invalid legacy place of supply when preparing Tally", ctx do
     invalid_invoice = Map.put(ctx.invoice, "place_of_supply", "Chennai")
 
     ctx.dump
@@ -168,33 +190,11 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
 
     packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
 
-    assert packet.invoices == []
-    assert [held] = packet.blocked
-    assert held.invoice["invoice_number"] == "INV-001"
-
-    assert Enum.any?(held.issues, fn issue ->
-             issue["code"] == "invalid_place_of_supply" and
-               issue["fields"] == ["place_of_supply"]
-           end)
-
-    assert Enum.any?(held.issues, &(&1["code"] == "tally_export_failed"))
-
-    assert {:ok, %{invoice: corrected}} =
-             InvoiceCorrections.save(
-               ctx.org.id,
-               ctx.client.id,
-               ctx.batch_ref,
-               "source-1",
-               %{"place_of_supply" => "Karnataka"},
-               ctx.user.id
-             )
-
-    assert corrected["place_of_supply"] == "29"
-
-    packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
     assert [ready] = packet.invoices
-    assert ready["place_of_supply"] == "29"
+    assert ready["place_of_supply"] == "Chennai"
     assert packet.needs_review == []
+    assert {:ok, xml} = TallyPacket.build_xml([Repo.reload!(ctx.dump)])
+    refute xml =~ "<PLACEOFSUPPLY>"
   end
 
   test "keeps a serializer-valid invoice sendable when readiness finds an amount warning", ctx do
