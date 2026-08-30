@@ -47,7 +47,10 @@ defmodule Nila.TallyMappings do
       when is_integer(org_id) and is_integer(company_id) and is_map(identity) do
     with {:ok, normalized} <- normalize_identity(identity),
          {:ok, _company} <- company(org_id, company_id) do
-      ledgers = list_ledger_choices(org_id, company_id)
+      ledgers =
+        org_id
+        |> list_ledger_choices(company_id)
+        |> Enum.filter(&party_ledger?/1)
 
       case saved_ledger(org_id, company_id, normalized.source_key, ledgers) do
         %SyncedMaster{} = ledger ->
@@ -67,7 +70,7 @@ defmodule Nila.TallyMappings do
     Repo.transact(fn ->
       with {:ok, normalized} <- normalize_identity(identity),
            {:ok, _company} <- company(org_id, company_id),
-           %SyncedMaster{} = ledger <- ledger(org_id, company_id, ledger_identity) do
+           %SyncedMaster{} = ledger <- party_ledger(org_id, company_id, ledger_identity) do
         put_party_mapping(org_id, company_id, normalized, ledger)
       else
         nil -> {:error, :ledger_not_found}
@@ -166,7 +169,8 @@ defmodule Nila.TallyMappings do
       ) do
     with {:ok, normalized_identity} <- normalize_identity(identity),
          {:ok, _company} <- company(org_id, company_id),
-         %SyncedMaster{} = party_ledger <- ledger(org_id, company_id, party_ledger_identity),
+         %SyncedMaster{} = party_ledger <-
+           party_ledger(org_id, company_id, party_ledger_identity),
          {:ok, normalized_profile} <- normalize_profile_attrs(profile_attrs),
          :ok <- validate_profile_ledgers(org_id, company_id, normalized_profile),
          {:ok, mapping} <-
@@ -367,16 +371,46 @@ defmodule Nila.TallyMappings do
     end
   end
 
-  defp sales_ledger?(ledger) do
-    parent = ledger.data["parent"] || ledger.data[:parent]
-    is_binary(parent) and String.downcase(String.trim(parent)) == "sales accounts"
+  defp party_ledger(org_id, company_id, identity) do
+    case ledger(org_id, company_id, identity) do
+      %SyncedMaster{} = ledger -> if party_ledger?(ledger), do: ledger
+      nil -> nil
+    end
   end
 
-  defp tax_ledger_for_head?(ledger, head) do
+  @doc false
+  def party_ledger?(%SyncedMaster{} = ledger),
+    do: normalized_ledger_parent(ledger) == "sundry debtors"
+
+  def party_ledger?(_ledger), do: false
+
+  @doc false
+  def sales_ledger?(%SyncedMaster{} = ledger),
+    do: normalized_ledger_parent(ledger) == "sales accounts"
+
+  def sales_ledger?(_ledger), do: false
+
+  @doc false
+  def tax_ledger_for_head?(%SyncedMaster{} = ledger, head) do
+    case normalize_tax_head(head) do
+      {:ok, normalized_head} -> tax_ledger_matches_head?(ledger, normalized_head)
+      {:error, _reason} -> false
+    end
+  end
+
+  def tax_ledger_for_head?(_ledger, _head), do: false
+
+  defp tax_ledger_matches_head?(ledger, head) do
     tax_type = ledger.data["tax_type"] || ledger.data[:tax_type]
     duty_head = ledger.data["gst_duty_head"] || ledger.data[:gst_duty_head]
 
     normalize_name(tax_type) == "gst" and normalize_tax_head_value(duty_head) == head
+  end
+
+  defp normalized_ledger_parent(ledger) do
+    ledger.data
+    |> Map.get("parent", Map.get(ledger.data, :parent))
+    |> normalize_name()
   end
 
   defp normalize_tax_head(head) do
@@ -407,19 +441,28 @@ defmodule Nila.TallyMappings do
   end
 
   defp validate_profile_ledgers(org_id, company_id, attrs) do
-    identities =
-      PostingProfile.ledger_fields()
-      |> Enum.map(&Map.get(attrs, &1))
-      |> Enum.reject(&is_nil/1)
-      |> Enum.uniq()
+    rules = %{
+      sales_ledger_identity: &sales_ledger?/1,
+      cgst_ledger_identity: &tax_ledger_for_head?(&1, :cgst),
+      sgst_ledger_identity: &tax_ledger_for_head?(&1, :sgst),
+      igst_ledger_identity: &tax_ledger_for_head?(&1, :igst)
+    }
 
-    found =
-      Repo.aggregate(
-        from(master in ledger_query(org_id, company_id), where: master.identity in ^identities),
-        :count
-      )
+    Enum.reduce_while(rules, :ok, fn {field, valid?}, :ok ->
+      case Map.get(attrs, field) do
+        nil ->
+          {:cont, :ok}
 
-    if found == length(identities), do: :ok, else: {:error, :ledger_not_found}
+        identity ->
+          case ledger(org_id, company_id, identity) do
+            nil ->
+              {:halt, {:error, :ledger_not_found}}
+
+            ledger ->
+              if valid?.(ledger), do: {:cont, :ok}, else: {:halt, {:error, :invalid_ledger_type}}
+          end
+      end
+    end)
   end
 
   defp normalize_profile_attrs(attrs) do

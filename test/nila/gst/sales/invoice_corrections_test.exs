@@ -352,7 +352,11 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
 
   test "saves one complete invoice workbench submission atomically", ctx do
     company = company_fixture(ctx.org, "Nila")
-    party = ledger_fixture(ctx.org.id, company.id, "party", "Customer AP", %{})
+
+    party =
+      ledger_fixture(ctx.org.id, company.id, "party", "Customer AP", %{
+        "parent" => "Sundry Debtors"
+      })
 
     sales =
       ledger_fixture(ctx.org.id, company.id, "material-sales", "Material Sales", %{
@@ -387,7 +391,11 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
 
   test "rolls back corrections and every mapping when any line ledger is invalid", ctx do
     company = company_fixture(ctx.org, "Nila")
-    party = ledger_fixture(ctx.org.id, company.id, "party", "Customer AP", %{})
+
+    party =
+      ledger_fixture(ctx.org.id, company.id, "party", "Customer AP", %{
+        "parent" => "Sundry Debtors"
+      })
 
     sales =
       ledger_fixture(ctx.org.id, company.id, "material-sales", "Material Sales", %{
@@ -420,7 +428,11 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
 
   test "does not pin a Sales batch when its posting submission rolls back", ctx do
     company = company_fixture(ctx.org, "Nila")
-    party = ledger_fixture(ctx.org.id, company.id, "party", "Customer AP", %{})
+
+    party =
+      ledger_fixture(ctx.org.id, company.id, "party", "Customer AP", %{
+        "parent" => "Sundry Debtors"
+      })
 
     sales =
       ledger_fixture(ctx.org.id, company.id, "sales", "Material Sales", %{

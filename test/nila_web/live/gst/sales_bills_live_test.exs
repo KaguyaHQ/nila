@@ -880,10 +880,15 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
   } do
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
-    for {identity, name, parent} <- [
-          {"ledger:customer-ap", "Customer & Co - AP", "Sundry Debtors"},
-          {"ledger:material-sales", "Material Sales", "Sales Accounts"},
-          {"ledger:output-igst", "IGST Output @ 18%", "Duties & Taxes"}
+    for {identity, name, data} <- [
+          {"ledger:customer-ap", "Customer & Co - AP", %{"parent" => "Sundry Debtors"}},
+          {"ledger:material-sales", "Material Sales", %{"parent" => "Sales Accounts"}},
+          {"ledger:output-igst", "IGST Output @ 18%",
+           %{
+             "parent" => "Duties & Taxes",
+             "tax_type" => "GST",
+             "gst_duty_head" => "Integrated Tax"
+           }}
         ] do
       Nila.Repo.insert!(%SyncedMaster{
         org_id: company.org_id,
@@ -891,7 +896,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
         kind: "ledger",
         identity: identity,
         name: name,
-        data: %{"parent" => parent},
+        data: data,
         inserted_at: now,
         updated_at: now
       })
@@ -1142,7 +1147,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(
              view,
-             "#sales-bill-go-to-required-mapping[data-trigger-id='tally_posting_party_ledger_identity']",
+             "#sales-bill-go-to-required-mapping[phx-click='open-ledger-picker'][phx-value-picker='party']",
              "Choose ledger"
            )
 
@@ -1271,6 +1276,146 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
            )
 
     assert has_element?(view, "#sales-bill-posting-ready")
+  end
+
+  test "ignores stale picker events after switching ledger fields", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    batch_ref = TallyPacket.ref([dump])
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    {:ok, view, _html} = live(conn, path)
+
+    view |> element("#tally_posting_party_ledger_identity") |> render_click()
+    party_generation = ledger_picker_attribute(view, "data-generation")
+
+    assert ledger_picker_attribute(view, "data-picker") == "party"
+
+    assert ledger_picker_attribute(view, "data-trigger-id") ==
+             "tally_posting_party_ledger_identity"
+
+    view |> element("#tally-posting-line-sales-ledger-0") |> render_click()
+    sales_generation = ledger_picker_attribute(view, "data-generation")
+
+    assert sales_generation != party_generation
+    assert ledger_picker_attribute(view, "data-picker") == "sales:0"
+    assert has_element?(view, "#sales-bill-ledger-picker-title", "Tally sales ledger")
+
+    render_change(view, "filter-ledger-picker", %{
+      "ledger_picker" => %{
+        "query" => "customer",
+        "picker" => "party",
+        "generation" => party_generation
+      }
+    })
+
+    render_hook(view, "close-ledger-picker", %{
+      "picker" => "party",
+      "generation" => party_generation
+    })
+
+    assert ledger_picker_attribute(view, "data-picker") == "sales:0"
+    assert ledger_picker_attribute(view, "data-generation") == sales_generation
+    assert has_element?(view, "#sales-bill-ledger-picker-title", "Tally sales ledger")
+  end
+
+  test "the Enter fallback selects and closes the current picker", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    batch_ref = TallyPacket.ref([dump])
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    {:ok, view, _html} = live(conn, path)
+
+    view |> element("#tally_posting_party_ledger_identity") |> render_click()
+
+    view
+    |> form("#sales-bill-ledger-picker-search-form", ledger_picker: %{query: "customer"})
+    |> render_submit()
+
+    assert has_element?(view, "#tally_posting_party_ledger_identity", "Customer & Co")
+    assert ledger_picker_attribute(view, "data-picker") == nil
+    assert ledger_picker_attribute(view, "data-open") == nil
+
+    assert has_element?(
+             view,
+             "#sales-bill-posting-review-focus-wrap[phx-window-keydown='close-posting-review']"
+           )
+  end
+
+  test "tax pickers expose only the matching GST duty head", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    company: company
+  } do
+    insert_ledger_data(company.org_id, company.id, "Output CGST", "ledger:output-cgst", %{
+      "parent" => "Duties & Taxes",
+      "tax_type" => "GST",
+      "gst_duty_head" => "Central Tax"
+    })
+
+    insert_ledger_data(company.org_id, company.id, "Output SGST", "ledger:output-sgst", %{
+      "parent" => "Duties & Taxes",
+      "tax_type" => "GST",
+      "gst_duty_head" => "State Tax"
+    })
+
+    batch_ref = TallyPacket.ref([dump])
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    {:ok, view, _html} = live(conn, path)
+
+    view |> element("#tally_posting_igst_ledger_identity") |> render_click()
+
+    assert has_element?(view, "#sales-bill-ledger-picker-options", "Output IGST")
+    refute has_element?(view, "#sales-bill-ledger-picker-options", "Output CGST")
+    refute has_element?(view, "#sales-bill-ledger-picker-options", "Output SGST")
+  end
+
+  test "stale saved identities remain required and invalid groups do not fall back", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    company: company
+  } do
+    assert {:ok, _profile} =
+             TallyMappings.save_posting_profile(company.org_id, company.id, %{
+               sales_ledger_identity: "name:sales"
+             })
+
+    Nila.Repo.get_by!(SyncedMaster,
+      company_id: company.id,
+      kind: "ledger",
+      identity: "name:sales"
+    )
+    |> Nila.Repo.delete!()
+
+    Nila.Repo.get_by!(SyncedMaster,
+      company_id: company.id,
+      kind: "ledger",
+      identity: "name:customer & co"
+    )
+    |> Nila.Repo.delete!()
+
+    batch_ref = TallyPacket.ref([dump])
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    {:ok, view, _html} = live(conn, path)
+
+    assert has_element?(view, "#tally_posting_party_ledger_identity", "Select party ledger")
+    assert has_element?(view, "#tally-posting-line-sales-ledger-0", "Select ledger")
+    refute has_element?(view, "#sales-bill-save-tally-posting")
+
+    view |> element("#tally_posting_party_ledger_identity") |> render_click()
+
+    assert has_element?(
+             view,
+             "#sales-bill-ledger-picker-options",
+             "No ledgers match this search."
+           )
+
+    refute has_element?(view, "#sales-bill-ledger-picker-options", "Output IGST")
   end
 
   test "an unresolved party does not prevent resolved vouchers from being queued", %{
@@ -1829,6 +1974,10 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
   end
 
   defp insert_ledger(org_id, company_id, name, identity, parent) do
+    insert_ledger_data(org_id, company_id, name, identity, %{"parent" => parent})
+  end
+
+  defp insert_ledger_data(org_id, company_id, name, identity, data) do
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
     Nila.Repo.insert!(%SyncedMaster{
@@ -1837,9 +1986,18 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       kind: "ledger",
       identity: identity,
       name: name,
-      data: %{"parent" => parent},
+      data: data,
       inserted_at: now,
       updated_at: now
     })
+  end
+
+  defp ledger_picker_attribute(view, attribute) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("#sales-bill-ledger-picker")
+    |> LazyHTML.attribute(attribute)
+    |> List.first()
   end
 end

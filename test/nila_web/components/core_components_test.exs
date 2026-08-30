@@ -304,6 +304,7 @@ defmodule NilaWeb.CoreComponentsTest do
         picker="party"
         panel_id="ledger-picker"
         on_open="open-ledger-picker"
+        expanded
       />
       <.ledger_picker_panel
         id="ledger-picker"
@@ -315,8 +316,16 @@ defmodule NilaWeb.CoreComponentsTest do
         on_submit="choose-first-ledger"
         on_select="choose-ledger"
         on_close="close-ledger-picker"
+        picker="party"
+        trigger_id="party-ledger"
+        generation={7}
+        open
       />
-      <.ledger_picker_shortcut id="choose-ledger" trigger_id="party-ledger">
+      <.ledger_picker_shortcut
+        id="choose-ledger"
+        picker="party"
+        on_open="open-ledger-picker"
+      >
         Choose ledger
       </.ledger_picker_shortcut>
       """)
@@ -327,17 +336,21 @@ defmodule NilaWeb.CoreComponentsTest do
     option = LazyHTML.query(fragment, "#ledger-picker-options [phx-click='choose-ledger']")
 
     assert LazyHTML.text(trigger) =~ "Siemens Healthcare"
-    assert LazyHTML.attribute(trigger, "popovertarget") == ["ledger-picker"]
+    assert LazyHTML.attribute(trigger, "popovertarget") == []
+    assert LazyHTML.attribute(trigger, "aria-expanded") == ["true"]
     assert LazyHTML.attribute(hidden, "name") == ["posting[party_ledger]"]
     assert LazyHTML.attribute(hidden, "value") == ["ledger:siemens"]
     assert LazyHTML.attribute(option, "phx-value-identity") == ["ledger:siemens"]
+    assert LazyHTML.attribute(option, "phx-value-picker") == ["party"]
+    assert LazyHTML.attribute(option, "phx-value-generation") == ["7"]
     assert LazyHTML.attribute(option, "aria-selected") == ["true"]
     assert html =~ ~s(data-on-close="close-ledger-picker")
     assert html =~ ~s(data-trigger-id="party-ledger")
-
-    assert html =~
-             ~s(phx-hook="NilaWeb.Components.LedgerPicker.LedgerPickerShortcut")
-
+    assert html =~ ~s(data-controlled)
+    assert html =~ ~s(data-open)
+    assert html =~ ~s(data-generation="7")
+    assert html =~ ~s(phx-click="open-ledger-picker")
+    assert html =~ ~s(phx-value-picker="party")
     assert html =~ ~s(id="ledger-picker-search-form")
     refute html =~ "<select"
   end

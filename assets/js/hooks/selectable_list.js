@@ -41,7 +41,8 @@ export class SelectableListController {
     if (list && !list.id) list.id = `${this.el.id}-list`
 
     input.setAttribute("role", "combobox")
-    input.setAttribute("aria-expanded", "true")
+    const popover = this.el.closest("[popover]")
+    input.setAttribute("aria-expanded", String(!popover || popover.matches(":popover-open")))
     input.setAttribute("aria-autocomplete", "list")
 
     if (list) {

@@ -443,8 +443,16 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
           %{"gstin" => "33AAVCS8021P1ZM"}
         ),
       sales: synced_ledger!(context, company, "sales", "Material Sales", "Sales Accounts"),
-      cgst: synced_ledger!(context, company, "cgst", "Output CGST", "Duties & Taxes"),
-      sgst: synced_ledger!(context, company, "sgst", "Output SGST", "Duties & Taxes")
+      cgst:
+        synced_ledger!(context, company, "cgst", "Output CGST", "Duties & Taxes", %{
+          "tax_type" => "GST",
+          "gst_duty_head" => "Central Tax"
+        }),
+      sgst:
+        synced_ledger!(context, company, "sgst", "Output SGST", "Duties & Taxes", %{
+          "tax_type" => "GST",
+          "gst_duty_head" => "SGST/UTGST"
+        })
     }
 
     %{company: company, ledgers: ledgers}

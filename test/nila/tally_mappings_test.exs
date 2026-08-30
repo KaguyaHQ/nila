@@ -112,8 +112,15 @@ defmodule Nila.TallyMappingsTest do
     org = org_fixture()
     company = company_fixture(org, "Nila")
     other_company = company_fixture(org, "Other")
-    sales = ledger_fixture(org.id, company.id, "sales", "Material Sales", nil)
-    igst = ledger_fixture(org.id, company.id, "igst", "Output IGST", nil)
+    sales = sales_ledger_fixture(org.id, company.id, "sales", "Material Sales")
+
+    igst =
+      ledger_fixture(org.id, company.id, "igst", "Output IGST", nil,
+        parent: "Duties & Taxes",
+        tax_type: "GST",
+        gst_duty_head: "Integrated Tax"
+      )
+
     foreign = ledger_fixture(org.id, other_company.id, "foreign", "Foreign Sales", nil)
 
     assert {:error, :not_found} = TallyMappings.get_posting_profile(org.id, company.id)
@@ -136,13 +143,14 @@ defmodule Nila.TallyMappingsTest do
     assert unchanged.sales_ledger_identity == sales.identity
     assert unchanged.igst_ledger_identity == igst.identity
 
-    assert {:ok, updated} =
+    assert {:error, :invalid_ledger_type} =
              TallyMappings.save_posting_profile(org.id, company.id, %{
                sales_ledger_identity: igst.identity
              })
 
-    assert updated.sales_ledger_identity == igst.identity
-    assert updated.igst_ledger_identity == igst.identity
+    assert {:ok, unchanged} = TallyMappings.get_posting_profile(org.id, company.id)
+    assert unchanged.sales_ledger_identity == sales.identity
+    assert unchanged.igst_ledger_identity == igst.identity
   end
 
   test "resolves an unambiguous GST ledger from its structured duty head" do
@@ -208,7 +216,7 @@ defmodule Nila.TallyMappingsTest do
     org = org_fixture()
     company = company_fixture(org, "Nila")
     party = ledger_fixture(org.id, company.id, "party", "Customer", nil)
-    sales = ledger_fixture(org.id, company.id, "sales", "Sales", nil)
+    sales = sales_ledger_fixture(org.id, company.id, "sales", "Sales")
 
     assert {:ok, %{party_mapping: mapping, posting_profile: profile}} =
              TallyMappings.save_sales_posting(
@@ -233,6 +241,44 @@ defmodule Nila.TallyMappingsTest do
 
     assert {:error, :not_found} =
              TallyMappings.resolve_party(org.id, company.id, %{name: "Rolled Back Customer"})
+  end
+
+  test "rejects party and posting ledgers from the wrong Tally groups", do: wrong_group_test()
+
+  defp wrong_group_test do
+    org = org_fixture()
+    company = company_fixture(org, "Nila")
+    party = ledger_fixture(org.id, company.id, "party", "Customer", nil)
+    sales = sales_ledger_fixture(org.id, company.id, "sales", "Sales")
+
+    cgst =
+      ledger_fixture(org.id, company.id, "cgst", "Output CGST", nil,
+        parent: "Duties & Taxes",
+        tax_type: "GST",
+        gst_duty_head: "Central Tax"
+      )
+
+    assert {:error, :ledger_not_found} =
+             TallyMappings.save_confirmed_party_choice(
+               org.id,
+               company.id,
+               %{name: "Invoice Customer"},
+               sales.identity
+             )
+
+    assert {:error, :invalid_ledger_type} =
+             TallyMappings.save_posting_profile(org.id, company.id, %{
+               igst_ledger_identity: cgst.identity
+             })
+
+    assert {:error, :invalid_ledger_type} =
+             TallyMappings.save_sales_posting(
+               org.id,
+               company.id,
+               %{name: "Invoice Customer"},
+               party.identity,
+               %{sales_ledger_identity: cgst.identity}
+             )
   end
 
   test "remembers a Sales Accounts ledger by normalized HSN and item description" do
@@ -305,6 +351,7 @@ defmodule Nila.TallyMappingsTest do
       opts
       |> Enum.into(%{}, fn {key, value} -> {Atom.to_string(key), value} end)
       |> then(&if(gstin, do: Map.put(&1, "gstin", gstin), else: &1))
+      |> Map.put_new("parent", "Sundry Debtors")
 
     %SyncedMaster{
       org_id: org_id,

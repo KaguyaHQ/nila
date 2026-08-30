@@ -17,6 +17,7 @@ defmodule NilaWeb.Components.LedgerPicker do
   attr :panel_id, :string, required: true
   attr :disabled, :boolean, default: false
   attr :hide_label, :boolean, default: false
+  attr :expanded, :boolean, default: false
   attr :on_open, :string, required: true
 
   def ledger_picker_field(assigns) do
@@ -38,7 +39,7 @@ defmodule NilaWeb.Components.LedgerPicker do
         disabled={@disabled}
         aria-labelledby={"#{@id}-label"}
         aria-controls={@panel_id}
-        popovertarget={@panel_id}
+        aria-expanded={to_string(@expanded)}
         phx-click={@on_open}
         phx-value-picker={@picker}
       >
@@ -57,6 +58,10 @@ defmodule NilaWeb.Components.LedgerPicker do
   attr :on_submit, :string, required: true
   attr :on_select, :string, required: true
   attr :on_close, :string, required: true
+  attr :picker, :string, default: nil
+  attr :trigger_id, :string, default: nil
+  attr :generation, :integer, required: true
+  attr :open, :boolean, required: true
 
   def ledger_picker_panel(assigns) do
     ~H"""
@@ -65,9 +70,16 @@ defmodule NilaWeb.Components.LedgerPicker do
       title={@title}
       filter_value={@form[:query].value || ""}
       on_close={@on_close}
+      controlled
+      open={@open}
+      generation={@generation}
+      trigger_id={@trigger_id}
+      picker={@picker}
     >
       <:search>
         <.form for={@form} id={"#{@id}-search-form"} phx-change={@on_filter} phx-submit={@on_submit}>
+          <.input type="hidden" name="ledger_picker[picker]" value={@picker} />
+          <.input type="hidden" name="ledger_picker[generation]" value={@generation} />
           <.input
             field={@form[:query]}
             type="search"
@@ -91,8 +103,8 @@ defmodule NilaWeb.Components.LedgerPicker do
           selected={identity == @selected_identity}
           phx-click={@on_select}
           phx-value-identity={identity}
-          popovertarget={@id}
-          popovertargetaction="hide"
+          phx-value-picker={@picker}
+          phx-value-generation={@generation}
         >
           {label}
         </.selectable_option>
@@ -101,9 +113,10 @@ defmodule NilaWeb.Components.LedgerPicker do
     """
   end
 
-  @doc "Opens a ledger picker through its field trigger so the panel stays field-anchored."
+  @doc "Requests the same field-anchored picker flow used by a ledger field."
   attr :id, :string, required: true
-  attr :trigger_id, :string, required: true
+  attr :picker, :string, required: true
+  attr :on_open, :string, required: true
   slot :inner_block, required: true
 
   def ledger_picker_shortcut(assigns) do
@@ -112,28 +125,11 @@ defmodule NilaWeb.Components.LedgerPicker do
       id={@id}
       type="button"
       variant="outline"
-      phx-hook=".LedgerPickerShortcut"
-      data-trigger-id={@trigger_id}
+      phx-click={@on_open}
+      phx-value-picker={@picker}
     >
       {render_slot(@inner_block)}
     </.button>
-    <script :type={Phoenix.LiveView.ColocatedHook} name=".LedgerPickerShortcut">
-      export default {
-        mounted() {
-          this.onClick = () => {
-            const trigger = document.getElementById(this.el.dataset.triggerId)
-            if (!trigger || trigger.disabled) return
-
-            trigger.scrollIntoView({block: "nearest", inline: "nearest"})
-            window.requestAnimationFrame(() => trigger.click())
-          }
-          this.el.addEventListener("click", this.onClick)
-        },
-        destroyed() {
-          this.el.removeEventListener("click", this.onClick)
-        }
-      }
-    </script>
     """
   end
 
