@@ -7,6 +7,23 @@ defmodule NilaWeb.Components.Input do
 
   import NilaWeb.Components.Icon
 
+  @doc "Wraps a custom form control in the shared field label and spacing recipe."
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :hide_label, :boolean, default: false
+  slot :inner_block, required: true
+
+  def field_shell(assigns) do
+    ~H"""
+    <div class="nila-field">
+      <span id={"#{@id}-label"} class={["nila-field-label", @hide_label && "sr-only"]}>
+        {@label}
+      </span>
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
   @doc """
   Renders an input with label and error messages.
 

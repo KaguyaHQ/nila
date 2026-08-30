@@ -14,6 +14,7 @@ defmodule NilaWeb.CoreComponentsTest do
   import NilaWeb.Layouts
   import NilaWeb.Components.Typography
   import NilaWeb.Components.SelectableList
+  import NilaWeb.Components.LedgerPicker
   import NilaWeb.Components.Menu
 
   test "action menus support labelled triggers and external form actions alongside event actions" do
@@ -282,6 +283,54 @@ defmodule NilaWeb.CoreComponentsTest do
     assert html =~ ~s(id="ledger-picker-navigation")
     assert html =~ ~s(phx-hook="SelectableList")
     assert html =~ ~s(data-filter-value="bank")
+  end
+
+  test "ledger picker keeps form truth in a hidden input and reuses the shared select panel" do
+    assigns = %{
+      form: to_form(%{"query" => "health"}, as: :ledger_picker),
+      options: [{"Siemens Healthcare", "ledger:siemens"}]
+    }
+
+    html =
+      rendered_to_string(~H"""
+      <.ledger_picker_field
+        id="party-ledger"
+        name="posting[party_ledger]"
+        label="Party ledger"
+        prompt="Select party ledger"
+        value="ledger:siemens"
+        options={@options}
+        picker="party"
+        panel_id="ledger-picker"
+        on_open="open-ledger-picker"
+      />
+      <.ledger_picker_panel
+        id="ledger-picker"
+        title="Tally party ledger"
+        form={@form}
+        options={@options}
+        selected_identity="ledger:siemens"
+        on_filter="filter-ledger-picker"
+        on_submit="choose-first-ledger"
+        on_select="choose-ledger"
+        on_close="close-ledger-picker"
+      />
+      """)
+
+    fragment = LazyHTML.from_fragment(html)
+    trigger = LazyHTML.query(fragment, "#party-ledger")
+    hidden = LazyHTML.query(fragment, "#party-ledger-value[type='hidden']")
+    option = LazyHTML.query(fragment, "#ledger-picker-options [phx-click='choose-ledger']")
+
+    assert LazyHTML.text(trigger) =~ "Siemens Healthcare"
+    assert LazyHTML.attribute(trigger, "popovertarget") == ["ledger-picker"]
+    assert LazyHTML.attribute(hidden, "name") == ["posting[party_ledger]"]
+    assert LazyHTML.attribute(hidden, "value") == ["ledger:siemens"]
+    assert LazyHTML.attribute(option, "phx-value-identity") == ["ledger:siemens"]
+    assert LazyHTML.attribute(option, "aria-selected") == ["true"]
+    assert html =~ ~s(data-on-close="close-ledger-picker")
+    assert html =~ ~s(id="ledger-picker-search-form")
+    refute html =~ "<select"
   end
 
   test "selectable options keep selected and keyboard-active states distinct" do

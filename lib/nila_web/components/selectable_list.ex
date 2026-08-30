@@ -14,6 +14,7 @@ defmodule NilaWeb.Components.SelectableList do
   attr :id, :string, required: true
   attr :disabled, :boolean, default: false
   attr :placeholder, :boolean, default: false
+  attr :full_width, :boolean, default: false
 
   attr :rest, :global, include: ~w(title popovertarget popovertargetaction phx-click phx-value-id)
 
@@ -26,6 +27,7 @@ defmodule NilaWeb.Components.SelectableList do
       type="button"
       class="nila-picker-trigger"
       data-placeholder={@placeholder}
+      data-full-width={@full_width}
       disabled={@disabled}
       aria-haspopup="dialog"
       {@rest}
@@ -40,6 +42,7 @@ defmodule NilaWeb.Components.SelectableList do
   attr :id, :string, required: true
   attr :title, :string, required: true
   attr :filter_value, :string, default: ""
+  attr :on_close, :string, default: nil
   slot :search
   slot :inner_block, required: true
 
@@ -52,6 +55,7 @@ defmodule NilaWeb.Components.SelectableList do
       aria-labelledby={"#{@id}-title"}
       class="nila-picker"
       phx-hook=".SelectPanelPopover"
+      data-on-close={@on_close}
     >
       <header class="nila-picker-header">
         <h3 id={"#{@id}-title"} class="text-base-content text-ui font-semibold">{@title}</h3>
@@ -69,8 +73,15 @@ defmodule NilaWeb.Components.SelectableList do
       <script :type={Phoenix.LiveView.ColocatedHook} name=".SelectPanelPopover">
         export default {
           mounted() {
+            this.wasOpen = false
             this.onToggle = event => {
-              if (event.newState === "open") this.focusInput()
+              if (event.newState === "open") {
+                this.wasOpen = true
+                this.focusInput()
+              } else if (this.wasOpen) {
+                this.wasOpen = false
+                if (this.el.dataset.onClose) this.pushEvent(this.el.dataset.onClose, {})
+              }
             }
             this.el.addEventListener("toggle", this.onToggle)
           },

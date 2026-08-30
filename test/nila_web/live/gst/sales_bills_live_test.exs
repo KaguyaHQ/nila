@@ -1144,11 +1144,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     refute has_element?(view, "#sales-bill-save-tally-posting")
 
-    view
-    |> form("#sales-bill-tally-posting-form", %{
-      "tally_posting" => %{"party_ledger_identity" => chosen_party.identity}
-    })
-    |> render_change()
+    choose_ledger(view, "#tally_posting_party_ledger_identity", chosen_party.identity)
 
     assert has_element?(view, "#sales-bill-posting-ready")
     assert has_element?(view, "#sales-bill-save-tally-posting", "Save & next")
@@ -1163,11 +1159,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bill-posting-position", "1 of 1")
     refute has_element?(view, "#sales-bill-posting-review", "invoice left")
 
-    view
-    |> form("#sales-bill-tally-posting-form", %{
-      "tally_posting" => %{"party_ledger_identity" => chosen_party.identity}
-    })
-    |> render_change()
+    choose_ledger(view, "#tally_posting_party_ledger_identity", chosen_party.identity)
 
     view
     |> form("#sales-bill-tally-posting-form", %{
@@ -1180,6 +1172,101 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bills-result", "2 sales vouchers ready")
     assert has_element?(view, "#sales-bill-delivery-INV-001", "Ready")
     assert has_element?(view, "#sales-bill-delivery-source-inv-002", "Ready")
+  end
+
+  test "searches party ledgers by substring and ranks the strongest matches first", %{
+    conn: conn,
+    client: client,
+    dump: dump,
+    company: company
+  } do
+    ledgers = [
+      {"Health", "ledger:health"},
+      {"Healthcare Network", "ledger:healthcare-network"},
+      {"Siemens Health Services", "ledger:siemens-health-services"},
+      {"Biohealth Holdings", "ledger:biohealth-holdings"}
+    ]
+
+    Enum.each(ledgers, fn {name, identity} ->
+      insert_ledger(company.org_id, company.id, name, identity, "Sundry Debtors")
+    end)
+
+    batch_ref = TallyPacket.ref([dump])
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    {:ok, view, _html} = live(conn, path)
+
+    view |> element("#tally_posting_party_ledger_identity") |> render_click()
+
+    assert has_element?(view, "#sales-bill-ledger-picker[popover='auto']")
+    assert has_element?(view, "#sales-bill-ledger-picker-search-form")
+
+    refute has_element?(
+             view,
+             "#sales-bill-posting-review-focus-wrap[phx-window-keydown='close-posting-review']"
+           )
+
+    view
+    |> form("#sales-bill-ledger-picker-search-form", ledger_picker: %{query: "health"})
+    |> render_change()
+
+    html = render(view)
+
+    positions =
+      Enum.map(ledgers, fn {name, _identity} ->
+        {position, _length} = :binary.match(html, name)
+        position
+      end)
+
+    assert positions == Enum.sort(positions)
+
+    choose_ledger(view, "#tally_posting_party_ledger_identity", "ledger:siemens-health-services")
+
+    assert has_element?(
+             view,
+             "#tally_posting_party_ledger_identity-value[value='ledger:siemens-health-services']"
+           )
+
+    assert has_element?(
+             view,
+             "#tally_posting_party_ledger_identity",
+             "Siemens Health Services"
+           )
+
+    assert has_element?(
+             view,
+             "#sales-bill-posting-review-focus-wrap[phx-window-keydown='close-posting-review']"
+           )
+  end
+
+  test "uses the shared ledger picker for party, sales, and tax mappings", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    batch_ref = TallyPacket.ref([dump])
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    {:ok, view, _html} = live(conn, path)
+
+    choose_ledger(view, "#tally_posting_party_ledger_identity", "name:customer & co")
+    choose_ledger(view, "#tally-posting-line-sales-ledger-0", "name:sales")
+    choose_ledger(view, "#tally_posting_igst_ledger_identity", "name:output igst")
+
+    assert has_element?(
+             view,
+             "#tally_posting_party_ledger_identity-value[value='name:customer & co']"
+           )
+
+    assert has_element?(
+             view,
+             "#tally-posting-line-sales-ledger-0-value[value='name:sales']"
+           )
+
+    assert has_element?(
+             view,
+             "#tally_posting_igst_ledger_identity-value[value='name:output igst']"
+           )
+
+    assert has_element?(view, "#sales-bill-posting-ready")
   end
 
   test "an unresolved party does not prevent resolved vouchers from being queued", %{
@@ -1296,19 +1383,25 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     refute has_element?(view, "#sales-bill-line-edit-sheet")
     assert has_element?(view, "#sales-bill-line-summary-0", "Corrected support services")
 
-    assert has_element?(
-             view,
-             "#tally_posting_party_ledger_identity option[selected][value='name:customer & co']"
-           )
+    assert has_element?(view, "#tally_posting_party_ledger_identity", "Customer & Co")
 
     assert has_element?(
              view,
-             "#tally-posting-line-sales-ledger-0 option[selected][value='name:sales']"
+             "#tally_posting_party_ledger_identity-value[value='name:customer & co']"
            )
+
+    assert has_element?(view, "#tally-posting-line-sales-ledger-0", "Sales")
 
     assert has_element?(
              view,
-             "#tally_posting_igst_ledger_identity option[selected][value='name:output igst']"
+             "#tally-posting-line-sales-ledger-0-value[value='name:sales']"
+           )
+
+    assert has_element?(view, "#tally_posting_igst_ledger_identity", "Output IGST")
+
+    assert has_element?(
+             view,
+             "#tally_posting_igst_ledger_identity-value[value='name:output igst']"
            )
 
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
@@ -1515,17 +1608,9 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     refute has_element?(view, "#sales-bill-place-of-supply")
     refute has_element?(view, "#tally-posting-place-of-supply-value")
 
-    assert has_element?(
-             view,
-             "#tally_posting_party_ledger_identity option[selected]",
-             "Customer & Co"
-           )
+    assert has_element?(view, "#tally_posting_party_ledger_identity", "Customer & Co")
 
-    assert has_element?(
-             view,
-             "#tally-posting-line-sales-ledger-0 option[selected]",
-             "Sales"
-           )
+    assert has_element?(view, "#tally-posting-line-sales-ledger-0", "Sales")
   end
 
   test "saves a warning and confirms it at the batch send boundary", %{
@@ -1727,5 +1812,30 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
         updated_at: now
       })
     end)
+  end
+
+  defp choose_ledger(view, trigger_selector, identity) do
+    view |> element(trigger_selector) |> render_click()
+
+    view
+    |> element(
+      "#sales-bill-ledger-picker-options [phx-click='choose-ledger'][phx-value-identity='#{identity}']"
+    )
+    |> render_click()
+  end
+
+  defp insert_ledger(org_id, company_id, name, identity, parent) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    Nila.Repo.insert!(%SyncedMaster{
+      org_id: org_id,
+      company_id: company_id,
+      kind: "ledger",
+      identity: identity,
+      name: name,
+      data: %{"parent" => parent},
+      inserted_at: now,
+      updated_at: now
+    })
   end
 end

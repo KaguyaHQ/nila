@@ -48,6 +48,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         |> assign(:selected_invoice, nil)
         |> assign(:posting_preview_invoice, nil)
         |> assign(:tally_posting, nil)
+        |> assign(:ledger_picker, empty_ledger_picker())
         |> assign(:required_mapping_invoices, [])
         |> assign(:required_mapping_counts, %{})
         |> assign(:review_mode?, false)
@@ -110,6 +111,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
      |> assign(:selected_review, selected_review)
      |> assign(:posting_preview_invoice, invoice)
      |> assign(:tally_posting, tally_posting(socket.assigns, invoice))
+     |> assign(:ledger_picker, empty_ledger_picker())
      |> assign(
        :posting_navigation,
        posting_navigation(navigation_invoices, invoice)
@@ -481,6 +483,43 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   def handle_event("preview-tally-posting", _params, socket), do: {:noreply, socket}
+
+  def handle_event("open-ledger-picker", %{"picker" => picker}, socket) do
+    {:noreply,
+     assign(socket, :ledger_picker, ledger_picker(socket.assigns.tally_posting, picker, ""))}
+  end
+
+  def handle_event(
+        "filter-ledger-picker",
+        %{"ledger_picker" => %{"query" => query}},
+        socket
+      ) do
+    picker = socket.assigns.ledger_picker.picker
+
+    {:noreply,
+     assign(socket, :ledger_picker, ledger_picker(socket.assigns.tally_posting, picker, query))}
+  end
+
+  def handle_event(
+        "choose-first-ledger",
+        %{"ledger_picker" => %{"query" => query}},
+        socket
+      ) do
+    picker = socket.assigns.ledger_picker.picker
+
+    case ledger_picker(socket.assigns.tally_posting, picker, query).options do
+      [{_label, identity} | _rest] -> choose_ledger(socket, picker, identity)
+      [] -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("choose-ledger", %{"identity" => identity}, socket) do
+    choose_ledger(socket, socket.assigns.ledger_picker.picker, identity)
+  end
+
+  def handle_event("close-ledger-picker", _params, socket) do
+    {:noreply, assign(socket, :ledger_picker, empty_ledger_picker())}
+  end
 
   def handle_event("edit-posting-line", %{"index" => index}, socket) do
     if not invoice_frozen_now?(socket, socket.assigns.selected_invoice) do
@@ -1415,7 +1454,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           %{
             key: :party_ledger,
             label: "Choose the Tally party ledger",
-            target: "#tally_posting_party_ledger_identity"
+            picker: "party"
           }
         ]
       else
@@ -1431,7 +1470,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         %{
           key: {:sales_ledger, row.index},
           label: "Choose the sales ledger for “#{description}”",
-          target: "#tally-posting-line-sales-ledger-#{row.index}"
+          picker: "sales:#{row.index}"
         }
       end)
 
@@ -1442,7 +1481,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         %{
           key: {:tax_ledger, row.head},
           label: "Choose the #{row.label} ledger",
-          target: "#tally_posting_#{row.head}_ledger_identity"
+          picker: "tax:#{row.head}"
         }
       end)
 
@@ -1609,6 +1648,171 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     matching = Enum.filter(choices, &(normalized_parent(&1) == String.downcase(parent)))
     choices = if matching == [], do: choices, else: matching
     Enum.map(choices, &{&1.name, &1.identity})
+  end
+
+  defp empty_ledger_picker do
+    %{
+      picker: nil,
+      title: "Choose ledger",
+      form: to_form(%{"query" => ""}, as: :ledger_picker),
+      options: [],
+      selected_identity: nil
+    }
+  end
+
+  defp ledger_picker(nil, _picker, _query), do: empty_ledger_picker()
+
+  defp ledger_picker(posting, picker, query) do
+    case ledger_picker_config(posting, picker) do
+      nil ->
+        empty_ledger_picker()
+
+      config ->
+        query = String.trim(to_string(query || ""))
+
+        %{
+          picker: picker,
+          title: config.title,
+          form: to_form(%{"query" => query}, as: :ledger_picker),
+          options: ranked_ledger_options(config.options, query, config.selected_identity),
+          selected_identity: config.selected_identity
+        }
+    end
+  end
+
+  defp ledger_picker_config(posting, "party") do
+    %{
+      kind: :party,
+      title: "Tally party ledger",
+      options: posting.party_choices,
+      selected_identity: posting.form[:party_ledger_identity].value
+    }
+  end
+
+  defp ledger_picker_config(posting, "sales:" <> index) do
+    with {index, ""} <- Integer.parse(index),
+         %{} = row <- Enum.find(posting.line_rows, &(&1.index == index)) do
+      %{
+        kind: {:sales, index},
+        title: "Tally sales ledger",
+        options: posting.sales_choices,
+        selected_identity: row.sales_ledger_identity
+      }
+    else
+      _invalid -> nil
+    end
+  end
+
+  defp ledger_picker_config(posting, "tax:" <> head) when head in ~w(cgst sgst igst) do
+    case Enum.find(posting.tax_rows, &(&1.head == head)) do
+      nil ->
+        nil
+
+      row ->
+        %{
+          kind: {:tax, row.field},
+          title: "#{row.label} ledger",
+          options: posting.tax_choices,
+          selected_identity: posting.form[row.field].value
+        }
+    end
+  end
+
+  defp ledger_picker_config(_posting, _picker), do: nil
+
+  defp ranked_ledger_options(options, "", selected_identity) do
+    options
+    |> Enum.sort_by(fn {label, identity} ->
+      {if(identity == selected_identity, do: 0, else: 1), normalize_ledger_search(label)}
+    end)
+    |> Enum.take(50)
+  end
+
+  defp ranked_ledger_options(options, query, _selected_identity) do
+    normalized_query = normalize_ledger_search(query)
+
+    options
+    |> Enum.filter(fn {label, _identity} ->
+      String.contains?(normalize_ledger_search(label), normalized_query)
+    end)
+    |> Enum.sort_by(fn {label, _identity} -> ledger_match_key(label, normalized_query) end)
+    |> Enum.take(50)
+  end
+
+  defp ledger_match_key(label, query) do
+    normalized = normalize_ledger_search(label)
+
+    strength =
+      cond do
+        normalized == query ->
+          0
+
+        String.starts_with?(normalized, query) ->
+          1
+
+        Enum.any?(
+          String.split(normalized, ~r/[^\p{L}\p{N}]+/u, trim: true),
+          &String.starts_with?(&1, query)
+        ) ->
+          2
+
+        true ->
+          3
+      end
+
+    {strength, String.length(normalized), normalized}
+  end
+
+  defp normalize_ledger_search(value) do
+    value
+    |> to_string()
+    |> String.trim()
+    |> String.downcase()
+  end
+
+  defp choose_ledger(socket, picker, identity) do
+    posting = socket.assigns.tally_posting
+
+    with %{} = config <- ledger_picker_config(posting, picker),
+         true <-
+           Enum.any?(config.options, fn {_label, option_identity} ->
+             option_identity == identity
+           end) do
+      posting = put_ledger_identity(posting, config.kind, identity)
+
+      {:noreply,
+       socket
+       |> assign(:tally_posting, posting)
+       |> assign(:ledger_picker, empty_ledger_picker())}
+    else
+      _invalid -> {:noreply, socket}
+    end
+  end
+
+  defp put_ledger_identity(posting, :party, identity) do
+    params = Map.put(posting.form.params || %{}, "party_ledger_identity", identity)
+    %{posting | form: to_form(params, as: :tally_posting)}
+  end
+
+  defp put_ledger_identity(posting, {:sales, index}, identity) do
+    identities =
+      posting.line_rows
+      |> Map.new(&{to_string(&1.index), &1.sales_ledger_identity})
+      |> Map.put(to_string(index), identity)
+
+    params = Map.put(posting.form.params || %{}, "line_sales_ledger_identities", identities)
+
+    line_rows =
+      Enum.map(posting.line_rows, fn row ->
+        if row.index == index, do: %{row | sales_ledger_identity: identity}, else: row
+      end)
+
+    %{posting | form: to_form(params, as: :tally_posting), line_rows: line_rows}
+  end
+
+  defp put_ledger_identity(posting, {:tax, field}, identity) do
+    params = Map.put(posting.form.params || %{}, to_string(field), identity)
+    %{posting | form: to_form(params, as: :tally_posting)}
   end
 
   defp normalized_parent(%{data: data}) when is_map(data) do
@@ -2605,7 +2809,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         on_close="close-posting-review"
         variant="workbench"
         close_on_escape={
-          is_nil(@editing_line_index) and not @editing_invoice_facts? and not @evidence_open
+          is_nil(@editing_line_index) and not @editing_invoice_facts? and not @evidence_open and
+            is_nil(@ledger_picker.picker)
         }
       >
         <:header :let={title_id}>
@@ -2841,13 +3046,16 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     </div>
 
                     <div id="sales-bill-party-mapping" class="max-w-lg">
-                      <.input
-                        field={@tally_posting.form[:party_ledger_identity]}
-                        type="select"
+                      <.ledger_picker_field
+                        id="tally_posting_party_ledger_identity"
+                        name="tally_posting[party_ledger_identity]"
                         label="Tally party ledger"
                         prompt="Select party ledger"
                         options={@tally_posting.party_choices}
-                        required
+                        value={@tally_posting.form[:party_ledger_identity].value}
+                        picker="party"
+                        panel_id="sales-bill-ledger-picker"
+                        on_open="open-ledger-picker"
                         disabled={not @tally_masters_available?}
                       />
                     </div>
@@ -2969,15 +3177,17 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         </div>
                       </:col>
                       <:col :let={row} label="Tally sales ledger" class="w-1/4 min-w-60 align-middle">
-                        <.input
+                        <.ledger_picker_field
                           id={"tally-posting-line-sales-ledger-#{row.index}"}
                           name={"tally_posting[line_sales_ledger_identities][#{row.index}]"}
                           value={row.sales_ledger_identity}
-                          type="select"
+                          label={"Line #{row.index + 1} Tally sales ledger"}
                           prompt="Select ledger"
                           options={@tally_posting.sales_choices}
-                          aria-label={"Line #{row.index + 1} Tally sales ledger"}
-                          required
+                          picker={"sales:#{row.index}"}
+                          panel_id="sales-bill-ledger-picker"
+                          on_open="open-ledger-picker"
+                          hide_label
                           disabled={not @tally_masters_available?}
                         />
                       </:col>
@@ -3026,13 +3236,17 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       <span class="text-base-content text-ui font-medium">
                         {tax_posting_label(@posting_preview_invoice, row.head, row.label)}
                       </span>
-                      <.input
-                        field={@tally_posting.form[row.field]}
-                        type="select"
+                      <.ledger_picker_field
+                        id={"tally_posting_#{row.head}_ledger_identity"}
+                        name={"tally_posting[#{row.head}_ledger_identity]"}
                         prompt={"Select #{row.label} ledger"}
                         options={@tally_posting.tax_choices}
-                        aria-label={"#{row.label} ledger"}
-                        required
+                        value={@tally_posting.form[row.field].value}
+                        label={"#{row.label} ledger"}
+                        picker={"tax:#{row.head}"}
+                        panel_id="sales-bill-ledger-picker"
+                        on_open="open-ledger-picker"
+                        hide_label
                         disabled={not @tally_masters_available?}
                       />
                       <span class="text-base-content text-ui text-right font-medium tabular-nums">
@@ -3223,7 +3437,9 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       id="sales-bill-go-to-required-mapping"
                       type="button"
                       variant="outline"
-                      phx-click={JS.focus(to: next_posting_requirement(@tally_posting).target)}
+                      phx-click="open-ledger-picker"
+                      phx-value-picker={next_posting_requirement(@tally_posting).picker}
+                      popovertarget="sales-bill-ledger-picker"
                     >
                       Choose ledger
                     </.button>
@@ -3284,6 +3500,19 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 </div>
               </div>
             </.form>
+
+            <.ledger_picker_panel
+              :if={@tally_posting}
+              id="sales-bill-ledger-picker"
+              title={@ledger_picker.title}
+              form={@ledger_picker.form}
+              options={@ledger_picker.options}
+              selected_identity={@ledger_picker.selected_identity}
+              on_filter="filter-ledger-picker"
+              on_submit="choose-first-ledger"
+              on_select="choose-ledger"
+              on_close="close-ledger-picker"
+            />
 
             <.modal
               :if={@editing_invoice_facts? && @invoice_facts_form}

@@ -99,6 +99,7 @@ defmodule NilaWeb do
       import NilaWeb.Components.ChaseHistory
       import NilaWeb.Components.Evidence
       import NilaWeb.Components.SelectableList
+      import NilaWeb.Components.LedgerPicker
 
       import Nila.Formatters,
         only: [
