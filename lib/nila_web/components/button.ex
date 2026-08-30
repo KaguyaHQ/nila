@@ -123,5 +123,30 @@ defmodule NilaWeb.Components.Button do
     """
   end
 
+  attr :id, :string, required: true
+  attr :items, :list, required: true
+  attr :selected, :any, required: true
+  attr :label, :string, required: true
+  attr :controls, :string, default: nil
+
+  @doc "Renders understated URL-backed navigation tabs with optional counts."
+  def navigation_tabs(assigns) do
+    ~H"""
+    <nav id={@id} class="nila-tabs" aria-label={@label}>
+      <.link
+        :for={item <- @items}
+        id={item.id}
+        patch={item.patch}
+        class="nila-tab"
+        aria-current={@selected == item.value && "page"}
+        aria-controls={@controls}
+      >
+        <span>{item.label}</span>
+        <span class="nila-tab-count">{item.count}</span>
+      </.link>
+    </nav>
+    """
+  end
+
   defp value_attribute(name, value), do: %{"phx-value-#{name}" => value}
 end

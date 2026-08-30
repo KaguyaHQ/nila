@@ -124,7 +124,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
   test "shows the extracted table and Tally controls", context do
     {:ok, statement} = ready_statement(context)
     transaction = hd(statement.bank_transactions)
-    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}?status=needs_ledger")
 
     refute has_element?(view, "#banking-balance-check")
     refute has_element?(view, "#banking-balance-equation")
@@ -196,7 +196,9 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     |> Ecto.Changeset.change(balance_paise: transaction.balance_paise + 1)
     |> Repo.update!()
 
-    {:ok, reopened, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, reopened, _html} =
+      live(context.conn, ~p"/banking/#{statement.id}?status=needs_ledger")
+
     assert has_element?(reopened, "#bank-transaction-#{transaction.id}")
     refute has_element?(reopened, "#banking-balance-check")
     refute has_element?(reopened, "#banking-balance-equation")
@@ -222,7 +224,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
   test "changes voucher type from More without assigning a ledger", context do
     {:ok, statement} = ready_statement(context)
     [transaction] = statement.bank_transactions
-    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}?status=needs_ledger")
 
     view |> element("#banking-select-all-transactions") |> render_click()
     view |> element("#banking-change-voucher-type") |> render_click()
@@ -278,14 +280,14 @@ defmodule NilaWeb.Banking.UploadLiveTest do
         status: "ready"
       })
 
-    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}?status=all")
 
     assert has_element?(view, "#banking-visible-transaction-count", "2 transactions")
     refute has_element?(view, "#banking-selected-transaction-count")
 
     view
     |> form("#banking-transaction-filters",
-      transaction_filters: %{query: "salary-ref", status: "all", type: "all"}
+      transaction_filters: %{query: "salary-ref", type: "all"}
     )
     |> render_change()
 
@@ -301,30 +303,221 @@ defmodule NilaWeb.Banking.UploadLiveTest do
 
     view
     |> form("#banking-transaction-filters",
-      transaction_filters: %{query: "", status: "all", type: "all"}
+      transaction_filters: %{query: "", type: "all"}
     )
     |> render_change()
 
     assert_push_event(view, "banking-selection", %{ids: [^selected_id]})
 
-    view
-    |> form("#banking-transaction-filters",
-      transaction_filters: %{query: "", status: "unassigned", type: "all"}
-    )
-    |> render_change()
+    view |> element("#banking-view-needs-ledger") |> render_click()
 
     assert has_element?(view, "#bank-transaction-#{original.id}")
     refute has_element?(view, "#bank-transaction-#{salary.id}")
     refute has_element?(view, "#banking-selected-transaction-count")
 
+    view |> element("#banking-view-all") |> render_click()
+
     view
     |> form("#banking-transaction-filters",
-      transaction_filters: %{query: "", status: "all", type: "payment"}
+      transaction_filters: %{query: "", type: "payment"}
     )
     |> render_change()
 
     assert has_element?(view, "#bank-transaction-#{salary.id}")
     refute has_element?(view, "#bank-transaction-#{original.id}")
+  end
+
+  test "opens unfinished statements on the URL-backed Needs ledger filter", context do
+    {:ok, statement} = ready_statement(context)
+
+    assert {:error, {:live_redirect, %{to: path}}} =
+             live(context.conn, ~p"/banking/#{statement.id}")
+
+    assert path == ~p"/banking/#{statement.id}?status=needs_ledger"
+
+    {:ok, view, _html} = live(context.conn, path)
+
+    assert has_element?(view, "#banking-view-needs-ledger[aria-current='page']", "Needs ledger")
+    assert has_element?(view, "#banking-view-needs-ledger", "1")
+    assert has_element?(view, "#banking-view-ready-to-send", "0")
+    assert has_element?(view, "#banking-view-sent", "0")
+    assert has_element?(view, "#banking-view-all", "1")
+    assert has_element?(view, "#banking-transaction-form thead", "Action")
+    refute has_element?(view, "#banking-transaction-form thead", "Status")
+
+    view |> element("#banking-view-all") |> render_click()
+
+    assert_patch(view, ~p"/banking/#{statement.id}?status=all")
+    assert has_element?(view, "#banking-view-all[aria-current='page']", "All")
+    assert has_element?(view, "#banking-transaction-form thead", "Status")
+    refute has_element?(view, "#banking-transaction-form thead", "Action")
+  end
+
+  test "groups matching bank decisions in the Needs ledger table and applies included rows",
+       context do
+    {:ok, statement} = ready_statement(context)
+    original = hd(statement.bank_transactions)
+
+    original =
+      original
+      |> Ecto.Changeset.change(
+        narration:
+          "UPI-MUTHUKUMAR M-MK18248883@OKHDFCBANK-HDFC0001254-102475830728-COMPRESSOR PURCHASE",
+        reference: "102475830728",
+        withdrawal_paise: 380_000,
+        deposit_paise: 0,
+        transaction_type: "payment"
+      )
+      |> Repo.update!()
+
+    matching =
+      Repo.insert!(%Transaction{
+        org_id: context.org.id,
+        statement_id: statement.id,
+        identity: "matching-compressor-purchase",
+        ordinal: 2,
+        date: ~D[2025-05-18],
+        narration:
+          "UPI-MUTHUKUMAR M-MK18248883@OKHDFCBANK-HDFC0001254-103124900821-COMPRESSOR PURCHASE",
+        reference: "103124900821",
+        withdrawal_paise: 420_000,
+        deposit_paise: 0,
+        balance_paise: 18_604_200,
+        transaction_type: "payment",
+        status: "unassigned"
+      })
+
+    salary =
+      Repo.insert!(%Transaction{
+        org_id: context.org.id,
+        statement_id: statement.id,
+        identity: "same-payee-different-purpose",
+        ordinal: 3,
+        date: ~D[2025-06-02],
+        narration:
+          "UPI-MUTHUKUMAR M-MK18248883@OKHDFCBANK-HDFC0001254-103510842701-SALARY TO MUTHUK UM",
+        reference: "103510842701",
+        withdrawal_paise: 2_526_000,
+        deposit_paise: 0,
+        balance_paise: 15_120_000,
+        transaction_type: "payment",
+        status: "unassigned"
+      })
+
+    spares =
+      Repo.insert!(%Transaction{
+        org_id: context.org.id,
+        statement_id: statement.id,
+        identity: "same-payee-different-pattern",
+        ordinal: 4,
+        date: ~D[2025-08-07],
+        narration:
+          "UPI-MUTHUKUMAR M-MK18248883@OKHDFCBANK-HDFC0001254-104392781405-COMPRESSOR SPARES",
+        reference: "104392781405",
+        withdrawal_paise: 340_000,
+        deposit_paise: 0,
+        balance_paise: 13_128_400,
+        transaction_type: "payment",
+        status: "unassigned"
+      })
+
+    {:ok, company} = linked_company(context)
+    bank = master(context.org.id, company.id, "hdfc-bank", "HDFC Bank", "Bank Accounts")
+
+    compressor =
+      master(
+        context.org.id,
+        company.id,
+        "compressor-purchases",
+        "Compressor Purchases",
+        "Purchase Accounts"
+      )
+
+    assert {:ok, _statement} =
+             Banking.configure_tally(context.org.id, statement.id, bank.identity)
+
+    {:ok, view, _html} =
+      live(context.conn, ~p"/banking/#{statement.id}?status=needs_ledger")
+
+    assert has_element?(
+             view,
+             "#banking-transaction-group-count",
+             "1 group · 2 transactions grouped"
+           )
+
+    assert has_element?(
+             view,
+             "#banking-transaction-rows > tr[id^='banking-transaction-group-']",
+             "Same payee and payment pattern · COMPRESSOR PURCHASE"
+           )
+
+    refute has_element?(
+             view,
+             "#banking-transaction-rows > tr[id^='banking-transaction-group-']",
+             "MK18248883@OKHDFCBANK"
+           )
+
+    assert has_element?(view, "#bank-transaction-#{salary.id}")
+    assert has_element?(view, "#bank-transaction-#{spares.id}")
+    refute has_element?(view, "#banking-transaction-group-member-#{original.id}")
+
+    view
+    |> element("[id^='banking-transaction-group-toggle-']")
+    |> render_click()
+
+    assert has_element?(view, "#banking-transaction-group-member-#{original.id}")
+    assert has_element?(view, "#banking-transaction-group-member-#{matching.id}")
+
+    refute has_element?(
+             view,
+             "#banking-transaction-group-member-#{original.id} [id^='banking-ledger-trigger-']"
+           )
+
+    view
+    |> element("[id^='banking-transaction-group-toggle-']")
+    |> render_click()
+
+    refute has_element?(view, "#banking-transaction-group-member-#{original.id}")
+    refute has_element?(view, "#banking-transaction-group-member-#{matching.id}")
+
+    view
+    |> element("[id^='banking-transaction-group-toggle-']")
+    |> render_click()
+
+    assert has_element?(view, "#banking-transaction-group-member-#{original.id}")
+    assert has_element?(view, "#banking-transaction-group-member-#{matching.id}")
+
+    view
+    |> element("#banking-transaction-group-member-select-#{original.id}")
+    |> render_click()
+
+    assert has_element?(view, "[id^='banking-transaction-group-apply-']", "Apply to 1")
+
+    view
+    |> element("[id^='banking-transaction-group-ledger-']")
+    |> render_click()
+
+    view
+    |> element("#banking-ledger-options [phx-value-identity='#{compressor.identity}']")
+    |> render_click()
+
+    assert has_element?(view, "[id^='banking-transaction-group-apply-']:not([disabled])")
+
+    view
+    |> element("[id^='banking-transaction-group-apply-']")
+    |> render_click()
+
+    assert Repo.get!(Transaction, original.id).status == "unassigned"
+
+    assert %{status: "ready", counter_ledger_identity: "compressor-purchases"} =
+             Repo.get!(Transaction, matching.id)
+
+    assert has_element?(view, "#bank-transaction-#{original.id}")
+    refute has_element?(view, "#banking-transaction-rows > tr[id^='banking-transaction-group-']")
+    assert has_element?(view, "#flash-info", "Applied Compressor Purchases to 1 transaction.")
+    assert has_element?(view, "#banking-view-needs-ledger", "3")
+    assert has_element?(view, "#banking-view-ready-to-send", "1")
+    assert has_element?(view, "#banking-view-all", "4")
   end
 
   test "groups attention statuses without allowing uncertain entries to be selected", context do
@@ -353,15 +546,11 @@ defmodule NilaWeb.Banking.UploadLiveTest do
         {status, transaction}
       end
 
-    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}?status=all")
     assert has_element?(view, "#bank-transaction-#{rows["queued"].id}", "Sending")
-    refute has_element?(view, "#transaction_filters_status option[value='queued']")
-    refute has_element?(view, "#transaction_filters_status option[value='failed']")
-    refute has_element?(view, "#transaction_filters_status option[value='verifying']")
+    refute has_element?(view, "#transaction_filters_status")
 
-    view
-    |> form("#banking-transaction-filters", transaction_filters: %{status: "needs_attention"})
-    |> render_change()
+    render_patch(view, ~p"/banking/#{statement.id}?status=needs_attention")
 
     assert has_element?(view, "#banking-visible-transaction-count", "2 of 7 transactions shown")
     assert has_element?(view, "#bank-transaction-#{rows["failed"].id}", "Send failed")
@@ -373,24 +562,28 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     assert_push_event(view, "banking-selection", %{ids: [selected_id]})
     assert selected_id == rows["failed"].id
 
-    for {status, label, transaction} <- [
-          {"unassigned", "Needs ledger", original},
-          {"ready", "Ready to send", rows["ready"]},
-          {"posted", "In Tally", rows["posted"]},
-          {"ignored", "Ignored", rows["ignored"]}
+    for {tab_id, label, transaction} <- [
+          {"banking-view-needs-ledger", nil, original},
+          {"banking-view-ready-to-send", "Ready to send", rows["ready"]},
+          {"banking-view-sent", "In Tally", rows["posted"]}
         ] do
-      view
-      |> form("#banking-transaction-filters", transaction_filters: %{status: status})
-      |> render_change()
+      view |> element("##{tab_id}") |> render_click()
 
       assert has_element?(view, "#banking-visible-transaction-count", "1 of 7 transactions shown")
-      assert has_element?(view, "#bank-transaction-#{transaction.id}", label)
+
+      if label do
+        assert has_element?(view, "#bank-transaction-#{transaction.id}", label)
+      else
+        assert has_element?(view, "#bank-transaction-#{transaction.id}")
+      end
+
       refute has_element?(view, "#bank-transaction-#{rows["failed"].id}")
     end
 
-    view
-    |> form("#banking-transaction-filters", transaction_filters: %{status: "all"})
-    |> render_change()
+    render_patch(view, ~p"/banking/#{statement.id}?status=ignored")
+    assert has_element?(view, "#bank-transaction-#{rows["ignored"].id}", "Ignored")
+
+    view |> element("#banking-view-all") |> render_click()
 
     assert has_element?(view, "#banking-visible-transaction-count", "7 transactions")
     assert has_element?(view, "#bank-transaction-#{rows["queued"].id}", "Sending")
@@ -400,7 +593,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     {:ok, statement} = ready_statement(context)
     transaction = hd(statement.bank_transactions)
     transaction_id = Integer.to_string(transaction.id)
-    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}?status=all")
 
     view |> element("#banking-select-transaction-#{transaction.id}") |> render_click()
 
@@ -457,7 +650,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
         status: "unassigned"
       })
 
-    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}?status=all")
 
     view |> element("#banking-select-transaction-#{ignored.id}") |> render_click()
     view |> element("#banking-select-transaction-#{active.id}") |> render_click()
@@ -478,7 +671,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     charges =
       master(context.org.id, company.id, "bank-charges", "Bank Charges", "Indirect Expenses")
 
-    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}?status=all")
     assert has_element?(view, "#banking-transactions > #banking-tally-setup")
     refute has_element?(view, "#banking-tally-setup.nila-card")
     assert has_element?(view, "#banking-statement-page h1", "HDFC Bank · •••• 4587")
@@ -574,7 +767,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     |> Ecto.Changeset.change(active_tally_company_id: new_default.id)
     |> Repo.update!()
 
-    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}?status=needs_ledger")
 
     assert has_element?(view, "#banking-tally-company", "Dummy Run Company")
     assert has_element?(view, "#banking-tally-setup-form", "HDFC Bank - 0443")
@@ -584,6 +777,45 @@ defmodule NilaWeb.Banking.UploadLiveTest do
 
     assert has_element?(view, "#banking-ledger-options", "IGST")
     refute has_element?(view, "#banking-ledger-options", "Breeze IGST")
+  end
+
+  test "locks the Tally destination after sending has started", context do
+    {:ok, statement} = ready_statement(context)
+    {:ok, company} = linked_company(context)
+    bank = master(context.org.id, company.id, "hdfc-bank", "HDFC Bank", "Bank Accounts")
+
+    assert {:ok, _configured} =
+             Banking.configure_tally(context.org.id, statement.id, bank.identity)
+
+    transaction = hd(statement.bank_transactions)
+    transaction |> Ecto.Changeset.change(status: "queued") |> Repo.update!()
+
+    {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}?status=all")
+
+    assert has_element?(
+             view,
+             "#banking-tally-setup-locked",
+             "Destination locked"
+           )
+
+    assert has_element?(view, "#banking-tally-setup-locked", "Sending to Tally has started")
+    assert has_element?(view, "#banking-tally-setup-locked", "HDFC Bank")
+    refute has_element?(view, "#banking-tally-setup-form")
+    refute has_element?(view, "#banking-save-tally-destination")
+
+    transaction |> Ecto.Changeset.change(status: "posted") |> Repo.update!()
+    send(view.pid, :tally_jobs_changed)
+    assert has_element?(view, "#banking-tally-setup-locked", "1 transaction sent to Tally")
+
+    render_submit(view, "configure-tally", %{
+      "tally_setup" => %{"bank_ledger_identity" => bank.identity}
+    })
+
+    assert has_element?(
+             view,
+             "#flash-error",
+             "Tally destination cannot be changed after sending to Tally has started."
+           )
   end
 
   test "searches bulk ledgers and assigns only the selected filtered transactions", context do
@@ -625,7 +857,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
         status: "unassigned"
       })
 
-    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}?status=all")
 
     view
     |> form("#banking-transaction-filters", transaction_filters: %{query: "test credit"})
@@ -675,7 +907,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
 
   test "does not open a bulk picker without a destination or an active selection", context do
     {:ok, statement} = ready_statement(context)
-    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}?status=needs_ledger")
     view |> element("#banking-select-all-transactions") |> render_click()
     assert has_element?(view, "#banking-bulk-ledger-trigger[disabled]")
     render_click(view, "open-bulk-ledger-picker")
@@ -695,7 +927,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
       )
       |> Repo.update!()
 
-    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}?status=needs_ledger")
 
     assert has_element?(
              view,
@@ -711,7 +943,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     )
     |> Repo.update!()
 
-    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}")
+    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}?status=needs_ledger")
 
     assert has_element?(
              view,
