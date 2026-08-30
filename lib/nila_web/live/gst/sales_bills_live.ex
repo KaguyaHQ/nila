@@ -3205,7 +3205,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 >
                   <div class="min-w-0">
                     <p class="text-base-content text-ui font-semibold">
-                      {length(posting_requirements(@tally_posting))} required
+                      {length(posting_requirements(@tally_posting))} {plural(
+                        length(posting_requirements(@tally_posting)),
+                        "mapping"
+                      )} left
                     </p>
                     <p class="text-ink-muted text-ui truncate">
                       Next: {next_posting_requirement(@tally_posting).label}
@@ -3222,7 +3225,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       variant="outline"
                       phx-click={JS.focus(to: next_posting_requirement(@tally_posting).target)}
                     >
-                      Go to
+                      Choose ledger
                     </.button>
                   </div>
                 </div>
