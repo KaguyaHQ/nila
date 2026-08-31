@@ -14,10 +14,6 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
     exempt_supply_unsupported non_gst_supply_unsupported outward_reverse_charge_unsupported
     cdnur_unsupported cancelled_document_unsupported amendment_document_unsupported
   )
-  @ignored_sales_bill_codes ~w(
-    tax_split_mismatch tax_treatment_uncertain place_of_supply_uncertain
-    invalid_place_of_supply missing_place_of_supply
-  )
   @fact_codes ~w(
     invalid_gstin recipient_registration_conflict unknown_recipient_registration
     unreadable_invoice_date missing_invoice_number implausible_invoice_number duplicate_invoice_number
@@ -27,7 +23,7 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
   )
 
   def for_invoice(invoice, issues) when is_map(invoice) and is_list(issues) do
-    issues = Enum.reject(issues, &(&1["code"] in @ignored_sales_bill_codes))
+    issues = Enum.filter(issues, &Nila.Gst.Sales.TallyReadiness.relevant_invoice_issue?/1)
 
     items =
       []

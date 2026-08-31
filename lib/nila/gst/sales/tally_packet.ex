@@ -20,11 +20,6 @@ defmodule Nila.Gst.Sales.TallyPacket do
     TallyReadiness
   }
 
-  @non_tally_issue_codes ~w(
-    tax_split_mismatch tax_treatment_uncertain place_of_supply_uncertain
-    missing_place_of_supply invalid_place_of_supply
-  )
-
   defdelegate fetch(org_id, client_id, batch_ref), to: Batch
   defdelegate fetch_with_record(org_id, client_id, batch_ref), to: Batch
 
@@ -50,7 +45,7 @@ defmodule Nila.Gst.Sales.TallyPacket do
 
     warning_issues =
       readiness.issues
-      |> Enum.reject(&(&1["code"] in @non_tally_issue_codes))
+      |> Enum.filter(&TallyReadiness.relevant_invoice_issue?/1)
       |> Enum.filter(&Issues.gating?/1)
 
     blocking_issues = TallyReadiness.issues(source_invoices)

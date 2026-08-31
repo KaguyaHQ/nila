@@ -518,10 +518,10 @@ defmodule Nila.Gst.Sales.Gstr1 do
   Arithmetic check outcomes for one invoice — passed and failed alike, each with
   the operands a screen can print (`15,200 × 18% = 2,736 ✓`).
 
-  This is the sole judge of these checks: `validation_issues/1` raises the
-  failing subset and nothing else (`failed_check_issues/2`), and the invoice
-  modal renders outcomes without computing anything, so a ✓ can never sit beside
-  an open issue for the same check. A check only exists where the bill makes a
+  `InvoiceValidation` is the sole judge of these checks: `validation_issues/1`
+  raises the failing subset and presentation layers consume those outcomes
+  without applying another threshold, so a ✓ can never sit beside an open
+  issue for the same check. A check only exists where the bill makes a
   claim — a furniture row with no values, or an absent printed total, yields no
   outcome rather than a vacuous pass.
 

@@ -4,6 +4,11 @@ defmodule Nila.Gst.Sales.TallyReadiness do
   alias Nila.Gst.{InvoiceFacts, Issues}
   alias Nila.Gst.Sales.{OutputCapabilities, OutputIssues}
 
+  @irrelevant_invoice_issue_codes ~w(
+    tax_split_mismatch tax_treatment_uncertain place_of_supply_uncertain
+    missing_place_of_supply invalid_place_of_supply
+  )
+
   @messages %{
     "export_supply_unsupported" =>
       "Nila's current Tally voucher does not carry export treatment.",
@@ -31,6 +36,12 @@ defmodule Nila.Gst.Sales.TallyReadiness do
     |> Enum.concat(OutputIssues.cess(invoices))
     |> Issues.normalize_all()
   end
+
+  @doc "Whether an intrinsic invoice issue requires attention before creating a Tally voucher."
+  def relevant_invoice_issue?(%{"code" => code}),
+    do: code not in @irrelevant_invoice_issue_codes
+
+  def relevant_invoice_issue?(_issue), do: true
 
   defp issue(invoice, code, fields) do
     %{

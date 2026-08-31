@@ -175,20 +175,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       do: amounts.taxable + amounts.tax
   end
 
-  defp printed_total(invoice), do: invoice["printed_grand_total"]
-
-  defp total_mismatch?(invoice) do
-    totals = Invoice.extracted_totals_paise(invoice)
-
-    case {totals.taxable_paise, Money.paise_or_error(printed_total(invoice))} do
-      {taxable_paise, {:ok, printed_paise}} when is_integer(taxable_paise) ->
-        abs(taxable_paise + totals.tax_paise - printed_paise) > 1
-
-      _incomplete ->
-        false
-    end
-  end
-
   defp rupees(value) do
     case Money.paise_or_error(value) do
       {:ok, paise} -> Nila.Formatters.format_money_with_paise(paise)
@@ -3397,17 +3383,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   />
                 </section>
 
-                <.callout
-                  :if={total_mismatch?(@posting_preview_invoice)}
-                  kind="warning"
-                  size="compact"
-                  title="Invoice total does not match the lines"
-                >
-                  The lines calculate to {rupees(invoice_total(@posting_preview_invoice))}; the invoice
-                  prints {rupees(printed_total(@posting_preview_invoice))}. Review the figures, or sync if
-                  this is the voucher the accountant intends to post.
-                </.callout>
-
                 <p
                   :if={@send_error}
                   id="sales-bill-posting-send-error"
@@ -3496,6 +3471,26 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       phx-click={JS.focus(to: review_item_target(next_review_item(@selected_review)))}
                     >
                       Review
+                    </.button>
+                    <.button
+                      :if={
+                        @tally_masters_available? &&
+                          is_nil(next_posting_requirement(@tally_posting))
+                      }
+                      id="sales-bill-save-tally-posting-intentionally"
+                      type="submit"
+                      disabled={
+                        invoice_frozen?(
+                          @tally_jobs,
+                          @selected_invoice,
+                          @packet.all_invoices
+                        )
+                      }
+                    >
+                      {if(@review_mode?,
+                        do: "Save & next intentionally",
+                        else: "Save & Close intentionally"
+                      )}
                     </.button>
                   </div>
                 </div>

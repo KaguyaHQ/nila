@@ -34,7 +34,7 @@ defmodule Nila.Gst.Sales.Values do
 
   @heads ~w(igst cgst sgst)a
 
-  # Deliberately tighter than `Gstr1`'s `@money_tolerance` of 0.5. That one asks
+  # Deliberately tighter than `InvoiceValidation`'s ₹0.50 tolerance. That one asks
   # "is this a mistake worth a reviewer's time?"; this one asks "are these the
   # same number?", and the differences this module exists to name are paise. At
   # 0.5 a bucket-rounding delta and a genuine head reassignment would both read

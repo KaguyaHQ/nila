@@ -1809,7 +1809,13 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(
              view,
              ".nila-callout[data-kind='warning']",
-             "The lines calculate to ₹1,080.00; the invoice prints ₹1,180.00."
+             "Printed invoice total is ₹1,180.00; extracted lines total ₹1,080.00."
+           )
+
+    assert has_element?(
+             view,
+             "#sales-bill-save-tally-posting-intentionally",
+             "Save & Close intentionally"
            )
 
     render_submit(view, "save-tally-posting", %{
@@ -1833,6 +1839,27 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     view |> element("#sales-bills-tally-warning-confirm") |> render_click()
     refute has_element?(view, "#sales-bills-send-error")
     assert Nila.Repo.aggregate(Nila.TallyJobs.Job, :count) == 1
+  end
+
+  test "keeps sub-tolerance total drift out of the sales-bill review", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    [invoice] = dump.invoices
+
+    dump =
+      dump
+      |> Ecto.Changeset.change(invoices: [Map.put(invoice, "printed_grand_total", 1_180.06)])
+      |> Nila.Repo.update!()
+
+    batch_ref = TallyPacket.ref([dump])
+    path = "/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    {:ok, view, _html} = live(conn, path)
+
+    refute has_element?(view, ".nila-callout[data-kind='warning']", "invoice total")
+    refute has_element?(view, "#sales-bill-save-tally-posting-intentionally")
+    assert has_element?(view, "#sales-bill-save-tally-posting", "Save & Close")
   end
 
   test "offers read-only verification before retrying an unknown outcome", %{
