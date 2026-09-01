@@ -385,6 +385,27 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     refute has_element?(view, "#banking-transaction-form thead", "Action")
   end
 
+  test "submits transaction search without losing the review mode", context do
+    {:ok, statement} = ready_statement(context)
+
+    {:ok, view, _html} =
+      live(
+        context.conn,
+        ~p"/banking/#{statement.id}?review=individual&status=needs_ledger"
+      )
+
+    view
+    |> form("#banking-transaction-filters", transaction_filters: %{query: "missing"})
+    |> render_submit()
+
+    assert_patch(
+      view,
+      ~p"/banking/#{statement.id}?query=missing&review=individual&status=needs_ledger"
+    )
+
+    assert has_element?(view, "#banking-review-individual-transactions[aria-current='page']")
+  end
+
   test "groups matching bank decisions in the Needs ledger table and applies included rows",
        context do
     {:ok, statement} = ready_statement(context)

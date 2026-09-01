@@ -1425,6 +1425,7 @@ defmodule NilaWeb.Banking.StatementLive do
               for={@transaction_filter_form}
               id="banking-transaction-filters"
               phx-change="filter-transactions"
+              phx-submit="filter-transactions"
               class="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_minmax(0,14rem)]"
             >
               <.input
