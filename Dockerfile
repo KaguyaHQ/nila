@@ -64,17 +64,9 @@ LABEL org.opencontainers.image.source="https://github.com/KaguyaHQ/nila"
 # checks against, while `pdfinfo` and `pdftoppm` serve eval and benchmark tools.
 # Without it extracted dumps cannot carry review evidence.
 RUN apt-get update -y && \
-  apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates curl xz-utils \
+  apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates curl \
   poppler-utils fonts-dejavu-core fonts-noto-core fonts-noto-ui-core \
   && apt-get clean && rm -f /var/lib/apt/lists/*_*
-
-# Typst renders quote/invoice PDFs (Nila.Typst). Pinned prebuilt binary — keep in
-# sync with the version developers run locally. The Noto/DejaVu fonts above give it
-# ₹ and Tamil glyph coverage; without them the engine emits tofu boxes.
-ARG TYPST_VERSION="0.14.2"
-RUN curl -fsSL "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" \
-    | tar -xJ -C /usr/local/bin --strip-components=1 typst-x86_64-unknown-linux-musl/typst \
-  && typst --version
 
 # locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
