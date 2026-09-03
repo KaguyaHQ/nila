@@ -1,7 +1,6 @@
 # Multi-stage build for a Phoenix release.
 #
-# Base images are pinned to the same versions kaguya-api uses so the Hetzner
-# box shares builder/runner layers across both apps.
+# Base images are pinned so local and production builds use the same toolchain.
 #
 #   - https://hub.docker.com/r/hexpm/elixir/tags  (builder)
 #   - https://hub.docker.com/_/debian              (runner)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Trigger the Hetzner deploy via GitHub Actions and watch it.
+# Trigger the AWS deploy via GitHub Actions and watch it.
 # Usage: ./scripts/deploy.sh
 # Requires: gh CLI (brew install gh)
 set -euo pipefail

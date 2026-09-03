@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # Attach an interactive iex shell to the running Nila production node.
 #
-# Requires the `nila-prod` Host alias in ~/.ssh/config (see hetzner/README.md).
+# Requires AWS CLI v2, the Session Manager plugin, and the `nila` profile.
 set -euo pipefail
-exec ssh -t nila-prod 'cd /home/deploy/nila && docker compose exec nila /app/bin/nila remote'
+
+AWS_PROFILE="${AWS_PROFILE:-nila}"
+AWS_REGION="${AWS_REGION:-ap-south-2}"
+INSTANCE_ID="${NILA_INSTANCE_ID:-i-0547b7fd7907f3a21}"
+
+exec aws ssm start-session \
+  --profile "$AWS_PROFILE" \
+  --region "$AWS_REGION" \
+  --target "$INSTANCE_ID" \
+  --document-name AWS-StartInteractiveCommand \
+  --parameters 'command=["sudo docker exec -it nila-nila-1 /app/bin/nila remote"]'

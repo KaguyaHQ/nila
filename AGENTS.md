@@ -37,7 +37,7 @@ mix precommit
 
 ## Production access
 
-- Connect with `ssh nila-prod`. Production is read-only unless the user explicitly authorizes changes.
+- Connect through AWS Systems Manager with `./scripts/prod-console`. Production is read-only unless the user explicitly authorizes changes.
 
 ## Conventions
 

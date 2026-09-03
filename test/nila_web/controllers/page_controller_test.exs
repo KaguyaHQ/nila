@@ -19,6 +19,10 @@ defmodule NilaWeb.PageControllerTest do
     assert html =~ "Privacy policy"
     assert html =~ "WhatsApp communications"
     assert html =~ "WhatsApp Cloud API"
+    assert html =~ "Amazon Web Services"
+    assert html =~ "Hyderabad, India"
+    assert html =~ "Cloudflare R2"
+    refute html =~ "Hetzner"
   end
 
   test "GET /terms", %{conn: conn} do
