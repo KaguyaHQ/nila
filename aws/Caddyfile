@@ -2,3 +2,7 @@
   encode zstd gzip
   reverse_proxy nila:8080
 }
+
+www.nila.tax, nilahq.com, www.nilahq.com {
+  redir https://nila.tax{uri} permanent
+}
