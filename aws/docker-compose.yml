@@ -1,0 +1,86 @@
+name: nila
+
+networks:
+  edge:
+  internal:
+    internal: true
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      PHX_HOST: ${PHX_HOST:-anya.love}
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - edge
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      nila:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "25m"
+        max-file: "3"
+
+  nila:
+    image: ${NILA_IMAGE:-ghcr.io/kaguyahq/nila:arm64}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PHX_SERVER: "true"
+      PORT: "8080"
+      PHX_HOST: ${PHX_HOST:-anya.love}
+    networks:
+      - edge
+      - internal
+    expose:
+      - "8080"
+    depends_on:
+      nila-postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf -H 'X-Forwarded-Proto: https' http://127.0.0.1:8080/health | grep -q healthy",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  nila-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    env_file: .env
+    networks:
+      - internal
+    volumes:
+      - nila_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+volumes:
+  caddy_data:
+  caddy_config:
+  nila_pgdata:
