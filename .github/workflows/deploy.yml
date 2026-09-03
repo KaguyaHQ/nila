@@ -17,11 +17,12 @@ env:
   IMAGE_NAME: kaguyahq/nila
 
 jobs:
-  build-arm64:
+  deploy:
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v5
@@ -48,54 +49,52 @@ jobs:
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-arm64
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-arm64,mode=max
 
-  deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          role-to-assume: arn:aws:iam::500763019925:role/NilaGitHubDeployRole
+          aws-region: ap-south-2
+          allowed-account-ids: "500763019925"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Deploy through Systems Manager
+        shell: bash
+        run: |
+          command_id=$(aws ssm send-command \
+            --instance-ids i-0547b7fd7907f3a21 \
+            --document-name AWS-RunShellScript \
+            --comment "Deploy Nila ${GITHUB_SHA}" \
+            --parameters 'commands=["cd /opt/nila && ./deploy.sh"]' \
+            --query 'Command.CommandId' \
+            --output text)
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          for attempt in $(seq 1 60); do
+            status=$(aws ssm get-command-invocation \
+              --command-id "$command_id" \
+              --instance-id i-0547b7fd7907f3a21 \
+              --query 'Status' \
+              --output text 2>/dev/null || true)
 
-      # Keep the server-side ops files in sync with the repo. They take effect
-      # when deploy.sh runs `docker compose up` below.
-      - name: Sync ops files to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.HETZNER_HOST }}
-          username: deploy
-          key: ${{ secrets.HETZNER_SSH_KEY }}
-          source: "hetzner/docker-compose.yml,hetzner/deploy.sh"
-          target: "/home/deploy/nila/"
-          strip_components: 1
+            case "$status" in
+              Success)
+                aws ssm get-command-invocation \
+                  --command-id "$command_id" \
+                  --instance-id i-0547b7fd7907f3a21 \
+                  --query 'StandardOutputContent' \
+                  --output text
+                exit 0
+                ;;
+              Failed|Cancelled|TimedOut)
+                aws ssm get-command-invocation \
+                  --command-id "$command_id" \
+                  --instance-id i-0547b7fd7907f3a21 \
+                  --query '[StandardOutputContent,StandardErrorContent]' \
+                  --output text
+                exit 1
+                ;;
+            esac
 
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.HETZNER_HOST }}
-          username: deploy
-          key: ${{ secrets.HETZNER_SSH_KEY }}
-          script: |
-            chmod +x /home/deploy/nila/deploy.sh
-            /home/deploy/nila/deploy.sh
+            sleep 5
+          done
+
+          echo "Timed out waiting for deployment command $command_id" >&2
+          exit 1

@@ -10,7 +10,7 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     environment:
-      PHX_HOST: ${PHX_HOST:-anya.love}
+      PHX_HOST: ${PHX_HOST:-nila.tax}
     ports:
       - "80:80"
       - "443:443"
@@ -36,7 +36,7 @@ services:
     environment:
       PHX_SERVER: "true"
       PORT: "8080"
-      PHX_HOST: ${PHX_HOST:-anya.love}
+      PHX_HOST: ${PHX_HOST:-nila.tax}
     networks:
       - edge
       - internal
