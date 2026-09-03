@@ -29,10 +29,10 @@ org =
   end
 
 owner =
-  Repo.get_by(User, email: "dev@nila.test") ||
+  Repo.get_by(User, email: "spare.me1180650@gmail.com") ||
     Accounts.register_user!(%{
       name: "Dev Owner",
-      email: "dev@nila.test",
+      email: "spare.me1180650@gmail.com",
       password: "devpassword123"
     })
 
