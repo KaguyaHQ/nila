@@ -144,7 +144,7 @@ defmodule NilaWeb.Gst.RegisterLive do
                 >
                   <%= if cell = row.cells[period] do %>
                     <.link
-                      navigate={~p"/gst/#{row.client_id}/#{period}"}
+                      navigate={~p"/gst/#{row.client_id}/#{period}/sales"}
                       id={"register-link-#{row.client_id}-#{period}"}
                       title={cell_title(cell)}
                       class="hover:bg-interactive text-ui flex min-h-14 flex-col justify-center px-4 py-3 transition"

@@ -37,19 +37,12 @@ defmodule NilaWeb.Gst.MonthLiveWorkpaperTest do
     %{conn: log_in_user(conn, user), client: client}
   end
 
-  test "the bare month selects sales and patches between one complete workpaper at a time", %{
+  test "legacy tracks remain isolated and sales exits to the period workspace", %{
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
-    assert has_element?(view, "#month-workpaper-tab-sales[aria-current='page']")
-    assert has_element?(view, "#month-sales")
-    refute has_element?(view, "#month-register")
-    refute has_element?(view, "#month-gstr3b-workpaper")
-
-    view |> element("#month-workpaper-tab-purchases") |> render_click()
-    assert_patch(view, "/gst/#{client.id}/#{@period}?track=purchases")
     assert has_element?(view, "#month-workpaper-tab-purchases[aria-current='page']")
     assert has_element?(view, "#month-register")
     refute has_element?(view, "#month-sales")
@@ -61,9 +54,14 @@ defmodule NilaWeb.Gst.MonthLiveWorkpaperTest do
     assert has_element?(view, "#month-gstr3b-workpaper")
     refute has_element?(view, "#month-sales")
     refute has_element?(view, "#month-register")
+
+    assert has_element?(
+             view,
+             "#month-workpaper-tab-sales[href='/gst/#{client.id}/#{@period}/sales']"
+           )
   end
 
-  test "direct track URLs survive refresh and an invalid track canonicalizes to sales", %{
+  test "direct legacy track URLs survive refresh and other month URLs enter sales", %{
     conn: conn,
     client: client
   } do
@@ -76,14 +74,14 @@ defmodule NilaWeb.Gst.MonthLiveWorkpaperTest do
     assert {:error, {:live_redirect, %{to: target}}} =
              live(conn, "/gst/#{client.id}/#{@period}?track=unknown")
 
-    assert target == "/gst/#{client.id}/#{@period}?track=sales"
+    assert target == "/gst/#{client.id}/#{@period}/sales"
   end
 
-  test "all workpapers remain available when their source data is absent", %{
+  test "legacy purchase navigation still exposes the retained work areas", %{
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     for track <- ~w(sales purchases gstr3b) do
       assert has_element?(view, "#month-workpaper-tab-#{track}")

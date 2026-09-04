@@ -29,7 +29,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
   end
 
   test "renders the worked sales month with issue flags", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(view, "#month-page")
     assert has_element?(view, "#month-sales")
@@ -175,7 +175,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(
              view,
@@ -204,7 +204,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
          conn: conn,
          client: client
        } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     refute has_element?(view, "#gstr1-draft-reconciliation")
     refute has_element?(view, "#gstr1-reconciliation")
@@ -294,7 +294,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
         derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, period))
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=sales")
 
     assert has_element?(view, "#gstr1-filing-b2cs", "B2CS")
     assert has_element?(view, "#gstr1-filing-b2cl", "B2CL")
@@ -309,7 +309,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(view, "#gstr1-register:not(details)")
     assert has_element?(view, "#gstr1-register table.nila-table[data-mode='worklist']")
@@ -380,7 +380,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
       }
     })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(view, "#gstr1-register", "1 from Tally")
     assert has_element?(view, "#gstr1-inv-21\\/2025-26", "Tally + document")
@@ -399,7 +399,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(view, "#gstr1-human-assurance-count", "0 of 3 invoices")
     assert has_element?(view, "#gstr1-human-assurance-open", "3 have no recorded human review")
@@ -419,7 +419,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
     client: client,
     org: org
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     b2b = view |> element("#gstr1-workings-b2b") |> render()
     assert b2b =~ "PONMANI AND CO"
@@ -459,7 +459,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     row = view |> element("#gstr1-workings-rate-18-inv-22-2025-26") |> render()
     assert row =~ "22/2025-26"
@@ -471,7 +471,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(view, "#gstr1-return", "Return workings")
     assert has_element?(view, "#gstr1-workings-b2b")
@@ -489,7 +489,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
   end
 
   test "an opened bucket survives an unrelated re-render", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     contrib = "#gstr1-workings-rate-18-inv-22-2025-26"
     assert view |> element(contrib) |> render() =~ "hidden"
@@ -507,7 +507,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
   end
 
   test "a contributor row opens the invoice modal it names", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     refute has_element?(view, "#gstr1-evidence-modal")
 

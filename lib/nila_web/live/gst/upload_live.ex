@@ -190,7 +190,7 @@ defmodule NilaWeb.Gst.UploadLive do
 
   def handle_event("open-month", _params, socket) do
     %{client_id: client_id, period: period} = socket.assigns.pending
-    {:noreply, push_navigate(socket, to: ~p"/gst/#{client_id}/#{period}")}
+    {:noreply, push_navigate(socket, to: completed_work_path(socket, client_id, period))}
   end
 
   def handle_event("try-again", _params, socket) do
@@ -573,6 +573,23 @@ defmodule NilaWeb.Gst.UploadLive do
   defp kind_title("purchase"), do: "Purchase bills"
   defp kind_title("gstr2b"), do: "GSTR-2B"
   defp kind_title("filed_gstr1"), do: "Filed GSTR-1"
+
+  defp completed_work_path(socket, client_id, period) do
+    kinds = socket.assigns.jobs |> Map.values() |> Enum.map(& &1.kind)
+
+    if Enum.any?(kinds, &(&1 in ~w(purchase gstr2b))) do
+      ~p"/gst/#{client_id}/#{period}?track=purchases"
+    else
+      ~p"/gst/#{client_id}/#{period}/sales"
+    end
+  end
+
+  defp job_work_path(%{client_id: client_id, period: period, kind: kind})
+       when kind in ~w(purchase gstr2b),
+       do: ~p"/gst/#{client_id}/#{period}?track=purchases"
+
+  defp job_work_path(%{client_id: client_id, period: period}),
+    do: ~p"/gst/#{client_id}/#{period}/sales/uploads"
 
   # A read that lost pages to a provider error still derives a month, so it is
   # `:done` — but a green check over a month that is missing a bill is the one
@@ -984,7 +1001,7 @@ defmodule NilaWeb.Gst.UploadLive do
                 </p>
                 <.link
                   :if={job.status in [:held, :needs_confirmation]}
-                  navigate={~p"/gst/#{job.client_id}/#{job.period}"}
+                  navigate={job_work_path(job)}
                   id={"gst-dump-open-month-#{dump_id}"}
                   class="text-moon text-ui font-semibold"
                 >

@@ -48,7 +48,9 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
   end
 
   test "a published but unimported GSTR-2B exposes only the import action", context do
-    period = Nila.Gst.Filing.Calendar.closeable_period(Date.utc_today())
+    # Early in a filing month the immediately preceding period's 2B is not
+    # published yet. Step back far enough that the test's premise is stable.
+    period = Nila.Gst.Filing.Calendar.closeable_period(Date.add(Date.utc_today(), -20))
     put_books_without_2b!(context, period, "need-2b-1")
 
     {:ok, view, _html} =
@@ -279,7 +281,9 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
       })
 
     put_month!(context, [], [gstr2b("CARRY-1")])
-    {:ok, view, _html} = live(context.conn, "/gst/#{context.client.id}/#{@period}")
+
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     assert has_element?(view, "#gstr3b-carried-itc", "Prior-period ITC")
     assert has_element?(view, "#gstr3b-carried-itc", "Jul 2026")

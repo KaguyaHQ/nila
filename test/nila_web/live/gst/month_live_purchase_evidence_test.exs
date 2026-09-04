@@ -86,7 +86,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseEvidenceTest do
     dump = Dumps.mark_after_filing(dump)
     open_period = Calendar.closeable_period(Date.utc_today())
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     assert has_element?(view, "#month-headline", "Documents arrived after this month was filed")
 
@@ -110,7 +110,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseEvidenceTest do
 
   test "redirects logged-out visitors to log in", %{client: client} do
     assert {:error, {:redirect, %{to: "/users/log_in"}}} =
-             live(Phoenix.ConnTest.build_conn(), ~p"/gst/#{client.id}/#{@period}")
+             live(Phoenix.ConnTest.build_conn(), "/gst/#{client.id}/#{@period}?track=purchases")
   end
 
   defp doors(view) do

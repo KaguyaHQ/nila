@@ -248,7 +248,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
         "tally" => %{"company_id" => Integer.to_string(company.id)}
       })
 
-    assert redirected_to(conn) == ~p"/gst/#{client.id}/2026-07"
+    assert redirected_to(conn) == ~p"/gst/#{client.id}/2026-07/sales"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Queued 1 sales voucher for Nila"
 
     assert job = Repo.one!(Job)
@@ -380,7 +380,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
         "tally" => %{"company_id" => Integer.to_string(company.id)}
       })
 
-    assert redirected_to(conn) == ~p"/gst/#{client.id}/2026-07"
+    assert redirected_to(conn) == ~p"/gst/#{client.id}/2026-07/sales"
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "no longer available"
     assert Repo.aggregate(Job, :count) == 0
   end

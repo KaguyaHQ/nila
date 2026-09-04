@@ -344,7 +344,8 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
   end
 
   test "month issue actions remain outside the invoice surface", context do
-    {:ok, month_view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+    {:ok, month_view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=sales")
 
     assert has_element?(month_view, "#gstr1-review-required[data-phx-link='patch']")
     refute has_element?(month_view, "#gstr1-evidence-modal")

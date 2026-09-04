@@ -607,7 +607,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert has_element?(view, "#gst-upload-open-month[autofocus]")
 
     view |> element("#gst-upload-open-month") |> render_click()
-    assert_redirect(view, "/gst/#{client.id}/#{@period}")
+    assert_redirect(view, "/gst/#{client.id}/#{@period}/sales")
   end
 
   test "extraction presents one preparation phase followed by bill progress", %{
@@ -808,7 +808,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
 
     assert has_element?(
              view,
-             "#gst-dump-open-month-#{dump.id}[href='/gst/#{client.id}/#{@period}']"
+             "#gst-dump-open-month-#{dump.id}[href='/gst/#{client.id}/#{@period}/sales/uploads']"
            )
   end
 

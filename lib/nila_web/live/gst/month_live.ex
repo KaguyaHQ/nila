@@ -204,7 +204,28 @@ defmodule NilaWeb.Gst.MonthLive do
     {:noreply, push_patch(socket, to: sales_review_path(socket, route), replace: true)}
   end
 
+  def handle_params(
+        %{"track" => track} = params,
+        _uri,
+        %{assigns: %{live_action: :index}} = socket
+      )
+      when track in ["sales", "purchases", "gstr3b"] do
+    legacy_month_params(params, socket)
+  end
+
+  def handle_params(_params, _uri, %{assigns: %{live_action: :index}} = socket) do
+    {:noreply,
+     push_navigate(socket,
+       to: ~p"/gst/#{socket.assigns.client.id}/#{socket.assigns.period}/sales",
+       replace: true
+     )}
+  end
+
   def handle_params(params, _uri, socket) do
+    legacy_month_params(params, socket)
+  end
+
+  defp legacy_month_params(params, socket) do
     track = selected_track(params["track"], socket.assigns)
 
     socket =
@@ -1315,7 +1336,7 @@ defmodule NilaWeb.Gst.MonthLive do
         {:noreply,
          socket
          |> put_flash(:info, "Packet moved to #{period_label(period)}.")
-         |> push_navigate(to: ~p"/gst/#{moved.client_id}/#{moved.period}")}
+         |> push_navigate(to: moved_work_path(moved))}
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Pick the month this packet belongs to.")}
@@ -1492,6 +1513,13 @@ defmodule NilaWeb.Gst.MonthLive do
     %{client: client, period: period} = socket.assigns
     ~p"/gst/#{client.id}/#{period}"
   end
+
+  defp moved_work_path(%{kind: kind, client_id: client_id, period: period})
+       when kind in ~w(purchase gstr2b),
+       do: ~p"/gst/#{client_id}/#{period}?track=purchases"
+
+  defp moved_work_path(%{client_id: client_id, period: period}),
+    do: ~p"/gst/#{client_id}/#{period}/sales/uploads"
 
   defp track_path(socket, track),
     do: month_base_path(socket) <> "?" <> URI.encode_query(%{"track" => to_string(track)})

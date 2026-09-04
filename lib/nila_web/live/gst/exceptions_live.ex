@@ -11,7 +11,7 @@ defmodule NilaWeb.Gst.ExceptionsLive do
 
     case org && Clients.get_client(org.id, client_id) do
       {:ok, client} ->
-        {:ok, push_navigate(socket, to: ~p"/gst/#{client.id}/#{period}")}
+        {:ok, push_navigate(socket, to: ~p"/gst/#{client.id}/#{period}?track=purchases")}
 
       _ ->
         {:ok,

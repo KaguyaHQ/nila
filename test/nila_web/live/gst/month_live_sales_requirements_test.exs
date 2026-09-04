@@ -74,7 +74,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
         summary: %{"invoice_count" => 1, "issue_count" => 1}
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=sales")
 
     assert has_element?(view, "#gstr1-grouped-review-cases", "Invoice 40/2025-26")
     assert has_element?(view, "#gstr1-grouped-review-cases", "Review")
@@ -134,7 +134,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
         summary: %{"invoice_count" => 3, "issue_count" => 1}
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=sales")
 
     assert has_element?(view, "#gstr1-return-controls summary")
     assert has_element?(view, "#gstr1-required-summary", "1 required check before approval")
@@ -152,7 +152,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
   end
 
   test "an ordinary month asks nothing about cess", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     # The stub bills refrigeration work. Nothing on them can carry cess, so the
     # reviewer is never asked and the healthy check stays silent.
@@ -168,7 +168,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
   } do
     seed_cess_line!(org, client)
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(view, "#gstr1-checks-before-filing", "csamt 0")
     refute has_element?(view, "#gstr1-draft-reconciliation", "Cess")
@@ -205,7 +205,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
 
     month |> Ecto.Changeset.change(invoices: invoices) |> Nila.Repo.update!()
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(
              view,
@@ -267,7 +267,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
         derived_gstr1: Gstr1.derive([invoice], Gstr1.production_header(client.gstin, period))
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=sales")
 
     assert has_element?(view, "#gstr1-required-summary", "1 blocker before approval")
     refute view |> element("#gstr1-required-summary") |> render() =~ "false"
@@ -295,7 +295,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
 
     month |> Ecto.Changeset.change(invoices: invoices) |> Nila.Repo.update!()
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(view, "#gstr1-workings-cdnr", "21/2025-26")
     assert has_element?(view, "#gstr1-filing-cdnr", "9B registered credit and debit notes")
@@ -325,7 +325,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
 
     month |> Ecto.Changeset.change(invoices: invoices) |> Nila.Repo.update!()
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(view, "#gstr1-workings-cdnr", "21/2025-26")
     assert has_element?(view, "#gstr1-workings-cdnr", "Debit")
@@ -338,7 +338,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(view, "#gstr1-filing-summary", "Proposed GSTR-1")
     assert has_element?(view, "#gstr1-filing-status", "Provisional")
@@ -397,7 +397,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
         derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, @period))
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(view, "#gstr1-checks-before-filing", "no cdnur table")
     assert has_element?(view, "#gstr1-blocked-next-move", "manually on the portal")
@@ -465,7 +465,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
       invoice.("138/2025-26", "29033990")
     ])
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/2025-12")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/2025-12?track=sales")
 
     assert has_element?(view, "#gstr1-hsn-new-codes", "2 of 2 codes are new for this client")
     assert has_element?(view, "#gstr1-workings-hsn-28043000-18", "New")
@@ -549,7 +549,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
         issues: Gstr1.validation_issues(invoices)
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=sales")
 
     # The issue is asserted once, in "Before filing"; the Table 12 card points
     # at it rather than drawing a second copy with different buttons.
@@ -607,7 +607,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
         derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, @period))
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(
              view,

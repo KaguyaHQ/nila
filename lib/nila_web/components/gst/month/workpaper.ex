@@ -18,7 +18,8 @@ defmodule NilaWeb.Components.Gst.Month.Workpaper do
       <.link
         :for={{track, label} <- tracks()}
         id={"month-workpaper-tab-#{track}"}
-        patch={~p"/gst/#{@client.id}/#{@period}?track=#{track}"}
+        navigate={track == :sales && track_path(@client.id, @period, track)}
+        patch={track != :sales && track_path(@client.id, @period, track)}
         aria-current={@selected == track && "page"}
         data-state={if(@selected == track, do: "selected", else: "idle")}
         class={[
@@ -103,6 +104,11 @@ defmodule NilaWeb.Components.Gst.Month.Workpaper do
       {:gstr3b, "GSTR-3B"}
     ]
   end
+
+  defp track_path(client_id, period, :sales), do: ~p"/gst/#{client_id}/#{period}/sales"
+
+  defp track_path(client_id, period, track),
+    do: ~p"/gst/#{client_id}/#{period}?track=#{track}"
 
   defp state_dot("success"), do: "bg-success"
   defp state_dot("warning"), do: "bg-warning"

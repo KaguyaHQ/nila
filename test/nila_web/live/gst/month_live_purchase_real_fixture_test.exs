@@ -83,7 +83,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
 
     answer_sales_issues!(sales, user.id)
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert doors(view) == ["month-door-sign-r1"]
 

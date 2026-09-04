@@ -194,7 +194,7 @@ defmodule NilaWeb.Gstr1Controller do
       {:ok, sales_month} ->
         conn
         |> enqueue_tally_result(sales_month, period, company_id)
-        |> redirect(to: ~p"/gst/#{client_id}/#{period}")
+        |> redirect(to: ~p"/gst/#{client_id}/#{period}/sales")
 
       {:error, _reason} ->
         conn
@@ -210,7 +210,7 @@ defmodule NilaWeb.Gstr1Controller do
       {:ok, _sales_month} ->
         conn
         |> put_flash(:error, "Choose an open Tally company before sending.")
-        |> redirect(to: ~p"/gst/#{client_id}/#{period}")
+        |> redirect(to: ~p"/gst/#{client_id}/#{period}/sales")
 
       {:error, _reason} ->
         conn

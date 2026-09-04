@@ -29,7 +29,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     conn: conn,
     client: client
   } do
-    {:ok, review_view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, review_view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
     confirm_all_open_issues(review_view)
 
     {:ok, workspace, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/sales")
@@ -55,9 +55,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     confirm_all_open_issues(view)
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
     view |> element("#month-door-sign-r1") |> render_click()
 
     assert has_element?(view, "#gstr1-workings-b2b")
@@ -167,7 +168,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
 
     answer_sales_issues!(month, user.id)
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=sales")
     assert has_element?(view, "#month-door-sign-r1")
     view |> element("#month-door-sign-r1") |> render_click()
 
@@ -218,9 +219,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     alias Nila.Gst.Filing.Signoffs
     alias Nila.Gst.Sales.Months, as: SalesMonths
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     confirm_all_open_issues(view)
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
     view |> element("#month-door-sign-r1") |> render_click()
 
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
@@ -242,7 +244,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     |> Ecto.Changeset.change(snapshot: Map.put(signoff.snapshot, "issues", legacy))
     |> Nila.Repo.update!()
 
-    {:ok, legacy_view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, legacy_view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     # Everything was resolved before signing, so no legacy level may resurrect a
     # check, and the approved draft still renders.
@@ -257,7 +259,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
 
     # No filed return, no comparison — live months are untouched.
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
     refute has_element?(view, "#gstr1-filed-comparison")
 
     # The filed return is the derived one with invoice 21's taxable moved:
@@ -287,7 +289,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
         filed_gstr1: filed
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     # Differences live in one historical block; agreements stay silent.
     assert view |> element("#gstr1-filed-comparison") |> render() =~ "1 differ"
@@ -325,6 +327,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     # An approved month still shows the historical comparison from the snapshot,
     # but the wall hides the verbs.
     confirm_all_open_issues(view)
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
     view |> element("#month-door-sign-r1") |> render_click()
 
     assert has_element?(view, "#gstr1-diff-summary")
@@ -357,7 +360,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
         filed_gstr1: filed
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(
              view,
@@ -372,9 +375,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     confirm_all_open_issues(view)
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert has_element?(view, "#month-door-sign-r1", "Approve GSTR-1")
     assert has_element?(view, "#gstr1-overview[data-state='ready']")
@@ -409,9 +413,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     {:ok, _} = Nila.Orgs.add_user(org, member.id, "member")
     conn = log_in_user(build_conn(), member)
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     confirm_all_open_issues(view)
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     refute has_element?(view, "#month-door-sign-r1")
     assert has_element?(view, "#gstr1-overview[data-state='awaiting_senior']")
@@ -434,7 +439,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     conn = log_in_user(build_conn(), other_user)
 
     assert {:error, {:live_redirect, %{to: "/today"}}} =
-             live(conn, ~p"/gst/#{client.id}/#{@period}")
+             live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     conn =
       get(build_conn() |> log_in_user(other_user), ~p"/gstr1/#{client.id}/#{@period}/return.json")

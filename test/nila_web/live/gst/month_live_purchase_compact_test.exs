@@ -33,7 +33,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     assert has_element?(
              view,
@@ -89,7 +89,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     # looked like they should agree.
     assert stats.unreported_by_vendor_tax_paise > 0
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=purchases")
 
     assert has_element?(view, "#gstr3b-itc-bridge-books-itc", "Net ITC effect in the register")
 
@@ -136,13 +136,13 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
         summary: read_json("summary.json")
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=purchases")
 
     refute has_element?(view, "#gstr3b-completeness")
     assert has_element?(view, "#gstr3b-register")
 
     # Receiving source files does not bring the telemetry grid back.
-    {:ok, seeded, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, seeded, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
     refute has_element?(seeded, "#gstr3b-completeness")
   end
 
@@ -178,7 +178,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     refute stats.itc_money_known?
     assert stats.rows > 0
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     assert has_element?(view, "#gstr3b-itc-position", "not recorded for this month")
     assert has_element?(view, "#purchase-itc-amount-unavailable", "Amount not recorded")
@@ -197,7 +197,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
         summary: read_json("summary.json")
       })
 
-    {:ok, seeded, _html} = live(conn, ~p"/gst/#{client.id}/2025-06")
+    {:ok, seeded, _html} = live(conn, "/gst/#{client.id}/2025-06?track=purchases")
     refute has_element?(seeded, "#gstr3b-itc-position", "not recorded for this month")
   end
 
@@ -225,7 +225,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     assert Dumps.list(org.id, client.id, period) == []
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=purchases")
 
     refute render(view) =~ "Nothing reconciles until it is in"
     refute has_element?(view, "#month-door-bring-2b")
@@ -276,7 +276,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
         summary: Register.summary(rows)
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=purchases")
 
     assert has_element?(view, "#month-workpaper-tab-purchases", "Differences noted")
     assert has_element?(view, "#gstr3b-itc-position", "value difference")
@@ -298,7 +298,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     client: client,
     client_month: client_month
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     need_decision =
       client_month |> Resolutions.workings() |> then(&Register.need_decision(&1.summary))
@@ -400,7 +400,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     assert stats.open_tax_paise > 0
     assert stats.matched_tax_paise > 0
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     decision_tax = stats.decision_tax_paise + stats.value_dispute_tax_paise
 
@@ -427,7 +427,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     stats =
       Nila.Gst.Purchase.Register.stats(Nila.Gst.Purchase.Resolutions.workings(month).summary)
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     assert stats.settled_tax_paise + stats.open_tax_paise == stats.total_tax_paise
 
@@ -482,7 +482,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
         summary: Nila.Gst.Purchase.Register.summary(rows)
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     awaiting = length(collection_only["in_2b_not_books"])
     assert awaiting > 0
@@ -503,7 +503,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     rows = read_rows()
     gstr2b_only = Enum.count(rows, &(&1["bucket"] == "in_2b_not_books"))
@@ -528,7 +528,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     rows_with_index = Enum.with_index(read_rows())
 
@@ -580,7 +580,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
           is_binary(row["id"]) and is_binary(row["next_action"])
       end)
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     # The row already knew the next move; the register printed only the verdict,
     # so a reviewer deciding whether to leave for the queue read the problem
@@ -618,7 +618,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     refute Register.annotated_row?(decided)
 
-    {:ok, after_decision, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, after_decision, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     refute after_decision
            |> element("##{dom_id(open, index)}")
@@ -658,7 +658,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     {flagged_matched, index} =
       read_rows()
@@ -680,7 +680,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
     month_pid = view.pid
 
     {open_row, index} =
@@ -706,7 +706,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     {row, index} =
       read_rows()
@@ -730,7 +730,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     {row, index} =
       read_rows()
@@ -755,12 +755,12 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     assert has_element?(view, "#gst-3b-cash-pending", "Pending outward tax")
   end
 
-  test "the sales section renders on the same page when a sales month exists", %{
+  test "the retained purchase page links to sales instead of embedding it", %{
     conn: conn,
     org: org,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
     assert render(view) =~ "Sales bills not in, so the GSTR-1 waits."
     refute has_element?(view, "#month-sales")
 
@@ -776,10 +776,14 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
         summary: %{}
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
-    assert has_element?(view, "#month-sales")
-    refute has_element?(view, "#month-sales-missing")
+    refute has_element?(view, "#month-sales")
+
+    assert has_element?(
+             view,
+             "#month-workpaper-tab-sales[href='/gst/#{client.id}/#{@period}/sales']"
+           )
   end
 
   test "a clear purchase position states its basis and hands off without invented assurance", %{
@@ -815,7 +819,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     ])
   end
 
-  test "a clean worked month points seniors to sign-off and tells members to wait", %{
+  test "the retained purchase page does not surface the retired sales approval", %{
     conn: conn,
     org: org,
     client: client,
@@ -854,8 +858,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
         state: "reviewed"
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
-    assert doors(view) == ["month-door-sign-r1"]
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
+    assert doors(view) == []
 
     # Same state, different role: a signature is not live work for a junior,
     # so the page offers them nothing to press.
@@ -863,8 +867,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     {:ok, _} = Nila.Orgs.add_user(org, member.id, "member")
     member_conn = log_in_user(Phoenix.ConnTest.build_conn(), member)
 
-    {:ok, member_view, _html} = live(member_conn, ~p"/gst/#{client.id}/#{@period}")
-    assert has_element?(member_view, "#month-headline", "Waiting on a senior to sign.")
+    {:ok, member_view, _html} = live(member_conn, "/gst/#{client.id}/#{@period}?track=purchases")
     assert doors(member_view) == []
   end
 
@@ -1020,7 +1023,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
   end
 
   test "matched rows without flags render a silent note column", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     {row, index} =
       read_rows()
@@ -1040,7 +1043,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     {:ok, _} = Nila.Orgs.add_user(org, member.id, "member")
     conn = log_in_user(Phoenix.ConnTest.build_conn(), member)
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
 
     refute has_element?(view, "#month-door-sign-3b")
     refute has_element?(view, "#month-door-sign-r1")

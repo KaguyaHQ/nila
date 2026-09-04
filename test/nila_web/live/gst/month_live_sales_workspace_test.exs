@@ -108,6 +108,16 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
     assert has_element?(view, "a", "Bring in invoices")
   end
 
+  test "the bare legacy month route sends sales work to the period workspace", %{
+    conn: conn,
+    client: client
+  } do
+    assert {:error, {:live_redirect, %{to: path}}} =
+             live(conn, ~p"/gst/#{client.id}/#{@period}")
+
+    assert path == ~p"/gst/#{client.id}/#{@period}/sales"
+  end
+
   test "keeps empty statutory rows visible but inert", %{conn: conn, client: client} do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/sales")
 

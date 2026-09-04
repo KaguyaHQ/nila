@@ -32,7 +32,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesIntakeTest do
     org: org,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     {:ok, dump} =
       Dumps.record(
@@ -63,14 +63,14 @@ defmodule NilaWeb.Gst.MonthLiveSalesIntakeTest do
     org: org,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     confirm_all_open_issues(view)
     view |> element("#month-door-sign-r1") |> render_click()
 
     straggler = work_dump!(org, client, @period, "sales", "%PDF-1.4 late")
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
     assert has_element?(view, "#month-dump-#{straggler.id}")
     refute has_element?(view, "#month-dump-release-#{straggler.id}")
 
@@ -98,7 +98,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesIntakeTest do
 
     failed = dump |> Dump.changeset(%{status: "failed"}) |> Nila.Repo.update!()
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
     confirm_all_open_issues(view)
 
     assert has_element?(view, "#month-dump-#{failed.id}", "Extraction failed")
@@ -136,7 +136,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesIntakeTest do
     {:ok, _} = Nila.Orgs.add_user(org, member.id, "member")
     member_conn = log_in_user(Phoenix.ConnTest.build_conn(), member)
 
-    {:ok, view, _html} = live(member_conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(member_conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     # Abandoning unresolved intake is a senior-only audit decision. The control
     # is hidden, and the event is refused even when the client is driven directly.

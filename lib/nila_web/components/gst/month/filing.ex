@@ -1117,8 +1117,8 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     end
   end
 
-  defp month_track_path(client_id, period, track),
-    do: "/gst/#{client_id}/#{period}?track=#{track}"
+  defp month_track_path(client_id, period, :sales),
+    do: "/gst/#{client_id}/#{period}/sales"
 
   defp attestation_open?(%{"attestation_required" => true} = itc),
     do: itc["documents_attested"] not in ~w(held not_held per_case)

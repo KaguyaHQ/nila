@@ -8,7 +8,7 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
   alias Nila.Gst.Purchase.Months
   alias Nila.Gst.Purchase.Reconciliation
 
-  test "the retired exceptions destination redirects to the month", %{conn: conn} do
+  test "the retired exceptions destination redirects to the purchase workspace", %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
     {:ok, client} = Clients.create_client(%{org_id: org.id, name: "Breeze", type: "company"})
     recon = Reconciliation.reconcile([], [])
@@ -29,6 +29,6 @@ defmodule NilaWeb.Gst.ExceptionsLiveTest do
     assert {:error, {:live_redirect, %{to: path}}} =
              live(conn, ~p"/gst/#{client.id}/2026-08/exceptions")
 
-    assert path == ~p"/gst/#{client.id}/2026-08"
+    assert path == ~p"/gst/#{client.id}/2026-08?track=purchases"
   end
 end

@@ -75,7 +75,8 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
   test "the question is the month's state, and it is the only thing to answer", context do
     _dump = in_question(context)
 
-    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     # The verdict block carries the question, in the verdict's own weight.
     assert has_element?(
@@ -111,7 +112,8 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
         "period" => @period
       })
 
-    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     assert has_element?(
              view,
@@ -125,7 +127,8 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
   test "a duplicate of a filed month says what it cost, in alarm", context do
     _dump = in_question(context)
 
-    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     assert has_element?(
              view,
@@ -150,7 +153,8 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
         "period" => @period
       })
 
-    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     assert has_element?(
              view,
@@ -174,7 +178,8 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
         "period" => @period
       })
 
-    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     assert has_element?(view, "#month-headline", "already in Apr 2026")
     assert has_element?(view, "#month-headline.nila-verdict-alarm")
@@ -185,7 +190,8 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
   test "choosing an answer reveals what that answer needs, and only then a door", context do
     _dump = in_question(context)
 
-    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     view |> element("#month-precondition-choose-keep") |> render_click()
 
@@ -200,7 +206,8 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
   test "keeping it records the reason and hands the packet back to the worker", context do
     dump = in_question(context)
 
-    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     view |> element("#month-precondition-choose-keep") |> render_click()
 
@@ -224,7 +231,8 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
   test "keeping it without a reason is refused", context do
     dump = in_question(context)
 
-    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     view |> element("#month-precondition-choose-keep") |> render_click()
     view |> form("#month-precondition-form", %{"reason" => "  "}) |> render_submit()
@@ -236,7 +244,8 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
   test "moving it repoints the packet and opens the month it belongs to", context do
     dump = in_question(context)
 
-    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     view |> element("#month-precondition-choose-move") |> render_click()
 
@@ -248,7 +257,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
 
     view |> form("#month-precondition-form", %{"period" => "2026-04"}) |> render_submit()
 
-    assert_redirect(view, "/gst/#{context.client.id}/2026-04")
+    assert_redirect(view, "/gst/#{context.client.id}/2026-04?track=purchases")
 
     {:ok, moved} = Dumps.fetch(context.org.id, dump.id)
     assert moved.period == "2026-04"
@@ -260,7 +269,8 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
   test "discarding it is terminal and builds no month", context do
     dump = in_question(context)
 
-    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     view |> element("#month-precondition-choose-discard") |> render_click()
     view |> form("#month-precondition-form", %{}) |> render_submit()
@@ -283,7 +293,8 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
   test "the question reads as sales when a sales packet raised it", context do
     _dump = in_question(context, nil, "sales")
 
-    {:ok, view, _html} = live(context.conn, ~p"/gst/#{context.client.id}/#{@period}")
+    {:ok, view, _html} =
+      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=sales")
 
     assert has_element?(view, "#month-precondition", "The sales packet that arrived")
     assert has_element?(view, "#month-headline", "All 14 invoices in this packet are dated")

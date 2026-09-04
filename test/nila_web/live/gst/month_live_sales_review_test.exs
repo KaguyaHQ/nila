@@ -29,7 +29,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     org: org,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
     {:ok, month} = Nila.Gst.Sales.Months.get_by_period(org.id, client.id, @period)
     [invoice | _] = Nila.Gst.Sales.Resolutions.workings(month).active_invoices
 
@@ -84,7 +84,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
       })
 
     [first, second | _] = Nila.Gst.Sales.Resolutions.workings(updated).active_invoices
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
     month_pid = view.pid
 
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
@@ -276,7 +276,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
@@ -294,7 +294,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     view |> element("#gstr1-inv-21\\/2025-26") |> render_click()
 
@@ -319,7 +319,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
@@ -334,7 +334,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
   end
 
   test "opening an invoice marks its row read for the session", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert view |> element("#gstr1-inv-21\\/2025-26") |> render() =~ "font-medium"
 
@@ -354,7 +354,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
   } do
     {:ok, month} = Nila.Gst.Sales.Months.get_by_period(org.id, client.id, @period)
     [invoice | _] = Nila.Gst.Sales.Resolutions.workings(month).active_invoices
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
@@ -385,7 +385,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     client: client,
     org: org
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
@@ -437,7 +437,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     # The register reads the extraction and says so; the workings read the
     # recomputation and say so. "Tax" alone named all three. Column labels live
@@ -473,7 +473,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     conn: conn,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
 
@@ -553,7 +553,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
         summary: %{"invoice_count" => 2, "issue_count" => 1}
       })
 
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{period}")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=sales")
 
     refute render(view) =~ "workings-ripple"
 

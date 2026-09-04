@@ -109,7 +109,7 @@ defmodule NilaWeb.Gst.RegisterLiveTest do
 
     assert has_element?(
              view,
-             ~s|#register-link-#{client.id}-2025-08[href="/gst/#{client.id}/2025-08"]|
+             ~s|#register-link-#{client.id}-2025-08[href="/gst/#{client.id}/2025-08/sales"]|
            )
 
     assert has_element?(
