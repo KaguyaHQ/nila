@@ -123,9 +123,7 @@ defmodule NilaWeb.ClientEditLive do
             <.input field={@form[:name]} label="Client name" required />
             <.input field={@form[:gstin]} label="GSTIN (optional)" />
 
-            <section id="client-tally" class="border-rule pt-block space-y-block border-t">
-              <h2 class="text-base-content text-h4 font-semibold">Tally</h2>
-
+            <section id="client-tally" class="border-rule pt-block border-t">
               <.input
                 field={@form[:tally_company_id]}
                 type="select"

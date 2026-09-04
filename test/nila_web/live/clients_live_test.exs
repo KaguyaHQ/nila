@@ -4,14 +4,13 @@ defmodule NilaWeb.ClientsLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Clients
-  alias Nila.TallyDevices
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
     %{conn: log_in_user(conn, user), org: org}
   end
 
-  test "lists client identity and setup without workflow state", %{conn: conn, org: org} do
+  test "lists only client identity", %{conn: conn, org: org} do
     {:ok, client} =
       Clients.create_client(%{
         org_id: org.id,
@@ -24,41 +23,15 @@ defmodule NilaWeb.ClientsLiveTest do
 
     assert has_element?(view, "#clients-table", "Breeze Tech")
     assert has_element?(view, "#clients-table", "33AEWPH4158J1Z3")
-    assert has_element?(view, "#clients-table", "Not connected")
-    assert has_element?(view, "#client-edit-#{client.id}", "Edit")
+    assert has_element?(view, "#client-#{client.id} a[href='/clients/#{client.id}/edit']")
 
     html = render(view)
+    refute html =~ "Tally company"
+    refute html =~ "Not connected"
     refute html =~ "Latest month"
     refute html =~ "Needs a decision"
     refute html =~ "Collecting documents"
     refute html =~ ">Type<"
-  end
-
-  test "shows the linked Tally company even when it is not currently open", %{
-    conn: conn,
-    org: org
-  } do
-    {:ok, client} =
-      Clients.create_client(%{org_id: org.id, name: "Breeze Tech", type: "company"})
-
-    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
-
-    {:ok, [company]} =
-      TallyDevices.report_companies(device, [
-        %{"name" => "Breeze Books", "tally_guid" => "breeze"}
-      ])
-
-    assert {:ok, linked_client} =
-             TallyDevices.update_client_and_link_company(client, company.id, %{})
-
-    assert linked_client.id == client.id
-    assert :ok = TallyDevices.mark_companies_closed(device.id)
-
-    {:ok, view, _html} = live(conn, ~p"/clients")
-
-    assert has_element?(view, "#clients-table", "Breeze Tech")
-    refute has_element?(view, "#client-#{client.id}", "Not connected")
-    assert has_element?(view, "#client-#{client.id}", "Breeze Books")
   end
 
   test "shows an empty state when the org has no clients", %{conn: conn} do

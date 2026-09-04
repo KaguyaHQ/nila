@@ -160,6 +160,17 @@
       "sha256": "e90f728973190d8c012c391512f5f1878e2dbc998fe05ef58db8815d882ba7d2"
     },
     {
+      "byte_size": 5445792,
+      "client": "caltech",
+      "ground_truth": null,
+      "key": "caltech/2025-07/sales.pdf",
+      "kind": "sales",
+      "name": "caltech-2025-07-sales",
+      "pages": 18,
+      "period": "2025-07",
+      "sha256": "c2f6e140d347143c9d6586d90f0dac497c0fcdf6b3d06c32ff6d7a47555099a9"
+    },
+    {
       "byte_size": 6276830,
       "client": "caltech",
       "ground_truth": "test/fixtures/gstr1/caltech/2025-09/returns_04082026_R1_33BPBPK1081A1ZO_offline_others_0.json",

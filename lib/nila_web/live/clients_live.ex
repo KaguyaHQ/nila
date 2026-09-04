@@ -2,7 +2,6 @@ defmodule NilaWeb.ClientsLive do
   use NilaWeb, :live_view
 
   alias Nila.Clients
-  alias Nila.TallyDevices
 
   @impl true
   def mount(_params, _session, socket) do
@@ -13,25 +12,8 @@ defmodule NilaWeb.ClientsLive do
   end
 
   defp list_clients(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}) do
-    company_by_client =
-      org_id
-      |> TallyDevices.list_linked_companies()
-      |> Map.new(&{&1.client.id, &1})
-
-    org_id
-    |> Clients.list_clients()
-    |> Enum.map(fn client ->
-      %{
-        id: client.id,
-        name: client.name,
-        gstin: client.gstin,
-        tally_company: tally_company_label(company_by_client[client.id])
-      }
-    end)
+    Clients.list_clients(org_id)
   end
-
-  defp tally_company_label(nil), do: nil
-  defp tally_company_label(company), do: company.name
 
   @impl true
   def render(assigns) do
@@ -43,7 +25,7 @@ defmodule NilaWeb.ClientsLive do
     >
       <div id="clients-page" class="space-y-section mx-auto max-w-5xl">
         <.page_header eyebrow="Clients" title="Clients">
-          Businesses Nila works for and their Tally connections.
+          Manage your firm’s client businesses.
           <:actions>
             <.button navigate={~p"/clients/new"} id="clients-add">
               <.icon name="hero-plus" class="size-4" /> Add client
@@ -55,6 +37,8 @@ defmodule NilaWeb.ClientsLive do
           id="clients-table"
           rows={@clients}
           row_id={fn client -> "client-#{client.id}" end}
+          row_navigate={fn client -> ~p"/clients/#{client.id}/edit" end}
+          row_label={fn client -> "Edit #{client.name}" end}
           empty?={@clients == []}
           mode="worklist"
         >
@@ -65,21 +49,9 @@ defmodule NilaWeb.ClientsLive do
             <span :if={client.gstin} class="whitespace-nowrap">{client.gstin}</span>
             <span :if={!client.gstin} class="text-ink-muted">—</span>
           </:col>
-          <:col :let={client} label="Tally company">
-            <span :if={client.tally_company}>{client.tally_company}</span>
-            <span :if={!client.tally_company} class="text-ink-muted">Not connected</span>
-          </:col>
-          <:col :let={client} label="" class="whitespace-nowrap">
+          <:col :let={_client} label="" class="w-10 whitespace-nowrap">
             <div class="flex justify-end">
-              <.button
-                navigate={~p"/clients/#{client.id}/edit"}
-                id={"client-edit-#{client.id}"}
-                variant="ghost"
-                size="xs"
-                aria-label={"Edit #{client.name}"}
-              >
-                Edit <.icon name="hero-arrow-right" class="size-4" />
-              </.button>
+              <.icon name="hero-chevron-right-mini" class="text-ink-faint size-4" />
             </div>
           </:col>
           <:empty>
