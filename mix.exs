@@ -65,6 +65,7 @@ defmodule Nila.MixProject do
       {:swoosh, "~> 1.26 and >= 1.26.3"},
       {:bcrypt_elixir, "~> 3.0"},
       {:nimble_csv, "~> 1.2"},
+      {:xlsx_writer, "~> 0.10.3"},
       {:req, "~> 0.7"},
       {:hammer, "~> 6.2"},
       {:dotenvy, "~> 1.1"},

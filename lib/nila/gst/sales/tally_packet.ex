@@ -65,6 +65,7 @@ defmodule Nila.Gst.Sales.TallyPacket do
     Map.merge(totals, %{
       invoices: invoices,
       all_invoices: all_invoices,
+      source_issues: readiness.issues,
       excluded: excluded,
       warnings: warnings,
       blocked: blocked,

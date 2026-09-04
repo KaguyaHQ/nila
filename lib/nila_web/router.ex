@@ -137,7 +137,6 @@ defmodule NilaWeb.Router do
       ] do
       live "/today", TodayLive, :index
       live "/sales-bills", Gst.UploadLive, :sales
-      live "/sales-bills/new", Gst.UploadLive, :sales_new
       live "/sales-bills/:client_id/batch/:batch_ref", Gst.SalesBillsLive, :show
       live "/clients", ClientsLive, :index
       live "/register", Gst.RegisterLive, :index
@@ -148,6 +147,8 @@ defmodule NilaWeb.Router do
       live "/banking/:id", Banking.StatementLive, :show
       live "/gst/upload", Gst.UploadLive, :new
       live "/gst/:client_id/:period", Gst.MonthLive, :index
+      live "/gst/:client_id/:period/sales", Gst.MonthLive, :sales_workspace
+      live "/gst/:client_id/:period/sales/:view", Gst.MonthLive, :sales_workspace
       live "/gst/:client_id/:period/review/:lane", Gst.MonthLive, :review
       live "/gst/:client_id/:period/exceptions", Gst.ExceptionsLive, :index
 
@@ -173,6 +174,7 @@ defmodule NilaWeb.Router do
         :sales_bill
 
     get "/gstr1/:client_id/:period/return.json", Gstr1Controller, :return_json
+    get "/gstr1/:client_id/:period/workings.xlsx", Gstr1Controller, :workings_xlsx
     get "/gstr1/:client_id/:period/winman-b2b.xlsm", Gstr1Controller, :winman_b2b
     get "/gstr1/:client_id/:period/evidence/:basename", Gstr1Controller, :evidence
 
@@ -202,6 +204,10 @@ defmodule NilaWeb.Router do
     ]
 
     get "/:client_id/batch/:batch_ref/tally.xml", Gstr1Controller, :sales_bills_tally_download
+
+    get "/:client_id/batch/:batch_ref/gstr1.json",
+        Gstr1Controller,
+        :sales_bills_gstr1_download
   end
 
   scope "/gstr1", NilaWeb do

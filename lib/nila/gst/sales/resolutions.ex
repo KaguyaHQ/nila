@@ -48,6 +48,13 @@ defmodule Nila.Gst.Sales.Resolutions do
     )
   end
 
+  @doc "Resolution events for a sales month with their reviewer attribution."
+  def list_attributed(sales_month_id) do
+    sales_month_id
+    |> list()
+    |> Repo.preload(:decided_by)
+  end
+
   @doc "Latest attributed resolution event for each target."
   def latest_decisions(sales_month_id) do
     Repo.all(

@@ -985,47 +985,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     refute has_element?(view, "#gstr3b-request-bills")
   end
 
-  test "filing the second return closes the month and points back to Today", %{
-    conn: conn,
-    org: org,
-    user: user,
-    client: client,
-    client_month: client_month
-  } do
-    {:ok, sales} =
-      SalesMonths.upsert(%{
-        org_id: org.id,
-        client_id: client.id,
-        period: @period,
-        state: "reviewed"
-      })
-
-    scope = Nila.Accounts.Scope.for_user(user)
-    client_month = settle_register!(client_month, user.id)
-    answer_sales_issues!(sales, user.id)
-    assert {:ok, _} = Signoffs.sign_off_gstr1(sales, scope)
-    assert {:ok, _} = Signoffs.sign_off(client_month, scope)
-    assert {:ok, _} = Signoffs.mark_filed(sales, scope, "R1-ARN")
-
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=gstr3b")
-
-    view
-    |> element("#gst-mark-filed")
-    |> render_submit(%{"arn" => "3B-ARN"})
-
-    assert render(view) =~ "Month closed."
-
-    assert has_element?(view, "#month-headline", "ARN 3B-ARN. Month closed.")
-    assert doors(view) == []
-    refute has_element?(view, "#month-deadlines")
-    refute has_element?(view, "#gst-register")
-    assert has_element?(view, "#gst-3b-position")
-    assert has_element?(view, "#gst-filed-note", "Filed")
-    refute has_element?(view, "#gst-mark-filed")
-    refute has_element?(view, "#gst-reopen-signoff")
-  end
-
-  test "a signed-unfiled month leads with the filing gap and its own return's clock", %{
+  test "a signed month has no portal-filing task", %{
     conn: conn,
     org: org,
     user: user,
@@ -1048,14 +1008,15 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=gstr3b")
 
-    # The month masthead keeps both unfiled return clocks visible; filing belongs to this workpaper.
     assert doors(view) == []
     assert has_element?(view, "#gstr3b-primary-filing")
     assert has_element?(view, "#month-deadline-sales", "GSTR-1")
     assert has_element?(view, "#month-deadline-purchase", "GSTR-3B")
     assert has_element?(view, "#month-deadline-purchase", "due 20 Nov 2025")
     assert has_element?(view, "#month-deadline-purchase", "days overdue")
-    assert render(view) =~ "GSTR-1 signed, not yet on the portal."
+    assert render(view) =~ "GSTR-1 approved."
+    refute has_element?(view, "#gstr1-mark-filed")
+    refute has_element?(view, "#gst-mark-filed")
   end
 
   test "matched rows without flags render a silent note column", %{conn: conn, client: client} do
@@ -1069,38 +1030,6 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
       end)
 
     refute view |> element("##{dom_id(row, index)}") |> render() =~ "matched on"
-  end
-
-  test "filing GSTR-1 second also closes the month", %{
-    conn: conn,
-    org: org,
-    user: user,
-    client: client,
-    client_month: client_month
-  } do
-    {:ok, sales} =
-      SalesMonths.upsert(%{
-        org_id: org.id,
-        client_id: client.id,
-        period: @period,
-        state: "reviewed"
-      })
-
-    scope = Nila.Accounts.Scope.for_user(user)
-    client_month = settle_register!(client_month, user.id)
-    answer_sales_issues!(sales, user.id)
-    assert {:ok, _} = Signoffs.sign_off_gstr1(sales, scope)
-    assert {:ok, _} = Signoffs.sign_off(client_month, scope)
-    assert {:ok, _} = Signoffs.mark_filed(client_month, scope, "3B-ARN")
-
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
-
-    view
-    |> element("#gstr1-mark-filed")
-    |> render_submit(%{"arn" => "R1-ARN"})
-
-    assert render(view) =~ "Month closed."
-    assert has_element?(view, "#month-headline", "Month closed.")
   end
 
   test "the operator (member) does not see the sign-off button and cannot sign", %{

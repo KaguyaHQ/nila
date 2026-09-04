@@ -375,12 +375,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     %{
       tone: :calm,
       headline: file_headline(facts, track, return, signoff),
-      door: %{
-        id: "month-door-file-#{track}",
-        label: "File it and record the ARN",
-        kind: :anchor,
-        to: anchor_for(track)
-      },
+      door: nil,
       filing_track: track
     }
   end
@@ -400,7 +395,8 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     do: plain_file_headline(return, signoff)
 
   defp plain_file_headline(return, signoff),
-    do: "#{return} signed by #{signer(signoff)}. It is not on the portal yet."
+    do:
+      "#{return} #{if(return == "GSTR-1", do: "approved", else: "signed")} by #{signer(signoff)}."
 
   defp cash_payable(%{gstr3b: gstr3b}) when is_map(gstr3b) do
     case get_in(gstr3b, ["setoff_61", "cash_total"]) do
@@ -487,13 +483,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp settled_money_headline(_facts, tail), do: tail
 
   defp closed_headline(facts) do
-    filed_at = facts.purchase_month && facts.purchase_month.filed_at
-    arn = facts.purchase_month && facts.purchase_month.filing_arn
-
-    ["Filed", filed_at && Formatters.format_display_date(to_date(filed_at)), arn && "ARN #{arn}"]
-    |> Enum.filter(& &1)
-    |> Enum.join(" · ")
-    |> Kernel.<>(". Month closed.")
+    "Work complete. #{money_clause(facts)}"
   end
 
   # Every pending track that did not win the door gets one line, so nothing is
@@ -556,8 +546,9 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp line_for(:sales, :open, _facts), do: "GSTR-1 drafted, not yet reviewed."
   defp line_for(:sales, :clear, _facts), do: "GSTR-1 worked and clean, waiting on a signature."
-  defp line_for(:sales, :signed, _facts), do: "GSTR-1 signed, not yet on the portal."
-  defp line_for(:sales, :filed, _facts), do: "GSTR-1 filed."
+
+  defp line_for(:sales, status, _facts) when status in [:signed, :filed],
+    do: "GSTR-1 approved."
 
   defp line_for(:purchase, :absent, _facts),
     do: "Purchase bills not in, so the 2B reconciliation waits."
@@ -575,8 +566,10 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp line_for(:purchase, :open, _facts), do: "Purchases not yet reconciled."
   defp line_for(:purchase, :clear, _facts), do: "Purchases clear, waiting on a signature."
-  defp line_for(:purchase, :signed, _facts), do: "GSTR-3B signed, not yet on the portal."
-  defp line_for(:purchase, :filed, _facts), do: "GSTR-3B filed."
+
+  defp line_for(:purchase, status, _facts) when status in [:signed, :filed],
+    do: "GSTR-3B signed."
+
   defp line_for(_track, _status, _facts), do: nil
 
   # Retained as the state table's primary clock for callers that need one track
@@ -610,8 +603,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp releasable?(%{r1_signoff: signoff}, %{kind: "sales"}), do: is_nil(signoff)
   defp releasable?(%{gstr3b_signoff: signoff}, _dump), do: is_nil(signoff)
 
-  defp anchor_for(:sales), do: "#month-exit-gstr1"
-  defp anchor_for(:purchase), do: "#month-exit-gstr3b"
   defp source_anchor(kind) when kind in ~w(sales filed_gstr1), do: "#month-sales-sources"
   defp source_anchor(kind) when kind in ~w(purchase gstr2b), do: "#month-purchase-sources"
 
@@ -628,11 +619,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   defp money(nil), do: "₹0"
   defp money(paise), do: Formatters.format_money(paise, prefix: "₹")
-
-  defp to_date(%Date{} = date), do: date
-  defp to_date(%DateTime{} = datetime), do: DateTime.to_date(datetime)
-  defp to_date(%NaiveDateTime{} = datetime), do: NaiveDateTime.to_date(datetime)
-  defp to_date(_other), do: nil
 
   defp pluralise(count, word, plural \\ nil)
   defp pluralise(1, word, _plural), do: word

@@ -32,6 +32,7 @@ defmodule NilaWeb.Gst.MonthLive do
     Purchase,
     Sales,
     Verdict,
+    SalesWorkspace,
     Workings,
     Workpaper
   }
@@ -82,7 +83,7 @@ defmodule NilaWeb.Gst.MonthLive do
     sales = fetch_or_nil(SalesMonths.get_by_period(org_id, client.id, period))
     dumps = Dumps.list(org_id, client.id, period)
 
-    if purchase || sales || dumps != [] do
+    if purchase || sales || dumps != [] || socket.assigns.live_action == :sales_workspace do
       socket
       |> assign(:client, client)
       |> assign(:period, period)
@@ -90,6 +91,7 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign(:purchase_review_route, nil)
       |> assign(:sales_review_route, nil)
       |> assign(:selected_track, :sales)
+      |> assign(:sales_workspace_view, :overview)
       |> assign(:last_reviewed_inum, nil)
       |> assign(:visited_inums, MapSet.new())
       |> assign(:open_folds, MapSet.new())
@@ -113,6 +115,20 @@ defmodule NilaWeb.Gst.MonthLive do
   end
 
   @impl true
+  def handle_params(
+        params,
+        _uri,
+        %{assigns: %{live_action: :sales_workspace}} = socket
+      ) do
+    {:noreply,
+     assign(socket,
+       purchase_review_route: nil,
+       sales_review_route: nil,
+       selected_track: :sales,
+       sales_workspace_view: sales_workspace_view(params["view"])
+     )}
+  end
+
   def handle_params(
         %{"lane" => "purchase"} = params,
         _uri,
@@ -220,7 +236,8 @@ defmodule NilaWeb.Gst.MonthLive do
 
   defp valid_sales_review_return(return_to) when is_binary(return_to) do
     if return_to == "/sales-bills" or
-         Regex.match?(~r|^/sales-bills/[^/?#]+/batch/[^/?#]+$|, return_to),
+         Regex.match?(~r|^/sales-bills/[^/?#]+/batch/[^/?#]+$|, return_to) or
+         Regex.match?(~r|^/gst/\d+/\d{4}-\d{2}/sales(?:/[a-z0-9-]+)?$|, return_to),
        do: return_to
   end
 
@@ -1173,23 +1190,6 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
-  def handle_event("r1-mark-filed", params, socket) do
-    case Signoffs.mark_filed(
-           socket.assigns.sales_month,
-           socket.assigns.current_scope,
-           arn(params)
-         ) do
-      {:ok, _} ->
-        {:noreply, filed_flash(socket, "GSTR-1 marked filed.")}
-
-      {:error, :not_signed} ->
-        {:noreply, put_flash(socket, :error, "Sign off the GSTR-1 before marking it filed.")}
-
-      {:error, :already_filed} ->
-        {:noreply, reload(socket)}
-    end
-  end
-
   def handle_event("3b-sign-off", _params, socket) do
     case Signoffs.sign_off(socket.assigns.purchase_month, socket.assigns.current_scope) do
       {:ok, _} ->
@@ -1307,23 +1307,6 @@ defmodule NilaWeb.Gst.MonthLive do
     end
   end
 
-  def handle_event("3b-mark-filed", params, socket) do
-    case Signoffs.mark_filed(
-           socket.assigns.purchase_month,
-           socket.assigns.current_scope,
-           arn(params)
-         ) do
-      {:ok, _} ->
-        {:noreply, filed_flash(socket, "GSTR-3B marked filed.")}
-
-      {:error, :not_signed} ->
-        {:noreply, put_flash(socket, :error, "Sign off the month before marking it filed.")}
-
-      {:error, :already_filed} ->
-        {:noreply, reload(socket)}
-    end
-  end
-
   defp answer_precondition(socket, dump, %{"answer" => "move", "period" => period}, user_id) do
     case Preconditions.move(dump, period, user_id) do
       {:ok, moved} ->
@@ -1376,23 +1359,6 @@ defmodule NilaWeb.Gst.MonthLive do
   end
 
   defp answer_precondition(socket, _dump, _params, _user_id), do: {:noreply, reload(socket)}
-
-  defp filed_flash(socket, return_message) do
-    socket = reload(socket)
-
-    put_flash(
-      socket,
-      :info,
-      if(socket.assigns.blocking_state == :done, do: "Month closed.", else: return_message)
-    )
-  end
-
-  defp arn(params) do
-    case params["arn"] |> to_string() |> String.trim() do
-      "" -> nil
-      arn -> arn
-    end
-  end
 
   defp record(socket, attrs) do
     case SalesResolutions.record(
@@ -1560,6 +1526,17 @@ defmodule NilaWeb.Gst.MonthLive do
   defp fallback_track(%{sales_dumps: [_ | _]}), do: :sales
   defp fallback_track(_assigns), do: :purchases
 
+  defp sales_workspace_view(nil), do: :overview
+  defp sales_workspace_view("invoices"), do: :invoices
+  defp sales_workspace_view("uploads"), do: :uploads
+  defp sales_workspace_view("b2b"), do: :b2b
+  defp sales_workspace_view("b2cl"), do: :b2cl
+  defp sales_workspace_view("b2cs"), do: :b2cs
+  defp sales_workspace_view("cdnr"), do: :cdnr
+  defp sales_workspace_view("hsn"), do: :hsn
+  defp sales_workspace_view("documents"), do: :documents
+  defp sales_workspace_view(_view), do: :overview
+
   @impl true
   def render(assigns) do
     duplicate_issue =
@@ -1576,7 +1553,46 @@ defmodule NilaWeb.Gst.MonthLive do
       current_path={assigns[:current_path]}
       active_client={@client}
     >
-      <div id="month-page" class="space-y-region mx-auto max-w-7xl">
+      <SalesWorkspace.workspace
+        :if={@live_action == :sales_workspace}
+        client={@client}
+        period={@period}
+        view={@sales_workspace_view}
+        invoices={@invoices}
+        active_invoices={@active_invoices}
+        register_rows={@sales_register_rows}
+        register_form={@sales_register_form}
+        register_filter={@sales_register_filter}
+        issues_by_invoice={@issues_by_invoice}
+        review={
+          @sales_review || %{needs_you: [], all: [], progress: %{completed: 0, open: 0, total: 0}}
+        }
+        derived={@derived_gstr1}
+        readiness={@gstr1_readiness}
+        dumps={@sales_dumps}
+        expanded_nodes={@expanded_nodes}
+        rippled={@rippled}
+        ripple_seq={@ripple_seq}
+      >
+        <:source>
+          <Arrivals.source_record
+            can_sign_off={@can_sign_off}
+            id="sales-period-source-record"
+            dumps={@sales_dumps}
+            superseded_2b_ids={@superseded_2b_ids}
+            client={@client}
+            period={@period}
+            open_period={@open_period}
+            r1_signoff={@r1_signoff}
+            gstr3b_signoff={@gstr3b_signoff}
+          />
+        </:source>
+      </SalesWorkspace.workspace>
+      <div
+        :if={@live_action != :sales_workspace}
+        id="month-page"
+        class="space-y-region mx-auto max-w-7xl"
+      >
         <Verdict.verdict
           verdict={@global_verdict}
           period={@period}

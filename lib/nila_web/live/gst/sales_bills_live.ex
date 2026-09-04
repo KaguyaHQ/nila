@@ -6,7 +6,17 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   alias Nila.Gst.Intake.{Dumps, DumpWorker}
   alias Nila.Gst.Money
   alias Nila.Gst.Purchase.Months, as: ClientMonths
-  alias Nila.Gst.Sales.{Batch, Gstr1, Invoice, InvoiceCorrections, InvoiceRemovals, TallyPacket}
+
+  alias Nila.Gst.Sales.{
+    Batch,
+    Gstr1,
+    Gstr1Packet,
+    Invoice,
+    InvoiceCorrections,
+    InvoiceRemovals,
+    TallyPacket
+  }
+
   alias Nila.{TallyDevices, TallyJobs, TallyMappings}
   alias NilaWeb.Gst.SalesIssuePresentation
   alias NilaWeb.Presence
@@ -37,6 +47,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         |> assign(:sales_batch, batch)
         |> assign(:batch_ref, batch_ref)
         |> assign(:packet, packet)
+        |> assign(:gstr1_export?, match?({:ok, _export}, Gstr1Packet.build(dumps, client.gstin)))
         |> assign(:processing_jobs, processing_jobs(dumps))
         |> assign(:tally_company, company)
         |> assign(:tally_masters, tally_masters)
@@ -2033,6 +2044,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
         socket
         |> assign(:packet, packet)
+        |> assign(
+          :gstr1_export?,
+          match?({:ok, _export}, Gstr1Packet.build(dumps, socket.assigns.client.gstin))
+        )
         |> assign(:send_holds, current_send_holds(org_id, socket.assigns.tally_company, packet))
         |> refresh_required_mapping_invoices()
 
@@ -2548,127 +2563,143 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </p>
           </div>
 
-          <div
-            :if={(@packet.invoices != [] and @tally_company) && @tally_jobs == []}
-            id="sales-bills-tally-destination"
-            class="flex items-end gap-3"
-          >
-            <p class="text-ink-muted text-ui pb-2">
-              Tally · <span class="text-base-content font-semibold">{@tally_company.name}</span>
-            </p>
+          <div :if={@packet.invoices != []} class="flex items-end gap-3">
+            <.download_button
+              :if={@gstr1_export?}
+              href={~p"/sales-bills/#{@client.id}/batch/#{@batch_ref}/gstr1.json"}
+              id="sales-bills-download-gstr1"
+              variant="outline"
+            >
+              <.icon name="hero-arrow-down-tray" class="size-4" /> Download GSTR-1 JSON
+            </.download_button>
 
             <.button
-              :if={attention_invoice_count(@packet, @required_mapping_invoices) > 0}
-              id="sales-bills-review-required"
-              variant={
-                if(ready_invoice_count(@packet, @required_mapping_invoices) > 0,
-                  do: "outline",
-                  else: "primary"
-                )
-              }
-              patch={
-                posting_review_path(
-                  @client,
-                  @batch_ref,
-                  List.first(attention_invoices(@packet, @required_mapping_invoices)),
-                  true
-                )
-              }
+              :if={not @gstr1_export?}
+              type="button"
+              id="sales-bills-download-gstr1"
+              variant="outline"
+              disabled
+              title="Resolve GST issues before downloading"
             >
-              Review {attention_invoice_count(@packet, @required_mapping_invoices)}
+              <.icon name="hero-arrow-down-tray" class="size-4" /> Download GSTR-1 JSON
             </.button>
 
-            <.button
+            <div
+              :if={@tally_company && @tally_jobs == []}
+              id="sales-bills-tally-destination"
+              class="flex items-end gap-3"
+            >
+              <p class="text-ink-muted text-ui pb-2">
+                Tally · <span class="text-base-content font-semibold">{@tally_company.name}</span>
+              </p>
+
+              <.button
+                :if={attention_invoice_count(@packet, @required_mapping_invoices) > 0}
+                id="sales-bills-review-required"
+                variant={
+                  if(ready_invoice_count(@packet, @required_mapping_invoices) > 0,
+                    do: "outline",
+                    else: "primary"
+                  )
+                }
+                patch={
+                  posting_review_path(
+                    @client,
+                    @batch_ref,
+                    List.first(attention_invoices(@packet, @required_mapping_invoices)),
+                    true
+                  )
+                }
+              >
+                Review {attention_invoice_count(@packet, @required_mapping_invoices)}
+              </.button>
+
+              <.button
+                :if={
+                  ready_invoice_count(@packet, @required_mapping_invoices) > 0 or
+                    @required_mapping_invoices == []
+                }
+                type="button"
+                id="sales-bills-send-to-tally"
+                phx-click="request-send-to-tally"
+                disabled={not @tally_online? or not @tally_masters_available?}
+              >
+                Send to Tally
+              </.button>
+            </div>
+
+            <div
+              :if={tally_result(@tally_jobs, length(@packet.invoices)) == :sending}
+              id="sales-bills-sending-to-tally"
+              class="text-base-content text-ui flex items-center gap-2 font-semibold"
+            >
+              <.spinner tone="accent" label="Sending to Tally" /> Sending to Tally
+            </div>
+
+            <div
+              :if={tally_result(@tally_jobs, length(@packet.invoices)) == :added}
+              id="sales-bills-added-to-tally"
+              class="flex items-center gap-3"
+            >
+              <p class="text-success text-ui font-semibold">Added to Tally</p>
+
+              <.button
+                type="button"
+                id="sales-bills-ensure-tally"
+                phx-click="ensure-tally"
+                variant="outline"
+              >
+                Check Tally
+              </.button>
+            </div>
+
+            <div
               :if={
-                ready_invoice_count(@packet, @required_mapping_invoices) > 0 or
-                  @required_mapping_invoices == []
+                match?(
+                  {:partial, _added, _total},
+                  tally_result(@tally_jobs, length(@packet.invoices))
+                )
               }
-              type="button"
-              id="sales-bills-send-to-tally"
-              phx-click="request-send-to-tally"
-              disabled={not @tally_online? or not @tally_masters_available?}
+              id="sales-bills-partial-tally-result"
+              class="space-y-related"
             >
-              Send to Tally
-            </.button>
-          </div>
+              <p class="text-base-content text-ui font-semibold">
+                {elem(tally_result(@tally_jobs, length(@packet.invoices)), 1)} of {elem(
+                  tally_result(@tally_jobs, length(@packet.invoices)),
+                  2
+                )} added to Tally
+              </p>
 
-          <div
-            :if={
-              @packet.invoices != [] and
-                tally_result(@tally_jobs, length(@packet.invoices)) == :sending
-            }
-            id="sales-bills-sending-to-tally"
-            class="text-base-content text-ui flex items-center gap-2 font-semibold"
-          >
-            <.spinner tone="accent" label="Sending to Tally" /> Sending to Tally
-          </div>
+              <.button
+                :if={retryable?(@tally_jobs) or missing_delivery_jobs?(@packet, @tally_jobs)}
+                type="button"
+                id="sales-bills-retry-tally"
+                phx-click="request-send-to-tally"
+                variant="outline"
+                disabled={not @tally_online? or not @tally_masters_available?}
+              >
+                Try again
+              </.button>
 
-          <div
-            :if={
-              @packet.invoices != [] and
-                tally_result(@tally_jobs, length(@packet.invoices)) == :added
-            }
-            id="sales-bills-added-to-tally"
-            class="flex items-center gap-3"
-          >
-            <p class="text-success text-ui font-semibold">Added to Tally</p>
+              <.button
+                :if={verifiable?(@tally_jobs)}
+                type="button"
+                id="sales-bills-verify-tally"
+                phx-click="verify-tally"
+                variant="outline"
+              >
+                Check Tally
+              </.button>
+            </div>
 
-            <.button
-              type="button"
-              id="sales-bills-ensure-tally"
-              phx-click="ensure-tally"
-              variant="outline"
+            <.download_button
+              :if={is_nil(@tally_company)}
+              href={~p"/sales-bills/#{@client.id}/batch/#{@batch_ref}/tally.xml"}
+              id="sales-bills-download"
             >
-              Check Tally
-            </.button>
+              <.icon name="hero-arrow-down-tray" class="size-4" /> Download Tally XML
+            </.download_button>
           </div>
-
-          <div
-            :if={
-              match?(
-                {:partial, _added, _total},
-                tally_result(@tally_jobs, length(@packet.invoices))
-              )
-            }
-            id="sales-bills-partial-tally-result"
-            class="space-y-related"
-          >
-            <p class="text-base-content text-ui font-semibold">
-              {elem(tally_result(@tally_jobs, length(@packet.invoices)), 1)} of {elem(
-                tally_result(@tally_jobs, length(@packet.invoices)),
-                2
-              )} added to Tally
-            </p>
-
-            <.button
-              :if={retryable?(@tally_jobs) or missing_delivery_jobs?(@packet, @tally_jobs)}
-              type="button"
-              id="sales-bills-retry-tally"
-              phx-click="request-send-to-tally"
-              variant="outline"
-              disabled={not @tally_online? or not @tally_masters_available?}
-            >
-              Try again
-            </.button>
-
-            <.button
-              :if={verifiable?(@tally_jobs)}
-              type="button"
-              id="sales-bills-verify-tally"
-              phx-click="verify-tally"
-              variant="outline"
-            >
-              Check Tally
-            </.button>
-          </div>
-
-          <.download_button
-            :if={@packet.invoices != [] and is_nil(@tally_company)}
-            href={~p"/sales-bills/#{@client.id}/batch/#{@batch_ref}/tally.xml"}
-            id="sales-bills-download"
-          >
-            <.icon name="hero-arrow-down-tray" class="size-4" /> Download Tally XML
-          </.download_button>
         </section>
 
         <p :if={@send_error} id="sales-bills-send-error" class="text-error text-ui">

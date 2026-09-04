@@ -121,7 +121,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      assert door_id(signed) == "month-door-file-purchase"
+      assert is_nil(signed.door)
     end
 
     # The detailed ITC position and its action live on the purchase track. The
@@ -277,7 +277,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
 
       assert is_nil(verdict.headline)
       assert is_nil(verdict.door)
-      assert verdict.quiet == ["GSTR-1 filed."]
+      assert verdict.quiet == ["GSTR-1 approved."]
       assert verdict.deadline.return == "GSTR-3B"
     end
 
@@ -354,8 +354,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       for sales <- [:signed, :filed] do
         verdict = Verdict.resolve(facts(tracks: %{sales: sales, purchase: :clear}))
 
-        expected = if sales == :signed, do: "month-door-file-sales", else: nil
-        assert door_id(verdict) == expected
+        assert is_nil(verdict.door)
       end
     end
 
@@ -367,7 +366,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       assert verdict.door == nil
     end
 
-    test "signed, not filed: the filing gap outranks everything else open" do
+    test "a signed return is terminal work for this workspace" do
       verdict =
         Verdict.resolve(
           facts(
@@ -378,9 +377,8 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      assert verdict.headline == "GSTR-3B signed by Vasanth. It is not on the portal yet."
-      assert door_id(verdict) == "month-door-file-purchase"
-      assert verdict.door.to == "#month-exit-gstr3b"
+      assert verdict.headline == "GSTR-3B signed by Vasanth."
+      assert is_nil(verdict.door)
     end
 
     # Cash payable is the only number in the month that leaves the client's
@@ -396,8 +394,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      assert verdict.headline ==
-               "₹1,23,000 payable. GSTR-3B signed by Vasanth. It is not on the portal yet."
+      assert verdict.headline == "₹1,23,000 payable. GSTR-3B signed by Vasanth."
     end
 
     # A nil setoff means the number was never established, and a zero one is
@@ -414,13 +411,11 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
             )
           )
 
-        assert verdict.headline == "GSTR-3B signed by Vasanth. It is not on the portal yet."
+        assert verdict.headline == "GSTR-3B signed by Vasanth."
       end
     end
 
-    # The GSTR-1 is a disclosure, not a payment, so its file door keeps the
-    # plain line even when the 3B beside it has a payable.
-    test "the GSTR-1's file door never borrows the 3B's payable" do
+    test "the GSTR-1 approval never borrows the 3B's payable" do
       verdict =
         Verdict.resolve(
           facts(
@@ -430,7 +425,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      assert verdict.headline == "GSTR-1 signed by Vasanth. It is not on the portal yet."
+      assert verdict.headline == "GSTR-1 approved by Vasanth."
     end
 
     test "filed: the page runs out of content when the work runs out" do
@@ -442,7 +437,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      assert verdict.headline == "Filed · 12 May 2026 · ARN AB33. Month closed."
+      assert verdict.headline == "Work complete. ₹0 ITC."
       assert verdict.door == nil
       assert verdict.deadline == nil
     end

@@ -101,7 +101,6 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
     assert has_element?(view, "#month-exit-gstr1", "Approved by")
     refute has_element?(view, "#month-3b")
 
-    view |> element("#gstr1-mark-filed") |> render_submit(%{"arn" => "R1-ARN"})
     view |> element("#month-workpaper-tab-gstr3b") |> render_click()
 
     assert doors(view) == ["month-door-sign-3b"]
@@ -116,9 +115,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
     view |> element("#month-door-sign-3b") |> render_click()
 
     assert doors(view) == []
-    assert has_element?(view, "#gstr3b-primary-filing[href='#month-exit-gstr3b']")
-    assert has_element?(view, "#month-exit-gstr3b a[target='_blank'][rel='noopener']")
-    assert has_element?(view, "#gst-filed-arn")
+    refute has_element?(view, "#gst-mark-filed")
+    refute has_element?(view, "#month-exit-gstr3b", "Filing ARN")
     refute has_element?(view, "#month-door-sign-3b")
     assert has_element?(view, "#month-exit-gstr3b", "Signed by")
 

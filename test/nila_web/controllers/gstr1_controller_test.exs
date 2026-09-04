@@ -83,6 +83,41 @@ defmodule NilaWeb.Gstr1ControllerTest do
     assert sheet =~ ~s(<c r="H6" s="97"><v>180.0</v></c>)
   end
 
+  test "downloads the accountant-facing sales working as a six-sheet XLSX", %{
+    conn: conn,
+    client: client
+  } do
+    conn = get(conn, ~p"/gstr1/#{client.id}/2026-07/workings.xlsx")
+
+    assert response(conn, 200)
+
+    assert get_resp_header(conn, "content-type") == [
+             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+           ]
+
+    assert [disposition] = get_resp_header(conn, "content-disposition")
+    assert disposition =~ "gst_sales_working_#{client.gstin}_2026-07.xlsx"
+
+    files = entries(conn.resp_body)
+    workbook = Map.fetch!(files, "xl/workbook.xml")
+    strings = Map.fetch!(files, "xl/sharedStrings.xml")
+
+    for sheet <- [
+          "Summary",
+          "Sales Register",
+          "Tax Breakdown",
+          "GSTR-1 Working",
+          "HSN Working",
+          "Exclusions &amp; Corrections"
+        ] do
+      assert workbook =~ ~s(name="#{sheet}")
+    end
+
+    assert strings =~ "INV-001"
+    assert strings =~ "Customer &amp; Co"
+    assert strings =~ "Expected IGST"
+  end
+
   test "downloads the frozen projection after approval", %{
     conn: conn,
     client: client,
@@ -357,6 +392,17 @@ defmodule NilaWeb.Gstr1ControllerTest do
       build_conn()
       |> log_in_user(outsider)
       |> get(~p"/gstr1/#{client.id}/2026-07/winman-b2b.xlsm")
+
+    assert response(conn, 404) == "Not found"
+  end
+
+  test "does not expose another organisation's sales working", %{client: client} do
+    %{user: outsider} = user_with_org_fixture()
+
+    conn =
+      build_conn()
+      |> log_in_user(outsider)
+      |> get(~p"/gstr1/#{client.id}/2026-07/workings.xlsx")
 
     assert response(conn, 404) == "Not found"
   end

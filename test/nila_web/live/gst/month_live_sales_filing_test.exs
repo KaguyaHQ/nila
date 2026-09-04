@@ -25,6 +25,32 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     %{conn: log_in_user(conn, user), org: org, client: client, user: user}
   end
 
+  test "the sales workspace offers reviewed outputs without a separate approval step", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, review_view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
+    confirm_all_open_issues(review_view)
+
+    {:ok, workspace, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/sales")
+
+    assert has_element?(workspace, "#sales-period-workflow", "Current stage: Export")
+    assert has_element?(workspace, "#sales-period-primary-action", "Download GST working")
+    refute has_element?(workspace, "#sales-period-primary-action", "Bring in invoices")
+    refute has_element?(workspace, "#sales-period-primary-action", "Approve GSTR-1")
+
+    assert has_element?(
+             workspace,
+             "#sales-period-primary-download[href='/gstr1/#{client.id}/#{@period}/workings.xlsx']"
+           )
+
+    assert has_element?(
+             workspace,
+             "#sales-period-handoff-download-json[href='/gstr1/#{client.id}/#{@period}/return.json']",
+             "Download"
+           )
+  end
+
   test "a signed month renders its workings from the snapshot", %{
     conn: conn,
     client: client
@@ -367,8 +393,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     assert has_element?(view, "#month-exit-gstr1", "Approved by")
     refute has_element?(view, "#month-exit-gstr1", "Draft version")
     refute has_element?(view, "#gstr1-download-json")
-    assert has_element?(view, "#month-exit-gstr1 a[target='_blank'][rel='noopener']")
-    assert has_element?(view, "#gstr1-filed-arn")
+    refute has_element?(view, "#month-exit-gstr1", "Filing ARN")
+    refute has_element?(view, "#gstr1-mark-filed")
     refute has_element?(view, "#month-door-sign-r1")
     refute has_element?(view, "button[phx-click='confirm_issue']")
 
@@ -376,31 +402,6 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
 
     refute has_element?(view, "#month-exit-gstr1", "Approved by")
     assert has_element?(view, "#month-door-sign-r1")
-  end
-
-  test "marking a signed GSTR-1 filed records the ARN and hides reopen", %{
-    conn: conn,
-    client: client
-  } do
-    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}")
-
-    confirm_all_open_issues(view)
-    view |> element("#month-door-sign-r1") |> render_click()
-
-    view
-    |> element("#gstr1-mark-filed")
-    |> render_submit(%{"arn" => "AA331025000001"})
-
-    assert has_element?(view, "#gstr1-overview[data-state='filed']")
-    assert has_element?(view, "#gstr1-verdict", "Approved output tax")
-    assert has_element?(view, "#gstr1-draft-invoices", "in approved return")
-    assert has_element?(view, "#gstr1-filing-summary", "Filed GSTR-1")
-    assert has_element?(view, "#gstr1-filed-note")
-    assert has_element?(view, "#gstr1-invoices #gstr1-inv-20\\/2025-26")
-    assert has_element?(view, "#gstr1-workings-b2b")
-    assert render(view) =~ "AA331025000001"
-    refute has_element?(view, "#gstr1-mark-filed")
-    refute has_element?(view, "#gstr1-reopen-signoff")
   end
 
   test "a member cannot see the sign-off button", %{org: org, client: client} do

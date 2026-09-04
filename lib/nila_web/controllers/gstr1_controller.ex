@@ -9,9 +9,11 @@ defmodule NilaWeb.Gstr1Controller do
 
   alias Nila.Clients
   alias Nila.Gst.Filing.{Signoffs, TallyPrime, WinmanGstr1}
+  alias Nila.Gst.Sales.Gstr1Packet
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.TallyPacket
+  alias Nila.Gst.Sales.WorkingsXlsx
   alias Nila.TallyDevices
   alias Nila.TallyJobs
   alias Nila.TallySync
@@ -55,6 +57,40 @@ defmodule NilaWeb.Gstr1Controller do
         conn
         |> put_status(:unprocessable_entity)
         |> text(export_error(reason))
+
+      {:error, _reason} ->
+        conn
+        |> put_status(:not_found)
+        |> text("Not found")
+    end
+  end
+
+  def workings_xlsx(conn, %{"client_id" => client_id, "period" => period}) do
+    org_id = conn.assigns.current_scope.current_org.id
+
+    with {:ok, sales_month} <- SalesMonths.get_by_period(org_id, client_id, period),
+         {:ok, client} <- Clients.get_client(org_id, client_id),
+         projection <- SalesResolutions.effective_workings(sales_month),
+         resolutions <- SalesResolutions.list_attributed(sales_month.id),
+         {:ok, workbook} <-
+           WorkingsXlsx.build(projection, client, period,
+             status: workbook_status(sales_month),
+             resolutions: resolutions
+           ) do
+      filename = "gst_sales_working_#{client.gstin || client.id}_#{period}.xlsx"
+
+      conn
+      |> put_resp_content_type(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        nil
+      )
+      |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
+      |> send_resp(200, workbook)
+    else
+      {:error, reason} when reason in [:no_active_sales, :invalid_sales_data] ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> text("Sales workings are unavailable until the sales data is ready")
 
       {:error, _reason} ->
         conn
@@ -108,6 +144,34 @@ defmodule NilaWeb.Gstr1Controller do
         conn
         |> put_status(:unprocessable_entity)
         |> text(tally_export_error(reason))
+
+      {:error, _reason} ->
+        conn
+        |> put_status(:not_found)
+        |> text("Not found")
+    end
+  end
+
+  def sales_bills_gstr1_download(conn, %{
+        "client_id" => client_id,
+        "batch_ref" => batch_ref
+      }) do
+    org_id = conn.assigns.current_scope.current_org.id
+
+    with {:ok, dumps} <- TallyPacket.fetch(org_id, client_id, batch_ref),
+         {:ok, client} <- Clients.get_client(org_id, client_id),
+         {:ok, export} <- Gstr1Packet.build(dumps, client.gstin) do
+      filename = "gstr1_#{client.gstin}_#{export.period}.json"
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
+      |> send_resp(200, Jason.encode!(export.return))
+    else
+      {:error, reason} when reason in [:invalid_sales_data, :mixed_periods] ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> text(gstr1_packet_error(reason))
 
       {:error, _reason} ->
         conn
@@ -182,6 +246,21 @@ defmodule NilaWeb.Gstr1Controller do
 
   defp tally_export_error(:invalid_sales_data),
     do: "Sales data contains fields Tally cannot import"
+
+  defp gstr1_packet_error(:invalid_sales_data),
+    do: "Resolve the GST issues before downloading the GSTR-1 JSON"
+
+  defp gstr1_packet_error(:mixed_periods),
+    do: "This batch contains invoices from more than one filing period"
+
+  defp workbook_status(%{state: "filed"}), do: "Filed"
+
+  defp workbook_status(sales_month) do
+    case Signoffs.latest_gstr1_signoff(sales_month.id) do
+      {:ok, _signoff} -> "Approved"
+      {:error, :not_found} -> "Draft"
+    end
+  end
 
   defp enqueue_tally_result(conn, sales_month, period, company_id) do
     org_id = conn.assigns.current_scope.current_org.id

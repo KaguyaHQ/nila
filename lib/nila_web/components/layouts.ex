@@ -79,10 +79,11 @@ defmodule NilaWeb.Layouts do
         <nav class="gap-section mt-section flex flex-1 flex-col overflow-y-auto">
           <div class="space-y-1">
             <.rail_link
-              href={~p"/sales-bills"}
+              href={sales_nav_href(@current_scope, @active_client)}
               icon="hero-document-text"
-              label="Sales bills"
+              label="Sales & GSTR-1"
               current_path={@current_path}
+              active={sales_nav_active?(@current_path)}
             />
             <.rail_link
               href={~p"/banking"}
@@ -240,9 +241,18 @@ defmodule NilaWeb.Layouts do
   attr :label, :string, required: true
   attr :count, :string, default: nil
   attr :current_path, :string, default: nil
+  attr :active, :boolean, default: nil
 
   def rail_link(assigns) do
-    assigns = assign(assigns, :active, rail_active?(assigns.current_path, assigns.href))
+    assigns =
+      assign(
+        assigns,
+        :active,
+        if(is_boolean(assigns.active),
+          do: assigns.active,
+          else: rail_active?(assigns.current_path, assigns.href)
+        )
+      )
 
     ~H"""
     <.link
@@ -279,6 +289,26 @@ defmodule NilaWeb.Layouts do
   defp rail_active?(request_target, href) do
     path = URI.parse(request_target).path
     path == href or String.starts_with?(path, href <> "/")
+  end
+
+  defp sales_nav_href(current_scope, active_client) do
+    case active_client || (current_scope && current_scope.current_client) do
+      %{id: client_id} ->
+        period = Nila.Gst.Filing.Calendar.closeable_period(Date.utc_today())
+        ~p"/gst/#{client_id}/#{period}/sales"
+
+      _none ->
+        ~p"/sales-bills"
+    end
+  end
+
+  defp sales_nav_active?(nil), do: false
+
+  defp sales_nav_active?(request_target) do
+    path = URI.parse(request_target).path
+
+    String.starts_with?(path, "/sales-bills") or
+      Regex.match?(~r"^/gst/\d+/\d{4}-\d{2}/(?:sales(?:/.*)?|review/sales)$", path)
   end
 
   attr :href, :string, required: true

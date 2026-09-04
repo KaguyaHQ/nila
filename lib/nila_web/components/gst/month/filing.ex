@@ -52,7 +52,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       variant="primary"
       size="sm"
     >
-      Download Winman B2B
+      Download Winman file
     </.button>
 
     <.badge :if={@readiness.state == :filed} variant="neutral">Filed</.badge>
@@ -130,10 +130,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           reopen_event="r1-reopen-signoff"
           reopen_id="gstr1-reopen-signoff"
           reopen_confirm="Reopen this signed GSTR-1? The signature is revoked, and any GSTR-3B signed against it is reopened too."
-          filed_event="r1-mark-filed"
-          form_id="gstr1-mark-filed"
-          arn_id="gstr1-filed-arn"
-          filed_note_id="gstr1-filed-note"
           can_sign_off={@can_sign_off}
         >
           <:extra_step>
@@ -839,10 +835,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         reopen_event="3b-reopen-signoff"
         reopen_id="gst-reopen-signoff"
         reopen_confirm="Reopen this signed month? The signature is revoked and the month can be worked again."
-        filed_event="3b-mark-filed"
-        form_id="gst-mark-filed"
-        arn_id="gst-filed-arn"
-        filed_note_id="gst-filed-note"
         can_sign_off={@can_sign_off}
       />
     </section>
@@ -995,10 +987,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :reopen_event, :string, required: true
   attr :reopen_id, :string, required: true
   attr :reopen_confirm, :string, required: true
-  attr :filed_event, :string, required: true
-  attr :form_id, :string, required: true
-  attr :arn_id, :string, required: true
-  attr :filed_note_id, :string, required: true
   attr :can_sign_off, :boolean, required: true
   slot :extra_step
 
@@ -1007,12 +995,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     <div class="space-y-block">
       <div class="flex flex-wrap items-center gap-2">
         <span class="text-base-content text-ui font-semibold">{@return}</span>
-        <.badge variant={if @month.filed_at, do: "neutral", else: "success"}>
-          {if @month.filed_at, do: "Filed", else: approval_label(@return)}
-        </.badge>
+        <.badge variant="success">{approval_label(@return)}</.badge>
       </div>
 
-      <dl class="gap-block text-ui grid sm:grid-cols-4">
+      <dl class="gap-block text-ui grid sm:grid-cols-2">
         <div>
           <dt class="text-ink-subtle text-label font-semibold uppercase">
             {if @return == "GSTR-1", do: "Approved by", else: "Signed by"}
@@ -1030,18 +1016,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
           <dd class="text-ink-muted">{format_display_datetime(@signoff.inserted_at)}</dd>
         </div>
-
-        <div :if={@month.filed_at} id={@filed_note_id}>
-          <dt class="text-ink-subtle text-label font-semibold uppercase">Filed</dt>
-
-          <dd class="text-base-content font-medium">{format_display_datetime(@month.filed_at)}</dd>
-        </div>
-
-        <div :if={@month.filing_arn}>
-          <dt class="text-ink-subtle text-label font-semibold uppercase">ARN</dt>
-
-          <dd class="text-base-content font-mono wrap-break-word">{@month.filing_arn}</dd>
-        </div>
       </dl>
 
       <.button
@@ -1055,32 +1029,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         {if @return == "GSTR-1", do: "Reopen approval", else: "Reopen signature"}
       </.button>
 
-      <div :if={is_nil(@month.filed_at)} class="gap-section grid items-start lg:grid-cols-3">
-        {render_slot(@extra_step)}
-        <div class="space-y-related">
-          <p class="text-ink-subtle text-label font-semibold uppercase">GST portal</p>
-
-          <a
-            href="https://www.gst.gov.in/"
-            target="_blank"
-            rel="noopener"
-            class="text-moon text-ui font-semibold"
-          >
-            Open gst.gov.in →
-          </a>
-        </div>
-
-        <form id={@form_id} phx-submit={@filed_event} class="space-y-related">
-          <.input
-            type="text"
-            name="arn"
-            id={@arn_id}
-            value=""
-            label="Filing ARN"
-            placeholder="Optional"
-          /> <.button type="submit" variant="outline" size="xs">Mark filed on portal</.button>
-        </form>
-      </div>
+      {render_slot(@extra_step)}
     </div>
     """
   end
@@ -1128,11 +1077,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       {"r1-unsigned", not is_nil(assigns.sales_month) and is_nil(assigns.r1_signoff),
        "The GSTR-1 has not been approved yet.",
        {:patch, "Go to the GSTR-1", month_track_path(client_id, period, :sales)}},
-      {"r1-unfiled",
-       not is_nil(assigns.sales_month) and not is_nil(assigns.r1_signoff) and
-         is_nil(assigns.sales_month.filed_at),
-       "The GSTR-1 is approved but not yet marked filed on the portal.",
-       {:patch, "Mark it filed", month_track_path(client_id, period, :sales)}},
       {"sales-intake", assigns.sales_intake_open,
        "A supplied sales packet is still unresolved, so the outward liability may be incomplete.",
        {:patch, "Review the packet", month_track_path(client_id, period, :sales)}},

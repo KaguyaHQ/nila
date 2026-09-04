@@ -36,7 +36,9 @@ defmodule NilaWeb.Gst.UploadLive do
     if connected?(socket), do: subscribe(socket)
 
     prefilled = prefill(socket, params)
-    sales_intake? = socket.assigns.live_action in [:sales, :sales_new]
+    contextual_kind = contextual_kind(params)
+
+    sales_intake? = socket.assigns.live_action == :sales or contextual_kind == "sales"
 
     socket =
       socket
@@ -71,7 +73,7 @@ defmodule NilaWeb.Gst.UploadLive do
         else: Calendar.closeable_period(Date.utc_today())
 
     client_id =
-      if socket.assigns.live_action in [:sales, :sales_new] do
+      if socket.assigns.live_action == :sales do
         active_client_id(socket)
       else
         params["client_id"] || active_client_id(socket)
@@ -82,6 +84,9 @@ defmodule NilaWeb.Gst.UploadLive do
       "period" => period
     }
   end
+
+  defp contextual_kind(%{"kind" => kind}) when kind in ~w(sales purchase), do: kind
+  defp contextual_kind(_params), do: nil
 
   defp active_client_id(%{assigns: %{current_scope: %{current_client: %{id: id}}}}), do: id
   defp active_client_id(_socket), do: nil
@@ -679,12 +684,12 @@ defmodule NilaWeb.Gst.UploadLive do
     end)
   end
 
-  defp sales_intake_intro(%{current_client: %{name: name}}) do
-    "Upload original sales invoices for #{name}. Nila reads them, prepares the Tally vouchers, and shows anything that needs your review."
+  defp sales_intake_intro(%{current_client: %{name: name}}, period) do
+    "These invoices will be added to the #{period_label(period)} sales working for #{name}."
   end
 
-  defp sales_intake_intro(_scope) do
-    "Upload original sales invoices. Nila reads them, prepares the Tally vouchers, and shows anything that needs your review."
+  defp sales_intake_intro(_scope, period) do
+    "These invoices will be added to the #{period_label(period)} sales working."
   end
 
   @impl true
@@ -708,7 +713,12 @@ defmodule NilaWeb.Gst.UploadLive do
           <.page_header eyebrow="Sales" title="Sales bills">
             Sales vouchers prepared for Tally, with anything that still needs your review.
             <:actions>
-              <.button navigate={~p"/sales-bills/new"} id="sales-bills-bring-invoices">
+              <.button
+                navigate={
+                  ~p"/gst/upload?client_id=#{@current_scope.current_client.id}&period=#{@internal_period}&kind=sales"
+                }
+                id="sales-bills-bring-invoices"
+              >
                 <.icon name="hero-plus" class="size-4" /> Bring in invoices
               </.button>
             </:actions>
@@ -743,7 +753,6 @@ defmodule NilaWeb.Gst.UploadLive do
           :if={!@sales_workspace?}
           id="sales-bills-importer"
           eyebrow="Sales"
-          eyebrow_path={if(@live_action == :sales_new, do: ~p"/sales-bills")}
           title="Bring in sales invoices"
           form={@form}
           form_id="sales-bills-form"
@@ -755,11 +764,11 @@ defmodule NilaWeb.Gst.UploadLive do
           error={@error}
           error_id="sales-bills-error"
           submit_id="sales-bills-submit"
-          submit_label="Prepare Tally vouchers"
-          loading_label="Preparing Tally vouchers…"
+          submit_label={"Add to #{period_label(@internal_period)} sales"}
+          loading_label="Adding invoices…"
         >
           <:intro>
-            {sales_intake_intro(@current_scope)}
+            {sales_intake_intro(@current_scope, @internal_period)}
           </:intro>
           <:state :if={@clients == [] and @jobs == %{}}>
             <.card id="sales-bills-empty" padding="roomy" class="text-center">

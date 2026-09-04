@@ -72,10 +72,12 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert has_element?(
              view,
              "#sales-bills-page",
-             "Upload original sales invoices for Breeze Tech. Nila reads them, prepares the Tally vouchers, and shows anything that needs your review."
+             "sales working for Breeze Tech"
            )
 
     assert has_element?(view, "#sales-bills-form")
+    assert has_element?(view, "#sales-bills-submit", "Add to")
+    refute has_element?(view, "#sales-bills-page", "Tally")
     refute has_element?(view, "#sales-bills-form label", "Client")
     refute has_element?(view, "#sales-bills-form select[name='intake[client_id]']")
     refute has_element?(view, "#sales-bills-connect-tally")
@@ -130,7 +132,10 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     {:ok, other_client} =
       Clients.create_client(%{org_id: org.id, name: "Caltech", type: "company"})
 
-    {:ok, view, _html} = live(conn, ~p"/sales-bills/new?client_id=#{other_client.id}")
+    period = Calendar.closeable_period(Date.utc_today())
+
+    {:ok, view, _html} =
+      live(conn, ~p"/gst/upload?client_id=#{client.id}&period=#{period}&kind=sales")
 
     upload =
       file_input(view, "#sales-bills-form", :documents, [
@@ -144,7 +149,6 @@ defmodule NilaWeb.Gst.UploadLiveTest do
 
     render_submit(view, "submit", %{"intake" => %{"client_id" => other_client.id}})
 
-    period = Calendar.closeable_period(Date.utc_today())
     assert [%{client_id: active_id}] = Dumps.list(org.id, client.id, period)
     assert active_id == client.id
     assert Dumps.list(org.id, other_client.id, period) == []
@@ -199,7 +203,13 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     {:ok, view, _html} = live(conn, ~p"/sales-bills")
 
     assert has_element?(view, "#sales-bills-page", "Sales bills")
-    assert has_element?(view, "#sales-bills-bring-invoices[href='/sales-bills/new']")
+    period = Calendar.closeable_period(Date.utc_today())
+
+    assert has_element?(
+             view,
+             "#sales-bills-bring-invoices[href='/gst/upload?client_id=#{client.id}&period=#{period}&kind=sales']"
+           )
+
     refute has_element?(view, "#sales-bills-importer")
     refute has_element?(view, "#sales-bills-form")
 
@@ -217,19 +227,12 @@ defmodule NilaWeb.Gst.UploadLiveTest do
            )
   end
 
-  test "bring in invoices opens the temporary importer", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/sales-bills/new")
-
-    assert has_element?(view, "#sales-bills-importer[data-importer]")
-    assert has_element?(view, "#sales-bills-page", "Bring in sales invoices")
-    assert has_element?(view, "#sales-bills-page a[href='/sales-bills']", "Sales")
-    refute has_element?(view, "#sales-batches")
-  end
-
   test "partial sales bill validation events do not crash the importer", %{
-    conn: conn
+    conn: conn,
+    client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/sales-bills/new")
+    {:ok, view, _html} =
+      live(conn, ~p"/gst/upload?client_id=#{client.id}&period=#{@period}&kind=sales")
 
     upload_html = render_change(view, "validate", %{"_target" => ["documents"]})
     partial_html = render_change(view, "validate", %{})
@@ -275,6 +278,28 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     html = view |> element("#gst-upload-form") |> render()
     assert html =~ ~s(selected="" value="#{client.id}")
     assert html =~ ~s(selected="" value="2025-08")
+  end
+
+  test "a sales-period launch uses the shared uploader in locked sales context", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _html} =
+      live(conn, ~p"/gst/upload?client_id=#{client.id}&period=2025-08&kind=sales")
+
+    assert has_element?(view, "#sales-bills-page", "Bring in sales invoices")
+    assert has_element?(view, "#sales-bills-page", "Aug 2025 sales working for Breeze Tech")
+    assert has_element?(view, "#sales-bills-submit", "Add to Aug 2025 sales")
+
+    assert has_element?(
+             view,
+             "#sales-bills-documents input[type=file][accept='.pdf,.jpg,.jpeg,.png,.webp'][multiple]"
+           )
+
+    refute has_element?(view, "#gst-upload-page")
+    refute has_element?(view, "select[name='intake[client_id]']")
+    refute has_element?(view, "select[name='intake[period]']")
+    refute has_element?(view, "#sales-bills-page", "Tally")
   end
 
   # The trap this closes: a correct-looking default beside a file the form knows

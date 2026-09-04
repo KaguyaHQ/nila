@@ -174,6 +174,14 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       get(conn, ~p"/sales-bills/#{client.id}/dumps/#{dump.id}/evidence/#{basename}")
 
     assert response(conn, 404)
+
+    conn =
+      get(
+        log_in_user(Phoenix.ConnTest.build_conn(), other_user),
+        ~p"/sales-bills/#{client.id}/batch/#{TallyPacket.ref([dump])}/gstr1.json"
+      )
+
+    assert response(conn, 404)
   end
 
   test "the batch truthfully becomes the result while extraction runs", %{
@@ -750,6 +758,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bills-result", "1 invoice needs attention")
 
     assert has_element?(view, "#sales-bills-result", "1 needs Tally mappings")
+    assert has_element?(view, "#sales-bills-download-gstr1[disabled]")
     refute has_element?(view, "#sales-bills-result", "tax review")
     assert has_element?(view, "#sales-bill-delivery-INV-001", "Mapping needed")
 
@@ -1000,6 +1009,17 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bills-review-required", "Review 1")
     refute has_element?(view, "#sales-bills-send-to-tally")
     assert has_element?(view, "#sales-bill-delivery-INV-001", "Mapping needed")
+
+    assert has_element?(
+             view,
+             "#sales-bills-download-gstr1[download][href='/sales-bills/#{client.id}/batch/#{batch_ref}/gstr1.json']",
+             "Download GSTR-1 JSON"
+           )
+
+    response = get(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}/gstr1.json")
+    assert response_content_type(response, :json)
+    assert %{"gstin" => gstin, "fp" => "072026"} = json_response(response, 200)
+    assert gstin == client.gstin
 
     {:ok, view, _html} =
       view
