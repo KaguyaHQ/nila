@@ -34,7 +34,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
 
     {:ok, workspace, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/sales")
 
-    assert has_element?(workspace, "#sales-period-workflow", "Current stage: Export")
+    refute has_element?(workspace, "#sales-period-status")
+    assert has_element?(workspace, "#sales-period-export-link", "Winman / JSON exports")
+    assert has_element?(workspace, "#sales-period-export-link[href='#sales-period-export']")
+    assert has_element?(workspace, "#sales-period-export")
     assert has_element?(workspace, "#sales-period-primary-action", "Download GST working")
     refute has_element?(workspace, "#sales-period-primary-action", "Bring in invoices")
     refute has_element?(workspace, "#sales-period-primary-action", "Approve GSTR-1")

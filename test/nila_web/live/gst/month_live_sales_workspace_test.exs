@@ -32,11 +32,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
 
     assert has_element?(view, "#sales-period-workspace", "Breeze Tech · Sales & GSTR-1")
     assert has_element?(view, "#sales-period-workspace", "Sales invoices")
-    assert has_element?(view, "#sales-period-workspace", "GSTR-1 schedules")
+    assert has_element?(view, "#sales-period-return-heading", "GSTR-1")
     assert has_element?(view, "#sales-period-workspace", "Export")
-    assert has_element?(view, "#sales-period-workflow", "Collect Review Export")
-    assert has_element?(view, "#sales-period-workflow", "Current stage: Review")
-    assert has_element?(view, "#sales-period-workflow [aria-current='step']", "Review")
+    assert has_element?(view, "#sales-period-status", "GST working needs review.")
+    refute has_element?(view, "#sales-period-workflow")
     assert has_element?(view, "#sales-period-primary-action", "Review")
 
     refute has_element?(view, "#sales-period-primary-action", "Bring in invoices")
@@ -48,6 +47,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
     assert has_element?(view, "th", "Invoices")
     assert has_element?(view, "th", "Taxable value")
     assert has_element?(view, "#sales-period-uploads-link", "Uploads")
+    assert has_element?(view, "#sales-period-uploads-link", "1 file")
+    refute has_element?(view, "#sales-period-workspace header", "overdue")
     assert has_element?(view, "#sales-period-return-b2b", "B2B")
     assert has_element?(view, "#sales-period-return-b2b", "Draft")
     assert has_element?(view, "th", "Entries")
@@ -58,8 +59,11 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
     assert has_element?(view, "#sales-period-handoff-workings", "GST sales working")
 
     assert has_element?(view, "th", "Format")
-    assert has_element?(view, "th", "Generated from")
-    assert has_element?(view, "th", "Action")
+    assert has_element?(view, "th", "Output")
+    assert has_element?(view, "th", "Download")
+    assert has_element?(view, "#sales-period-handoff-workings", "XLSX")
+    assert has_element?(view, "#sales-period-handoff-winman", "XLSM")
+    assert has_element?(view, "#sales-period-handoff-json", "JSON")
     assert has_element?(view, "#sales-period-handoff-winman", "Unavailable — review invoices")
     assert has_element?(view, "#sales-period-handoff-workings", "Unavailable — review invoices")
     assert has_element?(view, "#sales-period-handoff-json", "Unavailable — review invoices")
@@ -81,8 +85,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
 
     assert has_element?(view, "#sales-period-workspace")
     assert has_element?(view, "aside a[href='#{path}']", "Sales & GSTR-1")
-    assert has_element?(view, "#sales-period-workflow", "Current stage: Collect")
-    assert has_element?(view, "#sales-period-workflow [aria-current='step']", "Collect")
+    assert has_element?(view, "#sales-period-status", "Add invoices to prepare the GST working.")
     assert has_element?(view, "#sales-period-primary-action", "Bring in invoices")
     refute has_element?(view, "#sales-period-primary-download")
     assert has_element?(view, "#sales-period-handoff-workings", "Unavailable — add invoices")
@@ -95,7 +98,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
 
     refute has_element?(view, "#sales-period-primary-action", "Approve GSTR-1")
     assert has_element?(view, "#sales-period-sources-invoices", "No invoices")
-    assert has_element?(view, "#sales-period-uploads-link", "0 batches · 0 documents")
+    assert has_element?(view, "#sales-period-uploads-link", "0 batches · 0 files")
 
     assert has_element?(
              view,

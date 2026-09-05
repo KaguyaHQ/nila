@@ -71,7 +71,6 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         base={@base}
         view={@view}
       />
-
       <%= case @view do %>
         <% :overview -> %>
           <.overview
@@ -84,7 +83,6 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             review={@review}
             review_count={@review_count}
             schedule_rows={@schedule_rows}
-            hsn={@hsn}
             dumps={@dumps}
             readiness={@readiness}
           />
@@ -105,8 +103,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             base={@base}
             title="Uploads"
             copy="The batches contributing sales documents to this filing period."
-          />
-          {render_slot(@source)}
+          /> {render_slot(@source)}
         <% view when view in [:b2b, :b2cl, :b2cs, :cdnr] -> %>
           <.schedule_view
             view={view}
@@ -153,11 +150,14 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         <p class="text-ink-subtle text-label font-semibold uppercase">
           {@client.name} · Sales &amp; GSTR-1
         </p>
+
         <div class="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 class="font-display text-base-content text-h3 font-normal">{@period_label}</h1>
+
           <p class="text-ink-muted text-ui">{@deadline}</p>
         </div>
       </div>
+
       <nav aria-label="Filing period" class="flex items-center gap-1">
         <.button
           navigate={~p"/gst/#{@client.id}/#{@previous_period}/sales"}
@@ -167,6 +167,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         >
           <.icon name="hero-chevron-left-mini" class="size-4" />
         </.button>
+
         <span class="text-base-content text-ui min-w-24 text-center font-semibold">{@period_label}</span>
         <.button
           navigate={~p"/gst/#{@client.id}/#{@next_period}/sales"}
@@ -190,13 +191,12 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :review, :any, required: true
   attr :review_count, :integer, required: true
   attr :schedule_rows, :list, required: true
-  attr :hsn, :list, required: true
   attr :dumps, :list, required: true
   attr :readiness, :map, required: true
 
   defp overview(assigns) do
     first_review = List.first(assigns.review.needs_you)
-    upload_documents = Enum.sum(Enum.map(assigns.dumps, &length(&1.file_keys)))
+    upload_files = Enum.sum(Enum.map(assigns.dumps, &length(&1.file_keys)))
 
     workflow_stage =
       workflow_stage(assigns.readiness, length(assigns.active_invoices), assigns.review_count)
@@ -204,20 +204,33 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
     assigns =
       assign(assigns,
         first_review: first_review,
-        upload_documents: upload_documents,
+        upload_files: upload_files,
         workflow_stage: workflow_stage
       )
 
     ~H"""
-    <div class="pt-section space-y-section">
+    <div class="pt-block space-y-block">
       <div class="flex flex-wrap items-center justify-between gap-4">
-        <div class="space-y-1">
+        <div class="space-y-related">
           <p class="text-base-content text-ui tabular-nums">
             {count_label(length(@active_invoices), "invoice")} · {Helpers.rupees(
               @totals && @totals.taxable
             )} taxable · {Helpers.rupees(@totals && @totals.tax)} output tax
           </p>
+
+          <p
+            :if={@workflow_stage != :export}
+            id="sales-period-status"
+            class="text-ink-muted text-ui"
+          >
+            <%= if @workflow_stage == :collect do %>
+              Add invoices to prepare the GST working.
+            <% else %>
+              GST working needs review.
+            <% end %>
+          </p>
         </div>
+
         <div id="sales-period-primary-action" class="flex flex-wrap items-center gap-2">
           <.button
             :if={@workflow_stage == :collect}
@@ -227,6 +240,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           >
             Bring in invoices
           </.button>
+
           <.button
             :if={@workflow_stage == :review and @first_review}
             patch={
@@ -243,6 +257,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           >
             Review {@review_count}
           </.button>
+
           <.download_button
             :if={@workflow_stage == :export}
             id="sales-period-primary-download"
@@ -252,10 +267,17 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           >
             Download GST working
           </.download_button>
+
+          <.text_link
+            :if={@workflow_stage == :export}
+            id="sales-period-export-link"
+            href="#sales-period-export"
+            class="inline-flex items-center gap-1"
+          >
+            Winman / JSON exports <.icon name="hero-arrow-down-mini" class="size-4" />
+          </.text_link>
         </div>
       </div>
-
-      <.workflow_progress stage={@workflow_stage} />
 
       <.sales_section
         base={@base}
@@ -263,53 +285,16 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         taxable={@totals && @totals.taxable}
         review_count={@review_count}
         dumps={@dumps}
-        upload_documents={@upload_documents}
-      />
-      <.schedules_section rows={@schedule_rows} />
+        upload_files={@upload_files}
+      /> <.schedules_section rows={@schedule_rows} />
       <.export_section
         client={@client}
         period={@period}
         base={@base}
         invoice_count={length(@active_invoices)}
-        hsn_count={length(@hsn)}
         readiness={@readiness}
         review_count={@review_count}
       />
-    </div>
-    """
-  end
-
-  attr :stage, :atom, required: true
-
-  defp workflow_progress(assigns) do
-    steps = [collect: "Collect", review: "Review", export: "Export"]
-    assigns = assign(assigns, :steps, steps)
-
-    ~H"""
-    <div
-      id="sales-period-workflow"
-      class="border-rule flex flex-wrap items-center justify-between gap-3 border-y py-3"
-    >
-      <ol aria-label="GSTR-1 workflow" class="flex flex-wrap items-center gap-2">
-        <%= for {{key, label}, index} <- Enum.with_index(@steps) do %>
-          <li
-            aria-current={key == @stage && "step"}
-            class={[
-              "text-ui font-medium",
-              key == @stage && "text-base-content",
-              key != @stage && "text-ink-muted"
-            ]}
-          >
-            {label}
-          </li>
-          <li :if={index < length(@steps) - 1} aria-hidden="true">
-            <.icon name="hero-chevron-right-mini" class="text-ink-faint size-4" />
-          </li>
-        <% end %>
-      </ol>
-      <p class="text-ink-muted text-ui">
-        Current stage: <span class="text-base-content font-semibold">{stage_label(@stage)}</span>
-      </p>
     </div>
     """
   end
@@ -319,7 +304,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :taxable, :any, default: nil
   attr :review_count, :integer, required: true
   attr :dumps, :list, required: true
-  attr :upload_documents, :integer, required: true
+  attr :upload_files, :integer, required: true
 
   defp sales_section(assigns) do
     sales_row = %{
@@ -336,7 +321,6 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
     ~H"""
     <section class="space-y-related">
-      <p class="text-ink-subtle text-label font-semibold uppercase">Sales invoices</p>
       <.data_table
         id="sales-period-sources"
         rows={@rows}
@@ -346,28 +330,32 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         mode="scan"
         min_width="min-w-[720px]"
       >
-        <:col :let={row} label="Sales" row_header>
+        <:col :let={row} label="Sales" row_header class="w-[42%]">
           <span class="font-medium">{row.label}</span>
         </:col>
-        <:col :let={row} label="Invoices">{row.count}</:col>
-        <:col :let={row} label="Taxable value" align="right">{row.taxable}</:col>
-        <:col :let={row} label="Status">
+
+        <:col :let={row} label="Invoices" class="w-[16%]">{row.count}</:col>
+
+        <:col :let={row} label="Taxable value" align="right" class="w-[20%]">{row.taxable}</:col>
+
+        <:col :let={row} label="Status" class="w-[18%]">
           <.badge variant={row.variant}>{row.status}</.badge>
         </:col>
-        <:col :let={row} label="" align="right">
+
+        <:col :let={row} label="" align="right" class="w-[4%]">
           <.icon :if={row.path} name="hero-chevron-right-mini" class="text-ink-faint size-4" />
         </:col>
       </.data_table>
+
       <.text_link
         id="sales-period-uploads-link"
         navigate={@base <> "/uploads"}
         class="inline-flex items-center gap-1"
       >
         Uploads · {count_label(length(@dumps), "batch", "batches")} · {count_label(
-          @upload_documents,
-          "document"
-        )}
-        <.icon name="hero-chevron-right-mini" class="size-4" />
+          @upload_files,
+          "file"
+        )} <.icon name="hero-chevron-right-mini" class="size-4" />
       </.text_link>
     </section>
     """
@@ -378,7 +366,10 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   defp schedules_section(assigns) do
     ~H"""
     <section class="space-y-related">
-      <p class="text-ink-subtle text-label font-semibold uppercase">GSTR-1 schedules</p>
+      <p id="sales-period-return-heading" class="text-ink-subtle text-label font-semibold uppercase">
+        GSTR-1
+      </p>
+
       <.data_table
         id="sales-period-return"
         rows={@rows}
@@ -388,15 +379,19 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         mode="scan"
         min_width="min-w-[720px]"
       >
-        <:col :let={row} label="Schedule" row_header>
+        <:col :let={row} label="Section" row_header class="w-[42%]">
           <span class={["font-medium", is_nil(row.path) && "text-ink-muted"]}>{row.label}</span>
         </:col>
-        <:col :let={row} label="Entries">{row.count}</:col>
-        <:col :let={row} label="Taxable value" align="right">{row.value || "—"}</:col>
-        <:col :let={row} label="Status">
+
+        <:col :let={row} label="Entries" class="w-[16%]">{row.count}</:col>
+
+        <:col :let={row} label="Taxable value" align="right" class="w-[20%]">{row.value || "—"}</:col>
+
+        <:col :let={row} label="Status" class="w-[18%]">
           <.badge variant={row.variant}>{row.status}</.badge>
         </:col>
-        <:col :let={row} label="" align="right">
+
+        <:col :let={row} label="" align="right" class="w-[4%]">
           <.icon :if={row.path} name="hero-chevron-right-mini" class="text-ink-faint size-4" />
         </:col>
       </.data_table>
@@ -408,14 +403,14 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :base, :string, required: true
   attr :period, :string, required: true
   attr :invoice_count, :integer, required: true
-  attr :hsn_count, :integer, required: true
   attr :readiness, :map, required: true
   attr :review_count, :integer, required: true
 
   defp export_section(assigns) do
     ~H"""
-    <section class="space-y-related">
+    <section id="sales-period-export" class="space-y-related scroll-mt-4">
       <p class="text-ink-subtle text-label font-semibold uppercase">Export</p>
+
       <.data_table
         id="sales-period-handoff"
         rows={[%{id: "workings"}, %{id: "winman"}, %{id: "json"}]}
@@ -423,25 +418,24 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         mode="scan"
         min_width="min-w-[720px]"
       >
-        <:col :let={row} label="Export" row_header>
+        <:col :let={row} label="Output" row_header>
           <span :if={row.id == "workings"}>GST sales working</span>
           <span :if={row.id == "winman"}>Winman GSTR-1</span>
           <span :if={row.id == "json"}>GSTR-1 JSON</span>
         </:col>
+
         <:col :let={row} label="Format">
           <%= case row.id do %>
             <% "workings" -> %>
-              Six-sheet .xlsx
+              XLSX
             <% "winman" -> %>
-              Table-wise .xlsm
+              XLSM
             <% "json" -> %>
-              GST portal .json
+              JSON
           <% end %>
         </:col>
-        <:col label="Generated from">
-          {export_source(@invoice_count, @hsn_count)}
-        </:col>
-        <:col :let={row} label="Action">
+
+        <:col :let={row} label="Download">
           <.download_button
             :if={row.id == "workings" and @invoice_count > 0 and @review_count == 0}
             id="sales-period-handoff-download-workings"
@@ -451,18 +445,21 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           >
             Download
           </.download_button>
+
           <span
             :if={row.id == "workings" and @invoice_count == 0}
             class="text-ink-muted text-ui"
           >
             Unavailable — add invoices
           </span>
+
           <span
             :if={row.id == "workings" and @invoice_count > 0 and @review_count > 0}
             class="text-ui text-warning"
           >
             Unavailable — <.text_link navigate={@base <> "/invoices"}>review invoices</.text_link>
           </span>
+
           <.export_action
             :if={row.id == "winman"}
             kind={:winman}
@@ -499,9 +496,11 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
     <span :if={@readiness.state == :absent} class="text-ink-muted text-ui">
       Unavailable — add invoices
     </span>
+
     <span :if={@readiness.state == :provisional or @review_count > 0} class="text-ui text-warning">
       Unavailable — <.text_link navigate={@base <> "/invoices"}>review invoices</.text_link>
     </span>
+
     <.download_button
       :if={
         @kind == :winman and @readiness.state != :absent and @review_count == 0 and
@@ -514,6 +513,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
     >
       Download
     </.download_button>
+
     <span
       :if={
         @kind == :winman and @readiness.state != :absent and @review_count == 0 and
@@ -523,6 +523,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
     >
       Unavailable for this period
     </span>
+
     <.download_button
       :if={@kind == :json and @readiness.state != :absent and @review_count == 0}
       id="sales-period-handoff-download-json"
@@ -570,6 +571,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             placeholder="Invoice, buyer or GSTIN"
           />
         </.form>
+
         <.segmented_control
           id="sales-period-register-filters"
           items={[{:review_cases, "Needs review"}, {:no_open_checks, "Ready"}, {:all, "All"}]}
@@ -600,16 +602,23 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       <:col :let={row} label="Invoice" row_header>
         <span class="font-mono font-medium">{row.number}</span>
       </:col>
+
       <:col :let={row} label="Date"><span class="whitespace-nowrap">{row.date}</span></:col>
+
       <:col :let={row} label="Buyer">
         <span class="block max-w-64 truncate" title={row.buyer}>{row.buyer}</span>
       </:col>
+
       <:col :let={row} label="Treatment">{row.treatment}</:col>
+
       <:col :let={row} label="Taxable" align="right">{row.taxable}</:col>
+
       <:col :let={row} label="GST" align="right">{row.tax}</:col>
+
       <:col :let={row} label="Status">
         <.badge variant={row.variant}>{row.status}</.badge>
       </:col>
+
       <:col label="" align="right">
         <.icon name="hero-chevron-right-mini" class="text-ink-faint size-4" />
       </:col>
@@ -636,8 +645,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         base={@base}
         title={@label}
         copy="The invoices contributing to this GSTR-1 schedule."
-      />
-      <.invoice_table id={"sales-period-schedule-#{@view}"} rows={@rows} />
+      /> <.invoice_table id={"sales-period-schedule-#{@view}"} rows={@rows} />
     </div>
     """
   end
@@ -662,12 +670,18 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         <:col :let={row} label="Document kind" row_header>
           <span class="font-medium">{row.kind}</span>
         </:col>
+
         <:col :let={row} label="From"><span class="font-mono">{row.from}</span></:col>
+
         <:col :let={row} label="To"><span class="font-mono">{row.to}</span></:col>
+
         <:col :let={row} label="Total" align="right">{row.total}</:col>
+
         <:col :let={row} label="Cancelled" align="right">{row.cancelled}</:col>
+
         <:col :let={row} label="Net issued" align="right">{row.net_issued}</:col>
       </.data_table>
+
       <p class="text-ink-muted text-ui">
         This checks the documents Nila received; it does not prove every issued invoice was supplied.
       </p>
@@ -686,7 +700,9 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         <.text_link navigate={@base} class="inline-flex items-center gap-1">
           <.icon name="hero-chevron-left-mini" class="size-4" /> Period overview
         </.text_link>
+
         <h2 class="text-base-content text-h4 mt-3 font-semibold">{@title}</h2>
+
         <p class="text-ink-muted text-ui mt-1">{@copy}</p>
       </div>
     </header>
@@ -837,14 +853,6 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   defp review_status(_invoice_count, 0), do: "Ready"
   defp review_status(_invoice_count, _review_count), do: "Needs review"
 
-  defp export_source(0, _hsn_count), do: "No invoices"
-
-  defp export_source(invoice_count, 0),
-    do: count_label(invoice_count, "invoice")
-
-  defp export_source(invoice_count, hsn_count),
-    do: "#{count_label(invoice_count, "invoice")} · #{hsn_count} HSN/SAC"
-
   defp workflow_stage(_readiness, 0, _review_count), do: :collect
   defp workflow_stage(_readiness, _invoice_count, review_count) when review_count > 0, do: :review
 
@@ -853,10 +861,6 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
        do: :export
 
   defp workflow_stage(_readiness, _invoice_count, _review_count), do: :review
-
-  defp stage_label(:collect), do: "Collect"
-  defp stage_label(:review), do: "Review"
-  defp stage_label(:export), do: "Export"
 
   defp document_noun("cdnr"), do: "note"
   defp document_noun(_key), do: "invoice"
@@ -868,14 +872,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   defp treatment_label(_table), do: "Held out"
 
   defp deadline(period) do
-    status = Calendar.status(period, Date.utc_today())
-    due = Formatters.format_display_date(status.gstr1_due)
-
-    case status.gstr1_days_left do
-      days when days < 0 -> "GSTR-1 due #{due} · #{-days} days overdue"
-      0 -> "GSTR-1 due today · #{due}"
-      days -> "GSTR-1 due #{due} · #{days} days left"
-    end
+    due = period |> Calendar.due_dates() |> Map.fetch!(:gstr1)
+    "GSTR-1 due #{Formatters.format_display_date(due)}"
   end
 
   defp shift_period(period, months) do
