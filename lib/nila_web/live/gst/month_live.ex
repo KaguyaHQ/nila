@@ -179,10 +179,26 @@ defmodule NilaWeb.Gst.MonthLive do
           )
       )
 
-    if canonical_sales_route?(params, route) do
-      {:noreply, socket}
+    workbench_path =
+      if is_nil(socket.assigns.r1_signoff),
+        do:
+          NilaWeb.Gst.InvoiceWorkbench.path(
+            socket.assigns.current_scope.current_org.id,
+            socket.assigns.client.id,
+            month.period,
+            route.item,
+            route.scope,
+            route.return_to
+          )
+
+    if workbench_path do
+      {:noreply, push_navigate(socket, to: workbench_path)}
     else
-      {:noreply, push_patch(socket, to: sales_review_path(socket, route), replace: true)}
+      if canonical_sales_route?(params, route) do
+        {:noreply, socket}
+      else
+        {:noreply, push_patch(socket, to: sales_review_path(socket, route), replace: true)}
+      end
     end
   end
 

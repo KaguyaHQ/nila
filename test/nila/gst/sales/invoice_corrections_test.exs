@@ -56,6 +56,63 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
     }
   end
 
+  test "printed totals persist independently of invoice lines and pristine extraction", ctx do
+    pristine = Repo.get!(Nila.Gst.Intake.Dump, ctx.dump.id).invoices
+
+    changes = %{
+      "printed_total_taxable" => "1,000.00",
+      "printed_total_tax" => "180.00",
+      "printed_grand_total" => "1180.00"
+    }
+
+    assert {:ok, %{invoice: effective}} =
+             InvoiceCorrections.save(
+               ctx.org.id,
+               ctx.client.id,
+               ctx.batch_ref,
+               "source-1",
+               changes,
+               ctx.user.id
+             )
+
+    assert effective["printed_total_taxable"] == 1000.0
+    assert effective["printed_total_tax"] == 180.0
+    assert effective["printed_grand_total"] == 1180.0
+    assert effective["line_items"] == ctx.invoice["line_items"]
+    assert Repo.get!(Nila.Gst.Intake.Dump, ctx.dump.id).invoices == pristine
+    [reloaded] = InvoiceCorrections.apply_sources(ctx.org.id, ctx.client.id, [ctx.invoice])
+    assert Map.take(reloaded, Map.keys(changes)) == Map.take(effective, Map.keys(changes))
+  end
+
+  test "printed totals reject invalid values atomically and distinguish blank from zero", ctx do
+    for bad <- ["-1", "not a number"] do
+      assert {:error, {:invalid_correction, "printed_grand_total", :invalid_number}} =
+               InvoiceCorrections.save(
+                 ctx.org.id,
+                 ctx.client.id,
+                 ctx.batch_ref,
+                 "source-1",
+                 %{"printed_total_taxable" => "900", "printed_grand_total" => bad},
+                 ctx.user.id
+               )
+
+      assert InvoiceCorrections.list(ctx.org.id, ctx.client.id, "source-1") == []
+    end
+
+    assert {:ok, %{invoice: effective}} =
+             InvoiceCorrections.save(
+               ctx.org.id,
+               ctx.client.id,
+               ctx.batch_ref,
+               "source-1",
+               %{"printed_total_tax" => "0", "printed_grand_total" => ""},
+               ctx.user.id
+             )
+
+    assert effective["printed_total_tax"] == 0.0
+    assert effective["printed_grand_total"] == nil
+  end
+
   test "atomically overlays every posting correction while preserving pristine extraction", ctx do
     changes = %{
       "voucher_number" => "INV-001-A",

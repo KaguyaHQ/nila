@@ -96,6 +96,215 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     }
   end
 
+  test "the totals drawer corrects printed totals, clears GST mismatches and survives reload",
+       context do
+    invoice =
+      hd(context.dump.invoices)
+      |> Map.put("printed_total_taxable", 900)
+      |> Map.put("id", "INV-001")
+      |> Map.put("printed_total_tax", 90)
+      |> Map.put("printed_grand_total", 11800)
+
+    context.dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+
+    {:ok, month} =
+      SalesMonths.upsert(%{
+        org_id: context.org.id,
+        client_id: context.client.id,
+        period: context.dump.period,
+        invoices: [invoice]
+      })
+
+    path = "/sales-bills/#{context.client.id}/batch/#{context.dump.id}?item=INV-001"
+    {:ok, view, _} = live(context.conn, path)
+    assert has_element?(view, "#invoice-workbench-gst-status", "GST review needed")
+    assert has_element?(view, "#invoice-totals-comparison", "Difference")
+
+    assert has_element?(
+             view,
+             "#invoice-workbench-footer a[href='#invoice-workbench-totals']",
+             "Calculated total"
+           )
+
+    view |> element("#invoice-workbench-edit-totals") |> render_click()
+    refute has_element?(view, "#invoice_facts_invoice_number")
+    assert has_element?(view, "#invoice_facts_printed_grand_total[value='11800']")
+
+    view
+    |> form("#sales-bill-invoice-facts-form",
+      invoice_facts: %{
+        printed_total_taxable: "1000",
+        printed_total_tax: "180",
+        printed_grand_total: "1180"
+      }
+    )
+    |> render_submit()
+
+    refute has_element?(view, "#sales-bill-invoice-facts-sheet")
+    assert has_element?(view, "#invoice-workbench-gst-status", "No open GST checks")
+    refute has_element?(view, "#invoice-totals-comparison", "Difference")
+
+    workings = Nila.Gst.Sales.Resolutions.workings(month)
+    [effective] = workings.active_invoices
+    assert effective["line_items"] == invoice["line_items"]
+    assert effective["printed_grand_total"] == 1180.0
+
+    refute Enum.any?(
+             workings.issues,
+             &(&1["code"] in ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch))
+           )
+
+    {:ok, reloaded, _} = live(context.conn, path)
+    reloaded |> element("#invoice-workbench-edit-totals") |> render_click()
+
+    for {field, value} <- [
+          {"printed_total_taxable", "1000"},
+          {"printed_total_tax", "180"},
+          {"printed_grand_total", "1180"}
+        ] do
+      assert has_element?(
+               reloaded,
+               "#invoice_facts_#{field}[value='#{value}'], #invoice_facts_#{field}[value='#{value}.0']"
+             )
+    end
+  end
+
+  test "invoice view is the default even when a Tally company is connected", context do
+    {:ok, view, _} =
+      live(
+        context.conn,
+        "/sales-bills/#{context.client.id}/batch/#{context.dump.id}?item=INV-001"
+      )
+
+    assert has_element?(view, "#invoice-workbench-gst")
+    assert has_element?(view, "#invoice-totals-comparison", "Not captured")
+    view |> element("#sales-bill-edit-invoice-facts") |> render_click()
+    assert has_element?(view, "#invoice_facts_invoice_number")
+    refute has_element?(view, "#invoice_facts_printed_grand_total")
+
+    view
+    |> element("#sales-bill-invoice-facts-sheet button[aria-label='Close Edit invoice details']")
+    |> render_click()
+
+    assert has_element?(view, "#sales-bill-edit-line-0")
+    refute has_element?(view, "#tally_posting_party_ledger_identity")
+    refute has_element?(view, "#sales-bill-tax-posting")
+    refute has_element?(view, "#sales-bill-next-required-mapping")
+
+    view |> element("#invoice-workbench-accounting-view") |> render_click()
+    assert has_element?(view, "#tally_posting_party_ledger_identity")
+    assert has_element?(view, "#sales-bill-tax-posting")
+    view |> element("#invoice-workbench-facts-view") |> render_click()
+    refute has_element?(view, "#tally_posting_party_ledger_identity")
+    assert has_element?(view, "#invoice-workbench-gst")
+  end
+
+  test "period review crosses upload batches and uses the shared fact editor", context do
+    first = hd(context.dump.invoices) |> Map.put("id", "source-first")
+    context.dump |> Ecto.Changeset.change(invoices: [first]) |> Nila.Repo.update!()
+    second = first |> Map.put("id", "source-second") |> Map.put("invoice_number", "INV-002")
+
+    {:ok, other_dump} =
+      Dumps.record(
+        %{org_id: context.org.id, client_id: context.client.id},
+        %{
+          period: "2026-07",
+          kind: "sales",
+          status: "extracted",
+          invoices: [second],
+          meta: %{"sales_batch" => true, "original_name" => "second.pdf"}
+        }
+      )
+
+    {:ok, month} =
+      SalesMonths.upsert(%{
+        org_id: context.org.id,
+        client_id: context.client.id,
+        period: "2026-07",
+        invoices: [first, second]
+      })
+
+    path =
+      NilaWeb.Gst.InvoiceWorkbench.path(
+        context.org.id,
+        context.client.id,
+        month.period,
+        "source-first",
+        :all
+      )
+
+    {:ok, view, _} = live(context.conn, path)
+    assert has_element?(view, "#sales-bill-posting-position", "1 of 2")
+    refute has_element?(view, "#sales-bill-next-required-mapping")
+    view |> element("#sales-bill-edit-invoice-facts") |> render_click()
+    assert has_element?(view, "#invoice_facts_place_of_supply")
+
+    view
+    |> form("#sales-bill-invoice-facts-form", invoice_facts: %{buyer_name: "Corrected customer"})
+    |> render_submit()
+
+    assert has_element?(view, "#sales-bill-buyer-identity", "Corrected customer")
+    workings = Nila.Gst.Sales.Resolutions.workings(month)
+
+    assert Enum.find(workings.active_invoices, &(&1["id"] == "source-first"))["buyer_name"] ==
+             "Corrected customer"
+
+    next_path =
+      NilaWeb.Gst.InvoiceWorkbench.path(
+        context.org.id,
+        context.client.id,
+        month.period,
+        "source-second",
+        :all
+      )
+
+    assert next_path =~ "/batch/#{other_dump.id}?"
+    view |> element("#sales-bill-posting-next") |> render_click()
+    assert_redirect(view, next_path)
+    {:ok, next_view, _} = live(context.conn, next_path)
+    assert has_element?(next_view, "#sales-bill-posting-position", "2 of 2")
+    assert has_element?(next_view, "#sales-bill-invoice-identity", "INV-002")
+  end
+
+  test "resolving a GST check leaves the next unresolved invoice reachable", context do
+    first =
+      hd(context.dump.invoices)
+      |> Map.put("id", "first-warning")
+      |> Map.put("printed_total_taxable", 900)
+
+    second = first |> Map.put("id", "second-warning") |> Map.put("invoice_number", "INV-002")
+    context.dump |> Ecto.Changeset.change(invoices: [first, second]) |> Nila.Repo.update!()
+
+    {:ok, month} =
+      SalesMonths.upsert(%{
+        org_id: context.org.id,
+        client_id: context.client.id,
+        period: context.dump.period,
+        invoices: [first, second]
+      })
+
+    path =
+      NilaWeb.Gst.InvoiceWorkbench.path(
+        context.org.id,
+        context.client.id,
+        month.period,
+        "first-warning",
+        :needs_you
+      )
+
+    {:ok, view, _} = live(context.conn, path)
+    assert has_element?(view, "#invoice-workbench-confirm-0")
+    view |> element("#invoice-workbench-confirm-0") |> render_click()
+    assert has_element?(view, "#invoice-workbench-gst-status", "No open GST checks")
+
+    assert has_element?(
+             view,
+             "#sales-bill-posting-next[phx-value-item='second-warning']:not([disabled])"
+           )
+
+    assert has_element?(view, "#sales-bill-posting-position", "1 remaining")
+  end
+
   test "serves workbench evidence from its dump without requiring a filing month", %{
     conn: conn,
     client: client,
@@ -154,7 +363,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     {:ok, view, _html} =
       live(
         context.conn,
-        "/sales-bills/#{context.client.id}/batch/#{batch_ref}?item=#{URI.encode(source_id)}"
+        "/sales-bills/#{context.client.id}/batch/#{batch_ref}?view=accounting&item=#{URI.encode(source_id)}"
       )
 
     selected_company = :sys.get_state(view.pid).socket.assigns.tally_company
@@ -319,7 +528,12 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     refute has_element?(view, "#sales-bills-remainder")
     assert has_element?(view, "#sales-bills-vouchers thead", "Status")
     refute has_element?(view, "#sales-bills-vouchers thead", "Tally")
-    assert has_element?(view, "#sales-bills-voucher-table a[href$='?item=INV-001']")
+
+    assert has_element?(
+             view,
+             "#sales-bills-voucher-table a[href$='?item=INV-001']"
+           )
+
     assert has_element?(view, "#sales-bill-delivery-INV-001", "Ready")
 
     view
@@ -401,7 +615,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     batch_ref = TallyPacket.ref([dump])
 
     {:ok, view, _html} =
-      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001")
+      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001")
 
     assert has_element?(view, "#sales-bills-send-to-tally[disabled]")
     refute has_element?(view, "#sales-bills-download")
@@ -449,7 +663,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     batch_ref = TallyPacket.ref([dump])
 
     {:ok, view, _html} =
-      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001")
+      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001")
 
     assert has_element?(view, "#sales-bill-tally-posting-form")
     assert has_element?(view, "#sales-bill-invoice-identity", "INV-001")
@@ -493,18 +707,14 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     batch_ref = TallyPacket.ref([dump])
 
     {:ok, view, _html} =
-      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001")
+      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001")
 
     assert has_element?(view, "#sales-bill-tally-posting-form")
     assert has_element?(view, "#sales-bill-invoice-identity", "INV-001")
 
-    assert has_element?(
-             view,
-             "#sales-bill-tally-company-unavailable",
-             "No Tally company selected"
-           )
-
-    assert has_element?(view, "#tally_posting_party_ledger_identity[disabled]")
+    refute has_element?(view, "#sales-bill-tally-company-unavailable")
+    refute has_element?(view, "#invoice-workbench-accounting-view")
+    refute has_element?(view, "#tally_posting_party_ledger_identity")
     assert has_element?(view, "#sales-bills-download")
   end
 
@@ -567,7 +777,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     batch_ref = TallyPacket.ref([dump])
 
     {:ok, view, _html} =
-      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001")
+      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001")
 
     assert has_element?(
              view,
@@ -633,6 +843,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       |> element("#sales-bills-voucher-table a[href$='?item=INV-001']")
       |> render_click()
       |> follow_redirect(conn)
+
+    view |> element("#invoice-workbench-accounting-view") |> render_click()
 
     refute has_element?(view, "#sales-bill-global-review")
 
@@ -709,6 +921,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       |> render_click()
       |> follow_redirect(conn)
 
+    view |> element("#invoice-workbench-accounting-view") |> render_click()
+
     refute has_element?(view, "#sales-bill-global-review")
 
     refute has_element?(view, "#sales-bill-invoice-facts .nila-callout[data-kind='warning']")
@@ -767,6 +981,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       |> element("#sales-bills-voucher-table a[href$='?item=INV-001']")
       |> render_click()
       |> follow_redirect(conn)
+
+    view |> element("#invoice-workbench-accounting-view") |> render_click()
 
     refute has_element?(view, "#sales-bill-next-review-issue")
     refute has_element?(view, "#sales-bill-global-review")
@@ -875,6 +1091,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       |> element("#sales-bills-voucher-table a[href$='?item=INV-001']")
       |> render_click()
       |> follow_redirect(conn)
+
+    view |> element("#invoice-workbench-accounting-view") |> render_click()
 
     assert has_element?(view, "#sales-bill-edit-line-0[disabled]")
     assert has_element?(view, "#sales-bill-save-tally-posting[disabled]")
@@ -1027,6 +1245,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       |> render_click()
       |> follow_redirect(conn)
 
+    view |> element("#invoice-workbench-accounting-view") |> render_click()
+
     assert has_element?(view, "#sales-bill-posting-review[data-variant='workbench']")
     assert has_element?(view, "#sales-bill-tally-posting-form")
     assert has_element?(view, "#sales-bill-posting-review", company.name)
@@ -1041,7 +1261,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bill-mappings-remaining", "required")
     assert has_element?(view, "#sales-bill-proposed-voucher", "Customer & Co")
     assert has_element?(view, "#sales-bill-buyer-gstin", "29AAVCS8021P1ZB")
-    assert has_element?(view, "#sales-bill-edit-invoice-facts", "Edit invoice facts")
+    assert has_element?(view, "#sales-bill-edit-invoice-facts", "Edit invoice details")
     refute has_element?(view, "label[for='tally-posting-invoice-number']")
     assert has_element?(view, "#tally-posting-invoice-number-value[value='INV-001']")
     assert has_element?(view, "#sales-bill-line-summary-0", "Technical support services")
@@ -1221,7 +1441,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     end)
 
     batch_ref = TallyPacket.ref([dump])
-    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001"
     {:ok, view, _html} = live(conn, path)
 
     view |> element("#tally_posting_party_ledger_identity") |> render_click()
@@ -1273,7 +1493,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     dump: dump
   } do
     batch_ref = TallyPacket.ref([dump])
-    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001"
     {:ok, view, _html} = live(conn, path)
 
     choose_ledger(view, "#tally_posting_party_ledger_identity", "name:customer & co")
@@ -1304,7 +1524,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     dump: dump
   } do
     batch_ref = TallyPacket.ref([dump])
-    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001"
     {:ok, view, _html} = live(conn, path)
 
     view |> element("#tally_posting_party_ledger_identity") |> render_click()
@@ -1346,7 +1566,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     dump: dump
   } do
     batch_ref = TallyPacket.ref([dump])
-    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001"
     {:ok, view, _html} = live(conn, path)
 
     view |> element("#tally_posting_party_ledger_identity") |> render_click()
@@ -1384,7 +1604,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     })
 
     batch_ref = TallyPacket.ref([dump])
-    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001"
     {:ok, view, _html} = live(conn, path)
 
     view |> element("#tally_posting_igst_ledger_identity") |> render_click()
@@ -1420,7 +1640,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     |> Nila.Repo.delete!()
 
     batch_ref = TallyPacket.ref([dump])
-    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001"
     {:ok, view, _html} = live(conn, path)
 
     assert has_element?(view, "#tally_posting_party_ledger_identity", "Select party ledger")
@@ -1476,7 +1696,10 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert job.payload["invoice_number"] == "INV-001"
 
     {:ok, reopened, _html} =
-      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=source-unresolved")
+      live(
+        conn,
+        ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=source-unresolved"
+      )
 
     assert has_element?(reopened, "#sales-bill-delivery-source-unresolved", "Mapping needed")
     refute has_element?(reopened, "#sales-bill-edit-line-0[disabled]")
@@ -1499,6 +1722,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       |> render_click()
       |> follow_redirect(conn)
 
+    view |> element("#invoice-workbench-accounting-view") |> render_click()
+
     view
     |> form("#sales-bill-tally-posting-form", %{
       "tally_posting" => %{
@@ -1519,7 +1744,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     dump: dump
   } do
     batch_ref = TallyPacket.ref([dump])
-    path = "/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    path = "/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001"
     {:ok, view, _html} = live(conn, path)
 
     view
@@ -1603,7 +1828,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     batch_ref = TallyPacket.ref([dump])
 
     {:ok, view, _html} =
-      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001")
+      live(conn, ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001")
 
     view |> element("#sales-bill-edit-line-0") |> render_click()
 
@@ -1636,6 +1861,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       |> render_click()
       |> follow_redirect(conn)
 
+    view |> element("#invoice-workbench-accounting-view") |> render_click()
+
     assert has_element?(view, "#sales-bill-posting-previous[disabled]")
     assert has_element?(view, "#sales-bill-posting-next:not([disabled])")
     assert has_element?(view, "#sales-bill-posting-position", "1 of 2")
@@ -1650,7 +1877,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert_patch(
       view,
-      "/sales-bills/#{client.id}/batch/#{batch_ref}?item=second-invoice"
+      "/sales-bills/#{client.id}/batch/#{batch_ref}?item=second-invoice&view=accounting"
     )
 
     assert has_element?(view, "#sales-bill-posting-review", "INV-002")
@@ -1679,7 +1906,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     dump = dump |> Ecto.Changeset.change(invoices: [first, second]) |> Nila.Repo.update!()
     batch_ref = TallyPacket.ref([dump])
-    path = "/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    path = "/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001"
     {:ok, view, _html} = live(conn, path)
 
     render_submit(view, "save-tally-posting", %{
@@ -1740,7 +1967,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     dump: dump
   } do
     batch_ref = TallyPacket.ref([dump])
-    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    path = ~p"/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001"
     {:ok, view, _html} = live(conn, path)
 
     render_change(view, "preview-tally-posting", %{
@@ -1795,7 +2022,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       |> Nila.Repo.update!()
 
     batch_ref = TallyPacket.ref([dump])
-    path = "/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    path = "/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001"
     {:ok, view, _html} = live(conn, path)
 
     refute has_element?(
@@ -1874,7 +2101,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       |> Nila.Repo.update!()
 
     batch_ref = TallyPacket.ref([dump])
-    path = "/sales-bills/#{client.id}/batch/#{batch_ref}?item=INV-001"
+    path = "/sales-bills/#{client.id}/batch/#{batch_ref}?view=accounting&item=INV-001"
     {:ok, view, _html} = live(conn, path)
 
     refute has_element?(view, ".nila-callout[data-kind='warning']", "invoice total")

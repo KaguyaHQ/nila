@@ -40,7 +40,6 @@ defmodule Nila.Gst.Issues do
     "bucket_tax_mismatch" => {"required", :decision},
     "tax_split_mismatch" => {"required", :decision},
     "tax_treatment_uncertain" => {"required", :decision},
-    "place_of_supply_uncertain" => {"required", :correction},
     "mixed_tax_heads" => {"required", :decision},
     "rounding_variance" => {"info", nil},
     "furniture_row_with_values" => {"required", :decision},

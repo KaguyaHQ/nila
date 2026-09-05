@@ -11,7 +11,9 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
   alias Nila.Repo
   alias Nila.TallyMappings
 
-  @top_fields ~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply narration)
+  @printed_total_fields ~w(printed_total_taxable printed_total_tax printed_grand_total)
+  @top_fields ~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply narration) ++
+                @printed_total_fields
   @line_fields ~w(
     item_name description hsn_sac quantity uom printed_unit_price printed_line_amount
     printed_line_total printed_taxable_value taxable_value cgst_rate cgst_amount
@@ -412,6 +414,8 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
   end
 
   defp coerce("place_of_supply", _value), do: {:error, :invalid_place_of_supply}
+
+  defp coerce(field, value) when field in @printed_total_fields, do: coerce_number(value)
 
   defp coerce(field, value) when field in @top_fields,
     do: {:ok, normalize_optional_string(value)}

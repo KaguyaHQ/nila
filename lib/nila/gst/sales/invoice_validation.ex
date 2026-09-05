@@ -959,7 +959,6 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   defp consistency_issues(invoice) do
     seller_state = state_code(party_gstin(invoice.issuer))
     buyer_state = state_code(party_gstin(invoice.recipient))
-    ship_to_state = ship_to_state(invoice)
     place_of_supply = invoice.place_of_supply || buyer_state
     interstate? = seller_state && place_of_supply && seller_state != place_of_supply
     igst = sum_line_paise(invoice.lines, :igst)
@@ -971,22 +970,6 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
       # reviewer to answer the same malformed invoice twice.
       igst > 0 and split > 0 ->
         []
-
-      (is_nil(invoice.place_of_supply) and buyer_state) && ship_to_state &&
-          buyer_state != ship_to_state ->
-        [
-          invoice
-          |> issue(
-            "place_of_supply_uncertain",
-            "bill-to and ship-to point to different states; confirm the GST destination",
-            ["place_of_supply", "bill_to", "ship_to"],
-            Issues.level_for("place_of_supply_uncertain")
-          )
-          |> Map.merge(%{
-            "buyer_state" => buyer_state,
-            "ship_to_state" => ship_to_state
-          })
-        ]
 
       is_nil(seller_state) or is_nil(place_of_supply) ->
         []
@@ -1027,16 +1010,6 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
         "suggested_tax_treatment" => suggested_treatment
       })
     ]
-  end
-
-  defp ship_to_state(invoice) do
-    case invoice.evidence["ship_to"] do
-      %{} = ship_to ->
-        StateCodes.normalize_code(ship_to["state_code"]) || state_code(ship_to["gstin"])
-
-      _missing ->
-        nil
-    end
   end
 
   defp line_tax_paise(line) do

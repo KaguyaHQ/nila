@@ -48,7 +48,7 @@ defmodule Nila.Gst.Sales.InvoiceValidationTest do
     assert Enum.all?(issues, &String.contains?(&1["message"], "× 18%"))
   end
 
-  test "bill-to and ship-to disagreement requires a destination decision" do
+  test "bill-to and ship-to disagreement does not invent a place-of-supply issue" do
     invoice =
       Gstr1.normalize_invoice(%{
         "data" => %{
@@ -61,22 +61,30 @@ defmodule Nila.Gst.Sales.InvoiceValidationTest do
             %{
               "description" => "Equipment",
               "taxable_value" => 100,
-              "igst_rate" => 18,
-              "igst_amount" => 18
+              "cgst_rate" => 9,
+              "cgst_amount" => 9,
+              "sgst_rate" => 9,
+              "sgst_amount" => 9
             }
           ]
         }
       })
 
     issues = InvoiceValidation.issues([invoice])
-    codes = Enum.map(issues, & &1["code"])
 
-    assert "place_of_supply_uncertain" in codes
-    refute "tax_treatment_uncertain" in codes
+    refute Enum.any?(
+             issues,
+             &(&1["code"] in ~w(place_of_supply_uncertain tax_treatment_uncertain))
+           )
 
-    issue = Enum.find(issues, &(&1["code"] == "place_of_supply_uncertain"))
-    assert issue["buyer_state"] == "33"
-    assert issue["ship_to_state"] == "36"
+    derived = Gstr1.derive([invoice], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "072026"})
+
+    assert [%{"inv" => [%{"pos" => "33", "itms" => [%{"itm_det" => item}]}]}] =
+             derived["b2b"]
+
+    assert item["camt"] == 9
+    assert item["samt"] == 9
+    assert item["iamt"] == 0
   end
 
   defp invoice(overrides \\ %{}, line_overrides \\ %{}) do

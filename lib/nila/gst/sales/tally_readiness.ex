@@ -5,8 +5,7 @@ defmodule Nila.Gst.Sales.TallyReadiness do
   alias Nila.Gst.Sales.{OutputCapabilities, OutputIssues}
 
   @irrelevant_invoice_issue_codes ~w(
-    tax_split_mismatch tax_treatment_uncertain place_of_supply_uncertain
-    missing_place_of_supply invalid_place_of_supply
+    tax_split_mismatch tax_treatment_uncertain missing_place_of_supply invalid_place_of_supply
   )
 
   @messages %{
