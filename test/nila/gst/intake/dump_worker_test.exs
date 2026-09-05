@@ -98,6 +98,36 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     assert byte_size(bytes) > 0
   end
 
+  test "sales batches create and extend the selected working and retries do not duplicate it",
+       ctx do
+    first = bring_in(ctx.org, ctx.client, ctx.user, "sales", "%PDF-1.4 fake")
+
+    first =
+      first
+      |> Ecto.Changeset.change(meta: %{"sales_batch" => true}, period: "2026-03")
+      |> Nila.Repo.update!()
+
+    assert :ok = run(first)
+    {:ok, month} = SalesMonths.get_by_period(ctx.org.id, ctx.client.id, "2026-03")
+    assert length(month.invoices) == 3
+    workings = SalesResolutions.workings(month)
+    assert Enum.count(workings.issues, &(&1["code"] == "invoice_period_mismatch")) == 3
+    refute SalesWorkings.reviewable?(workings.issues)
+
+    second = bring_in(ctx.org, ctx.client, ctx.user, "sales", "%PDF-1.4 fake")
+
+    second =
+      second
+      |> Ecto.Changeset.change(meta: %{"sales_batch" => true}, period: "2026-03")
+      |> Nila.Repo.update!()
+
+    assert :ok = run(second)
+    assert :ok = run(second)
+    {:ok, combined} = SalesMonths.get_by_period(ctx.org.id, ctx.client.id, "2026-03")
+    assert length(combined.invoices) == 6
+    assert length(Enum.uniq_by(combined.invoices, & &1["id"])) == 6
+  end
+
   test "a purchase dump without 2B derives an honest bookside-only month", %{
     org: org,
     user: user,

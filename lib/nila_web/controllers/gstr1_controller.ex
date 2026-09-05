@@ -23,13 +23,20 @@ defmodule NilaWeb.Gstr1Controller do
 
     case SalesMonths.get_by_period(org_id, client_id, period) do
       {:ok, sales_month} ->
-        derived = SalesResolutions.effective_workings(sales_month).derived
+        projection = SalesResolutions.effective_workings(sales_month)
+        derived = projection.derived
         filename = "gstr1_#{derived["gstin"]}_#{period}.json"
 
-        conn
-        |> put_resp_content_type("application/json")
-        |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
-        |> send_resp(200, Jason.encode!(derived))
+        if same_period?(projection, period) do
+          conn
+          |> put_resp_content_type("application/json")
+          |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
+          |> send_resp(200, Jason.encode!(derived))
+        else
+          conn
+          |> put_status(:unprocessable_entity)
+          |> text("Correct or exclude invoices outside this working period")
+        end
 
       {:error, _} ->
         conn
@@ -43,8 +50,10 @@ defmodule NilaWeb.Gstr1Controller do
 
     with {:ok, sales_month} <- SalesMonths.get_by_period(org_id, client_id, period),
          {:ok, client} <- Clients.get_client(org_id, client_id),
+         projection <- SalesResolutions.effective_workings(sales_month),
+         true <- same_period?(projection, period),
          {:ok, workbook} <-
-           WinmanGstr1.build(SalesResolutions.effective_workings(sales_month), client, period) do
+           WinmanGstr1.build(projection, client, period) do
       filename = "gstr1_#{client.gstin || client.id}_#{period}_winman_b2b.xlsm"
 
       conn
@@ -52,6 +61,11 @@ defmodule NilaWeb.Gstr1Controller do
       |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
       |> send_resp(200, workbook)
     else
+      false ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> text("Correct or exclude invoices outside this working period")
+
       {:error, reason}
       when reason in [:invalid_period, :unsupported_period, :invalid_b2b_data, :too_many_rows] ->
         conn
@@ -71,6 +85,7 @@ defmodule NilaWeb.Gstr1Controller do
     with {:ok, sales_month} <- SalesMonths.get_by_period(org_id, client_id, period),
          {:ok, client} <- Clients.get_client(org_id, client_id),
          projection <- SalesResolutions.effective_workings(sales_month),
+         true <- same_period?(projection, period),
          resolutions <- SalesResolutions.list_attributed(sales_month.id),
          {:ok, workbook} <-
            WorkingsXlsx.build(projection, client, period,
@@ -87,6 +102,11 @@ defmodule NilaWeb.Gstr1Controller do
       |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
       |> send_resp(200, workbook)
     else
+      false ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> text("Correct or exclude invoices outside this working period")
+
       {:error, reason} when reason in [:no_active_sales, :invalid_sales_data] ->
         conn
         |> put_status(:unprocessable_entity)
@@ -98,6 +118,9 @@ defmodule NilaWeb.Gstr1Controller do
         |> text("Not found")
     end
   end
+
+  defp same_period?(projection, period),
+    do: Nila.Gst.Sales.Gstr1.period_issues(projection.active_invoices, period) == []
 
   def tally_download(conn, %{"client_id" => client_id, "period" => period}) do
     org_id = conn.assigns.current_scope.current_org.id

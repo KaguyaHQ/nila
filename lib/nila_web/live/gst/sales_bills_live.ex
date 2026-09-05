@@ -10,7 +10,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   alias Nila.Gst.Sales.{
     Batch,
     Gstr1,
-    Gstr1Packet,
     Invoice,
     InvoiceCorrections,
     InvoiceRemovals,
@@ -55,7 +54,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         |> assign(:workbench_return_to, nil)
         |> assign(:accounting_view?, false)
         |> assign(:invoice_queue_open?, false)
-        |> assign(:gstr1_export?, match?({:ok, _export}, Gstr1Packet.build(dumps, client.gstin)))
         |> assign(:processing_jobs, processing_jobs(dumps))
         |> assign(:tally_company, company)
         |> assign(:tally_masters, tally_masters)
@@ -240,6 +238,11 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp totals(invoice), do: Invoice.extracted_totals(invoice)
 
+  defp review_queue_empty?(%{scope: :needs_you, queue: []}, period) when not is_nil(period),
+    do: true
+
+  defp review_queue_empty?(_, _), do: false
+
   defp invoice_total_rows(invoice) do
     checks = Gstr1.invoice_checks(invoice)
     totals = totals(invoice)
@@ -373,7 +376,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     else
       {:noreply,
        push_patch(socket,
-         to: ~p"/sales-bills/#{socket.assigns.client.id}/batch/#{socket.assigns.batch_ref}"
+         to: batch_home_path(socket)
        )}
     end
   end
@@ -408,7 +411,33 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   def handle_event("workbench-scope", %{"scope" => scope}, socket)
       when scope in ~w(needs_you all) do
-    {:noreply, socket |> assign(:workbench_scope, scope) |> refresh_workbench()}
+    socket = socket |> assign(:workbench_scope, scope) |> refresh_workbench()
+    context = socket.assigns.workbench_context
+
+    item =
+      if context do
+        Enum.find(context.queue, &(&1.source_id == invoice_id(socket.assigns.selected_invoice))) ||
+          List.first(context.queue) || context.item
+      end
+
+    if item && socket.assigns.workbench_period do
+      path =
+        InvoiceWorkbench.path(
+          socket.assigns.current_scope.current_org.id,
+          socket.assigns.client.id,
+          context.month.period,
+          item.source_id,
+          scope,
+          socket.assigns.workbench_return_to
+        )
+
+      path =
+        if path && socket.assigns.accounting_view?, do: path <> "&view=accounting", else: path
+
+      if path, do: {:noreply, push_navigate(socket, to: path)}, else: {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("confirm-gst-issue", %{"target" => target}, socket) do
@@ -474,7 +503,26 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                scope.user.id
              ) do
           {:ok, _removal} ->
-            {:noreply, reload_packet(socket)}
+            socket = reload_packet(socket)
+
+            socket =
+              if invoice_id(socket.assigns.selected_invoice) == source_id,
+                do:
+                  push_navigate(socket,
+                    to:
+                      if(socket.assigns.workbench_period,
+                        do:
+                          InvoiceWorkbench.return_path(
+                            socket.assigns.client.id,
+                            socket.assigns.workbench_period,
+                            socket.assigns.workbench_return_to
+                          ),
+                        else: batch_home_path(socket)
+                      )
+                  ),
+                else: socket
+
+            {:noreply, socket}
 
           {:error, _reason} ->
             {:noreply, put_flash(socket, :error, "That invoice could not be excluded.")}
@@ -994,7 +1042,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             )
 
           _finished_or_direct ->
-            ~p"/sales-bills/#{socket.assigns.client.id}/batch/#{socket.assigns.batch_ref}"
+            batch_home_path(socket)
         end
 
       socket = put_flash(socket, :info, "Tally posting saved.")
@@ -1604,8 +1652,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
          client,
          batch_ref,
          invoice,
-         review_mode? \\ false,
-         accounting? \\ false
+         review_mode?,
+         accounting?
        ) do
     params = %{"item" => invoice["id"] || invoice["invoice_number"]}
     params = if accounting?, do: Map.put(params, "view", "accounting"), else: params
@@ -1853,10 +1901,15 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     Enum.any?(packet.excluded, &(Invoice.source_id(&1) == Invoice.source_id(invoice)))
   end
 
-  defp batch_row_path(packet, client, batch_ref, invoice) do
+  defp batch_home_path(socket) do
+    base = ~p"/sales-bills/#{socket.assigns.client.id}/batch/#{socket.assigns.batch_ref}"
+    if socket.assigns.accounting_view?, do: base <> "?view=accounting", else: base
+  end
+
+  defp batch_row_path(packet, client, batch_ref, invoice, accounting?) do
     if excluded_invoice?(packet, invoice),
       do: nil,
-      else: posting_review_path(client, batch_ref, invoice)
+      else: posting_review_path(client, batch_ref, invoice, false, accounting?)
   end
 
   defp batch_row_class(packet, invoice) do
@@ -2228,6 +2281,24 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp prepare_packet(dumps, client_id) do
     packet = TallyPacket.prepare(dumps)
+
+    gst_issues =
+      dumps
+      |> Enum.uniq_by(& &1.period)
+      |> Enum.flat_map(fn dump ->
+        case Nila.Gst.Sales.Months.get_by_period(dump.org_id, client_id, dump.period) do
+          {:ok, month} ->
+            Nila.Gst.Sales.Resolutions.workings(month).issues
+
+          _ ->
+            packet.source_issues ++
+              Nila.Gst.Sales.Gstr1Readiness.issues(packet.all_invoices) ++
+              Gstr1.period_issues(packet.all_invoices, dump.period)
+        end
+      end)
+      |> Enum.filter(&(Nila.Gst.Issues.gating?(&1) && &1["status"] != "resolved"))
+
+    packet = Map.put(packet, :gst_issues, gst_issues)
     all_invoices = Enum.map(packet.all_invoices, &attach_image_urls(&1, dumps, client_id))
     invoices_by_id = Map.new(all_invoices, &{Invoice.source_id(&1), &1})
 
@@ -2266,10 +2337,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
         socket
         |> assign(:packet, packet)
-        |> assign(
-          :gstr1_export?,
-          match?({:ok, _export}, Gstr1Packet.build(dumps, socket.assigns.client.gstin))
-        )
+        |> assign(:source_dumps, dumps)
         |> assign(:send_holds, current_send_holds(org_id, socket.assigns.tally_company, packet))
         |> refresh_required_mapping_invoices()
 
@@ -2625,10 +2693,25 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp gst_workbench_issues(assigns) do
-    Enum.filter(assigns.packet.source_issues, fn issue ->
+    Enum.filter(assigns.packet.gst_issues, fn issue ->
       issue["source_id"] == invoice_id(assigns.selected_invoice) && Nila.Gst.Issues.gating?(issue)
     end)
   end
+
+  defp batch_gst_issues(packet, invoice) do
+    if excluded_invoice?(packet, invoice) do
+      []
+    else
+      Enum.filter(packet.gst_issues, fn issue ->
+        issue["source_id"] == Invoice.source_id(invoice) ||
+          Invoice.source_id(invoice) in List.wrap(issue["source_ids"]) ||
+          (is_nil(issue["source_id"]) && issue["invoice_number"] == invoice["invoice_number"])
+      end)
+    end
+  end
+
+  defp batch_gst_review_invoices(packet),
+    do: Enum.filter(packet.all_invoices, &(batch_gst_issues(packet, &1) != []))
 
   defp review_line_items(nil, _index), do: []
 
@@ -2767,7 +2850,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           :if={not processing?(@processing_jobs)}
           class="gap-region flex flex-col lg:flex-row lg:items-end lg:justify-between"
         >
-          <div class="space-y-related">
+          <div :if={@accounting_view?} class="space-y-related">
             <p class="text-ink-muted text-ui">{@client.name}</p>
 
             <h1 class="text-base-content text-h2 font-semibold">
@@ -2795,27 +2878,46 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </p>
           </div>
 
-          <div :if={@packet.invoices != []} class="flex items-end gap-3">
-            <.download_button
-              :if={@gstr1_export?}
-              href={~p"/sales-bills/#{@client.id}/batch/#{@batch_ref}/gstr1.json"}
-              id="sales-bills-download-gstr1"
-              variant="outline"
-            >
-              <.icon name="hero-arrow-down-tray" class="size-4" /> Download GSTR-1 JSON
-            </.download_button>
+          <div :if={not @accounting_view?} class="space-y-related">
+            <p class="text-ink-muted text-ui">{@client.name}</p>
+            <h1 id="sales-bills-result-title" class="text-h3 font-semibold">
+              {length(@packet.all_invoices)} {plural(length(@packet.all_invoices), "invoice")} processed
+            </h1>
+            <p class="text-ink-muted text-ui">
+              {length(batch_gst_review_invoices(@packet))} {if length(
+                                                                 batch_gst_review_invoices(@packet)
+                                                               ) == 1, do: "needs", else: "need"} GST review
+              <span :if={@packet.excluded != []}> · {excluded_summary(@packet)}</span>
+            </p>
+          </div>
 
+          <div :if={not @accounting_view?} class="gap-block flex items-center">
             <.button
-              :if={not @gstr1_export?}
-              type="button"
-              id="sales-bills-download-gstr1"
-              variant="outline"
-              disabled
-              title="Resolve GST issues before downloading"
+              :if={batch_gst_review_invoices(@packet) != []}
+              id="sales-bills-review-gst"
+              patch={
+                posting_review_path(
+                  @client,
+                  @batch_ref,
+                  List.first(batch_gst_review_invoices(@packet)),
+                  false,
+                  false
+                )
+              }
             >
-              <.icon name="hero-arrow-down-tray" class="size-4" /> Download GSTR-1 JSON
+              Review {length(batch_gst_review_invoices(@packet))}
             </.button>
+            <.button
+              :for={period <- Enum.uniq(Enum.map(@source_dumps, & &1.period))}
+              id={"sales-bills-open-period-#{period}"}
+              variant="outline"
+              navigate={~p"/gst/#{@client.id}/#{period}/sales"}
+            >
+              Open {Nila.Formatters.period_label(period)} working
+            </.button>
+          </div>
 
+          <div :if={@accounting_view? && @packet.invoices != []} class="flex items-end gap-3">
             <div
               :if={@tally_company && @tally_jobs == []}
               id="sales-bills-tally-destination"
@@ -2969,7 +3071,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         </section>
 
         <section
-          :if={not processing?(@processing_jobs) and remainder(@packet, @tally_jobs) != []}
+          :if={
+            @accounting_view? and not processing?(@processing_jobs) and
+              remainder(@packet, @tally_jobs) != []
+          }
           id="sales-bills-remainder"
           class="space-y-related"
         >
@@ -2988,11 +3093,27 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         </section>
 
         <section :if={@packet.all_invoices != []} id="sales-bills-vouchers">
+          <div :if={@tally_company} class="gap-block mb-4 flex items-center">
+            <.button
+              id="sales-bills-invoice-mode"
+              variant={if @accounting_view?, do: "ghost", else: "soft"}
+              patch={~p"/sales-bills/#{@client.id}/batch/#{@batch_ref}"}
+            >Invoices</.button>
+            <.button
+              id="sales-bills-accounting-mode"
+              variant={if @accounting_view?, do: "soft", else: "ghost"}
+              patch={~p"/sales-bills/#{@client.id}/batch/#{@batch_ref}?view=accounting"}
+            >Accounting</.button>
+          </div>
           <.data_table
             id="sales-bills-voucher-table"
             rows={batch_table_invoices(@packet)}
             row_id={fn invoice -> "sales-bill-#{invoice["id"] || invoice["invoice_number"]}" end}
-            row_navigate={fn invoice -> batch_row_path(@packet, @client, @batch_ref, invoice) end}
+            row_navigate={
+              fn invoice ->
+                batch_row_path(@packet, @client, @batch_ref, invoice, @accounting_view?)
+              end
+            }
             row_class={fn invoice -> batch_row_class(@packet, invoice) end}
             row_label={
               fn invoice ->
@@ -3029,44 +3150,63 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </:col>
 
             <:col :let={invoice} label="Status">
-              <span id={"sales-bill-delivery-#{invoice_id(invoice)}"} class="whitespace-nowrap">
+              <div :if={not @accounting_view?} id={"sales-bill-gst-#{invoice_id(invoice)}"}>
                 <.badge variant={
-                  invoice_delivery(
-                    invoice,
-                    @tally_jobs,
-                    @packet,
-                    @send_holds,
-                    @required_mapping_invoices
-                  ).variant
+                  if batch_gst_issues(@packet, invoice) == [], do: "neutral", else: "warning"
                 }>
-                  {invoice_delivery(
-                    invoice,
-                    @tally_jobs,
-                    @packet,
-                    @send_holds,
-                    @required_mapping_invoices
-                  ).label}
+                  {cond do
+                    excluded_invoice?(@packet, invoice) -> "Excluded"
+                    batch_gst_issues(@packet, invoice) != [] -> "Needs review"
+                    true -> "No open GST checks"
+                  end}
                 </.badge>
-              </span>
-              <p
-                :if={
-                  invoice_attention_reason(
+                <p
+                  :for={issue <- Enum.take(batch_gst_issues(@packet, invoice), 1)}
+                  class="text-ink-muted text-ui"
+                >
+                  {issue["message"]}
+                </p>
+              </div>
+              <div :if={@accounting_view?}>
+                <span id={"sales-bill-delivery-#{invoice_id(invoice)}"} class="whitespace-nowrap">
+                  <.badge variant={
+                    invoice_delivery(
+                      invoice,
+                      @tally_jobs,
+                      @packet,
+                      @send_holds,
+                      @required_mapping_invoices
+                    ).variant
+                  }>
+                    {invoice_delivery(
+                      invoice,
+                      @tally_jobs,
+                      @packet,
+                      @send_holds,
+                      @required_mapping_invoices
+                    ).label}
+                  </.badge>
+                </span>
+                <p
+                  :if={
+                    invoice_attention_reason(
+                      @packet,
+                      @required_mapping_invoices,
+                      @required_mapping_counts,
+                      invoice
+                    )
+                  }
+                  id={"sales-bill-attention-#{invoice_id(invoice)}"}
+                  class="text-ink-muted text-ui mt-1 max-w-64 whitespace-normal"
+                >
+                  {invoice_attention_reason(
                     @packet,
                     @required_mapping_invoices,
                     @required_mapping_counts,
                     invoice
-                  )
-                }
-                id={"sales-bill-attention-#{invoice_id(invoice)}"}
-                class="text-ink-muted text-ui mt-1 max-w-64 whitespace-normal"
-              >
-                {invoice_attention_reason(
-                  @packet,
-                  @required_mapping_invoices,
-                  @required_mapping_counts,
-                  invoice
-                )}
-              </p>
+                  )}
+                </p>
+              </div>
             </:col>
 
             <:col :let={invoice} label="" align="right">
@@ -3078,7 +3218,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 <:item
                   :if={not Enum.member?(@packet.excluded, invoice)}
                   id={"sales-bill-remove-#{invoice_id(invoice)}"}
-                  label="Exclude from batch"
+                  label="Exclude from working"
                   icon="hero-minus-circle"
                   on_click="remove-invoice"
                   value={invoice_id(invoice)}
@@ -3086,7 +3226,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 <:item
                   :if={Enum.member?(@packet.excluded, invoice)}
                   id={"sales-bill-restore-#{invoice_id(invoice)}"}
-                  label="Include in batch"
+                  label="Include in working"
                   icon="hero-arrow-uturn-left"
                   on_click="restore-invoice"
                   value={invoice_id(invoice)}
@@ -3181,6 +3321,17 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               >Accounting</.button>
             </div>
             <div class="border-rule gap-related flex items-center border-r pr-4">
+              <.segmented_control
+                :if={@workbench_context && @workbench_period}
+                id="invoice-workbench-scope"
+                items={[
+                  {:needs_you, "Needs review (#{length(@workbench_context.review.needs_you)})"},
+                  {:all, "All (#{length(@workbench_context.review.all)})"}
+                ]}
+                selected={@workbench_context.scope}
+                on_change="workbench-scope"
+                value_name="scope"
+              />
               <.button
                 :if={@workbench_context && @workbench_period}
                 id="invoice-workbench-queue-toggle"
@@ -3190,7 +3341,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 phx-click="toggle-invoice-queue"
                 aria-expanded={@invoice_queue_open?}
               >
-                Invoices
+                <.icon name="hero-list-bullet" class="size-4" />
+                <span class="sr-only">Show invoice queue</span>
               </.button>
               <.button
                 id="sales-bill-posting-previous"
@@ -3232,26 +3384,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           id="invoice-workbench-queue"
           class="border-rule space-y-related border-b pb-3"
         >
-          <div class="flex gap-2">
-            <.button
-              id="invoice-workbench-needs-review"
-              type="button"
-              size="xs"
-              variant="ghost"
-              phx-click="workbench-scope"
-              phx-value-scope="needs_you"
-            >
-              Needs review {length(@workbench_context.review.needs_you)}
-            </.button>
-            <.button
-              id="invoice-workbench-all"
-              type="button"
-              size="xs"
-              variant="ghost"
-              phx-click="workbench-scope"
-              phx-value-scope="all"
-            >All {length(@workbench_context.review.all)}</.button>
-          </div>
           <div class="flex flex-wrap gap-2">
             <.button
               :for={item <- @workbench_context.queue}
@@ -3265,13 +3397,22 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               {item.invoice["invoice_number"]}
               <span :if={item.open_actionable_targets != []}>· Needs review</span>
             </.button>
-            <p :if={@workbench_context.queue == []} class="text-ink-muted text-ui">
-              No invoices need review.
-            </p>
           </div>
         </div>
 
         <div
+          :if={review_queue_empty?(@workbench_context, @workbench_period)}
+          id="invoice-workbench-review-complete"
+          class="space-y-block"
+        >
+          <p>No invoices need review.</p>
+          <.button id="invoice-workbench-review-done" phx-click="close-posting-review">
+            Back to sales invoices
+          </.button>
+        </div>
+
+        <div
+          :if={not review_queue_empty?(@workbench_context, @workbench_period)}
           id="sales-bill-posting-review-keys"
           phx-hook=".SalesBillPostingReviewKeys"
           data-previous-item={invoice_id(@posting_navigation.previous)}
@@ -3334,12 +3475,22 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 <section id="sales-bill-invoice-facts" class="space-y-block max-w-3xl">
                   <div class="flex items-start justify-between gap-3">
                     <div class="space-y-related">
-                      <h3
-                        id="sales-bill-invoice-identity"
-                        class="text-base-content text-h4 font-semibold"
+                      <div
+                        id="invoice-workbench-heading"
+                        class="gap-related flex flex-wrap items-baseline"
                       >
-                        Invoice {@posting_preview_invoice["invoice_number"] || "without a number"}
-                      </h3>
+                        <h3
+                          id="sales-bill-invoice-identity"
+                          class="text-base-content text-h4 font-semibold"
+                        >
+                          Invoice {@posting_preview_invoice["invoice_number"] || "without a number"}
+                        </h3>
+                        <span
+                          :if={not @accounting_view? && gst_workbench_issues(assigns) == []}
+                          id="invoice-workbench-gst-status"
+                          class="text-ink-muted text-ui"
+                        >No open GST checks</span>
+                      </div>
                       <p id="sales-bill-buyer-identity" class="text-ink-muted text-ui">
                         <span :if={@posting_preview_invoice["invoice_date"]}>
                           {format_display_date(@posting_preview_invoice["invoice_date"])} ·
@@ -3362,6 +3513,15 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         >
                           · Offline — masters synced {format_master_sync(@tally_masters_synced_at)}
                         </span>
+                      </p>
+                      <p
+                        :if={not @accounting_view? && @workbench_context}
+                        id="invoice-workbench-treatment"
+                        class="text-ink-muted text-ui"
+                      >
+                        {String.upcase(@workbench_context.item.treatment["table"] || "")} · Place of supply: {@workbench_context.item.treatment[
+                          "place_of_supply"
+                        ] || "Not determined"}
                       </p>
                     </div>
                     <.button
@@ -3441,20 +3601,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   </div>
                 </section>
 
-                <section :if={not @accounting_view?} id="invoice-workbench-gst" class="space-y-block">
+                <section
+                  :if={not @accounting_view? && gst_workbench_issues(assigns) != []}
+                  id="invoice-workbench-gst"
+                  class="space-y-block"
+                >
                   <p id="invoice-workbench-gst-status" class="text-ui font-medium">
-                    {if gst_workbench_issues(assigns) == [],
-                      do: "No open GST checks",
-                      else: "GST review needed"}
-                  </p>
-                  <p
-                    :if={@workbench_context}
-                    id="invoice-workbench-treatment"
-                    class="text-ink-muted text-ui"
-                  >
-                    {String.upcase(@workbench_context.item.treatment["table"] || "")} · Place of supply: {@workbench_context.item.treatment[
-                      "place_of_supply"
-                    ] || "Not determined"}
+                    GST review needed
                   </p>
                   <div
                     :for={{issue, index} <- Enum.with_index(gst_workbench_issues(assigns))}
@@ -3482,7 +3635,23 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                           size="xs"
                           variant="outline"
                           phx-click="edit-invoice-facts"
-                        >Edit invoice facts</.button>
+                          phx-value-field={
+                            if issue["code"] == "invoice_period_mismatch", do: "invoice_date"
+                          }
+                        >{if issue["code"] == "invoice_period_mismatch",
+                          do: "Correct date",
+                          else: "Edit invoice facts"}</.button>
+                        <.button
+                          :if={issue["code"] == "invoice_period_mismatch"}
+                          id="invoice-workbench-exclude-period-mismatch"
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          phx-click="remove-invoice"
+                          phx-value-id={invoice_id(@selected_invoice)}
+                        >
+                          Exclude from working
+                        </.button>
                       </div>
                     </.callout>
                   </div>

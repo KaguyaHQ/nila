@@ -85,6 +85,19 @@ defmodule Nila.Gst.Sales.InvoiceRemovals do
     |> MapSet.new()
   end
 
+  @doc "Excludes tombstoned source invoices from period workings without deleting evidence."
+  def active_sources(org_id, client_id, invoices) do
+    ids =
+      Repo.all(
+        from r in InvoiceRemoval,
+          where: r.org_id == ^org_id and r.client_id == ^client_id,
+          select: r.source_id
+      )
+      |> MapSet.new()
+
+    Enum.reject(invoices, &MapSet.member?(ids, Invoice.source_id(&1)))
+  end
+
   defp validate_remover(org_id, user_id) do
     if Repo.exists?(
          from membership in Nila.Orgs.Membership,

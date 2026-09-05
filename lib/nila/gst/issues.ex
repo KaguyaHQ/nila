@@ -44,6 +44,7 @@ defmodule Nila.Gst.Issues do
     "rounding_variance" => {"info", nil},
     "furniture_row_with_values" => {"required", :decision},
     "unreadable_invoice_date" => {"required", :correction},
+    "invoice_period_mismatch" => {"blocking", :correction},
     "unreadable_amount" => {"required", :correction},
     "ungrounded_extracted_value" => {"required", :correction},
     "implausible_invoice_number" => {"required", :correction},

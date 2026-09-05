@@ -3,10 +3,22 @@ defmodule Nila.Gst.Sales.ReviewTest do
 
   alias Nila.Gst.Sales.Review
 
+  test "an invoice without a derived return row remains in the correction queue" do
+    source = invoice("unready", "44")
+    failure = issue("unready", "missing_taxable_value", "open") |> Map.put("level", "blocking")
+    review = Review.build(%{active_invoices: [source], derived: %{}, issues: [failure]})
+    assert [item] = review.needs_you
+    assert item.source_id == "unready"
+    assert item.treatment == %{}
+    assert review.progress.open == 1
+  end
+
   test "builds invoice scopes in register order and counts every actionable target" do
     review = Review.build(workings())
 
-    assert Enum.map(review.all, & &1.source_id) == ~w(source-c source-a source-b)
+    assert Enum.map(review.all, & &1.source_id) ==
+             ~w(source-c source-a source-b source-without-treatment)
+
     assert Enum.map(review.needs_you, & &1.source_id) == ~w(source-c source-a)
 
     multi_issue = Enum.find(review.all, &(&1.source_id == "source-a"))
@@ -36,7 +48,8 @@ defmodule Nila.Gst.Sales.ReviewTest do
     assert Review.previous(review, :all, "source-c") == nil
     assert Review.next(review, :all, "source-c").source_id == "source-a"
     assert Review.previous(review, :all, "source-b").source_id == "source-a"
-    assert Review.next(review, :all, "source-b") == nil
+    assert Review.next(review, :all, "source-b").source_id == "source-without-treatment"
+    assert Review.next(review, :all, "source-without-treatment") == nil
     assert Review.previous(review, :needs_you, "source-c") == nil
     assert Review.next(review, :needs_you, "source-c").source_id == "source-a"
     assert Review.previous(review, :needs_you, "source-a").source_id == "source-c"

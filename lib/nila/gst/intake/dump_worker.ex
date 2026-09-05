@@ -101,8 +101,9 @@ defmodule Nila.Gst.Intake.DumpWorker do
     case extract(dump, job.attempt) do
       {:ok, dump} ->
         if sales_batch?(dump) do
-          progress(dump, {:done, dump.client_id, dump.period, dump_unaccounted_pages(dump)})
-          :ok
+          # Sales intake uses invoice-level date review in the selected working.
+          # Do not hold the entire packet behind the legacy period precondition.
+          dump |> Dumps.clear_precondition() |> settle()
         else
           case Preconditions.check(dump) do
             nil -> dump |> Dumps.clear_precondition() |> settle()

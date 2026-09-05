@@ -246,6 +246,44 @@ defmodule Nila.Gst.Sales.Gstr1 do
   @doc "Controls that are meaningful only for a complete sales month."
   def month_validation_issues(invoices), do: sequence_issues(invoices)
 
+  @doc "Flags invoices outside the explicitly selected sales working period."
+  def period_issues(invoices, period) when is_binary(period) do
+    Enum.flat_map(invoices, fn invoice ->
+      date =
+        case invoice["invoice_date"] do
+          %Date{} = date ->
+            date
+
+          text when is_binary(text) ->
+            case Date.from_iso8601(text) do
+              {:ok, date} -> date
+              _ -> nil
+            end
+
+          _ ->
+            nil
+        end
+
+      if date && Calendar.strftime(date, "%Y-%m") != period do
+        [
+          %{
+            "code" => "invoice_period_mismatch",
+            "level" => "blocking",
+            "source_id" => Invoice.source_id(invoice),
+            "invoice_number" => invoice["invoice_number"],
+            "fields" => ["invoice_date"],
+            "message" =>
+              "Invoice dated #{Date.to_iso8601(date)} is outside the #{period} working. Correct the extracted date or exclude this invoice; cross-period reporting is not supported yet."
+          }
+        ]
+      else
+        []
+      end
+    end)
+  end
+
+  def period_issues(_invoices, _period), do: []
+
   @doc """
   Issues that must be answered before a GSTR-1 can be signed, not merely read.
 

@@ -3,7 +3,7 @@ defmodule Nila.Gst.Sales.Review do
   Pure invoice rail projection for a worked sales month.
 
   The rail stays invoice-centric: `all` contains every active source invoice
-  that has a derived filing treatment, while `needs_you` contains only invoices
+  including invoices that cannot yet form a return row, while `needs_you` contains invoices
   carrying open actionable work. Progress counts unique issue targets, not
   invoices, and therefore does not change when the visible scope changes.
   Month-level work is reported separately rather than represented as fake rail
@@ -20,11 +20,10 @@ defmodule Nila.Gst.Sales.Review do
 
     items =
       invoices
-      |> Enum.flat_map(fn invoice ->
-        case treatment_snapshot(invoice, Map.fetch!(workings, :derived)) do
-          nil -> []
-          treatment -> [item(invoice, treatment, issues, invoices)]
-        end
+      |> Enum.map(fn invoice ->
+        # An invoice that cannot form a return row is still reviewable source work.
+        treatment = treatment_snapshot(invoice, Map.fetch!(workings, :derived)) || %{}
+        item(invoice, treatment, issues, invoices)
       end)
 
     actionable_issues =

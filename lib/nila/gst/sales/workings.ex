@@ -45,6 +45,12 @@ defmodule Nila.Gst.Sales.Workings do
   def materialize(invoices, resolutions, header, document_issues, opts) when is_list(opts) do
     compliance = Keyword.get(opts, :compliance, %{})
 
+    period =
+      case header["fp"] do
+        <<month::binary-size(2), year::binary-size(4)>> -> year <> "-" <> month
+        _ -> nil
+      end
+
     pristine_source_invoices =
       invoices
       |> ensure_source_ids(Keyword.get(opts, :source_namespace, "legacy"))
@@ -64,6 +70,7 @@ defmodule Nila.Gst.Sales.Workings do
       pristine_source_invoices
       |> InvoiceReadiness.issues(compliance)
       |> Enum.concat(Gstr1Readiness.issues(pristine_source_invoices))
+      |> Enum.concat(Gstr1.period_issues(pristine_source_invoices, period))
 
     source_flagged = Gstr1.flagged_fields(pristine_source_invoices, correction_issues)
 
@@ -90,6 +97,7 @@ defmodule Nila.Gst.Sales.Workings do
       |> InvoiceReadiness.issues(compliance)
       |> Enum.concat(Gstr1Readiness.issues(active_invoices))
       |> Enum.concat(Gstr1.month_validation_issues(active_invoices))
+      |> Enum.concat(Gstr1.period_issues(active_invoices, period))
       |> Enum.concat(document_issues)
       |> Issues.normalize_all()
       |> collapse_by_target()

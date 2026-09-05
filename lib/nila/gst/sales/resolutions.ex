@@ -177,6 +177,7 @@ defmodule Nila.Gst.Sales.Resolutions do
 
     invoices =
       InvoiceCorrections.apply_sources(month.org_id, month.client_id, tally.invoices)
+      |> then(&Nila.Gst.Sales.InvoiceRemovals.active_sources(month.org_id, month.client_id, &1))
 
     workings =
       Workings.materialize(

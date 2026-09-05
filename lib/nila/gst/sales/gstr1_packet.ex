@@ -15,6 +15,7 @@ defmodule Nila.Gst.Sales.Gstr1Packet do
 
     with false <- invoices == [],
          {:ok, period} <- filing_period(invoices),
+         false <- Enum.any?(dumps, &(&1.period != period)),
          false <- Enum.any?(issues, &Issues.gating?/1) do
       {:ok,
        %{
