@@ -551,7 +551,17 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 >
                   <.input field={@correction_form[:field]} type="hidden" />
                   <div class="flex-1">
-                    <.input field={@correction_form[:value]} type="text" label={field} />
+                    <%= if field == "original_sale_category" do %>
+                      <.input
+                        field={@correction_form[:value]}
+                        type="select"
+                        label="Original sale"
+                        prompt="Choose the original sale category"
+                        options={[{"B2C Other / Small", "b2cs"}, {"B2C Large", "b2cl"}]}
+                      />
+                    <% else %>
+                      <.input field={@correction_form[:value]} type="text" label={field} />
+                    <% end %>
                   </div>
                   <.button type="submit" variant="primary" size="sm">Save</.button>
                   <.button

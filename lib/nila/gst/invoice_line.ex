@@ -39,6 +39,7 @@ defmodule Nila.Gst.InvoiceLine do
           | :line_amount_plus_tax_equals_total
           | :line_amount_times_rate_equals_tax
           | :derived_from_reconciled_invoice_totals
+          | :non_taxable_line_amount
 
   @type tax_inclusion :: :inclusive | :exclusive | :unknown
 
@@ -49,7 +50,8 @@ defmodule Nila.Gst.InvoiceLine do
     "printed_exclusive_line_amount" => :printed_exclusive_line_amount,
     "line_amount_plus_tax_equals_total" => :line_amount_plus_tax_equals_total,
     "line_amount_times_rate_equals_tax" => :line_amount_times_rate_equals_tax,
-    "derived_from_reconciled_invoice_totals" => :derived_from_reconciled_invoice_totals
+    "derived_from_reconciled_invoice_totals" => :derived_from_reconciled_invoice_totals,
+    "non_taxable_line_amount" => :non_taxable_line_amount
   }
 
   @tax_inclusions %{

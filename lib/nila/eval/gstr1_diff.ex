@@ -62,6 +62,8 @@ defmodule Nila.Eval.Gstr1Diff do
       b2cl_rows_diff(derived, filed) ++
       b2cs_rows_diff(derived, filed) ++
       note_rows_diff(derived, filed) ++
+      unregistered_note_rows_diff(derived, filed) ++
+      nil_rows_diff(derived, filed) ++
       hsn_diff(derived, filed) ++ hsn_b2c_diff(derived, filed) ++ doc_diff(derived, filed)
   end
 
@@ -219,6 +221,47 @@ defmodule Nila.Eval.Gstr1Diff do
   defp note_scope("C"), do: "credit_note"
   defp note_scope("D"), do: "debit_note"
   defp note_scope(_type), do: "note"
+
+  defp nil_rows_diff(derived, filed) do
+    flatten = fn return -> Map.new(get_in(return, ["nil", "inv"]) || [], &{&1["sply_ty"], &1}) end
+    left = flatten.(derived)
+    right = flatten.(filed)
+
+    (Map.keys(left) ++ Map.keys(right))
+    |> Enum.uniq()
+    |> Enum.sort()
+    |> Enum.flat_map(fn key ->
+      d = left[key] || %{}
+      f = right[key] || %{}
+      Enum.map(~w(sply_ty nil_amt expt_amt ngsup_amt), &row("nil", key, &1, d[&1], f[&1]))
+    end)
+  end
+
+  defp unregistered_note_rows_diff(derived, filed) do
+    flatten = fn return ->
+      for note <- return["cdnur"] || [], item <- note["itms"] || [], into: %{} do
+        {"#{note["typ"]}|#{note["nt_num"]}|#{note["ntty"]}|#{get_in(item, ["itm_det", "rt"])}",
+         Map.put(note, "itm_det", item["itm_det"] || %{})}
+      end
+    end
+
+    left = flatten.(derived)
+    right = flatten.(filed)
+
+    (Map.keys(left) ++ Map.keys(right))
+    |> Enum.uniq()
+    |> Enum.sort()
+    |> Enum.flat_map(fn key ->
+      d = left[key] || %{}
+      f = right[key] || %{}
+
+      Enum.map(~w(typ nt_num nt_dt ntty val pos), &row("cdnur", key, &1, d[&1], f[&1])) ++
+        Enum.map(
+          @item_fields,
+          &row("cdnur_item", key, &1, get_in(d, ["itm_det", &1]), get_in(f, ["itm_det", &1]))
+        )
+    end)
+  end
 
   defp note_rows(gstr1) do
     for ctin_block <- gstr1["cdnr"] || [],

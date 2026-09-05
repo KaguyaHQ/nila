@@ -59,6 +59,8 @@ defmodule Nila.Gst.Issues do
     "invalid_place_of_supply" => {"required", :correction},
     "unknown_document_status" => {"required", :correction},
     "unknown_supply_type" => {"required", :correction},
+    "missing_original_sale_category" => {"required", :correction},
+    "non_taxable_tax_conflict" => {"required", :correction},
     "sequence_gaps" => {"required", :confirmation},
 
     # HSN/SAC and rate compliance

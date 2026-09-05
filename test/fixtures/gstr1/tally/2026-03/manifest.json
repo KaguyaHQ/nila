@@ -1,0 +1,13 @@
+{
+  "corpus_document": "tally-caltech-2026-03-sales",
+  "expected_sha256": "79b728ad00b3b2a8fd9170a43cf97673ae7a4c1d84ac6d81f12a44d764e21add",
+  "full_extraction": {
+    "bucket": "nila-eval-corpus",
+    "byte_size": 108243,
+    "key": "tally/caltech/2026-03/runs/2026-09-05T04-43-12.649000Z/extraction.json",
+    "sha256": "f8be7964af7d0518cd2c0becd4d0238f1f4332ba93ae38684b6b8c655a36a386"
+  },
+  "model": "alibaba/qwen3.7-flash",
+  "provider": "vercel-ai-gateway",
+  "source_sha256": "7e79b8d71c23bacfd8c9fe8b8c13da6a23ceec6012e0ff9b245615aa5659c1f3"
+}

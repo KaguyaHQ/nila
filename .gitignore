@@ -22,6 +22,9 @@ erl_crash.dump
 # Temporary files, for example, from tests.
 /tmp/
 
+# Native Tally source PDFs live in the private eval corpus.
+/test/fixtures/gstr1/tally/**/*.pdf
+
 
 # Ignore package tarball (built via "mix hex.build").
 nila-*.tar

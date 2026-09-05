@@ -138,7 +138,11 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
           "string",
           "Full printed line description, including supplementary narrative after the item name."
         ),
-      hsn_sac: nullable("string"),
+      hsn_sac:
+        described_nullable(
+          "string",
+          "Copy this line's printed HSN/SAC, including codes in descriptions or service ledger names; otherwise null. Do not infer codes from product knowledge or use item identifiers."
+        ),
       quantity: nullable("number"),
       uom: nullable("string"),
       printed_unit_price:

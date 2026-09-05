@@ -1,0 +1,19 @@
+{
+  "corpus_document": "tally-caltech-2026-01-sales",
+  "expected_sha256": "3c77c16781c21700446beeed37bf4df2ac9d1ce733ec1cd272555a85fc483d05",
+  "full_extraction": {
+    "bucket": "nila-eval-corpus",
+    "byte_size": 82352,
+    "key": "tally/caltech/2026-01/runs/2026-09-05T04-43-32.343000Z/extraction.json",
+    "sha256": "76afbb0224bd55171ec0bceec9015f00cdd82326da7b97640069a2bc431b320b"
+  },
+  "model": "alibaba/qwen3.7-flash",
+  "previous_extraction": {
+    "bucket": "nila-eval-corpus",
+    "byte_size": 80001,
+    "key": "tally/caltech/2026-01/runs/2026-09-05T04-12-40.441000Z/extraction.json",
+    "sha256": "5ee29870213a7b6cc20dfd0b860ab0afac4312e059ae87338b1ca3e7d23ee851"
+  },
+  "provider": "vercel-ai-gateway",
+  "source_sha256": "0897b20519cf60d846710ae633bca1de78dbcc399e9937ab5781625291c61b5e"
+}

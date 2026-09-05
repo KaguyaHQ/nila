@@ -11,6 +11,51 @@ defmodule Nila.Gst.Extraction.TaxComponents do
   @canonical_fields ~w(cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount)
   @heads ~w(CGST SGST IGST)
 
+  @doc "Resolves invoice-level printed GST without changing the captured evidence."
+  def printed_tax_total(data) do
+    case Nila.Gst.Money.paise_or_error(data["printed_total_tax"]) do
+      {:ok, paise} -> paise / 100
+      :missing -> component_total(data["printed_tax_totals"])
+      :unreadable -> nil
+    end
+  end
+
+  defp component_total(components) when is_list(components) do
+    {heads, combined, issues} = classify_invoice_totals(components)
+
+    cond do
+      match?([_], combined) ->
+        sum_printed_amounts(combined)
+
+      combined != [] or issues != [] ->
+        nil
+
+      Enum.sort(Map.keys(heads)) not in [["IGST"], ["CGST", "SGST"], ["CGST", "IGST", "SGST"]] ->
+        nil
+
+      Enum.any?(heads, fn {_head, values} -> length(values) != 1 end) ->
+        nil
+
+      true ->
+        heads |> Map.values() |> List.flatten() |> sum_printed_amounts()
+    end
+  end
+
+  defp component_total(_components), do: nil
+
+  defp sum_printed_amounts(components) do
+    Enum.reduce_while(components, 0, fn component, total ->
+      case Nila.Gst.Money.paise_or_error(component["printed_amount"]) do
+        {:ok, paise} -> {:cont, total + paise}
+        _missing_or_unreadable -> {:halt, nil}
+      end
+    end)
+    |> case do
+      nil -> nil
+      paise -> paise / 100
+    end
+  end
+
   @doc "Projects every line that carries `printed_tax_components`."
   def project(data) when is_map(data) do
     data

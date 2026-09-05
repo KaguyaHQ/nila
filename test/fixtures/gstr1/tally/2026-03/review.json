@@ -1,0 +1,50 @@
+[
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_03",
+    "payload": {
+      "field": "place_of_supply",
+      "to": "33"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_04",
+    "payload": {
+      "field": "place_of_supply",
+      "to": "37"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_07",
+    "payload": {
+      "field": "place_of_supply",
+      "to": "33"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_08",
+    "payload": {
+      "field": "place_of_supply",
+      "to": "37"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_11",
+    "payload": {
+      "field": "place_of_supply",
+      "to": "33"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_12",
+    "payload": {
+      "field": "place_of_supply",
+      "to": "37"
+    }
+  }
+]

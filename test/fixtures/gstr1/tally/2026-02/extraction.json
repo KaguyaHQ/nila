@@ -1,0 +1,638 @@
+{
+  "pages": [
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": "Tamil Nadu, Code : 33",
+          "gstin": null,
+          "name": "Unregistered Consumer - Tamil Nadu",
+          "state_code": "33"
+        },
+        "document_status": "active",
+        "document_type": "credit_note",
+        "invoice_date": "15-Feb-26",
+        "invoice_number": "NU-CN-L",
+        "line_items": [
+          {
+            "cgst_amount": 180.0,
+            "cgst_rate": 9.0,
+            "description": "Service Sales - 998719 @ 18%\nOutput CGST\nOutput SGST",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "998719",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Service Sales - 998719 @ 18%",
+            "line_amount_tax_inclusion": "inclusive",
+            "printed_line_amount": 2.0e3,
+            "printed_line_total": 2360.0,
+            "printed_tax_components": [
+              {
+                "printed_amount": 180.0,
+                "printed_label": "Output CGST",
+                "printed_rate": 9.0
+              },
+              {
+                "printed_amount": 180.0,
+                "printed_label": "Output SGST",
+                "printed_rate": 9.0
+              }
+            ],
+            "printed_taxable_value": null,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": 180.0,
+            "sgst_rate": 9.0,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 2360.0,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [
+          {
+            "printed_amount": 360.0,
+            "printed_label": "Total Tax Amount"
+          }
+        ],
+        "printed_total_tax": 360.0,
+        "printed_total_taxable": 2.0e3,
+        "recipient_registration": "unregistered",
+        "reverse_charge": null,
+        "ship_to": {
+          "address": "Tamil Nadu, Code : 33",
+          "gstin": null,
+          "name": "Unregistered Consumer - Tamil Nadu",
+          "state_code": "33"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "taxable"
+      },
+      "document": {
+        "credit_note": true,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "credit_note",
+        "reverse_charge": false
+      },
+      "page": 1,
+      "source_attribution": {
+        "candidate_pages": [
+          1
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        1
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Karnataka",
+          "state_code": "29"
+        },
+        "document_status": "active",
+        "document_type": "credit_note",
+        "invoice_date": "15-Feb-26",
+        "invoice_number": "NU-CN-S",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Output IGST",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "998719",
+            "igst_amount": 360.0,
+            "igst_rate": 18.0,
+            "item_name": "Service Sales - 998719 @ 18%",
+            "line_amount_tax_inclusion": "exclusive",
+            "printed_line_amount": 2.0e3,
+            "printed_line_total": 2360.0,
+            "printed_tax_components": [
+              {
+                "printed_amount": 360.0,
+                "printed_label": "IGST",
+                "printed_rate": 18.0
+              }
+            ],
+            "printed_taxable_value": null,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 2360.0,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [
+          {
+            "printed_amount": 360.0,
+            "printed_label": "Total Tax Amount"
+          }
+        ],
+        "printed_total_tax": 360.0,
+        "printed_total_taxable": 2.0e3,
+        "recipient_registration": "unregistered",
+        "reverse_charge": null,
+        "ship_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Karnataka",
+          "state_code": "29"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "taxable"
+      },
+      "document": {
+        "credit_note": true,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "credit_note",
+        "reverse_charge": false
+      },
+      "page": 2,
+      "source_attribution": {
+        "candidate_pages": [
+          2
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        2
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Karnataka",
+          "state_code": "29"
+        },
+        "document_status": "active",
+        "document_type": "credit_note",
+        "invoice_date": "15-Feb-26",
+        "invoice_number": "NU-CN-B",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Output IGST",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "998719",
+            "igst_amount": 360.0,
+            "igst_rate": 18.0,
+            "item_name": "Service Sales - 998719 @ 18%",
+            "line_amount_tax_inclusion": "inclusive",
+            "printed_line_amount": 2.0e3,
+            "printed_line_total": 360.0,
+            "printed_tax_components": [
+              {
+                "printed_amount": 360.0,
+                "printed_label": "IGST",
+                "printed_rate": 18.0
+              }
+            ],
+            "printed_taxable_value": 2.0e3,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 2360.0,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [
+          {
+            "printed_amount": 360.0,
+            "printed_label": "Total Tax Amount"
+          }
+        ],
+        "printed_total_tax": 360.0,
+        "printed_total_taxable": 2.0e3,
+        "recipient_registration": "unregistered",
+        "reverse_charge": false,
+        "ship_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Karnataka",
+          "state_code": "29"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "taxable"
+      },
+      "document": {
+        "credit_note": true,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "credit_note",
+        "reverse_charge": false
+      },
+      "page": 3,
+      "source_attribution": {
+        "candidate_pages": [
+          3
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        3
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "flagged"
+      },
+      "data": {
+        "bill_to": {
+          "address": "Tamil Nadu, Code : 33",
+          "gstin": null,
+          "name": "Unregistered Consumer - Tamil Nadu",
+          "state_code": "33"
+        },
+        "document_status": "active",
+        "document_type": "debit_note",
+        "invoice_date": "15-Feb-26",
+        "invoice_number": "NU-DN-L",
+        "line_items": [
+          {
+            "cgst_amount": 90.0,
+            "cgst_rate": 9.0,
+            "description": "Service Sales - 998719 @ 18%",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "998719",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Service Sales - 998719 @ 18%",
+            "line_amount_tax_inclusion": "exclusive",
+            "printed_line_amount": 1.0e3,
+            "printed_line_total": 1180.0,
+            "printed_tax_components": [
+              {
+                "printed_amount": 90.0,
+                "printed_label": "Output CGST",
+                "printed_rate": 9.0
+              },
+              {
+                "printed_amount": 90.0,
+                "printed_label": "Output SGST",
+                "printed_rate": 9.0
+              }
+            ],
+            "printed_taxable_value": null,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": 90.0,
+            "sgst_rate": 9.0,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 1180.0,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [
+          {
+            "printed_amount": 180.0,
+            "printed_label": "Total"
+          }
+        ],
+        "printed_total_tax": null,
+        "printed_total_taxable": null,
+        "recipient_registration": "unregistered",
+        "reverse_charge": null,
+        "ship_to": {
+          "address": "Tamil Nadu, Code : 33",
+          "gstin": null,
+          "name": "Unregistered Consumer - Tamil Nadu",
+          "state_code": "33"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "taxable",
+        "tax_total_issues": [
+          {
+            "kind": "unknown_tax_label",
+            "printed_label": "Total"
+          }
+        ]
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": true,
+        "export": false,
+        "extracted_type": "debit_note",
+        "reverse_charge": false
+      },
+      "page": 4,
+      "source_attribution": {
+        "candidate_pages": [
+          4
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        4
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [
+          {
+            "detail": "[%{\"kind\" => \"unknown_tax_label\", \"printed_label\" => \"Total\"}]",
+            "flag": "tax_component_issue"
+          }
+        ],
+        "status": "flagged"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Karnataka",
+          "state_code": "29"
+        },
+        "document_status": "active",
+        "document_type": "debit_note",
+        "invoice_date": "15-Feb-26",
+        "invoice_number": "NU-DN-S",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Service Sales - 998719 @ 18% Output IGST",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "998719",
+            "igst_amount": 180.0,
+            "igst_rate": 18.0,
+            "item_name": "Service Sales - 998719 @ 18%",
+            "line_amount_tax_inclusion": "inclusive",
+            "printed_line_amount": 1.0e3,
+            "printed_line_total": 1180.0,
+            "printed_tax_components": [
+              {
+                "printed_amount": 180.0,
+                "printed_label": "Output IGST",
+                "printed_rate": 18.0
+              }
+            ],
+            "printed_taxable_value": null,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 1180.0,
+        "printed_igst": 180.0,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [
+          {
+            "printed_amount": 180.0,
+            "printed_label": "Output IGST"
+          }
+        ],
+        "printed_total_tax": null,
+        "printed_total_taxable": 1.0e3,
+        "recipient_registration": "unregistered",
+        "reverse_charge": null,
+        "ship_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Karnataka",
+          "state_code": "29"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "taxable"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": true,
+        "export": false,
+        "extracted_type": "debit_note",
+        "reverse_charge": false
+      },
+      "page": 5,
+      "source_attribution": {
+        "candidate_pages": [
+          5
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        5
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Karnataka",
+          "state_code": "29"
+        },
+        "document_status": "active",
+        "document_type": "debit_note",
+        "invoice_date": "15-Feb-26",
+        "invoice_number": "NU-DN-B",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Service Sales - 998719 @ 18% Output IGST",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "998719",
+            "igst_amount": 180.0,
+            "igst_rate": 18.0,
+            "item_name": "Service Sales - 998719 @ 18%",
+            "line_amount_tax_inclusion": "inclusive",
+            "printed_line_amount": 1.0e3,
+            "printed_line_total": 1180.0,
+            "printed_tax_components": [
+              {
+                "printed_amount": 180.0,
+                "printed_label": "Output IGST",
+                "printed_rate": 18.0
+              }
+            ],
+            "printed_taxable_value": null,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 1180.0,
+        "printed_igst": 180.0,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [
+          {
+            "printed_amount": 180.0,
+            "printed_label": "Output IGST"
+          }
+        ],
+        "printed_total_tax": null,
+        "printed_total_taxable": null,
+        "recipient_registration": "unregistered",
+        "reverse_charge": null,
+        "ship_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Karnataka",
+          "state_code": "29"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "taxable"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": true,
+        "export": false,
+        "extracted_type": "debit_note",
+        "reverse_charge": false
+      },
+      "page": 6,
+      "source_attribution": {
+        "candidate_pages": [
+          6
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        6
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    }
+  ],
+  "unaccounted_pages": []
+}

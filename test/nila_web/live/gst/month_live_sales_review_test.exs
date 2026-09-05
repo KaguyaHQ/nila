@@ -8,6 +8,63 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
 
   @period "2025-10"
 
+  test "an unregistered note's original sale can be reviewed without entering internal codes",
+       context do
+    alias Nila.Gst.Sales.{Gstr1, Months, Resolutions}
+    {:ok, month} = Months.get_by_period(context.org.id, context.client.id, @period)
+
+    note =
+      hd(month.invoices)
+      |> Map.put("document_type", "credit_note")
+      |> Map.put("document", %{"credit_note" => true})
+      |> Map.put("recipient_registration", "unregistered")
+      |> Map.put("buyer_gstin", nil)
+      |> Map.put("place_of_supply", "29")
+      |> Map.put("original_sale_category", nil)
+
+    {:ok, month} =
+      Months.upsert(%{
+        org_id: context.org.id,
+        client_id: context.client.id,
+        period: @period,
+        invoices: [note],
+        issues: Gstr1.validation_issues([note]),
+        derived_gstr1:
+          Gstr1.derive([note], Gstr1.production_header(context.client.gstin, @period))
+      })
+
+    [source] = Resolutions.workings(month).active_invoices
+
+    {:ok, view, _html} =
+      live(
+        context.conn,
+        "/gst/#{context.client.id}/#{@period}/review/sales?item=#{source["id"]}&scope=needs_you"
+      )
+
+    view
+    |> element("button[phx-value-field='original_sale_category']", "Correct")
+    |> render_click()
+
+    assert has_element?(
+             view,
+             "#gstr1-correction-form select option[value='b2cs']",
+             "B2C Other / Small"
+           )
+
+    assert has_element?(view, "#gstr1-correction-form select option[value='b2cl']", "B2C Large")
+
+    view
+    |> form("#gstr1-correction-form", %{
+      "correction" => %{"field" => "original_sale_category", "value" => "b2cl"}
+    })
+    |> render_submit()
+
+    result = Resolutions.workings(month)
+    assert hd(result.invoices)["original_sale_category"] == "b2cl"
+    assert length(result.derived["cdnur"]) == 1
+    refute Enum.any?(result.issues, &(&1["code"] == "missing_original_sale_category"))
+  end
+
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
 

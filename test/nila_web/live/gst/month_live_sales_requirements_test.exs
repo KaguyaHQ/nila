@@ -355,10 +355,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     assert has_element?(view, "#month-door-sign-r1")
   end
 
-  # Taxable B2C invoices are supported, but notes to unregistered recipients
-  # belong in CDNUR. Until that table exists they must block rather than leak into
-  # registered CDNR or be confirmed away.
-  test "an unregistered note blocks the month and names the way out", %{
+  test "an interstate unregistered note requires its original sale category", %{
     conn: conn,
     org: org,
     client: client
@@ -373,8 +370,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
         if invoice["invoice_number"] == "21/2025-26" do
           invoice
           |> Map.put("buyer_gstin", nil)
+          |> Map.update("bill_to", %{}, &Map.put(&1 || %{}, "gstin", nil))
           |> Map.put("recipient_registration", "unregistered")
-          |> Map.put("place_of_supply", "33")
+          |> Map.put("place_of_supply", "29")
           |> Map.put("document_type", "credit_note")
           |> Map.put("document", %{
             "credit_note" => true,
@@ -399,14 +397,13 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
 
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
-    assert has_element?(view, "#gstr1-checks-before-filing", "no cdnur table")
-    assert has_element?(view, "#gstr1-blocked-next-move", "manually on the portal")
-    assert has_element?(view, "#gstr1-blocked-next-move", "Breeze Tech")
+    assert Enum.any?(
+             Gstr1.blocking_issues(invoices),
+             &(&1["code"] == "missing_original_sale_category")
+           )
 
-    # No amount of confirming clears it, and approval stays out of reach.
-    confirm_all_open_issues(view)
+    assert has_element?(view, "#gstr1-checks-before-filing", "21/2025-26")
 
-    assert has_element?(view, "#gstr1-blocked-next-move")
     refute has_element?(view, "#month-door-sign-r1")
   end
 

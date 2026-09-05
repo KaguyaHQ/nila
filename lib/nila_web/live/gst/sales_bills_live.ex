@@ -246,14 +246,15 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp invoice_total_rows(invoice) do
     checks = Gstr1.invoice_checks(invoice)
     totals = totals(invoice)
+    printed_totals = Nila.Gst.Sales.Values.printed(invoice)
 
     for {label, field, code, calculated} <- [
-          {"Taxable", "printed_total_taxable", "printed_taxable_mismatch", totals.taxable},
-          {"GST", "printed_total_tax", "printed_tax_mismatch", totals.tax},
-          {"Grand total", "printed_grand_total", "grand_total_mismatch", invoice_total(invoice)}
+          {"Taxable", :taxable, "printed_taxable_mismatch", totals.taxable},
+          {"GST", :tax, "printed_tax_mismatch", totals.tax},
+          {"Grand total", :total, "grand_total_mismatch", invoice_total(invoice)}
         ] do
       check = Enum.find(checks, &(&1["code"] == code))
-      printed = Money.rupee_number(invoice[field])
+      printed = printed_totals[field]
       mismatch? = check != nil && check["passed"] == false
 
       %{

@@ -41,7 +41,11 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       |> assign(
         :hsn,
         Gstr1.hsn_summary(
-          Enum.reject(assigns.invoices, &(Gstr1.filing_table(&1) in ~w(b2cs b2cl)))
+          Enum.filter(
+            assigns.invoices,
+            &(Gstr1.recipient_registration(&1) == "registered" and
+                not is_nil(Gstr1.filing_table(&1)))
+          )
         )
       )
       |> assign(:buyers, buyers_by_inum(assigns.invoices))
@@ -144,6 +148,8 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       |> assign(:b2cl, assigns.derived["b2cl"] || [])
       |> assign(:b2cs, assigns.derived["b2cs"] || [])
       |> assign(:cdnr, assigns.derived["cdnr"] || [])
+      |> assign(:cdnur, assigns.derived["cdnur"] || [])
+      |> assign(:nil_supplies, get_in(assigns.derived, ["nil", "inv"]) || [])
       |> assign(:rates, Gstr1.rate_summary(assigns.derived))
       |> assign(:names, names_by_gstin(assigns.invoices))
       |> assign(:buyers, buyers_by_inum(assigns.invoices))
@@ -154,7 +160,10 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       assigns
       |> assign(:party_rows, party_rows(assigns))
       |> assign(:b2cl_rows, b2cl_rows(assigns.b2cl))
-      |> assign(:note_rows, note_rows(assigns.cdnr))
+      |> assign(
+        :note_rows,
+        note_rows(assigns.cdnr ++ [%{"ctin" => "Unregistered", "nt" => assigns.cdnur}])
+      )
       |> assign(:rate_rows, rate_rows(assigns))
 
     ~H"""
@@ -185,8 +194,8 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       <%!-- One line, once, rather than a qualifier repeated on nine column
             headers: everything below is the figure that reaches the portal. --%>
       <p id="gstr1-workings-basis" class="text-ink-subtle text-ui">
-        Every figure below is what this return files — taxable value aggregated per rate bucket,
-        with the tax recomputed on that total rather than summed from the extracted lines.
+        These schedules show what this return files. Taxable supplies are
+        aggregated by rate; nil-rated, exempt and non-GST supplies are shown separately.
       </p>
 
       <div
@@ -325,7 +334,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           summary_class="py-4 text-base-content w-full"
         >
           <:summary>
-            <.fold_summary title="Registered notes working" tabular>
+            <.fold_summary title="Credit and debit notes working" tabular>
               <:detail>{note_working_summary(@note_rows)}</:detail>
               <:status>
                 <.badge variant="neutral">Inspect</.badge>
@@ -345,7 +354,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               </:col>
               <:col :let={row} label="Type">{row.type}</:col>
               <:col :let={row} label="Date">{row.date}</:col>
-              <:col :let={row} label="Recipient GSTIN">
+              <:col :let={row} label="Recipient">
                 <span class="text-ink-subtle font-mono whitespace-nowrap">{row.gstin}</span>
               </:col>
               <:col :let={row} label="Taxable effect" align="right">
@@ -354,6 +363,31 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               <:col :let={row} label="Output-tax effect" align="right">
                 {Helpers.amount(row.tax)}
               </:col>
+            </.data_table>
+          </div>
+        </.fold>
+
+        <.fold
+          :if={@nil_supplies != []}
+          id="gstr1-workings-nil"
+          open={MapSet.member?(@open_folds, "gstr1-workings-nil")}
+          class="px-4 sm:px-6"
+          summary_class="py-4 text-base-content w-full"
+        >
+          <:summary>
+            <.fold_summary title="Nil-rated, exempt and non-GST supplies">
+              <:detail>Table 8</:detail>
+              <:status>
+                <.badge variant="neutral">Inspect</.badge>
+              </:status>
+            </.fold_summary>
+          </:summary>
+          <div class="pb-4">
+            <.data_table id="gstr1-workings-nil-rows" rows={@nil_supplies} mode="scan">
+              <:col :let={row} label="Supply" row_header>{nil_supply_label(row["sply_ty"])}</:col>
+              <:col :let={row} label="Nil-rated" align="right">{Helpers.amount(row["nil_amt"])}</:col>
+              <:col :let={row} label="Exempt" align="right">{Helpers.amount(row["expt_amt"])}</:col>
+              <:col :let={row} label="Non-GST" align="right">{Helpers.amount(row["ngsup_amt"])}</:col>
             </.data_table>
           </div>
         </.fold>
@@ -833,6 +867,12 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       }
     end
   end
+
+  defp nil_supply_label("INTRAB2B"), do: "Within state · Registered"
+  defp nil_supply_label("INTRAB2C"), do: "Within state · Unregistered"
+  defp nil_supply_label("INTRB2B"), do: "Interstate · Registered"
+  defp nil_supply_label("INTRB2C"), do: "Interstate · Unregistered"
+  defp nil_supply_label(value), do: value
 
   defp rate_rows(assigns) do
     Enum.flat_map(assigns.rates, fn bucket ->

@@ -428,7 +428,12 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         |> Map.put("document_type", "credit_note")
 
       assert Gstr1.filing_table(note) == nil
-      assert Enum.any?(Gstr1.blocking_issues([note]), &(&1["code"] == "cdnur_unsupported"))
+
+      assert Enum.any?(
+               Gstr1.blocking_issues([note]),
+               &(&1["code"] == "missing_original_sale_category")
+             )
+
       assert Gstr1.derive([note], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "072026"})["cdnr"] == []
     end
   end

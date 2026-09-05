@@ -1,0 +1,1097 @@
+{
+  "pages": [
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": "33AEWPH4158J1Z3",
+          "name": "Table8 Registered Tamil Nadu",
+          "state_code": "33"
+        },
+        "document_status": "active",
+        "document_type": "invoice",
+        "invoice_date": "15-Mar-26",
+        "invoice_number": "NT-001",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Nil Rated Sales - HSN 1006",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "1006",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Nil Rated Sales - HSN 1006",
+            "line_amount_tax_inclusion": "exclusive",
+            "printed_line_amount": 1.1e3,
+            "printed_line_total": null,
+            "printed_tax_components": [],
+            "printed_taxable_value": 1.1e3,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 1.1e3,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [],
+        "printed_total_tax": null,
+        "printed_total_taxable": 1.1e3,
+        "recipient_registration": "registered",
+        "reverse_charge": false,
+        "ship_to": {
+          "address": null,
+          "gstin": "33AEWPH4158J1Z3",
+          "name": "Table8 Registered Tamil Nadu",
+          "state_code": "33"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "nil_rated"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "invoice",
+        "reverse_charge": false
+      },
+      "page": 1,
+      "source_attribution": {
+        "candidate_pages": [
+          1
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        1
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": "37AAVCS8021P1ZE",
+          "name": "Siemens Healthcare Pvt Ltd - AP",
+          "state_code": "37"
+        },
+        "document_status": "active",
+        "document_type": "invoice",
+        "invoice_date": "15-Mar-26",
+        "invoice_number": "NT-002",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Nil Rated Sales - HSN 1006",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "1006",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Nil Rated Sales - HSN 1006",
+            "line_amount_tax_inclusion": "exclusive",
+            "printed_line_amount": 1.2e3,
+            "printed_line_total": null,
+            "printed_tax_components": [],
+            "printed_taxable_value": 1.2e3,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 1.2e3,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [],
+        "printed_total_tax": null,
+        "printed_total_taxable": 1.2e3,
+        "recipient_registration": "registered",
+        "reverse_charge": null,
+        "ship_to": {
+          "address": null,
+          "gstin": "37AAVCS8021P1ZE",
+          "name": "Siemens Healthcare Pvt Ltd - AP",
+          "state_code": "37"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "nil_rated"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "invoice",
+        "reverse_charge": false
+      },
+      "page": 2,
+      "source_attribution": {
+        "candidate_pages": [
+          2
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        2
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Tamil Nadu",
+          "state_code": "33"
+        },
+        "document_status": "active",
+        "document_type": "invoice",
+        "invoice_date": "15-Mar-26",
+        "invoice_number": "NT-003",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Nil Rated Sales - HSN 1006",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "1006",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Nil Rated Sales - HSN 1006",
+            "line_amount_tax_inclusion": "exclusive",
+            "printed_line_amount": 1.3e3,
+            "printed_line_total": null,
+            "printed_tax_components": [],
+            "printed_taxable_value": 1.3e3,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 1.3e3,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [],
+        "printed_total_tax": null,
+        "printed_total_taxable": 1.3e3,
+        "recipient_registration": "unregistered",
+        "reverse_charge": null,
+        "ship_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Tamil Nadu",
+          "state_code": "33"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "nil_rated"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "invoice",
+        "reverse_charge": false
+      },
+      "page": 3,
+      "source_attribution": {
+        "candidate_pages": [
+          3
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        3
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Andhra Pradesh",
+          "state_code": "37"
+        },
+        "document_status": "active",
+        "document_type": "invoice",
+        "invoice_date": "15-Mar-26",
+        "invoice_number": "NT-004",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Nil Rated Sales - HSN 1006",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "1006",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Nil Rated Sales - HSN 1006",
+            "line_amount_tax_inclusion": "exclusive",
+            "printed_line_amount": 1.4e3,
+            "printed_line_total": null,
+            "printed_tax_components": [],
+            "printed_taxable_value": 1.4e3,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 1.4e3,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": 1.4e3,
+        "printed_tax_totals": [],
+        "printed_total_tax": null,
+        "printed_total_taxable": 1.4e3,
+        "recipient_registration": "unregistered",
+        "reverse_charge": false,
+        "ship_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Andhra Pradesh",
+          "state_code": "37"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "nil_rated"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "invoice",
+        "reverse_charge": false
+      },
+      "page": 4,
+      "source_attribution": {
+        "candidate_pages": [
+          4
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        4
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": "33AEWPH4158J1Z3",
+          "name": "Table8 Registered Tamil Nadu",
+          "state_code": "33"
+        },
+        "document_status": "active",
+        "document_type": "invoice",
+        "invoice_date": "15-Mar-26",
+        "invoice_number": "NT-005",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Exempt Education - SAC 9992",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "9992",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Exempt Education - SAC 9992",
+            "line_amount_tax_inclusion": "unknown",
+            "printed_line_amount": 2.1e3,
+            "printed_line_total": null,
+            "printed_tax_components": [],
+            "printed_taxable_value": 2.1e3,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 2.1e3,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [],
+        "printed_total_tax": null,
+        "printed_total_taxable": 2.1e3,
+        "recipient_registration": "registered",
+        "reverse_charge": false,
+        "ship_to": {
+          "address": null,
+          "gstin": "33AEWPH4158J1Z3",
+          "name": "Table8 Registered Tamil Nadu",
+          "state_code": "33"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "exempt"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "invoice",
+        "reverse_charge": false
+      },
+      "page": 5,
+      "source_attribution": {
+        "candidate_pages": [
+          5
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        5
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": "37AAVCS8021P1ZE",
+          "name": "Siemens Healthcare Pvt Ltd - AP",
+          "state_code": "37"
+        },
+        "document_status": "active",
+        "document_type": "invoice",
+        "invoice_date": "15-Mar-26",
+        "invoice_number": "NT-006",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Exempt Education - SAC 9992",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "9992",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Exempt Education - SAC 9992",
+            "line_amount_tax_inclusion": "inclusive",
+            "printed_line_amount": 2.2e3,
+            "printed_line_total": null,
+            "printed_tax_components": [],
+            "printed_taxable_value": 2.2e3,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 2.2e3,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [],
+        "printed_total_tax": null,
+        "printed_total_taxable": 2.2e3,
+        "recipient_registration": "registered",
+        "reverse_charge": null,
+        "ship_to": {
+          "address": null,
+          "gstin": "37AAVCS8021P1ZE",
+          "name": "Siemens Healthcare Pvt Ltd - AP",
+          "state_code": "37"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "exempt"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "invoice",
+        "reverse_charge": false
+      },
+      "page": 6,
+      "source_attribution": {
+        "candidate_pages": [
+          6
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        6
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Tamil Nadu",
+          "state_code": "33"
+        },
+        "document_status": "active",
+        "document_type": "invoice",
+        "invoice_date": "15-Mar-26",
+        "invoice_number": "NT-007",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Exempt Education - SAC 9992",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "9992",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Exempt Education - SAC 9992",
+            "line_amount_tax_inclusion": "unknown",
+            "printed_line_amount": 2.3e3,
+            "printed_line_total": null,
+            "printed_tax_components": [],
+            "printed_taxable_value": 2.3e3,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 2.3e3,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [],
+        "printed_total_tax": null,
+        "printed_total_taxable": 2.3e3,
+        "recipient_registration": "unregistered",
+        "reverse_charge": false,
+        "ship_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Tamil Nadu",
+          "state_code": "33"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "exempt"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "invoice",
+        "reverse_charge": false
+      },
+      "page": 7,
+      "source_attribution": {
+        "candidate_pages": [
+          7
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        7
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Andhra Pradesh",
+          "state_code": "37"
+        },
+        "document_status": "active",
+        "document_type": "invoice",
+        "invoice_date": "15-Mar-26",
+        "invoice_number": "NT-008",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Exempt Education - SAC 9992",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "9992",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Exempt Education - SAC 9992",
+            "line_amount_tax_inclusion": "unknown",
+            "printed_line_amount": 2.4e3,
+            "printed_line_total": null,
+            "printed_tax_components": [],
+            "printed_taxable_value": 2.4e3,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 2.4e3,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [],
+        "printed_total_tax": null,
+        "printed_total_taxable": 2.4e3,
+        "recipient_registration": "unregistered",
+        "reverse_charge": false,
+        "ship_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Andhra Pradesh",
+          "state_code": "37"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "exempt"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "invoice",
+        "reverse_charge": false
+      },
+      "page": 8,
+      "source_attribution": {
+        "candidate_pages": [
+          8
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        8
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": "33AEWPH4158J1Z3",
+          "name": "Table8 Registered Tamil Nadu",
+          "state_code": "33"
+        },
+        "document_status": "active",
+        "document_type": "invoice",
+        "invoice_date": "15-Mar-26",
+        "invoice_number": "NT-009",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Non-GST Sales - HSN 2710",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "2710",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Non-GST Sales - HSN 2710",
+            "line_amount_tax_inclusion": "unknown",
+            "printed_line_amount": 3.1e3,
+            "printed_line_total": null,
+            "printed_tax_components": [],
+            "printed_taxable_value": null,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 3.1e3,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [],
+        "printed_total_tax": null,
+        "printed_total_taxable": null,
+        "recipient_registration": "registered",
+        "reverse_charge": null,
+        "ship_to": {
+          "address": null,
+          "gstin": "33AEWPH4158J1Z3",
+          "name": "Table8 Registered Tamil Nadu",
+          "state_code": "33"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "non_gst"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "invoice",
+        "reverse_charge": false
+      },
+      "page": 9,
+      "source_attribution": {
+        "candidate_pages": [
+          9
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        9
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": "37AAVCS8021P1ZE",
+          "name": "Siemens Healthcare Pvt Ltd - AP",
+          "state_code": "37"
+        },
+        "document_status": "active",
+        "document_type": "invoice",
+        "invoice_date": "15-Mar-26",
+        "invoice_number": "NT-010",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Non-GST Sales - HSN 2710",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "2710",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Non-GST Sales - HSN 2710",
+            "line_amount_tax_inclusion": "unknown",
+            "printed_line_amount": 3.2e3,
+            "printed_line_total": null,
+            "printed_tax_components": [],
+            "printed_taxable_value": 3.2e3,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 3.2e3,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [],
+        "printed_total_tax": null,
+        "printed_total_taxable": 3.2e3,
+        "recipient_registration": "registered",
+        "reverse_charge": null,
+        "ship_to": {
+          "address": null,
+          "gstin": "37AAVCS8021P1ZE",
+          "name": "Siemens Healthcare Pvt Ltd - AP",
+          "state_code": "37"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "non_gst"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "invoice",
+        "reverse_charge": false
+      },
+      "page": 10,
+      "source_attribution": {
+        "candidate_pages": [
+          10
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        10
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Tamil Nadu",
+          "state_code": "33"
+        },
+        "document_status": "active",
+        "document_type": "invoice",
+        "invoice_date": "15-Mar-26",
+        "invoice_number": "NT-011",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Non-GST Sales - HSN 2710",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "2710",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Non-GST Sales - HSN 2710",
+            "line_amount_tax_inclusion": "unknown",
+            "printed_line_amount": 3.3e3,
+            "printed_line_total": null,
+            "printed_tax_components": [],
+            "printed_taxable_value": null,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 3.3e3,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [],
+        "printed_total_tax": null,
+        "printed_total_taxable": null,
+        "recipient_registration": "unregistered",
+        "reverse_charge": false,
+        "ship_to": {
+          "address": null,
+          "gstin": null,
+          "name": "Unregistered Consumer - Tamil Nadu",
+          "state_code": "33"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "non_gst"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "invoice",
+        "reverse_charge": false
+      },
+      "page": 11,
+      "source_attribution": {
+        "candidate_pages": [
+          11
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        11
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    },
+    {
+      "confidence": {
+        "source_attribution": 1.0,
+        "verification": "unverifiable"
+      },
+      "data": {
+        "bill_to": {
+          "address": "Andhra Pradesh, Code : 37",
+          "gstin": null,
+          "name": "Unregistered Consumer - Andhra Pradesh",
+          "state_code": "37"
+        },
+        "document_status": "active",
+        "document_type": "invoice",
+        "invoice_date": "15-Mar-26",
+        "invoice_number": "NT-012",
+        "line_items": [
+          {
+            "cgst_amount": null,
+            "cgst_rate": null,
+            "description": "Non-GST Sales - HSN 2710",
+            "discount_amount": null,
+            "discount_rate": null,
+            "hsn_sac": "2710",
+            "igst_amount": null,
+            "igst_rate": null,
+            "item_name": "Non-GST Sales - HSN 2710",
+            "line_amount_tax_inclusion": "inclusive",
+            "printed_line_amount": 3.4e3,
+            "printed_line_total": null,
+            "printed_tax_components": [],
+            "printed_taxable_value": 3.4e3,
+            "printed_unit_price": null,
+            "quantity": null,
+            "sgst_amount": null,
+            "sgst_rate": null,
+            "uom": null
+          }
+        ],
+        "original_sale_category": null,
+        "printed_additional_charges": null,
+        "printed_cgst": null,
+        "printed_discount_amount": null,
+        "printed_grand_total": 3.4e3,
+        "printed_igst": null,
+        "printed_rounding_adjustment": null,
+        "printed_sgst": null,
+        "printed_subtotal_before_discount": null,
+        "printed_tax_totals": [],
+        "printed_total_tax": null,
+        "printed_total_taxable": 3.4e3,
+        "recipient_registration": "unregistered",
+        "reverse_charge": null,
+        "ship_to": {
+          "address": "Andhra Pradesh, Code : 37",
+          "gstin": null,
+          "name": "Unregistered Consumer - Andhra Pradesh",
+          "state_code": "37"
+        },
+        "supplier": {
+          "address": "37/15-A, Mullai Street, Kumaran Nagar Ext-II, Padi, Chennai.",
+          "gstin": "33BPBPK1081A1ZO",
+          "name": "CALTECH REFRIGERATION",
+          "state_code": "33"
+        },
+        "supply_type": "non_gst"
+      },
+      "document": {
+        "credit_note": false,
+        "debit_note": false,
+        "export": false,
+        "extracted_type": "invoice",
+        "reverse_charge": false
+      },
+      "page": 12,
+      "source_attribution": {
+        "candidate_pages": [
+          12
+        ],
+        "source": "segment",
+        "status": "verified"
+      },
+      "source_pages": [
+        12
+      ],
+      "verification": {
+        "failed_checks": [],
+        "flags": [],
+        "status": "unverifiable"
+      }
+    }
+  ],
+  "unaccounted_pages": []
+}

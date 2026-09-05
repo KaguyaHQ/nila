@@ -103,7 +103,7 @@ defmodule Nila.Gst.Filing.Gstr3b do
   floats) — sums every rate bucket into head-wise paise.
   """
   def liability_from_gstr1(derived) do
-    buckets = derived |> Gstr1.signed_details() |> Enum.map(& &1.detail)
+    buckets = derived |> Map.delete("nil") |> Gstr1.signed_details() |> Enum.map(& &1.detail)
 
     Enum.reduce(buckets, Map.put(@zero, "txval", 0), fn det, acc ->
       acc
@@ -132,7 +132,19 @@ defmodule Nila.Gst.Filing.Gstr3b do
         }
       end
 
-    (b2cs ++ b2cl)
+    cdnur =
+      for note <- derived["cdnur"] || [], note["typ"] == "B2CL" do
+        sign = if note["ntty"] == "C", do: -1, else: 1
+        details = Enum.map(note["itms"] || [], &(&1["itm_det"] || %{}))
+
+        %{
+          "pos" => note["pos"],
+          "txval" => sign * Enum.sum(Enum.map(details, &(&1["txval"] || 0))),
+          "igst" => sign * Enum.sum(Enum.map(details, &(&1["iamt"] || 0)))
+        }
+      end
+
+    (b2cs ++ b2cl ++ cdnur)
     |> Enum.group_by(& &1["pos"])
     |> Enum.map(fn {pos, rows} ->
       %{

@@ -11,6 +11,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   alias NilaWeb.Components.Gst.Month.Workings
   alias NilaWeb.Components.Gst.Month.Workpaper
 
+  defp value_label(derived) do
+    if get_in(derived || %{}, ["nil", "inv"]) in [nil, []], do: "taxable", else: "supply value"
+  end
+
   attr :sales_month, :any, default: nil
   attr :client, :map, required: true
   attr :period, :string, required: true
@@ -127,7 +131,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               </span>
               <span aria-hidden="true"> · </span>
               <span id="gstr1-draft-taxable">
-                {Helpers.rupees(@account.draft.totals.taxable)} taxable
+                {Helpers.rupees(@account.draft.totals.taxable)} {value_label(@derived)}
               </span>
             </p>
           </div>
@@ -229,7 +233,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           id="gstr1-blocked-next-move"
           class="nila-gstr1-blocked-next-move rounded-box text-base-content text-body border px-4 py-3"
         >
-          Nila files taxable B2B and B2C invoices plus registered credit and debit notes, but another document type in this month is unsupported. File {period_label(
+          This month contains a filing treatment Nila does not support yet. File {period_label(
             @period
           )} for {@client.name} manually on the portal and tell us which table you needed.
         </p>
@@ -396,7 +400,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                 <:detail>
                   {length(@active_invoices)} documents · {Helpers.rupees(
                     @account.draft.totals.taxable
-                  )} taxable · {Helpers.rupees(@account.draft.totals.tax)} tax
+                  )} {value_label(@derived)} · {Helpers.rupees(@account.draft.totals.tax)} tax
                   <span :if={@required_issues != []}> · blockers disclosed above</span>
                 </:detail>
                 <:status>
@@ -417,7 +421,9 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                   <span class="text-base-content font-medium">{row.label}</span>
                 </:col>
                 <:col :let={row} label="Invoices / notes" align="right">{row.documents}</:col>
-                <:col :let={row} label="Taxable" align="right">{Helpers.rupees(row.taxable)}</:col>
+                <:col :let={row} label={String.capitalize(value_label(@derived))} align="right">
+                  {Helpers.rupees(row.taxable)}
+                </:col>
                 <:col :let={row} label="IGST" align="right">{Helpers.rupees(row.igst)}</:col>
                 <:col :let={row} label="CGST" align="right">{Helpers.rupees(row.cgst)}</:col>
                 <:col :let={row} label="SGST" align="right">{Helpers.rupees(row.sgst)}</:col>
@@ -826,7 +832,9 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp treatment_effect(nil), do: nil
 
   defp treatment_effect(treatment) do
-    "Current draft: #{String.upcase(treatment["table"] || "return")} · #{Helpers.rupees(treatment["taxable_amount"])} taxable · #{Helpers.rupees(treatment["tax_amount"])} tax"
+    label = if treatment["table"] == "nil", do: "supply value", else: "taxable"
+
+    "Current draft: #{String.upcase(treatment["table"] || "return")} · #{Helpers.rupees(treatment["taxable_amount"])} #{label} · #{Helpers.rupees(treatment["tax_amount"])} tax"
   end
 
   defp assured_source_ids(review, invoices, decisions) do
@@ -960,6 +968,18 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         "9B registered credit and debit notes",
         count_documents(derived, "cdnr", "nt"),
         section_totals(derived, "cdnr")
+      ),
+      filing_summary_row(
+        "cdnur",
+        "9B unregistered credit and debit notes",
+        length(derived["cdnur"] || []),
+        section_totals(derived, "cdnur")
+      ),
+      filing_summary_row(
+        "nil",
+        "8 nil-rated, exempt and non-GST supplies",
+        Enum.count(invoices, &(Gstr1.filing_table(&1) == "nil")),
+        section_totals(derived, "nil")
       )
     ]
     |> Enum.reject(&(&1.documents == 0))
@@ -967,8 +987,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
   defp section_totals(derived, section) do
     isolated =
-      Enum.reduce(~w(b2b b2cs b2cl cdnr), derived, fn key, acc ->
-        if key == section, do: acc, else: Map.put(acc, key, [])
+      Enum.reduce(~w(b2b b2cs b2cl cdnr cdnur nil), derived, fn key, acc ->
+        if key == section, do: acc, else: Map.delete(acc, key)
       end)
 
     Values.filed_totals(isolated)

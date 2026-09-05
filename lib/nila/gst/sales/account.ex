@@ -210,12 +210,13 @@ defmodule Nila.Gst.Sales.Account do
     invoice_level =
       Enum.reduce(derived["b2b"] || [], 0, &(length(&1["inv"] || []) + &2)) +
         Enum.reduce(derived["b2cl"] || [], 0, &(length(&1["inv"] || []) + &2)) +
-        Enum.reduce(derived["cdnr"] || [], 0, &(length(&1["nt"] || []) + &2))
+        Enum.reduce(derived["cdnr"] || [], 0, &(length(&1["nt"] || []) + &2)) +
+        length(derived["cdnur"] || [])
 
     b2cs =
       Enum.count(
         active_invoices,
-        &(Gstr1.filing_table(&1) == "b2cs" and Gstr1.taxable_values_complete?(&1))
+        &(Gstr1.filing_table(&1) in ["b2cs", "nil"] and Gstr1.taxable_values_complete?(&1))
       )
 
     invoice_level + b2cs

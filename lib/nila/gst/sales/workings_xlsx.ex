@@ -690,7 +690,24 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
         return_row("CDNR", party["ctin"], note, item["itm_det"] || %{}, effect)
       end
 
-    b2b ++ b2cl ++ b2cs ++ cdnr
+    cdnur =
+      for note <- List.wrap(derived["cdnur"]), item <- List.wrap(note["itms"]) do
+        effect = if note["ntty"] == "C", do: -1, else: 1
+        return_row("CDNUR", note["pos"], note, item["itm_det"] || %{}, effect)
+      end
+
+    nil_supplies =
+      for row <- get_in(derived, ["nil", "inv"]) || [],
+          {field, label} <- [
+            {"nil_amt", "Nil-rated"},
+            {"expt_amt", "Exempt"},
+            {"ngsup_amt", "Non-GST"}
+          ],
+          number(row[field]) != 0 do
+        return_row("Table 8 - " <> label, row["sply_ty"], %{}, %{"txval" => row[field], "rt" => 0})
+      end
+
+    b2b ++ b2cl ++ b2cs ++ cdnr ++ cdnur ++ nil_supplies
   end
 
   defp return_row(section, recipient, document, detail, effect \\ 1) do

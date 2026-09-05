@@ -177,8 +177,8 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
     [
       {"printed_taxable_mismatch", invoice.printed_taxable_paise, totals.taxable_paise,
        ["printed_total_taxable", "line_items"]},
-      {"printed_tax_mismatch", invoice.printed_tax_paise, totals.tax_paise,
-       ["printed_total_tax", "line_items"]},
+      {"printed_tax_mismatch", printed_tax_paise(invoice), totals.tax_paise,
+       ["printed_total_tax", "printed_tax_totals", "line_items"]},
       {"grand_total_mismatch", invoice.printed_total_paise,
        add_paise(totals.taxable_paise, totals.tax_paise), ["printed_grand_total", "line_items"]}
     ]
@@ -247,10 +247,20 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
 
     explained =
       printed_delta(invoice.printed_taxable_paise, totals.taxable_paise) +
-        printed_delta(invoice.printed_tax_paise, totals.tax_paise)
+        printed_delta(printed_tax_paise(invoice), totals.tax_paise)
 
     grand_delta = Money.paise(ops["printed"]) - Money.paise(ops["derived"])
     abs(grand_delta - explained) <= 2 * @money_tolerance_paise
+  end
+
+  defp printed_tax_paise(invoice) do
+    invoice
+    |> InvoiceFacts.to_sales_map()
+    |> Nila.Gst.Extraction.TaxComponents.printed_tax_total()
+    |> case do
+      nil -> nil
+      amount -> Money.paise(amount)
+    end
   end
 
   defp printed_delta(nil, _derived_paise), do: 0

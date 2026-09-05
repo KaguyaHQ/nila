@@ -29,7 +29,7 @@ defmodule Nila.Gst.Sales.OutputCapabilitiesTest do
     assert tally_codes == shared_codes
   end
 
-  test "GSTR-1 retains its destination-specific CDnur boundary" do
+  test "GSTR-1 requires the original interstate sale category independently of Tally" do
     note =
       Gstr1.normalize_invoice(%{
         "document" => %{"credit_note" => true},
@@ -37,12 +37,14 @@ defmodule Nila.Gst.Sales.OutputCapabilitiesTest do
           "document_type" => "credit_note",
           "invoice_number" => "CN-1",
           "recipient_registration" => "unregistered",
+          "seller_gstin" => "33BPBPK1081A1ZO",
+          "place_of_supply" => "29",
           "line_items" => []
         }
       })
 
     assert OutputCapabilities.common(note) == []
-    assert codes(Gstr1Readiness.capability_issues([note])) == ["cdnur_unsupported"]
+    assert codes(Gstr1Readiness.capability_issues([note])) == ["missing_original_sale_category"]
     assert TallyReadiness.issues([note]) == []
   end
 

@@ -3,6 +3,32 @@ defmodule Nila.Gst.Sales.InvoiceValidationTest do
 
   alias Nila.Gst.Sales.{Gstr1, InvoiceValidation}
 
+  test "retained printed IGST drives both comparison values and mismatch checks" do
+    for {printed, passed?} <- [{18, true}, {20, false}] do
+      invoice =
+        invoice(%{
+          "printed_tax_totals" => [%{"printed_label" => "IGST", "printed_amount" => printed}]
+        })
+
+      assert Nila.Gst.Sales.Values.printed(invoice).tax == printed
+
+      check =
+        Enum.find(InvoiceValidation.checks(invoice), &(&1["code"] == "printed_tax_mismatch"))
+
+      assert check["passed"] == passed?
+      assert check["operands"]["printed"] == printed
+
+      assert Enum.any?(
+               InvoiceValidation.issues([invoice]),
+               &(&1["code"] == "printed_tax_mismatch")
+             ) == not passed?
+
+      assert Nila.Gst.InvoiceFacts.to_sales_map(Nila.Gst.InvoiceFacts.sales!(invoice))[
+               "printed_total_tax"
+             ] == nil
+    end
+  end
+
   test "money tolerance is decided in exact paise" do
     invoice = invoice(%{}, %{"igst_amount" => 18.50})
 

@@ -344,19 +344,20 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
     assert Enum.any?(issues, &(&1["code"] == "rate_history_conflict"))
   end
 
-  test "does not block a Tally credit note merely because GSTR-1 lacks CDNUR", ctx do
+  test "Tally note readiness does not inherit the GSTR-1 original-sale question", ctx do
     note =
       ctx.invoice
       |> Map.put("document_type", "credit_note")
       |> Map.put("recipient_registration", "unregistered")
       |> Map.put("buyer_gstin", nil)
+      |> Map.put("place_of_supply", "29")
 
     ctx.dump
     |> Ecto.Changeset.change(invoices: [note])
     |> Repo.update!()
 
     assert Enum.any?(Nila.Gst.Sales.Gstr1.blocking_issues([note]), fn issue ->
-             issue["code"] == "cdnur_unsupported"
+             issue["code"] == "missing_original_sale_category"
            end)
 
     packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
@@ -379,7 +380,7 @@ defmodule Nila.Gst.Sales.InvoiceCorrectionsTest do
     |> Ecto.Changeset.change(invoices: [invoice])
     |> Repo.update!()
 
-    assert Enum.any?(Nila.Gst.Sales.Gstr1.blocking_issues([invoice]), fn issue ->
+    refute Enum.any?(Nila.Gst.Sales.Gstr1.blocking_issues([invoice]), fn issue ->
              issue["code"] == "exempt_supply_unsupported"
            end)
 

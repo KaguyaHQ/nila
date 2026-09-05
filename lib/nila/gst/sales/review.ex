@@ -196,6 +196,13 @@ defmodule Nila.Gst.Sales.Review do
 
   defp derived_invoice(derived, invoice) do
     case source_table(invoice) do
+      "cdnur" ->
+        note_type = if(Gstr1.document_type(invoice) == "credit_note", do: "C", else: "D")
+
+        Enum.find(derived["cdnur"] || [], fn entry ->
+          entry["nt_num"] == Gstr1.document_number(invoice) and entry["ntty"] == note_type
+        end)
+
       "cdnr" ->
         note_type = if(Gstr1.document_type(invoice) == "credit_note", do: "C", else: "D")
 
@@ -221,9 +228,9 @@ defmodule Nila.Gst.Sales.Review do
         |> Enum.flat_map(&List.wrap(&1["inv"]))
         |> Enum.find(&(&1["inum"] == Gstr1.document_number(invoice)))
 
-      "b2cs" ->
+      table when table in ["b2cs", "nil"] ->
         %{
-          "typ" => "OE",
+          "typ" => if(table == "nil", do: invoice["supply_type"], else: "OE"),
           "pos" => invoice["place_of_supply"],
           "itms" =>
             invoice
@@ -239,9 +246,18 @@ defmodule Nila.Gst.Sales.Review do
 
   defp source_table(invoice) do
     cond do
-      Gstr1.document_type(invoice) in ~w(credit_note debit_note) -> "cdnr"
-      Gstr1.recipient_registration(invoice) == "registered" -> "b2b"
-      true -> Gstr1.filing_table(invoice)
+      Gstr1.filing_table(invoice) == "nil" ->
+        "nil"
+
+      Gstr1.document_type(invoice) in ~w(credit_note debit_note) and
+          Gstr1.recipient_registration(invoice) == "registered" ->
+        "cdnr"
+
+      Gstr1.recipient_registration(invoice) == "registered" ->
+        "b2b"
+
+      true ->
+        Gstr1.filing_table(invoice)
     end
   end
 

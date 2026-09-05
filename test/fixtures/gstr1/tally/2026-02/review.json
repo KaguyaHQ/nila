@@ -1,0 +1,82 @@
+[
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_01",
+    "payload": {
+      "field": "place_of_supply",
+      "to": "33"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_02",
+    "payload": {
+      "field": "place_of_supply",
+      "to": "29"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_02",
+    "payload": {
+      "field": "original_sale_category",
+      "to": "b2cs"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_03",
+    "payload": {
+      "field": "place_of_supply",
+      "to": "29"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_03",
+    "payload": {
+      "field": "original_sale_category",
+      "to": "b2cl"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_04",
+    "payload": {
+      "field": "place_of_supply",
+      "to": "33"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_05",
+    "payload": {
+      "field": "place_of_supply",
+      "to": "29"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_05",
+    "payload": {
+      "field": "original_sale_category",
+      "to": "b2cs"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_06",
+    "payload": {
+      "field": "place_of_supply",
+      "to": "29"
+    }
+  },
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_06",
+    "payload": {
+      "field": "original_sale_category",
+      "to": "b2cl"
+    }
+  }
+]

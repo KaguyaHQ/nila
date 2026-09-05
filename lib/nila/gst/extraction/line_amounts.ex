@@ -236,9 +236,14 @@ defmodule Nila.Gst.Extraction.LineAmounts do
 
   defp printed_taxable_value(line) do
     cond do
-      Map.has_key?(line, "printed_taxable_value") -> line["printed_taxable_value"]
-      line["taxable_value_basis"] in ~w(corrected derived_from_inclusive_line_amount) -> nil
-      true -> line["taxable_value"]
+      Map.has_key?(line, "printed_taxable_value") ->
+        line["printed_taxable_value"]
+
+      line["taxable_value_basis"] in ~w(corrected derived_from_inclusive_line_amount non_taxable_line_amount) ->
+        nil
+
+      true ->
+        line["taxable_value"]
     end
   end
 

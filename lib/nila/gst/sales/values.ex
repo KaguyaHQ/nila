@@ -103,7 +103,7 @@ defmodule Nila.Gst.Sales.Values do
   def printed(invoice) do
     %{
       taxable: number(invoice["printed_total_taxable"]),
-      tax: number(invoice["printed_total_tax"]),
+      tax: Nila.Gst.Extraction.TaxComponents.printed_tax_total(invoice),
       total: number(invoice["printed_grand_total"])
     }
   end
@@ -197,6 +197,14 @@ defmodule Nila.Gst.Sales.Values do
 
   defp invoice_entries(derived, invoice) do
     case source_table(invoice) do
+      "cdnur" ->
+        note_type = if(Gstr1.document_type(invoice) == "credit_note", do: "C", else: "D")
+
+        for entry <- List.wrap(derived["cdnur"]),
+            entry["nt_num"] == Gstr1.document_number(invoice),
+            entry["ntty"] == note_type,
+            do: entry
+
       "cdnr" ->
         note_type = if(Gstr1.document_type(invoice) == "credit_note", do: "C", else: "D")
 
@@ -218,7 +226,7 @@ defmodule Nila.Gst.Sales.Values do
             entry["inum"] == Gstr1.document_number(invoice),
             do: entry
 
-      "b2cs" ->
+      table when table in ["b2cs", "nil"] ->
         [
           %{
             "itms" =>
@@ -236,9 +244,18 @@ defmodule Nila.Gst.Sales.Values do
 
   defp source_table(invoice) do
     cond do
-      Gstr1.document_type(invoice) in ~w(credit_note debit_note) -> "cdnr"
-      Gstr1.recipient_registration(invoice) == "registered" -> "b2b"
-      true -> Gstr1.filing_table(invoice)
+      Gstr1.filing_table(invoice) == "nil" ->
+        "nil"
+
+      Gstr1.document_type(invoice) in ~w(credit_note debit_note) and
+          Gstr1.recipient_registration(invoice) == "registered" ->
+        "cdnr"
+
+      Gstr1.recipient_registration(invoice) == "registered" ->
+        "b2b"
+
+      true ->
+        Gstr1.filing_table(invoice)
     end
   end
 

@@ -9,16 +9,12 @@ defmodule Nila.Gst.Sales.Gstr1Readiness do
       "this document is an export supply, and GSTR-1 derivation has no exp table",
     "sez_supply_unsupported" =>
       "this document is an SEZ supply, and GSTR-1 derivation has no SEZ treatment",
-    "nil_rated_supply_unsupported" =>
-      "this document is nil-rated, and GSTR-1 derivation has no nil-supply table",
-    "exempt_supply_unsupported" =>
-      "this document is exempt, and GSTR-1 derivation has no exempt-supply table",
-    "non_gst_supply_unsupported" =>
-      "this document is non-GST, and GSTR-1 derivation has no non-GST table",
+    "non_taxable_tax_conflict" =>
+      "This document is marked nil-rated, exempt or non-GST but also carries GST. Resolve the supply treatment and tax evidence before filing.",
     "outward_reverse_charge_unsupported" =>
       "this bill says the recipient pays the tax, and derivation files every invoice rchrg \"N\"",
-    "cdnur_unsupported" =>
-      "this is a note to an unregistered recipient, and GSTR-1 derivation has no cdnur table",
+    "missing_original_sale_category" =>
+      "Confirm whether the original interstate sale was B2C Other / Small or B2C Large. The note's own value does not determine this.",
     "cancelled_document_unsupported" =>
       "this document is cancelled; Nila accounts for its number but does not yet derive cancellation filing treatment",
     "amendment_document_unsupported" =>
@@ -39,6 +35,10 @@ defmodule Nila.Gst.Sales.Gstr1Readiness do
 
       invoice
       |> OutputCapabilities.common()
+      |> Enum.reject(
+        &(&1.code in ~w(nil_rated_supply_unsupported exempt_supply_unsupported non_gst_supply_unsupported))
+      )
+      |> maybe_add_non_taxable_conflict(invoice)
       |> maybe_add_cdnur(invoice)
       |> Enum.map(&issue(invoice, &1.code, &1.fields))
     end)
@@ -47,9 +47,42 @@ defmodule Nila.Gst.Sales.Gstr1Readiness do
   defp maybe_add_cdnur(findings, invoice) do
     note? = invoice.document_type in ~w(credit_note debit_note)
 
-    if note? and OutputCapabilities.recipient_registration(invoice) == "unregistered" do
+    seller_state =
+      invoice.issuer && invoice.issuer.gstin && String.slice(invoice.issuer.gstin, 0, 2)
+
+    if note? and OutputCapabilities.supply_type(invoice) == "taxable" and
+         OutputCapabilities.recipient_registration(invoice) == "unregistered" and
+         invoice.place_of_supply != seller_state and
+         invoice.evidence["original_sale_category"] not in ~w(b2cs b2cl) do
       findings ++
-        [%{code: "cdnur_unsupported", fields: ["recipient_registration", "buyer_gstin"]}]
+        [%{code: "missing_original_sale_category", fields: ["original_sale_category"]}]
+    else
+      findings
+    end
+  end
+
+  defp maybe_add_non_taxable_conflict(findings, invoice) do
+    if OutputCapabilities.supply_type(invoice) in ~w(nil_rated exempt non_gst) and
+         (Enum.any?(Map.values(invoice.tax_paise), &(is_integer(&1) and &1 != 0)) or
+            invoice.printed_tax_paise not in [nil, 0] or
+            Enum.any?(invoice.lines, fn line ->
+              Enum.any?(
+                [line.cgst_rate, line.sgst_rate, line.igst_rate],
+                &(&1 && Decimal.compare(&1, 0) != :eq)
+              )
+            end)) do
+      tax_fields =
+        for {_line, index} <- Enum.with_index(invoice.lines),
+            field <- ~w(cgst_rate sgst_rate igst_rate cgst_amount sgst_amount igst_amount),
+            do: "line_items[#{index}].#{field}"
+
+      findings ++
+        [
+          %{
+            code: "non_taxable_tax_conflict",
+            fields: ["supply_type", "printed_total_tax" | tax_fields]
+          }
+        ]
     else
       findings
     end

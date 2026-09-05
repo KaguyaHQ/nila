@@ -82,7 +82,10 @@ defmodule Nila.Gst.Sales.Workings do
     {corrected, _applied, [], _flags} =
       Gstr1.apply_corrections(pristine_source_invoices, legit, source_flagged)
 
-    corrected = InvoiceReadiness.annotate(corrected, compliance)
+    corrected =
+      corrected
+      |> Enum.map(&Invoice.resolve_line_amounts/1)
+      |> InvoiceReadiness.annotate(compliance)
 
     exclusions = Enum.filter(effective, &(&1["verb"] == "exclude_duplicate_copy"))
     {source_invoices, active_invoices, duplicate_copies} = apply_exclusions(corrected, exclusions)

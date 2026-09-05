@@ -82,6 +82,8 @@ defmodule Nila.EvalCorpus do
         IO.puts(
           "  #{doc["period"] || "-"}  #{String.pad_trailing(doc["kind"] || "?", 8)} #{String.pad_leading(to_string(doc["pages"]), 3)}p  #{cache}  #{eval}"
         )
+
+        if doc["label"], do: IO.puts("    #{doc["label"]} (#{doc["name"]})")
       end)
     end)
 

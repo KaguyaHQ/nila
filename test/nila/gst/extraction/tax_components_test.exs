@@ -3,6 +3,42 @@ defmodule Nila.Gst.Extraction.TaxComponentsTest do
 
   alias Nila.Gst.Extraction.{TaxComponents, Verify}
 
+  test "resolves complete printed invoice tax components without using lines" do
+    for {components, expected} <- [
+          {[{"IGST", 900}], 900},
+          {[{"CGST", 450.01}, {"SGST", 450.02}], 900.03},
+          {[{"IGST", 0}], 0},
+          {[{"Tax Amount", 900}, {"IGST", 900}], 900},
+          {[{"CGST", 450}], nil},
+          {[{"IGST", 900}, {"SGST", 450}], nil},
+          {[{"CGST", 450}, {"SGST", nil}], nil},
+          {[{"IGST", 900}, {"IGST", 900}], nil},
+          {[{"IGST", 900}, {"Unknown", 1}], nil},
+          {[], nil}
+        ] do
+      invoice = %{
+        "printed_tax_totals" =>
+          Enum.map(components, fn {label, amount} ->
+            %{"printed_label" => label, "printed_amount" => amount}
+          end),
+        "line_items" => [%{"igst_amount" => 900}]
+      }
+
+      assert TaxComponents.printed_tax_total(invoice) == expected
+    end
+  end
+
+  test "explicit printed total takes precedence over components, including zero" do
+    for amount <- [0, 901] do
+      invoice = %{
+        "printed_total_tax" => amount,
+        "printed_tax_totals" => [%{"printed_label" => "IGST", "printed_amount" => 900}]
+      }
+
+      assert TaxComponents.printed_tax_total(invoice) == amount
+    end
+  end
+
   test "projects a printed IGST component without losing its source evidence" do
     component = %{
       "printed_label" => "IGST",

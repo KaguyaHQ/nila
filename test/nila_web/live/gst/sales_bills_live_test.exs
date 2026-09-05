@@ -97,6 +97,29 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     }
   end
 
+  test "saved printed IGST appears in the totals comparison", context do
+    invoice =
+      hd(context.dump.invoices)
+      |> Map.put("id", "INV-001")
+      |> Map.put("printed_tax_totals", [%{"printed_label" => "IGST", "printed_amount" => 180}])
+
+    context.dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+
+    {:ok, view, _} =
+      live(
+        context.conn,
+        "/sales-bills/#{context.client.id}/batch/#{context.dump.id}?item=INV-001"
+      )
+
+    assert has_element?(
+             view,
+             "#invoice-totals-comparison tr:nth-child(2) td:last-child",
+             "₹180.00"
+           )
+
+    refute has_element?(view, "#invoice-totals-comparison tr:nth-child(2)", "Not captured")
+  end
+
   test "the totals drawer corrects printed totals, clears GST mismatches and survives reload",
        context do
     invoice =

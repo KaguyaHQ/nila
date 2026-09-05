@@ -301,7 +301,46 @@
       "pages": 10,
       "period": "2026-06",
       "sha256": "71a5b133df86f51c2efc3c29c51b646b5cd8c7795cd2c8e0afac9a0625275835"
+    },
+    {
+      "byte_size": 354502,
+      "client": "caltech",
+      "ground_truth": "test/fixtures/gstr1/tally/2026-01/native-gstr1.json",
+      "key": "tally/caltech/2026-01/sales-b2b-b2cs-b2cl-registered-notes.pdf",
+      "kind": "sales",
+      "name": "tally-caltech-2026-01-sales",
+      "label": "Synthetic Tally sales - B2B, B2CS, B2CL and registered credit/debit notes",
+      "pages": 8,
+      "period": "2026-01",
+      "provenance": "Synthetic disposable Tally company; native offline GSTR-1 export, not a filed return",
+      "sha256": "0897b20519cf60d846710ae633bca1de78dbcc399e9937ab5781625291c61b5e"
+    },
+    {
+      "byte_size": 264327,
+      "client": "caltech",
+      "ground_truth": "test/fixtures/gstr1/tally/2026-02/native-gstr1.json",
+      "key": "tally/caltech/2026-02/unregistered-credit-debit-notes.pdf",
+      "kind": "sales",
+      "name": "tally-caltech-2026-02-sales",
+      "label": "Synthetic Tally sales - unregistered credit/debit notes (B2CS and CDNUR)",
+      "pages": 6,
+      "period": "2026-02",
+      "provenance": "Synthetic disposable Tally company; native offline GSTR-1 export, not a filed return",
+      "sha256": "9fb33ca6e81ab8e69118cfe1506c5a52f90117b8f38a993b686066345fbfc33c"
+    },
+    {
+      "byte_size": 526511,
+      "client": "caltech",
+      "ground_truth": "test/fixtures/gstr1/tally/2026-03/native-gstr1.json",
+      "key": "tally/caltech/2026-03/table8-nil-exempt-non-gst.pdf",
+      "kind": "sales",
+      "name": "tally-caltech-2026-03-sales",
+      "label": "Synthetic Tally sales - Table 8 nil-rated, exempt and non-GST supplies",
+      "pages": 12,
+      "period": "2026-03",
+      "provenance": "Synthetic disposable Tally company; native offline GSTR-1 export, not a filed return",
+      "sha256": "7e79b8d71c23bacfd8c9fe8b8c13da6a23ceec6012e0ff9b245615aa5659c1f3"
     }
   ],
-  "note": "Real client packets for OCR evals. Bytes live in R2 (private, eval-scoped token); this file is the registry. Onboard a month with `mix nila.eval_corpus add <pdf> <portal-truth.json>`. Ground-truth JSONs stay in test/fixtures/."
+  "note": "Real client packets and labelled synthetic Tally packets for extraction evals. Bytes live in R2 (private, eval-scoped token); this file is the registry. Onboard a month with `mix nila.eval_corpus add <pdf> <portal-truth.json>`. Ground-truth JSONs stay in test/fixtures/."
 }

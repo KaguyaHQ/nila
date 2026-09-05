@@ -97,7 +97,26 @@ defmodule Nila.Gst.Sales.Invoice do
 
   @doc "Re-resolves normalized line amounts from their preserved printed evidence."
   def resolve_line_amounts(invoice) do
-    Map.update(invoice, "line_items", [], fn lines -> Enum.map(lines, &resolve_line_amount/1) end)
+    Map.update(invoice, "line_items", [], fn lines ->
+      Enum.map(lines, fn line ->
+        line = resolve_line_amount(line)
+
+        no_tax? =
+          Enum.all?(
+            ~w(cgst_rate sgst_rate igst_rate cgst_amount sgst_amount igst_amount),
+            &(extracted_number(line[&1]) == 0)
+          )
+
+        if invoice["supply_type"] in ~w(nil_rated exempt non_gst) and no_tax? and
+             is_nil(line["taxable_value"]) and is_number(line["printed_line_amount"]) do
+          line
+          |> Map.put("taxable_value", line["printed_line_amount"])
+          |> Map.put("taxable_value_basis", "non_taxable_line_amount")
+        else
+          line
+        end
+      end)
+    end)
   end
 
   @doc "Re-resolves one normalized line from its preserved printed evidence."

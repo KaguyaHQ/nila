@@ -491,6 +491,9 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
       value; it must not invent a value absent from the document.
       Set reverse_charge true only when the document positively states that tax is
       payable under reverse charge, false when it explicitly says no, and null otherwise.
+      Copy printed HSN/SAC codes from descriptions or service ledger names into hsn_sac,
+      even without a dedicated HSN/SAC column; never infer an unprinted code.
+      For example, "Consulting - 998312 @ 18%" has hsn_sac "998312".
 
       Each line_items entry must be an array with exactly these fields in this exact order:
       [#{Enum.join(@line_item_fields, ", ")}]
