@@ -61,6 +61,29 @@ defmodule NilaWeb.Gstr1ControllerTest do
     %{conn: log_in_user(conn, user), client: client, month: month, user: user, org: org}
   end
 
+  test "rejects every export for an existing empty working", %{
+    conn: conn,
+    client: client,
+    month: month
+  } do
+    {:ok, _} =
+      Months.upsert(%{
+        org_id: month.org_id,
+        client_id: client.id,
+        period: month.period,
+        state: "worked",
+        invoices: [],
+        issues: [],
+        derived_gstr1: Gstr1.derive([], Gstr1.production_header(client.gstin, month.period))
+      })
+
+    for filename <- ["return.json", "winman-b2b.xlsm", "workings.xlsx"] do
+      response_conn = get(conn, "/gstr1/#{client.id}/#{month.period}/#{filename}")
+      assert response(response_conn, 422)
+      assert get_resp_header(response_conn, "content-disposition") == []
+    end
+  end
+
   test "downloads an unsigned month's current B2B workings as a Winman workbook", %{
     conn: conn,
     client: client

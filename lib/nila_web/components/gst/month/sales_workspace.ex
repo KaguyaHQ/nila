@@ -52,6 +52,11 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       |> assign(:documents, documents)
       |> assign(:review_ids, review_ids)
       |> assign(:review_count, MapSet.size(review_ids))
+      |> assign(
+        :exports_available?,
+        assigns.active_invoices != [] and assigns.readiness.state != :absent and
+          MapSet.size(review_ids) == 0
+      )
       |> assign(:base, base)
       |> assign(:schedule_rows, schedule_rows(assigns, review_ids, hsn, documents, base))
       |> assign(:period_label, full_period_label(assigns.period))
@@ -211,13 +216,16 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         <.schedules_section rows={@schedule_rows} />
         <.card padding="none" id="sales-period-export">
           <.card_header title="Exports" />
-          <p :if={@readiness.state == :absent} class="text-ink-muted text-ui px-6 pt-4">
+          <p
+            :if={@readiness.state == :absent or (@active_invoices == [] and @review_count == 0)}
+            class="text-ink-muted text-ui px-6 pt-4"
+          >
             Add invoices to make exports available.
           </p>
 
           <p
             :if={@readiness.state != :absent and @review_count > 0}
-            class="text-ui text-ink-muted px-6 pt-4"
+            class="text-ink-muted text-ui px-6 pt-4"
           >
             <.text_link navigate={@base <> "/invoices"}>Review invoices</.text_link> before exporting.
           </p>
@@ -227,20 +235,12 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
               <p class="text-ui">GST sales working <span class="text-ink-muted">· XLSX</span></p>
 
               <.download_button
-                :if={length(@active_invoices) > 0 and @review_count == 0}
+                :if={@exports_available?}
                 id="sales-period-handoff-download-workings"
                 href={~p"/gstr1/#{@client.id}/#{@period}/workings.xlsx"}
                 variant="soft"
                 size="sm"
               >Download</.download_button>
-              <p
-                :if={
-                  length(@active_invoices) == 0 and @readiness.state != :absent and @review_count == 0
-                }
-                class="text-ink-muted text-ui"
-              >
-                Unavailable — add invoices
-              </p>
             </div>
 
             <div
@@ -251,7 +251,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
               <p class="text-ui">{label}</p>
 
               <.export_action
-                :if={@readiness.state != :absent and @review_count == 0}
+                :if={@exports_available?}
                 kind={kind}
                 client={@client}
                 base={@base}
@@ -344,7 +344,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
               <span
                 :if={row.status == "Prepared"}
                 aria-hidden="true"
-                class="bg-success mr-1.5 inline-block h-1.5 w-1.5 rounded-full"
+                class="bg-success mr-1.5 inline-block size-1.5 rounded-full"
               />
               {row.status}
             </span>

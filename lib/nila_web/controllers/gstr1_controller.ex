@@ -27,15 +27,22 @@ defmodule NilaWeb.Gstr1Controller do
         derived = projection.derived
         filename = "gstr1_#{derived["gstin"]}_#{period}.json"
 
-        if same_period?(projection, period) do
-          conn
-          |> put_resp_content_type("application/json")
-          |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
-          |> send_resp(200, Jason.encode!(derived))
-        else
-          conn
-          |> put_status(:unprocessable_entity)
-          |> text("Correct or exclude invoices outside this working period")
+        cond do
+          require_active_sales(projection) == {:error, :no_active_sales} ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> text("Exports are unavailable until invoices are added")
+
+          same_period?(projection, period) ->
+            conn
+            |> put_resp_content_type("application/json")
+            |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
+            |> send_resp(200, Jason.encode!(derived))
+
+          true ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> text("Correct or exclude invoices outside this working period")
         end
 
       {:error, _} ->
@@ -51,6 +58,7 @@ defmodule NilaWeb.Gstr1Controller do
     with {:ok, sales_month} <- SalesMonths.get_by_period(org_id, client_id, period),
          {:ok, client} <- Clients.get_client(org_id, client_id),
          projection <- SalesResolutions.effective_workings(sales_month),
+         :ok <- require_active_sales(projection),
          true <- same_period?(projection, period),
          {:ok, workbook} <-
            WinmanGstr1.build(projection, client, period) do
@@ -61,6 +69,11 @@ defmodule NilaWeb.Gstr1Controller do
       |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
       |> send_resp(200, workbook)
     else
+      {:error, :no_active_sales} ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> text("Exports are unavailable until invoices are added")
+
       false ->
         conn
         |> put_status(:unprocessable_entity)
@@ -85,6 +98,7 @@ defmodule NilaWeb.Gstr1Controller do
     with {:ok, sales_month} <- SalesMonths.get_by_period(org_id, client_id, period),
          {:ok, client} <- Clients.get_client(org_id, client_id),
          projection <- SalesResolutions.effective_workings(sales_month),
+         :ok <- require_active_sales(projection),
          true <- same_period?(projection, period),
          resolutions <- SalesResolutions.list_attributed(sales_month.id),
          {:ok, workbook} <-
@@ -121,6 +135,9 @@ defmodule NilaWeb.Gstr1Controller do
 
   defp same_period?(projection, period),
     do: Nila.Gst.Sales.Gstr1.period_issues(projection.active_invoices, period) == []
+
+  defp require_active_sales(%{active_invoices: []}), do: {:error, :no_active_sales}
+  defp require_active_sales(_projection), do: :ok
 
   def tally_download(conn, %{"client_id" => client_id, "period" => period}) do
     org_id = conn.assigns.current_scope.current_org.id

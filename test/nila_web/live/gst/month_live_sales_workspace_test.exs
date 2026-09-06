@@ -104,7 +104,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
     assert has_element?(view, "a", "Bring in invoices")
 
     {:ok, register, _html} = live(conn, path <> "/invoices")
-    assert has_element?(register, "#sales-period-workspace .nila-table-shell", "No invoices match this view.")
+
+    assert has_element?(
+             register,
+             "#sales-period-workspace .nila-table-shell",
+             "No invoices match this view."
+           )
   end
 
   test "the bare legacy month route sends sales work to the period workspace", %{
@@ -115,6 +120,36 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
              live(conn, ~p"/gst/#{client.id}/#{@period}")
 
     assert path == ~p"/gst/#{client.id}/#{@period}/sales"
+  end
+
+  test "an existing empty working offers no export downloads", %{conn: conn, client: client} do
+    alias Nila.Gst.Sales.{Gstr1, Months}
+
+    {:ok, _} =
+      Months.upsert(%{
+        org_id: client.org_id,
+        client_id: client.id,
+        period: "2026-07",
+        state: "worked",
+        invoices: [],
+        issues: [],
+        derived_gstr1: Gstr1.derive([], Gstr1.production_header(client.gstin, "2026-07"))
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/2026-07/sales")
+
+    for kind <- ["workings", "winman", "json"] do
+      refute has_element?(view, "#sales-period-handoff-download-#{kind}")
+      refute has_element?(view, "#sales-period-handoff-#{kind}", "Unavailable — add invoices")
+    end
+
+    assert has_element?(
+             view,
+             "#sales-period-export > p",
+             "Add invoices to make exports available."
+           )
+
+    refute has_element?(view, "#sales-period-primary-download")
   end
 
   test "keeps empty statutory rows visible but inert", %{conn: conn, client: client} do
