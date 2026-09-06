@@ -931,6 +931,11 @@
   --text-h3--line-height: 1.05;
   --text-h3--letter-spacing: -0.025em;
 
+  /* Operational page identity, shared by indexes, forms and workspaces. */
+  --text-page: 1.75rem;
+  --text-page--line-height: 1.25;
+  --text-page--letter-spacing: -0.025em;
+
   --text-h4: 1.25rem;
   --text-h4--line-height: 1.35;
   --text-h4--letter-spacing: -0.025em;

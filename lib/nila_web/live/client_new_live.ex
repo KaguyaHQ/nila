@@ -129,7 +129,7 @@ defmodule NilaWeb.ClientNewLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <div id="client-new-page" class="space-y-section mx-auto max-w-2xl">
+      <div id="client-new-page" class="space-y-block mx-auto max-w-2xl">
         <.page_header eyebrow="Clients" eyebrow_path={~p"/clients"} title="Add client" />
 
         <.card>

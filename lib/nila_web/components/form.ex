@@ -40,7 +40,7 @@ defmodule NilaWeb.Components.Form do
 
   def importer(assigns) do
     ~H"""
-    <section id={@id} data-importer class="space-y-section mx-auto max-w-2xl">
+    <section id={@id} data-importer class="space-y-block mx-auto max-w-2xl">
       <.page_header eyebrow={@eyebrow} eyebrow_path={@eyebrow_path} title={@title}>
         {render_slot(@intro)}
       </.page_header>

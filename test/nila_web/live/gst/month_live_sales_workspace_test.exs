@@ -30,11 +30,11 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/sales")
 
-    assert has_element?(view, "#sales-period-workspace", "Breeze Tech · Sales & GSTR-1")
+    assert has_element?(view, "#sales-period-workspace", "Breeze Tech / Sales & GSTR-1")
     assert has_element?(view, "#sales-period-workspace", "Sales invoices")
     assert has_element?(view, "#sales-period-return-heading", "GSTR-1")
     assert has_element?(view, "#sales-period-workspace", "Export")
-    assert has_element?(view, "#sales-period-status", "GST working needs review.")
+    assert has_element?(view, "#sales-period-status", "Review the GST working before exporting.")
     refute has_element?(view, "#sales-period-workflow")
     assert has_element?(view, "#sales-period-primary-action", "Review")
 
@@ -42,9 +42,6 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
     refute has_element?(view, "#sales-period-primary-action", "Approve GSTR-1")
     refute has_element?(view, "#sales-period-workspace", "Sales population")
     refute has_element?(view, "#sales-period-workspace", "Handoff")
-    assert has_element?(view, "#sales-period-sources-invoices", "Sales invoices")
-    assert has_element?(view, "#sales-period-sources-invoices", "Needs review")
-    assert has_element?(view, "th", "Invoices")
     assert has_element?(view, "th", "Taxable value")
     assert has_element?(view, "#sales-period-uploads-link", "Uploads")
     assert has_element?(view, "#sales-period-uploads-link", "1 file")
@@ -55,18 +52,15 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
     assert has_element?(view, "#sales-period-return-hsn", "HSN-wise summary")
     assert has_element?(view, "#sales-period-return-documents", "Documents issued")
     assert has_element?(view, "#sales-period-handoff-winman", "Winman GSTR-1")
-    assert has_element?(view, "#sales-period-handoff-json", "GSTR-1 JSON")
+    assert has_element?(view, "#sales-period-handoff-json", "GSTR-1 · JSON")
     assert has_element?(view, "#sales-period-handoff-workings", "GST sales working")
 
-    assert has_element?(view, "th", "Format")
-    assert has_element?(view, "th", "Output")
-    assert has_element?(view, "th", "Download")
     assert has_element?(view, "#sales-period-handoff-workings", "XLSX")
     assert has_element?(view, "#sales-period-handoff-winman", "XLSM")
     assert has_element?(view, "#sales-period-handoff-json", "JSON")
-    assert has_element?(view, "#sales-period-handoff-winman", "Unavailable — review invoices")
-    assert has_element?(view, "#sales-period-handoff-workings", "Unavailable — review invoices")
-    assert has_element?(view, "#sales-period-handoff-json", "Unavailable — review invoices")
+    assert has_element?(view, "#sales-period-export", "before exporting.")
+    refute has_element?(view, "#sales-period-export a[download]")
+    assert has_element?(view, "#sales-period-overview", "invoices in working")
     refute render(view) =~ "Blocked by"
     refute render(view) =~ "Needs approval"
     refute render(view) =~ "unresolved"
@@ -85,10 +79,15 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
 
     assert has_element?(view, "#sales-period-workspace")
     assert has_element?(view, "aside a[href='#{path}']", "Sales & GSTR-1")
-    assert has_element?(view, "#sales-period-status", "Add invoices to prepare the GST working.")
+
+    assert has_element?(
+             view,
+             "#sales-period-status",
+             "Add invoices to prepare this month's GST working."
+           )
+
     assert has_element?(view, "#sales-period-primary-action", "Bring in invoices")
     refute has_element?(view, "#sales-period-primary-download")
-    assert has_element?(view, "#sales-period-handoff-workings", "Unavailable — add invoices")
     refute has_element?(view, "#sales-period-handoff-download-workings")
 
     assert has_element?(
@@ -97,18 +96,15 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
            )
 
     refute has_element?(view, "#sales-period-primary-action", "Approve GSTR-1")
-    assert has_element?(view, "#sales-period-sources-invoices", "No invoices")
     assert has_element?(view, "#sales-period-uploads-link", "0 batches · 0 files")
 
-    assert has_element?(
-             view,
-             "#sales-period-handoff-winman",
-             "Unavailable — add invoices"
-           )
-
-    assert has_element?(view, "#sales-period-handoff-json", "Unavailable — add invoices")
+    assert has_element?(view, "#sales-period-export", "Add invoices to make exports available.")
+    refute has_element?(view, "#sales-period-export a[download]")
 
     assert has_element?(view, "a", "Bring in invoices")
+
+    {:ok, register, _html} = live(conn, path <> "/invoices")
+    assert has_element?(register, "#sales-period-workspace .nila-table-shell", "No invoices match this view.")
   end
 
   test "the bare legacy month route sends sales work to the period workspace", %{
@@ -137,7 +133,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
 
     assert has_element?(
              view,
-             "#sales-period-sources-invoices a[href='/gst/#{client.id}/#{@period}/sales/invoices']"
+             "#sales-period-overview a[href='/gst/#{client.id}/#{@period}/sales/invoices']"
            )
 
     {:ok, view, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/sales/invoices")

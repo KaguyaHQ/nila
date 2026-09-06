@@ -199,9 +199,6 @@ defmodule NilaWeb.Banking.UploadLive do
 
   defp statement_period(_statement), do: "—"
 
-  defp transaction_count_label(1), do: "1 transaction"
-  defp transaction_count_label(count), do: "#{count} transactions"
-
   defp review_label(1), do: "1 needs review"
   defp review_label(count), do: "#{count} need review"
 
@@ -230,6 +227,81 @@ defmodule NilaWeb.Banking.UploadLive do
     end
   end
 
+  defp banking_workspace(assigns) do
+    ~H"""
+    <section id="banking-page" class="pb-section space-y-block mx-auto w-full max-w-[1400px]">
+      <.page_header title="Bank statements">
+        <:actions>
+          <.button
+            navigate={~p"/banking/new"}
+            id="banking-bring-statement"
+            variant="primary"
+            size="sm"
+          >
+            <.icon name="hero-plus" class="size-4" /> Bring in statement
+          </.button>
+        </:actions>
+      </.page_header>
+
+      <.card padding="none">
+        <div class="px-4 py-3">
+          <.data_table
+            id="banking-statements-table"
+            rows={@statements}
+            row_id={&"banking-statement-#{&1.id}"}
+            row_navigate={&statement_path/1}
+            row_label={&"Open #{&1.original_filename} for #{&1.client.name}"}
+            mode="worklist"
+            surface="ghost"
+            min_width="min-w-[960px]"
+          >
+            <:col :let={statement} key="statement" label="Statement / bank" row_header class="max-w-0">
+              <span class="block truncate font-medium" title={statement_title(statement)}>{statement_title(
+                statement
+              )}</span>
+              <span
+                class="text-ink-muted mt-1 block truncate font-normal"
+                title={statement.original_filename}
+              >{statement.original_filename}</span>
+            </:col>
+
+            <:col :let={statement} key="period" label="Period" class="w-[260px]">
+              <span class="whitespace-nowrap tabular-nums">{statement_period(statement)}</span>
+            </:col>
+
+            <:col
+              :let={statement}
+              key="transactions"
+              label="Transactions"
+              align="right"
+              class="w-[120px]"
+            >
+              <span class="tabular-nums">{statement.transaction_count}</span>
+            </:col>
+
+            <:col :let={statement} key="outcome" label="Outcome" class="w-[240px]">
+              {statement_outcome(statement)}
+            </:col>
+
+            <:col label="" align="right" class="w-[40px]">
+              <.icon name="hero-chevron-right-mini" class="text-ink-faint size-4" />
+            </:col>
+
+            <:empty>No statements yet. Bring in a bank statement to get started.</:empty>
+          </.data_table>
+        </div>
+      </.card>
+    </section>
+    """
+  end
+
+  defp statement_title(statement) do
+    case Banking.bank_name(statement.bank_code) do
+      nil -> pending_bank_name(statement.status)
+      _name -> statement_bank(statement)
+    end
+  end
+
   @impl true
   def render(assigns) do
     assigns =
@@ -246,48 +318,9 @@ defmodule NilaWeb.Banking.UploadLive do
       current_path={assigns[:current_path]}
       active_client={@current_scope.current_client}
     >
-      <div id="banking-page" class="space-y-region mx-auto max-w-6xl">
-        <div :if={@banking_workspace?} class="space-y-region max-w-5xl">
-          <.page_header eyebrow="Banking" title="Bank statements">
-            Statements prepared for Tally, with anything that still needs your review.
-            <:actions>
-              <.button navigate={~p"/banking/new"} id="banking-bring-statement">
-                <.icon name="hero-plus" class="size-4" /> Bring in statement
-              </.button>
-            </:actions>
-          </.page_header>
-
-          <section id="banking-statements" class="space-y-block">
-            <h2 class="text-base-content text-h4 font-semibold">Statements</h2>
-            <.data_table
-              id="banking-statements-table"
-              rows={@statements}
-              row_id={&"banking-statement-#{&1.id}"}
-              row_navigate={&statement_path/1}
-              row_label={&"Open #{&1.original_filename} for #{&1.client.name}"}
-              mode="worklist"
-            >
-              <:col :let={statement} label="Statement" row_header>
-                {statement.original_filename}
-              </:col>
-              <:col :let={statement} label="Bank">
-                {statement_bank(statement)}
-              </:col>
-              <:col :let={statement} label="Period">
-                <span class="whitespace-nowrap tabular-nums">{statement_period(statement)}</span>
-              </:col>
-              <:col :let={statement} label="Transactions" align="right">
-                {transaction_count_label(statement.transaction_count)}
-              </:col>
-              <:col :let={statement} label="Outcome">
-                {statement_outcome(statement)}
-              </:col>
-            </.data_table>
-          </section>
-        </div>
-
+      <.banking_workspace :if={@banking_workspace?} statements={@statements} />
+      <div :if={!@banking_workspace?} id="banking-page" class="space-y-region mx-auto max-w-6xl">
         <.importer
-          :if={!@banking_workspace?}
           id="banking-importer"
           eyebrow="Banking"
           eyebrow_path={if(@live_action == :new, do: ~p"/banking")}
@@ -309,16 +342,19 @@ defmodule NilaWeb.Banking.UploadLive do
           <:intro>
             {banking_intake_intro(@current_scope)}
           </:intro>
+
           <:state :if={@clients == []}>
             <.card id="banking-upload-empty" padding="roomy" class="text-center">
               <div class="space-y-block">
                 <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
+
                 <.button navigate={~p"/clients/new"} id="banking-add-first-client">
                   <.icon name="hero-plus" class="size-4" /> Add your first client
                 </.button>
               </div>
             </.card>
           </:state>
+
           <:fields>
             <.input
               field={@form[:password]}

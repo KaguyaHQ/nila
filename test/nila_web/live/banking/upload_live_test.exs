@@ -63,11 +63,10 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     refute has_element?(view, "#banking-importer")
     refute has_element?(view, "#banking-upload-form")
 
-    assert has_element?(view, "#banking-statements", "Statements")
     assert has_element?(view, "#banking-statements-table", "statement.pdf")
     assert has_element?(view, "#banking-statements-table", "Breeze Tech")
     assert has_element?(view, "#banking-statements-table", "HDFC Bank")
-    assert has_element?(view, "#banking-statements-table", "1 transaction")
+    assert has_element?(view, "#banking-statement-#{statement.id} td", "1")
     assert has_element?(view, "#banking-statements-table", "1 needs review")
 
     assert has_element?(

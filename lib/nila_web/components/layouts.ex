@@ -42,24 +42,27 @@ defmodule NilaWeb.Layouts do
     ~H"""
     <div
       id="app-shell"
-      class="group/app moonlight-night text-inverse/90 min-h-screen"
+      class="bg-canvas group/app text-base-content min-h-screen"
       data-rail-collapsed="false"
     >
       <div id="rail-collapse-state" phx-hook="RailCollapse" phx-update="ignore" class="hidden"></div>
 
-      <aside class="duration-calm fixed inset-y-0 left-0 z-40 hidden w-64 flex-col px-3 py-4 transition-[width] group-data-[rail-collapsed=true]/app:w-16 lg:flex print:hidden">
+      <aside
+        id="navigation-rail"
+        class="border-rule duration-calm fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r px-3 py-4 transition-[width] group-data-[rail-collapsed=true]/app:w-16 lg:flex print:hidden"
+      >
         <div class="flex items-center justify-between gap-2 px-1 group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:gap-0 group-data-[rail-collapsed=true]/app:px-0">
           <.link
             navigate={~p"/sales-bills"}
             class="flex min-w-0 items-center group-data-[rail-collapsed=true]/app:hidden"
           >
-            <.logo class="text-inverse h-5 w-auto" />
+            <.logo class="text-base-content h-5 w-auto" />
           </.link>
 
           <button
             type="button"
             id="rail-collapse-toggle"
-            class="focus-visible:outline-inverse/40 hover:bg-inverse/10 hover:text-inverse rounded-field text-inverse/55 grid size-8 shrink-0 place-items-center transition focus-visible:outline-2 focus-visible:outline-offset-2"
+            class="focus-visible:outline-focus hover:bg-interactive hover:text-base-content rounded-field text-ink-muted grid size-8 shrink-0 place-items-center transition focus-visible:outline-2 focus-visible:outline-offset-2"
             aria-label="Toggle navigation"
             data-rail-toggle
           >
@@ -75,7 +78,6 @@ defmodule NilaWeb.Layouts do
           current_path={@current_path}
           active_client={@active_client}
         />
-
         <nav class="gap-section mt-section flex flex-1 flex-col overflow-y-auto">
           <div class="space-y-1">
             <.rail_link
@@ -92,10 +94,12 @@ defmodule NilaWeb.Layouts do
               current_path={@current_path}
             />
           </div>
-          <div class="border-inverse/10 space-y-1 border-t pt-3">
-            <span class="text-inverse/55 text-label block px-3 pb-1 font-semibold uppercase group-data-[rail-collapsed=true]/app:hidden">
+
+          <div class="border-rule space-y-1 border-t pt-3">
+            <span class="text-ink-muted text-label block px-3 pb-1 font-semibold uppercase group-data-[rail-collapsed=true]/app:hidden">
               Firm
             </span>
+
             <.rail_link
               href={~p"/clients"}
               icon="hero-users"
@@ -105,14 +109,14 @@ defmodule NilaWeb.Layouts do
           </div>
         </nav>
 
-        <div :if={@current_scope} class="border-inverse/10 mt-block border-t pt-3">
+        <div :if={@current_scope} class="border-rule mt-block border-t pt-3">
           <.account_menu current_scope={@current_scope} placement={:rail} id_prefix="layout" />
         </div>
       </aside>
 
       <div class="lg:duration-calm lg:pl-64 lg:transition-[padding] group-data-[rail-collapsed=true]/app:lg:pl-16">
-        <div class="h-screen lg:p-3">
-          <div class="bg-canvas lg:ring-inverse/40 lg:rounded-box text-base-content relative flex h-full flex-col overflow-hidden lg:ring-1">
+        <div class="h-screen">
+          <div class="bg-quiet text-base-content relative flex h-full flex-col overflow-hidden">
             <%!-- Mobile only: the rail is hidden below lg, so this carries the brand and
                  the account menu. On desktop the rail states the section and the page's
                  own masthead names the object — a strip repeating either is chrome. --%>
@@ -121,6 +125,7 @@ defmodule NilaWeb.Layouts do
                 <.link navigate={~p"/sales-bills"} class="flex min-w-0 items-center">
                   <.logo class="text-base-content h-5 w-auto" />
                 </.link>
+
                 <div :if={@current_scope} class="flex items-center gap-2">
                   <.account_menu
                     current_scope={@current_scope}
@@ -132,20 +137,19 @@ defmodule NilaWeb.Layouts do
             </header>
 
             <main class={[
-              "flex-1 overflow-y-auto px-4 pt-6 sm:px-6 lg:px-8",
+              "flex-1 overflow-y-auto px-4 pt-6 sm:px-6 lg:px-4",
               if(@bottom_bar == [], do: "pb-6", else: "nila-work-area-with-bottom-bar")
             ]}>
-              <div class="mx-auto max-w-[1480px]">
+              <div class="w-full">
                 {render_slot(@inner_block)}
               </div>
             </main>
-            {render_slot(@bottom_bar)}
+             {render_slot(@bottom_bar)}
           </div>
         </div>
       </div>
     </div>
-
-    <.flash_group flash={@flash} />
+     <.flash_group flash={@flash} />
     """
   end
 
@@ -154,7 +158,7 @@ defmodule NilaWeb.Layouts do
 
   def bottom_bar(assigns) do
     ~H"""
-    <div class="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-4 sm:px-6 lg:px-8 print:hidden">
+    <div class="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-4 sm:px-6 lg:px-4 print:hidden">
       <div class="bg-inverse-surface border-inverse/10 nila-bottom-bar rounded-box shadow-moon text-inverse pointer-events-auto mx-auto max-w-[1480px] border p-3">
         {render_slot(@inner_block)}
       </div>
@@ -186,6 +190,7 @@ defmodule NilaWeb.Layouts do
               <span class="text-ink-subtle text-label hidden px-3 pb-1 font-semibold uppercase lg:block">
                 Account
               </span>
+
               <.settings_link
                 href={~p"/settings/profile"}
                 icon="hero-user-circle"
@@ -199,6 +204,7 @@ defmodule NilaWeb.Layouts do
                 active={@active_section == :security}
               />
             </div>
+
             <div
               :if={Nila.Accounts.Policy.can?(@current_scope, :manage_settings)}
               class="lg:mt-block flex gap-2 lg:flex-col"
@@ -206,6 +212,7 @@ defmodule NilaWeb.Layouts do
               <span class="text-ink-subtle text-label hidden px-3 pb-1 font-semibold uppercase lg:block">
                 Firm
               </span>
+
               <.settings_link
                 href={~p"/settings/workspace"}
                 icon="hero-building-office-2"
@@ -260,8 +267,8 @@ defmodule NilaWeb.Layouts do
       class={[
         "rounded-field text-ui flex h-10 items-center gap-3 px-3 transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0",
         if(@active,
-          do: "bg-inverse/15 ring-inverse/8 text-inverse font-semibold ring-1 ring-inset",
-          else: "hover:bg-inverse/10 hover:text-inverse text-inverse/65 font-medium"
+          do: "bg-interactive ring-rule text-base-content font-semibold ring-1 ring-inset",
+          else: "hover:bg-interactive hover:text-base-content text-ink-muted font-medium"
         )
       ]}
       aria-current={if(@active, do: "page", else: nil)}
@@ -271,9 +278,10 @@ defmodule NilaWeb.Layouts do
       <span class="min-w-0 flex-1 truncate group-data-[rail-collapsed=true]/app:hidden">
         {@label}
       </span>
+
       <span
         :if={@count}
-        class="bg-inverse/15 text-inverse text-ui rounded-full px-2 py-0.5 font-semibold group-data-[rail-collapsed=true]/app:hidden"
+        class="bg-interactive text-base-content text-ui rounded-full px-2 py-0.5 font-semibold group-data-[rail-collapsed=true]/app:hidden"
       >
         {@count}
       </span>
@@ -330,8 +338,7 @@ defmodule NilaWeb.Layouts do
       data-state={if(@active, do: "active", else: "inactive")}
       aria-current={if(@active, do: "page", else: nil)}
     >
-      <.icon name={@icon} class="size-5 shrink-0" />
-      <span class="truncate">{@label}</span>
+      <.icon name={@icon} class="size-5 shrink-0" /> <span class="truncate">{@label}</span>
     </.link>
     """
   end
@@ -356,24 +363,27 @@ defmodule NilaWeb.Layouts do
         type="button"
         id={"#{@id_prefix}-account-trigger"}
         popovertarget={"#{@id_prefix}-account-popover"}
-        class="focus:ring-inverse/25 hover:bg-inverse/10 rounded-field text-inverse/75 text-ui flex h-12 w-full cursor-pointer items-center gap-3 px-2 transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0 focus:ring-2 focus:outline-none"
+        class="focus:ring-focus hover:bg-interactive rounded-field text-ink-muted text-ui flex h-12 w-full cursor-pointer items-center gap-3 px-2 transition group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:px-0 focus:ring-2 focus:outline-none"
         aria-label="Open account menu"
         title={@current_scope.user.name}
       >
-        <span class="bg-inverse/15 text-inverse/80 text-label grid size-8 shrink-0 place-items-center rounded-full font-semibold">
+        <span class="bg-interactive text-base-content text-label grid size-8 shrink-0 place-items-center rounded-full font-semibold">
           {user_initials(@current_scope.user)}
         </span>
+
         <span class="min-w-0 flex-1 text-left group-data-[rail-collapsed=true]/app:hidden">
-          <span class="text-inverse text-ui block truncate font-semibold">
+          <span class="text-base-content text-ui block truncate font-semibold">
             {@current_scope.user.name}
           </span>
+
           <span class="block truncate">
-            <.context_text tone="inverse">{workspace_name(@current_scope)}</.context_text>
+            <.context_text tone="muted">{workspace_name(@current_scope)}</.context_text>
           </span>
         </span>
+
         <.icon
           name="hero-chevron-up-down"
-          class="text-inverse/45 size-4 shrink-0 group-data-[rail-collapsed=true]/app:hidden"
+          class="text-ink-subtle size-4 shrink-0 group-data-[rail-collapsed=true]/app:hidden"
         />
       </button>
 
@@ -389,9 +399,11 @@ defmodule NilaWeb.Layouts do
         <span class="bg-panel-surface text-ink-muted text-label grid size-6 shrink-0 place-items-center rounded-full font-semibold">
           {user_initials(@current_scope.user)}
         </span>
+
         <span class="hidden max-w-36 truncate font-medium sm:block">
           {@current_scope.user.name}
         </span>
+
         <.icon
           name="hero-chevron-down"
           class="nila-account-menu-chevron text-ink-faint size-4 transition"
@@ -410,8 +422,7 @@ defmodule NilaWeb.Layouts do
           id={"#{@id_prefix}-settings-link"}
           class="nila-menu-item"
         >
-          <.icon name="hero-cog-6-tooth" class="text-ink-subtle size-4" />
-          <span>Settings</span>
+          <.icon name="hero-cog-6-tooth" class="text-ink-subtle size-4" /> <span>Settings</span>
         </.link>
 
         <div class="border-rule my-1.5 border-t"></div>
@@ -423,8 +434,7 @@ defmodule NilaWeb.Layouts do
           class="nila-menu-item"
           data-tone="error"
         >
-          <.icon name="hero-arrow-right-start-on-rectangle" class="size-4" />
-          <span>Sign out</span>
+          <.icon name="hero-arrow-right-start-on-rectangle" class="size-4" /> <span>Sign out</span>
         </.link>
       </div>
     </div>
@@ -457,9 +467,7 @@ defmodule NilaWeb.Layouts do
   def flash_group(assigns) do
     ~H"""
     <div id={@id} class="nila-flash-group" aria-live="polite">
-      <.flash kind={:info} flash={@flash} />
-      <.flash kind={:error} flash={@flash} />
-
+      <.flash kind={:info} flash={@flash} /> <.flash kind={:error} flash={@flash} />
       <.flash
         id="connection-error"
         kind={:error}

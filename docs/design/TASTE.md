@@ -1,141 +1,77 @@
-# TASTE.md — Vasanth's design taste, on the record
+# Current design taste
 
-What the founder actually responds to, extracted example by example. DESIGN.md
-is the rulebook; this is the taste that judges it. When the two disagree, this
-file explains what the rulebook should become. Append new entries with a date;
-don't rewrite history.
+Current accepted direction, 2026-09-06. This file owns aesthetic preferences, not token
+values or product scope. Historical experiments are in [the archive](archive/README.md)
+and do not add requirements to this specification.
 
-## 2026-07-31 — the /landing grill
+## Precision that feels alive
 
-### The one-line taste
+Use crisp, light surfaces and disciplined alignment, then guide the eye with selective
+weight, small meaningful colour accents and softly shaped controls. The beauty comes
+from their combination. Preserve useful density and consistent roles across pages;
+avoid both heavy chrome and lifeless minimalism.
 
-**Delicate type in large space, anticipated intent, one authored moment of
-light.** Beauty = a painting: light falling on an arranged scene — moonlight on
-a finished ledger. Vermeer, not a template: the most ordinary artifact in a
-CA's life made stare-at-able by how it's lit and placed.
+The populated June GST table is the concrete reference: **stronger populated labels +
+green Prepared marks + unbroken counts + soft export buttons**. The green marks drew
+the strongest reaction, but Vasanth explicitly clarified that the typography and other
+refinements made the whole table pleasing. Reproduce that coordinated hierarchy, not
+an isolated green decoration.
 
-### Exemplars (what "damn" looks like)
 
-- **Origin (dashboard + connect modal)** — the benchmark. Why it works:
-  - **One focal figure per surface.** One big number per card; everything else
-    drops to whisper-weight tracked-out micro-labels. The eye always knows
-    where to land, and can wander the page "like a painting."
-  - **Almost no borders.** Structure from whitespace and faint fills, not
-    hairlines around everything.
-  - **Serif only for human moments** ("Your weekly recap") — so it reads as a
-    voice, not a font. Working UI stays sans.
-  - **Air as luxury.** Half the content density we'd instinctively ship.
-  - **Delicacy, not mass.** Small precise type floating in big space — a jewel
-    on velvet. Premium = *fine*, never *large*.
-  - **Anticipation = care.** The connect modal pre-answers your next three
-    moves (search / popular tiles / categories). "They thought of what the
-    user wants" is the felt experience of care.
-  - Contains exactly **one dark moment** (the midnight tax card) in a light
-    page — and the eye goes there first.
-- **Agent-demo landing page** (video of an agent clicking through a page) —
-  comprehension in an instant, zero reading cost. **Show, don't tell: evidence
-  over claims.** (Its playful font was wrong for us — mechanism yes, register
-  no.)
-- **Gamma's hero** — "colorful, interesting, artistic." What's actually loved:
-  **authorship**. A real aesthetic decision someone stood behind — a luminous
-  night sky. (Their inner pages, same palette, are rejected: production, not
-  art.)
+Vasanth prefers light navigation, white panels and a quiet canvas with sharp readable
+text. Selective colour and emphasis make restraint feel alive. Dark chrome, large empty
+areas, low contrast or excessive badges do not automatically make software premium.
 
-### Rejections (what "no" looks like)
+Origin's **light** application screenshots are the reference. Adapt their proportions,
+alignment and clarity to accounting density; do not copy charts, promotional panels,
+gradients or decorative controls. The populated June GST workspace, banking list and
+Clients directory are the accepted local examples, with task-specific compositions.
 
-- **Density / evidence-piling** (our old ledger homepage): "you are being
-  pathetic if you have to beg the CA to stay." Confidence = proof stated once,
-  beautifully, without pleading.
-- **Neutral black / charcoal** (Midday, Grok): "nothing. black. blunt.
-  emotionless." Dark is only allowed as **midnight-sea with visible
-  luminance** — night with a moon in it. Nila never touches achromatic black.
-- **Gargantuan type** (Ramp's product): "200% zoomed in. i'm not blind." Big
-  rows and big fonts read as "big picture mode," the opposite of refinement.
-  (A big serif hero is acceptable on marketing only; never in product.)
-- **Glossy generated decoration** (Gamma inner pages, Airbnb 3D icons):
-  production without authorship. The detector fires on *intent*, not color
-  count.
-- **Enterprise layout by committee** (Synthesia): "where is the beauty." The
-  ideal instead: a calm beautiful opening that just says *look* — "it doesn't
-  say much. you are pulled along by the intent."
+## What worked
 
-### Standing decisions
+- Soft blue secondary export buttons feel cohesive and approachable. Keep a distinct
+  primary action; do not make every control blue or every secondary action identical.
+- Modestly stronger populated schedule names and small green Prepared indicators give
+  the eye useful destinations. Readable empty rows retain orientation without grey pills.
+- Consistent page identity, panel alignment and control proportions make different pages
+  feel like one product. A sparse page does not earn a larger title.
+- Counts kept together, aligned figures, natural filename truncation and correct singular
+  labels matter. Small flaws can make otherwise good software feel unfinished.
+- Borders are quiet structure. White space supports relationships and scanning; neither
+  maximum air nor maximum density is the objective.
+- Sans-serif carries operational work. Serif is reserved for earned human/display moments.
+  Rounded controls remain precise, not oversized or excessively soft.
 
-1. **Ledger metaphor is dead** for the new style. Marketing becomes moonlight.
-2. **Light room, one night moment.** Pale luminous page; the hero may open in
-   authored moonlight (deep midnight-sea gradient, soft lunar glow) resolving
-   into light. Never a dark site.
-3. **The product speaks, not the company.** Hero = the finished artifact
-   ("Ready for review · 6:04 AM", five exceptions), near-diegetic copy. Door-
-   to-door does the selling; the page's only KPI is *damn*.
-4. **Reveal, then stillness.** At most one quiet settle on load; afterwards the
-   page is a painting. No scattered motion.
-5. **Delicacy rules:** one focal figure per surface; air above the current
-   32px ceiling; borders near-zero; ink pulled toward neutral so blue is
-   reserved for meaning; sand accent appears once.
-6. **/landing is the moonlight-v2 proving ground.** If it produces *damn*, the
-   deltas are written back into DESIGN.md and the product inherits them.
+## Strong preference signal — the June table refinement (2026-09-06)
 
-### Addendum, same day — first critique of the built page
+On the populated June GST table, Vasanth singled out the tiny rounded green marks beside
+Prepared: “I specifically LOVE the little green thing,” “the table looks so pleasing,”
+and “instantly 10 times better.” This was a strong emotional response to a small detail,
+not a request for more colour everywhere. He subsequently singled out the stronger
+populated-row typography too: “you also made other changes in the table like bolding?
+it's so nice.”
 
-- **Clarity outranks poetry.** Origin's hero is the model: the poem ("Own your
-  wealth."), then one plain line naming the category, then second-person
-  benefits. A poetic headline alone leaves "what the hell is this product"
-  unanswered. Every hero needs all three layers.
-- **Don't narrate in the third person.** "Nila finishes your months" as the
-  only explanation reads like "Apple makes delightful products." Name the
-  category once, then speak to the reader: what *you* get, what *you* do.
-- **No self-indulgent brand flourishes.** "Nila · நிலா" as a hero eyebrow was
-  cut — the brand appears once (the wordmark) and the page moves on. Etymology
-  belongs in the design doc, not on the customer's screen.
-- **No self-indulgent brand flourishes.** The "Nila · நிலா" hero eyebrow was
-  cut: the vernacular script read as the brand admiring itself, not as care
-  for the reader. Heritage lives in the name and the moon; it doesn't need a
-  caption. (Same test as decoration: does the reader gain anything?)
-- **Numbers on a page are claims and get audited.** A timeline of clock times
-  (11:48 PM → 6:04 AM) read as "processing takes seven hours." Any specimen
-  figure, time, or sequence must survive a skeptical CA's arithmetic — or say
-  the fast thing explicitly ("reconciled within the hour").
+Design interpretation: small, soft, meaningful accents within precise aligned structure
+make the restrained UI feel alive. Preserve this reference when refining tables. Repeat
+accents selectively where they help scanning, retain the text meaning, and do not inflate
+them into badges or use green for unresolved work. This interpretation is a working
+hypothesis about his taste; the quoted reaction is the direct evidence.
 
-### Diagnosis of the current system (why our pages feel "okay, I'll work")
+## What to avoid
 
-Both the doc and the implementation, but DESIGN.md carries blame on four
-counts: it **mandates borders around everything**; **every word is tinted
-blue** so nothing is; the **spacing ceiling (32px) outlaws Origin-level air**;
-and it is **a rulebook of bans with no composition theory** — nothing says
-"one focal figure per surface," so a page can obey every rule and stay flat.
+Lifeless monochrome, heavy enterprise chrome, washed-out required text, giant headings,
+repeated status pills, arbitrary card grids and decoration added to fill space. Do not
+mistake removing visual weight for improving hierarchy.
 
-## 2026-07-31 — Origin reference corrected
+The historical claims “almost no borders,” “half the content density” and a mandatory
+dark moment are superseded for product UI. Marketing has its own scoped direction in
+[MARKETING.md](MARKETING.md); its artwork does not define workbench styling.
 
-The earlier entry misremembered the benchmark. Origin uses hairlines around
-most major cards; they succeed because they stay subordinate to composition,
-not because they are absent. Origin is also dense at the canvas level. Its
-restraint is per element — delicate type, clear hierarchy, and air inside and
-between subjects — not "half the content."
+## Judge the rendered result
 
-The proving ground is the real client-month verification surface, not
-`/landing`. A CA opens it to verify reconciliations and workings before signing;
-the product succeeds when that conviction is available on the glass without a
-discovery click.
+Can the eye find the useful result and action immediately? Are populated and empty states
+distinguishable without clutter? Does the page feel precise and calm at actual scale?
+Do equivalent roles match neighbouring pages? Does colour help rather than compete?
 
-## 2026-08-21 — conceptual inevitability
-
-The deepest preference is not moonlight, delicacy, air, authored moments, or
-interactive pleasure. It is **conceptual inevitability**: the requirement satisfied
-with nothing left to remove.
-
-Every visible label, state, feature, action, and interaction creates cognitive work.
-Even an innocent addition can make the user wonder what it means, whether it needs
-attention, and what happens if they ignore it. That anxiety is product harm.
-
-Therefore:
-
-- Unnecessary complexity is the maximal design failure.
-- Nila absorbs complexity; it never displays its internal model to prove sophistication.
-- Visual delight may refine a necessary element. It cannot justify an element.
-- “Optional,” “potentially useful,” and “more complete” are reasons to omit something.
-- Beauty is the shortest honest path from what the user gave Nila to what Nila finished.
-- If removing an element preserves the outcome and understanding, remove it.
-
-The earlier aesthetic preferences remain materials, not requirements. Necessity decides
-what exists. Composition and taste begin only afterward.
+Refine the current necessary content before proposing more content. Record durable user
+preferences here; put implementation rules in FRONTEND and layout decisions in COMPOSITION.

@@ -25,6 +25,27 @@ defmodule NilaWeb.Components.Card do
     """
   end
 
+  @doc "A panel heading aligned with standard card content; actions retain their own control recipe."
+  attr :title, :string, required: true
+  attr :rest, :global
+  slot :inner_block
+  slot :actions
+
+  def card_header(assigns) do
+    ~H"""
+    <div
+      class="border-rule flex flex-wrap items-center justify-between gap-4 border-b px-6 py-4"
+      {@rest}
+    >
+      <div class="min-w-0">
+        <h2 class="text-ui font-medium">{@title}</h2>
+        {render_slot(@inner_block)}
+      </div>
+      <div :if={@actions != []}>{render_slot(@actions)}</div>
+    </div>
+    """
+  end
+
   @doc """
   Renders a small KPI tile — an uppercase label over a figure — in the moonlight
   card shell. Pass `value_id` when the figure needs a DOM id (e.g. for tests or

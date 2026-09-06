@@ -17,7 +17,9 @@ defmodule NilaWeb.Components.Table do
 
   Exactly one `:col` must be marked `row_header`; it identifies each row to assistive
   technology. Each column also accepts `key`, `label`, `align` ("left", "center", or
-  "right"), and `class`. Use a `:col_header` slot with the same `column` key when a
+  "right"), and `class`. Labels use quiet, regular-weight schema typography and retain
+  their supplied casing (including acronyms such as GSTIN). Use sentence-case labels.
+  Use a `:col_header` slot with the same `column` key when a
   header needs an interactive control instead of its text label. The optional `:toolbar`
   slot attaches contextual actions to the table surface above the column headers. The
   `:empty` slot renders when there are no rows; for streams pass `empty?` explicitly since
@@ -157,7 +159,7 @@ defmodule NilaWeb.Components.Table do
           data-mode={@mode}
         >
           <thead class={[
-            "text-ink-subtle text-label uppercase",
+            "text-ink-subtle text-label",
             @sticky_header && ["xl:sticky xl:z-10", @sticky_header]
           ]}>
             <tr>
@@ -165,7 +167,7 @@ defmodule NilaWeb.Components.Table do
                 :for={col <- @col}
                 scope="col"
                 class={[
-                  "font-semibold",
+                  "font-normal",
                   column_alignment(col[:align])
                 ]}
               >

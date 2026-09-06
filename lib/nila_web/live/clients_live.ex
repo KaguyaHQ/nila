@@ -23,46 +23,55 @@ defmodule NilaWeb.ClientsLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
     >
-      <div id="clients-page" class="space-y-section mx-auto max-w-5xl">
-        <.page_header eyebrow="Clients" title="Clients">
-          Manage your firm’s client businesses.
+      <div id="clients-page" class="pb-section space-y-block mx-auto w-full max-w-[960px]">
+        <.page_header title="Clients">
           <:actions>
-            <.button navigate={~p"/clients/new"} id="clients-add">
+            <.button navigate={~p"/clients/new"} id="clients-add" variant="primary" size="sm">
               <.icon name="hero-plus" class="size-4" /> Add client
             </.button>
           </:actions>
         </.page_header>
 
-        <.data_table
-          id="clients-table"
-          rows={@clients}
-          row_id={fn client -> "client-#{client.id}" end}
-          row_navigate={fn client -> ~p"/clients/#{client.id}/edit" end}
-          row_label={fn client -> "Edit #{client.name}" end}
-          empty?={@clients == []}
-          mode="worklist"
-        >
-          <:col :let={client} label="Client" row_header>
-            <span class="font-medium">{client.name}</span>
-          </:col>
-          <:col :let={client} label="GSTIN">
-            <span :if={client.gstin} class="whitespace-nowrap">{client.gstin}</span>
-            <span :if={!client.gstin} class="text-ink-muted">—</span>
-          </:col>
-          <:col :let={_client} label="" class="w-10 whitespace-nowrap">
-            <div class="flex justify-end">
-              <.icon name="hero-chevron-right-mini" class="text-ink-faint size-4" />
-            </div>
-          </:col>
-          <:empty>
-            <div id="clients-empty" class="space-y-block">
-              <p>No clients yet.</p>
-              <.button navigate={~p"/clients/new"} id="clients-add-first">
-                <.icon name="hero-plus" class="size-4" /> Add your first client
-              </.button>
-            </div>
-          </:empty>
-        </.data_table>
+        <.card padding="none">
+          <div class="px-4 py-3">
+            <.data_table
+              id="clients-table"
+              rows={@clients}
+              row_id={fn client -> "client-#{client.id}" end}
+              row_navigate={fn client -> ~p"/clients/#{client.id}/edit" end}
+              row_label={fn client -> "Edit #{client.name}" end}
+              empty?={@clients == []}
+              mode="worklist"
+              surface="ghost"
+              min_width="min-w-[640px]"
+            >
+              <:col :let={client} key="client" label="Client" row_header class="w-[50%]">
+                <span class="font-medium">{client.name}</span>
+              </:col>
+
+              <:col :let={client} key="gstin" label="GSTIN">
+                <span :if={client.gstin} class="whitespace-nowrap">{client.gstin}</span>
+                <span :if={!client.gstin} class="text-ink-muted">—</span>
+              </:col>
+
+              <:col :let={_client} label="" class="w-10 whitespace-nowrap">
+                <div class="flex justify-end">
+                  <.icon name="hero-chevron-right-mini" class="text-ink-faint size-4" />
+                </div>
+              </:col>
+
+              <:empty>
+                <div id="clients-empty" class="space-y-block">
+                  <p>No clients yet.</p>
+
+                  <.button navigate={~p"/clients/new"} id="clients-add-first">
+                    <.icon name="hero-plus" class="size-4" /> Add your first client
+                  </.button>
+                </div>
+              </:empty>
+            </.data_table>
+          </div>
+        </.card>
       </div>
     </Layouts.app>
     """

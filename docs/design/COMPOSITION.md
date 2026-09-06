@@ -1,151 +1,67 @@
 # Product composition
 
-Read this before designing or substantially restructuring a product screen. Read
-[`OPINIONS.md`](./OPINIONS.md) first. Opinions decide what exists; this document arranges
-only what remains.
+Owns layout, density and placement. Apply [OPINIONS.md](OPINIONS.md) to decide what exists;
+use [FRONTEND.md](FRONTEND.md) to implement it and [TASTE.md](TASTE.md) to judge its finish.
 
-## Begin with the result
+## Hierarchy
 
-Write the promised user outcome in one sentence before drawing a screen.
+Start with the outcome: what Nila finished, what is usable now and what exactly remains.
+Do not manufacture a region for an answer the current job does not need.
 
-Good:
+Rank content **result → remainder/consequence → action → context**. Each surface has
+one focal assertion. Type, alignment and space establish hierarchy before boxes.
+A container should express a real boundary, selection or floating layer.
 
-> Put in the sales bills. Get a Tally sales register out.
+A focused job starts on one plane. Use a split view when comparing source and correction,
+or a supporting action column when it helps complete the current job. Empty monitor
+width is not a reason to invent a rail. Visualizations must make a real comparison easier
+while retaining exact values; never chart a number just because it exists.
 
-Bad:
+## Stable page geometry
 
-> Manage extraction, review, assurance, evidence, approval, and handoff.
+Equivalent roles use the same typography and controls; layouts may differ by task.
+Use the shared page header, with `space-y-block` between it and content in the adopted
+list, form and GST workspace composition. Larger gaps separate genuinely distinct
+workbench regions. Avoid extra page-specific top padding.
 
-The first sentence names completed work. The second exposes the system's decomposition of
-that work.
+| Surface | Width and arrangement |
+| --- | --- |
+| Clients/simple identity directory | Centered `max-w-[960px]` |
+| Banking list and GST workspace | Centered `w-full max-w-[1400px] mx-auto` |
+| Forms | Narrower reading/field width appropriate to the form |
+| Document review | May use more width for source beside corrected data |
 
-The default surface should answer only:
+The shared shell owns outer gutters. Extra monitor width becomes balanced outer space;
+a maximum is not a target. Keep text size stable as the viewport grows. Do not stretch
+short lists or invent content to resemble a populated reference screenshot.
 
-1. What did Nila finish?
-2. What can I use now?
-3. What, exactly, remains?
+Put creation actions beside page identity, workflow actions beside their result and
+period arrows in the title-actions slot. GST overview and drill-downs retain the same
+period header. Avoid comparison controls and theme toggles in product pages.
 
-If the job does not require one of those answers, do not manufacture a region for it.
+## Tables and panels
 
-## Every concept has a cost
+- Registers are compact for scanning; evidence review has room for comparison.
+- Dates, figures and outcomes have predictable widths; names use the remaining width.
+  Keep short counts such as “8 documents” on one line. Right-align figures.
+- Banking combines bank/account identity and the original filename. Let filenames use
+  available space before truncation, and retain access to the full name.
+- Align panel headers and body text, accounting for the table's own cell padding.
+  Do not stack wrapper padding accidentally.
+- Use clear empty states in existing destinations. Omit unrelated empty panels.
 
-A label asks the user to interpret a category. A state asks them to remember a distinction.
-An action asks them to choose. A region asks them to scan. An interaction asks them to learn
-behaviour. None is free merely because it is familiar UI.
+## GST month composition
 
-Before adding any element, ask:
+The sales result and primary action sit above the schedules. A 280px Exports column
+provides secondary downloads beside the schedules on wide desktops; it stacks when
+space is insufficient. Keep totals on a compact line with subtle separators.
 
-> If this disappears, can the user still obtain and understand the result?
+The statutory index deliberately keeps all schedules visible, in the same order and
+at stable row heights. This preserves orientation and makes absence explicit during
+repeated review. Empty rows are readable plain text, not badges or success claims.
+Populated labels may have modest emphasis. A Prepared indicator means preparation,
+never verification, approval or filing. This exception does not justify other empty cards.
 
-If yes, remove it.
-
-This test applies equally to headings, helper copy, badges, cards, tabs, filters, drawers,
-tooltips, progress indicators, illustrations, animation, and “optional” details. Hidden
-complexity still creates discovery and maintenance cost; keep it only when a real question
-requires an answer.
-
-Do not add structure for a possible future feature, a hypothetical persona, or because a
-backend distinction exists. Product composition is not a diagram of the data model.
-
-## Invariants
-
-### One focal assertion
-
-Every surface has one dominant assertion: the result, the unresolved remainder, or the
-decision that cannot be automated. Rank what survives by consequence:
-
-> result → remainder or consequence → unavoidable action → supporting context
-
-Orientation is quiet. The work earns visual weight.
-
-### Output plus exact remainder
-
-Do not expose a taxonomy of partial completion when the user needs a usable artifact and
-a remainder.
-
-Prefer:
-
-> 47 sales vouchers ready for Tally. 3 bills left out.
-
-Avoid:
-
-> 20 ready · 10 partially matched · 11 need checking · 1 unreadable
-
-Richer states may exist internally. A visible state is justified only when it changes the
-user's next unavoidable action.
-
-### Uncertainty remains truthful
-
-Simplicity must not create a false claim. Unresolved work cannot appear verified, approved,
-reconciled, or complete. State the boundary plainly and once. Do not compensate for weak
-assurance with panels of caveats.
-
-### Empty regions do not render
-
-No heading, card, tab, count, or placeholder exists merely to report that nothing exists.
-Omit the region.
-
-### The product does the work
-
-An action belongs on the primary surface only when Nila can perform or complete it. Do not
-turn unresolved work into task-management theatre. “Ask client for clearer copy” records
-labour; it does not remove labour.
-
-## Arrange only what survives
-
-### Use one plane by default
-
-A focused job begins on one plane. Add another only when the user must compare two things
-simultaneously to make the unavoidable decision, such as a source document beside its
-corrected entry. Empty width is not a reason to invent a rail.
-
-### Use hierarchy before containers
-
-Type, alignment, and space establish order before cards, borders, fills, or shadows. A
-container exists only when it expresses a real boundary, selection, or floating layer.
-
-### Draw only when drawing is faster
-
-A visual relationship is justified when it makes an unavoidable comparison materially
-faster to understand while retaining exact values. Do not visualize a number simply
-because a component exists.
-
-### Match density to the unavoidable decision
-
-Registers may be compact because scanning is the work. Review may breathe because a human
-must compare and decide. Density follows the job; it does not create extra supporting UI.
-
-### Motion explains change
-
-Motion may reveal or confirm a spatial change, then stops. Interactive delight is not an
-independent requirement and cannot justify an interaction.
-
-### Visual authorship comes last
-
-Moonlight, typography, and an authored visual moment may make necessary work beautiful.
-They may not introduce another concept, surface, or reading obligation. Beauty is the
-feeling that the requirement has been satisfied with nothing left to remove.
-
-## Product flow
-
-The active job owns the screen. A finished job collapses to its result. The next job appears
-only when it becomes the user's actual next action.
-
-The GST month may provide context and history, but it is a shell—not the default work
-surface. Workings, evidence, provenance, approval history, and statutory schedules remain
-connected to the result and appear only when required for a real review, filing, or dispute.
-
-Do not make a junior operate a workpaper to receive completed work.
-
-## Completion test
-
-Inspect the rendered desktop screen and ask:
-
-- Can a new operator understand the value without instruction?
-- Is the finished artifact more prominent than Nila's process?
-- Does every visible state change what the user does next?
-- Does every action remove or complete work?
-- Is the exact remainder plain without becoming a taxonomy?
-- Can any word, element, region, or interaction still be removed?
-
-If the final answer is yes, the screen is not finished.
+A finished job leads with its result. Workings, provenance and history stay connected
+for actual review rather than becoming obligatory dashboard content. Visual refinement
+should reduce effort without changing these workflow boundaries.

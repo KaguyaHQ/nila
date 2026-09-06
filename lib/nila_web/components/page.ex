@@ -7,9 +7,9 @@ defmodule NilaWeb.Components.Page do
   import NilaWeb.Components.Card
 
   @doc """
-  Renders a page header: an optional eyebrow, a display-serif title, optional
+  Renders a page header: optional parent context, an operational sans-serif title, optional
   intro copy, and an optional actions cluster aligned to the right on wide
-  screens. The moonlight hero pattern, in one place.
+  screens. One page-identity recipe for product lists, forms and workspaces.
 
   ## Examples
 
@@ -28,13 +28,14 @@ defmodule NilaWeb.Components.Page do
 
   attr :title, :string, required: true
   slot :inner_block, doc: "intro / supporting copy under the title"
-  slot :actions, doc: "buttons or stats aligned to the right"
+  slot :actions, doc: "page actions aligned to the right"
+  slot :title_actions, doc: "navigation directly beside the title, such as filing period arrows"
 
   def page_header(assigns) do
     ~H"""
-    <div class="gap-block flex flex-col lg:flex-row lg:items-end lg:justify-between">
+    <header class="gap-block flex flex-wrap items-center justify-between">
       <div class="space-y-related">
-        <p :if={@eyebrow} class="text-eyebrow text-moon font-semibold uppercase">
+        <p :if={@eyebrow && @eyebrow != @title} class="text-ink-muted text-ui">
           <.link
             :if={@eyebrow_path}
             navigate={@eyebrow_path}
@@ -44,18 +45,19 @@ defmodule NilaWeb.Components.Page do
           </.link>
           <span :if={is_nil(@eyebrow_path)}>{@eyebrow}</span>
         </p>
-        <h1 class="font-display text-base-content text-h2 font-normal">
-          {@title}
-        </h1>
+        <div class="flex flex-wrap items-center gap-4">
+          <h1 class="text-base-content text-page font-medium">{@title}</h1>
+          <div :if={@title_actions != []}>{render_slot(@title_actions)}</div>
+        </div>
         <p
           :if={@inner_block != []}
-          class="text-body text-ink-muted max-w-2xl font-light"
+          class="text-body text-ink-muted max-w-2xl"
         >
           {render_slot(@inner_block)}
         </p>
       </div>
       <div :if={@actions != []}>{render_slot(@actions)}</div>
-    </div>
+    </header>
     """
   end
 
@@ -70,7 +72,7 @@ defmodule NilaWeb.Components.Page do
     ~H"""
     <header class={[@actions != [] && "gap-section flex items-center justify-between", "pb-block"]}>
       <div>
-        <h1 class="text-h4 font-semibold">
+        <h1 class="text-page font-medium">
           {render_slot(@inner_block)}
         </h1>
         <p :if={@subtitle != []} class="text-ink-muted text-ui">
@@ -91,21 +93,10 @@ defmodule NilaWeb.Components.Page do
 
   def settings_header(assigns) do
     ~H"""
-    <div class="gap-block flex flex-col lg:flex-row lg:items-end lg:justify-between">
-      <div class="space-y-related">
-        <p class="text-eyebrow text-moon font-semibold uppercase">Settings</p>
-        <h1 class="font-display text-base-content text-h2 font-normal">
-          {@title}
-        </h1>
-        <p
-          :if={@inner_block != []}
-          class="text-body text-ink-muted max-w-2xl font-light"
-        >
-          {render_slot(@inner_block)}
-        </p>
-      </div>
-      <div :if={@actions != []}>{render_slot(@actions)}</div>
-    </div>
+    <.page_header eyebrow="Settings" title={@title}>
+      {render_slot(@inner_block)}
+      <:actions :if={@actions != []}>{render_slot(@actions)}</:actions>
+    </.page_header>
     """
   end
 

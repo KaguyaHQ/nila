@@ -83,7 +83,8 @@ defmodule NilaWeb.Gst.MonthLive do
     sales = fetch_or_nil(SalesMonths.get_by_period(org_id, client.id, period))
     dumps = Dumps.list(org_id, client.id, period)
 
-    if purchase || sales || dumps != [] || socket.assigns.live_action == :sales_workspace do
+    if purchase || sales || dumps != [] ||
+         socket.assigns.live_action == :sales_workspace do
       socket
       |> assign(:client, client)
       |> assign(:period, period)
@@ -118,8 +119,9 @@ defmodule NilaWeb.Gst.MonthLive do
   def handle_params(
         params,
         _uri,
-        %{assigns: %{live_action: :sales_workspace}} = socket
-      ) do
+        %{assigns: %{live_action: action}} = socket
+      )
+      when action == :sales_workspace do
     {:noreply,
      assign(socket,
        purchase_review_route: nil,
@@ -1632,6 +1634,7 @@ defmodule NilaWeb.Gst.MonthLive do
           />
         </:source>
       </SalesWorkspace.workspace>
+
       <div
         :if={@live_action != :sales_workspace}
         id="month-page"

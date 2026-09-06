@@ -54,13 +54,16 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       |> assign(:review_count, MapSet.size(review_ids))
       |> assign(:base, base)
       |> assign(:schedule_rows, schedule_rows(assigns, review_ids, hsn, documents, base))
-      |> assign(:period_label, Formatters.period_label(assigns.period))
+      |> assign(:period_label, full_period_label(assigns.period))
       |> assign(:deadline, deadline(assigns.period))
       |> assign(:previous_period, shift_period(assigns.period, -1))
       |> assign(:next_period, shift_period(assigns.period, 1))
 
     ~H"""
-    <section id="sales-period-workspace" class="pb-section mx-auto max-w-6xl">
+    <section
+      id="sales-period-workspace"
+      class="pb-section space-y-block mx-auto w-full max-w-[1400px]"
+    >
       <.period_header
         client={@client}
         period={@period}
@@ -73,19 +76,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       />
       <%= case @view do %>
         <% :overview -> %>
-          <.overview
-            client={@client}
-            period={@period}
-            base={@base}
-            invoices={@invoices}
-            active_invoices={@active_invoices}
-            totals={@totals}
-            review={@review}
-            review_count={@review_count}
-            schedule_rows={@schedule_rows}
-            dumps={@dumps}
-            readiness={@readiness}
-          />
+          <.overview {assigns} />
         <% :invoices -> %>
           <.invoices_view
             client={@client}
@@ -134,6 +125,148 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
     """
   end
 
+  defp overview(assigns) do
+    assigns =
+      assign(assigns,
+        stage:
+          workflow_stage(assigns.readiness, length(assigns.active_invoices), assigns.review_count),
+        first_review: List.first(assigns.review.needs_you),
+        upload_files: Enum.sum(Enum.map(assigns.dumps, &length(&1.file_keys)))
+      )
+
+    ~H"""
+    <div id="sales-period-overview" class="space-y-block">
+      <.card padding="none">
+        <.card_header title="Sales invoices">
+          <p id="sales-period-status" class="text-ink-muted text-ui mt-1">
+            <%= case @stage do %>
+              <% :collect -> %>
+                Add invoices to prepare this month's GST working.
+              <% :review -> %>
+                Review the GST working before exporting.
+              <% :export -> %>
+                Your GST working is available to download.
+            <% end %>
+          </p>
+
+          <:actions>
+            <div id="sales-period-primary-action">
+              <.button
+                :if={@stage == :collect}
+                navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}&kind=sales"}
+                variant="primary"
+                size="sm"
+              >Bring in invoices</.button>
+              <.button
+                :if={@stage == :review}
+                navigate={
+                  if(@first_review,
+                    do:
+                      review_path(
+                        @client,
+                        @period,
+                        @first_review.source_id,
+                        :needs_you,
+                        @base <> "/invoices"
+                      ),
+                    else: @base <> "/invoices"
+                  )
+                }
+                variant="primary"
+                size="sm"
+              >Review invoices</.button>
+              <.download_button
+                :if={@stage == :export}
+                id="sales-period-primary-download"
+                href={~p"/gstr1/#{@client.id}/#{@period}/workings.xlsx"}
+                variant="primary"
+                size="sm"
+              >Download GST working</.download_button>
+            </div>
+          </:actions>
+        </.card_header>
+
+        <div class="text-ui flex flex-wrap items-center gap-x-6 gap-y-2 px-6 py-4 tabular-nums">
+          <span><span class="font-semibold">{length(@active_invoices)}</span>
+          <span class="text-ink-muted">invoices in working</span></span>
+          <span class="border-rule border-l pl-6"><span class="font-semibold">{if @totals,
+            do: Helpers.rupees(@totals.taxable),
+            else: "—"}</span> <span class="text-ink-muted">taxable</span></span>
+          <span class="border-rule border-l pl-6"><span class="font-semibold">{if @totals,
+            do: Helpers.rupees(@totals.tax),
+            else: "—"}</span> <span class="text-ink-muted">output tax</span></span>
+        </div>
+
+        <div class="border-rule text-ui flex flex-wrap justify-between gap-2 border-t px-6 py-3">
+          <.text_link navigate={@base <> "/invoices"}>View sales register
+          <.icon name="hero-chevron-right-mini" class="inline size-4" /></.text_link>
+          <.text_link id="sales-period-uploads-link" navigate={@base <> "/uploads"}>Uploads · {count_label(
+            length(@dumps),
+            "batch"
+          )} · {count_label(@upload_files, "file")}</.text_link>
+        </div>
+      </.card>
+
+      <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <.schedules_section rows={@schedule_rows} />
+        <.card padding="none" id="sales-period-export">
+          <.card_header title="Exports" />
+          <p :if={@readiness.state == :absent} class="text-ink-muted text-ui px-6 pt-4">
+            Add invoices to make exports available.
+          </p>
+
+          <p
+            :if={@readiness.state != :absent and @review_count > 0}
+            class="text-ui text-ink-muted px-6 pt-4"
+          >
+            <.text_link navigate={@base <> "/invoices"}>Review invoices</.text_link> before exporting.
+          </p>
+
+          <div class="divide-rule divide-y px-6">
+            <div id="sales-period-handoff-workings" class="space-y-3 py-4">
+              <p class="text-ui">GST sales working <span class="text-ink-muted">· XLSX</span></p>
+
+              <.download_button
+                :if={length(@active_invoices) > 0 and @review_count == 0}
+                id="sales-period-handoff-download-workings"
+                href={~p"/gstr1/#{@client.id}/#{@period}/workings.xlsx"}
+                variant="soft"
+                size="sm"
+              >Download</.download_button>
+              <p
+                :if={
+                  length(@active_invoices) == 0 and @readiness.state != :absent and @review_count == 0
+                }
+                class="text-ink-muted text-ui"
+              >
+                Unavailable — add invoices
+              </p>
+            </div>
+
+            <div
+              :for={{kind, label} <- [{:winman, "Winman GSTR-1 · XLSM"}, {:json, "GSTR-1 · JSON"}]}
+              id={"sales-period-handoff-#{kind}"}
+              class="space-y-3 py-4"
+            >
+              <p class="text-ui">{label}</p>
+
+              <.export_action
+                :if={@readiness.state != :absent and @review_count == 0}
+                kind={kind}
+                client={@client}
+                base={@base}
+                period={@period}
+                readiness={@readiness}
+                review_count={@review_count}
+              />
+            </div>
+          </div>
+        </.card>
+      </div>
+    </div>
+    """
+  end
+
   attr :client, :map, required: true
   attr :period, :string, required: true
   attr :period_label, :string, required: true
@@ -145,219 +278,31 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
   defp period_header(assigns) do
     ~H"""
-    <header class="border-rule flex flex-wrap items-end justify-between gap-4 border-b pb-4">
-      <div class="min-w-0">
-        <p class="text-ink-subtle text-label font-semibold uppercase">
-          {@client.name} · Sales &amp; GSTR-1
-        </p>
-
-        <div class="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 class="font-display text-base-content text-h3 font-normal">{@period_label}</h1>
-
-          <p class="text-ink-muted text-ui">{@deadline}</p>
-        </div>
-      </div>
-
-      <nav aria-label="Filing period" class="flex items-center gap-1">
-        <.button
-          navigate={~p"/gst/#{@client.id}/#{@previous_period}/sales"}
-          variant="ghost"
-          size="xs"
-          aria-label="Previous filing period"
-        >
-          <.icon name="hero-chevron-left-mini" class="size-4" />
-        </.button>
-
-        <span class="text-base-content text-ui min-w-24 text-center font-semibold">{@period_label}</span>
-        <.button
-          navigate={~p"/gst/#{@client.id}/#{@next_period}/sales"}
-          variant="ghost"
-          size="xs"
-          aria-label="Next filing period"
-        >
-          <.icon name="hero-chevron-right-mini" class="size-4" />
-        </.button>
-      </nav>
-    </header>
-    """
-  end
-
-  attr :client, :map, required: true
-  attr :period, :string, required: true
-  attr :base, :string, required: true
-  attr :invoices, :list, required: true
-  attr :active_invoices, :list, required: true
-  attr :totals, :any, default: nil
-  attr :review, :any, required: true
-  attr :review_count, :integer, required: true
-  attr :schedule_rows, :list, required: true
-  attr :dumps, :list, required: true
-  attr :readiness, :map, required: true
-
-  defp overview(assigns) do
-    first_review = List.first(assigns.review.needs_you)
-    upload_files = Enum.sum(Enum.map(assigns.dumps, &length(&1.file_keys)))
-
-    workflow_stage =
-      workflow_stage(assigns.readiness, length(assigns.active_invoices), assigns.review_count)
-
-    assigns =
-      assign(assigns,
-        first_review: first_review,
-        upload_files: upload_files,
-        workflow_stage: workflow_stage
-      )
-
-    ~H"""
-    <div class="pt-block space-y-block">
-      <div class="flex flex-wrap items-center justify-between gap-4">
-        <div class="space-y-related">
-          <p class="text-base-content text-ui tabular-nums">
-            {count_label(length(@active_invoices), "invoice")} · {Helpers.rupees(
-              @totals && @totals.taxable
-            )} taxable · {Helpers.rupees(@totals && @totals.tax)} output tax
-          </p>
-
-          <p
-            :if={@workflow_stage != :export}
-            id="sales-period-status"
-            class="text-ink-muted text-ui"
-          >
-            <%= if @workflow_stage == :collect do %>
-              Add invoices to prepare the GST working.
-            <% else %>
-              GST working needs review.
-            <% end %>
-          </p>
-        </div>
-
-        <div id="sales-period-primary-action" class="flex flex-wrap items-center gap-2">
+    <.page_header eyebrow={@client.name <> " / Sales & GSTR-1"} title={@period_label}>
+      <:title_actions>
+        <nav aria-label="Filing period" class="flex items-center gap-1">
           <.button
-            :if={@workflow_stage == :collect}
-            navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}&kind=sales"}
-            variant="primary"
+            navigate={~p"/gst/#{@client.id}/#{@previous_period}/sales"}
+            variant="ghost"
             size="sm"
+            aria-label="Previous filing period"
           >
-            Bring in invoices
+            <.icon name="hero-chevron-left-mini" class="size-4" />
           </.button>
 
           <.button
-            :if={@workflow_stage == :review and @first_review}
-            patch={
-              review_path(
-                @client,
-                @period,
-                @first_review.source_id,
-                :needs_you,
-                @base <> "/invoices"
-              )
-            }
-            variant="primary"
+            navigate={~p"/gst/#{@client.id}/#{@next_period}/sales"}
+            variant="ghost"
             size="sm"
+            aria-label="Next filing period"
           >
-            Review {@review_count}
+            <.icon name="hero-chevron-right-mini" class="size-4" />
           </.button>
+        </nav>
+      </:title_actions>
 
-          <.download_button
-            :if={@workflow_stage == :export}
-            id="sales-period-primary-download"
-            href={~p"/gstr1/#{@client.id}/#{@period}/workings.xlsx"}
-            variant="primary"
-            size="sm"
-          >
-            Download GST working
-          </.download_button>
-
-          <.text_link
-            :if={@workflow_stage == :export}
-            id="sales-period-export-link"
-            href="#sales-period-export"
-            class="inline-flex items-center gap-1"
-          >
-            Winman / JSON exports <.icon name="hero-arrow-down-mini" class="size-4" />
-          </.text_link>
-        </div>
-      </div>
-
-      <.sales_section
-        base={@base}
-        invoice_count={length(@invoices)}
-        taxable={@totals && @totals.taxable}
-        review_count={@review_count}
-        dumps={@dumps}
-        upload_files={@upload_files}
-      /> <.schedules_section rows={@schedule_rows} />
-      <.export_section
-        client={@client}
-        period={@period}
-        base={@base}
-        invoice_count={length(@active_invoices)}
-        readiness={@readiness}
-        review_count={@review_count}
-      />
-    </div>
-    """
-  end
-
-  attr :base, :string, required: true
-  attr :invoice_count, :integer, required: true
-  attr :taxable, :any, default: nil
-  attr :review_count, :integer, required: true
-  attr :dumps, :list, required: true
-  attr :upload_files, :integer, required: true
-
-  defp sales_section(assigns) do
-    sales_row = %{
-      id: "invoices",
-      label: "Sales invoices",
-      count: assigns.invoice_count,
-      taxable: Helpers.rupees(assigns.taxable),
-      status: review_status(assigns.invoice_count, assigns.review_count),
-      variant: if(assigns.review_count > 0, do: "warning", else: "success"),
-      path: assigns.base <> "/invoices"
-    }
-
-    assigns = assign(assigns, :rows, [sales_row])
-
-    ~H"""
-    <section class="space-y-related">
-      <.data_table
-        id="sales-period-sources"
-        rows={@rows}
-        row_id={&"sales-period-sources-#{&1.id}"}
-        row_navigate={& &1.path}
-        row_label={fn row -> row.path && "Open #{row.label}" end}
-        mode="scan"
-        min_width="min-w-[720px]"
-      >
-        <:col :let={row} label="Sales" row_header class="w-[42%]">
-          <span class="font-medium">{row.label}</span>
-        </:col>
-
-        <:col :let={row} label="Invoices" class="w-[16%]">{row.count}</:col>
-
-        <:col :let={row} label="Taxable value" align="right" class="w-[20%]">{row.taxable}</:col>
-
-        <:col :let={row} label="Status" class="w-[18%]">
-          <.badge variant={row.variant}>{row.status}</.badge>
-        </:col>
-
-        <:col :let={row} label="" align="right" class="w-[4%]">
-          <.icon :if={row.path} name="hero-chevron-right-mini" class="text-ink-faint size-4" />
-        </:col>
-      </.data_table>
-
-      <.text_link
-        id="sales-period-uploads-link"
-        navigate={@base <> "/uploads"}
-        class="inline-flex items-center gap-1"
-      >
-        Uploads · {count_label(length(@dumps), "batch", "batches")} · {count_label(
-          @upload_files,
-          "file"
-        )} <.icon name="hero-chevron-right-mini" class="size-4" />
-      </.text_link>
-    </section>
+      <:actions><span class="text-ink-muted text-ui">{@deadline}</span></:actions>
+    </.page_header>
     """
   end
 
@@ -365,122 +310,52 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
   defp schedules_section(assigns) do
     ~H"""
-    <section class="space-y-related">
-      <p id="sales-period-return-heading" class="text-ink-subtle text-label font-semibold uppercase">
-        GSTR-1
-      </p>
+    <.card padding="none">
+      <.card_header id="sales-period-return-heading" title="GSTR-1 schedules" />
+      <div class="px-4 pt-2 pb-3">
+        <.data_table
+          id="sales-period-return"
+          surface="ghost"
+          rows={@rows}
+          row_id={&"sales-period-return-#{&1.id}"}
+          row_navigate={& &1.path}
+          row_label={fn row -> row.path && "Open #{row.label}" end}
+          mode="scan"
+          min_width="min-w-[720px]"
+        >
+          <:col :let={row} key="section" label="Section" row_header>
+            <span class={["text-base-content", row.path && "font-medium"]}>{row.label}</span>
+          </:col>
 
-      <.data_table
-        id="sales-period-return"
-        rows={@rows}
-        row_id={&"sales-period-return-#{&1.id}"}
-        row_navigate={& &1.path}
-        row_label={fn row -> row.path && "Open #{row.label}" end}
-        mode="scan"
-        min_width="min-w-[720px]"
-      >
-        <:col :let={row} label="Section" row_header class="w-[42%]">
-          <span class={["font-medium", is_nil(row.path) && "text-ink-muted"]}>{row.label}</span>
-        </:col>
+          <:col :let={row} key="entries" label="Entries" align="right" class="w-[100px]">
+            <span class="whitespace-nowrap">{row.count}</span>
+          </:col>
 
-        <:col :let={row} label="Entries" class="w-[16%]">{row.count}</:col>
+          <:col :let={row} key="taxable" label="Taxable value" align="right" class="w-[180px]">
+            {row.value || "—"}
+          </:col>
 
-        <:col :let={row} label="Taxable value" align="right" class="w-[20%]">{row.value || "—"}</:col>
+          <:col :let={row} key="status" label="Status" class="w-[160px]">
+            <span class={[
+              row.status == "No entries" && "text-ink-muted",
+              row.variant == "warning" && "text-warning",
+              row.variant == "error" && "text-error"
+            ]}>
+              <span
+                :if={row.status == "Prepared"}
+                aria-hidden="true"
+                class="bg-success mr-1.5 inline-block h-1.5 w-1.5 rounded-full"
+              />
+              {row.status}
+            </span>
+          </:col>
 
-        <:col :let={row} label="Status" class="w-[18%]">
-          <.badge variant={row.variant}>{row.status}</.badge>
-        </:col>
-
-        <:col :let={row} label="" align="right" class="w-[4%]">
-          <.icon :if={row.path} name="hero-chevron-right-mini" class="text-ink-faint size-4" />
-        </:col>
-      </.data_table>
-    </section>
-    """
-  end
-
-  attr :client, :map, required: true
-  attr :base, :string, required: true
-  attr :period, :string, required: true
-  attr :invoice_count, :integer, required: true
-  attr :readiness, :map, required: true
-  attr :review_count, :integer, required: true
-
-  defp export_section(assigns) do
-    ~H"""
-    <section id="sales-period-export" class="space-y-related scroll-mt-4">
-      <p class="text-ink-subtle text-label font-semibold uppercase">Export</p>
-
-      <.data_table
-        id="sales-period-handoff"
-        rows={[%{id: "workings"}, %{id: "winman"}, %{id: "json"}]}
-        row_id={&"sales-period-handoff-#{&1.id}"}
-        mode="scan"
-        min_width="min-w-[720px]"
-      >
-        <:col :let={row} label="Output" row_header>
-          <span :if={row.id == "workings"}>GST sales working</span>
-          <span :if={row.id == "winman"}>Winman GSTR-1</span>
-          <span :if={row.id == "json"}>GSTR-1 JSON</span>
-        </:col>
-
-        <:col :let={row} label="Format">
-          <%= case row.id do %>
-            <% "workings" -> %>
-              XLSX
-            <% "winman" -> %>
-              XLSM
-            <% "json" -> %>
-              JSON
-          <% end %>
-        </:col>
-
-        <:col :let={row} label="Download">
-          <.download_button
-            :if={row.id == "workings" and @invoice_count > 0 and @review_count == 0}
-            id="sales-period-handoff-download-workings"
-            href={~p"/gstr1/#{@client.id}/#{@period}/workings.xlsx"}
-            variant="outline"
-            size="xs"
-          >
-            Download
-          </.download_button>
-
-          <span
-            :if={row.id == "workings" and @invoice_count == 0}
-            class="text-ink-muted text-ui"
-          >
-            Unavailable — add invoices
-          </span>
-
-          <span
-            :if={row.id == "workings" and @invoice_count > 0 and @review_count > 0}
-            class="text-ui text-warning"
-          >
-            Unavailable — <.text_link navigate={@base <> "/invoices"}>review invoices</.text_link>
-          </span>
-
-          <.export_action
-            :if={row.id == "winman"}
-            kind={:winman}
-            client={@client}
-            base={@base}
-            period={@period}
-            readiness={@readiness}
-            review_count={@review_count}
-          />
-          <.export_action
-            :if={row.id == "json"}
-            kind={:json}
-            client={@client}
-            base={@base}
-            period={@period}
-            readiness={@readiness}
-            review_count={@review_count}
-          />
-        </:col>
-      </.data_table>
-    </section>
+          <:col :let={row} label="" align="right" class="w-[40px]">
+            <.icon :if={row.path} name="hero-chevron-right-mini" class="text-ink-faint size-4" />
+          </:col>
+        </.data_table>
+      </div>
+    </.card>
     """
   end
 
@@ -508,8 +383,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       }
       id="sales-period-handoff-download-winman"
       href={~p"/gstr1/#{@client.id}/#{@period}/winman-b2b.xlsm"}
-      variant="outline"
-      size="xs"
+      variant="soft"
+      size="sm"
     >
       Download
     </.download_button>
@@ -528,8 +403,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       :if={@kind == :json and @readiness.state != :absent and @review_count == 0}
       id="sales-period-handoff-download-json"
       href={~p"/gstr1/#{@client.id}/#{@period}/return.json"}
-      variant="outline"
-      size="xs"
+      variant="soft"
+      size="sm"
     >
       Download
     </.download_button>
@@ -551,7 +426,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       assign(assigns, :invoice_rows, invoice_rows(assigns.rows, assigns.review_ids, assigns))
 
     ~H"""
-    <div class="pt-section space-y-section">
+    <div class="space-y-block">
       <.detail_heading
         base={@base}
         title="Sales invoices"
@@ -599,6 +474,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       mode="worklist"
       min_width="min-w-[900px]"
     >
+      <:empty>No invoices match this view.</:empty>
+
       <:col :let={row} label="Invoice" row_header>
         <span class="font-mono font-medium">{row.number}</span>
       </:col>
@@ -640,7 +517,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
     assigns = assign(assigns, label: label, rows: invoice_rows(rows, assigns.review_ids, assigns))
 
     ~H"""
-    <div class="pt-section space-y-section">
+    <div class="space-y-block">
       <.detail_heading
         base={@base}
         title={@label}
@@ -655,7 +532,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
   defp documents_view(assigns) do
     ~H"""
-    <div class="pt-section space-y-section">
+    <div class="space-y-block">
       <.detail_heading
         base={@base}
         title="Documents issued"
@@ -667,6 +544,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         row_id={&"sales-period-document-#{&1.id}"}
         mode="scan"
       >
+        <:empty>No document series to show.</:empty>
+
         <:col :let={row} label="Document kind" row_header>
           <span class="font-medium">{row.kind}</span>
         </:col>
@@ -701,7 +580,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           <.icon name="hero-chevron-left-mini" class="size-4" /> Period overview
         </.text_link>
 
-        <h2 class="text-base-content text-h4 mt-3 font-semibold">{@title}</h2>
+        <h2 class="text-base-content text-h4 mt-3 font-medium">{@title}</h2>
 
         <p class="text-ink-muted text-ui mt-1">{@copy}</p>
       </div>
@@ -849,10 +728,6 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   defp document_kind(5), do: "Credit notes"
   defp document_kind(number), do: "Document type #{number}"
 
-  defp review_status(0, _review_count), do: "No invoices"
-  defp review_status(_invoice_count, 0), do: "Ready"
-  defp review_status(_invoice_count, _review_count), do: "Needs review"
-
   defp workflow_stage(_readiness, 0, _review_count), do: :collect
   defp workflow_stage(_readiness, _invoice_count, review_count) when review_count > 0, do: :review
 
@@ -870,6 +745,13 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   defp treatment_label("b2cs"), do: "B2C"
   defp treatment_label("cdnr"), do: "Credit/debit note"
   defp treatment_label(_table), do: "Held out"
+
+  defp full_period_label(period) do
+    case Date.from_iso8601(period <> "-01") do
+      {:ok, date} -> Elixir.Calendar.strftime(date, "%B %Y")
+      _ -> Formatters.period_label(period)
+    end
+  end
 
   defp deadline(period) do
     due = period |> Calendar.due_dates() |> Map.fetch!(:gstr1)
@@ -892,8 +774,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
   defp base_path(client, period), do: "/gst/#{client.id}/#{period}/sales"
 
-  defp count_label(count, noun, plural \\ nil)
-  defp count_label(1, noun, _plural), do: "1 #{noun}"
-  defp count_label(count, noun, nil), do: "#{count} #{noun}s"
-  defp count_label(count, _noun, plural), do: "#{count} #{plural}"
+  defp count_label(1, noun), do: "1 #{noun}"
+  defp count_label(count, "batch"), do: "#{count} batches"
+  defp count_label(count, noun), do: "#{count} #{noun}s"
 end

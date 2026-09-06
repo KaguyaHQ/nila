@@ -1,111 +1,48 @@
-# Nila product opinions
+# Product necessity and scope
 
-## The governing belief
+## Governing rule
 
-**Unnecessary complexity is user harm.**
+**Unnecessary complexity is user harm.** Nila absorbs clerical and cognitive work.
+The user must not learn its internal model. A label, state, panel, action or feature
+must earn its place through a present task, not hypothetical future usefulness.
 
-Every label asks the user to interpret something. Every state asks them to remember a
-distinction. Every action creates a responsibility. Every feature suggests more work may
-be hiding behind it. Seemingly innocent additions accumulate into anxiety.
+For each proposed concept ask: **If this disappears, can the user still obtain and
+understand the result?** If yes, remove it. “Standard UX,” “optional,” “more complete”
+and “we might need it later” do not justify an addition.
 
-Nila exists to absorb that complexity. If the user must learn Nila's internal model, Nila
-has transferred clerical work into cognitive work and failed its purpose.
+This is not an instruction to erase useful visual hierarchy. Type, spacing, soft
+button fills and redundant status indicators may improve scanning without adding a
+concept or task. Judge whether they help people find, distinguish and act on existing
+content. Styling cannot justify decorative panels, invented states or filler.
 
-Beauty is conceptual inevitability:
+## Product promise
 
-> Nothing remains except what the user must know or do.
+The current wedge is **unstructured sales bills → Tally sales register**: work that a
+junior would otherwise type. Lead with the usable artifact and labour removed.
+Winman can be an adapter for an existing workflow; it does not define the product.
+The broader GST month remains available when review, filing or a dispute requires it.
+Do not force a junior to operate a workpaper to receive completed output.
 
-Visual delight, completeness, precision, future flexibility, and engineering sophistication
-cannot justify an unnecessary concept.
+The default loop is **put bills in → get result out**, with exact exceptions for humans.
+Do not lead with AI, confidence, extraction architecture or assurance terminology.
+Training and a taxonomy of internal states weaken the value proposition.
 
-## The deletion rule
+## Output plus remainder
 
-For every word, number, label, badge, state, panel, action, interaction, and feature, ask:
+Say “47 sales vouchers ready for Tally. 3 bills left out.” Name the usable result and
+what cannot be included. Avoid splitting incomplete work into many categories unless
+they cause different unavoidable actions. A visible state must affect the next action
+or make a required review understandable.
 
-> If this disappears, can the user still obtain and understand the result?
+Perform work rather than track it. “Ask client for a clearer copy” merely records labour
+unless Nila actually removes that coordination work. Prefer processing what is usable
+and identifying the exact remainder.
 
-If yes, remove it.
+## Scope and evidence
 
-“Potentially useful,” “more complete,” “standard UX,” and “we may need it later” are reasons
-to leave something out. Add it only when the present job makes it inevitable.
+Build the smallest faithful change. A component's existence is not a reason to use it.
+Do not add speculative controls, explanations or workflow machinery.
 
-Do not improve adjacent areas. Do not turn a narrow request into a system. The smallest
-faithful result is the success condition.
-
-## Show work removed
-
-A CA should understand Nila in one sentence:
-
-> Put in the sales bills. Get a Tally sales register out.
-
-Lead with the finished artifact and the labour that disappeared. Do not lead with AI,
-extraction, confidence, workflow, controls, provenance, assurance, or architecture.
-
-If the customer says “so you do data entry?”, show that the data entry is already done.
-Do not answer a simple value proposition with a grander claim.
-
-## The current wedge
-
-```text
-Unstructured sales bills → Tally sales register
-```
-
-Tally is the first output because it is concrete and durable: the entries exist in the
-books, downstream accounting and GST reports can use them, and the buyer immediately
-understands which junior work disappeared.
-
-Winman may be an adapter where it completes an existing workflow. It does not define the
-product. The broader destination may become GSTR-1 close and the GST month; that future
-does not belong on the first surface.
-
-## Complete means output plus remainder
-
-Never claim complete work without naming its boundary.
-
-Prefer:
-
-> 47 sales vouchers ready for Tally. 3 bills left out.
-
-Avoid:
-
-> 20 ready · 10 partially matched · 11 need checking · 1 blurry
-
-The customer needs the usable output and the exact remainder, not Nila's taxonomy of
-incompleteness. Richer internal states stay internal unless they cause different unavoidable
-user actions.
-
-## Do the work; do not manage it
-
-Nila is not a task tracker. A button that asks a client for a clearer copy merely records
-that somebody still has work to do.
-
-Nila should process what it can, produce the usable artifact, and identify what could not
-be included. Workflow coordination earns a place only when it removes work rather than
-organizing work for somebody else.
-
-## The junior must not learn Nila
-
-The default interaction is:
-
-```text
-Put bills in → get result out
-```
-
-Training destroys the value proposition. A junior should not need to understand states,
-workpapers, assurance coverage, provenance, or return mechanics to receive the result.
-Sophistication may remain available to a senior only when a real consequence requires it.
-
-## Demo the disappearing labour
-
-A controlled demo shows:
-
-1. the packet the junior would have typed;
-2. the finished Tally sales register;
-3. how much typing disappeared; and
-4. the exact remainder.
-
-Do not demo the architecture, month dashboard, controls, evidence, integrations, lifecycle,
-or internal safeguards. Those may answer a later question. They cannot create the first
-moment of value.
-
-The product's intelligence is proven by how little intelligence it demands from the user.
+Demonstrate the source packet, the finished register, the work removed and the remainder.
+Architecture, history and safeguards may answer later questions; they are not substitutes
+for the first concrete result. Beauty refines necessary work; it does not expand scope.

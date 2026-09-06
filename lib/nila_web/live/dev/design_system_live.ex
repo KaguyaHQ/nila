@@ -118,6 +118,12 @@ if Application.compile_env(:nila, :dev_routes, false) or
                     </div>
 
                     <div class="space-y-section">
+                      <div id="ds-type-page" class="space-y-related">
+                        <p class="text-ink-subtle text-label font-semibold uppercase">
+                          Operational page title
+                        </p>
+                        <.page_header title="Bank statements" />
+                      </div>
                       <.type_sample role="Hero" class="font-display text-hero font-normal">
                         Month closed.
                       </.type_sample>
@@ -149,8 +155,8 @@ if Application.compile_env(:nila, :dev_routes, false) or
                         </.context_text>
                       </div>
                       <.type_sample
-                        role="Label"
-                        class="text-ink-subtle text-label font-semibold uppercase"
+                        role="Table schema label"
+                        class="text-ink-subtle text-label font-normal"
                       >
                         Taxable value
                       </.type_sample>

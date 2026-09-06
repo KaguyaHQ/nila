@@ -83,19 +83,21 @@ defmodule NilaWeb.CoreComponentsTest do
     assert LazyHTML.attribute(close, "phx-click") != []
   end
 
-  test "page_header renders eyebrow, display title, and intro copy" do
+  test "page_header renders parent context, operational title, and intro copy" do
     assigns = %{}
 
     html =
       rendered_to_string(~H"""
-      <.page_header eyebrow="Work Orders" title="Work Orders">
+      <.page_header eyebrow="Operations" title="Work Orders">
         Every project and LAMC visit.
       </.page_header>
       """)
 
     assert html =~ "Work Orders"
-    assert html =~ "text-moon"
-    assert html =~ "font-display"
+    fragment = LazyHTML.from_fragment(html)
+    assert LazyHTML.text(LazyHTML.query(fragment, "h1.text-page.font-medium")) == "Work Orders"
+    assert LazyHTML.text(LazyHTML.query(fragment, "p.text-ui")) |> String.trim() == "Operations"
+    refute html =~ "font-display"
     assert html =~ "Every project and LAMC visit."
   end
 
