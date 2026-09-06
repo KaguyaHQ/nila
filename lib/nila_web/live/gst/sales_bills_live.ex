@@ -243,6 +243,16 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp review_queue_empty?(_, _), do: false
 
+  defp place_of_supply_label(nil), do: "Not determined"
+  defp place_of_supply_label(""), do: "Not determined"
+
+  defp place_of_supply_label(code) do
+    case Nila.Gst.StateCodes.name_for(code) do
+      nil -> code
+      name -> "#{name} (#{code})"
+    end
+  end
+
   defp invoice_total_rows(invoice) do
     checks = Gstr1.invoice_checks(invoice)
     totals = Nila.Gst.Sales.InvoiceValidation.comparison_totals(invoice)
@@ -259,6 +269,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
       %{
         label: label,
+        field: field,
+        matches?: check != nil && check["passed"] == true,
         calculated: calculated,
         printed: printed,
         mismatch?: mismatch?,
@@ -670,6 +682,15 @@ defmodule NilaWeb.Gst.SalesBillsLive do
            socket
            |> replace_selected_invoice(corrected_invoice, posting)
            |> close_invoice_facts_editor()}
+
+        {:error, {:invalid_correction, _field, :invalid_number}} ->
+          {:noreply,
+           socket
+           |> assign(:invoice_facts_form, to_form(attrs, as: :invoice_facts))
+           |> assign(
+             :invoice_facts_error,
+             "Enter a valid amount of zero or more, such as ₹23,100.50."
+           )}
 
         {:error, _reason} ->
           {:noreply,
@@ -1178,11 +1199,12 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   end
 
   defp invoice_facts_values(invoice) do
-    Map.take(
-      invoice || %{},
-      ~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply
-         printed_total_taxable printed_total_tax printed_grand_total)
-    )
+    invoice = invoice || %{}
+
+    invoice
+    |> Map.take(~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply
+         printed_total_taxable printed_total_tax printed_grand_total))
+    |> Map.put("printed_total_tax", Nila.Gst.Sales.Values.printed(invoice).tax)
   end
 
   defp tax_edit_field("cgst", :rate), do: :cgst_rate
@@ -2850,9 +2872,11 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         <section :if={processing?(@processing_jobs)} id="sales-bills-processing">
           <div class="space-y-related">
             <p class="text-ink-muted text-ui">{@client.name}</p>
+
             <h1 class="text-base-content text-h2 font-semibold">
               Reading invoices
             </h1>
+
             <p class="text-ink-muted text-ui tabular-nums">
               {processing_source_label(@processing_jobs)}
             </p>
@@ -2865,6 +2889,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             >
               {processing_progress_label(@processing_jobs)}
             </p>
+
             <%= if progress = processing_invoice_progress(@processing_jobs) do %>
               <.progress_bar
                 id="sales-bills-processing-bar"
@@ -2872,6 +2897,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 max={max(progress.total, 1)}
               />
             <% end %>
+
             <p
               :if={processing_retry_label(@processing_jobs)}
               id="sales-bills-processing-retry"
@@ -2879,6 +2905,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             >
               {processing_retry_label(@processing_jobs)}
             </p>
+
             <p class="text-ink-muted text-ui">
               You can leave this page — processing will continue.
             </p>
@@ -2919,9 +2946,11 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
           <div :if={not @accounting_view?} class="space-y-related">
             <p class="text-ink-muted text-ui">{@client.name}</p>
+
             <h1 id="sales-bills-result-title" class="text-h3 font-semibold">
               {length(@packet.all_invoices)} {plural(length(@packet.all_invoices), "invoice")} processed
             </h1>
+
             <p class="text-ink-muted text-ui">
               {length(batch_gst_review_invoices(@packet))} {if length(
                                                                  batch_gst_review_invoices(@packet)
@@ -2946,6 +2975,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             >
               Review {length(batch_gst_review_invoices(@packet))}
             </.button>
+
             <.button
               :for={period <- Enum.uniq(Enum.map(@source_dumps, & &1.period))}
               id={"sales-bills-open-period-#{period}"}
@@ -3096,6 +3126,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               <span class="text-base-content text-ui font-medium">
                 {TallyPacket.original_name(dump)}
               </span>
+
               <.button
                 type="button"
                 id={"sales-bills-retry-file-#{dump.id}"}
@@ -3144,6 +3175,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               patch={~p"/sales-bills/#{@client.id}/batch/#{@batch_ref}?view=accounting"}
             >Accounting</.button>
           </div>
+
           <.data_table
             id="sales-bills-voucher-table"
             rows={batch_table_invoices(@packet)}
@@ -3199,6 +3231,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     true -> "No open GST checks"
                   end}
                 </.badge>
+
                 <p
                   :for={issue <- Enum.take(batch_gst_issues(@packet, invoice), 1)}
                   class="text-ink-muted text-ui"
@@ -3206,6 +3239,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   {issue["message"]}
                 </p>
               </div>
+
               <div :if={@accounting_view?}>
                 <span id={"sales-bill-delivery-#{invoice_id(invoice)}"} class="whitespace-nowrap">
                   <.badge variant={
@@ -3226,6 +3260,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     ).label}
                   </.badge>
                 </span>
+
                 <p
                   :if={
                     invoice_attention_reason(
@@ -3290,6 +3325,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             <p class="text-base-content text-ui font-mono font-medium">
               {warning.invoice["invoice_number"] || "Unnumbered invoice"}
             </p>
+
             <p class="text-ink-muted text-ui">{review_reason(warning)}</p>
           </li>
         </ul>
@@ -3303,6 +3339,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           >
             Cancel
           </.button>
+
           <.button
             id="sales-bills-tally-warning-confirm"
             type="button"
@@ -3329,6 +3366,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             <h2 id={title_id} class="sr-only">
               Invoice {@selected_invoice["invoice_number"] || "without a number"}
             </h2>
+
             <div>
               <.button
                 id="sales-bill-posting-back"
@@ -3337,10 +3375,12 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 size="xs"
                 phx-click="close-posting-review"
               >
-                <.icon name="hero-arrow-left" class="size-4" />
-                {if @workbench_period, do: "Back to sales invoices", else: "Back to batch"}
+                <.icon name="hero-arrow-left" class="size-4" /> {if @workbench_period,
+                  do: "Back to sales invoices",
+                  else: "Back to batch"}
               </.button>
             </div>
+
             <div :if={@tally_company} class="flex items-center gap-2" id="invoice-workbench-views">
               <.button
                 id="invoice-workbench-facts-view"
@@ -3359,6 +3399,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 phx-value-view="accounting"
               >Accounting</.button>
             </div>
+
             <div class="border-rule gap-related flex items-center border-r pr-4">
               <.segmented_control
                 :if={@workbench_context && @workbench_period}
@@ -3383,6 +3424,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 <.icon name="hero-list-bullet" class="size-4" />
                 <span class="sr-only">Show invoice queue</span>
               </.button>
+
               <.button
                 id="sales-bill-posting-previous"
                 type="button"
@@ -3396,11 +3438,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               >
                 <.icon name="hero-chevron-left" class="size-4" />
               </.button>
+
               <span id="sales-bill-posting-position" class="text-ink-subtle text-ui tabular-nums">
                 {if @posting_navigation.position == 0,
                   do: "#{@posting_navigation.total} remaining",
                   else: "#{@posting_navigation.position} of #{@posting_navigation.total}"}
               </span>
+
               <.button
                 id="sales-bill-posting-next"
                 type="button"
@@ -3445,6 +3489,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           class="space-y-block"
         >
           <p>No invoices need review.</p>
+
           <.button id="invoice-workbench-review-done" phx-click="close-posting-review">
             Back to sales invoices
           </.button>
@@ -3465,7 +3510,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           }
           class="gap-block grid h-full min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:grid-rows-[minmax(0,1fr)]"
         >
-          <section id="sales-bill-original" class="min-h-0 overflow-y-auto">
+          <section id="sales-bill-original" class="bg-canvas rounded-box min-h-0 overflow-y-auto p-4">
             <.evidence_frame
               :if={@selected_invoice["image_urls"] != []}
               id="sales-bill-evidence-frame"
@@ -3484,7 +3529,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </div>
           </section>
 
-          <section id="sales-bill-proposed-voucher" class="min-h-0 overflow-y-auto">
+          <section
+            id="sales-bill-proposed-voucher"
+            class="bg-panel-surface min-h-0 overflow-y-auto px-4 pt-4"
+          >
             <div
               :if={@accounting_view? && @tally_company && not @tally_masters_available?}
               id="sales-bill-tally-masters-unavailable"
@@ -3511,68 +3559,72 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               phx-change="preview-tally-posting"
             >
               <div class="pb-canvas space-y-section">
-                <section id="sales-bill-invoice-facts" class="space-y-block max-w-3xl">
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="space-y-related">
-                      <div
-                        id="invoice-workbench-heading"
-                        class="gap-related flex flex-wrap items-baseline"
+                <section id="sales-bill-invoice-facts" class="space-y-section">
+                  <div class="space-y-section">
+                    <div id="invoice-workbench-heading" class="space-y-related">
+                      <h3
+                        id="sales-bill-invoice-identity"
+                        class="text-base-content text-page font-medium"
                       >
-                        <h3
-                          id="sales-bill-invoice-identity"
-                          class="text-base-content text-h4 font-semibold"
-                        >
-                          Invoice {@posting_preview_invoice["invoice_number"] || "without a number"}
-                        </h3>
-                        <span
-                          :if={not @accounting_view? && gst_workbench_issues(assigns) == []}
-                          id="invoice-workbench-gst-status"
-                          class="text-ink-muted text-ui"
-                        >No open GST checks</span>
-                      </div>
-                      <p id="sales-bill-buyer-identity" class="text-ink-muted text-ui">
-                        <span :if={@posting_preview_invoice["invoice_date"]}>
-                          {format_display_date(@posting_preview_invoice["invoice_date"])} ·
-                        </span>
-                        {@posting_preview_invoice["buyer_name"] || "Buyer not identified"}
-                      </p>
+                        Invoice {@posting_preview_invoice["invoice_number"] || "without a number"}
+                      </h3>
+
                       <p
-                        :if={@posting_preview_invoice["buyer_gstin"]}
-                        id="sales-bill-buyer-gstin"
+                        :if={@posting_preview_invoice["invoice_date"]}
+                        id="sales-bill-invoice-date"
                         class="text-ink-muted text-ui"
                       >
-                        {@posting_preview_invoice["buyer_gstin"]}
-                      </p>
-                      <p :if={@accounting_view? && @tally_company} class="text-ink-muted text-ui">
-                        Tally · {@tally_company.name}
-                        <span
-                          :if={not @tally_online? && @tally_masters_available?}
-                          id="sales-bill-tally-offline"
-                          class="text-warning"
-                        >
-                          · Offline — masters synced {format_master_sync(@tally_masters_synced_at)}
-                        </span>
-                      </p>
-                      <p
-                        :if={not @accounting_view? && @workbench_context}
-                        id="invoice-workbench-treatment"
-                        class="text-ink-muted text-ui"
-                      >
-                        {String.upcase(@workbench_context.item.treatment["table"] || "")} · Place of supply: {@workbench_context.item.treatment[
-                          "place_of_supply"
-                        ] || "Not determined"}
+                        {format_display_date(@posting_preview_invoice["invoice_date"])}
                       </p>
                     </div>
-                    <.button
-                      id="sales-bill-edit-invoice-facts"
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      phx-click="edit-invoice-facts"
-                      phx-value-return_to="#sales-bill-edit-invoice-facts"
-                    >
-                      <.icon name="hero-pencil-square" class="size-4" /> Edit invoice details
-                    </.button>
+
+                    <div class="border-rule gap-block pb-section flex items-start justify-between border-b">
+                      <div class="space-y-related min-w-0">
+                        <p id="sales-bill-buyer-identity" class="text-body font-medium">
+                          {@posting_preview_invoice["buyer_name"] || "Buyer not identified"}
+                        </p>
+
+                        <p
+                          :if={@posting_preview_invoice["buyer_gstin"]}
+                          id="sales-bill-buyer-gstin"
+                          class="text-ink-muted text-ui"
+                        >
+                          GSTIN {@posting_preview_invoice["buyer_gstin"]}
+                        </p>
+
+                        <p :if={@accounting_view? && @tally_company} class="text-ink-muted text-ui">
+                          Tally · {@tally_company.name}
+                          <span
+                            :if={not @tally_online? && @tally_masters_available?}
+                            id="sales-bill-tally-offline"
+                            class="text-warning"
+                          >
+                            · Offline — masters synced {format_master_sync(@tally_masters_synced_at)}
+                          </span>
+                        </p>
+
+                        <p
+                          :if={not @accounting_view? && @workbench_context}
+                          id="invoice-workbench-treatment"
+                          class="text-ink-muted text-ui"
+                        >
+                          {String.upcase(@workbench_context.item.treatment["table"] || "")} · Place of supply: {place_of_supply_label(
+                            @workbench_context.item.treatment["place_of_supply"]
+                          )}
+                        </p>
+                      </div>
+
+                      <.button
+                        id="sales-bill-edit-invoice-facts"
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        phx-click="edit-invoice-facts"
+                        phx-value-return_to="#sales-bill-edit-invoice-facts"
+                      >
+                        <.icon name="hero-pencil-square" class="size-4" /> Edit invoice details
+                      </.button>
+                    </div>
                   </div>
 
                   <.callout
@@ -3701,6 +3753,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                           "line"
                         )}
                       </span>
+
                       <.button
                         id="invoice-workbench-review-hsn"
                         type="button"
@@ -3715,6 +3768,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         Review codes
                       </.button>
                     </div>
+
                     <.callout
                       :if={issue["code"] != "missing_hsn_sac"}
                       kind="warning"
@@ -3732,6 +3786,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         >
                           Keep extracted value
                         </.button>
+
                         <.button
                           id={"invoice-workbench-correct-#{index}"}
                           type="button"
@@ -3764,6 +3819,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   <div :if={@accounting_view?} class="space-y-related max-w-3xl">
                     <div class="gap-related flex items-baseline">
                       <h3 class="text-base-content text-h4 font-semibold">Accounting mappings</h3>
+
                       <span id="sales-bill-mappings-remaining" class="text-ink-muted text-ui">
                         {if(@tally_masters_available?,
                           do: missing_mapping_text(@tally_posting),
@@ -3794,6 +3850,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       <h3 class="text-base-content text-ui font-semibold">
                         {if @accounting_view?, do: "Ledger allocations", else: "Invoice lines"}
                       </h3>
+
                       <span class="text-ink-subtle text-ui">
                         {length(@tally_posting.line_rows)} {plural(
                           length(@tally_posting.line_rows),
@@ -3801,6 +3858,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         )}
                       </span>
                     </div>
+
                     <div
                       :for={
                         {item, index} <-
@@ -3812,8 +3870,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         <span>{review_item_copy(item)}</span>
                       </.callout>
                     </div>
+
                     <.data_table
                       id="sales-bill-posting-lines"
+                      surface={if @accounting_view?, do: "surface", else: "framed"}
                       rows={@tally_posting.line_rows}
                       row_id={fn row -> "sales-bill-posting-line-#{row.index}" end}
                       mode="review"
@@ -3824,6 +3884,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                           <p class="text-base-content text-ui font-medium">
                             {row.line["description"] || row.line["item_name"] || "Unnamed line"}
                           </p>
+
                           <p class="text-ink-muted text-ui">
                             HSN {row.line["hsn_sac"] || "—"} · {working_number(row.line["quantity"])} {row.line[
                               "uom"
@@ -3832,12 +3893,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                                 row.line["rate"]
                             )}
                           </p>
+
                           <p
                             :for={item <- review_line_items(@selected_review, row.index)}
                             class="text-ui text-warning font-medium"
                           >
                             {item.summary}
                           </p>
+
                           <.input
                             type="hidden"
                             name={"tally_posting[invoice][line_items][#{row.index}][description]"}
@@ -3868,6 +3931,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                           />
                         </div>
                       </:col>
+
                       <:col :let={row} label="Taxable" align="right" class="w-32">
                         <div class="tabular-nums">
                           <span class="text-base-content text-ui block font-medium">
@@ -3876,12 +3940,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                               else: rupees(row.line["taxable_value"])}
                           </span>
                         </div>
+
                         <.input
                           type="hidden"
                           name={"tally_posting[invoice][line_items][#{row.index}][taxable_value]"}
                           value={row.line["taxable_value"]}
                         />
                       </:col>
+
                       <:col :let={row} label="GST" align="right" class="w-44">
                         <div class="space-y-1 text-right tabular-nums">
                           <span :if={row.tax_rows == []} class="text-ink-muted text-ui">—</span>
@@ -3889,12 +3955,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                             :for={tax <- row.tax_rows}
                             class="text-ui flex items-baseline justify-end gap-1 whitespace-nowrap tabular-nums"
                           >
-                            <span class="text-base-content font-medium whitespace-nowrap">
+                            <span class="text-ink-muted whitespace-nowrap">
                               {tax.label} {working_number(tax.rate)}%
                             </span>
-                            <span class="text-ink-muted whitespace-nowrap">
+
+                            <span class="text-base-content whitespace-nowrap">
                               · {rupees(tax.amount)}
                             </span>
+
                             <.input
                               type="hidden"
                               name={"tally_posting[invoice][line_items][#{row.index}][#{tax.head}_rate]"}
@@ -3908,6 +3976,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                           </div>
                         </div>
                       </:col>
+
                       <:col
                         :let={row}
                         :if={@accounting_view?}
@@ -3932,12 +4001,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                           disabled={not @tally_masters_available?}
                         />
                       </:col>
+
                       <:col :let={row} label="" align="center" class="w-10 align-middle">
                         <button
                           id={"sales-bill-edit-line-#{row.index}"}
                           type="button"
                           class={[
-                            "focus-visible:outline-focus rounded-field text-ink-subtle grid size-8 place-items-center transition focus-visible:outline-2 focus-visible:outline-offset-2",
+                            "focus-visible:outline-focus rounded-field text-ink-muted grid size-8 place-items-center transition focus-visible:outline-2 focus-visible:outline-offset-2",
                             not invoice_frozen?(
                               @tally_jobs,
                               @selected_invoice,
@@ -3974,6 +4044,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   >
                     <div class="flex items-center justify-between">
                       <h3 class="text-ui font-semibold">Invoice totals</h3>
+
                       <.button
                         id="invoice-workbench-edit-totals"
                         type="button"
@@ -3986,22 +4057,50 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         <.icon name="hero-pencil-square" class="size-4" /> Edit printed totals
                       </.button>
                     </div>
+
                     <.data_table
                       id="invoice-totals-comparison"
+                      surface="framed"
                       mode="scan"
                       rows={invoice_total_rows(@posting_preview_invoice)}
                     >
-                      <:col :let={row} label="Total" row_header>{row.label}</:col>
-                      <:col :let={row} label="From lines" align="right">
-                        {if is_nil(row.calculated), do: "Not calculated", else: rupees(row.calculated)}
+                      <:col :let={row} label="Total" row_header>
+                        <span class={row.field == :total && "font-semibold"}>{row.label}</span>
                       </:col>
+
+                      <:col :let={row} label="From lines" align="right">
+                        <span class={row.field == :total && "font-semibold"}>
+                          {if is_nil(row.calculated),
+                            do: "Not calculated",
+                            else: rupees(row.calculated)}
+                        </span>
+                      </:col>
+
                       <:col :let={row} label="Printed on bill" align="right">
-                        <span class={if row.mismatch?, do: "text-error", else: nil}>
+                        <span class={[
+                          row.mismatch? && "text-error",
+                          row.field == :total && "font-semibold"
+                        ]}>
                           {if is_nil(row.printed), do: "Not captured", else: rupees(row.printed)}
                         </span>
+                      </:col>
+
+                      <:col :let={row} label="Comparison" class="w-44">
+                        <span
+                          :if={row.matches?}
+                          id={"invoice-total-match-#{row.field}"}
+                          class="text-ink-muted text-ui inline-flex items-center gap-2"
+                        >
+                          <span
+                            aria-hidden="true"
+                            class="bg-success inline-block size-1.5 rounded-full"
+                          /> Matches
+                        </span>
+
                         <p :if={row.mismatch?} class="text-error text-ui">
                           Difference {rupees(row.difference)}
                         </p>
+                         <span :if={!row.matches? && !row.mismatch?} class="text-ink-muted">—</span>
                       </:col>
                     </.data_table>
                   </section>
@@ -4012,6 +4111,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     class="space-y-related max-w-3xl"
                   >
                     <h3 class="text-base-content text-ui font-semibold">Tax ledgers</h3>
+
                     <div
                       :for={row <- @tally_posting.tax_rows}
                       id={"sales-bill-tax-row-#{row.head}"}
@@ -4020,6 +4120,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       <span class="text-base-content text-ui font-medium">
                         {tax_posting_label(@posting_preview_invoice, row.head, row.label)}
                       </span>
+
                       <.ledger_picker_field
                         id={"tally_posting_#{row.head}_ledger_identity"}
                         name={"tally_posting[#{row.head}_ledger_identity]"}
@@ -4051,6 +4152,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 >
                   <div class="flex items-center justify-between gap-3">
                     <h3 class="text-base-content text-ui font-semibold">Narration</h3>
+
                     <.button
                       :if={not @editing_narration?}
                       id="sales-bill-edit-narration"
@@ -4061,6 +4163,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     >
                       Edit
                     </.button>
+
                     <.button
                       :if={@editing_narration?}
                       id="sales-bill-finish-narration"
@@ -4080,6 +4183,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   >
                     {narration(@posting_preview_invoice)}
                   </p>
+
                   <.input
                     :if={not @editing_narration?}
                     id="tally-posting-narration-value"
@@ -4118,6 +4222,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 >
                   <.spinner tone="accent" label="Sending to Tally" /> Sending to Tally
                 </div>
+
                 <p
                   :if={
                     selected_delivery_state(
@@ -4130,6 +4235,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 >
                   Added to Tally and verified
                 </p>
+
                 <.callout
                   :if={
                     selected_delivery_state(
@@ -4143,6 +4249,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 >
                   Nila could not confirm whether this voucher was added. Use Check Tally from the batch.
                 </.callout>
+
                 <p
                   :if={
                     selected_delivery_state(
@@ -4162,10 +4269,12 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 id="invoice-workbench-footer"
                 class="bg-panel-surface border-rule sticky bottom-0 flex items-center justify-between border-t py-4"
               >
-                <.text_link
-                  href="#invoice-workbench-totals"
-                  class="text-ui font-medium tabular-nums"
-                >Calculated total {rupees(invoice_total(@posting_preview_invoice))}</.text_link>
+                <div class="gap-related flex items-center">
+                  <p id="invoice-workbench-gst-status" class="text-ink-muted text-ui">
+                    <span :if={gst_workbench_issues(assigns) == []}>No open GST checks</span>
+                  </p>
+                </div>
+
                 <.button
                   id="invoice-workbench-next"
                   type="button"
@@ -4179,6 +4288,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   {if @posting_navigation.next, do: "Next invoice", else: "Done"}
                 </.button>
               </div>
+
               <div
                 :if={@accounting_view?}
                 class="bg-panel-surface border-rule sticky bottom-0 border-t py-4"
@@ -4195,6 +4305,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         "review issue"
                       )}
                     </p>
+
                     <p class="text-ink-muted text-ui truncate">
                       Next: {next_review_item(@selected_review).summary}
                     </p>
@@ -4204,6 +4315,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     <p class="text-base-content text-ui font-semibold tabular-nums">
                       {rupees(invoice_total(@posting_preview_invoice))}
                     </p>
+
                     <.button
                       id="sales-bill-go-to-review-issue"
                       type="button"
@@ -4212,6 +4324,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     >
                       Review
                     </.button>
+
                     <.button
                       :if={
                         @tally_masters_available? &&
@@ -4250,6 +4363,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         "mapping"
                       )} left
                     </p>
+
                     <p class="text-ink-muted text-ui truncate">
                       Next: {next_posting_requirement(@tally_posting).label}
                     </p>
@@ -4259,6 +4373,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     <p class="text-base-content text-ui font-semibold tabular-nums">
                       {rupees(invoice_total(@posting_preview_invoice))}
                     </p>
+
                     <.ledger_picker_shortcut
                       id="sales-bill-go-to-required-mapping"
                       picker={next_posting_requirement(@tally_posting).picker}
@@ -4280,18 +4395,23 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   <dl class="text-ui grid flex-1 grid-cols-3 gap-3">
                     <div>
                       <dt class="text-ink-subtle">Taxable</dt>
+
                       <dd class="text-base-content mt-1 font-medium tabular-nums">
                         {rupees(totals(@posting_preview_invoice).taxable)}
                       </dd>
                     </div>
+
                     <div>
                       <dt class="text-ink-subtle">Tax</dt>
+
                       <dd class="text-base-content mt-1 font-medium tabular-nums">
                         {rupees(totals(@posting_preview_invoice).tax)}
                       </dd>
                     </div>
+
                     <div>
                       <dt class="text-base-content font-medium">Voucher total</dt>
+
                       <dd class="text-base-content mt-1 font-semibold tabular-nums">
                         {rupees(invoice_total(@posting_preview_invoice))}
                       </dd>
@@ -4317,6 +4437,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   <p class="text-ink-muted text-ui">
                     Tally mappings are available after the first master sync.
                   </p>
+
                   <p class="text-base-content text-ui font-semibold tabular-nums">
                     {rupees(invoice_total(@posting_preview_invoice))}
                   </p>
@@ -4340,7 +4461,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               generation={@ledger_picker.generation}
               open={@ledger_picker.status == :open}
             />
-
             <.modal
               :if={@editing_invoice_facts? && @invoice_facts_form}
               id="sales-bill-invoice-facts-sheet"
@@ -4396,6 +4516,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     autofocus={@invoice_facts_focus == "place_of_supply"}
                   />
                 </div>
+
                 <section
                   :if={@invoice_facts_section == "totals"}
                   id="invoice-facts-printed-totals"
@@ -4403,26 +4524,24 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 >
                   <.input
                     field={@invoice_facts_form[:printed_total_taxable]}
-                    type="number"
+                    type="text"
+                    inputmode="decimal"
                     label="Taxable total"
-                    step="any"
-                    min="0"
                   />
                   <.input
                     field={@invoice_facts_form[:printed_total_tax]}
-                    type="number"
+                    type="text"
+                    inputmode="decimal"
                     label="Total tax"
-                    step="any"
-                    min="0"
                   />
                   <.input
                     field={@invoice_facts_form[:printed_grand_total]}
-                    type="number"
+                    type="text"
+                    inputmode="decimal"
                     label="Grand total"
-                    step="any"
-                    min="0"
                   />
                 </section>
+
                 <p
                   :if={@invoice_facts_error}
                   id="sales-bill-invoice-facts-error"
@@ -4436,6 +4555,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 <.button type="button" variant="ghost" phx-click="close-invoice-facts">
                   Cancel
                 </.button>
+
                 <.button type="submit" form="sales-bill-invoice-facts-form">
                   Save changes
                 </.button>
@@ -4461,8 +4581,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   field={@line_edit_form[:description]}
                   label="Description"
                   required
-                />
-                <.input field={@line_edit_form[:hsn_sac]} label="HSN / SAC" required />
+                /> <.input field={@line_edit_form[:hsn_sac]} label="HSN / SAC" required />
                 <div
                   :if={@workbench_context && line_missing_hsn_issue(assigns)}
                   class="space-y-related"
@@ -4474,6 +4593,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     )}.
                     Confirm only if you have reviewed all affected lines and intend to leave these codes blank.
                   </p>
+
                   <.button
                     id="invoice-workbench-confirm-missing-hsn"
                     type="button"
@@ -4550,6 +4670,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 <.button type="button" variant="ghost" phx-click="close-posting-line">
                   Cancel
                 </.button>
+
                 <.button type="submit" form="sales-bill-line-edit-form">
                   Save changes
                 </.button>
@@ -4564,12 +4685,16 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               this.onKeydown = event => {
                 if (
                   this.el.dataset.navigationEnabled !== "true" ||
+                  window.localStorage.getItem("nila-shortcuts-enabled") === "false" ||
+                  event.repeat || event.isComposing ||
+                  document.querySelector(":popover-open") ||
+                  event.target.closest("[role='tablist'], [role='combobox'], [role='listbox'], [role='slider'], #sales-bill-original") ||
                   event.defaultPrevented ||
                   event.altKey ||
                   event.ctrlKey ||
                   event.metaKey ||
                   event.shiftKey ||
-                  event.target.closest("input, textarea, select, [contenteditable='true']")
+                  event.target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])")
                 ) return
 
                 const item = event.key === "ArrowLeft"

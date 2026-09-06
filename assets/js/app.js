@@ -1,3 +1,4 @@
+import {KeyboardShortcuts} from "./hooks/keyboard_shortcuts"
 // If you want to use Phoenix channels, run `mix help phx.gen.channel`
 // to get started and then uncomment the line below.
 // import "./user_socket.js"
@@ -95,6 +96,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
   params: {_csrf_token: csrfToken},
   uploaders: Uploaders,
   hooks: {
+    KeyboardShortcuts,
     ...colocatedHooks,
     ElapsedTimer,
     RailCollapse,

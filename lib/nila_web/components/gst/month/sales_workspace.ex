@@ -285,6 +285,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             navigate={~p"/gst/#{@client.id}/#{@previous_period}/sales"}
             variant="ghost"
             size="sm"
+            id="previous-filing-period"
+            title="Previous month ([)"
             aria-label="Previous filing period"
           >
             <.icon name="hero-chevron-left-mini" class="size-4" />
@@ -294,6 +296,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             navigate={~p"/gst/#{@client.id}/#{@next_period}/sales"}
             variant="ghost"
             size="sm"
+            id="next-filing-period"
+            title="Next month (])"
             aria-label="Next filing period"
           >
             <.icon name="hero-chevron-right-mini" class="size-4" />
@@ -301,7 +305,11 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         </nav>
       </:title_actions>
 
-      <:actions><span class="text-ink-muted text-ui">{@deadline}</span></:actions>
+      <:actions>
+        <div class="gap-related flex items-center">
+          <span class="text-ink-muted text-ui">{@deadline}</span>
+        </div>
+      </:actions>
     </.page_header>
     """
   end
@@ -345,8 +353,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
                 :if={row.status == "Prepared"}
                 aria-hidden="true"
                 class="bg-success mr-1.5 inline-block size-1.5 rounded-full"
-              />
-              {row.status}
+              /> {row.status}
             </span>
           </:col>
 
@@ -455,7 +462,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           value_name="filter"
         />
       </div>
-      <.invoice_table id="sales-period-invoices" rows={@invoice_rows} />
+       <.invoice_table id="sales-period-invoices" rows={@invoice_rows} />
     </div>
     """
   end

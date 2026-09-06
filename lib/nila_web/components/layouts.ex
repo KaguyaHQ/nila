@@ -149,7 +149,8 @@ defmodule NilaWeb.Layouts do
         </div>
       </div>
     </div>
-     <.flash_group flash={@flash} />
+     <.keyboard_shortcuts :if={@current_scope} id="workspace-shortcuts" />
+    <.flash_group flash={@flash} />
     """
   end
 
@@ -417,6 +418,16 @@ defmodule NilaWeb.Layouts do
         class="nila-menu"
         aria-label="Account actions"
       >
+        <button
+          type="button"
+          id={"#{@id_prefix}-shortcuts-link"}
+          class="nila-menu-item"
+          phx-click={JS.dispatch("nila:show-shortcuts", to: "#workspace-shortcuts")}
+        >
+          <.icon name="hero-command-line" class="text-ink-subtle size-4" />
+          <span>Keyboard shortcuts</span>
+        </button>
+
         <.link
           navigate={~p"/settings/profile"}
           id={"#{@id_prefix}-settings-link"}

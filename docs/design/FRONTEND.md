@@ -226,7 +226,8 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
   errors, and control geometry. Callers supply content and native attributes, not classes.
 - **Tables:** `<.data_table>` is the only product table and requires one closed mode:
   `scan`, `worklist`, or `review`. The mode owns padding and vertical alignment; callers
-  cannot recombine those decisions. Exactly one column is the semantic `row_header`, and
+  cannot recombine those decisions. Surface treatments are `surface` (frame and tinted
+  header), `framed` (frame and plain header), and `ghost` (no outer frame). Exactly one column is the semantic `row_header`, and
   right-aligned columns are tabular automatically. Radix supplies physical calibration.
   Plain `label` attributes render with normal-weight schema text and preserve supplied
   casing, including GSTIN/HSN acronyms. Write labels in sentence case. `:col_header`

@@ -85,8 +85,8 @@ defmodule NilaWeb.Components.Table do
 
   attr :surface, :string,
     default: "surface",
-    values: ~w(surface ghost),
-    doc: "Radix surface table or borderless ghost table"
+    values: ~w(surface framed ghost),
+    doc: "Surface with tinted header, framed with plain header, or borderless ghost table"
 
   attr :mode, :string,
     required: true,

@@ -2342,13 +2342,13 @@ body {
   color: var(--gray-12);
 }
 
-.nila-table-shell[data-surface="surface"] {
+.nila-table-shell:is([data-surface="surface"], [data-surface="framed"]) {
   border: 1px solid var(--gray-a5);
   background: var(--color-panel);
 }
 
 @supports (box-shadow: 0 0 0 1px color-mix(in oklab, white, black)) {
-  .nila-table-shell[data-surface="surface"] {
+  .nila-table-shell:is([data-surface="surface"], [data-surface="framed"]) {
     border-color: color-mix(in oklab, var(--gray-a5), var(--gray-6));
   }
 }

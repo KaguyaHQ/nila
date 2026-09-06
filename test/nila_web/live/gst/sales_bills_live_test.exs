@@ -113,7 +113,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(
              view,
-             "#invoice-totals-comparison tr:nth-child(2) td:last-child",
+             "#invoice-totals-comparison tr:nth-child(2) td:nth-child(3)",
              "₹180.00"
            )
 
@@ -135,6 +135,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(view, "#invoice-workbench-gst", "HSN/SAC")
     assert has_element?(view, "#invoice-totals-comparison tr:nth-child(2)", "Not calculated")
+    refute has_element?(view, "#invoice-total-match-tax")
     assert has_element?(view, "#invoice-totals-comparison tr:nth-child(2)", "₹180.00")
     assert TallyPacket.prepare([dump]).invoices == []
 
@@ -283,23 +284,39 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     {:ok, view, _} = live(context.conn, path)
     assert has_element?(view, "#invoice-workbench-gst")
     assert has_element?(view, "#invoice-totals-comparison", "Difference")
+    refute has_element?(view, "[id^=invoice-total-match-]")
 
-    assert has_element?(
-             view,
-             "#invoice-workbench-footer a[href='#invoice-workbench-totals']",
-             "Calculated total"
-           )
+    assert has_element?(view, "#invoice-workbench-footer #invoice-workbench-next")
 
     view |> element("#invoice-workbench-edit-totals") |> render_click()
     refute has_element?(view, "#invoice_facts_invoice_number")
     assert has_element?(view, "#invoice_facts_printed_grand_total[value='11800']")
 
+    assert has_element?(
+             view,
+             "#invoice_facts_printed_total_taxable[type='text'][inputmode='decimal']"
+           )
+
     view
     |> form("#sales-bill-invoice-facts-form",
       invoice_facts: %{
-        printed_total_taxable: "1000",
-        printed_total_tax: "180",
-        printed_grand_total: "1180"
+        printed_total_taxable: "₹oops",
+        printed_total_tax: "90",
+        printed_grand_total: "11800"
+      }
+    )
+    |> render_submit()
+
+    assert has_element?(view, "#invoice_facts_printed_total_taxable[value='₹oops']")
+    assert has_element?(view, "#sales-bill-invoice-facts-error", "Enter a valid amount")
+    assert has_element?(view, "#invoice-totals-comparison", "Difference")
+
+    view
+    |> form("#sales-bill-invoice-facts-form",
+      invoice_facts: %{
+        printed_total_taxable: "₹1,000",
+        printed_total_tax: "Rs. 180",
+        printed_grand_total: "INR 1,180"
       }
     )
     |> render_submit()
@@ -307,6 +324,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     refute has_element?(view, "#sales-bill-invoice-facts-sheet")
     assert has_element?(view, "#invoice-workbench-gst-status", "No open GST checks")
     refute has_element?(view, "#invoice-totals-comparison", "Difference")
+    assert has_element?(view, "#invoice-total-match-total", "Matches")
 
     workings = Nila.Gst.Sales.Resolutions.workings(month)
     [effective] = workings.active_invoices
@@ -331,6 +349,55 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
                "#invoice_facts_#{field}[value='#{value}'], #invoice_facts_#{field}[value='#{value}.0']"
              )
     end
+  end
+
+  test "totals drawer preserves tax captured only as components through save and reload",
+       context do
+    components = [%{"printed_label" => "IGST", "printed_amount" => 900}]
+
+    invoice =
+      hd(context.dump.invoices)
+      |> Map.put("id", "INV-001")
+      |> Map.put("printed_total_tax", nil)
+      |> Map.put("printed_tax_totals", components)
+      |> Map.put("printed_total_taxable", nil)
+      |> Map.put("printed_grand_total", 5900)
+
+    context.dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+
+    {:ok, month} =
+      SalesMonths.upsert(%{
+        org_id: context.org.id,
+        client_id: context.client.id,
+        period: context.dump.period,
+        invoices: [invoice]
+      })
+
+    source_before = Nila.Repo.reload!(context.dump).invoices
+    path = "/sales-bills/#{context.client.id}/batch/#{context.dump.id}?item=INV-001"
+    {:ok, view, _} = live(context.conn, path)
+    view |> element("#invoice-workbench-edit-totals") |> render_click()
+    assert has_element?(view, "#invoice_facts_printed_total_tax[value='900.0']")
+    refute has_element?(view, "#invoice_facts_printed_total_taxable[value]:not([value=''])")
+
+    view
+    |> form("#sales-bill-invoice-facts-form",
+      invoice_facts: %{
+        printed_total_taxable: "",
+        printed_total_tax: "900",
+        printed_grand_total: "5900"
+      }
+    )
+    |> render_submit()
+
+    refute has_element?(view, "#sales-bill-invoice-facts-sheet")
+    [effective] = Nila.Gst.Sales.Resolutions.workings(month).active_invoices
+    assert Nila.Gst.Sales.Values.printed(effective).tax == 900.0
+    assert effective["printed_tax_totals"] == components
+    assert Nila.Repo.reload!(context.dump).invoices == source_before
+    {:ok, reloaded, _} = live(context.conn, path)
+    reloaded |> element("#invoice-workbench-edit-totals") |> render_click()
+    assert has_element?(reloaded, "#invoice_facts_printed_total_tax[value='900.0']")
   end
 
   test "a period mismatch can be corrected or excluded without changing the source", ctx do
@@ -402,7 +469,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(
              view,
-             "#invoice-workbench-heading #invoice-workbench-gst-status",
+             "#invoice-workbench-footer #invoice-workbench-gst-status",
              "No open GST checks"
            )
 
@@ -429,7 +496,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(
              view,
-             "#invoice-workbench-heading #invoice-workbench-gst-status",
+             "#invoice-workbench-footer #invoice-workbench-gst-status",
              "No open GST checks"
            )
 
@@ -2316,7 +2383,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     refute has_element?(view, "#sales-bill-invoice-facts-sheet")
     assert has_element?(view, "#sales-bill-invoice-identity", "Invoice INV-001-A")
-    assert has_element?(view, "#sales-bill-buyer-identity", "15 Jul 2026")
+    assert has_element?(view, "#sales-bill-invoice-date", "15 Jul 2026")
     assert has_element?(view, "#sales-bill-buyer-identity", "Customer & Company")
     refute has_element?(view, "#sales-bill-place-of-supply")
     refute has_element?(view, "#tally-posting-place-of-supply-value")
