@@ -3,7 +3,7 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
   Builds the accountant-facing sales working for one GST period.
 
   The workbook is a projection of the effective sales month. It does not
-  calculate a second version of GSTR-1: return schedules come from `Gstr1`,
+  calculate a second version of GSTR-1: return tables come from `Gstr1`,
   while the formula cells expose the arithmetic controls a reviewer expects
   to inspect in Excel.
   """
@@ -151,7 +151,7 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
           ["Invoice value", {:money, totals.taxable + totals.tax}]
         ]
       )
-      |> XlsxWriter.write(20, 0, "GSTR-1 schedules", format: @section_format)
+      |> XlsxWriter.write(20, 0, "GSTR-1 tables", format: @section_format)
       |> write_headers(21, ["Section", "Documents", "Taxable value", "Output tax"])
 
     {sheet, next_row} =

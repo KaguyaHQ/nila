@@ -32,7 +32,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
 
     assert has_element?(view, "#sales-period-workspace", "Breeze Tech / Sales & GSTR-1")
     assert has_element?(view, "#sales-period-workspace", "Sales invoices")
-    assert has_element?(view, "#sales-period-return-heading", "GSTR-1")
+    assert has_element?(view, "#sales-period-return-heading", "GSTR-1 tables")
     assert has_element?(view, "#sales-period-workspace", "Export")
     assert has_element?(view, "#sales-period-status", "Review the GST working before exporting.")
     refute has_element?(view, "#sales-period-workflow")
@@ -180,7 +180,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
   test "renders each active drill-down as its own route", %{conn: conn, client: client} do
     for {path, selector} <- [
           {~p"/gst/#{client.id}/#{@period}/sales/uploads", "#sales-period-source-record"},
-          {~p"/gst/#{client.id}/#{@period}/sales/b2b", "#sales-period-schedule-b2b"},
+          {~p"/gst/#{client.id}/#{@period}/sales/b2b", "#sales-period-gstr1-table-b2b"},
           {~p"/gst/#{client.id}/#{@period}/sales/hsn", "#gstr1-table-12-rows"},
           {~p"/gst/#{client.id}/#{@period}/sales/documents", "#sales-period-documents"}
         ] do

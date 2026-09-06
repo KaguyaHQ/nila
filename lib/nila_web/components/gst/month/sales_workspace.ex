@@ -8,7 +8,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   alias Nila.Gst.Sales.{Gstr1, Values}
   alias NilaWeb.Components.Gst.Month.{Helpers, Workings}
 
-  @schedule_order [
+  @gstr1_table_order [
     {"b2b", "B2B — sales to registered persons"},
     {"b2cl", "B2CL — inter-state consumers"},
     {"exp", "Exports"},
@@ -58,7 +58,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           MapSet.size(review_ids) == 0
       )
       |> assign(:base, base)
-      |> assign(:schedule_rows, schedule_rows(assigns, review_ids, hsn, documents, base))
+      |> assign(:gstr1_table_rows, gstr1_table_rows(assigns, review_ids, hsn, documents, base))
       |> assign(:period_label, full_period_label(assigns.period))
       |> assign(:deadline, deadline(assigns.period))
       |> assign(:previous_period, shift_period(assigns.period, -1))
@@ -101,7 +101,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             copy="The batches contributing sales documents to this filing period."
           /> {render_slot(@source)}
         <% view when view in [:b2b, :b2cl, :b2cs, :cdnr] -> %>
-          <.schedule_view
+          <.gstr1_table_view
             view={view}
             client={@client}
             period={@period}
@@ -213,7 +213,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       </.card>
 
       <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-        <.schedules_section rows={@schedule_rows} />
+        <.gstr1_tables_section rows={@gstr1_table_rows} />
         <.card padding="none" id="sales-period-export">
           <.card_header title="Exports" />
           <p
@@ -308,10 +308,10 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
   attr :rows, :list, required: true
 
-  defp schedules_section(assigns) do
+  defp gstr1_tables_section(assigns) do
     ~H"""
     <.card padding="none">
-      <.card_header id="sales-period-return-heading" title="GSTR-1 schedules" />
+      <.card_header id="sales-period-return-heading" title="GSTR-1 tables" />
       <div class="px-4 pt-2 pb-3">
         <.data_table
           id="sales-period-return"
@@ -510,9 +510,12 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :invoices, :list, required: true
   attr :review_ids, :any, required: true
 
-  defp schedule_view(assigns) do
+  defp gstr1_table_view(assigns) do
     key = Atom.to_string(assigns.view)
-    label = @schedule_order |> Enum.find_value(fn {row_key, label} -> row_key == key && label end)
+
+    label =
+      @gstr1_table_order |> Enum.find_value(fn {row_key, label} -> row_key == key && label end)
+
     rows = Enum.filter(assigns.invoices, &(Gstr1.filing_table(&1) == key))
     assigns = assign(assigns, label: label, rows: invoice_rows(rows, assigns.review_ids, assigns))
 
@@ -521,8 +524,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       <.detail_heading
         base={@base}
         title={@label}
-        copy="The invoices contributing to this GSTR-1 schedule."
-      /> <.invoice_table id={"sales-period-schedule-#{@view}"} rows={@rows} />
+        copy="The invoices contributing to this GSTR-1 table."
+      /> <.invoice_table id={"sales-period-gstr1-table-#{@view}"} rows={@rows} />
     </div>
     """
   end
@@ -588,11 +591,11 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
     """
   end
 
-  defp schedule_rows(assigns, review_ids, hsn, documents, base) do
+  defp gstr1_table_rows(assigns, review_ids, hsn, documents, base) do
     counts = Enum.frequencies_by(assigns.active_invoices, &Gstr1.filing_table/1)
 
     statutory =
-      Enum.map(@schedule_order, fn {key, label} ->
+      Enum.map(@gstr1_table_order, fn {key, label} ->
         count = counts[key] || 0
         unresolved = count_unresolved(assigns.active_invoices, review_ids, key)
         supported = key in ~w(b2b b2cl b2cs cdnr)
@@ -601,9 +604,9 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           id: key,
           label: label,
           count: if(count == 0, do: "—", else: count_label(count, document_noun(key))),
-          value: schedule_value(assigns.derived, key, count),
-          status: schedule_status(count, unresolved, supported),
-          variant: schedule_variant(count, unresolved, supported),
+          value: gstr1_table_value(assigns.derived, key, count),
+          status: gstr1_table_status(count, unresolved, supported),
+          variant: gstr1_table_variant(count, unresolved, supported),
           path: if(count > 0 and supported, do: base <> "/#{key}")
         }
       end)
@@ -674,23 +677,23 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         &(Gstr1.filing_table(&1) == key and MapSet.member?(review_ids, &1["id"]))
       )
 
-  defp schedule_value(_derived, _key, 0), do: nil
-  defp schedule_value(nil, _key, _count), do: nil
+  defp gstr1_table_value(_derived, _key, 0), do: nil
+  defp gstr1_table_value(nil, _key, _count), do: nil
 
-  defp schedule_value(derived, key, _count),
+  defp gstr1_table_value(derived, key, _count),
     do: Helpers.rupees(section_totals(derived, key).taxable)
 
-  defp schedule_status(0, _unresolved, _supported), do: "No entries"
+  defp gstr1_table_status(0, _unresolved, _supported), do: "No entries"
 
-  defp schedule_status(_count, unresolved, _supported) when unresolved > 0, do: "Draft"
+  defp gstr1_table_status(_count, unresolved, _supported) when unresolved > 0, do: "Draft"
 
-  defp schedule_status(_count, _unresolved, true), do: "Prepared"
-  defp schedule_status(_count, _unresolved, false), do: "Not supported"
+  defp gstr1_table_status(_count, _unresolved, true), do: "Prepared"
+  defp gstr1_table_status(_count, _unresolved, false), do: "Not supported"
 
-  defp schedule_variant(0, _unresolved, _supported), do: "neutral"
-  defp schedule_variant(_count, unresolved, _supported) when unresolved > 0, do: "warning"
-  defp schedule_variant(_count, _unresolved, true), do: "success"
-  defp schedule_variant(_count, _unresolved, false), do: "error"
+  defp gstr1_table_variant(0, _unresolved, _supported), do: "neutral"
+  defp gstr1_table_variant(_count, unresolved, _supported) when unresolved > 0, do: "warning"
+  defp gstr1_table_variant(_count, _unresolved, true), do: "success"
+  defp gstr1_table_variant(_count, _unresolved, false), do: "error"
 
   defp section_totals(derived, section) do
     Enum.reduce(~w(b2b b2cs b2cl cdnr), derived, fn key, acc ->
