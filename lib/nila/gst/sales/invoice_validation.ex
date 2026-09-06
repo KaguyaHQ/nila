@@ -741,7 +741,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
     Enum.any?(
       [
         invoice.printed_taxable_paise,
-        invoice.printed_tax_paise,
+        printed_tax_paise(invoice),
         invoice.printed_total_paise
       ],
       &(optional_paise(&1) != 0)

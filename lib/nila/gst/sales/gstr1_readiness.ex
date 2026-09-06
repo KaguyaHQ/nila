@@ -64,7 +64,9 @@ defmodule Nila.Gst.Sales.Gstr1Readiness do
   defp maybe_add_non_taxable_conflict(findings, invoice) do
     if OutputCapabilities.supply_type(invoice) in ~w(nil_rated exempt non_gst) and
          (Enum.any?(Map.values(invoice.tax_paise), &(is_integer(&1) and &1 != 0)) or
-            invoice.printed_tax_paise not in [nil, 0] or
+            (invoice
+             |> InvoiceFacts.to_sales_map()
+             |> Nila.Gst.Extraction.TaxComponents.printed_tax_total()) not in [nil, 0] or
             Enum.any?(invoice.lines, fn line ->
               Enum.any?(
                 [line.cgst_rate, line.sgst_rate, line.igst_rate],

@@ -35,6 +35,24 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     """
   end
 
+  test "grand total fallback includes component-only tax without claiming an independent total" do
+    data =
+      invoice(%{
+        "line_items" => [],
+        "printed_total_taxable" => 5000,
+        "printed_total_tax" => nil,
+        "printed_tax_totals" => [%{"printed_label" => "IGST", "printed_amount" => 900}],
+        "printed_cgst" => nil,
+        "printed_sgst" => nil,
+        "printed_igst" => 900,
+        "printed_grand_total" => 5900
+      })
+
+    result = Verify.structured(data)
+    assert Enum.any?(result.checks, &(&1.field == "grand_total" and &1.ok?))
+    refute Enum.any?(result.checks, &(&1.field == "tax_components_sum"))
+  end
+
   test "a coherent, fully printed invoice verifies" do
     assert %{status: :verified, flags: []} = Verify.invoice(invoice(%{}), page())
   end

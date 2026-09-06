@@ -199,7 +199,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
       supply_type(invoice) in ~w(nil_rated exempt non_gst) ->
         if seller_state && pos && recipient_registration(invoice) in ~w(registered unregistered) &&
-             invoice_tax(invoice) == 0 && num(invoice["printed_total_tax"]) == 0 &&
+             invoice_tax(invoice) == 0 &&
+             num(Nila.Gst.Extraction.TaxComponents.printed_tax_total(invoice)) == 0 &&
              Enum.all?(invoice["line_items"] || [], &(line_rate(&1) == 0)), do: "nil", else: nil
 
       supply_type(invoice) != "taxable" ->

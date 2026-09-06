@@ -284,7 +284,11 @@ defmodule Nila.Gst.Extraction.Verify do
           taxable + tax
 
         _incomplete_lines ->
-          tax = if reverse_charge?, do: 0.0, else: num(data["printed_total_tax"])
+          tax =
+            if reverse_charge?,
+              do: 0.0,
+              else: num(Nila.Gst.Extraction.TaxComponents.printed_tax_total(data))
+
           num(data["printed_total_taxable"]) + tax
       end
 

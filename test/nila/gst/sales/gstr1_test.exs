@@ -13,6 +13,38 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   alias Nila.Eval.Gstr1Diff
   alias Nila.Gst.Sales.Gstr1
 
+  test "component-only GST blocks non-taxable filing even when line tax is zero" do
+    for components <- [
+          [%{"printed_label" => "IGST", "printed_amount" => 180}],
+          [
+            %{"printed_label" => "CGST", "printed_amount" => 90},
+            %{"printed_label" => "SGST", "printed_amount" => 90}
+          ]
+        ] do
+      invoice = %{
+        "id" => "component-only",
+        "invoice_number" => "TEST-1",
+        "document_type" => "invoice",
+        "document_status" => "active",
+        "supply_type" => "exempt",
+        "recipient_registration" => "registered",
+        "seller_gstin" => "33AEWPH4158J1Z3",
+        "buyer_gstin" => "33AABCP9487A1ZG",
+        "place_of_supply" => "33",
+        "printed_tax_totals" => components,
+        "printed_total_tax" => nil,
+        "line_items" => []
+      }
+
+      assert Gstr1.filing_table(invoice) == nil
+
+      assert Enum.any?(
+               Nila.Gst.Sales.Gstr1Readiness.capability_issues([invoice]),
+               &(&1["code"] == "non_taxable_tax_conflict")
+             )
+    end
+  end
+
   describe "valid_gstin?/1" do
     test "accepts real GSTINs and rejects checksum-broken ones" do
       assert Gstr1.valid_gstin?("33AEWPH4158J1Z3")
