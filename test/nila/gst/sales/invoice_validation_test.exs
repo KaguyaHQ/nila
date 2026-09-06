@@ -43,6 +43,64 @@ defmodule Nila.Gst.Sales.InvoiceValidationTest do
            ]
   end
 
+  test "missing taxable amounts do not turn an uncalculated tax total into a mismatch" do
+    incomplete =
+      invoice(
+        %{"printed_tax_totals" => [%{"printed_label" => "IGST", "printed_amount" => 18}]},
+        %{"taxable_value" => nil, "igst_rate" => nil, "igst_amount" => nil}
+      )
+
+    issues = InvoiceValidation.issues([incomplete])
+    assert Enum.any?(issues, &(&1["code"] == "missing_taxable_value"))
+
+    refute Enum.any?(
+             InvoiceValidation.checks(incomplete),
+             &(&1["code"] in ~w(printed_tax_mismatch grand_total_mismatch))
+           )
+
+    corrected = put_in(incomplete, ["line_items", Access.at(0), "igst_amount"], 20)
+
+    assert Enum.any?(
+             InvoiceValidation.issues([corrected]),
+             &(&1["code"] == "printed_tax_mismatch")
+           )
+  end
+
+  test "tax comparisons use tax inputs independently of taxable amounts" do
+    invoice = invoice(%{"printed_total_tax" => 20}, %{"taxable_value" => nil})
+    assert Enum.any?(InvoiceValidation.issues([invoice]), &(&1["code"] == "printed_tax_mismatch"))
+    assert InvoiceValidation.comparison_totals(invoice) == %{taxable: nil, tax: 18.0, total: nil}
+  end
+
+  test "missing tax amounts defer comparisons but explicit zero remains comparable" do
+    missing = invoice(%{"printed_total_tax" => 18}, %{"igst_amount" => nil})
+
+    refute Enum.any?(
+             InvoiceValidation.checks(missing),
+             &(&1["code"] in ~w(line_arithmetic printed_tax_mismatch grand_total_mismatch))
+           )
+
+    assert InvoiceValidation.comparison_totals(missing).tax == nil
+
+    zero = put_in(missing, ["line_items", Access.at(0), "igst_amount"], 0)
+    assert Enum.any?(InvoiceValidation.issues([zero]), &(&1["code"] == "printed_tax_mismatch"))
+    assert InvoiceValidation.comparison_totals(zero).tax == 0
+  end
+
+  test "a partial split tax amount does not become a complete tax total" do
+    invoice =
+      invoice(%{}, %{
+        "igst_amount" => nil,
+        "igst_rate" => nil,
+        "cgst_rate" => 9,
+        "cgst_amount" => 9,
+        "sgst_rate" => 9,
+        "sgst_amount" => nil
+      })
+
+    assert InvoiceValidation.comparison_totals(invoice).tax == nil
+  end
+
   test "Gstr1 compatibility API delegates intrinsic validation" do
     invoices = [invoice(), invoice(%{"id" => "source-2"})]
 

@@ -450,7 +450,15 @@ defmodule Nila.Gst.Sales.InvoiceCorrections do
 
   defp apply_events(invoice, events) do
     Enum.reduce(events, invoice, fn event, effective ->
-      Invoice.put_field(effective, event.field_path, event.payload["to"])
+      effective = Invoice.put_field(effective, event.field_path, event.payload["to"])
+
+      case Invoice.parse_field_path(event.field_path) do
+        {:line, index, "taxable_value"} ->
+          Invoice.put_field(effective, "line_items[#{index}].taxable_value_basis", "corrected")
+
+        _other_field ->
+          effective
+      end
     end)
   end
 

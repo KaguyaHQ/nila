@@ -28,6 +28,17 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
       split_equality_checks(invoice) ++ printed_total_checks(invoice)
   end
 
+  @doc "Totals available for comparison, in rupees; missing inputs remain nil."
+  def comparison_totals(invoice) do
+    totals = invoice |> InvoiceFacts.sales!() |> invoice_totals()
+
+    %{
+      taxable: rupee_number(totals.taxable_paise),
+      tax: rupee_number(totals.tax_paise),
+      total: rupee_number(add_paise(totals.taxable_paise, totals.tax_paise))
+    }
+  end
+
   @doc "Every invoice-level issue, independent of month and output completeness."
   def issues(invoices) when is_list(invoices) do
     Enum.flat_map(invoices, fn invoice -> invoice |> InvoiceFacts.sales!() |> invoice_issues() end)
@@ -89,7 +100,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
       tax_paise = line_tax_paise(line)
       rate = line_rate(line)
 
-      if is_nil(taxable_paise) or
+      if is_nil(taxable_paise) or not tax_amounts_complete?(line) or
            (taxable_paise == 0 and tax_paise == 0 and Decimal.equal?(rate, 0)) do
         []
       else
@@ -1045,11 +1056,14 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   end
 
   defp add_paise(nil, _right), do: nil
+  defp add_paise(_left, nil), do: nil
   defp add_paise(left, right), do: left + right
 
   defp decimal(%Decimal{} = value), do: value
   defp decimal(value) when is_integer(value), do: Decimal.new(value)
   defp decimal(value) when is_float(value), do: Decimal.from_float(value)
+
+  defp rupee_number(nil), do: nil
 
   defp rupee_number(%Decimal{} = paise),
     do: paise |> Decimal.div(100) |> Decimal.to_float()
@@ -1077,7 +1091,28 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
     taxable_paise =
       if taxable_values_complete?(invoice), do: sum_line_paise(invoice.lines, :taxable)
 
-    %{taxable_paise: taxable_paise, tax_paise: line_tax_paise_sum(invoice.lines)}
+    tax_paise =
+      if invoice.lines != [] and Enum.all?(invoice.lines, &tax_amounts_complete?/1),
+        do: line_tax_paise_sum(invoice.lines)
+
+    %{taxable_paise: taxable_paise, tax_paise: tax_paise}
+  end
+
+  # Absent heads may be inapplicable; a stated positive rate still needs an amount.
+  # With no amounts at all, only an explicit zero rate establishes zero tax.
+  defp tax_amounts_complete?(line) do
+    heads = [{:cgst, line.cgst_rate}, {:sgst, line.sgst_rate}, {:igst, line.igst_rate}]
+
+    known? =
+      Enum.any?(heads, fn {head, rate} ->
+        is_integer(line.tax_paise[head]) or (not is_nil(rate) and Decimal.equal?(rate, 0))
+      end)
+
+    known? and
+      Enum.all?(heads, fn {head, rate} ->
+        not decimal_positive?(rate) or is_integer(line.tax_paise[head])
+      end) and
+      is_nil(line.tax_paise.cgst) == is_nil(line.tax_paise.sgst)
   end
 
   defp line_tax_paise_sum(lines), do: Enum.sum(Enum.map(lines, &line_tax_paise/1))

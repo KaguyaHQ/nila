@@ -245,13 +245,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
   defp invoice_total_rows(invoice) do
     checks = Gstr1.invoice_checks(invoice)
-    totals = totals(invoice)
+    totals = Nila.Gst.Sales.InvoiceValidation.comparison_totals(invoice)
     printed_totals = Nila.Gst.Sales.Values.printed(invoice)
 
     for {label, field, code, calculated} <- [
           {"Taxable", :taxable, "printed_taxable_mismatch", totals.taxable},
           {"GST", :tax, "printed_tax_mismatch", totals.tax},
-          {"Grand total", :total, "grand_total_mismatch", invoice_total(invoice)}
+          {"Grand total", :total, "grand_total_mismatch", totals.total}
         ] do
       check = Enum.find(checks, &(&1["code"] == code))
       printed = printed_totals[field]
@@ -472,7 +472,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
              socket.assigns.current_scope.user.id
            ) do
         {:ok, _} ->
-          {:noreply, refresh_workbench(socket)}
+          {:noreply, socket |> refresh_workbench() |> close_line_editor()}
 
         {:error, _} ->
           {:noreply,
@@ -504,7 +504,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                scope.user.id
              ) do
           {:ok, _removal} ->
-            socket = reload_packet(socket)
+            socket =
+              socket
+              |> reload_packet()
+              |> put_flash(:info, "Invoice excluded. You can restore it later.")
 
             socket =
               if invoice_id(socket.assigns.selected_invoice) == source_id,
@@ -1166,7 +1169,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       "taxable_value" => line["taxable_value"]
     }
     |> then(fn values ->
-      Enum.reduce(row.tax_rows, values, fn tax, current ->
+      Enum.reduce(editable_line_tax_rows(row), values, fn tax, current ->
         current
         |> Map.put("#{tax.head}_rate", tax.rate)
         |> Map.put("#{tax.head}_amount", tax.amount)
@@ -1286,6 +1289,19 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       }
     end)
   end
+
+  defp editable_line_tax_rows(%{tax_rows: []} = row) do
+    for head <- ~w(cgst sgst igst) do
+      %{
+        head: head,
+        label: String.upcase(head),
+        rate: row.line["#{head}_rate"],
+        amount: row.line["#{head}_amount"]
+      }
+    end
+  end
+
+  defp editable_line_tax_rows(row), do: row.tax_rows
 
   defp voucher_numbering_error(issues) do
     types = issues |> Enum.map(& &1.voucher_type) |> Enum.uniq() |> Enum.join(", ")
@@ -2689,6 +2705,28 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   defp review_items(nil, _target), do: []
   defp review_items(review, target), do: Enum.filter(review.items, &(&1.target == target))
 
+  defp missing_amount_issue(assigns) do
+    Enum.find(gst_workbench_issues(assigns), &(&1["code"] == "missing_taxable_value"))
+  end
+
+  defp other_gst_workbench_issues(assigns) do
+    Enum.reject(gst_workbench_issues(assigns), &(&1["code"] == "missing_taxable_value"))
+  end
+
+  defp line_missing_hsn_issue(assigns) do
+    Enum.find(gst_workbench_issues(assigns), fn issue ->
+      issue["code"] == "missing_hsn_sac" and
+        (assigns.editing_line_index + 1) in issue["lines"]
+    end)
+  end
+
+  defp missing_amount_title(issue) do
+    case length(issue["lines"]) do
+      1 -> "Taxable amount missing on 1 line"
+      count -> "Taxable amounts missing on #{count} lines"
+    end
+  end
+
   defp gst_workbench_issues(%{workbench_context: %{item: item}}) do
     Enum.filter(item.actionable_issues, &(&1["status"] == "open"))
   end
@@ -3603,18 +3641,82 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 </section>
 
                 <section
-                  :if={not @accounting_view? && gst_workbench_issues(assigns) != []}
+                  :if={missing_amount_issue(assigns)}
+                  id="invoice-workbench-incomplete"
+                  class="space-y-related"
+                >
+                  <.callout
+                    kind="warning"
+                    size="compact"
+                    title={missing_amount_title(missing_amount_issue(assigns))}
+                  >
+                    Correct these amounts before exporting to GSTR-1.
+                    <div class="mt-related flex gap-2">
+                      <.button
+                        id="invoice-workbench-correct-amounts"
+                        type="button"
+                        size="xs"
+                        phx-click="edit-posting-line"
+                        phx-value-index={hd(missing_amount_issue(assigns)["lines"]) - 1}
+                        disabled={
+                          invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices)
+                        }
+                      >
+                        Correct amounts
+                      </.button>
+
+                      <.button
+                        id="invoice-workbench-exclude-incomplete"
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        phx-click="remove-invoice"
+                        phx-value-id={invoice_id(@selected_invoice)}
+                        disabled={
+                          invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices)
+                        }
+                      >
+                        Exclude invoice
+                      </.button>
+                    </div>
+                  </.callout>
+                </section>
+
+                <section
+                  :if={not @accounting_view? && other_gst_workbench_issues(assigns) != []}
                   id="invoice-workbench-gst"
                   class="space-y-block"
                 >
-                  <p id="invoice-workbench-gst-status" class="text-ui font-medium">
-                    GST review needed
-                  </p>
                   <div
-                    :for={{issue, index} <- Enum.with_index(gst_workbench_issues(assigns))}
+                    :for={{issue, index} <- Enum.with_index(other_gst_workbench_issues(assigns))}
                     id={"invoice-workbench-issue-#{index}"}
                   >
+                    <div
+                      :if={issue["code"] == "missing_hsn_sac"}
+                      class="gap-related text-ui flex flex-wrap items-center"
+                    >
+                      <span>
+                        HSN/SAC missing on {length(issue["lines"])} {plural(
+                          length(issue["lines"]),
+                          "line"
+                        )}
+                      </span>
+                      <.button
+                        id="invoice-workbench-review-hsn"
+                        type="button"
+                        size="xs"
+                        variant="ghost"
+                        phx-click="edit-posting-line"
+                        phx-value-index={hd(issue["lines"]) - 1}
+                        disabled={
+                          invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices)
+                        }
+                      >
+                        Review codes
+                      </.button>
+                    </div>
                     <.callout
+                      :if={issue["code"] != "missing_hsn_sac"}
                       kind="warning"
                       size="compact"
                       title={issue["message"] || "Check invoice facts"}
@@ -3769,7 +3871,9 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       <:col :let={row} label="Taxable" align="right" class="w-32">
                         <div class="tabular-nums">
                           <span class="text-base-content text-ui block font-medium">
-                            {rupees(row.line["taxable_value"])}
+                            {if is_nil(row.line["taxable_value"]),
+                              do: "Missing",
+                              else: rupees(row.line["taxable_value"])}
                           </span>
                         </div>
                         <.input
@@ -3889,7 +3993,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     >
                       <:col :let={row} label="Total" row_header>{row.label}</:col>
                       <:col :let={row} label="From lines" align="right">
-                        {rupees(row.calculated)}
+                        {if is_nil(row.calculated), do: "Not calculated", else: rupees(row.calculated)}
                       </:col>
                       <:col :let={row} label="Printed on bill" align="right">
                         <span class={if row.mismatch?, do: "text-error", else: nil}>
@@ -4359,6 +4463,30 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   required
                 />
                 <.input field={@line_edit_form[:hsn_sac]} label="HSN / SAC" required />
+                <div
+                  :if={@workbench_context && line_missing_hsn_issue(assigns)}
+                  class="space-y-related"
+                >
+                  <p class="text-ink-muted text-ui">
+                    HSN/SAC is missing on {length(line_missing_hsn_issue(assigns)["lines"])} {plural(
+                      length(line_missing_hsn_issue(assigns)["lines"]),
+                      "line"
+                    )}.
+                    Confirm only if you have reviewed all affected lines and intend to leave these codes blank.
+                  </p>
+                  <.button
+                    id="invoice-workbench-confirm-missing-hsn"
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    phx-click="confirm-gst-issue"
+                    phx-value-target={
+                      Nila.Gst.Sales.Workings.issue_key(line_missing_hsn_issue(assigns))
+                    }
+                  >
+                    Confirm missing codes
+                  </.button>
+                </div>
 
                 <div class="gap-block grid grid-cols-2">
                   <.input
@@ -4366,9 +4494,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     type="number"
                     label="Quantity"
                     step="any"
-                    required
-                  />
-                  <.input field={@line_edit_form[:uom]} label="Unit" />
+                  /> <.input field={@line_edit_form[:uom]} label="Unit" />
                 </div>
 
                 <div class="gap-block grid grid-cols-2">
@@ -4377,7 +4503,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                     type="number"
                     label="Unit price"
                     step="any"
-                    required
                   />
                   <.input
                     field={@line_edit_form[:taxable_value]}
@@ -4388,13 +4513,15 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                   />
                 </div>
 
-                <section
-                  :if={@line_edit_row.tax_rows != []}
-                  class="border-rule space-y-related border-t pt-4"
-                >
+                <section class="border-rule space-y-related border-t pt-4">
                   <h4 class="text-base-content text-ui font-semibold">GST</h4>
+
+                  <p :if={@line_edit_row.tax_rows == []} class="text-ink-muted text-ui">
+                    Enter the applicable GST rates and amounts. Leave other tax fields blank.
+                  </p>
+
                   <div
-                    :for={tax <- @line_edit_row.tax_rows}
+                    :for={tax <- editable_line_tax_rows(@line_edit_row)}
                     class="gap-block grid grid-cols-2"
                   >
                     <.input
@@ -4402,14 +4529,14 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                       type="number"
                       label={"#{tax.label} rate %"}
                       step="any"
-                      required
+                      required={@line_edit_row.tax_rows != []}
                     />
                     <.input
                       field={@line_edit_form[tax_edit_field(tax.head, :amount)]}
                       type="number"
                       label={"#{tax.label} amount"}
                       step="any"
-                      required
+                      required={@line_edit_row.tax_rows != []}
                     />
                   </div>
                 </section>

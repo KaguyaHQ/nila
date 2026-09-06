@@ -120,6 +120,146 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     refute has_element?(view, "#invoice-totals-comparison tr:nth-child(2)", "Not captured")
   end
 
+  test "incomplete extraction can be corrected without inventing quantity or unit price", ctx do
+    invoice = incomplete_amounts_invoice(ctx.dump)
+    dump = ctx.dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+    assert :ok = Nila.Gst.Intake.DumpWorker.settle(dump)
+    path = "/sales-bills/#{ctx.client.id}/batch/#{dump.id}?item=INV-001"
+    {:ok, view, _} = live(ctx.conn, path)
+
+    assert has_element?(
+             view,
+             "#invoice-workbench-incomplete",
+             "Taxable amount missing on 1 line"
+           )
+
+    assert has_element?(view, "#invoice-workbench-gst", "HSN/SAC")
+    assert has_element?(view, "#invoice-totals-comparison tr:nth-child(2)", "Not calculated")
+    assert has_element?(view, "#invoice-totals-comparison tr:nth-child(2)", "₹180.00")
+    assert TallyPacket.prepare([dump]).invoices == []
+
+    view |> element("#invoice-workbench-correct-amounts") |> render_click()
+    refute has_element?(view, "#line_edit_quantity[required]")
+    refute has_element?(view, "#line_edit_rate[required]")
+    assert has_element?(view, "#line_edit_igst_rate")
+    assert has_element?(view, "#line_edit_cgst_rate")
+    refute has_element?(view, "#line_edit_cgst_rate[required]")
+
+    view
+    |> form("#sales-bill-line-edit-form", %{
+      "line_edit" => %{
+        "description" => "Reviewed services",
+        "hsn_sac" => "998719",
+        "quantity" => "",
+        "rate" => "",
+        "taxable_value" => "1000",
+        "igst_rate" => "18",
+        "igst_amount" => "180"
+      }
+    })
+    |> render_submit()
+
+    refute has_element?(view, "#sales-bill-line-edit-sheet")
+    refute has_element?(view, "#invoice-workbench-incomplete")
+    {:ok, reloaded, _} = live(ctx.conn, path)
+    refute has_element?(reloaded, "#invoice-workbench-incomplete")
+    assert has_element?(reloaded, "#sales-bill-line-summary-0", "Reviewed services")
+    assert length(TallyPacket.prepare([Nila.Repo.reload!(dump)]).invoices) == 1
+    assert hd(Nila.Repo.reload!(dump).invoices) == invoice
+  end
+
+  test "missing amount warning preserves independent GSTIN issues after correction", ctx do
+    invoice = incomplete_amounts_invoice(ctx.dump) |> Map.put("buyer_gstin", "INVALID")
+    dump = ctx.dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+    assert :ok = Nila.Gst.Intake.DumpWorker.settle(dump)
+    {:ok, view, _} = live(ctx.conn, "/sales-bills/#{ctx.client.id}/batch/#{dump.id}?item=INV-001")
+
+    assert has_element?(view, "#invoice-workbench-incomplete")
+    assert has_element?(view, "#invoice-workbench-gst", "GSTIN")
+    assert has_element?(view, "#invoice-workbench-gst", "HSN/SAC")
+    view |> element("#invoice-workbench-correct-amounts") |> render_click()
+
+    view
+    |> form("#sales-bill-line-edit-form", %{
+      "line_edit" => %{
+        "description" => "Services",
+        "hsn_sac" => "998719",
+        "quantity" => "",
+        "rate" => "",
+        "taxable_value" => "1000",
+        "igst_rate" => "18",
+        "igst_amount" => "180"
+      }
+    })
+    |> render_submit()
+
+    refute has_element?(view, "#invoice-workbench-incomplete")
+    assert has_element?(view, "#invoice-workbench-gst", "GSTIN")
+  end
+
+  test "compact HSN notice opens the affected line and preserves confirmation", ctx do
+    invoice = incomplete_amounts_invoice(ctx.dump)
+    line = hd(invoice["line_items"])
+    invoice = Map.put(invoice, "line_items", [Map.put(line, "hsn_sac", "998719"), line, line])
+    dump = ctx.dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+    assert :ok = Nila.Gst.Intake.DumpWorker.settle(dump)
+    path = "/sales-bills/#{ctx.client.id}/batch/#{dump.id}?item=INV-001"
+    {:ok, view, _} = live(ctx.conn, path)
+
+    assert has_element?(view, "#invoice-workbench-gst", "HSN/SAC missing on 2 lines")
+    refute has_element?(view, "#invoice-workbench-gst", "Unread services")
+    assert has_element?(view, "#sales-bill-posting-line-1", "Missing")
+    assert has_element?(view, "#invoice-workbench-review-hsn[phx-value-index='1']")
+    refute has_element?(view, "#invoice-workbench-confirm-missing-hsn")
+    view |> element("#invoice-workbench-review-hsn") |> render_click()
+    assert has_element?(view, "#sales-bill-line-edit-sheet", "reviewed all affected lines")
+    view |> element("#invoice-workbench-confirm-missing-hsn") |> render_click()
+    refute has_element?(view, "#sales-bill-line-edit-sheet")
+    refute has_element?(view, "#invoice-workbench-review-hsn")
+    assert has_element?(view, "#invoice-workbench-incomplete")
+    {:ok, reloaded, _} = live(ctx.conn, path)
+    refute has_element?(reloaded, "#invoice-workbench-review-hsn")
+    assert has_element?(reloaded, "#invoice-workbench-incomplete")
+  end
+
+  test "incomplete extraction can be excluded and restored without losing the source", ctx do
+    invoice = incomplete_amounts_invoice(ctx.dump)
+    dump = ctx.dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+    assert :ok = Nila.Gst.Intake.DumpWorker.settle(dump)
+    path = "/sales-bills/#{ctx.client.id}/batch/#{dump.id}"
+    {:ok, view, _} = live(ctx.conn, path <> "?item=INV-001")
+    view |> element("#invoice-workbench-exclude-incomplete") |> render_click()
+
+    {:ok, batch, _} = live(ctx.conn, path)
+    assert has_element?(batch, "#sales-bill-gst-INV-001", "Excluded")
+    assert length(TallyPacket.prepare([Nila.Repo.reload!(dump)]).excluded) == 1
+    assert hd(Nila.Repo.reload!(dump).invoices) == invoice
+    batch |> element("#sales-bill-restore-INV-001") |> render_click()
+    assert TallyPacket.prepare([Nila.Repo.reload!(dump)]).excluded == []
+    {:ok, restored, _} = live(ctx.conn, path <> "?item=INV-001")
+    assert has_element?(restored, "#invoice-workbench-incomplete")
+  end
+
+  defp incomplete_amounts_invoice(dump) do
+    invoice = hd(dump.invoices)
+
+    invoice
+    |> Map.put("id", "INV-001")
+    |> Map.put("invoice_date", "2026-07-15")
+    |> Map.put("printed_tax_totals", [%{"printed_label" => "IGST", "printed_amount" => 180}])
+    |> Map.put("line_items", [
+      %{
+        "description" => "Unread services",
+        "hsn_sac" => nil,
+        "taxable_value" => nil,
+        "quantity" => nil,
+        "printed_unit_price" => nil,
+        "igst_rate" => nil,
+        "igst_amount" => nil
+      }
+    ])
+  end
+
   test "the totals drawer corrects printed totals, clears GST mismatches and survives reload",
        context do
     invoice =
@@ -141,7 +281,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     path = "/sales-bills/#{context.client.id}/batch/#{context.dump.id}?item=INV-001"
     {:ok, view, _} = live(context.conn, path)
-    assert has_element?(view, "#invoice-workbench-gst-status", "GST review needed")
+    assert has_element?(view, "#invoice-workbench-gst")
     assert has_element?(view, "#invoice-totals-comparison", "Difference")
 
     assert has_element?(
