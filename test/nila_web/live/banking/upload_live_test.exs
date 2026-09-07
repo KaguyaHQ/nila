@@ -493,11 +493,13 @@ defmodule NilaWeb.Banking.UploadLiveTest do
 
     assert has_element?(view, "#banking-review-suggested-groups[aria-current='page']", "1")
     assert has_element?(view, "#banking-review-individual-transactions", "2")
+    assert has_element?(view, "#banking-visible-transaction-count", "1 group · 2 transactions")
+    assert has_element?(view, "#banking-transactions h2", "4 transactions need a ledger")
 
     assert has_element?(
              view,
              "#banking-suggested-group-rows > tr[id^='banking-transaction-group-']",
-             "Same payee and payment pattern · COMPRESSOR PURCHASE"
+             "COMPRESSOR PURCHASE"
            )
 
     refute has_element?(
@@ -549,6 +551,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     |> render_click()
 
     assert has_element?(view, "[id^='banking-transaction-group-apply-']", "Assign 1")
+    assert has_element?(view, "#banking-visible-transaction-count", "1 group · 1 transaction")
 
     view
     |> element("[id^='banking-transaction-group-ledger-']")
@@ -641,7 +644,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
 
     assert has_element?(
              view,
-             "#banking-suggested-group-rows > tr[id$='-detail'] > td[colspan='4']"
+             "#banking-suggested-group-rows > tr[id$='-detail'] > td[colspan='5']"
            )
 
     assert has_element?(
@@ -727,7 +730,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
 
     render_patch(view, ~p"/banking/#{statement.id}?status=needs_attention")
 
-    assert has_element?(view, "#banking-visible-transaction-count", "2 of 7 transactions shown")
+    assert has_element?(view, "#banking-visible-transaction-count", "2 transactions")
     assert has_element?(view, "#bank-transaction-#{rows["failed"].id}", "Send failed")
     assert has_element?(view, "#bank-transaction-#{rows["verifying"].id}", "Confirmation pending")
     assert has_element?(view, "#banking-select-transaction-#{rows["verifying"].id}[disabled]")
@@ -740,11 +743,17 @@ defmodule NilaWeb.Banking.UploadLiveTest do
     for {tab_id, label, transaction} <- [
           {"banking-view-needs-ledger", nil, original},
           {"banking-view-ready-to-send", "Ready to send", rows["ready"]},
-          {"banking-view-sent", "In Tally", rows["posted"]}
+          {"banking-view-sent", "Sent to Tally", rows["posted"]}
         ] do
       view |> element("##{tab_id}") |> render_click()
 
-      assert has_element?(view, "#banking-visible-transaction-count", "1 of 7 transactions shown")
+      assert has_element?(view, "#banking-visible-transaction-count", "1 transaction")
+
+      if tab_id == "banking-view-sent" do
+        refute has_element?(view, "#banking-select-all-transactions")
+        refute has_element?(view, "#banking-ledger-trigger-#{transaction.id}")
+        assert has_element?(view, "#banking-posted-ledger-#{transaction.id}")
+      end
 
       if label do
         assert has_element?(view, "#bank-transaction-#{transaction.id}", label)
@@ -847,7 +856,7 @@ defmodule NilaWeb.Banking.UploadLiveTest do
       master(context.org.id, company.id, "bank-charges", "Bank Charges", "Indirect Expenses")
 
     {:ok, view, _html} = live(context.conn, ~p"/banking/#{statement.id}?status=all")
-    assert has_element?(view, "#banking-transactions > #banking-tally-setup")
+    assert has_element?(view, "#banking-transactions #banking-tally-setup")
     refute has_element?(view, "#banking-tally-setup.nila-card")
     assert has_element?(view, "#banking-statement-page h1", "HDFC Bank · •••• 4587")
 
@@ -973,14 +982,22 @@ defmodule NilaWeb.Banking.UploadLiveTest do
              "Destination locked"
            )
 
-    assert has_element?(view, "#banking-tally-setup-locked", "Sending to Tally has started")
+    assert has_element?(
+             view,
+             "#banking-tally-setup-locked [aria-label*='Sending to Tally has started']"
+           )
+
     assert has_element?(view, "#banking-tally-setup-locked", "HDFC Bank")
     refute has_element?(view, "#banking-tally-setup-form")
     refute has_element?(view, "#banking-save-tally-destination")
 
     transaction |> Ecto.Changeset.change(status: "posted") |> Repo.update!()
     send(view.pid, :tally_jobs_changed)
-    assert has_element?(view, "#banking-tally-setup-locked", "1 transaction sent to Tally")
+
+    assert has_element?(
+             view,
+             "#banking-tally-setup-locked [aria-label*='1 transaction sent to Tally']"
+           )
 
     render_submit(view, "configure-tally", %{
       "tally_setup" => %{"bank_ledger_identity" => bank.identity}
@@ -1126,6 +1143,178 @@ defmodule NilaWeb.Banking.UploadLiveTest do
              "#bank-transaction-#{original.id} [data-cash-direction='outflow']",
              "-2.00"
            )
+  end
+
+  test "pages the full register and scopes bulk assignment to the displayed page", context do
+    {:ok, company} = linked_company(context)
+    bank = master(context.org.id, company.id, "page-bank", "HDFC Bank", "Bank Accounts")
+
+    charges =
+      master(context.org.id, company.id, "page-charges", "Bank Charges", "Indirect Expenses")
+
+    {statement, transactions} = paginated_statement(context, 205)
+    assert {:ok, _} = Banking.configure_tally(context.org.id, statement.id, bank.identity)
+
+    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}?status=all")
+    first = hd(transactions)
+    second_page_first = Enum.at(transactions, 100)
+    last = List.last(transactions)
+
+    assert has_element?(view, "#banking-visible-transaction-count", "1–100 of 205 transactions")
+    assert has_element?(view, "#banking-page-previous[disabled]")
+    assert has_element?(view, "#banking-page-bottom-previous[disabled]")
+    assert has_element?(view, "#banking-bottom-transaction-count", "1–100 of 205 transactions")
+
+    assert has_element?(
+             view,
+             "#banking-visible-transaction-count[tabindex='-1'][role='status'][aria-live='polite'][aria-atomic='true']"
+           )
+
+    assert has_element?(view, "#bank-transaction-#{first.id}")
+    refute has_element?(view, "#bank-transaction-#{second_page_first.id}")
+    refute has_element?(view, "#bank-transaction-#{last.id}")
+
+    assert has_element?(
+             view,
+             "#banking-select-all-transactions[aria-label='Select all transactions on this page']"
+           )
+
+    view |> element("#banking-select-all-transactions") |> render_click()
+    assert_push_event(view, "banking-selection", %{ids: [_, _ | _] = first_ids})
+    assert MapSet.new(first_ids) == MapSet.new(Enum.take(transactions, 100), & &1.id)
+    assert has_element?(view, "#banking-selected-transaction-count", "100 selected on this page")
+
+    view |> element("#banking-page-bottom-next") |> render_click()
+    assert_patch(view, ~p"/banking/#{statement.id}?page=2&status=all")
+    assert has_element?(view, "#banking-visible-transaction-count", "101–200 of 205 transactions")
+    refute has_element?(view, "#bank-transaction-#{first.id}")
+    assert has_element?(view, "#bank-transaction-#{second_page_first.id}")
+    refute has_element?(view, "#banking-selected-transaction-count")
+
+    render_click(view, "toggle-transaction", %{"id" => last.id})
+    refute has_element?(view, "#banking-selected-transaction-count")
+
+    view |> element("#banking-select-all-transactions") |> render_click()
+    assert_push_event(view, "banking-selection", %{ids: [_, _ | _] = second_ids})
+    assert MapSet.new(second_ids) == MapSet.new(Enum.slice(transactions, 100, 100), & &1.id)
+
+    view |> element("#banking-bulk-ledger-trigger") |> render_click()
+
+    view
+    |> element("#banking-ledger-options [phx-value-identity='#{charges.identity}']")
+    |> render_click()
+
+    view
+    |> form("#banking-transaction-form", transaction_ids: second_ids)
+    |> render_submit(%{"action" => "map"})
+
+    {:ok, reloaded} = Banking.get_statement(context.org.id, statement.id)
+
+    assigned =
+      Enum.filter(reloaded.bank_transactions, &(&1.counter_ledger_identity == charges.identity))
+
+    assert MapSet.new(assigned, & &1.id) == MapSet.new(second_ids)
+    assert has_element?(view, "#banking-visible-transaction-count", "101–200 of 205 transactions")
+    refute has_element?(view, "#banking-selected-transaction-count")
+
+    view |> element("#banking-page-next") |> render_click()
+    assert has_element?(view, "#banking-visible-transaction-count", "201–205 of 205 transactions")
+    assert has_element?(view, "#banking-page-next[disabled]")
+    assert has_element?(view, "#banking-page-bottom-next[disabled]")
+    assert has_element?(view, "#bank-transaction-#{last.id}")
+    refute has_element?(view, "#bank-transaction-#{second_page_first.id}")
+
+    view |> element("#banking-page-previous") |> render_click()
+    assert has_element?(view, "#bank-transaction-#{second_page_first.id}")
+
+    render_patch(view, ~p"/banking/#{statement.id}?page=2&review=individual&status=needs_ledger")
+    assert has_element?(view, "#banking-visible-transaction-count", "101–105 of 105 transactions")
+    view |> element("#banking-select-all-transactions") |> render_click()
+    assert_push_event(view, "banking-selection", %{ids: [_, _, _, _, _] = last_ids})
+    assert MapSet.new(last_ids) == MapSet.new(Enum.take(transactions, -5), & &1.id)
+
+    view |> element("#banking-bulk-ledger-trigger") |> render_click()
+
+    view
+    |> element("#banking-ledger-options [phx-value-identity='#{charges.identity}']")
+    |> render_click()
+
+    view
+    |> form("#banking-transaction-form", transaction_ids: last_ids)
+    |> render_submit(%{"action" => "map"})
+
+    assert_patch(view, ~p"/banking/#{statement.id}?review=individual&status=needs_ledger")
+    assert has_element?(view, "#banking-visible-transaction-count", "100 transactions")
+    assert has_element?(view, "#bank-transaction-#{first.id}")
+    refute has_element?(view, "#bank-transaction-#{last.id}")
+    refute has_element?(view, "#banking-pagination")
+    refute has_element?(view, "#banking-selected-transaction-count")
+    refute has_element?(view, "#banking-pagination-bottom")
+  end
+
+  test "searches every page, resets paging on view changes and clamps stale page links",
+       context do
+    {statement, transactions} = paginated_statement(context, 205)
+    last = List.last(transactions)
+    {:ok, view, _} = live(context.conn, ~p"/banking/#{statement.id}?page=2&status=all")
+
+    view
+    |> form("#banking-transaction-filters",
+      transaction_filters: %{query: "PAGE ENTRY 205", type: "all"}
+    )
+    |> render_change()
+
+    assert_patch(view, ~p"/banking/#{statement.id}?query=PAGE+ENTRY+205&status=all")
+    assert has_element?(view, "#bank-transaction-#{last.id}")
+    assert has_element?(view, "#banking-visible-transaction-count", "1 of 205 transactions shown")
+    refute has_element?(view, "#banking-pagination")
+
+    render_patch(view, ~p"/banking/#{statement.id}?page=2&status=all")
+    view |> element("#banking-view-needs-ledger") |> render_click()
+    assert_patch(view, ~p"/banking/#{statement.id}?review=individual&status=needs_ledger")
+    assert has_element?(view, "#banking-visible-transaction-count", "1–100 of 205 transactions")
+
+    render_patch(view, ~p"/banking/#{statement.id}?page=999&status=all")
+    assert_patch(view, ~p"/banking/#{statement.id}?page=3&status=all")
+    assert has_element?(view, "#bank-transaction-#{last.id}")
+    assert has_element?(view, "#banking-visible-transaction-count", "201–205 of 205 transactions")
+
+    render_patch(view, ~p"/banking/#{statement.id}?page=-1&status=all")
+    assert has_element?(view, "#banking-visible-transaction-count", "1–100 of 205 transactions")
+
+    view
+    |> form("#banking-transaction-filters",
+      transaction_filters: %{query: "NO MATCH ANYWHERE", type: "all"}
+    )
+    |> render_change()
+
+    assert has_element?(view, "#banking-transaction-form", "No transactions match these filters.")
+    refute has_element?(view, "#banking-pagination")
+  end
+
+  defp paginated_statement(context, count) do
+    {:ok, statement} = ready_statement(context)
+    first = hd(statement.bank_transactions)
+    first = first |> Ecto.Changeset.change(narration: "PAGE ENTRY 1") |> Repo.update!()
+
+    rest =
+      for ordinal <- 2..count do
+        Repo.insert!(%Transaction{
+          org_id: context.org.id,
+          statement_id: statement.id,
+          identity: "page-entry-#{ordinal}",
+          ordinal: ordinal,
+          date: ~D[2026-06-01],
+          narration: "PAGE ENTRY #{ordinal}",
+          withdrawal_paise: 100,
+          deposit_paise: 0,
+          balance_paise: 100_000 - ordinal * 100,
+          transaction_type: "payment",
+          status: "unassigned"
+        })
+      end
+
+    {statement, [first | rest]}
   end
 
   defp upload_pdf(view, content) do

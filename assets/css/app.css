@@ -1615,7 +1615,8 @@ body {
   color: var(--gray-12);
 }
 
-.nila-segmented-item[aria-pressed="true"] {
+.nila-segmented-item[aria-pressed="true"],
+.nila-segmented-item[aria-current="page"] {
   background: var(--accent-a3);
   color: var(--accent-a11);
 }

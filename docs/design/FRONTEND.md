@@ -220,6 +220,8 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
   (prominent); TASTE records the accepted export treatment.
 - **Segmented controls:** `<.segmented_control>` owns mutually exclusive operational
   filters; never rebuild joined button groups.
+- **Navigation tabs:** `<.navigation_tabs>` keeps views in the URL. Use the default
+  underline treatment for primary views and `variant="segmented"` for secondary views.
 - **Badges:** `<.badge>` owns semantic status styling and 14px operational type. It has one
   size and no styling escape hatch.
 - **Fields:** `<.input>` owns text, select, textarea, checkbox, date, password, labels,

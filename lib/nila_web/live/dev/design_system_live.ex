@@ -251,6 +251,28 @@ if Application.compile_env(:nila, :dev_routes, false) or
                         on_change="set-review-scope"
                         value_name="scope"
                       />
+                      <.navigation_tabs
+                        id="ds-secondary-navigation"
+                        variant="segmented"
+                        label="Secondary navigation"
+                        selected="groups"
+                        items={[
+                          %{
+                            id: "ds-nav-groups",
+                            label: "Suggested groups",
+                            value: "groups",
+                            count: 12,
+                            patch: "/dev/design-system"
+                          },
+                          %{
+                            id: "ds-nav-individual",
+                            label: "Individual transactions",
+                            value: "individual",
+                            count: 28,
+                            patch: "/dev/design-system"
+                          }
+                        ]}
+                      />
                     </div>
                   </.card>
 

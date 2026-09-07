@@ -130,21 +130,26 @@ defmodule NilaWeb.Components.Button do
   attr :selected, :any, required: true
   attr :label, :string, required: true
   attr :controls, :string, default: nil
+  attr :variant, :string, default: "underline", values: ~w(underline segmented)
 
   @doc "Renders understated URL-backed navigation tabs with optional counts."
   def navigation_tabs(assigns) do
     ~H"""
-    <nav id={@id} class="nila-tabs" aria-label={@label}>
+    <nav
+      id={@id}
+      class={if @variant == "segmented", do: "nila-segmented", else: "nila-tabs"}
+      aria-label={@label}
+    >
       <.link
         :for={item <- @items}
         id={item.id}
         patch={item.patch}
-        class="nila-tab"
+        class={if @variant == "segmented", do: "nila-segmented-item", else: "nila-tab"}
         aria-current={@selected == item.value && "page"}
         aria-controls={@controls}
       >
         <span>{item.label}</span>
-        <span class="nila-tab-count">{item.count}</span>
+        <span class={if @variant == "segmented", do: "tabular-nums", else: "nila-tab-count"}>{item.count}</span>
       </.link>
     </nav>
     """

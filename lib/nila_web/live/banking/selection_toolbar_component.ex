@@ -68,7 +68,7 @@ defmodule NilaWeb.Banking.SelectionToolbarComponent do
             class="text-ui min-w-20 font-semibold"
             aria-live="polite"
           >
-            {@selected_count} selected
+            {@selected_count} selected on this page
           </p>
 
           <%= if @selected_ignored_count == 0 do %>

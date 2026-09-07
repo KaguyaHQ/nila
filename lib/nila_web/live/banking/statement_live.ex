@@ -8,6 +8,7 @@ defmodule NilaWeb.Banking.StatementLive do
   alias Nila.TallyJobs
 
   @transaction_group_preview_limit 4
+  @transaction_page_size 100
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
@@ -20,15 +21,20 @@ defmodule NilaWeb.Banking.StatementLive do
           TallyJobs.subscribe_org(org.id)
         end
 
+        grouping = statement_grouping(statement)
+
         {:ok,
          socket
          |> assign(:page_title, "Bank statement")
-         |> assign(:transaction_filters, transaction_filters_from_params(params, statement))
+         |> assign(
+           :transaction_filters,
+           transaction_filters_from_params(params, statement, grouping)
+         )
          |> assign(:expanded_transaction_groups, MapSet.new())
          |> assign(:fully_expanded_transaction_groups, MapSet.new())
          |> assign(:transaction_group_exclusions, %{})
          |> assign(:review_ledger_selections, %{})
-         |> assign_statement(statement)}
+         |> assign_statement(statement, grouping)}
 
       {:error, :not_found} ->
         {:ok,
@@ -40,20 +46,28 @@ defmodule NilaWeb.Banking.StatementLive do
 
   @impl true
   def handle_params(params, _uri, %{assigns: %{statement: statement}} = socket) do
-    filters = transaction_filters_from_params(params, statement)
+    filters = transaction_filters_from_params(params, statement, socket.assigns.review_grouping)
 
     socket =
-      assign_filtered_transactions(
-        socket,
-        statement.bank_transactions,
-        filters,
-        socket.assigns.selected_transaction_ids
-      )
+      if filters == socket.assigns.transaction_filters do
+        socket
+      else
+        assign_filtered_transactions(
+          socket,
+          statement.bank_transactions,
+          filters,
+          socket.assigns.selected_transaction_ids
+        )
+      end
 
-    if Map.has_key?(params, "status") do
+    if Map.has_key?(params, "status") and filters == socket.assigns.transaction_filters do
       {:noreply, socket}
     else
-      {:noreply, push_patch(socket, to: transaction_filter_path(socket, filters), replace: true)}
+      {:noreply,
+       push_patch(socket,
+         to: transaction_filter_path(socket, socket.assigns.transaction_filters),
+         replace: true
+       )}
     end
   end
 
@@ -288,12 +302,7 @@ defmodule NilaWeb.Banking.StatementLive do
   @impl true
   def handle_info({:bank_statement_progress, statement_id, _state}, socket)
       when statement_id == socket.assigns.statement.id do
-    org_id = socket.assigns.current_scope.current_org.id
-
-    case Banking.get_statement(org_id, statement_id) do
-      {:ok, statement} -> {:noreply, assign_statement(socket, statement)}
-      {:error, :not_found} -> {:noreply, push_navigate(socket, to: ~p"/banking")}
-    end
+    {:noreply, reload_statement(socket)}
   end
 
   def handle_info(:tally_jobs_changed, socket), do: {:noreply, reload_statement(socket)}
@@ -318,11 +327,19 @@ defmodule NilaWeb.Banking.StatementLive do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  defp assign_statement(socket, statement) do
+  defp assign_statement(socket, statement, grouping \\ nil) do
+    statement = %{
+      statement
+      | bank_transactions: Enum.sort_by(statement.bank_transactions, &{&1.ordinal, &1.id})
+    }
+
     transactions = if statement.status == "ready", do: statement.bank_transactions, else: []
     tally_company = Banking.tally_destination(statement)
     can_edit = Policy.can?(socket.assigns.current_scope, :edit_records)
-    filters = socket.assigns[:transaction_filters] || default_transaction_filters(statement)
+    grouping = grouping || statement_grouping(statement)
+
+    filters =
+      socket.assigns[:transaction_filters] || default_transaction_filters(statement, grouping)
 
     selected_company_id = tally_company && tally_company.id
 
@@ -354,13 +371,28 @@ defmodule NilaWeb.Banking.StatementLive do
     |> reset_ledger_picker()
     |> assign(:bulk_ledger, nil)
     |> assign(:transaction_form, transaction_form())
+    |> assign(:review_grouping, grouping)
+    |> assign(:filtered_grouping, nil)
     |> assign_filtered_transactions(transactions, filters, MapSet.new())
   end
 
   defp reload_statement(socket) do
     case Banking.get_statement(org_id(socket), socket.assigns.statement.id) do
-      {:ok, statement} -> assign_statement(socket, statement)
-      {:error, :not_found} -> push_navigate(socket, to: ~p"/banking")
+      {:ok, statement} ->
+        previous_page = socket.assigns.transaction_filters["page"]
+        socket = assign_statement(socket, statement)
+
+        if previous_page != socket.assigns.transaction_filters["page"] do
+          push_patch(socket,
+            to: transaction_filter_path(socket, socket.assigns.transaction_filters),
+            replace: true
+          )
+        else
+          socket
+        end
+
+      {:error, :not_found} ->
+        push_navigate(socket, to: ~p"/banking")
     end
   end
 
@@ -663,16 +695,26 @@ defmodule NilaWeb.Banking.StatementLive do
   defp assign_filtered_transactions(socket, transactions, filters, selected_ids) do
     visible_transactions = filter_transactions(transactions, filters)
 
-    {transaction_rows, transaction_groups, individual_transactions} =
+    socket = cache_filtered_grouping(socket, visible_transactions, filters)
+
+    {transaction_rows, transaction_groups, _individual_transactions} =
       transaction_rows(socket, visible_transactions, filters)
 
-    review_inventory = review_inventory(socket, transactions)
+    review_inventory = review_inventory(socket, socket.assigns.review_grouping)
+    groups? = filters["status"] == "unassigned" and filters["review"] == "groups"
+    row_count = if groups?, do: length(transaction_groups), else: length(transaction_rows)
+    page_count = max(1, div(row_count + @transaction_page_size - 1, @transaction_page_size))
+    page = min(filters["page"], page_count)
+    filters = Map.put(filters, "page", page)
+    offset = (page - 1) * @transaction_page_size
+    page_groups = Enum.slice(transaction_groups, offset, @transaction_page_size)
+    page_rows = Enum.slice(transaction_rows, offset, @transaction_page_size)
 
     selectable_transactions =
       if filters["status"] == "unassigned" and filters["review"] == "groups" do
         []
       else
-        individual_transactions
+        Enum.map(page_rows, & &1.transaction)
       end
 
     selectable_transaction_ids =
@@ -683,6 +725,18 @@ defmodule NilaWeb.Banking.StatementLive do
     socket
     |> assign(:transaction_filters, filters)
     |> assign(:transaction_filter_form, to_form(filters, as: :transaction_filters))
+    |> assign(:transaction_page_count, page_count)
+    |> assign(:transaction_page_first, if(row_count == 0, do: 0, else: offset + 1))
+    |> assign(:transaction_page_last, min(offset + @transaction_page_size, row_count))
+    |> assign(:transaction_row_count, row_count)
+    |> assign(
+      :previous_transaction_page,
+      transaction_filter_path(socket, Map.put(filters, "page", max(1, page - 1)))
+    )
+    |> assign(
+      :next_transaction_page,
+      transaction_filter_path(socket, Map.put(filters, "page", min(page_count, page + 1)))
+    )
     |> assign(:transaction_view_tabs, transaction_view_tabs(socket, transactions, filters))
     |> assign(
       :transaction_review_tabs,
@@ -694,9 +748,15 @@ defmodule NilaWeb.Banking.StatementLive do
       )
     )
     |> assign(:visible_transaction_count, length(visible_transactions))
+    |> assign(
+      :view_transaction_count,
+      length(
+        filter_transactions(transactions, Map.merge(filters, %{"query" => "", "type" => "all"}))
+      )
+    )
     |> assign(:transaction_groups, Map.new(transaction_groups, &{&1.key, &1}))
-    |> assign(:transaction_group_keys, Enum.map(transaction_groups, & &1.key))
-    |> assign(:transaction_group_rows, Enum.map(transaction_groups, &%{kind: :group, group: &1}))
+    |> assign(:transaction_group_keys, Enum.map(page_groups, & &1.key))
+    |> assign(:transaction_group_rows, Enum.map(page_groups, &%{kind: :group, group: &1}))
     |> assign(:transaction_group_count, length(transaction_groups))
     |> assign(
       :grouped_transaction_count,
@@ -704,38 +764,30 @@ defmodule NilaWeb.Banking.StatementLive do
     )
     |> assign(:review_group_count, length(review_inventory.groups))
     |> assign(:review_individual_count, length(review_inventory.individuals))
-    |> assign(:visible_individual_count, length(individual_transactions))
+    |> assign(:visible_individual_count, length(transaction_rows))
     |> assign(:selectable_transaction_ids, selectable_transaction_ids)
     |> assign_transaction_selection(selected_ids)
-    |> stream(:transaction_rows, transaction_rows,
+    |> stream(:transaction_rows, page_rows,
       reset: true,
       dom_id: &transaction_row_dom_id/1
     )
   end
 
-  defp default_transaction_filters(statement) do
+  defp default_transaction_filters(statement, grouping) do
     status =
       if Enum.any?(statement.bank_transactions, &(&1.status == "unassigned")),
         do: "unassigned",
         else: "all"
 
-    review =
-      if status == "unassigned" and
-           TransactionGrouping.group(
-             Enum.filter(statement.bank_transactions, &(&1.status == "unassigned"))
-           ).groups != [] do
-        "groups"
-      else
-        "individual"
-      end
+    review = if status == "unassigned" and grouping.groups != [], do: "groups", else: "individual"
 
-    %{"query" => "", "status" => status, "type" => "all", "review" => review}
+    %{"query" => "", "status" => status, "type" => "all", "review" => review, "page" => 1}
   end
 
-  defp transaction_filters_from_params(params, statement) do
-    defaults = default_transaction_filters(statement)
+  defp transaction_filters_from_params(params, statement, grouping) do
+    defaults = default_transaction_filters(statement, grouping)
 
-    filters = Map.take(params, ["query", "status", "type", "review"])
+    filters = Map.take(params, ["query", "status", "type", "review", "page"])
 
     filters =
       if Map.has_key?(filters, "status"),
@@ -753,7 +805,8 @@ defmodule NilaWeb.Banking.StatementLive do
       "status" =>
         valid_filter(Map.get(params, "status"), Enum.map(status_filter_options(), &elem(&1, 1))),
       "type" => valid_filter(Map.get(params, "type"), Transaction.types()),
-      "review" => valid_review_filter(Map.get(params, "review"))
+      "review" => valid_review_filter(Map.get(params, "review")),
+      "page" => positive_integer(Map.get(params, "page")) || 1
     }
   end
 
@@ -768,6 +821,7 @@ defmodule NilaWeb.Banking.StatementLive do
       |> maybe_put_filter("query", filters["query"], "")
       |> maybe_put_filter("type", filters["type"], "all")
       |> maybe_put_review_filter(filters)
+      |> maybe_put_filter("page", filters["page"], 1)
 
     ~p"/banking/#{socket.assigns.statement.id}?#{params}"
   end
@@ -796,27 +850,9 @@ defmodule NilaWeb.Banking.StatementLive do
     end)
   end
 
-  defp transaction_rows(socket, visible_transactions, %{"status" => "unassigned"} = filters) do
-    %{groups: groups, individuals: individuals} = TransactionGrouping.group(visible_transactions)
-
-    groups =
-      Enum.map(groups, fn group ->
-        excluded =
-          Map.get(socket.assigns.transaction_group_exclusions, group.key, MapSet.new())
-
-        apply_group_exclusions(group, excluded)
-      end)
-
-    excluded_transactions =
-      groups
-      |> Enum.flat_map(fn group ->
-        Enum.filter(group.transactions, &MapSet.member?(group.excluded_transaction_ids, &1.id))
-      end)
-
-    individuals =
-      (individuals ++ excluded_transactions)
-      |> Enum.uniq_by(& &1.id)
-      |> Enum.sort_by(& &1.ordinal)
+  defp transaction_rows(socket, _visible_transactions, %{"status" => "unassigned"} = filters) do
+    %{groups: groups, individuals: individuals} =
+      review_inventory(socket, socket.assigns.filtered_grouping.result)
 
     rows =
       case filters["review"] do
@@ -835,12 +871,32 @@ defmodule NilaWeb.Banking.StatementLive do
      visible_transactions}
   end
 
-  defp review_inventory(socket, transactions) do
-    %{groups: groups, individuals: individuals} =
-      transactions
-      |> Enum.filter(&(&1.status == "unassigned"))
-      |> TransactionGrouping.group()
+  defp statement_grouping(statement) do
+    statement.bank_transactions
+    |> Enum.filter(&(&1.status == "unassigned"))
+    |> TransactionGrouping.group()
+  end
 
+  defp cache_filtered_grouping(socket, transactions, %{"status" => "unassigned"} = filters) do
+    key = {filters["query"], filters["type"]}
+
+    case socket.assigns.filtered_grouping do
+      %{key: ^key} ->
+        socket
+
+      _ ->
+        result =
+          if key == {"", "all"},
+            do: socket.assigns.review_grouping,
+            else: TransactionGrouping.group(transactions)
+
+        assign(socket, :filtered_grouping, %{key: key, result: result})
+    end
+  end
+
+  defp cache_filtered_grouping(socket, _transactions, _filters), do: socket
+
+  defp review_inventory(socket, %{groups: groups, individuals: individuals}) do
     groups =
       Enum.map(groups, fn group ->
         excluded = Map.get(socket.assigns.transaction_group_exclusions, group.key, MapSet.new())
@@ -1016,11 +1072,11 @@ defmodule NilaWeb.Banking.StatementLive do
     "#{group.match_basis}#{pattern}"
   end
 
-  defp transaction_group_coverage(group) do
+  defp transaction_group_count_label(group) do
     type = humanize_type(group.transaction_type) |> String.downcase()
     type = if group.included_count == 1, do: type, else: type <> "s"
 
-    "#{group.included_count} #{type} · #{money(group.included_total_paise)} total"
+    "#{group.included_count} #{type}"
   end
 
   defp transaction_row_dom_id(%{kind: :group, group: group}),
@@ -1143,7 +1199,7 @@ defmodule NilaWeb.Banking.StatementLive do
           {"sent", "Sent", "posted"},
           {"all", "All", "all"}
         ] do
-      tab_filters = Map.put(filters, "status", status)
+      tab_filters = filters |> Map.put("status", status) |> Map.put("page", 1)
 
       %{
         id: "banking-view-#{id}",
@@ -1165,7 +1221,11 @@ defmodule NilaWeb.Banking.StatementLive do
         label: label,
         value: review,
         count: count,
-        patch: transaction_filter_path(socket, Map.put(filters, "review", review))
+        patch:
+          transaction_filter_path(
+            socket,
+            filters |> Map.put("review", review) |> Map.put("page", 1)
+          )
       }
     end
   end
@@ -1174,6 +1234,48 @@ defmodule NilaWeb.Banking.StatementLive do
 
   defp transaction_view_count(transactions, status),
     do: Enum.count(transactions, &(&1.status == status))
+
+  defp transaction_workspace_title(filters, tabs) do
+    count = Enum.find(tabs, &(&1.value == filters["status"]))
+    count = if count, do: count.count, else: 0
+    noun = transaction_count_text(count)
+
+    case filters["status"] do
+      "unassigned" -> noun <> if(count == 1, do: " needs a ledger", else: " need a ledger")
+      "ready" -> noun <> " ready to send"
+      "posted" -> noun <> " sent to Tally"
+      _ -> "Transactions"
+    end
+  end
+
+  defp transaction_view_summary(assigns) do
+    cond do
+      assigns.transaction_page_count > 1 ->
+        unit =
+          if assigns.transaction_filters["status"] == "unassigned" and
+               assigns.transaction_filters["review"] == "groups",
+             do: "groups",
+             else: "transactions"
+
+        "#{assigns.transaction_page_first}–#{assigns.transaction_page_last} of #{assigns.transaction_row_count} #{unit}"
+
+      assigns.transaction_filters["status"] == "unassigned" and
+          assigns.transaction_filters["review"] == "groups" ->
+        groups = assigns.transaction_group_count
+
+        "#{groups} #{if groups == 1, do: "group", else: "groups"} · " <>
+          transaction_count_text(assigns.grouped_transaction_count)
+
+      assigns.transaction_filters["status"] == "unassigned" ->
+        transaction_count_text(assigns.visible_individual_count)
+
+      assigns.visible_transaction_count == assigns.view_transaction_count ->
+        transaction_count_text(assigns.view_transaction_count)
+
+      true ->
+        "#{assigns.visible_transaction_count} of #{assigns.view_transaction_count} transactions shown"
+    end
+  end
 
   defp transaction_empty_message(0, _filters), do: "No transactions were extracted."
 
@@ -1267,11 +1369,83 @@ defmodule NilaWeb.Banking.StatementLive do
   defp transaction_count_text(1), do: "1 transaction"
   defp transaction_count_text(count), do: "#{count} transactions"
 
+  attr :suffix, :string, default: ""
+  attr :page, :integer, required: true
+  attr :page_count, :integer, required: true
+  attr :previous, :string, required: true
+  attr :next, :string, required: true
+
+  defp transaction_pager(assigns) do
+    ~H"""
+    <nav
+      id={"banking-pagination" <> @suffix}
+      aria-label="Transaction pages"
+      class="flex items-center gap-1"
+    >
+      <.button
+        id={"banking-page" <> @suffix <> "-previous"}
+        patch={if @page > 1, do: @previous}
+        disabled={@page == 1}
+        variant="outline"
+        aria-label="Previous page"
+        data-transaction-page
+      >
+        <.icon name="hero-chevron-left-mini" class="size-4" />
+      </.button>
+
+      <.button
+        id={"banking-page" <> @suffix <> "-next"}
+        patch={if @page < @page_count, do: @next}
+        disabled={@page == @page_count}
+        variant="outline"
+        aria-label="Next page"
+        data-transaction-page
+      >
+        <.icon name="hero-chevron-right-mini" class="size-4" />
+      </.button>
+    </nav>
+    """
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} current_path={assigns[:current_path]}>
-      <div id="banking-statement-page" class="space-y-section">
+      <div
+        id="banking-statement-page"
+        phx-hook=".TransactionPagination"
+        class="space-y-block mx-auto w-full max-w-[1400px]"
+      >
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".TransactionPagination">
+          export default {
+            mounted() {
+              this.onPageClick = event => {
+                const link = event.target.closest("a[data-transaction-page]")
+                if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+                this.pendingPageFocus = {scroll: !!link.closest("#banking-pagination-bottom")}
+              }
+              this.onPageLoaded = () => {
+                if (!this.pendingPageFocus) return
+                const {scroll} = this.pendingPageFocus
+                this.pendingPageFocus = null
+                this.focusFrame = requestAnimationFrame(() => {
+                  const range = this.el.querySelector("#banking-visible-transaction-count")
+                  if (!range) return
+                  range.focus({preventScroll: true})
+                  if (scroll) range.scrollIntoView({block: "start", behavior: "auto"})
+                })
+              }
+              this.el.addEventListener("click", this.onPageClick)
+              window.addEventListener("phx:page-loading-stop", this.onPageLoaded)
+            },
+            destroyed() {
+              this.el.removeEventListener("click", this.onPageClick)
+              window.removeEventListener("phx:page-loading-stop", this.onPageLoaded)
+              cancelAnimationFrame(this.focusFrame)
+            }
+          }
+        </script>
+
         <.page_header
           eyebrow="Banking"
           eyebrow_path={~p"/banking"}
@@ -1324,640 +1498,709 @@ defmodule NilaWeb.Banking.StatementLive do
             </.callout>
           </div>
 
-          <section id="banking-transactions" class="space-y-related">
-            <div class="flex items-end justify-between gap-4">
-              <div>
-                <h2 class="text-base-content text-h4 font-semibold">Extracted transactions</h2>
-
-                <p id="banking-visible-transaction-count" class="text-ink-muted text-ui mt-1">
-                  <%= if @visible_transaction_count == @transaction_count do %>
-                    {transaction_count_text(@transaction_count)}
-                  <% else %>
-                    {@visible_transaction_count} of {@transaction_count} transactions shown
-                  <% end %>
-                </p>
-              </div>
-            </div>
-
-            <div id="banking-tally-setup">
-              <div :if={is_nil(@tally_company)}>
-                <.callout kind="warning" size="compact" title="Tally company not connected">
-                  Connect {@statement.client.name} to a Tally company from Clients.
-                </.callout>
-              </div>
-
-              <.form
-                :if={not is_nil(@tally_company) and not @tally_destination_locked}
-                for={@tally_setup_form}
-                id="banking-tally-setup-form"
-                phx-submit="configure-tally"
-                class="bg-panel-surface border-rule rounded-box grid gap-3 border p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)_auto] lg:items-end"
-              >
-                <div class="pb-1 lg:pr-3">
-                  <p class="text-base-content text-ui font-semibold">Tally destination</p>
-
-                  <p id="banking-tally-company" class="text-ink-muted text-ui">
-                    {@tally_company.name}
-                  </p>
-                </div>
-
-                <.input
-                  field={@tally_setup_form[:bank_ledger_identity]}
-                  type="select"
-                  label="Bank ledger"
-                  prompt="Choose synced ledger"
-                  options={ledger_options(@tally_bank_ledgers)}
-                />
-                <.button
-                  type="submit"
-                  id="banking-save-tally-destination"
-                  disabled={not @can_edit}
-                  size="sm"
-                >
-                  Save
-                </.button>
-              </.form>
-
+          <.card id="banking-transactions" padding="none">
+            <.card_header title={
+              transaction_workspace_title(@transaction_filters, @transaction_view_tabs)
+            }>
               <div
                 :if={not is_nil(@tally_company) and @tally_destination_locked}
                 id="banking-tally-setup-locked"
-                class="bg-panel-surface border-rule rounded-box grid gap-3 border p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)_auto] lg:items-center"
+                class="text-ink-muted text-ui mt-1 flex flex-wrap items-center gap-x-3 gap-y-2"
               >
-                <div class="lg:pr-3">
-                  <p class="text-base-content text-ui font-semibold">Tally destination</p>
-                  <p id="banking-tally-company" class="text-ink-muted text-ui">
-                    {@tally_company.name}
-                  </p>
+                <span class="text-base-content font-medium">Tally destination</span>
+                <span id="banking-tally-company">{@tally_company.name}</span>
+                <span aria-hidden="true">·</span> <span>{@statement.bank_ledger_name}</span>
+                <span
+                  class="inline-flex items-center gap-1"
+                  tabindex="0"
+                  title={"Destination locked. " <> tally_destination_lock_detail(@statement) <> ". The destination cannot be changed after sending starts."}
+                  aria-label={"Destination locked. " <> tally_destination_lock_detail(@statement) <> ". The destination cannot be changed after sending starts."}
+                >
+                  <.icon name="hero-lock-closed-mini" class="size-4" />
+                  <span class="sr-only">Destination locked</span>
+                </span>
+              </div>
+            </.card_header>
+
+            <div class="space-y-block px-6 pb-6">
+              <div
+                :if={not @tally_destination_locked or is_nil(@tally_company)}
+                id="banking-tally-setup"
+                class="pt-4"
+              >
+                <div :if={is_nil(@tally_company)}>
+                  <.callout kind="warning" size="compact" title="Tally company not connected">
+                    Connect {@statement.client.name} to a Tally company from Clients.
+                  </.callout>
                 </div>
 
-                <div>
-                  <p class="text-base-content text-ui font-semibold">Bank ledger</p>
-                  <p class="text-ink-muted text-ui">{@statement.bank_ledger_name}</p>
-                </div>
+                <.form
+                  :if={not is_nil(@tally_company) and not @tally_destination_locked}
+                  for={@tally_setup_form}
+                  id="banking-tally-setup-form"
+                  phx-submit="configure-tally"
+                  class="bg-panel-surface border-rule rounded-box grid gap-3 border p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)_auto] lg:items-end"
+                >
+                  <div class="pb-1 lg:pr-3">
+                    <p class="text-base-content text-ui font-semibold">Tally destination</p>
 
-                <div class="lg:max-w-64">
-                  <p class="text-base-content text-ui font-semibold">Destination locked</p>
-                  <p class="text-ink-muted text-ui">
-                    {tally_destination_lock_detail(@statement)}
+                    <p id="banking-tally-company" class="text-ink-muted text-ui">
+                      {@tally_company.name}
+                    </p>
+                  </div>
+
+                  <.input
+                    field={@tally_setup_form[:bank_ledger_identity]}
+                    type="select"
+                    label="Bank ledger"
+                    prompt="Choose synced ledger"
+                    options={ledger_options(@tally_bank_ledgers)}
+                  />
+                  <.button
+                    type="submit"
+                    id="banking-save-tally-destination"
+                    disabled={not @can_edit}
+                    size="sm"
+                  >
+                    Save
+                  </.button>
+                </.form>
+              </div>
+
+              <.navigation_tabs
+                id="banking-transaction-views"
+                items={@transaction_view_tabs}
+                selected={@transaction_filters["status"]}
+                label="Transaction views"
+                controls="banking-transaction-form"
+              />
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <.navigation_tabs
+                  :if={@transaction_filters["status"] == "unassigned"}
+                  id="banking-review-modes"
+                  variant="segmented"
+                  items={@transaction_review_tabs}
+                  selected={@transaction_filters["review"]}
+                  label="Needs ledger review mode"
+                  controls="banking-transaction-form"
+                />
+                <div class="ml-auto flex items-center gap-3">
+                  <p
+                    id="banking-visible-transaction-count"
+                    tabindex="-1"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    class="focus-visible:outline-focus scroll-mt-block text-ink-muted text-ui tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2"
+                  >
+                    {transaction_view_summary(assigns)}
                   </p>
+
+                  <.transaction_pager
+                    :if={@transaction_page_count > 1}
+                    page={@transaction_filters["page"]}
+                    page_count={@transaction_page_count}
+                    previous={@previous_transaction_page}
+                    next={@next_transaction_page}
+                  />
                 </div>
               </div>
-            </div>
 
-            <.navigation_tabs
-              id="banking-transaction-views"
-              items={@transaction_view_tabs}
-              selected={@transaction_filters["status"]}
-              label="Transaction views"
-              controls="banking-transaction-rows"
-            />
-
-            <.navigation_tabs
-              :if={@transaction_filters["status"] == "unassigned"}
-              id="banking-review-modes"
-              items={@transaction_review_tabs}
-              selected={@transaction_filters["review"]}
-              label="Needs ledger review mode"
-              controls="banking-transaction-rows"
-            />
-
-            <.form
-              for={@transaction_filter_form}
-              id="banking-transaction-filters"
-              phx-change="filter-transactions"
-              phx-submit="filter-transactions"
-              class="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_minmax(0,14rem)]"
-            >
-              <.input
-                field={@transaction_filter_form[:query]}
-                type="search"
-                label="Search transactions"
-                placeholder="Narration, reference or ledger"
-                phx-debounce="250"
-              />
-              <.input
-                field={@transaction_filter_form[:type]}
-                type="select"
-                label="Transaction type"
-                options={type_filter_options()}
-              />
-            </.form>
-
-            <.form
-              for={@transaction_form}
-              id="banking-transaction-form"
-              phx-submit="bank-transactions"
-              phx-hook=".TransactionSelection"
-            >
-              <script :type={Phoenix.LiveView.ColocatedHook} name=".TransactionSelection">
-                export default {
-                  mounted() {
-                    this.selectedIds = new Set()
-                    this.handleEvent("banking-selection", ({ids}) => {
-                      this.selectedIds = new Set(ids.map(String))
-                      this.syncSelection()
-                    })
-                  },
-                  updated() { this.syncSelection() },
-                  syncSelection() {
-                    let selectableCount = 0
-                    let selectedCount = 0
-                    this.el.querySelectorAll("[data-transaction-selection]").forEach(input => {
-                      input.checked = !input.disabled && this.selectedIds.has(input.value)
-                      if (!input.disabled) selectableCount++
-                      if (input.checked) selectedCount++
-                    })
-                    const header = this.el.querySelector("#banking-select-all-transactions")
-                    if (!header) return
-                    header.checked = selectableCount > 0 && selectedCount === selectableCount
-                    header.indeterminate = selectedCount > 0 && selectedCount < selectableCount
-                    header.dataset.indeterminate = String(header.indeterminate)
-                    header.setAttribute("aria-label", header.checked
-                      ? "Clear filtered transaction selection"
-                      : "Select all filtered transactions")
-                  }
-                }
-              </script>
-
-              <.data_table
-                :if={
-                  @transaction_filters["status"] == "unassigned" and
-                    @transaction_filters["review"] == "groups"
-                }
-                id="banking-suggested-group-rows"
-                rows={@transaction_group_rows}
-                row_id={&transaction_row_dom_id/1}
-                empty?={@transaction_group_count == 0}
-                mode="review"
-                min_width="min-w-[920px]"
-                surface="surface"
-                detail_for={
-                  fn row ->
-                    MapSet.member?(@expanded_transaction_groups, row.group.key)
-                  end
-                }
+              <.form
+                for={@transaction_filter_form}
+                id="banking-transaction-filters"
+                phx-change="filter-transactions"
+                phx-submit="filter-transactions"
+                class="grid max-w-[760px] gap-3 sm:grid-cols-[minmax(0,1fr)_14rem]"
               >
-                <:col :let={row} key="suggestion" label="Suggestion / evidence" row_header>
-                  <% expanded? =
-                    MapSet.member?(@expanded_transaction_groups, row.group.key) %>
-                  <.row_disclosure
-                    id={"banking-transaction-group-toggle-#{row.group.key}"}
-                    expanded={expanded?}
-                    label={
-                      if expanded?,
-                        do: "Hide transactions for #{row.group.payee}",
-                        else: "Show transactions for #{row.group.payee}"
-                    }
-                    phx-click="toggle-transaction-group"
-                    phx-value-key={row.group.key}
-                  >
-                    <:title>{row.group.payee}</:title>
-                    <:detail>{transaction_group_detail(row.group)}</:detail>
-                  </.row_disclosure>
-                </:col>
+                <.input
+                  field={@transaction_filter_form[:query]}
+                  type="search"
+                  label="Search transactions"
+                  placeholder="Narration, reference or ledger"
+                  phx-debounce="250"
+                />
+                <.input
+                  field={@transaction_filter_form[:type]}
+                  type="select"
+                  label="Transaction type"
+                  options={type_filter_options()}
+                />
+              </.form>
 
-                <:col
-                  :let={row}
-                  key="coverage"
-                  label="Coverage"
-                  align="right"
-                  class="whitespace-nowrap"
-                >
-                  <span class="text-base-content font-semibold">
-                    {transaction_group_coverage(row.group)}
-                  </span>
-                </:col>
-
-                <:col :let={row} key="ledger" label="Ledger">
-                  <% context = {:review_group, row.group.key} %>
-                  <% ledger = Map.get(@review_ledger_selections, context) %>
-                  <.picker_trigger
-                    id={"banking-transaction-group-ledger-#{row.group.key}"}
-                    phx-click="open-transaction-group-ledger-picker"
-                    phx-value-key={row.group.key}
-                    popovertarget="banking-ledger-picker"
-                    placeholder={is_nil(ledger)}
-                    title={if ledger, do: ledger.name, else: "Choose ledger"}
-                    disabled={
-                      not @can_edit or @tally_ledgers == [] or
-                        not is_integer(@statement.tally_company_id) or
-                        not is_binary(@statement.bank_ledger_identity)
-                    }
-                  >
-                    {if ledger, do: ledger.name, else: "Choose ledger"}
-                  </.picker_trigger>
-                </:col>
-
-                <:col :let={row} key="action" label="Action" class="whitespace-nowrap">
-                  <% context = {:review_group, row.group.key} %>
-                  <.button
-                    class="whitespace-nowrap"
-                    type="button"
-                    id={"banking-transaction-group-apply-#{row.group.key}"}
-                    phx-click="apply-transaction-group"
-                    phx-value-key={row.group.key}
-                    disabled={
-                      row.group.included_count == 0 or
-                        is_nil(Map.get(@review_ledger_selections, context))
-                    }
-                  >
-                    Assign {row.group.included_count}
-                  </.button>
-                </:col>
-
-                <:detail :let={row}>
-                  <div class="p-3">
-                    <.data_table
-                      id={"banking-transaction-group-detail-#{row.group.key}"}
-                      rows={
-                        transaction_group_detail_rows(
-                          @fully_expanded_transaction_groups,
-                          row.group
-                        )
-                      }
-                      row_id={&transaction_row_dom_id/1}
-                      mode="review"
-                      surface="ghost"
-                      min_width="min-w-[760px]"
-                    >
-                      <:col :let={member} key="include" label="Include">
-                        <.input
-                          type="checkbox"
-                          id={"banking-transaction-group-member-select-#{member.transaction.id}"}
-                          checkbox_hit_area="large"
-                          name={"transaction_group_members[#{member.group_key}][]"}
-                          checkbox_value={member.transaction.id}
-                          checked={member.included}
-                          hidden_input={false}
-                          disabled={not @can_edit}
-                          phx-click="toggle-transaction-group-member"
-                          phx-value-key={member.group_key}
-                          phx-value-id={member.transaction.id}
-                          aria-label={
-                            "Include transaction from #{format_display_date(member.transaction.date)}"
-                          }
-                        />
-                      </:col>
-                      <:col :let={member} key="date" label="Date" class="whitespace-nowrap">
-                        {format_display_date(member.transaction.date)}
-                      </:col>
-                      <:col
-                        :let={member}
-                        key="narration"
-                        label="Narration"
-                        class="max-w-3xl"
-                        row_header
-                      >
-                        <span class="text-base-content">{member.transaction.narration}</span>
-                      </:col>
-                      <:col
-                        :let={member}
-                        key="amount"
-                        label="Amount"
-                        align="right"
-                        class="whitespace-nowrap"
-                      >
-                        <span
-                          data-cash-direction={transaction_cash_direction(member.transaction)}
-                          class="nila-bank-cash-amount"
-                        >
-                          {money(transaction_amount(member.transaction))}
-                        </span>
-                      </:col>
-                      <:col
-                        :let={member}
-                        key="reference"
-                        label="Chq. / Ref."
-                        class="whitespace-nowrap"
-                      >
-                        {member.transaction.reference || "—"}
-                      </:col>
-                    </.data_table>
-
-                    <div
-                      :if={
-                        row.group.count > transaction_group_preview_limit() and
-                          not MapSet.member?(
-                            @fully_expanded_transaction_groups,
-                            row.group.key
-                          )
-                      }
-                      class="pt-2"
-                    >
-                      <.button
-                        type="button"
-                        id={"banking-transaction-group-show-all-#{row.group.key}"}
-                        variant="ghost"
-                        size="xs"
-                        phx-click="show-all-transaction-group"
-                        phx-value-key={row.group.key}
-                        aria-label={"Show all #{row.group.count} transactions"}
-                      >
-                        Show remaining {row.group.count - transaction_group_preview_limit()} transactions
-                      </.button>
-                    </div>
-                  </div>
-                </:detail>
-
-                <:empty>No suggested groups match these filters.</:empty>
-              </.data_table>
-
-              <.data_table
-                :if={
-                  @transaction_filters["status"] != "unassigned" or
-                    @transaction_filters["review"] == "individual"
-                }
-                id="banking-transaction-rows"
-                rows={@streams.transaction_rows}
-                empty?={
-                  cond do
-                    @transaction_filters["status"] != "unassigned" ->
-                      @visible_transaction_count == 0
-
-                    @transaction_filters["review"] == "groups" ->
-                      @transaction_group_count == 0
-
-                    true ->
-                      @visible_individual_count == 0
-                  end
-                }
-                mode="review"
-                surface="surface"
-                min_width={
-                  if @transaction_filters["status"] == "unassigned" and
-                       @transaction_filters["review"] == "groups",
-                     do: "min-w-[920px]",
-                     else: "min-w-[1120px]"
-                }
+              <.form
+                for={@transaction_form}
+                id="banking-transaction-form"
+                phx-submit="bank-transactions"
+                phx-hook=".TransactionSelection"
               >
-                <:col_header
-                  :if={
-                    @transaction_filters["status"] != "unassigned" or
-                      @transaction_filters["review"] == "individual"
+                <script :type={Phoenix.LiveView.ColocatedHook} name=".TransactionSelection">
+                  export default {
+                    mounted() {
+                      this.selectedIds = new Set()
+                      this.handleEvent("banking-selection", ({ids}) => {
+                        this.selectedIds = new Set(ids.map(String))
+                        this.syncSelection()
+                      })
+                    },
+                    updated() { this.syncSelection() },
+                    syncSelection() {
+                      let selectableCount = 0
+                      let selectedCount = 0
+                      this.el.querySelectorAll("[data-transaction-selection]").forEach(input => {
+                        input.checked = !input.disabled && this.selectedIds.has(input.value)
+                        if (!input.disabled) selectableCount++
+                        if (input.checked) selectedCount++
+                      })
+                      const header = this.el.querySelector("#banking-select-all-transactions")
+                      if (!header) return
+                      header.checked = selectableCount > 0 && selectedCount === selectableCount
+                      header.indeterminate = selectedCount > 0 && selectedCount < selectableCount
+                      header.dataset.indeterminate = String(header.indeterminate)
+                      header.setAttribute("aria-label", header.checked
+                        ? "Clear selection on this page"
+                        : "Select all transactions on this page")
+                    }
                   }
-                  column="selection"
-                >
-                  <.input
-                    type="checkbox"
-                    id="banking-select-all-transactions"
-                    checkbox_hit_area="large"
-                    name="select_all_transactions"
-                    hidden_input={false}
-                    disabled={MapSet.size(@selectable_transaction_ids) == 0}
-                    phx-click="toggle-all-transactions"
-                    aria-label="Select all filtered transactions"
-                  />
-                </:col_header>
+                </script>
 
-                <:col
-                  :let={row}
+                <.data_table
                   :if={
-                    @transaction_filters["status"] != "unassigned" or
-                      @transaction_filters["review"] == "individual"
+                    @transaction_filters["status"] == "unassigned" and
+                      @transaction_filters["review"] == "groups"
                   }
-                  key="selection"
-                  label="Select"
-                >
-                  <% transaction = row.transaction %>
-                  <.input
-                    type="checkbox"
-                    id={"banking-select-transaction-#{transaction.id}"}
-                    checkbox_hit_area="large"
-                    data-transaction-selection
-                    name="transaction_ids[]"
-                    checkbox_value={transaction.id}
-                    hidden_input={false}
-                    disabled={not @can_edit or not selectable_transaction?(transaction)}
-                    phx-click="toggle-transaction"
-                    phx-value-id={transaction.id}
-                    aria-label={"Select transaction from #{format_display_date(transaction.date)}"}
-                  />
-                </:col>
-
-                <:col
-                  :let={row}
-                  :if={
-                    @transaction_filters["status"] != "unassigned" or
-                      @transaction_filters["review"] == "individual"
+                  id="banking-suggested-group-rows"
+                  rows={@transaction_group_rows}
+                  row_id={&transaction_row_dom_id/1}
+                  empty?={@transaction_group_count == 0}
+                  mode="review"
+                  min_width="min-w-[920px]"
+                  surface="ghost"
+                  detail_for={
+                    fn row ->
+                      MapSet.member?(@expanded_transaction_groups, row.group.key)
+                    end
                   }
-                  label="Date"
-                  class="whitespace-nowrap"
                 >
-                  <span :if={transaction = row_transaction(row)}>
-                    {format_display_date(transaction.date)}
-                  </span>
-                </:col>
+                  <:col :let={row} key="suggestion" label="Payee / description" row_header>
+                    <% expanded? =
+                      MapSet.member?(@expanded_transaction_groups, row.group.key) %>
+                    <.row_disclosure
+                      id={"banking-transaction-group-toggle-#{row.group.key}"}
+                      expanded={expanded?}
+                      label={
+                        if expanded?,
+                          do: "Hide transactions for #{row.group.payee}",
+                          else: "Show transactions for #{row.group.payee}"
+                      }
+                      phx-click="toggle-transaction-group"
+                      phx-value-key={row.group.key}
+                    >
+                      <:title>{row.group.payee}</:title>
 
-                <:col
-                  :let={row}
-                  label="Narration"
-                  class="max-w-3xl"
-                  row_header
-                >
-                  <% transaction = row.transaction %>
-                  <span class="text-base-content">{transaction.narration}</span>
-                  <span :if={transaction.error} class="text-error text-ui mt-1 block">
-                    {transaction.error["message"] || "Tally could not post this transaction."}
-                  </span>
-                </:col>
+                      <:detail>{row.group.pattern || row.group.match_basis}</:detail>
+                    </.row_disclosure>
+                  </:col>
 
-                <:col
-                  :let={row}
-                  :if={
-                    @transaction_filters["status"] != "unassigned" or
-                      @transaction_filters["review"] == "individual"
-                  }
-                  label="Type"
-                  class="whitespace-nowrap"
-                >
-                  {humanize_type(row.transaction.transaction_type)}
-                </:col>
-
-                <:col
-                  :let={row}
-                  label="Amount"
-                  align="right"
-                  class="whitespace-nowrap"
-                >
-                  <% transaction = row.transaction %>
-                  <span
-                    data-cash-direction={transaction_cash_direction(transaction)}
-                    class="nila-bank-cash-amount"
+                  <:col
+                    :let={row}
+                    key="transactions"
+                    label="Transactions"
+                    align="right"
+                    class="w-[140px] whitespace-nowrap"
                   >
-                    {money(transaction_amount(transaction))}
-                  </span>
-                </:col>
+                    {transaction_group_count_label(row.group)}
+                  </:col>
 
-                <:col :let={row} label="Ledger">
-                  <% transaction = row.transaction %>
-                  <%= if @transaction_filters["status"] == "unassigned" do %>
-                    <% context = {:review_transaction, transaction.id} %>
-                    <% ledger = Map.get(@review_ledger_selections, context) %>
+                  <:col
+                    :let={row}
+                    key="total"
+                    label="Total"
+                    align="right"
+                    class="w-[160px] whitespace-nowrap"
+                  >
+                    <span class="text-base-content font-medium">{money(row.group.included_total_paise)}</span>
+                  </:col>
+
+                  <:col :let={row} key="ledger" label="Ledger" class="w-[260px]">
+                    <% context = {:review_group, row.group.key} %> <% ledger =
+                      Map.get(@review_ledger_selections, context) %>
                     <.picker_trigger
-                      id={"banking-ledger-trigger-#{transaction.id}"}
-                      phx-click="open-review-transaction-ledger-picker"
-                      phx-value-id={transaction.id}
+                      id={"banking-transaction-group-ledger-#{row.group.key}"}
+                      full_width
+                      phx-click="open-transaction-group-ledger-picker"
+                      phx-value-key={row.group.key}
                       popovertarget="banking-ledger-picker"
                       placeholder={is_nil(ledger)}
                       title={if ledger, do: ledger.name, else: "Choose ledger"}
                       disabled={
                         not @can_edit or @tally_ledgers == [] or
                           not is_integer(@statement.tally_company_id) or
-                          not is_binary(@statement.bank_ledger_identity) or
-                          not selectable_transaction?(transaction)
+                          not is_binary(@statement.bank_ledger_identity)
                       }
                     >
                       {if ledger, do: ledger.name, else: "Choose ledger"}
                     </.picker_trigger>
-                  <% else %>
-                    <.picker_trigger
-                      id={"banking-ledger-trigger-#{transaction.id}"}
-                      phx-click="open-ledger-picker"
-                      phx-value-id={transaction.id}
-                      popovertarget="banking-ledger-picker"
-                      placeholder={is_nil(transaction.counter_ledger_name)}
-                      title={transaction.counter_ledger_name || "Choose ledger"}
-                      disabled={
-                        not @can_edit or @tally_ledgers == [] or
-                          not is_integer(@statement.tally_company_id) or
-                          not is_binary(@statement.bank_ledger_identity) or
-                          not selectable_transaction?(transaction)
-                      }
-                    >
-                      {transaction.counter_ledger_name || "Choose ledger"}
-                    </.picker_trigger>
-                  <% end %>
-                </:col>
+                  </:col>
 
-                <:col
-                  :let={row}
-                  label={
-                    if @transaction_filters["status"] == "unassigned",
-                      do: "Action",
-                      else: "Status"
-                  }
-                  class="whitespace-nowrap"
-                >
-                  <% transaction = row.transaction %>
-                  <%= if @transaction_filters["status"] == "unassigned" do %>
+                  <:col :let={row} key="action" label="" class="w-[112px] whitespace-nowrap">
+                    <% context = {:review_group, row.group.key} %>
                     <.button
+                      class="whitespace-nowrap"
                       type="button"
-                      id={"banking-review-transaction-apply-#{transaction.id}"}
-                      variant="outline"
-                      phx-click="apply-review-transaction"
-                      phx-value-id={transaction.id}
+                      id={"banking-transaction-group-apply-#{row.group.key}"}
+                      variant="soft"
+                      phx-click="apply-transaction-group"
+                      phx-value-key={row.group.key}
                       disabled={
-                        is_nil(
-                          Map.get(
-                            @review_ledger_selections,
-                            {:review_transaction, transaction.id}
-                          )
-                        )
+                        row.group.included_count == 0 or
+                          is_nil(Map.get(@review_ledger_selections, context))
                       }
                     >
-                      Apply
+                      Assign {row.group.included_count}
                     </.button>
-                  <% else %>
-                    <.badge variant={status_variant(transaction.status)}>
-                      {status_label(transaction.status)}
-                    </.badge>
-                  <% end %>
-                </:col>
+                  </:col>
 
-                <:col
-                  :let={row}
+                  <:detail :let={row}>
+                    <div class="bg-quiet space-y-related p-4">
+                      <p class="text-ink-muted text-ui">{transaction_group_detail(row.group)}</p>
+
+                      <.data_table
+                        id={"banking-transaction-group-detail-#{row.group.key}"}
+                        rows={
+                          transaction_group_detail_rows(
+                            @fully_expanded_transaction_groups,
+                            row.group
+                          )
+                        }
+                        row_id={&transaction_row_dom_id/1}
+                        mode="review"
+                        surface="ghost"
+                        min_width="min-w-[760px]"
+                      >
+                        <:col :let={member} key="include" label="Include">
+                          <.input
+                            type="checkbox"
+                            id={"banking-transaction-group-member-select-#{member.transaction.id}"}
+                            checkbox_hit_area="large"
+                            name={"transaction_group_members[#{member.group_key}][]"}
+                            checkbox_value={member.transaction.id}
+                            checked={member.included}
+                            hidden_input={false}
+                            disabled={not @can_edit}
+                            phx-click="toggle-transaction-group-member"
+                            phx-value-key={member.group_key}
+                            phx-value-id={member.transaction.id}
+                            aria-label={
+                            "Include transaction from #{format_display_date(member.transaction.date)}"
+                          }
+                          />
+                        </:col>
+
+                        <:col :let={member} key="date" label="Date" class="whitespace-nowrap">
+                          {format_display_date(member.transaction.date)}
+                        </:col>
+
+                        <:col
+                          :let={member}
+                          key="narration"
+                          label="Narration"
+                          class="max-w-3xl"
+                          row_header
+                        >
+                          <span class="text-base-content">{member.transaction.narration}</span>
+                        </:col>
+
+                        <:col
+                          :let={member}
+                          key="amount"
+                          label="Amount"
+                          align="right"
+                          class="whitespace-nowrap"
+                        >
+                          <span
+                            data-cash-direction={transaction_cash_direction(member.transaction)}
+                            class="nila-bank-cash-amount"
+                          >
+                            {money(transaction_amount(member.transaction))}
+                          </span>
+                        </:col>
+
+                        <:col
+                          :let={member}
+                          key="reference"
+                          label="Chq. / Ref."
+                          class="whitespace-nowrap"
+                        >
+                          {member.transaction.reference || "—"}
+                        </:col>
+                      </.data_table>
+
+                      <div
+                        :if={
+                          row.group.count > transaction_group_preview_limit() and
+                            not MapSet.member?(
+                              @fully_expanded_transaction_groups,
+                              row.group.key
+                            )
+                        }
+                        class="pt-2"
+                      >
+                        <.button
+                          type="button"
+                          id={"banking-transaction-group-show-all-#{row.group.key}"}
+                          variant="ghost"
+                          size="xs"
+                          phx-click="show-all-transaction-group"
+                          phx-value-key={row.group.key}
+                          aria-label={"Show all #{row.group.count} transactions"}
+                        >
+                          Show remaining {row.group.count - transaction_group_preview_limit()} transactions
+                        </.button>
+                      </div>
+                    </div>
+                  </:detail>
+
+                  <:empty>No suggested groups match these filters.</:empty>
+                </.data_table>
+
+                <.data_table
                   :if={
                     @transaction_filters["status"] != "unassigned" or
                       @transaction_filters["review"] == "individual"
                   }
-                  label="Chq. / Ref."
-                >
-                  <span :if={transaction = row_transaction(row)}>
-                    {transaction.reference || "—"}
-                  </span>
-                </:col>
+                  id="banking-transaction-rows"
+                  rows={@streams.transaction_rows}
+                  empty?={
+                    cond do
+                      @transaction_filters["status"] != "unassigned" ->
+                        @visible_transaction_count == 0
 
-                <:col
-                  :let={row}
-                  :if={
-                    @transaction_filters["status"] != "unassigned" or
-                      @transaction_filters["review"] == "individual"
+                      @transaction_filters["review"] == "groups" ->
+                        @transaction_group_count == 0
+
+                      true ->
+                        @visible_individual_count == 0
+                    end
                   }
-                  label="Balance"
-                  align="right"
+                  mode="review"
+                  surface="ghost"
+                  min_width={
+                    if @transaction_filters["status"] == "unassigned" and
+                         @transaction_filters["review"] == "groups",
+                       do: "min-w-[920px]",
+                       else: "min-w-[1120px]"
+                  }
                 >
-                  <span :if={transaction = row_transaction(row)}>
-                    {money(transaction.balance_paise)}
-                  </span>
-                </:col>
+                  <:col_header
+                    :if={
+                      @transaction_filters["status"] != "posted" and
+                        (@transaction_filters["status"] != "unassigned" or
+                           @transaction_filters["review"] == "individual")
+                    }
+                    column="selection"
+                  >
+                    <.input
+                      type="checkbox"
+                      id="banking-select-all-transactions"
+                      checkbox_hit_area="large"
+                      name="select_all_transactions"
+                      hidden_input={false}
+                      disabled={MapSet.size(@selectable_transaction_ids) == 0}
+                      phx-click="toggle-all-transactions"
+                      aria-label="Select all transactions on this page"
+                    />
+                  </:col_header>
 
-                <:empty>
-                  <%= if @transaction_filters["status"] == "unassigned" and
+                  <:col
+                    :let={row}
+                    :if={
+                      @transaction_filters["status"] != "posted" and
+                        (@transaction_filters["status"] != "unassigned" or
+                           @transaction_filters["review"] == "individual")
+                    }
+                    key="selection"
+                    label="Select"
+                  >
+                    <% transaction = row.transaction %>
+                    <.input
+                      type="checkbox"
+                      id={"banking-select-transaction-#{transaction.id}"}
+                      checkbox_hit_area="large"
+                      data-transaction-selection
+                      name="transaction_ids[]"
+                      checkbox_value={transaction.id}
+                      hidden_input={false}
+                      disabled={not @can_edit or not selectable_transaction?(transaction)}
+                      phx-click="toggle-transaction"
+                      phx-value-id={transaction.id}
+                      aria-label={"Select transaction from #{format_display_date(transaction.date)}"}
+                    />
+                  </:col>
+
+                  <:col
+                    :let={row}
+                    :if={
+                      @transaction_filters["status"] != "unassigned" or
+                        @transaction_filters["review"] == "individual"
+                    }
+                    label="Date"
+                    class="whitespace-nowrap"
+                  >
+                    <span :if={transaction = row_transaction(row)}>
+                      {format_display_date(transaction.date)}
+                    </span>
+                  </:col>
+
+                  <:col
+                    :let={row}
+                    label="Narration"
+                    class="max-w-3xl"
+                    row_header
+                  >
+                    <% transaction = row.transaction %>
+                    <span class="text-base-content">{transaction.narration}</span>
+                    <span :if={transaction.error} class="text-error text-ui mt-1 block">
+                      {transaction.error["message"] || "Tally could not post this transaction."}
+                    </span>
+                  </:col>
+
+                  <:col
+                    :let={row}
+                    :if={
+                      @transaction_filters["status"] != "unassigned" or
+                        @transaction_filters["review"] == "individual"
+                    }
+                    label="Type"
+                    class="whitespace-nowrap"
+                  >
+                    {humanize_type(row.transaction.transaction_type)}
+                  </:col>
+
+                  <:col
+                    :let={row}
+                    label="Amount"
+                    align="right"
+                    class="whitespace-nowrap"
+                  >
+                    <% transaction = row.transaction %>
+                    <span
+                      data-cash-direction={transaction_cash_direction(transaction)}
+                      class="nila-bank-cash-amount"
+                    >
+                      {money(transaction_amount(transaction))}
+                    </span>
+                  </:col>
+
+                  <:col :let={row} label="Ledger">
+                    <% transaction = row.transaction %>
+                    <%= if @transaction_filters["status"] == "unassigned" do %>
+                      <% context = {:review_transaction, transaction.id} %> <% ledger =
+                        Map.get(@review_ledger_selections, context) %>
+                      <.picker_trigger
+                        id={"banking-ledger-trigger-#{transaction.id}"}
+                        phx-click="open-review-transaction-ledger-picker"
+                        phx-value-id={transaction.id}
+                        popovertarget="banking-ledger-picker"
+                        placeholder={is_nil(ledger)}
+                        title={if ledger, do: ledger.name, else: "Choose ledger"}
+                        disabled={
+                          not @can_edit or @tally_ledgers == [] or
+                            not is_integer(@statement.tally_company_id) or
+                            not is_binary(@statement.bank_ledger_identity) or
+                            not selectable_transaction?(transaction)
+                        }
+                      >
+                        {if ledger, do: ledger.name, else: "Choose ledger"}
+                      </.picker_trigger>
+                    <% else %>
+                      <span
+                        :if={transaction.status == "posted"}
+                        id={"banking-posted-ledger-#{transaction.id}"}
+                      >
+                        {transaction.counter_ledger_name || "—"}
+                      </span>
+
+                      <.picker_trigger
+                        :if={transaction.status != "posted"}
+                        id={"banking-ledger-trigger-#{transaction.id}"}
+                        phx-click="open-ledger-picker"
+                        phx-value-id={transaction.id}
+                        popovertarget="banking-ledger-picker"
+                        placeholder={is_nil(transaction.counter_ledger_name)}
+                        title={transaction.counter_ledger_name || "Choose ledger"}
+                        disabled={
+                          not @can_edit or @tally_ledgers == [] or
+                            not is_integer(@statement.tally_company_id) or
+                            not is_binary(@statement.bank_ledger_identity) or
+                            not selectable_transaction?(transaction)
+                        }
+                      >
+                        {transaction.counter_ledger_name || "Choose ledger"}
+                      </.picker_trigger>
+                    <% end %>
+                  </:col>
+
+                  <:col
+                    :let={row}
+                    label={
+                      if @transaction_filters["status"] == "unassigned",
+                        do: "Action",
+                        else: "Status"
+                    }
+                    class="whitespace-nowrap"
+                  >
+                    <% transaction = row.transaction %>
+                    <%= if @transaction_filters["status"] == "unassigned" do %>
+                      <.button
+                        type="button"
+                        id={"banking-review-transaction-apply-#{transaction.id}"}
+                        variant="soft"
+                        phx-click="apply-review-transaction"
+                        phx-value-id={transaction.id}
+                        disabled={
+                          is_nil(
+                            Map.get(
+                              @review_ledger_selections,
+                              {:review_transaction, transaction.id}
+                            )
+                          )
+                        }
+                      >
+                        Apply
+                      </.button>
+                    <% else %>
+                      <span
+                        :if={transaction.status == "posted"}
+                        class="inline-flex items-center gap-1.5 whitespace-nowrap"
+                      >
+                        <span
+                          aria-hidden="true"
+                          class="bg-success inline-block size-1.5 rounded-full"
+                        /> Sent to Tally
+                      </span>
+
+                      <.badge
+                        :if={transaction.status != "posted"}
+                        variant={status_variant(transaction.status)}
+                      >
+                        {status_label(transaction.status)}
+                      </.badge>
+                    <% end %>
+                  </:col>
+
+                  <:col
+                    :let={row}
+                    :if={
+                      @transaction_filters["status"] != "unassigned" or
+                        @transaction_filters["review"] == "individual"
+                    }
+                    label="Chq. / Ref."
+                  >
+                    <span :if={transaction = row_transaction(row)}>
+                      {transaction.reference || "—"}
+                    </span>
+                  </:col>
+
+                  <:col
+                    :let={row}
+                    :if={
+                      @transaction_filters["status"] != "unassigned" or
+                        @transaction_filters["review"] == "individual"
+                    }
+                    label="Balance"
+                    align="right"
+                  >
+                    <span :if={transaction = row_transaction(row)}>
+                      {money(transaction.balance_paise)}
+                    </span>
+                  </:col>
+
+                  <:empty>
+                    <%= if @transaction_filters["status"] == "unassigned" and
                          @transaction_filters["review"] == "groups" do %>
-                    No suggested groups match these filters.
-                  <% else %>
-                    {transaction_empty_message(@transaction_count, @transaction_filters)}
-                  <% end %>
-                </:empty>
-              </.data_table>
-            </.form>
+                      No suggested groups match these filters.
+                    <% else %>
+                      {transaction_empty_message(@transaction_count, @transaction_filters)}
+                    <% end %>
+                  </:empty>
+                </.data_table>
+              </.form>
 
-            <.select_panel
-              id="banking-ledger-picker"
-              title={ledger_picker_title(@ledger_picker_transaction_id)}
-              filter_value={@ledger_filter_form[:query].value || ""}
-            >
-              <:search>
-                <.form
-                  for={@ledger_filter_form}
-                  id="banking-ledger-filter-form"
-                  phx-change="filter-ledger-picker"
-                  phx-submit="select-ledger-by-query"
-                >
-                  <.input
-                    field={@ledger_filter_form[:query]}
-                    type="search"
-                    placeholder="Search Tally ledgers"
-                    aria-label="Search Tally ledgers"
-                    aria-controls="banking-ledger-options"
-                    autocomplete="off"
-                    phx-debounce="200"
-                    data-selectable-input
-                  />
-                </.form>
-              </:search>
-
-              <.selectable_listbox id="banking-ledger-options" label="Tally ledgers">
-                <p
-                  :if={@ledger_picker_transaction_id && @ledger_picker_options == []}
-                  id="banking-ledger-options-empty"
-                  class="text-ink-muted text-ui px-3 py-6 text-center"
-                >
-                  No ledgers match this search.
+              <div
+                :if={@transaction_page_count > 1}
+                class="flex flex-wrap items-center justify-end gap-3"
+              >
+                <p id="banking-bottom-transaction-count" class="text-ink-muted text-ui tabular-nums">
+                  {transaction_view_summary(assigns)}
                 </p>
 
-                <p
-                  :if={is_nil(@ledger_picker_transaction_id)}
-                  class="text-ink-muted text-ui px-3 py-6 text-center"
-                >
-                  Loading ledgers…
-                </p>
+                <.transaction_pager
+                  suffix="-bottom"
+                  page={@transaction_filters["page"]}
+                  page_count={@transaction_page_count}
+                  previous={@previous_transaction_page}
+                  next={@next_transaction_page}
+                />
+              </div>
 
-                <.selectable_option
-                  :for={ledger <- @ledger_picker_options}
-                  id={ledger_option_dom_id(ledger)}
-                  selected={ledger.identity == @ledger_picker_selected_identity}
-                  phx-click="select-ledger"
-                  phx-value-identity={ledger.identity}
-                  popovertarget="banking-ledger-picker"
-                  popovertargetaction="hide"
-                >
-                  {ledger.name}
-                  <:meta :if={ledger_parent(ledger)}>{ledger_parent(ledger)}</:meta>
-                </.selectable_option>
-              </.selectable_listbox>
-            </.select_panel>
-          </section>
+              <.select_panel
+                id="banking-ledger-picker"
+                title={ledger_picker_title(@ledger_picker_transaction_id)}
+                filter_value={@ledger_filter_form[:query].value || ""}
+              >
+                <:search>
+                  <.form
+                    for={@ledger_filter_form}
+                    id="banking-ledger-filter-form"
+                    phx-change="filter-ledger-picker"
+                    phx-submit="select-ledger-by-query"
+                  >
+                    <.input
+                      field={@ledger_filter_form[:query]}
+                      type="search"
+                      placeholder="Search Tally ledgers"
+                      aria-label="Search Tally ledgers"
+                      aria-controls="banking-ledger-options"
+                      autocomplete="off"
+                      phx-debounce="200"
+                      data-selectable-input
+                    />
+                  </.form>
+                </:search>
+
+                <.selectable_listbox id="banking-ledger-options" label="Tally ledgers">
+                  <p
+                    :if={@ledger_picker_transaction_id && @ledger_picker_options == []}
+                    id="banking-ledger-options-empty"
+                    class="text-ink-muted text-ui px-3 py-6 text-center"
+                  >
+                    No ledgers match this search.
+                  </p>
+
+                  <p
+                    :if={is_nil(@ledger_picker_transaction_id)}
+                    class="text-ink-muted text-ui px-3 py-6 text-center"
+                  >
+                    Loading ledgers…
+                  </p>
+
+                  <.selectable_option
+                    :for={ledger <- @ledger_picker_options}
+                    id={ledger_option_dom_id(ledger)}
+                    selected={ledger.identity == @ledger_picker_selected_identity}
+                    phx-click="select-ledger"
+                    phx-value-identity={ledger.identity}
+                    popovertarget="banking-ledger-picker"
+                    popovertargetaction="hide"
+                  >
+                    {ledger.name}
+                    <:meta :if={ledger_parent(ledger)}>{ledger_parent(ledger)}</:meta>
+                  </.selectable_option>
+                </.selectable_listbox>
+              </.select_panel>
+            </div>
+          </.card>
         <% end %>
       </div>
 
