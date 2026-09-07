@@ -69,7 +69,8 @@ client 1 (`Breezetech`) and its June/November runs are not reset targets.
 ./scripts/demo.ps1 -Production -Action Setup -OrgId 1
 ```
 
-The local demo client is **3**. Production demo client ID: **not created yet**.
+The local demo client is **3**. Production demo client is **2**, created and
+authorized on September 7, 2026, in organisation **1**.
 Use the ID printed by setup; never substitute the existing client ID 1.
 
 **Always select the demo client using the shell's client switcher first.** A direct
@@ -87,11 +88,11 @@ JSON and one result screenshot to the demo folder before the first reset. These
 are the offline fallback and must not be overwritten by an incomplete run.
 
 ```powershell
-# Inspect first. Replace CLIENT_ID with the setup output (local: 3).
-./scripts/demo.ps1 -Production -Action Inspect -OrgId 1 -ClientId CLIENT_ID
+# This laptop's production demo client (local uses client 3 without -Production).
+./scripts/demo.ps1 -Production -Action Inspect -OrgId 1 -ClientId 2
 
 # After authorization for this disposable client's resets:
-./scripts/demo.ps1 -Production -Action Reset -OrgId 1 -ClientId CLIENT_ID -ConfirmReset 'RESET 1/CLIENT_ID/2026-06'
+./scripts/demo.ps1 -Production -Action Reset -OrgId 1 -ClientId 2 -ConfirmReset 'RESET 1/2/2026-06'
 ```
 
 The operator returns removed row counts, a backup storage key and `NILA_DEMO_OK`.
@@ -151,13 +152,54 @@ September 7, localhost, started 10:19:36 UTC:
 
 The rehearsal exposed an HSN worksheet defect: without explicit POS, it treated
 CGST/SGST source lines as interstate even though Tax Breakdown handled them
-correctly. The local fix reuses the line-tax treatment already used by Tax
+correctly. The deployed fix reuses the line-tax treatment already used by Tax
 Breakdown, and widens HSN summary amount columns. Regression failed before the
 fix and passed afterward. **32 relevant tests pass**, including demo reset,
 workbook generation, special supplies and download controllers; compilation,
 formatting, style guard and diff checks pass.
 
-**Production remains pending:** deploy the tested HSN export fix, authorize/create
-the production demo client, repeat the browser/Excel walkthrough on `nila.tax`,
-record production timing and verify its reset. The existing production runs have
-not been changed. Do not mark the overall task complete based on localhost alone.
+## Production rehearsal — September 7, 2026
+
+Code commit `9340595` deployed successfully through
+[GitHub Actions](https://github.com/KaguyaHQ/nila/actions/runs/34112116841).
+The HSN export fix was verified in the actual production download using Microsoft
+Excel, including the CGST/SGST/IGST split and absence of clipped numeric cells.
+
+Production demo: organisation **1**, client **2**, `BREEZE TECH - Demo`.
+Start: `https://nila.tax/gst/2/2026-06/sales`, after selecting that client in the
+shell. Original client **1** is separate and is never a reset target.
+
+The first live extraction produced eight invoices in **46.8 seconds**. Reset
+archived that run at
+`orgs/1/demo-backups/2/b3a79d00-4cd2-4ed2-be3d-28a993e0fb22.etf`.
+The identical PDF then uploaded successfully into an empty working and produced
+eight invoices in **44.2 seconds**. No source edits or invoice corrections were
+needed. Invoice 39 matched the displayed source; Excel recalculated all six sheets
+with zero formula errors. Counts, expected totals, HSN tax split and the 6-paise
+source-rounding check were verified.
+
+The complete production walkthrough took **3 minutes 49 seconds** (started
+10:39:45 UTC). This includes **2 minutes 55 seconds of fixed presentation viewing
+allowances**; it is an automated, presentation-paced browser/Excel run, not a
+timed spoken delivery. Exact marks are in
+`D:/nila-demo/breeze-2026-06/production-rehearsal-timing.json`.
+
+Final production reset took **2.70 seconds**, including SSM connection and verified
+backup. Backup:
+`orgs/1/demo-backups/2/ad100ad6-70cf-4a8b-adbb-aefa254f98fa.etf`.
+Inspection and the actual browser confirmed zero invoices, uploads and batches;
+all demo month/attempt/decision counts were zero. The demo is left empty for the
+next presentation. Original client 1 still has its eight June and fourteen November
+invoices in the original worked months and uploads.
+
+Production fallback files in `D:/nila-demo/breeze-2026-06/`:
+
+- `Production working.xlsx`
+- `Production GSTR-1.json`
+- `Production Winman B2B.xlsm` (download verified; import into Winman not tested)
+- `Completed production run.png`
+
+The initial remote browser automation lost its temporary download handoff; the
+production export endpoint returned the file successfully. The second walkthrough
+used an isolated authenticated browser and verified the normal download click.
+This was a rehearsal automation issue, not a required presentation step.

@@ -8,8 +8,10 @@ and preparation are in [the runbook](demo-runbook.md).
 
 Log into `nila.tax`. **Use the client switcher to select `BREEZE TECH - Demo`.**
 Open its **June 2026** Sales & GSTR-1 working and confirm it is empty.
+Production start page: `https://nila.tax/gst/2/2026-06/sales` (select the client first).
 Have `D:/nila-demo/breeze-2026-06/Breeze Tech - June 2026 - Sales.pdf` ready.
-Keep the previous completed workbook and JSON available offline.
+Keep `Production working.xlsx`, `Production GSTR-1.json`, and
+`Completed production run.png` from the same folder available offline.
 
 ## The sequence
 
