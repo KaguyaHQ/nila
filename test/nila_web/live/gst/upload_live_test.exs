@@ -124,6 +124,55 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     )
   end
 
+  test "sales upload preserves the current working month through submission", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    period = Elixir.Calendar.strftime(Date.utc_today(), "%Y-%m")
+
+    {:ok, view, _} =
+      live(conn, ~p"/gst/upload?client_id=#{client.id}&period=#{period}&kind=sales")
+
+    assert has_element?(
+             view,
+             "#sales-bills-submit",
+             "Add to #{Nila.Formatters.period_label(period)} sales"
+           )
+
+    upload =
+      file_input(view, "#sales-bills-form", :documents, [
+        %{name: "current.pdf", content: "%PDF-1.4 fake bills", type: "application/pdf"}
+      ])
+
+    render_upload(upload, "current.pdf", 0)
+    ref = hd(upload.entries)["ref"]
+    {:ok, _} = Storage.put(presigned_key(view, ref), "%PDF-1.4 fake bills")
+    render_upload(upload, "current.pdf", 100)
+    view |> form("#sales-bills-form", intake: %{}) |> render_submit()
+
+    assert [%{period: ^period}] = Dumps.list(org.id, client.id, period)
+    assert Dumps.list(org.id, client.id, Calendar.closeable_period(Date.utc_today())) == []
+  end
+
+  test "unsupported sales upload periods return to the working with an explanation", %{
+    conn: conn,
+    client: client
+  } do
+    previous = Calendar.closeable_period(Date.utc_today())
+
+    future =
+      Date.utc_today() |> Date.end_of_month() |> Date.add(1) |> Elixir.Calendar.strftime("%Y-%m")
+
+    for period <- [future, "not-a-month", "2000-01"] do
+      assert {:error, {:live_redirect, %{to: destination, flash: flash}}} =
+               live(conn, ~p"/gst/upload?client_id=#{client.id}&period=#{period}&kind=sales")
+
+      assert destination == ~p"/gst/#{client.id}/#{previous}/sales"
+      assert flash["error"] =~ "That upload period isn't available"
+    end
+  end
+
   test "sales bills ignores a submitted client and uses the active workspace", %{
     conn: conn,
     org: org,

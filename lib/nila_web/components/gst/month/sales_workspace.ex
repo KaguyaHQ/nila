@@ -277,6 +277,13 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :view, :atom, required: true
 
   defp period_header(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :can_go_forward?,
+        assigns.period < Elixir.Calendar.strftime(Date.utc_today(), "%Y-%m")
+      )
+
     ~H"""
     <.page_header eyebrow={@client.name <> " / Sales & GSTR-1"} title={@period_label}>
       <:title_actions>
@@ -293,7 +300,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           </.button>
 
           <.button
-            navigate={~p"/gst/#{@client.id}/#{@next_period}/sales"}
+            navigate={if @can_go_forward?, do: ~p"/gst/#{@client.id}/#{@next_period}/sales"}
+            disabled={not @can_go_forward?}
             variant="ghost"
             size="sm"
             id="next-filing-period"

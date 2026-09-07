@@ -63,14 +63,36 @@ defmodule NilaWeb.Gst.UploadLive do
       )
       |> assign_sales_imports()
 
-    {:ok, assign(socket, :error, nil)}
+    socket = assign(socket, :error, nil)
+
+    if sales_intake? && Map.has_key?(params, "period") &&
+         params["period"] not in period_values(true) do
+      destination =
+        if prefilled["client_id"] do
+          ~p"/gst/#{prefilled["client_id"]}/#{Calendar.closeable_period(Date.utc_today())}/sales"
+        else
+          ~p"/sales-bills"
+        end
+
+      {:ok,
+       socket
+       |> put_flash(
+         :error,
+         "That upload period isn't available. Open a sales month before bringing in invoices."
+       )
+       |> push_navigate(to: destination)}
+    else
+      {:ok, socket}
+    end
   end
 
   defp prefill(socket, params) do
     period =
-      if params["period"] in period_values(),
-        do: params["period"],
-        else: Calendar.closeable_period(Date.utc_today())
+      if params["period"] in period_values(
+           socket.assigns.live_action == :sales or contextual_kind(params) == "sales"
+         ),
+         do: params["period"],
+         else: Calendar.closeable_period(Date.utc_today())
 
     client_id =
       if socket.assigns.live_action == :sales do
@@ -147,7 +169,7 @@ defmodule NilaWeb.Gst.UploadLive do
     params = with_internal_period(socket, params)
 
     with {:ok, client_id} <- fetch_client(org, params["client_id"]),
-         {:ok, period} <- fetch_period(params["period"]),
+         {:ok, period} <- fetch_period(params["period"], socket.assigns.sales_intake?),
          {:ok, entry_kinds} <- ready_entries(socket) do
       dumps = create_dumps(socket, org.id, client_id, period, entry_kinds)
 
@@ -485,13 +507,13 @@ defmodule NilaWeb.Gst.UploadLive do
     end
   end
 
-  defp fetch_period(period) when is_binary(period) do
-    if period in period_values(),
+  defp fetch_period(period, sales_intake?) when is_binary(period) do
+    if period in period_values(sales_intake?),
       do: {:ok, period},
       else: {:error, "Pick a period."}
   end
 
-  defp fetch_period(_period), do: {:error, "Pick a period."}
+  defp fetch_period(_period, _sales_intake?), do: {:error, "Pick a period."}
 
   defp with_internal_period(%{assigns: %{sales_intake?: true}} = socket, params) do
     Map.merge(params, %{
@@ -502,7 +524,10 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp with_internal_period(_socket, params), do: params
 
-  defp period_values, do: PeriodOptions.periods()
+  defp period_values(true),
+    do: [Elixir.Calendar.strftime(Date.utc_today(), "%Y-%m") | PeriodOptions.periods()]
+
+  defp period_values(false), do: PeriodOptions.periods()
 
   # The period a pile lands in is the one field on this form the operator can
   # get wrong without noticing, so each option says what that month already

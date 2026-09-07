@@ -112,6 +112,29 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
            )
   end
 
+  test "month navigation reaches the current month and stops there", %{conn: conn, client: client} do
+    current = Calendar.strftime(Date.utc_today(), "%Y-%m")
+    previous = Nila.Gst.Filing.Calendar.closeable_period(Date.utc_today())
+    {:ok, view, _} = live(conn, ~p"/gst/#{client.id}/#{previous}/sales")
+
+    assert has_element?(view, "a#next-filing-period[href='/gst/#{client.id}/#{current}/sales']")
+
+    {:ok, current_view, _} = live(conn, ~p"/gst/#{client.id}/#{current}/sales")
+    assert has_element?(current_view, "button#next-filing-period[disabled]")
+    refute has_element?(current_view, "#next-filing-period[href]")
+
+    assert has_element?(
+             current_view,
+             "a#previous-filing-period[href='/gst/#{client.id}/#{previous}/sales']"
+           )
+
+    assert has_element?(
+             current_view,
+             "aside a[href='/gst/#{client.id}/#{previous}/sales']",
+             "Sales & GSTR-1"
+           )
+  end
+
   test "the bare legacy month route sends sales work to the period workspace", %{
     conn: conn,
     client: client
