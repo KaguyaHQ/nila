@@ -10,6 +10,38 @@ defmodule Nila.Gst.Sales.Invoice do
   alias Nila.Gst.Extraction.LineAmounts
   alias Nila.Gst.Money
 
+  def zero_rated?(invoice) do
+    supply = invoice["supply_type"] || if((invoice["document"] || %{})["export"], do: "export")
+    supply in ~w(export sez)
+  end
+
+  def without_payment?(invoice),
+    do: zero_rated?(invoice) and invoice["tax_payment"] == "without_payment"
+
+  def reverse_charge?(invoice) do
+    case invoice["reverse_charge"] do
+      nil -> (invoice["document"] || %{})["reverse_charge"] == true
+      value -> value == true
+    end
+  end
+
+  def tax_excluded_from_total?(invoice),
+    do: reverse_charge?(invoice) or without_payment?(invoice)
+
+  def special_supply_conflict?(invoice) do
+    document = invoice["document"] || %{}
+    supply = invoice["supply_type"] || if(document["export"], do: "export", else: "taxable")
+    has_gstin? = invoice["buyer_gstin"] not in [nil, ""]
+    registration = invoice["recipient_registration"] || if(has_gstin?, do: "registered")
+
+    (reverse_charge?(invoice) and (supply != "taxable" or registration != "registered")) or
+      (supply == "sez" and (registration != "registered" or not has_gstin?)) or
+      (supply == "export" and has_gstin?) or
+      (supply not in ~w(export sez) and invoice["tax_payment"] in ~w(with_payment without_payment)) or
+      (document["export"] == true and supply not in ~w(export sez)) or
+      invoice["reverse_charge"] not in [nil, true, false]
+  end
+
   @numeric_correction_field ~r/^(printed_total_taxable|printed_total_tax|printed_grand_total)$|\.(taxable_value|printed_(unit_price|line_amount|line_total|taxable_value)|quantity|[csi]gst_(rate|amount))$/
 
   @doc "Stable source identity when present, otherwise the legacy invoice-number identity."
@@ -51,6 +83,9 @@ defmodule Nila.Gst.Sales.Invoice do
   @doc "Coerces correction text for numeric fields accepted by the review UI."
   def coerce_correction(field_path, text) do
     cond do
+      field_path == "reverse_charge" and text in ["true", "false"] ->
+        text == "true"
+
       Regex.match?(@numeric_correction_field, field_path) and String.trim(text) == "" ->
         nil
 

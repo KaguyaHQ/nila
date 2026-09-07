@@ -15,7 +15,15 @@ defmodule Nila.Gst.Filing.WinmanGstr1 do
   @max_rows 995
   @tax_rates [0, 0.1, 0.25, 1, 1.5, 3, 5, 6, 7.5, 12, 18, 28, 40]
   @invalid_xml ~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x{FFFE}\x{FFFF}]/u
-  @omitted_tables [{"b2cs", "B2CS"}, {"b2cl", "B2CL"}, {"cdnr", "CDNR"}]
+  @omitted_tables [
+    {"b2cs", "B2CS"},
+    {"b2cl", "B2CL"},
+    {"cdnr", "CDNR"},
+    {"cdnur", "CDNUR"},
+    {"nil", "Nil/exempt/non-GST"},
+    {"exp", "Exports"},
+    {"sez", "SEZ"}
+  ]
 
   @type projection :: %{required(:derived) => map(), required(:invoices) => [map()]}
 
@@ -61,7 +69,7 @@ defmodule Nila.Gst.Filing.WinmanGstr1 do
           %{
             table: table,
             label: label,
-            count: Enum.count(active_invoices, &(Gstr1.filing_table(&1) == table))
+            count: Enum.count(active_invoices, &(export_table(&1) == table))
           }
         end)
 
@@ -86,6 +94,7 @@ defmodule Nila.Gst.Filing.WinmanGstr1 do
     |> List.wrap()
     |> Enum.flat_map(fn recipient ->
       for invoice <- recipient["inv"] || [],
+          invoice["inv_typ"] in [nil, "R"],
           item <- invoice["itms"] || [],
           do: {recipient, invoice, item}
     end)
@@ -104,7 +113,16 @@ defmodule Nila.Gst.Filing.WinmanGstr1 do
   defp b2b_invoice_count(derived) do
     derived
     |> Map.get("b2b", [])
-    |> Enum.reduce(0, &(length(&1["inv"] || []) + &2))
+    |> Enum.reduce(
+      0,
+      &(Enum.count(&1["inv"] || [], fn inv -> inv["inv_typ"] in [nil, "R"] end) + &2)
+    )
+  end
+
+  defp export_table(invoice) do
+    if Gstr1.filing_table(invoice) == "b2b" and invoice["supply_type"] == "sez",
+      do: "sez",
+      else: Gstr1.filing_table(invoice)
   end
 
   defp b2b_row({recipient, invoice, item}, names) do

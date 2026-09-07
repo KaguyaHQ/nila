@@ -30,7 +30,7 @@ defmodule Nila.Gst.Sales.Values do
   Every figure here is a float of rupees, matching `Gstr1`'s own arithmetic.
   """
 
-  alias Nila.Gst.Sales.Gstr1
+  alias Nila.Gst.Sales.{Gstr1, Invoice}
 
   @heads ~w(igst cgst sgst)a
 
@@ -63,7 +63,7 @@ defmodule Nila.Gst.Sales.Values do
       # field the bill did not print is `nil` here rather than a difference
       # against zero — "the footer says something else" and "there is no footer"
       # are not the same finding, and only one of them is a question.
-      printed_vs_extracted: printed_difference(extracted, printed),
+      printed_vs_extracted: printed_difference(extracted, printed, invoice),
       # What the reviewer's decision actually changes in the return. Rounding
       # alone lands in the paise; anything larger is a real regrouping.
       extracted_vs_filed: difference(filed, extracted),
@@ -197,6 +197,12 @@ defmodule Nila.Gst.Sales.Values do
 
   defp invoice_entries(derived, invoice) do
     case source_table(invoice) do
+      "exp" ->
+        for group <- List.wrap(derived["exp"]),
+            entry <- List.wrap(group["inv"]),
+            entry["inum"] == Gstr1.document_number(invoice),
+            do: entry
+
       "cdnur" ->
         note_type = if(Gstr1.document_type(invoice) == "credit_note", do: "C", else: "D")
 
@@ -260,7 +266,7 @@ defmodule Nila.Gst.Sales.Values do
   end
 
   defp details(inv) do
-    for itm <- List.wrap(inv["itms"]), det = itm["itm_det"], is_map(det), do: det
+    for itm <- List.wrap(inv["itms"]), det = itm["itm_det"] || itm, is_map(det), do: det
   end
 
   defp add_detail(detail, totals) do
@@ -278,10 +284,15 @@ defmodule Nila.Gst.Sales.Values do
     }
   end
 
-  defp printed_difference(extracted, printed) do
+  defp printed_difference(extracted, printed, invoice) do
     total =
       if is_number(extracted.taxable),
-        do: printed_delta(extracted.taxable + extracted.tax, printed.total)
+        do:
+          printed_delta(
+            extracted.taxable +
+              if(Invoice.tax_excluded_from_total?(invoice), do: 0, else: extracted.tax),
+            printed.total
+          )
 
     %{
       taxable: printed_delta(extracted.taxable, printed.taxable),

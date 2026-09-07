@@ -191,13 +191,13 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
 
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
 
-    # An export still has no supported derivation, so no reviewer action clears
+    # An amendment still has no supported derivation, so no reviewer action clears
     # it. It asks for no work, which is exactly why blockers must remain in the
     # count even when the review queue has no answer.
     invoices =
       Enum.map(month.invoices, fn
         %{"invoice_number" => "21/2025-26"} = invoice ->
-          Map.put(invoice, "document", %{"export" => true})
+          Map.put(invoice, "document_status", "amendment")
 
         invoice ->
           invoice
@@ -254,7 +254,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
           "printed_grand_total" => 1_180
         }
       })
-      |> Map.put("document", %{"export" => true})
+      |> Map.put("document_status", "amendment")
 
     {:ok, _month} =
       Months.upsert(%{

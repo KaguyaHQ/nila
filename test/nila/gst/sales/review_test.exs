@@ -82,6 +82,7 @@ defmodule Nila.Gst.Sales.ReviewTest do
              "buyer_gstin" => "33AABCP9487A1ZG",
              "table" => "b2b",
              "category" => "R",
+             "reverse_charge" => false,
              "place_of_supply" => "33",
              "tax_head" => "cgst_sgst",
              "taxable_amount" => 3_000,

@@ -125,7 +125,10 @@ defmodule Nila.Gst.Sales.Review do
           "invoice_number" => Gstr1.document_number(invoice),
           "buyer_gstin" => invoice["buyer_gstin"],
           "table" => source_table(invoice),
-          "category" => treatment["ntty"] || treatment["inv_typ"] || treatment["typ"] || "OE",
+          "category" =>
+            treatment["ntty"] || treatment["inv_typ"] || treatment["exp_typ"] || treatment["typ"] ||
+              "OE",
+          "reverse_charge" => treatment["rchrg"] == "Y",
           "place_of_supply" => treatment["pos"],
           "tax_head" => tax_head(amounts),
           "taxable_amount" => amounts["taxable"],
@@ -196,6 +199,15 @@ defmodule Nila.Gst.Sales.Review do
 
   defp derived_invoice(derived, invoice) do
     case source_table(invoice) do
+      "exp" ->
+        entries =
+          for group <- List.wrap(derived["exp"]),
+              entry <- List.wrap(group["inv"]),
+              entry["inum"] == Gstr1.document_number(invoice),
+              do: Map.put(entry, "exp_typ", group["exp_typ"])
+
+        List.first(entries)
+
       "cdnur" ->
         note_type = if(Gstr1.document_type(invoice) == "credit_note", do: "C", else: "D")
 
@@ -264,7 +276,7 @@ defmodule Nila.Gst.Sales.Review do
   defp treatment_amounts(treatment) do
     treatment
     |> Map.get("itms", [])
-    |> Enum.map(&Map.get(&1, "itm_det", %{}))
+    |> Enum.map(&Map.get(&1, "itm_det", &1))
     |> Enum.reduce(
       %{"taxable" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0, "cess" => 0},
       fn detail, totals ->

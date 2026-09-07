@@ -518,7 +518,13 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
 
   defp vision_schema(kind) do
     schema = Segmented.schema(kind)
-    reverse_charge = %{anyOf: [%{type: "boolean"}, %{type: "null"}]}
+
+    reverse_charge = %{
+      anyOf: [%{type: "boolean"}, %{type: "null"}],
+      description:
+        "True when the invoice states tax is payable by the recipient or 'Amount of tax subject to Reverse Charge', including a statement below the tax summary. False only when forward charge is clear; null if unclear."
+    }
+
     line_item = get_in(schema, [:properties, :line_items, :items])
 
     line_item_tuple = %{
@@ -554,7 +560,13 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
       Segmented.prepare_vision_data(data, kind, Keyword.get(opts, :client_gstin))
 
     reverse_charge? = data["reverse_charge"] == true
-    verification = Verify.structured(data, reverse_charge?)
+
+    tax_excluded? =
+      reverse_charge? or
+        (kind == :sales and data["supply_type"] in ["export", "sez"] and
+           data["tax_payment"] == "without_payment")
+
+    verification = Verify.structured(data, tax_excluded?)
     type = data["document_type"]
 
     %{

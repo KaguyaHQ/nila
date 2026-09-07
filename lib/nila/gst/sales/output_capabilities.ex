@@ -26,8 +26,8 @@ defmodule Nila.Gst.Sales.OutputCapabilities do
       {supply_type == "nil_rated", "nil_rated_supply_unsupported", ["supply_type"]},
       {supply_type == "exempt", "exempt_supply_unsupported", ["supply_type"]},
       {supply_type == "non_gst", "non_gst_supply_unsupported", ["supply_type"]},
-      {document["reverse_charge"] == true, "outward_reverse_charge_unsupported",
-       ["invoice_number"]},
+      {Nila.Gst.Sales.Invoice.reverse_charge?(invoice), "outward_reverse_charge_unsupported",
+       ["reverse_charge"]},
       {document_status == "cancelled", "cancelled_document_unsupported", ["document_status"]},
       {document_status == "amendment", "amendment_document_unsupported", ["document_status"]}
     ]

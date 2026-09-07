@@ -118,6 +118,17 @@ defmodule Nila.Gst.Extraction.Segmented do
     - Read supplier, Bill To and Ship To/Deliver To into their matching fields.
     - Preserve nil-rated, exempt, non-GST, export and SEZ treatment in supply_type. \
     Never coerce one of them to an ordinary taxable sale.
+    - For export/SEZ read tax_payment from the endorsement: on payment of IGST \
+    or under LUT/bond without payment of IGST. A combined export/SEZ endorsement \
+    with an Indian GSTIN recipient indicates SEZ; a foreign recipient indicates \
+    export. Do not classify ordinary foreign-address sales as exports without \
+    supporting supply evidence. Preserve printed tax breakdowns even if the \
+    endorsement says without payment and the payable total excludes those taxes.
+    - Copy printed_grand_total literally from the invoice Total / Amount Chargeable, \
+    checking the amount in words. Never replace it with taxable plus the HSN tax \
+    summary. Under reverse charge or LUT/bond, that summary can show tax which \
+    is NOT added to the amount payable. Read the reverse-charge statement below \
+    the tax summary as well as the heading.
     - CGST and SGST printed as stacked sub-rows under one item are two printed \
     tax components of that item, not two items. Never split them, and never split \
     a total row.

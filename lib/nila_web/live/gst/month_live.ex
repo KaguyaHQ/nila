@@ -1578,6 +1578,8 @@ defmodule NilaWeb.Gst.MonthLive do
   defp sales_workspace_view("b2b"), do: :b2b
   defp sales_workspace_view("b2cl"), do: :b2cl
   defp sales_workspace_view("b2cs"), do: :b2cs
+  defp sales_workspace_view("exp"), do: :exp
+  defp sales_workspace_view("sez"), do: :sez
   defp sales_workspace_view("cdnr"), do: :cdnr
   defp sales_workspace_view("hsn"), do: :hsn
   defp sales_workspace_view("documents"), do: :documents

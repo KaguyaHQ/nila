@@ -9,6 +9,12 @@ and asks humans only to resolve exceptions before Phoenix commits business truth
 dump → draft → review loop, not data-entry forms. New features must expand artifact
 coverage or materially improve that loop.
 
+## Current priority
+
+Prioritize GSTR-1 exclusively until it works reliably end to end or September 14,
+2026. No purchase-side work unless explicitly requested. RCM means outward RCM
+(Table 4B) in current discussions.
+
 ## Complexity Rule
 
 **Unnecessary complexity is user harm.** Do not add a label, state, feature, abstraction,

@@ -59,12 +59,35 @@ defmodule Nila.Eval.Gstr1Diff do
   @doc "One row per compared field, invoice rows first, then HSN, then doc issue."
   def rows(derived, filed) do
     invoice_rows_diff(derived, filed) ++
+      export_rows_diff(derived, filed) ++
       b2cl_rows_diff(derived, filed) ++
       b2cs_rows_diff(derived, filed) ++
       note_rows_diff(derived, filed) ++
       unregistered_note_rows_diff(derived, filed) ++
       nil_rows_diff(derived, filed) ++
       hsn_diff(derived, filed) ++ hsn_b2c_diff(derived, filed) ++ doc_diff(derived, filed)
+  end
+
+  defp export_rows_diff(derived, filed) do
+    left = export_rows(derived)
+    right = export_rows(filed)
+    keys = (Map.keys(left) ++ Map.keys(right)) |> Enum.uniq() |> Enum.sort()
+
+    Enum.flat_map(keys, fn key ->
+      Enum.map(~w(exp_typ inum idt val sbpcode sbnum sbdt rt txval iamt csamt), fn field ->
+        row("export", key, field, (left[key] || %{})[field], (right[key] || %{})[field])
+      end)
+    end)
+  end
+
+  defp export_rows(gstr1) do
+    for block <- gstr1["exp"] || [],
+        invoice <- block["inv"] || [],
+        item <- invoice["itms"] || [],
+        into: %{} do
+      key = "#{invoice["inum"]}|#{item["rt"]}"
+      {key, invoice |> Map.merge(item) |> Map.put("exp_typ", block["exp_typ"])}
+    end
   end
 
   @doc "Folds rows into the match percentage."

@@ -551,16 +551,40 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 >
                   <.input field={@correction_form[:field]} type="hidden" />
                   <div class="flex-1">
-                    <%= if field == "original_sale_category" do %>
-                      <.input
-                        field={@correction_form[:value]}
-                        type="select"
-                        label="Original sale"
-                        prompt="Choose the original sale category"
-                        options={[{"B2C Other / Small", "b2cs"}, {"B2C Large", "b2cl"}]}
-                      />
-                    <% else %>
-                      <.input field={@correction_form[:value]} type="text" label={field} />
+                    <%= cond do %>
+                      <% field == "tax_payment" -> %>
+                        <.input
+                          field={@correction_form[:value]}
+                          type="select"
+                          label="IGST payment"
+                          prompt="Choose from the invoice endorsement"
+                          options={[
+                            {"With payment of IGST", "with_payment"},
+                            {"Without payment (LUT/bond)", "without_payment"},
+                            {"Not applicable", "not_applicable"}
+                          ]}
+                        />
+                      <% field == "reverse_charge" -> %>
+                        <.input
+                          field={@correction_form[:value]}
+                          type="select"
+                          label="Reverse charge"
+                          prompt="Who pays GST?"
+                          options={[
+                            {"Recipient pays (reverse charge)", "true"},
+                            {"Not reverse charge", "false"}
+                          ]}
+                        />
+                      <% field == "original_sale_category" -> %>
+                        <.input
+                          field={@correction_form[:value]}
+                          type="select"
+                          label="Original sale"
+                          prompt="Choose the original sale category"
+                          options={[{"B2C Other / Small", "b2cs"}, {"B2C Large", "b2cl"}]}
+                        />
+                      <% true -> %>
+                        <.input field={@correction_form[:value]} type="text" label={field} />
                     <% end %>
                   </div>
                   <.button type="submit" variant="primary" size="sm">Save</.button>

@@ -68,7 +68,8 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
       "ship_to" => nil,
       "recipient_registration" => "registered",
       "document_status" => "active",
-      "supply_type" => "taxable"
+      "supply_type" => "taxable",
+      "tax_payment" => "not_applicable"
     })
   end
 

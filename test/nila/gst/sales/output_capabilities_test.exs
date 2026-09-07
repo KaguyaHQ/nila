@@ -3,7 +3,7 @@ defmodule Nila.Gst.Sales.OutputCapabilitiesTest do
 
   alias Nila.Gst.Sales.{Gstr1, Gstr1Readiness, OutputCapabilities, TallyReadiness}
 
-  test "GSTR-1 and Tally consume the same shared capability findings" do
+  test "GSTR-1 validates special treatments while Tally retains its capability blockers" do
     invoice =
       Gstr1.normalize_invoice(%{
         "document" => %{"export" => true, "reverse_charge" => true},
@@ -25,7 +25,12 @@ defmodule Nila.Gst.Sales.OutputCapabilitiesTest do
              "cancelled_document_unsupported"
            ]
 
-    assert gstr1_codes == shared_codes
+    assert gstr1_codes == [
+             "cancelled_document_unsupported",
+             "missing_tax_payment",
+             "special_supply_conflict"
+           ]
+
     assert tally_codes == shared_codes
   end
 

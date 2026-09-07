@@ -705,7 +705,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       sales_month |> Ecto.Changeset.change(invoices: invoices) |> Nila.Repo.update!()
     end
 
-    test "a document the return has no table for cannot be signed", %{
+    test "conflicting supply evidence added after review cannot be signed", %{
       sales_month: sales_month,
       owner_scope: scope
     } do
@@ -724,7 +724,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
         |> Nila.Gst.Sales.Month.changeset(%{invoices: invoices})
         |> Nila.Repo.update()
 
-      assert {:error, {:blocking_issues, ["export_supply_unsupported"]}} =
+      assert {:error, {:blocking_issues, ["special_supply_conflict"]}} =
                Signoffs.sign_off_gstr1(reviewed, scope)
 
       assert {:error, :not_found} = Signoffs.latest_gstr1_signoff(reviewed.id)

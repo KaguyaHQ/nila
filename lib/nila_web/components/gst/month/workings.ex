@@ -58,6 +58,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
     <div id="gstr1-table-12-rows" class="space-y-block">
       <div :if={@hsn_b2c != []} id="gstr1-workings-hsn-b2c" class="space-y-1.5">
         <.section_label>B2C</.section_label>
+
         <.data_table
           id="gstr1-workings-hsn-b2c-rows"
           rows={@hsn_b2c}
@@ -72,17 +73,24 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               </.badge>
             </div>
           </:col>
+
           <:col :let={row} label="Description">{row["desc"] || "—"}</:col>
+
           <:col :let={row} label="UQC">{row["uqc"]}</:col>
+
           <:col :let={row} label="Quantity" align="right">{row["qty"]}</:col>
+
           <:col :let={row} label="Rate" align="right">{Helpers.percent(row["rt"])}</:col>
+
           <:col :let={row} label="Taxable" align="right">{Helpers.amount(row["txval"])}</:col>
+
           <:col :let={row} label="Output tax" align="right">{Helpers.amount(detail_tax(row))}</:col>
         </.data_table>
       </div>
 
       <div :if={@hsn != []} id="gstr1-workings-hsn" class="space-y-1.5">
         <.section_label>B2B and registered notes</.section_label>
+
         <.data_table
           id="gstr1-workings-hsn-rows"
           rows={@hsn_rows}
@@ -102,6 +110,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
             </div>
             <.contrib_cell :if={row.kind == :contrib} row={row} />
           </:col>
+
           <:col :let={row} label="Description">
             <span
               :if={row.kind == :node}
@@ -111,17 +120,21 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               {row.description || "Official description unavailable"}
             </span>
           </:col>
+
           <:col :let={row} label="Rate" align="right">
             <span :if={row.kind == :node} class="text-ink-subtle">
               {Helpers.percent(row.rate)}
             </span>
           </:col>
+
           <:col :let={row} label="Invoices" align="right">
             <span :if={row.kind == :node} class="text-ink-subtle">{row.count}</span>
           </:col>
+
           <:col :let={row} label="Taxable" align="right">
             <.amount_cell row={row} value={row[:taxable]} />
           </:col>
+
           <:col :let={row} label="Output tax" align="right">
             <.amount_cell row={row} value={row[:tax]} />
           </:col>
@@ -149,6 +162,14 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       |> assign(:b2cs, assigns.derived["b2cs"] || [])
       |> assign(:cdnr, assigns.derived["cdnr"] || [])
       |> assign(:cdnur, assigns.derived["cdnur"] || [])
+      |> assign(
+        :exports,
+        for(
+          group <- assigns.derived["exp"] || [],
+          invoice <- group["inv"] || [],
+          do: Map.put(invoice, "exp_typ", group["exp_typ"])
+        )
+      )
       |> assign(:nil_supplies, get_in(assigns.derived, ["nil", "inv"]) || [])
       |> assign(:rates, Gstr1.rate_summary(assigns.derived))
       |> assign(:names, names_by_gstin(assigns.invoices))
@@ -175,11 +196,15 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       >
         <div class="space-y-related">
           <h4 class="text-base-content text-body font-semibold">Compared with filed return</h4>
+
           <p id="gstr1-diff-summary" class="text-body text-ink-muted flex items-center gap-2">
-            <.icon name="hero-exclamation-triangle-mini" class="text-warning size-4 shrink-0" />
-            {diff_summary_line(@diff, @mismatches)}
+            <.icon name="hero-exclamation-triangle-mini" class="text-warning size-4 shrink-0" /> {diff_summary_line(
+              @diff,
+              @mismatches
+            )}
           </p>
         </div>
+
         <div class="space-y-related">
           <.diff_row
             :for={row <- @mismatches}
@@ -212,11 +237,13 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:summary>
             <.fold_summary title="Party-wise B2B working" tabular>
               <:detail>{party_working_summary(@party_rows)}</:detail>
+
               <:status>
                 <.badge variant="neutral">Inspect</.badge>
               </:status>
             </.fold_summary>
           </:summary>
+
           <div class="pb-4">
             <.data_table
               id="gstr1-workings-b2b-rows"
@@ -238,17 +265,21 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
                 </div>
                 <.contrib_cell :if={row.kind == :contrib} row={row} />
               </:col>
+
               <:col :let={row} label="GSTIN">
                 <span :if={row.kind == :node} class="text-ink-subtle font-mono whitespace-nowrap">
                   {row.gstin || "—"}
                 </span>
               </:col>
+
               <:col :let={row} label="Invoices" align="right">
                 <span :if={row.kind == :node} class="text-ink-subtle">{row.count}</span>
               </:col>
+
               <:col :let={row} label="Taxable" align="right">
                 <.amount_cell row={row} value={row[:taxable]} />
               </:col>
+
               <%!-- Every figure in these workings is the derived per-rate bucket, not
                 the sum of extracted lines. They differ by rounding, and calling
                 both "Tax" is why nobody could say which one gets filed. --%>
@@ -269,11 +300,13 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:summary>
             <.fold_summary title="B2CL working" tabular>
               <:detail>{invoice_working_summary(@b2cl_rows)}</:detail>
+
               <:status>
                 <.badge variant="neutral">Inspect</.badge>
               </:status>
             </.fold_summary>
           </:summary>
+
           <div class="pb-4">
             <.data_table
               id="gstr1-workings-b2cl-rows"
@@ -284,11 +317,63 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               <:col :let={row} label="Invoice" row_header>
                 <span class="text-base-content font-mono font-medium whitespace-nowrap">{row.number}</span>
               </:col>
+
               <:col :let={row} label="Date">{row.date}</:col>
+
               <:col :let={row} label="POS"><span class="font-mono">{row.pos}</span></:col>
+
               <:col :let={row} label="Invoice value" align="right">{Helpers.amount(row.value)}</:col>
+
               <:col :let={row} label="Taxable" align="right">{Helpers.amount(row.taxable)}</:col>
+
               <:col :let={row} label="Output tax" align="right">{Helpers.amount(row.tax)}</:col>
+            </.data_table>
+          </div>
+        </.fold>
+
+        <.fold
+          :if={@exports != []}
+          id="gstr1-workings-exp"
+          open={MapSet.member?(@open_folds, "gstr1-workings-exp")}
+          class="px-4 sm:px-6"
+          summary_class="py-4 text-base-content w-full"
+        >
+          <:summary>
+            <.fold_summary title="Exports working" tabular>
+              <:detail>{length(@exports)} invoices</:detail>
+
+              <:status>
+                <.badge variant="neutral">Inspect</.badge>
+              </:status>
+            </.fold_summary>
+          </:summary>
+
+          <div class="pb-4">
+            <.data_table
+              id="gstr1-workings-exp-rows"
+              rows={@exports}
+              mode="scan"
+              min_width="min-w-[620px]"
+            >
+              <:col :let={row} label="Invoice" row_header>
+                <span class="font-mono">{row["inum"]}</span>
+              </:col>
+
+              <:col :let={row} label="Date">{row["idt"]}</:col>
+
+              <:col :let={row} label="Treatment">
+                {if row["exp_typ"] == "WPAY", do: "With IGST", else: "LUT/bond"}
+              </:col>
+
+              <:col :let={row} label="Invoice value" align="right">{Helpers.amount(row["val"])}</:col>
+
+              <:col :let={row} label="Taxable" align="right">
+                {Helpers.amount(Enum.sum(Enum.map(row["itms"], & &1["txval"])))}
+              </:col>
+
+              <:col :let={row} label="IGST" align="right">
+                {Helpers.amount(Enum.sum(Enum.map(row["itms"], &(&1["iamt"] || 0))))}
+              </:col>
             </.data_table>
           </div>
         </.fold>
@@ -303,11 +388,13 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:summary>
             <.fold_summary title="B2CS working" tabular>
               <:detail>{b2cs_working_summary(@b2cs)}</:detail>
+
               <:status>
                 <.badge variant="neutral">Inspect</.badge>
               </:status>
             </.fold_summary>
           </:summary>
+
           <div class="pb-4">
             <.data_table
               id="gstr1-workings-b2cs-rows"
@@ -316,9 +403,13 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               min_width="min-w-[620px]"
             >
               <:col :let={row} label="Supply" row_header>{row["sply_ty"]}</:col>
+
               <:col :let={row} label="POS"><span class="font-mono">{row["pos"]}</span></:col>
+
               <:col :let={row} label="Rate" align="right">{Helpers.percent(row["rt"])}</:col>
+
               <:col :let={row} label="Taxable" align="right">{Helpers.amount(row["txval"])}</:col>
+
               <:col :let={row} label="Output tax" align="right">
                 {Helpers.amount(detail_tax(row))}
               </:col>
@@ -336,11 +427,13 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:summary>
             <.fold_summary title="Credit and debit notes working" tabular>
               <:detail>{note_working_summary(@note_rows)}</:detail>
+
               <:status>
                 <.badge variant="neutral">Inspect</.badge>
               </:status>
             </.fold_summary>
           </:summary>
+
           <div class="pb-4">
             <.data_table
               id="gstr1-workings-cdnr-rows"
@@ -352,14 +445,19 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
               <:col :let={row} label="Note" row_header>
                 <span class="text-base-content font-mono font-medium whitespace-nowrap">{row.number}</span>
               </:col>
+
               <:col :let={row} label="Type">{row.type}</:col>
+
               <:col :let={row} label="Date">{row.date}</:col>
+
               <:col :let={row} label="Recipient">
                 <span class="text-ink-subtle font-mono whitespace-nowrap">{row.gstin}</span>
               </:col>
+
               <:col :let={row} label="Taxable effect" align="right">
                 {Helpers.amount(row.taxable)}
               </:col>
+
               <:col :let={row} label="Output-tax effect" align="right">
                 {Helpers.amount(row.tax)}
               </:col>
@@ -377,16 +475,21 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:summary>
             <.fold_summary title="Nil-rated, exempt and non-GST supplies">
               <:detail>Table 8</:detail>
+
               <:status>
                 <.badge variant="neutral">Inspect</.badge>
               </:status>
             </.fold_summary>
           </:summary>
+
           <div class="pb-4">
             <.data_table id="gstr1-workings-nil-rows" rows={@nil_supplies} mode="scan">
               <:col :let={row} label="Supply" row_header>{nil_supply_label(row["sply_ty"])}</:col>
+
               <:col :let={row} label="Nil-rated" align="right">{Helpers.amount(row["nil_amt"])}</:col>
+
               <:col :let={row} label="Exempt" align="right">{Helpers.amount(row["expt_amt"])}</:col>
+
               <:col :let={row} label="Non-GST" align="right">{Helpers.amount(row["ngsup_amt"])}</:col>
             </.data_table>
           </div>
@@ -402,11 +505,13 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:summary>
             <.fold_summary title="Rate summary" tabular>
               <:detail>{rate_working_summary(@rate_rows)}</:detail>
+
               <:status>
                 <.badge variant="neutral">Inspect</.badge>
               </:status>
             </.fold_summary>
           </:summary>
+
           <div class="pb-4">
             <.data_table
               id="gstr1-workings-rates-rows"
@@ -424,12 +529,15 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
                 </div>
                 <.contrib_cell :if={row.kind == :contrib} row={row} />
               </:col>
+
               <:col :let={row} label="Invoices" align="right">
                 <span :if={row.kind == :node} class="text-ink-subtle">{row.count}</span>
               </:col>
+
               <:col :let={row} label="Taxable" align="right">
                 <.amount_cell row={row} value={row[:taxable]} />
               </:col>
+
               <:col :let={row} label="Output tax" align="right">
                 <.amount_cell row={row} value={row[:tax]} />
               </:col>
@@ -521,6 +629,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       <span class="text-ink-muted">
         {diff_claim(@row, @context)}
       </span>
+
       <.button
         :if={not MapSet.member?(@accepted, @target) and not @locked}
         variant="outline"
@@ -530,6 +639,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       >
         Ours is right
       </.button>
+
       <span :if={MapSet.member?(@accepted, @target)} class="flex items-center gap-1.5">
         <span class="nila-workings-accepted text-ui font-medium">Accepted — ours is right</span>
         <.button

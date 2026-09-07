@@ -212,4 +212,47 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
       assert has_element?(view, "a", "Period overview")
     end
   end
+
+  test "SEZ and export routes show their own invoices and totals", %{conn: conn, client: client} do
+    alias Nila.Gst.Sales.{Gstr1, Months, Workings}
+    root = "test/fixtures/gstr1/tally/2026-06"
+    read = fn name -> root |> Path.join(name) |> File.read!() |> Jason.decode!() end
+    invoices = Enum.map(read.("extraction.json")["pages"], &Gstr1.normalize_invoice/1)
+
+    result =
+      Workings.materialize(
+        invoices,
+        read.("review.json"),
+        Map.take(read.("native-gstr1.json"), ~w(gstin fp))
+      )
+
+    {:ok, _} =
+      Months.upsert(%{
+        org_id: client.org_id,
+        client_id: client.id,
+        period: "2026-06",
+        state: "worked",
+        invoices: result.invoices,
+        issues: result.issues,
+        derived_gstr1: result.derived
+      })
+
+    {:ok, overview, _} = live(conn, ~p"/gst/#{client.id}/2026-06/sales")
+    assert has_element?(overview, "#sales-period-return-sez", "70,000")
+    assert has_element?(overview, "#sales-period-return-exp", "1,10,000")
+    assert has_element?(overview, "#sales-period-return-b2b", "30,000")
+
+    for {table, included, excluded} <- [
+          {"sez", "SDK3-SEZ-P", "SDK3-EXP-P"},
+          {"exp", "SDK3-EXP-P", "SDK3-SEZ-P"}
+        ] do
+      {:ok, view, _} = live(conn, "/gst/#{client.id}/2026-06/sales/#{table}")
+      assert has_element?(view, "#sales-period-gstr1-table-#{table}", included)
+      refute has_element?(view, "#sales-period-gstr1-table-#{table}", excluded)
+      assert has_element?(view, "#sales-period-gstr1-table-#{table}", "LUT/bond")
+      refute has_element?(view, "#sales-period-gstr1-table-#{table}", "7,200")
+      refute has_element?(view, "#sales-period-gstr1-table-#{table}", "10,800")
+      assert has_element?(view, "#sales-period-gstr1-table-#{table}", "₹0.00")
+    end
+  end
 end

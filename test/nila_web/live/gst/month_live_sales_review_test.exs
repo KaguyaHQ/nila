@@ -8,6 +8,63 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
 
   @period "2025-10"
 
+  test "special treatment corrections use choices and preserve the original evidence", context do
+    alias Nila.Gst.Sales.{Gstr1, Months, Resolutions}
+
+    pages =
+      "test/fixtures/gstr1/tally/2026-06/extraction.json"
+      |> File.read!()
+      |> Jason.decode!()
+      |> Map.fetch!("pages")
+
+    invoice =
+      pages |> Enum.at(3) |> Gstr1.normalize_invoice() |> Map.put("tax_payment", "unknown")
+
+    {:ok, month} =
+      Months.upsert(%{
+        org_id: context.org.id,
+        client_id: context.client.id,
+        period: "2026-06",
+        state: "worked",
+        invoices: [invoice],
+        issues: Gstr1.validation_issues([invoice]),
+        derived_gstr1:
+          Gstr1.derive([invoice], Gstr1.production_header(context.client.gstin, "2026-06"))
+      })
+
+    [source] = Resolutions.workings(month).active_invoices
+
+    {:ok, view, _} =
+      live(
+        context.conn,
+        "/gst/#{context.client.id}/2026-06/review/sales?item=#{source["id"]}&scope=needs_you"
+      )
+
+    for {field, value, label} <- [
+          {"tax_payment", "without_payment", "Without payment (LUT/bond)"},
+          {"reverse_charge", "false", "Not reverse charge"}
+        ] do
+      view |> element("button[phx-value-field='#{field}']", "Correct") |> render_click()
+      assert has_element?(view, "#gstr1-correction-form select option[value='#{value}']", label)
+
+      view
+      |> form("#gstr1-correction-form", %{"correction" => %{"field" => field, "value" => value}})
+      |> render_submit()
+    end
+
+    result = Resolutions.workings(month)
+    assert hd(result.invoices)["reverse_charge"] == false
+    assert hd(result.invoices)["tax_payment"] == "without_payment"
+    assert Gstr1.filing_table(hd(result.invoices)) == "b2b"
+
+    refute Enum.any?(
+             result.issues,
+             &(&1["code"] in ~w(missing_tax_payment special_supply_conflict))
+           )
+
+    assert hd(Nila.Repo.reload!(month).invoices)["reverse_charge"] == true
+  end
+
   test "an unregistered note's original sale can be reviewed without entering internal codes",
        context do
     alias Nila.Gst.Sales.{Gstr1, Months, Resolutions}

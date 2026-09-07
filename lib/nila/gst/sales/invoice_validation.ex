@@ -30,12 +30,13 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
 
   @doc "Totals available for comparison, in rupees; missing inputs remain nil."
   def comparison_totals(invoice) do
-    totals = invoice |> InvoiceFacts.sales!() |> invoice_totals()
+    invoice = InvoiceFacts.sales!(invoice)
+    totals = invoice_totals(invoice)
 
     %{
       taxable: rupee_number(totals.taxable_paise),
       tax: rupee_number(totals.tax_paise),
-      total: rupee_number(add_paise(totals.taxable_paise, totals.tax_paise))
+      total: rupee_number(payable_paise(invoice, totals))
     }
   end
 
@@ -101,6 +102,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
       rate = line_rate(line)
 
       if is_nil(taxable_paise) or not tax_amounts_complete?(line) or
+           (Invoice.tax_excluded_from_total?(invoice) and tax_paise == 0) or
            (taxable_paise == 0 and tax_paise == 0 and Decimal.equal?(rate, 0)) do
         []
       else
@@ -190,8 +192,8 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
        ["printed_total_taxable", "line_items"]},
       {"printed_tax_mismatch", printed_tax_paise(invoice), totals.tax_paise,
        ["printed_total_tax", "printed_tax_totals", "line_items"]},
-      {"grand_total_mismatch", invoice.printed_total_paise,
-       add_paise(totals.taxable_paise, totals.tax_paise), ["printed_grand_total", "line_items"]}
+      {"grand_total_mismatch", invoice.printed_total_paise, payable_paise(invoice, totals),
+       ["printed_grand_total", "reverse_charge", "tax_payment", "line_items"]}
     ]
     |> Enum.flat_map(fn {code, printed, derived_paise, fields} ->
       case {printed, derived_paise} do
@@ -320,7 +322,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   defp total_claim("printed_tax_mismatch"), do: "printed tax total does not match line tax sum"
 
   defp total_claim("grand_total_mismatch"),
-    do: "printed grand total does not match line taxable + tax"
+    do: "printed grand total does not match the amount payable under this tax treatment"
 
   defp issue(invoice, code, message, fields) do
     issue(invoice, code, message, fields, Issues.level_for(code))
@@ -501,7 +503,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
 
     []
     |> maybe_classification_issue(
-      registration == "unknown",
+      registration == "unknown" and supply_type(invoice) != "export",
       invoice,
       "unknown_recipient_registration",
       "recipient registration is unknown; classify it before choosing B2B or B2C",
@@ -522,7 +524,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
       ["recipient_registration", "buyer_gstin"]
     )
     |> maybe_classification_issue(
-      registration == "unregistered" and is_nil(pos),
+      registration == "unregistered" and is_nil(pos) and supply_type(invoice) != "export",
       invoice,
       "missing_place_of_supply",
       "an unregistered supply needs an explicit place of supply for B2CS/B2CL classification",
@@ -759,7 +761,7 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
   end
 
   defp bucket_rounding_issues(invoice) do
-    if taxable_values_complete?(invoice) do
+    if taxable_values_complete?(invoice) and not Invoice.tax_excluded_from_total?(invoice) do
       bucket_rounding_issues_for_complete_invoice(invoice)
     else
       []
@@ -981,7 +983,11 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
     seller_state = state_code(party_gstin(invoice.issuer))
     buyer_state = state_code(party_gstin(invoice.recipient))
     place_of_supply = invoice.place_of_supply || buyer_state
-    interstate? = seller_state && place_of_supply && seller_state != place_of_supply
+
+    interstate? =
+      Invoice.zero_rated?(invoice) or
+        (seller_state && place_of_supply && seller_state != place_of_supply)
+
     igst = sum_line_paise(invoice.lines, :igst)
     split = split_tax(invoice)
 
@@ -1096,6 +1102,12 @@ defmodule Nila.Gst.Sales.InvoiceValidation do
         do: line_tax_paise_sum(invoice.lines)
 
     %{taxable_paise: taxable_paise, tax_paise: tax_paise}
+  end
+
+  defp payable_paise(invoice, totals) do
+    if Invoice.tax_excluded_from_total?(invoice),
+      do: totals.taxable_paise,
+      else: add_paise(totals.taxable_paise, totals.tax_paise)
   end
 
   # Absent heads may be inapplicable; a stated positive rate still needs an amount.

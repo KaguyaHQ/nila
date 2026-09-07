@@ -1094,7 +1094,8 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
       assert MapSet.member?(
                failed,
-               {"grand_total_mismatch", ["printed_grand_total", "line_items"]}
+               {"grand_total_mismatch",
+                ["printed_grand_total", "reverse_charge", "tax_payment", "line_items"]}
              )
     end
 
@@ -1702,7 +1703,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert Gstr1.blocking_issues([credit, debit]) == []
     end
 
-    test "an export and an outward reverse charge block while taxable B2C is supported" do
+    test "ambiguous legacy export evidence blocks while outward reverse charge is supported" do
       export = sales_invoice(%{"id" => "source-a", "document" => %{"export" => true}})
 
       rcm =
@@ -1715,7 +1716,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       codes =
         [export, rcm] |> Gstr1.blocking_issues() |> Enum.map(& &1["code"]) |> Enum.sort()
 
-      assert codes == ["export_supply_unsupported", "outward_reverse_charge_unsupported"]
+      assert codes == ["missing_tax_payment", "special_supply_conflict"]
     end
 
     test "an ordinary uniquely numbered B2B invoice blocks nothing" do

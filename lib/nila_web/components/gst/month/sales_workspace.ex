@@ -5,14 +5,14 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
   alias Nila.Formatters
   alias Nila.Gst.Filing.{Calendar, WinmanGstr1}
-  alias Nila.Gst.Sales.{Gstr1, Values}
+  alias Nila.Gst.Sales.{Gstr1, Invoice, Values}
   alias NilaWeb.Components.Gst.Month.{Helpers, Workings}
 
   @gstr1_table_order [
     {"b2b", "B2B — sales to registered persons"},
     {"b2cl", "B2CL — inter-state consumers"},
     {"exp", "Exports"},
-    {"sez", "SEZ / deemed exports"},
+    {"sez", "SEZ supplies"},
     {"b2cs", "B2C (others)"},
     {"exempt", "Exempt / non-taxable supplies"},
     {"cdnr", "Credit notes / debit notes"},
@@ -100,7 +100,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             title="Uploads"
             copy="The batches contributing sales documents to this filing period."
           /> {render_slot(@source)}
-        <% view when view in [:b2b, :b2cl, :b2cs, :cdnr] -> %>
+        <% view when view in [:b2b, :b2cl, :b2cs, :cdnr, :exp, :sez] -> %>
           <.gstr1_table_view
             view={view}
             client={@client}
@@ -108,6 +108,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             base={@base}
             invoices={@active_invoices}
             review_ids={@review_ids}
+            derived={@derived}
           />
         <% :hsn -> %>
           <.detail_heading
@@ -470,7 +471,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           value_name="filter"
         />
       </div>
-       <.invoice_table id="sales-period-invoices" rows={@invoice_rows} />
+      <.invoice_table id="sales-period-invoices" rows={@invoice_rows} />
     </div>
     """
   end
@@ -525,14 +526,21 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :invoices, :list, required: true
   attr :review_ids, :any, required: true
 
+  attr :derived, :any, required: true
+
   defp gstr1_table_view(assigns) do
     key = Atom.to_string(assigns.view)
 
     label =
       @gstr1_table_order |> Enum.find_value(fn {row_key, label} -> row_key == key && label end)
 
-    rows = Enum.filter(assigns.invoices, &(Gstr1.filing_table(&1) == key))
-    assigns = assign(assigns, label: label, rows: invoice_rows(rows, assigns.review_ids, assigns))
+    rows = Enum.filter(assigns.invoices, &(workspace_table(&1) == key))
+
+    assigns =
+      assign(assigns,
+        label: label,
+        rows: invoice_rows(rows, assigns.review_ids, assigns, assigns.derived)
+      )
 
     ~H"""
     <div class="space-y-block">
@@ -607,13 +615,13 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   end
 
   defp gstr1_table_rows(assigns, review_ids, hsn, documents, base) do
-    counts = Enum.frequencies_by(assigns.active_invoices, &Gstr1.filing_table/1)
+    counts = Enum.frequencies_by(assigns.active_invoices, &workspace_table/1)
 
     statutory =
       Enum.map(@gstr1_table_order, fn {key, label} ->
         count = counts[key] || 0
         unresolved = count_unresolved(assigns.active_invoices, review_ids, key)
-        supported = key in ~w(b2b b2cl b2cs cdnr)
+        supported = key in ~w(b2b b2cl b2cs cdnr exp sez)
 
         %{
           id: key,
@@ -658,9 +666,11 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       ]
   end
 
-  defp invoice_rows(invoices, review_ids, assigns) do
+  defp invoice_rows(invoices, review_ids, assigns, derived \\ nil) do
     Enum.map(invoices, fn invoice ->
-      totals = Gstr1.extracted_totals(invoice)
+      totals =
+        if derived, do: Values.filed(invoice, derived), else: Gstr1.extracted_totals(invoice)
+
       needs_review = MapSet.member?(review_ids, invoice["id"])
 
       %{
@@ -668,9 +678,9 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         number: invoice["invoice_number"] || "—",
         date: format_display_date(invoice["invoice_date"]),
         buyer: invoice["buyer_name"] || "—",
-        treatment: invoice |> Gstr1.filing_table() |> treatment_label(),
-        taxable: Helpers.rupees(totals.taxable),
-        tax: Helpers.rupees(totals.tax),
+        treatment: invoice_treatment(invoice),
+        taxable: Helpers.rupees(totals && totals.taxable),
+        tax: Helpers.rupees(totals && totals.tax),
         status: if(needs_review, do: "Needs review", else: "Ready"),
         variant: if(needs_review, do: "warning", else: "success"),
         path:
@@ -689,7 +699,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
     do:
       Enum.count(
         invoices,
-        &(Gstr1.filing_table(&1) == key and MapSet.member?(review_ids, &1["id"]))
+        &(workspace_table(&1) == key and MapSet.member?(review_ids, &1["id"]))
       )
 
   defp gstr1_table_value(_derived, _key, 0), do: nil
@@ -710,9 +720,24 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   defp gstr1_table_variant(_count, _unresolved, true), do: "success"
   defp gstr1_table_variant(_count, _unresolved, false), do: "error"
 
+  defp section_totals(derived, section) when section in ["sez", "b2b"] do
+    groups =
+      for group <- derived["b2b"] || [] do
+        Map.update!(
+          group,
+          "inv",
+          &Enum.filter(&1, fn inv -> inv["inv_typ"] in ["SEWP", "SEWOP"] == (section == "sez") end)
+        )
+      end
+
+    section_totals(Map.put(derived, "b2b", groups), "registered")
+  end
+
   defp section_totals(derived, section) do
-    Enum.reduce(~w(b2b b2cs b2cl cdnr), derived, fn key, acc ->
-      if key == section, do: acc, else: Map.put(acc, key, [])
+    section = if section == "registered", do: "b2b", else: section
+
+    Enum.reduce(~w(b2b b2cs b2cl cdnr cdnur nil exp), derived, fn key, acc ->
+      if key == section, do: acc, else: Map.put(acc, key, if(key == "nil", do: %{}, else: []))
     end)
     |> Values.filed_totals()
   end
@@ -758,6 +783,31 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   defp document_noun("cdnr"), do: "note"
   defp document_noun(_key), do: "invoice"
 
+  defp workspace_table(invoice) do
+    if Gstr1.filing_table(invoice) == "b2b" and invoice["supply_type"] == "sez",
+      do: "sez",
+      else: Gstr1.filing_table(invoice)
+  end
+
+  defp invoice_treatment(invoice) do
+    cond do
+      is_nil(Gstr1.filing_table(invoice)) ->
+        "Held out"
+
+      Invoice.reverse_charge?(invoice) ->
+        "B2B · reverse charge"
+
+      Invoice.zero_rated?(invoice) ->
+        treatment_label(workspace_table(invoice)) <>
+          if(Invoice.without_payment?(invoice), do: " · LUT/bond", else: " · with IGST")
+
+      true ->
+        treatment_label(workspace_table(invoice))
+    end
+  end
+
+  defp treatment_label("exp"), do: "Export"
+  defp treatment_label("sez"), do: "SEZ"
   defp treatment_label("b2b"), do: "B2B"
   defp treatment_label("b2cl"), do: "B2CL"
   defp treatment_label("b2cs"), do: "B2C"

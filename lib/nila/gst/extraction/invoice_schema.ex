@@ -95,6 +95,12 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
         enum: ["taxable", "nil_rated", "exempt", "non_gst", "export", "sez", "unknown"],
         description:
           "The supply treatment stated by the document. Ordinary GST-charged domestic supplies are taxable. Preserve nil-rated, exempt, non-GST, export and SEZ distinctions; use unknown when unclear."
+      },
+      tax_payment: %{
+        type: "string",
+        enum: ["with_payment", "without_payment", "unknown", "not_applicable"],
+        description:
+          "For export/SEZ: with_payment when explicitly on payment of IGST; without_payment when under LUT/bond without payment of IGST. Use unknown if unclear. Other supplies: not_applicable. Read the endorsement, not just the tax amounts."
       }
     }
   end

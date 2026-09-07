@@ -1,0 +1,10 @@
+[
+  {
+    "verb": "correct_field",
+    "target": "legacy_inv_04",
+    "payload": {
+      "field": "reverse_charge",
+      "to": false
+    }
+  }
+]

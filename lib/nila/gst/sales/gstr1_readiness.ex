@@ -2,17 +2,17 @@ defmodule Nila.Gst.Sales.Gstr1Readiness do
   @moduledoc "GSTR-1 output capabilities layered over intrinsic invoice readiness."
 
   alias Nila.Gst.{InvoiceFacts, Issues}
-  alias Nila.Gst.Sales.{OutputCapabilities, OutputIssues}
+  alias Nila.Gst.Sales.{Invoice, OutputCapabilities, OutputIssues}
 
   @messages %{
-    "export_supply_unsupported" =>
-      "this document is an export supply, and GSTR-1 derivation has no exp table",
-    "sez_supply_unsupported" =>
-      "this document is an SEZ supply, and GSTR-1 derivation has no SEZ treatment",
+    "missing_tax_payment" =>
+      "Confirm whether this export or SEZ supply is with payment of IGST or without payment under LUT/bond.",
+    "special_supply_conflict" =>
+      "Resolve the recipient, supply treatment and reverse-charge evidence before filing this document.",
+    "special_note_unsupported" =>
+      "Export, SEZ and reverse-charge credit/debit notes are not supported yet.",
     "non_taxable_tax_conflict" =>
       "This document is marked nil-rated, exempt or non-GST but also carries GST. Resolve the supply treatment and tax evidence before filing.",
-    "outward_reverse_charge_unsupported" =>
-      "this bill says the recipient pays the tax, and derivation files every invoice rchrg \"N\"",
     "missing_original_sale_category" =>
       "Confirm whether the original interstate sale was B2C Other / Small or B2C Large. The note's own value does not determine this.",
     "cancelled_document_unsupported" =>
@@ -36,12 +36,29 @@ defmodule Nila.Gst.Sales.Gstr1Readiness do
       invoice
       |> OutputCapabilities.common()
       |> Enum.reject(
-        &(&1.code in ~w(nil_rated_supply_unsupported exempt_supply_unsupported non_gst_supply_unsupported))
+        &(&1.code in ~w(nil_rated_supply_unsupported exempt_supply_unsupported non_gst_supply_unsupported export_supply_unsupported sez_supply_unsupported outward_reverse_charge_unsupported))
       )
+      |> maybe_add_special(invoice)
       |> maybe_add_non_taxable_conflict(invoice)
       |> maybe_add_cdnur(invoice)
       |> Enum.map(&issue(invoice, &1.code, &1.fields))
     end)
+  end
+
+  defp maybe_add_special(findings, invoice) do
+    zero? = Invoice.zero_rated?(invoice)
+    rcm? = Invoice.reverse_charge?(invoice)
+
+    checks = [
+      {zero? and invoice.evidence["tax_payment"] not in ~w(with_payment without_payment),
+       "missing_tax_payment", ["tax_payment"]},
+      {(zero? or rcm?) and invoice.document_type in ~w(credit_note debit_note),
+       "special_note_unsupported", ["document_type"]},
+      {Invoice.special_supply_conflict?(invoice), "special_supply_conflict",
+       ["supply_type", "tax_payment", "reverse_charge", "recipient_registration", "buyer_gstin"]}
+    ]
+
+    findings ++ for {true, code, fields} <- checks, do: %{code: code, fields: fields}
   end
 
   defp maybe_add_cdnur(findings, invoice) do

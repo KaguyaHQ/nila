@@ -340,6 +340,19 @@
       "period": "2026-03",
       "provenance": "Synthetic disposable Tally company; native offline GSTR-1 export, not a filed return",
       "sha256": "7e79b8d71c23bacfd8c9fe8b8c13da6a23ceec6012e0ff9b245615aa5659c1f3"
+    },
+    {
+      "name": "tally-caltech-2026-06-sales",
+      "key": "tally/caltech/2026-06/rcm-sez-export.pdf",
+      "client": "caltech",
+      "period": "2026-06",
+      "kind": "sales",
+      "pages": 6,
+      "byte_size": 271129,
+      "sha256": "9ec9536ee5d5e45810c53611364e6191cd547b13050cd758686af79fc65de40b",
+      "ground_truth": "test/fixtures/gstr1/tally/2026-06/native-gstr1.json",
+      "label": "Synthetic Tally outward RCM, SEZ and exports, paid and LUT",
+      "provenance": "Synthetic disposable Tally company; native offline GSTR-1 export, not a filed return"
     }
   ],
   "note": "Real client packets and labelled synthetic Tally packets for extraction evals. Bytes live in R2 (private, eval-scoped token); this file is the registry. Onboard a month with `mix nila.eval_corpus add <pdf> <portal-truth.json>`. Ground-truth JSONs stay in test/fixtures/."

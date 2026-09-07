@@ -37,7 +37,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   @confidence_threshold 0.90
   @correctable_invoice_fields ~w(
-    document_type document_status supply_type recipient_registration place_of_supply original_sale_category
+    document_type document_status supply_type tax_payment reverse_charge recipient_registration place_of_supply original_sale_category
     invoice_number invoice_date seller_name seller_gstin buyer_name buyer_gstin
     printed_total_taxable printed_total_tax printed_grand_total
   )
@@ -142,6 +142,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
         ),
       "document_status" => normalize_document_status(data["document_status"]),
       "supply_type" => normalize_supply_type(data["supply_type"], document),
+      "tax_payment" => data["tax_payment"],
+      "reverse_charge" => Map.get(data, "reverse_charge", document["reverse_charge"]),
       "line_items" => line_items,
       "printed_total_taxable" =>
         money(value(data, ["printed_total_taxable", "total_net_amount"])),
@@ -195,6 +197,28 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
     cond do
       document_status(invoice) != "active" ->
+        nil
+
+      Invoice.special_supply_conflict?(invoice) ->
+        nil
+
+      (Invoice.zero_rated?(invoice) or Invoice.reverse_charge?(invoice)) and
+          document_type(invoice) != "invoice" ->
+        nil
+
+      Invoice.zero_rated?(invoice) and
+          invoice["tax_payment"] not in ~w(with_payment without_payment) ->
+        nil
+
+      supply_type(invoice) == "export" ->
+        if seller_state && is_nil(blank_to_nil(invoice["buyer_gstin"])), do: "exp", else: nil
+
+      supply_type(invoice) == "sez" ->
+        if seller_state && pos && recipient_registration(invoice) == "registered",
+          do: "b2b",
+          else: nil
+
+      Invoice.reverse_charge?(invoice) and recipient_registration(invoice) != "registered" ->
         nil
 
       supply_type(invoice) in ~w(nil_rated exempt non_gst) ->
@@ -300,15 +324,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
   @doc """
   Issues that must be answered before a GSTR-1 can be signed, not merely read.
 
-  `derive/2` builds registered `b2b` and `cdnr`, `hsn` and `doc_issue`. A
-  document that belongs in another table would still be derived as the closest
-  supported outward supply: an export or SEZ supply would be filed as ordinary
-  taxable B2B; a reverse-charge supply would be filed `rchrg: "N"` and the tax
-  charged to the wrong party.
-
-  None of these can be caught downstream: every one is arithmetically perfect.
-  So the return refuses to be signed while one is present, and the missing table
-  gets built when a real document asks for it rather than from imagination.
+  Conflicting supply evidence, missing export/SEZ payment treatment and
+  unsupported document kinds hold the return for review.
   """
   def blocking_issues(invoices) do
     gstr1_capability_issues(invoices) ++ duplicate_number_issues(invoices)
@@ -420,6 +437,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
     notes = Enum.filter(complete, &(filing_table(&1) == "cdnr"))
     unregistered_notes = Enum.filter(complete, &(filing_table(&1) == "cdnur"))
     nil_supplies = Enum.filter(complete, &(filing_table(&1) == "nil"))
+    exports = Enum.filter(complete, &(filing_table(&1) == "exp"))
 
     {nil_b2b, nil_b2c} =
       Enum.split_with(nil_supplies, &(recipient_registration(&1) == "registered"))
@@ -431,6 +449,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "gt" => filed["gt"] || 0.0,
       "cur_gt" => filed["cur_gt"] || 0.0,
       "b2b" => derive_b2b(b2b_invoices, seller_state),
+      "exp" => derive_exports(exports, seller_state),
       "b2cl" => derive_b2cl(b2cl_invoices, seller_state),
       "b2cs" => derive_b2cs(b2cs_invoices, seller_state),
       "cdnr" => derive_cdnr(notes, seller_state),
@@ -444,7 +463,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "hsn" => %{
         "hsn_b2b" => derive_hsn(b2b_invoices ++ notes ++ nil_b2b),
         "hsn_b2c" =>
-          derive_b2c_hsn(b2cs_invoices ++ b2cl_invoices ++ unregistered_notes ++ nil_b2c)
+          derive_b2c_hsn(
+            b2cs_invoices ++ b2cl_invoices ++ unregistered_notes ++ nil_b2c ++ exports
+          )
       },
       "nil" => derive_nil_supplies(nil_supplies),
       "doc_issue" => derive_doc_issue(invoices),
@@ -466,6 +487,29 @@ defmodule Nila.Gst.Sales.Gstr1 do
       }
     end)
     |> Enum.sort_by(& &1["ctin"])
+  end
+
+  defp derive_exports(invoices, seller_state) do
+    invoices
+    |> Enum.group_by(&if(Invoice.without_payment?(&1), do: "WOPAY", else: "WPAY"))
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(fn {payment, invoices} ->
+      %{
+        "exp_typ" => payment,
+        "inv" =>
+          Enum.map(invoices, fn invoice ->
+            %{
+              "inum" => document_number(invoice),
+              "idt" => normalize_date(document_date(invoice)),
+              "val" => document_value(invoice),
+              "itms" =>
+                invoice
+                |> derive_items(seller_state, nil)
+                |> Enum.map(&Map.take(&1["itm_det"], ~w(txval rt iamt csamt)))
+            }
+          end)
+      }
+    end)
   end
 
   defp derive_nil_supplies(invoices) do
@@ -731,8 +775,12 @@ defmodule Nila.Gst.Sales.Gstr1 do
       "idt" => normalize_date(document_date(invoice)),
       "val" => document_value(invoice),
       "pos" => pos,
-      "rchrg" => "N",
-      "inv_typ" => "R",
+      "rchrg" => if(Invoice.reverse_charge?(invoice), do: "Y", else: "N"),
+      "inv_typ" =>
+        if(supply_type(invoice) == "sez",
+          do: if(Invoice.without_payment?(invoice), do: "SEWOP", else: "SEWP"),
+          else: "R"
+        ),
       "itms" => derive_items(invoice, seller_state, pos)
     }
   end
@@ -778,7 +826,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
     |> Enum.with_index(1)
     |> Enum.map(fn {{rate, lines}, index} ->
       tax =
-        computed_bucket_tax(lines, rate, invoice_tax_mode(lines, seller_state, place_of_supply))
+        document_bucket_tax(document, lines, rate, seller_state, place_of_supply)
 
       %{
         "num" => index,
@@ -794,8 +842,23 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end)
   end
 
-  defp document_value(document),
-    do: round2(invoice_taxable(document) + invoice_tax(document))
+  defp document_value(document) do
+    tax = if Invoice.tax_excluded_from_total?(document), do: 0, else: invoice_tax(document)
+    round2(invoice_taxable(document) + tax)
+  end
+
+  defp document_bucket_tax(document, lines, rate, seller_state, pos) do
+    cond do
+      Invoice.without_payment?(document) ->
+        %{txval: round2(sum(lines, "taxable_value")), camt: 0, samt: 0, iamt: 0}
+
+      Invoice.zero_rated?(document) ->
+        computed_bucket_tax(lines, rate, :interstate)
+
+      true ->
+        computed_bucket_tax(lines, rate, invoice_tax_mode(lines, seller_state, pos))
+    end
+  end
 
   # The HSN summary reports the code the bill prints, at the length it prints it.
   #
@@ -846,12 +909,25 @@ defmodule Nila.Gst.Sales.Gstr1 do
     |> List.wrap()
     |> Enum.group_by(&{hsn_code(&1["hsn_sac"]), line_rate(&1)})
     |> Enum.map(fn {{hsn, rate}, lines} ->
-      intra = mode_tax(lines, rate, :intrastate)
-      inter = mode_tax(lines, rate, :interstate)
+      tax =
+        if Invoice.zero_rated?(document) do
+          document_bucket_tax(
+            document,
+            lines,
+            rate,
+            state_code(document["seller_gstin"]),
+            effective_place_of_supply(document)
+          )
+        else
+          intra = mode_tax(lines, rate, :intrastate)
+          inter = mode_tax(lines, rate, :interstate)
+          %{camt: intra.camt, samt: intra.samt, iamt: inter.iamt}
+        end
+
       txval = effect * round2(sum(lines, "taxable_value"))
-      camt = effect * intra.camt
-      samt = effect * intra.samt
-      iamt = effect * inter.iamt
+      camt = effect * tax.camt
+      samt = effect * tax.samt
+      iamt = effect * tax.iamt
 
       %{
         "inum" => document_number(document),
@@ -940,7 +1016,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       {hsn_code(line["hsn_sac"]), line_rate(line), uqc(line["uom"], line["hsn_sac"])}
     end)
     |> Enum.map(fn {{hsn, rate, uqc}, lines} ->
-      tax = computed_bucket_tax(lines, rate, invoice_tax_mode(lines, seller_state, pos))
+      tax = document_bucket_tax(invoice, lines, rate, seller_state, pos)
 
       %{
         "hsn_sc" => hsn,
@@ -1030,6 +1106,12 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   @doc "Every filed rate bucket with its outward-liability sign already applied."
   def signed_details(derived) do
+    export_details =
+      for block <- derived["exp"] || [],
+          invoice <- block["inv"] || [],
+          item <- invoice["itms"] || [],
+          do: %{number: invoice["inum"], type: "invoice", detail: item}
+
     invoice_details =
       for party <- derived["b2b"] || [],
           invoice <- party["inv"] || [],
@@ -1092,7 +1174,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
             }
           }
 
-    invoice_details ++
+    export_details ++
+      invoice_details ++
       b2cl_details ++ b2cs_details ++ credit_details ++ unregistered_details ++ nil_details
   end
 
@@ -1227,7 +1310,13 @@ defmodule Nila.Gst.Sales.Gstr1 do
         Map.put(invoice, "document_status", normalize_document_status(value))
 
       {:invoice, "supply_type"} ->
-        Map.put(invoice, "supply_type", normalize_supply_type(value, invoice["document"] || %{}))
+        supply = normalize_supply_type(value, invoice["document"] || %{})
+
+        invoice
+        |> Map.put("supply_type", supply)
+        |> Map.update("document", %{"export" => supply in ~w(export sez)}, fn document ->
+          Map.put(document || %{}, "export", supply in ~w(export sez))
+        end)
         |> Invoice.resolve_line_amounts()
 
       {:invoice, field} ->
