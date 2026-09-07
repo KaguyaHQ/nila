@@ -489,7 +489,7 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
         ])
       end)
 
-    set_widths(sheet, [18, 16, 38, 10, 12, 10, 14, 16, 16, 16, 16, 16])
+    set_widths(sheet, [18, 16, 38, 18, 16, 16, 16, 16, 16, 16, 16, 16])
   end
 
   defp exceptions_sheet(context) do
@@ -779,14 +779,16 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
 
       invoice["line_items"]
       |> List.wrap()
-      |> Enum.group_by(fn line -> {hsn(line), line_rate(line), uqc(line)} end)
-      |> Enum.map(fn {{hsn, rate, uqc}, lines} ->
+      |> Enum.group_by(fn line ->
+        {hsn(line), line_rate(line), uqc(line), line_treatment(invoice, line)}
+      end)
+      |> Enum.map(fn {{hsn, rate, uqc, line_treatment}, lines} ->
         taxable = effect * Enum.sum(Enum.map(lines, &number(&1["taxable_value"])))
 
         treatment =
           if Invoice.without_payment?(invoice),
             do: "LUT/bond",
-            else: treatment(invoice, Enum.sum(Enum.map(lines, &number(&1["igst_amount"]))))
+            else: line_treatment
 
         %{
           document: Gstr1.document_number(invoice),

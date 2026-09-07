@@ -3,7 +3,9 @@
 What's in here. Open the one that answers your question.
 
 - [`prd.md`](./prd.md) — product intent: why Nila exists, who it's for, the GST wedge, goals and non-goals.
-- [`demo-prd.md`](./demo-prd.md) — first-demo contract for the live sales-bills-to-Tally workflow, including review status and batch-send behavior.
+- [`demo-script.md`](./demo-script.md) — the current CA-firm demonstration: scanned sales bills to GST workings and GSTR-1 JSON.
+- [`demo-runbook.md`](./demo-runbook.md) — exact packet, setup/reset commands, expected figures, fallback and rehearsal record.
+- [`demo-prd.md`](./demo-prd.md) — earlier sales-bills-to-Tally implementation contract.
 - [`architecture.md`](./architecture.md) — runtime, domain contexts, and the state principle.
 - [`decisions.md`](./decisions.md) — system-level decisions and their reasoning (monolith, Postgres-as-truth, Oban, R2 storage, transactional code).
 - [`ocr-extraction.md`](./ocr-extraction.md) — OCR/extraction provider behaviour: measured latency, why whole-packet extraction drops invoices past ~15 pages, and the chunking mandate. Extensible experiment log.

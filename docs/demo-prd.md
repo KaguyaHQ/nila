@@ -2,6 +2,11 @@
 
 _Demo decision document. Agreed 2026-08-26._
 
+> September 7: the current CA-firm presentation is sales bills → GST workings
+> XLSX → GSTR-1 JSON. Use [the demo runbook](demo-runbook.md) and
+> [presentation script](demo-script.md). This document retains the earlier
+> sales-bills-to-Tally implementation contract.
+
 This document defines the narrow product Nila must demonstrate before expanding the
 accounting workflow. It is intentionally smaller than [`prd.md`](./prd.md). When a
 short-term implementation choice does not affect safety or data integrity, the first-demo

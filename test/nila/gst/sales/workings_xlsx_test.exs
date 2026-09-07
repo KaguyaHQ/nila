@@ -61,6 +61,39 @@ defmodule Nila.Gst.Sales.WorkingsXlsxTest do
              WorkingsXlsx.build(projection, client(), "2026-07")
   end
 
+  test "HSN working preserves CGST and SGST treatment when explicit place of supply is absent" do
+    invoice = mixed_rate_invoice() |> Map.put("place_of_supply", nil)
+
+    projection = %{
+      invoices: [invoice],
+      active_invoices: [invoice],
+      issues: [],
+      derived: Gstr1.derive([invoice], Gstr1.production_header(client().gstin, "2026-07"))
+    }
+
+    {:ok, workbook} = WorkingsXlsx.build(projection, client(), "2026-07")
+    files = entries(workbook)
+
+    for row <- 5..8 do
+      assert shared_cell(files, "xl/worksheets/sheet5.xml", "G#{row}") == "Intrastate"
+    end
+
+    assert shared_cell(files, "xl/worksheets/sheet3.xml", "H5") == "Intrastate"
+  end
+
+  defp shared_cell(files, sheet, address) do
+    [_, index] =
+      Regex.run(~r/<c r="#{address}"[^>]*t="s"[^>]*><v>(\d+)<\/v><\/c>/, Map.fetch!(files, sheet))
+
+    strings =
+      Regex.scan(
+        ~r/<si><t(?: [^>]*)?>(.*?)<\/t><\/si>/s,
+        Map.fetch!(files, "xl/sharedStrings.xml")
+      )
+
+    strings |> Enum.at(String.to_integer(index)) |> Enum.at(1)
+  end
+
   defp mixed_rate_invoice do
     Gstr1.normalize_invoice(%{
       "data" => %{
