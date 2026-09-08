@@ -1929,6 +1929,30 @@ body {
   outline-offset: 2px;
 }
 
+.nila-action-menu {
+  anchor-scope: --nila-action-menu;
+}
+
+.nila-action-menu > button {
+  anchor-name: --nila-action-menu;
+}
+
+.nila-action-menu-popover {
+  position: fixed;
+  position-anchor: --nila-action-menu;
+  position-area: bottom span-left;
+  position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  justify-self: end;
+  inset: auto;
+  margin: 0.25rem;
+  width: max-content;
+  min-width: min(10rem, calc(100vw - 1rem));
+  max-width: calc(100vw - 1rem);
+  max-height: calc(100dvh - 1rem);
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
 .nila-menu {
   position: fixed;
   inset: auto;

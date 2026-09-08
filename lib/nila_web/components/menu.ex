@@ -24,7 +24,7 @@ defmodule NilaWeb.Components.Menu do
 
   def action_menu(assigns) do
     ~H"""
-    <div id={@id} class="relative z-10 inline-flex">
+    <div id={@id} class="nila-action-menu relative z-10 inline-flex">
       <.button
         id={"#{@id}-trigger"}
         type="button"
@@ -48,7 +48,7 @@ defmodule NilaWeb.Components.Menu do
         popover="auto"
         role="menu"
         aria-label={@label}
-        class="bg-panel-surface border-rule rounded-box shadow-moon text-base-content invisible fixed inset-auto z-50 m-0 w-max min-w-40 border p-2"
+        class="bg-panel-surface border-rule nila-action-menu-popover rounded-box shadow-moon text-base-content border p-2"
         data-trigger={"#{@id}-trigger"}
         phx-hook=".ActionMenuPopover"
       >
@@ -60,7 +60,7 @@ defmodule NilaWeb.Components.Menu do
           value={item[:form] && item[:value]}
           id={item.id}
           role="menuitem"
-          class="data-[tone=error]:hover:bg-error/10 data-[tone=error]:text-error focus-visible:outline-focus hover:bg-interactive hover:text-base-content rounded-field text-ink-muted text-ui flex h-9 w-full items-center gap-2 px-3 font-medium focus-visible:outline-2 focus-visible:-outline-offset-2"
+          class="data-[tone=error]:hover:bg-error/10 data-[tone=error]:text-error focus-visible:outline-focus hover:bg-interactive hover:text-base-content rounded-field text-ink-muted text-ui flex min-h-9 w-full items-center gap-2 px-3 font-medium focus-visible:outline-2 focus-visible:-outline-offset-2"
           data-tone={item[:tone]}
           phx-click={item[:on_click]}
           phx-value-id={!item[:form] && item[:value]}
@@ -76,18 +76,13 @@ defmodule NilaWeb.Components.Menu do
           export default {
             mounted() {
               this.trigger = document.getElementById(this.el.dataset.trigger)
-              this.position = () => this.positionMenu()
               this.onToggle = event => {
                 this.trigger?.setAttribute("aria-expanded", String(event.newState === "open"))
                 if (event.newState === "open") {
-                  this.positionMenu()
-                  this.el.style.visibility = "visible"
                   const items = this.items()
                   const item = this.openAtEnd ? items.at(-1) : items[0]
                   item?.focus({preventScroll: true})
                   this.openAtEnd = false
-                } else {
-                  this.el.style.visibility = "hidden"
                 }
               }
               this.onTriggerKey = event => {
@@ -124,38 +119,14 @@ defmodule NilaWeb.Components.Menu do
               this.el.addEventListener("keydown", this.onMenuKey)
               this.el.addEventListener("click", this.onItemClick)
               this.trigger?.addEventListener("keydown", this.onTriggerKey)
-              window.addEventListener("resize", this.position)
-              window.addEventListener("scroll", this.position, true)
             },
             destroyed() {
               this.el.removeEventListener("toggle", this.onToggle)
               this.el.removeEventListener("keydown", this.onMenuKey)
               this.el.removeEventListener("click", this.onItemClick)
               this.trigger?.removeEventListener("keydown", this.onTriggerKey)
-              window.removeEventListener("resize", this.position)
-              window.removeEventListener("scroll", this.position, true)
             },
             items() { return [...this.el.querySelectorAll('[role="menuitem"]:not(:disabled)')] },
-            positionMenu() {
-              if (!this.trigger || !this.el.matches(":popover-open")) return
-
-              const trigger = this.trigger.getBoundingClientRect()
-              const gap = 4
-              const edge = 8
-              const width = this.el.offsetWidth
-              const height = this.el.offsetHeight
-              const left = Math.min(
-                window.innerWidth - width - edge,
-                Math.max(edge, trigger.right - width)
-              )
-              const below = trigger.bottom + gap
-              const top = below + height <= window.innerHeight - edge
-                ? below
-                : Math.max(edge, trigger.top - height - gap)
-
-              this.el.style.left = `${left}px`
-              this.el.style.top = `${top}px`
-            }
           }
         </script>
       </div>
