@@ -87,6 +87,11 @@ defmodule NilaWeb.Gst.MonthLive do
          socket.assigns.live_action == :sales_workspace do
       socket
       |> assign(:client, client)
+      |> assign(
+        :demo_reset_available,
+        Nila.DemoSession.available?(socket.assigns.current_scope, client)
+      )
+      |> assign(:confirm_demo_reset, false)
       |> assign(:period, period)
       |> assign(:page_title, "#{client.name} · #{period_label(period)}")
       |> assign(:purchase_review_route, nil)
@@ -1067,6 +1072,36 @@ defmodule NilaWeb.Gst.MonthLive do
 
   # Contributor rows still use this event; the register itself patches directly.
   @impl true
+  def handle_event("open-demo-reset", _params, socket) do
+    allowed = Nila.DemoSession.available?(socket.assigns.current_scope, socket.assigns.client)
+    {:noreply, assign(socket, :confirm_demo_reset, allowed)}
+  end
+
+  def handle_event("cancel-demo-reset", _params, socket),
+    do: {:noreply, assign(socket, :confirm_demo_reset, false)}
+
+  def handle_event(
+        "confirm-demo-reset",
+        _params,
+        %{assigns: %{confirm_demo_reset: true}} = socket
+      ) do
+    case Nila.DemoSession.reset_for_user(socket.assigns.current_scope, socket.assigns.client.id) do
+      {:ok, _result} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Demo reset. June is ready for another upload.")
+         |> push_navigate(to: ~p"/gst/#{socket.assigns.client.id}/2026-06/sales")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:confirm_demo_reset, false)
+         |> put_flash(:error, Nila.DemoSession.reset_error(reason))}
+    end
+  end
+
+  def handle_event("confirm-demo-reset", _params, socket), do: {:noreply, socket}
+
   def handle_event("select-invoice", %{"inum" => identifier}, socket) do
     case valid_invoice_number(socket.assigns.invoices, identifier) do
       nil ->
@@ -1622,6 +1657,21 @@ defmodule NilaWeb.Gst.MonthLive do
         rippled={@rippled}
         ripple_seq={@ripple_seq}
       >
+        <:client_actions>
+          <.action_menu
+            :if={@demo_reset_available}
+            id="demo-client-actions"
+            label="Demo client actions"
+          >
+            <:item
+              id="demo-reset-open"
+              label="Reset demo"
+              icon="hero-arrow-path"
+              tone="error"
+              on_click="open-demo-reset"
+            />
+          </.action_menu>
+        </:client_actions>
         <:source>
           <Arrivals.source_record
             can_sign_off={@can_sign_off}
@@ -1636,6 +1686,25 @@ defmodule NilaWeb.Gst.MonthLive do
           />
         </:source>
       </SalesWorkspace.workspace>
+
+      <.modal
+        :if={@confirm_demo_reset}
+        id="demo-reset-confirmation"
+        title="Reset BREEZE TECH - Demo?"
+        on_close="cancel-demo-reset"
+        return_focus="#demo-client-actions-trigger"
+      >
+        <p>Clear June 2026's demo invoices, uploads and working? The client will remain.</p>
+        <:footer>
+          <.button id="demo-reset-cancel" variant="outline" phx-click="cancel-demo-reset">Cancel</.button>
+          <.button
+            id="demo-reset-confirm"
+            variant="error"
+            phx-click="confirm-demo-reset"
+            phx-disable-with="Resetting…"
+          >Reset demo</.button>
+        </:footer>
+      </.modal>
 
       <div
         :if={@live_action != :sales_workspace}

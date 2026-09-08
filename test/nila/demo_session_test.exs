@@ -1,5 +1,3 @@
-Code.require_file("../../scripts/demo_session.exs", __DIR__)
-
 defmodule Nila.DemoSessionTest do
   use Nila.DataCase, async: false
 

@@ -37,6 +37,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :rippled, :any, default: MapSet.new()
   attr :ripple_seq, :integer, default: 0
   slot :source
+  slot :client_actions
 
   def workspace(assigns) do
     totals = if(assigns.derived, do: Values.filed_totals(assigns.derived), else: nil)
@@ -78,7 +79,9 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         next_period={@next_period}
         base={@base}
         view={@view}
-      />
+      >
+        {render_slot(@client_actions)}
+      </.period_header>
       <%= case @view do %>
         <% :overview -> %>
           <.overview {assigns} />
@@ -277,6 +280,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :base, :string, required: true
   attr :view, :atom, required: true
 
+  slot :inner_block
+
   defp period_header(assigns) do
     assigns =
       assign(
@@ -317,6 +322,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       <:actions>
         <div class="gap-related flex items-center">
           <span class="text-ink-muted text-ui">{@deadline}</span>
+          {render_slot(@inner_block)}
         </div>
       </:actions>
     </.page_header>

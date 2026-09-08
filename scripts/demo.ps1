@@ -12,7 +12,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $demoRepo = Split-Path $PSScriptRoot -Parent
-$demoSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'demo_session.exs') -Raw
+$demoSource = Get-Content -LiteralPath (Join-Path $demoRepo 'lib/nila/demo_session.ex') -Raw
 if ($Action -ne 'Setup' -and $ClientId -lt 1) { throw '-ClientId is required for Inspect and Reset.' }
 if ($Action -eq 'Reset' -and $ConfirmReset -cne "RESET $OrgId/$ClientId/2026-06") {
     throw "Inspect first, then pass -ConfirmReset 'RESET $OrgId/$ClientId/2026-06'."
@@ -23,7 +23,7 @@ $demoCall = switch ($Action) {
     'Inspect' { "Nila.DemoSession.inspect_session($OrgId, $ClientId)" }
     'Reset' { "Nila.DemoSession.reset($OrgId, $ClientId, `"$ConfirmReset`")" }
 }
-$demoCode = $demoSource + "`nresult = ($demoCall)`nIO.inspect(result, limit: :infinity)`nif match?({:error, _}, result), do: raise(`"Demo operation refused`")`nIO.puts(`"NILA_DEMO_OK`")`n"
+$demoCode = "unless Code.ensure_loaded?(Nila.DemoSession) do`n" + $demoSource + "`nend`nresult = ($demoCall)`nIO.inspect(result, limit: :infinity)`nif match?({:error, _}, result), do: raise(`"Demo operation refused`")`nIO.puts(`"NILA_DEMO_OK`")`n"
 $demoScratch = Join-Path $demoRepo 'tmp/demo-operator'
 New-Item -ItemType Directory -Force -Path $demoScratch | Out-Null
 

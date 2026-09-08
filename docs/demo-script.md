@@ -58,3 +58,9 @@ if it cannot be resolved confidently, use the fallback and record the issue.
 Skip Tally, banking, purchases, signing/filing, settings, and empty GST tables.
 For a firm's own packet, keep the client and period separate from the disposable
 demo client. That is a discovery exercise, not a promise of the rehearsed timing.
+
+## After practising or between visits
+
+On the demo client's Sales & GSTR-1 page, click **⋯ → Reset demo → Reset demo**.
+Wait for processing to finish first. Save any downloads you want to keep before
+resetting. The app opens the empty June working, ready for the same PDF again.

@@ -83,9 +83,20 @@ month changes with the calendar.
 
 ## Reset between visits
 
-Close demo tabs and wait for extraction to finish. Save the completed workbook,
+Wait for extraction to finish. Save the completed workbook,
 JSON and one result screenshot to the demo folder before the first reset. These
 are the offline fallback and must not be overwritten by an incomplete run.
+
+On the demo client's **Sales & GSTR-1** page, open the **⋯** menu at the top right,
+choose **Reset demo**, then confirm. The app returns to the empty June 2026 working.
+Cancel leaves the data intact. No terminal or AWS session is needed.
+
+This action is restricted to `spare.me1180650@gmail.com`, with a current owner
+membership, and the designated client's exact demo marker and configuration.
+The server rechecks authorization and all reset safeguards when confirmation is
+submitted. Other accounts and ordinary clients do not get this action.
+
+The PowerShell operator remains available as a fallback:
 
 ```powershell
 # This laptop's production demo client (local uses client 3 without -Production).
@@ -126,7 +137,8 @@ Manager plugin; preparation used the official AWS ZIP's packaged executable unde
 `tmp/demo-prep/ssm-plugin/bin`. `demo.ps1` finds that or the standard installation.
 For another machine, follow [AWS's Windows installation instructions](https://docs.aws.amazon.com/systems-manager/latest/userguide/install-plugin-windows.html).
 The wrapper uses the same SSM instance and container as `scripts/prod-console`;
-it loads the operator script for that invocation, with no application deployment.
+it uses the same `Nila.DemoSession` module as the in-app action, with a source
+fallback for older releases. The CLI remains an AWS-authorized operator path.
 
 ## Rehearsal record
 
