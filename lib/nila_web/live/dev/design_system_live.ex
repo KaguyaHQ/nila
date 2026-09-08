@@ -42,6 +42,8 @@ if Application.compile_env(:nila, :dev_routes, false) or
        |> assign(:review_scope, "needs-you")
        |> assign(:show_modal, false)
        |> assign(:show_sheet, false)
+       |> assign(:show_reader, false)
+       |> assign(:reader_page, 0)
        |> assign(:rows, @rows)}
     end
 
@@ -57,6 +59,15 @@ if Application.compile_env(:nila, :dev_routes, false) or
 
     def handle_event("close-design-sheet", _params, socket),
       do: {:noreply, assign(socket, :show_sheet, false)}
+
+    def handle_event("open-design-reader", _params, socket),
+      do: {:noreply, assign(socket, show_reader: true, reader_page: 0)}
+
+    def handle_event("close-design-reader", _params, socket),
+      do: {:noreply, assign(socket, :show_reader, false)}
+
+    def handle_event("page-design-reader", %{"page" => page}, socket),
+      do: {:noreply, assign(socket, :reader_page, String.to_integer(page))}
 
     def handle_event("set-review-scope", %{"scope" => scope}, socket),
       do: {:noreply, assign(socket, :review_scope, scope)}
@@ -426,7 +437,7 @@ if Application.compile_env(:nila, :dev_routes, false) or
                     <div>
                       <h3 class="text-h4 font-semibold">Overlay</h3>
                       <p class="text-ink-muted text-ui">
-                        Focus, dismissal, and keyboard behavior remain LiveView-owned.
+                        Native modality with LiveView-owned open state.
                       </p>
                     </div>
                     <div class="gap-related flex flex-wrap">
@@ -447,8 +458,34 @@ if Application.compile_env(:nila, :dev_routes, false) or
                   on_close="close-design-modal"
                 >
                   <p class="text-body text-ink-muted">
-                    The geometry follows Radix while focus and dismissal remain native LiveView behavior.
+                    The geometry follows Radix; the browser keeps the page behind this dialog inert.
                   </p>
+                  <.action_menu id="ds-modal-menu" label="Review actions" trigger_label="Actions">
+                    <:item
+                      id="ds-modal-menu-confirm"
+                      label="Confirm review"
+                      on_click="close-design-modal"
+                    />
+                  </.action_menu>
+                  <.button id="ds-modal-open-reader" variant="outline" phx-click="open-design-reader">
+                    Read sample bill
+                  </.button>
+                  <NilaWeb.Components.Evidence.evidence_overlay
+                    :if={@show_reader}
+                    id="ds-reader"
+                    title="Sample bill"
+                    images={
+                      for page <- 1..2 do
+                        "data:image/svg+xml," <>
+                          URI.encode(
+                            "<svg xmlns='http://www.w3.org/2000/svg' width='595' height='842'><rect width='595' height='842' fill='white'/><text x='48' y='72' font-size='24'>Sample bill — page #{page}</text></svg>"
+                          )
+                      end
+                    }
+                    page={@reader_page}
+                    on_page="page-design-reader"
+                    on_close="close-design-reader"
+                  />
                   <:footer>
                     <.button id="ds-modal-cancel" variant="ghost" phx-click="close-design-modal">Cancel</.button>
                     <.button id="ds-modal-confirm" phx-click="close-design-modal">Confirm review</.button>
@@ -473,6 +510,9 @@ if Application.compile_env(:nila, :dev_routes, false) or
                     <p class="text-body text-ink-muted">
                       Shadcn supplies the edge anatomy; Nila and Radix supply the visual physics.
                     </p>
+                    <.button id="ds-sheet-open-modal" variant="outline" phx-click="open-design-modal">
+                      Review invoice
+                    </.button>
                   </div>
                   <:footer>
                     <.button phx-click="close-design-sheet">Done</.button>

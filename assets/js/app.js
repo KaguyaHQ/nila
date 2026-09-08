@@ -1,4 +1,5 @@
 import {KeyboardShortcuts} from "./hooks/keyboard_shortcuts"
+import {Modal, captureModalFocus, restoreModalStack} from "./hooks/modal"
 // If you want to use Phoenix channels, run `mix help phx.gen.channel`
 // to get started and then uncomment the line below.
 // import "./user_socket.js"
@@ -95,8 +96,10 @@ const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
   uploaders: Uploaders,
+  dom: {onPatchStart: captureModalFocus, onPatchEnd: restoreModalStack},
   hooks: {
     KeyboardShortcuts,
+    Modal,
     ...colocatedHooks,
     ElapsedTimer,
     RailCollapse,

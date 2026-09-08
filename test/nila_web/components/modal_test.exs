@@ -5,7 +5,26 @@ defmodule NilaWeb.Components.ModalTest do
   import Phoenix.LiveViewTest
   import NilaWeb.Components.Modal
 
-  test "ordinary modal closes on click-away and Escape" do
+  test "native dismissal retains the LiveComponent event target" do
+    assigns = %{target: %Phoenix.LiveComponent.CID{cid: 7}}
+
+    html =
+      rendered_to_string(~H"""
+      <.modal id="targeted-modal" title="Review" on_close="close-review" target={@target}>
+        Review details
+      </.modal>
+      """)
+
+    [command] =
+      html
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("dialog#targeted-modal")
+      |> LazyHTML.attribute("data-on-close")
+
+    assert [["push", %{"event" => "close-review", "target" => 7}]] = Jason.decode!(command)
+  end
+
+  test "ordinary modal delegates dismissal to the native dialog hook" do
     assigns = %{}
 
     html =
@@ -20,9 +39,13 @@ defmodule NilaWeb.Components.ModalTest do
       |> LazyHTML.from_fragment()
       |> LazyHTML.query("#invoice-modal-focus-wrap")
 
-    assert LazyHTML.attribute(focus_wrap, "phx-click-away") == ["close-invoice"]
-    assert LazyHTML.attribute(focus_wrap, "phx-window-keydown") == ["close-invoice"]
-    assert LazyHTML.attribute(focus_wrap, "phx-key") == ["escape"]
+    dialog = html |> LazyHTML.from_fragment() |> LazyHTML.query("dialog#invoice-modal")
+    assert LazyHTML.attribute(dialog, "phx-hook") == ["Modal"]
+    assert LazyHTML.attribute(dialog, "data-close-on-escape") == ["true"]
+    assert LazyHTML.attribute(dialog, "closedby") == ["closerequest"]
+    assert [command] = LazyHTML.attribute(dialog, "data-on-close")
+    assert [["push", %{"event" => "close-invoice"}]] = Jason.decode!(command)
+    assert LazyHTML.attribute(focus_wrap, "phx-window-keydown") == []
     assert html =~ ~s(class="nila-modal-panel")
     assert html =~ ~s(data-variant="modal")
     assert html =~ ~s(data-width="standard")
@@ -48,10 +71,16 @@ defmodule NilaWeb.Components.ModalTest do
 
     fragment = LazyHTML.from_fragment(html)
     focus_wrap = LazyHTML.query(fragment, "#review-workbench-focus-wrap")
+    assert LazyHTML.attribute(LazyHTML.query(fragment, "dialog"), "closedby") == ["none"]
 
     assert LazyHTML.attribute(focus_wrap, "phx-click-away") == []
     assert LazyHTML.attribute(focus_wrap, "phx-window-keydown") == []
-    assert LazyHTML.attribute(focus_wrap, "phx-key") == []
+
+    assert LazyHTML.attribute(
+             LazyHTML.query(fragment, "dialog#review-workbench"),
+             "data-close-on-escape"
+           ) == ["false"]
+
     assert html =~ ~s(class="nila-modal-panel")
     assert html =~ ~s(data-variant="workbench")
     refute html =~ "max-h-[90vh]"
@@ -85,12 +114,11 @@ defmodule NilaWeb.Components.ModalTest do
 
     assert LazyHTML.attribute(scrim, "data-variant") == ["sheet"]
     assert LazyHTML.attribute(scrim, "data-side") == ["left"]
-    assert LazyHTML.attribute(scrim, "phx-remove") != []
+    assert LazyHTML.attribute(scrim, "data-return-focus") == ["#open-client-switcher"]
     assert LazyHTML.attribute(focus_wrap, "data-variant") == ["sheet"]
     assert LazyHTML.attribute(focus_wrap, "data-side") == ["left"]
-    assert LazyHTML.attribute(focus_wrap, "phx-click-away") == ["close-sheet"]
-    assert LazyHTML.attribute(focus_wrap, "phx-window-keydown") == ["close-sheet"]
-    assert LazyHTML.attribute(focus_wrap, "phx-key") == ["escape"]
+    assert LazyHTML.attribute(scrim, "data-close-on-escape") == ["true"]
+    assert LazyHTML.attribute(focus_wrap, "phx-window-keydown") == []
 
     assert LazyHTML.attribute(
              LazyHTML.query(fragment, "#client-sheet-focus-wrap > .nila-modal-body"),

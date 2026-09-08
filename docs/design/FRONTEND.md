@@ -248,6 +248,9 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
   remain Nila/Radix. Callers cannot pass arbitrary panel classes. Put ordinary dialog
   actions directly in `:footer`, secondary action first; the component owns alignment,
   spacing, and wrapping. Body forms use `form="form-id"` on footer submit buttons.
+  Native `dialog.showModal()` owns layering and background inertness. The shared `Modal`
+  hook owns LiveView dismissal and focus restoration, including the evidence reader.
+  Do not add window-level Escape listeners or CSS-only modal overlays.
 - **Menus:** transient action menus use the native `popover="auto"` contract for light
   dismissal and Escape behavior; `<details>` is a disclosure primitive, not a dropdown.
 - **Searchable single-select lists:** use the shared `SelectableList` hook. Keep focus in a

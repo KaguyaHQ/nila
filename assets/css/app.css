@@ -1989,14 +1989,45 @@ body {
   background: var(--error-a3);
 }
 
-.nila-modal-scrim {
+dialog[phx-hook="Modal"] {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+
+.nila-modal-scrim {
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--color-overlay);
+}
+
+dialog[phx-hook="Modal"]:not([open]) {
+  display: none;
+}
+
+dialog[phx-hook="Modal"]::backdrop {
+  background: transparent;
+}
+
+html:has(dialog[phx-hook="Modal"]:modal),
+body:has(dialog[phx-hook="Modal"]:modal) {
+  overflow: hidden;
+}
+
+.nila-modal-scrim .nila-modal-body {
+  overscroll-behavior: contain;
+}
+
+.nila-modal-scrim[data-variant="modal"] {
+  padding-inline: 1rem;
 }
 
 .nila-modal-scrim[data-scrim="document"] {

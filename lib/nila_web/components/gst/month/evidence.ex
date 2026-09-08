@@ -624,6 +624,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 this.focusTarget(trigger.dataset.reviewTarget)
               }
               this.onKeydown = (event) => {
+                if (event.defaultPrevented || event.target.closest("dialog") !== this.el.closest("dialog")) return
                 const tag = event.target.tagName
                 if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || event.target.isContentEditable) return
                 const direction = event.key === "ArrowLeft" ? "previous" :

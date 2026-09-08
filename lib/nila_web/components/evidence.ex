@@ -100,12 +100,18 @@ defmodule NilaWeb.Components.Evidence do
     assigns = assign(assigns, :count, length(assigns.images))
 
     ~H"""
-    <div
+    <dialog
+      closedby="closerequest"
       id={@id}
-      class="bg-scrim/97 fixed inset-0 z-50 flex flex-col"
-      phx-window-keydown={@on_close}
-      phx-key="escape"
-      phx-target={@target}
+      class="bg-scrim/97 flex flex-col"
+      phx-hook="Modal"
+      phx-mounted={Phoenix.LiveView.JS.ignore_attributes(["open"])}
+      role="dialog"
+      aria-modal="true"
+      aria-label={@title || @label}
+      data-on-close={Phoenix.LiveView.JS.push(@on_close, target: @target)}
+      data-close-on-escape="true"
+      data-variant="workbench"
     >
       <div class="flex shrink-0 items-center justify-between gap-4 px-4 py-3">
         <span class="text-inverse text-ui min-w-0 truncate font-medium">{@title}</span>
@@ -165,6 +171,17 @@ defmodule NilaWeb.Components.Evidence do
         export default {
           mounted() {
             this.level = 0
+            this.dialog = this.el.closest("dialog")
+            this.onKeydown = event => {
+              if (event.defaultPrevented || event.target.closest("dialog") !== this.dialog ||
+                  event.target.closest("input, textarea, select, [contenteditable='true']")) return
+              if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return
+              const button = this.dialog.querySelector(`[data-evidence-key="${event.key}"]`)
+              if (!button || button.disabled) return
+              event.preventDefault()
+              button.click()
+            }
+            this.dialog.addEventListener("keydown", this.onKeydown)
             this.el.addEventListener("click", (event) => {
               if (event.target.tagName === "IMG") {
                 this.level = (this.level + 1) % 2
@@ -174,6 +191,7 @@ defmodule NilaWeb.Components.Evidence do
               }
             })
           },
+          destroyed() { this.dialog.removeEventListener("keydown", this.onKeydown) },
           updated() { this.level = 0; this.apply() },
           apply() {
             const img = this.el.querySelector("img")
@@ -192,7 +210,7 @@ defmodule NilaWeb.Components.Evidence do
           }
         }
       </script>
-    </div>
+    </dialog>
     """
   end
 
@@ -243,8 +261,7 @@ defmodule NilaWeb.Components.Evidence do
         phx-click={@on_page}
         phx-target={@target}
         phx-value-page={@page - 1}
-        phx-window-keydown={@keys && @on_page}
-        phx-key="ArrowLeft"
+        data-evidence-key={@keys && "ArrowLeft"}
         disabled={@page == 0}
         aria-label="Previous page"
         class={["rounded-field p-1 transition disabled:opacity-30", nav_tone(@tone)]}
@@ -258,8 +275,7 @@ defmodule NilaWeb.Components.Evidence do
         phx-click={@on_page}
         phx-target={@target}
         phx-value-page={@page + 1}
-        phx-window-keydown={@keys && @on_page}
-        phx-key="ArrowRight"
+        data-evidence-key={@keys && "ArrowRight"}
         disabled={@page == @count - 1}
         aria-label="Next page"
         class={["rounded-field p-1 transition disabled:opacity-30", nav_tone(@tone)]}

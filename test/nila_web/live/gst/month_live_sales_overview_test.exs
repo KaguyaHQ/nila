@@ -124,7 +124,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
 
     assert has_element?(
              view,
-             "#shell-client-switcher-sheet-focus-wrap[role='dialog']",
+             "#shell-client-switcher-sheet[role='dialog']",
              "Switch client"
            )
 

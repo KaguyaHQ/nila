@@ -68,7 +68,7 @@ defmodule NilaWeb.Dev.DesignSystemLiveTest do
     assert has_element?(view, "#ds-modal .nila-modal-panel[data-width='standard']")
 
     view
-    |> element("#ds-modal button[phx-click='close-design-modal']", "Confirm review")
+    |> element("#ds-modal-confirm")
     |> render_click()
 
     refute has_element?(view, "#ds-modal")

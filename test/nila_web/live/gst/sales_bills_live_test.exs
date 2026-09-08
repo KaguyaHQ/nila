@@ -1156,7 +1156,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(
              view,
-             "#sales-bill-posting-review-focus-wrap[phx-window-keydown='close-posting-review'][phx-key='escape']"
+             "dialog#sales-bill-posting-review[data-close-on-escape='true']"
            )
   end
 
@@ -1834,7 +1834,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     refute has_element?(
              view,
-             "#sales-bill-posting-review-focus-wrap[phx-window-keydown='close-posting-review']"
+             "dialog#sales-bill-posting-review[data-close-on-escape='true']"
            )
 
     view
@@ -1866,7 +1866,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(
              view,
-             "#sales-bill-posting-review-focus-wrap[phx-window-keydown='close-posting-review']"
+             "dialog#sales-bill-posting-review[data-close-on-escape='true']"
            )
   end
 
@@ -1964,7 +1964,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(
              view,
-             "#sales-bill-posting-review-focus-wrap[phx-window-keydown='close-posting-review']"
+             "dialog#sales-bill-posting-review[data-close-on-escape='true']"
            )
   end
 

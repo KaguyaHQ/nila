@@ -4100,7 +4100,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                         <p :if={row.mismatch?} class="text-error text-ui">
                           Difference {rupees(row.difference)}
                         </p>
-                         <span :if={!row.matches? && !row.mismatch?} class="text-ink-muted">—</span>
+                        <span :if={!row.matches? && !row.mismatch?} class="text-ink-muted">—</span>
                       </:col>
                     </.data_table>
                   </section>
@@ -4685,6 +4685,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               this.onKeydown = event => {
                 if (
                   this.el.dataset.navigationEnabled !== "true" ||
+                  event.target.closest("dialog") !== this.el.closest("dialog") ||
                   window.localStorage.getItem("nila-shortcuts-enabled") === "false" ||
                   event.repeat || event.isComposing ||
                   document.querySelector(":popover-open") ||

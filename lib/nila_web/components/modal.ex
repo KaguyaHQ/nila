@@ -1,7 +1,7 @@
 defmodule NilaWeb.Components.Modal do
   @moduledoc """
-  Modal, sheet, and full-screen workbench components with shared dismissal
-  behavior and show/hide JS commands.
+  Native modal, sheet, and full-screen workbench components with shared
+  dismissal behavior and show/hide JS commands for transient elements.
   """
   use Phoenix.Component
 
@@ -15,9 +15,9 @@ defmodule NilaWeb.Components.Modal do
   `:if`). `width` and `scrim` expose the only supported visual choices.
 
   Set `variant="sheet"` for a focused task surface attached to a viewport edge.
-  It keeps the ordinary dialog's modal semantics, focus wrapping, dismissal,
+  It keeps the ordinary dialog's native modality, focus containment, dismissal,
   and elevation while changing only its placement and geometry. `side` defaults
-  to `"right"`; `return_focus` restores the invoking control after dismissal.
+  to `"right"`; `return_focus` overrides automatic focus return after dismissal.
 
   Set `variant="workbench"` for a sustained, full-viewport review surface.
   Workbenches never close on click-away. Set `close_on_escape={false}` while an
@@ -74,23 +74,25 @@ defmodule NilaWeb.Components.Modal do
 
   def modal(assigns) do
     ~H"""
-    <div
+    <dialog
+      closedby={if @close_on_escape, do: "closerequest", else: "none"}
       id={@id}
-      class={["nila-modal-scrim", @variant == "modal" && "px-4"]}
+      phx-hook="Modal"
+      phx-mounted={JS.ignore_attributes(["open"])}
+      class="nila-modal-scrim"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={"#{@id}-title"}
+      data-on-close={JS.push(@on_close, target: @target)}
+      data-close-on-escape={to_string(@close_on_escape)}
+      data-return-focus={@return_focus}
       data-scrim={@scrim}
       data-variant={@variant}
       data-side={@variant == "sheet" && @side}
-      phx-remove={return_focus(@return_focus)}
     >
-      <.focus_wrap
+      <div
         id={"#{@id}-focus-wrap"}
-        phx-click-away={@variant in ~w(modal sheet) && @on_close}
-        phx-window-keydown={@close_on_escape && @on_close}
-        phx-key={@close_on_escape && "escape"}
-        phx-target={@target}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={"#{@id}-title"}
+        tabindex="-1"
         class="nila-modal-panel"
         data-variant={@variant}
         data-width={@width}
@@ -123,13 +125,10 @@ defmodule NilaWeb.Components.Modal do
         <footer :if={@footer != []} class="nila-modal-footer">
           {render_slot(@footer)}
         </footer>
-      </.focus_wrap>
-    </div>
+      </div>
+    </dialog>
     """
   end
-
-  defp return_focus(nil), do: nil
-  defp return_focus(selector), do: JS.focus(to: selector)
 
   ## JS Commands
 

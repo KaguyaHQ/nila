@@ -4,6 +4,7 @@ export const KeyboardShortcuts = {
     const toggle = this.el.querySelector('input[type="checkbox"]')
     toggle.checked = localStorage.getItem('nila-shortcuts-enabled') !== 'false'
     this.openHelp = () => {
+      if (document.querySelector("dialog:modal")) return
       this.returnFocus = document.activeElement
       const menu = this.returnFocus?.closest('[popover]')
       if (menu) {
@@ -23,15 +24,13 @@ export const KeyboardShortcuts = {
     this.onKey = event => {
       if (event.defaultPrevented || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey || localStorage.getItem('nila-shortcuts-enabled') === 'false') return
       if (event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="combobox"], [role="listbox"], [role="tablist"], [role="slider"]')) return
-      if (document.querySelector(':popover-open')) return
+      if (document.querySelector(':popover-open, dialog:modal')) return
       const dialogs = [...document.querySelectorAll('[role="dialog"]')].filter(el => el.getClientRects().length)
-      const invoiceReview = document.querySelector('#sales-bill-posting-review-keys')
-      if (dialogs.length && !invoiceReview) return
-      if (document.querySelector('#sales-bill-invoice-facts-sheet, #sales-bill-line-edit-sheet')) return
+      if (dialogs.length) return
       if (event.key === '?') {
         event.preventDefault()
         this.openHelp()
-      } else if (!invoiceReview && !dialogs.length && !event.shiftKey) {
+      } else if (!event.shiftKey) {
         const id = event.key === '[' ? 'previous-filing-period' : event.key === ']' ? 'next-filing-period' : null
         const link = id && document.getElementById(id)
         if (link) { event.preventDefault(); link.click() }
