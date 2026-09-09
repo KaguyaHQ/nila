@@ -1506,6 +1506,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
   defp normalize_supply_type(nil, _document), do: "taxable"
   defp normalize_supply_type(_status, _document), do: "unknown"
 
+  @doc "The place of supply used in the filing projection."
+  def filing_place_of_supply(invoice), do: effective_place_of_supply(invoice)
+
   defp effective_place_of_supply(invoice) do
     case invoice["place_of_supply"] do
       pos when is_binary(pos) -> if(StateCodes.name_for(pos), do: pos)

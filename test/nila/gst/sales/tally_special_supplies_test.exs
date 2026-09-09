@@ -130,21 +130,26 @@ defmodule Nila.Gst.Sales.TallySpecialSuppliesTest do
       )
       |> List.flatten()
 
-    sheet = files["xl/worksheets/sheet4.xml"]
-    assert Enum.sum(for row <- 5..10, do: cell_number(sheet, "F#{row}")) == 210_000
-    assert Enum.sum(for row <- 5..10, do: cell_number(sheet, "K#{row}")) == 19_800
-    assert cell_number(files["xl/worksheets/sheet1.xml"], "B20") == 224_400
+    sheet = files["xl/worksheets/sheet2.xml"]
+    assert Enum.sum(for row <- 5..10, do: cell_number(sheet, "J#{row}")) == 210_000
+
+    assert Enum.sum(
+             for row <- 5..10,
+                 do:
+                   cell_number(sheet, "K#{row}") + cell_number(sheet, "N#{row}") +
+                     cell_number(sheet, "Q#{row}")
+           ) == 37_800
+
+    refute "Filing taxable" in strings
+
+    sales = files["xl/worksheets/sheet1.xml"]
+    assert Enum.sum(for row <- 5..10, do: cell_number(sales, "K#{row}")) == 224_400
 
     for label <- ["B2B RCM", "SEZ - IGST", "SEZ - LUT/bond", "Export - IGST", "Export - LUT/bond"] do
       assert label in strings
     end
 
-    for row <- 5..10 do
-      label = Enum.at(strings, trunc(cell_number(sheet, "A#{row}")))
-      if String.ends_with?(label, "LUT/bond"), do: assert(cell_number(sheet, "K#{row}") == 0)
-    end
-
-    hsn = files["xl/worksheets/sheet5.xml"]
+    hsn = files["xl/worksheets/sheet3.xml"]
 
     for row <- [8, 10] do
       assert Enum.at(strings, trunc(cell_number(hsn, "G#{row}"))) == "LUT/bond"

@@ -3,7 +3,7 @@ defmodule Nila.Gst.Sales.WorkingsXlsxTest do
 
   alias Nila.Gst.Sales.{Gstr1, WorkingsXlsx}
 
-  test "builds the canonical six-sheet workbook and keeps tax and HSN grains separate" do
+  test "builds the three-sheet workbook and keeps tax and HSN grains separate" do
     invoice = mixed_rate_invoice()
 
     projection = %{
@@ -21,36 +21,37 @@ defmodule Nila.Gst.Sales.WorkingsXlsxTest do
     files = entries(workbook)
     workbook_xml = Map.fetch!(files, "xl/workbook.xml")
 
-    for name <- [
-          "Summary",
-          "Sales Register",
-          "Tax Breakdown",
-          "GSTR-1 Working",
-          "HSN Working",
-          "Exclusions &amp; Corrections"
-        ] do
+    for name <- ["Sales", "Tax Working", "HSN"] do
       assert workbook_xml =~ ~s(name="#{name}")
     end
 
     strings = Map.fetch!(files, "xl/sharedStrings.xml")
-    assert strings =~ "Reported CGST"
-    assert strings =~ "Expected CGST"
+    assert strings =~ "Source CGST"
     assert strings =~ "Calculated CGST"
     assert strings =~ "Silver rod"
+    refute strings =~ "Filing taxable"
+    refute strings =~ "source less filing"
+    refute strings =~ "HSN less tax detail"
+    refute strings =~ "Sales less tax detail"
+    assert strings =~ "Rate-wise sales"
 
-    tax_sheet = Map.fetch!(files, "xl/worksheets/sheet3.xml")
+    tax_sheet = Map.fetch!(files, "xl/worksheets/sheet2.xml")
     assert tax_sheet =~ ~s(r="A5")
     assert tax_sheet =~ ~s(r="A6")
-    refute tax_sheet =~ ~s(r="A7")
+    assert tax_sheet =~ "SUMIFS"
+    refute workbook_xml =~ "Review Trail"
+    assert shared_cell(files, "xl/worksheets/sheet1.xml", "F5") == "3.0%, 18.0%"
+    assert shared_cell(files, "xl/worksheets/sheet1.xml", "E5") == "33"
     assert tax_sheet =~ "ROUND(J5*I5/2,2)"
     assert tax_sheet =~ "ROUND(J6*I6/2,2)"
 
-    hsn_sheet = Map.fetch!(files, "xl/worksheets/sheet5.xml")
+    hsn_sheet = Map.fetch!(files, "xl/worksheets/sheet3.xml")
     assert hsn_sheet =~ ~s(r="A5")
     assert hsn_sheet =~ ~s(r="A6")
     assert hsn_sheet =~ ~s(r="A7")
     assert hsn_sheet =~ ~s(r="A8")
     refute hsn_sheet =~ ~s(r="A9")
+    assert hsn_sheet =~ "$D$5:$D$8"
     assert hsn_sheet =~ "SUMIFS"
   end
 
@@ -75,10 +76,134 @@ defmodule Nila.Gst.Sales.WorkingsXlsxTest do
     files = entries(workbook)
 
     for row <- 5..8 do
-      assert shared_cell(files, "xl/worksheets/sheet5.xml", "G#{row}") == "Intrastate"
+      assert shared_cell(files, "xl/worksheets/sheet3.xml", "G#{row}") == "Intrastate"
     end
 
-    assert shared_cell(files, "xl/worksheets/sheet3.xml", "H5") == "Intrastate"
+    assert shared_cell(files, "xl/worksheets/sheet2.xml", "H5") == "Intrastate"
+  end
+
+  test "review trail appears for unresolved issues and corrections" do
+    invoice = Map.put(mixed_rate_invoice(), "id", "source-1")
+
+    issue = %{
+      "status" => "open",
+      "source_id" => "source-1",
+      "code" => "amount_mismatch",
+      "message" => "Check invoice total"
+    }
+
+    projection = %{
+      invoices: [invoice],
+      active_invoices: [invoice],
+      issues: [issue],
+      derived: Gstr1.derive([invoice], Gstr1.production_header(client().gstin, "2026-07"))
+    }
+
+    {:ok, workbook} = WorkingsXlsx.build(projection, client(), "2026-07")
+    files = entries(workbook)
+    assert files["xl/workbook.xml"] =~ ~s(name="Review Trail")
+    assert files["xl/sharedStrings.xml"] =~ "Check invoice total"
+    assert shared_cell(files, "xl/worksheets/sheet4.xml", "B5") == "46/2026-27"
+  end
+
+  test "HSN quantity summaries keep different units separate" do
+    invoice = mixed_rate_invoice()
+    base = Enum.at(invoice["line_items"], 1)
+
+    invoice =
+      Map.put(invoice, "line_items", [
+        Map.merge(base, %{"uom" => "Nos", "quantity" => 2}),
+        Map.merge(base, %{"uom" => "Kg", "quantity" => 3})
+      ])
+
+    projection = %{
+      invoices: [invoice],
+      active_invoices: [invoice],
+      issues: [],
+      derived: Gstr1.derive([invoice], Gstr1.production_header(client().gstin, "2026-07"))
+    }
+
+    {:ok, workbook} = WorkingsXlsx.build(projection, client(), "2026-07")
+    files = entries(workbook)
+    assert shared_cell(files, "xl/worksheets/sheet3.xml", "D10") == "KGS"
+    assert shared_cell(files, "xl/worksheets/sheet3.xml", "D11") == "NOS"
+    assert files["xl/worksheets/sheet3.xml"] =~ "SUMIFS($E$5:$E$6"
+    assert files["xl/worksheets/sheet3.xml"] =~ "$D$5:$D$6,D10"
+  end
+
+  test "source tax in an unexpected head is preserved for the arithmetic check" do
+    invoice = mixed_rate_invoice()
+    [first | rest] = invoice["line_items"]
+    invoice = Map.put(invoice, "line_items", [Map.put(first, "igst_amount", 7) | rest])
+
+    projection = %{
+      invoices: [invoice],
+      active_invoices: [invoice],
+      issues: [],
+      derived: Gstr1.derive([invoice], Gstr1.production_header(client().gstin, "2026-07"))
+    }
+
+    {:ok, workbook} = WorkingsXlsx.build(projection, client(), "2026-07")
+    files = entries(workbook)
+    # Printed CGST/SGST survive even when the unexpected IGST makes this bucket interstate.
+    sheet = files["xl/worksheets/sheet2.xml"]
+    assert sheet =~ ~r/<c r="K5"[^>]*><v>54(?:\.0)?<\/v>/
+    assert sheet =~ ~r/<c r="Q5"[^>]*><v>7(?:\.0)?<\/v>/
+  end
+
+  test "accepted line rounding stays informational and identifies its invoice" do
+    invoice = mixed_rate_invoice() |> Map.put("id", "rounding-source")
+
+    lines =
+      for _ <- 1..6,
+          do:
+            line("Small item", "74121000", 100.06, 18, 1)
+            |> Map.merge(%{"cgst_amount" => 9.01, "sgst_amount" => 9.01})
+
+    invoice = Map.put(invoice, "line_items", lines)
+
+    issues =
+      Gstr1.invoice_validation_issues([invoice])
+      |> Enum.filter(&(&1["code"] == "rounding_variance"))
+      |> Enum.map(&Map.put(&1, "status", "open"))
+
+    assert length(issues) == 2
+
+    projection = %{
+      invoices: [invoice],
+      active_invoices: [invoice],
+      issues: issues,
+      derived: Gstr1.derive([invoice], Gstr1.production_header(client().gstin, "2026-07"))
+    }
+
+    {:ok, workbook} = WorkingsXlsx.build(projection, client(), "2026-07")
+    files = entries(workbook)
+    assert shared_cell(files, "xl/worksheets/sheet4.xml", "A5") == "Information"
+    assert shared_cell(files, "xl/worksheets/sheet4.xml", "B5") == "46/2026-27"
+    assert files["xl/sharedStrings.xml"] =~ "CGST line-tax sum"
+    refute files["xl/sharedStrings.xml"] =~ "GSTR-1 reconciliation"
+    assert files["xl/worksheets/sheet2.xml"] =~ "Rounding"
+    assert files["xl/worksheets/sheet2.xml"] =~ "ABS(M5-(0.03))"
+  end
+
+  test "sales subtotal follows filters and short rows stay compact" do
+    invoice = mixed_rate_invoice()
+
+    projection = %{
+      invoices: [invoice],
+      active_invoices: [invoice],
+      issues: [],
+      derived: Gstr1.derive([invoice], Gstr1.production_header(client().gstin, "2026-07"))
+    }
+
+    {:ok, workbook} = WorkingsXlsx.build(projection, client(), "2026-07")
+    files = entries(workbook)
+    sheet = files["xl/worksheets/sheet1.xml"]
+    assert sheet =~ "SUBTOTAL(109,G5:G5)"
+    assert sheet =~ "SUBTOTAL(109,K5:K5)"
+    refute sheet =~ "32.25"
+    assert shared_cell(files, "xl/worksheets/sheet1.xml", "A4") == "Invoice no."
+    assert shared_cell(files, "xl/worksheets/sheet1.xml", "P4") == "Source"
   end
 
   defp shared_cell(files, sheet, address) do

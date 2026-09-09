@@ -3,8 +3,7 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
   Builds the accountant-facing sales working for one GST period.
 
   The workbook is a projection of the effective sales month. It does not
-  calculate a second version of GSTR-1: return tables come from `Gstr1`,
-  while the formula cells expose the arithmetic controls a reviewer expects
+  calculate a second version of GSTR-1. Formula cells expose the arithmetic controls a reviewer expects
   to inspect in Excel.
   """
 
@@ -50,15 +49,10 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
   ]
 
   @body_format [
+    :text_wrap,
     {:font_name, "Arial"},
     {:font_color, "#1C2024"},
     {:valign, :top}
-  ]
-
-  @warning_format [
-    {:font_name, "Arial"},
-    {:font_color, "#8A4B08"},
-    {:bg_color, "#FFF1D6"}
   ]
 
   @type projection :: %{
@@ -67,7 +61,7 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
           required(:active_invoices) => [map()]
         }
 
-  @doc "Builds a six-sheet XLSX binary from the effective sales projection."
+  @doc "Builds a sales, tax and HSN XLSX binary from the effective sales projection."
   @spec build(projection(), map(), String.t(), keyword()) ::
           {:ok, binary()} | {:error, :no_active_sales | :invalid_sales_data | term()}
   def build(projection, client, period, opts \\ []) do
@@ -83,21 +77,24 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
       true ->
         context = context(projection, client, period, opts)
 
-        XlsxWriter.generate([
-          summary_sheet(context),
+        sheets = [
           sales_register_sheet(context),
           tax_breakdown_sheet(context),
-          gstr1_working_sheet(context),
-          hsn_working_sheet(context),
-          exceptions_sheet(context)
-        ])
+          hsn_working_sheet(context)
+        ]
+
+        sheets =
+          if exception_rows(context) == [],
+            do: sheets,
+            else: sheets ++ [exceptions_sheet(context)]
+
+        XlsxWriter.generate(sheets)
     end
   end
 
   defp context(projection, client, period, opts) do
     active = projection.active_invoices
     tax_rows = tax_rows(active)
-    gstr1_rows = gstr1_rows(projection.derived)
     hsn_rows = hsn_rows(active)
 
     %{
@@ -107,308 +104,271 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
       status: Keyword.get(opts, :status, "Draft"),
       resolutions: Keyword.get(opts, :resolutions, []),
       tax_rows: tax_rows,
-      gstr1_rows: gstr1_rows,
       hsn_rows: hsn_rows,
       tax_last_row: max(5, 4 + length(tax_rows)),
-      gstr1_last_row: max(5, 4 + length(gstr1_rows)),
       hsn_last_row: max(5, 4 + length(hsn_rows))
     }
   end
 
-  defp summary_sheet(context) do
-    all = context.projection.invoices
-    active = context.projection.active_invoices
-    excluded = length(all) - length(active)
-    included = Enum.count(active, &(not is_nil(Gstr1.filing_table(&1))))
-    held_out = length(active) - included
-    totals = sum_rows(context.gstr1_rows)
-    status_format = if context.status == "Draft", do: @warning_format, else: @body_format
-
-    sheet =
-      XlsxWriter.new_sheet("Summary")
-      |> title(context, "GST sales working")
-      |> XlsxWriter.write(3, 0, "Client", format: @section_format)
-      |> XlsxWriter.write(3, 1, context.client.name, format: @body_format)
-      |> XlsxWriter.write(4, 0, "GSTIN", format: @section_format)
-      |> XlsxWriter.write(4, 1, context.client.gstin || "—", format: @body_format)
-      |> XlsxWriter.write(5, 0, "Period", format: @section_format)
-      |> XlsxWriter.write(5, 1, context.period, format: @body_format)
-      |> XlsxWriter.write(6, 0, "Status", format: @section_format)
-      |> XlsxWriter.write(6, 1, context.status, format: status_format)
-      |> write_headers(9, ["Measure", "Value"])
-      |> write_rows(
-        10,
-        [
-          ["Source documents", {:integer, length(all)}],
-          ["Included documents", {:integer, included}],
-          ["Held out documents", {:integer, held_out}],
-          ["Excluded documents", {:integer, excluded}],
-          ["Taxable value", {:money, totals.taxable}],
-          ["CGST", {:money, totals.cgst}],
-          ["SGST", {:money, totals.sgst}],
-          ["IGST", {:money, totals.igst}],
-          ["Total GST", {:formula, "=SUM(B16:B18)", :money}],
-          [
-            "Invoice value",
-            {:money,
-             active
-             |> Enum.reject(&is_nil(Gstr1.filing_table(&1)))
-             |> Enum.map(&invoice_totals(&1).invoice_value)
-             |> Enum.sum()}
-          ]
-        ]
-      )
-      |> XlsxWriter.write(20, 0, "GSTR-1 tables", format: @section_format)
-      |> write_headers(21, ["Section", "Documents", "Taxable value", "Output tax"])
-
-    {sheet, next_row} =
-      Enum.reduce(
-        Enum.uniq(~w(B2B B2CL B2CS CDNR) ++ Enum.map(context.gstr1_rows, & &1.section)),
-        {sheet, 22},
-        fn section, {sheet, row} ->
-          sheet =
-            write_row(sheet, row, [
-              section,
-              {:integer, section_document_count(context.projection.active_invoices, section)},
-              {:formula,
-               "=SUMIF('GSTR-1 Working'!$A$5:$A$#{context.gstr1_last_row},A#{row + 1},'GSTR-1 Working'!$F$5:$F$#{context.gstr1_last_row})",
-               :money},
-              {:formula,
-               "=SUMIF('GSTR-1 Working'!$A$5:$A$#{context.gstr1_last_row},A#{row + 1},'GSTR-1 Working'!$K$5:$K$#{context.gstr1_last_row})",
-               :money}
-            ])
-
-          {sheet, row + 1}
-        end
-      )
-
-    sheet
-    |> XlsxWriter.write(next_row + 1, 0, "Reconciliation", format: @section_format)
-    |> write_headers(next_row + 2, ["Control", "Difference", "Result"])
-    |> write_rows(next_row + 3, [
-      [
-        "Tax Breakdown = GSTR-1 Working",
-        {:formula,
-         "=SUM('Tax Breakdown'!$J$5:$J$#{context.tax_last_row})-SUM('GSTR-1 Working'!$F$5:$F$#{context.gstr1_last_row})",
-         :money},
-        {:formula, "=IF(ABS(B#{next_row + 4})<=0.01,\"OK\",\"Check\")", :text}
-      ],
-      [
-        "HSN Working = Tax Breakdown",
-        {:formula,
-         "=SUM('HSN Working'!$H$5:$H$#{context.hsn_last_row})-SUM('Tax Breakdown'!$J$5:$J$#{context.tax_last_row})",
-         :money},
-        {:formula, "=IF(ABS(B#{next_row + 5})<=0.01,\"OK\",\"Check\")", :text}
-      ],
-      [
-        "Reported tax = expected tax",
-        {:formula,
-         "=SUMPRODUCT(ABS('Tax Breakdown'!$M$5:$M$#{context.tax_last_row}))+SUMPRODUCT(ABS('Tax Breakdown'!$P$5:$P$#{context.tax_last_row}))+SUMPRODUCT(ABS('Tax Breakdown'!$S$5:$S$#{context.tax_last_row}))",
-         :money},
-        {:formula,
-         "=IF(COUNTIF('Tax Breakdown'!$U$5:$U$#{context.tax_last_row},\"Missing\")>0,\"Incomplete\",IF(ABS(B#{next_row + 6})<=0.01,\"OK\",\"Check\"))",
-         :text}
-      ],
-      [
-        "Tax rows missing reported values",
-        {:formula, "=COUNTIF('Tax Breakdown'!$U$5:$U$#{context.tax_last_row},\"Missing\")",
-         :integer},
-        {:formula, "=IF(B#{next_row + 7}=0,\"OK\",\"Check\")", :text}
-      ]
-    ])
-    |> set_widths([32, 20, 14, 18])
-  end
-
   defp sales_register_sheet(context) do
     headers = [
-      "Source",
-      "Document no.",
+      "Invoice no.",
       "Date",
-      "Recipient",
+      "Customer",
       "GSTIN",
-      "POS",
+      "Place of supply",
+      "Rates",
+      "Taxable value",
+      "Source CGST",
+      "Source SGST",
+      "Source IGST",
+      "Invoice value",
       "Document type",
       "Supply type",
-      "GSTR-1 section",
-      "Invoice value",
-      "Taxable value",
-      "Printed CGST",
-      "Printed SGST",
-      "Printed IGST",
-      "Status"
+      "GSTR-1 table",
+      "Status",
+      "Source"
     ]
 
     rows =
       Enum.map(context.projection.active_invoices, &sales_register_row(&1, context.projection))
 
-    XlsxWriter.new_sheet("Sales Register")
+    XlsxWriter.new_sheet("Sales")
     |> title(context, "Sales register")
     |> write_headers(3, headers)
     |> write_rows(4, rows)
     |> table_layout(3, max(4, 3 + length(rows)), length(headers) - 1)
-    |> set_widths([16, 18, 13, 28, 18, 9, 16, 14, 24, 16, 16, 14, 14, 14, 14])
+    |> sales_totals(length(rows))
+    |> population_counts(context, length(rows) + 8)
+    |> set_widths([18, 13, 34, 22, 10, 14, 16, 14, 14, 14, 16, 14, 14, 22, 16, 28])
+    |> fit_rows(4, rows, [18, 13, 34, 22, 10, 14, 16, 14, 14, 14, 16, 14, 14, 22, 16, 28])
   end
 
   defp tax_breakdown_sheet(context) do
     headers = [
-      "Source",
-      "Document no.",
+      "Invoice no.",
       "Date",
-      "Recipient",
+      "Customer",
       "GSTIN",
-      "POS",
-      "GSTR-1 section",
-      "Treatment",
+      "Place of supply",
+      "Document type",
+      "GSTR-1 table",
+      "Supply",
       "Rate",
       "Taxable value",
-      "Reported CGST",
-      "Expected CGST",
+      "Source CGST",
+      "Calculated CGST",
       "Difference",
-      "Reported SGST",
-      "Expected SGST",
+      "Source SGST",
+      "Calculated SGST",
       "Difference",
-      "Reported IGST",
-      "Expected IGST",
+      "Source IGST",
+      "Calculated IGST",
       "Difference",
-      "Reported GST",
-      "Check"
+      "Source GST",
+      "Review",
+      "Source"
     ]
 
     rows =
       context.tax_rows
       |> Enum.with_index(5)
       |> Enum.map(fn {row, excel_row} ->
+        rounding_check = rounding_check(row, context, excel_row)
+
         [
-          row.source,
           row.document,
           {:date, row.date},
           row.recipient,
           row.gstin,
           row.pos,
+          row.document_type,
           row.section,
           row.treatment,
           {:percent, nullable_divide(row.rate, 100)},
           {:money, row.taxable},
           {:money, row.cgst},
           {:formula,
-           "=IF(OR(J#{excel_row}=\"\",I#{excel_row}=\"\"),\"\",IF(H#{excel_row}=\"Intrastate\",ROUND(J#{excel_row}*I#{excel_row}/2,2),0))",
+           "=IF(COUNT(J#{excel_row},I#{excel_row})<2,\"\",IF(H#{excel_row}=\"Intrastate\",ROUND(J#{excel_row}*I#{excel_row}/2,2),0))",
            :money},
-          {:formula, "=IF(K#{excel_row}=\"\",\"\",K#{excel_row}-L#{excel_row})", :money},
+          {:formula, "=IF(COUNT(K#{excel_row},L#{excel_row})<2,\"\",K#{excel_row}-L#{excel_row})",
+           :money},
           {:money, row.sgst},
           {:formula,
-           "=IF(OR(J#{excel_row}=\"\",I#{excel_row}=\"\"),\"\",IF(H#{excel_row}=\"Intrastate\",ROUND(J#{excel_row}*I#{excel_row}/2,2),0))",
+           "=IF(COUNT(J#{excel_row},I#{excel_row})<2,\"\",IF(H#{excel_row}=\"Intrastate\",ROUND(J#{excel_row}*I#{excel_row}/2,2),0))",
            :money},
-          {:formula, "=IF(N#{excel_row}=\"\",\"\",N#{excel_row}-O#{excel_row})", :money},
+          {:formula, "=IF(COUNT(N#{excel_row},O#{excel_row})<2,\"\",N#{excel_row}-O#{excel_row})",
+           :money},
           {:money, row.igst},
           {:formula,
-           "=IF(OR(J#{excel_row}=\"\",I#{excel_row}=\"\"),\"\",IF(H#{excel_row}=\"Interstate\",ROUND(J#{excel_row}*I#{excel_row},2),0))",
+           "=IF(COUNT(J#{excel_row},I#{excel_row})<2,\"\",IF(H#{excel_row}=\"Interstate\",ROUND(J#{excel_row}*I#{excel_row},2),0))",
            :money},
-          {:formula, "=IF(Q#{excel_row}=\"\",\"\",Q#{excel_row}-R#{excel_row})", :money},
-          {:formula,
-           "=IF(IF(H#{excel_row}=\"Intrastate\",OR(K#{excel_row}=\"\",N#{excel_row}=\"\"),Q#{excel_row}=\"\"),\"\",SUM(K#{excel_row},N#{excel_row},Q#{excel_row}))",
+          {:formula, "=IF(COUNT(Q#{excel_row},R#{excel_row})<2,\"\",Q#{excel_row}-R#{excel_row})",
            :money},
           {:formula,
-           "=IF(IF(H#{excel_row}=\"Intrastate\",OR(K#{excel_row}=\"\",N#{excel_row}=\"\"),Q#{excel_row}=\"\"),\"Missing\",IF(MAX(ABS(M#{excel_row}),ABS(P#{excel_row}),ABS(S#{excel_row}))<=0.01,\"OK\",\"Check\"))",
-           :text}
+           "=IF(COUNT(K#{excel_row},N#{excel_row},Q#{excel_row})<3,\"\",SUM(K#{excel_row},N#{excel_row},Q#{excel_row}))",
+           :money},
+          {:formula,
+           "=IF(COUNT(J#{excel_row},I#{excel_row},K#{excel_row},N#{excel_row},Q#{excel_row})<5,\"Missing\",IF(MAX(ABS(M#{excel_row}),ABS(P#{excel_row}),ABS(S#{excel_row}))<=0.01,\"OK\",#{rounding_check}))",
+           :text},
+          row.source
         ]
       end)
 
     sheet =
-      XlsxWriter.new_sheet("Tax Breakdown")
-      |> title(context, "Tax breakdown")
+      XlsxWriter.new_sheet("Tax Working")
+      |> title(context, "Tax working")
       |> write_headers(3, headers)
       |> write_rows(4, rows)
       |> table_layout(3, max(4, 3 + length(rows)), length(headers) - 1)
       |> set_widths([
-        16,
         18,
         13,
-        28,
-        18,
-        9,
-        24,
+        34,
+        22,
+        10,
+        14,
+        22,
         14,
         10,
         16,
-        16,
-        16,
         14,
-        16,
-        16,
         14,
-        16,
-        16,
+        12,
         14,
-        16,
-        12
+        14,
+        12,
+        14,
+        14,
+        12,
+        14,
+        20,
+        28
       ])
 
-    if Enum.any?(context.projection.active_invoices, &Invoice.without_payment?/1),
-      do:
-        XlsxWriter.write(
-          sheet,
-          2,
-          0,
-          "Printed tax includes LUT/bond HSN summaries. GSTR-1 Working shows the tax reported in the return.",
-          format: @subtitle_format
-        ),
-      else: sheet
+    sheet
+    |> fit_rows(4, rows, [
+      18,
+      13,
+      34,
+      22,
+      10,
+      14,
+      22,
+      14,
+      10,
+      16,
+      14,
+      14,
+      12,
+      14,
+      14,
+      12,
+      14,
+      14,
+      12,
+      14,
+      16,
+      28
+    ])
+    |> XlsxWriter.write(
+      2,
+      0,
+      "Source = reviewed invoice amounts. Calculated = taxable value x tax rate.",
+      format: @subtitle_format
+    )
+    |> tax_summaries(context)
   end
 
-  defp gstr1_working_sheet(context) do
-    headers = [
-      "Section",
-      "Recipient GSTIN / POS",
-      "Document no.",
-      "Date",
-      "Rate",
-      "Taxable value",
-      "CGST",
-      "SGST",
-      "IGST",
-      "Cess",
-      "Output tax",
-      "Invoice value"
-    ]
+  defp sales_totals(sheet, count) do
+    last = 4 + count
+    sheet = XlsxWriter.write(sheet, last + 1, 0, "Visible total", format: @section_format)
 
-    rows =
-      Enum.map(context.gstr1_rows, fn row ->
-        [
-          row.section,
-          row.recipient,
-          row.document,
-          {:date, row.date},
-          {:percent, nullable_divide(row.rate, 100)},
-          {:money, row.taxable},
-          {:money, row.cgst},
-          {:money, row.sgst},
-          {:money, row.igst},
-          {:money, row.cess},
-          {:money, row.tax},
-          {:money, row.invoice_value}
-        ]
-      end)
+    Enum.reduce(6..10, sheet, fn col, sheet ->
+      letter = <<?A + col>>
+
+      write_cell(
+        sheet,
+        last + 1,
+        col,
+        {:formula, "=SUBTOTAL(109,#{letter}5:#{letter}#{last})", :money}
+      )
+    end)
+  end
+
+  defp population_counts(sheet, context, start) do
+    last = 4 + length(context.projection.active_invoices)
+
+    sheet
+    |> write_headers(start, ["Documents", "Count"])
+    |> write_rows(start + 1, [
+      ["Source documents", {:integer, length(context.projection.invoices)}],
+      ["Included", {:formula, "=COUNTIF(O5:O#{last},\"Included\")", :integer}],
+      ["Needs review", {:formula, "=COUNTIF(O5:O#{last},\"Needs review\")", :integer}],
+      ["Held out", {:formula, "=COUNTIF(O5:O#{last},\"Held out\")", :integer}],
+      [
+        "Excluded",
+        {:integer,
+         length(context.projection.invoices) - length(context.projection.active_invoices)}
+      ]
+    ])
+  end
+
+  defp tax_summaries(sheet, context) do
+    last = context.tax_last_row
+    start = last + 3
+
+    groups =
+      context.tax_rows
+      |> Enum.map(&{&1.section, &1.treatment, &1.rate})
+      |> Enum.uniq()
+      |> Enum.sort()
 
     sheet =
-      XlsxWriter.new_sheet("GSTR-1 Working")
-      |> title(context, "GSTR-1 working")
-      |> write_headers(3, headers)
-      |> write_rows(4, rows)
-      |> table_layout(3, max(4, 3 + length(rows)), length(headers) - 1)
-      |> set_widths([24, 22, 18, 13, 10, 16, 14, 14, 14, 12, 16, 16])
+      sheet
+      |> XlsxWriter.write(start - 1, 0, "Rate-wise sales", format: @section_format)
+      |> write_headers(start, [
+        "GSTR-1 table",
+        "Supply",
+        "Rate",
+        "Taxable value",
+        "Source CGST",
+        "Source SGST",
+        "Source IGST"
+      ])
 
-    write_document_series(sheet, context)
+    sheet =
+      groups
+      |> Enum.with_index(start + 1)
+      |> Enum.reduce(sheet, fn {{section, treatment, rate}, row}, sheet ->
+        excel = row + 1
+
+        sums =
+          for col <- ~w(J K N Q),
+              do:
+                {:formula,
+                 "=SUMIFS($#{col}$5:$#{col}$#{last},$G$5:$G$#{last},A#{excel},$H$5:$H$#{last},B#{excel},$I$5:$I$#{last},C#{excel})",
+                 :money}
+
+        write_row(
+          sheet,
+          row,
+          [section, treatment, {:percent, nullable_divide(rate, 100)}] ++ sums
+        )
+      end)
+
+    write_document_series(sheet, context, start + length(groups) + 4)
   end
 
   defp hsn_working_sheet(context) do
     detail_headers = [
-      "Document no.",
+      "Invoice no.",
       "HSN/SAC",
       "Description",
       "UQC",
       "Quantity",
       "Rate",
-      "Treatment",
+      "Supply",
       "Taxable value",
       "Calculated CGST",
       "Calculated SGST",
@@ -439,21 +399,25 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
         ]
       end)
 
-    summary = Gstr1.hsn_summary(context.projection.active_invoices)
+    summary = context.hsn_rows |> Enum.group_by(&{&1.hsn, &1.rate, &1.uqc}) |> Enum.sort()
     summary_header_row = 6 + length(detail_rows)
     summary_data_row = summary_header_row + 1
 
     sheet =
-      XlsxWriter.new_sheet("HSN Working")
+      XlsxWriter.new_sheet("HSN")
       |> title(context, "HSN working")
       |> write_headers(3, detail_headers)
       |> write_rows(4, detail_rows)
       |> table_layout(3, max(4, 3 + length(detail_rows)), length(detail_headers) - 1)
       |> XlsxWriter.write(summary_header_row - 1, 0, "HSN summary", format: @section_format)
       |> write_headers(summary_header_row, [
+        "",
         "HSN/SAC",
         "Description",
+        "UQC",
+        "Quantity",
         "Rate",
+        "",
         "Taxable value",
         "CGST",
         "SGST",
@@ -464,32 +428,38 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
     sheet =
       summary
       |> Enum.with_index(summary_data_row)
-      |> Enum.reduce(sheet, fn {row, zero_row}, sheet ->
-        excel_row = zero_row + 1
-        hsn = row["hsn_sc"]
-        rate = nullable_divide(row["rt"], 100)
+      |> Enum.reduce(sheet, fn {{{hsn, rate, uqc}, rows}, zero_row}, sheet ->
+        excel = zero_row + 1
 
-        write_row(sheet, zero_row, [
-          hsn,
-          row["description"],
-          {:percent, rate},
-          {:formula,
-           "=SUMIFS($H$5:$H$#{context.hsn_last_row},$B$5:$B$#{context.hsn_last_row},A#{excel_row},$F$5:$F$#{context.hsn_last_row},C#{excel_row})",
-           :money},
-          {:formula,
-           "=SUMIFS($I$5:$I$#{context.hsn_last_row},$B$5:$B$#{context.hsn_last_row},A#{excel_row},$F$5:$F$#{context.hsn_last_row},C#{excel_row})",
-           :money},
-          {:formula,
-           "=SUMIFS($J$5:$J$#{context.hsn_last_row},$B$5:$B$#{context.hsn_last_row},A#{excel_row},$F$5:$F$#{context.hsn_last_row},C#{excel_row})",
-           :money},
-          {:formula,
-           "=SUMIFS($K$5:$K$#{context.hsn_last_row},$B$5:$B$#{context.hsn_last_row},A#{excel_row},$F$5:$F$#{context.hsn_last_row},C#{excel_row})",
-           :money},
-          {:formula, "=SUM(E#{excel_row}:G#{excel_row})", :money}
-        ])
+        formulas =
+          for col <- ~w(E H I J K),
+              do:
+                {:formula,
+                 "=SUMIFS($#{col}$5:$#{col}$#{context.hsn_last_row},$B$5:$B$#{context.hsn_last_row},B#{excel},$F$5:$F$#{context.hsn_last_row},F#{excel},$D$5:$D$#{context.hsn_last_row},D#{excel})",
+                 :money}
+
+        description =
+          rows
+          |> Enum.map(& &1.description)
+          |> Enum.reject(&(&1 in [nil, ""]))
+          |> Enum.uniq()
+          |> case do
+            [description] -> description
+            [] -> nil
+            _multiple -> "See invoice detail"
+          end
+
+        write_row(
+          fit_rows(sheet, zero_row, [[nil, nil, description]], [18, 13, 34]),
+          zero_row,
+          [nil, hsn, description, uqc, hd(formulas), {:percent, nullable_divide(rate, 100)}, nil] ++
+            tl(formulas) ++ [{:formula, "=SUM(I#{excel}:K#{excel})", :money}]
+        )
       end)
 
-    set_widths(sheet, [18, 16, 38, 18, 16, 16, 16, 16, 16, 16, 16, 16])
+    sheet
+    |> set_widths([18, 13, 34, 10, 12, 10, 14, 16, 14, 14, 14, 14])
+    |> fit_rows(4, detail_rows, [18, 13, 34, 10, 12, 10, 14, 16, 14, 14, 14, 14])
   end
 
   defp exceptions_sheet(context) do
@@ -506,17 +476,13 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
 
     rows = exception_rows(context)
 
-    rows =
-      if rows == [],
-        do: [["None", "—", "—", "—", "—", "No exclusions or corrections", "—", nil]],
-        else: rows
-
-    XlsxWriter.new_sheet("Exclusions & Corrections")
-    |> title(context, "Exclusions and corrections")
+    XlsxWriter.new_sheet("Review Trail")
+    |> title(context, "Review trail")
     |> write_headers(3, headers)
     |> write_rows(4, rows)
     |> table_layout(3, max(4, 3 + length(rows)), length(headers) - 1)
     |> set_widths([14, 24, 24, 24, 24, 48, 22, 20])
+    |> fit_rows(4, rows, [14, 24, 24, 24, 24, 48, 22, 20])
   end
 
   defp title(sheet, context, title) do
@@ -525,7 +491,7 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
     |> XlsxWriter.write(
       1,
       0,
-      "#{context.client.name} · GSTIN #{context.client.gstin || "—"} · #{context.period}",
+      "#{context.client.name} · GSTIN #{context.client.gstin || "—"} · #{context.period} | #{context.status}",
       format: @subtitle_format
     )
     |> XlsxWriter.set_row_height(0, 24)
@@ -533,23 +499,61 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
 
   defp table_layout(sheet, header_row, last_row, last_col) do
     sheet
-    |> XlsxWriter.freeze_panes(header_row + 1, 0)
+    |> XlsxWriter.freeze_panes(header_row + 1, 2)
     |> XlsxWriter.set_autofilter(header_row, 0, last_row, last_col)
-    |> XlsxWriter.set_row_height(header_row, 30)
+    |> XlsxWriter.set_row_height(header_row, 42)
   end
 
   defp write_headers(sheet, row, headers) do
     headers
     |> Enum.with_index()
-    |> Enum.reduce(sheet, fn {header, col}, sheet ->
+    |> Enum.reduce(XlsxWriter.set_row_height(sheet, row, 42), fn {header, col}, sheet ->
       XlsxWriter.write(sheet, row, col, header, format: @header_format)
+    end)
+  end
+
+  defp fit_rows(sheet, first_row, rows, widths) do
+    rows
+    |> Enum.with_index(first_row)
+    |> Enum.reduce(sheet, fn {cells, row}, sheet ->
+      lines =
+        cells
+        |> Enum.zip(widths)
+        |> Enum.map(fn
+          {text, width} when is_binary(text) ->
+            capacity = max(1, trunc(width * 0.9))
+
+            text
+            |> String.split("\n")
+            |> Enum.map(fn paragraph ->
+              paragraph
+              |> String.split()
+              |> Enum.reduce({1, 0}, fn word, {lines, used} ->
+                length = String.length(word)
+
+                if used > 0 and used + 1 + length > capacity,
+                  do: {lines + max(1, ceil(length / capacity)), length},
+                  else: {lines, used + if(used > 0, do: 1, else: 0) + length}
+              end)
+              |> elem(0)
+            end)
+            |> Enum.sum()
+
+          _cell ->
+            1
+        end)
+        |> Enum.max(fn -> 1 end)
+
+      XlsxWriter.set_row_height(sheet, row, max(20, lines * 15))
     end)
   end
 
   defp write_rows(sheet, first_row, rows) do
     rows
     |> Enum.with_index(first_row)
-    |> Enum.reduce(sheet, fn {row, index}, sheet -> write_row(sheet, index, row) end)
+    |> Enum.reduce(sheet, fn {row, index}, sheet ->
+      write_row(sheet, index, row)
+    end)
   end
 
   defp write_row(sheet, row, cells) do
@@ -620,23 +624,86 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
     totals = invoice_totals(invoice)
     section = section(invoice)
 
+    rates =
+      invoice["line_items"]
+      |> List.wrap()
+      |> Enum.map(&working_rate(invoice, &1))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.sort()
+      |> Enum.map_join(", ", &(display(&1) <> "%"))
+
     [
-      source(invoice),
       Gstr1.document_number(invoice),
       {:date, Gstr1.document_date(invoice)},
       invoice["buyer_name"],
       invoice["buyer_gstin"],
-      invoice["place_of_supply"],
-      humanize(Gstr1.document_type(invoice)),
-      humanize(invoice["supply_type"] || "taxable"),
-      section || "Held out",
-      {:money, totals.invoice_value},
+      filing_pos(invoice),
+      rates,
       {:money, totals.taxable},
       {:money, totals.cgst},
       {:money, totals.sgst},
       {:money, totals.igst},
-      invoice_status(invoice, projection, section)
+      {:money, totals.invoice_value},
+      humanize(Gstr1.document_type(invoice)),
+      humanize(invoice["supply_type"] || "taxable"),
+      section || "Held out",
+      invoice_status(invoice, projection, section),
+      source(invoice)
     ]
+  end
+
+  defp issue_document(context, issue) do
+    target = issue["source_id"] || issue["target"]
+
+    case Enum.find(context.projection.invoices, &(&1["id"] == target)) do
+      nil -> target || "Month"
+      invoice -> Gstr1.document_number(invoice) || target
+    end
+  end
+
+  defp issue_message(issue) do
+    (issue["message"] || issue["description"] || humanize(issue["code"] || "Unresolved issue"))
+    |> String.replace("camt", "CGST")
+    |> String.replace("samt", "SGST")
+    |> String.replace("iamt", "IGST")
+  end
+
+  defp rounding_check(row, context, excel_row) do
+    info? =
+      Enum.any?(
+        Map.get(context.projection, :issues, []),
+        &(&1["source_id"] == row.source_id and &1["code"] == "rounding_variance" and
+            Issues.level(&1) == "info")
+      )
+
+    if info? and Enum.all?([row.taxable, row.rate, row.cgst, row.sgst, row.igst], &is_number/1) do
+      local =
+        if row.treatment == "Intrastate",
+          do: Float.round(row.taxable * row.rate / 200, 2),
+          else: 0.0
+
+      inter =
+        if row.treatment == "Interstate",
+          do: Float.round(row.taxable * row.rate / 100, 2),
+          else: 0.0
+
+      deltas = [row.cgst - local, row.sgst - local, row.igst - inter]
+
+      if Enum.all?(deltas, &(abs(&1) <= row.line_count * 0.005 + 0.000001)) do
+        matches =
+          Enum.zip(["M", "P", "S"], deltas)
+          |> Enum.map_join(",", fn {col, delta} ->
+            "ABS(#{col}#{excel_row}-(#{Float.round(delta, 6)}))<0.000001"
+          end)
+
+        "IF(AND(#{matches}),\"Rounding\",\"Review difference\")"
+      else
+        "\"Review difference\""
+      end
+    else
+      "\"Review difference\""
+    end
   end
 
   defp tax_rows(invoices) do
@@ -648,30 +715,33 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
       invoice
       |> Map.get("line_items", [])
       |> List.wrap()
-      |> Enum.group_by(fn line -> {line_rate(line), line_treatment(invoice, line)} end)
+      |> Enum.group_by(fn line ->
+        {working_rate(invoice, line), line_treatment(invoice, line)}
+      end)
       |> Enum.map(fn {{rate, treatment}, lines} ->
         taxable = signed_sum_complete(lines, "taxable_value", effect)
 
-        {cgst, sgst, igst} =
-          case treatment do
-            "Intrastate" ->
-              {
-                signed_sum_complete(lines, "cgst_amount", effect),
-                signed_sum_complete(lines, "sgst_amount", effect),
-                0.0
-              }
+        non_taxable? = invoice["supply_type"] in ~w(nil_rated exempt non_gst)
 
-            "Interstate" ->
-              {0.0, 0.0, signed_sum_complete(lines, "igst_amount", effect)}
-          end
+        cgst =
+          source_tax(lines, "cgst_amount", effect, not non_taxable? and treatment == "Intrastate")
+
+        sgst =
+          source_tax(lines, "sgst_amount", effect, not non_taxable? and treatment == "Intrastate")
+
+        igst =
+          source_tax(lines, "igst_amount", effect, not non_taxable? and treatment == "Interstate")
 
         %{
           source: source(invoice),
+          source_id: invoice["id"],
+          document_type: humanize(Gstr1.document_type(invoice)),
+          line_count: length(lines),
           document: Gstr1.document_number(invoice),
           date: Gstr1.document_date(invoice),
           recipient: invoice["buyer_name"],
           gstin: invoice["buyer_gstin"],
-          pos: invoice["place_of_supply"],
+          pos: filing_pos(invoice),
           section: section(invoice),
           treatment: treatment,
           rate: rate,
@@ -685,92 +755,6 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
     end)
   end
 
-  defp gstr1_rows(derived) do
-    b2b =
-      for party <- List.wrap(derived["b2b"]),
-          invoice <- List.wrap(party["inv"]),
-          item <- List.wrap(invoice["itms"]) do
-        label =
-          case invoice["inv_typ"] do
-            "SEWP" -> "SEZ - IGST"
-            "SEWOP" -> "SEZ - LUT/bond"
-            _ -> if(invoice["rchrg"] == "Y", do: "B2B RCM", else: "B2B")
-          end
-
-        return_row(label, party["ctin"], invoice, item["itm_det"] || %{})
-      end
-
-    exports =
-      for group <- List.wrap(derived["exp"]),
-          invoice <- List.wrap(group["inv"]),
-          item <- List.wrap(invoice["itms"]) do
-        label = if group["exp_typ"] == "WPAY", do: "Export - IGST", else: "Export - LUT/bond"
-        return_row(label, nil, invoice, item)
-      end
-
-    b2cl =
-      for pos <- List.wrap(derived["b2cl"]),
-          invoice <- List.wrap(pos["inv"]),
-          item <- List.wrap(invoice["itms"]) do
-        return_row("B2CL", pos["pos"], invoice, item["itm_det"] || %{})
-      end
-
-    b2cs =
-      Enum.map(List.wrap(derived["b2cs"]), fn row ->
-        return_row("B2CS", row["pos"], %{}, row)
-      end)
-
-    cdnr =
-      for party <- List.wrap(derived["cdnr"]),
-          note <- List.wrap(party["nt"]),
-          item <- List.wrap(note["itms"]) do
-        effect = if note["ntty"] == "C", do: -1, else: 1
-        return_row("CDNR", party["ctin"], note, item["itm_det"] || %{}, effect)
-      end
-
-    cdnur =
-      for note <- List.wrap(derived["cdnur"]), item <- List.wrap(note["itms"]) do
-        effect = if note["ntty"] == "C", do: -1, else: 1
-        return_row("CDNUR", note["pos"], note, item["itm_det"] || %{}, effect)
-      end
-
-    nil_supplies =
-      for row <- get_in(derived, ["nil", "inv"]) || [],
-          {field, label} <- [
-            {"nil_amt", "Nil-rated"},
-            {"expt_amt", "Exempt"},
-            {"ngsup_amt", "Non-GST"}
-          ],
-          number(row[field]) != 0 do
-        return_row("Table 8 - " <> label, row["sply_ty"], %{}, %{"txval" => row[field], "rt" => 0})
-      end
-
-    b2b ++ exports ++ b2cl ++ b2cs ++ cdnr ++ cdnur ++ nil_supplies
-  end
-
-  defp return_row(section, recipient, document, detail, effect \\ 1) do
-    cgst = effect * number(detail["camt"])
-    sgst = effect * number(detail["samt"])
-    igst = effect * number(detail["iamt"])
-    cess = effect * number(detail["csamt"])
-    taxable = effect * number(detail["txval"])
-
-    %{
-      section: section,
-      recipient: recipient,
-      document: document["inum"] || document["nt_num"],
-      date: document["idt"] || document["nt_dt"],
-      rate: number(detail["rt"]),
-      taxable: taxable,
-      cgst: cgst,
-      sgst: sgst,
-      igst: igst,
-      cess: cess,
-      tax: cgst + sgst + igst + cess,
-      invoice_value: effect * number(document["val"] || taxable + cgst + sgst + igst + cess)
-    }
-  end
-
   defp hsn_rows(invoices) do
     invoices
     |> Enum.reject(&is_nil(Gstr1.filing_table(&1)))
@@ -780,7 +764,7 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
       invoice["line_items"]
       |> List.wrap()
       |> Enum.group_by(fn line ->
-        {hsn(line), line_rate(line), uqc(line), line_treatment(invoice, line)}
+        {hsn(line), working_rate(invoice, line), uqc(line), line_treatment(invoice, line)}
       end)
       |> Enum.map(fn {{hsn, rate, uqc, line_treatment}, lines} ->
         taxable = effect * Enum.sum(Enum.map(lines, &number(&1["taxable_value"])))
@@ -804,7 +788,7 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
     end)
   end
 
-  defp write_document_series(sheet, context) do
+  defp write_document_series(sheet, context, start) do
     groups = get_in(context.projection.derived, ["doc_issue", "doc_det"]) |> List.wrap()
 
     rows =
@@ -819,8 +803,6 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
           {:integer, series["net_issue"]}
         ]
       end
-
-    start = 7 + length(context.gstr1_rows)
 
     sheet
     |> XlsxWriter.write(start - 1, 0, "Documents issued", format: @section_format)
@@ -850,7 +832,24 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
       |> Enum.filter(&(resolution_value(&1, :verb) in ~w(correct_field exclude_duplicate_copy)))
       |> Enum.map(&resolution_row/1)
 
-    held_out ++ resolution_rows
+    open_issues =
+      context.projection
+      |> Map.get(:issues, [])
+      |> Enum.filter(&(&1["status"] == "open"))
+      |> Enum.map(fn issue ->
+        [
+          if(Issues.gating?(issue), do: "Needs review", else: "Information"),
+          issue_document(context, issue),
+          issue["field"],
+          nil,
+          nil,
+          issue_message(issue),
+          nil,
+          nil
+        ]
+      end)
+
+    held_out ++ resolution_rows ++ open_issues
   end
 
   defp resolution_row(resolution) do
@@ -907,23 +906,6 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
     }
   end
 
-  defp sum_rows(rows) do
-    Enum.reduce(rows, %{taxable: 0.0, cgst: 0.0, sgst: 0.0, igst: 0.0, tax: 0.0}, fn row,
-                                                                                     totals ->
-      %{
-        taxable: totals.taxable + number(row.taxable),
-        cgst: totals.cgst + number(row.cgst),
-        sgst: totals.sgst + number(row.sgst),
-        igst: totals.igst + number(row.igst),
-        tax: totals.tax + number(row.tax)
-      }
-    end)
-  end
-
-  defp section_document_count(invoices, section) do
-    Enum.count(invoices, &(section(&1) == section))
-  end
-
   defp invoice_status(_invoice, _projection, nil), do: "Held out"
 
   defp invoice_status(invoice, projection, _section) do
@@ -955,6 +937,14 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
       "exp" ->
         if(Invoice.without_payment?(invoice), do: "Export - LUT/bond", else: "Export - IGST")
 
+      "nil" ->
+        "Table 8 - " <>
+          case invoice["supply_type"] do
+            "nil_rated" -> "Nil-rated"
+            "exempt" -> "Exempt"
+            "non_gst" -> "Non-GST"
+          end
+
       value ->
         String.upcase(value)
     end
@@ -968,7 +958,7 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
       abs(number(igst)) > 0.000_001 ->
         "Interstate"
 
-      state_code(invoice["seller_gstin"]) == state_code(invoice["place_of_supply"]) ->
+      state_code(invoice["seller_gstin"]) == state_code(filing_pos(invoice)) ->
         "Intrastate"
 
       true ->
@@ -976,18 +966,21 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
     end
   end
 
+  defp filing_pos(invoice) do
+    Gstr1.filing_place_of_supply(invoice)
+  end
+
   defp source(invoice) do
-    invoice["sources"]
-    |> List.wrap()
-    |> Enum.map(&humanize/1)
-    |> Enum.join(" + ")
-    |> case do
-      "" -> "Document"
-      value -> value
-    end
+    pages = invoice["source_pages"] |> List.wrap() |> Enum.reject(&is_nil/1) |> Enum.join(", ")
+    identity = invoice["id"] || Gstr1.document_number(invoice)
+    Enum.reject([identity, if(pages != "", do: "p. " <> pages)], &is_nil/1) |> Enum.join(" / ")
   end
 
   defp hsn(line), do: line["hsn_sac"] |> display() |> String.replace(~r/\D/, "")
+
+  defp working_rate(invoice, line) do
+    if invoice["supply_type"] in ~w(nil_rated exempt non_gst), do: 0, else: line_rate(line)
+  end
 
   defp line_rate(line) do
     cond do
@@ -1008,6 +1001,12 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
       number(line["cgst_rate"]) > 0 or number(line["sgst_rate"]) > 0 -> "Intrastate"
       true -> treatment(invoice, 0)
     end
+  end
+
+  defp source_tax(lines, field, effect, required?) do
+    if required? or Enum.any?(lines, &(not is_nil(&1[field]))),
+      do: signed_sum_complete(lines, field, effect),
+      else: 0.0
   end
 
   defp signed_sum_complete(lines, field, effect) do
@@ -1089,8 +1088,6 @@ defmodule Nila.Gst.Sales.WorkingsXlsx do
 
   defp state_code(value) when is_binary(value), do: String.slice(String.trim(value), 0, 2)
   defp state_code(_value), do: nil
-
-  defp humanize(nil), do: "—"
 
   defp humanize(value) do
     value

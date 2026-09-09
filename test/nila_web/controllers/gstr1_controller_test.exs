@@ -106,7 +106,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
     assert sheet =~ ~s(<c r="H6" s="97"><v>180.0</v></c>)
   end
 
-  test "downloads the accountant-facing sales working as a six-sheet XLSX", %{
+  test "downloads the accountant-facing sales working as a consolidated XLSX", %{
     conn: conn,
     client: client
   } do
@@ -125,20 +125,13 @@ defmodule NilaWeb.Gstr1ControllerTest do
     workbook = Map.fetch!(files, "xl/workbook.xml")
     strings = Map.fetch!(files, "xl/sharedStrings.xml")
 
-    for sheet <- [
-          "Summary",
-          "Sales Register",
-          "Tax Breakdown",
-          "GSTR-1 Working",
-          "HSN Working",
-          "Exclusions &amp; Corrections"
-        ] do
+    for sheet <- ["Sales", "Tax Working", "HSN"] do
       assert workbook =~ ~s(name="#{sheet}")
     end
 
     assert strings =~ "INV-001"
     assert strings =~ "Customer &amp; Co"
-    assert strings =~ "Expected IGST"
+    assert strings =~ "Calculated IGST"
   end
 
   test "downloads the frozen projection after approval", %{
