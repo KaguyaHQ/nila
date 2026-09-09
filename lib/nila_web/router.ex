@@ -149,6 +149,7 @@ defmodule NilaWeb.Router do
       live "/gst/:client_id/:period", Gst.MonthLive, :index
 
       live "/gst/:client_id/:period/sales", Gst.MonthLive, :sales_workspace
+      live "/gst/:client_id/:period/sales/invoices/:source_id", Gst.InvoiceReviewLive, :show
       live "/gst/:client_id/:period/sales/:view", Gst.MonthLive, :sales_workspace
       live "/gst/:client_id/:period/review/:lane", Gst.MonthLive, :review
       live "/gst/:client_id/:period/exceptions", Gst.ExceptionsLive, :index

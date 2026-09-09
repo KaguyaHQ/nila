@@ -34,9 +34,22 @@ defmodule NilaWeb.Layouts do
   attr :current_path, :string, default: nil, doc: "drives the active sidebar highlight"
   attr :active_client, :map, default: nil, doc: "client that owns the current work surface"
 
+  attr :workbench, :boolean,
+    default: false,
+    doc: "full-page document review without the navigation rail"
+
   slot :inner_block, required: true
 
   slot :bottom_bar, doc: "Content rendered with bottom_bar/1 over the work area"
+
+  def app(%{workbench: true} = assigns) do
+    ~H"""
+    <main id="app-shell" class="bg-canvas text-base-content h-dvh overflow-hidden">
+      {render_slot(@inner_block)}
+    </main>
+    <.flash_group flash={@flash} />
+    """
+  end
 
   def app(assigns) do
     ~H"""
@@ -144,12 +157,12 @@ defmodule NilaWeb.Layouts do
                 {render_slot(@inner_block)}
               </div>
             </main>
-             {render_slot(@bottom_bar)}
+            {render_slot(@bottom_bar)}
           </div>
         </div>
       </div>
     </div>
-     <.keyboard_shortcuts :if={@current_scope} id="workspace-shortcuts" />
+    <.keyboard_shortcuts :if={@current_scope} id="workspace-shortcuts" />
     <.flash_group flash={@flash} />
     """
   end

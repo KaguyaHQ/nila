@@ -1,5 +1,11 @@
 defmodule NilaWeb.Gst.InvoiceWorkbench do
-  @moduledoc "Period context for the shared source-invoice editor."
+  @moduledoc """
+  Month context and authorised source lookup for the dedicated invoice review page.
+
+  InvoiceReviewLive owns navigation and the full-page viewer. Batch results and
+  month lists both link there; a batch query limits the queue and sets the return
+  destination. Source batches supply editing state without owning the page.
+  """
 
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Sales.{Batch, Invoice, Months, Resolutions, Review}
@@ -26,6 +32,15 @@ defmodule NilaWeb.Gst.InvoiceWorkbench do
   # Only real, authorised source documents can open the editable workbench.
   # Historical imported workings may have no source batch.
   def path(org_id, client_id, period, source_id, scope, return_to \\ nil) do
+    if source_batch(org_id, client_id, period, source_id) do
+      params = %{scope: scope}
+      params = if return_to, do: Map.put(params, :return_to, return_to), else: params
+
+      "/gst/#{client_id}/#{period}/sales/invoices/#{URI.encode_www_form(source_id)}?#{URI.encode_query(params)}"
+    end
+  end
+
+  def source_batch(org_id, client_id, period, source_id) do
     dump =
       Dumps.list(org_id, client_id, period)
       |> Enum.find(fn dump ->
@@ -43,9 +58,7 @@ defmodule NilaWeb.Gst.InvoiceWorkbench do
         |> Enum.sort_by(& &1.id)
         |> Batch.ref()
 
-      params = %{item: source_id, period: period, scope: scope}
-      params = if return_to, do: Map.put(params, :return_to, return_to), else: params
-      "/sales-bills/#{client_id}/batch/#{batch_ref}?#{URI.encode_query(params)}"
+      %{batch_ref: batch_ref, dump: dump}
     end
   end
 
