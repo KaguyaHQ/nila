@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Source = 'D:/eval-corpus/breeze/2026-06/sales.pdf',
+    [string]$Source = 'D:/eval-corpus/sales/real/breeze-2026-06.pdf',
     [string]$Destination = 'D:/nila-demo/breeze-2026-06'
 )
 $ErrorActionPreference = 'Stop'

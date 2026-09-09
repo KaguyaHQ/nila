@@ -9,6 +9,11 @@ defmodule Nila.EvalCorpus do
   local cache (`~/.cache/nila/eval-corpus`) and verifies checksums, so any
   probe run is against exactly the bytes the manifest names.
 
+  Sales PDFs are grouped under `sales/real/` and `sales/synthetic/`.
+  Real filenames identify the client and month; synthetic filenames describe
+  the test cases. `source_type` records this distinction independently of paths.
+  Packet names remain stable identifiers; client and period remain metadata.
+
   Credentials come from `R2_EVAL_ACCESS_KEY_ID` / `R2_EVAL_SECRET_ACCESS_KEY`
   (scoped to the eval bucket only — the prod token cannot touch it, nor vice
   versa) plus the shared `R2_ENDPOINT`. See `mix nila.eval_corpus`.
@@ -57,13 +62,13 @@ defmodule Nila.EvalCorpus do
     docs = documents()
 
     docs
-    |> Enum.group_by(&(&1["client"] || "misc"))
+    |> Enum.group_by(&{&1["kind"], &1["source_type"]})
     |> Enum.sort()
-    |> Enum.each(fn {client, client_docs} ->
-      IO.puts("#{client}:")
+    |> Enum.each(fn {{kind, source_type}, kind_docs} ->
+      IO.puts("#{kind} (#{source_type}): #{length(kind_docs)} PDFs")
 
-      client_docs
-      |> Enum.sort_by(&{&1["period"] || "", &1["kind"]})
+      kind_docs
+      |> Enum.sort_by(& &1["key"])
       |> Enum.each(fn doc ->
         cache =
           if File.exists?(local_path(doc)),
@@ -80,7 +85,7 @@ defmodule Nila.EvalCorpus do
           end
 
         IO.puts(
-          "  #{doc["period"] || "-"}  #{String.pad_trailing(doc["kind"] || "?", 8)} #{String.pad_leading(to_string(doc["pages"]), 3)}p  #{cache}  #{eval}"
+          "  #{Path.basename(doc["key"])}  #{String.pad_leading(to_string(doc["pages"]), 3)}p  #{cache}  #{eval}"
         )
 
         if doc["label"], do: IO.puts("    #{doc["label"]} (#{doc["name"]})")
@@ -121,7 +126,7 @@ defmodule Nila.EvalCorpus do
     do_add!(pdf_path, client, period, kind, truth_path)
   end
 
-  @doc "Onboard a packet before its return is available: client/period/kind given explicitly."
+  @doc "Onboard a real client packet before its return is available: client/period/kind given explicitly."
   def add!(pdf_path, client, period, kind) when kind in ["sales", "purchase"] do
     Map.values(clients()) |> Enum.member?(client) ||
       raise ArgumentError,
@@ -134,7 +139,8 @@ defmodule Nila.EvalCorpus do
   end
 
   defp do_add!(pdf_path, client, period, kind, truth_path) do
-    key = "#{client}/#{period}/#{kind}.pdf"
+    directory = if kind == "sales", do: "sales/real", else: kind
+    key = "#{directory}/#{client}-#{period}.pdf"
     name = "#{client}-#{period}-#{kind}"
     bytes = File.read!(pdf_path)
     sha = sha256(bytes)
@@ -162,6 +168,7 @@ defmodule Nila.EvalCorpus do
           "client" => client,
           "period" => period,
           "kind" => kind,
+          "source_type" => "real",
           "ground_truth" => truth_dest
         }
 

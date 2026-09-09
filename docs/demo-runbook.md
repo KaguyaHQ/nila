@@ -6,7 +6,7 @@ This supersedes the Tally-first presentation in [the August PRD](demo-prd.md).
 
 ## Fixed packet
 
-- Source: `D:/eval-corpus/breeze/2026-06/sales.pdf`.
+- Source: `D:/eval-corpus/sales/real/breeze-2026-06.pdf`.
 - Presentation copy: `D:/nila-demo/breeze-2026-06/Breeze Tech - June 2026 - Sales.pdf`.
 - SHA-256: `cfb7e59ee7085f083d081c5c4e77249a45214cc503c577693907701a99d47608`.
 - Client: `BREEZE TECH - Demo`; GSTIN `33AEWPH4158J1Z3`; period `2026-06`.

@@ -8,8 +8,8 @@ in Tally and were read back through NilaConnector.Diagnostics after export.
 
 The private corpus packet `tally-caltech-2026-01-sales` concatenates eight native
 Tally PDF exports, without changing their page content. Its bytes live in the
-`nila-eval-corpus` R2 bucket at `tally/caltech/2026-01/sales-b2b-b2cs-b2cl-registered-notes.pdf`, with a local
-source copy at `D:/eval-corpus/tally/caltech/2026-01/sales-b2b-b2cs-b2cl-registered-notes.pdf`; no PDF is stored
+`nila-eval-corpus` R2 bucket at `sales/synthetic/tally-b2b-b2cs-b2cl-registered-notes.pdf`, with a local
+source copy at `D:/eval-corpus/sales/synthetic/tally-b2b-b2cs-b2cl-registered-notes.pdf`; no PDF is stored
 in Git. The registry is `eval/corpus.json`; the benchmark fetches and verifies
 the packet through `Nila.EvalCorpus`. This synthetic packet is separate from
 the real client packet `caltech-2026-01-sales`.

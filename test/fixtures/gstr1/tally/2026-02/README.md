@@ -24,7 +24,7 @@ Captured on 2026-09-05 from disposable Tally company
 or uploaded to the GST portal.
 
 Private corpus entry: `tally-caltech-2026-02-sales`, bucket `nila-eval-corpus`,
-key `tally/caltech/2026-02/unregistered-credit-debit-notes.pdf`, local mirror under `D:/eval-corpus/`.
+key `sales/synthetic/tally-unregistered-credit-debit-notes.pdf`, local mirror under `D:/eval-corpus/`.
 No PDF or full model audit belongs in Git. `manifest.json` records source and
 expected hashes and the private full-extraction archive. `extraction.json`
 contains the compact, uncorrected replay input. `review.json` contains simulated
