@@ -77,7 +77,7 @@ defmodule NilaWeb.UserResetPasswordLive do
               field={@form[:password]}
               type="password"
               label="New password"
-              minlength="12"
+              minlength="8"
               required
             />
             <.input
