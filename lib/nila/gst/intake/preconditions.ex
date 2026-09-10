@@ -57,7 +57,7 @@ defmodule Nila.Gst.Intake.Preconditions do
 
   `zero_overlap` is purchase-only because it needs a second side to compare
   against, and sales has none. The other two run on every packet: sales invoice
-  dates are parsed at extraction (`Gstr1.normalize_invoice/1`), so a sales
+  dates are parsed at extraction (`Nila.Gst.Extraction.Sales.Normalizer.normalize/1`), so a sales
   packet answers the period question in the same terms as a bill packet, and a
   sales invoice declared in two months is the same error read from the other
   side of the ledger.

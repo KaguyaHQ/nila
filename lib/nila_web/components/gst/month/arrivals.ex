@@ -9,7 +9,6 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
   attr :client, :map, required: true
   attr :period, :string, required: true
   attr :open_period, :string, required: true
-  attr :r1_signoff, :any, default: nil
   attr :gstr3b_signoff, :any, default: nil
   attr :can_sign_off, :boolean, default: false
 
@@ -36,9 +35,12 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
             <.badge :if={MapSet.member?(@superseded_2b_ids, dump.id)} variant="neutral">
               Replaced
             </.badge>
+
             <.badge :if={dump.status == "discarded"} variant="neutral">Discarded</.badge>
           </div>
+
           <.context_text tag="p">{arrived_line(dump)}</.context_text>
+
           <p
             :if={answer_line(dump)}
             id={"month-arrived-answer-#{dump.id}"}
@@ -46,6 +48,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
           >
             {answer_line(dump)}
           </p>
+
           <p :if={attention_line(dump)} id={"month-dump-#{dump.id}"} class="text-ink-muted text-ui">
             {attention_line(dump)}
           </p>
@@ -60,9 +63,12 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
             variant="outline"
             size="xs"
           >
-            <.icon name="hero-arrow-down-tray" class="size-4" />
-            {original_label(length(dump.file_keys), index)}
+            <.icon name="hero-arrow-down-tray" class="size-4" /> {original_label(
+              length(dump.file_keys),
+              index
+            )}
           </.button>
+
           <.button
             :if={dump.status == "after_filing"}
             navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@open_period}"}
@@ -72,6 +78,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
           >
             Bring into open month
           </.button>
+
           <.button
             :if={dump.status == "held" and dump_releasable?(assigns, dump)}
             id={"month-dump-release-#{dump.id}"}
@@ -82,9 +89,7 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
           >
             Rework month with it
           </.button>
-          <%!-- The only way out. A failed sales packet holds the intake
-                incomplete, and both sign-offs gate on that, so without this the
-                month could never be filed through the product at all. --%>
+          <%!-- A failed packet remains unresolved until it is retried or explicitly discarded. --%>
           <.button
             :if={dump.status == "failed" and @can_sign_off}
             id={"month-dump-abandon-#{dump.id}"}
@@ -168,6 +173,6 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
   defp file_count_label(n), do: "#{n} files"
   defp source_label("whatsapp"), do: "WhatsApp"
   defp source_label("email"), do: "email"
-  defp dump_releasable?(assigns, %{kind: "sales"}), do: is_nil(assigns.r1_signoff)
+  defp dump_releasable?(_assigns, %{kind: "sales"}), do: true
   defp dump_releasable?(assigns, _dump), do: is_nil(assigns.gstr3b_signoff)
 end

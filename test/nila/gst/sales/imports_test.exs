@@ -3,9 +3,10 @@ defmodule Nila.Gst.Sales.ImportsTest do
 
   import Nila.AccountsFixtures
 
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Clients
   alias Nila.Gst.Intake.Dumps
-  alias Nila.Gst.Sales.{Gstr1, Imports}
+  alias Nila.Gst.Sales.{Imports}
 
   test "groups one upload into a batch with its ready and review remainder" do
     %{org: org} = user_with_org_fixture()
@@ -19,7 +20,7 @@ defmodule Nila.Gst.Sales.ImportsTest do
       })
 
     ready_invoice =
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "document_type" => "invoice",
           "document_status" => "active",

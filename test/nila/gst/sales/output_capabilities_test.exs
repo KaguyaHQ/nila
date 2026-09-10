@@ -1,11 +1,14 @@
 defmodule Nila.Gst.Sales.OutputCapabilitiesTest do
   use ExUnit.Case, async: true
 
-  alias Nila.Gst.Sales.{Gstr1, Gstr1Readiness, OutputCapabilities, TallyReadiness}
+  alias Nila.Gst.Extraction.Sales.Normalizer
+  alias Nila.Gst.Sales.OutputCapabilities
+  alias Nila.Gst.Sales.Gstr1.Readiness, as: Gstr1Readiness
+  alias Nila.Gst.Sales.Tally.Readiness, as: TallyReadiness
 
   test "GSTR-1 validates special treatments while Tally retains its capability blockers" do
     invoice =
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "document" => %{"export" => true, "reverse_charge" => true},
         "data" => %{
           "invoice_number" => "EXP-1",
@@ -36,7 +39,7 @@ defmodule Nila.Gst.Sales.OutputCapabilitiesTest do
 
   test "GSTR-1 requires the original interstate sale category independently of Tally" do
     note =
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "document" => %{"credit_note" => true},
         "data" => %{
           "document_type" => "credit_note",

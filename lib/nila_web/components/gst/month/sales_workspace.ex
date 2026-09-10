@@ -5,7 +5,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
   alias Nila.Formatters
   alias Nila.Gst.Filing.{Calendar, WinmanGstr1}
-  alias Nila.Gst.Sales.{Gstr1, Invoice, Values}
+  alias Nila.Gst.Sales.{Gstr1, Invoice}
+  alias Nila.Gst.Sales.Review.Values
   alias NilaWeb.Components.Gst.Month.{Helpers, Workings}
 
   @gstr1_table_order [
@@ -31,6 +32,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :issues_by_invoice, :map, required: true
   attr :review, :any, required: true
   attr :derived, :any, default: nil
+  attr :workings, :any, required: true
   attr :readiness, :map, required: true
   attr :dumps, :list, default: []
   attr :expanded_nodes, :any, default: MapSet.new()
@@ -82,6 +84,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       >
         {render_slot(@client_actions)}
       </.period_header>
+
       <%= case @view do %>
         <% :overview -> %>
           <.overview {assigns} />
@@ -111,7 +114,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             base={@base}
             invoices={@active_invoices}
             review_ids={@review_ids}
-            derived={@derived}
+            workings={@workings}
           />
         <% :hsn -> %>
           <.detail_heading
@@ -321,8 +324,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
       <:actions>
         <div class="gap-related flex items-center">
-          <span class="text-ink-muted text-ui">{@deadline}</span>
-          {render_slot(@inner_block)}
+          <span class="text-ink-muted text-ui">{@deadline}</span> {render_slot(@inner_block)}
         </div>
       </:actions>
     </.page_header>
@@ -532,7 +534,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :invoices, :list, required: true
   attr :review_ids, :any, required: true
 
-  attr :derived, :any, required: true
+  attr :workings, :any, required: true
 
   defp gstr1_table_view(assigns) do
     key = Atom.to_string(assigns.view)
@@ -545,7 +547,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
     assigns =
       assign(assigns,
         label: label,
-        rows: invoice_rows(rows, assigns.review_ids, assigns, assigns.derived)
+        rows: invoice_rows(rows, assigns.review_ids, assigns, assigns.workings)
       )
 
     ~H"""
@@ -672,10 +674,10 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       ]
   end
 
-  defp invoice_rows(invoices, review_ids, assigns, derived \\ nil) do
+  defp invoice_rows(invoices, review_ids, assigns, workings \\ nil) do
     Enum.map(invoices, fn invoice ->
       totals =
-        if derived, do: Values.filed(invoice, derived), else: Gstr1.extracted_totals(invoice)
+        if workings, do: Values.filed(invoice, workings), else: Invoice.extracted_totals(invoice)
 
       needs_review = MapSet.member?(review_ids, invoice["id"])
 

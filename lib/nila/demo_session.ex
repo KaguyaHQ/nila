@@ -4,7 +4,10 @@ defmodule Nila.DemoSession do
 
   alias Nila.Clients.Client
   alias Nila.Gst.Intake.{Dump, ExtractionAttempt}
-  alias Nila.Gst.Sales.{Batch, InvoiceCorrection, InvoiceRemoval, Month, Resolution}
+  alias Nila.Gst.Sales.{Batch, Month}
+  alias Nila.Gst.Sales.Invoice.Correction, as: InvoiceCorrection
+  alias Nila.Gst.Sales.Invoice.Removal, as: InvoiceRemoval
+  alias Nila.Gst.Sales.Review.Resolution
   alias Nila.Repo
 
   @name "BREEZE TECH - Demo"

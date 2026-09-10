@@ -5,7 +5,36 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
 
   alias NilaWeb.Components.Gst.Month.Filing
 
-  test "keeps the Winman and Tally handoffs behind approval" do
+  test "GSTR-3B becomes signable when sales checks clear without a GSTR-1 signature" do
+    assigns = %{
+      purchase_month: %{client_id: "client", period: "2026-07", filed_at: nil},
+      sales_month: %{filed_at: nil},
+      sales_reviewable: true,
+      stats: %{need_decision: 0},
+      can_sign_off: true,
+      r1_signoff: nil,
+      gstr3b_signoff: nil,
+      sales_intake_open: false,
+      itc: nil,
+      gstr3b: nil
+    }
+
+    assert Filing.gstr3b_readiness(assigns).state == :ready
+    html = render_component(&Filing.gstr3b_primary_action/1, assigns)
+
+    assert LazyHTML.to_html(LazyHTML.query(LazyHTML.from_fragment(html), "#month-door-sign-3b")) !=
+             ""
+
+    blocked = %{assigns | sales_reviewable: false}
+    assert Filing.gstr3b_readiness(blocked).state == :blocked
+    html = render_component(&Filing.gstr3b_blocker_list/1, blocked)
+
+    assert LazyHTML.text(
+             LazyHTML.query(LazyHTML.from_fragment(html), "#gstr3b-blocker-r1-unreviewed")
+           ) =~ "Resolve the open sales checks"
+  end
+
+  test "keeps final handoffs unavailable while required issues remain" do
     assigns = %{
       sales_month: %{client_id: Ecto.UUID.generate(), period: "2026-07", filed_at: nil},
       r1_signoff: nil,
@@ -30,7 +59,7 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
            ) == ""
   end
 
-  test "offers a direct TallyPrime sales export after approval" do
+  test "offers XML and the existing sales-bills posting workflow once checks pass" do
     assigns = %{
       sales_month: %{
         client_id: Ecto.UUID.generate(),
@@ -55,8 +84,7 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
 
     export = html |> LazyHTML.from_fragment() |> LazyHTML.query("#gstr1-tally-export")
     download = LazyHTML.query(export, "#gstr1-download-tally")
-    form = LazyHTML.query(export, "#gstr1-send-tally-form")
-    button = LazyHTML.query(form, "#gstr1-send-tally")
+    link = LazyHTML.query(export, "#gstr1-open-sales-bills")
 
     assert LazyHTML.attribute(download, "href") == [
              "/gstr1/#{assigns.sales_month.client_id}/2026-07/tally.xml"
@@ -64,19 +92,14 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
 
     assert LazyHTML.text(download) =~ "Download Tally XML"
 
-    assert LazyHTML.attribute(form, "action") == [
-             "/gstr1/#{assigns.sales_month.client_id}/2026-07/tally"
-           ]
-
-    assert LazyHTML.attribute(form, "method") == ["post"]
-    assert LazyHTML.attribute(LazyHTML.query(form, "select"), "name") == ["tally[company_id]"]
-    assert LazyHTML.text(form) =~ "Nila · Accounts PC"
-    assert LazyHTML.text(button) =~ "Send to TallyPrime"
+    assert LazyHTML.attribute(link, "href") == ["/sales-bills"]
+    assert LazyHTML.text(link) =~ "Open sales bills"
+    assert LazyHTML.to_html(LazyHTML.query(export, "#gstr1-send-tally-form")) == ""
     assert LazyHTML.text(export) =~ "GL sales vouchers"
     assert LazyHTML.text(export) =~ "GST return metadata is not included"
   end
 
-  test "keeps the approved Tally XML download but hides direct write from operators" do
+  test "offers the ready Tally XML to operators" do
     assigns = %{
       sales_month: %{
         client_id: Ecto.UUID.generate(),
@@ -102,7 +125,7 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
     refute LazyHTML.text(LazyHTML.query(export, "#gstr1-send-tally")) =~ "Send to TallyPrime"
   end
 
-  test "the approved Winman handoff names the complete frozen manifest" do
+  test "the ready Winman handoff names the complete manifest" do
     assigns = %{
       sales_month: %{
         client_id: Ecto.UUID.generate(),
@@ -151,11 +174,11 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
       })
 
     assert readiness.state == :provisional
-    assert readiness.status =~ "unresolved sales packet"
+    assert readiness.status =~ "sales packet remains unresolved"
     refute readiness.status =~ "Ready for approval"
   end
 
-  test "readiness separates complete checks from the user's permission" do
+  test "readiness depends on checks without requiring senior approval" do
     common = %{
       sales_month: %{filed_at: nil},
       r1_signoff: nil,
@@ -167,8 +190,8 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
     assert Filing.gstr1_readiness(Map.put(common, :can_sign_off, true)).state == :ready
 
     awaiting = Filing.gstr1_readiness(Map.put(common, :can_sign_off, false))
-    assert awaiting.state == :awaiting_senior
-    assert awaiting.status == "Draft checks complete — awaiting a senior"
+    assert awaiting.state == :ready
+    assert awaiting.status == "Working files ready"
   end
 
   test "a provisional 3B states the current proposed ITC instead of its pre-decision ceiling" do

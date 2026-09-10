@@ -6,6 +6,8 @@ defmodule Nila.EvalTest do
   """
   use ExUnit.Case, async: true
 
+  alias Nila.Gst.Sales.Review.CorrectionPolicy
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Eval
   alias Nila.Eval.Segmentation
   alias Nila.Gst.Sales.Gstr1
@@ -20,7 +22,7 @@ defmodule Nila.EvalTest do
   describe "reviewed leg" do
     setup do
       invoice =
-        Gstr1.normalize_invoice(%{
+        Normalizer.normalize(%{
           "data" => %{
             "invoice_number" => "1",
             "invoice_date" => "04.05.2026",
@@ -48,7 +50,7 @@ defmodule Nila.EvalTest do
     } do
       # The printed total disagrees with the line sum, so the engine flags
       # `line_items`, authorizing corrections to its scalar sub-paths.
-      flagged = Gstr1.flagged_fields(invoices, Gstr1.validation_issues(invoices))
+      flagged = CorrectionPolicy.flagged_fields(invoices, Gstr1.validation_issues(invoices))
       assert MapSet.member?(flagged, {"1", "line_items"})
 
       fix = %{

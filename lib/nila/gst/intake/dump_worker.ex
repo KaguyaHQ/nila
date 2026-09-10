@@ -24,6 +24,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   """
   use Oban.Worker, queue: :documents, max_attempts: 3
 
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Clients
 
   import Ecto.Query, only: [from: 2]
@@ -319,7 +320,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
           source_id = "inv_" <> String.pad_leading(to_string(ordinal), 2, "0")
 
           artifact
-          |> Gstr1.normalize_invoice()
+          |> Normalizer.normalize()
           |> Map.put("id", namespace(dump, source_id))
           |> Map.put("image", image)
         end)
@@ -564,10 +565,9 @@ defmodule Nila.Gst.Intake.DumpWorker do
        when kind in ~w(sales filed_gstr1) and not is_nil(filed_at),
        do: :after_filing
 
-  defp wall_status(%Dump{kind: kind}, %SalesMonth{} = month)
-       when kind in ~w(sales filed_gstr1) do
-    if match?({:ok, _}, Signoffs.latest_gstr1_signoff(month.id)), do: :held, else: :open
-  end
+  defp wall_status(%Dump{kind: kind}, %SalesMonth{})
+       when kind in ~w(sales filed_gstr1),
+       do: :open
 
   defp wall_status(%Dump{}, %PurchaseMonth{filed_at: filed_at}) when not is_nil(filed_at),
     do: :after_filing
@@ -611,7 +611,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
     issues = Enum.map(workings.issues, &Map.delete(&1, "status"))
 
-    {:ok, _} =
+    {:ok, sales_month} =
       SalesMonths.upsert(%{
         org_id: dump.org_id,
         client_id: dump.client_id,
@@ -625,6 +625,10 @@ defmodule Nila.Gst.Intake.DumpWorker do
         filed_gstr1: Dumps.filed_gstr1(dump.org_id, dump.client_id, dump.period),
         summary: %{"invoice_count" => length(invoices), "issue_count" => length(issues)}
       })
+
+    if kind == "sales" do
+      Signoffs.invalidate_gstr3b_in_transaction(sales_month, dump.brought_in_by_id)
+    end
 
     :ok
   end

@@ -18,6 +18,7 @@ defmodule Nila.Eval do
   production path.
   """
 
+  alias Nila.Gst.Sales.Invoice
   alias Nila.Eval.Adjudications
   alias Nila.Eval.Gstr1Diff
   alias Nila.Eval.Report
@@ -166,7 +167,7 @@ defmodule Nila.Eval do
       "nt_num" -> invoice["invoice_number"]
       "ctin" -> invoice["buyer_gstin"]
       "nt_dt" -> invoice["invoice_date"] && to_string(invoice["invoice_date"])
-      "ntty" -> if(Gstr1.document_type(invoice) == "credit_note", do: "C", else: "D")
+      "ntty" -> if(Invoice.document_type(invoice) == "credit_note", do: "C", else: "D")
       _other -> nil
     end
   end
@@ -200,7 +201,7 @@ defmodule Nila.Eval do
   end
 
   # The product's own correction path, not a second one: `materialize/4` filters
-  # corrections to flagged fields, applies them through `Gstr1.apply_corrections/3`
+  # corrections to flagged fields, applies them through `Nila.Gst.Sales.Review.CorrectionPolicy.apply_corrections/3`
   # and re-derives. It is stricter than the retired script, which applied
   # unflagged corrections and merely reported them — silent corrections never
   # enter the month here.

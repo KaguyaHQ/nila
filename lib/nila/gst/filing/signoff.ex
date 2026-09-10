@@ -1,18 +1,12 @@
 defmodule Nila.Gst.Filing.Signoff do
   @moduledoc """
-  A senior's certification of one return artifact, stored append-only with a
-  frozen `snapshot` of the numbers as they stood at signature time. Two
-  artifacts exist because the month has two submissions with different
-  evidence and different timing: `"gstr1"` (the outward return, signed before
-  the 11th, parented on the sales month) and `"gstr3b"` (ITC + cash payable,
-  signed before the 20th, parented on the purchase month). The snapshot is
-  the point: once signed, the artifact renders from these persisted figures,
-  not from a live re-derivation — so a later engine improvement can never
-  silently change what was approved under the signature. This is the
-  BlackLine/FloQast certification-lock pattern.
+  A recorded return snapshot. Legacy `"gstr1"` records belong to a sales month;
+  `"gstr3b"` records belong to a purchase month. Normal sales preparation does
+  not create approvals or become locked by legacy GSTR-1 records.
 
-  A signature never dies as a side effect: `revoked_at`/`revoked_by` record a
-  deliberate senior reopen, and the row stays for audit.
+  Snapshots retain the figures recorded at the time. Revocation preserves the
+  row, whether it comes from an explicit reopen or changed sales inputs to an
+  unfiled GSTR-3B. Actually filed returns remain history.
   """
   use Nila.Schema
 

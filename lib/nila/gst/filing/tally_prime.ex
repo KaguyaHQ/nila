@@ -7,9 +7,9 @@ defmodule Nila.Gst.Filing.TallyPrime do
   control ledgers must already exist in TallyPrime.
   """
 
+  alias Nila.Gst.Sales.Invoice
   alias Nila.Gst.Money
   alias Nila.Gst.Purchase.Books
-  alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.StateCodes
 
   @endpoint "http://localhost:9000/"
@@ -217,7 +217,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
 
   defp voucher(invoice, _period) do
     voucher_type = voucher_type(invoice)
-    effect = Gstr1.document_effect(invoice)
+    effect = Invoice.document_effect(invoice)
     lines = List.wrap(invoice["line_items"])
     correlation_id = Ecto.UUID.generate()
 
@@ -282,7 +282,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
     end
   end
 
-  defp voucher_type(invoice), do: @voucher_types[Gstr1.document_type(invoice)]
+  defp voucher_type(invoice), do: @voucher_types[Invoice.document_type(invoice)]
 
   defp party_ledger(invoice) do
     with {:ok, default} <- default_party_ledger(invoice) do
@@ -291,7 +291,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
   end
 
   defp default_party_ledger(invoice) do
-    case Gstr1.recipient_registration(invoice) do
+    case Invoice.recipient_registration(invoice) do
       "registered" ->
         if present?(invoice["buyer_name"]),
           do: {:ok, String.trim(invoice["buyer_name"])},
@@ -379,7 +379,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
   end
 
   defp party_details(invoice) do
-    registration = Gstr1.recipient_registration(invoice)
+    registration = Invoice.recipient_registration(invoice)
     gstin = blank_to_nil(invoice["buyer_gstin"])
 
     party_state =
@@ -405,7 +405,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
   end
 
   defp party_ledger_master(invoice) do
-    with "registered" <- Gstr1.recipient_registration(invoice),
+    with "registered" <- Invoice.recipient_registration(invoice),
          {:ok, name} <- party_ledger(invoice),
          {:ok, details} <- party_details(invoice) do
       %{
@@ -624,7 +624,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
     source_identity =
       invoice["id"] ||
         Enum.join(
-          [Gstr1.document_type(invoice), invoice["invoice_date"], invoice["invoice_number"]],
+          [Invoice.document_type(invoice), invoice["invoice_date"], invoice["invoice_number"]],
           "|"
         )
 

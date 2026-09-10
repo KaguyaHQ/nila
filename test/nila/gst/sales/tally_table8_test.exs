@@ -1,14 +1,18 @@
 defmodule Nila.Gst.Sales.TallyTable8Test do
   use ExUnit.Case, async: true
+  alias Nila.Gst.Sales.Gstr1.Readiness, as: Gstr1Readiness
+  alias Nila.Gst.Extraction.Sales.Normalizer
+  alias Nila.Gst.Sales.Invoice
   alias Nila.Eval.Gstr1Diff
-  alias Nila.Gst.Sales.{Gstr1, Workings, Values, Review}
+  alias Nila.Gst.Sales.{Gstr1, Workings, Review}
+  alias Nila.Gst.Sales.Review.Values
   @root Path.expand("../../../fixtures/gstr1/tally/2026-03", __DIR__)
 
   setup do
     expected = read("native-gstr1.json")
 
     %{
-      invoices: Enum.map(read("extraction.json")["pages"], &Gstr1.normalize_invoice/1),
+      invoices: Enum.map(read("extraction.json")["pages"], &Normalizer.normalize/1),
       expected: expected,
       header: Map.take(expected, ~w(gstin fp))
     }
@@ -22,8 +26,8 @@ defmodule Nila.Gst.Sales.TallyTable8Test do
     assert hd(invoice["line_items"])["taxable_value_basis"] == "non_taxable_line_amount"
     assert hd(invoice["line_items"])["printed_taxable_value"] == nil
     assert hd(invoice["line_items"])["line_amount_tax_inclusion"] == "unknown"
-    assert Gstr1.resolve_line_amounts(invoice) == invoice
-    restored = invoice |> Map.put("supply_type", "taxable") |> Gstr1.resolve_line_amounts()
+    assert Invoice.resolve_line_amounts(invoice) == invoice
+    restored = invoice |> Map.put("supply_type", "taxable") |> Invoice.resolve_line_amounts()
     assert hd(restored["line_items"])["taxable_value"] == nil
   end
 
@@ -56,7 +60,7 @@ defmodule Nila.Gst.Sales.TallyTable8Test do
     assert Gstr1.filing_table(invoice) == nil
 
     assert Enum.any?(
-             Gstr1.blocking_issues([invoice]),
+             Gstr1Readiness.blocking_issues([invoice]),
              &(&1["code"] == "non_taxable_tax_conflict")
            )
   end

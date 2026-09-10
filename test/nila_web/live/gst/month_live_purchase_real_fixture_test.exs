@@ -39,7 +39,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
     }
   end
 
-  test "owner signs off the real worked month through both returns", %{
+  test "owner signs the real purchase month using its recorded R1 dependency", %{
     conn: conn,
     client: client,
     org: org,
@@ -83,25 +83,10 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
 
     answer_sales_issues!(sales, user.id)
 
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-
-    assert doors(view) == ["month-door-sign-r1"]
-
-    assert has_element?(
-             view,
-             "#gstr1-verdict #month-door-sign-r1.nila-button[data-variant='primary']"
-           )
-
-    refute has_element?(view, "#month-verdict #month-door-sign-r1")
-
-    view |> element("#month-door-sign-r1") |> render_click()
-
-    assert doors(view) == []
-    refute has_element?(view, "#gstr1-primary-handoff")
-    assert has_element?(view, "#month-exit-gstr1", "Approved by")
-    refute has_element?(view, "#month-3b")
-
-    view |> element("#month-workpaper-tab-gstr3b") |> render_click()
+    # The purchase flow still uses its historical R1 dependency. Sales has no
+    # approval action; seed that existing dependency through its domain API.
+    {:ok, _signoff} = Signoffs.sign_off_gstr1(sales, Nila.Accounts.Scope.for_user(user))
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=gstr3b")
 
     assert doors(view) == ["month-door-sign-3b"]
 

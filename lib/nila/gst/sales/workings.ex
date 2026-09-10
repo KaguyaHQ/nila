@@ -5,7 +5,7 @@ defmodule Nila.Gst.Sales.Workings do
   portal-shaped GSTR-1. The sales mirror of `Nila.Gst.Purchase.Workings`.
 
   The stored `invoices`/`issues`/`derived_gstr1` are machine truth and are
-  never mutated. Corrections go through the real `Gstr1.apply_corrections/3`
+  never mutated. Corrections go through the real `CorrectionPolicy.apply_corrections/3`
   (never a reimplementation). The flagged-field discipline is stricter here
   than in the eval: the eval applies a silent-error correction and reports it;
   production review refuses to apply it at all — an unflagged correction is
@@ -18,14 +18,18 @@ defmodule Nila.Gst.Sales.Workings do
   target wins (append-only store, so ordering is by insertion).
   """
 
+  alias Nila.Gst.Sales.Gstr1.Documents
+  alias Nila.Gst.Sales.Review.CorrectionPolicy
   alias Nila.Gst.Issues
   alias Nila.Gst.Replay
-  alias Nila.Gst.Sales.{Gstr1, Gstr1Readiness, Invoice, InvoiceReadiness}
+  alias Nila.Gst.Sales.{Gstr1, Invoice}
+  alias Nila.Gst.Sales.Gstr1.Readiness, as: Gstr1Readiness
+  alias Nila.Gst.Sales.Invoice.Readiness, as: InvoiceReadiness
 
   @doc """
   Applies resolutions (append-only, oldest first) to a sales month's invoices,
   returning the effective month. `resolutions` are plain maps with string keys
-  mirroring `Nila.Gst.Sales.Resolution` (`"verb"`, `"target"`, `"payload"`).
+  mirroring `Nila.Gst.Sales.Review.Resolution` (`"verb"`, `"target"`, `"payload"`).
   `header` is the `Gstr1.derive/2` second argument (production header).
 
   Returns explicit `source_invoices`, `active_invoices`, and
@@ -34,7 +38,7 @@ defmodule Nila.Gst.Sales.Workings do
   validation and derivation. Issues carry `"status"` of `"open" | "resolved"`.
   `decisions` is the effective `%{target => verb}` map, `corrections` the
   effective correction resolutions in apply order, and `flagged` the
-  `Gstr1.flagged_fields/2` set on pristine source identity.
+  `CorrectionPolicy.flagged_fields/2` set on pristine source identity.
   """
   def materialize(invoices, resolutions, header, document_issues \\ [], opts \\ [])
 
@@ -70,17 +74,19 @@ defmodule Nila.Gst.Sales.Workings do
       pristine_source_invoices
       |> InvoiceReadiness.issues(compliance)
       |> Enum.concat(Gstr1Readiness.issues(pristine_source_invoices))
-      |> Enum.concat(Gstr1.period_issues(pristine_source_invoices, period))
+      |> Enum.concat(Gstr1Readiness.period_issues(pristine_source_invoices, period))
 
-    source_flagged = Gstr1.flagged_fields(pristine_source_invoices, correction_issues)
+    source_flagged = CorrectionPolicy.flagged_fields(pristine_source_invoices, correction_issues)
 
     {legit, silent_errors} =
       corrections
       |> Enum.map(&correction_map/1)
-      |> Enum.split_with(&Gstr1.correction_allowed?(source_flagged, &1["source_id"], &1["field"]))
+      |> Enum.split_with(
+        &CorrectionPolicy.correction_allowed?(source_flagged, &1["source_id"], &1["field"])
+      )
 
     {corrected, _applied, [], _flags} =
-      Gstr1.apply_corrections(pristine_source_invoices, legit, source_flagged)
+      CorrectionPolicy.apply_corrections(pristine_source_invoices, legit, source_flagged)
 
     corrected =
       corrected
@@ -93,14 +99,14 @@ defmodule Nila.Gst.Sales.Workings do
     {printed_invoices, printed_active_invoices, _printed_copies} =
       apply_exclusions(pristine_source_invoices, exclusions)
 
-    derived = Gstr1.derive(active_invoices, header)
+    projection = Gstr1.project(active_invoices, header)
 
     raw_issues =
       active_invoices
       |> InvoiceReadiness.issues(compliance)
       |> Enum.concat(Gstr1Readiness.issues(active_invoices))
-      |> Enum.concat(Gstr1.month_validation_issues(active_invoices))
-      |> Enum.concat(Gstr1.period_issues(active_invoices, period))
+      |> Enum.concat(Documents.issues(active_invoices))
+      |> Enum.concat(Gstr1Readiness.period_issues(active_invoices, period))
       |> Enum.concat(document_issues)
       |> Issues.normalize_all()
       |> collapse_by_target()
@@ -134,7 +140,8 @@ defmodule Nila.Gst.Sales.Workings do
       printed_active_invoices: printed_active_invoices,
       duplicate_copies: duplicate_copies,
       issues: issues,
-      derived: derived,
+      derived: projection.derived,
+      contributions: projection.contributions,
       decisions: decisions,
       corrections: corrections,
       flagged: with_legacy_flag_aliases(source_flagged, pristine_source_invoices),
@@ -254,8 +261,8 @@ defmodule Nila.Gst.Sales.Workings do
   defp kind_rank(_no_work), do: 3
 
   @doc """
-  True when nothing that gates approval remains open: every `blocking` or
-  `required` issue has been answered, and `advisory`/`info` never gated.
+  True when the working has no open blocking or required issues.
+  Advisory and informational findings remain visible without holding up the work.
   """
   def reviewable?(issues) do
     Enum.all?(issues, fn issue ->

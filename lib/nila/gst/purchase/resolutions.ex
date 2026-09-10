@@ -31,7 +31,7 @@ defmodule Nila.Gst.Purchase.Resolutions do
   }
 
   alias Nila.Gst.Rates.Directory, as: RateDirectory
-  alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
+  alias Nila.Gst.Sales.Review.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Months, as: SalesMonths
 
   alias Nila.Repo
@@ -211,13 +211,8 @@ defmodule Nila.Gst.Purchase.Resolutions do
     Map.merge(Register.summary(rows, groups), Map.take(month.summary || %{}, ["document_flags"]))
   end
 
-  # The assembled 3B for the month. Outward liability comes from the client's
-  # worked sales month — a *signed* GSTR-1 supplies its frozen snapshot (the 3B
-  # must consume the return the senior approved, not a live re-derivation that
-  # may have drifted); otherwise a month with invoices reads through the sales
-  # review loop so human corrections land here. A signed nil return is also a
-  # real zero-liability source. Without either, the return is marked missing so
-  # the UI never shows cash payable against liability we do not have.
+  # Open months use the current sales working. Filed months keep their recorded
+  # return, including legacy snapshots; an old approval does not freeze an open month.
   defp gstr3b(%Month{} = month, recon, itc) do
     {source, outward} =
       case SalesMonths.get_by_period(month.org_id, month.client_id, month.period) do
@@ -231,16 +226,16 @@ defmodule Nila.Gst.Purchase.Resolutions do
   end
 
   defp gstr1_outward(sales_month) do
-    case Signoffs.latest_gstr1_signoff(sales_month.id) do
-      {:ok, signoff} ->
-        {"gstr1_signed", outward_projection(signoff.snapshot["derived"])}
+    cond do
+      not is_nil(sales_month.filed_at) ->
+        {"gstr1_filed",
+         outward_projection(SalesResolutions.effective_workings(sales_month).derived)}
 
-      {:error, :not_found} when sales_month.invoices != [] ->
+      sales_month.invoices != [] or sales_month.state == "reviewed" ->
         source = if sales_month.state == "reviewed", do: "gstr1_reviewed", else: "gstr1_derived"
-        derived = SalesResolutions.workings(sales_month).derived
-        {source, outward_projection(derived)}
+        {source, outward_projection(SalesResolutions.effective_workings(sales_month).derived)}
 
-      {:error, :not_found} ->
+      true ->
         missing_outward()
     end
   end

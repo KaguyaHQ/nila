@@ -1145,7 +1145,7 @@ body {
   background: var(--gray-a2);
 }
 
-.sales-before-approval,
+.sales-required-work,
 .sales-assurance-item {
   display: flex;
   flex-direction: column;
@@ -1153,12 +1153,12 @@ body {
   padding: 1.5rem;
 }
 
-.sales-before-approval {
+.sales-required-work {
   background: var(--warning-a3);
 }
 
 .sales-assurance-item + .sales-assurance-item,
-.sales-before-approval + .sales-assurance-item {
+.sales-required-work + .sales-assurance-item {
   border-top: 1px solid var(--gray-a5);
 }
 

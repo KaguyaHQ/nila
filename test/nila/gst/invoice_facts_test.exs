@@ -3,7 +3,7 @@ defmodule Nila.Gst.InvoiceFactsTest do
 
   alias Nila.Gst.InvoiceFacts
   alias Nila.Gst.Purchase.Reconciliation
-  alias Nila.Gst.Sales.InvoiceValidation
+  alias Nila.Gst.Sales.Invoice.Validation, as: InvoiceValidation
 
   test "canonicalizes normalized sales facts to paise and Date values" do
     projection = %{

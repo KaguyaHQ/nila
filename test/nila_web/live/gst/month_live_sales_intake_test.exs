@@ -58,27 +58,16 @@ defmodule NilaWeb.Gst.MonthLiveSalesIntakeTest do
     refute has_element?(view, "#month-dump-#{dump.id}")
   end
 
-  test "a held straggler shows on the workbench; release reworks the month", %{
+  test "a previously held sales packet can be released without reopening approval", %{
     conn: conn,
     org: org,
     client: client
   } do
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-
-    confirm_all_open_issues(view)
-    view |> element("#month-door-sign-r1") |> render_click()
-
     straggler = work_dump!(org, client, @period, "sales", "%PDF-1.4 late")
-
+    straggler |> Dump.changeset(%{status: "held"}) |> Nila.Repo.update!()
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-    assert has_element?(view, "#month-dump-#{straggler.id}")
-    refute has_element?(view, "#month-dump-release-#{straggler.id}")
-
-    view |> element("#gstr1-reopen-signoff") |> render_click()
     assert has_element?(view, "#month-dump-release-#{straggler.id}")
-
     view |> element("#month-dump-release-#{straggler.id}") |> render_click()
-
     assert [job] = all_enqueued(worker: Nila.Gst.Intake.DumpWorker)
     assert job.args["dump_id"] == straggler.id
   end
@@ -118,7 +107,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesIntakeTest do
     assert render(view) =~ "Stopped waiting for that packet"
     refute has_element?(view, "#month-dump-abandon-#{failed.id}")
 
-    assert has_element?(view, "#month-door-sign-r1")
+    assert has_element?(view, "#gstr1-primary-handoff")
 
     assert Nila.Repo.get!(Dump, failed.id).status == "discarded"
   end

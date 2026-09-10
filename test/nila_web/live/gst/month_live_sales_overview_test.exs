@@ -5,6 +5,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
   import Nila.GstFixtures
   import NilaWeb.Gst.MonthLiveSalesHelpers, only: [confirm_all_open_issues: 1]
 
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Clients
   alias Nila.Repo
   alias Nila.TallyDevices
@@ -46,7 +47,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
     assert has_element?(
              view,
              "#gstr1-required-summary",
-             "1 review case before approval"
+             "1 review case remaining"
            )
 
     refute view |> element("#gstr1-required-summary") |> render() =~ "false"
@@ -216,10 +217,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
     refute has_element?(view, "#gstr1-completeness-override-modal")
     assert has_element?(view, "#gstr1-filing-summary", "Proposed GSTR-1")
     assert has_element?(view, "#gstr1-filing-b2b", "₹86,752.00")
-    assert has_element?(view, "#gstr1-hsn-signoff", "HSN summary · Table 12")
+    assert has_element?(view, "#gstr1-hsn-summary", "HSN summary · Table 12")
     assert has_element?(view, "#gstr1-control-hsn #gstr1-workings-hsn")
     refute has_element?(view, "#gstr1-return #gstr1-workings-hsn")
-    refute has_element?(view, "#gstr1-hsn-signoff", "Difference from sales register")
+    refute has_element?(view, "#gstr1-hsn-summary", "Difference from sales register")
     assert has_element?(view, "#gstr1-document-summary", "Documents issued · Table 13")
     assert has_element?(view, "#gstr1-document-series-1-1", "20/2025-26")
     assert has_element?(view, "#gstr1-document-series-1-1", "22/2025-26")
@@ -248,7 +249,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
           %{"igst_rate" => 18, "igst_amount" => tax}
         end
 
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "document_type" => "invoice",
           "document_status" => "active",

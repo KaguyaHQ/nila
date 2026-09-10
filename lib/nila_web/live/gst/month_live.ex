@@ -13,10 +13,11 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Issues
   alias Nila.Gst.Purchase.{Groups, ItcCases, Reconciliation, Register, Resolutions, Review}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
-  alias Nila.Gst.Sales.{Account, Values}
+  alias Nila.Gst.Sales.Review.Account
+  alias Nila.Gst.Sales.Review.Values
   alias Nila.Gst.Sales.Review, as: SalesReview
   alias Nila.Gst.Sales.Months, as: SalesMonths
-  alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
+  alias Nila.Gst.Sales.Review.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias Nila.Gst.WorkQueue
   alias Nila.TallyDevices
@@ -187,7 +188,7 @@ defmodule NilaWeb.Gst.MonthLive do
       )
 
     workbench_path =
-      if is_nil(socket.assigns.r1_signoff),
+      if is_nil(month.filed_at),
         do:
           NilaWeb.Gst.InvoiceWorkbench.path(
             socket.assigns.current_scope.current_org.id,
@@ -312,27 +313,6 @@ defmodule NilaWeb.Gst.MonthLive do
 
   defp fetch_or_nil({:ok, value}), do: value
   defp fetch_or_nil({:error, :not_found}), do: nil
-
-  # Not "resolve the issues" — these cannot be resolved by a reviewer, only by
-  # the return learning the table the document belongs in. Say which document,
-  # and say the return cannot hold it.
-  defp blocked_message(codes) do
-    "This month holds " <>
-      Enum.map_join(codes, ", ", &blocked_document/1) <>
-      ", which this return cannot carry. Filing it as a regular invoice would be wrong, so it cannot be signed."
-  end
-
-  defp blocked_document("export_supply_unsupported"), do: "an export supply"
-  defp blocked_document("sez_supply_unsupported"), do: "an SEZ supply"
-  defp blocked_document("nil_rated_supply_unsupported"), do: "a nil-rated supply"
-  defp blocked_document("exempt_supply_unsupported"), do: "an exempt supply"
-  defp blocked_document("non_gst_supply_unsupported"), do: "a non-GST supply"
-  defp blocked_document("outward_reverse_charge_unsupported"), do: "a reverse-charge supply"
-  defp blocked_document("cdnur_unsupported"), do: "a note to an unregistered recipient"
-  defp blocked_document("cancelled_document_unsupported"), do: "a cancelled document"
-  defp blocked_document("amendment_document_unsupported"), do: "an amendment"
-  defp blocked_document("cess_unsupported"), do: "a cess-bearing supply"
-  defp blocked_document(code), do: code
 
   defp reload(socket) do
     %{client: client, period: period} = socket.assigns
@@ -545,20 +525,6 @@ defmodule NilaWeb.Gst.MonthLive do
   defp row_dom_id(%{"id" => id}, _index) when is_binary(id), do: "gst-row-#{id}"
   defp row_dom_id(_row, index), do: "gst-row-idx-#{index}"
 
-  defp signed_source_summary(invoices) do
-    %{
-      total: length(invoices),
-      tally: Enum.count(invoices, &("tally" in List.wrap(&1["sources"]))),
-      document: Enum.count(invoices, &("document" in List.wrap(&1["sources"]))),
-      matched:
-        Enum.count(invoices, &(Enum.sort(List.wrap(&1["sources"])) == ["document", "tally"])),
-      missing_document: 0,
-      missing_tally: 0,
-      conflicts: 0,
-      last_synced_at: nil
-    }
-  end
-
   defp assign_sales(socket, sales, workings \\ nil)
 
   defp assign_sales(socket, nil, _workings) do
@@ -587,26 +553,7 @@ defmodule NilaWeb.Gst.MonthLive do
   defp assign_sales(socket, sales, provided_workings) do
     signoff = fetch_or_nil(Signoffs.latest_gstr1_signoff(sales.id))
 
-    workings =
-      provided_workings ||
-        case signoff do
-          nil ->
-            SalesResolutions.workings(sales)
-
-          signoff ->
-            source = signoff.snapshot["invoices"]
-            active = Enum.reject(source, &Map.has_key?(&1, "duplicate_copy"))
-
-            %{
-              source_invoices: source,
-              active_invoices: active,
-              printed_active_invoices: signoff.snapshot["printed_invoices"],
-              issues: Issues.normalize_all(signoff.snapshot["issues"]),
-              flagged: MapSet.new(),
-              derived: signoff.snapshot["derived"],
-              source_summary: signed_source_summary(source)
-            }
-        end
+    workings = provided_workings || SalesResolutions.effective_workings(sales)
 
     source_invoices = workings.source_invoices
     active_invoices = workings.active_invoices
@@ -896,13 +843,7 @@ defmodule NilaWeb.Gst.MonthLive do
     do: %{label: "Needs review", variant: "warning"}
 
   defp sales_workpaper_state(%{state: :ready}),
-    do: %{label: "Ready for approval", variant: "success"}
-
-  defp sales_workpaper_state(%{state: :awaiting_senior}),
-    do: %{label: "Awaiting senior", variant: "info"}
-
-  defp sales_workpaper_state(%{state: :approved}),
-    do: %{label: "Approved", variant: "success"}
+    do: %{label: "Working files ready", variant: "success"}
 
   defp sales_workpaper_state(%{state: :filed}),
     do: %{label: "Filed", variant: "neutral"}
@@ -1226,44 +1167,6 @@ defmodule NilaWeb.Gst.MonthLive do
   def handle_event("accept_difference", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "accept_difference", "target" => target})
 
-  def handle_event("r1-sign-off", _params, socket) do
-    case Signoffs.sign_off_gstr1(socket.assigns.sales_month, socket.assigns.current_scope) do
-      {:ok, _} ->
-        {:noreply, socket |> reload() |> put_flash(:info, "GSTR-1 approved.")}
-
-      {:error, :not_allowed} ->
-        {:noreply, put_flash(socket, :error, "You don't have permission to approve.")}
-
-      {:error, :not_reviewed} ->
-        {:noreply, put_flash(socket, :error, "Open checks remain — resolve them first.")}
-
-      {:error, :already_signed} ->
-        {:noreply, put_flash(socket, :error, "This GSTR-1 is already approved.")}
-
-      {:error, :unresolved_sales_intake} ->
-        {:noreply, put_flash(socket, :error, "A supplied sales packet is still unresolved.")}
-
-      {:error, {:blocking_issues, codes}} ->
-        {:noreply, put_flash(socket, :error, blocked_message(codes))}
-    end
-  end
-
-  def handle_event("r1-reopen-signoff", _params, socket) do
-    case Signoffs.reopen(socket.assigns.r1_signoff, socket.assigns.current_scope) do
-      {:ok, _} ->
-        {:noreply,
-         socket
-         |> reload()
-         |> put_flash(:info, "Approval reopened — the month can be worked again.")}
-
-      {:error, :not_allowed} ->
-        {:noreply, put_flash(socket, :error, "You don't have permission to reopen.")}
-
-      {:error, :already_revoked} ->
-        {:noreply, reload(socket)}
-    end
-  end
-
   def handle_event("3b-sign-off", _params, socket) do
     case Signoffs.sign_off(socket.assigns.purchase_month, socket.assigns.current_scope) do
       {:ok, _} ->
@@ -1274,6 +1177,10 @@ defmodule NilaWeb.Gst.MonthLive do
 
       {:error, :already_signed} ->
         {:noreply, put_flash(socket, :error, "This month is already signed off.")}
+
+      {:error, :sales_not_reviewed} ->
+        {:noreply,
+         put_flash(socket, :error, "Resolve the open sales checks before signing the GSTR-3B.")}
 
       {:error, :not_reviewed} ->
         {:noreply,
@@ -1453,9 +1360,8 @@ defmodule NilaWeb.Gst.MonthLive do
          )
          |> ripple(old_derived)}
 
-      {:error, :signed_off} ->
-        {:noreply,
-         put_flash(socket, :error, "This GSTR-1 is signed off — a senior must reopen it first.")}
+      {:error, :filed} ->
+        {:noreply, put_flash(socket, :error, "This month has already been filed.")}
     end
   end
 
@@ -1651,6 +1557,7 @@ defmodule NilaWeb.Gst.MonthLive do
           @sales_review || %{needs_you: [], all: [], progress: %{completed: 0, open: 0, total: 0}}
         }
         derived={@derived_gstr1}
+        workings={@sales_workings}
         readiness={@gstr1_readiness}
         dumps={@sales_dumps}
         expanded_nodes={@expanded_nodes}
@@ -1672,6 +1579,7 @@ defmodule NilaWeb.Gst.MonthLive do
             />
           </.action_menu>
         </:client_actions>
+
         <:source>
           <Arrivals.source_record
             can_sign_off={@can_sign_off}
@@ -1681,7 +1589,6 @@ defmodule NilaWeb.Gst.MonthLive do
             client={@client}
             period={@period}
             open_period={@open_period}
-            r1_signoff={@r1_signoff}
             gstr3b_signoff={@gstr3b_signoff}
           />
         </:source>
@@ -1695,6 +1602,7 @@ defmodule NilaWeb.Gst.MonthLive do
         return_focus="#demo-client-actions-trigger"
       >
         <p>Clear June 2026's demo invoices, uploads and working? The client will remain.</p>
+
         <:footer>
           <.button id="demo-reset-cancel" variant="outline" phx-click="cancel-demo-reset">Cancel</.button>
           <.button
@@ -1739,7 +1647,6 @@ defmodule NilaWeb.Gst.MonthLive do
             client={@client}
             period={@period}
             open_period={@open_period}
-            r1_signoff={@r1_signoff}
             gstr3b_signoff={@gstr3b_signoff}
           />
           <Arrivals.source_record
@@ -1751,7 +1658,6 @@ defmodule NilaWeb.Gst.MonthLive do
             client={@client}
             period={@period}
             open_period={@open_period}
-            r1_signoff={@r1_signoff}
             gstr3b_signoff={@gstr3b_signoff}
           />
         </div>
@@ -1774,7 +1680,6 @@ defmodule NilaWeb.Gst.MonthLive do
                   active_invoices={@active_invoices}
                   open_issue_count={@open_issue_count}
                   account={@sales_account}
-                  r1_signoff={@r1_signoff}
                   readiness={@gstr1_readiness}
                   issues_by_invoice={@issues_by_invoice}
                   pages_read={@sales_pages_read}
@@ -1798,7 +1703,6 @@ defmodule NilaWeb.Gst.MonthLive do
                   <:primary_action>
                     <Filing.gstr1_primary_action
                       sales_month={@sales_month}
-                      r1_signoff={@r1_signoff}
                       open_issue_count={@open_issue_count}
                       reviewable={@reviewable}
                       sales_intake_open={@sales_intake_open}
@@ -1818,7 +1722,6 @@ defmodule NilaWeb.Gst.MonthLive do
                       client={@client}
                       period={@period}
                       open_period={@open_period}
-                      r1_signoff={@r1_signoff}
                       gstr3b_signoff={@gstr3b_signoff}
                     />
                   </:source>
@@ -1826,7 +1729,6 @@ defmodule NilaWeb.Gst.MonthLive do
                   <:actions>
                     <Filing.gstr1_actions
                       sales_month={@sales_month}
-                      r1_signoff={@r1_signoff}
                       open_issue_count={@open_issue_count}
                       reviewable={@reviewable}
                       sales_intake_open={@sales_intake_open}
@@ -1880,7 +1782,6 @@ defmodule NilaWeb.Gst.MonthLive do
                       client={@client}
                       period={@period}
                       open_period={@open_period}
-                      r1_signoff={@r1_signoff}
                       gstr3b_signoff={@gstr3b_signoff}
                     />
                   </:source>
@@ -1905,6 +1806,7 @@ defmodule NilaWeb.Gst.MonthLive do
                   >
                     <:primary_action>
                       <Filing.gstr3b_primary_action
+                        sales_reviewable={@reviewable}
                         purchase_month={@purchase_month}
                         sales_month={@sales_month}
                         stats={@stats}
@@ -1919,6 +1821,7 @@ defmodule NilaWeb.Gst.MonthLive do
                   </Filing.gstr3b_evidence>
 
                   <Filing.gstr3b_blocker_list
+                    sales_reviewable={@reviewable}
                     purchase_month={@purchase_month}
                     sales_month={@sales_month}
                     stats={@stats}
@@ -1953,6 +1856,7 @@ defmodule NilaWeb.Gst.MonthLive do
                     period={@period}
                   />
                   <Filing.gstr3b_actions
+                    sales_reviewable={@reviewable}
                     purchase_month={@purchase_month}
                     sales_month={@sales_month}
                     stats={@stats}
@@ -1997,7 +1901,6 @@ defmodule NilaWeb.Gst.MonthLive do
         route={@sales_review_route}
         workings={@sales_workings}
         decisions={@sales_decisions}
-        signoff={@r1_signoff}
         tally_company={sales_review_company(@tally_companies, @sales_review_route)}
       />
       <Evidence.evidence_modals

@@ -217,7 +217,7 @@ defmodule NilaWeb.Router do
       :browser,
       :authenticated_browser,
       :verified_browser,
-      :require_sign_off
+      :require_export
     ]
 
     post "/:client_id/:period/tally", Gstr1Controller, :tally_export

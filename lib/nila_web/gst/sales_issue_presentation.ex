@@ -23,7 +23,7 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
   )
 
   def for_invoice(invoice, issues) when is_map(invoice) and is_list(issues) do
-    issues = Enum.filter(issues, &Nila.Gst.Sales.TallyReadiness.relevant_invoice_issue?/1)
+    issues = Enum.filter(issues, &Nila.Gst.Sales.Tally.Readiness.relevant_invoice_issue?/1)
 
     items =
       []

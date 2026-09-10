@@ -37,14 +37,14 @@ defmodule Nila.GstFixtures do
     skip = opts |> Keyword.get(:except, []) |> List.wrap()
 
     sales_month
-    |> Nila.Gst.Sales.Resolutions.workings()
+    |> Nila.Gst.Sales.Review.Resolutions.workings()
     |> Map.fetch!(:issues)
     |> Enum.filter(
       &(&1["status"] == "open" and Nila.Gst.Issues.gating?(&1) and &1["code"] not in skip)
     )
     |> Enum.each(fn issue ->
       {:ok, _} =
-        Nila.Gst.Sales.Resolutions.record(
+        Nila.Gst.Sales.Review.Resolutions.record(
           sales_month,
           %{
             "verb" => "confirm_issue",

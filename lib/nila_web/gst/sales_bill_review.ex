@@ -3,20 +3,20 @@ defmodule NilaWeb.Gst.SalesBillReview do
   use NilaWeb, :html
   import Phoenix.LiveView
 
+  alias Nila.Gst.Sales.Invoice.Validation, as: InvoiceValidation
+  alias Nila.Gst.Sales.Gstr1.Readiness, as: Gstr1Readiness
   alias Nila.Clients
   alias Nila.Gst.Filing.TallyPrime
   alias Nila.Gst.Intake.{Dumps, DumpWorker}
   alias Nila.Gst.Money
   alias Nila.Gst.Purchase.Months, as: ClientMonths
 
-  alias Nila.Gst.Sales.{
-    Batch,
-    Gstr1,
-    Invoice,
-    InvoiceCorrections,
-    InvoiceRemovals,
-    TallyPacket
-  }
+  alias Nila.Gst.Sales.Tally.Workbench
+
+  alias Nila.Gst.Sales.{Batch, Invoice}
+  alias Nila.Gst.Sales.Invoice.Corrections, as: InvoiceCorrections
+  alias Nila.Gst.Sales.Invoice.Removals, as: InvoiceRemovals
+  alias Nila.Gst.Sales.Tally.Packet, as: TallyPacket
 
   alias Nila.{TallyDevices, TallyJobs, TallyMappings}
   alias NilaWeb.Gst.SalesIssuePresentation
@@ -283,9 +283,9 @@ defmodule NilaWeb.Gst.SalesBillReview do
   end
 
   def invoice_total_rows(invoice) do
-    checks = Gstr1.invoice_checks(invoice)
-    totals = Nila.Gst.Sales.InvoiceValidation.comparison_totals(invoice)
-    printed_totals = Nila.Gst.Sales.Values.printed(invoice)
+    checks = InvoiceValidation.checks(invoice)
+    totals = Nila.Gst.Sales.Invoice.Validation.comparison_totals(invoice)
+    printed_totals = Nila.Gst.Sales.Review.Values.printed(invoice)
 
     for {label, field, code, calculated} <- [
           {"Taxable", :taxable, "printed_taxable_mismatch", totals.taxable},
@@ -443,8 +443,8 @@ defmodule NilaWeb.Gst.SalesBillReview do
       proposal =
         Nila.Gst.Proposals.for_issue(
           issue,
-          Nila.Gst.Sales.Values.for_invoice(context.item.invoice, context.workings.derived),
-          Gstr1.invoice_checks(context.item.invoice)
+          Nila.Gst.Sales.Review.Values.for_invoice(context.item.invoice, context.workings),
+          InvoiceValidation.checks(context.item.invoice)
         )
         |> Nila.Gst.Proposals.freeze()
 
@@ -454,7 +454,7 @@ defmodule NilaWeb.Gst.SalesBillReview do
         "payload" => %{"decision" => "use_extracted_lines", "proposal" => proposal}
       }
 
-      case Nila.Gst.Sales.Resolutions.record(
+      case Nila.Gst.Sales.Review.Resolutions.record(
              context.month,
              attrs,
              socket.assigns.current_scope.user.id
@@ -970,7 +970,7 @@ defmodule NilaWeb.Gst.SalesBillReview do
       end
 
     with {:ok, %{invoice: corrected_invoice, sales_batch: batch}} <-
-           InvoiceCorrections.save_batch_workbench(
+           Workbench.save_batch_workbench(
              org_id,
              socket.assigns.client.id,
              socket.assigns.batch_ref,
@@ -1141,7 +1141,7 @@ defmodule NilaWeb.Gst.SalesBillReview do
     invoice
     |> Map.take(~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply
          printed_total_taxable printed_total_tax printed_grand_total))
-    |> Map.put("printed_total_tax", Nila.Gst.Sales.Values.printed(invoice).tax)
+    |> Map.put("printed_total_tax", Nila.Gst.Sales.Review.Values.printed(invoice).tax)
   end
 
   def tax_edit_field("cgst", :rate), do: :cgst_rate
@@ -1518,7 +1518,7 @@ defmodule NilaWeb.Gst.SalesBillReview do
   defp apply_party_posting(org_id, company_id, invoices, profile_posting) do
     {resolved, unresolved} =
       Enum.reduce(invoices, {[], []}, fn invoice, {resolved, unresolved} ->
-        if Gstr1.recipient_registration(invoice) == "registered" do
+        if Invoice.recipient_registration(invoice) == "registered" do
           case TallyMappings.resolve_party(org_id, company_id, party_identity(invoice)) do
             {:ok, %{ledger: ledger}} ->
               posting =
@@ -2266,12 +2266,12 @@ defmodule NilaWeb.Gst.SalesBillReview do
       |> Enum.flat_map(fn dump ->
         case Nila.Gst.Sales.Months.get_by_period(dump.org_id, client_id, dump.period) do
           {:ok, month} ->
-            Nila.Gst.Sales.Resolutions.workings(month).issues
+            Nila.Gst.Sales.Review.Resolutions.workings(month).issues
 
           _ ->
             packet.source_issues ++
-              Nila.Gst.Sales.Gstr1Readiness.issues(packet.all_invoices) ++
-              Gstr1.period_issues(packet.all_invoices, dump.period)
+              Nila.Gst.Sales.Gstr1.Readiness.issues(packet.all_invoices) ++
+              Gstr1Readiness.period_issues(packet.all_invoices, dump.period)
         end
       end)
       |> Enum.filter(&(Nila.Gst.Issues.gating?(&1) && &1["status"] != "resolved"))

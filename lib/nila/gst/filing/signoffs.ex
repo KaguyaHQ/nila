@@ -1,28 +1,19 @@
 defmodule Nila.Gst.Filing.Signoffs do
   @moduledoc """
-  Maker-checker certification of the month's two return artifacts. The
-  operator works the month and resolves exceptions; only an owner/admin can
-  certify. Each sign-off freezes the artifact's effective workings into a
-  persisted snapshot — signed artifacts render from the snapshot, never from
-  a live re-derivation, so the numbers under a signature cannot drift when
-  the engine improves.
+  GSTR-3B certification and retained legacy return snapshots.
 
-  Two artifacts, two signatures, matching the filing cycle: the GSTR-1 is
-  signed before it files (~11th), the GSTR-3B later (~20th) once 2B lands and
-  ITC is decided. The 3B snapshot records the sales liability it consumed, so
-  the dependency is explicit.
+  Normal sales work uses current invoice facts and resolved exceptions without
+  a separate GSTR-1 approval. Legacy GSTR-1 signatures remain available for
+  recorded filing history; an unfiled legacy signature does not freeze sales.
 
-  A signature is a wall: resolution verbs on a signed artifact are rejected.
-  The only way past it is `reopen/2` — a deliberate, logged, senior-only act
-  that revokes the signature. Reopening a GSTR-1 cascades to the dependent
-  GSTR-3B signature, because a 3B approved against a liability that is about
-  to change is no longer approved.
+  GSTR-3B signing freezes the effective return and reserves its ITC allocations.
+  A later sales change revokes an unfiled dependent signature, releases those
+  allocations, and returns the purchase month to `worked` for review. Explicit
+  senior reopening uses the same invalidation behavior.
 
-  Filing is the step after signing: `mark_filed/3` records that the signed
-  return went to the portal (who, when, optional ARN). It requires a live
-  signature — the funnel is maker → checker → filed — and a filed artifact
-  can no longer be reopened: a return on the portal is a fact; corrections
-  go through the amendment path, not by unsigning history.
+  Filing records who submitted the signed return, when, and an optional ARN.
+  Filed returns and their allocations remain history; subsequent sales work
+  does not revoke or rewrite them.
   """
 
   import Ecto.Query, only: [from: 2]
@@ -33,8 +24,7 @@ defmodule Nila.Gst.Filing.Signoffs do
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.{ItcCases, Register, Resolutions}
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
-  alias Nila.Gst.Purchase.Months, as: PurchaseMonths
-  alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
+  alias Nila.Gst.Sales.Review.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Month, as: SalesMonth
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
 
@@ -63,13 +53,17 @@ defmodule Nila.Gst.Filing.Signoffs do
 
   Returns `{:error, :not_allowed}` without the `sign_off` capability,
   `{:error, :already_signed}` when the month is not in `worked`,
-  `{:error, :not_reviewed}` while any register row is unsettled, and
+  `{:error, :not_reviewed}` while any register row is unsettled,
+  `{:error, :sales_not_reviewed}` while an existing sales month has open required checks, and
   `{:error, :unresolved_sales_intake}` while a supplied sales packet is still
   processing or needs a human decision.
   """
   def sign_off(%PurchaseMonth{} = month, scope) do
     if Policy.can?(scope, :sign_off) do
       Repo.transact(fn ->
+        # Sales mutations take this same lock before invalidating the dependent 3B.
+        sales_month = lock_sales_month(month)
+
         month =
           Repo.one!(
             from m in PurchaseMonth,
@@ -90,6 +84,7 @@ defmodule Nila.Gst.Filing.Signoffs do
             with :ok <- require_documents_attested(workings),
                  :ok <- require_settled_register(workings),
                  :ok <- require_resolved_sales_intake(month),
+                 :ok <- require_reviewable_sales(sales_month),
                  :ok <- require_nonnegative_outward_liability(workings.gstr3b),
                  :ok <- require_nonnegative_net_itc(workings.gstr3b) do
               snapshot = %{
@@ -149,7 +144,7 @@ defmodule Nila.Gst.Filing.Signoffs do
   `{:error, :unresolved_sales_intake}` while a supplied sales packet is still
   processing or needs a human decision, and
   `{:error, {:blocking_issues, codes}}` when the month holds a document the
-  return has no table for (see `Nila.Gst.Sales.Gstr1.blocking_issues/1`).
+  return has no table for (see `Nila.Gst.Sales.Gstr1.Readiness.blocking_issues/1`).
   """
   def sign_off_gstr1(%SalesMonth{} = month, scope) do
     if Policy.can?(scope, :sign_off) do
@@ -218,6 +213,24 @@ defmodule Nila.Gst.Filing.Signoffs do
       else: {:error, :documents_unattested}
   end
 
+  defp require_reviewable_sales(%SalesMonth{filed_at: nil} = sales_month) do
+    if SalesWorkings.reviewable?(SalesResolutions.workings(sales_month).issues),
+      do: :ok,
+      else: {:error, :sales_not_reviewed}
+  end
+
+  defp require_reviewable_sales(_absent_or_filed), do: :ok
+
+  defp lock_sales_month(month) do
+    Repo.one(
+      from m in SalesMonth,
+        where:
+          m.org_id == ^month.org_id and m.client_id == ^month.client_id and
+            m.period == ^month.period,
+        lock: "FOR UPDATE"
+    )
+  end
+
   defp require_resolved_sales_intake(month) do
     if Dumps.unresolved?(month.org_id, month.client_id, month.period, "sales"),
       do: {:error, :unresolved_sales_intake},
@@ -281,7 +294,7 @@ defmodule Nila.Gst.Filing.Signoffs do
 
       true ->
         Repo.transact(fn ->
-          signoff = revoke!(signoff, scope)
+          signoff = revoke!(signoff, scope.user.id)
 
           case signoff.artifact do
             "gstr1" ->
@@ -307,34 +320,42 @@ defmodule Nila.Gst.Filing.Signoffs do
   """
   def mark_filed(month, scope, arn \\ nil)
 
-  def mark_filed(%SalesMonth{} = month, scope, arn) do
-    cond do
-      month.filed_at -> {:error, :already_filed}
-      not match?({:ok, _}, latest_gstr1_signoff(month.id)) -> {:error, :not_signed}
-      true -> file!(month, SalesMonth, scope, arn)
-    end
-  end
+  def mark_filed(%SalesMonth{} = month, scope, arn),
+    do: file!(month, SalesMonth, scope, arn)
 
-  def mark_filed(%PurchaseMonth{} = month, scope, arn) do
-    cond do
-      month.filed_at -> {:error, :already_filed}
-      not match?({:ok, _}, latest_signoff(month.id)) -> {:error, :not_signed}
-      true -> file!(month, PurchaseMonth, scope, arn)
-    end
-  end
+  def mark_filed(%PurchaseMonth{} = month, scope, arn),
+    do: file!(month, PurchaseMonth, scope, arn)
 
   defp file!(month, schema, scope, arn) do
     Repo.transact(fn ->
-      filed =
-        month
-        |> schema.changeset(%{state: "filed", filing_arn: arn})
-        |> Ecto.Changeset.put_change(:filed_at, DateTime.utc_now())
-        |> Ecto.Changeset.put_change(:filed_by_id, scope.user.id)
-        |> Repo.update!()
+      lock_sales_month(month)
+      month = Repo.one!(from m in schema, where: m.id == ^month.id, lock: "FOR UPDATE")
 
-      settle_itc_allocations(filed)
-      transition_held_dumps(filed)
-      {:ok, filed}
+      signature =
+        case schema do
+          SalesMonth -> latest_gstr1_signoff(month.id)
+          PurchaseMonth -> latest_signoff(month.id)
+        end
+
+      cond do
+        month.filed_at ->
+          {:error, :already_filed}
+
+        not match?({:ok, _}, signature) ->
+          {:error, :not_signed}
+
+        true ->
+          filed =
+            month
+            |> schema.changeset(%{state: "filed", filing_arn: arn})
+            |> Ecto.Changeset.put_change(:filed_at, DateTime.utc_now())
+            |> Ecto.Changeset.put_change(:filed_by_id, scope.user.id)
+            |> Repo.update!()
+
+          settle_itc_allocations(filed)
+          transition_held_dumps(filed)
+          {:ok, filed}
+      end
     end)
   end
 
@@ -391,11 +412,11 @@ defmodule Nila.Gst.Filing.Signoffs do
     )
   end
 
-  defp revoke!(%Signoff{} = signoff, scope) do
+  defp revoke!(%Signoff{} = signoff, revoked_by_id) do
     signoff
     |> Ecto.Changeset.change(
       revoked_at: DateTime.utc_now(),
-      revoked_by_id: scope.user.id
+      revoked_by_id: revoked_by_id
     )
     |> Repo.update!()
   end
@@ -406,25 +427,38 @@ defmodule Nila.Gst.Filing.Signoffs do
     |> Repo.update!()
   end
 
-  # Reopening the outward return invalidates the 3B approved against it —
-  # unless that 3B is already on the portal: a filed return is a fact, and
-  # the discrepancy is an amendment problem, not an unsigning problem.
-  defp cascade_to_gstr3b(%Signoff{sales_month_id: sales_month_id}, scope) do
-    sales_month = Repo.get!(SalesMonth, sales_month_id)
+  @doc """
+  Invalidates an unfiled GSTR-3B after its sales inputs change.
+  Call inside the sales mutation transaction, before taking any purchase lock.
+  Filed returns and their allocations remain recorded history.
+  """
+  def invalidate_gstr3b_in_transaction(%SalesMonth{} = sales_month, changed_by_id \\ nil) do
+    unless Repo.in_transaction?(),
+      do: raise(ArgumentError, "sales invalidation requires a transaction")
 
-    with {:ok, client_month} <-
-           PurchaseMonths.get_by_period(
-             sales_month.org_id,
-             sales_month.client_id,
-             sales_month.period
-           ),
-         nil <- client_month.filed_at,
-         {:ok, gstr3b_signoff} <- latest_signoff(client_month.id) do
-      revoke!(gstr3b_signoff, scope)
-      ItcCases.release_allocations!(gstr3b_signoff)
+    lock_sales_month(sales_month)
+
+    client_month =
+      Repo.one(
+        from m in PurchaseMonth,
+          where:
+            m.org_id == ^sales_month.org_id and m.client_id == ^sales_month.client_id and
+              m.period == ^sales_month.period,
+          lock: "FOR UPDATE"
+      )
+
+    with %PurchaseMonth{filed_at: nil} <- client_month,
+         {:ok, signoff} <- latest_signoff(client_month.id) do
+      revoke!(signoff, changed_by_id)
+      ItcCases.release_allocations!(signoff)
       demote_client_month!(client_month.id)
     end
 
     :ok
+  end
+
+  defp cascade_to_gstr3b(%Signoff{sales_month_id: sales_month_id}, scope) do
+    sales_month = Repo.get!(SalesMonth, sales_month_id)
+    invalidate_gstr3b_in_transaction(sales_month, scope.user.id)
   end
 end

@@ -1,14 +1,17 @@
 defmodule Nila.Gst.Sales.TallyUnregisteredNotesTest do
   use ExUnit.Case, async: true
+  alias Nila.Gst.Sales.Gstr1.Readiness, as: Gstr1Readiness
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Eval.Gstr1Diff
-  alias Nila.Gst.Sales.{Gstr1, Workings, Values}
+  alias Nila.Gst.Sales.{Gstr1, Workings}
+  alias Nila.Gst.Sales.Review.Values
   @root Path.expand("../../../fixtures/gstr1/tally/2026-02", __DIR__)
 
   setup do
     expected = read("native-gstr1.json")
 
     %{
-      invoices: Enum.map(read("extraction.json")["pages"], &Gstr1.normalize_invoice/1),
+      invoices: Enum.map(read("extraction.json")["pages"], &Normalizer.normalize/1),
       expected: expected,
       header: Map.take(expected, ~w(gstin fp))
     }
@@ -20,7 +23,7 @@ defmodule Nila.Gst.Sales.TallyUnregisteredNotesTest do
     assert Gstr1.filing_table(source) == nil
 
     assert Enum.any?(
-             Gstr1.blocking_issues([source]),
+             Gstr1Readiness.blocking_issues([source]),
              &(&1["code"] == "missing_original_sale_category")
            )
 

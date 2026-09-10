@@ -74,7 +74,7 @@ defmodule Nila.Gst.Sales.ReviewTest do
 
   test "treatment_snapshot freezes the derived category, place, heads, and amounts" do
     [invoice | _] = workings().active_invoices
-    snapshot = Review.treatment_snapshot(invoice, workings().derived)
+    snapshot = Review.treatment_snapshot(invoice, workings())
 
     assert snapshot == %{
              "source_id" => "source-c",
@@ -127,7 +127,19 @@ defmodule Nila.Gst.Sales.ReviewTest do
       ]
     }
 
-    snapshot = Review.treatment_snapshot(note, derived)
+    [entry] = hd(derived["cdnr"])["nt"]
+
+    projection = %{
+      contributions: %{
+        note["id"] => %{
+          table: "cdnr",
+          entry: entry,
+          effect: if(note["document_type"] == "credit_note", do: -1, else: 1)
+        }
+      }
+    }
+
+    snapshot = Review.treatment_snapshot(note, projection)
 
     assert snapshot["table"] == "cdnr"
     assert snapshot["category"] == "C"
@@ -178,7 +190,19 @@ defmodule Nila.Gst.Sales.ReviewTest do
       ]
     }
 
-    snapshot = Review.treatment_snapshot(note, derived)
+    [entry] = hd(derived["cdnr"])["nt"]
+
+    projection = %{
+      contributions: %{
+        note["id"] => %{
+          table: "cdnr",
+          entry: entry,
+          effect: if(note["document_type"] == "credit_note", do: -1, else: 1)
+        }
+      }
+    }
+
+    snapshot = Review.treatment_snapshot(note, projection)
 
     assert snapshot["table"] == "cdnr"
     assert snapshot["category"] == "D"
@@ -198,6 +222,11 @@ defmodule Nila.Gst.Sales.ReviewTest do
 
     %{
       active_invoices: invoices,
+      contributions: %{
+        "source-a" => %{table: "b2b", entry: treatment("10/2025-26", 1_000), effect: 1},
+        "source-b" => %{table: "b2b", entry: treatment("20/2025-26", 2_000), effect: 1},
+        "source-c" => %{table: "b2b", entry: treatment("30/2025-26", 3_000), effect: 1}
+      },
       issues: [
         issue("source-a", "printed_tax_mismatch", "open"),
         issue("source-a", "furniture_row_with_values", "open"),

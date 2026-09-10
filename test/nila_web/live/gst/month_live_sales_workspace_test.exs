@@ -4,6 +4,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
   import Phoenix.LiveViewTest
   import Nila.GstFixtures
 
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Clients
 
   @period "2025-10"
@@ -217,7 +218,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
     alias Nila.Gst.Sales.{Gstr1, Months, Workings}
     root = "test/fixtures/gstr1/tally/2026-06"
     read = fn name -> root |> Path.join(name) |> File.read!() |> Jason.decode!() end
-    invoices = Enum.map(read.("extraction.json")["pages"], &Gstr1.normalize_invoice/1)
+    invoices = Enum.map(read.("extraction.json")["pages"], &Normalizer.normalize/1)
 
     result =
       Workings.materialize(

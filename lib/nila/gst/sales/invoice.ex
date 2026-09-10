@@ -9,6 +9,43 @@ defmodule Nila.Gst.Sales.Invoice do
 
   alias Nila.Gst.Extraction.LineAmounts
   alias Nila.Gst.Money
+  alias Nila.Gst.StateCodes
+
+  @correctable_line_fields ~w(
+    item_name description hsn_sac quantity uom printed_unit_price printed_line_amount
+    printed_line_total printed_taxable_value line_amount_tax_inclusion taxable_value
+    cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount
+  )
+
+  @doc "Line fields that an accountant may correct in a source invoice."
+  def correctable_line_fields, do: @correctable_line_fields
+
+  @doc "The canonical source-document classification used by filing and accounting."
+  def document_type(invoice), do: invoice["document_type"] || "invoice"
+
+  @doc "Recipient registration with backward-compatible inference for stored registered invoices."
+  def recipient_registration(invoice) do
+    invoice["recipient_registration"] ||
+      if(is_nil(blank_to_nil(invoice["buyer_gstin"])), do: "unknown", else: "registered")
+  end
+
+  @doc "The source document's number, retained in the legacy invoice-number storage key."
+  def document_number(invoice), do: invoice["invoice_number"]
+
+  @doc "The source document's date, retained in the legacy invoice-date storage key."
+  def document_date(invoice), do: invoice["invoice_date"]
+
+  @doc "The direction this source document contributes to outward liability."
+  def document_effect(invoice) do
+    if document_type(invoice) == "credit_note", do: -1, else: 1
+  end
+
+  def document_status(invoice), do: invoice["document_status"] || "active"
+
+  def supply_type(invoice) do
+    invoice["supply_type"] ||
+      if(get_in(invoice, ["document", "export"]), do: "export", else: "taxable")
+  end
 
   def zero_rated?(invoice) do
     supply = invoice["supply_type"] || if((invoice["document"] || %{})["export"], do: "export")
@@ -67,18 +104,133 @@ defmodule Nila.Gst.Sales.Invoice do
     end
   end
 
-  @doc "Writes a scalar invoice field, including `line_items[index].field` paths."
-  def put_field(invoice, field_path, value) do
-    case parse_field_path(field_path) do
+  @doc "Applies a review correction and updates the facts and evidence affected by it."
+  def apply_correction(invoice, field, value) do
+    case parse_field_path(field) do
       {:line, index, line_field} ->
-        Map.update!(invoice, "line_items", fn lines ->
-          List.update_at(lines, index, &Map.put(&1, line_field, value))
+        invoice
+        |> update_in(["line_items", Access.at(index)], fn line ->
+          line = line || %{}
+
+          line =
+            if line_field == "line_amount_tax_inclusion" do
+              line
+              |> Map.put_new(
+                "line_amount_tax_inclusion_candidate",
+                line["line_amount_tax_inclusion"] || "unknown"
+              )
+              |> Map.put("line_amount_tax_inclusion_basis", "corrected")
+            else
+              line
+            end
+
+          line
+          |> Map.put(line_field, value)
+          |> update_corrected_taxable(line_field)
         end)
+        |> clear_verification_failure(field)
+
+      {:invoice, "buyer_gstin"} ->
+        corrected =
+          case blank_to_nil(value) do
+            nil ->
+              Map.put(invoice, "buyer_gstin", nil)
+
+            gstin ->
+              invoice
+              |> Map.put("buyer_gstin", gstin)
+              |> Map.put("recipient_registration", "registered")
+          end
+
+        clear_verification_failure(corrected, "buyer_gstin")
+
+      {:invoice, "place_of_supply"} ->
+        Map.put(invoice, "place_of_supply", normalize_place_of_supply(value))
+
+      {:invoice, "recipient_registration"} ->
+        Map.put(invoice, "recipient_registration", normalize_recipient_registration(value))
+
+      {:invoice, "document_status"} ->
+        Map.put(invoice, "document_status", normalize_document_status(value))
+
+      {:invoice, "supply_type"} ->
+        supply = normalize_supply_type(value, invoice["document"] || %{})
+
+        invoice
+        |> Map.put("supply_type", supply)
+        |> Map.update("document", %{"export" => supply in ~w(export sez)}, fn document ->
+          Map.put(document || %{}, "export", supply in ~w(export sez))
+        end)
+        |> resolve_line_amounts()
 
       {:invoice, field} ->
-        Map.put(invoice, field, value)
+        invoice
+        |> Map.put(field, value)
+        |> clear_verification_failure(field)
     end
   end
+
+  defp clear_verification_failure(%{"verification" => verification} = invoice, field)
+       when is_map(verification) do
+    update_in(invoice, ["verification", "failed_checks"], fn checks ->
+      checks
+      |> List.wrap()
+      |> Enum.reject(&(verification_field(&1) == field))
+    end)
+  end
+
+  defp clear_verification_failure(invoice, _field), do: invoice
+
+  defp update_corrected_taxable(line, "taxable_value"),
+    do: Map.put(line, "taxable_value_basis", "corrected")
+
+  defp update_corrected_taxable(line, field)
+       when field in ~w(printed_line_amount printed_line_total printed_taxable_value line_amount_tax_inclusion cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount) do
+    resolve_line_amount(line)
+  end
+
+  defp update_corrected_taxable(line, _field), do: line
+
+  defp normalize_recipient_registration(status)
+       when status in ~w(registered unregistered unknown), do: status
+
+  defp normalize_recipient_registration(_status), do: "unknown"
+
+  defp normalize_place_of_supply(nil), do: nil
+
+  defp normalize_place_of_supply(value) do
+    value = value |> to_string() |> String.trim()
+
+    StateCodes.normalize_code(value) ||
+      Enum.find_value(StateCodes.all(), fn name ->
+        if String.downcase(name) == String.downcase(value), do: StateCodes.code_for(name)
+      end) || blank_to_nil(value)
+  end
+
+  defp normalize_document_status(status) when status in ~w(active cancelled amendment unknown),
+    do: status
+
+  defp normalize_document_status(nil), do: "active"
+  defp normalize_document_status(_status), do: "unknown"
+
+  defp normalize_supply_type(status, _document)
+       when status in ~w(taxable nil_rated exempt non_gst export sez unknown),
+       do: status
+
+  defp normalize_supply_type(nil, %{"export" => true}), do: "export"
+  defp normalize_supply_type(nil, _document), do: "taxable"
+  defp normalize_supply_type(_status, _document), do: "unknown"
+
+  defp blank_to_nil(nil), do: nil
+
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp blank_to_nil(value), do: value
 
   @doc "Coerces correction text for numeric fields accepted by the review UI."
   def coerce_correction(field_path, text) do

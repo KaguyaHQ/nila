@@ -9,7 +9,7 @@ defmodule Nila.Gst.WorkQueueTest do
   alias Nila.Gst.Filing.{Calendar, Signoffs}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Gst.Sales.Months, as: SalesMonths
-  alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
+  alias Nila.Gst.Sales.Review.Resolutions, as: SalesResolutions
   alias Nila.Gst.WorkQueue, as: Today
 
   @period "2025-10"
@@ -164,7 +164,7 @@ defmodule Nila.Gst.WorkQueueTest do
 
     {:ok, sales_month} = SalesMonths.get_by_period(org.id, client.id, @period)
     {:ok, _} = Signoffs.sign_off_gstr1(sales_month, scope)
-    assert row_for(org, client).section == :to_file
+    assert row_for(org, client).section == :waiting_on_senior
 
     {:ok, sales_month} = SalesMonths.get_by_period(org.id, client.id, @period)
     {:ok, _} = Signoffs.mark_filed(sales_month, scope, nil)

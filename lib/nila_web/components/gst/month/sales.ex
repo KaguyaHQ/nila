@@ -3,9 +3,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
   @moduledoc "The Sales and GSTR-1 workpaper."
 
+  alias Nila.Gst.Sales.Invoice
   alias Nila.Gst.Issues
   alias Nila.Gst.Sales.Gstr1
-  alias Nila.Gst.Sales.Values
+  alias Nila.Gst.Sales.Review.Values
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias NilaWeb.Components.Gst.Month.Helpers
   alias NilaWeb.Components.Gst.Month.Workings
@@ -22,7 +23,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   attr :active_invoices, :list, required: true
   attr :open_issue_count, :integer, required: true
   attr :account, :map, required: true
-  attr :r1_signoff, :any, default: nil
   attr :readiness, :map, required: true
   attr :issues_by_invoice, :map, required: true
   attr :pages_read, :integer, default: nil
@@ -108,26 +108,30 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           <div class="sales-verdict-heading">
             <div class="space-y-related min-w-0">
               <p class="text-ink-subtle text-label font-semibold uppercase">Sales return</p>
+
               <h2 class="text-base-content text-h4 font-semibold">
-                {track_title(@sales_month, @r1_signoff)}
+                {track_title(@sales_month)}
               </h2>
             </div>
+
             <div class="flex flex-wrap items-center gap-2">{render_slot(@primary_action)}</div>
           </div>
 
           <div class="sales-verdict-figure">
             <p class="text-ink-subtle text-label font-semibold uppercase">
-              {output_tax_label(@sales_month, @r1_signoff)}
+              {output_tax_label(@sales_month)}
             </p>
+
             <p
               id="gstr1-draft-output-tax"
               class="font-display text-base-content text-h3 font-normal tabular-nums"
             >
               {Helpers.rupees(@account.draft.totals.tax)}
             </p>
+
             <p id="gstr1-draft-position" class="text-body text-ink-muted tabular-nums">
               <span id="gstr1-draft-invoices" class="text-base-content font-medium">
-                {document_position_label(@active_invoices, @sales_month, @r1_signoff)}
+                {document_position_label(@active_invoices, @sales_month)}
               </span>
               <span aria-hidden="true"> · </span>
               <span id="gstr1-draft-taxable">
@@ -146,27 +150,30 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
         <section id="gstr1-assurance" class="sales-assurance">
           <div
-            :if={is_nil(@r1_signoff) and @account.issues.required_count > 0}
-            class="sales-before-approval"
+            :if={is_nil(@sales_month.filed_at) and @account.issues.required_count > 0}
+            class="sales-required-work"
           >
-            <p class="text-ink-subtle text-label font-semibold uppercase">Before approval</p>
+            <p class="text-ink-subtle text-label font-semibold uppercase">Needs your review</p>
+
             <p id="gstr1-required-summary" class="text-base-content text-body font-semibold">
               {review_summary(
                 length(@grouped_cases),
                 @standalone_blocker_count,
                 length(@standalone_issues) - @standalone_blocker_count
-              )} before approval
+              )} remaining
             </p>
           </div>
 
           <div class="sales-assurance-item">
             <p class="text-ink-subtle text-label font-semibold uppercase">Machine review</p>
+
             <p class="text-base-content text-ui font-semibold">
               {length(@active_invoices)} processed · {length(@review.needs_you)} {plural(
                 length(@review.needs_you),
                 "review case"
               )}
             </p>
+
             <p class="text-ink-muted text-ui">
               Checks find questions; they do not prove every invoice correct.
             </p>
@@ -174,9 +181,11 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
           <div class="sales-assurance-item">
             <p class="text-ink-subtle text-label font-semibold uppercase">Human assurance</p>
+
             <p id="gstr1-human-assurance-count" class="text-base-content text-ui font-semibold">
               {@assured_invoice_count} of {length(@invoices)} invoices have a recorded human action
             </p>
+
             <p id="gstr1-human-assurance-open" class="text-ink-muted text-ui">
               {@unassured_invoice_count} have no recorded human review. Non-invoice actions do not count toward coverage.
             </p>
@@ -191,8 +200,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       >
         <div class="space-y-0.5">
           <p class="text-base-content text-ui font-semibold">{@change.title}</p>
+
           <p class="text-body text-ink-muted">{@change.body}</p>
         </div>
+
         <button
           type="button"
           phx-click="dismiss-sales-change"
@@ -202,9 +213,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           <.icon name="hero-x-mark" class="size-4" />
         </button>
       </aside>
-
       <Workpaper.section_nav links={@section_links} />
-
       <section
         :if={@grouped_cases != [] or @standalone_issues != []}
         id="gstr1-checks-before-filing"
@@ -213,10 +222,12 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div class="space-y-related">
             <h3 class="text-base-content text-h4 font-semibold">Required review</h3>
+
             <p class="text-ink-muted text-ui">
               Only work that can block or change the proposed return.
             </p>
           </div>
+
           <.button
             :if={@first_review_invoice}
             id="gstr1-review-required"
@@ -248,11 +259,14 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               <p class="text-base-content text-body font-semibold wrap-break-word">
                 Invoice {review_case.invoice_number}
               </p>
+
               <p class="text-body text-ink-muted">{review_case.reason}</p>
+
               <p :if={review_case.effect} class="text-ink-subtle text-ui tabular-nums">
                 {review_case.effect}
               </p>
             </div>
+
             <.button
               variant="outline"
               size="xs"
@@ -285,13 +299,16 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               >
                 Invoice {issue["invoice"]}
               </p>
+
               <div data-role="issue-context" class="flex flex-wrap items-center gap-2">
                 <.badge variant={Helpers.severity_variant(issue["level"])}>
                   {issue_label(issue["code"])}
                 </.badge>
+
                 <p class="text-body text-ink-muted">{issue["message"]}</p>
               </div>
             </div>
+
             <.button
               :if={
                 is_binary(issue["hsn_code"]) and
@@ -305,6 +322,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             >
               Review HSN rows
             </.button>
+
             <.button
               :if={
                 is_binary(issue["hsn_code"]) and
@@ -318,6 +336,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             >
               Confirm from records
             </.button>
+
             <.button
               :if={
                 is_binary(issue["hsn_code"]) and
@@ -338,6 +357,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             >
               Review invoice
             </.button>
+
             <.button
               :if={!is_binary(issue["hsn_code"]) and issue["code"] == "duplicate_invoice_number"}
               variant="outline"
@@ -347,6 +367,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             >
               Review copies
             </.button>
+
             <.button
               :if={!is_binary(issue["hsn_code"]) and is_binary(issue["source_id"])}
               variant="outline"
@@ -363,6 +384,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             >
               Review
             </.button>
+
             <.button
               :if={
                 !is_binary(issue["hsn_code"]) and is_nil(issue["source_id"]) and
@@ -382,6 +404,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <section id="gstr1-return-controls" class="space-y-block scroll-mt-28">
         <div>
           <h3 class="text-base-content text-h4 font-semibold">Return controls</h3>
+
           <p class="text-ink-muted text-ui">
             Open a schedule when you need its figures or source population.
           </p>
@@ -403,13 +426,16 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                   )} {value_label(@derived)} · {Helpers.rupees(@account.draft.totals.tax)} tax
                   <span :if={@required_issues != []}> · blockers disclosed above</span>
                 </:detail>
+
                 <:status>
                   <.badge variant="neutral">Derived</.badge>
                 </:status>
               </.fold_summary>
             </:summary>
+
             <div class="space-y-related pb-4">
               <h4 class="text-base-content text-body font-semibold">{@readiness.title}</h4>
+
               <.data_table
                 id="gstr1-filing-summary-rows"
                 rows={filing_summary_rows(@derived, @active_invoices)}
@@ -420,12 +446,17 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                 <:col :let={row} label="Section" row_header>
                   <span class="text-base-content font-medium">{row.label}</span>
                 </:col>
+
                 <:col :let={row} label="Invoices / notes" align="right">{row.documents}</:col>
+
                 <:col :let={row} label={String.capitalize(value_label(@derived))} align="right">
                   {Helpers.rupees(row.taxable)}
                 </:col>
+
                 <:col :let={row} label="IGST" align="right">{Helpers.rupees(row.igst)}</:col>
+
                 <:col :let={row} label="CGST" align="right">{Helpers.rupees(row.cgst)}</:col>
+
                 <:col :let={row} label="SGST" align="right">{Helpers.rupees(row.sgst)}</:col>
               </.data_table>
             </div>
@@ -444,14 +475,17 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                   {length(@hsn_summary)} combinations · {Helpers.rupees(@hsn_totals.tax)} tax
                   <span :if={@novelty}> · {@novelty.count} codes new</span>
                 </:detail>
+
                 <:status>
                   <.badge variant={@hsn_control.variant}>{@hsn_control.label}</.badge>
                 </:status>
               </.fold_summary>
             </:summary>
-            <section id="gstr1-hsn-signoff" class="space-y-block pb-4">
+
+            <section id="gstr1-hsn-summary" class="space-y-block pb-4">
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <h4 class="text-base-content text-body font-semibold">HSN summary · Table 12</h4>
+
                 <.link
                   :if={@hsn_issues != []}
                   href="#gstr1-checks-before-filing"
@@ -460,9 +494,11 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                   {length(@hsn_issues)} HSN {plural(length(@hsn_issues), "check")} in required work
                 </.link>
               </div>
+
               <p :if={@novelty} id="gstr1-hsn-new-codes" class="text-ink-muted text-ui font-medium">
                 {@novelty.count} of {length(@hsn_summary)} codes are new for this client
               </p>
+
               <Workings.hsn_summary
                 derived={@derived}
                 invoices={@active_invoices}
@@ -484,13 +520,16 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             <:summary>
               <.fold_summary title="Extracted document sequence">
                 <:detail>{@document_control.copy}</:detail>
+
                 <:status>
                   <.badge variant={@document_control.variant}>{@document_control.label}</.badge>
                 </:status>
               </.fold_summary>
             </:summary>
+
             <section id="gstr1-document-summary" class="space-y-related pb-4">
               <h4 class="text-base-content text-body font-semibold">Documents issued · Table 13</h4>
+
               <.data_table
                 id="gstr1-document-summary-rows"
                 rows={@document_summary_rows}
@@ -501,10 +540,15 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                 <:col :let={row} label="Document kind" row_header>
                   <span class="text-base-content font-medium">{row.kind}</span>
                 </:col>
+
                 <:col :let={row} label="From"><span class="font-mono">{row.from}</span></:col>
+
                 <:col :let={row} label="To"><span class="font-mono">{row.to}</span></:col>
+
                 <:col :let={row} label="Total" align="right">{row.total}</:col>
+
                 <:col :let={row} label="Cancelled" align="right">{row.cancelled}</:col>
+
                 <:col :let={row} label="Net issued" align="right">{row.net_issued}</:col>
               </.data_table>
             </section>
@@ -516,9 +560,11 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
         <div class="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h3 class="text-base-content text-h4 font-semibold">Sales register</h3>
+
             <p class="text-ink-muted text-ui">
               {length(@register_rows)} of {length(@invoices)} documents shown
             </p>
+
             <p :if={@source_summary && @source_summary.tally > 0} class="text-ink-subtle text-ui">
               {@source_summary.tally} from Tally · {@source_summary.matched} matched to documents · {@source_summary.missing_document} missing documents · {@source_summary.missing_tally} not in Tally
               <span :if={@source_summary.last_synced_at}>
@@ -526,6 +572,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               </span>
             </p>
           </div>
+
           <.button
             :if={@first_review_invoice}
             id="gstr1-register-review-next"
@@ -551,6 +598,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               placeholder="Invoice, buyer or GSTIN"
             />
           </.form>
+
           <.segmented_control
             id="gstr1-register-filters"
             items={[
@@ -581,12 +629,13 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
 
       <section :if={@derived} id="gstr1-return" class="space-y-block scroll-mt-28">
         <h3 class="text-base-content text-h4 font-semibold">Return workings</h3>
+
         <Workings.workings_body
           derived={@derived}
           invoices={@active_invoices}
           diff={@diff}
           accepted={@accepted_diffs}
-          locked={not is_nil(@r1_signoff)}
+          locked={not is_nil(@sales_month.filed_at)}
           rippled={@rippled}
           ripple_seq={@ripple_seq}
           expanded={@expanded_nodes}
@@ -597,6 +646,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       <section id="gstr1-source-documents" class="space-y-block scroll-mt-28">
         <div>
           <h3 class="text-base-content text-h4 font-semibold">Evidence and history</h3>
+
           <p class="text-ink-muted text-ui">
             Source packets and attributed actions behind the effective register.
           </p>
@@ -614,6 +664,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
             <div>
               <p class="text-base-content text-ui font-medium">{action_label(action)}</p>
             </div>
+
             <.context_text tag="p">
               {(action.decided_by && action.decided_by.name) || "Unknown reviewer"} · {format_display_datetime(
                 action.inserted_at
@@ -622,7 +673,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           </div>
         </div>
       </section>
-
       {render_slot(@actions)}
     </section>
     """
@@ -679,41 +729,52 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
           {invoice["invoice_number"] || "—"}
         </span>
       </:col>
+
       <:col :let={invoice} label="Date">
         <span class="whitespace-nowrap tabular-nums">{format_display_date(invoice["invoice_date"])}</span>
       </:col>
+
       <:col :let={invoice} label="Source">
         <span class="text-ink-muted whitespace-nowrap">{source_label(invoice)}</span>
       </:col>
+
       <:col :let={invoice} label="Buyer">
         <span class="block max-w-64 truncate" title={invoice["buyer_name"]}>{invoice["buyer_name"] ||
           "—"}</span>
       </:col>
+
       <:col :let={invoice} label="Recipient">
         <span class="text-ink-muted font-mono whitespace-nowrap">
           {invoice["buyer_gstin"] || registration_label(invoice)}
         </span>
       </:col>
+
       <:col :let={invoice} label="POS">
         <span class="text-ink-muted font-mono whitespace-nowrap">{invoice["place_of_supply"] || "—"}</span>
       </:col>
+
       <:col :let={invoice} label="Taxable" align="right">
-        {Helpers.rupees(Gstr1.extracted_totals(invoice).taxable)}
+        {Helpers.rupees(Invoice.extracted_totals(invoice).taxable)}
       </:col>
+
       <:col :let={invoice} label="Extracted GST" align="right">
-        {Helpers.rupees(Gstr1.extracted_totals(invoice).tax)}
+        {Helpers.rupees(Invoice.extracted_totals(invoice).tax)}
       </:col>
+
       <:col :let={invoice} label="Machine state">
         <.badge variant={machine_state(@issues_by_invoice, invoice).variant}>
           {machine_state(@issues_by_invoice, invoice).label}
         </.badge>
       </:col>
+
       <:col :let={invoice} label="Human action">
         <span class="text-ink-muted text-ui">{human_state(@issues_by_invoice, @decisions, invoice)}</span>
       </:col>
+
       <:col label="" align="right">
         <.icon name="hero-chevron-right-mini" class="text-ink-faint size-4" />
       </:col>
+
       <:empty>No sales documents match these filters.</:empty>
     </.data_table>
     """
@@ -930,17 +991,16 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
     "gstr1-inv-#{identity}"
   end
 
-  defp track_title(%{filed_at: filed_at}, %{}) when not is_nil(filed_at), do: "GSTR-1 filed"
-  defp track_title(_sales_month, %{}), do: "GSTR-1 approved"
-  defp track_title(_sales_month, _signoff), do: "GSTR-1 draft"
+  defp track_title(%{filed_at: filed_at}) when not is_nil(filed_at), do: "GSTR-1 filed"
+  defp track_title(_sales_month), do: "GSTR-1 draft"
 
-  defp output_tax_label(_sales_month, %{}), do: "Approved output tax"
-  defp output_tax_label(_sales_month, _signoff), do: "Proposed output tax"
+  defp output_tax_label(%{filed_at: filed_at}) when not is_nil(filed_at), do: "Filed output tax"
+  defp output_tax_label(_sales_month), do: "Proposed output tax"
 
-  defp document_position_label(invoices, _sales_month, %{}),
-    do: document_mix_label(invoices) <> " in approved return"
+  defp document_position_label(invoices, %{filed_at: filed_at}) when not is_nil(filed_at),
+    do: document_mix_label(invoices) <> " in filed return"
 
-  defp document_position_label(invoices, _sales_month, _signoff),
+  defp document_position_label(invoices, _sales_month),
     do: document_mix_label(invoices) <> " in draft"
 
   defp filing_summary_rows(derived, invoices) do
@@ -1038,7 +1098,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp document_kind(number), do: "Document type #{number}"
 
   defp document_mix_label(invoices) do
-    counts = Enum.frequencies_by(invoices, &Gstr1.document_type/1)
+    counts = Enum.frequencies_by(invoices, &Invoice.document_type/1)
 
     [
       count_label(counts["invoice"] || 0, "invoice"),
@@ -1097,7 +1157,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   end
 
   defp registration_label(invoice) do
-    case Gstr1.recipient_registration(invoice) do
+    case Invoice.recipient_registration(invoice) do
       "unregistered" -> "Unregistered"
       "unknown" -> "Registration unknown"
       _registered -> "—"

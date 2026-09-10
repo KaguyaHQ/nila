@@ -14,7 +14,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Gst.Purchase.Resolutions
   alias Nila.Gst.Sales.Months, as: SalesMonths
-  alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
+  alias Nila.Gst.Sales.Review.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias Nila.Storage
 
@@ -203,7 +203,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     assert Enum.all?(duplicate_groups, &(length(Enum.uniq(&1["source_ids"])) == 2))
   end
 
-  test "a sales dump on a signed GSTR-1 is held; release derives it in", %{
+  test "a legacy sales approval does not hold newly arriving invoices", %{
     org: org,
     user: user,
     client: client,
@@ -212,25 +212,58 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     assert :ok = run(bring_in(org, client, user, "sales", "%PDF-1.4 fake"))
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
 
-    {_reviewed, signoff} = sign_sales(month, user, scope)
+    {_reviewed, _signoff} = sign_sales(month, user, scope)
 
     straggler = bring_in(org, client, user, "sales", "%PDF-1.4 late")
     assert :ok = run(straggler)
 
     {:ok, straggler} = Dumps.fetch(org.id, straggler.id)
-    assert straggler.status == "held"
-
-    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
-    assert length(month.invoices) == 3
-
-    # Senior reopens; the released dump derives in.
-    {:ok, _} = Signoffs.reopen(signoff, scope)
-    released = Dumps.release(straggler)
-    assert :ok = run(released)
+    assert straggler.status == "extracted"
 
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
     assert length(month.invoices) == 6
     assert month.state == "worked"
+  end
+
+  test "new sales intake invalidates unfiled 3B history", c do
+    assert_intake_3b_outcome(c, false)
+  end
+
+  test "new sales intake preserves filed 3B history", c do
+    assert_intake_3b_outcome(c, true)
+  end
+
+  test "importing a filed return updates comparison evidence without revoking 3B", c do
+    assert :ok = run(bring_in(c.org, c.client, c.user, "sales", "%PDF-1.4 first"))
+    {:ok, original_sales} = SalesMonths.get_by_period(c.org.id, c.client.id, @period)
+
+    purchase =
+      Nila.Repo.insert!(%Nila.Gst.Purchase.Month{
+        org_id: c.org.id,
+        client_id: c.client.id,
+        period: @period,
+        state: "reviewed"
+      })
+
+    signoff =
+      Nila.Repo.insert!(%Nila.Gst.Filing.Signoff{
+        org_id: c.org.id,
+        client_month_id: purchase.id,
+        signed_by_id: c.user.id,
+        artifact: "gstr3b",
+        snapshot: %{"gstr3b" => %{"liability_source" => "current_sales"}}
+      })
+
+    comparison = bring_in(c.org, c.client, c.user, "filed_gstr1", filed_gstr1_json("comparison"))
+    assert :ok = run(comparison)
+    assert Nila.Repo.reload!(comparison).status == "extracted"
+    {:ok, sales} = SalesMonths.get_by_period(c.org.id, c.client.id, @period)
+    assert sales.filed_gstr1["marker"] == "comparison"
+    assert sales.invoices == original_sales.invoices
+    assert sales.derived_gstr1 == original_sales.derived_gstr1
+    assert Nila.Repo.reload!(signoff).revoked_at == nil
+    assert Nila.Repo.reload!(signoff).snapshot == signoff.snapshot
+    assert Nila.Repo.reload!(purchase).state == "reviewed"
   end
 
   test "a sales dump on a filed GSTR-1 is terminal and excluded from the union", %{
@@ -461,5 +494,44 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
       "cgst" => 0,
       "sgst" => 0
     }
+  end
+
+  defp assert_intake_3b_outcome(c, filed?) do
+    assert :ok = run(bring_in(c.org, c.client, c.user, "sales", "%PDF-1.4 first"))
+
+    purchase =
+      Nila.Repo.insert!(%Nila.Gst.Purchase.Month{
+        org_id: c.org.id,
+        client_id: c.client.id,
+        period: @period,
+        state: if(filed?, do: "filed", else: "reviewed"),
+        filed_at: if(filed?, do: DateTime.utc_now())
+      })
+
+    signoff =
+      Nila.Repo.insert!(%Nila.Gst.Filing.Signoff{
+        org_id: c.org.id,
+        client_month_id: purchase.id,
+        signed_by_id: c.user.id,
+        artifact: "gstr3b",
+        snapshot: %{"gstr3b" => %{"liability_source" => "current_sales"}}
+      })
+
+    next = bring_in(c.org, c.client, c.user, "sales", "%PDF-1.4 next")
+    assert :ok = run(next)
+    assert Nila.Repo.reload!(next).status == "extracted"
+    {:ok, sales} = SalesMonths.get_by_period(c.org.id, c.client.id, @period)
+    assert length(sales.invoices) == 6
+
+    if filed? do
+      assert Nila.Repo.reload!(signoff).revoked_at == nil
+      assert Nila.Repo.reload!(purchase).state == "filed"
+      assert Nila.Repo.reload!(purchase).filed_at == purchase.filed_at
+    else
+      assert Nila.Repo.reload!(signoff).revoked_at != nil
+      assert Nila.Repo.reload!(purchase).state == "worked"
+    end
+
+    assert Nila.Repo.reload!(signoff).snapshot == signoff.snapshot
   end
 end

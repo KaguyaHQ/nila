@@ -4,11 +4,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   @moduledoc "Audited return actions rendered directly after their evidence."
 
   alias Nila.Gst.Filing.{Gstr3b, ItcPosition, WinmanGstr1}
-  alias Nila.Gst.Sales.Values
+  alias Nila.Gst.Sales.Review.Values
   alias NilaWeb.Components.Gst.Month.Helpers
 
   attr :sales_month, :any, required: true
-  attr :r1_signoff, :any, default: nil
   attr :open_issue_count, :integer, required: true
   attr :reviewable, :boolean, required: true
   attr :sales_intake_open, :boolean, default: false
@@ -31,28 +30,13 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
     <.button
       :if={@readiness.state == :ready}
-      id="month-door-sign-r1"
-      variant="primary"
-      size="sm"
-      phx-click="r1-sign-off"
-      data-confirm={approval_confirm(@derived && Values.filed_totals(@derived))}
-    >
-      Approve GSTR-1
-    </.button>
-
-    <.badge :if={@readiness.state == :awaiting_senior} variant="info">
-      Awaiting senior approval
-    </.badge>
-
-    <.button
-      :if={@readiness.state == :approved and WinmanGstr1.supported_period?(@sales_month.period)}
       id="gstr1-primary-handoff"
-      href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/winman-b2b.xlsm"}
+      href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/workings.xlsx"}
       download
       variant="primary"
       size="sm"
     >
-      Download Winman file
+      Download working Excel
     </.button>
 
     <.badge :if={@readiness.state == :filed} variant="neutral">Filed</.badge>
@@ -60,7 +44,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   end
 
   attr :sales_month, :any, required: true
-  attr :r1_signoff, :any, default: nil
   attr :open_issue_count, :integer, required: true
   attr :reviewable, :boolean, required: true
   attr :sales_intake_open, :boolean, default: false
@@ -72,86 +55,33 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :tally_handoffs, :list, default: []
 
   def gstr1_actions(assigns) do
-    assigns =
-      assigns
-      |> assign(:filed, assigns.derived && Values.filed_totals(assigns.derived))
-      |> assign(
-        :tally_form,
-        to_form(
-          %{
-            "company_id" =>
-              assigns.tally_companies |> List.first() |> then(&(&1 && Integer.to_string(&1.id)))
-          },
-          as: :tally
-        )
-      )
+    assigns = assign(assigns, :filed, assigns.derived && Values.filed_totals(assigns.derived))
 
     ~H"""
     <div id="gstr1-handoff" class="py-section space-y-related">
-      <section
-        id="month-exit-gstr1"
-        class="border-rule pt-block scroll-mt-28 border-t"
-      >
-        <div
-          :if={@readiness.state == :provisional}
-          class="space-y-1"
-        >
-          <h3 class="text-base-content text-h4 font-semibold">Approval</h3>
+      <section id="month-exit-gstr1" class="border-rule pt-block scroll-mt-28 border-t">
+        <div class="space-y-1">
+          <h3 class="text-base-content text-h4 font-semibold">Working files</h3>
 
-          <p id="gstr1-approval-status" class="text-base-content text-body font-medium">
-            {@readiness.action_copy}
+          <p id="gstr1-working-status" class="text-base-content text-body font-medium">
+            {@readiness.action_copy || @readiness.status}
           </p>
         </div>
 
-        <div
-          :if={@readiness.state in [:ready, :awaiting_senior]}
-          class="gap-block flex flex-wrap items-center justify-between"
+        <.button
+          :if={@readiness.state in [:ready, :filed]}
+          id="gstr1-guide-download-json"
+          href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/return.json"}
+          download
+          variant="outline"
+          size="xs"
         >
-          <div class="space-y-1">
-            <h3 class="text-base-content text-h4 font-semibold">Approval</h3>
-
-            <p id="gstr1-approval-status" class="text-base-content text-body font-medium">
-              {@readiness.action_copy}
-            </p>
-
-            <p :if={@filed} id="month-exit-gstr1-amount" class="text-base-content text-ui">
-              Filing <span class="font-mono font-semibold">{Helpers.rupees(@filed.taxable)}</span>
-              taxable and <span class="font-mono font-semibold">{Helpers.rupees(@filed.tax)}</span>
-              output tax.
-            </p>
-          </div>
-        </div>
-
-        <.signed_return
-          :if={@readiness.state in [:approved, :filed]}
-          return="GSTR-1"
-          signoff={@r1_signoff}
-          month={@sales_month}
-          reopen_event="r1-reopen-signoff"
-          reopen_id="gstr1-reopen-signoff"
-          reopen_confirm="Reopen this signed GSTR-1? The signature is revoked, and any GSTR-3B signed against it is reopened too."
-          can_sign_off={@can_sign_off}
-        >
-          <:extra_step>
-            <div class="space-y-related">
-              <p class="text-ink-subtle text-label font-semibold uppercase">Portal return</p>
-
-              <.button
-                id="gstr1-guide-download-json"
-                href={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/return.json"}
-                download
-                variant="outline"
-                size="xs"
-              >
-                Download GST JSON
-              </.button>
-            </div>
-          </:extra_step>
-        </.signed_return>
+          Download GST JSON
+        </.button>
       </section>
 
       <section
-        :if={@readiness.state in [:approved, :filed] and @handoff}
+        :if={@readiness.state in [:ready, :filed] and @handoff}
         id="gstr1-winman-b2b-export"
         class="nila-gstr1-handoff rounded-box space-y-block border p-6"
       >
@@ -162,7 +92,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             <p class="text-base-content text-h4 font-semibold">Winman B2B sheet</p>
 
             <p class="text-body text-ink-subtle">
-              Uses the approved snapshot. Only the B2B sheet is populated in this version.
+              Only the B2B sheet is populated in this version.
             </p>
           </div>
 
@@ -252,7 +182,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       </section>
 
       <section
-        :if={@readiness.state in [:approved, :filed]}
+        :if={@readiness.state in [:ready, :filed]}
         id="gstr1-tally-export"
         class="gap-block flex flex-wrap items-center justify-between"
       >
@@ -262,7 +192,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           <p class="text-base-content text-ui font-medium">TallyPrime · GL sales vouchers</p>
 
           <p class="text-body text-ink-subtle">
-            Send the approved GL sales vouchers through Nila Connector, or download the XML.
+            Download the GL sales vouchers, or open sales bills to send them through Nila Connector.
             GST return metadata is not included.
           </p>
         </div>
@@ -278,37 +208,9 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             <.icon name="hero-arrow-down-tray" class="size-4" /> Download Tally XML
           </.button>
 
-          <.form
-            :if={@can_sign_off and @tally_companies != []}
-            for={@tally_form}
-            id="gstr1-send-tally-form"
-            action={~p"/gstr1/#{@sales_month.client_id}/#{@sales_month.period}/tally"}
-            method="post"
-            class="gap-related flex flex-wrap items-end"
-          >
-            <.input
-              field={@tally_form[:company_id]}
-              type="select"
-              label="Tally company"
-              options={Enum.map(@tally_companies, &{"#{&1.name} · #{&1.device.name}", &1.id})}
-            />
-            <.button
-              id="gstr1-send-tally"
-              type="submit"
-              variant="outline"
-              size="xs"
-              data-confirm="Queue all approved sales vouchers for this Tally company?"
-            >
-              Send to TallyPrime
-            </.button>
-          </.form>
-          <p
-            :if={@can_sign_off and @tally_companies == []}
-            id="gstr1-tally-unavailable"
-            class="text-ink-muted text-ui"
-          >
-            Open the company in TallyPrime and keep Nila Connector connected to send directly.
-          </p>
+          <.button id="gstr1-open-sales-bills" navigate={~p"/sales-bills"} variant="outline" size="xs">
+            Open sales bills
+          </.button>
         </div>
 
         <div :if={@tally_handoffs != []} class="w-full space-y-3 pt-3">
@@ -318,6 +220,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             class="border-rule rounded-box border p-4"
           >
             <p class="text-base-content text-ui font-semibold">{handoff.company_name}</p>
+
             <p class="text-ink-subtle text-ui">
               {Map.get(handoff.counts, "succeeded", 0)} posted · {Map.get(handoff.counts, "failed", 0)} failed · {Map.get(
                 handoff.counts,
@@ -326,6 +229,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
               )} unknown · {Map.get(handoff.counts, "pending", 0) +
                 Map.get(handoff.counts, "running", 0)} queued
             </p>
+
             <div :if={Map.get(handoff.counts, "failed", 0) > 0} class="mt-2 space-y-1">
               <p
                 :for={job <- Enum.filter(handoff.jobs, &(&1.status == "failed"))}
@@ -335,6 +239,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
                   "Tally rejected this voucher."}
               </p>
             </div>
+
             <p
               :if={Map.get(handoff.counts, "indeterminate", 0) > 0}
               class="text-ui text-warning mt-2"
@@ -362,31 +267,15 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
           action_copy: nil
         }
 
-      not is_nil(assigns.r1_signoff) ->
-        %{
-          state: :approved,
-          title: "Approved GSTR-1",
-          status: "Approved draft frozen for portal filing",
-          action_copy: nil
-        }
-
       not assigns.reviewable or assigns.sales_intake_open ->
         provisional_readiness(assigns)
 
-      assigns.can_sign_off ->
-        %{
-          state: :ready,
-          title: "Proposed GSTR-1",
-          status: "Ready for approval",
-          action_copy: "Ready for approval"
-        }
-
       true ->
         %{
-          state: :awaiting_senior,
-          title: "Proposed GSTR-1",
-          status: "Draft checks complete — awaiting a senior",
-          action_copy: "Ready · A senior must approve this return"
+          state: :ready,
+          title: "GSTR-1 working",
+          status: "Working files ready",
+          action_copy: "Download the working files for review"
         }
     end
   end
@@ -398,22 +287,21 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
     {status, action_copy} =
       cond do
         required > 0 and intake? ->
-          {"Provisional — required work and an unresolved sales packet prevent approval",
+          {"Provisional — required work and a sales packet remain unresolved",
            "Blocked · #{required} required #{if required == 1, do: "item", else: "items"} and a sales packet remain unresolved"}
 
         required > 0 ->
           item = if required == 1, do: "item", else: "items"
 
-          {"Provisional — #{required} required #{item} #{if required == 1, do: "prevents", else: "prevent"} approval",
+          {"Provisional — #{required} required #{item} #{if required == 1, do: "remains", else: "remain"}",
            "Blocked · #{required} required #{item} #{if required == 1, do: "remains", else: "remain"}"}
 
         intake? ->
-          {"Provisional — an unresolved sales packet prevents approval",
+          {"Provisional — a sales packet remains unresolved",
            "Blocked · 1 sales packet remains unresolved"}
 
         true ->
-          {"Provisional — approval checks are incomplete",
-           "Blocked · approval checks are incomplete"}
+          {"Provisional — sales checks are incomplete", "Blocked · sales checks are incomplete"}
       end
 
     %{
@@ -426,6 +314,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
   attr :purchase_month, :any, required: true
   attr :sales_month, :any, default: nil
+  attr :sales_reviewable, :boolean, default: false
   attr :stats, :any, required: true
   attr :gstr3b_signoff, :any, default: nil
   attr :r1_signoff, :any, default: nil
@@ -472,6 +361,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
   attr :purchase_month, :any, required: true
   attr :sales_month, :any, default: nil
+  attr :sales_reviewable, :boolean, default: false
   attr :stats, :any, required: true
   attr :gstr3b_signoff, :any, default: nil
   attr :r1_signoff, :any, default: nil
@@ -780,6 +670,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
 
   attr :purchase_month, :any, required: true
   attr :sales_month, :any, default: nil
+  attr :sales_reviewable, :boolean, default: false
   attr :stats, :any, required: true
   attr :gstr3b_signoff, :any, default: nil
   attr :r1_signoff, :any, default: nil
@@ -1028,7 +919,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       >
         {if @return == "GSTR-1", do: "Reopen approval", else: "Reopen signature"}
       </.button>
-
       {render_slot(@extra_step)}
     </div>
     """
@@ -1041,12 +931,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   # the caution exactly backwards. Naming the money in the prompt also means the
   # figures are in front of the signer at the moment of signing even if they
   # never scrolled the summary.
-  defp approval_confirm(nil), do: nil
-
-  defp approval_confirm(filed) do
-    "Approve the GSTR-1 filing #{Helpers.rupees(filed.taxable)} taxable and " <>
-      "#{Helpers.rupees(filed.tax)} output tax?"
-  end
 
   # The full server gate (`Signoffs.sign_off/2`), each condition paired with the
   # control that clears it. Uncollected bills and vendor amount disputes stay
@@ -1074,8 +958,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
        "GSTR-1 is not ready, so outward liability and cash payable are still pending.",
        {:navigate, "Bring in sales bills",
         ~p"/gst/upload?client_id=#{client_id}&period=#{period}"}},
-      {"r1-unsigned", not is_nil(assigns.sales_month) and is_nil(assigns.r1_signoff),
-       "The GSTR-1 has not been approved yet.",
+      {"r1-unreviewed",
+       not is_nil(assigns.sales_month) and is_nil(assigns.sales_month.filed_at) and
+         not Map.get(assigns, :sales_reviewable, Map.get(assigns, :reviewable, false)),
+       "Resolve the open sales checks before signing the GSTR-3B.",
        {:patch, "Go to the GSTR-1", month_track_path(client_id, period, :sales)}},
       {"sales-intake", assigns.sales_intake_open,
        "A supplied sales packet is still unresolved, so the outward liability may be incomplete.",
@@ -1130,6 +1016,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   defp plural(1, singular, _plural), do: singular
   defp plural(_count, _singular, plural), do: plural
 
+  defp outward_source(%{"liability_source" => "gstr1_filed"}), do: "Filed GSTR-1 position"
   defp outward_source(%{"liability_source" => "gstr1_signed"}), do: "Approved GSTR-1 snapshot"
   defp outward_source(%{"liability_source" => "gstr1_reviewed"}), do: "Reviewed GSTR-1 position"
   defp outward_source(%{"liability_source" => "gstr1_derived"}), do: "Current derived GSTR-1"

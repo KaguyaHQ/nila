@@ -1,6 +1,8 @@
 defmodule Nila.Gst.Sales.WorkingsTest do
   use ExUnit.Case, async: true
 
+  alias Nila.Gst.Sales.Review.CorrectionPolicy
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Gst.Hsn.Entry
   alias Nila.Gst.Hsn.Release, as: HsnRelease
   alias Nila.Gst.Rates.Release, as: RateRelease
@@ -20,7 +22,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
       # Sequence gap: 22 is missing, 23 follows.
       raw(3, "23/2025-26", [line("134A Gas", 10_200.0)], 12_036.0)
     ]
-    |> Enum.map(&Gstr1.normalize_invoice/1)
+    |> Enum.map(&Normalizer.normalize/1)
   end
 
   defp raw(page, inum, line_items, grand_total) do
@@ -235,7 +237,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     two_lines =
       invoices() ++
         [
-          Gstr1.normalize_invoice(
+          Normalizer.normalize(
             raw(
               4,
               "24/2025-26",
@@ -272,7 +274,9 @@ defmodule Nila.Gst.Sales.WorkingsTest do
       |> Enum.find(&(&1["invoice_number"] == "24/2025-26"))
       |> Map.fetch!("id")
 
-    assert Gstr1.correctable_fields(result.flagged, source_id) == ["line_items[0].hsn_sac"]
+    assert CorrectionPolicy.correctable_fields(result.flagged, source_id) == [
+             "line_items[0].hsn_sac"
+           ]
 
     correction = %{
       "verb" => "correct_field",
@@ -297,7 +301,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     later_invoices =
       cess_invoices() ++
         [
-          Gstr1.normalize_invoice(
+          Normalizer.normalize(
             raw(4, "25/2025-26", [cess_line("Beedis", "24039920", 3_000.0)], 3_540.0)
           )
         ]
@@ -319,7 +323,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
   defp cess_invoices do
     invoices() ++
       [
-        Gstr1.normalize_invoice(
+        Normalizer.normalize(
           raw(4, "24/2025-26", [cess_line("Chewing tobacco", "24039910", 5_000.0)], 5_900.0)
         )
       ]
@@ -423,7 +427,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     # The proposal engine will claim "this files X". That claim is only worth
     # anything if it is measured against `derive/2` rather than predicted
     # alongside it — a second implementation is a second answer.
-    alias Nila.Gst.Sales.Values
+    alias Nila.Gst.Sales.Review.Values
 
     before = SalesWorkings.materialize(invoices(), [], @header)
 
@@ -773,7 +777,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     }
 
     invoice =
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "invoice_number" => "44/2026-27",
           "invoice_date" => "04.12.2025",

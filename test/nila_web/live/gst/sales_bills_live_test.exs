@@ -4,10 +4,13 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
   import Ecto.Query
   import Phoenix.LiveViewTest
 
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Clients
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Sales.Months, as: SalesMonths
-  alias Nila.Gst.Sales.{Gstr1, Invoice, InvoiceRemoval, TallyPacket}
+  alias Nila.Gst.Sales.Invoice
+  alias Nila.Gst.Sales.Invoice.Removal, as: InvoiceRemoval
+  alias Nila.Gst.Sales.Tally.Packet, as: TallyPacket
   alias Nila.Storage
   alias Nila.TallyDevices
   alias Nila.TallyDevices.SyncedMaster
@@ -27,7 +30,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       })
 
     invoice =
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "document_type" => "invoice",
           "document_status" => "active",
@@ -328,7 +331,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     refute has_element?(view, "#invoice-totals-comparison", "Difference")
     assert has_element?(view, "#invoice-total-match-total", "Matches")
 
-    workings = Nila.Gst.Sales.Resolutions.workings(month)
+    workings = Nila.Gst.Sales.Review.Resolutions.workings(month)
     [effective] = workings.active_invoices
     assert effective["line_items"] == invoice["line_items"]
     assert effective["printed_grand_total"] == 1180.0
@@ -393,8 +396,8 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     |> render_submit()
 
     refute has_element?(view, "#sales-bill-invoice-facts-sheet")
-    [effective] = Nila.Gst.Sales.Resolutions.workings(month).active_invoices
-    assert Nila.Gst.Sales.Values.printed(effective).tax == 900.0
+    [effective] = Nila.Gst.Sales.Review.Resolutions.workings(month).active_invoices
+    assert Nila.Gst.Sales.Review.Values.printed(effective).tax == 900.0
     assert effective["printed_tax_totals"] == components
     assert Nila.Repo.reload!(context.dump).invoices == source_before
     {:ok, reloaded, _} = open_sales_view(context.conn, path)
@@ -430,7 +433,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     {:ok, month} = SalesMonths.get_by_period(ctx.org.id, ctx.client.id, "2026-07")
 
     refute Enum.any?(
-             Nila.Gst.Sales.Resolutions.workings(month).issues,
+             Nila.Gst.Sales.Review.Resolutions.workings(month).issues,
              &(&1["code"] == "invoice_period_mismatch")
            )
 
@@ -439,7 +442,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert hd(Nila.Repo.reload!(dump).invoices)["invoice_date"] == "2026-01-08"
 
     assert {:ok, _} =
-             Nila.Gst.Sales.InvoiceCorrections.save(
+             Nila.Gst.Sales.Invoice.Corrections.save(
                ctx.org.id,
                ctx.client.id,
                to_string(dump.id),
@@ -450,14 +453,14 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     {:ok, review, _} = open_sales_view(ctx.conn, path)
     review |> element("#invoice-workbench-exclude-period-mismatch") |> render_click()
-    assert Nila.Gst.Sales.Resolutions.workings(month).active_invoices == []
+    assert Nila.Gst.Sales.Review.Resolutions.workings(month).active_invoices == []
     assert length(Nila.Repo.reload!(dump).invoices) == 1
     {:ok, batch, _} = open_sales_view(ctx.conn, "/sales-bills/#{ctx.client.id}/batch/#{dump.id}")
     assert has_element?(batch, "#sales-bill-gst-INV-001", "Excluded")
     batch |> element("#sales-bill-restore-INV-001") |> render_click()
 
     assert Enum.any?(
-             Nila.Gst.Sales.Resolutions.workings(month).issues,
+             Nila.Gst.Sales.Review.Resolutions.workings(month).issues,
              &(&1["code"] == "invoice_period_mismatch")
            )
   end
@@ -552,7 +555,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     |> render_submit()
 
     assert has_element?(view, "#sales-bill-buyer-identity", "Corrected customer")
-    workings = Nila.Gst.Sales.Resolutions.workings(month)
+    workings = Nila.Gst.Sales.Review.Resolutions.workings(month)
 
     assert Enum.find(workings.active_invoices, &(&1["id"] == "source-first"))["buyer_name"] ==
              "Corrected customer"
@@ -583,7 +586,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     )
     |> render_submit()
 
-    workings = Nila.Gst.Sales.Resolutions.workings(month)
+    workings = Nila.Gst.Sales.Review.Resolutions.workings(month)
 
     assert Enum.find(workings.active_invoices, &(&1["id"] == "source-second"))["buyer_name"] ==
              "Second batch customer"

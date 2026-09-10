@@ -1,7 +1,9 @@
 defmodule Nila.Gst.Sales.TallyWorkingsOutputTest do
   use ExUnit.Case, async: true
   import Phoenix.LiveViewTest
-  alias Nila.Gst.Sales.{Gstr1, Workings, WorkingsXlsx}
+  alias Nila.Gst.Extraction.Sales.Normalizer
+  alias Nila.Gst.Sales.Workings
+  alias Nila.Gst.Sales.Workings.Xlsx, as: WorkingsXlsx
   alias NilaWeb.Components.Gst.Month.Workings, as: Component
   @endpoint NilaWeb.Endpoint
   @root Path.expand("../../../fixtures/gstr1/tally", __DIR__)
@@ -15,7 +17,7 @@ defmodule Nila.Gst.Sales.TallyWorkingsOutputTest do
         @root |> Path.join("2026-#{month}/#{name}") |> File.read!() |> Jason.decode!()
       end
 
-      invoices = Enum.map(read.("extraction.json")["pages"], &Gstr1.normalize_invoice/1)
+      invoices = Enum.map(read.("extraction.json")["pages"], &Normalizer.normalize/1)
 
       result =
         Workings.materialize(

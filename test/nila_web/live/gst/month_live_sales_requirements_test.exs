@@ -5,6 +5,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
   import Nila.GstFixtures
   import NilaWeb.Gst.MonthLiveSalesHelpers, only: [confirm_all_open_issues: 1]
 
+  alias Nila.Gst.Sales.Gstr1.Readiness, as: Gstr1Readiness
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Clients
 
   @period "2025-10"
@@ -39,7 +41,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     # The totals tally, so every arithmetic check passes and the return files
     # ₹1,800 IGST; the ₹450 + ₹450 the client charged simply disappears.
     invoices = [
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "invoice_number" => "40/2025-26",
           "invoice_date" => "04.12.2025",
@@ -103,7 +105,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
 
     invoices =
       for n <- [30, 31, 33] do
-        Gstr1.normalize_invoice(%{
+        Normalizer.normalize(%{
           "data" => %{
             "invoice_number" => "#{n}/2025-26",
             "invoice_date" => "04.11.2025",
@@ -137,7 +139,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=sales")
 
     assert has_element?(view, "#gstr1-return-controls summary")
-    assert has_element?(view, "#gstr1-required-summary", "1 required check before approval")
+    assert has_element?(view, "#gstr1-required-summary", "1 required check remaining")
     refute has_element?(view, "#gstr1-required-summary", "false")
 
     assert has_element?(view, "#gstr1-checks-before-filing", "Missing invoice numbers")
@@ -210,7 +212,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     assert has_element?(
              view,
              "#gstr1-required-summary",
-             "1 review case · 1 blocker before approval"
+             "1 review case · 1 blocker remaining"
            )
 
     refute view |> element("#gstr1-required-summary") |> render() =~ "false"
@@ -227,7 +229,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     period = "2026-08"
 
     invoice =
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "document_type" => "invoice",
           "document_status" => "active",
@@ -269,7 +271,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
 
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=sales")
 
-    assert has_element?(view, "#gstr1-required-summary", "1 blocker before approval")
+    assert has_element?(view, "#gstr1-required-summary", "1 blocker remaining")
     refute view |> element("#gstr1-required-summary") |> render() =~ "false"
   end
 
@@ -334,7 +336,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     refute has_element?(view, "#gstr1-checks-before-filing", "debit note")
   end
 
-  test "the month shows the object being approved, and claims nothing it cannot check", %{
+  test "the month shows the working return and claims nothing it cannot check", %{
     conn: conn,
     client: client
   } do
@@ -351,8 +353,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
 
     confirm_all_open_issues(view)
 
-    assert has_element?(view, "#gstr1-filing-status", "Ready for approval")
-    assert has_element?(view, "#month-door-sign-r1")
+    assert has_element?(view, "#gstr1-filing-status", "Working files ready")
+    assert has_element?(view, "#gstr1-primary-handoff", "Download working Excel")
   end
 
   test "an interstate unregistered note requires its original sale category", %{
@@ -398,7 +400,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     assert Enum.any?(
-             Gstr1.blocking_issues(invoices),
+             Gstr1Readiness.blocking_issues(invoices),
              &(&1["code"] == "missing_original_sale_category")
            )
 
@@ -407,7 +409,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     refute has_element?(view, "#month-door-sign-r1")
   end
 
-  test "unseen HSN codes render as one advisory block that never gates approval", %{
+  test "unseen HSN codes render as one advisory block that never gates downloads", %{
     conn: conn,
     org: org,
     client: client
@@ -415,7 +417,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     alias Nila.Gst.Sales.{Gstr1, Months}
 
     invoice = fn number, code ->
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "invoice_number" => number,
           "invoice_date" => "04.12.2025",
@@ -468,7 +470,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     assert has_element?(view, "#gstr1-workings-hsn-28043000-18", "New")
     assert has_element?(view, "#gstr1-workings-hsn-29033990-18", "New")
     refute has_element?(view, "#gstr1-hsn-new-code-rows")
-    refute has_element?(view, "#gstr1-hsn-signoff", "Printed on the bill")
+    refute has_element?(view, "#gstr1-hsn-summary", "Printed on the bill")
     refute has_element?(view, "#gstr1-verdict", "advisories")
 
     # Context, not work: no confirm affordance, not in the gating clause, and
@@ -476,8 +478,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     refute has_element?(view, "#gstr1-hsn-new-codes button[phx-click='confirm_issue']")
     refute has_element?(view, "#gstr1-checks-before-filing")
 
-    assert has_element?(view, "#gstr1-filing-status", "Ready for approval")
-    assert has_element?(view, "#month-door-sign-r1")
+    assert has_element?(view, "#gstr1-filing-status", "Working files ready")
+    assert has_element?(view, "#gstr1-primary-handoff", "Download working Excel")
   end
 
   test "Table 12 flags multiple rates, shows official descriptions, and expands affected rows", %{
@@ -514,7 +516,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
       for {number, rate} <- [{"137/2025-26", 3}, {"142/2025-26", 18}] do
         half_rate = rate / 2
 
-        Gstr1.normalize_invoice(%{
+        Normalizer.normalize(%{
           "data" => %{
             "invoice_number" => number,
             "invoice_date" => "04.12.2025",
@@ -552,7 +554,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     # at it rather than drawing a second copy with different buttons.
     issue =
       Enum.find(
-        Nila.Gst.Sales.Resolutions.workings(
+        Nila.Gst.Sales.Review.Resolutions.workings(
           elem(Months.get_by_period(org.id, client.id, period), 1)
         ).issues,
         &(&1["code"] == "hsn_multiple_rates")
@@ -561,8 +563,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     card = "#gstr1-required-#{:erlang.phash2({"hsn_multiple_rates|71069290", issue["message"]})}"
 
     assert has_element?(view, card, "HSN/SAC 71069290 appears at 3% and 18%")
-    refute has_element?(view, "#gstr1-hsn-signoff", "HSN/SAC 71069290 appears at 3% and 18%")
-    assert has_element?(view, "#gstr1-hsn-signoff", "HSN check in required work")
+    refute has_element?(view, "#gstr1-hsn-summary", "HSN/SAC 71069290 appears at 3% and 18%")
+    assert has_element?(view, "#gstr1-hsn-summary", "HSN check in required work")
     assert has_element?(view, "#gstr1-workings-hsn", "Other semi-manufactured forms of silver")
 
     refute has_element?(view, "#gstr1-workings-hsn-71069290-3 .rotate-90")

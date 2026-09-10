@@ -3,10 +3,12 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
   @moduledoc "Evidence and correction modals for the GST month workbench."
 
+  alias Nila.Gst.Sales.Invoice.Validation, as: InvoiceValidation
+  alias Nila.Gst.Sales.Review.CorrectionPolicy
+  alias Nila.Gst.Sales.Invoice
   alias Nila.Gst.Issues
-  alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.Proposals
-  alias Nila.Gst.Sales.Values
+  alias Nila.Gst.Sales.Review.Values
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias NilaWeb.Components.Gst.Month.Helpers
 
@@ -60,6 +62,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         <p class="text-body text-ink-muted">
           Compare every source. Retain one only when these are copies of the same invoice. If OCR misread a number, open that source and correct the extraction instead.
         </p>
+
         <div class="grid gap-4 lg:grid-cols-2">
           <article
             :for={invoice <- @members}
@@ -75,25 +78,33 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <dl class="text-ui grid gap-3 sm:grid-cols-2">
               <div>
                 <dt class="text-ink-subtle">Source ID</dt>
+
                 <dd class="text-base-content font-mono">{invoice["id"]}</dd>
               </div>
+
               <div>
                 <dt class="text-ink-subtle">Invoice date</dt>
+
                 <dd class="text-base-content">{format_display_date(invoice["invoice_date"])}</dd>
               </div>
+
               <div>
                 <dt class="text-ink-subtle">Buyer</dt>
+
                 <dd class="text-base-content">{invoice["buyer_name"] || "—"}</dd>
               </div>
+
               <div>
                 <dt class="text-ink-subtle">Taxable + tax</dt>
+
                 <dd class="text-base-content tabular-nums">
-                  {Helpers.rupees(Gstr1.extracted_totals(invoice).taxable)} + {Helpers.rupees(
-                    Gstr1.extracted_totals(invoice).tax
+                  {Helpers.rupees(Invoice.extracted_totals(invoice).taxable)} + {Helpers.rupees(
+                    Invoice.extracted_totals(invoice).tax
                   )}
                 </dd>
               </div>
             </dl>
+
             <div class="flex flex-wrap gap-2">
               <.button
                 variant="primary"
@@ -105,6 +116,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   do: "copy",
                   else: "copies"}
               </.button>
+
               <.button
                 variant="outline"
                 size="xs"
@@ -132,10 +144,10 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :focused_issue, :string, default: nil
   attr :decisions, :map, required: true
   attr :review_navigation, :map, required: true
-  attr :r1_signoff, :any, default: nil
+  attr :locked, :boolean, required: true
   attr :flagged, :any, required: true
   attr :correcting, :any, default: nil
-  attr :derived, :any, default: nil
+  attr :workings, :any, default: nil
   attr :target, :any, required: true
   attr :event_target, :string, required: true
   attr :evidence_page, :integer, default: 0
@@ -154,7 +166,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   # lines of wallpaper for a seven-line bill — the eye wants seven glances down
   # one column, then the totals row, and it is done.
   def invoice_detail(assigns) do
-    checks = Gstr1.invoice_checks(assigns.selected_invoice)
+    checks = InvoiceValidation.checks(assigns.selected_invoice)
     issues = Helpers.invoice_issues(assigns.issues_by_invoice, assigns.selected_invoice)
 
     failed_checks = Enum.reject(checks, & &1["passed"])
@@ -198,7 +210,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       |> assign(:initial_focus, focused_issue && issue_focus_target(focused_issue))
       |> assign(:review_state, review_state(open_issues))
       |> assign(:read_rows, read_rows(assigns.selected_invoice, checks))
-      |> assign(:values, Values.for_invoice(assigns.selected_invoice, assigns.derived))
+      |> assign(:values, Values.for_invoice(assigns.selected_invoice, assigns.workings))
       |> assign(:all_checks, checks)
 
     ~H"""
@@ -219,6 +231,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           >
             ← Previous
           </button>
+
           <div class="flex flex-wrap items-center justify-center gap-2 text-center">
             <h3 id="gstr1-evidence-modal-title" class="text-base-content text-body font-semibold">
               {@selected_invoice["invoice_number"] || "Invoice"}
@@ -226,6 +239,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <span class="text-ink-subtle text-ui">{unresolved_label(@open_issues)}</span>
             <.badge variant={@review_state.variant}>{@review_state.label}</.badge>
           </div>
+
           <button
             type="button"
             id="gstr1-review-next"
@@ -238,6 +252,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             Next →
           </button>
         </div>
+
         <div :if={@open_issues != []} class="flex flex-wrap justify-center gap-2">
           <button
             :for={{issue, index} <- Enum.with_index(@open_issues, 1)}
@@ -245,8 +260,9 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             data-review-target={issue_focus_target(issue)}
             class="nila-evidence-issue-chip rounded-field text-base-content text-ui flex items-center gap-1.5 px-2 py-1 font-medium transition-colors"
           >
-            <span class="nila-evidence-issue-index rounded-full px-1.5 tabular-nums">{index}</span>
-            {issue_chip_label(issue)}
+            <span class="nila-evidence-issue-index rounded-full px-1.5 tabular-nums">{index}</span> {issue_chip_label(
+              issue
+            )}
           </button>
         </div>
       </div>
@@ -282,9 +298,11 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         <div id="gstr1-review-details" class="space-y-block min-h-0 overflow-y-auto">
           <div id="gstr1-review-buyer" class="scroll-mt-4">
             <div class="text-ink-subtle text-label font-semibold uppercase">Buyer</div>
+
             <div class="text-base-content text-body mt-1 font-medium">
               {@selected_invoice["buyer_name"] || "—"}
             </div>
+
             <div class="text-ink-subtle text-ui mt-0.5 font-mono">
               {@selected_invoice["buyer_gstin"] || "—"}
             </div>
@@ -301,12 +319,14 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <div class="flex items-center justify-between gap-3">
               <div>
                 <div class="text-ink-subtle text-label font-semibold uppercase">Tally posting</div>
+
                 <div class="text-base-content text-ui font-medium">
                   {@tally_posting.company.name}
                 </div>
               </div>
+
               <.button
-                :if={is_nil(@r1_signoff)}
+                :if={not @locked}
                 id="gstr1-save-tally-posting"
                 type="submit"
                 variant="outline"
@@ -324,16 +344,18 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 prompt="Select party ledger"
                 options={@tally_posting.party_choices}
                 required
-                disabled={not is_nil(@r1_signoff)}
+                disabled={@locked}
               />
               <div class="xl:col-span-2">
                 <div class="text-ink-subtle text-label font-semibold uppercase">
                   Company posting defaults
                 </div>
+
                 <p class="text-ink-muted text-ui mt-1">
                   These Sales and GST ledgers apply to every future sales voucher sent to {@tally_posting.company.name}.
                 </p>
               </div>
+
               <.input
                 field={@tally_posting.form[:sales_ledger_identity]}
                 type="select"
@@ -341,7 +363,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 prompt="Select sales ledger"
                 options={@tally_posting.sales_choices}
                 required
-                disabled={not is_nil(@r1_signoff)}
+                disabled={@locked}
               />
               <.input
                 :if={MapSet.member?(@tally_posting.tax_heads, "cgst")}
@@ -351,7 +373,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 prompt="Select CGST ledger"
                 options={@tally_posting.tax_choices}
                 required
-                disabled={not is_nil(@r1_signoff)}
+                disabled={@locked}
               />
               <.input
                 :if={MapSet.member?(@tally_posting.tax_heads, "sgst")}
@@ -361,7 +383,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 prompt="Select SGST ledger"
                 options={@tally_posting.tax_choices}
                 required
-                disabled={not is_nil(@r1_signoff)}
+                disabled={@locked}
               />
               <.input
                 :if={MapSet.member?(@tally_posting.tax_heads, "igst")}
@@ -371,7 +393,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 prompt="Select IGST ledger"
                 options={@tally_posting.tax_choices}
                 required
-                disabled={not is_nil(@r1_signoff)}
+                disabled={@locked}
               />
             </div>
           </.form>
@@ -391,6 +413,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               <div class="text-ink-subtle text-label font-semibold uppercase">
                 What didn't check out
               </div>
+
               <%= for check <- @failed_checks do %>
                 <.issue_card
                   :if={@check_issues[check_key(check)]}
@@ -403,7 +426,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   can_correct={
                     issue_correctable?(@check_issues[check_key(check)], @flagged, @selected_invoice)
                   }
-                  r1_signoff={@r1_signoff}
+                  locked={@locked}
                   target={@target}
                 />
                 <div
@@ -418,6 +441,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
             <div :if={@other_issues != []} class="space-y-related">
               <div class="text-ink-subtle text-label font-semibold uppercase">Issues</div>
+
               <.issue_card
                 :for={issue <- @other_issues}
                 id={issue_dom_id(issue)}
@@ -426,7 +450,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 values={@values}
                 decisions={@decisions}
                 can_correct={issue_correctable?(issue, @flagged, @selected_invoice)}
-                r1_signoff={@r1_signoff}
+                locked={@locked}
                 target={@target}
               />
             </div>
@@ -436,6 +460,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <div class="text-ink-subtle text-label font-semibold uppercase">
               Extracted from the original
             </div>
+
             <.data_table
               id="gstr1-line-items"
               rows={@read_rows}
@@ -457,6 +482,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   {row.line["description"] || "—"}
                 </span>
               </:col>
+
               <:col :let={row} label="HSN / SAC">
                 <div :if={row.kind == :line} class="max-w-44">
                   <span class="font-mono">{row.line["hsn_sac"] || "—"}</span>
@@ -469,6 +495,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   </span>
                 </div>
               </:col>
+
               <:col :let={row} label="Rate" align="right">
                 <div :if={row.kind == :line}>
                   <span>{line_rate_label(row.line)}</span>
@@ -481,12 +508,14 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   </span>
                 </div>
               </:col>
+
               <:col :let={row} label="Taxable" align="right" class="whitespace-nowrap">
                 <span>
                   {amount(
                     if row.kind == :total, do: row.totals.taxable, else: row.line["taxable_value"]
                   )}
                 </span>
+
                 <span
                   :if={row.kind == :line and taxable_basis_label(row.line)}
                   class="text-ink-subtle text-ui block"
@@ -494,16 +523,17 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                   {taxable_basis_label(row.line)}
                 </span>
               </:col>
+
               <:col :let={row} label="Extracted GST" align="right" class="whitespace-nowrap">
                 <span :if={row.kind == :total}>{amount(row.totals.tax)}</span>
                 <div :if={row.kind == :line}>
-                  <% reading = line_tax_reading(row.line) %>
-                  <span>{reading.total}</span>
+                  <% reading = line_tax_reading(row.line) %> <span>{reading.total}</span>
                   <span :if={reading.split} class="text-ink-subtle text-ui block">
                     {reading.split}
                   </span>
                 </div>
               </:col>
+
               <%!-- The tick is the outcome; its tooltip is the arithmetic in
                     longhand, for the reader who wants the claim spelled out. --%>
               <:col :let={row} label="Check" align="right">
@@ -515,6 +545,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 </span>
               </:col>
             </.data_table>
+
             <p id="gstr1-rate-validation-scope" class="mt-related text-ink-subtle text-ui">
               HSN/SAC existence, tax arithmetic, and imported taxable-goods rate candidates are checked independently. Exemptions and description-dependent conditions still require review.
             </p>
@@ -529,10 +560,11 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
                 all. --%>
           <div
             :if={
-              Gstr1.correctable_fields(
-                @flagged,
-                @selected_invoice["id"] || @selected_invoice["pristine_inum"]
-              ) != []
+              not @locked and
+                CorrectionPolicy.correctable_fields(
+                  @flagged,
+                  @selected_invoice["id"] || @selected_invoice["pristine_inum"]
+                ) != []
             }
             id="gstr1-corrections"
             class="space-y-related"
@@ -540,7 +572,8 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             <div class="text-ink-subtle text-label font-semibold uppercase">
               Fields flagged for correction
             </div>
-            <%= for field <- Gstr1.correctable_fields(@flagged, @selected_invoice["id"] || @selected_invoice["pristine_inum"]) do %>
+
+            <%= for field <- CorrectionPolicy.correctable_fields(@flagged, @selected_invoice["id"] || @selected_invoice["pristine_inum"]) do %>
               <%= if @correcting && @correcting.field == field do %>
                 <.form
                   for={@correction_form}
@@ -599,8 +632,9 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               <% else %>
                 <div class="flex items-center justify-between gap-2">
                   <span class="text-ink-muted text-ui min-w-0 truncate font-mono">
-                    {field} = {to_string(Gstr1.field_value(@selected_invoice, field))}
+                    {field} = {to_string(Invoice.field_value(@selected_invoice, field))}
                   </span>
+
                   <.button
                     variant="ghost"
                     size="xs"
@@ -673,7 +707,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   attr :values, :any, default: nil
   attr :decisions, :map, required: true
   attr :can_correct, :boolean, default: false
-  attr :r1_signoff, :any, default: nil
+  attr :locked, :boolean, required: true
   attr :target, :any, required: true
 
   defp issue_card(assigns) do
@@ -696,6 +730,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       }>
         {issue_label(@issue["code"])}
       </.badge>
+
       <%!-- The engine's message names portal fields ("camt line-tax sum…"). The
             chip already translates that; the card body says the same thing. --%>
       <p class="mt-related text-body text-ink-muted">{issue_body(@issue)}</p>
@@ -705,18 +740,23 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       <dl :if={@mismatch} class="border-rule mt-block grid gap-2 border-y py-3 sm:grid-cols-3">
         <div>
           <dt class="text-ink-subtle text-label">{@mismatch.printed_label}</dt>
+
           <dd class="font-display text-base-content text-body mt-1 leading-none tabular-nums">
             {Helpers.rupees(@mismatch.printed)}
           </dd>
         </div>
+
         <div>
           <dt class="text-ink-subtle text-label">{@mismatch.extracted_label}</dt>
+
           <dd class="font-display text-base-content text-body mt-1 leading-none tabular-nums">
             {Helpers.rupees(@mismatch.extracted)}
           </dd>
         </div>
+
         <div>
           <dt class="text-ink-subtle text-label">Difference</dt>
+
           <dd class="font-display nila-gstr1-mismatch text-body mt-1 leading-none tabular-nums">
             {Helpers.rupees(@mismatch.extracted - @mismatch.printed)}
           </dd>
@@ -733,11 +773,13 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         class="border-rule mt-block rounded-box border p-3"
       >
         <div class="text-ink-subtle text-label font-semibold uppercase">Nila's read</div>
+
         <%!-- The action line used to sit here in prose, above buttons of equal
               weight, so the reviewer read a sentence and then matched it by eye
               to one of them. It is now the primary button's own label; what is
               left here is the reasoning behind it. --%>
         <p class="text-body text-ink-muted mt-1">{@proposal.basis}</p>
+
         <%!-- What accepting it does to the numbers. `Proposals.for_issue/3`
               returns a proposal only for the three arithmetic codes and only
               when the filed figures are known — which is exactly when
@@ -765,13 +807,12 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         :if={@issue["status"] == "open" and Issues.level(@issue) == "info"}
         class="mt-block text-ink-subtle text-ui flex items-center gap-1.5"
       >
-        <.icon name="hero-check-mini" class="text-success size-4 shrink-0" />
-        {settled_note(@issue)}
+        <.icon name="hero-check-mini" class="text-success size-4 shrink-0" /> {settled_note(@issue)}
       </p>
 
       <div
         :if={
-          @issue["status"] == "open" and is_nil(@r1_signoff) and
+          @issue["status"] == "open" and not @locked and
             Issues.gating?(@issue) and
             (not SalesWorkings.blocking?(@issue) or @can_correct)
         }
@@ -788,6 +829,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
         >
           {(@proposal && @proposal.action) || resolution_action(@issue)}
         </.button>
+
         <.button
           :if={@can_correct}
           type="button"
@@ -805,13 +847,15 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           <p class="text-base-content text-ui font-medium">
             Resolved by {decision_maker(@decision)}
           </p>
+
           <p class="text-ink-muted text-ui">
             {decision_summary(@issue, @decision)} ·
             <.context_text>{decision_time(@decision)}</.context_text>
           </p>
         </div>
+
         <.button
-          :if={is_nil(@r1_signoff)}
+          :if={not @locked}
           variant="ghost"
           size="xs"
           phx-click="undo"
@@ -854,7 +898,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
           %{
             kind: :total,
             dom_id: "gstr1-line-total",
-            totals: Gstr1.extracted_totals(invoice),
+            totals: Invoice.extracted_totals(invoice),
             verdict: verdict(totals)
           }
         ]
@@ -988,7 +1032,8 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
   defp covers_line?(_issue, _check), do: false
 
   defp issue_correctable?(issue, flagged, invoice) do
-    candidates = Gstr1.correctable_fields(flagged, invoice["id"] || invoice["pristine_inum"])
+    candidates =
+      CorrectionPolicy.correctable_fields(flagged, invoice["id"] || invoice["pristine_inum"])
 
     Enum.any?(List.wrap(issue["fields"]), fn issue_field ->
       Enum.any?(candidates, fn candidate ->

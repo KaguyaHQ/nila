@@ -5,8 +5,10 @@ defmodule Nila.Eval.SalesPdf do
   a new directory. Raw responses and native text remain available for diagnosis.
   """
 
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Gst.Extraction.Sales.Vision
-  alias Nila.Gst.Sales.{Gstr1, Review, Workings, WorkingsXlsx}
+  alias Nila.Gst.Sales.{Gstr1, Review, Workings}
+  alias Nila.Gst.Sales.Workings.Xlsx, as: WorkingsXlsx
 
   def run(paths, client, period, opts \\ []) when is_list(paths) and paths != [] do
     dir = Keyword.get(opts, :output_root, "tmp/eval/sales-pdf")
@@ -121,7 +123,7 @@ defmodule Nila.Eval.SalesPdf do
           |> Enum.with_index(1)
           |> Enum.map(fn {artifact, index} ->
             artifact
-            |> Gstr1.normalize_invoice()
+            |> Normalizer.normalize()
             |> Map.put("id", "pdf_#{ordinal}_inv_#{index}")
             |> Map.put("source_filename", Path.basename(path))
           end)

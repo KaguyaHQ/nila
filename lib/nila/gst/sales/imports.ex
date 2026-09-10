@@ -4,7 +4,8 @@ defmodule Nila.Gst.Sales.Imports do
   import Ecto.Query
 
   alias Nila.Gst.Intake.Dump
-  alias Nila.Gst.Sales.TallyPacket
+  alias Nila.Gst.Sales.{Batch, SourcePacket}
+  alias Nila.Gst.Sales.Tally.Packet, as: TallyPacket
   alias Nila.Repo
 
   @recent_dump_limit 100
@@ -44,18 +45,20 @@ defmodule Nila.Gst.Sales.Imports do
   defp import_row(dumps) do
     dumps = Enum.sort_by(dumps, & &1.id)
     first = hd(dumps)
-    packet = TallyPacket.prepare(dumps)
+    source = SourcePacket.prepare(dumps)
+    # Intake ready/review counts describe the existing Tally handoff.
+    packet = TallyPacket.from_source(source)
 
     review_count =
       length(packet.needs_review) + length(packet.failed_files) + length(packet.unread_pages)
 
     %{
-      dom_id: "sales-import-#{TallyPacket.ref(dumps)}",
-      batch_ref: TallyPacket.ref(dumps),
+      dom_id: "sales-import-#{Batch.ref(dumps)}",
+      batch_ref: Batch.ref(dumps),
       client_id: first.client_id,
       client_name: first.client.name,
       imported_at: Enum.max_by(dumps, & &1.inserted_at).inserted_at,
-      invoice_count: length(packet.all_invoices),
+      invoice_count: length(source.all_invoices),
       ready_count: length(packet.invoices),
       review_count: review_count
     }

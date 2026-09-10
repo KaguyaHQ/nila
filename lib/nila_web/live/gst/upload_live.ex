@@ -180,7 +180,7 @@ defmodule NilaWeb.Gst.UploadLive do
         |> assign(:error, nil)
 
       if socket.assigns.sales_intake? do
-        batch_ref = Nila.Gst.Sales.TallyPacket.ref(dumps)
+        batch_ref = Nila.Gst.Sales.Tally.Packet.ref(dumps)
         {:noreply, push_navigate(socket, to: ~p"/sales-bills/#{client_id}/batch/#{batch_ref}")}
       else
         jobs =

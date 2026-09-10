@@ -1,194 +1,23 @@
 defmodule Nila.Gst.Sales.Gstr1 do
   @moduledoc """
-  The pure GSTR-1 derivation + validation engine (the "brain").
+  Derives GSTR-1 tables and source contributions from normalized sales invoices.
 
-  Takes normalized sales invoices and produces a portal-shaped GSTR-1 JSON
-  (the artifact an auditor uploads), plus the deterministic validation issues
-  and review-correction discipline the reproduction eval proved against real
-  filed returns.
+  Table treatment, portal items, tax rounding, and HSN calculations stay together
+  so the return and its workings use the same arithmetic. `project/2` returns
+  both the portal map and the included contribution of each source; `derive/2`
+  returns just the portal map. Rate summaries read that derived return.
 
-  This module is pure: no file IO, no network, no CLI. `Nila.Eval` wraps it with
-  artifact loading and scoring; the product wires it behind the sales extractor
-  + worker.
-
-  ## Public surface
-
-    * `normalize_invoice/1` — raw extractor artifact → engine invoice map
-    * `validation_issues/1` — deterministic issues (arithmetic, GSTIN checksum,
-      state-vs-split, sequence gaps, poison totals) over normalized invoices
-    * `flagged_fields/2` — the set of `(invoice, field)` a human may legitimately
-      correct (low confidence or a validation issue)
-    * `apply_corrections/3` — apply review corrections, separating flagged
-      corrections from **silent errors** (corrections to unflagged fields)
-    * `derive/2` — normalized invoices + filed header → portal GSTR-1 JSON
-    * `valid_gstin?/1` — GSTIN mod-36 checksum
-
-  Field-level diff/scoring of a derived return against a filed return is eval
-  tooling, not product — the product never scores itself — so it lives in
-  `Nila.Eval.Gstr1Diff`, not here.
+  Invoice owns document facts, Review.CorrectionPolicy owns flagged corrections,
+  Documents owns numbering controls, and Readiness owns output requirements.
+  This module performs no database, file, or network operations.
   """
-  alias Nila.Gst.Extraction.LineAmounts
-  alias Nila.Gst.InvoiceFacts
-  alias Nila.Gst.Issues
+
   alias Nila.Gst.Money
   alias Nila.Gst.StateCodes
-  alias Nila.Gst.Purchase.Books
-  alias Nila.Gst.Sales.{Gstr1Readiness, Invoice, InvoiceValidation}
-
-  @confidence_threshold 0.90
-  @correctable_invoice_fields ~w(
-    document_type document_status supply_type tax_payment reverse_charge recipient_registration place_of_supply original_sale_category
-    invoice_number invoice_date seller_name seller_gstin buyer_name buyer_gstin
-    printed_total_taxable printed_total_tax printed_grand_total
-  )
-  @correctable_line_fields ~w(
-    item_name description hsn_sac quantity uom printed_unit_price printed_line_amount
-    printed_line_total printed_taxable_value line_amount_tax_inclusion taxable_value
-    cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount
-  )
-  @doc "Returns the flagged scalar fields that may be corrected for a source invoice."
-  def correctable_fields(flagged, pristine_source_id) do
-    flagged
-    |> Enum.filter(fn {source_id, field} ->
-      source_id == pristine_source_id and correctable_field?(field)
-    end)
-    |> Enum.map(fn {_source_id, field} -> field end)
-    |> Enum.sort()
-  end
-
-  @doc "Whether a path names a business field the review flow may edit."
-  def correctable_field?(field) when field in @correctable_invoice_fields, do: true
-
-  def correctable_field?(field) when is_binary(field) do
-    case Invoice.parse_field_path(field) do
-      {:line, _index, line_field} -> line_field in @correctable_line_fields
-      {:invoice, _field} -> false
-    end
-  end
-
-  def correctable_field?(_field), do: false
-
-  @doc "Whether a flagged correction is authorized for a source invoice and field path."
-  def correction_allowed?(flagged, source_id, field) do
-    correctable_field?(field) and
-      (MapSet.member?(flagged, {source_id, field}) or
-         Enum.any?(flagged, fn
-           {^source_id, flagged_field}
-           when is_binary(flagged_field) and is_binary(field) ->
-             String.starts_with?(field, flagged_field <> "[") or
-               String.starts_with?(field, flagged_field <> ".")
-
-           _ ->
-             false
-         end))
-  end
-
-  @doc "Stable source identity when present, otherwise the legacy invoice-number identity."
-  defdelegate source_id(invoice), to: Invoice
-
-  @doc "Reads a scalar invoice field, including `line_items[index].field` paths."
-  defdelegate field_value(invoice, field_path), to: Invoice
-
-  @doc "Coerces correction text for the numeric fields accepted by the review UI."
-  defdelegate coerce_correction(field_path, text), to: Invoice
-
-  @doc "Sums extracted taxable and tax amounts without deriving or rounding them."
-  defdelegate extracted_totals(invoice), to: Invoice
-
-  @doc "Re-resolves normalized line amounts from their preserved printed evidence."
-  defdelegate resolve_line_amounts(invoice), to: Invoice
-
-  @doc "Whether every line has a known taxable value, including a genuine zero."
-  defdelegate taxable_values_complete?(invoice), to: Invoice
-
-  def normalize_invoice(raw) when is_map(raw) do
-    data = raw["data"] || raw["extract_result"] || raw["result"] || raw
-    seller = data["supplier"] || data["seller"] || %{}
-    buyer = data["bill_to"] || data["buyer"] || %{}
-    ship_to = normalize_party(data["ship_to"])
-    document = raw["document"] || %{}
-    document_type = normalize_document_type(data["document_type"], document)
-
-    line_items =
-      data
-      |> Map.get("line_items", [])
-      |> Enum.map(&normalize_line/1)
-      |> Enum.reject(&degenerate_line?/1)
-
-    %{
-      "page" => raw["page"] || data["page"],
-      "source_pages" => raw["source_pages"] || [raw["page"] || data["page"]],
-      "source_attribution" => raw["source_attribution"],
-      "document_type" => document_type,
-      "invoice_number" =>
-        normalize_document_number(value(data, ["invoice_number", "inum"]), document_type),
-      "invoice_date" => normalize_invoice_date(value(data, ["invoice_date", "idt"])),
-      "seller_name" => value(data, ["seller_name"]) || seller["name"],
-      "seller_gstin" => value(data, ["seller_gstin"]) || seller["gstin"],
-      "buyer_name" => value(data, ["buyer_name"]) || buyer["name"],
-      "buyer_gstin" => blank_to_nil(value(data, ["buyer_gstin"]) || buyer["gstin"]),
-      "supplier" => normalize_party(seller),
-      "bill_to" => normalize_party(buyer),
-      "ship_to" => ship_to,
-      "recipient_registration" =>
-        normalize_recipient_registration(
-          data["recipient_registration"],
-          value(data, ["buyer_gstin"]) || buyer["gstin"]
-        ),
-      "place_of_supply" =>
-        normalize_place_of_supply(
-          data["printed_place_of_supply"] || data["place_of_supply"] ||
-            buyer["place_of_supply"]
-        ),
-      "document_status" => normalize_document_status(data["document_status"]),
-      "supply_type" => normalize_supply_type(data["supply_type"], document),
-      "tax_payment" => data["tax_payment"],
-      "reverse_charge" => Map.get(data, "reverse_charge", document["reverse_charge"]),
-      "line_items" => line_items,
-      "printed_total_taxable" =>
-        money(value(data, ["printed_total_taxable", "total_net_amount"])),
-      "printed_tax_totals" => data["printed_tax_totals"],
-      "tax_total_issues" => data["tax_total_issues"],
-      "printed_total_tax" => money(value(data, ["printed_total_tax", "total_tax_amount"])),
-      "printed_grand_total" => money(value(data, ["printed_grand_total", "total_gross_amount"])),
-      "confidence" => non_empty_map(raw["confidence"]) || build_confidence(raw),
-      "verification" => non_empty_map(raw["verification"]),
-      "document" => document,
-      "original_sale_category" => data["original_sale_category"]
-    }
-    |> Invoice.resolve_line_amounts()
-    |> InvoiceFacts.from_sales_map!()
-    |> InvoiceFacts.to_sales_map()
-  end
-
-  defp normalize_party(party) when is_map(party) do
-    party
-    |> Map.take(["name", "gstin", "address", "state_code"])
-    |> Enum.reject(fn {_key, value} -> is_nil(value) or value == "" end)
-    |> Map.new()
-  end
-
-  defp normalize_party(_party), do: nil
-
-  @doc "The canonical source-document classification used by filing and accounting."
-  def document_type(invoice), do: invoice["document_type"] || "invoice"
-
-  @doc "Recipient registration with backward-compatible inference for stored registered invoices."
-  def recipient_registration(invoice) do
-    invoice["recipient_registration"] ||
-      if(is_nil(blank_to_nil(invoice["buyer_gstin"])), do: "unknown", else: "registered")
-  end
-
-  @doc "The source document's number, retained in the legacy invoice-number storage key."
-  def document_number(invoice), do: invoice["invoice_number"]
-
-  @doc "The source document's date, retained in the legacy invoice-date storage key."
-  def document_date(invoice), do: invoice["invoice_date"]
-
-  @doc "The direction this source document contributes to outward liability."
-  def document_effect(invoice) do
-    if document_type(invoice) == "credit_note", do: -1, else: 1
-  end
+  alias Nila.Gst.Dates
+  alias Nila.Gst.Sales.Invoice
+  alias Nila.Gst.Sales.Gstr1.Documents
+  alias Nila.Gst.Sales.Invoice.Validation, as: InvoiceValidation
 
   @doc "The supported GSTR-1 table for one normalized source document, or nil when held out."
   def filing_table(invoice) do
@@ -196,51 +25,54 @@ defmodule Nila.Gst.Sales.Gstr1 do
     pos = effective_place_of_supply(invoice)
 
     cond do
-      document_status(invoice) != "active" ->
+      Invoice.document_status(invoice) != "active" ->
         nil
 
       Invoice.special_supply_conflict?(invoice) ->
         nil
 
       (Invoice.zero_rated?(invoice) or Invoice.reverse_charge?(invoice)) and
-          document_type(invoice) != "invoice" ->
+          Invoice.document_type(invoice) != "invoice" ->
         nil
 
       Invoice.zero_rated?(invoice) and
           invoice["tax_payment"] not in ~w(with_payment without_payment) ->
         nil
 
-      supply_type(invoice) == "export" ->
+      Invoice.supply_type(invoice) == "export" ->
         if seller_state && is_nil(blank_to_nil(invoice["buyer_gstin"])), do: "exp", else: nil
 
-      supply_type(invoice) == "sez" ->
-        if seller_state && pos && recipient_registration(invoice) == "registered",
+      Invoice.supply_type(invoice) == "sez" ->
+        if seller_state && pos && Invoice.recipient_registration(invoice) == "registered",
           do: "b2b",
           else: nil
 
-      Invoice.reverse_charge?(invoice) and recipient_registration(invoice) != "registered" ->
+      Invoice.reverse_charge?(invoice) and Invoice.recipient_registration(invoice) != "registered" ->
         nil
 
-      supply_type(invoice) in ~w(nil_rated exempt non_gst) ->
-        if seller_state && pos && recipient_registration(invoice) in ~w(registered unregistered) &&
+      Invoice.supply_type(invoice) in ~w(nil_rated exempt non_gst) ->
+        if seller_state && pos &&
+             Invoice.recipient_registration(invoice) in ~w(registered unregistered) &&
              invoice_tax(invoice) == 0 &&
              num(Nila.Gst.Extraction.TaxComponents.printed_tax_total(invoice)) == 0 &&
              Enum.all?(invoice["line_items"] || [], &(line_rate(&1) == 0)), do: "nil", else: nil
 
-      supply_type(invoice) != "taxable" ->
+      Invoice.supply_type(invoice) != "taxable" ->
         nil
 
       is_nil(seller_state) or is_nil(pos) ->
         nil
 
-      recipient_registration(invoice) == "registered" and document_type(invoice) == "invoice" ->
+      Invoice.recipient_registration(invoice) == "registered" and
+          Invoice.document_type(invoice) == "invoice" ->
         "b2b"
 
-      recipient_registration(invoice) == "registered" and
-          document_type(invoice) in ~w(credit_note debit_note) ->
+      Invoice.recipient_registration(invoice) == "registered" and
+          Invoice.document_type(invoice) in ~w(credit_note debit_note) ->
         "cdnr"
 
-      recipient_registration(invoice) == "unregistered" and document_type(invoice) != "invoice" ->
+      Invoice.recipient_registration(invoice) == "unregistered" and
+          Invoice.document_type(invoice) != "invoice" ->
         cond do
           seller_state == pos -> "b2cs"
           invoice["original_sale_category"] == "b2cs" -> "b2cs"
@@ -248,10 +80,10 @@ defmodule Nila.Gst.Sales.Gstr1 do
           true -> nil
         end
 
-      recipient_registration(invoice) == "unregistered" and seller_state == pos ->
+      Invoice.recipient_registration(invoice) == "unregistered" and seller_state == pos ->
         "b2cs"
 
-      recipient_registration(invoice) == "unregistered" ->
+      Invoice.recipient_registration(invoice) == "unregistered" ->
         b2c_interstate_table(invoice)
 
       true ->
@@ -264,7 +96,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
     seller_state = state_code(invoice["seller_gstin"])
     pos = effective_place_of_supply(invoice)
 
-    if not is_nil(filing_table(invoice)) and taxable_values_complete?(invoice) do
+    if not is_nil(filing_table(invoice)) and Invoice.taxable_values_complete?(invoice) do
       invoice
       |> derive_items(seller_state, pos)
       |> Enum.map(&(&1["itm_det"] || %{}))
@@ -274,132 +106,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   def validation_issues(invoices) do
-    month_validation_issues(invoices) ++ invoice_validation_issues(invoices)
-  end
-
-  @doc "Issues intrinsic to the supplied invoices, independent of month completeness."
-  defdelegate invoice_validation_issues(invoices), to: InvoiceValidation, as: :issues
-
-  @doc "Controls that are meaningful only for a complete sales month."
-  def month_validation_issues(invoices), do: sequence_issues(invoices)
-
-  @doc "Flags invoices outside the explicitly selected sales working period."
-  def period_issues(invoices, period) when is_binary(period) do
-    Enum.flat_map(invoices, fn invoice ->
-      date =
-        case invoice["invoice_date"] do
-          %Date{} = date ->
-            date
-
-          text when is_binary(text) ->
-            case Date.from_iso8601(text) do
-              {:ok, date} -> date
-              _ -> nil
-            end
-
-          _ ->
-            nil
-        end
-
-      if date && Calendar.strftime(date, "%Y-%m") != period do
-        [
-          %{
-            "code" => "invoice_period_mismatch",
-            "level" => "blocking",
-            "source_id" => Invoice.source_id(invoice),
-            "invoice_number" => invoice["invoice_number"],
-            "fields" => ["invoice_date"],
-            "message" =>
-              "Invoice dated #{Date.to_iso8601(date)} is outside the #{period} working. Correct the extracted date or exclude this invoice; cross-period reporting is not supported yet."
-          }
-        ]
-      else
-        []
-      end
-    end)
-  end
-
-  def period_issues(_invoices, _period), do: []
-
-  @doc """
-  Issues that must be answered before a GSTR-1 can be signed, not merely read.
-
-  Conflicting supply evidence, missing export/SEZ payment treatment and
-  unsupported document kinds hold the return for review.
-  """
-  def blocking_issues(invoices) do
-    gstr1_capability_issues(invoices) ++ duplicate_number_issues(invoices)
-  end
-
-  @doc "Document treatments the current GSTR-1 projection cannot represent."
-  defdelegate gstr1_capability_issues(invoices), to: Gstr1Readiness, as: :capability_issues
-
-  @doc "One blocking issue per duplicate active invoice-number group."
-  defdelegate duplicate_number_issues(invoices), to: InvoiceValidation
-
-  def flagged_fields(invoices, issues) do
-    low_conf =
-      invoices
-      |> Enum.flat_map(fn invoice ->
-        confidence = invoice["confidence"] || %{}
-        source_id = source_id(invoice)
-
-        confidence
-        |> flatten_confidence()
-        |> Enum.filter(fn {_field, value} ->
-          is_number(value) and value < @confidence_threshold
-        end)
-        |> Enum.map(fn {field, _value} -> %{"source_id" => source_id, "field" => field} end)
-      end)
-
-    validation =
-      issues
-      |> Enum.reject(&(Issues.level(&1) == "info"))
-      |> Enum.flat_map(fn issue ->
-        # `source_ids` means the named fields apply equally to every member of
-        # one source group; today only duplicate-number issues carry it.
-        source_ids = issue["source_ids"] || [issue["source_id"] || issue["invoice"]]
-
-        for source_id <- source_ids,
-            field <- issue["fields"] || [],
-            do: %{"source_id" => source_id, "field" => field}
-      end)
-
-    MapSet.new(low_conf ++ validation, &flag_key/1)
-  end
-
-  @doc """
-  Applies review corrections to normalized invoices.
-
-  `corrections` is a decoded list of `%{"invoice", "field", "value"}` maps (the
-  caller reads the patch file). A correction is legitimate only if its field was
-  flagged; corrections to unflagged fields are **silent errors** — the
-  trust-killing failure mode — and are collected separately.
-
-  Returns `{final_invoices, flagged_corrections, silent_errors, flagged}`.
-  """
-  def apply_corrections(invoices, nil, flagged), do: {invoices, [], [], flagged}
-
-  def apply_corrections(invoices, corrections, flagged) when is_list(corrections) do
-    Enum.reduce(corrections, {invoices, [], [], flagged}, fn correction,
-                                                             {acc, flagged_ok, silent, flags} ->
-      target = correction_target(acc, correction)
-
-      updated =
-        Enum.map(acc, fn invoice ->
-          if target && source_id(invoice) == target do
-            put_field(invoice, correction["field"], correction["value"])
-          else
-            invoice
-          end
-        end)
-
-      if target && correction_allowed?(flags, target, correction["field"]) do
-        {updated, [correction | flagged_ok], silent, flags}
-      else
-        {updated, flagged_ok, [correction | silent], flags}
-      end
-    end)
+    Documents.issues(invoices) ++ InvoiceValidation.issues(invoices)
   end
 
   @doc """
@@ -427,38 +134,54 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end
   end
 
-  def derive(invoices, filed) do
+  def derive(invoices, filed), do: project(invoices, filed).derived
+
+  @doc "Builds the portal return and its included contributions keyed by source ID."
+  def project(invoices, filed) do
     seller_gstin = filed["gstin"] || first_present(invoices, "seller_gstin")
     seller_state = state_code(seller_gstin)
-    complete = Enum.filter(invoices, &taxable_values_complete?/1)
-    b2b_invoices = Enum.filter(complete, &(filing_table(&1) == "b2b"))
-    b2cs_invoices = Enum.filter(complete, &(filing_table(&1) == "b2cs"))
-    b2cl_invoices = Enum.filter(complete, &(filing_table(&1) == "b2cl"))
-    notes = Enum.filter(complete, &(filing_table(&1) == "cdnr"))
-    unregistered_notes = Enum.filter(complete, &(filing_table(&1) == "cdnur"))
-    nil_supplies = Enum.filter(complete, &(filing_table(&1) == "nil"))
-    exports = Enum.filter(complete, &(filing_table(&1) == "exp"))
+
+    classified =
+      for invoice <- invoices,
+          Invoice.taxable_values_complete?(invoice),
+          table = filing_table(invoice),
+          not is_nil(table),
+          do: {invoice, table}
+
+    by_table = Enum.group_by(classified, &elem(&1, 1), &elem(&1, 0))
+
+    entries =
+      Map.new(classified, fn {invoice, table} ->
+        {invoice, contribution_entry(invoice, table, seller_state)}
+      end)
+
+    b2b_invoices = Map.get(by_table, "b2b", [])
+    b2cs_invoices = Map.get(by_table, "b2cs", [])
+    b2cl_invoices = Map.get(by_table, "b2cl", [])
+    notes = Map.get(by_table, "cdnr", [])
+    unregistered_notes = Map.get(by_table, "cdnur", [])
+    nil_supplies = Map.get(by_table, "nil", [])
+    exports = Map.get(by_table, "exp", [])
 
     {nil_b2b, nil_b2c} =
-      Enum.split_with(nil_supplies, &(recipient_registration(&1) == "registered"))
+      Enum.split_with(nil_supplies, &(Invoice.recipient_registration(&1) == "registered"))
 
-    %{
+    {nil_return, entries} = derive_nil_supplies(nil_supplies, entries)
+
+    derived = %{
       "gstin" => seller_gstin,
       "fp" => filed["fp"],
       "filing_typ" => filed["filing_typ"] || "M",
       "gt" => filed["gt"] || 0.0,
       "cur_gt" => filed["cur_gt"] || 0.0,
-      "b2b" => derive_b2b(b2b_invoices, seller_state),
-      "exp" => derive_exports(exports, seller_state),
-      "b2cl" => derive_b2cl(b2cl_invoices, seller_state),
-      "b2cs" => derive_b2cs(b2cs_invoices, seller_state),
-      "cdnr" => derive_cdnr(notes, seller_state),
+      "b2b" => derive_b2b(b2b_invoices, entries),
+      "exp" => derive_exports(exports, entries),
+      "b2cl" => derive_b2cl(b2cl_invoices, entries),
+      "b2cs" => derive_b2cs(b2cs_invoices, entries),
+      "cdnr" => derive_cdnr(notes, entries),
       "cdnur" =>
         Enum.map(unregistered_notes, fn note ->
-          note
-          |> derive_note(seller_state)
-          |> Map.drop(["rchrg", "inv_typ"])
-          |> Map.put("typ", "B2CL")
+          Map.fetch!(entries, note)
         end),
       "hsn" => %{
         "hsn_b2b" => derive_hsn(b2b_invoices ++ notes ++ nil_b2b),
@@ -467,13 +190,75 @@ defmodule Nila.Gst.Sales.Gstr1 do
             b2cs_invoices ++ b2cl_invoices ++ unregistered_notes ++ nil_b2c ++ exports
           )
       },
-      "nil" => derive_nil_supplies(nil_supplies),
-      "doc_issue" => derive_doc_issue(invoices),
+      "nil" => nil_return,
+      "doc_issue" => Documents.derive(invoices),
       "fil_dt" => filed["fil_dt"]
     }
+
+    contributions =
+      classified
+      |> Enum.reject(fn {invoice, _table} -> is_nil(invoice["id"]) end)
+      |> Enum.group_by(fn {invoice, _table} -> invoice["id"] end)
+      |> Enum.flat_map(fn
+        {source_id, [{invoice, table}]} ->
+          [
+            {source_id,
+             %{
+               table: table,
+               entry: Map.fetch!(entries, invoice),
+               effect: Invoice.document_effect(invoice)
+             }}
+          ]
+
+        {_ambiguous_id, _invoices} ->
+          []
+      end)
+      |> Map.new()
+
+    %{derived: derived, contributions: contributions}
   end
 
-  defp derive_b2b(invoices, seller_state) do
+  defp contribution_entry(invoice, table, seller_state) do
+    pos = effective_place_of_supply(invoice)
+
+    case table do
+      "b2b" ->
+        derive_invoice(invoice, seller_state)
+
+      "b2cl" ->
+        Map.put(derive_b2cl_invoice(invoice, seller_state), "pos", pos)
+
+      "cdnr" ->
+        derive_note(invoice, seller_state)
+
+      "cdnur" ->
+        derive_note(invoice, seller_state)
+        |> Map.drop(["rchrg", "inv_typ"])
+        |> Map.put("typ", "B2CL")
+
+      "exp" ->
+        invoice
+        |> derive_export_invoice(seller_state)
+        |> Map.put("exp_typ", if(Invoice.without_payment?(invoice), do: "WOPAY", else: "WPAY"))
+
+      "b2cs" ->
+        %{
+          "typ" => "OE",
+          "pos" => pos,
+          "sply_ty" => if(pos == seller_state, do: "INTRA", else: "INTER"),
+          "itms" => derive_items(invoice, seller_state, pos)
+        }
+
+      "nil" ->
+        %{
+          "typ" => Invoice.supply_type(invoice),
+          "pos" => pos,
+          "itms" => [%{"txval" => round2(invoice_taxable(invoice))}]
+        }
+    end
+  end
+
+  defp derive_b2b(invoices, entries) do
     invoices
     |> Enum.group_by(& &1["buyer_gstin"])
     |> Enum.map(fn {ctin, buyer_invoices} ->
@@ -481,39 +266,40 @@ defmodule Nila.Gst.Sales.Gstr1 do
         "ctin" => ctin,
         "inv" =>
           Enum.map(
-            Enum.sort_by(buyer_invoices, &invoice_sort_key(document_number(&1))),
-            &derive_invoice(&1, seller_state)
+            Enum.sort_by(buyer_invoices, &Documents.sort_key(Invoice.document_number(&1))),
+            &Map.fetch!(entries, &1)
           )
       }
     end)
     |> Enum.sort_by(& &1["ctin"])
   end
 
-  defp derive_exports(invoices, seller_state) do
+  defp derive_exports(invoices, entries) do
     invoices
     |> Enum.group_by(&if(Invoice.without_payment?(&1), do: "WOPAY", else: "WPAY"))
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.map(fn {payment, invoices} ->
       %{
         "exp_typ" => payment,
-        "inv" =>
-          Enum.map(invoices, fn invoice ->
-            %{
-              "inum" => document_number(invoice),
-              "idt" => normalize_date(document_date(invoice)),
-              "val" => document_value(invoice),
-              "itms" =>
-                invoice
-                |> derive_items(seller_state, nil)
-                |> Enum.map(&Map.take(&1["itm_det"], ~w(txval rt iamt csamt)))
-            }
-          end)
+        "inv" => Enum.map(invoices, &Map.delete(Map.fetch!(entries, &1), "exp_typ"))
       }
     end)
   end
 
-  defp derive_nil_supplies(invoices) do
-    rows =
+  defp derive_export_invoice(invoice, seller_state) do
+    %{
+      "inum" => Invoice.document_number(invoice),
+      "idt" => normalize_date(Invoice.document_date(invoice)),
+      "val" => document_value(invoice),
+      "itms" =>
+        invoice
+        |> derive_items(seller_state, nil)
+        |> Enum.map(&Map.take(&1["itm_det"], ~w(txval rt iamt csamt)))
+    }
+  end
+
+  defp derive_nil_supplies(invoices, entries) do
+    {rows, entries} =
       invoices
       |> Enum.group_by(fn invoice ->
         location =
@@ -521,32 +307,38 @@ defmodule Nila.Gst.Sales.Gstr1 do
             do: "INTRA",
             else: "INTR"
 
-        location <> if(recipient_registration(invoice) == "registered", do: "B2B", else: "B2C")
+        location <>
+          if(Invoice.recipient_registration(invoice) == "registered", do: "B2B", else: "B2C")
       end)
       |> Enum.sort_by(&elem(&1, 0))
-      |> Enum.map(fn {category, documents} ->
+      |> Enum.map_reduce(entries, fn {category, documents}, entries ->
         Enum.reduce(
           documents,
-          %{"sply_ty" => category, "nil_amt" => 0.0, "expt_amt" => 0.0, "ngsup_amt" => 0.0},
-          fn document, row ->
+          {%{"sply_ty" => category, "nil_amt" => 0.0, "expt_amt" => 0.0, "ngsup_amt" => 0.0},
+           entries},
+          fn document, {row, entries} ->
             field =
               %{"nil_rated" => "nil_amt", "exempt" => "expt_amt", "non_gst" => "ngsup_amt"}[
-                supply_type(document)
+                Invoice.supply_type(document)
               ]
 
-            Map.update!(
-              row,
-              field,
-              &round2(&1 + document_effect(document) * invoice_taxable(document))
-            )
+            effect = Invoice.document_effect(document)
+            amount = round2(row[field] + effect * invoice_taxable(document))
+            # Capture the paise this document adds to the rounded portal row.
+            contribution = round2((amount - row[field]) * effect)
+
+            entries =
+              Map.update!(entries, document, &Map.put(&1, "itms", [%{"txval" => contribution}]))
+
+            {Map.put(row, field, amount), entries}
           end
         )
       end)
 
-    %{"inv" => rows}
+    {%{"inv" => rows}, entries}
   end
 
-  defp derive_b2cl(invoices, seller_state) do
+  defp derive_b2cl(invoices, entries) do
     invoices
     |> Enum.group_by(&effective_place_of_supply/1)
     |> Enum.map(fn {pos, pos_invoices} ->
@@ -554,22 +346,23 @@ defmodule Nila.Gst.Sales.Gstr1 do
         "pos" => pos,
         "inv" =>
           Enum.map(
-            Enum.sort_by(pos_invoices, &invoice_sort_key(document_number(&1))),
-            &derive_b2cl_invoice(&1, seller_state)
+            Enum.sort_by(pos_invoices, &Documents.sort_key(Invoice.document_number(&1))),
+            &Map.delete(Map.fetch!(entries, &1), "pos")
           )
       }
     end)
     |> Enum.sort_by(& &1["pos"])
   end
 
-  defp derive_b2cs(invoices, seller_state) do
+  defp derive_b2cs(invoices, entries) do
     invoices
     |> Enum.flat_map(fn invoice ->
       pos = effective_place_of_supply(invoice)
-      supply_type = if(pos == seller_state, do: "INTRA", else: "INTER")
+      supply_type = Map.fetch!(entries, invoice)["sply_ty"]
 
-      invoice
-      |> derive_items(seller_state, pos)
+      entries
+      |> Map.fetch!(invoice)
+      |> Map.fetch!("itms")
       |> Enum.map(fn item ->
         detail = item["itm_det"] || %{}
 
@@ -577,7 +370,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
           Map.new(detail, fn {key, value} ->
             {key,
              if(key in ~w(txval iamt camt samt csamt),
-               do: value * document_effect(invoice),
+               do: value * Invoice.document_effect(invoice),
                else: value
              )}
           end)
@@ -602,7 +395,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
     |> Enum.sort_by(&{&1["pos"], &1["rt"]})
   end
 
-  defp derive_cdnr(notes, seller_state) do
+  defp derive_cdnr(notes, entries) do
     notes
     |> Enum.group_by(& &1["buyer_gstin"])
     |> Enum.map(fn {ctin, buyer_notes} ->
@@ -610,172 +403,25 @@ defmodule Nila.Gst.Sales.Gstr1 do
         "ctin" => ctin,
         "nt" =>
           Enum.map(
-            Enum.sort_by(buyer_notes, &invoice_sort_key(document_number(&1))),
-            &derive_note(&1, seller_state)
+            Enum.sort_by(buyer_notes, &Documents.sort_key(Invoice.document_number(&1))),
+            &Map.fetch!(entries, &1)
           )
       }
     end)
     |> Enum.sort_by(& &1["ctin"])
   end
 
-  defp normalize_line(line) do
-    cgst = line["cgst"] || %{}
-    sgst = line["sgst"] || %{}
-    igst = line["igst"] || %{}
-    cgst_rate = money(line["cgst_rate"] || cgst["rate"])
-    sgst_rate = money(line["sgst_rate"] || sgst["rate"])
-    igst_rate = money(line["igst_rate"] || igst["rate"])
-
-    amount_line =
-      line
-      |> Map.put("cgst_rate", cgst_rate)
-      |> Map.put("sgst_rate", sgst_rate)
-      |> Map.put("igst_rate", igst_rate)
-
-    amounts = LineAmounts.normalize(amount_line)
-
-    %{
-      "item_name" => blank_to_nil(line["item_name"]),
-      "description" => line["description"],
-      "hsn_sac" => to_string_or_nil(value(line, ["hsn_sac", "hsn_sc"])),
-      "quantity" => money(value(line, ["quantity", "qty"])),
-      "uom" => value(line, ["uom", "unit"]),
-      "unit_price" => amounts.printed_unit_price,
-      "printed_unit_price" => amounts.printed_unit_price,
-      "printed_line_amount" => amounts.printed_line_amount,
-      "printed_line_total" => amounts.printed_line_total,
-      "printed_taxable_value" => amounts.printed_taxable_value,
-      "line_amount_tax_inclusion_candidate" => amounts.line_amount_tax_inclusion_candidate,
-      "line_amount_tax_inclusion" => amounts.line_amount_tax_inclusion,
-      "line_amount_tax_inclusion_basis" => amounts.line_amount_tax_inclusion_basis,
-      "line_amount_tax_inclusion_evidence" => amounts.line_amount_tax_inclusion_evidence,
-      "line_amount_tax_inclusion_disagreement" => amounts.line_amount_tax_inclusion_disagreement,
-      "taxable_value" => amounts.taxable_value,
-      "taxable_value_basis" => amounts.taxable_value_basis,
-      "printed_tax_components" => line["printed_tax_components"],
-      "tax_component_issues" => line["tax_component_issues"],
-      "cgst_rate" => cgst_rate,
-      "cgst_amount" => money(line["cgst_amount"] || cgst["amount"] || line["camt"]),
-      "sgst_rate" => sgst_rate,
-      "sgst_amount" => money(line["sgst_amount"] || sgst["amount"] || line["samt"]),
-      "igst_rate" => igst_rate,
-      "igst_amount" => money(line["igst_amount"] || igst["amount"] || line["iamt"])
-    }
-  end
-
-  defp resolve_line_amount(line), do: Invoice.resolve_line_amount(line)
-
-  @doc """
-  Arithmetic check outcomes for one invoice — passed and failed alike, each with
-  the operands a screen can print (`15,200 × 18% = 2,736 ✓`).
-
-  `InvoiceValidation` is the sole judge of these checks: `validation_issues/1`
-  raises the failing subset and presentation layers consume those outcomes
-  without applying another threshold, so a ✓ can never sit beside an open
-  issue for the same check. A check only exists where the bill makes a
-  claim — a furniture row with no values, or an absent printed total, yields no
-  outcome rather than a vacuous pass.
-
-  Failures outnumber issues, because an issue is a resolution target: the
-  failing lines of one check collapse into one issue, and a bill total that is
-  out by exactly what its components are out by is folded into theirs. Every
-  failure still prints its own ✗ with its own operands; what it no longer gets
-  is its own card and its own button.
-  """
-  def invoice_checks(invoice) do
-    InvoiceValidation.checks(invoice)
-  end
-
-  # The date is the one field that reaches the portal with nothing downstream
-  # comparing it, so without this it files whatever the model printed.
-  #
-  # Asks whether the value *is* a date, not whether it is a `Date`: an invoice
-  # read back out of JSONB carries the ISO string, and a check keyed on the
-  # struct would flag every stored invoice in the product. Anything that is not
-  # a date — a bare number the schema asked to be a string, a caption, a blank —
-  # is flagged rather than let through, because each of those is also invisible
-  # to the precondition checks, which match on `Date`.
-  #
-  # Gated on the invoice carrying values, the same gate `invoice_number_issues/1`
-  # uses: a furniture row scraped off a page header is not a bill anyone files.
-  @doc """
-  The invoice-number series as extraction read it: `from`/`to` bound the run,
-  `missing` names the gaps and `duplicates` the numbers issued twice, each
-  carrying the series suffix, ready to print. `nil` when no invoice number
-  parses — the same months for which `derive/2` files an empty `doc_det`.
-
-  The account block and the fold's summary line render this, and
-  `sequence_gaps` is raised from the same reading, so the sentence a reviewer
-  is shown and the issue that demands his decision can never name different
-  gaps.
-  """
-  def series_account(invoices) do
-    accounts =
-      invoices
-      |> Enum.filter(&(document_type(&1) == "invoice"))
-      |> series_accounts()
-
-    case Enum.max_by(accounts, & &1.count, fn -> nil end) do
-      nil ->
-        nil
-
-      primary ->
-        primary
-        |> Map.put(:missing, Enum.flat_map(accounts, & &1.missing))
-        |> Map.put(:duplicates, Enum.flat_map(accounts, & &1.duplicates))
-        |> Map.delete(:count)
-    end
-  end
-
-  defp correction_target(invoices, %{"source_id" => source_id}) when is_binary(source_id) do
-    if Enum.any?(invoices, &(source_id(&1) == source_id)), do: source_id
-  end
-
-  defp correction_target(invoices, correction) do
-    case correction["invoice"] || correction["inum"] do
-      invoice_number when is_binary(invoice_number) ->
-        matches = Enum.filter(invoices, &(&1["invoice_number"] == invoice_number))
-        if length(matches) == 1, do: matches |> hd() |> source_id()
-
-      _missing ->
-        nil
-    end
-  end
-
-  defp sequence_issues(invoices) do
-    missing =
-      invoices
-      |> Enum.filter(&(document_type(&1) == "invoice"))
-      |> series_accounts()
-      |> Enum.flat_map(& &1.missing)
-
-    if missing == [] do
-      []
-    else
-      [
-        %{
-          "invoice" => nil,
-          "code" => "sequence_gaps",
-          "level" => Issues.level_for("sequence_gaps"),
-          "message" =>
-            "missing/cancelled inferred from sequence: #{Enum.join(missing, ", ")} — confirm cancellation records",
-          "fields" => ["doc_issue"]
-        }
-      ]
-    end
-  end
-
   defp derive_invoice(invoice, seller_state) do
     pos = effective_place_of_supply(invoice)
 
     %{
-      "inum" => document_number(invoice),
-      "idt" => normalize_date(document_date(invoice)),
+      "inum" => Invoice.document_number(invoice),
+      "idt" => normalize_date(Invoice.document_date(invoice)),
       "val" => document_value(invoice),
       "pos" => pos,
       "rchrg" => if(Invoice.reverse_charge?(invoice), do: "Y", else: "N"),
       "inv_typ" =>
-        if(supply_type(invoice) == "sez",
+        if(Invoice.supply_type(invoice) == "sez",
           do: if(Invoice.without_payment?(invoice), do: "SEWOP", else: "SEWP"),
           else: "R"
         ),
@@ -787,8 +433,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
     pos = effective_place_of_supply(invoice)
 
     %{
-      "inum" => document_number(invoice),
-      "idt" => normalize_date(document_date(invoice)),
+      "inum" => Invoice.document_number(invoice),
+      "idt" => normalize_date(Invoice.document_date(invoice)),
       "val" => document_value(invoice),
       "itms" =>
         invoice
@@ -803,9 +449,9 @@ defmodule Nila.Gst.Sales.Gstr1 do
     pos = effective_place_of_supply(note)
 
     %{
-      "nt_num" => document_number(note),
-      "nt_dt" => normalize_date(document_date(note)),
-      "ntty" => note_type(document_type(note)),
+      "nt_num" => Invoice.document_number(note),
+      "nt_dt" => normalize_date(Invoice.document_date(note)),
+      "ntty" => note_type(Invoice.document_type(note)),
       "val" => document_value(note),
       "pos" => pos,
       "rchrg" => "N",
@@ -878,7 +524,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   """
   def hsn_summary(invoices) do
     invoices
-    |> Enum.filter(&taxable_values_complete?/1)
+    |> Enum.filter(&Invoice.taxable_values_complete?/1)
     |> Enum.flat_map(&document_hsn_contributions/1)
     |> Enum.group_by(&{&1["hsn_sc"], &1["rt"]})
     |> Enum.map(fn {{hsn, rate}, contribs} ->
@@ -901,7 +547,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp document_hsn_contributions(document) do
-    effect = document_effect(document)
+    effect = Invoice.document_effect(document)
 
     document["line_items"]
     |> List.wrap()
@@ -928,7 +574,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       iamt = effect * tax.iamt
 
       %{
-        "inum" => document_number(document),
+        "inum" => Invoice.document_number(document),
         "hsn_sc" => hsn,
         "rt" => rate,
         "txval" => txval,
@@ -1020,11 +666,11 @@ defmodule Nila.Gst.Sales.Gstr1 do
         "hsn_sc" => hsn,
         "rt" => rate,
         "uqc" => uqc,
-        "qty" => sum(lines, "quantity") * document_effect(invoice),
-        "txval" => tax.txval * document_effect(invoice),
-        "camt" => tax.camt * document_effect(invoice),
-        "samt" => tax.samt * document_effect(invoice),
-        "iamt" => tax.iamt * document_effect(invoice),
+        "qty" => sum(lines, "quantity") * Invoice.document_effect(invoice),
+        "txval" => tax.txval * Invoice.document_effect(invoice),
+        "camt" => tax.camt * Invoice.document_effect(invoice),
+        "samt" => tax.samt * Invoice.document_effect(invoice),
+        "iamt" => tax.iamt * Invoice.document_effect(invoice),
         "lines" => lines
       }
     end)
@@ -1059,7 +705,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   @doc """
-  Taxable and tax by rate across the month, summed off the derived `b2b` — the
+  Taxable and tax by rate across the month, summed from the supported return tables — the
   buckets are the very `itm_det`s the portal receives, never regrouped from the
   invoices — with `"contribs"` naming each bucket's contributors, and what each
   invoice put into the bucket, for the workings screen to open.
@@ -1193,158 +839,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end)
   end
 
-  defp derive_doc_issue(invoices) do
-    groups =
-      [
-        {1, Enum.filter(invoices, &(document_type(&1) == "invoice"))},
-        {4, Enum.filter(invoices, &(document_type(&1) == "debit_note"))},
-        {5, Enum.filter(invoices, &(document_type(&1) == "credit_note"))}
-      ]
-      |> Enum.flat_map(fn {doc_num, documents} ->
-        numbered = build_doc_issue_rows(parsed_series(documents))
-
-        unnumbered =
-          documents
-          |> Enum.map(&document_number/1)
-          |> Enum.reject(&(&1 in [nil, ""] or not is_nil(parse_invoice_number(&1))))
-          |> Enum.uniq()
-
-        rows =
-          case unnumbered do
-            [] ->
-              numbered
-
-            numbers ->
-              numbered ++
-                [
-                  %{
-                    "num" => length(numbered) + 1,
-                    "from" => hd(numbers),
-                    "to" => List.last(numbers),
-                    "totnum" => length(numbers),
-                    "net_issue" => length(numbers),
-                    "cancel" => 0
-                  }
-                ]
-          end
-
-        case rows do
-          [] -> []
-          rows -> [%{"doc_num" => doc_num, "docs" => rows}]
-        end
-      end)
-
-    %{"doc_det" => groups}
-  end
-
-  defp build_doc_issue_rows(series) do
-    series
-    |> Enum.with_index(1)
-    |> Enum.map(fn {parsed, index} ->
-      numbers = Enum.map(parsed, & &1.number)
-      min = Enum.min(numbers)
-      max = Enum.max(numbers)
-      first = hd(parsed)
-      totnum = max - min + 1
-      net_issue = length(Enum.uniq(numbers))
-
-      %{
-        "num" => index,
-        "from" => format_series_number(min, first),
-        "to" => format_series_number(max, first),
-        "totnum" => totnum,
-        "cancel" => totnum - net_issue,
-        "net_issue" => net_issue
-      }
-    end)
-  end
-
-  defp put_field(invoice, field, value) do
-    case Invoice.parse_field_path(field) do
-      {:line, index, line_field} ->
-        invoice
-        |> update_in(["line_items", Access.at(index)], fn line ->
-          line = line || %{}
-
-          line =
-            if line_field == "line_amount_tax_inclusion" do
-              line
-              |> Map.put_new(
-                "line_amount_tax_inclusion_candidate",
-                line["line_amount_tax_inclusion"] || "unknown"
-              )
-              |> Map.put("line_amount_tax_inclusion_basis", "corrected")
-            else
-              line
-            end
-
-          line
-          |> Map.put(line_field, value)
-          |> update_corrected_taxable(line_field)
-        end)
-        |> clear_verification_failure(field)
-
-      {:invoice, "buyer_gstin"} ->
-        corrected =
-          case blank_to_nil(value) do
-            nil ->
-              Map.put(invoice, "buyer_gstin", nil)
-
-            gstin ->
-              invoice
-              |> Map.put("buyer_gstin", gstin)
-              |> Map.put("recipient_registration", "registered")
-          end
-
-        clear_verification_failure(corrected, "buyer_gstin")
-
-      {:invoice, "place_of_supply"} ->
-        Map.put(invoice, "place_of_supply", normalize_place_of_supply(value))
-
-      {:invoice, "recipient_registration"} ->
-        Map.put(invoice, "recipient_registration", normalize_recipient_registration(value, nil))
-
-      {:invoice, "document_status"} ->
-        Map.put(invoice, "document_status", normalize_document_status(value))
-
-      {:invoice, "supply_type"} ->
-        supply = normalize_supply_type(value, invoice["document"] || %{})
-
-        invoice
-        |> Map.put("supply_type", supply)
-        |> Map.update("document", %{"export" => supply in ~w(export sez)}, fn document ->
-          Map.put(document || %{}, "export", supply in ~w(export sez))
-        end)
-        |> Invoice.resolve_line_amounts()
-
-      {:invoice, field} ->
-        invoice
-        |> Map.put(field, value)
-        |> clear_verification_failure(field)
-    end
-  end
-
-  defp clear_verification_failure(%{"verification" => verification} = invoice, field)
-       when is_map(verification) do
-    update_in(invoice, ["verification", "failed_checks"], fn checks ->
-      checks
-      |> List.wrap()
-      |> Enum.reject(&(Invoice.verification_field(&1) == field))
-    end)
-  end
-
-  defp clear_verification_failure(invoice, _field), do: invoice
-
-  defp update_corrected_taxable(line, "taxable_value"),
-    do: Map.put(line, "taxable_value_basis", "corrected")
-
-  defp update_corrected_taxable(line, field)
-       when field in ~w(printed_line_amount printed_line_total printed_taxable_value line_amount_tax_inclusion cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount) do
-    resolve_line_amount(line)
-  end
-
-  defp update_corrected_taxable(line, _field), do: line
-
   defp invoice_taxable(invoice), do: sum(invoice["line_items"], "taxable_value")
 
   defp invoice_tax(invoice) do
@@ -1416,15 +910,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   defp sum(lines, field), do: lines |> Enum.map(&num(&1[field])) |> Enum.sum()
 
-  defp degenerate_line?(line) do
-    zeroish?(line["taxable_value"]) and zeroish?(line["quantity"]) and
-      zeroish?(line["printed_line_amount"]) and zeroish?(line["printed_line_total"]) and
-      zeroish?(line["cgst_amount"]) and zeroish?(line["sgst_amount"]) and
-      zeroish?(line["igst_amount"])
-  end
-
-  defp zeroish?(value), do: is_nil(value) or num(value) == 0
-
   defp line_rate(line),
     do: num(line["cgst_rate"]) + num(line["sgst_rate"]) + num(line["igst_rate"])
 
@@ -1438,7 +923,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   defp normalize_date(%Date{} = date), do: Calendar.strftime(date, "%d-%m-%Y")
 
   defp normalize_date(date) do
-    case Books.parse_date(to_string(date)) do
+    case Dates.parse_date(to_string(date)) do
       %Date{} = parsed -> normalize_date(parsed)
       nil -> date |> to_string() |> String.trim() |> String.replace(~r/[.\/]/, "-")
     end
@@ -1446,63 +931,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
 
   defp hsn_code(nil), do: nil
   defp hsn_code(hsn), do: hsn |> to_string() |> String.replace(~r/\D/, "")
-
-  # Dates are parsed at the boundary, so every kind of dump carries the same
-  # type downstream and a check written once covers all of them. An unparseable
-  # date keeps its printed text rather than becoming nil — losing it would hide
-  # the problem instead of showing it — and `unreadable_invoice_date` says so.
-  defp normalize_invoice_date(nil), do: nil
-
-  defp normalize_invoice_date(%Date{} = date), do: date
-
-  defp normalize_invoice_date(value) do
-    case Books.parse_date(to_string(value)) do
-      %Date{} = date -> date
-      nil -> value
-    end
-  end
-
-  defp normalize_recipient_registration(_status, gstin)
-       when is_binary(gstin) and gstin != "",
-       do: "registered"
-
-  defp normalize_recipient_registration(status, _gstin)
-       when status in ~w(registered unregistered unknown),
-       do: status
-
-  defp normalize_recipient_registration(_status, _gstin), do: "unknown"
-
-  defp normalize_place_of_supply(nil), do: nil
-
-  defp normalize_place_of_supply(value) do
-    value = value |> to_string() |> String.trim()
-
-    StateCodes.normalize_code(value) ||
-      Enum.find_value(StateCodes.all(), fn name ->
-        if String.downcase(name) == String.downcase(value), do: StateCodes.code_for(name)
-      end) || blank_to_nil(value)
-  end
-
-  defp document_status(invoice), do: invoice["document_status"] || "active"
-
-  defp supply_type(invoice) do
-    invoice["supply_type"] ||
-      if(get_in(invoice, ["document", "export"]), do: "export", else: "taxable")
-  end
-
-  defp normalize_document_status(status) when status in ~w(active cancelled amendment unknown),
-    do: status
-
-  defp normalize_document_status(nil), do: "active"
-  defp normalize_document_status(_status), do: "unknown"
-
-  defp normalize_supply_type(status, _document)
-       when status in ~w(taxable nil_rated exempt non_gst export sez unknown),
-       do: status
-
-  defp normalize_supply_type(nil, %{"export" => true}), do: "export"
-  defp normalize_supply_type(nil, _document), do: "taxable"
-  defp normalize_supply_type(_status, _document), do: "unknown"
 
   @doc "The place of supply used in the filing projection."
   def filing_place_of_supply(invoice), do: effective_place_of_supply(invoice)
@@ -1515,7 +943,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp b2c_interstate_table(invoice) do
-    case parsed_document_date(document_date(invoice)) do
+    case parsed_document_date(Invoice.document_date(invoice)) do
       %Date{} = date ->
         threshold = if Date.before?(date, ~D[2024-08-01]), do: 250_000, else: 100_000
         if document_value(invoice) > threshold, do: "b2cl", else: "b2cs"
@@ -1526,144 +954,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp parsed_document_date(%Date{} = date), do: date
-  defp parsed_document_date(value) when is_binary(value), do: Books.parse_date(value)
+  defp parsed_document_date(value) when is_binary(value), do: Dates.parse_date(value)
   defp parsed_document_date(_value), do: nil
-
-  defp normalize_document_type(type, _document)
-       when type in ["invoice", "credit_note", "debit_note"] do
-    type
-  end
-
-  defp normalize_document_type(_type, document), do: marker_document_type(document) || "invoice"
-
-  defp marker_document_type(%{"credit_note" => true, "debit_note" => true}), do: nil
-  defp marker_document_type(%{"credit_note" => true}), do: "credit_note"
-  defp marker_document_type(%{"debit_note" => true}), do: "debit_note"
-  defp marker_document_type(_document), do: nil
-
-  defp normalize_document_number(nil, _document_type), do: nil
-
-  defp normalize_document_number(number, document_type) do
-    number
-    |> to_string()
-    |> strip_document_label(document_type)
-    |> normalize_invoice_number()
-  end
-
-  defp strip_document_label(number, "credit_note") do
-    String.replace(number, ~r/^\s*(?:tax\s+)?credit\s+note\s*(?:no\.?|number)?\s*[:#-]?\s*/i, "")
-  end
-
-  defp strip_document_label(number, "debit_note") do
-    String.replace(number, ~r/^\s*(?:tax\s+)?debit\s+note\s*(?:no\.?|number)?\s*[:#-]?\s*/i, "")
-  end
-
-  defp strip_document_label(number, _document_type), do: number
-
-  defp normalize_invoice_number(nil), do: nil
-
-  defp normalize_invoice_number(invoice_number) do
-    invoice_number
-    |> to_string()
-    |> String.trim()
-    |> String.replace(~r/\s*\/\s*/, "/")
-  end
-
-  # The series reading, shared by `series_account/1` (what a reviewer is shown)
-  # and `derive_doc_issue/1` (what gets filed as doc_det). Two copies meant the
-  # printed sentence and the filed table could in principle read the series
-  # differently.
-  defp parsed_numbers(invoices) do
-    invoices
-    |> Enum.map(&parse_invoice_number(&1["invoice_number"]))
-    |> Enum.reject(&is_nil/1)
-  end
-
-  defp parsed_series(documents) do
-    documents
-    |> parsed_numbers()
-    |> Enum.group_by(&{&1.prefix, &1.suffix})
-    |> Enum.sort_by(fn {key, _parsed} -> key end)
-    |> Enum.map(&elem(&1, 1))
-  end
-
-  defp series_accounts(documents) do
-    Enum.map(parsed_series(documents), fn parsed ->
-      numbers = Enum.map(parsed, & &1.number)
-      first = hd(parsed)
-      min = Enum.min(numbers)
-      max = Enum.max(numbers)
-
-      %{
-        from: format_series_number(min, first),
-        to: format_series_number(max, first),
-        missing: Enum.map(Enum.to_list(min..max) -- numbers, &format_series_number(&1, first)),
-        duplicates:
-          (numbers -- Enum.uniq(numbers))
-          |> Enum.uniq()
-          |> Enum.map(&format_series_number(&1, first)),
-        count: length(parsed)
-      }
-    end)
-  end
-
-  defp parse_invoice_number(nil), do: nil
-
-  defp parse_invoice_number(invoice_number) do
-    normalized = normalize_invoice_number(invoice_number)
-
-    case Regex.run(~r/^(\d+)(.*)$/, normalized) do
-      [_, number, suffix] ->
-        parsed_invoice_number("", number, suffix)
-
-      _prefixed ->
-        case Regex.run(~r/^(.*\D)(\d+)(\D*)$/, normalized) do
-          [_, prefix, number, suffix] -> parsed_invoice_number(prefix, number, suffix)
-          _unparseable -> nil
-        end
-    end
-  end
-
-  defp parsed_invoice_number(prefix, number, suffix) do
-    %{
-      prefix: prefix,
-      number: String.to_integer(number),
-      width: String.length(number),
-      suffix: suffix
-    }
-  end
-
-  defp format_series_number(number, parsed) do
-    parsed.prefix <> String.pad_leading(to_string(number), parsed.width, "0") <> parsed.suffix
-  end
-
-  defp invoice_sort_key(invoice_number) do
-    case parse_invoice_number(invoice_number) do
-      %{number: number} -> number
-      nil -> 999_999
-    end
-  end
-
-  @doc """
-  Whether this is a valid GSTIN, case-insensitively.
-
-  Defers to `Nila.Gstin`, which every other caller already used. This module
-  carried its own copy of the base-36 checksum — arithmetically identical, but
-  gated on `^\\d{2}[A-Z0-9]{13}$` instead of the real layout, so a string with
-  the wrong PAN shape and a coincidentally correct check digit was valid to the
-  filing engine and invalid to purchase reconciliation and to the client form
-  that captured the GSTIN in the first place. One rule, in the module whose
-  moduledoc already claimed to be the only one.
-
-  Case is normalized here rather than in `Nila.Gstin`: a printed GSTIN is
-  whatever the scan gave us, while the form fields that call `Nila.Gstin`
-  directly are storing a canonical value and should not silently accept a
-  lowercase one. Purchase does the same thing in `Books.clean_gstin/1`.
-  """
-  def valid_gstin?(gstin) when is_binary(gstin),
-    do: Nila.Gstin.valid_extracted?(gstin)
-
-  def valid_gstin?(_), do: false
 
   defp state_code(gstin), do: StateCodes.from_gstin(gstin)
   defp money(value), do: Money.rupee_number(value)
@@ -1685,11 +977,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
     end
   end
 
-  defp value(map, keys), do: Enum.find_value(keys, &map[&1])
-
-  defp to_string_or_nil(nil), do: nil
-  defp to_string_or_nil(value), do: to_string(value)
-
   defp blank_to_nil(nil), do: nil
 
   defp blank_to_nil(value) when is_binary(value) do
@@ -1702,37 +989,4 @@ defmodule Nila.Gst.Sales.Gstr1 do
   defp blank_to_nil(value), do: value
 
   defp first_present(invoices, field), do: Enum.find_value(invoices, & &1[field])
-
-  defp build_confidence(raw) do
-    non_empty_map(get_in(raw, ["extract_metadata", "field_metadata", "document_metadata"])) || %{}
-  end
-
-  defp non_empty_map(value) when is_map(value) and map_size(value) > 0, do: value
-  defp non_empty_map(_), do: nil
-
-  defp flatten_confidence(map, prefix \\ nil) when is_map(map) do
-    Enum.flat_map(map, fn {key, value} ->
-      field = if prefix, do: "#{prefix}.#{key}", else: key
-
-      cond do
-        is_map(value) and is_number(value["confidence"]) -> [{field, value["confidence"]}]
-        is_map(value) -> flatten_confidence(value, field)
-        is_list(value) -> flatten_list_confidence(value, field)
-        is_number(value) -> [{field, value}]
-        true -> []
-      end
-    end)
-  end
-
-  defp flatten_list_confidence(values, prefix) do
-    values
-    |> Enum.with_index()
-    |> Enum.flat_map(fn {value, index} ->
-      if is_map(value), do: flatten_confidence(value, "#{prefix}[#{index}]"), else: []
-    end)
-  end
-
-  defp flag_key(%{"source_id" => source_id, "field" => field}), do: {source_id, field}
-  defp flag_key(%{"invoice" => invoice, "field" => field}), do: {invoice, field}
-  defp flag_key(%{"inum" => invoice, "field" => field}), do: {invoice, field}
 end

@@ -22,6 +22,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   patch cannot collapse the reader's place.
   """
 
+  alias Nila.Gst.Sales.Invoice
   alias Nila.Eval.Gstr1Diff
   alias Nila.Gst.Sales.Gstr1
   alias NilaWeb.Components.Gst.Month.Helpers
@@ -43,7 +44,7 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
         Gstr1.hsn_summary(
           Enum.filter(
             assigns.invoices,
-            &(Gstr1.recipient_registration(&1) == "registered" and
+            &(Invoice.recipient_registration(&1) == "registered" and
                 not is_nil(Gstr1.filing_table(&1)))
           )
         )

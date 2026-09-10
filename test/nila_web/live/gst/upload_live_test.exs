@@ -4,10 +4,10 @@ defmodule NilaWeb.Gst.UploadLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Clients
   alias Nila.Gst.Filing.Calendar
   alias Nila.Gst.Intake.{Dumps, DumpWorker}
-  alias Nila.Gst.Sales.Gstr1
   alias Nila.Storage
 
   @period "2025-10"
@@ -120,7 +120,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
 
     assert_redirect(
       view,
-      ~p"/sales-bills/#{client.id}/batch/#{Nila.Gst.Sales.TallyPacket.ref([dump])}"
+      ~p"/sales-bills/#{client.id}/batch/#{Nila.Gst.Sales.Tally.Packet.ref([dump])}"
     )
   end
 
@@ -209,7 +209,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     client: client
   } do
     invoice =
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "document_type" => "invoice",
           "document_status" => "active",

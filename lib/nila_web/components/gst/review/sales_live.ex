@@ -1,8 +1,12 @@
 defmodule NilaWeb.Components.Gst.Review.SalesLive do
   use NilaWeb, :live_component
 
+  alias Nila.Gst.Sales.Invoice.Validation, as: InvoiceValidation
+  alias Nila.Gst.Sales.Invoice
   alias Nila.Gst.Proposals
-  alias Nila.Gst.Sales.{Gstr1, Review, Resolutions, Values, Workings}
+  alias Nila.Gst.Sales.{Review, Workings}
+  alias Nila.Gst.Sales.Review.Resolutions
+  alias Nila.Gst.Sales.Review.Values
   alias Nila.TallyMappings
   alias NilaWeb.Components.Gst.Month.Evidence
 
@@ -33,6 +37,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
     {:ok,
      socket
      |> assign(assigns)
+     |> assign(:locked, not is_nil(assigns.month.filed_at))
      |> assign(:workings, workings)
      |> assign(:review, review)
      |> assign(:route, route)
@@ -116,7 +121,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
     end
   end
 
-  def handle_event(event, _params, %{assigns: %{signoff: %{} = _signoff}} = socket)
+  def handle_event(event, _params, %{assigns: %{locked: true}} = socket)
       when event in @write_events,
       do: {:noreply, put_flash(socket, :error, locked_message(socket))}
 
@@ -147,7 +152,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
 
   def handle_event("start_correct", %{"field" => field}, socket) do
     invoice = socket.assigns.selected_invoice
-    correcting = %{field: field, value: to_string(Gstr1.field_value(invoice, field))}
+    correcting = %{field: field, value: to_string(Invoice.field_value(invoice, field))}
 
     {:noreply,
      assign(socket,
@@ -185,7 +190,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
        |> assign(:tally_posting, tally_posting(socket.assigns, invoice))
        |> put_flash(:info, "Tally posting saved.")}
     else
-      {:error, :signed_off} ->
+      {:error, :filed} ->
         {:noreply, put_flash(socket, :error, locked_message(socket))}
 
       {:error, _reason} ->
@@ -201,7 +206,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
         socket
       ) do
     invoice = socket.assigns.selected_invoice
-    from = Gstr1.field_value(invoice, field)
+    from = Invoice.field_value(invoice, field)
     value = String.trim(value)
 
     if value == "" or value == to_string(from) do
@@ -213,7 +218,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
         "payload" => %{
           "field" => field,
           "from" => from,
-          "to" => Gstr1.coerce_correction(field, value)
+          "to" => Invoice.coerce_correction(field, value)
         }
       })
     end
@@ -241,7 +246,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
 
         {:noreply, assign(socket, correcting: nil, correction_form: nil)}
 
-      {:error, :signed_off} ->
+      {:error, :filed} ->
         {:noreply, put_flash(socket, :error, locked_message(socket))}
 
       {:error, _reason} ->
@@ -256,8 +261,8 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
   defp shown_proposal(socket, issue) do
     issue
     |> Proposals.for_issue(
-      Values.for_invoice(socket.assigns.selected_invoice, socket.assigns.workings.derived),
-      Gstr1.invoice_checks(socket.assigns.selected_invoice)
+      Values.for_invoice(socket.assigns.selected_invoice, socket.assigns.workings),
+      InvoiceValidation.checks(socket.assigns.selected_invoice)
     )
     |> Proposals.freeze()
   end
@@ -387,10 +392,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
 
   defp image_urls(_invoice, _month), do: []
 
-  defp locked_message(%{assigns: %{month: %{filed_at: filed_at}}}) when not is_nil(filed_at),
-    do: "Filed returns require an amendment."
-
-  defp locked_message(_socket), do: "Reopen GSTR-1 approval first."
+  defp locked_message(_socket), do: "Filed returns require an amendment."
 
   # Current sales workspaces always pass an explicit `return_to`. Keep the old
   # fallback while the frozen month UI remains available for legacy tests and
@@ -447,12 +449,15 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
         <:header :let={title_id}>
           <div class="flex flex-wrap items-center gap-4">
             <h2 id={title_id} class="text-base-content text-body font-semibold">Sales review</h2>
+
             <span id="sales-review-progress" class="text-ink-subtle text-ui">
               {@review.progress.completed} of {@review.progress.total} checks complete
             </span>
+
             <span id="sales-review-month-checks" class="text-ink-subtle text-ui">
               {@review.month_issue_count} month checks remain on the month working paper
             </span>
+
             <.segmented_control
               id="sales-review-scope"
               items={[{:needs_you, "Needs you"}, {:all, "All"}]}
@@ -484,6 +489,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
                 >
                   {item.invoice["invoice_number"] || "—"}
                 </span>
+
                 <span
                   class="text-ink-subtle text-ui block truncate"
                   title={item.invoice["buyer_name"] || item.invoice["buyer_gstin"] || "Unknown buyer"}
@@ -493,11 +499,13 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
                 <% {variant, label} = rail_state(item.state) %>
                 <span class="mt-related flex items-center justify-between gap-2">
                   <.badge variant={variant}>{label}</.badge>
+
                   <span :if={item.open_actionable_targets != []} class="text-ink-subtle text-ui">
                     {length(item.open_actionable_targets)} open
                   </span>
                 </span>
               </button>
+
               <p :if={@queue == []} id="sales-review-empty" class="text-ink-muted text-ui p-3">
                 No invoices in this scope.
               </p>
@@ -520,12 +528,12 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
                 focused_issue={@route.focus}
                 decisions={@decisions}
                 review_navigation={@navigation}
-                r1_signoff={@signoff}
+                locked={@locked}
                 flagged={@workings.flagged}
                 correcting={@correcting}
                 correction_form={@correction_form}
                 tally_posting={@tally_posting}
-                derived={@workings.derived}
+                workings={@workings}
                 evidence_page={@evidence_page}
                 target={@myself}
                 event_target="#sales-review-component"

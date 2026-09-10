@@ -17,7 +17,7 @@ defmodule Nila.Gst.Intake.Dumps do
   import Ecto.Query, only: [from: 2]
 
   alias Nila.Gst.Intake.Dump
-  alias Nila.Gst.Purchase.Books
+  alias Nila.Gst.Dates
   alias Nila.Repo
 
   @active_statuses ~w(received extracting)
@@ -359,7 +359,7 @@ defmodule Nila.Gst.Intake.Dumps do
   def rehydrate(invoice) do
     Map.update(invoice, "invoice_date", nil, fn
       %Date{} = date -> date
-      value when is_binary(value) -> Books.parse_date(value) || value
+      value when is_binary(value) -> Dates.parse_date(value) || value
       other -> other
     end)
   end

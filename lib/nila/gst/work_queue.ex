@@ -37,7 +37,7 @@ defmodule Nila.Gst.WorkQueue do
   alias Nila.Gst.Issues
   alias Nila.Gst.Purchase.{Register, Resolutions, Review}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
-  alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
+  alias Nila.Gst.Sales.Review.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Months, as: SalesMonths
 
   @sections ~w(to_file needs_you waiting_on_client waiting_on_senior waiting_on_portal done)a
@@ -193,7 +193,6 @@ defmodule Nila.Gst.WorkQueue do
 
   defp sales_track(%{sales: nil}), do: :absent
   defp sales_track(%{r1_filed: true}), do: :filed
-  defp sales_track(%{r1_signed: true}), do: :signed
 
   defp sales_track(%{sales: %{state: "reviewed"}, sales_intake_open: true}), do: :open
   defp sales_track(%{sales: %{state: "reviewed"}}), do: :clear

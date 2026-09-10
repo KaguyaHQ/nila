@@ -7,7 +7,8 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
   alias Nila.Accounts.Scope
   alias Nila.Clients
   alias Nila.Gst.Filing.Signoffs
-  alias Nila.Gst.Sales.{Gstr1, Resolutions}
+  alias Nila.Gst.Sales.Gstr1
+  alias Nila.Gst.Sales.Review.Resolutions
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Repo
   alias Nila.TallyDevices
@@ -314,7 +315,7 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     assert has_element?(view, "#gstr1-tally-posting-form", first.company.name)
   end
 
-  test "a signed month withdraws every write action from the review surface", context do
+  test "legacy approval stays editable and actual filing withdraws write actions", context do
     [open | _] = context.workings.active_invoices
     tally_company_with_ledgers!(context)
     sign_month!(context)
@@ -326,10 +327,9 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
              "#sales-review-component button[phx-click='resolve-invoice-issue']"
            )
 
-    refute has_element?(signed, "#sales-review-component button[phx-click='undo']")
-    refute has_element?(signed, "#sales-review-component button[phx-click='start_correct']")
-    refute has_element?(signed, "#gstr1-save-tally-posting")
-    assert has_element?(signed, "#tally_posting_party_ledger_identity[disabled]")
+    assert has_element?(signed, "#sales-review-component button[phx-click='undo']")
+    assert has_element?(signed, "#gstr1-save-tally-posting")
+    refute has_element?(signed, "#tally_posting_party_ledger_identity[disabled]")
 
     {:ok, month} = SalesMonths.get_by_period(context.org.id, context.client.id, @period)
     {:ok, _month} = Signoffs.mark_filed(month, Scope.for_user(context.user))
@@ -341,6 +341,25 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
            )
 
     refute has_element?(filed, "#sales-review-component button[phx-click='undo']")
+    refute has_element?(filed, "#sales-review-component button[phx-click='start_correct']")
+    refute has_element?(filed, "#gstr1-save-tally-posting")
+    assert has_element?(filed, "#tally_posting_party_ledger_identity[disabled]")
+  end
+
+  test "a filed month without a signoff still disables review and Tally writes", context do
+    [invoice | _] = context.workings.active_invoices
+    tally_company_with_ledgers!(context)
+
+    context.month
+    |> Ecto.Changeset.change(filed_at: DateTime.utc_now(), state: "filed")
+    |> Repo.update!()
+
+    {:ok, view, _html} = live(context.conn, review_path(context.client, invoice["id"], "all"))
+    refute has_element?(view, "#sales-review-component button[phx-click='resolve-invoice-issue']")
+    refute has_element?(view, "#sales-review-component button[phx-click='undo']")
+    refute has_element?(view, "#gstr1-corrections")
+    refute has_element?(view, "#gstr1-save-tally-posting")
+    assert has_element?(view, "#tally_posting_party_ledger_identity[disabled]")
   end
 
   test "month issue actions remain outside the invoice surface", context do

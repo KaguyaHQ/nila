@@ -8,7 +8,8 @@ defmodule NilaWeb.Gst.InvoiceWorkbench do
   """
 
   alias Nila.Gst.Intake.Dumps
-  alias Nila.Gst.Sales.{Batch, Invoice, Months, Resolutions, Review}
+  alias Nila.Gst.Sales.{Batch, Invoice, Months, Review}
+  alias Nila.Gst.Sales.Review.Resolutions
 
   def load(org_id, client_id, period, source_id, scope) do
     with {:ok, month} <- Months.get_by_period(org_id, client_id, period) do

@@ -1,6 +1,7 @@
 defmodule Nila.Gst.Sales.TallyWorkingsTest do
   use ExUnit.Case, async: true
 
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Eval.Gstr1Diff
   alias Nila.Gst.Sales.{Gstr1, Workings}
 
@@ -12,7 +13,7 @@ defmodule Nila.Gst.Sales.TallyWorkingsTest do
 
     %{
       extraction: extraction,
-      invoices: Enum.map(extraction["pages"], &Gstr1.normalize_invoice/1),
+      invoices: Enum.map(extraction["pages"], &Normalizer.normalize/1),
       expected: expected,
       header: Map.take(expected, ["gstin", "fp"])
     }

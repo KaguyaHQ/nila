@@ -12,7 +12,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
   alias Nila.Gst.Purchase.{ItcAllocation, ItcCases, Register, Resolutions}
   alias Nila.Gst.Purchase.Reconciliation, as: Recon
   alias Nila.Gst.Sales.Months, as: SalesMonths
-  alias Nila.Gst.Sales.Resolutions, as: SalesResolutions
+  alias Nila.Gst.Sales.Review.Resolutions, as: SalesResolutions
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
 
   @period "2025-10"
@@ -567,6 +567,78 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       reviewed
     end
 
+    test "sales invalidation revokes an unfiled 3B and releases its ITC for a new review", %{
+      sales_month: sales_month,
+      month: purchase_month,
+      owner_scope: scope
+    } do
+      reviewed = make_reviewed(sales_month, scope.user.id)
+
+      for actor <- [scope.user.id, nil] do
+        {:ok, signoff} = Signoffs.sign_off(purchase_month, scope)
+        allocation = Nila.Repo.get_by!(ItcAllocation, signoff_id: signoff.id)
+        refute allocation.revoked_at
+
+        assert {:ok, :invalidated} =
+                 Nila.Repo.transact(fn ->
+                   :ok = Signoffs.invalidate_gstr3b_in_transaction(reviewed, actor)
+                   {:ok, :invalidated}
+                 end)
+
+        revoked = Nila.Repo.reload!(signoff)
+        assert revoked.revoked_at
+        assert revoked.revoked_by_id == actor
+        assert Nila.Repo.reload!(allocation).revoked_at
+        assert Nila.Repo.reload!(purchase_month).state == "worked"
+        assert {:error, :not_found} = Signoffs.latest_signoff(purchase_month.id)
+        assert {:error, :not_signed} = Signoffs.mark_filed(purchase_month, scope)
+      end
+    end
+
+    test "sales invalidation preserves a filed 3B and its ITC allocations", %{
+      sales_month: sales_month,
+      month: purchase_month,
+      owner_scope: scope
+    } do
+      reviewed = make_reviewed(sales_month, scope.user.id)
+      {:ok, signoff} = Signoffs.sign_off(purchase_month, scope)
+      {:ok, filed} = Signoffs.mark_filed(purchase_month, scope)
+      allocation = Nila.Repo.get_by!(ItcAllocation, signoff_id: signoff.id)
+      assert allocation.filed_at
+
+      assert {:ok, :unchanged} =
+               Nila.Repo.transact(fn ->
+                 :ok = Signoffs.invalidate_gstr3b_in_transaction(reviewed, scope.user.id)
+                 {:ok, :unchanged}
+               end)
+
+      refute Nila.Repo.reload!(signoff).revoked_at
+      refute Nila.Repo.reload!(allocation).revoked_at
+      assert Nila.Repo.reload!(purchase_month).state == "filed"
+      assert Nila.Repo.reload!(purchase_month).filed_at == filed.filed_at
+      assert {:error, :already_filed} = Signoffs.mark_filed(purchase_month, scope)
+    end
+
+    test "GSTR-3B accepts reviewed sales without a GSTR-1 signature", %{
+      sales_month: sales_month,
+      month: purchase_month,
+      owner_scope: scope
+    } do
+      make_reviewed(sales_month, scope.user.id)
+      assert {:error, :not_found} = Signoffs.latest_gstr1_signoff(sales_month.id)
+      assert {:ok, _signoff} = Signoffs.sign_off(purchase_month, scope)
+    end
+
+    test "GSTR-3B refuses unresolved sales without a GSTR-1 signature", %{
+      sales_month: sales_month,
+      month: purchase_month,
+      owner_scope: scope
+    } do
+      refute SalesWorkings.reviewable?(SalesResolutions.workings(sales_month).issues)
+      assert {:error, :sales_not_reviewed} = Signoffs.sign_off(purchase_month, scope)
+      assert {:error, :not_found} = Signoffs.latest_signoff(purchase_month.id)
+    end
+
     test "requires the maker gate", %{sales_month: sales_month, owner_scope: scope} do
       assert {:error, :not_reviewed} = Signoffs.sign_off_gstr1(sales_month, scope)
     end
@@ -730,26 +802,28 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       assert {:error, :not_found} = Signoffs.latest_gstr1_signoff(reviewed.id)
     end
 
-    test "a signed sales month is a wall for new decisions", %{
+    test "legacy sales approval allows decisions while actual filing preserves the record", %{
       sales_month: sales_month,
       owner_scope: scope
     } do
       reviewed = make_reviewed(sales_month, scope.user.id)
       {:ok, _} = Signoffs.sign_off_gstr1(reviewed, scope)
 
-      assert {:error, :signed_off} =
+      assert {:ok, _decision} =
                SalesResolutions.record(
                  reviewed,
                  %{"verb" => "reopen", "target" => "anything"},
                  scope.user.id
                )
 
+      {:ok, filed} = Signoffs.mark_filed(reviewed, scope)
+
       workings = SalesResolutions.workings(reviewed)
       invoice = hd(workings.active_invoices)
 
-      assert {:error, :signed_off} =
+      assert {:error, :filed} =
                SalesResolutions.record(
-                 reviewed,
+                 filed,
                  %{
                    "verb" => "correct_field",
                    "target" => invoice["id"],
@@ -763,7 +837,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
                )
     end
 
-    test "3B assembles from the signed R1 snapshot, not a live derivation", %{
+    test "3B assembles from the filed R1 snapshot", %{
       month: client_month,
       sales_month: sales_month,
       owner_scope: scope
@@ -771,10 +845,34 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       reviewed = make_reviewed(sales_month, scope.user.id)
       {:ok, signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
 
+      assert {:ok, _} = Signoffs.mark_filed(reviewed, scope)
+
       gstr3b = Nila.Gst.Purchase.Resolutions.workings(client_month).gstr3b
-      assert gstr3b["liability_source"] == "gstr1_signed"
+      assert gstr3b["liability_source"] == "gstr1_filed"
 
       expected = Nila.Gst.Filing.Gstr3b.liability_from_gstr1(signoff.snapshot["derived"])
+      assert gstr3b["liability_31"]["a"]["txval"] == expected["txval"]
+    end
+
+    test "3B ignores a stale approval snapshot while sales remain unfiled", %{
+      month: client_month,
+      sales_month: sales_month,
+      owner_scope: scope
+    } do
+      reviewed = make_reviewed(sales_month, scope.user.id)
+      {:ok, signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
+
+      signoff
+      |> Ecto.Changeset.change(snapshot: Map.put(signoff.snapshot, "derived", %{}))
+      |> Nila.Repo.update!()
+
+      gstr3b = Resolutions.workings(client_month).gstr3b
+
+      expected =
+        Nila.Gst.Filing.Gstr3b.liability_from_gstr1(SalesResolutions.workings(reviewed).derived)
+
+      assert gstr3b["liability_source"] == "gstr1_reviewed"
+      assert expected["txval"] > 0
       assert gstr3b["liability_31"]["a"]["txval"] == expected["txval"]
     end
 

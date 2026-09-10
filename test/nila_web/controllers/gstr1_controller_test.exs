@@ -1,12 +1,11 @@
 defmodule NilaWeb.Gstr1ControllerTest do
   use NilaWeb.ConnCase, async: true
 
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Clients
   alias Nila.Gst.Filing.Signoff
   alias Nila.Gst.Sales.{Gstr1, Months}
   alias Nila.Repo
-  alias Nila.TallyDevices
-  alias Nila.TallyDevices.SyncedMaster
   alias Nila.TallyJobs.Job
 
   setup %{conn: conn} do
@@ -21,7 +20,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
       })
 
     invoice =
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "document_type" => "invoice",
           "document_status" => "active",
@@ -134,7 +133,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
     assert strings =~ "Calculated IGST"
   end
 
-  test "downloads the frozen projection after approval", %{
+  test "downloads live workings despite a legacy approval", %{
     conn: conn,
     client: client,
     month: month,
@@ -169,10 +168,10 @@ defmodule NilaWeb.Gstr1ControllerTest do
     conn = get(conn, ~p"/gstr1/#{client.id}/2026-07/winman-b2b.xlsm")
     sheet = conn.resp_body |> entries() |> Map.fetch!("xl/worksheets/sheet2.xml")
 
-    assert sheet =~ "FROZEN-001"
-    assert sheet =~ "Frozen Customer"
-    refute sheet =~ ">INV-001<"
-    refute sheet =~ "Customer &amp; Co"
+    refute sheet =~ "FROZEN-001"
+    refute sheet =~ "Frozen Customer"
+    assert sheet =~ ">INV-001<"
+    assert sheet =~ "Customer &amp; Co"
   end
 
   test "downloads current sales workings as Tally XML", %{conn: conn, client: client} do
@@ -191,7 +190,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
     assert conn.resp_body =~ "<AMOUNT>180.00</AMOUNT>"
   end
 
-  test "downloads the frozen sales projection as Tally XML", %{
+  test "preserves an actually filed snapshot in the Tally download", %{
     conn: conn,
     client: client,
     month: month,
@@ -215,6 +214,8 @@ defmodule NilaWeb.Gstr1ControllerTest do
     })
     |> Repo.insert!()
 
+    month |> Ecto.Changeset.change(filed_at: DateTime.utc_now()) |> Repo.update!()
+
     conn = get(conn, ~p"/gstr1/#{client.id}/2026-07/tally.xml")
 
     assert conn.resp_body =~ "FROZEN-TALLY-001"
@@ -223,181 +224,13 @@ defmodule NilaWeb.Gstr1ControllerTest do
     refute conn.resp_body =~ "Customer &amp; Co"
   end
 
-  test "queues the approved sales vouchers for a selected connector company", %{
+  test "the legacy month posting endpoint opens sales bills without creating jobs", %{
     conn: conn,
-    client: client,
-    month: month,
-    org: org,
-    user: user
+    client: client
   } do
-    %Signoff{
-      org_id: org.id,
-      sales_month_id: month.id,
-      signed_by_id: user.id
-    }
-    |> Signoff.changeset(%{
-      artifact: "gstr1",
-      snapshot: %{"derived" => month.derived_gstr1, "invoices" => month.invoices}
-    })
-    |> Repo.insert!()
-
-    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
-
-    {:ok, [company]} =
-      TallyDevices.report_companies(device, [
-        %{
-          "name" => "Nila",
-          "tally_guid" => "company-nila",
-          "gstin" => client.gstin
-        }
-      ])
-
-    client
-    |> Ecto.Changeset.change(active_tally_company_id: company.id)
-    |> Repo.update!()
-
-    seed_ledgers(company, ["Customer & Co", "Sales", "Output IGST"])
-    seed_voucher_type(company, "Sales", "Manual")
-
-    conn =
-      post(conn, ~p"/gstr1/#{client.id}/2026-07/tally", %{
-        "tally" => %{"company_id" => Integer.to_string(company.id)}
-      })
-
-    assert redirected_to(conn) == ~p"/gst/#{client.id}/2026-07/sales"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Queued 1 sales voucher for Nila"
-
-    assert job = Repo.one!(Job)
-    assert job.kind == "import_vouchers"
-    assert job.status == "pending"
-    assert job.payload["company"] == "Nila"
-    assert job.payload["expected_count"] == 1
-    assert job.payload["xml"] =~ "<SVCURRENTCOMPANY>Nila</SVCURRENTCOMPANY>"
-    assert job.payload["xml"] =~ "<ISINVOICE>Yes</ISINVOICE>"
-    assert job.payload["xml"] =~ "<PARTYGSTIN>29AAVCS8021P1ZB</PARTYGSTIN>"
-    assert job.payload["xml"] =~ "<GSTHSNNAME>998719</GSTHSNNAME>"
-
-    _repeated =
-      post(recycle(conn), ~p"/gstr1/#{client.id}/2026-07/tally", %{
-        "tally" => %{"company_id" => Integer.to_string(company.id)}
-      })
-
-    assert Repo.aggregate(Job, :count) == 1
-  end
-
-  test "blocks a voucher before Tally when a referenced ledger is missing", %{
-    conn: conn,
-    client: client,
-    month: month,
-    org: org,
-    user: user
-  } do
-    %Signoff{org_id: org.id, sales_month_id: month.id, signed_by_id: user.id}
-    |> Signoff.changeset(%{
-      artifact: "gstr1",
-      snapshot: %{"derived" => month.derived_gstr1, "invoices" => month.invoices}
-    })
-    |> Repo.insert!()
-
-    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
-
-    {:ok, [company]} =
-      TallyDevices.report_companies(device, [
-        %{
-          "name" => "Nila",
-          "tally_guid" => "company-nila",
-          "gstin" => client.gstin
-        }
-      ])
-
-    client
-    |> Ecto.Changeset.change(active_tally_company_id: company.id)
-    |> Repo.update!()
-
-    seed_ledgers(company, ["Sales", "Output IGST"])
-
-    conn =
-      post(conn, ~p"/gstr1/#{client.id}/2026-07/tally", %{
-        "tally" => %{"company_id" => Integer.to_string(company.id)}
-      })
-
-    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
-             "Held back 1 voucher (INV-001)"
-
-    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Customer & Co"
-
-    assert Repo.aggregate(Job, :count) == 0
-  end
-
-  test "blocks GST vouchers when the linked Tally company has no GST registration", %{
-    conn: conn,
-    client: client,
-    month: month,
-    org: org,
-    user: user
-  } do
-    %Signoff{org_id: org.id, sales_month_id: month.id, signed_by_id: user.id}
-    |> Signoff.changeset(%{
-      artifact: "gstr1",
-      snapshot: %{"derived" => month.derived_gstr1, "invoices" => month.invoices}
-    })
-    |> Repo.insert!()
-
-    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
-
-    {:ok, [company]} =
-      TallyDevices.report_companies(device, [
-        %{"name" => "Nila", "tally_guid" => "company-nila"}
-      ])
-
-    client
-    |> Ecto.Changeset.change(active_tally_company_id: company.id)
-    |> Repo.update!()
-
-    conn =
-      post(conn, ~p"/gstr1/#{client.id}/2026-07/tally", %{
-        "tally" => %{"company_id" => Integer.to_string(company.id)}
-      })
-
-    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "has no GSTIN"
-    assert Repo.aggregate(Job, :count) == 0
-  end
-
-  test "does not send a client's sales to another client's linked Tally company", %{
-    conn: conn,
-    client: client,
-    month: month,
-    org: org,
-    user: user
-  } do
-    %Signoff{org_id: org.id, sales_month_id: month.id, signed_by_id: user.id}
-    |> Signoff.changeset(%{
-      artifact: "gstr1",
-      snapshot: %{"derived" => month.derived_gstr1, "invoices" => month.invoices}
-    })
-    |> Repo.insert!()
-
-    {:ok, other_client} =
-      Clients.create_client(%{org_id: org.id, name: "Another Client", type: "company"})
-
-    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
-
-    {:ok, [company]} =
-      TallyDevices.report_companies(device, [
-        %{"name" => "Another Client", "tally_guid" => "company-another-client"}
-      ])
-
-    other_client
-    |> Ecto.Changeset.change(active_tally_company_id: company.id)
-    |> Repo.update!()
-
-    conn =
-      post(conn, ~p"/gstr1/#{client.id}/2026-07/tally", %{
-        "tally" => %{"company_id" => Integer.to_string(company.id)}
-      })
-
-    assert redirected_to(conn) == ~p"/gst/#{client.id}/2026-07/sales"
-    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "no longer available"
+    conn = post(conn, ~p"/gstr1/#{client.id}/2026-07/tally", %{"tally" => %{"company_id" => "7"}})
+    assert redirected_to(conn) == ~p"/sales-bills"
+    assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Open the sales bills"
     assert Repo.aggregate(Job, :count) == 0
   end
 
@@ -445,7 +278,9 @@ defmodule NilaWeb.Gstr1ControllerTest do
     assert response(conn, 404) == "Not found"
   end
 
-  test "does not let an operator write to Tally", %{client: client} do
+  test "does not let an operator from another org use the month posting endpoint", %{
+    client: client
+  } do
     %{user: operator} = user_with_org_fixture(%{role: "member"})
 
     conn =
@@ -453,48 +288,12 @@ defmodule NilaWeb.Gstr1ControllerTest do
       |> log_in_user(operator)
       |> post(~p"/gstr1/#{client.id}/2026-07/tally")
 
-    assert redirected_to(conn) == ~p"/sales-bills"
-    assert Phoenix.Flash.get(conn.assigns.flash, :error) == "You don't have access to that area."
+    assert response(conn, 404) == "Not found"
+    assert Repo.aggregate(Job, :count) == 0
   end
 
   defp entries(workbook) do
     {:ok, entries} = :zip.extract(workbook, [:memory])
     Map.new(entries, fn {path, bytes} -> {List.to_string(path), bytes} end)
-  end
-
-  defp seed_ledgers(company, names) do
-    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
-
-    rows =
-      Enum.map(names, fn name ->
-        %{
-          org_id: company.org_id,
-          company_id: company.id,
-          kind: "ledger",
-          identity: String.downcase(name),
-          name: name,
-          data: %{},
-          inserted_at: now,
-          updated_at: now
-        }
-      end)
-
-    {count, _} = Repo.insert_all(SyncedMaster, rows)
-    assert count == length(rows)
-  end
-
-  defp seed_voucher_type(company, name, numbering_method) do
-    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
-
-    Repo.insert!(%SyncedMaster{
-      org_id: company.org_id,
-      company_id: company.id,
-      kind: "voucher_type",
-      identity: "name:#{String.downcase(name)}",
-      name: name,
-      data: %{"numbering_method" => numbering_method},
-      inserted_at: now,
-      updated_at: now
-    })
   end
 end

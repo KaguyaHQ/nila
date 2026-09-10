@@ -4,12 +4,15 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
   import Phoenix.LiveViewTest
   import Nila.GstFixtures
 
+  alias Nila.Gst.Sales.Invoice.Validation, as: InvoiceValidation
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Clients
 
   @period "2025-10"
 
   test "special treatment corrections use choices and preserve the original evidence", context do
-    alias Nila.Gst.Sales.{Gstr1, Months, Resolutions}
+    alias Nila.Gst.Sales.{Gstr1, Months}
+    alias Nila.Gst.Sales.Review.Resolutions
 
     pages =
       "test/fixtures/gstr1/tally/2026-06/extraction.json"
@@ -18,7 +21,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
       |> Map.fetch!("pages")
 
     invoice =
-      pages |> Enum.at(3) |> Gstr1.normalize_invoice() |> Map.put("tax_payment", "unknown")
+      pages |> Enum.at(3) |> Normalizer.normalize() |> Map.put("tax_payment", "unknown")
 
     {:ok, month} =
       Months.upsert(%{
@@ -67,7 +70,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
 
   test "an unregistered note's original sale can be reviewed without entering internal codes",
        context do
-    alias Nila.Gst.Sales.{Gstr1, Months, Resolutions}
+    alias Nila.Gst.Sales.{Gstr1, Months}
+    alias Nila.Gst.Sales.Review.Resolutions
     {:ok, month} = Months.get_by_period(context.org.id, context.client.id, @period)
 
     note =
@@ -145,7 +149,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
   } do
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
     {:ok, month} = Nila.Gst.Sales.Months.get_by_period(org.id, client.id, @period)
-    [invoice | _] = Nila.Gst.Sales.Resolutions.workings(month).active_invoices
+    [invoice | _] = Nila.Gst.Sales.Review.Resolutions.workings(month).active_invoices
 
     refute has_element?(view, "#month-door-sales-issues")
     refute has_element?(view, "#month-door-review-issue")
@@ -197,7 +201,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
         derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, @period))
       })
 
-    [first, second | _] = Nila.Gst.Sales.Resolutions.workings(updated).active_invoices
+    [first, second | _] = Nila.Gst.Sales.Review.Resolutions.workings(updated).active_invoices
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
     month_pid = view.pid
 
@@ -234,7 +238,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     client: client
   } do
     {:ok, month} = Nila.Gst.Sales.Months.get_by_period(org.id, client.id, @period)
-    [invoice | _] = Nila.Gst.Sales.Resolutions.workings(month).active_invoices
+    [invoice | _] = Nila.Gst.Sales.Review.Resolutions.workings(month).active_invoices
 
     review_path =
       "/gst/#{client.id}/#{@period}/review/sales?item=#{invoice["id"]}&scope=needs_you"
@@ -333,7 +337,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     }
 
     invoice =
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "invoice_number" => "44/2026-27",
           "invoice_date" => "04.12.2025",
@@ -359,7 +363,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
         derived_gstr1: Gstr1.derive(invoices, Gstr1.production_header(client.gstin, period))
       })
 
-    [review_invoice] = Nila.Gst.Sales.Resolutions.workings(review_month).active_invoices
+    [review_invoice] = Nila.Gst.Sales.Review.Resolutions.workings(review_month).active_invoices
 
     path =
       "/gst/#{client.id}/#{period}/review/sales?item=#{review_invoice["id"]}&scope=all"
@@ -467,7 +471,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     user: user
   } do
     {:ok, month} = Nila.Gst.Sales.Months.get_by_period(org.id, client.id, @period)
-    [invoice | _] = Nila.Gst.Sales.Resolutions.workings(month).active_invoices
+    [invoice | _] = Nila.Gst.Sales.Review.Resolutions.workings(month).active_invoices
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     view |> element("#gstr1-inv-20\\/2025-26") |> render_click()
@@ -536,7 +540,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
 
     frozen =
       month.id
-      |> Nila.Gst.Sales.Resolutions.list()
+      |> Nila.Gst.Sales.Review.Resolutions.list()
       |> Enum.find_value(& &1.payload["proposal"])
 
     assert frozen["action"] == "Accept the extracted lines"
@@ -617,7 +621,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     invoices = [
       # The tax amounts disagree with the rate, so the line's fields are
       # flagged and taxable_value is correctable through the modal.
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "invoice_number" => "40/2025-26",
           "invoice_date" => "04.12.2025",
@@ -635,7 +639,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
           ]
         }
       }),
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "invoice_number" => "41/2025-26",
           "invoice_date" => "06.12.2025",
@@ -742,7 +746,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
 
     # Lines 1 and 3 don't multiply out; line 2 does.
     invoices = [
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "invoice_number" => "41/2025-26",
           "invoice_date" => "04.11.2025",
@@ -757,7 +761,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
       })
     ]
 
-    failed = invoices |> hd() |> Gstr1.invoice_checks() |> Enum.reject(& &1["passed"])
+    failed = invoices |> hd() |> InvoiceValidation.checks() |> Enum.reject(& &1["passed"])
     assert length(failed) == 2
 
     {:ok, _} =

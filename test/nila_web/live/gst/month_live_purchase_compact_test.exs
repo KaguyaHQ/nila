@@ -1017,7 +1017,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     assert has_element?(view, "#month-deadline-purchase", "GSTR-3B")
     assert has_element?(view, "#month-deadline-purchase", "due 20 Nov 2025")
     assert has_element?(view, "#month-deadline-purchase", "days overdue")
-    assert render(view) =~ "GSTR-1 approved."
+    assert has_element?(view, "#month-exit-gstr3b", "Signed by")
     refute has_element?(view, "#gstr1-mark-filed")
     refute has_element?(view, "#gst-mark-filed")
   end

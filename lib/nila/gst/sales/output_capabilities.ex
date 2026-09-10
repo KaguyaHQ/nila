@@ -8,6 +8,7 @@ defmodule Nila.Gst.Sales.OutputCapabilities do
   """
 
   alias Nila.Gst.InvoiceFacts
+  alias Nila.Gst.Sales.Invoice
 
   @type finding :: %{code: String.t(), fields: [String.t()]}
 
@@ -16,8 +17,8 @@ defmodule Nila.Gst.Sales.OutputCapabilities do
   def common(invoice) do
     invoice = InvoiceFacts.sales!(invoice)
     document = invoice.evidence["document"] || %{}
-    supply_type = supply_type(invoice)
-    document_status = document_status(invoice)
+    supply_type = Invoice.supply_type(invoice)
+    document_status = Invoice.document_status(invoice)
 
     [
       {document["export"] == true or supply_type == "export", "export_supply_unsupported",
@@ -34,15 +35,6 @@ defmodule Nila.Gst.Sales.OutputCapabilities do
     |> Enum.filter(fn {present?, _code, _fields} -> present? end)
     |> Enum.map(fn {_present?, code, fields} -> %{code: code, fields: fields} end)
   end
-
-  @doc false
-  def supply_type(invoice) do
-    invoice.evidence["supply_type"] ||
-      if(get_in(invoice.evidence, ["document", "export"]), do: "export", else: "taxable")
-  end
-
-  @doc false
-  def document_status(invoice), do: invoice.evidence["document_status"] || "active"
 
   @doc false
   def recipient_registration(invoice) do

@@ -5,7 +5,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   import NilaWeb.Gst.SalesBillReview,
     except: [mount: 3, handle_params: 3, handle_event: 3, handle_info: 2]
 
-  alias Nila.Gst.Sales.{Invoice, TallyPacket}
+  alias Nila.Gst.Sales.Invoice
+  alias Nila.Gst.Sales.Tally.Packet, as: TallyPacket
 
   @impl true
   defdelegate mount(params, session, socket), to: SalesBillReview

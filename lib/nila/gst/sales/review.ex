@@ -10,8 +10,9 @@ defmodule Nila.Gst.Sales.Review do
   rows.
   """
 
+  alias Nila.Gst.Sales.Invoice
   alias Nila.Gst.Issues
-  alias Nila.Gst.Sales.{Gstr1, Workings}
+  alias Nila.Gst.Sales.Workings
 
   @doc "Builds both review scopes and scope-independent lane progress."
   def build(workings) when is_map(workings) do
@@ -22,7 +23,7 @@ defmodule Nila.Gst.Sales.Review do
       invoices
       |> Enum.map(fn invoice ->
         # An invoice that cannot form a return row is still reviewable source work.
-        treatment = treatment_snapshot(invoice, Map.fetch!(workings, :derived)) || %{}
+        treatment = treatment_snapshot(invoice, workings) || %{}
         item(invoice, treatment, issues, invoices)
       end)
 
@@ -105,26 +106,26 @@ defmodule Nila.Gst.Sales.Review do
   @doc """
   Freezes the effective portal treatment for one source invoice.
 
-  The second argument is the current derived GSTR-1. The snapshot deliberately
+  The second argument is the current Gstr1.project/2 result or workings. The snapshot deliberately
   records both the total tax and its heads: a later correction or engine change
   must not rewrite what the reviewer challenged.
   """
-  def treatment_snapshot(invoice, derived) when is_map(invoice) and is_map(derived) do
-    case derived_invoice(derived, invoice) do
+  def treatment_snapshot(invoice, %{contributions: contributions}) when is_map(invoice) do
+    case Map.get(contributions, invoice["id"]) do
       nil ->
         nil
 
-      treatment ->
+      %{entry: treatment, table: table, effect: effect} ->
         amounts =
           treatment
           |> treatment_amounts()
-          |> scale_amounts(Gstr1.document_effect(invoice))
+          |> scale_amounts(effect)
 
         %{
           "source_id" => invoice["id"],
-          "invoice_number" => Gstr1.document_number(invoice),
+          "invoice_number" => Invoice.document_number(invoice),
           "buyer_gstin" => invoice["buyer_gstin"],
-          "table" => source_table(invoice),
+          "table" => table,
           "category" =>
             treatment["ntty"] || treatment["inv_typ"] || treatment["exp_typ"] || treatment["typ"] ||
               "OE",
@@ -137,6 +138,8 @@ defmodule Nila.Gst.Sales.Review do
         }
     end
   end
+
+  def treatment_snapshot(_invoice, _without_contributions), do: nil
 
   defp item(invoice, treatment, issues, invoices) do
     invoice_issues =
@@ -196,82 +199,6 @@ defmodule Nila.Gst.Sales.Review do
   end
 
   defp issue_source_ids(_issue, _invoices), do: []
-
-  defp derived_invoice(derived, invoice) do
-    case source_table(invoice) do
-      "exp" ->
-        entries =
-          for group <- List.wrap(derived["exp"]),
-              entry <- List.wrap(group["inv"]),
-              entry["inum"] == Gstr1.document_number(invoice),
-              do: Map.put(entry, "exp_typ", group["exp_typ"])
-
-        List.first(entries)
-
-      "cdnur" ->
-        note_type = if(Gstr1.document_type(invoice) == "credit_note", do: "C", else: "D")
-
-        Enum.find(derived["cdnur"] || [], fn entry ->
-          entry["nt_num"] == Gstr1.document_number(invoice) and entry["ntty"] == note_type
-        end)
-
-      "cdnr" ->
-        note_type = if(Gstr1.document_type(invoice) == "credit_note", do: "C", else: "D")
-
-        derived
-        |> Map.get("cdnr", [])
-        |> Enum.filter(&(&1["ctin"] == invoice["buyer_gstin"]))
-        |> Enum.flat_map(&List.wrap(&1["nt"]))
-        |> Enum.find(fn entry ->
-          entry["nt_num"] == Gstr1.document_number(invoice) and entry["ntty"] == note_type
-        end)
-
-      "b2b" ->
-        derived
-        |> Map.get("b2b", [])
-        |> Enum.filter(&(&1["ctin"] == invoice["buyer_gstin"]))
-        |> Enum.flat_map(&List.wrap(&1["inv"]))
-        |> Enum.find(&(&1["inum"] == Gstr1.document_number(invoice)))
-
-      "b2cl" ->
-        derived
-        |> Map.get("b2cl", [])
-        |> Enum.filter(&(&1["pos"] == invoice["place_of_supply"]))
-        |> Enum.flat_map(&List.wrap(&1["inv"]))
-        |> Enum.find(&(&1["inum"] == Gstr1.document_number(invoice)))
-
-      table when table in ["b2cs", "nil"] ->
-        %{
-          "typ" => if(table == "nil", do: invoice["supply_type"], else: "OE"),
-          "pos" => invoice["place_of_supply"],
-          "itms" =>
-            invoice
-            |> Gstr1.filing_details()
-            |> Enum.with_index(1)
-            |> Enum.map(fn {detail, index} -> %{"num" => index, "itm_det" => detail} end)
-        }
-
-      nil ->
-        nil
-    end
-  end
-
-  defp source_table(invoice) do
-    cond do
-      Gstr1.filing_table(invoice) == "nil" ->
-        "nil"
-
-      Gstr1.document_type(invoice) in ~w(credit_note debit_note) and
-          Gstr1.recipient_registration(invoice) == "registered" ->
-        "cdnr"
-
-      Gstr1.recipient_registration(invoice) == "registered" ->
-        "b2b"
-
-      true ->
-        Gstr1.filing_table(invoice)
-    end
-  end
 
   defp treatment_amounts(treatment) do
     treatment

@@ -1,14 +1,17 @@
 defmodule Nila.Gst.ProposalsTest do
   use ExUnit.Case, async: true
 
+  alias Nila.Gst.Sales.Invoice.Validation, as: InvoiceValidation
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Gst.Proposals
-  alias Nila.Gst.Sales.{Gstr1, Values}
+  alias Nila.Gst.Sales.Gstr1
+  alias Nila.Gst.Sales.Review.Values
 
   @seller "33AEWPH4158J1Z3"
   @period "2026-05"
 
   defp invoice(line_items, printed \\ %{}) do
-    Gstr1.normalize_invoice(%{
+    Normalizer.normalize(%{
       "data" =>
         Map.merge(
           %{
@@ -21,6 +24,7 @@ defmodule Nila.Gst.ProposalsTest do
           printed
         )
     })
+    |> Map.put("id", "proposal-source-1")
   end
 
   defp clean_line(taxable) do
@@ -36,8 +40,8 @@ defmodule Nila.Gst.ProposalsTest do
   end
 
   defp context(invoice) do
-    derived = Gstr1.derive([invoice], Gstr1.production_header(@seller, @period))
-    {Values.for_invoice(invoice, derived), Gstr1.invoice_checks(invoice)}
+    projection = Gstr1.project([invoice], Gstr1.production_header(@seller, @period))
+    {Values.for_invoice(invoice, projection), InvoiceValidation.checks(invoice)}
   end
 
   describe "arithmetic mismatches" do

@@ -1,11 +1,12 @@
 defmodule Nila.Gst.Extraction.VisionPipelineTest do
+  alias Nila.Gst.Extraction.Sales.Normalizer
+  alias Nila.Gst.Sales.Invoice
   use ExUnit.Case, async: true
 
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.InvoiceData
   alias Nila.Gst.Extraction.VisionPipeline
   alias Nila.Gst.Purchase.Books
-  alias Nila.Gst.Sales.Gstr1
   alias Nila.PdfFixtures
 
   @line_item_fields ~w(
@@ -143,7 +144,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     pdf = PdfFixtures.text_pdf(["GSTIN 33AEWPH4158J1Z3 Invoice INV-1", "Continued total 1180"])
     assert {:ok, result} = VisionPipeline.extract(:sales, pdf, input: :text)
     assert [%{"source_pages" => [1, 2], "image" => "page_01.jpg"} = artifact] = result.pages
-    assert Gstr1.normalize_invoice(artifact)["invoice_number"] == "INV-1"
+    assert Normalizer.normalize(artifact)["invoice_number"] == "INV-1"
     assert map_size(result.images) == 2
     assert result.audit.metadata["native_text"]["1"] =~ "33AEWPH4158J1Z3"
     assert result.audit.metadata["invoice_inputs"] == [%{"pages" => [1, 2], "input" => "text"}]
@@ -583,8 +584,8 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     assert Enum.all?(lines, &(&1["cgst_rate"] == 9 and &1["sgst_rate"] == 9))
     assert artifact["verification"]["flags"] == []
 
-    normalized = Gstr1.normalize_invoice(artifact)
-    assert Gstr1.extracted_totals(normalized) == %{taxable: 475_000, tax: 85_500}
+    normalized = Normalizer.normalize(artifact)
+    assert Invoice.extracted_totals(normalized) == %{taxable: 475_000, tax: 85_500}
     assert normalized["printed_grand_total"] == 560_500
 
     assert Enum.all?(

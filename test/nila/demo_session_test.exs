@@ -3,7 +3,8 @@ defmodule Nila.DemoSessionTest do
 
   alias Nila.DemoSession
   alias Nila.Gst.Intake.{Dump, Dumps}
-  alias Nila.Gst.Sales.{Month, Months, Resolution}
+  alias Nila.Gst.Sales.{Month, Months}
+  alias Nila.Gst.Sales.Review.Resolution
 
   setup do
     org = Nila.AccountsFixtures.org_fixture()

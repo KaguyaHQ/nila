@@ -1,14 +1,17 @@
 defmodule Nila.Gst.Sales.TallySpecialSuppliesTest do
   use ExUnit.Case, async: true
 
+  alias Nila.Gst.Sales.Gstr1.Readiness, as: Gstr1Readiness
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Eval.Gstr1Diff
-  alias Nila.Gst.Sales.{Gstr1, Invoice, Review, Values, Workings}
+  alias Nila.Gst.Sales.{Gstr1, Invoice, Review, Workings}
+  alias Nila.Gst.Sales.Review.Values
   alias Nila.Gst.Filing.WinmanGstr1
   @root Path.expand("../../../fixtures/gstr1/tally/2026-06", __DIR__)
 
   setup do
     expected = read("native-gstr1.json")
-    invoices = Enum.map(read("extraction.json")["pages"], &Gstr1.normalize_invoice/1)
+    invoices = Enum.map(read("extraction.json")["pages"], &Normalizer.normalize/1)
     header = Map.take(expected, ~w(gstin fp))
 
     %{
@@ -49,9 +52,9 @@ defmodule Nila.Gst.Sales.TallySpecialSuppliesTest do
     assert length(lut) == 2
 
     for invoice <- lut do
-      assert Gstr1.extracted_totals(invoice).tax > 0
-      assert Values.filed(invoice, c.result.derived).tax == 0
-      assert Values.for_invoice(invoice, c.result.derived).printed_vs_extracted.total == 0
+      assert Invoice.extracted_totals(invoice).tax > 0
+      assert Values.filed(invoice, c.result).tax == 0
+      assert Values.for_invoice(invoice, c.result).printed_vs_extracted.total == 0
     end
 
     review = Review.build(c.result)
@@ -71,17 +74,26 @@ defmodule Nila.Gst.Sales.TallySpecialSuppliesTest do
     sez = Enum.at(c.result.invoices, 2)
     unknown = Map.put(sez, "tax_payment", "unknown")
     assert Gstr1.filing_table(unknown) == nil
-    assert Enum.any?(Gstr1.blocking_issues([unknown]), &(&1["code"] == "missing_tax_payment"))
+
+    assert Enum.any?(
+             Gstr1Readiness.blocking_issues([unknown]),
+             &(&1["code"] == "missing_tax_payment")
+           )
+
     note = Map.put(sez, "document_type", "credit_note")
     assert Gstr1.filing_table(note) == nil
-    assert Enum.any?(Gstr1.blocking_issues([note]), &(&1["code"] == "special_note_unsupported"))
+
+    assert Enum.any?(
+             Gstr1Readiness.blocking_issues([note]),
+             &(&1["code"] == "special_note_unsupported")
+           )
   end
 
   test "SEZ with payment remains IGST even in the supplier's state", c do
     invoice = Enum.at(c.result.invoices, 2)
     assert String.starts_with?(invoice["buyer_gstin"], "33")
-    assert Values.filed(invoice, c.result.derived).igst == 5400
-    assert Values.filed(invoice, c.result.derived).cgst == 0
+    assert Values.filed(invoice, c.result).igst == 5400
+    assert Values.filed(invoice, c.result).cgst == 0
   end
 
   test "export comparison catches dropped invoices and changed payment treatment", c do
@@ -115,7 +127,7 @@ defmodule Nila.Gst.Sales.TallySpecialSuppliesTest do
   test "Excel working includes exports, separates treatments and keeps recipient RCM tax out of invoice value",
        c do
     assert {:ok, bytes} =
-             Nila.Gst.Sales.WorkingsXlsx.build(
+             Nila.Gst.Sales.Workings.Xlsx.build(
                c.result,
                %{name: "Fixture", gstin: c.header["gstin"]},
                "2026-06"

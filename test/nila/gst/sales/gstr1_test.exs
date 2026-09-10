@@ -10,6 +10,12 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   """
   use ExUnit.Case, async: true
 
+  alias Nila.Gst.Sales.Invoice.Validation, as: InvoiceValidation
+  alias Nila.Gst.Sales.Gstr1.Readiness, as: Gstr1Readiness
+  alias Nila.Gst.Sales.Gstr1.Documents
+  alias Nila.Gst.Sales.Review.CorrectionPolicy
+  alias Nila.Gst.Extraction.Sales.Normalizer
+  alias Nila.Gst.Sales.Invoice
   alias Nila.Eval.Gstr1Diff
   alias Nila.Gst.Sales.Gstr1
 
@@ -39,7 +45,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert Gstr1.filing_table(invoice) == nil
 
       assert Enum.any?(
-               Nila.Gst.Sales.Gstr1Readiness.capability_issues([invoice]),
+               Nila.Gst.Sales.Gstr1.Readiness.capability_issues([invoice]),
                &(&1["code"] == "non_taxable_tax_conflict")
              )
     end
@@ -47,11 +53,11 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
   describe "valid_gstin?/1" do
     test "accepts real GSTINs and rejects checksum-broken ones" do
-      assert Gstr1.valid_gstin?("33AEWPH4158J1Z3")
-      assert Gstr1.valid_gstin?("33BPBPK1081A1ZO")
-      refute Gstr1.valid_gstin?("33AEWPH4158J1Z4")
-      refute Gstr1.valid_gstin?("garbage")
-      refute Gstr1.valid_gstin?(nil)
+      assert Nila.Gstin.valid_extracted?("33AEWPH4158J1Z3")
+      assert Nila.Gstin.valid_extracted?("33BPBPK1081A1ZO")
+      refute Nila.Gstin.valid_extracted?("33AEWPH4158J1Z4")
+      refute Nila.Gstin.valid_extracted?("garbage")
+      refute Nila.Gstin.valid_extracted?(nil)
     end
 
     # This module carried its own copy of the checksum, gated only on
@@ -60,183 +66,21 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     # invalid to purchase reconciliation and to the client form that captured
     # it.
     test "agrees with Nila.Gstin on structure, not just the check digit" do
-      refute Gstr1.valid_gstin?("330ABCP9487A1ZG")
-      assert Nila.Gstin.valid?("330ABCP9487A1ZG") == Gstr1.valid_gstin?("330ABCP9487A1ZG")
+      refute Nila.Gstin.valid_extracted?("330ABCP9487A1ZG")
+
+      assert Nila.Gstin.valid?("330ABCP9487A1ZG") ==
+               Nila.Gstin.valid_extracted?("330ABCP9487A1ZG")
     end
 
     test "tolerates the case a scan gives us" do
       # The printed GSTIN is whatever the OCR read; `Nila.Gstin` itself stays
       # strict for the form fields that store a canonical value.
-      assert Gstr1.valid_gstin?("33aewph4158j1z3")
+      assert Nila.Gstin.valid_extracted?("33aewph4158j1z3")
       refute Nila.Gstin.valid?("33aewph4158j1z3")
     end
   end
 
-  describe "normalize_invoice/1" do
-    test "preserves sales party roles without treating ship-to as place of supply" do
-      invoice =
-        Gstr1.normalize_invoice(%{
-          "data" => %{
-            "document_type" => "invoice",
-            "document_status" => "active",
-            "supply_type" => "taxable",
-            "recipient_registration" => "registered",
-            "invoice_number" => "38/2026-27",
-            "invoice_date" => "09.06.2026",
-            "supplier" => %{
-              "name" => "Breeze Tech",
-              "gstin" => "33AEWPH4158J1Z3",
-              "address" => "Chennai",
-              "state_code" => "33"
-            },
-            "bill_to" => %{
-              "name" => "Philips India Ltd",
-              "gstin" => "33AABCP9487A1ZG",
-              "address" => "Chennai",
-              "state_code" => "33"
-            },
-            "ship_to" => %{
-              "name" => "Osmania General Hospital",
-              "gstin" => nil,
-              "address" => "Hyderabad",
-              "state_code" => "36"
-            },
-            "printed_place_of_supply" => nil,
-            "line_items" => []
-          }
-        })
-
-      assert invoice["seller_gstin"] == "33AEWPH4158J1Z3"
-      assert invoice["buyer_gstin"] == "33AABCP9487A1ZG"
-      assert invoice["bill_to"]["state_code"] == "33"
-      assert invoice["ship_to"]["state_code"] == "36"
-      assert invoice["place_of_supply"] == nil
-    end
-
-    test "drops degenerate lines and lifts nested seller/buyer" do
-      raw = %{
-        "page" => 1,
-        "data" => %{
-          "invoice_number" => " 20 / 2026-27 ",
-          "invoice_date" => "04.05.2026",
-          "seller" => %{"name" => "S", "gstin" => "33AEWPH4158J1Z3"},
-          "buyer" => %{"name" => "B", "gstin" => "33AABCP9487A1ZG"},
-          "line_items" => [
-            %{"printed_taxable_value" => 1000, "cgst_amount" => 90, "sgst_amount" => 90},
-            %{"printed_taxable_value" => 0, "quantity" => 0}
-          ]
-        }
-      }
-
-      invoice = Gstr1.normalize_invoice(raw)
-      assert invoice["invoice_number"] == "20/2026-27"
-      assert invoice["seller_gstin"] == "33AEWPH4158J1Z3"
-      assert length(invoice["line_items"]) == 1
-    end
-
-    test "derives taxable value deterministically from a printed tax-inclusive line" do
-      invoice =
-        Gstr1.normalize_invoice(%{
-          "data" => %{
-            "document_type" => "invoice",
-            "document_status" => "active",
-            "supply_type" => "taxable",
-            "recipient_registration" => "unregistered",
-            "place_of_supply" => "29",
-            "invoice_number" => "INV-000006",
-            "invoice_date" => "15.07.2026",
-            "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
-            "buyer" => %{"name" => "Consumer", "gstin" => nil},
-            "line_items" => [
-              %{
-                "description" => "Tax-inclusive fixture",
-                "hsn_sac" => "8471",
-                "quantity" => 1,
-                "uom" => "Nos",
-                "printed_unit_price" => 110_000,
-                "printed_line_amount" => 110_000,
-                "printed_taxable_value" => nil,
-                "line_amount_tax_inclusion" => "inclusive",
-                "igst_rate" => 18,
-                "igst_amount" => 16_779.66
-              }
-            ],
-            "printed_total_taxable" => nil,
-            "printed_total_tax" => 16_779.66,
-            "printed_grand_total" => 110_000
-          }
-        })
-
-      assert [line] = invoice["line_items"]
-      assert line["taxable_value"] == 93_220.34
-      assert line["taxable_value_basis"] == "derived_from_inclusive_line_amount"
-      assert line["printed_line_amount"] == 110_000
-      assert line["printed_taxable_value"] == nil
-      assert line["line_amount_tax_inclusion"] == "inclusive"
-      assert Gstr1.validation_issues([invoice]) == []
-      assert Gstr1.filing_table(invoice) == "b2cl"
-
-      derived = Gstr1.derive([invoice], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "072026"})
-      assert get_in(derived, ["b2cl", Access.at(0), "inv", Access.at(0), "val"]) == 110_000.0
-    end
-
-    test "ignores audited source failures for candidates absent from canonical data" do
-      invoice =
-        Gstr1.normalize_invoice(%{
-          "verification" => %{
-            "status" => "flagged",
-            "failed_checks" => [
-              %{
-                "kind" => "source_presence",
-                "field" => "printed_cgst",
-                "detail" => "%{value: 90}"
-              },
-              %{
-                "kind" => "grounding",
-                "field" => "line_items[0].hsn_sac",
-                "detail" => "not printed"
-              }
-            ]
-          },
-          "data" => %{
-            "document_type" => "invoice",
-            "document_status" => "active",
-            "supply_type" => "taxable",
-            "recipient_registration" => "unregistered",
-            "place_of_supply" => "33",
-            "invoice_number" => "GROUND-1",
-            "invoice_date" => "15.07.2026",
-            "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
-            "line_items" => [
-              %{
-                "item_name" => "Fixture",
-                "hsn_sac" => "8471",
-                "quantity" => 1,
-                "uom" => "Nos",
-                "printed_taxable_value" => 1_000,
-                "cgst_rate" => 9,
-                "cgst_amount" => 90,
-                "sgst_rate" => 9,
-                "sgst_amount" => 90
-              }
-            ],
-            "printed_total_tax" => 180,
-            "printed_grand_total" => 1_180
-          }
-        })
-
-      assert get_in(invoice, ["verification", "status"]) == "flagged"
-
-      assert [issue] =
-               Enum.filter(
-                 Gstr1.validation_issues([invoice]),
-                 &(&1["code"] == "ungrounded_extracted_value")
-               )
-
-      assert issue["fields"] == ["line_items[0].hsn_sac"]
-      refute "printed_cgst" in issue["fields"]
-    end
-
+  describe "correction normalization" do
     test "corrections canonicalize POS and recompute an inclusive line's taxable value" do
       invoice =
         b2c_invoice("INC-1", "2026-07-15", "29", 93_220.34, 16_779.66)
@@ -248,7 +92,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
           ["line_items", Access.at(0), "line_amount_tax_inclusion_candidate"],
           "inclusive"
         )
-        |> Gstr1.resolve_line_amounts()
+        |> Invoice.resolve_line_amounts()
 
       flagged =
         MapSet.new([
@@ -261,12 +105,12 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         %{
           "source_id" => "source-inc",
           "field" => "line_items[0].igst_rate",
-          "value" => Gstr1.coerce_correction("line_items[0].igst_rate", "12")
+          "value" => Invoice.coerce_correction("line_items[0].igst_rate", "12")
         }
       ]
 
       {[corrected], applied, [], _flags} =
-        Gstr1.apply_corrections([invoice], corrections, flagged)
+        CorrectionPolicy.apply_corrections([invoice], corrections, flagged)
 
       assert length(applied) == 2
       assert corrected["place_of_supply"] == "29"
@@ -304,7 +148,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       ]
 
       {[corrected], _applied, [], _flags} =
-        Gstr1.apply_corrections([invoice], corrections, flagged)
+        CorrectionPolicy.apply_corrections([invoice], corrections, flagged)
 
       assert get_in(corrected, ["line_items", Access.at(0), "taxable_value"]) == 95_000
       assert get_in(corrected, ["line_items", Access.at(0), "taxable_value_basis"]) == "corrected"
@@ -463,7 +307,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert Gstr1.filing_table(note) == nil
 
       assert Enum.any?(
-               Gstr1.blocking_issues([note]),
+               Gstr1Readiness.blocking_issues([note]),
                &(&1["code"] == "missing_original_sale_category")
              )
 
@@ -476,9 +320,9 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       note = credit_note()
 
       assert note["document_type"] == "credit_note"
-      assert Gstr1.document_number(note) == "03/2024-25"
-      assert Gstr1.document_date(note) == ~D[2025-01-03]
-      assert Gstr1.document_effect(note) == -1
+      assert Invoice.document_number(note) == "03/2024-25"
+      assert Invoice.document_date(note) == ~D[2025-01-03]
+      assert Invoice.document_effect(note) == -1
 
       derived =
         Gstr1.derive([note], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "012025"})
@@ -535,16 +379,16 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert hsn["txval"] == -743_125
       assert hsn["camt"] == -66_881.25
       assert hsn["samt"] == -66_881.25
-      assert Gstr1.blocking_issues([note]) == []
+      assert Gstr1Readiness.blocking_issues([note]) == []
     end
 
     test "derives the verified Zoho debit-note shape with positive liability effect" do
       note = debit_note()
 
       assert note["document_type"] == "debit_note"
-      assert Gstr1.document_number(note) == "CDN-000001"
-      assert Gstr1.document_date(note) == ~D[2026-08-10]
-      assert Gstr1.document_effect(note) == 1
+      assert Invoice.document_number(note) == "CDN-000001"
+      assert Invoice.document_date(note) == ~D[2026-08-10]
+      assert Invoice.document_effect(note) == 1
 
       derived =
         Gstr1.derive([note], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "082026"})
@@ -600,12 +444,12 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert [hsn] = get_in(derived, ["hsn", "hsn_b2b"])
       assert hsn["txval"] == 10_000
       assert hsn["iamt"] == 1_800
-      assert Gstr1.blocking_issues([note]) == []
+      assert Gstr1Readiness.blocking_issues([note]) == []
     end
 
     test "classification disagreement blocks instead of flipping liability silently" do
       invoice =
-        Gstr1.normalize_invoice(%{
+        Normalizer.normalize(%{
           "document" => %{
             "credit_note" => true,
             "debit_note" => false,
@@ -629,7 +473,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
     test "a credit note and invoice with the same number are not duplicate documents" do
       invoice = %{dated("03.01.2025") | "invoice_number" => "03/2024-25"}
-      assert Gstr1.duplicate_number_issues([invoice, credit_note()]) == []
+      assert InvoiceValidation.duplicate_number_issues([invoice, credit_note()]) == []
     end
   end
 
@@ -665,7 +509,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     # header is not a bill, and flagging it is noise in the reviewer's queue.
     test "a furniture row with no values is not asked about its date" do
       furniture =
-        Gstr1.normalize_invoice(%{
+        Normalizer.normalize(%{
           "page" => 1,
           "data" => %{
             "invoice_number" => nil,
@@ -691,7 +535,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   defp date_issue?(issue), do: issue["code"] == "unreadable_invoice_date"
 
   defp credit_note do
-    Gstr1.normalize_invoice(%{
+    Normalizer.normalize(%{
       "page" => 1,
       "document" => %{"credit_note" => true, "debit_note" => false},
       "data" => %{
@@ -720,7 +564,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   end
 
   defp debit_note do
-    Gstr1.normalize_invoice(%{
+    Normalizer.normalize(%{
       "page" => 1,
       "document" => %{"credit_note" => false, "debit_note" => true},
       "data" => %{
@@ -759,7 +603,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         %{"igst_rate" => 18, "igst_amount" => tax}
       end
 
-    Gstr1.normalize_invoice(%{
+    Normalizer.normalize(%{
       "data" => %{
         "document_type" => "invoice",
         "document_status" => "active",
@@ -791,7 +635,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   end
 
   defp dated(printed) do
-    Gstr1.normalize_invoice(%{
+    Normalizer.normalize(%{
       "page" => 1,
       "data" => %{
         "invoice_number" => "20/2026-27",
@@ -821,7 +665,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   describe "validation_issues/1 — an invoice that contradicts itself" do
     # Seller KA, buyer TN. One line IGST ₹900, another CGST ₹450 + SGST ₹450.
     defp mixed_head_invoice(seller \\ "29AAVCS8021P1ZB", buyer \\ "33AEWPH4158J1Z3") do
-      Gstr1.normalize_invoice(%{
+      Normalizer.normalize(%{
         "data" => %{
           "invoice_number" => "MIX-1",
           "invoice_date" => "04.05.2026",
@@ -876,10 +720,16 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     test "nothing else catches it — the totals agree and the filing looks fine" do
       invoice = mixed_head_invoice()
 
-      assert Enum.all?(Gstr1.invoice_checks(invoice), & &1["passed"])
+      assert Enum.all?(InvoiceValidation.checks(invoice), & &1["passed"])
 
-      derived = Gstr1.derive([invoice], Gstr1.production_header("29AAVCS8021P1ZB", "2026-05"))
-      values = Nila.Gst.Sales.Values.for_invoice(invoice, derived)
+      derived =
+        Gstr1.project(
+          [Map.put(invoice, "id", "mixed-head")],
+          Gstr1.production_header("29AAVCS8021P1ZB", "2026-05")
+        )
+
+      invoice = Map.put(invoice, "id", "mixed-head")
+      values = Nila.Gst.Sales.Review.Values.for_invoice(invoice, derived)
 
       assert values.extracted_lines.tax == values.filed.tax
       assert values.filed.igst == 1800.0
@@ -902,7 +752,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       # Interstate parties, CGST/SGST only: the recipient GSTIN is a useful
       # default, not proof that the source invoice is wrong.
       intra_on_interstate =
-        Gstr1.normalize_invoice(%{
+        Normalizer.normalize(%{
           "data" => %{
             "invoice_number" => "SPLIT-1",
             "invoice_date" => "04.05.2026",
@@ -935,7 +785,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
     test "tax-split evidence excludes a zero-valued split head" do
       invoice =
-        Gstr1.normalize_invoice(%{
+        Normalizer.normalize(%{
           "data" => %{
             "invoice_number" => "SPLIT-2",
             "invoice_date" => "04.05.2026",
@@ -963,7 +813,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
     test "an ordinary single-head bill raises neither" do
       ordinary =
-        Gstr1.normalize_invoice(%{
+        Normalizer.normalize(%{
           "data" => %{
             "invoice_number" => "OK-1",
             "invoice_date" => "04.05.2026",
@@ -991,7 +841,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   describe "validation_issues/1 — the poison-total canary" do
     test "raises grand_total_mismatch when printed total disagrees with line sums" do
       invoice =
-        Gstr1.normalize_invoice(%{
+        Normalizer.normalize(%{
           "data" => %{
             "invoice_number" => "20/2026-27",
             "invoice_date" => "04.05.2026",
@@ -1033,7 +883,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
                  issue["code"] == "implausible_invoice_number"
              end)
 
-      flagged = Gstr1.flagged_fields([suspicious, ordinary], issues)
+      flagged = CorrectionPolicy.flagged_fields([suspicious, ordinary], issues)
       assert MapSet.member?(flagged, {"9381153296", "invoice_number"})
     end
 
@@ -1050,7 +900,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     test "a clean invoice passes its checks with the operands to print" do
       invoice = seq_invoice("20/2026-27")
 
-      checks = Gstr1.invoice_checks(invoice)
+      checks = InvoiceValidation.checks(invoice)
 
       line = Enum.find(checks, &(&1["code"] == "line_arithmetic"))
       assert line["passed"] == true
@@ -1064,7 +914,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
     test "the failing subset is exactly the arithmetic issues raised" do
       invoice =
-        Gstr1.normalize_invoice(%{
+        Normalizer.normalize(%{
           "data" => %{
             "invoice_number" => "20/2026-27",
             "invoice_date" => "04.05.2026",
@@ -1087,7 +937,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
       failed =
         invoice
-        |> Gstr1.invoice_checks()
+        |> InvoiceValidation.checks()
         |> Enum.reject(& &1["passed"])
         |> MapSet.new(&{&1["code"], &1["fields"]})
 
@@ -1123,7 +973,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         ]
       }
 
-      checks = Gstr1.invoice_checks(invoice)
+      checks = InvoiceValidation.checks(invoice)
 
       assert %{"passed" => true} = Enum.find(checks, &(&1["code"] == "line_arithmetic"))
       assert %{"passed" => false} = Enum.find(checks, &(&1["code"] == "cgst_sgst_unequal"))
@@ -1138,7 +988,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         "line_items" => [%{"description" => "page furniture"}]
       }
 
-      assert Gstr1.invoice_checks(invoice) == []
+      assert InvoiceValidation.checks(invoice) == []
     end
 
     # Three failing lines are three ✗ marks and one question: they post the same
@@ -1172,7 +1022,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         ]
       }
 
-      failed = invoice |> Gstr1.invoice_checks() |> Enum.reject(& &1["passed"])
+      failed = invoice |> InvoiceValidation.checks() |> Enum.reject(& &1["passed"])
       assert length(failed) == 2
 
       assert [issue] =
@@ -1250,7 +1100,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     test "bounds the run and names gaps and duplicates with the series suffix" do
       invoices = for n <- [20, 21, 21, 23], do: seq_invoice("#{n}/2026-27")
 
-      account = Gstr1.series_account(invoices)
+      account = Documents.account(invoices)
 
       assert account.from == "20/2026-27"
       assert account.to == "23/2026-27"
@@ -1266,7 +1116,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         seq_invoice("22/2026-27")
       ]
 
-      account = Gstr1.series_account(invoices)
+      account = Documents.account(invoices)
       assert account.missing == ["21/2026-27", "INV-002"]
 
       [issue] = Enum.filter(Gstr1.validation_issues(invoices), &(&1["code"] == "sequence_gaps"))
@@ -1277,18 +1127,18 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     test "a complete series has nothing to confess" do
       invoices = for n <- [20, 21, 22], do: seq_invoice("#{n}/2026-27")
 
-      assert %{missing: [], duplicates: []} = Gstr1.series_account(invoices)
+      assert %{missing: [], duplicates: []} = Documents.account(invoices)
     end
 
     test "no parseable invoice numbers means no statement, not a crash" do
-      assert Gstr1.series_account([]) == nil
-      assert Gstr1.series_account([seq_invoice(nil)]) == nil
+      assert Documents.account([]) == nil
+      assert Documents.account([seq_invoice(nil)]) == nil
     end
 
     test "names exactly the gaps the sequence_gaps issue is raised from" do
       invoices = for n <- [20, 23], do: seq_invoice("#{n}/2026-27")
 
-      %{missing: missing} = Gstr1.series_account(invoices)
+      %{missing: missing} = Documents.account(invoices)
 
       [issue] = Enum.filter(Gstr1.validation_issues(invoices), &(&1["code"] == "sequence_gaps"))
 
@@ -1300,7 +1150,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   describe "apply_corrections/3 — silent-error discipline" do
     setup do
       invoice = seq_invoice("20/2026-27")
-      flagged = Gstr1.flagged_fields([invoice], [])
+      flagged = CorrectionPolicy.flagged_fields([invoice], [])
       %{invoice: invoice, flagged: flagged}
     end
 
@@ -1309,7 +1159,10 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       flagged: flagged
     } do
       corrections = [%{"invoice" => "20/2026-27", "field" => "buyer_name", "value" => "X"}]
-      {_final, ok, silent, _} = Gstr1.apply_corrections([invoice], corrections, flagged)
+
+      {_final, ok, silent, _} =
+        CorrectionPolicy.apply_corrections([invoice], corrections, flagged)
+
       assert ok == []
       assert length(silent) == 1
     end
@@ -1328,7 +1181,8 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         "value" => "21/2026-27"
       }
 
-      {final, [^correction], [], _} = Gstr1.apply_corrections(duplicates, [correction], flagged)
+      {final, [^correction], [], _} =
+        CorrectionPolicy.apply_corrections(duplicates, [correction], flagged)
 
       assert Enum.map(final, &{&1["id"], &1["invoice_number"]}) == [
                {"source-a", "20/2026-27"},
@@ -1350,18 +1204,23 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
       flagged = MapSet.new([{"source-a", "invoice_number"}, {"source-b", "invoice_number"}])
 
-      {final, [], [^correction], _} = Gstr1.apply_corrections(duplicates, [correction], flagged)
+      {final, [], [^correction], _} =
+        CorrectionPolicy.apply_corrections(duplicates, [correction], flagged)
+
       assert Enum.map(final, & &1["invoice_number"]) == ["20/2026-27", "20/2026-27"]
     end
 
     test "a correction to a flagged field is legitimate", %{invoice: invoice} do
       flagged =
-        Gstr1.flagged_fields([invoice], [
+        CorrectionPolicy.flagged_fields([invoice], [
           %{"invoice" => "20/2026-27", "code" => "x", "fields" => ["buyer_name"]}
         ])
 
       corrections = [%{"invoice" => "20/2026-27", "field" => "buyer_name", "value" => "X"}]
-      {_final, ok, silent, _} = Gstr1.apply_corrections([invoice], corrections, flagged)
+
+      {_final, ok, silent, _} =
+        CorrectionPolicy.apply_corrections([invoice], corrections, flagged)
+
       assert length(ok) == 1
       assert silent == []
     end
@@ -1370,7 +1229,8 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       flagged = MapSet.new([{"20/2026-27", "ocr_minimum"}])
       correction = %{"invoice" => "20/2026-27", "field" => "ocr_minimum", "value" => 0.99}
 
-      {_final, ok, silent, _} = Gstr1.apply_corrections([invoice], [correction], flagged)
+      {_final, ok, silent, _} =
+        CorrectionPolicy.apply_corrections([invoice], [correction], flagged)
 
       assert ok == []
       assert silent == [correction]
@@ -1410,7 +1270,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
           {"INV-2", "buyer_name"}
         ])
 
-      assert Gstr1.correctable_fields(flagged, "INV-1") == [
+      assert CorrectionPolicy.correctable_fields(flagged, "INV-1") == [
                "line_items[0].taxable_value",
                "seller_name"
              ]
@@ -1422,18 +1282,18 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         "line_items" => [%{"taxable_value" => 125.5}]
       }
 
-      assert Gstr1.field_value(invoice, "invoice_number") == "1234"
-      assert Gstr1.field_value(invoice, "line_items[0].taxable_value") == 125.5
-      assert Gstr1.field_value(invoice, "line_items[9].taxable_value") == nil
+      assert Invoice.field_value(invoice, "invoice_number") == "1234"
+      assert Invoice.field_value(invoice, "line_items[0].taxable_value") == 125.5
+      assert Invoice.field_value(invoice, "line_items[9].taxable_value") == nil
     end
 
     test "coerces only the existing numeric field set and leaves invoice numbers as strings" do
-      assert Gstr1.coerce_correction("printed_total_taxable", "100.25") == 100.25
-      assert Gstr1.coerce_correction("printed_total_taxable", " ") == nil
-      assert Gstr1.coerce_correction("line_items[0].cgst_amount", "9") == 9.0
-      assert Gstr1.coerce_correction("invoice_number", "1234") == "1234"
-      assert Gstr1.coerce_correction("line_items[0].description", "9") == "9"
-      assert Gstr1.coerce_correction("line_items[0].taxable_value", "9x") == "9x"
+      assert Invoice.coerce_correction("printed_total_taxable", "100.25") == 100.25
+      assert Invoice.coerce_correction("printed_total_taxable", " ") == nil
+      assert Invoice.coerce_correction("line_items[0].cgst_amount", "9") == 9.0
+      assert Invoice.coerce_correction("invoice_number", "1234") == "1234"
+      assert Invoice.coerce_correction("line_items[0].description", "9") == "9"
+      assert Invoice.coerce_correction("line_items[0].taxable_value", "9x") == "9x"
     end
 
     test "sums only extracted numeric line-item values without rounding" do
@@ -1454,7 +1314,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         ]
       }
 
-      assert Gstr1.extracted_totals(invoice) == %{taxable: 150.25, tax: 27.54}
+      assert Invoice.extracted_totals(invoice) == %{taxable: 150.25, tax: 27.54}
     end
   end
 
@@ -1646,7 +1506,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         }
       end
 
-    Gstr1.normalize_invoice(%{
+    Normalizer.normalize(%{
       "data" => %{
         "invoice_number" => number,
         "invoice_date" => "04.05.2026",
@@ -1661,7 +1521,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   end
 
   defp seq_invoice(number) do
-    Gstr1.normalize_invoice(%{
+    Normalizer.normalize(%{
       "data" => %{
         "invoice_number" => number,
         "invoice_date" => "04.05.2026",
@@ -1710,7 +1570,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
           "document" => %{"debit_note" => true}
         })
 
-      assert Gstr1.blocking_issues([credit, debit]) == []
+      assert Gstr1Readiness.blocking_issues([credit, debit]) == []
     end
 
     test "ambiguous legacy export evidence blocks while outward reverse charge is supported" do
@@ -1724,13 +1584,13 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         })
 
       codes =
-        [export, rcm] |> Gstr1.blocking_issues() |> Enum.map(& &1["code"]) |> Enum.sort()
+        [export, rcm] |> Gstr1Readiness.blocking_issues() |> Enum.map(& &1["code"]) |> Enum.sort()
 
       assert codes == ["missing_tax_payment", "special_supply_conflict"]
     end
 
     test "an ordinary uniquely numbered B2B invoice blocks nothing" do
-      assert Gstr1.blocking_issues([sales_invoice(%{"id" => "source-a"})]) == []
+      assert Gstr1Readiness.blocking_issues([sales_invoice(%{"id" => "source-a"})]) == []
     end
 
     test "duplicate invoice numbers block with an explicit source-group target" do
@@ -1740,7 +1600,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         sales_invoice(%{"id" => "source-c", "invoice_number" => "113/2025-26"})
       ]
 
-      assert [issue] = Gstr1.duplicate_number_issues(invoices)
+      assert [issue] = InvoiceValidation.duplicate_number_issues(invoices)
       assert issue["invoice"] == "112/2025-26"
       assert issue["source_ids"] == ["source-a", "source-b"]
       assert issue["level"] == "blocking"
@@ -1757,7 +1617,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         sales_invoice(%{"id" => "source-b", "invoice_number" => "INV/112"})
       ]
 
-      assert [issue] = Gstr1.duplicate_number_issues(invoices)
+      assert [issue] = InvoiceValidation.duplicate_number_issues(invoices)
       assert issue["source_ids"] == ["source-a", "source-b"]
       # The message still names the number as it was actually read.
       assert issue["invoice"] in ["inv/112", "INV/112"]

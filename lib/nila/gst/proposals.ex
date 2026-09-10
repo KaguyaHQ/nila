@@ -69,7 +69,7 @@ defmodule Nila.Gst.Proposals do
   Nila's proposal for `issue`, or `nil` when it has no basis to offer one.
 
   `values` is `Values.for_invoice/2` for the invoice the issue belongs to, and
-  `checks` is `Gstr1.invoice_checks/1` for the same invoice — the basis claims
+  `checks` is `Nila.Gst.Sales.Invoice.Validation.checks/1` for the same invoice — the basis claims
   the lines check out, so it has to read the same judge that decides whether
   they do.
   """
