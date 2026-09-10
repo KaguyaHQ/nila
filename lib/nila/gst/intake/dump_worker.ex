@@ -363,7 +363,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   # packet that simply had nothing to show.
   defp evidence_unavailable?(result), do: not is_nil(Map.get(result, :evidence_error))
 
-  # The segmented extractor makes provider calls for three distinct stages, so
+  # The extractor makes separate calls to classify pages and read invoices, so
   # the audit row is per stage rather than per dump. The attempt-persisting
   # wrapper records each stage with its own metadata and result.
   defp extract_source(dump, extractor, worker_attempt) do

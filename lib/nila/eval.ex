@@ -8,7 +8,7 @@ defmodule Nila.Eval do
   seconds after a rule change, and say which extractor, model and prompt produced
   each number.
 
-  `score/2` replays a cached extraction attempt and writes a run record naming
+  `score_month/5` scores supplied invoices and writes a run record naming
   the extractor, model and prompt fingerprint behind every number — so no score
   is unattributable, and re-scoring after a rule change costs no API calls.
 
@@ -72,38 +72,6 @@ defmodule Nila.Eval do
       {"", 0} -> ""
       {_changes, 0} -> "-dirty"
       _failed -> ""
-    end
-  end
-
-  @doc """
-  Scores a corpus document from its newest cached extraction attempt.
-
-  Reads nothing but the cached response bytes: mapping, merging, normalizing,
-  deriving and diffing all run now. A rule change is therefore re-scored with no
-  API call, and no cache hit can attribute a number to code that no longer runs.
-  """
-  def score(name, run_id, opts \\ []) do
-    doc = EvalCorpus.document!(name)
-
-    with {:ok, attempt} <- Nila.Eval.Segmented.latest_attempt(name, opts),
-         {:ok, assembled} <- Nila.Eval.Segmented.replay(attempt) do
-      invoices = Enum.map(assembled.pages, &Gstr1.normalize_invoice/1)
-      meta = attempt |> Path.join("meta.json") |> File.read!() |> Jason.decode!()
-
-      provenance = %{
-        "run_id" => run_id,
-        "pipeline" => "segmented",
-        "extractor" => meta["provider"],
-        "model" => meta["model"],
-        "discovery_shape" => meta["discovery_shape"],
-        "discovery_context" => meta["discovery_context"],
-        "prompt_fingerprint" => get_in(meta, ["fingerprint", "prompt"]),
-        "attempt" => attempt,
-        "unaccounted_pages" => assembled[:unaccounted_pages] || [],
-        "scored_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-      }
-
-      {:ok, score_month(doc["client"], doc["period"], invoices, provenance)}
     end
   end
 

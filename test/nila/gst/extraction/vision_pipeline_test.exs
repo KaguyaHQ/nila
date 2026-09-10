@@ -2,7 +2,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
   use ExUnit.Case, async: true
 
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
-  alias Nila.Gst.Extraction.Segmented
+  alias Nila.Gst.Extraction.InvoiceData
   alias Nila.Gst.Extraction.VisionPipeline
   alias Nila.Gst.Purchase.Books
   alias Nila.Gst.Sales.Gstr1
@@ -613,7 +613,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
       ]
     }
 
-    assert %{"line_items" => lines} = Segmented.expand_repeated_line_items(data)
+    assert %{"line_items" => lines} = InvoiceData.expand_repeated_line_items(data)
     assert Enum.map(lines, & &1["item_name"]) == ["First", "Second", "First"]
     assert Enum.all?(lines, &(not Map.has_key?(&1, "repeat_count")))
   end
@@ -622,7 +622,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     data = %{"line_items" => [line_item(%{"repeat_count" => 1_001})]}
 
     assert_raise ArgumentError, "invalid repeat_count: 1001", fn ->
-      Segmented.expand_repeated_line_items(data)
+      InvoiceData.expand_repeated_line_items(data)
     end
   end
 

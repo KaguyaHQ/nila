@@ -1,6 +1,7 @@
 # GST Verification Spike — Retrospective and Handoff
 
-> **Status:** verifier architecture abandoned; source-quality eval retained
+> **Status:** historical. OCR replay and source-quality commands were removed on
+> 2026-09-10. Saved results and human reviews remain; commands below describe the old code.
 > **Date:** 2026-08-14
 > **Repository snapshot at close:** `main` and `origin/main` at `ef1b8e5`
 > **Audience:** the next engineer touching GST extraction, verification, or source-quality routing

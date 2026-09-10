@@ -8,6 +8,9 @@ system-level rationale._
 The extraction path turns a dumped PDF (a month of invoices, one or more per page)
 into structured invoice artifacts.
 
+> **2026-09-10:** the remaining OCR replay code and commands were removed.
+> Saved experiment results remain as historical evidence.
+
 > **Production switch, 2026-08-17.** `Nila.Gst.Extraction.VisionPipeline` now sends
 > packet thumbnails to the configured vision model for segmentation and sends each
 > resulting invoice's full-resolution pages back for extraction. Mistral OCR is no

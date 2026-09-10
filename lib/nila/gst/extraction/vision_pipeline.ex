@@ -13,9 +13,11 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
   alias Nila.Gst.Extraction.Discovery.DocumentPages
   alias Nila.Gst.Extraction.Discovery.PageLabels
   alias Nila.Gst.Extraction.Evidence
+  alias Nila.Gst.Extraction.InvoiceData
+  alias Nila.Gst.Extraction.InvoiceRequest
+  alias Nila.Gst.Extraction.InvoiceSchema
   alias Nila.Gst.Extraction.NativeText
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
-  alias Nila.Gst.Extraction.Segmented
   alias Nila.Gst.Extraction.Verify
 
   @max_pages 100
@@ -30,12 +32,6 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
     "image/png" => "png",
     "image/webp" => "webp"
   }
-  @line_item_fields ~w(
-    item_name description hsn_sac quantity uom printed_unit_price discount_rate
-    discount_amount printed_line_amount printed_line_total printed_taxable_value
-    line_amount_tax_inclusion printed_tax_components repeat_count
-  )a
-
   def extract(kind, bytes, opts \\ [])
       when kind in [:purchase, :sales] and is_binary(bytes) do
     hooks = %{
@@ -455,7 +451,7 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
         provider: OpenAICompatibleChat.provider(),
         model: OpenAICompatibleChat.model(),
         source_page_count: source.page_count,
-        usage: responses |> Enum.map(& &1.usage) |> Segmented.sum_usage(),
+        usage: responses |> Enum.map(& &1.usage) |> sum_usage(),
         raw_response: Jason.encode!(%{"responses" => responses}),
         metadata:
           Map.merge(input_metadata(source), %{
@@ -507,20 +503,20 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
   end
 
   defp extract_segment(kind, source, segment, opts) do
-    schema = vision_schema(kind)
+    request = invoice_request(kind, segment.pages, source)
+    schema = request.schema
 
     with :ok <- validate_segment_images(source.full, segment),
-         messages = invoice_messages(kind, segment.pages, source),
          {:ok, response} <-
            OpenAICompatibleChat.request_raw(
-             messages,
-             "nila_direct_#{kind}_invoice",
+             request.messages,
+             request.name,
              schema,
              request_opts(opts)
            ) do
       case OpenAICompatibleChat.decode(response, schema) do
         {:ok, data, usage} ->
-          data = data |> decode_line_items() |> Map.put("usage", usage)
+          data = data |> InvoiceSchema.decode_line_items() |> Map.put("usage", usage)
           {:ok, artifact(kind, data, segment, source, opts), response}
 
         {:error, reason} ->
@@ -555,113 +551,21 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
     end
   end
 
-  defp vision_messages(kind, pages, images) do
-    page_list = Enum.join(pages, ", ")
+  defp invoice_request(kind, pages, source) do
+    # A scanned continuation requires images for the entire invoice.
+    modality = if Enum.all?(pages, &text_page?(source, &1)), do: :text, else: :vision
 
-    instruction =
-      Segmented.prompt(kind)
-      |> String.replace("OCR text", "page images")
-      |> Kernel.<>("""
+    inputs =
+      Enum.map(pages, fn page ->
+        content =
+          if modality == :text,
+            do: Map.fetch!(source.native_text, page),
+            else: Map.fetch!(source.full, page)
 
-      These are physical PDF pages #{page_list}, in order. Read the pixels directly.
-      Interpret ordinary numeric Indian invoice dates as DD/MM/YYYY, never MM/DD/YYYY,
-      and preserve the printed date text in invoice_date.
-      Reconcile ambiguous decimal placement and separate rupee/paise columns against
-      printed totals and amount in words. Reconciliation may disambiguate a visible
-      value; it must not invent a value absent from the document.
-      Set reverse_charge true only when the document positively states that tax is
-      payable under reverse charge, false when it explicitly says no, and null otherwise.
-      Copy printed HSN/SAC codes from descriptions or service ledger names into hsn_sac,
-      even without a dedicated HSN/SAC column; never infer an unprinted code.
-      For example, "Consulting - 998312 @ 18%" has hsn_sac "998312".
-
-      Each line_items entry must be an array with exactly these fields in this exact order:
-      [#{Enum.join(@line_item_fields, ", ")}]
-      Do not emit field names inside line_items. Preserve nulls so every row has exactly
-      #{length(@line_item_fields)} values.
-      """)
-
-    content =
-      Enum.reduce(pages, [%{type: "text", text: instruction}], fn page, acc ->
-        acc ++
-          [
-            %{type: "text", text: "PHYSICAL PAGE #{page}"},
-            image_part(Map.fetch!(images, page))
-          ]
+        {page, content}
       end)
 
-    [
-      %{role: "system", content: "You read invoices from page images into JSON."},
-      %{role: "user", content: content}
-    ]
-  end
-
-  defp invoice_messages(kind, pages, source) do
-    messages = vision_messages(kind, pages, source.full)
-
-    # A mixed invoice needs all of its pages in view. Never silently omit a
-    # scanned continuation just because another page has native text.
-    if Enum.all?(pages, &text_page?(source, &1)) do
-      [system, user] = messages
-      [instruction | _images] = user.content
-
-      instruction =
-        instruction.text
-        |> String.replace("page images", "PDF text")
-        |> String.replace("Read the pixels directly.", "Read the extracted text directly.")
-
-      content =
-        [%{type: "text", text: instruction}] ++
-          Enum.map(pages, fn page ->
-            %{
-              type: "text",
-              text: "PHYSICAL PAGE #{page}\n" <> Map.fetch!(source.native_text, page)
-            }
-          end)
-
-      [
-        %{system | content: "You read invoices from PDF text into JSON."},
-        %{user | content: content}
-      ]
-    else
-      messages
-    end
-  end
-
-  defp vision_schema(kind) do
-    schema = Segmented.schema(kind)
-
-    reverse_charge = %{
-      anyOf: [%{type: "boolean"}, %{type: "null"}],
-      description:
-        "True when the invoice states tax is payable by the recipient or 'Amount of tax subject to Reverse Charge', including a statement below the tax summary. False only when forward charge is clear; null if unclear."
-    }
-
-    line_item = get_in(schema, [:properties, :line_items, :items])
-
-    line_item_tuple = %{
-      type: "array",
-      prefixItems: Enum.map(@line_item_fields, &Map.fetch!(line_item.properties, &1)),
-      items: false,
-      minItems: length(@line_item_fields),
-      maxItems: length(@line_item_fields)
-    }
-
-    schema
-    |> put_in([:properties, :line_items, :items], line_item_tuple)
-    |> put_in([:properties, :reverse_charge], reverse_charge)
-    |> update_in([:required], &(&1 ++ ["reverse_charge"]))
-  end
-
-  defp decode_line_items(data) do
-    Map.update!(data, "line_items", fn rows ->
-      Enum.map(rows, fn values ->
-        @line_item_fields
-        |> Enum.map(&to_string/1)
-        |> Enum.zip(values)
-        |> Map.new()
-      end)
-    end)
+    InvoiceRequest.build(kind, inputs, modality)
   end
 
   defp artifact(kind, data, segment, source, opts) do
@@ -669,7 +573,7 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
     data = Map.delete(data, "usage")
 
     {data, repairs} =
-      Segmented.prepare_vision_data(data, kind, Keyword.get(opts, :client_gstin))
+      InvoiceData.prepare(data, kind, Keyword.get(opts, :client_gstin))
 
     reverse_charge? = data["reverse_charge"] == true
 
@@ -811,4 +715,16 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
   defp report(%{on_progress: on_progress}, progress), do: on_progress.({:progress, progress})
   defp call_through(_metadata, call), do: call.()
   defp ignore_progress(_progress), do: :ok
+
+  # Add token counts across calls, preserving provider keys.
+  defp sum_usage(usages) do
+    usages
+    |> Enum.reject(&(!is_map(&1)))
+    |> Enum.reduce(%{}, fn usage, acc ->
+      Map.merge(acc, usage, fn
+        _key, left, right when is_number(left) and is_number(right) -> left + right
+        _key, left, _right -> left
+      end)
+    end)
+  end
 end

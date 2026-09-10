@@ -2,7 +2,7 @@ defmodule Nila.Gst.Extraction.Evidence do
   @moduledoc """
   Renders a packet into page images and binds extracted artifacts to them.
 
-  Rendering is independent of extraction: the segmented pipeline attaches
+  Rendering is independent of extraction: the extraction pipeline attaches
   evidence after reading a packet, and the backfill rebuilds the same images
   from stored originals without asking a provider to extract them again.
   """

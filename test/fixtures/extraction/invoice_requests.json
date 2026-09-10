@@ -1,0 +1,1659 @@
+{
+  "purchase_vision": {
+    "messages": [
+      {
+        "content": "You read invoices from page images into JSON.",
+        "role": "system"
+      },
+      {
+        "content": [
+          {
+            "text": "You are reading the page images of ONE purchase invoice from an Indian GST bill packet. The pages below are that invoice and nothing else.\n\nReturn exactly one invoice object.\n\n- Preserve the economic value of printed numbers. Normalize currency marks and digit grouping as required by the numeric schema, but never replace a printed value with a calculation. If a field is not on these pages, return null. A fabricated number is worse than a missing one and will be caught.\n- item_name is the primary printed product/service text in the item's name or description cell. Keep supplementary narrative in description but do not append it to item_name.\n- Preserve each printed figure in its own role: printed_unit_price is one unit's rate; printed_line_amount is the row's extended amount; printed_line_total is its gross total after separately shown tax; printed_taxable_value is a distinct source field that separately prints the pre-GST value. Never duplicate printed_line_amount into printed_taxable_value merely because the line amount is tax-exclusive.\n- For every line-level tax type or tax column, copy its printed label, rate and amount into printed_tax_components. Preserve the printed label instead of deciding which canonical GST field it belongs to. Never infer a tax head from party or delivery addresses or accounting rules.\n- Arithmetic may classify what a printed amount means. For example, a row amount plus separately printed GST equalling its gross total establishes tax-exclusive pricing. Never use arithmetic to populate any extracted numeric field — including quantities, rates, discounts, taxable values or tax amounts — unless that value itself appears on the document. line_amount_tax_inclusion is an inferred semantic field, not a printed number.\n- Respect scope: line and column labels describe their rows; summaries, footer captions and amount-in-words labels describe invoice-level figures. Never assign a summary figure to a line unless it is independently printed there. Clearly visible handwritten or manually entered values are source evidence too.\n- Set line_amount_tax_inclusion from labels, structure or visible arithmetic. Use unknown when evidence is incomplete or conflicting. Do not calculate taxable_value; a later deterministic step does that.\n- Populate singular invoice-level printed_total_* fields only when that invoice-level aggregate is itself printed. Copy every invoice-level tax total, including generic Tax Amount totals, once into printed_tax_totals. Never select, combine or sum tax-rate or slab-summary rows to create an aggregate, and never redistribute summary figures across item rows.\n- Represent every real item row. Never turn a subtotal, total, HSN summary or amount-in-words row into a line item. When consecutive printed rows are identical in every other extracted field, return one line item with repeat_count equal to the number of those rows. Otherwise use repeat_count 1. Never combine rows that differ in any extracted field, and never combine non-consecutive rows.\n- The invoice may be internally inconsistent — its own printed total may disagree with its lines. Copy what is printed anyway; a later check names the discrepancy.\n- Classify the supplier document itself as invoice, credit_note or debit_note. A title reading CREDIT NOTE or DEBIT NOTE controls; footer terms that merely mention notes do not.\n- For a credit or debit note, invoice_number is the note number only. Exclude labels such as \"Credit Note:\" or \"Debit Note:\" from the value. Keep every printed amount positive; document_type determines its accounting effect.\n\r\nThese are physical PDF pages 1, in order. Read the pixels directly.\r\nInterpret ordinary numeric Indian invoice dates as DD/MM/YYYY, never MM/DD/YYYY,\r\nand preserve the printed date text in invoice_date.\r\nReconcile ambiguous decimal placement and separate rupee/paise columns against\r\nprinted totals and amount in words. Reconciliation may disambiguate a visible\r\nvalue; it must not invent a value absent from the document.\r\nSet reverse_charge true only when the document positively states that tax is\r\npayable under reverse charge, false when it explicitly says no, and null otherwise.\r\nCopy printed HSN/SAC codes from descriptions or service ledger names into hsn_sac,\r\neven without a dedicated HSN/SAC column; never infer an unprinted code.\r\nFor example, \"Consulting - 998312 @ 18%\" has hsn_sac \"998312\".\r\n\r\nEach line_items entry must be an array with exactly these fields in this exact order:\r\n[item_name, description, hsn_sac, quantity, uom, printed_unit_price, discount_rate, discount_amount, printed_line_amount, printed_line_total, printed_taxable_value, line_amount_tax_inclusion, printed_tax_components, repeat_count]\r\nDo not emit field names inside line_items. Preserve nulls so every row has exactly\r\n14 values.\r\n",
+            "type": "text"
+          },
+          {
+            "text": "PHYSICAL PAGE 1",
+            "type": "text"
+          },
+          {
+            "image_url": {
+              "url": "data:image/jpeg;base64,/9j/2Q=="
+            },
+            "type": "image_url"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "alibaba/qwen3.7-flash",
+    "providerOptions": {
+      "alibaba": {
+        "enableThinking": false
+      }
+    },
+    "response_format": {
+      "json_schema": {
+        "name": "nila_direct_purchase_invoice",
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "buyer": {
+              "additionalProperties": false,
+              "properties": {
+                "gstin": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "gstin"
+              ],
+              "type": "object"
+            },
+            "delivery_address": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "document_type": {
+              "description": "Classify the document itself from its title and charging table. Footer terms that merely mention credit or debit notes do not change an invoice's type.",
+              "enum": [
+                "invoice",
+                "credit_note",
+                "debit_note"
+              ],
+              "type": "string"
+            },
+            "invoice_date": {
+              "type": "string"
+            },
+            "invoice_number": {
+              "type": "string"
+            },
+            "line_items": {
+              "description": "One row per actual goods/services item. Text without its own serial number or amount is not a separate item; when structurally attached to the preceding item, append it to that item's description. Exclude totals, HSN summaries, tax recapitulations and amount-in-words rows.",
+              "items": {
+                "items": false,
+                "maxItems": 14,
+                "minItems": 14,
+                "prefixItems": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Primary printed product or service text in this item's name or description cell. Exclude supplementary notes or narrative from item_name; preserve them in description."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Full printed line description, including supplementary narrative after the item name."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Copy this line's printed HSN/SAC, including codes in descriptions or service ledger names; otherwise null. Do not infer codes from product knowledge or use item identifiers."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Unit rate printed for this line. Copy it regardless of whether prices include GST; do not multiply it by quantity."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Printed percentage discount for this item."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Discount amount subtracted from this item's list value."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The main extended amount printed for this whole line, regardless of the vendor's heading. This is not a unit rate and not the gross total after separately printed tax. Copy it whether tax-inclusive or tax-exclusive; null when no line amount is printed."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The gross total printed for this same item row after separately shown tax, regardless of the vendor's heading. Do not copy an invoice subtotal, grand total or amount-in-words value."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "A distinct source field that separately prints this line's taxable value before GST. Do not duplicate printed_line_amount into this field merely because the line amount is tax-exclusive; return null when no separate taxable-value field is printed."
+                  },
+                  {
+                    "description": "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Labels apply only at their structural scope; invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion. Use unknown when evidence is incomplete or conflicting.",
+                    "enum": [
+                      "inclusive",
+                      "exclusive",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "description": "Tax components printed for this item. Copy each label, rate and amount as printed; return an empty list when none is printed.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "printed_amount": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Tax amount printed for this component."
+                        },
+                        "printed_label": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Literal tax type or tax-column label printed for this component, such as IGST, CGST or SGST."
+                        },
+                        "printed_rate": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Tax rate printed for this component."
+                        }
+                      },
+                      "required": [
+                        "printed_amount",
+                        "printed_label",
+                        "printed_rate"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "description": "Number of consecutive identical printed rows represented by this tuple, including itself. Use more than 1 only when their other tuples are omitted from line_items.",
+                    "maximum": 1000,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "printed_additional_charges": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A single invoice-level addition only when the document explicitly places that amount after GST in the total calculation. Do not infer that freight, packing, handling or another charge is post-GST, and do not combine separate charges unless their aggregate is itself printed."
+            },
+            "printed_discount_amount": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Total product/trade discount as a positive amount; null when no discount is printed."
+            },
+            "printed_grand_total": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Final printed amount payable after tax, charges and rounding."
+            },
+            "printed_rounding_adjustment": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Signed printed rounding adjustment; negative when subtracted from the total."
+            },
+            "printed_subtotal_before_discount": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Literal goods/services subtotal printed before any discount. Copy it regardless of whether it includes GST; this field does not imply a taxable or tax-exclusive basis."
+            },
+            "printed_tax_totals": {
+              "description": "Invoice-level tax totals as printed, including separate tax-head totals and a generic Tax Amount or Total Tax. Copy each printed total once; return an empty list when none is printed.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "printed_amount": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Tax total printed with this label."
+                  },
+                  "printed_label": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Literal label printed for this invoice-level tax total."
+                  }
+                },
+                "required": [
+                  "printed_amount",
+                  "printed_label"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "printed_total_taxable": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Copy only a final invoice-level taxable turnover aggregate that is itself printed after discount. A subtotal labelled tax-inclusive and individual tax-rate or slab-summary taxable rows are not this aggregate. Return null when no invoice-level aggregate is printed; never select, combine or calculate one from item or summary rows."
+            },
+            "reverse_charge": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "True when the invoice states tax is payable by the recipient or 'Amount of tax subject to Reverse Charge', including a statement below the tax summary. False only when forward charge is clear; null if unclear."
+            },
+            "seller": {
+              "additionalProperties": false,
+              "properties": {
+                "address": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "gstin": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "address",
+                "gstin"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "document_type",
+            "line_items",
+            "seller",
+            "buyer",
+            "invoice_date",
+            "invoice_number",
+            "printed_additional_charges",
+            "printed_discount_amount",
+            "printed_grand_total",
+            "printed_rounding_adjustment",
+            "printed_subtotal_before_discount",
+            "printed_tax_totals",
+            "printed_total_taxable",
+            "delivery_address",
+            "reverse_charge"
+          ],
+          "type": "object"
+        },
+        "strict": true
+      },
+      "type": "json_schema"
+    },
+    "temperature": 0
+  },
+  "sales_text": {
+    "messages": [
+      {
+        "content": "You read invoices from PDF text into JSON.",
+        "role": "system"
+      },
+      {
+        "content": [
+          {
+            "text": "You are reading the PDF text of ONE sales invoice from an Indian GST bill packet. The pages below are that invoice and nothing else.\n\nReturn exactly one invoice object.\n\n- Preserve the economic value of printed numbers. Normalize currency marks and digit grouping as required by the numeric schema, but never replace a printed value with a calculation. If a field is not on these pages, return null. A fabricated number is worse than a missing one and will be caught.\n- item_name is the primary printed product/service text in the item's name or description cell. Keep supplementary narrative in description but do not append it to item_name.\n- Preserve each printed figure in its own role: printed_unit_price is one unit's rate; printed_line_amount is the row's extended amount; printed_line_total is its gross total after separately shown tax; printed_taxable_value is a distinct source field that separately prints the pre-GST value. Never duplicate printed_line_amount into printed_taxable_value merely because the line amount is tax-exclusive.\n- For every line-level tax type or tax column, copy its printed label, rate and amount into printed_tax_components. Preserve the printed label instead of deciding which canonical GST field it belongs to. Never infer a tax head from party or delivery addresses or accounting rules.\n- Arithmetic may classify what a printed amount means. For example, a row amount plus separately printed GST equalling its gross total establishes tax-exclusive pricing. Never use arithmetic to populate any extracted numeric field — including quantities, rates, discounts, taxable values or tax amounts — unless that value itself appears on the document. line_amount_tax_inclusion is an inferred semantic field, not a printed number.\n- Respect scope: line and column labels describe their rows; summaries, footer captions and amount-in-words labels describe invoice-level figures. Never assign a summary figure to a line unless it is independently printed there. Clearly visible handwritten or manually entered values are source evidence too.\n- Set line_amount_tax_inclusion from labels, structure or visible arithmetic. Use unknown when evidence is incomplete or conflicting. Do not calculate taxable_value; a later deterministic step does that.\n- Populate singular invoice-level printed_total_* fields only when that invoice-level aggregate is itself printed. Copy every invoice-level tax total, including generic Tax Amount totals, once into printed_tax_totals. Never select, combine or sum tax-rate or slab-summary rows to create an aggregate, and never redistribute summary figures across item rows.\n- Represent every real item row. Never turn a subtotal, total, HSN summary or amount-in-words row into a line item. When consecutive printed rows are identical in every other extracted field, return one line item with repeat_count equal to the number of those rows. Otherwise use repeat_count 1. Never combine rows that differ in any extracted field, and never combine non-consecutive rows.\n- The invoice may be internally inconsistent — its own printed total may disagree with its lines. Copy what is printed anyway; a later check names the discrepancy.\n- Classify the document itself as invoice, credit_note or debit_note. A title reading CREDIT NOTE or DEBIT NOTE controls; footer terms that merely mention notes do not.\n- For a credit or debit note, invoice_number is the note number only. Exclude labels such as \"Credit Note:\" from the value.\n- Include cancelled invoices. A cancelled number is still a number the series has to account for, and classify its document_status as cancelled so it cannot be filed as an active taxable invoice.\n- A printed recipient GSTIN means recipient_registration is registered. Use unregistered only when the document positively identifies an unregistered or consumer recipient. A missing or unreadable GSTIN alone is unknown, never a silent B2C inference.\n- Read supplier, Bill To and Ship To/Deliver To into their matching fields.\n- Preserve nil-rated, exempt, non-GST, export and SEZ treatment in supply_type. Never coerce one of them to an ordinary taxable sale.\n- For export/SEZ read tax_payment from the endorsement: on payment of IGST or under LUT/bond without payment of IGST. A combined export/SEZ endorsement with an Indian GSTIN recipient indicates SEZ; a foreign recipient indicates export. Do not classify ordinary foreign-address sales as exports without supporting supply evidence. Preserve printed tax breakdowns even if the endorsement says without payment and the payable total excludes those taxes.\n- Copy printed_grand_total literally from the invoice Total / Amount Chargeable, checking the amount in words. Never replace it with taxable plus the HSN tax summary. Under reverse charge or LUT/bond, that summary can show tax which is NOT added to the amount payable. Read the reverse-charge statement below the tax summary as well as the heading.\n- CGST and SGST printed as stacked sub-rows under one item are two printed tax components of that item, not two items. Never split them, and never split a total row.\n\r\nThese are physical PDF pages 1, in order. Read the extracted text directly.\r\nInterpret ordinary numeric Indian invoice dates as DD/MM/YYYY, never MM/DD/YYYY,\r\nand preserve the printed date text in invoice_date.\r\nReconcile ambiguous decimal placement and separate rupee/paise columns against\r\nprinted totals and amount in words. Reconciliation may disambiguate a visible\r\nvalue; it must not invent a value absent from the document.\r\nSet reverse_charge true only when the document positively states that tax is\r\npayable under reverse charge, false when it explicitly says no, and null otherwise.\r\nCopy printed HSN/SAC codes from descriptions or service ledger names into hsn_sac,\r\neven without a dedicated HSN/SAC column; never infer an unprinted code.\r\nFor example, \"Consulting - 998312 @ 18%\" has hsn_sac \"998312\".\r\n\r\nEach line_items entry must be an array with exactly these fields in this exact order:\r\n[item_name, description, hsn_sac, quantity, uom, printed_unit_price, discount_rate, discount_amount, printed_line_amount, printed_line_total, printed_taxable_value, line_amount_tax_inclusion, printed_tax_components, repeat_count]\r\nDo not emit field names inside line_items. Preserve nulls so every row has exactly\r\n14 values.\r\n",
+            "type": "text"
+          },
+          {
+            "text": "PHYSICAL PAGE 1\nInvoice TEST-1 total 1180\r\n",
+            "type": "text"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "alibaba/qwen3.7-flash",
+    "providerOptions": {
+      "alibaba": {
+        "enableThinking": false
+      }
+    },
+    "response_format": {
+      "json_schema": {
+        "name": "nila_direct_sales_invoice",
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "bill_to": {
+              "additionalProperties": false,
+              "properties": {
+                "address": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "gstin": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "state_code": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "GST state code explicitly printed for this party or address block; otherwise null."
+                }
+              },
+              "required": [
+                "name",
+                "address",
+                "gstin",
+                "state_code"
+              ],
+              "type": "object"
+            },
+            "document_status": {
+              "description": "Whether this is an active original document, a cancelled document, an amendment, or unclear. Do not treat a cancellation footer policy as the document's status.",
+              "enum": [
+                "active",
+                "cancelled",
+                "amendment",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            "document_type": {
+              "description": "Classify the document itself from its title and charging table. Footer terms that merely mention credit or debit notes do not change an invoice's type.",
+              "enum": [
+                "invoice",
+                "credit_note",
+                "debit_note"
+              ],
+              "type": "string"
+            },
+            "invoice_date": {
+              "type": "string"
+            },
+            "invoice_number": {
+              "type": "string"
+            },
+            "line_items": {
+              "description": "One row per actual goods/services item. Text without its own serial number or amount is not a separate item; when structurally attached to the preceding item, append it to that item's description. Exclude totals, HSN summaries, tax recapitulations and amount-in-words rows.",
+              "items": {
+                "items": false,
+                "maxItems": 14,
+                "minItems": 14,
+                "prefixItems": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Primary printed product or service text in this item's name or description cell. Exclude supplementary notes or narrative from item_name; preserve them in description."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Full printed line description, including supplementary narrative after the item name."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Copy this line's printed HSN/SAC, including codes in descriptions or service ledger names; otherwise null. Do not infer codes from product knowledge or use item identifiers."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Unit rate printed for this line. Copy it regardless of whether prices include GST; do not multiply it by quantity."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Printed percentage discount for this item."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Discount amount subtracted from this item's list value."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The main extended amount printed for this whole line, regardless of the vendor's heading. This is not a unit rate and not the gross total after separately printed tax. Copy it whether tax-inclusive or tax-exclusive; null when no line amount is printed."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The gross total printed for this same item row after separately shown tax, regardless of the vendor's heading. Do not copy an invoice subtotal, grand total or amount-in-words value."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "A distinct source field that separately prints this line's taxable value before GST. Do not duplicate printed_line_amount into this field merely because the line amount is tax-exclusive; return null when no separate taxable-value field is printed."
+                  },
+                  {
+                    "description": "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Labels apply only at their structural scope; invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion. Use unknown when evidence is incomplete or conflicting.",
+                    "enum": [
+                      "inclusive",
+                      "exclusive",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "description": "Tax components printed for this item. Copy each label, rate and amount as printed; return an empty list when none is printed.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "printed_amount": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Tax amount printed for this component."
+                        },
+                        "printed_label": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Literal tax type or tax-column label printed for this component, such as IGST, CGST or SGST."
+                        },
+                        "printed_rate": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Tax rate printed for this component."
+                        }
+                      },
+                      "required": [
+                        "printed_amount",
+                        "printed_label",
+                        "printed_rate"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "description": "Number of consecutive identical printed rows represented by this tuple, including itself. Use more than 1 only when their other tuples are omitted from line_items.",
+                    "maximum": 1000,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "printed_additional_charges": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A single invoice-level addition only when the document explicitly places that amount after GST in the total calculation. Do not infer that freight, packing, handling or another charge is post-GST, and do not combine separate charges unless their aggregate is itself printed."
+            },
+            "printed_discount_amount": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Total product/trade discount as a positive amount; null when no discount is printed."
+            },
+            "printed_grand_total": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Final printed amount payable after tax, charges and rounding."
+            },
+            "printed_rounding_adjustment": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Signed printed rounding adjustment; negative when subtracted from the total."
+            },
+            "printed_subtotal_before_discount": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Literal goods/services subtotal printed before any discount. Copy it regardless of whether it includes GST; this field does not imply a taxable or tax-exclusive basis."
+            },
+            "printed_tax_totals": {
+              "description": "Invoice-level tax totals as printed, including separate tax-head totals and a generic Tax Amount or Total Tax. Copy each printed total once; return an empty list when none is printed.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "printed_amount": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Tax total printed with this label."
+                  },
+                  "printed_label": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Literal label printed for this invoice-level tax total."
+                  }
+                },
+                "required": [
+                  "printed_amount",
+                  "printed_label"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "printed_total_taxable": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Copy only a final invoice-level taxable turnover aggregate that is itself printed after discount. A subtotal labelled tax-inclusive and individual tax-rate or slab-summary taxable rows are not this aggregate. Return null when no invoice-level aggregate is printed; never select, combine or calculate one from item or summary rows."
+            },
+            "recipient_registration": {
+              "description": "Whether the recipient is GST-registered. A printed GSTIN means registered. Use unregistered only when the document positively identifies an unregistered/consumer recipient; a missing or unreadable GSTIN alone means unknown.",
+              "enum": [
+                "registered",
+                "unregistered",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            "reverse_charge": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "True when the invoice states tax is payable by the recipient or 'Amount of tax subject to Reverse Charge', including a statement below the tax summary. False only when forward charge is clear; null if unclear."
+            },
+            "ship_to": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "address": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "gstin": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state_code": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "GST state code explicitly printed for this party or address block; otherwise null."
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "address",
+                    "gstin",
+                    "state_code"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "supplier": {
+              "additionalProperties": false,
+              "properties": {
+                "address": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "gstin": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "state_code": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "GST state code explicitly printed for this party or address block; otherwise null."
+                }
+              },
+              "required": [
+                "name",
+                "address",
+                "gstin",
+                "state_code"
+              ],
+              "type": "object"
+            },
+            "supply_type": {
+              "description": "The supply treatment stated by the document. Ordinary GST-charged domestic supplies are taxable. Preserve nil-rated, exempt, non-GST, export and SEZ distinctions; use unknown when unclear.",
+              "enum": [
+                "taxable",
+                "nil_rated",
+                "exempt",
+                "non_gst",
+                "export",
+                "sez",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            "tax_payment": {
+              "description": "For export/SEZ: with_payment when explicitly on payment of IGST; without_payment when under LUT/bond without payment of IGST. Use unknown if unclear. Other supplies: not_applicable. Read the endorsement, not just the tax amounts.",
+              "enum": [
+                "with_payment",
+                "without_payment",
+                "unknown",
+                "not_applicable"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "document_type",
+            "line_items",
+            "invoice_date",
+            "invoice_number",
+            "printed_additional_charges",
+            "printed_discount_amount",
+            "printed_grand_total",
+            "printed_rounding_adjustment",
+            "printed_subtotal_before_discount",
+            "printed_tax_totals",
+            "printed_total_taxable",
+            "bill_to",
+            "document_status",
+            "recipient_registration",
+            "ship_to",
+            "supplier",
+            "supply_type",
+            "tax_payment",
+            "reverse_charge"
+          ],
+          "type": "object"
+        },
+        "strict": true
+      },
+      "type": "json_schema"
+    },
+    "temperature": 0
+  },
+  "sales_vision": {
+    "messages": [
+      {
+        "content": "You read invoices from page images into JSON.",
+        "role": "system"
+      },
+      {
+        "content": [
+          {
+            "text": "You are reading the page images of ONE sales invoice from an Indian GST bill packet. The pages below are that invoice and nothing else.\n\nReturn exactly one invoice object.\n\n- Preserve the economic value of printed numbers. Normalize currency marks and digit grouping as required by the numeric schema, but never replace a printed value with a calculation. If a field is not on these pages, return null. A fabricated number is worse than a missing one and will be caught.\n- item_name is the primary printed product/service text in the item's name or description cell. Keep supplementary narrative in description but do not append it to item_name.\n- Preserve each printed figure in its own role: printed_unit_price is one unit's rate; printed_line_amount is the row's extended amount; printed_line_total is its gross total after separately shown tax; printed_taxable_value is a distinct source field that separately prints the pre-GST value. Never duplicate printed_line_amount into printed_taxable_value merely because the line amount is tax-exclusive.\n- For every line-level tax type or tax column, copy its printed label, rate and amount into printed_tax_components. Preserve the printed label instead of deciding which canonical GST field it belongs to. Never infer a tax head from party or delivery addresses or accounting rules.\n- Arithmetic may classify what a printed amount means. For example, a row amount plus separately printed GST equalling its gross total establishes tax-exclusive pricing. Never use arithmetic to populate any extracted numeric field — including quantities, rates, discounts, taxable values or tax amounts — unless that value itself appears on the document. line_amount_tax_inclusion is an inferred semantic field, not a printed number.\n- Respect scope: line and column labels describe their rows; summaries, footer captions and amount-in-words labels describe invoice-level figures. Never assign a summary figure to a line unless it is independently printed there. Clearly visible handwritten or manually entered values are source evidence too.\n- Set line_amount_tax_inclusion from labels, structure or visible arithmetic. Use unknown when evidence is incomplete or conflicting. Do not calculate taxable_value; a later deterministic step does that.\n- Populate singular invoice-level printed_total_* fields only when that invoice-level aggregate is itself printed. Copy every invoice-level tax total, including generic Tax Amount totals, once into printed_tax_totals. Never select, combine or sum tax-rate or slab-summary rows to create an aggregate, and never redistribute summary figures across item rows.\n- Represent every real item row. Never turn a subtotal, total, HSN summary or amount-in-words row into a line item. When consecutive printed rows are identical in every other extracted field, return one line item with repeat_count equal to the number of those rows. Otherwise use repeat_count 1. Never combine rows that differ in any extracted field, and never combine non-consecutive rows.\n- The invoice may be internally inconsistent — its own printed total may disagree with its lines. Copy what is printed anyway; a later check names the discrepancy.\n- Classify the document itself as invoice, credit_note or debit_note. A title reading CREDIT NOTE or DEBIT NOTE controls; footer terms that merely mention notes do not.\n- For a credit or debit note, invoice_number is the note number only. Exclude labels such as \"Credit Note:\" from the value.\n- Include cancelled invoices. A cancelled number is still a number the series has to account for, and classify its document_status as cancelled so it cannot be filed as an active taxable invoice.\n- A printed recipient GSTIN means recipient_registration is registered. Use unregistered only when the document positively identifies an unregistered or consumer recipient. A missing or unreadable GSTIN alone is unknown, never a silent B2C inference.\n- Read supplier, Bill To and Ship To/Deliver To into their matching fields.\n- Preserve nil-rated, exempt, non-GST, export and SEZ treatment in supply_type. Never coerce one of them to an ordinary taxable sale.\n- For export/SEZ read tax_payment from the endorsement: on payment of IGST or under LUT/bond without payment of IGST. A combined export/SEZ endorsement with an Indian GSTIN recipient indicates SEZ; a foreign recipient indicates export. Do not classify ordinary foreign-address sales as exports without supporting supply evidence. Preserve printed tax breakdowns even if the endorsement says without payment and the payable total excludes those taxes.\n- Copy printed_grand_total literally from the invoice Total / Amount Chargeable, checking the amount in words. Never replace it with taxable plus the HSN tax summary. Under reverse charge or LUT/bond, that summary can show tax which is NOT added to the amount payable. Read the reverse-charge statement below the tax summary as well as the heading.\n- CGST and SGST printed as stacked sub-rows under one item are two printed tax components of that item, not two items. Never split them, and never split a total row.\n\r\nThese are physical PDF pages 1, in order. Read the pixels directly.\r\nInterpret ordinary numeric Indian invoice dates as DD/MM/YYYY, never MM/DD/YYYY,\r\nand preserve the printed date text in invoice_date.\r\nReconcile ambiguous decimal placement and separate rupee/paise columns against\r\nprinted totals and amount in words. Reconciliation may disambiguate a visible\r\nvalue; it must not invent a value absent from the document.\r\nSet reverse_charge true only when the document positively states that tax is\r\npayable under reverse charge, false when it explicitly says no, and null otherwise.\r\nCopy printed HSN/SAC codes from descriptions or service ledger names into hsn_sac,\r\neven without a dedicated HSN/SAC column; never infer an unprinted code.\r\nFor example, \"Consulting - 998312 @ 18%\" has hsn_sac \"998312\".\r\n\r\nEach line_items entry must be an array with exactly these fields in this exact order:\r\n[item_name, description, hsn_sac, quantity, uom, printed_unit_price, discount_rate, discount_amount, printed_line_amount, printed_line_total, printed_taxable_value, line_amount_tax_inclusion, printed_tax_components, repeat_count]\r\nDo not emit field names inside line_items. Preserve nulls so every row has exactly\r\n14 values.\r\n",
+            "type": "text"
+          },
+          {
+            "text": "PHYSICAL PAGE 1",
+            "type": "text"
+          },
+          {
+            "image_url": {
+              "url": "data:image/jpeg;base64,/9j/2Q=="
+            },
+            "type": "image_url"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "alibaba/qwen3.7-flash",
+    "providerOptions": {
+      "alibaba": {
+        "enableThinking": false
+      }
+    },
+    "response_format": {
+      "json_schema": {
+        "name": "nila_direct_sales_invoice",
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "bill_to": {
+              "additionalProperties": false,
+              "properties": {
+                "address": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "gstin": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "state_code": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "GST state code explicitly printed for this party or address block; otherwise null."
+                }
+              },
+              "required": [
+                "name",
+                "address",
+                "gstin",
+                "state_code"
+              ],
+              "type": "object"
+            },
+            "document_status": {
+              "description": "Whether this is an active original document, a cancelled document, an amendment, or unclear. Do not treat a cancellation footer policy as the document's status.",
+              "enum": [
+                "active",
+                "cancelled",
+                "amendment",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            "document_type": {
+              "description": "Classify the document itself from its title and charging table. Footer terms that merely mention credit or debit notes do not change an invoice's type.",
+              "enum": [
+                "invoice",
+                "credit_note",
+                "debit_note"
+              ],
+              "type": "string"
+            },
+            "invoice_date": {
+              "type": "string"
+            },
+            "invoice_number": {
+              "type": "string"
+            },
+            "line_items": {
+              "description": "One row per actual goods/services item. Text without its own serial number or amount is not a separate item; when structurally attached to the preceding item, append it to that item's description. Exclude totals, HSN summaries, tax recapitulations and amount-in-words rows.",
+              "items": {
+                "items": false,
+                "maxItems": 14,
+                "minItems": 14,
+                "prefixItems": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Primary printed product or service text in this item's name or description cell. Exclude supplementary notes or narrative from item_name; preserve them in description."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Full printed line description, including supplementary narrative after the item name."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Copy this line's printed HSN/SAC, including codes in descriptions or service ledger names; otherwise null. Do not infer codes from product knowledge or use item identifiers."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Unit rate printed for this line. Copy it regardless of whether prices include GST; do not multiply it by quantity."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Printed percentage discount for this item."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Discount amount subtracted from this item's list value."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The main extended amount printed for this whole line, regardless of the vendor's heading. This is not a unit rate and not the gross total after separately printed tax. Copy it whether tax-inclusive or tax-exclusive; null when no line amount is printed."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The gross total printed for this same item row after separately shown tax, regardless of the vendor's heading. Do not copy an invoice subtotal, grand total or amount-in-words value."
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "A distinct source field that separately prints this line's taxable value before GST. Do not duplicate printed_line_amount into this field merely because the line amount is tax-exclusive; return null when no separate taxable-value field is printed."
+                  },
+                  {
+                    "description": "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Labels apply only at their structural scope; invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion. Use unknown when evidence is incomplete or conflicting.",
+                    "enum": [
+                      "inclusive",
+                      "exclusive",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "description": "Tax components printed for this item. Copy each label, rate and amount as printed; return an empty list when none is printed.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "printed_amount": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Tax amount printed for this component."
+                        },
+                        "printed_label": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Literal tax type or tax-column label printed for this component, such as IGST, CGST or SGST."
+                        },
+                        "printed_rate": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Tax rate printed for this component."
+                        }
+                      },
+                      "required": [
+                        "printed_amount",
+                        "printed_label",
+                        "printed_rate"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "description": "Number of consecutive identical printed rows represented by this tuple, including itself. Use more than 1 only when their other tuples are omitted from line_items.",
+                    "maximum": 1000,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "printed_additional_charges": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A single invoice-level addition only when the document explicitly places that amount after GST in the total calculation. Do not infer that freight, packing, handling or another charge is post-GST, and do not combine separate charges unless their aggregate is itself printed."
+            },
+            "printed_discount_amount": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Total product/trade discount as a positive amount; null when no discount is printed."
+            },
+            "printed_grand_total": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Final printed amount payable after tax, charges and rounding."
+            },
+            "printed_rounding_adjustment": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Signed printed rounding adjustment; negative when subtracted from the total."
+            },
+            "printed_subtotal_before_discount": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Literal goods/services subtotal printed before any discount. Copy it regardless of whether it includes GST; this field does not imply a taxable or tax-exclusive basis."
+            },
+            "printed_tax_totals": {
+              "description": "Invoice-level tax totals as printed, including separate tax-head totals and a generic Tax Amount or Total Tax. Copy each printed total once; return an empty list when none is printed.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "printed_amount": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Tax total printed with this label."
+                  },
+                  "printed_label": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Literal label printed for this invoice-level tax total."
+                  }
+                },
+                "required": [
+                  "printed_amount",
+                  "printed_label"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "printed_total_taxable": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Copy only a final invoice-level taxable turnover aggregate that is itself printed after discount. A subtotal labelled tax-inclusive and individual tax-rate or slab-summary taxable rows are not this aggregate. Return null when no invoice-level aggregate is printed; never select, combine or calculate one from item or summary rows."
+            },
+            "recipient_registration": {
+              "description": "Whether the recipient is GST-registered. A printed GSTIN means registered. Use unregistered only when the document positively identifies an unregistered/consumer recipient; a missing or unreadable GSTIN alone means unknown.",
+              "enum": [
+                "registered",
+                "unregistered",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            "reverse_charge": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "True when the invoice states tax is payable by the recipient or 'Amount of tax subject to Reverse Charge', including a statement below the tax summary. False only when forward charge is clear; null if unclear."
+            },
+            "ship_to": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "address": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "gstin": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state_code": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "GST state code explicitly printed for this party or address block; otherwise null."
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "address",
+                    "gstin",
+                    "state_code"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "supplier": {
+              "additionalProperties": false,
+              "properties": {
+                "address": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "gstin": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "state_code": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "GST state code explicitly printed for this party or address block; otherwise null."
+                }
+              },
+              "required": [
+                "name",
+                "address",
+                "gstin",
+                "state_code"
+              ],
+              "type": "object"
+            },
+            "supply_type": {
+              "description": "The supply treatment stated by the document. Ordinary GST-charged domestic supplies are taxable. Preserve nil-rated, exempt, non-GST, export and SEZ distinctions; use unknown when unclear.",
+              "enum": [
+                "taxable",
+                "nil_rated",
+                "exempt",
+                "non_gst",
+                "export",
+                "sez",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            "tax_payment": {
+              "description": "For export/SEZ: with_payment when explicitly on payment of IGST; without_payment when under LUT/bond without payment of IGST. Use unknown if unclear. Other supplies: not_applicable. Read the endorsement, not just the tax amounts.",
+              "enum": [
+                "with_payment",
+                "without_payment",
+                "unknown",
+                "not_applicable"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "document_type",
+            "line_items",
+            "invoice_date",
+            "invoice_number",
+            "printed_additional_charges",
+            "printed_discount_amount",
+            "printed_grand_total",
+            "printed_rounding_adjustment",
+            "printed_subtotal_before_discount",
+            "printed_tax_totals",
+            "printed_total_taxable",
+            "bill_to",
+            "document_status",
+            "recipient_registration",
+            "ship_to",
+            "supplier",
+            "supply_type",
+            "tax_payment",
+            "reverse_charge"
+          ],
+          "type": "object"
+        },
+        "strict": true
+      },
+      "type": "json_schema"
+    },
+    "temperature": 0
+  }
+}

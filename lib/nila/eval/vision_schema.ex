@@ -10,7 +10,7 @@ defmodule Nila.Eval.VisionSchema do
   alias Nila.EvalCorpus
   alias Nila.Gst.Extraction.LineAmounts
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
-  alias Nila.Gst.Extraction.Segmented
+  alias Nila.Gst.Extraction.{InvoicePrompt, InvoiceSchema}
   alias Nila.Gst.Extraction.VisionPipeline
 
   @root "tmp/eval/vision-schema"
@@ -34,7 +34,10 @@ defmodule Nila.Eval.VisionSchema do
       "runs" => runs,
       "created_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
       "extraction" =>
-        OpenAICompatibleChat.fingerprint(Segmented.prompt(kind), Segmented.schema(kind))
+        OpenAICompatibleChat.fingerprint(
+          InvoicePrompt.direct(kind, [], :vision),
+          InvoiceSchema.tuple_schema(kind)
+        )
     }
 
     write_json!(Path.join(dir, "manifest.json"), manifest)

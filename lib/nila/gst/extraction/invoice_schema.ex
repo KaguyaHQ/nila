@@ -1,6 +1,9 @@
 defmodule Nila.Gst.Extraction.InvoiceSchema do
   @moduledoc """
-  Provider-neutral schema for one extracted GST invoice.
+  Field definitions and response shapes for one extracted GST invoice.
+
+  The ordered line properties define both the named-object schema and the
+  positional row schema, including decoding. Add or change a line field there.
 
   Keep semantic roles explicit here before compensating in prompts or adding
   confidence fields. Invoice-level tax totals remain distinct from summary rows,
@@ -8,9 +11,51 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
   model to determine tax treatment from their addresses.
   """
 
-  @doc "The structured schema shared by text and vision extraction."
-  def invoice_schema(kind) when kind in [:purchase, :sales] do
+  @doc "Base field definitions with named line-item objects."
+  def object_schema(kind) when kind in [:purchase, :sales] do
     kind |> invoice_properties() |> strict_object()
+  end
+
+  @doc "Ordered fields used to encode and decode positional invoice rows."
+  def line_item_fields, do: Keyword.keys(line_item_properties())
+
+  @doc "The response schema with positional line-item arrays used by text and vision extraction."
+  def tuple_schema(kind) do
+    schema = object_schema(kind)
+    fields = line_item_fields()
+
+    reverse_charge = %{
+      anyOf: [%{type: "boolean"}, %{type: "null"}],
+      description:
+        "True when the invoice states tax is payable by the recipient or 'Amount of tax subject to Reverse Charge', including a statement below the tax summary. False only when forward charge is clear; null if unclear."
+    }
+
+    line_item = get_in(schema, [:properties, :line_items, :items])
+
+    line_item_tuple = %{
+      type: "array",
+      prefixItems: Enum.map(fields, &Map.fetch!(line_item.properties, &1)),
+      items: false,
+      minItems: length(fields),
+      maxItems: length(fields)
+    }
+
+    schema
+    |> put_in([:properties, :line_items, :items], line_item_tuple)
+    |> put_in([:properties, :reverse_charge], reverse_charge)
+    |> update_in([:required], &(&1 ++ ["reverse_charge"]))
+  end
+
+  def decode_line_items(data) do
+    fields = Enum.map(line_item_fields(), &to_string/1)
+
+    Map.update!(data, "line_items", fn rows ->
+      Enum.map(rows, fn values ->
+        fields
+        |> Enum.zip(values)
+        |> Map.new()
+      end)
+    end)
   end
 
   defp invoice_properties(kind) do
@@ -132,8 +177,10 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
     }
   end
 
-  defp line_item_schema do
-    strict_object(%{
+  defp line_item_schema, do: line_item_properties() |> Map.new() |> strict_object()
+
+  defp line_item_properties do
+    [
       item_name:
         described_nullable(
           "string",
@@ -188,7 +235,7 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
         description:
           "Number of consecutive identical printed rows represented by this tuple, including itself. Use more than 1 only when their other tuples are omitted from line_items."
       }
-    })
+    ]
   end
 
   defp printed_tax_components_schema(:line) do

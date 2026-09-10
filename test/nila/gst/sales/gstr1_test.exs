@@ -3,7 +3,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   Unit + reproduction tests for the GSTR-1 derivation engine.
 
   Everything here is self-contained and runs on any checkout. Scoring the real
-  corpus is `mix nila.eval score`, whose numbers live in run records that carry
+  corpus is `Nila.Eval.score_month/5`, whose numbers live in run records that carry
   the extractor, model and prompt fingerprint that produced them — a test
   asserting a corpus score would either skip (reading as a pass) or freeze a
   number nobody can attribute.
@@ -1451,7 +1451,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   # A whole month end to end, on invoices small enough to read. The real corpus
   # cannot gate anything — its artifacts are gitignored, so a test keyed on them
   # reports "skipped" as if it were "passed" everywhere but one machine. Real
-  # months are scored by `mix nila.eval score`, which keeps its numbers in run
+  # months are scored by `Nila.Eval.score_month/5`, which keeps its numbers in run
   # records where they carry provenance.
   describe "derive/2 end to end against a filed return" do
     setup do
