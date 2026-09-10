@@ -4,6 +4,19 @@ defmodule Nila.Gst.Extraction.LineAmountsTest do
   alias Nila.Gst.Extraction.LineAmounts
 
   describe "discard_redundant_printed_taxable/1" do
+    test "keeps distinct printed values within the arithmetic tolerance" do
+      line = %{
+        "printed_line_amount" => 100,
+        "printed_taxable_value" => 100.02,
+        "printed_line_total" => 118,
+        "igst_rate" => 18,
+        "igst_amount" => 18
+      }
+
+      assert {^line, nil} = LineAmounts.discard_redundant_printed_taxable(line)
+      assert LineAmounts.taxable_value(line) == 100.02
+    end
+
     test "drops a duplicate only when row arithmetic independently proves exclusive pricing" do
       line = %{
         "printed_line_amount" => 20_500,
@@ -48,6 +61,129 @@ defmodule Nila.Gst.Extraction.LineAmountsTest do
     assert amounts.printed_taxable_value == 1_000
     assert amounts.taxable_value == 1_000
     assert amounts.taxable_value_basis == "printed_taxable_value"
+  end
+
+  test "retains failed checks without rejecting an inclusive candidate" do
+    amounts =
+      LineAmounts.normalize(%{
+        "printed_line_amount" => 118,
+        "printed_line_total" => 118,
+        "line_amount_tax_inclusion" => "inclusive",
+        "igst_rate" => 18,
+        "igst_amount" => 18
+      })
+
+    assert amounts.taxable_value == 100
+    assert amounts.line_amount_tax_inclusion == "inclusive"
+    assert amounts.line_amount_tax_inclusion_basis == "model_candidate"
+    assert [total, rate] = amounts.line_amount_tax_inclusion_evidence
+
+    assert total == %{
+             "basis" => "line_amount_plus_tax_equals_total",
+             "passed" => false,
+             "left" => 136.0,
+             "right" => 118.0
+           }
+
+    assert rate == %{
+             "basis" => "line_amount_times_rate_equals_tax",
+             "passed" => false,
+             "left" => 21.24,
+             "right" => 18.0
+           }
+  end
+
+  test "retains failed arithmetic for exclusive and unknown candidates too" do
+    for candidate <- ["exclusive", "unknown"] do
+      amounts =
+        LineAmounts.normalize(%{
+          "printed_line_amount" => 100,
+          "printed_line_total" => 150,
+          "line_amount_tax_inclusion" => candidate,
+          "igst_rate" => 18,
+          "igst_amount" => 30
+        })
+
+      assert amounts.line_amount_tax_inclusion == candidate
+      assert length(amounts.line_amount_tax_inclusion_evidence) == 2
+      assert Enum.all?(amounts.line_amount_tax_inclusion_evidence, &(&1["passed"] == false))
+    end
+  end
+
+  test "zero tax at a positive rate does not prove exclusive pricing" do
+    for candidate <- ["unknown", "inclusive", "exclusive"] do
+      amounts =
+        LineAmounts.normalize(%{
+          "printed_line_amount" => 0,
+          "printed_line_total" => 0,
+          "line_amount_tax_inclusion" => candidate,
+          "igst_rate" => 18,
+          "igst_amount" => 0
+        })
+
+      assert amounts.line_amount_tax_inclusion == candidate
+      assert amounts.line_amount_tax_inclusion_evidence == []
+      assert amounts.taxable_value == if(candidate == "unknown", do: nil, else: 0)
+    end
+  end
+
+  test "a stored unknown candidate is preserved when the current inclusion changes" do
+    for basis <- [nil, "model_candidate", "corrected"] do
+      amounts =
+        LineAmounts.normalize(%{
+          "printed_line_amount" => 118,
+          "line_amount_tax_inclusion_candidate" => "unknown",
+          "line_amount_tax_inclusion" => "inclusive",
+          "line_amount_tax_inclusion_basis" => basis,
+          "igst_rate" => 18
+        })
+
+      assert amounts.line_amount_tax_inclusion_candidate == "unknown"
+
+      if basis == "corrected" do
+        assert amounts.line_amount_tax_inclusion == "inclusive"
+        assert amounts.taxable_value == 100
+      else
+        assert amounts.line_amount_tax_inclusion == "unknown"
+        assert amounts.taxable_value == nil
+      end
+    end
+  end
+
+  test "reviewed inclusion overrides arithmetic and survives another resolution" do
+    line = %{
+      "printed_line_amount" => 118,
+      "printed_line_total" => 139.24,
+      "line_amount_tax_inclusion" => "inclusive",
+      "line_amount_tax_inclusion_basis" => "corrected",
+      "igst_rate" => 18,
+      "igst_amount" => 21.24
+    }
+
+    amounts = LineAmounts.normalize(line)
+    assert amounts.taxable_value == 100
+    assert amounts.line_amount_tax_inclusion_basis == "corrected"
+    assert amounts.line_amount_tax_inclusion_evidence == ["reviewer_correction"]
+
+    stored = Map.new(amounts, fn {key, value} -> {Atom.to_string(key), value} end)
+    assert LineAmounts.normalize(Map.merge(line, stored)) == amounts
+  end
+
+  test "old amount fields cannot supply printed evidence or inclusion" do
+    amounts =
+      LineAmounts.normalize(%{
+        "unit_price" => 118,
+        "tax_inclusive_value" => 118,
+        "taxable_value" => 100,
+        "tax_inclusive" => true,
+        "igst_rate" => 18
+      })
+
+    assert amounts.printed_unit_price == nil
+    assert amounts.printed_line_amount == nil
+    assert amounts.printed_taxable_value == nil
+    assert amounts.taxable_value == nil
+    assert amounts.line_amount_tax_inclusion == "unknown"
   end
 
   test "derives taxable value from an inclusive printed line amount" do

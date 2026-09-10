@@ -37,7 +37,7 @@ defmodule Nila.Gst.Sales.ImportsTest do
             %{
               "description" => "Service",
               "hsn_sac" => "998719",
-              "taxable_value" => 10_000,
+              "printed_taxable_value" => 10_000,
               "igst_rate" => 18,
               "igst_amount" => 1_800
             }

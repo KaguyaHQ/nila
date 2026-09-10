@@ -122,8 +122,8 @@ defmodule Nila.Gst.Sales.Gstr1Test do
           "seller" => %{"name" => "S", "gstin" => "33AEWPH4158J1Z3"},
           "buyer" => %{"name" => "B", "gstin" => "33AABCP9487A1ZG"},
           "line_items" => [
-            %{"taxable_value" => 1000, "cgst_amount" => 90, "sgst_amount" => 90},
-            %{"taxable_value" => 0, "quantity" => 0}
+            %{"printed_taxable_value" => 1000, "cgst_amount" => 90, "sgst_amount" => 90},
+            %{"printed_taxable_value" => 0, "quantity" => 0}
           ]
         }
       }
@@ -213,7 +213,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
                 "hsn_sac" => "8471",
                 "quantity" => 1,
                 "uom" => "Nos",
-                "taxable_value" => 1_000,
+                "printed_taxable_value" => 1_000,
                 "cgst_rate" => 9,
                 "cgst_amount" => 90,
                 "sgst_rate" => 9,
@@ -245,9 +245,10 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         |> put_in(["line_items", Access.at(0), "printed_line_amount"], 110_000)
         |> put_in(["line_items", Access.at(0), "line_amount_tax_inclusion"], "inclusive")
         |> put_in(
-          ["line_items", Access.at(0), "taxable_value_basis"],
-          "derived_from_inclusive_line_amount"
+          ["line_items", Access.at(0), "line_amount_tax_inclusion_candidate"],
+          "inclusive"
         )
+        |> Gstr1.resolve_line_amounts()
 
       flagged =
         MapSet.new([
@@ -703,8 +704,8 @@ defmodule Nila.Gst.Sales.Gstr1Test do
             "description" => "AMC for Turnkey work for 29 Customers",
             "hsn_sac" => "998719",
             "quantity" => 29,
-            "unit_price" => 25_625,
-            "taxable_value" => 743_125,
+            "printed_unit_price" => 25_625,
+            "printed_taxable_value" => 743_125,
             "cgst_rate" => 9,
             "cgst_amount" => 66_881.25,
             "sgst_rate" => 9,
@@ -732,8 +733,8 @@ defmodule Nila.Gst.Sales.Gstr1Test do
           %{
             "description" => "Additional charge test",
             "hsn_sac" => "998719",
-            "unit_price" => 10_000,
-            "taxable_value" => 10_000,
+            "printed_unit_price" => 10_000,
+            "printed_taxable_value" => 10_000,
             "igst_rate" => 18,
             "igst_amount" => 1_800
           }
@@ -776,8 +777,8 @@ defmodule Nila.Gst.Sales.Gstr1Test do
               "hsn_sac" => "8471",
               "quantity" => 1,
               "uom" => "Nos",
-              "unit_price" => taxable,
-              "taxable_value" => taxable
+              "printed_unit_price" => taxable,
+              "printed_taxable_value" => taxable
             },
             tax_fields
           )
@@ -798,7 +799,12 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         "seller" => %{"name" => "S", "gstin" => "33AEWPH4158J1Z3"},
         "buyer" => %{"name" => "B", "gstin" => "33AABCP9487A1ZG"},
         "line_items" => [
-          %{"taxable_value" => 1000, "cgst_rate" => 9, "cgst_amount" => 90, "sgst_amount" => 90}
+          %{
+            "printed_taxable_value" => 1000,
+            "cgst_rate" => 9,
+            "cgst_amount" => 90,
+            "sgst_amount" => 90
+          }
         ],
         "printed_grand_total" => 1180.0
       }
@@ -822,9 +828,9 @@ defmodule Nila.Gst.Sales.Gstr1Test do
           "seller" => %{"gstin" => seller},
           "buyer" => %{"gstin" => buyer},
           "line_items" => [
-            %{"taxable_value" => 5000, "igst_rate" => 18, "igst_amount" => 900},
+            %{"printed_taxable_value" => 5000, "igst_rate" => 18, "igst_amount" => 900},
             %{
-              "taxable_value" => 5000,
+              "printed_taxable_value" => 5000,
               "cgst_rate" => 9,
               "cgst_amount" => 450,
               "sgst_rate" => 9,
@@ -904,7 +910,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
             "buyer" => %{"gstin" => "33AEWPH4158J1Z3"},
             "line_items" => [
               %{
-                "taxable_value" => 10_000,
+                "printed_taxable_value" => 10_000,
                 "cgst_rate" => 9,
                 "cgst_amount" => 900,
                 "sgst_rate" => 9,
@@ -937,7 +943,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
             "buyer" => %{"gstin" => "33AEWPH4158J1Z3"},
             "line_items" => [
               %{
-                "taxable_value" => 10_000,
+                "printed_taxable_value" => 10_000,
                 "cgst_rate" => 9,
                 "cgst_amount" => 900,
                 "sgst_rate" => 9,
@@ -965,7 +971,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
             "buyer" => %{"gstin" => "33AABCP9487A1ZG"},
             "line_items" => [
               %{
-                "taxable_value" => 10_000,
+                "printed_taxable_value" => 10_000,
                 "cgst_rate" => 9,
                 "cgst_amount" => 900,
                 "sgst_rate" => 9,
@@ -992,7 +998,11 @@ defmodule Nila.Gst.Sales.Gstr1Test do
             "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
             "buyer" => %{"gstin" => "33AABCP9487A1ZG"},
             "line_items" => [
-              %{"taxable_value" => 64_552, "cgst_amount" => 5809.68, "sgst_amount" => 5809.68}
+              %{
+                "printed_taxable_value" => 64_552,
+                "cgst_amount" => 5809.68,
+                "sgst_amount" => 5809.68
+              }
             ],
             "printed_grand_total" => 2_75_000.00
           }
@@ -1062,7 +1072,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
             "buyer" => %{"gstin" => "33AABCP9487A1ZG"},
             "line_items" => [
               %{
-                "taxable_value" => 1000,
+                "printed_taxable_value" => 1000,
                 "cgst_rate" => 9,
                 "cgst_amount" => 90,
                 "sgst_rate" => 9,
@@ -1620,7 +1630,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     line =
       if local? do
         %{
-          "taxable_value" => taxable,
+          "printed_taxable_value" => taxable,
           "hsn_sac" => "998719",
           "cgst_rate" => rate / 2,
           "cgst_amount" => half,
@@ -1629,7 +1639,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         }
       else
         %{
-          "taxable_value" => taxable,
+          "printed_taxable_value" => taxable,
           "hsn_sac" => "998719",
           "igst_rate" => rate,
           "igst_amount" => tax
@@ -1659,7 +1669,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         "buyer" => %{"gstin" => "33AABCP9487A1ZG"},
         "line_items" => [
           %{
-            "taxable_value" => 1000,
+            "printed_taxable_value" => 1000,
             "cgst_rate" => 9,
             "cgst_amount" => 90,
             "sgst_rate" => 9,

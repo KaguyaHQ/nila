@@ -36,7 +36,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
             %{
               "description" => "Technical support services",
               "hsn_sac" => "998719",
-              "taxable_value" => 1000,
+              "printed_taxable_value" => 1000,
               "igst_rate" => 18,
               "igst_amount" => 180
             }

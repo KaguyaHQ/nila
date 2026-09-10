@@ -1,33 +1,19 @@
 defmodule Nila.Gst.Extraction.Verify do
   @moduledoc """
-  Holds one extracted invoice to the page it came from, and to arithmetic.
+  Checks extracted invoice numbers and GSTINs without changing the invoice.
 
-  Two independent checks, in that order, because they catch different failures.
+  `structured/2` checks arithmetic and GSTINs. It reports failures, but cannot
+  declare source verification without an independent page transcription.
+  `invoice/3` also checks that captured values occur in that transcription;
+  numeric presence does not establish a number's role or location on the page.
 
-  **Source presence.** Every field defined as "copy what is printed" must have
-  its value somewhere in the transcription. On breeze 2026-06 the model returned
-  a taxable value of 62,552 for a bill whose pages contain no such number anywhere
-  — the real figure was 64,552 — and every downstream check passed, because a
-  fabricated number is internally consistent with nothing to contradict it.
-  This check proves only numeric presence. It does not infer a field's meaning
-  from vendor vocabulary; the structuring model sees headings and table geometry,
-  while arithmetic below can prove or contradict exact accounting relationships.
-
-  **Arithmetic.** GST invoices are overdetermined — lines sum to the taxable
-  value, tax is a percentage of it, CGST equals SGST, the grand total is their
-  sum, and the amount in words repeats it. Any single wrong number therefore
-  disagrees with a coherent majority, which is enough to say *which* number is
-  wrong rather than only that something is.
-
-  That distinction is the point of `:internally_inconsistent_bill`. The same
-  breeze packet holds a bill whose own printed TOTAL says 275,000 while its
-  lines sum to 64,552, its tax is 18% of 64,552, and its grand total is
-  64,552 + tax. The bill is wrong, not the extraction — a re-read cannot fix it
-  and a silent "closest match" hides it. So the flag names the outlier and shows
-  the coherent subset, and a human decides.
+  Arithmetic compares known totals only. Complete line amounts take precedence
+  when computing a grand total; otherwise use printed invoice totals. A single
+  rate applies to the whole taxable value only when every line has that rate.
+  Checks retain their operands, and flags summarize failures for review.
   """
 
-  alias Nila.Gst.Extraction.LineAmounts
+  alias Nila.Gst.Extraction.{LineAmounts, TaxComponents}
   alias Nila.Gstin
 
   @tolerance 1.0
@@ -72,36 +58,6 @@ defmodule Nila.Gst.Extraction.Verify do
       end
 
     %{status: status, checks: checks, flags: flags}
-  end
-
-  @doc "Removes extracted numeric candidates whose values do not occur in the source."
-  def discard_unobserved_values(data, checks) when is_map(data) and is_list(checks) do
-    fields =
-      checks
-      |> Enum.filter(&failed_source_presence?/1)
-      |> Enum.map(&check_field/1)
-      |> Enum.filter(&source_numeric_field?/1)
-      |> Enum.uniq()
-
-    {data, repairs} =
-      Enum.reduce(fields, {data, []}, fn field, {current, repairs} ->
-        case field_value(current, field) do
-          nil ->
-            {current, repairs}
-
-          value ->
-            repair = %{
-              "field" => field,
-              "from" => value,
-              "to" => nil,
-              "basis" => "value_absent_from_source"
-            }
-
-            {clear_field(current, field), repairs ++ [repair]}
-        end
-      end)
-
-    {data, repairs}
   end
 
   # ---- source presence ----
@@ -174,7 +130,7 @@ defmodule Nila.Gst.Extraction.Verify do
     value
     |> variants()
     |> Enum.any?(fn variant ->
-      Regex.match?(~r/(?<![0-9.])#{Regex.escape(variant)}(?![0-9])/, haystack)
+      Regex.match?(~r/(?<![0-9.])#{Regex.escape(variant)}(?![0-9]|\.[0-9])/, haystack)
     end)
   end
 
@@ -218,81 +174,79 @@ defmodule Nila.Gst.Extraction.Verify do
 
   defp arithmetic_checks(data, reverse_charge?) do
     lines = data["line_items"] || []
-    lines_sum = sum_taxable(lines)
-    taxable = data["printed_total_taxable"]
-    effective_taxable = if(is_number(taxable), do: taxable, else: complete_lines_taxable(lines))
+    line_taxable = complete_lines_taxable(lines)
+    printed_taxable = data["printed_total_taxable"]
+    taxable = if is_number(printed_taxable), do: printed_taxable, else: line_taxable
     cgst = data["printed_cgst"]
     sgst = data["printed_sgst"]
     igst = data["printed_igst"]
     total_tax = data["printed_total_tax"]
-    grand = data["printed_grand_total"]
+    rate = implied_rate(lines)
+    grand = computed_grand_total(data, lines, line_taxable, reverse_charge?)
 
-    []
-    |> maybe_check(
-      lines != [] and is_number(taxable),
-      :arithmetic,
-      "lines_sum_vs_printed_taxable",
-      close?(lines_sum, taxable),
-      %{lines_sum: lines_sum, printed: taxable}
-    )
-    |> maybe_check(
-      is_number(cgst) and is_number(sgst),
-      :arithmetic,
-      "cgst_equals_sgst",
-      close?(cgst, sgst, @tight_tolerance),
-      %{cgst: cgst, sgst: sgst}
-    )
-    |> maybe_check(
-      is_number(total_tax) and Enum.any?([cgst, sgst, igst], &is_number/1),
-      :arithmetic,
-      "tax_components_sum",
-      close?(num(cgst) + num(sgst) + num(igst), total_tax),
-      %{components: num(cgst) + num(sgst) + num(igst), printed: total_tax}
-    )
-    |> maybe_check(
-      is_number(grand) and is_number(effective_taxable),
-      :arithmetic,
-      "grand_total",
-      close?(computed_grand_total(data, reverse_charge?), grand),
-      %{
-        computed: computed_grand_total(data, reverse_charge?),
-        printed: grand,
+    [
+      arithmetic_check("lines_sum_vs_printed_taxable", line_taxable, printed_taxable, %{
+        lines_sum: line_taxable,
+        printed: printed_taxable
+      }),
+      arithmetic_check(
+        "cgst_equals_sgst",
+        cgst,
+        sgst,
+        %{cgst: cgst, sgst: sgst},
+        @tight_tolerance
+      ),
+      arithmetic_check("tax_components_sum", printed_head_sum([cgst, sgst, igst]), total_tax, %{
+        components: printed_head_sum([cgst, sgst, igst]),
+        printed: total_tax
+      }),
+      arithmetic_check("grand_total", grand, data["printed_grand_total"], %{
+        computed: grand,
+        printed: data["printed_grand_total"],
         reverse_charge: reverse_charge?
-      }
-    )
-    |> maybe_check(
-      is_number(effective_taxable) and is_number(total_tax) and implied_rate(lines) != nil,
-      :arithmetic,
-      "tax_is_rate_times_taxable",
-      close?(num(effective_taxable) * num(implied_rate(lines)) / 100, num(total_tax), 2.0),
-      %{rate: implied_rate(lines), on: effective_taxable, printed: total_tax}
-    )
+      }),
+      arithmetic_check(
+        "tax_is_rate_times_taxable",
+        if(is_number(taxable) and is_number(rate), do: taxable * rate / 100),
+        total_tax,
+        %{rate: rate, on: taxable, printed: total_tax},
+        2.0
+      )
+    ]
+    |> Enum.reject(&is_nil/1)
   end
 
-  # Under reverse charge the supplier does not collect the tax — the recipient
-  # pays it to the government — so the bill's own total excludes it. Freight and
-  # legal fees are routinely RCM, so an invariant that always adds tax to the
-  # total does not merely misfire here, it misfires on a whole category of real
-  # purchases, and a check that cries wolf on a category is a check nobody reads.
-  defp computed_grand_total(data, reverse_charge?) do
-    lines = data["line_items"] || []
+  # Compare only known operands. Missing evidence is not a zero or a failed sum.
+  defp arithmetic_check(field, left, right, detail, tolerance \\ @tolerance) do
+    if is_number(left) and is_number(right) do
+      check(:arithmetic, field, close?(left, right, tolerance), detail)
+    end
+  end
 
-    base =
-      case {complete_lines_taxable(lines), reverse_charge? or complete_line_taxes?(lines)} do
-        {taxable, true} when is_number(taxable) ->
-          tax = if reverse_charge?, do: 0.0, else: sum_line_tax(lines)
-          taxable + tax
+  defp printed_head_sum(heads) do
+    if Enum.any?(heads, &is_number/1), do: heads |> Enum.map(&num/1) |> Enum.sum()
+  end
 
-        _incomplete_lines ->
-          tax =
-            if reverse_charge?,
-              do: 0.0,
-              else: num(Nila.Gst.Extraction.TaxComponents.printed_tax_total(data))
+  # Prefer complete row arithmetic. Otherwise use a known taxable total and
+  # invoice tax. Reverse-charge supplies exclude tax from the bill's total.
+  defp computed_grand_total(data, lines, line_taxable, reverse_charge?) do
+    {taxable, tax} =
+      if is_number(line_taxable) and (reverse_charge? or complete_line_taxes?(lines)) do
+        {line_taxable, if(reverse_charge?, do: 0.0, else: sum_line_tax(lines))}
+      else
+        taxable =
+          if is_number(data["printed_total_taxable"]),
+            do: data["printed_total_taxable"],
+            else: line_taxable
 
-          num(data["printed_total_taxable"]) + tax
+        tax = if reverse_charge?, do: 0.0, else: TaxComponents.printed_tax_total(data)
+        {taxable, tax}
       end
 
-    base + num(data["printed_additional_charges"]) + num(data["printed_rounding_adjustment"])
+    if is_number(taxable) and is_number(tax) do
+      taxable + tax + num(data["printed_additional_charges"]) +
+        num(data["printed_rounding_adjustment"])
+    end
   end
 
   # Read from the page, because the page says so in words. The negative form is
@@ -312,31 +266,11 @@ defmodule Nila.Gst.Extraction.Verify do
   @export ~r/\b(export\s+invoice|letter\s+of\s+undertaking|\bLUT\b|special\s+economic\s+zone|\bSEZ\b|supply\s+meant\s+for\s+export)\b|\b(USD|EUR|GBP|AED|SGD)\s*[\d.,]/i
 
   @doc """
-  What kind of document the page says it is, read off the page and nothing else.
+  Reads document markers from text independently of structured extraction.
 
-  Credit/debit headings independently verify the structured document type.
-  Export and outward reverse-charge markers name shapes the current return still
-  cannot file, so they are detected here where the text is and refused at sign-off
-  rather than coerced into an ordinary taxable invoice.
-
-  ## A false positive here is a month nobody can file or fix
-
-  These markers are page-wide regex, not a classification of the document, and
-  they gate `blocking` issues (`Gstr1.blocking_issues/1`) that no confirmation
-  clears. That is deliberate for a real credit note. But the patterns match
-  anywhere on the page: "no credit notes after 7 days" in a terms footer reads
-  as a credit note, and `@export` fires on a bare `LUT` or on `USD 1,200` quoted
-  as a reference price on a domestic bill.
-
-  When that happens the month is stuck. `unsupported_document_issues/1` names
-  `invoice_number` in its `"fields"`, which is not what is wrong, and
-  `blocking_issues/1` is not part of the `correction_issues` list that feeds
-  `Gstr1.flagged_fields/2` (see `Sales.Workings.materialize/5`) — so no field is
-  correctable, the blocker cannot be confirmed, and there is no third way out.
-
-  Structured filing classifications are now correctable fields, but these
-  page-wide markers remain independent evidence. A marker disagreement must
-  therefore stay visible rather than being silently overwritten by extraction.
+  Credit/debit patterns look for headings; export and reverse-charge patterns
+  scan the page. These are evidence for downstream classification, not filing
+  decisions, and can disagree with the extracted document type.
   """
   def document_markers(text) when is_binary(text) do
     %{
@@ -369,10 +303,6 @@ defmodule Nila.Gst.Extraction.Verify do
     ]
   end
 
-  defp sum_taxable(lines) do
-    lines |> Enum.map(&LineAmounts.taxable_value/1) |> Enum.reject(&is_nil/1) |> Enum.sum()
-  end
-
   defp complete_lines_taxable([]), do: nil
 
   defp complete_lines_taxable(lines) do
@@ -390,7 +320,8 @@ defmodule Nila.Gst.Extraction.Verify do
           is_number(line["cgst_amount"]) and is_number(line["sgst_amount"])
 
         true ->
-          true
+          # At least one explicit zero rate distinguishes zero tax from missing rates.
+          Enum.any?(~w(cgst_rate sgst_rate igst_rate), &is_number(line[&1]))
       end
     end)
   end
@@ -405,67 +336,18 @@ defmodule Nila.Gst.Extraction.Verify do
   # rate and the check that uses this is simply skipped rather than guessed at.
   defp implied_rate(lines) do
     rates =
-      lines
-      |> Enum.map(fn line ->
-        num(line["igst_rate"]) + num(line["cgst_rate"]) + num(line["sgst_rate"])
+      Enum.map(lines, fn line ->
+        heads = Enum.map(~w(cgst_rate sgst_rate igst_rate), &line[&1])
+        if Enum.any?(heads, &is_number/1), do: heads |> Enum.map(&num/1) |> Enum.sum()
       end)
-      |> Enum.reject(&(&1 == 0))
-      |> Enum.uniq()
 
-    case rates do
-      [rate] -> rate
-      _mixed_or_none -> nil
+    case Enum.uniq(rates) do
+      [rate] when is_number(rate) and rate > 0 -> rate
+      _mixed_missing_or_zero -> nil
     end
   end
 
   # ---- flags ----
-
-  defp failed_source_presence?(%{kind: :source_presence, ok?: false}), do: true
-
-  defp failed_source_presence?(%{"kind" => kind}) when kind in ~w(source_presence grounding),
-    do: true
-
-  defp failed_source_presence?(_check), do: false
-
-  defp check_field(%{field: field}), do: field
-  defp check_field(%{"field" => field}), do: field
-
-  defp source_numeric_field?(field) when field in @printed_money, do: true
-
-  defp source_numeric_field?("line_items[" <> rest) do
-    case Regex.run(~r/^\d+\]\.([^\]]+)$/, rest) do
-      [_, field] -> field in @source_line_numbers
-      _invalid -> false
-    end
-  end
-
-  defp source_numeric_field?(_field), do: false
-
-  defp field_value(data, "line_items[" <> rest) do
-    case Regex.run(~r/^(\d+)\]\.(.+)$/, rest) do
-      [_, index, field] ->
-        get_in(data, ["line_items", Access.at(String.to_integer(index)), field])
-
-      _invalid ->
-        nil
-    end
-  end
-
-  defp field_value(data, field), do: data[field]
-
-  defp clear_field(data, "line_items[" <> rest) do
-    case Regex.run(~r/^(\d+)\]\.(.+)$/, rest) do
-      [_, index, field] ->
-        update_in(data, ["line_items"], fn lines ->
-          List.update_at(lines || [], String.to_integer(index), &Map.put(&1, field, nil))
-        end)
-
-      _invalid ->
-        data
-    end
-  end
-
-  defp clear_field(data, field), do: Map.put(data, field, nil)
 
   defp flags(data, checks, haystack) do
     absent = Enum.filter(checks, &(&1.kind == :source_presence and not &1.ok?))
@@ -537,13 +419,13 @@ defmodule Nila.Gst.Extraction.Verify do
 
   defp taxable_candidates(data) do
     lines = data["line_items"] || []
-    lines_sum = sum_taxable(lines)
+    lines_sum = complete_lines_taxable(lines)
     total_tax = data["printed_total_tax"]
     grand = data["printed_grand_total"]
     rate = implied_rate(lines)
 
     [
-      {"line_items", if(lines != [] and lines_sum > 0, do: lines_sum)},
+      {"line_items", if(is_number(lines_sum) and lines_sum > 0, do: lines_sum)},
       {"grand_total_less_tax",
        if(is_number(grand) and is_number(total_tax),
          do:
@@ -592,11 +474,6 @@ defmodule Nila.Gst.Extraction.Verify do
   # ---- helpers ----
 
   defp check(kind, field, ok?, detail), do: %{kind: kind, field: field, ok?: ok?, detail: detail}
-
-  defp maybe_check(checks, false, _kind, _field, _ok?, _detail), do: checks
-
-  defp maybe_check(checks, true, kind, field, ok?, detail),
-    do: checks ++ [check(kind, field, ok?, detail)]
 
   defp add(flags, false, _build), do: flags
   defp add(flags, true, build), do: flags ++ [build.()]

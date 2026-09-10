@@ -266,7 +266,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
                 "hsn_sac" => "8471",
                 "quantity" => 1,
                 "uom" => "Nos",
-                "taxable_value" => taxable
+                "printed_taxable_value" => taxable
               },
               tax_fields
             )

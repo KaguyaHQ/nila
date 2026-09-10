@@ -24,7 +24,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
   end
 
   defp raw(page, inum, line_items, grand_total) do
-    taxable = line_items |> Enum.map(& &1["taxable_value"]) |> Enum.sum()
+    taxable = line_items |> Enum.map(& &1["printed_taxable_value"]) |> Enum.sum()
     tax = line_items |> Enum.map(&(&1["cgst_amount"] + &1["sgst_amount"])) |> Enum.sum()
 
     %{
@@ -49,7 +49,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
       "description" => description,
       "hsn_sac" => "8415",
       "quantity" => 1.0,
-      "taxable_value" => taxable,
+      "printed_taxable_value" => taxable,
       "cgst_rate" => 9.0,
       "cgst_amount" => side,
       "sgst_rate" => 9.0,
@@ -765,7 +765,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
   test "settled observations that share a key stay distinct" do
     line = %{
       "description" => "Service",
-      "taxable_value" => 1.06,
+      "printed_taxable_value" => 1.06,
       "cgst_rate" => 9,
       "cgst_amount" => 0.10,
       "sgst_rate" => 9,

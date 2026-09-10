@@ -144,7 +144,7 @@ defmodule Nila.Gst.Sales.InvoiceValidationTest do
           "line_items" => [
             %{
               "description" => "Equipment",
-              "taxable_value" => 100,
+              "printed_taxable_value" => 100,
               "cgst_rate" => 9,
               "cgst_amount" => 9,
               "sgst_rate" => 9,

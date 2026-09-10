@@ -9,8 +9,8 @@ defmodule Nila.Gst.Extraction.VerifyTest do
         "invoice_number" => "BRZ/26/020",
         "seller" => %{"gstin" => "33AAKCS8613A1ZM"},
         "line_items" => [
-          %{"taxable_value" => 40_000.0, "cgst_rate" => 9.0, "sgst_rate" => 9.0},
-          %{"taxable_value" => 24_552.0, "cgst_rate" => 9.0, "sgst_rate" => 9.0}
+          %{"printed_taxable_value" => 40_000.0, "cgst_rate" => 9.0, "sgst_rate" => 9.0},
+          %{"printed_taxable_value" => 24_552.0, "cgst_rate" => 9.0, "sgst_rate" => 9.0}
         ],
         "printed_total_taxable" => 64_552.0,
         "printed_cgst" => 5_809.68,
@@ -101,7 +101,52 @@ defmodule Nila.Gst.Extraction.VerifyTest do
 
   test "digit-boundary matching stops a number borrowing digits from its neighbour" do
     refute Verify.printed?(552.0, "TOTAL 164552.00")
+    refute Verify.printed?(552.0, "TOTAL 552.99")
     assert Verify.printed?(552.0, "TOTAL 552.00")
+  end
+
+  test "missing row rates use footer tax instead of treating it as zero" do
+    result =
+      Verify.structured(%{
+        "line_items" => [%{"printed_taxable_value" => 1000}],
+        "printed_total_taxable" => 1000,
+        "printed_total_tax" => 180,
+        "printed_grand_total" => 1180
+      })
+
+    assert Enum.find(result.checks, &(&1.field == "grand_total")).ok?
+    assert result.flags == []
+  end
+
+  test "zero-rate and missing-rate lines cannot share another line's positive rate" do
+    for other <- [%{"igst_rate" => 0}, %{}] do
+      result =
+        Verify.structured(%{
+          "line_items" => [
+            %{"printed_taxable_value" => 1000, "igst_rate" => 18, "igst_amount" => 180},
+            Map.put(other, "printed_taxable_value", 1000)
+          ],
+          "printed_total_taxable" => 2000,
+          "printed_total_tax" => 180,
+          "printed_grand_total" => 2180
+        })
+
+      refute Enum.any?(result.checks, &(&1.field == "tax_is_rate_times_taxable"))
+      assert result.flags == []
+    end
+  end
+
+  test "an incomplete line sum is not compared with the complete printed total" do
+    result =
+      Verify.structured(%{
+        "line_items" => [%{"printed_taxable_value" => 1000}, %{}],
+        "printed_total_taxable" => 2000,
+        "printed_total_tax" => 360,
+        "printed_grand_total" => 2360
+      })
+
+    refute Enum.any?(result.checks, &(&1.field == "lines_sum_vs_printed_taxable"))
+    assert Enum.find(result.checks, &(&1.field == "grand_total")).ok?
   end
 
   test "commas and paise spellings still establish source presence" do
@@ -185,7 +230,9 @@ defmodule Nila.Gst.Extraction.VerifyTest do
       # adds tax would flag a whole category of real purchases.
       rcm = %{
         "invoice_number" => "CRN1648270398",
-        "line_items" => [%{"taxable_value" => 841.0, "cgst_rate" => 2.5, "sgst_rate" => 2.5}],
+        "line_items" => [
+          %{"printed_taxable_value" => 841.0, "cgst_rate" => 2.5, "sgst_rate" => 2.5}
+        ],
         "printed_total_taxable" => 841.0,
         "printed_cgst" => 21.02,
         "printed_sgst" => 21.02,
@@ -215,7 +262,7 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     test "the same numbers without a reverse-charge declaration still fail" do
       forward = %{
         "invoice_number" => "X-1",
-        "line_items" => [%{"taxable_value" => 841.0}],
+        "line_items" => [%{"printed_taxable_value" => 841.0}],
         "printed_total_taxable" => 841.0,
         "printed_total_tax" => 42.05,
         "printed_grand_total" => 841.0
@@ -270,7 +317,9 @@ defmodule Nila.Gst.Extraction.VerifyTest do
           "printed_total_tax" => 579.66,
           "printed_total_taxable" => 3220.34,
           "printed_grand_total" => 3800.0,
-          "line_items" => [%{"taxable_value" => 3220.34, "cgst_rate" => 9.0, "sgst_rate" => 9.0}]
+          "line_items" => [
+            %{"printed_taxable_value" => 3220.34, "cgst_rate" => 9.0, "sgst_rate" => 9.0}
+          ]
         })
 
       text = """

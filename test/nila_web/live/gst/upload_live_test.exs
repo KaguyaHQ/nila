@@ -227,7 +227,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
             %{
               "description" => "Service",
               "hsn_sac" => "998719",
-              "taxable_value" => 8_500,
+              "printed_taxable_value" => 8_500,
               "igst_rate" => 18,
               "igst_amount" => 1_530
             }

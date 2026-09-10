@@ -325,7 +325,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     line = %{
       "description" => "Service",
       "hsn_sac" => "998719",
-      "taxable_value" => 1.06,
+      "printed_taxable_value" => 1.06,
       "cgst_rate" => 9,
       "cgst_amount" => 0.10,
       "sgst_rate" => 9,
@@ -625,7 +625,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
           "buyer" => %{"name" => "PONMANI AND CO", "gstin" => "33AABCP9487A1ZG"},
           "line_items" => [
             %{
-              "taxable_value" => 1000,
+              "printed_taxable_value" => 1000,
               "hsn_sac" => "8415",
               "cgst_rate" => 9,
               "cgst_amount" => 100,
@@ -643,7 +643,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
           "buyer" => %{"name" => "SIEMENS HEALTHCARE", "gstin" => "33AAVCS8021P1ZM"},
           "line_items" => [
             %{
-              "taxable_value" => 2000,
+              "printed_taxable_value" => 2000,
               "hsn_sac" => "2903",
               "cgst_rate" => 9,
               "cgst_amount" => 180,
@@ -828,7 +828,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     %{
       "description" => description,
       "hsn_sac" => "7106",
-      "taxable_value" => taxable,
+      "printed_taxable_value" => taxable,
       "cgst_rate" => 9,
       "cgst_amount" => half_tax,
       "sgst_rate" => 9,

@@ -110,10 +110,12 @@ defmodule Nila.Gst.Extraction.TaxComponentsTest do
     assert Enum.all?(issues, &(&1["line"] == 0))
   end
 
-  test "legacy canonical tax fields remain readable" do
+  test "canonical tax fields cannot substitute for missing printed components" do
     line = %{"igst_rate" => 18, "igst_amount" => 180}
 
-    assert TaxComponents.project(%{"line_items" => [line]}) == %{"line_items" => [line]}
+    assert %{"line_items" => [projected]} = TaxComponents.project(%{"line_items" => [line]})
+    assert projected["igst_rate"] == nil
+    assert projected["igst_amount"] == nil
   end
 
   test "projects explicitly labelled invoice tax totals" do
@@ -180,9 +182,37 @@ defmodule Nila.Gst.Extraction.TaxComponentsTest do
     assert {:tax_component_issue, _issues} = List.keyfind(flags, :tax_component_issue, 0)
   end
 
-  test "legacy invoice tax totals remain readable" do
+  test "canonical invoice totals cannot substitute for missing printed components" do
     data = %{"printed_igst" => 180, "printed_total_tax" => 180, "line_items" => []}
 
-    assert TaxComponents.project(data) == data
+    projected = TaxComponents.project(data)
+    assert projected["printed_igst"] == nil
+    assert projected["printed_total_tax"] == nil
+  end
+
+  test "projection replaces old issues and repeating it does not duplicate them" do
+    data = %{
+      "printed_tax_totals" => [%{"printed_label" => "Unknown", "printed_amount" => 180}],
+      "line_items" => [
+        %{
+          "printed_tax_components" => [
+            %{"printed_label" => "IGST", "printed_amount" => 180},
+            %{"printed_label" => "IGST", "printed_amount" => 180}
+          ]
+        }
+      ]
+    }
+
+    projected = TaxComponents.project(data)
+    assert TaxComponents.project(projected) == projected
+
+    corrected =
+      projected
+      |> Map.put("printed_tax_totals", [])
+      |> put_in(["line_items", Access.at(0), "printed_tax_components"], [])
+      |> TaxComponents.project()
+
+    refute Map.has_key?(corrected, "tax_total_issues")
+    refute Map.has_key?(hd(corrected["line_items"]), "tax_component_issues")
   end
 end

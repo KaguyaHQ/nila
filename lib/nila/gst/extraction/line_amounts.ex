@@ -1,43 +1,42 @@
 defmodule Nila.Gst.Extraction.LineAmounts do
-  @moduledoc false
+  @moduledoc """
+  Resolves one item's taxable value while keeping its printed amounts separate.
 
-  @bases ~w(inclusive exclusive unknown)
+  For two units at ₹50 before 18% GST, the printed unit price is ₹50, the
+  line amount may be ₹100, the final line total ₹118, and a separate taxable
+  column ₹100. A line amount can also include GST; its name alone proves nothing.
+
+  Accepts string-keyed extracted or previously reviewed lines and returns an
+  atom-keyed result. Reviewer corrections take priority. Otherwise, use a printed
+  taxable value before deriving one from the line amount. Arithmetic can prove
+  exclusive pricing. If one available check passes and another fails, inclusion
+  is unknown. If no check passes, retain the model candidate and the failed checks.
+
+  Only the current printed fields supply evidence. Missing fields stay missing;
+  a previously calculated taxable value is used only when marked as corrected.
+  """
+
+  alias Nila.Gst.Money
+
+  @inclusions ~w(inclusive exclusive unknown)
+  @arithmetic_bases ~w(line_amount_plus_tax_equals_total line_amount_times_rate_equals_tax)
   @tolerance 0.02
 
   def normalize(line) when is_map(line) do
-    printed_unit_price = money(evidence_value(line, "printed_unit_price", "unit_price"))
-    printed_line_amount = money(printed_line_amount(line))
-    printed_line_total = money(line["printed_line_total"])
-    printed_taxable_value = money(printed_taxable_value(line))
-    candidate = inclusion_candidate(line)
-
-    resolution =
-      resolve_inclusion(
-        line,
-        printed_line_amount,
-        printed_line_total,
-        candidate
-      )
-
-    {taxable_value, taxable_value_basis} =
-      resolve_taxable_value(
-        line,
-        printed_taxable_value,
-        printed_line_amount,
-        resolution.inclusion,
-        resolution.basis
-      )
+    facts = read_line(line)
+    inclusion = resolve_inclusion(facts)
+    {taxable_value, taxable_value_basis} = resolve_taxable_value(facts, inclusion)
 
     %{
-      printed_unit_price: printed_unit_price,
-      printed_line_amount: printed_line_amount,
-      printed_line_total: printed_line_total,
-      printed_taxable_value: printed_taxable_value,
-      line_amount_tax_inclusion_candidate: candidate,
-      line_amount_tax_inclusion: resolution.inclusion,
-      line_amount_tax_inclusion_basis: resolution.basis,
-      line_amount_tax_inclusion_evidence: resolution.evidence,
-      line_amount_tax_inclusion_disagreement: disagreement(candidate, resolution.inclusion),
+      printed_unit_price: facts.unit_price,
+      printed_line_amount: facts.amount,
+      printed_line_total: facts.total,
+      printed_taxable_value: facts.printed_taxable,
+      line_amount_tax_inclusion_candidate: facts.candidate,
+      line_amount_tax_inclusion: inclusion.value,
+      line_amount_tax_inclusion_basis: inclusion.basis,
+      line_amount_tax_inclusion_evidence: inclusion.evidence,
+      line_amount_tax_inclusion_disagreement: disagreement(facts.candidate, inclusion.value),
       taxable_value: taxable_value,
       taxable_value_basis: taxable_value_basis
     }
@@ -45,174 +44,122 @@ defmodule Nila.Gst.Extraction.LineAmounts do
 
   def taxable_value(line) when is_map(line), do: normalize(line).taxable_value
 
-  @doc "Drops a redundant taxable candidate only when printed row arithmetic proves its twin."
-  def discard_redundant_printed_taxable(line) when is_map(line) do
-    amounts = normalize(line)
-
-    if is_number(amounts.printed_taxable_value) and is_number(amounts.printed_line_amount) and
-         close?(amounts.printed_taxable_value, amounts.printed_line_amount) and
-         amounts.line_amount_tax_inclusion == "exclusive" and
-         amounts.line_amount_tax_inclusion_basis in ~w(line_amount_plus_tax_equals_total line_amount_times_rate_equals_tax) do
-      repair = %{
-        "field" => "printed_taxable_value",
-        "from" => amounts.printed_taxable_value,
-        "to" => nil,
-        "basis" => "redundant_with_arithmetically_exclusive_line_amount"
-      }
-
-      {Map.put(line, "printed_taxable_value", nil), repair}
-    else
-      {line, nil}
-    end
-  end
-
-  defp resolve_inclusion(
-         %{
-           "line_amount_tax_inclusion_basis" => "corrected",
-           "line_amount_tax_inclusion" => inclusion
-         },
-         _amount,
-         _total,
-         _candidate
-       )
-       when inclusion in @bases do
-    %{
-      inclusion: inclusion,
-      basis: "corrected",
-      evidence: ["reviewer_correction"]
-    }
-  end
-
-  defp resolve_inclusion(line, amount, total, candidate) do
-    equations = arithmetic_equations(line, amount, total)
-    passed = Enum.filter(equations, & &1.passed)
-    failed = Enum.reject(equations, & &1.passed)
+  # Decision order: reviewer, arithmetic proof/conflict, model, unknown.
+  defp resolve_inclusion(facts) do
+    checks = Enum.reject([total_check(facts), rate_check(facts)], &is_nil/1)
+    {passed, failed} = Enum.split_with(checks, & &1["passed"])
 
     cond do
+      facts.inclusion_corrected? ->
+        %{value: facts.corrected_inclusion, basis: "corrected", evidence: ["reviewer_correction"]}
+
       passed != [] and failed == [] ->
-        %{
-          inclusion: "exclusive",
-          basis: passed |> hd() |> Map.fetch!(:basis),
-          evidence: Enum.map(passed, &equation_evidence/1)
-        }
+        %{value: "exclusive", basis: hd(passed)["basis"], evidence: checks}
 
       passed != [] and failed != [] ->
-        %{
-          inclusion: "unknown",
-          basis: "arithmetic_conflict",
-          evidence: Enum.map(equations, &equation_evidence/1)
-        }
+        %{value: "unknown", basis: "arithmetic_conflict", evidence: checks}
 
-      candidate in ~w(inclusive exclusive) ->
-        %{inclusion: candidate, basis: "model_candidate", evidence: []}
+      facts.candidate in ~w(inclusive exclusive) ->
+        # These checks test exclusive pricing only. Failure does not rule out
+        # an inclusive candidate, but the failed arithmetic is still evidence.
+        %{value: facts.candidate, basis: "model_candidate", evidence: checks}
 
       true ->
-        %{inclusion: "unknown", basis: nil, evidence: []}
+        %{value: "unknown", basis: nil, evidence: checks}
     end
   end
 
-  defp arithmetic_equations(line, amount, total) do
-    tax = line_tax(line)
+  defp resolve_taxable_value(facts, inclusion) do
+    cond do
+      facts.taxable_corrected? ->
+        {facts.corrected_taxable, "corrected"}
 
-    []
-    |> add_total_equation(amount, tax, total)
-    |> add_rate_equation(line, amount, tax)
-  end
+      is_number(facts.printed_taxable) ->
+        {facts.printed_taxable, "printed_taxable_value"}
 
-  defp add_total_equation(equations, amount, tax, total)
-       when is_number(amount) and is_number(tax) and is_number(total) do
-    if nonzero?(tax) do
-      add_equation(equations, "line_amount_plus_tax_equals_total", amount + tax, total)
-    else
-      equations
+      not is_number(facts.amount) ->
+        {nil, nil}
+
+      inclusion.value == "exclusive" ->
+        basis =
+          if inclusion.basis in @arithmetic_bases,
+            do: inclusion.basis,
+            else: "printed_exclusive_line_amount"
+
+        {facts.amount, basis}
+
+      inclusion.value == "inclusive" and facts.rate > 0 ->
+        {round2(facts.amount / (1 + facts.rate / 100)), "derived_from_inclusive_line_amount"}
+
+      true ->
+        {nil, nil}
     end
   end
 
-  defp add_total_equation(equations, _amount, _tax, _total), do: equations
-
-  defp add_rate_equation(equations, line, amount, tax)
-       when is_number(amount) and is_number(tax) do
-    rate = rate(line)
-
-    if rate > 0 and complete_tax_for_rate?(line) do
-      add_equation(equations, "line_amount_times_rate_equals_tax", amount * rate / 100, tax)
-    else
-      equations
+  defp total_check(%{amount: amount, tax: tax, total: total}) do
+    if is_number(amount) and is_number(tax) and is_number(total) and nonzero?(tax) do
+      check("line_amount_plus_tax_equals_total", amount + tax, total)
     end
   end
 
-  defp add_rate_equation(equations, _line, _amount, _tax), do: equations
-
-  defp add_equation(equations, basis, left, right) do
-    equations ++
-      [%{basis: basis, passed: close?(left, right), left: round2(left), right: round2(right)}]
+  defp rate_check(%{amount: amount, tax: tax, rate: rate} = facts) do
+    if is_number(amount) and is_number(tax) and nonzero?(tax) and rate > 0 and
+         facts.complete_tax? do
+      check("line_amount_times_rate_equals_tax", amount * rate / 100, tax)
+    end
   end
 
-  defp equation_evidence(equation) do
+  defp check(basis, left, right) do
     %{
-      "basis" => equation.basis,
-      "passed" => equation.passed,
-      "left" => equation.left,
-      "right" => equation.right
+      "basis" => basis,
+      "passed" => close?(left, right),
+      "left" => round2(left),
+      "right" => round2(right)
     }
   end
 
-  defp resolve_taxable_value(
-         %{"taxable_value_basis" => "corrected"} = line,
-         _printed,
-         _amount,
-         _inclusion,
-         _inclusion_basis
-       ) do
-    {money(line["taxable_value"]), "corrected"}
-  end
+  # Read printed numbers and review markers once, before making decisions.
+  defp read_line(line) do
+    taxes =
+      Enum.map(~w(cgst sgst igst), fn head ->
+        {money(line[head <> "_rate"]), money(line[head <> "_amount"])}
+      end)
 
-  defp resolve_taxable_value(_line, printed, _amount, _inclusion, _basis)
-       when is_number(printed),
-       do: {printed, "printed_taxable_value"}
+    tax_amounts = taxes |> Enum.map(&elem(&1, 1)) |> Enum.reject(&is_nil/1)
+    active_taxes = Enum.filter(taxes, fn {rate, _amount} -> is_number(rate) and rate > 0 end)
 
-  defp resolve_taxable_value(line, nil, amount, "inclusive", _basis)
-       when is_number(amount) do
-    case amount_rate_taxable(amount, line) do
-      nil -> {nil, nil}
-      taxable -> {taxable, "derived_from_inclusive_line_amount"}
-    end
-  end
-
-  defp resolve_taxable_value(_line, nil, amount, "exclusive", inclusion_basis)
-       when is_number(amount) do
-    basis =
-      if inclusion_basis in ~w(line_amount_plus_tax_equals_total line_amount_times_rate_equals_tax),
-        do: inclusion_basis,
-        else: "printed_exclusive_line_amount"
-
-    {amount, basis}
-  end
-
-  defp resolve_taxable_value(_line, _printed, _amount, _inclusion, _basis), do: {nil, nil}
-
-  defp amount_rate_taxable(amount, line) do
-    rate = rate(line)
-    if rate > 0, do: round2(amount / (1 + rate / 100))
+    %{
+      unit_price: money(line["printed_unit_price"]),
+      amount: money(line["printed_line_amount"]),
+      total: money(line["printed_line_total"]),
+      printed_taxable: money(line["printed_taxable_value"]),
+      candidate: inclusion_candidate(line),
+      inclusion_corrected?:
+        line["line_amount_tax_inclusion_basis"] == "corrected" and
+          line["line_amount_tax_inclusion"] in @inclusions,
+      corrected_inclusion: line["line_amount_tax_inclusion"],
+      taxable_corrected?: line["taxable_value_basis"] == "corrected",
+      corrected_taxable: money(line["taxable_value"]),
+      rate: Enum.sum(Enum.map(taxes, fn {rate, _amount} -> rate || 0 end)),
+      tax: if(tax_amounts == [], do: nil, else: Enum.sum(tax_amounts)),
+      complete_tax?:
+        active_taxes != [] and
+          Enum.all?(active_taxes, fn {_rate, amount} -> is_number(amount) end)
+    }
   end
 
   defp inclusion_candidate(line) do
+    # Extraction supplies the initial inclusion. Once normalized, preserve that
+    # candidate even if arithmetic or a reviewer changes the resolved inclusion.
     stored_candidate = line["line_amount_tax_inclusion_candidate"]
     current = line["line_amount_tax_inclusion"]
 
     cond do
-      stored_candidate == "unknown" and current in ~w(inclusive exclusive) and
-          is_nil(line["line_amount_tax_inclusion_basis"]) ->
-        current
-
-      stored_candidate in @bases ->
+      stored_candidate in @inclusions ->
         stored_candidate
 
-      current in @bases ->
+      current in @inclusions ->
         current
-
-      line["tax_inclusive"] == true ->
-        "inclusive"
 
       true ->
         "unknown"
@@ -226,60 +173,32 @@ defmodule Nila.Gst.Extraction.LineAmounts do
 
   defp disagreement(_candidate, _resolved), do: nil
 
-  defp printed_line_amount(line) do
-    if Map.has_key?(line, "printed_line_amount") do
-      line["printed_line_amount"]
+  @doc """
+  Clears an equal taxable candidate when row arithmetic proves exclusive pricing.
+  This extraction repair changes the input and returns an audit record; normalize/1
+  only interprets it. Equality is checked in paise, not with arithmetic tolerance.
+  """
+  def discard_redundant_printed_taxable(line) when is_map(line) do
+    amounts = normalize(line)
+
+    if is_number(amounts.printed_taxable_value) and is_number(amounts.printed_line_amount) and
+         Money.paise(amounts.printed_taxable_value) == Money.paise(amounts.printed_line_amount) and
+         amounts.line_amount_tax_inclusion == "exclusive" and
+         amounts.line_amount_tax_inclusion_basis in @arithmetic_bases do
+      repair = %{
+        "field" => "printed_taxable_value",
+        "from" => amounts.printed_taxable_value,
+        "to" => nil,
+        "basis" => "redundant_with_arithmetically_exclusive_line_amount"
+      }
+
+      {Map.put(line, "printed_taxable_value", nil), repair}
     else
-      line["tax_inclusive_value"]
+      {line, nil}
     end
   end
 
-  defp printed_taxable_value(line) do
-    cond do
-      Map.has_key?(line, "printed_taxable_value") ->
-        line["printed_taxable_value"]
-
-      line["taxable_value_basis"] in ~w(corrected derived_from_inclusive_line_amount non_taxable_line_amount) ->
-        nil
-
-      true ->
-        line["taxable_value"]
-    end
-  end
-
-  defp evidence_value(line, current, previous) do
-    if Map.has_key?(line, current), do: line[current], else: line[previous]
-  end
-
-  defp line_tax(line) do
-    amounts = Enum.map(~w(cgst_amount sgst_amount igst_amount), &money(line[&1]))
-
-    case Enum.reject(amounts, &is_nil/1) do
-      [] -> nil
-      present -> Enum.sum(present)
-    end
-  end
-
-  defp complete_tax_for_rate?(line) do
-    pairs = [
-      {money(line["cgst_rate"]), money(line["cgst_amount"])},
-      {money(line["sgst_rate"]), money(line["sgst_amount"])},
-      {money(line["igst_rate"]), money(line["igst_amount"])}
-    ]
-
-    Enum.any?(pairs, fn {rate, _amount} -> is_number(rate) and rate > 0 end) and
-      Enum.all?(pairs, fn
-        {rate, amount} when is_number(rate) and rate > 0 -> is_number(amount)
-        _inactive -> true
-      end)
-  end
-
-  defp rate(line) do
-    num(line["cgst_rate"]) + num(line["sgst_rate"]) + num(line["igst_rate"])
-  end
-
-  defp money(value), do: Nila.Gst.Money.rupee_number(value)
-  defp num(value), do: money(value) || 0
+  defp money(value), do: Money.rupee_number(value)
   defp nonzero?(value), do: abs(value) > @tolerance
   defp close?(left, right), do: abs(left - right) <= @tolerance + 0.000001
   defp round2(value), do: Float.round(value / 1, 2)

@@ -88,7 +88,7 @@ defmodule Nila.Gst.Extraction.Sales.Stub do
       "description" => description,
       "hsn_sac" => hsn,
       "quantity" => 1.0,
-      "taxable_value" => taxable,
+      "printed_taxable_value" => taxable,
       "cgst_rate" => side_rate,
       "cgst_amount" => side,
       "sgst_rate" => side_rate,

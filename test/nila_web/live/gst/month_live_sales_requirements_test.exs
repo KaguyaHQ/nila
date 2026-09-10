@@ -46,9 +46,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
           "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
           "buyer" => %{"name" => "PONMANI AND CO", "gstin" => "29AAVCS8021P1ZB"},
           "line_items" => [
-            %{"taxable_value" => 5000, "igst_rate" => 18, "igst_amount" => 900},
+            %{"printed_taxable_value" => 5000, "igst_rate" => 18, "igst_amount" => 900},
             %{
-              "taxable_value" => 5000,
+              "printed_taxable_value" => 5000,
               "cgst_rate" => 9,
               "cgst_amount" => 450,
               "sgst_rate" => 9,
@@ -111,7 +111,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
             "buyer" => %{"name" => "PONMANI AND CO", "gstin" => "33AABCP9487A1ZG"},
             "line_items" => [
               %{
-                "taxable_value" => 1000,
+                "printed_taxable_value" => 1000,
                 "cgst_rate" => 9,
                 "cgst_amount" => 90,
                 "sgst_rate" => 9,
@@ -242,7 +242,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
             %{
               "description" => "Fixture service",
               "hsn_sac" => "9987",
-              "taxable_value" => 1_000,
+              "printed_taxable_value" => 1_000,
               "cgst_rate" => 9,
               "cgst_amount" => 90,
               "sgst_rate" => 9,
@@ -425,7 +425,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
             %{
               "description" => "Widget",
               "hsn_sac" => code,
-              "taxable_value" => 10_000,
+              "printed_taxable_value" => 10_000,
               "cgst_rate" => 9,
               "cgst_amount" => 900,
               "sgst_rate" => 9,
@@ -524,7 +524,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
               %{
                 "description" => "Silver rod",
                 "hsn_sac" => "71069290",
-                "taxable_value" => 10_000,
+                "printed_taxable_value" => 10_000,
                 "cgst_rate" => half_rate,
                 "cgst_amount" => 10_000 * half_rate / 100,
                 "sgst_rate" => half_rate,

@@ -4,8 +4,9 @@ defmodule Nila.Gst.Extraction.TaxComponents do
 
   The extractor reports what the invoice prints. This module performs the small,
   deterministic translation accounting code needs, while retaining the source
-  components on every line. Legacy artifacts that predate printed components are
-  left unchanged.
+  components on every line. Only printed component lists supply projected heads;
+  missing lists supply no evidence. Unknown labels and duplicate heads remain
+  visible as issues instead of being guessed or summed.
   """
 
   @canonical_fields ~w(cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount)
@@ -56,70 +57,60 @@ defmodule Nila.Gst.Extraction.TaxComponents do
     end
   end
 
-  @doc "Projects every line that carries `printed_tax_components`."
+  @doc "Projects printed invoice totals and line components, retaining their evidence."
   def project(data) when is_map(data) do
     data
     |> project_invoice_totals()
     |> Map.update("line_items", [], fn lines -> Enum.map(lines, &project_line/1) end)
   end
 
-  defp project_invoice_totals(%{"printed_tax_totals" => components} = data)
-       when is_list(components) do
-    {recognized, combined, issues} = classify_invoice_totals(components)
+  defp project_invoice_totals(data) do
+    {recognized, combined, issues} = classify_invoice_totals(data["printed_tax_totals"] || [])
 
-    projected =
-      Enum.reduce(@heads, clear_invoice_totals(data), fn head, current ->
+    {projected, duplicates} =
+      Enum.reduce(@heads, {clear_invoice_totals(data), []}, fn head, {current, issues} ->
         case Map.get(recognized, head, []) do
           [component] ->
-            Map.put(current, "printed_#{String.downcase(head)}", component["printed_amount"])
+            {Map.put(current, "printed_#{String.downcase(head)}", component["printed_amount"]),
+             issues}
 
           [] ->
-            current
+            {current, issues}
 
           duplicates ->
-            add_total_duplicate_issue(current, head, length(duplicates))
+            {current, issues ++ [duplicate_head(head, duplicates)]}
         end
       end)
 
-    projected =
+    {projected, combined_issues} =
       case combined do
-        [component] -> Map.put(projected, "printed_total_tax", component["printed_amount"])
-        [] -> projected
-        duplicates -> add_combined_total_duplicate_issue(projected, length(duplicates))
+        [component] ->
+          {Map.put(projected, "printed_total_tax", component["printed_amount"]), []}
+
+        [] ->
+          {projected, []}
+
+        duplicates ->
+          {projected, [%{"kind" => "duplicate_total_tax", "count" => length(duplicates)}]}
       end
 
-    issues = issues ++ Map.get(projected, "tax_total_issues", [])
-    projected = Map.delete(projected, "tax_total_issues")
-
-    if issues == [],
-      do: projected,
-      else: Map.put(projected, "tax_total_issues", issues)
+    put_issues(projected, "tax_total_issues", issues ++ duplicates ++ combined_issues)
   end
 
-  defp project_invoice_totals(data), do: data
+  defp project_line(line) do
+    {recognized, issues} = classify(line["printed_tax_components"] || [])
 
-  defp project_line(%{"printed_tax_components" => components} = line)
-       when is_list(components) do
-    {recognized, issues} = classify(components)
-
-    projected =
-      Enum.reduce(@heads, clear_canonical(line), fn head, current ->
+    {projected, duplicates} =
+      Enum.reduce(@heads, {clear_canonical(line), []}, fn head, {current, issues} ->
         case Map.get(recognized, head, []) do
-          [component] -> put_component(current, head, component)
-          [] -> current
-          duplicates -> add_duplicate_issue(current, head, length(duplicates))
+          [component] -> {put_component(current, head, component), issues}
+          [] -> {current, issues}
+          duplicates -> {current, issues ++ [duplicate_head(head, duplicates)]}
         end
       end)
 
-    issues = issues ++ Map.get(projected, "tax_component_issues", [])
-    projected = Map.delete(projected, "tax_component_issues")
-
-    if issues == [],
-      do: projected,
-      else: Map.put(projected, "tax_component_issues", issues)
+    put_issues(projected, "tax_component_issues", issues ++ duplicates)
   end
-
-  defp project_line(line), do: line
 
   defp classify(components) do
     Enum.reduce(components, {%{}, []}, fn component, {recognized, issues} ->
@@ -217,18 +208,11 @@ defmodule Nila.Gst.Extraction.TaxComponents do
     |> Map.put("#{prefix}_amount", component["printed_amount"])
   end
 
-  defp add_duplicate_issue(line, head, count) do
-    issue = %{"kind" => "duplicate_tax_head", "head" => head, "count" => count}
-    Map.update(line, "tax_component_issues", [issue], &(&1 ++ [issue]))
+  defp duplicate_head(head, components) do
+    %{"kind" => "duplicate_tax_head", "head" => head, "count" => length(components)}
   end
 
-  defp add_total_duplicate_issue(data, head, count) do
-    issue = %{"kind" => "duplicate_tax_head", "head" => head, "count" => count}
-    Map.update(data, "tax_total_issues", [issue], &(&1 ++ [issue]))
-  end
-
-  defp add_combined_total_duplicate_issue(data, count) do
-    issue = %{"kind" => "duplicate_total_tax", "count" => count}
-    Map.update(data, "tax_total_issues", [issue], &(&1 ++ [issue]))
-  end
+  # Issues describe the current evidence, not earlier projections of this map.
+  defp put_issues(data, field, []), do: Map.delete(data, field)
+  defp put_issues(data, field, issues), do: Map.put(data, field, issues)
 end

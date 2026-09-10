@@ -631,8 +631,6 @@ defmodule Nila.Gst.Sales.Gstr1 do
       |> Map.put("cgst_rate", cgst_rate)
       |> Map.put("sgst_rate", sgst_rate)
       |> Map.put("igst_rate", igst_rate)
-      |> Map.put_new("taxable_value", value(line, ["taxable", "net_amount", "txval"]))
-      |> Map.put_new("unit_price", line["rate"])
 
     amounts = LineAmounts.normalize(amount_line)
 

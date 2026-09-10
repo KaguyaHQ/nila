@@ -27,7 +27,7 @@ defmodule Nila.Gst.ProposalsTest do
     side = Float.round(taxable * 18 / 200, 2)
 
     %{
-      "taxable_value" => taxable,
+      "printed_taxable_value" => taxable,
       "cgst_rate" => 9,
       "cgst_amount" => side,
       "sgst_rate" => 9,
@@ -66,7 +66,7 @@ defmodule Nila.Gst.ProposalsTest do
       # reviewer is owed the question rather than a recommendation resting on a
       # false premise.
       broken = %{
-        "taxable_value" => 10_000.0,
+        "printed_taxable_value" => 10_000.0,
         "cgst_rate" => 9,
         "cgst_amount" => 500.0,
         "sgst_rate" => 9,

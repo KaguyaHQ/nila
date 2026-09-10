@@ -29,7 +29,7 @@ defmodule Nila.EvalTest do
             "printed_total_taxable" => 1000,
             "line_items" => [
               %{
-                "taxable_value" => 900,
+                "printed_taxable_value" => 900,
                 "cgst_rate" => 9,
                 "cgst_amount" => 81,
                 "sgst_rate" => 9,

@@ -102,7 +102,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
             %{
               "description" => "Fixture goods",
               "hsn_sac" => "8471",
-              "taxable_value" => 1_000,
+              "printed_taxable_value" => 1_000,
               "cgst_rate" => 2.5,
               "cgst_amount" => 25,
               "sgst_rate" => 2.5,
@@ -111,7 +111,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
             %{
               "description" => "Fixture service",
               "hsn_sac" => "9987",
-              "taxable_value" => 500,
+              "printed_taxable_value" => 500,
               "cgst_rate" => 9,
               "cgst_amount" => 45,
               "sgst_rate" => 9,
@@ -143,7 +143,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
             %{
               "description" => "Fixture goods",
               "hsn_sac" => "8471",
-              "taxable_value" => 200,
+              "printed_taxable_value" => 200,
               "cgst_rate" => 9,
               "cgst_amount" => 18,
               "sgst_rate" => 9,

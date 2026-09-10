@@ -42,7 +42,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
             %{
               "description" => "Technical support services",
               "hsn_sac" => "998719",
-              "taxable_value" => 1_000,
+              "printed_taxable_value" => 1_000,
               "igst_rate" => 18,
               "igst_amount" => 180
             }
