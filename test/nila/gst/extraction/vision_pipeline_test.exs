@@ -149,7 +149,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     assert result.audit.metadata["invoice_inputs"] == [%{"pages" => [1, 2], "input" => "text"}]
 
     assert_receive {:vision_request, "nila_packet_page_labels", labels}
-    assert_receive {:vision_request, "nila_direct_sales_invoice", invoice}
+    assert_receive {:vision_request, "nila_sales_invoice", invoice}
 
     for request <- [labels, invoice] do
       [_system, %{"content" => content}] = request["messages"]
@@ -187,7 +187,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
 
     assert result.audit.metadata["invoice_inputs"] == [%{"pages" => [1, 2], "input" => "vision"}]
     assert_receive {:vision_request, "nila_packet_page_labels", labels}
-    assert_receive {:vision_request, "nila_direct_sales_invoice", invoice}
+    assert_receive {:vision_request, "nila_sales_invoice", invoice}
     assert Enum.count(List.last(labels["messages"])["content"], &(&1["type"] == "image_url")) == 1
 
     assert Enum.count(List.last(invoice["messages"])["content"], &(&1["type"] == "image_url")) ==
@@ -227,7 +227,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     assert hd(List.last(request["messages"])["content"])["text"] =~
              "Its terms page is continuation"
 
-    refute_receive {:vision_request, "nila_direct_sales_invoice", _}
+    refute_receive {:vision_request, "nila_sales_invoice", _}
     assert_receive {:audited_result, "text_segmentation", {:ok, %{audit: audit}}}
     assert audit.metadata["native_text"]["1"] =~ "PROFORMA INVOICE PF-1"
   end
@@ -241,7 +241,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
              )
 
     assert result.audit.metadata["invoice_inputs"] == [%{"pages" => [1], "input" => "vision"}]
-    assert_receive {:vision_request, "nila_direct_sales_invoice", request}
+    assert_receive {:vision_request, "nila_sales_invoice", request}
     assert Enum.any?(List.last(request["messages"])["content"], &(&1["type"] == "image_url"))
 
     assert {:error, {:unsupported_extraction_input, :purchase, :text}} =
@@ -284,7 +284,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     assert map_size(result.images) == 2
     assert result.unaccounted_pages == [1, 2]
     assert_receive {:vision_request, "nila_packet_page_labels", _}
-    refute_receive {:vision_request, "nila_direct_sales_invoice", _}
+    refute_receive {:vision_request, "nila_sales_invoice", _}
   end
 
   test "a mixed sales packet extracts only the invoice after grouping the whole quotation" do
@@ -325,12 +325,12 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     assert [artifact] = result.pages
     assert artifact["source_pages"] == [3]
     assert [%{"pages" => [1, 2], "document_type" => "quotation"}] = result.excluded_documents
-    assert_receive {:vision_request, "nila_direct_sales_invoice", request}
+    assert_receive {:vision_request, "nila_sales_invoice", request}
     payload = Jason.encode!(List.last(request["messages"])["content"])
     assert payload =~ "TAX INVOICE INV-1"
     refute payload =~ "Quotation terms"
     refute payload =~ "QUOTATION Q-1"
-    refute_receive {:vision_request, "nila_direct_sales_invoice", _}
+    refute_receive {:vision_request, "nila_sales_invoice", _}
   end
 
   test "segments a PDF once and extracts one artifact from the resulting page group" do
@@ -373,7 +373,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     [_system, %{"content" => segmentation_content}] = segmentation_request["messages"]
     assert Enum.count(segmentation_content, &(&1["type"] == "image_url")) == 2
 
-    assert_receive {:vision_request, "nila_direct_purchase_invoice", extraction_request}
+    assert_receive {:vision_request, "nila_purchase_invoice", extraction_request}
 
     line_schema =
       get_in(extraction_request, [
@@ -437,7 +437,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
             })
           )
 
-        "nila_direct_purchase_invoice" ->
+        "nila_purchase_invoice" ->
           [_system, %{"content" => content}] = request["messages"]
           marker = Enum.find(content, &(&1["type"] == "text" and &1["text"] =~ "PHYSICAL PAGE"))
 
@@ -476,10 +476,10 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
              VisionPipeline.extract(:purchase, PdfFixtures.pdf(2), filename: "packet.pdf")
 
     assert_receive {:vision_request, "nila_packet_page_labels", _request}
-    refute_receive {:vision_request, "nila_direct_purchase_invoice", _request}
+    refute_receive {:vision_request, "nila_purchase_invoice", _request}
   end
 
-  test "sales uses the sales schema and preserves direct-vision document markers" do
+  test "sales uses the sales schema and preserves vision document markers" do
     stub(
       [
         %{
@@ -523,7 +523,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
              )
 
     assert artifact["data"]["invoice_number"] == "INV-1"
-    assert_receive {:vision_request, "nila_direct_sales_invoice", _request}
+    assert_receive {:vision_request, "nila_sales_invoice", _request}
     refute_receive {:vision_request, "nila_packet_page_labels", _request}
   end
 

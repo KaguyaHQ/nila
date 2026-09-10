@@ -8,7 +8,7 @@
       {
         "content": [
           {
-            "text": "You are reading the page images of ONE purchase invoice from an Indian GST bill packet. The pages below are that invoice and nothing else.\n\nReturn exactly one invoice object.\n\n- Preserve the economic value of printed numbers. Normalize currency marks and digit grouping as required by the numeric schema, but never replace a printed value with a calculation. If a field is not on these pages, return null. A fabricated number is worse than a missing one and will be caught.\n- item_name is the primary printed product/service text in the item's name or description cell. Keep supplementary narrative in description but do not append it to item_name.\n- Preserve each printed figure in its own role: printed_unit_price is one unit's rate; printed_line_amount is the row's extended amount; printed_line_total is its gross total after separately shown tax; printed_taxable_value is a distinct source field that separately prints the pre-GST value. Never duplicate printed_line_amount into printed_taxable_value merely because the line amount is tax-exclusive.\n- For every line-level tax type or tax column, copy its printed label, rate and amount into printed_tax_components. Preserve the printed label instead of deciding which canonical GST field it belongs to. Never infer a tax head from party or delivery addresses or accounting rules.\n- Arithmetic may classify what a printed amount means. For example, a row amount plus separately printed GST equalling its gross total establishes tax-exclusive pricing. Never use arithmetic to populate any extracted numeric field — including quantities, rates, discounts, taxable values or tax amounts — unless that value itself appears on the document. line_amount_tax_inclusion is an inferred semantic field, not a printed number.\n- Respect scope: line and column labels describe their rows; summaries, footer captions and amount-in-words labels describe invoice-level figures. Never assign a summary figure to a line unless it is independently printed there. Clearly visible handwritten or manually entered values are source evidence too.\n- Set line_amount_tax_inclusion from labels, structure or visible arithmetic. Use unknown when evidence is incomplete or conflicting. Do not calculate taxable_value; a later deterministic step does that.\n- Populate singular invoice-level printed_total_* fields only when that invoice-level aggregate is itself printed. Copy every invoice-level tax total, including generic Tax Amount totals, once into printed_tax_totals. Never select, combine or sum tax-rate or slab-summary rows to create an aggregate, and never redistribute summary figures across item rows.\n- Represent every real item row. Never turn a subtotal, total, HSN summary or amount-in-words row into a line item. When consecutive printed rows are identical in every other extracted field, return one line item with repeat_count equal to the number of those rows. Otherwise use repeat_count 1. Never combine rows that differ in any extracted field, and never combine non-consecutive rows.\n- The invoice may be internally inconsistent — its own printed total may disagree with its lines. Copy what is printed anyway; a later check names the discrepancy.\n- Classify the supplier document itself as invoice, credit_note or debit_note. A title reading CREDIT NOTE or DEBIT NOTE controls; footer terms that merely mention notes do not.\n- For a credit or debit note, invoice_number is the note number only. Exclude labels such as \"Credit Note:\" or \"Debit Note:\" from the value. Keep every printed amount positive; document_type determines its accounting effect.\n\r\nThese are physical PDF pages 1, in order. Read the pixels directly.\r\nInterpret ordinary numeric Indian invoice dates as DD/MM/YYYY, never MM/DD/YYYY,\r\nand preserve the printed date text in invoice_date.\r\nReconcile ambiguous decimal placement and separate rupee/paise columns against\r\nprinted totals and amount in words. Reconciliation may disambiguate a visible\r\nvalue; it must not invent a value absent from the document.\r\nSet reverse_charge true only when the document positively states that tax is\r\npayable under reverse charge, false when it explicitly says no, and null otherwise.\r\nCopy printed HSN/SAC codes from descriptions or service ledger names into hsn_sac,\r\neven without a dedicated HSN/SAC column; never infer an unprinted code.\r\nFor example, \"Consulting - 998312 @ 18%\" has hsn_sac \"998312\".\r\n\r\nEach line_items entry must be an array with exactly these fields in this exact order:\r\n[item_name, description, hsn_sac, quantity, uom, printed_unit_price, discount_rate, discount_amount, printed_line_amount, printed_line_total, printed_taxable_value, line_amount_tax_inclusion, printed_tax_components, repeat_count]\r\nDo not emit field names inside line_items. Preserve nulls so every row has exactly\r\n14 values.\r\n",
+            "text": "You are reading the page images of ONE purchase invoice from an Indian GST bill packet. The pages below are that invoice and nothing else.\r\n\r\nReturn exactly one invoice object.\r\n\r\n- Copy printed numbers only into fields matching their role and scope. Normalize currency marks and digit grouping without changing the value. Do not calculate missing numbers, move invoice-summary figures into item rows, or change printed values to make totals agree. For absent or unreadable values, use the schema's absence value: null for nullable fields, [] for absent lists, and unknown for uncertain classifications that allow it. Required objects retain their fields with these absence values. Do not substitute zero or an empty string. Clearly visible handwritten or manually entered values are source evidence too.\n- item_name is the primary printed product/service text in the item's name or description cell. Keep supplementary narrative in description but do not append it to item_name.\r\n- For every line-level tax type or tax column, copy its printed label, rate and amount into printed_tax_components. Preserve the printed label instead of deciding which canonical GST field it belongs to. Never infer a tax head from party or delivery addresses or accounting rules.\r\n- line_amount_tax_inclusion is inferred from labels, structure or visible arithmetic. For example, a row amount plus separately printed GST equalling its gross total establishes tax-exclusive pricing. Use unknown when evidence is incomplete or conflicting. Taxable-value calculation belongs to a later step.\n- Line and column labels describe their rows; summaries, footer captions and amount-in-words labels describe invoice-level figures.\n- Populate singular invoice-level printed_total_* fields only when that invoice-level aggregate is itself printed. Copy every invoice-level tax total, including generic Tax Amount totals, once into printed_tax_totals. Tax-rate and slab-summary rows are not substitutes for a printed invoice-level aggregate.\n- Represent every real item row. Never turn a subtotal, total, HSN summary or amount-in-words row into a line item. When consecutive printed rows are identical in every other extracted field, return one line item with repeat_count equal to the number of those rows. Otherwise use repeat_count 1. Never combine rows that differ in any extracted field, and never combine non-consecutive rows.\r\n- Classify the supplier document itself as invoice, credit_note or debit_note. A title reading CREDIT NOTE or DEBIT NOTE controls; footer terms that merely mention notes do not.\r\n- For a credit or debit note, invoice_number is the note number only. Exclude labels such as \"Credit Note:\" or \"Debit Note:\" from the value. Keep note amounts positive; document_type determines their accounting effect. Signed adjustments retain their own sign, including a negative rounding adjustment when subtracted.\n\r\nThese are physical PDF pages 1, in order. Read the pixels directly.\r\nReconcile ambiguous decimal placement and separate rupee/paise columns against\r\nprinted totals and amount in words to disambiguate the visible value.\nCopy printed HSN/SAC codes from descriptions or service ledger names into hsn_sac,\r\neven without a dedicated HSN/SAC column; never infer an unprinted code.\r\nFor example, \"Consulting - 998312 @ 18%\" has hsn_sac \"998312\".\r\n\r\nEach line_items entry must be an array with exactly these fields in this exact order:\r\n[item_name, description, hsn_sac, quantity, uom, printed_unit_price, discount_rate, discount_amount, printed_line_amount, printed_line_total, printed_taxable_value, line_amount_tax_inclusion, printed_tax_components, repeat_count]\r\nDo not emit field names inside line_items. Preserve nulls so every row has exactly\r\n14 values.\n\nAmount mapping examples. These are partial invoice outputs showing only the\nrelevant fields; each item uses the complete array order above. Other fields\nstill follow the schema. Values in these examples are not invoice data.\n\n1. Item: Bolt | Qty 10 | Unit price 100 | Taxable price/unit 100 | GST 180 (18%) | Amount 1180.\nFooter: Taxable subtotal 1000. No extended taxable value is printed in the row.\n```json\n{\"line_items\":[[\"Bolt\",null,null,10,null,100,null,null,null,1180,null,\"unknown\",[{\"printed_label\":\"GST\",\"printed_rate\":18,\"printed_amount\":180}],1]],\"printed_total_taxable\":1000}\n```\n\n2. Item: Bolt | Qty 10 | Rate 100 | Amount 1000 | GST 180 (18%) | Total 1180.\nBoth a pre-tax row amount and a gross row total are printed.\n```json\n{\"line_items\":[[\"Bolt\",null,null,10,null,100,null,null,1000,1180,null,\"exclusive\",[{\"printed_label\":\"GST\",\"printed_rate\":18,\"printed_amount\":180}],1]]}\n```\n\n3. Item: Bolt | Qty 10 | Amount including GST 1180. No separate item tax is printed.\n```json\n{\"line_items\":[[\"Bolt\",null,null,10,null,null,null,null,1180,null,null,\"inclusive\",[],1]]}\n```\n\n4. Items: Bolt | Qty 2 | Taxable Value 200; Nut | Qty 1 | Taxable Value 50.\nFooter only: CGST 22.50; SGST 22.50; Invoice Total 295; Paid 100; Balance Due 195.\nExplicit taxable values belong in printed_taxable_value even when they are the\nonly row amounts. Footer taxes remain at invoice level; payments do not change\nthe printed invoice total.\n```json\n{\"line_items\":[[\"Bolt\",null,null,2,null,null,null,null,null,null,200,\"unknown\",[],1],[\"Nut\",null,null,1,null,null,null,null,null,null,50,\"unknown\",[],1]],\"printed_tax_totals\":[{\"printed_label\":\"CGST\",\"printed_amount\":22.5},{\"printed_label\":\"SGST\",\"printed_amount\":22.5}],\"printed_grand_total\":295}\n```\n\n",
             "type": "text"
           },
           {
@@ -33,7 +33,7 @@
     },
     "response_format": {
       "json_schema": {
-        "name": "nila_direct_purchase_invoice",
+        "name": "nila_purchase_invoice",
         "schema": {
           "additionalProperties": false,
           "properties": {
@@ -87,10 +87,26 @@
               "type": "string"
             },
             "invoice_date": {
-              "type": "string"
+              "description": "Printed issue date of this invoice or note. Preserve the printed date text without interpreting or reformatting it. Exclude due dates, purchase-order dates and delivery dates. Return null if absent or unreadable.",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "invoice_number": {
-              "type": "string"
+              "description": "Printed invoice or note identifier, preserving punctuation but excluding its field label. Do not substitute a purchase-order, reference or delivery-document number. Return null if absent or unreadable.",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "line_items": {
               "description": "One row per actual goods/services item. Text without its own serial number or amount is not a separate item; when structurally attached to the preceding item, append it to that item's description. Exclude totals, HSN summaries, tax recapitulations and amount-in-words rows.",
@@ -194,7 +210,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "The main extended amount printed for this whole line, regardless of the vendor's heading. This is not a unit rate and not the gross total after separately printed tax. Copy it whether tax-inclusive or tax-exclusive; null when no line amount is printed."
+                    "description": "Main printed amount for the entire item quantity. An amount explicitly labelled Taxable Value belongs in printed_taxable_value instead. A gross amount after separately printed tax for this item belongs in printed_line_total instead. Otherwise copy the row amount here, whether tax-inclusive or tax-exclusive. Footer taxes alone do not make it a printed_line_total. Exclude per-unit prices; null when no qualifying amount is printed."
                   },
                   {
                     "anyOf": [
@@ -205,7 +221,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "The gross total printed for this same item row after separately shown tax, regardless of the vendor's heading. Do not copy an invoice subtotal, grand total or amount-in-words value."
+                    "description": "Printed gross amount for the entire item quantity after tax separately shown for that item, including attached tax sub-rows. The heading may be Amount or Total. Footer taxes alone do not qualify. Return null when absent; this field can be populated while printed_line_amount is null."
                   },
                   {
                     "anyOf": [
@@ -216,10 +232,10 @@
                         "type": "null"
                       }
                     ],
-                    "description": "A distinct source field that separately prints this line's taxable value before GST. Do not duplicate printed_line_amount into this field merely because the line amount is tax-exclusive; return null when no separate taxable-value field is printed."
+                    "description": "Amount explicitly printed as this item's taxable value before GST for the entire quantity, even if it is the row's only extended amount. Exclude taxable price per unit, GST amounts and invoice subtotals. Assign this source amount here, not also to printed_line_amount. An ordinary tax-exclusive Amount cell belongs in printed_line_amount instead. Return null when no explicit extended taxable-value field is printed."
                   },
                   {
-                    "description": "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Labels apply only at their structural scope; invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion. Use unknown when evidence is incomplete or conflicting.",
+                    "description": "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Use unknown when printed_line_amount is null, or evidence is incomplete or conflicting. This field does not describe printed_line_total or printed_taxable_value. Invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion.",
                     "enum": [
                       "inclusive",
                       "exclusive",
@@ -252,7 +268,7 @@
                               "type": "null"
                             }
                           ],
-                          "description": "Literal tax type or tax-column label printed for this component, such as IGST, CGST or SGST."
+                          "description": "Literal item-level tax label, such as GST, IGST, CGST or SGST. Keep combined GST as one component; do not split it or copy footer tax heads into the item."
                         },
                         "printed_rate": {
                           "anyOf": [
@@ -317,7 +333,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Final printed amount payable after tax, charges and rounding."
+              "description": "Printed Invoice Total or Amount Chargeable after applicable tax, charges and rounding. Exclude payments already made and the remaining balance due."
             },
             "printed_rounding_adjustment": {
               "anyOf": [
@@ -397,7 +413,7 @@
                   "type": "null"
                 }
               ],
-              "description": "True when the invoice states tax is payable by the recipient or 'Amount of tax subject to Reverse Charge', including a statement below the tax summary. False only when forward charge is clear; null if unclear."
+              "description": "True when the document explicitly states that tax is payable under reverse charge, including a statement below the tax summary. False only when it explicitly says reverse charge does not apply; null otherwise."
             },
             "seller": {
               "additionalProperties": false,
@@ -475,7 +491,7 @@
       {
         "content": [
           {
-            "text": "You are reading the PDF text of ONE sales invoice from an Indian GST bill packet. The pages below are that invoice and nothing else.\n\nReturn exactly one invoice object.\n\n- Preserve the economic value of printed numbers. Normalize currency marks and digit grouping as required by the numeric schema, but never replace a printed value with a calculation. If a field is not on these pages, return null. A fabricated number is worse than a missing one and will be caught.\n- item_name is the primary printed product/service text in the item's name or description cell. Keep supplementary narrative in description but do not append it to item_name.\n- Preserve each printed figure in its own role: printed_unit_price is one unit's rate; printed_line_amount is the row's extended amount; printed_line_total is its gross total after separately shown tax; printed_taxable_value is a distinct source field that separately prints the pre-GST value. Never duplicate printed_line_amount into printed_taxable_value merely because the line amount is tax-exclusive.\n- For every line-level tax type or tax column, copy its printed label, rate and amount into printed_tax_components. Preserve the printed label instead of deciding which canonical GST field it belongs to. Never infer a tax head from party or delivery addresses or accounting rules.\n- Arithmetic may classify what a printed amount means. For example, a row amount plus separately printed GST equalling its gross total establishes tax-exclusive pricing. Never use arithmetic to populate any extracted numeric field — including quantities, rates, discounts, taxable values or tax amounts — unless that value itself appears on the document. line_amount_tax_inclusion is an inferred semantic field, not a printed number.\n- Respect scope: line and column labels describe their rows; summaries, footer captions and amount-in-words labels describe invoice-level figures. Never assign a summary figure to a line unless it is independently printed there. Clearly visible handwritten or manually entered values are source evidence too.\n- Set line_amount_tax_inclusion from labels, structure or visible arithmetic. Use unknown when evidence is incomplete or conflicting. Do not calculate taxable_value; a later deterministic step does that.\n- Populate singular invoice-level printed_total_* fields only when that invoice-level aggregate is itself printed. Copy every invoice-level tax total, including generic Tax Amount totals, once into printed_tax_totals. Never select, combine or sum tax-rate or slab-summary rows to create an aggregate, and never redistribute summary figures across item rows.\n- Represent every real item row. Never turn a subtotal, total, HSN summary or amount-in-words row into a line item. When consecutive printed rows are identical in every other extracted field, return one line item with repeat_count equal to the number of those rows. Otherwise use repeat_count 1. Never combine rows that differ in any extracted field, and never combine non-consecutive rows.\n- The invoice may be internally inconsistent — its own printed total may disagree with its lines. Copy what is printed anyway; a later check names the discrepancy.\n- Classify the document itself as invoice, credit_note or debit_note. A title reading CREDIT NOTE or DEBIT NOTE controls; footer terms that merely mention notes do not.\n- For a credit or debit note, invoice_number is the note number only. Exclude labels such as \"Credit Note:\" from the value.\n- Include cancelled invoices. A cancelled number is still a number the series has to account for, and classify its document_status as cancelled so it cannot be filed as an active taxable invoice.\n- A printed recipient GSTIN means recipient_registration is registered. Use unregistered only when the document positively identifies an unregistered or consumer recipient. A missing or unreadable GSTIN alone is unknown, never a silent B2C inference.\n- Read supplier, Bill To and Ship To/Deliver To into their matching fields.\n- Preserve nil-rated, exempt, non-GST, export and SEZ treatment in supply_type. Never coerce one of them to an ordinary taxable sale.\n- For export/SEZ read tax_payment from the endorsement: on payment of IGST or under LUT/bond without payment of IGST. A combined export/SEZ endorsement with an Indian GSTIN recipient indicates SEZ; a foreign recipient indicates export. Do not classify ordinary foreign-address sales as exports without supporting supply evidence. Preserve printed tax breakdowns even if the endorsement says without payment and the payable total excludes those taxes.\n- Copy printed_grand_total literally from the invoice Total / Amount Chargeable, checking the amount in words. Never replace it with taxable plus the HSN tax summary. Under reverse charge or LUT/bond, that summary can show tax which is NOT added to the amount payable. Read the reverse-charge statement below the tax summary as well as the heading.\n- CGST and SGST printed as stacked sub-rows under one item are two printed tax components of that item, not two items. Never split them, and never split a total row.\n\r\nThese are physical PDF pages 1, in order. Read the extracted text directly.\r\nInterpret ordinary numeric Indian invoice dates as DD/MM/YYYY, never MM/DD/YYYY,\r\nand preserve the printed date text in invoice_date.\r\nReconcile ambiguous decimal placement and separate rupee/paise columns against\r\nprinted totals and amount in words. Reconciliation may disambiguate a visible\r\nvalue; it must not invent a value absent from the document.\r\nSet reverse_charge true only when the document positively states that tax is\r\npayable under reverse charge, false when it explicitly says no, and null otherwise.\r\nCopy printed HSN/SAC codes from descriptions or service ledger names into hsn_sac,\r\neven without a dedicated HSN/SAC column; never infer an unprinted code.\r\nFor example, \"Consulting - 998312 @ 18%\" has hsn_sac \"998312\".\r\n\r\nEach line_items entry must be an array with exactly these fields in this exact order:\r\n[item_name, description, hsn_sac, quantity, uom, printed_unit_price, discount_rate, discount_amount, printed_line_amount, printed_line_total, printed_taxable_value, line_amount_tax_inclusion, printed_tax_components, repeat_count]\r\nDo not emit field names inside line_items. Preserve nulls so every row has exactly\r\n14 values.\r\n",
+            "text": "You are reading the PDF text of ONE sales invoice from an Indian GST bill packet. The pages below are that invoice and nothing else.\r\n\r\nReturn exactly one invoice object.\r\n\r\n- Copy printed numbers only into fields matching their role and scope. Normalize currency marks and digit grouping without changing the value. Do not calculate missing numbers, move invoice-summary figures into item rows, or change printed values to make totals agree. For absent or unreadable values, use the schema's absence value: null for nullable fields, [] for absent lists, and unknown for uncertain classifications that allow it. Required objects retain their fields with these absence values. Do not substitute zero or an empty string. Clearly visible handwritten or manually entered values are source evidence too.\n- item_name is the primary printed product/service text in the item's name or description cell. Keep supplementary narrative in description but do not append it to item_name.\r\n- For every line-level tax type or tax column, copy its printed label, rate and amount into printed_tax_components. Preserve the printed label instead of deciding which canonical GST field it belongs to. Never infer a tax head from party or delivery addresses or accounting rules.\r\n- line_amount_tax_inclusion is inferred from labels, structure or visible arithmetic. For example, a row amount plus separately printed GST equalling its gross total establishes tax-exclusive pricing. Use unknown when evidence is incomplete or conflicting. Taxable-value calculation belongs to a later step.\n- Line and column labels describe their rows; summaries, footer captions and amount-in-words labels describe invoice-level figures.\n- Populate singular invoice-level printed_total_* fields only when that invoice-level aggregate is itself printed. Copy every invoice-level tax total, including generic Tax Amount totals, once into printed_tax_totals. Tax-rate and slab-summary rows are not substitutes for a printed invoice-level aggregate.\n- Represent every real item row. Never turn a subtotal, total, HSN summary or amount-in-words row into a line item. When consecutive printed rows are identical in every other extracted field, return one line item with repeat_count equal to the number of those rows. Otherwise use repeat_count 1. Never combine rows that differ in any extracted field, and never combine non-consecutive rows.\r\n- Classify the document itself as invoice, credit_note or debit_note. A title reading CREDIT NOTE or DEBIT NOTE controls; footer terms that merely mention notes do not.\r\n- For a credit or debit note, invoice_number is the note number only. Exclude labels such as \"Credit Note:\" from the value.\r\n- Include cancelled invoices. A cancelled number is still a number the series has to account for, and classify its document_status as cancelled so it cannot be filed as an active taxable invoice.\r\n- A printed recipient GSTIN means recipient_registration is registered. Use unregistered only when the document positively identifies an unregistered or consumer recipient. A missing or unreadable GSTIN alone is unknown, never a silent B2C inference.\r\n- Read supplier, Bill To and Ship To/Deliver To into their matching fields.\r\n- Preserve nil-rated, exempt, non-GST, export and SEZ treatment in supply_type. Never coerce one of them to an ordinary taxable sale.\r\n- For export/SEZ read tax_payment from the endorsement: on payment of IGST or under LUT/bond without payment of IGST. A combined export/SEZ endorsement with an Indian GSTIN recipient indicates SEZ; a foreign recipient indicates export. Do not classify ordinary foreign-address sales as exports without supporting supply evidence. Preserve printed tax breakdowns even if the endorsement says without payment and the payable total excludes those taxes.\r\n- Copy printed_grand_total literally from the invoice Total / Amount Chargeable, using amount in words to clarify an ambiguous reading, not to replace a clearly printed numeric total when the two disagree. Under reverse charge or LUT/bond, the HSN tax summary can show tax which is NOT added to the amount payable. Read the reverse-charge statement below the tax summary as well as the heading.\r\n- CGST and SGST printed as stacked sub-rows under one item are two printed tax components of that item, not two items. Never split them, and never split a total row.\r\n\r\nThese are physical PDF pages 1, in order. Read the extracted text directly.\r\nReconcile ambiguous decimal placement and separate rupee/paise columns against\r\nprinted totals and amount in words to disambiguate the visible value.\nCopy printed HSN/SAC codes from descriptions or service ledger names into hsn_sac,\r\neven without a dedicated HSN/SAC column; never infer an unprinted code.\r\nFor example, \"Consulting - 998312 @ 18%\" has hsn_sac \"998312\".\r\n\r\nEach line_items entry must be an array with exactly these fields in this exact order:\r\n[item_name, description, hsn_sac, quantity, uom, printed_unit_price, discount_rate, discount_amount, printed_line_amount, printed_line_total, printed_taxable_value, line_amount_tax_inclusion, printed_tax_components, repeat_count]\r\nDo not emit field names inside line_items. Preserve nulls so every row has exactly\r\n14 values.\n\nAmount mapping examples. These are partial invoice outputs showing only the\nrelevant fields; each item uses the complete array order above. Other fields\nstill follow the schema. Values in these examples are not invoice data.\n\n1. Item: Bolt | Qty 10 | Unit price 100 | Taxable price/unit 100 | GST 180 (18%) | Amount 1180.\nFooter: Taxable subtotal 1000. No extended taxable value is printed in the row.\n```json\n{\"line_items\":[[\"Bolt\",null,null,10,null,100,null,null,null,1180,null,\"unknown\",[{\"printed_label\":\"GST\",\"printed_rate\":18,\"printed_amount\":180}],1]],\"printed_total_taxable\":1000}\n```\n\n2. Item: Bolt | Qty 10 | Rate 100 | Amount 1000 | GST 180 (18%) | Total 1180.\nBoth a pre-tax row amount and a gross row total are printed.\n```json\n{\"line_items\":[[\"Bolt\",null,null,10,null,100,null,null,1000,1180,null,\"exclusive\",[{\"printed_label\":\"GST\",\"printed_rate\":18,\"printed_amount\":180}],1]]}\n```\n\n3. Item: Bolt | Qty 10 | Amount including GST 1180. No separate item tax is printed.\n```json\n{\"line_items\":[[\"Bolt\",null,null,10,null,null,null,null,1180,null,null,\"inclusive\",[],1]]}\n```\n\n4. Items: Bolt | Qty 2 | Taxable Value 200; Nut | Qty 1 | Taxable Value 50.\nFooter only: CGST 22.50; SGST 22.50; Invoice Total 295; Paid 100; Balance Due 195.\nExplicit taxable values belong in printed_taxable_value even when they are the\nonly row amounts. Footer taxes remain at invoice level; payments do not change\nthe printed invoice total.\n```json\n{\"line_items\":[[\"Bolt\",null,null,2,null,null,null,null,null,null,200,\"unknown\",[],1],[\"Nut\",null,null,1,null,null,null,null,null,null,50,\"unknown\",[],1]],\"printed_tax_totals\":[{\"printed_label\":\"CGST\",\"printed_amount\":22.5},{\"printed_label\":\"SGST\",\"printed_amount\":22.5}],\"printed_grand_total\":295}\n```\n\n",
             "type": "text"
           },
           {
@@ -494,7 +510,7 @@
     },
     "response_format": {
       "json_schema": {
-        "name": "nila_direct_sales_invoice",
+        "name": "nila_sales_invoice",
         "schema": {
           "additionalProperties": false,
           "properties": {
@@ -571,10 +587,26 @@
               "type": "string"
             },
             "invoice_date": {
-              "type": "string"
+              "description": "Printed issue date of this invoice or note. Preserve the printed date text without interpreting or reformatting it. Exclude due dates, purchase-order dates and delivery dates. Return null if absent or unreadable.",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "invoice_number": {
-              "type": "string"
+              "description": "Printed invoice or note identifier, preserving punctuation but excluding its field label. Do not substitute a purchase-order, reference or delivery-document number. Return null if absent or unreadable.",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "line_items": {
               "description": "One row per actual goods/services item. Text without its own serial number or amount is not a separate item; when structurally attached to the preceding item, append it to that item's description. Exclude totals, HSN summaries, tax recapitulations and amount-in-words rows.",
@@ -678,7 +710,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "The main extended amount printed for this whole line, regardless of the vendor's heading. This is not a unit rate and not the gross total after separately printed tax. Copy it whether tax-inclusive or tax-exclusive; null when no line amount is printed."
+                    "description": "Main printed amount for the entire item quantity. An amount explicitly labelled Taxable Value belongs in printed_taxable_value instead. A gross amount after separately printed tax for this item belongs in printed_line_total instead. Otherwise copy the row amount here, whether tax-inclusive or tax-exclusive. Footer taxes alone do not make it a printed_line_total. Exclude per-unit prices; null when no qualifying amount is printed."
                   },
                   {
                     "anyOf": [
@@ -689,7 +721,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "The gross total printed for this same item row after separately shown tax, regardless of the vendor's heading. Do not copy an invoice subtotal, grand total or amount-in-words value."
+                    "description": "Printed gross amount for the entire item quantity after tax separately shown for that item, including attached tax sub-rows. The heading may be Amount or Total. Footer taxes alone do not qualify. Return null when absent; this field can be populated while printed_line_amount is null."
                   },
                   {
                     "anyOf": [
@@ -700,10 +732,10 @@
                         "type": "null"
                       }
                     ],
-                    "description": "A distinct source field that separately prints this line's taxable value before GST. Do not duplicate printed_line_amount into this field merely because the line amount is tax-exclusive; return null when no separate taxable-value field is printed."
+                    "description": "Amount explicitly printed as this item's taxable value before GST for the entire quantity, even if it is the row's only extended amount. Exclude taxable price per unit, GST amounts and invoice subtotals. Assign this source amount here, not also to printed_line_amount. An ordinary tax-exclusive Amount cell belongs in printed_line_amount instead. Return null when no explicit extended taxable-value field is printed."
                   },
                   {
-                    "description": "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Labels apply only at their structural scope; invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion. Use unknown when evidence is incomplete or conflicting.",
+                    "description": "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Use unknown when printed_line_amount is null, or evidence is incomplete or conflicting. This field does not describe printed_line_total or printed_taxable_value. Invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion.",
                     "enum": [
                       "inclusive",
                       "exclusive",
@@ -736,7 +768,7 @@
                               "type": "null"
                             }
                           ],
-                          "description": "Literal tax type or tax-column label printed for this component, such as IGST, CGST or SGST."
+                          "description": "Literal item-level tax label, such as GST, IGST, CGST or SGST. Keep combined GST as one component; do not split it or copy footer tax heads into the item."
                         },
                         "printed_rate": {
                           "anyOf": [
@@ -801,7 +833,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Final printed amount payable after tax, charges and rounding."
+              "description": "Printed Invoice Total or Amount Chargeable after applicable tax, charges and rounding. Exclude payments already made and the remaining balance due."
             },
             "printed_rounding_adjustment": {
               "anyOf": [
@@ -890,7 +922,7 @@
                   "type": "null"
                 }
               ],
-              "description": "True when the invoice states tax is payable by the recipient or 'Amount of tax subject to Reverse Charge', including a statement below the tax summary. False only when forward charge is clear; null if unclear."
+              "description": "True when the document explicitly states that tax is payable under reverse charge, including a statement below the tax summary. False only when it explicitly says reverse charge does not apply; null otherwise."
             },
             "ship_to": {
               "anyOf": [
@@ -1067,7 +1099,7 @@
       {
         "content": [
           {
-            "text": "You are reading the page images of ONE sales invoice from an Indian GST bill packet. The pages below are that invoice and nothing else.\n\nReturn exactly one invoice object.\n\n- Preserve the economic value of printed numbers. Normalize currency marks and digit grouping as required by the numeric schema, but never replace a printed value with a calculation. If a field is not on these pages, return null. A fabricated number is worse than a missing one and will be caught.\n- item_name is the primary printed product/service text in the item's name or description cell. Keep supplementary narrative in description but do not append it to item_name.\n- Preserve each printed figure in its own role: printed_unit_price is one unit's rate; printed_line_amount is the row's extended amount; printed_line_total is its gross total after separately shown tax; printed_taxable_value is a distinct source field that separately prints the pre-GST value. Never duplicate printed_line_amount into printed_taxable_value merely because the line amount is tax-exclusive.\n- For every line-level tax type or tax column, copy its printed label, rate and amount into printed_tax_components. Preserve the printed label instead of deciding which canonical GST field it belongs to. Never infer a tax head from party or delivery addresses or accounting rules.\n- Arithmetic may classify what a printed amount means. For example, a row amount plus separately printed GST equalling its gross total establishes tax-exclusive pricing. Never use arithmetic to populate any extracted numeric field — including quantities, rates, discounts, taxable values or tax amounts — unless that value itself appears on the document. line_amount_tax_inclusion is an inferred semantic field, not a printed number.\n- Respect scope: line and column labels describe their rows; summaries, footer captions and amount-in-words labels describe invoice-level figures. Never assign a summary figure to a line unless it is independently printed there. Clearly visible handwritten or manually entered values are source evidence too.\n- Set line_amount_tax_inclusion from labels, structure or visible arithmetic. Use unknown when evidence is incomplete or conflicting. Do not calculate taxable_value; a later deterministic step does that.\n- Populate singular invoice-level printed_total_* fields only when that invoice-level aggregate is itself printed. Copy every invoice-level tax total, including generic Tax Amount totals, once into printed_tax_totals. Never select, combine or sum tax-rate or slab-summary rows to create an aggregate, and never redistribute summary figures across item rows.\n- Represent every real item row. Never turn a subtotal, total, HSN summary or amount-in-words row into a line item. When consecutive printed rows are identical in every other extracted field, return one line item with repeat_count equal to the number of those rows. Otherwise use repeat_count 1. Never combine rows that differ in any extracted field, and never combine non-consecutive rows.\n- The invoice may be internally inconsistent — its own printed total may disagree with its lines. Copy what is printed anyway; a later check names the discrepancy.\n- Classify the document itself as invoice, credit_note or debit_note. A title reading CREDIT NOTE or DEBIT NOTE controls; footer terms that merely mention notes do not.\n- For a credit or debit note, invoice_number is the note number only. Exclude labels such as \"Credit Note:\" from the value.\n- Include cancelled invoices. A cancelled number is still a number the series has to account for, and classify its document_status as cancelled so it cannot be filed as an active taxable invoice.\n- A printed recipient GSTIN means recipient_registration is registered. Use unregistered only when the document positively identifies an unregistered or consumer recipient. A missing or unreadable GSTIN alone is unknown, never a silent B2C inference.\n- Read supplier, Bill To and Ship To/Deliver To into their matching fields.\n- Preserve nil-rated, exempt, non-GST, export and SEZ treatment in supply_type. Never coerce one of them to an ordinary taxable sale.\n- For export/SEZ read tax_payment from the endorsement: on payment of IGST or under LUT/bond without payment of IGST. A combined export/SEZ endorsement with an Indian GSTIN recipient indicates SEZ; a foreign recipient indicates export. Do not classify ordinary foreign-address sales as exports without supporting supply evidence. Preserve printed tax breakdowns even if the endorsement says without payment and the payable total excludes those taxes.\n- Copy printed_grand_total literally from the invoice Total / Amount Chargeable, checking the amount in words. Never replace it with taxable plus the HSN tax summary. Under reverse charge or LUT/bond, that summary can show tax which is NOT added to the amount payable. Read the reverse-charge statement below the tax summary as well as the heading.\n- CGST and SGST printed as stacked sub-rows under one item are two printed tax components of that item, not two items. Never split them, and never split a total row.\n\r\nThese are physical PDF pages 1, in order. Read the pixels directly.\r\nInterpret ordinary numeric Indian invoice dates as DD/MM/YYYY, never MM/DD/YYYY,\r\nand preserve the printed date text in invoice_date.\r\nReconcile ambiguous decimal placement and separate rupee/paise columns against\r\nprinted totals and amount in words. Reconciliation may disambiguate a visible\r\nvalue; it must not invent a value absent from the document.\r\nSet reverse_charge true only when the document positively states that tax is\r\npayable under reverse charge, false when it explicitly says no, and null otherwise.\r\nCopy printed HSN/SAC codes from descriptions or service ledger names into hsn_sac,\r\neven without a dedicated HSN/SAC column; never infer an unprinted code.\r\nFor example, \"Consulting - 998312 @ 18%\" has hsn_sac \"998312\".\r\n\r\nEach line_items entry must be an array with exactly these fields in this exact order:\r\n[item_name, description, hsn_sac, quantity, uom, printed_unit_price, discount_rate, discount_amount, printed_line_amount, printed_line_total, printed_taxable_value, line_amount_tax_inclusion, printed_tax_components, repeat_count]\r\nDo not emit field names inside line_items. Preserve nulls so every row has exactly\r\n14 values.\r\n",
+            "text": "You are reading the page images of ONE sales invoice from an Indian GST bill packet. The pages below are that invoice and nothing else.\r\n\r\nReturn exactly one invoice object.\r\n\r\n- Copy printed numbers only into fields matching their role and scope. Normalize currency marks and digit grouping without changing the value. Do not calculate missing numbers, move invoice-summary figures into item rows, or change printed values to make totals agree. For absent or unreadable values, use the schema's absence value: null for nullable fields, [] for absent lists, and unknown for uncertain classifications that allow it. Required objects retain their fields with these absence values. Do not substitute zero or an empty string. Clearly visible handwritten or manually entered values are source evidence too.\n- item_name is the primary printed product/service text in the item's name or description cell. Keep supplementary narrative in description but do not append it to item_name.\r\n- For every line-level tax type or tax column, copy its printed label, rate and amount into printed_tax_components. Preserve the printed label instead of deciding which canonical GST field it belongs to. Never infer a tax head from party or delivery addresses or accounting rules.\r\n- line_amount_tax_inclusion is inferred from labels, structure or visible arithmetic. For example, a row amount plus separately printed GST equalling its gross total establishes tax-exclusive pricing. Use unknown when evidence is incomplete or conflicting. Taxable-value calculation belongs to a later step.\n- Line and column labels describe their rows; summaries, footer captions and amount-in-words labels describe invoice-level figures.\n- Populate singular invoice-level printed_total_* fields only when that invoice-level aggregate is itself printed. Copy every invoice-level tax total, including generic Tax Amount totals, once into printed_tax_totals. Tax-rate and slab-summary rows are not substitutes for a printed invoice-level aggregate.\n- Represent every real item row. Never turn a subtotal, total, HSN summary or amount-in-words row into a line item. When consecutive printed rows are identical in every other extracted field, return one line item with repeat_count equal to the number of those rows. Otherwise use repeat_count 1. Never combine rows that differ in any extracted field, and never combine non-consecutive rows.\r\n- Classify the document itself as invoice, credit_note or debit_note. A title reading CREDIT NOTE or DEBIT NOTE controls; footer terms that merely mention notes do not.\r\n- For a credit or debit note, invoice_number is the note number only. Exclude labels such as \"Credit Note:\" from the value.\r\n- Include cancelled invoices. A cancelled number is still a number the series has to account for, and classify its document_status as cancelled so it cannot be filed as an active taxable invoice.\r\n- A printed recipient GSTIN means recipient_registration is registered. Use unregistered only when the document positively identifies an unregistered or consumer recipient. A missing or unreadable GSTIN alone is unknown, never a silent B2C inference.\r\n- Read supplier, Bill To and Ship To/Deliver To into their matching fields.\r\n- Preserve nil-rated, exempt, non-GST, export and SEZ treatment in supply_type. Never coerce one of them to an ordinary taxable sale.\r\n- For export/SEZ read tax_payment from the endorsement: on payment of IGST or under LUT/bond without payment of IGST. A combined export/SEZ endorsement with an Indian GSTIN recipient indicates SEZ; a foreign recipient indicates export. Do not classify ordinary foreign-address sales as exports without supporting supply evidence. Preserve printed tax breakdowns even if the endorsement says without payment and the payable total excludes those taxes.\r\n- Copy printed_grand_total literally from the invoice Total / Amount Chargeable, using amount in words to clarify an ambiguous reading, not to replace a clearly printed numeric total when the two disagree. Under reverse charge or LUT/bond, the HSN tax summary can show tax which is NOT added to the amount payable. Read the reverse-charge statement below the tax summary as well as the heading.\r\n- CGST and SGST printed as stacked sub-rows under one item are two printed tax components of that item, not two items. Never split them, and never split a total row.\r\n\r\nThese are physical PDF pages 1, in order. Read the pixels directly.\r\nReconcile ambiguous decimal placement and separate rupee/paise columns against\r\nprinted totals and amount in words to disambiguate the visible value.\nCopy printed HSN/SAC codes from descriptions or service ledger names into hsn_sac,\r\neven without a dedicated HSN/SAC column; never infer an unprinted code.\r\nFor example, \"Consulting - 998312 @ 18%\" has hsn_sac \"998312\".\r\n\r\nEach line_items entry must be an array with exactly these fields in this exact order:\r\n[item_name, description, hsn_sac, quantity, uom, printed_unit_price, discount_rate, discount_amount, printed_line_amount, printed_line_total, printed_taxable_value, line_amount_tax_inclusion, printed_tax_components, repeat_count]\r\nDo not emit field names inside line_items. Preserve nulls so every row has exactly\r\n14 values.\n\nAmount mapping examples. These are partial invoice outputs showing only the\nrelevant fields; each item uses the complete array order above. Other fields\nstill follow the schema. Values in these examples are not invoice data.\n\n1. Item: Bolt | Qty 10 | Unit price 100 | Taxable price/unit 100 | GST 180 (18%) | Amount 1180.\nFooter: Taxable subtotal 1000. No extended taxable value is printed in the row.\n```json\n{\"line_items\":[[\"Bolt\",null,null,10,null,100,null,null,null,1180,null,\"unknown\",[{\"printed_label\":\"GST\",\"printed_rate\":18,\"printed_amount\":180}],1]],\"printed_total_taxable\":1000}\n```\n\n2. Item: Bolt | Qty 10 | Rate 100 | Amount 1000 | GST 180 (18%) | Total 1180.\nBoth a pre-tax row amount and a gross row total are printed.\n```json\n{\"line_items\":[[\"Bolt\",null,null,10,null,100,null,null,1000,1180,null,\"exclusive\",[{\"printed_label\":\"GST\",\"printed_rate\":18,\"printed_amount\":180}],1]]}\n```\n\n3. Item: Bolt | Qty 10 | Amount including GST 1180. No separate item tax is printed.\n```json\n{\"line_items\":[[\"Bolt\",null,null,10,null,null,null,null,1180,null,null,\"inclusive\",[],1]]}\n```\n\n4. Items: Bolt | Qty 2 | Taxable Value 200; Nut | Qty 1 | Taxable Value 50.\nFooter only: CGST 22.50; SGST 22.50; Invoice Total 295; Paid 100; Balance Due 195.\nExplicit taxable values belong in printed_taxable_value even when they are the\nonly row amounts. Footer taxes remain at invoice level; payments do not change\nthe printed invoice total.\n```json\n{\"line_items\":[[\"Bolt\",null,null,2,null,null,null,null,null,null,200,\"unknown\",[],1],[\"Nut\",null,null,1,null,null,null,null,null,null,50,\"unknown\",[],1]],\"printed_tax_totals\":[{\"printed_label\":\"CGST\",\"printed_amount\":22.5},{\"printed_label\":\"SGST\",\"printed_amount\":22.5}],\"printed_grand_total\":295}\n```\n\n",
             "type": "text"
           },
           {
@@ -1092,7 +1124,7 @@
     },
     "response_format": {
       "json_schema": {
-        "name": "nila_direct_sales_invoice",
+        "name": "nila_sales_invoice",
         "schema": {
           "additionalProperties": false,
           "properties": {
@@ -1169,10 +1201,26 @@
               "type": "string"
             },
             "invoice_date": {
-              "type": "string"
+              "description": "Printed issue date of this invoice or note. Preserve the printed date text without interpreting or reformatting it. Exclude due dates, purchase-order dates and delivery dates. Return null if absent or unreadable.",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "invoice_number": {
-              "type": "string"
+              "description": "Printed invoice or note identifier, preserving punctuation but excluding its field label. Do not substitute a purchase-order, reference or delivery-document number. Return null if absent or unreadable.",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "line_items": {
               "description": "One row per actual goods/services item. Text without its own serial number or amount is not a separate item; when structurally attached to the preceding item, append it to that item's description. Exclude totals, HSN summaries, tax recapitulations and amount-in-words rows.",
@@ -1276,7 +1324,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "The main extended amount printed for this whole line, regardless of the vendor's heading. This is not a unit rate and not the gross total after separately printed tax. Copy it whether tax-inclusive or tax-exclusive; null when no line amount is printed."
+                    "description": "Main printed amount for the entire item quantity. An amount explicitly labelled Taxable Value belongs in printed_taxable_value instead. A gross amount after separately printed tax for this item belongs in printed_line_total instead. Otherwise copy the row amount here, whether tax-inclusive or tax-exclusive. Footer taxes alone do not make it a printed_line_total. Exclude per-unit prices; null when no qualifying amount is printed."
                   },
                   {
                     "anyOf": [
@@ -1287,7 +1335,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "The gross total printed for this same item row after separately shown tax, regardless of the vendor's heading. Do not copy an invoice subtotal, grand total or amount-in-words value."
+                    "description": "Printed gross amount for the entire item quantity after tax separately shown for that item, including attached tax sub-rows. The heading may be Amount or Total. Footer taxes alone do not qualify. Return null when absent; this field can be populated while printed_line_amount is null."
                   },
                   {
                     "anyOf": [
@@ -1298,10 +1346,10 @@
                         "type": "null"
                       }
                     ],
-                    "description": "A distinct source field that separately prints this line's taxable value before GST. Do not duplicate printed_line_amount into this field merely because the line amount is tax-exclusive; return null when no separate taxable-value field is printed."
+                    "description": "Amount explicitly printed as this item's taxable value before GST for the entire quantity, even if it is the row's only extended amount. Exclude taxable price per unit, GST amounts and invoice subtotals. Assign this source amount here, not also to printed_line_amount. An ordinary tax-exclusive Amount cell belongs in printed_line_amount instead. Return null when no explicit extended taxable-value field is printed."
                   },
                   {
-                    "description": "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Labels apply only at their structural scope; invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion. Use unknown when evidence is incomplete or conflicting.",
+                    "description": "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Use unknown when printed_line_amount is null, or evidence is incomplete or conflicting. This field does not describe printed_line_total or printed_taxable_value. Invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion.",
                     "enum": [
                       "inclusive",
                       "exclusive",
@@ -1334,7 +1382,7 @@
                               "type": "null"
                             }
                           ],
-                          "description": "Literal tax type or tax-column label printed for this component, such as IGST, CGST or SGST."
+                          "description": "Literal item-level tax label, such as GST, IGST, CGST or SGST. Keep combined GST as one component; do not split it or copy footer tax heads into the item."
                         },
                         "printed_rate": {
                           "anyOf": [
@@ -1399,7 +1447,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Final printed amount payable after tax, charges and rounding."
+              "description": "Printed Invoice Total or Amount Chargeable after applicable tax, charges and rounding. Exclude payments already made and the remaining balance due."
             },
             "printed_rounding_adjustment": {
               "anyOf": [
@@ -1488,7 +1536,7 @@
                   "type": "null"
                 }
               ],
-              "description": "True when the invoice states tax is payable by the recipient or 'Amount of tax subject to Reverse Charge', including a statement below the tax summary. False only when forward charge is clear; null if unclear."
+              "description": "True when the document explicitly states that tax is payable under reverse charge, including a statement below the tax summary. False only when it explicitly says reverse charge does not apply; null otherwise."
             },
             "ship_to": {
               "anyOf": [

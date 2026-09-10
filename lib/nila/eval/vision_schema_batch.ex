@@ -1,6 +1,6 @@
 defmodule Nila.Eval.VisionSchemaBatch do
   @moduledoc """
-  Repeats production direct-vision extraction over adjudicated invoice boundaries.
+  Repeats production vision extraction over adjudicated invoice boundaries.
 
   Discovery is deliberately absent: a schema experiment should measure invoice
   reading, not a fresh set of model-chosen page boundaries. Every run retains its
@@ -39,7 +39,7 @@ defmodule Nila.Eval.VisionSchemaBatch do
       "created_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
       "extraction" =>
         OpenAICompatibleChat.fingerprint(
-          InvoicePrompt.direct(kind, [], :vision),
+          InvoicePrompt.build(kind, [], :vision),
           InvoiceSchema.tuple_schema(kind)
         )
     }

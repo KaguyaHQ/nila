@@ -310,7 +310,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
               ]
             })
 
-          "nila_direct_purchase_invoice" ->
+          "nila_purchase_invoice" ->
             vision_invoice_response()
         end
 

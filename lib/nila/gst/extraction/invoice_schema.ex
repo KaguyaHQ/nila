@@ -27,7 +27,7 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
     reverse_charge = %{
       anyOf: [%{type: "boolean"}, %{type: "null"}],
       description:
-        "True when the invoice states tax is payable by the recipient or 'Amount of tax subject to Reverse Charge', including a statement below the tax summary. False only when forward charge is clear; null if unclear."
+        "True when the document explicitly states that tax is payable under reverse charge, including a statement below the tax summary. False only when it explicitly says reverse charge does not apply; null otherwise."
     }
 
     line_item = get_in(schema, [:properties, :line_items, :items])
@@ -66,8 +66,16 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
         description:
           "Classify the document itself from its title and charging table. Footer terms that merely mention credit or debit notes do not change an invoice's type."
       },
-      invoice_number: %{type: "string"},
-      invoice_date: %{type: "string"},
+      invoice_number:
+        described_nullable(
+          "string",
+          "Printed invoice or note identifier, preserving punctuation but excluding its field label. Do not substitute a purchase-order, reference or delivery-document number. Return null if absent or unreadable."
+        ),
+      invoice_date:
+        described_nullable(
+          "string",
+          "Printed issue date of this invoice or note. Preserve the printed date text without interpreting or reformatting it. Exclude due dates, purchase-order dates and delivery dates. Return null if absent or unreadable."
+        ),
       line_items: %{
         type: "array",
         description:
@@ -103,7 +111,7 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
       printed_grand_total:
         described_nullable(
           "number",
-          "Final printed amount payable after tax, charges and rounding."
+          "Printed Invoice Total or Amount Chargeable after applicable tax, charges and rounding. Exclude payments already made and the remaining balance due."
         )
     }
 
@@ -209,23 +217,23 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
       printed_line_amount:
         described_nullable(
           "number",
-          "The main extended amount printed for this whole line, regardless of the vendor's heading. This is not a unit rate and not the gross total after separately printed tax. Copy it whether tax-inclusive or tax-exclusive; null when no line amount is printed."
+          "Main printed amount for the entire item quantity. An amount explicitly labelled Taxable Value belongs in printed_taxable_value instead. A gross amount after separately printed tax for this item belongs in printed_line_total instead. Otherwise copy the row amount here, whether tax-inclusive or tax-exclusive. Footer taxes alone do not make it a printed_line_total. Exclude per-unit prices; null when no qualifying amount is printed."
         ),
       printed_line_total:
         described_nullable(
           "number",
-          "The gross total printed for this same item row after separately shown tax, regardless of the vendor's heading. Do not copy an invoice subtotal, grand total or amount-in-words value."
+          "Printed gross amount for the entire item quantity after tax separately shown for that item, including attached tax sub-rows. The heading may be Amount or Total. Footer taxes alone do not qualify. Return null when absent; this field can be populated while printed_line_amount is null."
         ),
       printed_taxable_value:
         described_nullable(
           "number",
-          "A distinct source field that separately prints this line's taxable value before GST. Do not duplicate printed_line_amount into this field merely because the line amount is tax-exclusive; return null when no separate taxable-value field is printed."
+          "Amount explicitly printed as this item's taxable value before GST for the entire quantity, even if it is the row's only extended amount. Exclude taxable price per unit, GST amounts and invoice subtotals. Assign this source amount here, not also to printed_line_amount. An ordinary tax-exclusive Amount cell belongs in printed_line_amount instead. Return null when no explicit extended taxable-value field is printed."
         ),
       line_amount_tax_inclusion: %{
         type: "string",
         enum: ["inclusive", "exclusive", "unknown"],
         description:
-          "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Labels apply only at their structural scope; invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion. Use unknown when evidence is incomplete or conflicting."
+          "Whether printed_line_amount includes GST, inferred from labels, table structure or visible same-row arithmetic. Use unknown when printed_line_amount is null, or evidence is incomplete or conflicting. This field does not describe printed_line_total or printed_taxable_value. Invoice summaries, footer captions and amount-in-words labels do not determine line-amount inclusion."
       },
       printed_tax_components: printed_tax_components_schema(:line),
       repeat_count: %{
@@ -248,7 +256,7 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
           printed_label:
             described_nullable(
               "string",
-              "Literal tax type or tax-column label printed for this component, such as IGST, CGST or SGST."
+              "Literal item-level tax label, such as GST, IGST, CGST or SGST. Keep combined GST as one component; do not split it or copy footer tax heads into the item."
             ),
           printed_rate: described_nullable("number", "Tax rate printed for this component."),
           printed_amount: described_nullable("number", "Tax amount printed for this component.")

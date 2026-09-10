@@ -3,7 +3,7 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
   OpenAI-compatible `/chat/completions` with a strict JSON schema.
 
   Messages may contain text or page images. The configured provider therefore owns
-  both direct-vision packet segmentation and invoice structuring.
+  both vision packet segmentation and invoice structuring.
   """
 
   @default_base_url "https://ai-gateway.vercel.sh/v1"

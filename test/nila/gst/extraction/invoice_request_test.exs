@@ -7,7 +7,7 @@ defmodule Nila.Gst.Extraction.InvoiceRequestTest do
              |> File.read!()
              |> Jason.decode!()
 
-  test "direct requests preserve the pre-refactor instructions and response schemas" do
+  test "requests match the reviewed instructions and response schemas" do
     for {kind, modality} <- [{:sales, :text}, {:sales, :vision}, {:purchase, :vision}] do
       expected = @snapshots["#{kind}_#{modality}"]
 
@@ -40,16 +40,16 @@ defmodule Nila.Gst.Extraction.InvoiceRequestTest do
       base =
         get_in(InvoiceSchema.object_schema(kind), [:properties, :line_items, :items, :properties])
 
-      direct = get_in(InvoiceSchema.tuple_schema(kind), [:properties, :line_items, :items])
+      tuple = get_in(InvoiceSchema.tuple_schema(kind), [:properties, :line_items, :items])
       assert MapSet.new(fields) == MapSet.new(Map.keys(base))
-      assert direct.prefixItems == Enum.map(fields, &Map.fetch!(base, &1))
+      assert tuple.prefixItems == Enum.map(fields, &Map.fetch!(base, &1))
       values = Enum.to_list(1..length(fields))
 
       assert %{"line_items" => [row]} =
                InvoiceSchema.decode_line_items(%{"line_items" => [values]})
 
       assert Enum.map(fields, &Map.fetch!(row, to_string(&1))) == values
-      assert InvoicePrompt.direct(kind, [1], :text) =~ Enum.join(fields, ", ")
+      assert InvoicePrompt.build(kind, [1], :text) =~ Enum.join(fields, ", ")
     end
   end
 

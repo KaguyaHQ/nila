@@ -10,51 +10,36 @@ defmodule Nila.Gst.Extraction.InvoicePrompt do
 
     Return exactly one invoice object.
 
-    - Preserve the economic value of printed numbers. Normalize currency marks \
-    and digit grouping as required by the numeric schema, but never replace a \
-    printed value with a calculation. If a field is not on these pages, return \
-    null. A fabricated number is worse than a missing one and will be caught.
+    - Copy printed numbers only into fields matching their role and scope. Normalize \
+    currency marks and digit grouping without changing the value. Do not calculate \
+    missing numbers, move invoice-summary figures into item rows, or change printed \
+    values to make totals agree. For absent or unreadable values, use the schema's \
+    absence value: null for nullable fields, [] for absent lists, and unknown for \
+    uncertain classifications that allow it. Required objects retain their fields \
+    with these absence values. Do not substitute zero or an empty string. \
+    Clearly visible handwritten or manually entered values are source evidence too.
     - item_name is the primary printed product/service text in the item's name \
     or description cell. Keep supplementary narrative in description but do not \
     append it to item_name.
-    - Preserve each printed figure in its own role: printed_unit_price is one \
-    unit's rate; printed_line_amount is the row's extended amount; \
-    printed_line_total is its gross total after separately shown tax; \
-    printed_taxable_value is a distinct source field that separately prints the \
-    pre-GST value. Never duplicate printed_line_amount into \
-    printed_taxable_value merely because the line amount is tax-exclusive.
     - For every line-level tax type or tax column, copy its printed label, rate \
     and amount into printed_tax_components. Preserve the printed label instead \
     of deciding which canonical GST field it belongs to. Never infer a tax head \
     from party or delivery addresses or accounting rules.
-    - Arithmetic may classify what a printed amount means. For example, a row \
-    amount plus separately printed GST equalling its gross total establishes \
-    tax-exclusive pricing. Never use arithmetic to populate any extracted \
-    numeric field — including quantities, rates, discounts, taxable values or \
-    tax amounts — unless that value itself appears on the document. \
-    line_amount_tax_inclusion is an inferred semantic field, not a printed number.
-    - Respect scope: line and column labels describe their rows; summaries, \
-    footer captions and amount-in-words labels describe invoice-level figures. \
-    Never assign a summary figure to a line unless it is independently printed \
-    there. Clearly visible handwritten or manually entered values are source \
-    evidence too.
-    - Set line_amount_tax_inclusion from labels, structure or visible arithmetic. \
-    Use unknown when evidence is incomplete or conflicting. Do not calculate \
-    taxable_value; a later deterministic step does that.
+    - line_amount_tax_inclusion is inferred from labels, structure or visible \
+    arithmetic. For example, a row amount plus separately printed GST equalling \
+    its gross total establishes tax-exclusive pricing. Use unknown when evidence \
+    is incomplete or conflicting. Taxable-value calculation belongs to a later step.
+    - Line and column labels describe their rows; summaries, footer captions and \
+    amount-in-words labels describe invoice-level figures.
     - Populate singular invoice-level printed_total_* fields only when that \
     invoice-level aggregate is itself printed. Copy every invoice-level tax total, \
-    including generic Tax Amount totals, once into printed_tax_totals. Never \
-    select, combine or sum tax-rate or \
-    slab-summary rows to create an aggregate, and never redistribute summary \
-    figures across item rows.
+    including generic Tax Amount totals, once into printed_tax_totals. Tax-rate \
+    and slab-summary rows are not substitutes for a printed invoice-level aggregate.
     - Represent every real item row. Never turn a subtotal, total, HSN summary or \
     amount-in-words row into a line item. When consecutive printed rows are identical \
     in every other extracted field, return one line item with repeat_count equal to \
     the number of those rows. Otherwise use repeat_count 1. Never combine rows that \
     differ in any extracted field, and never combine non-consecutive rows.
-    - The invoice may be internally inconsistent — its own printed total may \
-    disagree with its lines. Copy what is printed anyway; a later check names \
-    the discrepancy.
     #{kind_rules(kind)}\
     """
   end
@@ -89,8 +74,9 @@ defmodule Nila.Gst.Extraction.InvoicePrompt do
     supporting supply evidence. Preserve printed tax breakdowns even if the \
     endorsement says without payment and the payable total excludes those taxes.
     - Copy printed_grand_total literally from the invoice Total / Amount Chargeable, \
-    checking the amount in words. Never replace it with taxable plus the HSN tax \
-    summary. Under reverse charge or LUT/bond, that summary can show tax which \
+    using amount in words to clarify an ambiguous reading, not to replace a clearly \
+    printed numeric total when the two disagree. Under reverse charge or LUT/bond, \
+    the HSN tax summary can show tax which \
     is NOT added to the amount payable. Read the reverse-charge statement below \
     the tax summary as well as the heading.
     - CGST and SGST printed as stacked sub-rows under one item are two printed \
@@ -105,23 +91,19 @@ defmodule Nila.Gst.Extraction.InvoicePrompt do
     A title reading CREDIT NOTE or DEBIT NOTE controls; footer terms that merely \
     mention notes do not.
     - For a credit or debit note, invoice_number is the note number only. Exclude \
-    labels such as "Credit Note:" or "Debit Note:" from the value. Keep every \
-    printed amount positive; document_type determines its accounting effect.
+    labels such as "Credit Note:" or "Debit Note:" from the value. Keep note amounts \
+    positive; document_type determines their accounting effect. Signed adjustments \
+    retain their own sign, including a negative rounding adjustment when subtracted.
     """
   end
 
-  def direct(kind, pages, modality) when modality in [:text, :vision] do
+  def build(kind, pages, modality) when modality in [:text, :vision] do
     base(kind, modality) <>
       """
 
       These are physical PDF pages #{Enum.join(pages, ", ")}, in order. #{reading_instruction(modality)}
-      Interpret ordinary numeric Indian invoice dates as DD/MM/YYYY, never MM/DD/YYYY,
-      and preserve the printed date text in invoice_date.
       Reconcile ambiguous decimal placement and separate rupee/paise columns against
-      printed totals and amount in words. Reconciliation may disambiguate a visible
-      value; it must not invent a value absent from the document.
-      Set reverse_charge true only when the document positively states that tax is
-      payable under reverse charge, false when it explicitly says no, and null otherwise.
+      printed totals and amount in words to disambiguate the visible value.
       Copy printed HSN/SAC codes from descriptions or service ledger names into hsn_sac,
       even without a dedicated HSN/SAC column; never infer an unprinted code.
       For example, "Consulting - 998312 @ 18%" has hsn_sac "998312".
@@ -130,7 +112,44 @@ defmodule Nila.Gst.Extraction.InvoicePrompt do
       [#{Enum.join(InvoiceSchema.line_item_fields(), ", ")}]
       Do not emit field names inside line_items. Preserve nulls so every row has exactly
       #{length(InvoiceSchema.line_item_fields())} values.
+
+      #{amount_examples()}
       """
+  end
+
+  @doc false
+  def amount_examples do
+    """
+    Amount mapping examples. These are partial invoice outputs showing only the
+    relevant fields; each item uses the complete array order above. Other fields
+    still follow the schema. Values in these examples are not invoice data.
+
+    1. Item: Bolt | Qty 10 | Unit price 100 | Taxable price/unit 100 | GST 180 (18%) | Amount 1180.
+    Footer: Taxable subtotal 1000. No extended taxable value is printed in the row.
+    ```json
+    {"line_items":[["Bolt",null,null,10,null,100,null,null,null,1180,null,"unknown",[{"printed_label":"GST","printed_rate":18,"printed_amount":180}],1]],"printed_total_taxable":1000}
+    ```
+
+    2. Item: Bolt | Qty 10 | Rate 100 | Amount 1000 | GST 180 (18%) | Total 1180.
+    Both a pre-tax row amount and a gross row total are printed.
+    ```json
+    {"line_items":[["Bolt",null,null,10,null,100,null,null,1000,1180,null,"exclusive",[{"printed_label":"GST","printed_rate":18,"printed_amount":180}],1]]}
+    ```
+
+    3. Item: Bolt | Qty 10 | Amount including GST 1180. No separate item tax is printed.
+    ```json
+    {"line_items":[["Bolt",null,null,10,null,null,null,null,1180,null,null,"inclusive",[],1]]}
+    ```
+
+    4. Items: Bolt | Qty 2 | Taxable Value 200; Nut | Qty 1 | Taxable Value 50.
+    Footer only: CGST 22.50; SGST 22.50; Invoice Total 295; Paid 100; Balance Due 195.
+    Explicit taxable values belong in printed_taxable_value even when they are the
+    only row amounts. Footer taxes remain at invoice level; payments do not change
+    the printed invoice total.
+    ```json
+    {"line_items":[["Bolt",null,null,2,null,null,null,null,null,null,200,"unknown",[],1],["Nut",null,null,1,null,null,null,null,null,null,50,"unknown",[],1]],"printed_tax_totals":[{"printed_label":"CGST","printed_amount":22.5},{"printed_label":"SGST","printed_amount":22.5}],"printed_grand_total":295}
+    ```
+    """
   end
 
   def system(:text), do: "You read invoices from PDF text into JSON."

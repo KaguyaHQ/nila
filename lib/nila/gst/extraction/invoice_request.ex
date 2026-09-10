@@ -9,15 +9,15 @@ defmodule Nila.Gst.Extraction.InvoiceRequest do
 
   alias Nila.Gst.Extraction.{InvoicePrompt, InvoiceSchema}
 
-  @doc "Builds a direct request from ordered {physical_page, text_or_image} pairs."
+  @doc "Builds an invoice request from ordered {physical_page, text_or_image} pairs."
   def build(kind, pages, modality) when modality in [:text, :vision] do
-    instruction = InvoicePrompt.direct(kind, Enum.map(pages, &elem(&1, 0)), modality)
+    instruction = InvoicePrompt.build(kind, Enum.map(pages, &elem(&1, 0)), modality)
 
     content =
       [%{type: "text", text: instruction}] ++ Enum.flat_map(pages, &page_parts(&1, modality))
 
     %{
-      name: "nila_direct_#{kind}_invoice",
+      name: "nila_#{kind}_invoice",
       schema: InvoiceSchema.tuple_schema(kind),
       messages: [
         %{role: "system", content: InvoicePrompt.system(modality)},

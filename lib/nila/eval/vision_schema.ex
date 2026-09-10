@@ -1,6 +1,6 @@
 defmodule Nila.Eval.VisionSchema do
   @moduledoc """
-  Repeats the exact production direct-vision invoice request on fixed pages.
+  Repeats the exact production vision invoice request on fixed pages.
 
   Each attempt records the schema fingerprint, expanded artifact, summary, and
   raw provider response. Run the same command before and after a schema edit to
@@ -35,7 +35,7 @@ defmodule Nila.Eval.VisionSchema do
       "created_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
       "extraction" =>
         OpenAICompatibleChat.fingerprint(
-          InvoicePrompt.direct(kind, [], :vision),
+          InvoicePrompt.build(kind, [], :vision),
           InvoiceSchema.tuple_schema(kind)
         )
     }
