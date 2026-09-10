@@ -15,6 +15,38 @@ defmodule Nila.PdfFixtures do
       ] ++
         for(_page <- 1..page_count, do: "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>")
 
+    encode(objects)
+  end
+
+  @doc "A PDF with one plain-text line per physical page; empty strings make blank pages."
+  def text_pdf(pages) when is_list(pages) and pages != [] do
+    font = 3 + length(pages) * 2
+    kids = pages |> Enum.with_index() |> Enum.map_join(" ", fn {_, i} -> "#{3 + i * 2} 0 R" end)
+
+    objects =
+      [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [#{kids}] /Count #{length(pages)} >>"
+      ] ++
+        Enum.flat_map(Enum.with_index(pages), fn {text, i} ->
+          text =
+            text
+            |> String.replace("\\", "\\\\")
+            |> String.replace("(", "\\(")
+            |> String.replace(")", "\\)")
+
+          stream = "BT /F1 10 Tf 10 100 Td (#{text}) Tj ET"
+
+          [
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 200] /Resources << /Font << /F1 #{font} 0 R >> >> /Contents #{4 + i * 2} 0 R >>",
+            "<< /Length #{byte_size(stream)} >>\nstream\n#{stream}\nendstream"
+          ]
+        end) ++ ["<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+
+    encode(objects)
+  end
+
+  defp encode(objects) do
     {body, offsets} =
       objects
       |> Enum.with_index(1)

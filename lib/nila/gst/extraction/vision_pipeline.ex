@@ -2,12 +2,18 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
   @moduledoc """
   Segments a packet from page thumbnails, then reads each invoice from its page images.
 
+  Sales callers can explicitly select `input: :text` for known digital PDFs.
+  Native text feeds the same labels and invoice schema; blank pages retain vision,
+  and page images remain the review evidence. The default is still vision.
+
   The provider returns structured candidates only. Phoenix still repairs known identities,
   checks arithmetic and builds the purchase or sales artifact consumed downstream.
   """
 
+  alias Nila.Gst.Extraction.Discovery.DocumentPages
   alias Nila.Gst.Extraction.Discovery.PageLabels
   alias Nila.Gst.Extraction.Evidence
+  alias Nila.Gst.Extraction.NativeText
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.Segmented
   alias Nila.Gst.Extraction.Verify
@@ -37,7 +43,7 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
       on_progress: Keyword.get(opts, :on_progress) || (&ignore_progress/1)
     }
 
-    with {:ok, source} <- render(bytes, opts),
+    with {:ok, source} <- prepare(kind, bytes, opts),
          {:ok, discovery} <- discover(kind, source, opts, hooks),
          {:ok, result} <- read_segments(kind, source, discovery, opts, hooks) do
       {:ok, result}
@@ -51,7 +57,7 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
   Runs invoice extraction against fixed, human-selected page groups.
 
   This is the eval seam for schema experiments: it deliberately skips model
-  segmentation while retaining the exact production render, vision prompt,
+  segmentation while retaining the production render, selected input prompt,
   tuple schema, decoder, repairs, and verification path.
   """
   def extract_fixed_segments(kind, bytes, page_groups, opts \\ [])
@@ -61,7 +67,7 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
       on_progress: Keyword.get(opts, :on_progress) || (&ignore_progress/1)
     }
 
-    with {:ok, source} <- render(bytes, opts),
+    with {:ok, source} <- prepare(kind, bytes, opts),
          {:ok, segments} <- fixed_segments(page_groups, source.page_count),
          {:ok, result} <- read_segments(kind, source, %{segments: segments}, opts, hooks) do
       {:ok, result}
@@ -94,6 +100,43 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
     else
       {:error, {:invalid_fixed_segments, page_groups, page_count}}
     end
+  end
+
+  # Keep vision as the default. Native text is explicitly selected for known
+  # digital sales PDFs; selectable OCR layers are not automatically trusted.
+  defp prepare(kind, bytes, opts) do
+    input = Keyword.get(opts, :input, :vision)
+
+    with :ok <- validate_input(kind, input),
+         {:ok, source} <- render(bytes, opts) do
+      content_type =
+        Keyword.get(opts, :content_type) ||
+          Evidence.content_type(Keyword.get(opts, :filename, "document.pdf"))
+
+      if input == :text and content_type == "application/pdf" do
+        with {:ok, text} <- NativeText.extract(bytes, source.page_count) do
+          {:ok, Map.put(source, :native_text, text)}
+        end
+      else
+        {:ok, Map.put(source, :native_text, %{})}
+      end
+    end
+  end
+
+  defp validate_input(_kind, :vision), do: :ok
+  defp validate_input(:sales, :text), do: :ok
+  defp validate_input(kind, input), do: {:error, {:unsupported_extraction_input, kind, input}}
+
+  defp text_page?(source, page) do
+    source.native_text |> Map.get(page, "") |> String.trim() != ""
+  end
+
+  defp input_metadata(source) do
+    %{
+      "native_text" =>
+        Map.new(source.native_text, fn {page, text} -> {to_string(page), text} end),
+      "text_pages" => Enum.filter(1..source.page_count, &text_page?(source, &1))
+    }
   end
 
   defp render(bytes, opts) do
@@ -181,17 +224,18 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
   defp discover(kind, source, opts, hooks) do
     report(hooks, %{stage: :segmenting, done: 0, total: source.page_count})
 
-    hooks.per_call.(%{stage: "vision_segmentation", pages: source.page_count}, fn ->
-      case request_segmentation(kind, source.thumbnails, source.page_count, opts) do
+    stage =
+      if map_size(source.native_text) > 0, do: "text_segmentation", else: "vision_segmentation"
+
+    hooks.per_call.(%{stage: stage, pages: source.page_count}, fn ->
+      case request_segmentation(kind, source, opts) do
         {:ok, response} ->
           with {:ok, %{"pages" => pages}, usage} <-
-                 OpenAICompatibleChat.decode(response, segmentation_schema()),
-               {:ok, labels} <- decode_labels(pages, source.page_count) do
-            segments = PageLabels.stitch(labels)
-
+                 OpenAICompatibleChat.decode(response, segmentation_schema(kind)),
+               {:ok, segments} <- group_pages(kind, pages, source.page_count) do
             result = %{
               segments: segments,
-              labels: labels,
+              labels: pages,
               audit: %{
                 provider: OpenAICompatibleChat.provider(),
                 model: OpenAICompatibleChat.model(),
@@ -200,10 +244,11 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
                 source_page_count: source.page_count,
                 usage: usage,
                 raw_response: response.body,
-                metadata: %{
-                  "segments" => encode_segments(segments),
-                  "retry_count" => Map.get(response, :retry_count, 0)
-                }
+                metadata:
+                  Map.merge(input_metadata(source), %{
+                    "segments" => encode_segments(segments),
+                    "retry_count" => Map.get(response, :retry_count, 0)
+                  })
               }
             }
 
@@ -215,7 +260,9 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
 
             {:ok, result}
           else
-            {:error, reason} -> {:error, reason, response_audit(response, source.page_count)}
+            {:error, reason} ->
+              audit = response_audit(response, source.page_count)
+              {:error, reason, Map.put(audit, :metadata, input_metadata(source))}
           end
 
         {:error, reason} ->
@@ -229,7 +276,9 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
     end)
   end
 
-  defp request_segmentation(kind, pages, page_count, opts) do
+  defp request_segmentation(kind, source, opts) do
+    page_count = source.page_count
+
     content =
       Enum.reduce(
         1..page_count,
@@ -238,7 +287,10 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
           acc ++
             [
               %{type: "text", text: "PHYSICAL PAGE #{page}"},
-              image_part(Map.fetch!(pages, page))
+              if(text_page?(source, page),
+                do: %{type: "text", text: Map.fetch!(source.native_text, page)},
+                else: image_part(Map.fetch!(source.thumbnails, page))
+              )
             ]
         end
       )
@@ -251,10 +303,12 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
     OpenAICompatibleChat.request_raw(
       messages,
       "nila_packet_page_labels",
-      segmentation_schema(),
+      segmentation_schema(kind),
       request_opts(opts)
     )
   end
+
+  defp segmentation_prompt(:sales, page_count), do: DocumentPages.prompt(page_count)
 
   defp segmentation_prompt(kind, page_count) do
     """
@@ -274,7 +328,9 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
     """
   end
 
-  defp segmentation_schema do
+  defp segmentation_schema(:sales), do: DocumentPages.schema()
+
+  defp segmentation_schema(:purchase) do
     %{
       type: "object",
       additionalProperties: false,
@@ -326,6 +382,14 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
   defp label("non_invoice"), do: :non_invoice
   defp label(_unreadable), do: :unreadable
 
+  defp group_pages(:sales, pages, count), do: DocumentPages.group(pages, count)
+
+  defp group_pages(:purchase, pages, count) do
+    with {:ok, labels} <- decode_labels(pages, count) do
+      {:ok, PageLabels.stitch(labels)}
+    end
+  end
+
   defp blank_to_nil(value) when is_binary(value) do
     case String.trim(value) do
       "" -> nil
@@ -339,7 +403,9 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
     segments = Enum.filter(discovery.segments, &(&1.kind == :invoice))
     report(hooks, %{stage: :reading, done: 0, total: length(segments)})
 
-    hooks.per_call.(%{stage: "vision_extraction", segments: length(segments)}, fn ->
+    stage = if map_size(source.native_text) > 0, do: "text_extraction", else: "vision_extraction"
+
+    hooks.per_call.(%{stage: stage, segments: length(segments)}, fn ->
       results =
         segments
         |> Task.async_stream(
@@ -391,27 +457,39 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
         source_page_count: source.page_count,
         usage: responses |> Enum.map(& &1.usage) |> Segmented.sum_usage(),
         raw_response: Jason.encode!(%{"responses" => responses}),
-        metadata: %{
-          "segments" => encode_segments(discovery.segments),
-          "failures" =>
-            Enum.map(failures, &%{"pages" => &1.pages, "reason" => inspect(&1.reason)}),
-          "responses" =>
-            Enum.map(
-              responses,
-              &Map.take(&1, [:pages, :provider_request_id, :retry_count, :status])
-            ),
-          "repairs" =>
-            artifacts
-            |> Enum.flat_map(&(&1["repairs"] || []))
-            |> Enum.map(&Map.take(&1, ["field", "from", "to", "basis"]))
-        }
+        metadata:
+          Map.merge(input_metadata(source), %{
+            "segments" => encode_segments(discovery.segments),
+            "invoice_inputs" =>
+              Enum.map(segments, fn segment ->
+                %{
+                  "pages" => segment.pages,
+                  "input" =>
+                    if(Enum.all?(segment.pages, &text_page?(source, &1)),
+                      do: "text",
+                      else: "vision"
+                    )
+                }
+              end),
+            "failures" =>
+              Enum.map(failures, &%{"pages" => &1.pages, "reason" => inspect(&1.reason)}),
+            "responses" =>
+              Enum.map(
+                responses,
+                &Map.take(&1, [:pages, :provider_request_id, :retry_count, :status])
+              ),
+            "repairs" =>
+              artifacts
+              |> Enum.flat_map(&(&1["repairs"] || []))
+              |> Enum.map(&Map.take(&1, ["field", "from", "to", "basis"]))
+          })
       }
 
       cond do
         failures != [] ->
           {:error, {:invoice_segments_failed, failures}, audit}
 
-        artifacts == [] ->
+        artifacts == [] and kind != :sales ->
           {:error, {:no_invoices_extracted, []}, audit}
 
         true ->
@@ -419,6 +497,8 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
            %{
              pages: artifacts,
              images: source.evidence,
+             excluded_documents:
+               discovery.segments |> Enum.reject(&(&1.kind == :invoice)) |> encode_segments(),
              audit: audit,
              unaccounted_pages: unaccounted_pages(source.page_count, discovery.segments)
            }}
@@ -430,7 +510,7 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
     schema = vision_schema(kind)
 
     with :ok <- validate_segment_images(source.full, segment),
-         messages = vision_messages(kind, segment.pages, source.full),
+         messages = invoice_messages(kind, segment.pages, source),
          {:ok, response} <-
            OpenAICompatibleChat.request_raw(
              messages,
@@ -514,6 +594,38 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
       %{role: "system", content: "You read invoices from page images into JSON."},
       %{role: "user", content: content}
     ]
+  end
+
+  defp invoice_messages(kind, pages, source) do
+    messages = vision_messages(kind, pages, source.full)
+
+    # A mixed invoice needs all of its pages in view. Never silently omit a
+    # scanned continuation just because another page has native text.
+    if Enum.all?(pages, &text_page?(source, &1)) do
+      [system, user] = messages
+      [instruction | _images] = user.content
+
+      instruction =
+        instruction.text
+        |> String.replace("page images", "PDF text")
+        |> String.replace("Read the pixels directly.", "Read the extracted text directly.")
+
+      content =
+        [%{type: "text", text: instruction}] ++
+          Enum.map(pages, fn page ->
+            %{
+              type: "text",
+              text: "PHYSICAL PAGE #{page}\n" <> Map.fetch!(source.native_text, page)
+            }
+          end)
+
+      [
+        %{system | content: "You read invoices from PDF text into JSON."},
+        %{user | content: content}
+      ]
+    else
+      messages
+    end
   end
 
   defp vision_schema(kind) do
@@ -673,7 +785,9 @@ defmodule Nila.Gst.Extraction.VisionPipeline do
       %{
         "pages" => segment.pages,
         "kind" => to_string(segment.kind),
-        "invoice_no" => segment.invoice_no
+        "invoice_no" => segment.invoice_no,
+        "document_type" => Map.get(segment, :document_type),
+        "reason" => Map.get(segment, :reason)
       }
     end)
   end

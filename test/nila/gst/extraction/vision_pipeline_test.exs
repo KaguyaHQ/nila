@@ -119,6 +119,220 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     end)
   end
 
+  test "native sales text uses the same artifact contract and retains review images and text evidence" do
+    stub(
+      [
+        %{
+          "page" => 1,
+          "page_role" => "start",
+          "document_type" => "tax_invoice",
+          "invoice_no" => "INV-1",
+          "reason" => nil
+        },
+        %{
+          "page" => 2,
+          "page_role" => "continuation",
+          "document_type" => nil,
+          "invoice_no" => nil,
+          "reason" => nil
+        }
+      ],
+      sales_invoice()
+    )
+
+    pdf = PdfFixtures.text_pdf(["GSTIN 33AEWPH4158J1Z3 Invoice INV-1", "Continued total 1180"])
+    assert {:ok, result} = VisionPipeline.extract(:sales, pdf, input: :text)
+    assert [%{"source_pages" => [1, 2], "image" => "page_01.jpg"} = artifact] = result.pages
+    assert Gstr1.normalize_invoice(artifact)["invoice_number"] == "INV-1"
+    assert map_size(result.images) == 2
+    assert result.audit.metadata["native_text"]["1"] =~ "33AEWPH4158J1Z3"
+    assert result.audit.metadata["invoice_inputs"] == [%{"pages" => [1, 2], "input" => "text"}]
+
+    assert_receive {:vision_request, "nila_packet_page_labels", labels}
+    assert_receive {:vision_request, "nila_direct_sales_invoice", invoice}
+
+    for request <- [labels, invoice] do
+      [_system, %{"content" => content}] = request["messages"]
+      assert Enum.all?(content, &(&1["type"] == "text"))
+      assert Enum.any?(content, &String.contains?(&1["text"], "33AEWPH4158J1Z3"))
+      assert Enum.any?(content, &String.contains?(&1["text"], "Continued total 1180"))
+    end
+  end
+
+  test "a scanned continuation retains the complete invoice in vision" do
+    stub(
+      [
+        %{
+          "page" => 1,
+          "page_role" => "start",
+          "document_type" => "tax_invoice",
+          "invoice_no" => "INV-1",
+          "reason" => nil
+        },
+        %{
+          "page" => 2,
+          "page_role" => "continuation",
+          "document_type" => nil,
+          "invoice_no" => nil,
+          "reason" => nil
+        }
+      ],
+      sales_invoice()
+    )
+
+    assert {:ok, result} =
+             VisionPipeline.extract(:sales, PdfFixtures.text_pdf(["Invoice INV-1", ""]),
+               input: :text
+             )
+
+    assert result.audit.metadata["invoice_inputs"] == [%{"pages" => [1, 2], "input" => "vision"}]
+    assert_receive {:vision_request, "nila_packet_page_labels", labels}
+    assert_receive {:vision_request, "nila_direct_sales_invoice", invoice}
+    assert Enum.count(List.last(labels["messages"])["content"], &(&1["type"] == "image_url")) == 1
+
+    assert Enum.count(List.last(invoice["messages"])["content"], &(&1["type"] == "image_url")) ==
+             2
+  end
+
+  test "a sales proforma stays outside invoice extraction with its source text in the audit" do
+    stub(
+      [
+        %{
+          "page" => 1,
+          "page_role" => "start",
+          "document_type" => "proforma_invoice",
+          "invoice_no" => "PF-1",
+          "reason" => "Proforma invoice"
+        }
+      ],
+      sales_invoice()
+    )
+
+    test_pid = self()
+
+    per_call = fn metadata, call ->
+      result = call.()
+      send(test_pid, {:audited_result, metadata.stage, result})
+      result
+    end
+
+    assert {:ok, %{pages: [], excluded_documents: [%{"document_type" => "proforma_invoice"}]}} =
+             VisionPipeline.extract(:sales, PdfFixtures.text_pdf(["PROFORMA INVOICE PF-1"]),
+               input: :text,
+               per_call: per_call
+             )
+
+    assert_receive {:vision_request, "nila_packet_page_labels", request}
+
+    assert hd(List.last(request["messages"])["content"])["text"] =~
+             "Its terms page is continuation"
+
+    refute_receive {:vision_request, "nila_direct_sales_invoice", _}
+    assert_receive {:audited_result, "text_segmentation", {:ok, %{audit: audit}}}
+    assert audit.metadata["native_text"]["1"] =~ "PROFORMA INVOICE PF-1"
+  end
+
+  test "fixed-page text extraction keeps blank-page vision fallback and purchase scope unchanged" do
+    stub([], sales_invoice())
+
+    assert {:ok, result} =
+             VisionPipeline.extract_fixed_segments(:sales, PdfFixtures.pdf(1), [[1]],
+               input: :text
+             )
+
+    assert result.audit.metadata["invoice_inputs"] == [%{"pages" => [1], "input" => "vision"}]
+    assert_receive {:vision_request, "nila_direct_sales_invoice", request}
+    assert Enum.any?(List.last(request["messages"])["content"], &(&1["type"] == "image_url"))
+
+    assert {:error, {:unsupported_extraction_input, :purchase, :text}} =
+             VisionPipeline.extract(:purchase, PdfFixtures.pdf(1), input: :text)
+  end
+
+  test "a proforma continuation cannot become a fabricated sales invoice" do
+    stub(
+      [
+        %{
+          "page" => 1,
+          "page_role" => "start",
+          "document_type" => "proforma_invoice",
+          "invoice_no" => "PF-1",
+          "reason" => "Proforma"
+        },
+        %{
+          "page" => 2,
+          "page_role" => "continuation",
+          "document_type" => nil,
+          "invoice_no" => nil,
+          "reason" => "Terms of proforma"
+        }
+      ],
+      sales_invoice()
+    )
+
+    assert {:ok, result} =
+             VisionPipeline.extract(
+               :sales,
+               PdfFixtures.text_pdf(["PROFORMA INVOICE PF-1", "Terms and conditions"]),
+               input: :text
+             )
+
+    assert result.pages == []
+
+    assert [%{"pages" => [1, 2], "document_type" => "proforma_invoice", "invoice_no" => "PF-1"}] =
+             result.excluded_documents
+
+    assert map_size(result.images) == 2
+    assert result.unaccounted_pages == [1, 2]
+    assert_receive {:vision_request, "nila_packet_page_labels", _}
+    refute_receive {:vision_request, "nila_direct_sales_invoice", _}
+  end
+
+  test "a mixed sales packet extracts only the invoice after grouping the whole quotation" do
+    stub(
+      [
+        %{
+          "page" => 1,
+          "page_role" => "start",
+          "document_type" => "quotation",
+          "invoice_no" => "Q-1",
+          "reason" => "Quotation"
+        },
+        %{
+          "page" => 2,
+          "page_role" => "continuation",
+          "document_type" => nil,
+          "invoice_no" => nil,
+          "reason" => "Terms"
+        },
+        %{
+          "page" => 3,
+          "page_role" => "start",
+          "document_type" => "tax_invoice",
+          "invoice_no" => "INV-1",
+          "reason" => nil
+        }
+      ],
+      sales_invoice()
+    )
+
+    assert {:ok, result} =
+             VisionPipeline.extract(
+               :sales,
+               PdfFixtures.text_pdf(["QUOTATION Q-1", "Quotation terms", "TAX INVOICE INV-1"]),
+               input: :text
+             )
+
+    assert [artifact] = result.pages
+    assert artifact["source_pages"] == [3]
+    assert [%{"pages" => [1, 2], "document_type" => "quotation"}] = result.excluded_documents
+    assert_receive {:vision_request, "nila_direct_sales_invoice", request}
+    payload = Jason.encode!(List.last(request["messages"])["content"])
+    assert payload =~ "TAX INVOICE INV-1"
+    refute payload =~ "Quotation terms"
+    refute payload =~ "QUOTATION Q-1"
+    refute_receive {:vision_request, "nila_direct_sales_invoice", _}
+  end
+
   test "segments a PDF once and extracts one artifact from the resulting page group" do
     stub([
       %{"page" => 1, "label" => "start", "invoice_no" => "INV-1", "reason" => nil},
@@ -267,7 +481,15 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
 
   test "sales uses the sales schema and preserves direct-vision document markers" do
     stub(
-      [%{"page" => 1, "label" => "start", "invoice_no" => "INV-1", "reason" => nil}],
+      [
+        %{
+          "page" => 1,
+          "page_role" => "start",
+          "document_type" => "tax_invoice",
+          "invoice_no" => "INV-1",
+          "reason" => nil
+        }
+      ],
       Map.put(sales_invoice(), "reverse_charge", true)
     )
 
@@ -339,7 +561,15 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
       })
 
     stub(
-      [%{"page" => 1, "label" => "start", "invoice_no" => "27/2026-27", "reason" => nil}],
+      [
+        %{
+          "page" => 1,
+          "page_role" => "start",
+          "document_type" => "tax_invoice",
+          "invoice_no" => "27/2026-27",
+          "reason" => nil
+        }
+      ],
       extracted
     )
 
