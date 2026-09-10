@@ -1,4 +1,4 @@
-defmodule Nila.Gst.Extraction.Discovery.DocumentPages do
+defmodule Nila.Gst.Extraction.Discovery.SalesPages do
   @moduledoc "Groups sales packet pages before routing documents for extraction."
 
   @types ~w(tax_invoice credit_note debit_note proforma_invoice quotation other)

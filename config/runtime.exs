@@ -163,7 +163,7 @@ if config_env() in [:prod, :dev] do
       protocol -> raise "GST_TEXT_HTTP_PROTOCOL must be http1 or http2, got: #{inspect(protocol)}"
     end
 
-  config :nila, Nila.Gst.Extraction.OpenAICompatibleChatFinch, protocol: text_protocol
+  config :nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChatFinch, protocol: text_protocol
 end
 
 # WhatsApp is a production intake boundary, so all webhook and outbound reply

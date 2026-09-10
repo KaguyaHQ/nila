@@ -10,7 +10,7 @@ defmodule Nila.Gst.Purchase.Books do
   and mixed date formats.
   """
 
-  alias Nila.Gst.Extraction.LineAmounts
+  alias Nila.Gst.LineAmounts
   alias Nila.Gst.InvoiceFacts
   alias Nila.Gst.InvoiceNumber
   alias Nila.Gst.Money

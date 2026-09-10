@@ -1,11 +1,11 @@
-defmodule Nila.Gst.Extraction.VisionPipelineTest do
+defmodule Nila.Gst.Extraction.PipelineTest do
   alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Gst.Sales.Invoice
   use ExUnit.Case, async: true
 
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
-  alias Nila.Gst.Extraction.InvoiceData
-  alias Nila.Gst.Extraction.VisionPipeline
+  alias Nila.Gst.Extraction.InvoiceRepairs
+  alias Nila.Gst.Extraction.Pipeline
   alias Nila.Gst.Purchase.Books
   alias Nila.PdfFixtures
 
@@ -142,7 +142,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     )
 
     pdf = PdfFixtures.text_pdf(["GSTIN 33AEWPH4158J1Z3 Invoice INV-1", "Continued total 1180"])
-    assert {:ok, result} = VisionPipeline.extract(:sales, pdf, input: :text)
+    assert {:ok, result} = Pipeline.extract(:sales, pdf, input: :text)
     assert [%{"source_pages" => [1, 2], "image" => "page_01.jpg"} = artifact] = result.pages
     assert Normalizer.normalize(artifact)["invoice_number"] == "INV-1"
     assert map_size(result.images) == 2
@@ -182,9 +182,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     )
 
     assert {:ok, result} =
-             VisionPipeline.extract(:sales, PdfFixtures.text_pdf(["Invoice INV-1", ""]),
-               input: :text
-             )
+             Pipeline.extract(:sales, PdfFixtures.text_pdf(["Invoice INV-1", ""]), input: :text)
 
     assert result.audit.metadata["invoice_inputs"] == [%{"pages" => [1, 2], "input" => "vision"}]
     assert_receive {:vision_request, "nila_packet_page_labels", labels}
@@ -218,7 +216,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     end
 
     assert {:ok, %{pages: [], excluded_documents: [%{"document_type" => "proforma_invoice"}]}} =
-             VisionPipeline.extract(:sales, PdfFixtures.text_pdf(["PROFORMA INVOICE PF-1"]),
+             Pipeline.extract(:sales, PdfFixtures.text_pdf(["PROFORMA INVOICE PF-1"]),
                input: :text,
                per_call: per_call
              )
@@ -237,16 +235,14 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     stub([], sales_invoice())
 
     assert {:ok, result} =
-             VisionPipeline.extract_fixed_segments(:sales, PdfFixtures.pdf(1), [[1]],
-               input: :text
-             )
+             Pipeline.extract_fixed_segments(:sales, PdfFixtures.pdf(1), [[1]], input: :text)
 
     assert result.audit.metadata["invoice_inputs"] == [%{"pages" => [1], "input" => "vision"}]
     assert_receive {:vision_request, "nila_sales_invoice", request}
     assert Enum.any?(List.last(request["messages"])["content"], &(&1["type"] == "image_url"))
 
     assert {:error, {:unsupported_extraction_input, :purchase, :text}} =
-             VisionPipeline.extract(:purchase, PdfFixtures.pdf(1), input: :text)
+             Pipeline.extract(:purchase, PdfFixtures.pdf(1), input: :text)
   end
 
   test "a proforma continuation cannot become a fabricated sales invoice" do
@@ -271,7 +267,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     )
 
     assert {:ok, result} =
-             VisionPipeline.extract(
+             Pipeline.extract(
                :sales,
                PdfFixtures.text_pdf(["PROFORMA INVOICE PF-1", "Terms and conditions"]),
                input: :text
@@ -317,7 +313,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     )
 
     assert {:ok, result} =
-             VisionPipeline.extract(
+             Pipeline.extract(
                :sales,
                PdfFixtures.text_pdf(["QUOTATION Q-1", "Quotation terms", "TAX INVOICE INV-1"]),
                input: :text
@@ -348,7 +344,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     end
 
     assert {:ok, result} =
-             VisionPipeline.extract(:purchase, PdfFixtures.pdf(2),
+             Pipeline.extract(:purchase, PdfFixtures.pdf(2),
                filename: "packet.pdf",
                client_gstin: "33AEWPH4158J1Z3",
                per_call: per_call,
@@ -457,7 +453,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     end
 
     assert {:error, {:invoice_segments_failed, [%{pages: [2]}]}} =
-             VisionPipeline.extract(:purchase, PdfFixtures.pdf(2),
+             Pipeline.extract(:purchase, PdfFixtures.pdf(2),
                filename: "packet.pdf",
                max_retries: 0,
                per_call: per_call
@@ -474,7 +470,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     ])
 
     assert {:error, {:page_conservation, [1, 2], [1]}} =
-             VisionPipeline.extract(:purchase, PdfFixtures.pdf(2), filename: "packet.pdf")
+             Pipeline.extract(:purchase, PdfFixtures.pdf(2), filename: "packet.pdf")
 
     assert_receive {:vision_request, "nila_packet_page_labels", _request}
     refute_receive {:vision_request, "nila_purchase_invoice", _request}
@@ -495,7 +491,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     )
 
     assert {:ok, %{pages: [artifact]}} =
-             VisionPipeline.extract(:sales, <<0xFF, 0xD8, 0xFF, 0xD9>>,
+             Pipeline.extract(:sales, <<0xFF, 0xD8, 0xFF, 0xD9>>,
                filename: "sale.jpg",
                client_gstin: "33AEWPH4158J1Z3"
              )
@@ -515,7 +511,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     stub([], sales_invoice())
 
     assert {:ok, %{pages: [artifact]}} =
-             VisionPipeline.extract_fixed_segments(
+             Pipeline.extract_fixed_segments(
                :sales,
                <<0xFF, 0xD8, 0xFF, 0xD9>>,
                [[1]],
@@ -575,7 +571,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     )
 
     assert {:ok, %{pages: [artifact]}} =
-             VisionPipeline.extract(:sales, <<0xFF, 0xD8, 0xFF, 0xD9>>, filename: "sale.jpg")
+             Pipeline.extract(:sales, <<0xFF, 0xD8, 0xFF, 0xD9>>, filename: "sale.jpg")
 
     assert lines = artifact["data"]["line_items"]
     assert length(lines) == 10
@@ -614,7 +610,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
       ]
     }
 
-    assert %{"line_items" => lines} = InvoiceData.expand_repeated_line_items(data)
+    assert %{"line_items" => lines} = InvoiceRepairs.expand_repeated_line_items(data)
     assert Enum.map(lines, & &1["item_name"]) == ["First", "Second", "First"]
     assert Enum.all?(lines, &(not Map.has_key?(&1, "repeat_count")))
   end
@@ -623,7 +619,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     data = %{"line_items" => [line_item(%{"repeat_count" => 1_001})]}
 
     assert_raise ArgumentError, "invalid repeat_count: 1001", fn ->
-      InvoiceData.expand_repeated_line_items(data)
+      InvoiceRepairs.expand_repeated_line_items(data)
     end
   end
 
@@ -634,7 +630,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     ])
 
     assert {:ok, result} =
-             VisionPipeline.extract(:purchase, PdfFixtures.pdf(2), filename: "packet.pdf")
+             Pipeline.extract(:purchase, PdfFixtures.pdf(2), filename: "packet.pdf")
 
     assert result.unaccounted_pages == [2]
   end
@@ -647,7 +643,7 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
     jpeg = <<0xFF, 0xD8, 0xFF, 0xD9>>
 
     assert {:ok, %{pages: [artifact], images: %{"page_01.jpg" => ^jpeg}}} =
-             VisionPipeline.extract(:purchase, jpeg, filename: "scan.jpg")
+             Pipeline.extract(:purchase, jpeg, filename: "scan.jpg")
 
     assert artifact["source_pages"] == [1]
     assert artifact["image"] == "page_01.jpg"
@@ -660,11 +656,11 @@ defmodule Nila.Gst.Extraction.VisionPipelineTest do
 
   test "bounds whole-packet segmentation before submitting images to the provider" do
     assert {:error, {:vision_packet_too_many_pages, 101, 100}} =
-             VisionPipeline.extract(:purchase, PdfFixtures.pdf(101), filename: "packet.pdf")
+             Pipeline.extract(:purchase, PdfFixtures.pdf(101), filename: "packet.pdf")
   end
 
   test "rejects image formats the gateway and evidence UI cannot safely preserve" do
     assert {:error, {:unsupported_content_type, "image/heic"}} =
-             VisionPipeline.extract(:purchase, "heic", filename: "scan.heic")
+             Pipeline.extract(:purchase, "heic", filename: "scan.heic")
   end
 end

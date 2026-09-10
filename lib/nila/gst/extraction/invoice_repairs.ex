@@ -1,7 +1,8 @@
-defmodule Nila.Gst.Extraction.InvoiceData do
-  @moduledoc "Prepares extracted invoice values and records supported corrections."
+defmodule Nila.Gst.Extraction.InvoiceRepairs do
+  @moduledoc "Repairs extracted invoice candidates and records the evidence for each change."
 
-  alias Nila.Gst.Extraction.{LineAmounts, TaxComponents}
+  alias Nila.Gst.{LineAmounts, TaxComponents}
+  alias Nila.Gst.Money
   alias Nila.Gstin
 
   @doc "Applies the provider-independent repairs shared by text and vision extraction."
@@ -23,7 +24,7 @@ defmodule Nila.Gst.Extraction.InvoiceData do
       |> Map.get("line_items", [])
       |> Enum.with_index()
       |> Enum.map_reduce([], fn {line, index}, repairs ->
-        case LineAmounts.discard_redundant_printed_taxable(line) do
+        case discard_redundant_printed_taxable(line) do
           {line, nil} ->
             {line, repairs}
 
@@ -43,6 +44,31 @@ defmodule Nila.Gst.Extraction.InvoiceData do
   end
 
   defp markers(data, :sales), do: data
+
+  @doc """
+  Clears an equal taxable candidate when row arithmetic proves exclusive pricing.
+  This extraction repair changes the input and returns an audit record; `LineAmounts.normalize/1`
+  only interprets it. Equality is checked in paise, not with arithmetic tolerance.
+  """
+  def discard_redundant_printed_taxable(line) when is_map(line) do
+    amounts = LineAmounts.normalize(line)
+
+    if is_number(amounts.printed_taxable_value) and is_number(amounts.printed_line_amount) and
+         Money.paise(amounts.printed_taxable_value) == Money.paise(amounts.printed_line_amount) and
+         amounts.line_amount_tax_inclusion == "exclusive" and
+         amounts.line_amount_tax_inclusion_basis in ~w(line_amount_plus_tax_equals_total line_amount_times_rate_equals_tax) do
+      repair = %{
+        "field" => "printed_taxable_value",
+        "from" => amounts.printed_taxable_value,
+        "to" => nil,
+        "basis" => "redundant_with_arithmetically_exclusive_line_amount"
+      }
+
+      {Map.put(line, "printed_taxable_value", nil), repair}
+    else
+      {line, nil}
+    end
+  end
 
   @doc false
   def expand_repeated_line_items(data) do

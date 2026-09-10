@@ -100,7 +100,7 @@ config :nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChat,
 
 # Req.Test replaces the adapter, so an eager real H2 connection would only add
 # DNS/reconnect noise to the test application.
-config :nila, Nila.Gst.Extraction.OpenAICompatibleChatFinch,
+config :nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChatFinch,
   start: false,
   protocol: :http2
 

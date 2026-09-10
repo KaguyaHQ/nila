@@ -11,7 +11,7 @@ defmodule Nila.Eval.VisionSchemaBatch do
   alias Nila.EvalCorpus
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.{InvoicePrompt, InvoiceSchema}
-  alias Nila.Gst.Extraction.VisionPipeline
+  alias Nila.Gst.Extraction.Pipeline
 
   @root "tmp/eval/vision-schema-batch"
 
@@ -51,7 +51,7 @@ defmodule Nila.Eval.VisionSchemaBatch do
         started = System.monotonic_time(:millisecond)
 
         result =
-          VisionPipeline.extract_fixed_segments(kind, bytes, page_groups,
+          Pipeline.extract_fixed_segments(kind, bytes, page_groups,
             filename: Path.basename(source),
             client_gstin: client_gstin!(doc["client"]),
             max_concurrency: concurrency

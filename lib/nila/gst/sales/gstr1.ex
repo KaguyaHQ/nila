@@ -54,7 +54,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
         if seller_state && pos &&
              Invoice.recipient_registration(invoice) in ~w(registered unregistered) &&
              invoice_tax(invoice) == 0 &&
-             num(Nila.Gst.Extraction.TaxComponents.printed_tax_total(invoice)) == 0 &&
+             num(Nila.Gst.TaxComponents.printed_tax_total(invoice)) == 0 &&
              Enum.all?(invoice["line_items"] || [], &(line_rate(&1) == 0)), do: "nil", else: nil
 
       Invoice.supply_type(invoice) != "taxable" ->

@@ -15,7 +15,9 @@ defmodule Nila.TallySalesWorkingsBenchmark do
   """
 
   alias Nila.Eval.Gstr1Diff
-  alias Nila.Gst.Extraction.{OpenAICompatibleChatFinch, Sales.Vision}
+  alias Nila.Gst.Extraction.Providers.OpenAICompatibleChatFinch
+  alias Nila.Gst.Extraction.Sales.Extractor
+  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Gst.Sales.{Gstr1, Workings}
 
   def run(["extract", fixture_dir]) do
@@ -40,15 +42,15 @@ defmodule Nila.TallySalesWorkingsBenchmark do
     put_json("manifest.json", %{
       corpus_document: fixture["corpus_document"],
       source_sha256: :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower),
-      provider: Vision.provider(),
-      model: Vision.model(),
+      provider: Extractor.provider(),
+      model: Extractor.model(),
       expected_sha256:
         :crypto.hash(:sha256, File.read!(Path.join(fixture_dir, "native-gstr1.json")))
         |> Base.encode16(case: :lower)
     })
 
     {:ok, result} =
-      Vision.extract(bytes,
+      Extractor.extract(bytes,
         filename: "sales-packet.pdf",
         client_gstin: expected["gstin"],
         max_concurrency: 4,
@@ -68,7 +70,7 @@ defmodule Nila.TallySalesWorkingsBenchmark do
     configure_storage(run_dir)
     extraction = read_json(Path.join(run_dir, "extraction.json"))
     expected = read_json(Path.join(fixture_dir, "native-gstr1.json"))
-    invoices = Enum.map(extraction["pages"], &Gstr1.normalize_invoice/1)
+    invoices = Enum.map(extraction["pages"], &Normalizer.normalize/1)
     review = if review_path, do: read_json(review_path), else: []
     prefix = if review_path, do: "reviewed-", else: ""
     workings = Workings.materialize(invoices, review, Map.take(expected, ["gstin", "fp"]))

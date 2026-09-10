@@ -41,6 +41,8 @@ defmodule Nila.EvalTest do
           }
         })
 
+      invoice = Map.put(invoice, "id", "source-a")
+
       %{invoices: [invoice], header: Gstr1.production_header("33AEWPH4158J1Z3", "2026-05")}
     end
 
@@ -51,11 +53,11 @@ defmodule Nila.EvalTest do
       # The printed total disagrees with the line sum, so the engine flags
       # `line_items`, authorizing corrections to its scalar sub-paths.
       flagged = CorrectionPolicy.flagged_fields(invoices, Gstr1.validation_issues(invoices))
-      assert MapSet.member?(flagged, {"1", "line_items"})
+      assert MapSet.member?(flagged, {"source-a", "line_items"})
 
       fix = %{
         "verb" => "correct_field",
-        "target" => "1",
+        "target" => "source-a",
         "payload" => %{
           "field" => "line_items[0].taxable_value",
           "from" => 900,
@@ -75,7 +77,7 @@ defmodule Nila.EvalTest do
     } do
       fix = %{
         "verb" => "correct_field",
-        "target" => "1",
+        "target" => "source-a",
         "payload" => %{
           "field" => "line_items",
           "to" => [%{"taxable_value" => 1000, "cgst_rate" => 9, "cgst_amount" => 90}]
@@ -94,7 +96,7 @@ defmodule Nila.EvalTest do
     } do
       fix = %{
         "verb" => "correct_field",
-        "target" => "1",
+        "target" => "source-a",
         "payload" => %{
           "field" => "line_items[0].taxable_value",
           "from" => 900,
@@ -115,7 +117,7 @@ defmodule Nila.EvalTest do
     } do
       fix = %{
         "verb" => "correct_field",
-        "target" => "1",
+        "target" => "source-a",
         "payload" => %{"field" => "buyer_name", "from" => nil, "to" => "Someone Else"}
       }
 

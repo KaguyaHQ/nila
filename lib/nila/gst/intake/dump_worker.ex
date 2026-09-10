@@ -825,10 +825,10 @@ defmodule Nila.Gst.Intake.DumpWorker do
   end
 
   defp purchase_extractor do
-    Application.get_env(:nila, :purchase_extractor, Nila.Gst.Extraction.Purchase.Vision)
+    Application.get_env(:nila, :purchase_extractor, Nila.Gst.Extraction.Purchase.Extractor)
   end
 
   defp sales_extractor do
-    Application.get_env(:nila, :sales_extractor, Nila.Gst.Extraction.Sales.Vision)
+    Application.get_env(:nila, :sales_extractor, Nila.Gst.Extraction.Sales.Extractor)
   end
 end

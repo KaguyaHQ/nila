@@ -12,7 +12,7 @@ defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChat do
   @json_object_prompt_version 1
   @invalid_response_retries 1
 
-  alias Nila.Gst.Extraction.OpenAICompatibleChatFinch
+  alias Nila.Gst.Extraction.Providers.OpenAICompatibleChatFinch
 
   require Logger
 

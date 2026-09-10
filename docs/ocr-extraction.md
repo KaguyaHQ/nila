@@ -11,7 +11,7 @@ into structured invoice artifacts.
 > **2026-09-10:** the remaining OCR replay code and commands were removed.
 > Saved experiment results remain as historical evidence.
 
-> **Production switch, 2026-08-17.** `Nila.Gst.Extraction.VisionPipeline` now sends
+> **Production switch, 2026-08-17.** `Nila.Gst.Extraction.Pipeline` now sends
 > packet thumbnails to the configured vision model for segmentation and sends each
 > resulting invoice's full-resolution pages back for extraction. Mistral OCR is no
 > longer on the production path. The measurements below are retained as the history
@@ -437,9 +437,9 @@ itself — that gap is real but has not been observed.
 ## Status
 
 - [x] **Direct vision shipped and switched on** (2026-08-17):
-      `Nila.Gst.Extraction.VisionPipeline` is the sole production reader.
+      `Nila.Gst.Extraction.Pipeline` is the sole production reader.
 - [x] Evidence rendering lives independently in `Nila.Gst.Extraction.Evidence`.
-- [x] Every extracted value is grounded through `Nila.Gst.Extraction.Verify`.
+- [x] Every extracted value is grounded through `Nila.Gst.Extraction.InvoiceVerification`.
 - [x] Provider behaviour was characterised and whole-packet degradation was
       reproduced and root-caused (this document).
 - [x] Eval packets live in the private `nila-eval-corpus` R2 bucket;

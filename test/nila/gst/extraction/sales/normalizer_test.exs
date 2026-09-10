@@ -5,7 +5,7 @@ defmodule Nila.Gst.Extraction.Sales.NormalizerTest do
   alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Gst.Sales.Gstr1
 
-  test "stored artifact envelopes and field aliases preserve the same invoice facts" do
+  test "the data envelope preserves printed invoice facts" do
     data = %{
       "inum" => " 12 / 2026-27 ",
       "idt" => "04-May-26",
@@ -26,11 +26,7 @@ defmodule Nila.Gst.Extraction.Sales.NormalizerTest do
       ]
     }
 
-    expected = Normalizer.normalize(data)
-
-    for envelope <- ["data", "extract_result", "result"] do
-      assert Normalizer.normalize(%{envelope => data}) == expected
-    end
+    expected = Normalizer.normalize(%{"data" => data})
 
     assert expected["invoice_number"] == "12/2026-27"
     assert expected["invoice_date"] == ~D[2026-05-04]
@@ -47,6 +43,14 @@ defmodule Nila.Gst.Extraction.Sales.NormalizerTest do
                "cgst_amount" => 90
              }
            ] = expected["line_items"]
+  end
+
+  test "requires the extractor's data envelope" do
+    data = %{"invoice_number" => "INV-1", "line_items" => []}
+
+    for input <- [data, %{"extract_result" => data}, %{"result" => data}, %{"data" => nil}] do
+      assert_raise FunctionClauseError, fn -> Normalizer.normalize(input) end
+    end
   end
 
   test "document markers, source evidence, and nested confidence survive normalization" do

@@ -2,17 +2,16 @@ defmodule Nila.Gst.Extraction.Sales.Normalizer do
   @moduledoc """
   Converts sales extractor artifacts into normalized invoice facts.
 
-  Reads current and stored artifact envelopes, preserves printed evidence and
+  Reads the extractor's `data` envelope, preserves printed evidence and
   source attribution, and resolves line amounts before filing rules consume them.
   """
 
-  alias Nila.Gst.{Dates, InvoiceFacts, Money, StateCodes}
-  alias Nila.Gst.Extraction.LineAmounts
+  alias Nila.Gst.{Dates, InvoiceFacts, Money}
+  alias Nila.Gst.LineAmounts
   alias Nila.Gst.Sales.Invoice
 
   @doc "Normalizes one raw sales invoice artifact into the stored invoice map."
-  def normalize(raw) when is_map(raw) do
-    data = raw["data"] || raw["extract_result"] || raw["result"] || raw
+  def normalize(%{"data" => data} = raw) when is_map(data) do
     seller = data["supplier"] || data["seller"] || %{}
     buyer = data["bill_to"] || data["buyer"] || %{}
     ship_to = normalize_party(data["ship_to"])
@@ -46,12 +45,12 @@ defmodule Nila.Gst.Extraction.Sales.Normalizer do
           value(data, ["buyer_gstin"]) || buyer["gstin"]
         ),
       "place_of_supply" =>
-        normalize_place_of_supply(
+        Invoice.normalize_place_of_supply(
           data["printed_place_of_supply"] || data["place_of_supply"] ||
             buyer["place_of_supply"]
         ),
-      "document_status" => normalize_document_status(data["document_status"]),
-      "supply_type" => normalize_supply_type(data["supply_type"], document),
+      "document_status" => Invoice.normalize_document_status(data["document_status"]),
+      "supply_type" => Invoice.normalize_supply_type(data["supply_type"], document),
       "tax_payment" => data["tax_payment"],
       "reverse_charge" => Map.get(data, "reverse_charge", document["reverse_charge"]),
       "line_items" => line_items,
@@ -158,31 +157,6 @@ defmodule Nila.Gst.Extraction.Sales.Normalizer do
        do: status
 
   defp normalize_recipient_registration(_status, _gstin), do: "unknown"
-
-  defp normalize_place_of_supply(nil), do: nil
-
-  defp normalize_place_of_supply(value) do
-    value = value |> to_string() |> String.trim()
-
-    StateCodes.normalize_code(value) ||
-      Enum.find_value(StateCodes.all(), fn name ->
-        if String.downcase(name) == String.downcase(value), do: StateCodes.code_for(name)
-      end) || blank_to_nil(value)
-  end
-
-  defp normalize_document_status(status) when status in ~w(active cancelled amendment unknown),
-    do: status
-
-  defp normalize_document_status(nil), do: "active"
-  defp normalize_document_status(_status), do: "unknown"
-
-  defp normalize_supply_type(status, _document)
-       when status in ~w(taxable nil_rated exempt non_gst export sez unknown),
-       do: status
-
-  defp normalize_supply_type(nil, %{"export" => true}), do: "export"
-  defp normalize_supply_type(nil, _document), do: "taxable"
-  defp normalize_supply_type(_status, _document), do: "unknown"
 
   defp normalize_document_type(type, _document)
        when type in ["invoice", "credit_note", "debit_note"] do

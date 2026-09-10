@@ -1,8 +1,8 @@
 defmodule Nila.MeasureSalesExtractionCurve do
   @moduledoc false
 
-  alias Nila.Gst.Extraction.Sales.Vision
-  alias Nila.Gst.Extraction.OpenAICompatibleChatFinch
+  alias Nila.Gst.Extraction.Sales.Extractor
+  alias Nila.Gst.Extraction.Providers.OpenAICompatibleChatFinch
 
   @log_path "tmp/sales-extraction-curve.jsonl"
 
@@ -105,7 +105,7 @@ defmodule Nila.MeasureSalesExtractionCurve do
     end
 
     result =
-      Vision.extract(bytes,
+      Extractor.extract(bytes,
         filename: path,
         per_call: per_call,
         on_progress: on_progress

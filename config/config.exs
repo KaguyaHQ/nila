@@ -10,8 +10,8 @@ import Config
 config :nila,
   ecto_repos: [Nila.Repo],
   generators: [timestamp_type: :utc_datetime_usec],
-  purchase_extractor: Nila.Gst.Extraction.Purchase.Vision,
-  sales_extractor: Nila.Gst.Extraction.Sales.Vision,
+  purchase_extractor: Nila.Gst.Extraction.Purchase.Extractor,
+  sales_extractor: Nila.Gst.Extraction.Sales.Extractor,
   gmail_adapter: Nila.Integrations.Gmail,
   microsoft_adapter: Nila.Integrations.Microsoft,
   whatsapp_adapter: Nila.Integrations.WhatsApp,
@@ -38,7 +38,7 @@ config :nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChat,
   provider_options: %{"alibaba" => %{"enableThinking" => false}},
   receive_timeout: 300_000
 
-config :nila, Nila.Gst.Extraction.OpenAICompatibleChatFinch, protocol: :http2
+config :nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChatFinch, protocol: :http2
 
 config :hammer,
   backend:

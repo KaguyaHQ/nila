@@ -269,7 +269,7 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
   defp printed_tax_paise(invoice) do
     invoice
     |> InvoiceFacts.to_sales_map()
-    |> Nila.Gst.Extraction.TaxComponents.printed_tax_total()
+    |> Nila.Gst.TaxComponents.printed_tax_total()
     |> case do
       nil -> nil
       amount -> Money.paise(amount)

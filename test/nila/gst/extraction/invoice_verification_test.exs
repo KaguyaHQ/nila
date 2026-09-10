@@ -1,7 +1,7 @@
-defmodule Nila.Gst.Extraction.VerifyTest do
+defmodule Nila.Gst.Extraction.InvoiceVerificationTest do
   use ExUnit.Case, async: true
 
-  alias Nila.Gst.Extraction.Verify
+  alias Nila.Gst.Extraction.InvoiceVerification
 
   defp invoice(overrides) do
     Map.merge(
@@ -48,17 +48,19 @@ defmodule Nila.Gst.Extraction.VerifyTest do
         "printed_grand_total" => 5900
       })
 
-    result = Verify.structured(data)
+    result = InvoiceVerification.structured(data)
     assert Enum.any?(result.checks, &(&1.field == "grand_total" and &1.ok?))
     refute Enum.any?(result.checks, &(&1.field == "tax_components_sum"))
   end
 
   test "a coherent, fully printed invoice verifies" do
-    assert %{status: :verified, flags: []} = Verify.invoice(invoice(%{}), page())
+    assert %{status: :verified, flags: []} = InvoiceVerification.invoice(invoice(%{}), page())
   end
 
   test "structured-only checks never claim independent source verification" do
-    assert %{status: :unverifiable, flags: [], checks: checks} = Verify.structured(invoice(%{}))
+    assert %{status: :unverifiable, flags: [], checks: checks} =
+             InvoiceVerification.structured(invoice(%{}))
+
     assert checks != []
   end
 
@@ -87,7 +89,7 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     Total ₹1,00,000.00
     """
 
-    assert %{status: :verified, flags: []} = Verify.invoice(inclusive, text)
+    assert %{status: :verified, flags: []} = InvoiceVerification.invoice(inclusive, text)
   end
 
   test "a value that appears nowhere on the page is flagged, not reconciled" do
@@ -95,19 +97,19 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     # every downstream check passed because nothing contradicted the invention.
     fabricated = invoice(%{"printed_total_taxable" => 62_552.0})
 
-    assert %{status: :flagged, flags: flags} = Verify.invoice(fabricated, page())
+    assert %{status: :flagged, flags: flags} = InvoiceVerification.invoice(fabricated, page())
     assert {:value_not_on_page, ["printed_total_taxable"]} in flags
   end
 
   test "digit-boundary matching stops a number borrowing digits from its neighbour" do
-    refute Verify.printed?(552.0, "TOTAL 164552.00")
-    refute Verify.printed?(552.0, "TOTAL 552.99")
-    assert Verify.printed?(552.0, "TOTAL 552.00")
+    refute InvoiceVerification.printed?(552.0, "TOTAL 164552.00")
+    refute InvoiceVerification.printed?(552.0, "TOTAL 552.99")
+    assert InvoiceVerification.printed?(552.0, "TOTAL 552.00")
   end
 
   test "missing row rates use footer tax instead of treating it as zero" do
     result =
-      Verify.structured(%{
+      InvoiceVerification.structured(%{
         "line_items" => [%{"printed_taxable_value" => 1000}],
         "printed_total_taxable" => 1000,
         "printed_total_tax" => 180,
@@ -121,7 +123,7 @@ defmodule Nila.Gst.Extraction.VerifyTest do
   test "zero-rate and missing-rate lines cannot share another line's positive rate" do
     for other <- [%{"igst_rate" => 0}, %{}] do
       result =
-        Verify.structured(%{
+        InvoiceVerification.structured(%{
           "line_items" => [
             %{"printed_taxable_value" => 1000, "igst_rate" => 18, "igst_amount" => 180},
             Map.put(other, "printed_taxable_value", 1000)
@@ -138,7 +140,7 @@ defmodule Nila.Gst.Extraction.VerifyTest do
 
   test "an incomplete line sum is not compared with the complete printed total" do
     result =
-      Verify.structured(%{
+      InvoiceVerification.structured(%{
         "line_items" => [%{"printed_taxable_value" => 1000}, %{}],
         "printed_total_taxable" => 2000,
         "printed_total_tax" => 360,
@@ -150,8 +152,8 @@ defmodule Nila.Gst.Extraction.VerifyTest do
   end
 
   test "commas and paise spellings still establish source presence" do
-    assert Verify.printed?(64_552.0, String.upcase("taxable 64,552.00"))
-    assert Verify.printed?(11_619.36, String.upcase("tax 11,619.36"))
+    assert InvoiceVerification.printed?(64_552.0, String.upcase("taxable 64,552.00"))
+    assert InvoiceVerification.printed?(11_619.36, String.upcase("tax 11,619.36"))
   end
 
   test "a printed taxable candidate does not require vendor-specific vocabulary" do
@@ -178,7 +180,7 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     | TOTAL | 64,552.00 | | 11,619.36 | 76,171.36 |
     """
 
-    assert %{status: :verified, flags: []} = Verify.invoice(value_column, text)
+    assert %{status: :verified, flags: []} = InvoiceVerification.invoice(value_column, text)
   end
 
   test "a bill whose own printed total is wrong names the outlier and the coherent subset" do
@@ -188,7 +190,7 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     inconsistent = invoice(%{"printed_total_taxable" => 275_000.0})
     text = page("TOTAL 2,75,000.00")
 
-    assert %{status: :flagged, flags: flags} = Verify.invoice(inconsistent, text)
+    assert %{status: :flagged, flags: flags} = InvoiceVerification.invoice(inconsistent, text)
 
     assert [{:internally_inconsistent_bill, detail}] =
              Enum.filter(flags, &match?({:internally_inconsistent_bill, _}, &1))
@@ -203,14 +205,14 @@ defmodule Nila.Gst.Extraction.VerifyTest do
   test "an invoice with no printed totals is unverifiable, never verified" do
     bare = %{"invoice_number" => "BRZ/26/020", "line_items" => []}
 
-    assert %{status: :unverifiable} = Verify.invoice(bare, page())
+    assert %{status: :unverifiable} = InvoiceVerification.invoice(bare, page())
   end
 
   test "a GSTIN that fails its check digit is flagged" do
     bad = invoice(%{"seller" => %{"gstin" => "33AAKCS8613A1ZQ"}})
     text = String.replace(page(), "33AAKCS8613A1ZM", "33AAKCS8613A1ZQ")
 
-    assert %{status: :flagged, flags: flags} = Verify.invoice(bad, text)
+    assert %{status: :flagged, flags: flags} = InvoiceVerification.invoice(bad, text)
     assert {:invalid_gstin, ["33AAKCS8613A1ZQ"]} in flags
   end
 
@@ -218,7 +220,7 @@ defmodule Nila.Gst.Extraction.VerifyTest do
     skewed = invoice(%{"printed_cgst" => 5_000.0, "printed_sgst" => 6_619.36})
     text = page("CGST 5,000.00 SGST 6,619.36")
 
-    assert %{status: :flagged, checks: checks} = Verify.invoice(skewed, text)
+    assert %{status: :flagged, checks: checks} = InvoiceVerification.invoice(skewed, text)
     assert Enum.any?(checks, &(&1.field == "cgst_equals_sgst" and not &1.ok?))
   end
 
@@ -247,14 +249,17 @@ defmodule Nila.Gst.Extraction.VerifyTest do
       *GST payable by the service recipient under the reverse charge mechanism
       """
 
-      assert %{status: :verified} = Verify.invoice(rcm, text)
+      assert %{status: :verified} = InvoiceVerification.invoice(rcm, text)
     end
 
     test "the declaration nearly every Tally invoice prints is not a reverse charge" do
-      refute Verify.reverse_charge?("Whether tax is payable under reverse charge : No")
-      refute Verify.reverse_charge?("Reverse Charge (Y/N): N")
+      refute InvoiceVerification.reverse_charge?(
+               "Whether tax is payable under reverse charge : No"
+             )
 
-      assert Verify.reverse_charge?(
+      refute InvoiceVerification.reverse_charge?("Reverse Charge (Y/N): N")
+
+      assert InvoiceVerification.reverse_charge?(
                "GST payable by the service recipient under the reverse charge mechanism"
              )
     end
@@ -269,25 +274,29 @@ defmodule Nila.Gst.Extraction.VerifyTest do
       }
 
       assert %{status: :flagged} =
-               Verify.invoice(forward, "Taxable 841.00 Tax 42.05 Total 841.00")
+               InvoiceVerification.invoice(forward, "Taxable 841.00 Tax 42.05 Total 841.00")
     end
   end
 
   describe "document markers" do
     test "recognizes a credit-note heading and ignores invoice footer terms" do
-      assert Verify.document_markers("| Credit Note-3 |\nCredit Note:03/2024-25")[
+      assert InvoiceVerification.document_markers("| Credit Note-3 |\nCredit Note:03/2024-25")[
                "credit_note"
              ]
 
-      assert Verify.document_markers("**CREDIT NOTE**\n# : CN-NILA-PUR-001")["credit_note"]
+      assert InvoiceVerification.document_markers("**CREDIT NOTE**\n# : CN-NILA-PUR-001")[
+               "credit_note"
+             ]
 
-      refute Verify.document_markers("TAX INVOICE\nTerms: No credit notes after seven days")[
+      refute InvoiceVerification.document_markers(
+               "TAX INVOICE\nTerms: No credit notes after seven days"
+             )[
                "credit_note"
              ]
     end
 
     test "recognizes a debit-note heading independently" do
-      markers = Verify.document_markers("# DEBIT NOTE\nDebit Note No: DN-4")
+      markers = InvoiceVerification.document_markers("# DEBIT NOTE\nDebit Note No: DN-4")
       assert markers["debit_note"]
       refute markers["credit_note"]
     end
@@ -304,8 +313,8 @@ defmodule Nila.Gst.Extraction.VerifyTest do
       %{"field" => "seller.gstin", "from" => "32ABSP14532L1ZG", "to" => "32ABSPI4532L1ZG"}
     ]
 
-    assert %{status: :verified} = Verify.invoice(repaired, text, repairs)
-    assert %{status: :flagged} = Verify.invoice(repaired, text)
+    assert %{status: :verified} = InvoiceVerification.invoice(repaired, text, repairs)
+    assert %{status: :flagged} = InvoiceVerification.invoice(repaired, text)
   end
 
   describe "printed versus derived totals" do
@@ -329,7 +338,7 @@ defmodule Nila.Gst.Extraction.VerifyTest do
       Grand total 3,800.00
       """
 
-      assert %{status: :flagged, flags: flags} = Verify.invoice(halves, text)
+      assert %{status: :flagged, flags: flags} = InvoiceVerification.invoice(halves, text)
       assert {:value_not_on_page, ["printed_total_tax"]} in flags
     end
 
@@ -352,7 +361,7 @@ defmodule Nila.Gst.Extraction.VerifyTest do
 
       text = "Sub Total 20,000.00 IGST18 (18%) 3,600.00 Total 23,600.00"
 
-      assert %{status: :verified, flags: []} = Verify.invoice(extracted, text)
+      assert %{status: :verified, flags: []} = InvoiceVerification.invoice(extracted, text)
     end
 
     test "a total tax matching nothing on the page is absent" do
@@ -365,7 +374,7 @@ defmodule Nila.Gst.Extraction.VerifyTest do
 
       text = "Taxable 64,552.00 CGST 289.83 SGST 289.83 Grand total 76,171.36"
 
-      assert %{flags: flags} = Verify.invoice(invented, text)
+      assert %{flags: flags} = InvoiceVerification.invoice(invented, text)
       assert Enum.any?(flags, &match?({:value_not_on_page, _}, &1))
     end
 
@@ -375,7 +384,7 @@ defmodule Nila.Gst.Extraction.VerifyTest do
       fabricated =
         invoice(%{"printed_total_taxable" => 62_552.0, "printed_grand_total" => 74_171.36})
 
-      assert %{status: :flagged, flags: flags} = Verify.invoice(fabricated, page())
+      assert %{status: :flagged, flags: flags} = InvoiceVerification.invoice(fabricated, page())
       assert [{:value_not_on_page, absent}] = flags
       assert "printed_total_taxable" in absent
     end

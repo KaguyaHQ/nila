@@ -42,13 +42,18 @@ defmodule Nila.Application do
   end
 
   defp text_chat_children do
-    config = Application.get_env(:nila, Nila.Gst.Extraction.OpenAICompatibleChatFinch, [])
+    config =
+      Application.get_env(:nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChatFinch, [])
+
     chat = Application.get_env(:nila, Nila.Gst.Extraction.Providers.OpenAICompatibleChat, [])
 
     if is_nil(chat[:api_key]) do
       []
     else
-      if(config[:start] == false, do: [], else: [Nila.Gst.Extraction.OpenAICompatibleChatFinch])
+      if(config[:start] == false,
+        do: [],
+        else: [Nila.Gst.Extraction.Providers.OpenAICompatibleChatFinch]
+      )
     end
   end
 

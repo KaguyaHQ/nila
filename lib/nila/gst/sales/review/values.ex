@@ -63,7 +63,7 @@ defmodule Nila.Gst.Sales.Review.Values do
   def printed(invoice) do
     %{
       taxable: number(invoice["printed_total_taxable"]),
-      tax: Nila.Gst.Extraction.TaxComponents.printed_tax_total(invoice),
+      tax: Nila.Gst.TaxComponents.printed_tax_total(invoice),
       total: number(invoice["printed_grand_total"])
     }
   end

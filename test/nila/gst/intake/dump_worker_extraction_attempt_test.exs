@@ -289,7 +289,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
 
   test "the vision default persists segmentation and extraction as separate attempts" do
     previous = Application.get_env(:nila, :purchase_extractor)
-    Application.put_env(:nila, :purchase_extractor, Nila.Gst.Extraction.Purchase.Vision)
+    Application.put_env(:nila, :purchase_extractor, Nila.Gst.Extraction.Purchase.Extractor)
     on_exit(fn -> Application.put_env(:nila, :purchase_extractor, previous) end)
 
     Req.Test.stub(OpenAICompatibleChat, fn conn ->

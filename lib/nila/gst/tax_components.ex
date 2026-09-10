@@ -1,4 +1,4 @@
-defmodule Nila.Gst.Extraction.TaxComponents do
+defmodule Nila.Gst.TaxComponents do
   @moduledoc """
   Projects source-shaped printed tax components into Nila's canonical GST heads.
 

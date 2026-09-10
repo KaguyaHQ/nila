@@ -138,7 +138,7 @@ defmodule Nila.Eval.Adjudications do
 
     (is_binary(fix["target"]) && is_binary(get_in(fix, ["payload", "field"]))) ||
       raise ArgumentError,
-            "#{path}: fix on #{entry["key"]}/#{entry["field"]} needs target (the invoice " <>
-              "number) and payload.field (the input-side path, e.g. line_items[0].taxable_value)"
+            "#{path}: fix on #{entry["key"]}/#{entry["field"]} needs target (the source " <>
+              "ID) and payload.field (the input-side path, e.g. line_items[0].taxable_value)"
   end
 end

@@ -566,11 +566,11 @@ URLs, or extracted invoice contents in transport telemetry.
 Current relevant code:
 
 - `lib/nila/gst/extraction/mistral_document_adapter.ex` — unpooled pure-H1 document adapter
-- `lib/nila/gst/extraction/openai_compatible_chat_finch.ex` — text-provider pool
+- `lib/nila/gst/extraction/providers/openai_compatible_chat_finch.ex` — text-provider pool
 - `lib/nila/gst/extraction/providers/mistral.ex` — OCR and Files API calls
 - `lib/nila/gst/extraction/providers/openai_compatible_chat.ex` — concurrent text/JSON calls
 - `lib/nila/gst/extraction/pipeline.ex` — OCR, internal transcription retry, discovery, extraction
-- `lib/nila/gst/extraction/discovery/page_labels.ex` — per-page concurrency (4)
+- `lib/nila/gst/extraction/discovery/purchase_pages.ex` — per-page concurrency (4)
 - `lib/nila/gst/extraction/segmented.ex` — per-segment concurrency (8)
 - `lib/nila/gst/intake/dump_worker.ex` — audited stages and Oban attempts
 - `lib/nila_web/live/gst/upload_live.ex` — visible worker-retry state

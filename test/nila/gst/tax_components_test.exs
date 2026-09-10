@@ -1,7 +1,8 @@
-defmodule Nila.Gst.Extraction.TaxComponentsTest do
+defmodule Nila.Gst.TaxComponentsTest do
   use ExUnit.Case, async: true
 
-  alias Nila.Gst.Extraction.{TaxComponents, Verify}
+  alias Nila.Gst.TaxComponents
+  alias Nila.Gst.Extraction.InvoiceVerification
 
   test "resolves complete printed invoice tax components without using lines" do
     for {components, expected} <- [
@@ -105,7 +106,7 @@ defmodule Nila.Gst.Extraction.TaxComponentsTest do
              "duplicate_tax_head"
            ]
 
-    assert %{status: :flagged, flags: flags} = Verify.structured(data)
+    assert %{status: :flagged, flags: flags} = InvoiceVerification.structured(data)
     assert {:tax_component_issue, issues} = List.keyfind(flags, :tax_component_issue, 0)
     assert Enum.all?(issues, &(&1["line"] == 0))
   end
@@ -178,7 +179,7 @@ defmodule Nila.Gst.Extraction.TaxComponentsTest do
              "duplicate_tax_head"
            ]
 
-    assert %{status: :flagged, flags: flags} = Verify.structured(projected)
+    assert %{status: :flagged, flags: flags} = InvoiceVerification.structured(projected)
     assert {:tax_component_issue, _issues} = List.keyfind(flags, :tax_component_issue, 0)
   end
 

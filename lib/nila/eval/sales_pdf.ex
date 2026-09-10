@@ -6,7 +6,7 @@ defmodule Nila.Eval.SalesPdf do
   """
 
   alias Nila.Gst.Extraction.Sales.Normalizer
-  alias Nila.Gst.Extraction.Sales.Vision
+  alias Nila.Gst.Extraction.Sales.Extractor
   alias Nila.Gst.Sales.{Gstr1, Review, Workings}
   alias Nila.Gst.Sales.Workings.Xlsx, as: WorkingsXlsx
 
@@ -22,8 +22,8 @@ defmodule Nila.Eval.SalesPdf do
       period: period,
       input: input,
       created_at: DateTime.utc_now(),
-      provider: Vision.provider(),
-      model: Vision.model(),
+      provider: Extractor.provider(),
+      model: Extractor.model(),
       sources: Enum.map(paths, &%{path: Path.expand(&1), sha256: sha256(File.read!(&1))})
     })
 
@@ -101,7 +101,7 @@ defmodule Nila.Eval.SalesPdf do
     end
 
     result =
-      Vision.extract(File.read!(path),
+      Extractor.extract(File.read!(path),
         filename: Path.basename(path),
         client_gstin: client.gstin,
         input: input,

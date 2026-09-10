@@ -1,4 +1,4 @@
-defmodule Nila.Gst.Extraction.Verify do
+defmodule Nila.Gst.Extraction.InvoiceVerification do
   @moduledoc """
   Checks extracted invoice numbers and GSTINs without changing the invoice.
 
@@ -13,7 +13,7 @@ defmodule Nila.Gst.Extraction.Verify do
   Checks retain their operands, and flags summarize failures for review.
   """
 
-  alias Nila.Gst.Extraction.{LineAmounts, TaxComponents}
+  alias Nila.Gst.{LineAmounts, TaxComponents}
   alias Nila.Gstin
 
   @tolerance 1.0

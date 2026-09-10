@@ -8,10 +8,10 @@ defmodule Nila.Eval.VisionSchema do
   """
 
   alias Nila.EvalCorpus
-  alias Nila.Gst.Extraction.LineAmounts
+  alias Nila.Gst.LineAmounts
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
   alias Nila.Gst.Extraction.{InvoicePrompt, InvoiceSchema}
-  alias Nila.Gst.Extraction.VisionPipeline
+  alias Nila.Gst.Extraction.Pipeline
 
   @root "tmp/eval/vision-schema"
 
@@ -47,7 +47,7 @@ defmodule Nila.Eval.VisionSchema do
         started = System.monotonic_time(:millisecond)
 
         result =
-          VisionPipeline.extract_fixed_segments(kind, bytes, [pages],
+          Pipeline.extract_fixed_segments(kind, bytes, [pages],
             filename: Path.basename(source),
             client_gstin: client_gstin
           )

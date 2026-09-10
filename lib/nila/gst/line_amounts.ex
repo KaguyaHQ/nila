@@ -1,4 +1,4 @@
-defmodule Nila.Gst.Extraction.LineAmounts do
+defmodule Nila.Gst.LineAmounts do
   @moduledoc """
   Resolves one item's taxable value while keeping its printed amounts separate.
 
@@ -18,8 +18,8 @@ defmodule Nila.Gst.Extraction.LineAmounts do
 
   alias Nila.Gst.Money
 
-  @inclusions ~w(inclusive exclusive unknown)
   @arithmetic_bases ~w(line_amount_plus_tax_equals_total line_amount_times_rate_equals_tax)
+  @inclusions ~w(inclusive exclusive unknown)
   @tolerance 0.02
 
   def normalize(line) when is_map(line) do
@@ -172,31 +172,6 @@ defmodule Nila.Gst.Extraction.LineAmounts do
        do: %{"candidate" => candidate, "resolved" => resolved}
 
   defp disagreement(_candidate, _resolved), do: nil
-
-  @doc """
-  Clears an equal taxable candidate when row arithmetic proves exclusive pricing.
-  This extraction repair changes the input and returns an audit record; normalize/1
-  only interprets it. Equality is checked in paise, not with arithmetic tolerance.
-  """
-  def discard_redundant_printed_taxable(line) when is_map(line) do
-    amounts = normalize(line)
-
-    if is_number(amounts.printed_taxable_value) and is_number(amounts.printed_line_amount) and
-         Money.paise(amounts.printed_taxable_value) == Money.paise(amounts.printed_line_amount) and
-         amounts.line_amount_tax_inclusion == "exclusive" and
-         amounts.line_amount_tax_inclusion_basis in @arithmetic_bases do
-      repair = %{
-        "field" => "printed_taxable_value",
-        "from" => amounts.printed_taxable_value,
-        "to" => nil,
-        "basis" => "redundant_with_arithmetically_exclusive_line_amount"
-      }
-
-      {Map.put(line, "printed_taxable_value", nil), repair}
-    else
-      {line, nil}
-    end
-  end
 
   defp money(value), do: Money.rupee_number(value)
   defp nonzero?(value), do: abs(value) > @tolerance

@@ -368,7 +368,7 @@ value.
 `main` still contains the baseline verifier in:
 
 ```text
-lib/nila/gst/extraction/verify.ex
+lib/nila/gst/extraction/invoice_verification.ex
 lib/nila/gst/extraction/segmented.ex
 lib/nila/gst/purchase/books.ex
 ```

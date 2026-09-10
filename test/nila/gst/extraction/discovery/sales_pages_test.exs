@@ -1,7 +1,7 @@
-defmodule Nila.Gst.Extraction.DocumentPagesTest do
+defmodule Nila.Gst.Extraction.Discovery.SalesPagesTest do
   use ExUnit.Case, async: true
 
-  alias Nila.Gst.Extraction.Discovery.DocumentPages
+  alias Nila.Gst.Extraction.Discovery.SalesPages
 
   defp page(number, role, type \\ nil, invoice_no \\ nil) do
     %{
@@ -15,7 +15,7 @@ defmodule Nila.Gst.Extraction.DocumentPagesTest do
 
   test "continuations inherit excluded and sales document types without merging boundaries" do
     assert {:ok, [quotation, invoice, credit, debit]} =
-             DocumentPages.group(
+             SalesPages.group(
                [
                  page(1, "start", "quotation", "Q-1"),
                  page(2, "continuation"),
@@ -41,11 +41,11 @@ defmodule Nila.Gst.Extraction.DocumentPagesTest do
 
   test "an orphan continuation is rejected, including after a separator or unreadable page" do
     assert {:error, {:document_continuation_without_start, 1}} =
-             DocumentPages.group([page(1, "continuation")], 1)
+             SalesPages.group([page(1, "continuation")], 1)
 
     for role <- ["irrelevant", "unreadable"] do
       assert {:error, {:document_continuation_without_start, 3}} =
-               DocumentPages.group(
+               SalesPages.group(
                  [page(1, "start", "proforma_invoice"), page(2, role), page(3, "continuation")],
                  3
                )
@@ -54,7 +54,7 @@ defmodule Nila.Gst.Extraction.DocumentPagesTest do
 
   test "a continuation cannot override its parent type and a start must identify its type" do
     assert {:error, {:invalid_document_page, 2}} =
-             DocumentPages.group(
+             SalesPages.group(
                [
                  page(1, "start", "proforma_invoice"),
                  page(2, "continuation", "tax_invoice")
@@ -62,19 +62,19 @@ defmodule Nila.Gst.Extraction.DocumentPagesTest do
                2
              )
 
-    assert {:error, {:invalid_document_page, 1}} = DocumentPages.group([page(1, "start")], 1)
+    assert {:error, {:invalid_document_page, 1}} = SalesPages.group([page(1, "start")], 1)
   end
 
   test "conserves page order and rejects omitted, duplicate and out-of-order pages" do
     for numbers <- [[1], [1, 1], [2, 1]] do
       assert {:error, {:page_conservation, [1, 2], ^numbers}} =
-               DocumentPages.group(Enum.map(numbers, &page(&1, "start", "tax_invoice")), 2)
+               SalesPages.group(Enum.map(numbers, &page(&1, "start", "tax_invoice")), 2)
     end
   end
 
   test "a repeated complete document remains a separate group" do
     assert {:ok, [first, second]} =
-             DocumentPages.group(
+             SalesPages.group(
                [
                  page(1, "start", "tax_invoice", "INV-1"),
                  page(2, "start", "tax_invoice", "INV-1")

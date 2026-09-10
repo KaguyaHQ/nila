@@ -8,7 +8,7 @@ defmodule Nila.Gst.Extraction.Purchase do
   flags) that `Nila.Gst.Purchase.Books` assembles into invoices.
 
   The implementation is selected via `Application.get_env(:nila,
-  :purchase_extractor, Nila.Gst.Extraction.Purchase.Vision)`. The production
+  :purchase_extractor, Nila.Gst.Extraction.Purchase.Extractor)`. The production
   extractor segments rendered pages and reads each invoice with the configured
   vision model. Tests may override the full pipeline.
 

@@ -127,7 +127,7 @@ defmodule Nila.Gst.Sales.Gstr1.Readiness do
          (Enum.any?(Map.values(invoice.tax_paise), &(is_integer(&1) and &1 != 0)) or
             (invoice
              |> InvoiceFacts.to_sales_map()
-             |> Nila.Gst.Extraction.TaxComponents.printed_tax_total()) not in [nil, 0] or
+             |> Nila.Gst.TaxComponents.printed_tax_total()) not in [nil, 0] or
             Enum.any?(invoice.lines, fn line ->
               Enum.any?(
                 [line.cgst_rate, line.sgst_rate, line.igst_rate],

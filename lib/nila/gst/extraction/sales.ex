@@ -9,7 +9,7 @@ defmodule Nila.Gst.Extraction.Sales do
 
   The outward mirror of `Nila.Gst.Extraction.Purchase`: the implementation is
   selected via `Application.get_env(:nila, :sales_extractor,
-  Nila.Gst.Extraction.Sales.Vision)`. The production extractor segments rendered
+  Nila.Gst.Extraction.Sales.Extractor)`. The production extractor segments rendered
   pages and reads each invoice with the configured model. `input: :text` explicitly
   selects native text for known digital PDFs, retaining vision for empty pages and
   invoice groups with scanned continuations. The default remains `:vision` until

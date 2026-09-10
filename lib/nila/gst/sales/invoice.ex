@@ -7,7 +7,7 @@ defmodule Nila.Gst.Sales.Invoice do
   facts; they do not define what a sales invoice field means.
   """
 
-  alias Nila.Gst.Extraction.LineAmounts
+  alias Nila.Gst.LineAmounts
   alias Nila.Gst.Money
   alias Nila.Gst.StateCodes
 
@@ -196,9 +196,10 @@ defmodule Nila.Gst.Sales.Invoice do
 
   defp normalize_recipient_registration(_status), do: "unknown"
 
-  defp normalize_place_of_supply(nil), do: nil
+  @doc "Normalizes printed or corrected place of supply while retaining unknown values."
+  def normalize_place_of_supply(nil), do: nil
 
-  defp normalize_place_of_supply(value) do
+  def normalize_place_of_supply(value) do
     value = value |> to_string() |> String.trim()
 
     StateCodes.normalize_code(value) ||
@@ -207,19 +208,21 @@ defmodule Nila.Gst.Sales.Invoice do
       end) || blank_to_nil(value)
   end
 
-  defp normalize_document_status(status) when status in ~w(active cancelled amendment unknown),
+  @doc "Normalizes document status for both extraction intake and source corrections."
+  def normalize_document_status(status) when status in ~w(active cancelled amendment unknown),
     do: status
 
-  defp normalize_document_status(nil), do: "active"
-  defp normalize_document_status(_status), do: "unknown"
+  def normalize_document_status(nil), do: "active"
+  def normalize_document_status(_status), do: "unknown"
 
-  defp normalize_supply_type(status, _document)
-       when status in ~w(taxable nil_rated exempt non_gst export sez unknown),
-       do: status
+  @doc "Normalizes supply treatment using document export evidence only when absent."
+  def normalize_supply_type(status, _document)
+      when status in ~w(taxable nil_rated exempt non_gst export sez unknown),
+      do: status
 
-  defp normalize_supply_type(nil, %{"export" => true}), do: "export"
-  defp normalize_supply_type(nil, _document), do: "taxable"
-  defp normalize_supply_type(_status, _document), do: "unknown"
+  def normalize_supply_type(nil, %{"export" => true}), do: "export"
+  def normalize_supply_type(nil, _document), do: "taxable"
+  def normalize_supply_type(_status, _document), do: "unknown"
 
   defp blank_to_nil(nil), do: nil
 

@@ -1,7 +1,7 @@
-defmodule Nila.Gst.Extraction.OpenAICompatibleChatFinchTest do
+defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatFinchTest do
   use ExUnit.Case, async: false
 
-  alias Nila.Gst.Extraction.OpenAICompatibleChatFinch
+  alias Nila.Gst.Extraction.Providers.OpenAICompatibleChatFinch
 
   test "uses HTTP/2 for a provider configured for multiplexing" do
     assert %{start: {Finch, :start_link, [options]}} =

@@ -47,7 +47,7 @@ defmodule Mix.Tasks.Nila.EvalSalesPdf do
     end
 
     {:ok, _supervisor} =
-      Supervisor.start_link([Nila.Gst.Extraction.OpenAICompatibleChatFinch],
+      Supervisor.start_link([Nila.Gst.Extraction.Providers.OpenAICompatibleChatFinch],
         strategy: :one_for_one
       )
 

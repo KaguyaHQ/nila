@@ -1,8 +1,8 @@
-defmodule Nila.Gst.Extraction.Sales.Vision do
+defmodule Nila.Gst.Extraction.Sales.Extractor do
   @behaviour Nila.Gst.Extraction.Sales
 
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
-  alias Nila.Gst.Extraction.VisionPipeline
+  alias Nila.Gst.Extraction.Pipeline
 
   def provider, do: OpenAICompatibleChat.provider()
   def model, do: OpenAICompatibleChat.model()
@@ -11,5 +11,5 @@ defmodule Nila.Gst.Extraction.Sales.Vision do
   def per_call?, do: true
 
   @impl true
-  def extract(bytes, opts), do: VisionPipeline.extract(:sales, bytes, opts)
+  def extract(bytes, opts), do: Pipeline.extract(:sales, bytes, opts)
 end

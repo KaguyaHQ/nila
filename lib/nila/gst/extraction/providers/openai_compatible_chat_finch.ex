@@ -1,4 +1,4 @@
-defmodule Nila.Gst.Extraction.OpenAICompatibleChatFinch do
+defmodule Nila.Gst.Extraction.Providers.OpenAICompatibleChatFinch do
   @moduledoc false
 
   @http2_pool_options [
