@@ -21,7 +21,6 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
   alias Nila.Gst.WorkQueue
   alias Nila.TallyDevices
-  alias Nila.TallyJobs
   alias Nila.Eval.Gstr1Diff
 
   alias NilaWeb.Components.Gst.Month.{
@@ -44,7 +43,7 @@ defmodule NilaWeb.Gst.MonthLive do
   @unsupported_sales_codes ~w(
     export_supply_unsupported sez_supply_unsupported nil_rated_supply_unsupported
     exempt_supply_unsupported non_gst_supply_unsupported outward_reverse_charge_unsupported
-    cdnur_unsupported cancelled_document_unsupported amendment_document_unsupported cess_unsupported
+    cancelled_document_unsupported amendment_document_unsupported cess_unsupported
   )
 
   @impl true
@@ -68,7 +67,6 @@ defmodule NilaWeb.Gst.MonthLive do
   defp maybe_subscribe(socket, org_id) do
     if connected?(socket) do
       :ok = PurchaseMonths.subscribe(org_id)
-      TallyJobs.subscribe_org(org_id)
     else
       :ok
     end
@@ -532,7 +530,6 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:sales_month, nil)
     |> assign(:sales_workings, nil)
     |> assign(:sales_decisions, %{})
-    |> assign(:r1_signoff, nil)
     |> assign(:invoices, [])
     |> assign(:active_invoices, [])
     |> assign(:issues_by_invoice, %{})
@@ -547,12 +544,9 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:sales_review, nil)
     |> assign(:sales_source_summary, nil)
     |> assign(:gstr1_handoff, nil)
-    |> assign(:tally_handoffs, [])
   end
 
   defp assign_sales(socket, sales, provided_workings) do
-    signoff = fetch_or_nil(Signoffs.latest_gstr1_signoff(sales.id))
-
     workings = provided_workings || SalesResolutions.effective_workings(sales)
 
     source_invoices = workings.source_invoices
@@ -591,7 +585,6 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign(:sales_decisions, decisions)
     |> assign(:sales_review, review)
     |> assign(:sales_source_summary, workings[:source_summary])
-    |> assign(:r1_signoff, signoff)
     |> assign(:invoices, invoices)
     |> assign(:active_invoices, active_invoices)
     |> assign(:issues_by_invoice, Enum.group_by(invoice_issues, & &1["source_id"]))
@@ -607,34 +600,6 @@ defmodule NilaWeb.Gst.MonthLive do
       :gstr1_handoff,
       gstr1_handoff(invoices, issues, decisions, review, derived)
     )
-    |> assign(:tally_handoffs, tally_handoffs(sales.org_id, signoff))
-  end
-
-  defp tally_handoffs(_org_id, nil), do: []
-
-  defp tally_handoffs(org_id, signoff) do
-    prefix = "gstr1:#{signoff.id}:company:"
-
-    TallyJobs.list_by_source_prefix(org_id, prefix)
-    |> Enum.group_by(fn job ->
-      case Regex.run(~r/^gstr1:\d+:company:(\d+):voucher:/, job.source_key || "") do
-        [_, company_id] -> String.to_integer(company_id)
-        _ -> nil
-      end
-    end)
-    |> Enum.reject(fn {company_id, _jobs} -> is_nil(company_id) end)
-    |> Enum.map(fn {company_id, jobs} ->
-      %{
-        company_id: company_id,
-        company_name:
-          case Nila.Repo.get(Nila.TallyDevices.Company, company_id) do
-            nil -> "Tally company"
-            company -> company.name
-          end,
-        jobs: jobs,
-        counts: Enum.frequencies_by(jobs, & &1.status)
-      }
-    end)
   end
 
   defp gstr1_handoff(invoices, issues, decisions, review, derived) do
@@ -896,7 +861,7 @@ defmodule NilaWeb.Gst.MonthLive do
   defp without_track_door(verdict), do: verdict
 
   defp assign_verdict(socket, purchase, sales) do
-    %{stats: stats, r1_signoff: r1_signoff, gstr3b_signoff: gstr3b_signoff} = socket.assigns
+    %{stats: stats, gstr3b_signoff: gstr3b_signoff} = socket.assigns
     today = Date.utc_today()
 
     tracks =
@@ -906,7 +871,6 @@ defmodule NilaWeb.Gst.MonthLive do
         need_decision: (stats && stats.need_decision) || 0,
         gstr2b_in: socket.assigns.gstr2b_in,
         gstr2b_available: Calendar.status(socket.assigns.period, today).gstr2b_available?,
-        r1_signed: r1_signoff != nil,
         r1_filed: sales != nil and sales.filed_at != nil,
         gstr3b_signed: gstr3b_signoff != nil,
         gstr3b_filed: purchase != nil and purchase.filed_at != nil
@@ -919,7 +883,6 @@ defmodule NilaWeb.Gst.MonthLive do
       purchase_month: purchase,
       sales_month: sales,
       open_issue_count: socket.assigns.open_issue_count,
-      r1_signoff: r1_signoff,
       gstr3b_signoff: gstr3b_signoff,
       can_sign_off: socket.assigns.can_sign_off,
       attention_dumps: socket.assigns.attention_dumps,
@@ -1002,11 +965,6 @@ defmodule NilaWeb.Gst.MonthLive do
           {:noreply, push_patch(socket, to: sales_review_path(socket, route), replace: true)}
         end
     end
-  end
-
-  def handle_info(:tally_jobs_changed, socket) do
-    org_id = socket.assigns.current_scope.current_org.id
-    {:noreply, assign(socket, :tally_handoffs, tally_handoffs(org_id, socket.assigns.r1_signoff))}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -1737,7 +1695,6 @@ defmodule NilaWeb.Gst.MonthLive do
                       readiness={@gstr1_readiness}
                       handoff={@gstr1_handoff}
                       tally_companies={@tally_companies}
-                      tally_handoffs={@tally_handoffs}
                     />
                   </:actions>
                 </Sales.sales_section>
@@ -1811,7 +1768,6 @@ defmodule NilaWeb.Gst.MonthLive do
                         sales_month={@sales_month}
                         stats={@stats}
                         gstr3b_signoff={@gstr3b_signoff}
-                        r1_signoff={@r1_signoff}
                         can_sign_off={@can_sign_off}
                         sales_intake_open={@sales_intake_open}
                         itc={@itc}
@@ -1826,7 +1782,6 @@ defmodule NilaWeb.Gst.MonthLive do
                     sales_month={@sales_month}
                     stats={@stats}
                     gstr3b_signoff={@gstr3b_signoff}
-                    r1_signoff={@r1_signoff}
                     can_sign_off={@can_sign_off}
                     sales_intake_open={@sales_intake_open}
                     itc={@itc}
@@ -1850,7 +1805,6 @@ defmodule NilaWeb.Gst.MonthLive do
                     stats={@stats}
                     signed={@gstr3b_signoff != nil}
                     open_folds={@open_folds}
-                    r1_signoff={@r1_signoff}
                     gstr3b_signoff={@gstr3b_signoff}
                     client_id={@client.id}
                     period={@period}
@@ -1861,7 +1815,6 @@ defmodule NilaWeb.Gst.MonthLive do
                     sales_month={@sales_month}
                     stats={@stats}
                     gstr3b_signoff={@gstr3b_signoff}
-                    r1_signoff={@r1_signoff}
                     can_sign_off={@can_sign_off}
                     sales_intake_open={@sales_intake_open}
                     itc={@itc}

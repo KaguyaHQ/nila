@@ -409,7 +409,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
     refute has_element?(view, "#month-door-sign-r1")
   end
 
-  test "unseen HSN codes render as one advisory block that never gates downloads", %{
+  test "HSN working rows never gate downloads because of client history", %{
     conn: conn,
     org: org,
     client: client
@@ -456,7 +456,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
       month
     end
 
-    # History this client has filed, then a month carrying two codes it never has.
+    # A prior month must not turn client history into a sales requirement.
     upsert.("2025-11", [invoice.("100/2025-26", "84159000")])
 
     upsert.("2025-12", [
@@ -466,23 +466,19 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
 
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/2025-12?track=sales")
 
-    assert has_element?(view, "#gstr1-hsn-new-codes", "2 of 2 codes are new for this client")
-    assert has_element?(view, "#gstr1-workings-hsn-28043000-18", "New")
-    assert has_element?(view, "#gstr1-workings-hsn-29033990-18", "New")
-    refute has_element?(view, "#gstr1-hsn-new-code-rows")
+    assert has_element?(view, "#gstr1-workings-hsn-28043000-18")
+    assert has_element?(view, "#gstr1-workings-hsn-29033990-18")
     refute has_element?(view, "#gstr1-hsn-summary", "Printed on the bill")
     refute has_element?(view, "#gstr1-verdict", "advisories")
 
-    # Context, not work: no confirm affordance, not in the gating clause, and
-    # approval is reachable without anyone clearing it.
-    refute has_element?(view, "#gstr1-hsn-new-codes button[phx-click='confirm_issue']")
+    # Approval is reachable without anyone clearing a history warning.
     refute has_element?(view, "#gstr1-checks-before-filing")
 
     assert has_element?(view, "#gstr1-filing-status", "Working files ready")
     assert has_element?(view, "#gstr1-primary-handoff", "Download working Excel")
   end
 
-  test "Table 12 flags multiple rates, shows official descriptions, and expands affected rows", %{
+  test "Table 12 keeps HSN descriptions without requiring a rate decision", %{
     conn: conn,
     org: org,
     client: client
@@ -550,35 +546,9 @@ defmodule NilaWeb.Gst.MonthLiveSalesRequirementsTest do
 
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=sales")
 
-    # The issue is asserted once, in "Before filing"; the Table 12 card points
-    # at it rather than drawing a second copy with different buttons.
-    issue =
-      Enum.find(
-        Nila.Gst.Sales.Review.Resolutions.workings(
-          elem(Months.get_by_period(org.id, client.id, period), 1)
-        ).issues,
-        &(&1["code"] == "hsn_multiple_rates")
-      )
-
-    card = "#gstr1-required-#{:erlang.phash2({"hsn_multiple_rates|71069290", issue["message"]})}"
-
-    assert has_element?(view, card, "HSN/SAC 71069290 appears at 3% and 18%")
-    refute has_element?(view, "#gstr1-hsn-summary", "HSN/SAC 71069290 appears at 3% and 18%")
-    assert has_element?(view, "#gstr1-hsn-summary", "HSN check in required work")
+    refute has_element?(view, "#gstr1-required", "71069290 appears at 3% and 18%")
     assert has_element?(view, "#gstr1-workings-hsn", "Other semi-manufactured forms of silver")
-
-    refute has_element?(view, "#gstr1-workings-hsn-71069290-3 .rotate-90")
-    refute has_element?(view, card, "Confirm from records")
-
-    view |> element("#{card} a", "Review HSN rows") |> render_click()
-
-    assert has_element?(view, "#gstr1-workings-hsn-71069290-3 .rotate-90")
-    assert has_element?(view, "#gstr1-workings-hsn-71069290-18 .rotate-90")
-    assert has_element?(view, card, "Confirm from records")
-
-    view |> element("#{card} button", "Confirm from records") |> render_click()
-
-    refute has_element?(view, card)
+    refute has_element?(view, "#gstr1-required", "Confirm from records")
   end
 
   test "duplicate review compares every source and excludes only the extra copies", %{

@@ -59,22 +59,6 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
            )
   end
 
-  test "an unfiled legacy approval does not freeze current workings", %{
-    conn: conn,
-    client: client,
-    org: org,
-    user: user
-  } do
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-    confirm_all_open_issues(view)
-    legacy_signoff!(org, client, user, false)
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-    assert has_element?(view, "#gstr1-overview[data-state='ready']")
-    assert has_element?(view, "#gstr1-primary-handoff", "Download working Excel")
-    refute has_element?(view, "#gstr1-reopen-signoff")
-    refute has_element?(view, "#month-door-sign-r1")
-  end
-
   test "ready Winman manifest matches B2B export rows and discloses omitted sections", %{
     conn: conn,
     org: org,
@@ -191,8 +175,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     assert has_element?(view, "#gstr1-handoff-manifest", "1 duplicate copy")
     assert has_element?(view, "#gstr1-handoff-manifest", "₹1,500.00 taxable · ₹140.00 tax")
 
-    {:ok, signed_month} = Months.get_by_period(org.id, client.id, period)
-    projection = Resolutions.effective_workings(signed_month)
+    {:ok, reviewed_month} = Months.get_by_period(org.id, client.id, period)
+    projection = Resolutions.effective_workings(reviewed_month)
     assert {:ok, manifest} = WinmanGstr1.export_manifest(projection)
 
     export_conn =
@@ -216,48 +200,6 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     assert manifest.omitted_documents == 1
     assert_in_delta manifest.taxable, 1_500, 0.001
     assert_in_delta manifest.output_tax, 140, 0.001
-  end
-
-  test "a filed legacy snapshot keeps its original issue history", %{
-    conn: conn,
-    org: org,
-    client: client,
-    user: user
-  } do
-    alias Nila.Gst.Filing.Signoffs
-    alias Nila.Gst.Sales.Months, as: SalesMonths
-
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-
-    confirm_all_open_issues(view)
-    legacy_signoff!(org, client, user, true)
-
-    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
-    {:ok, signoff} = Signoffs.latest_gstr1_signoff(month.id)
-
-    # Rewind the frozen issues to the pre-classification shape: `"warning"` for
-    # compliance checks and no level at all for arithmetic ones. Signed history
-    # is never migrated, so the read path has to carry it.
-    legacy =
-      Enum.map(signoff.snapshot["issues"], fn issue ->
-        case issue["level"] do
-          "required" -> Map.put(issue, "level", "warning")
-          "advisory" -> Map.put(issue, "level", "warning")
-          _settled_or_blocking -> Map.delete(issue, "level")
-        end
-      end)
-
-    signoff
-    |> Ecto.Changeset.change(snapshot: Map.put(signoff.snapshot, "issues", legacy))
-    |> Nila.Repo.update!()
-
-    {:ok, legacy_view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-
-    # Everything was resolved before signing, so no legacy level may resurrect a
-    # check, and the approved draft still renders.
-    assert has_element?(legacy_view, "#gstr1-overview[data-state='filed']")
-    refute has_element?(legacy_view, "#gstr1-checks-before-filing")
-    assert legacy_view |> element("#gstr1-workings-b2b") |> render() =~ "PONMANI AND CO"
   end
 
   test "historical filed-return differences remain attributed and lock only after filing",
@@ -296,8 +238,6 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
         filed_gstr1: filed
       })
 
-    legacy_signoff!(org, client, user, false)
-
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
     # Differences live in one historical block; agreements stay silent.
@@ -318,7 +258,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     assert body =~ "ours 12,000.00"
     assert body =~ "filed 13,000.00"
 
-    # Legacy approval does not hide or block the attributed difference action.
+    # The difference decision records who accepted it.
     view |> element("button[phx-click='accept_difference']") |> render_click()
 
     assert render(view) =~ "Accepted — ours is right"
@@ -336,9 +276,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     # An actually filed month keeps the comparison and prevents changes.
     confirm_all_open_issues(view)
 
-    month
-    |> Ecto.Changeset.change(filed_at: DateTime.utc_now(), state: "filed")
-    |> Nila.Repo.update!()
+    assert {:ok, _filed} =
+             Nila.Gst.Filing.Signoffs.mark_filed_gstr1(month, Nila.Accounts.Scope.for_user(user))
 
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 
@@ -435,33 +374,5 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
       get(build_conn() |> log_in_user(other_user), ~p"/gstr1/#{client.id}/#{@period}/return.json")
 
     assert response(conn, 404)
-  end
-
-  defp legacy_signoff!(org, client, user, filed?) do
-    alias Nila.Gst.Sales.Months
-    alias Nila.Gst.Sales.Review.Resolutions
-    {:ok, month} = Months.get_by_period(org.id, client.id, @period)
-    workings = Resolutions.workings(month)
-
-    signoff =
-      %Nila.Gst.Filing.Signoff{org_id: org.id, sales_month_id: month.id, signed_by_id: user.id}
-      |> Nila.Gst.Filing.Signoff.changeset(%{
-        artifact: "gstr1",
-        snapshot: %{
-          "derived" => workings.derived,
-          "invoices" => workings.invoices,
-          "printed_invoices" => workings.printed_active_invoices,
-          "issues" => workings.issues
-        }
-      })
-      |> Nila.Repo.insert!()
-
-    if filed?,
-      do:
-        month
-        |> Ecto.Changeset.change(filed_at: DateTime.utc_now(), state: "filed")
-        |> Nila.Repo.update!()
-
-    signoff
   end
 end

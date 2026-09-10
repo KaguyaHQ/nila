@@ -1149,7 +1149,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
 
   describe "apply_corrections/3 — silent-error discipline" do
     setup do
-      invoice = seq_invoice("20/2026-27")
+      invoice = seq_invoice("20/2026-27") |> Map.put("id", "source-a")
       flagged = CorrectionPolicy.flagged_fields([invoice], [])
       %{invoice: invoice, flagged: flagged}
     end
@@ -1158,7 +1158,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       invoice: invoice,
       flagged: flagged
     } do
-      corrections = [%{"invoice" => "20/2026-27", "field" => "buyer_name", "value" => "X"}]
+      corrections = [%{"source_id" => "source-a", "field" => "buyer_name", "value" => "X"}]
 
       {_final, ok, silent, _} =
         CorrectionPolicy.apply_corrections([invoice], corrections, flagged)
@@ -1190,7 +1190,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
              ]
     end
 
-    test "a legacy correction does not fan out across duplicate numbers" do
+    test "an invoice-number correction is rejected" do
       duplicates = [
         seq_invoice("20/2026-27") |> Map.put("id", "source-a"),
         seq_invoice("20/2026-27") |> Map.put("id", "source-b")
@@ -1208,15 +1208,24 @@ defmodule Nila.Gst.Sales.Gstr1Test do
         CorrectionPolicy.apply_corrections(duplicates, [correction], flagged)
 
       assert Enum.map(final, & &1["invoice_number"]) == ["20/2026-27", "20/2026-27"]
+
+      single = hd(duplicates)
+
+      for key <- ["invoice", "inum"] do
+        correction = %{key => "20/2026-27", "field" => "invoice_number", "value" => "21/2026-27"}
+
+        assert {[^single], [], [^correction], ^flagged} =
+                 CorrectionPolicy.apply_corrections([single], [correction], flagged)
+      end
     end
 
     test "a correction to a flagged field is legitimate", %{invoice: invoice} do
       flagged =
         CorrectionPolicy.flagged_fields([invoice], [
-          %{"invoice" => "20/2026-27", "code" => "x", "fields" => ["buyer_name"]}
+          %{"source_id" => "source-a", "code" => "x", "fields" => ["buyer_name"]}
         ])
 
-      corrections = [%{"invoice" => "20/2026-27", "field" => "buyer_name", "value" => "X"}]
+      corrections = [%{"source_id" => "source-a", "field" => "buyer_name", "value" => "X"}]
 
       {_final, ok, silent, _} =
         CorrectionPolicy.apply_corrections([invoice], corrections, flagged)
@@ -1226,8 +1235,8 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     end
 
     test "OCR metadata cannot authorize a correction", %{invoice: invoice} do
-      flagged = MapSet.new([{"20/2026-27", "ocr_minimum"}])
-      correction = %{"invoice" => "20/2026-27", "field" => "ocr_minimum", "value" => 0.99}
+      flagged = MapSet.new([{"source-a", "ocr_minimum"}])
+      correction = %{"source_id" => "source-a", "field" => "ocr_minimum", "value" => 0.99}
 
       {_final, ok, silent, _} =
         CorrectionPolicy.apply_corrections([invoice], [correction], flagged)
@@ -1540,11 +1549,7 @@ defmodule Nila.Gst.Sales.Gstr1Test do
     })
   end
 
-  describe "blocking_issues/1 — documents this return has no table for" do
-    # Six filed GSTR-1s across both clients contain b2b, hsn and doc_issue and
-    # nothing else; doc_issue declares only series type 1. None of these
-    # documents has ever arrived. When one does, it must stop the return rather
-    # than be derived as the only shape on offer — a regular outward supply.
+  describe "blocking_issues/1 — supported treatments and unresolved output requirements" do
     defp sales_invoice(overrides) do
       Map.merge(
         %{

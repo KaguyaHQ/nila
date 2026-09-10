@@ -105,7 +105,6 @@ defmodule Nila.Gst.WorkQueue do
     need_decision = purchase_stats.need_decision
     sales_open = sales_open_issues(sales)
     sales_intake_open = Dumps.unresolved?(client.org_id, client.id, period, "sales")
-    r1_signed = sales != nil and match?({:ok, _}, Signoffs.latest_gstr1_signoff(sales.id))
     r1_filed = sales != nil and sales.filed_at != nil
     gstr3b_signed = purchase != nil and match?({:ok, _}, Signoffs.latest_signoff(purchase.id))
     gstr3b_filed = purchase != nil and purchase.filed_at != nil
@@ -118,7 +117,6 @@ defmodule Nila.Gst.WorkQueue do
         awaiting_bills: purchase_stats.awaiting_bills,
         gstr2b_in: gstr2b_in?,
         gstr2b_available: Calendar.status(period, today).gstr2b_available?,
-        r1_signed: r1_signed,
         r1_filed: r1_filed,
         gstr3b_signed: gstr3b_signed,
         gstr3b_filed: gstr3b_filed,
@@ -212,7 +210,7 @@ defmodule Nila.Gst.WorkQueue do
 
   @doc """
   Who a client-month is waiting on — the fold of `track_states/1` down to the
-  one atom Today's sections need. Most urgent first: a signed-unfiled return
+  one atom Today's sections need. Most urgent first: a return ready to file
   outranks open work (filing is the step nobody may miss), so a month with
   open work on one side and a signature on the other belongs to the filing gap.
   """
@@ -233,7 +231,7 @@ defmodule Nila.Gst.WorkQueue do
       Enum.all?(tracks, &(&1 == :filed)) ->
         :done
 
-      Enum.any?(tracks, &(&1 == :signed)) ->
+      sales == :clear or purchase == :signed ->
         :to_file
 
       Enum.any?(tracks, &(&1 in [:open, :need_2b])) ->

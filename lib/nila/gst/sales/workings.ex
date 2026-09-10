@@ -67,12 +67,11 @@ defmodule Nila.Gst.Sales.Workings do
     corrections =
       effective
       |> Enum.filter(&(&1["verb"] == "correct_field"))
-      |> normalize_correction_targets(pristine_source_invoices)
       |> effective_corrections()
 
     correction_issues =
       pristine_source_invoices
-      |> InvoiceReadiness.issues(compliance)
+      |> InvoiceReadiness.issues()
       |> Enum.concat(Gstr1Readiness.issues(pristine_source_invoices))
       |> Enum.concat(Gstr1Readiness.period_issues(pristine_source_invoices, period))
 
@@ -103,7 +102,7 @@ defmodule Nila.Gst.Sales.Workings do
 
     raw_issues =
       active_invoices
-      |> InvoiceReadiness.issues(compliance)
+      |> InvoiceReadiness.issues()
       |> Enum.concat(Gstr1Readiness.issues(active_invoices))
       |> Enum.concat(Documents.issues(active_invoices))
       |> Enum.concat(Gstr1Readiness.period_issues(active_invoices, period))
@@ -117,8 +116,7 @@ defmodule Nila.Gst.Sales.Workings do
       |> Map.values()
       |> Enum.filter(&(&1["verb"] == "confirm_issue"))
 
-    confirmed_keys =
-      confirmed_issue_keys(confirmations, raw_issues, pristine_source_invoices)
+    confirmed_keys = MapSet.new(confirmations, & &1["target"])
 
     issues =
       raw_issues
@@ -144,7 +142,7 @@ defmodule Nila.Gst.Sales.Workings do
       contributions: projection.contributions,
       decisions: decisions,
       corrections: corrections,
-      flagged: with_legacy_flag_aliases(source_flagged, pristine_source_invoices),
+      flagged: source_flagged,
       silent_errors: silent_errors
     }
   end
@@ -165,8 +163,7 @@ defmodule Nila.Gst.Sales.Workings do
   @doc """
   Stable resolution target for an issue. Invoice issues use pristine source ID,
   duplicate-number groups carry their own explicit target, and month issues use
-  their code. Legacy number-based targets are translated only for a uniquely
-  identified pristine source row during materialization.
+  their code. Saved decisions match these targets exactly.
   """
   def issue_key(%{"code" => "duplicate_invoice_number", "target" => target})
       when is_binary(target),
@@ -271,13 +268,11 @@ defmodule Nila.Gst.Sales.Workings do
   end
 
   @doc """
-  Whether an issue can be answered by a human at all.
+  Whether reviewer confirmation alone cannot clear this issue.
 
-  Every other issue is a question about the numbers, and confirming it is a real
-  answer: the reviewer looked, and the bill really does say that. A blocking
-  issue is different in kind — it says the return has no table for this
-  document, so `Gstr1.derive/2` will file it as something it is not. Confirming
-  that changes nothing about what gets filed, so confirmation must not clear it.
+  A blocker can represent an unsupported output treatment, missing evidence,
+  or conflicting invoice identities. The underlying problem must be resolved
+  before generating the affected output.
   """
   def blocking?(issue), do: Issues.blocking?(issue)
 
@@ -297,26 +292,6 @@ defmodule Nila.Gst.Sales.Workings do
       "field" => resolution["payload"]["field"],
       "value" => resolution["payload"]["to"]
     }
-  end
-
-  defp normalize_correction_targets(corrections, invoices) do
-    ids = MapSet.new(invoices, & &1["id"])
-    by_number = Enum.group_by(invoices, & &1["invoice_number"])
-
-    Enum.map(corrections, fn correction ->
-      target = correction["target"]
-
-      cond do
-        MapSet.member?(ids, target) ->
-          correction
-
-        match?([_], by_number[target]) ->
-          Map.put(correction, "target", by_number[target] |> hd() |> Map.fetch!("id"))
-
-        true ->
-          correction
-      end
-    end)
   end
 
   defp apply_exclusions(invoices, exclusions) do
@@ -366,53 +341,6 @@ defmodule Nila.Gst.Sales.Workings do
 
     {copies, active} = Enum.split_with(marked, &Map.has_key?(&1, "duplicate_copy"))
     {marked, active, copies}
-  end
-
-  defp confirmed_issue_keys(confirmations, issues, pristine_invoices) do
-    pristine_by_id = Map.new(pristine_invoices, &{&1["id"], &1})
-    number_counts = Enum.frequencies_by(pristine_invoices, & &1["invoice_number"])
-
-    Enum.reduce(confirmations, MapSet.new(), fn confirmation, confirmed ->
-      target = confirmation["target"]
-
-      case Enum.find(issues, fn issue ->
-             issue_key(issue) == target or
-               legacy_issue_target(issue, pristine_by_id, number_counts) == target
-           end) do
-        nil -> confirmed
-        issue -> MapSet.put(confirmed, issue_key(issue))
-      end
-    end)
-  end
-
-  defp legacy_issue_target(%{"source_id" => source_id, "code" => code}, pristine, counts)
-       when is_binary(source_id) do
-    invoice_number = get_in(pristine, [source_id, "invoice_number"])
-    if counts[invoice_number] == 1, do: "#{invoice_number}:#{code}"
-  end
-
-  # An issue that carries its own explicit target has no legacy alias — a
-  # duplicate-number group's target names the exact source rows it covers, and
-  # honouring the bare code here would re-open the hole that scoping closes.
-  defp legacy_issue_target(%{"target" => target}, _pristine, _counts) when is_binary(target),
-    do: nil
-
-  defp legacy_issue_target(%{"invoice" => nil, "code" => code}, _pristine, _counts), do: code
-  defp legacy_issue_target(_issue, _pristine, _counts), do: nil
-
-  defp with_legacy_flag_aliases(flagged, invoices) do
-    unique_numbers =
-      invoices
-      |> Enum.group_by(& &1["invoice_number"])
-      |> Enum.filter(fn {_number, members} -> length(members) == 1 end)
-      |> Map.new(fn {number, [invoice]} -> {invoice["id"], number} end)
-
-    Enum.reduce(flagged, flagged, fn {source_id, field}, acc ->
-      case unique_numbers[source_id] do
-        nil -> acc
-        invoice_number -> MapSet.put(acc, {invoice_number, field})
-      end
-    end)
   end
 
   defp present_number?(number), do: is_binary(number) and String.trim(number) != ""

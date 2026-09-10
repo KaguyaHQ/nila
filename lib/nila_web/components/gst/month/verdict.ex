@@ -108,9 +108,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp settled_door_and_headline(%{tracks: %{purchase: :signed}} = facts),
     do: file_door(facts, :purchase, "GSTR-3B", facts.gstr3b_signoff)
 
-  defp settled_door_and_headline(%{tracks: %{sales: :signed}} = facts),
-    do: file_door(facts, :sales, "GSTR-1", facts.r1_signoff)
-
   # 3. The 2B is published and nobody has fetched it. This outranks every
   #    decision because every decision is behind it: with no 2B side, the
   #    reconciliation matched nothing, so the register's "open" rows are an
@@ -162,7 +159,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   #    so for them the page falls through to whatever is still missing.
   defp settled_door_and_headline(%{can_sign_off: true, tracks: tracks} = facts)
        when tracks.sales == :clear
-       when tracks.purchase == :clear and tracks.sales in [:signed, :filed] do
+       when tracks.purchase == :clear and tracks.sales in [:clear, :filed] do
     %{
       tone: :calm,
       headline: ready_headline(facts),
@@ -395,8 +392,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     do: plain_file_headline(return, signoff)
 
   defp plain_file_headline(return, signoff),
-    do:
-      "#{return} #{if(return == "GSTR-1", do: "approved", else: "signed")} by #{signer(signoff)}."
+    do: "#{return} signed by #{signer(signoff)}."
 
   defp cash_payable(%{gstr3b: gstr3b}) when is_map(gstr3b) do
     case get_in(gstr3b, ["setoff_61", "cash_total"]) do
@@ -441,7 +437,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
 
   # Same reason as the file door: at a 3B signature the payable is the fact the
   # signer is putting their name to, so it leads rather than trailing the word
-  # "Clean". A GSTR-1 signature has no payable, and falls back to the rollup.
+  # "Clean". Ready sales use the current outward position for this calculation.
   defp ready_headline(facts) do
     cash = signing_3b?(facts) && cash_payable(facts)
 
@@ -450,7 +446,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
       else: "Clean. #{money_clause(facts)}"
   end
 
-  defp signing_3b?(%{tracks: %{sales: sales}}), do: sales in [:signed, :filed]
+  defp signing_3b?(%{tracks: %{sales: sales}}), do: sales in [:clear, :filed]
 
   defp money_clause(%{gstr3b: gstr3b}) when is_map(gstr3b) do
     itc = heads_total(get_in(gstr3b, ["itc", "net_itc_4c"]))
@@ -516,7 +512,6 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     cond do
       facts.attention_dumps != [] -> nil
       tracks.purchase == :signed -> :purchase
-      tracks.sales == :signed -> :sales
       tracks.purchase == :need_2b -> :purchase
       tracks.purchase == :open -> :purchase
       tracks.sales == :open -> :sales
@@ -533,7 +528,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp signable?(%{tracks: %{sales: :clear}}, :sales), do: true
 
   defp signable?(%{tracks: %{purchase: :clear, sales: sales}}, :purchase),
-    do: sales in [:signed, :filed]
+    do: sales in [:clear, :filed]
 
   defp signable?(_facts, _track), do: false
 
@@ -545,10 +540,9 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
     do: "GSTR-1 drafted, issues still to check."
 
   defp line_for(:sales, :open, _facts), do: "GSTR-1 drafted, not yet reviewed."
-  defp line_for(:sales, :clear, _facts), do: "GSTR-1 worked and clean, waiting on a signature."
+  defp line_for(:sales, :clear, _facts), do: "GSTR-1 working files ready."
 
-  defp line_for(:sales, status, _facts) when status in [:signed, :filed],
-    do: "GSTR-1 approved."
+  defp line_for(:sales, :filed, _facts), do: "GSTR-1 filed."
 
   defp line_for(:purchase, :absent, _facts),
     do: "Purchase bills not in, so the 2B reconciliation waits."
@@ -600,7 +594,9 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
   defp find_dump(dumps, status), do: Enum.find(dumps, &(&1.status == status))
   defp extracting?(dumps), do: Enum.any?(dumps, &(&1.status in ~w(received extracting)))
 
-  defp releasable?(%{r1_signoff: signoff}, %{kind: "sales"}), do: is_nil(signoff)
+  defp releasable?(%{sales_month: month}, %{kind: "sales"}),
+    do: is_nil(month) or is_nil(month.filed_at)
+
   defp releasable?(%{gstr3b_signoff: signoff}, _dump), do: is_nil(signoff)
 
   defp source_anchor(kind) when kind in ~w(sales filed_gstr1), do: "#month-sales-sources"
@@ -637,6 +633,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
           <h1 class="font-display text-base-content text-h4 font-normal">
             {period_label(@period)}
           </h1>
+
           <p
             :if={@verdict.headline}
             id="month-headline"
@@ -647,6 +644,7 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
           >
             {@verdict.headline}
           </p>
+
           <div
             :if={@verdict.deadlines != []}
             id="month-deadlines"
@@ -660,12 +658,14 @@ defmodule NilaWeb.Components.Gst.Month.Verdict do
               {deadline.return} · {deadline_label(deadline)}
             </span>
           </div>
+
           <div
             :if={@verdict.quiet != []}
             class="text-body text-ink-muted flex flex-wrap items-center gap-x-4 gap-y-1"
           >
             <span :for={line <- @verdict.quiet} id={"month-quiet-#{line_id(line)}"}>{line}</span>
           </div>
+
           <p
             :if={Map.get(@verdict, :busy)}
             id="month-busy"

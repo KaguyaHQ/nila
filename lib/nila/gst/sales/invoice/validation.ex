@@ -45,7 +45,7 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
     Enum.flat_map(invoices, fn invoice -> invoice |> InvoiceFacts.sales!() |> invoice_issues() end)
   end
 
-  @doc "One blocking issue per duplicate active invoice-number group."
+  @doc "One blocking issue per duplicate document-type and invoice-number group in the supplied rows."
   def duplicate_number_issues(invoices) do
     invoices = Enum.map(invoices, &InvoiceFacts.sales!/1)
 
@@ -63,7 +63,7 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
         "code" => "duplicate_invoice_number",
         "level" => Issues.level_for("duplicate_invoice_number"),
         "message" =>
-          "invoice number #{invoice_number} belongs to #{length(source_ids)} active source rows; correct a misread number or exclude only a confirmed duplicate copy",
+          "invoice number #{invoice_number} belongs to #{length(source_ids)} source rows; correct a misread number or exclude only a confirmed duplicate copy",
         "fields" => ["invoice_number"],
         "target" => "duplicate_invoice_number|#{invoice_number}|#{Enum.join(source_ids, ",")}"
       }

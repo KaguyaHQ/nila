@@ -8,8 +8,6 @@ defmodule Nila.Gst.Sales.Review.Resolution do
 
   `target` is the pristine source ID for `correct_field` and duplicate-copy
   exclusion, or the issue key (`SalesWorkings.issue_key/1`) for confirmations.
-  Legacy invoice-number targets remain replayable only when they identify one
-  source row.
 
   Verbs:
 

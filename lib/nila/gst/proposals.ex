@@ -37,8 +37,8 @@ defmodule Nila.Gst.Proposals do
       numbers. Any honest proposal here is a *question* ("were 46–48 cancelled
       or omitted?"), not a treatment.
     * `hsn_inferred_code` — Nila inferred the code; it cannot also vouch for it.
-    * `hsn_multiple_rates`, `statutory_rate_*`, `rate_history_conflict` — the
-      basis would be a claim about what the item legally is.
+    * `statutory_rate_*` — the basis would be a claim about what the item legally
+      is, which remains a purchase-side review question.
     * `mixed_tax_heads`, `tax_split_mismatch` — which head is correct depends on
       where the supply happened, which is the reviewer's call. Nila can only
       observe that the document contradicts itself.

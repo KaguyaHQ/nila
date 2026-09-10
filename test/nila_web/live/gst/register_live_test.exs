@@ -50,12 +50,6 @@ defmodule NilaWeb.Gst.RegisterLiveTest do
     |> Repo.update!()
   end
 
-  defp signed_gstr1!(month, user) do
-    %Signoff{org_id: month.org_id, sales_month_id: month.id, signed_by_id: user.id}
-    |> Signoff.changeset(%{artifact: "gstr1", snapshot: %{}})
-    |> Repo.insert!()
-  end
-
   defp signed_gstr3b!(month, user) do
     %Signoff{org_id: month.org_id, client_month_id: month.id, signed_by_id: user.id}
     |> Signoff.changeset(%{artifact: "gstr3b", snapshot: %{}})
@@ -145,11 +139,14 @@ defmodule NilaWeb.Gst.RegisterLiveTest do
     assert has_element?(view, "#register-3b-#{client.id}-2025-01", "Not filed")
   end
 
-  test "signed but unfiled returns still say Not filed", %{conn: conn, org: org, user: user} do
+  test "reviewed sales and signed purchases still say Not filed", %{
+    conn: conn,
+    org: org,
+    user: user
+  } do
     client = client!(org, "Breeze Tech")
-    sales = sales!(org, client, "2025-08")
+    sales!(org, client, "2025-08") |> change(state: "reviewed") |> Repo.update!()
     purchase = purchase!(org, client, "2025-08")
-    signed_gstr1!(sales, user)
     signed_gstr3b!(purchase, user)
 
     {:ok, view, _html} = live(conn, ~p"/register")

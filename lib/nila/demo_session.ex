@@ -184,7 +184,6 @@ defmodule Nila.DemoSession do
   defp all(query, false), do: Repo.all(query)
 
   defp safe_to_reset(client, rows) do
-    month_ids = Enum.map(rows.months, & &1.id)
     batch_ids = Enum.map(rows.batches, & &1.id)
 
     cond do
@@ -200,9 +199,6 @@ defmodule Nila.DemoSession do
             not is_nil(&1.filed_gstr1) or not is_nil(&1.filing_arn))
       ) ->
         {:error, :contains_other_or_filed_month}
-
-      Repo.exists?(from s in Nila.Gst.Filing.Signoff, where: s.sales_month_id in ^month_ids) ->
-        {:error, :contains_signoff}
 
       Repo.exists?(from m in Nila.Gst.Purchase.Month, where: m.client_id == ^client.id) ->
         {:error, :contains_purchase_work}

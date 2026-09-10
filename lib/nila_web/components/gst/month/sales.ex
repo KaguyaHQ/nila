@@ -55,7 +55,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
     required_issues = assigns.account.issues.required
     hsn_summary = Gstr1.hsn_summary(assigns.active_invoices)
     hsn_issues = hsn_issues(required_issues)
-    novelty = novelty(assigns.account.issues.advisory)
     document_rows = document_summary_rows(assigns.derived)
     human_actions = human_actions(assigns.decisions)
     grouped_cases = grouped_review_cases(assigns.review)
@@ -82,9 +81,7 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
       )
       |> assign(:hsn_summary, hsn_summary)
       |> assign(:hsn_issues, hsn_issues)
-      |> assign(:hsn_control, hsn_control(hsn_issues, novelty))
-      |> assign(:novelty, novelty)
-      |> assign(:novelty_codes, if(novelty, do: novelty.codes, else: []))
+      |> assign(:hsn_control, hsn_control(hsn_issues))
       |> assign(:hsn_totals, hsn_totals(hsn_summary))
       |> assign(:document_summary_rows, document_rows)
       |> assign(:document_control, document_control(required_issues, document_rows))
@@ -473,7 +470,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               <.fold_summary title="HSN Table 12 derived from effective invoice lines" tabular>
                 <:detail>
                   {length(@hsn_summary)} combinations · {Helpers.rupees(@hsn_totals.tax)} tax
-                  <span :if={@novelty}> · {@novelty.count} codes new</span>
                 </:detail>
 
                 <:status>
@@ -495,14 +491,9 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
                 </.link>
               </div>
 
-              <p :if={@novelty} id="gstr1-hsn-new-codes" class="text-ink-muted text-ui font-medium">
-                {@novelty.count} of {length(@hsn_summary)} codes are new for this client
-              </p>
-
               <Workings.hsn_summary
                 derived={@derived}
                 invoices={@active_invoices}
-                novelty_codes={@novelty_codes}
                 rippled={@rippled}
                 ripple_seq={@ripple_seq}
                 expanded={@expanded_nodes}
@@ -952,11 +943,10 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp action_label(%{verb: "exclude_duplicate_copy"}), do: "Excluded duplicate source copy"
   defp action_label(action), do: humanize_label(action.verb)
 
-  defp hsn_control([issue | _], _novelty),
+  defp hsn_control([issue | _]),
     do: %{label: issue_level_label(issue), variant: Helpers.severity_variant(issue["level"])}
 
-  defp hsn_control([], %{}), do: %{label: "Advisory", variant: "neutral"}
-  defp hsn_control([], nil), do: %{label: "Derived", variant: "neutral"}
+  defp hsn_control([]), do: %{label: "Derived", variant: "neutral"}
 
   defp issue_level_label(%{"level" => "blocking"}), do: "Blocked"
   defp issue_level_label(_issue), do: "Review required"
@@ -1117,17 +1107,6 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
   defp count_label(count, label), do: "#{count} #{label}s"
 
   defp hsn_issues(issues), do: Enum.filter(issues, &is_binary(&1["hsn_code"]))
-
-  defp novelty(advisories) do
-    case Enum.filter(advisories, &(&1["code"] == "hsn_new_code")) do
-      [] ->
-        nil
-
-      issues ->
-        codes = issues |> Enum.map(& &1["hsn_code"]) |> Enum.uniq() |> Enum.sort()
-        %{count: length(codes), codes: codes}
-    end
-  end
 
   defp hsn_reviewed?(issue, invoices, expanded_nodes) do
     case Enum.flat_map(hsn_codes(issue), &Workings.hsn_node_ids(invoices, &1)) do

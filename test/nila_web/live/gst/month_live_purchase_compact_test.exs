@@ -1006,7 +1006,6 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     scope = Nila.Accounts.Scope.for_user(user)
     client_month = settle_register!(client_month, user.id)
     answer_sales_issues!(sales, user.id)
-    assert {:ok, _} = Signoffs.sign_off_gstr1(sales, scope)
     assert {:ok, _} = Signoffs.sign_off(client_month, scope)
 
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=gstr3b")

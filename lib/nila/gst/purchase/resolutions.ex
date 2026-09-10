@@ -212,7 +212,7 @@ defmodule Nila.Gst.Purchase.Resolutions do
   end
 
   # Open months use the current sales working. Filed months keep their recorded
-  # return, including legacy snapshots; an old approval does not freeze an open month.
+  # return. Sales review does not create a separate approval.
   defp gstr3b(%Month{} = month, recon, itc) do
     {source, outward} =
       case SalesMonths.get_by_period(month.org_id, month.client_id, month.period) do

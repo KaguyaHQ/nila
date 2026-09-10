@@ -12,7 +12,6 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
       sales_reviewable: true,
       stats: %{need_decision: 0},
       can_sign_off: true,
-      r1_signoff: nil,
       gstr3b_signoff: nil,
       sales_intake_open: false,
       itc: nil,
@@ -37,7 +36,6 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
   test "keeps final handoffs unavailable while required issues remain" do
     assigns = %{
       sales_month: %{client_id: Ecto.UUID.generate(), period: "2026-07", filed_at: nil},
-      r1_signoff: nil,
       open_issue_count: 2,
       reviewable: false,
       completeness: :open,
@@ -67,7 +65,6 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
         filed_at: nil,
         filing_arn: nil
       },
-      r1_signoff: %{snapshot: %{}, signed_by: nil, inserted_at: DateTime.utc_now()},
       open_issue_count: 0,
       reviewable: true,
       sales_intake_open: false,
@@ -107,7 +104,6 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
         filed_at: nil,
         filing_arn: nil
       },
-      r1_signoff: %{snapshot: %{}, signed_by: nil, inserted_at: DateTime.utc_now()},
       open_issue_count: 0,
       reviewable: true,
       sales_intake_open: false,
@@ -133,7 +129,6 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
         filed_at: nil,
         filing_arn: nil
       },
-      r1_signoff: %{snapshot: %{}, signed_by: nil, inserted_at: DateTime.utc_now()},
       open_issue_count: 0,
       reviewable: true,
       sales_intake_open: false,
@@ -166,7 +161,6 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
     readiness =
       Filing.gstr1_readiness(%{
         sales_month: %{filed_at: nil},
-        r1_signoff: nil,
         open_issue_count: 0,
         reviewable: true,
         sales_intake_open: true,
@@ -181,7 +175,6 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
   test "readiness depends on checks without requiring senior approval" do
     common = %{
       sales_month: %{filed_at: nil},
-      r1_signoff: nil,
       open_issue_count: 0,
       reviewable: true,
       sales_intake_open: false

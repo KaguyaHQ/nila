@@ -31,46 +31,10 @@ defmodule Nila.Gst.Sales.Review.ResolutionsTest do
 
   defp confirm_all_open(month, user), do: answer_sales_issues!(month, user.id)
 
-  test "legacy approval neither freezes workings nor prevents a decision", %{
-    month: month,
-    user: user
-  } do
-    %Nila.Gst.Filing.Signoff{
-      org_id: month.org_id,
-      sales_month_id: month.id,
-      signed_by_id: user.id
-    }
-    |> Nila.Gst.Filing.Signoff.changeset(%{
-      artifact: "gstr1",
-      snapshot: %{"derived" => %{}, "invoices" => []}
-    })
-    |> Repo.insert!()
-
-    assert SalesResolutions.effective_workings(month).active_invoices != []
-
-    assert {:ok, _} =
-             SalesResolutions.record(
-               month,
-               %{"verb" => "confirm_issue", "target" => "legacy-check"},
-               user.id
-             )
-  end
-
   test "a filed snapshot stays frozen and missing contribution evidence stays unknown", %{
     month: month,
     user: user
   } do
-    %Nila.Gst.Filing.Signoff{
-      org_id: month.org_id,
-      sales_month_id: month.id,
-      signed_by_id: user.id
-    }
-    |> Nila.Gst.Filing.Signoff.changeset(%{
-      artifact: "gstr1",
-      snapshot: %{"derived" => month.derived_gstr1, "invoices" => month.invoices}
-    })
-    |> Repo.insert!()
-
     filed =
       month
       |> Ecto.Changeset.change(filed_at: DateTime.utc_now(), state: "filed")
@@ -90,7 +54,7 @@ defmodule Nila.Gst.Sales.Review.ResolutionsTest do
              )
   end
 
-  test "a filed month without an approval retains its recorded working", %{month: month} do
+  test "a filed month retains its recorded working", %{month: month} do
     recorded = Map.put(month.derived_gstr1, "gt", 123.45)
 
     filed =
@@ -188,7 +152,9 @@ defmodule Nila.Gst.Sales.Review.ResolutionsTest do
     assert restored_copy["printed_grand_total"] == corrected_total
   end
 
-  test "workings reloads the rate release pinned on the month", %{month: month} do
+  test "sales workings preserve printed rates despite an active notification directory", %{
+    month: month
+  } do
     now = DateTime.utc_now()
 
     release =
@@ -200,7 +166,8 @@ defmodule Nila.Gst.Sales.Review.ResolutionsTest do
         file_sha256: Base.encode16(:crypto.strong_rand_bytes(32)),
         published_on: ~D[2025-09-17],
         effective_from: ~D[2025-09-22],
-        observed_at: now
+        observed_at: now,
+        status: "active"
       })
       |> Repo.insert!()
 
@@ -236,19 +203,20 @@ defmodule Nila.Gst.Sales.Review.ResolutionsTest do
         org_id: month.org_id,
         client_id: month.client_id,
         period: month.period,
-        invoices: [invoice | rest],
-        gst_rate_release_id: release.id
+        invoices: [invoice | rest]
       })
 
     workings = SalesResolutions.workings(month)
-    assert Enum.any?(workings.issues, &(&1["code"] == "statutory_rate_mismatch"))
 
-    assert get_in(hd(workings.invoices), [
-             "line_items",
-             Access.at(0),
-             "rate_validation",
-             "release_id"
-           ]) == release.id
+    refute Enum.any?(
+             workings.issues,
+             &(&1["code"] in ~w(statutory_rate_mismatch statutory_rate_review))
+           )
+
+    line = hd(hd(workings.invoices)["line_items"])
+    assert line["cgst_rate"] == 9
+    assert line["sgst_rate"] == 9
+    refute Map.has_key?(line, "rate_validation")
   end
 
   test "workings replays recorded decisions over the stored month", %{

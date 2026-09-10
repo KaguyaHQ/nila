@@ -83,9 +83,6 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
 
     answer_sales_issues!(sales, user.id)
 
-    # The purchase flow still uses its historical R1 dependency. Sales has no
-    # approval action; seed that existing dependency through its domain API.
-    {:ok, _signoff} = Signoffs.sign_off_gstr1(sales, Nila.Accounts.Scope.for_user(user))
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=gstr3b")
 
     assert doors(view) == ["month-door-sign-3b"]

@@ -57,13 +57,12 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
 
   defp run(dump), do: perform_job(DumpWorker, %{"dump_id" => dump.id})
 
-  defp sign_sales(month, user, scope) do
+  defp review_sales(month, user) do
     answer_sales_issues!(month, user.id)
 
     {:ok, reviewed} = SalesResolutions.mark_reviewed(month)
 
-    {:ok, signoff} = Signoffs.sign_off_gstr1(reviewed, scope)
-    {reviewed, signoff}
+    reviewed
   end
 
   test "a sales dump alone starts the month: extracted, derived, worked", %{
@@ -203,16 +202,15 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     assert Enum.all?(duplicate_groups, &(length(Enum.uniq(&1["source_ids"])) == 2))
   end
 
-  test "a legacy sales approval does not hold newly arriving invoices", %{
+  test "new invoices reopen a reviewed sales month", %{
     org: org,
     user: user,
-    client: client,
-    scope: scope
+    client: client
   } do
     assert :ok = run(bring_in(org, client, user, "sales", "%PDF-1.4 fake"))
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
 
-    {_reviewed, _signoff} = sign_sales(month, user, scope)
+    review_sales(month, user)
 
     straggler = bring_in(org, client, user, "sales", "%PDF-1.4 late")
     assert :ok = run(straggler)
@@ -275,7 +273,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     first = bring_in(org, client, user, "sales", "%PDF-1.4 fake")
     assert :ok = run(first)
     {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
-    {reviewed, _signoff} = sign_sales(month, user, scope)
+    reviewed = review_sales(month, user)
     assert {:ok, _filed} = Signoffs.mark_filed(reviewed, scope)
 
     ClientMonths.subscribe(org.id)

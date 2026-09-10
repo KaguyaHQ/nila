@@ -1,8 +1,7 @@
 defmodule Nila.Gst.Rates.Validation do
   @moduledoc "Matches HSN goods to effective-dated candidates; SAC and description-only Any Chapter rules remain unchecked."
 
-  alias Nila.Gst.Issues
-  alias Nila.Gst.RateHistory
+  alias Nila.Gst.LineRate
 
   @rate_tolerance 0.05
 
@@ -14,36 +13,6 @@ defmodule Nila.Gst.Rates.Validation do
     Enum.map(invoices, fn invoice ->
       Map.update(invoice, "line_items", [], fn lines ->
         Enum.map(lines, &annotate_line(&1, invoice["invoice_date"], directory))
-      end)
-    end)
-  end
-
-  # One issue per invoice and status, not per line, for the reason spelled out
-  # in `Hsn.Validation.sales_issues/1`: the resolution target is
-  # `source_id:code` (`Sales.Workings.issue_key/1`), so three flagged lines on
-  # one bill posted three rows a reviewer could only answer once.
-  #
-  # The merge belongs here rather than to the generic `collapse_by_target/1`,
-  # which keeps the first row's map wholesale and unions only message, fields
-  # and lines. Statutory candidates are per code, and the codes differ across
-  # the lines being merged — so that merge left the card offering line 1's
-  # candidate rates beside a message naming lines 1, 3 and 4, which is a
-  # citation against the wrong entry. Here the candidates and the codes are
-  # unioned with the lines that produced them, and each line keeps its own
-  # sentence naming its own code, rate and notification entry.
-  def sales_issues(invoices) do
-    Enum.flat_map(invoices, fn invoice ->
-      findings =
-        invoice["line_items"]
-        |> List.wrap()
-        |> Enum.with_index(1)
-        |> Enum.flat_map(&line_finding/1)
-
-      findings
-      |> Enum.map(& &1.status)
-      |> Enum.uniq()
-      |> Enum.map(fn status ->
-        sales_issue(invoice, status, Enum.filter(findings, &(&1.status == status)))
       end)
     end)
   end
@@ -72,51 +41,6 @@ defmodule Nila.Gst.Rates.Validation do
     end)
   end
 
-  defp line_finding({line, index}) do
-    case line["rate_validation"] do
-      %{"status" => status} = validation when status in ~w(incompatible review) ->
-        [
-          %{
-            status: status,
-            line: index,
-            code: line["hsn_sac"],
-            rates: List.wrap(validation["candidate_rates"]),
-            reason: line_reason(line, index, validation),
-            fields: [
-              "line_items[#{index - 1}].hsn_sac",
-              "line_items[#{index - 1}].cgst_rate",
-              "line_items[#{index - 1}].sgst_rate",
-              "line_items[#{index - 1}].igst_rate"
-            ]
-          }
-        ]
-
-      _ ->
-        []
-    end
-  end
-
-  defp sales_issue(invoice, status, findings) do
-    code = issue_code(status)
-    codes = findings |> Enum.map(& &1.code) |> Enum.reject(&is_nil/1) |> Enum.uniq()
-
-    %{
-      "invoice" => invoice["invoice_number"],
-      "source_id" => invoice["id"],
-      "code" => code,
-      "level" => Issues.level_for(code),
-      "message" => Enum.map_join(findings, " ", & &1.reason) <> " " <> @correction_advice,
-      # `hsn_code` is one code because the callers that take a code take one;
-      # `hsn_codes` is what the merged issue actually covers, and any gate that
-      # asks "has the reviewer seen this" has to read the list.
-      "hsn_code" => List.first(codes),
-      "hsn_codes" => codes,
-      "hsn_rates" => findings |> Enum.flat_map(& &1.rates) |> Enum.uniq() |> Enum.sort(),
-      "lines" => Enum.map(findings, & &1.line),
-      "fields" => findings |> Enum.flat_map(& &1.fields) |> Enum.uniq()
-    }
-  end
-
   defp annotate_line(%{"hsn_kind" => "hsn"} = line, invoice_date, directory) do
     validation = validate(line, invoice_date, directory)
     Map.put(line, "rate_validation", stringify(validation))
@@ -129,7 +53,7 @@ defmodule Nila.Gst.Rates.Validation do
 
     with {:ok, date} <- invoice_date(invoice_date),
          true <- Date.compare(date, release.effective_from) != :lt,
-         {:ok, printed_rate, rate_source} <- RateHistory.line_rate_with_source(line),
+         {:ok, printed_rate, rate_source} <- LineRate.line_rate_with_source(line),
          [_ | _] = rules <- matching_rules(line["hsn_sac"], directory.rules) do
       candidates = candidates(rules, release)
       rates = Enum.map(candidates, & &1.rate)

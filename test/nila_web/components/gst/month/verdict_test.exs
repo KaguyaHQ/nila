@@ -23,7 +23,6 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       purchase_month: nil,
       sales_month: nil,
       open_issue_count: 0,
-      r1_signoff: nil,
       gstr3b_signoff: nil,
       can_sign_off: true,
       attention_dumps: [],
@@ -277,7 +276,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
 
       assert is_nil(verdict.headline)
       assert is_nil(verdict.door)
-      assert verdict.quiet == ["GSTR-1 approved."]
+      assert verdict.quiet == ["GSTR-1 filed."]
       assert verdict.deadline.return == "GSTR-3B"
     end
 
@@ -318,7 +317,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       assert is_nil(verdict.door)
     end
 
-    test "both worked and unsigned: the senior signs in filing order" do
+    test "both worked and clear: the GSTR-3B payable leads" do
       verdict =
         Verdict.resolve(
           facts(
@@ -330,7 +329,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
           )
         )
 
-      assert verdict.headline == "Clean. ₹58,400 ITC, ₹1,23,000 payable."
+      assert verdict.headline == "\u20b91,23,000 payable. Worked and clean."
       assert is_nil(verdict.door)
     end
 
@@ -351,7 +350,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
     end
 
     test "the GSTR-3B signs only once the GSTR-1 is out of the way" do
-      for sales <- [:signed, :filed] do
+      for sales <- [:clear, :filed] do
         verdict = Verdict.resolve(facts(tracks: %{sales: sales, purchase: :clear}))
 
         assert is_nil(verdict.door)
@@ -415,19 +414,6 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
       end
     end
 
-    test "the GSTR-1 approval never borrows the 3B's payable" do
-      verdict =
-        Verdict.resolve(
-          facts(
-            tracks: %{sales: :signed, purchase: :open},
-            r1_signoff: %{signed_by: %{name: "Vasanth"}},
-            gstr3b: %{"setoff_61" => %{"cash_total" => 12_300_000}}
-          )
-        )
-
-      assert verdict.headline == "GSTR-1 approved by Vasanth."
-    end
-
     test "filed: the page runs out of content when the work runs out" do
       verdict =
         Verdict.resolve(
@@ -460,7 +446,7 @@ defmodule NilaWeb.Components.Gst.Month.VerdictTest do
 
   describe "the rules the table is an example of" do
     test "no state offers two doors" do
-      for sales <- [:absent, :open, :clear, :signed, :filed],
+      for sales <- [:absent, :open, :clear, :filed],
           purchase <- [:absent, :awaiting_2b, :need_2b, :open, :clear, :signed, :filed],
           can_sign_off <- [true, false] do
         verdict =

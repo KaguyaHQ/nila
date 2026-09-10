@@ -48,7 +48,6 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
   alias Nila.Gst.Purchase.Month, as: PurchaseMonth
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
-  alias Nila.Gst.RateHistory
   alias Nila.Gst.Rates.Directory, as: RateDirectory
   alias Nila.Gst.Rates.Validation, as: RateValidation
   alias Nila.Gst.Sales.Gstr1
@@ -150,7 +149,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   end
 
   # Wall check + derivation run in one transaction holding FOR UPDATE on the
-  # month row — the same lock `Signoffs.sign_off_gstr1` takes and the 3B
+  # month row — the same lock sales filing takes and the 3B
   # sign-off's state flip contends on — so a senior signing between our check
   # and our upsert is impossible: whoever gets the lock first wins, and the
   # loser sees the winner's work. A month that doesn't exist yet can't be
@@ -591,14 +590,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
     {:ok, client} = Clients.get_client(dump.org_id, dump.client_id)
     directory = active_hsn_directory()
-    rate_directory = active_rate_directory()
-
-    compliance =
-      %{
-        rate_history: RateHistory.prior_observations(dump.org_id, dump.client_id, dump.period)
-      }
-      |> maybe_put_directory(directory)
-      |> maybe_put_rate_directory(rate_directory)
+    compliance = maybe_put_directory(%{}, directory)
 
     workings =
       SalesWorkings.materialize(
@@ -621,7 +613,6 @@ defmodule Nila.Gst.Intake.DumpWorker do
         derived_gstr1: workings.derived,
         issues: issues,
         hsn_master_release_id: release_id(directory),
-        gst_rate_release_id: release_id(rate_directory),
         filed_gstr1: Dumps.filed_gstr1(dump.org_id, dump.client_id, dump.period),
         summary: %{"invoice_count" => length(invoices), "issue_count" => length(issues)}
       })
@@ -729,11 +720,6 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
   defp maybe_put_directory(compliance, nil), do: compliance
   defp maybe_put_directory(compliance, directory), do: Map.put(compliance, :directory, directory)
-
-  defp maybe_put_rate_directory(compliance, nil), do: compliance
-
-  defp maybe_put_rate_directory(compliance, directory),
-    do: Map.put(compliance, :rate_directory, directory)
 
   defp maybe_put_purchase_directory(entity_ctx, nil), do: entity_ctx
 

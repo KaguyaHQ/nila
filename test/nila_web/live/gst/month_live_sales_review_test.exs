@@ -168,7 +168,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     assert has_element?(
              view,
              "#gstr1-rate-validation-scope",
-             "imported taxable-goods rate candidates are checked independently"
+             "HSN/SAC codes and tax arithmetic are checked. Printed rates are preserved."
            )
   end
 

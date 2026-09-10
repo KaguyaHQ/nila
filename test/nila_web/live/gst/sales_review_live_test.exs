@@ -315,21 +315,21 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     assert has_element?(view, "#gstr1-tally-posting-form", first.company.name)
   end
 
-  test "legacy approval stays editable and actual filing withdraws write actions", context do
+  test "reviewed sales stay editable and filing withdraws write actions", context do
     [open | _] = context.workings.active_invoices
     tally_company_with_ledgers!(context)
-    sign_month!(context)
+    review_month!(context)
     path = review_path(context.client, open["id"], "all")
-    {:ok, signed, _html} = live(context.conn, path)
+    {:ok, reviewed, _html} = live(context.conn, path)
 
     refute has_element?(
-             signed,
+             reviewed,
              "#sales-review-component button[phx-click='resolve-invoice-issue']"
            )
 
-    assert has_element?(signed, "#sales-review-component button[phx-click='undo']")
-    assert has_element?(signed, "#gstr1-save-tally-posting")
-    refute has_element?(signed, "#tally_posting_party_ledger_identity[disabled]")
+    assert has_element?(reviewed, "#sales-review-component button[phx-click='undo']")
+    assert has_element?(reviewed, "#gstr1-save-tally-posting")
+    refute has_element?(reviewed, "#tally_posting_party_ledger_identity[disabled]")
 
     {:ok, month} = SalesMonths.get_by_period(context.org.id, context.client.id, @period)
     {:ok, _month} = Signoffs.mark_filed(month, Scope.for_user(context.user))
@@ -346,22 +346,6 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     assert has_element?(filed, "#tally_posting_party_ledger_identity[disabled]")
   end
 
-  test "a filed month without a signoff still disables review and Tally writes", context do
-    [invoice | _] = context.workings.active_invoices
-    tally_company_with_ledgers!(context)
-
-    context.month
-    |> Ecto.Changeset.change(filed_at: DateTime.utc_now(), state: "filed")
-    |> Repo.update!()
-
-    {:ok, view, _html} = live(context.conn, review_path(context.client, invoice["id"], "all"))
-    refute has_element?(view, "#sales-review-component button[phx-click='resolve-invoice-issue']")
-    refute has_element?(view, "#sales-review-component button[phx-click='undo']")
-    refute has_element?(view, "#gstr1-corrections")
-    refute has_element?(view, "#gstr1-save-tally-posting")
-    assert has_element?(view, "#tally_posting_party_ledger_identity[disabled]")
-  end
-
   test "month issue actions remain outside the invoice surface", context do
     {:ok, month_view, _html} =
       live(context.conn, "/gst/#{context.client.id}/#{@period}?track=sales")
@@ -372,10 +356,8 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     assert has_element?(month_view, "#gstr1-checks-before-filing")
   end
 
-  defp sign_month!(context) do
+  defp review_month!(context) do
     answer_sales_issues!(context.month, context.user.id)
-    {:ok, month} = SalesMonths.get_by_period(context.org.id, context.client.id, @period)
-    {:ok, _signoff} = Signoffs.sign_off_gstr1(month, Scope.for_user(context.user))
   end
 
   defp make_gstin_correctable!(month, source_id, client) do

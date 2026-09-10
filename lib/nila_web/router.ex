@@ -152,7 +152,6 @@ defmodule NilaWeb.Router do
       live "/gst/:client_id/:period/sales/invoices/:source_id", Gst.InvoiceReviewLive, :show
       live "/gst/:client_id/:period/sales/:view", Gst.MonthLive, :sales_workspace
       live "/gst/:client_id/:period/review/:lane", Gst.MonthLive, :review
-      live "/gst/:client_id/:period/exceptions", Gst.ExceptionsLive, :index
 
       # Settings share the product LiveView session so moving between work and
       # setup does not reload the shell. Firm-only pages enforce their own

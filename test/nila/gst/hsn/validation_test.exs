@@ -151,7 +151,7 @@ defmodule Nila.Gst.Hsn.ValidationTest do
              Validation.sales_issues(invoices)
   end
 
-  test "an inferred code that is also new is asked once, at the level that gates" do
+  test "an inferred code requires confirmation" do
     invoices = [
       %{
         "id" => "inv_01",
@@ -169,41 +169,13 @@ defmodule Nila.Gst.Hsn.ValidationTest do
       }
     ]
 
-    history = [%{code: "9999", rate: 18.0}]
-
     issues =
       invoices
       |> Validation.annotate_invoices(@directory)
-      |> Validation.summary_issues(history)
+      |> Validation.summary_issues()
 
     assert [issue] = issues
     assert issue["code"] == "hsn_inferred_code"
     assert issue["message"] =~ "was inferred rather than read from the source document"
-    assert issue["message"] =~ "710692 has not appeared in this client's prior 12 sales months"
-  end
-
-  test "a new code someone read off the bill keeps its own advisory" do
-    invoices = [
-      %{
-        "id" => "inv_01",
-        "invoice_number" => "135/2025-26",
-        "line_items" => [
-          %{
-            "description" => "Silver Rod",
-            "hsn_sac" => "710692",
-            "taxable_value" => 1000,
-            "cgst_rate" => 9,
-            "sgst_rate" => 9
-          }
-        ]
-      }
-    ]
-
-    assert [issue] =
-             invoices
-             |> Validation.annotate_invoices(@directory)
-             |> Validation.summary_issues([%{code: "9999", rate: 18.0}])
-
-    assert issue["code"] == "hsn_new_code"
   end
 end

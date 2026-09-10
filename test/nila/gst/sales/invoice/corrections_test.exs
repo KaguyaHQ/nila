@@ -396,7 +396,7 @@ defmodule Nila.Gst.Sales.Invoice.CorrectionsTest do
     assert packet.needs_review == []
   end
 
-  test "evaluates rate history relative to each invoice month in a mixed-period batch", ctx do
+  test "historical rates do not hold up a mixed-period sales batch", ctx do
     historical =
       ctx.invoice
       |> Map.put("id", "historical-source")
@@ -431,8 +431,8 @@ defmodule Nila.Gst.Sales.Invoice.CorrectionsTest do
     packet = TallyPacket.prepare([Repo.reload!(ctx.dump)])
 
     assert Enum.map(packet.invoices, & &1["invoice_number"]) == ["MAY-001", "JUNE-001"]
-    assert [%{invoice: %{"invoice_number" => "JUNE-001"}, issues: issues}] = packet.warnings
-    assert Enum.any?(issues, &(&1["code"] == "rate_history_conflict"))
+    assert packet.warnings == []
+    assert packet.needs_review == []
   end
 
   test "Tally note readiness does not inherit the GSTR-1 original-sale question", ctx do

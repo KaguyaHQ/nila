@@ -214,7 +214,7 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
     else
       record(socket, %{
         "verb" => "correct_field",
-        "target" => invoice["id"] || invoice["pristine_inum"],
+        "target" => invoice["id"],
         "payload" => %{
           "field" => field,
           "from" => from,

@@ -12,12 +12,9 @@ defmodule Nila.Gst.Sales.Review.Account do
   def summarize(workings, source) when is_map(workings) do
     source_invoices = workings.source_invoices
     active_invoices = workings.active_invoices
-    # `nil` means the snapshot predates this projection — not "same as active".
-    # Defaulting to the active invoices made a signed month's "As printed"
-    # column render against *today's* invoice set, so the reconciliation a
-    # reviewer signed could silently change afterwards. The totals still compute
-    # off the active set so nothing downstream divides by a missing number, but
-    # `recorded?` says not to believe the column.
+    # Filed months record effective invoices, without a separate pre-correction
+    # projection. Mark that column unavailable instead of calling the filed
+    # values "as printed".
     printed_recorded? = not is_nil(Map.get(workings, :printed_active_invoices))
     printed_invoices = Map.get(workings, :printed_active_invoices) || active_invoices
     issues = workings.issues

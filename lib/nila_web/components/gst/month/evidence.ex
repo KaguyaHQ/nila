@@ -499,13 +499,6 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               <:col :let={row} label="Rate" align="right">
                 <div :if={row.kind == :line}>
                   <span>{line_rate_label(row.line)}</span>
-                  <span
-                    :if={rate_candidate_label(row.line)}
-                    class="text-ink-subtle text-ui block whitespace-nowrap"
-                    title={rate_candidate_source(row.line)}
-                  >
-                    {rate_candidate_label(row.line)}
-                  </span>
                 </div>
               </:col>
 
@@ -547,23 +540,16 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
             </.data_table>
 
             <p id="gstr1-rate-validation-scope" class="mt-related text-ink-subtle text-ui">
-              HSN/SAC existence, tax arithmetic, and imported taxable-goods rate candidates are checked independently. Exemptions and description-dependent conditions still require review.
+              HSN/SAC codes and tax arithmetic are checked. Printed rates are preserved.
             </p>
           </div>
 
-          <%!-- Keyed the same way as the button that scrolls here. `flagged`
-                always carries a `{source_id, field}` entry but only carries
-                `{invoice_number, field}` for uniquely numbered invoices, so
-                reading it by `pristine_inum` alone meant that on a
-                duplicate-numbered invoice the "Correct extraction" button
-                rendered, the hook found no target, and the click did nothing at
-                all. --%>
           <div
             :if={
               not @locked and
                 CorrectionPolicy.correctable_fields(
                   @flagged,
-                  @selected_invoice["id"] || @selected_invoice["pristine_inum"]
+                  @selected_invoice["id"]
                 ) != []
             }
             id="gstr1-corrections"
@@ -573,7 +559,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
               Fields flagged for correction
             </div>
 
-            <%= for field <- CorrectionPolicy.correctable_fields(@flagged, @selected_invoice["id"] || @selected_invoice["pristine_inum"]) do %>
+            <%= for field <- CorrectionPolicy.correctable_fields(@flagged, @selected_invoice["id"]) do %>
               <%= if @correcting && @correcting.field == field do %>
                 <.form
                   for={@correction_form}
@@ -1033,7 +1019,7 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
 
   defp issue_correctable?(issue, flagged, invoice) do
     candidates =
-      CorrectionPolicy.correctable_fields(flagged, invoice["id"] || invoice["pristine_inum"])
+      CorrectionPolicy.correctable_fields(flagged, invoice["id"])
 
     Enum.any?(List.wrap(issue["fields"]), fn issue_field ->
       Enum.any?(candidates, fn candidate ->
@@ -1207,24 +1193,6 @@ defmodule NilaWeb.Components.Gst.Month.Evidence do
       |> Enum.sum()
 
     if rate == 0, do: "—", else: percent(rate)
-  end
-
-  defp rate_candidate_label(line) do
-    case get_in(line, ["rate_validation", "candidate_rates"]) do
-      [_ | _] = rates -> "Candidate " <> Enum.map_join(rates, "/", &percent/1)
-      _ -> nil
-    end
-  end
-
-  defp rate_candidate_source(line) do
-    case get_in(line, ["rate_validation", "candidates"]) do
-      [candidate | _] ->
-        "#{candidate["notification_number"]}, Schedule #{candidate["schedule"]}, " <>
-          "entry #{candidate["serial_number"]}"
-
-      _ ->
-        nil
-    end
   end
 
   # The total leads and the split sits under it, always visible. `2,166.89 +

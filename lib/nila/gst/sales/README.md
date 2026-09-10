@@ -11,6 +11,8 @@ step in Nila.
   facts. Extraction schema aliases and raw evidence handling belong there.
 - `invoice.ex` and `invoice/` own invoice facts, corrections, exclusions, and
   shared invoice checks. Corrections preserve the original extraction.
+  Shared amount interpretation lives in `Nila.Gst.LineAmounts` and
+  `Nila.Gst.TaxComponents`; sales does not call extraction modules.
 - `source_packet.ex` prepares effective source invoices and common checks before
   choosing an output. Both GSTR-1 and Tally consume it.
 - `gstr1.ex` owns return tables, source contributions, and shared tax/HSN arithmetic.
@@ -31,6 +33,11 @@ step in Nila.
 
 ## Rules to preserve
 
+Sales checks HSN/SAC code validity and flags inferred codes. Keep both printed
+item descriptions and directory descriptions. Preserve printed rates and check
+their arithmetic, but do not judge HSN/rate pairs against notifications, other
+invoices, or past months. Output summaries still group by HSN and rate.
+
 Use `Invoice.apply_correction/3` for correction semantics. Persist source edits
 through `Invoice.Corrections` and exclusions through `Invoice.Removals`; batch
 references record where an edit happened, while source IDs identify the invoice.
@@ -41,9 +48,9 @@ included source. Per-invoice review values must use that projection (or full
 workings), rather than reconstructing amounts from the return or the invoice.
 An absent contribution is unknown, not zero.
 
-Legacy approval records remain only where historical filing and purchase-side
-code need them. They do not freeze an unfiled sales month. Existing sent Tally
-jobs retain their identity and protection against duplicate posting.
+Filing records the effective GSTR-1 output directly on the sales month and
+prevents further source changes. There is no GSTR-1 approval or approval snapshot.
+Existing sent Tally jobs retain their protection against duplicate posting.
 
 When sales inputs change, an unfiled 3B approval based on the previous working is
 invalidated through the existing filing context. This never blocks sales edits

@@ -89,7 +89,7 @@ defmodule Nila.Gst.Sales.Review.CorrectionPolicy do
   @doc """
   Applies review corrections to normalized invoices.
 
-  Corrections target a source ID, or an unambiguous invoice number. This function
+  Corrections target a source ID. This function
   applies targeted edits and separately reports corrections to unflagged fields
   as silent errors for evaluation. Production callers must filter eligibility
   with `correction_allowed?/3` before calling it.
@@ -105,7 +105,7 @@ defmodule Nila.Gst.Sales.Review.CorrectionPolicy do
 
       updated =
         Enum.map(acc, fn invoice ->
-          if target && Invoice.source_id(invoice) == target do
+          if target && invoice["id"] == target do
             Invoice.apply_correction(invoice, correction["field"], correction["value"])
           else
             invoice
@@ -121,19 +121,10 @@ defmodule Nila.Gst.Sales.Review.CorrectionPolicy do
   end
 
   defp correction_target(invoices, %{"source_id" => source_id}) when is_binary(source_id) do
-    if Enum.any?(invoices, &(Invoice.source_id(&1) == source_id)), do: source_id
+    if Enum.any?(invoices, &(&1["id"] == source_id)), do: source_id
   end
 
-  defp correction_target(invoices, correction) do
-    case correction["invoice"] || correction["inum"] do
-      invoice_number when is_binary(invoice_number) ->
-        matches = Enum.filter(invoices, &(&1["invoice_number"] == invoice_number))
-        if length(matches) == 1, do: matches |> hd() |> Invoice.source_id()
-
-      _missing ->
-        nil
-    end
-  end
+  defp correction_target(_invoices, _correction), do: nil
 
   defp flatten_confidence(map, prefix \\ nil) when is_map(map) do
     Enum.flat_map(map, fn {key, value} ->
@@ -158,6 +149,4 @@ defmodule Nila.Gst.Sales.Review.CorrectionPolicy do
   end
 
   defp flag_key(%{"source_id" => source_id, "field" => field}), do: {source_id, field}
-  defp flag_key(%{"invoice" => invoice, "field" => field}), do: {invoice, field}
-  defp flag_key(%{"inum" => invoice, "field" => field}), do: {invoice, field}
 end

@@ -6,6 +6,52 @@ defmodule Nila.Gst.Sales.OutputCapabilitiesTest do
   alias Nila.Gst.Sales.Gstr1.Readiness, as: Gstr1Readiness
   alias Nila.Gst.Sales.Tally.Readiness, as: TallyReadiness
 
+  test "supported GSTR-1 treatments retain their Tally-only restrictions" do
+    for {supply, reverse_charge, code} <- [
+          {"export", false, "export_supply_unsupported"},
+          {"sez", false, "sez_supply_unsupported"},
+          {"nil_rated", false, "nil_rated_supply_unsupported"},
+          {"exempt", false, "exempt_supply_unsupported"},
+          {"non_gst", false, "non_gst_supply_unsupported"},
+          {"taxable", true, "outward_reverse_charge_unsupported"}
+        ] do
+      invoice =
+        Normalizer.normalize(%{
+          "data" => %{
+            "invoice_number" => "SPECIAL-1",
+            "supply_type" => supply,
+            "reverse_charge" => reverse_charge,
+            "recipient_registration" =>
+              if(supply == "export", do: "unregistered", else: "registered"),
+            "buyer_gstin" => if(supply == "export", do: nil, else: "29AABCT1332L1Z5"),
+            "tax_payment" => if(supply in ~w(export sez), do: "with_payment"),
+            "line_items" => []
+          }
+        })
+
+      assert Gstr1Readiness.capability_issues([invoice]) == [], code
+      assert codes(TallyReadiness.issues([invoice])) == [code]
+      assert Nila.Gst.Issues.level_for(code) == "blocking"
+    end
+  end
+
+  test "cancelled and amendment documents remain restricted in both outputs" do
+    for status <- ~w(cancelled amendment) do
+      invoice =
+        Normalizer.normalize(%{
+          "data" => %{
+            "invoice_number" => "STATUS-1",
+            "document_status" => status,
+            "line_items" => []
+          }
+        })
+
+      expected = ["#{status}_document_unsupported"]
+      assert codes(Gstr1Readiness.capability_issues([invoice])) == expected
+      assert codes(TallyReadiness.issues([invoice])) == expected
+    end
+  end
+
   test "GSTR-1 validates special treatments while Tally retains its capability blockers" do
     invoice =
       Normalizer.normalize(%{

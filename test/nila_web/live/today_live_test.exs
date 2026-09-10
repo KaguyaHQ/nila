@@ -251,7 +251,7 @@ defmodule NilaWeb.TodayLiveTest do
     assert has_element?(view, "#today-add-first-client", "Add your first client")
   end
 
-  test "a reviewed clean month moves to waiting-on-senior",
+  test "a reviewed clean sales month is ready to file",
        %{conn: conn, org: org, client: client} do
     seed_client_month(org, client, recon_with_2b_gap())
 
@@ -285,7 +285,7 @@ defmodule NilaWeb.TodayLiveTest do
       })
 
     {:ok, view, _html} = live(conn, ~p"/today")
-    assert has_element?(view, "#today-waiting_on_senior #today-row-#{client.id}-#{@period}")
+    assert has_element?(view, "#today-to_file #today-row-#{client.id}-#{@period}")
   end
 
   test "incomplete slots draft the month_open ask with client name and due date", %{

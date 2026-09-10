@@ -17,12 +17,11 @@ defmodule Nila.Gst.Rates.ValidationTest do
     assert validation["status"] == "incompatible"
     assert validation["candidate_rates"] == [3.0]
 
-    [issue] = Validation.sales_issues([annotated])
-    assert issue["code"] == "statutory_rate_mismatch"
-    assert issue["message"] =~ "printed HSN 71069290 at 18%"
-    assert issue["message"] =~ "statutory candidate 3%"
-    assert issue["message"] =~ "Schedule IV, entry 3"
-    assert issue["message"] =~ "Confirm whether the HSN or rate needs correction"
+    [flag] = Validation.purchase_flags(annotated)
+    assert flag["code"] == "statutory_rate_mismatch"
+    assert flag["reason"] =~ "printed HSN 71069290 at 18%"
+    assert flag["reason"] =~ "statutory candidate 3%"
+    assert flag["reason"] =~ "Schedule IV, entry 3"
   end
 
   test "accepts a printed rate found among the candidates" do
@@ -32,7 +31,7 @@ defmodule Nila.Gst.Rates.ValidationTest do
     assert get_in(annotated, ["line_items", Access.at(0), "rate_validation", "status"]) ==
              "compatible"
 
-    assert Validation.sales_issues([annotated]) == []
+    assert Validation.purchase_flags(annotated) == []
   end
 
   test "routes conditional candidates to review rather than claiming incompatibility" do
@@ -43,7 +42,7 @@ defmodule Nila.Gst.Rates.ValidationTest do
     assert get_in(annotated, ["line_items", Access.at(0), "rate_validation", "status"]) ==
              "review"
 
-    assert [%{"code" => "statutory_rate_review"}] = Validation.sales_issues([annotated])
+    assert [%{"code" => "statutory_rate_review"}] = Validation.purchase_flags(annotated)
   end
 
   test "does not apply the release before its effective date" do
@@ -53,7 +52,7 @@ defmodule Nila.Gst.Rates.ValidationTest do
     assert get_in(annotated, ["line_items", Access.at(0), "rate_validation", "status"]) ==
              "before_effective_date"
 
-    assert Validation.sales_issues([annotated]) == []
+    assert Validation.purchase_flags(annotated) == []
   end
 
   test "derives a purchase line's rate from tax amounts when printed rates are absent" do

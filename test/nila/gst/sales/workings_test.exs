@@ -5,8 +5,6 @@ defmodule Nila.Gst.Sales.WorkingsTest do
   alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Gst.Hsn.Entry
   alias Nila.Gst.Hsn.Release, as: HsnRelease
-  alias Nila.Gst.Rates.Release, as: RateRelease
-  alias Nila.Gst.Rates.Rule, as: RateRule
   alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.Sales.Workings, as: SalesWorkings
 
@@ -23,6 +21,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
       raw(3, "23/2025-26", [line("134A Gas", 10_200.0)], 12_036.0)
     ]
     |> Enum.map(&Normalizer.normalize/1)
+    |> Enum.zip_with(~w(source-a source-b source-c), &Map.put(&1, "id", &2))
   end
 
   defp raw(page, inum, line_items, grand_total) do
@@ -92,56 +91,6 @@ defmodule Nila.Gst.Sales.WorkingsTest do
              "Air-conditioning machines"
   end
 
-  test "statutory candidate mismatch enters the normal resolvable review queue" do
-    hsn_directory = %{
-      release: %HsnRelease{id: 9},
-      entries: %{
-        "8415" => %Entry{code: "8415", kind: "hsn", digits: 4, description: "Machines"}
-      },
-      prefixes: MapSet.new(~w(8 84 841))
-    }
-
-    rate_directory = %{
-      release: %RateRelease{
-        id: 10,
-        notification_number: "9/2025-Integrated Tax (Rate)",
-        effective_from: ~D[2025-09-22]
-      },
-      rules: [
-        %RateRule{
-          serial_number: 1,
-          schedule: "I",
-          total_rate: Decimal.new("5"),
-          raw_code_expression: "8415",
-          raw_description: "Machines",
-          parsed_scope: %{
-            "includes" => ["8415"],
-            "excludes" => [],
-            "ranges" => [],
-            "any_chapter" => false
-          },
-          parser_confidence: "automatic"
-        }
-      ]
-    }
-
-    result =
-      SalesWorkings.materialize(invoices(), [], @header, [], %{
-        directory: hsn_directory,
-        rate_directory: rate_directory
-      })
-
-    assert "statutory_rate_mismatch" in open_codes(result)
-    refute SalesWorkings.reviewable?(result.issues)
-
-    assert get_in(hd(result.invoices), [
-             "line_items",
-             Access.at(0),
-             "rate_validation",
-             "status"
-           ]) == "incompatible"
-  end
-
   test "no resolutions reproduces the engine's issues, all open" do
     result = SalesWorkings.materialize(invoices(), [], @header)
 
@@ -150,46 +99,6 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     assert result.decisions == %{}
     assert result.silent_errors == []
     refute SalesWorkings.reviewable?(result.issues)
-  end
-
-  test "an unseen HSN code is context, and does not withhold the filing" do
-    directory = %{
-      release: %HsnRelease{id: 9},
-      entries: %{
-        "8415" => %Entry{code: "8415", kind: "hsn", digits: 4, description: "Machines"}
-      },
-      prefixes: MapSet.new(~w(8 84 841))
-    }
-
-    # A month whose codes this client has never filed before, and nothing else
-    # wrong: no check asserts an error, so novelty alone must not gate.
-    history = [%{code: "9999", rate: 18.0, description: "something else", key: {"9999", "x"}}]
-
-    result =
-      SalesWorkings.materialize(invoices(), [], @header, [], %{
-        directory: directory,
-        rate_history: history
-      })
-
-    novelty = Enum.filter(result.issues, &(&1["code"] == "hsn_new_code"))
-
-    assert novelty != []
-    assert Enum.all?(novelty, &(&1["level"] == "advisory"))
-    refute Enum.any?(novelty, &Nila.Gst.Issues.gating?/1)
-
-    confirmations =
-      result.issues
-      |> Enum.filter(&(&1["status"] == "open" and Nila.Gst.Issues.gating?(&1)))
-      |> Enum.map(&confirmation/1)
-
-    answered =
-      SalesWorkings.materialize(invoices(), confirmations, @header, [], %{
-        directory: directory,
-        rate_history: history
-      })
-
-    assert "hsn_new_code" in open_codes(answered)
-    assert SalesWorkings.reviewable?(answered.issues)
   end
 
   test "an ordinary month raises nothing about cess at all" do
@@ -407,7 +316,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     resolutions = [
       %{
         "verb" => "correct_field",
-        "target" => "20/2025-26",
+        "target" => "source-a",
         "payload" => %{"field" => "printed_grand_total", "from" => 2_75_000.0, "to" => 65_551.36}
       }
     ]
@@ -434,7 +343,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     resolutions = [
       %{
         "verb" => "correct_field",
-        "target" => "20/2025-26",
+        "target" => "source-a",
         "payload" => %{
           "field" => "line_items[0].taxable_value",
           "from" => 55_552.0,
@@ -463,7 +372,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     resolutions = [
       %{
         "verb" => "correct_field",
-        "target" => "21/2025-26",
+        "target" => "source-b",
         "payload" => %{"field" => "buyer_name", "from" => "PONMANI AND CO", "to" => "MALLORY"}
       }
     ]
@@ -488,14 +397,15 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     resolutions = [
       %{
         "verb" => "correct_field",
-        "target" => "21/2025-26",
+        "target" => "source-b",
         "payload" => %{"field" => "ocr_minimum", "from" => nil, "to" => 0.99}
       }
     ]
 
     result = SalesWorkings.materialize(invoices, resolutions, @header)
 
-    assert MapSet.member?(result.flagged, {"21/2025-26", "ocr_minimum"})
+    assert MapSet.member?(result.flagged, {"source-b", "ocr_minimum"})
+    refute MapSet.member?(result.flagged, {"21/2025-26", "ocr_minimum"})
     assert [%{"field" => "ocr_minimum"}] = result.silent_errors
     clean = Enum.find(result.invoices, &(&1["invoice_number"] == "21/2025-26"))
     refute Map.has_key?(clean, "ocr_minimum")
@@ -534,8 +444,8 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     assert SalesWorkings.reviewable?(reviewed.issues)
   end
 
-  test "legacy invoices receive stable contextual source IDs without mutating machine truth" do
-    pristine = invoices()
+  test "invoices without IDs receive stable contextual source IDs without mutating machine truth" do
+    pristine = Enum.map(invoices(), &Map.delete(&1, "id"))
 
     first =
       SalesWorkings.materialize(pristine, [], @header, [], source_namespace: "sales_month_42")
@@ -578,11 +488,11 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     assert issue["status"] == "open"
   end
 
-  test "source-targeted correction changes one duplicate while a legacy target changes neither" do
+  test "source-targeted correction changes one duplicate while an invoice number changes neither" do
     [invoice | _] = invoices()
     duplicates = [Map.put(invoice, "id", "source-a"), Map.put(invoice, "id", "source-b")]
 
-    legacy = [
+    number_target = [
       %{
         "verb" => "correct_field",
         "target" => "20/2025-26",
@@ -590,16 +500,16 @@ defmodule Nila.Gst.Sales.WorkingsTest do
       }
     ]
 
-    legacy_result = SalesWorkings.materialize(duplicates, legacy, @header)
+    number_result = SalesWorkings.materialize(duplicates, number_target, @header)
 
-    assert Enum.map(legacy_result.active_invoices, & &1["invoice_number"]) == [
+    assert Enum.map(number_result.active_invoices, & &1["invoice_number"]) == [
              "20/2025-26",
              "20/2025-26"
            ]
 
-    assert length(legacy_result.silent_errors) == 1
+    assert length(number_result.silent_errors) == 1
 
-    targeted = put_in(legacy, [Access.at(0), "target"], "source-b")
+    targeted = put_in(number_target, [Access.at(0), "target"], "source-b")
     targeted_result = SalesWorkings.materialize(duplicates, targeted, @header)
 
     assert Enum.map(targeted_result.active_invoices, &{&1["id"], &1["invoice_number"]}) == [
@@ -610,18 +520,22 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     refute Enum.any?(targeted_result.issues, &(&1["code"] == "duplicate_invoice_number"))
   end
 
-  test "legacy issue confirmations replay only for a unique invoice number" do
+  test "issue confirmations require the source issue key even for a unique invoice number" do
     [invoice | _] = invoices()
     unique = Map.put(invoice, "id", "source-a")
     target = "20/2025-26:grand_total_mismatch"
-    confirmation = %{"verb" => "confirm_issue", "target" => target}
+    number_confirmation = %{"verb" => "confirm_issue", "target" => target}
 
-    unique_result = SalesWorkings.materialize([unique], [confirmation], @header)
+    unique_result = SalesWorkings.materialize([unique], [number_confirmation], @header)
     issue = Enum.find(unique_result.issues, &(&1["code"] == "grand_total_mismatch"))
-    assert issue["status"] == "resolved"
+    assert issue["status"] == "open"
+
+    exact_result = SalesWorkings.materialize([unique], [confirmation(issue)], @header)
+    exact_issue = Enum.find(exact_result.issues, &(&1["code"] == "grand_total_mismatch"))
+    assert exact_issue["status"] == "resolved"
 
     duplicates = [unique, Map.put(unique, "id", "source-b")]
-    duplicate_result = SalesWorkings.materialize(duplicates, [confirmation], @header)
+    duplicate_result = SalesWorkings.materialize(duplicates, [number_confirmation], @header)
 
     assert duplicate_result.issues
            |> Enum.filter(&(&1["code"] == "grand_total_mismatch"))
@@ -698,12 +612,12 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     resolutions = [
       %{
         "verb" => "correct_field",
-        "target" => "20/2025-26",
+        "target" => "source-a",
         "payload" => %{"field" => "invoice_number", "from" => "20/2025-26", "to" => "19/2025-26"}
       },
       %{
         "verb" => "correct_field",
-        "target" => "20/2025-26",
+        "target" => "source-a",
         "payload" => %{"field" => "printed_grand_total", "from" => 2_75_000.0, "to" => 65_551.36}
       }
     ]
@@ -718,7 +632,7 @@ defmodule Nila.Gst.Sales.WorkingsTest do
 
   test "a blocker sorts above the routine checks it would otherwise hide behind" do
     [first | rest] = invoices()
-    duplicate = Map.put(first, "id", "source-b")
+    duplicate = Map.put(first, "id", "source-duplicate")
 
     result = SalesWorkings.materialize([first, duplicate | rest], [], @header)
 

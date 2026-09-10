@@ -52,7 +52,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :readiness, :map, required: true
   attr :handoff, :map, default: nil
   attr :tally_companies, :list, default: []
-  attr :tally_handoffs, :list, default: []
 
   def gstr1_actions(assigns) do
     assigns = assign(assigns, :filed, assigns.derived && Values.filed_totals(assigns.derived))
@@ -212,42 +211,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             Open sales bills
           </.button>
         </div>
-
-        <div :if={@tally_handoffs != []} class="w-full space-y-3 pt-3">
-          <div
-            :for={handoff <- @tally_handoffs}
-            id={"gstr1-tally-status-#{handoff.company_id}"}
-            class="border-rule rounded-box border p-4"
-          >
-            <p class="text-base-content text-ui font-semibold">{handoff.company_name}</p>
-
-            <p class="text-ink-subtle text-ui">
-              {Map.get(handoff.counts, "succeeded", 0)} posted · {Map.get(handoff.counts, "failed", 0)} failed · {Map.get(
-                handoff.counts,
-                "indeterminate",
-                0
-              )} unknown · {Map.get(handoff.counts, "pending", 0) +
-                Map.get(handoff.counts, "running", 0)} queued
-            </p>
-
-            <div :if={Map.get(handoff.counts, "failed", 0) > 0} class="mt-2 space-y-1">
-              <p
-                :for={job <- Enum.filter(handoff.jobs, &(&1.status == "failed"))}
-                class="text-error text-ui"
-              >
-                {job.payload["invoice_number"] || "Voucher"}: {job.error["message"] ||
-                  "Tally rejected this voucher."}
-              </p>
-            </div>
-
-            <p
-              :if={Map.get(handoff.counts, "indeterminate", 0) > 0}
-              class="text-ui text-warning mt-2"
-            >
-              Unknown — Nila did not receive a trustworthy response. Verify before retrying.
-            </p>
-          </div>
-        </div>
       </section>
     </div>
     """
@@ -317,7 +280,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :sales_reviewable, :boolean, default: false
   attr :stats, :any, required: true
   attr :gstr3b_signoff, :any, default: nil
-  attr :r1_signoff, :any, default: nil
   attr :can_sign_off, :boolean, required: true
   attr :sales_intake_open, :boolean, default: false
   attr :itc, :any, default: nil
@@ -364,7 +326,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :sales_reviewable, :boolean, default: false
   attr :stats, :any, required: true
   attr :gstr3b_signoff, :any, default: nil
-  attr :r1_signoff, :any, default: nil
   attr :can_sign_off, :boolean, required: true
   attr :sales_intake_open, :boolean, default: false
   attr :itc, :any, default: nil
@@ -418,7 +379,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :stats, :any, required: true
   attr :signed, :boolean, default: false
   attr :open_folds, :any, default: MapSet.new()
-  attr :r1_signoff, :any, default: nil
   attr :gstr3b_signoff, :any, default: nil
   attr :client_id, :string, default: nil
   attr :period, :string, default: nil
@@ -640,7 +600,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         <dl class="grid gap-4 sm:grid-cols-2">
           <div>
             <dt class="text-ink-subtle text-label uppercase">GSTR-1</dt><dd class="text-base-content text-ui wrap-break-word">
-              {gstr1_snapshot_reference(@r1_signoff, @gstr3b)}
+              {outward_source(@gstr3b)}
             </dd>
           </div>
 
@@ -673,7 +633,6 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   attr :sales_reviewable, :boolean, default: false
   attr :stats, :any, required: true
   attr :gstr3b_signoff, :any, default: nil
-  attr :r1_signoff, :any, default: nil
   attr :can_sign_off, :boolean, required: true
   attr :sales_intake_open, :boolean, default: false
   attr :itc, :any, default: nil
@@ -917,7 +876,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
         phx-click={@reopen_event}
         data-confirm={@reopen_confirm}
       >
-        {if @return == "GSTR-1", do: "Reopen approval", else: "Reopen signature"}
+        Reopen signature
       </.button>
       {render_slot(@extra_step)}
     </div>
@@ -1017,13 +976,10 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
   defp plural(_count, _singular, plural), do: plural
 
   defp outward_source(%{"liability_source" => "gstr1_filed"}), do: "Filed GSTR-1 position"
-  defp outward_source(%{"liability_source" => "gstr1_signed"}), do: "Approved GSTR-1 snapshot"
   defp outward_source(%{"liability_source" => "gstr1_reviewed"}), do: "Reviewed GSTR-1 position"
   defp outward_source(%{"liability_source" => "gstr1_derived"}), do: "Current derived GSTR-1"
   defp outward_source(%{"liability_source" => "missing"}), do: "GSTR-1 liability not available"
   defp outward_source(_gstr3b), do: "Current outward-liability projection"
-
-  defp gstr1_snapshot_reference(_signoff, gstr3b), do: outward_source(gstr3b)
 
   defp purchase_snapshot_reference(%{inserted_at: inserted_at}),
     do: "Frozen at GSTR-3B sign-off · #{format_display_datetime(inserted_at)}"

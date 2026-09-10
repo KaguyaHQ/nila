@@ -109,26 +109,11 @@ defmodule Nila.DemoSessionTest do
              DemoSession.reset(org.id, client.id, confirmation)
   end
 
-  test "refuses signed work and unfinished extraction", %{
+  test "refuses unfinished extraction", %{
     org: org,
     client: client,
     confirmation: confirmation
   } do
-    {:ok, month} = Months.upsert(%{org_id: org.id, client_id: client.id, period: "2026-06"})
-    user = Nila.AccountsFixtures.user_fixture()
-
-    signoff =
-      Repo.insert!(%Nila.Gst.Filing.Signoff{
-        org_id: org.id,
-        sales_month_id: month.id,
-        artifact: "gstr1",
-        signed_by_id: user.id,
-        snapshot: %{}
-      })
-
-    assert {:error, :contains_signoff} = DemoSession.reset(org.id, client.id, confirmation)
-    Repo.delete!(signoff)
-
     {:ok, dump} =
       Dumps.record(%{org_id: org.id, client_id: client.id}, %{
         period: "2026-06",

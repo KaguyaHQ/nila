@@ -3,10 +3,9 @@ defmodule Nila.Gst.Hsn.DescriptionSignal do
   Whether an invoice line's own wording looks like the HSN code it was filed
   under — computed, measured, and **rendered nowhere**.
 
-  Phase 1 demoted `hsn_new_code` to advisory on the explicit condition that real
-  risks get real checks. This is the first of those: each line already carries
-  both the vendor's wording (`description`) and the portal directory's official
-  wording (`hsn_description`), and nothing compared them.
+  Each line already carries both the vendor's wording (`description`) and the
+  portal directory's official wording (`hsn_description`), so this module
+  measures their overlap without turning that signal into a filing judgment.
 
   ## Why this ships dark
 

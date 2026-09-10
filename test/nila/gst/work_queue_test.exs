@@ -77,13 +77,12 @@ defmodule Nila.Gst.WorkQueueTest do
       # rather than an absent GSTR-1 that is itself a client wait.
       %{
         purchase: %{id: 1},
-        sales: %{id: 1, state: "reviewed"},
+        sales: %{id: 1, state: "filed"},
         need_decision: 0,
         awaiting_bills: 0,
         gstr2b_in: true,
         gstr2b_available: true,
-        r1_signed: false,
-        r1_filed: false,
+        r1_filed: true,
         gstr3b_signed: false,
         gstr3b_filed: false
       }
@@ -122,7 +121,14 @@ defmodule Nila.Gst.WorkQueueTest do
     end
 
     test "a concrete unresolved sales packet is work, not a client attestation wait" do
-      tracks = Today.track_states(purchase_facts(sales_intake_open: true))
+      tracks =
+        Today.track_states(
+          purchase_facts(
+            sales: %{id: 1, state: "reviewed"},
+            r1_filed: false,
+            sales_intake_open: true
+          )
+        )
 
       assert tracks.sales == :open
       assert Today.fold_state(tracks) == :needs_you
@@ -144,7 +150,7 @@ defmodule Nila.Gst.WorkQueueTest do
     scope: scope
   } do
     month = seed_clean_month(org, client, scope.user.id)
-    assert row_for(org, client).section == :waiting_on_senior
+    assert row_for(org, client).section == :to_file
 
     {:ok, _} = Signoffs.sign_off(month, scope)
     row = row_for(org, client)
@@ -154,17 +160,10 @@ defmodule Nila.Gst.WorkQueueTest do
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
     {:ok, _} = Signoffs.mark_filed(month, scope, nil)
 
-    # 3B filed but the R1 has no signature — still in the filing gap? No:
-    # the R1 was never signed, so nothing is signed-unfiled. The sales month
-    # is reviewed and unfiled, so the month is waiting on the senior's R1
-    # signature. The chip now counts the unfiled R1.
+    # Resolved GSTR-1 remains ready for filing after the 3B is filed.
     row = row_for(org, client)
-    assert row.section == :waiting_on_senior
+    assert row.section == :to_file
     assert row.deadline.return == "GSTR-1"
-
-    {:ok, sales_month} = SalesMonths.get_by_period(org.id, client.id, @period)
-    {:ok, _} = Signoffs.sign_off_gstr1(sales_month, scope)
-    assert row_for(org, client).section == :waiting_on_senior
 
     {:ok, sales_month} = SalesMonths.get_by_period(org.id, client.id, @period)
     {:ok, _} = Signoffs.mark_filed(sales_month, scope, nil)
@@ -179,8 +178,6 @@ defmodule Nila.Gst.WorkQueueTest do
     {:ok, _} = Signoffs.sign_off(month, scope)
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
     {:ok, _} = Signoffs.mark_filed(month, scope, nil)
-    {:ok, sales_month} = SalesMonths.get_by_period(org.id, client.id, @period)
-    {:ok, _} = Signoffs.sign_off_gstr1(sales_month, scope)
     {:ok, sales_month} = SalesMonths.get_by_period(org.id, client.id, @period)
     {:ok, _} = Signoffs.mark_filed(sales_month, scope, nil)
 

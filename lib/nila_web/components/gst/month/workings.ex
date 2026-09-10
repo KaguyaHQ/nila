@@ -30,7 +30,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
   @doc "The complete Table 12 output, with expandable invoice contributors."
   attr :derived, :map, required: true
   attr :invoices, :list, required: true
-  attr :novelty_codes, :any, default: MapSet.new()
   attr :rippled, :any, default: MapSet.new()
   attr :ripple_seq, :integer, default: 0
   attr :expanded, :any, default: MapSet.new()
@@ -51,7 +50,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
       )
       |> assign(:buyers, buyers_by_inum(assigns.invoices))
       |> assign(:invoice_refs, invoice_refs_by_inum(assigns.invoices))
-      |> assign(:novelty_codes, MapSet.new(assigns.novelty_codes))
 
     assigns = assign(assigns, :hsn_rows, hsn_rows(assigns))
 
@@ -69,9 +67,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
           <:col :let={row} label="HSN/SAC" row_header>
             <div class="flex items-center gap-2">
               <span class="font-mono">{row["hsn_sc"]}</span>
-              <.badge :if={MapSet.member?(@novelty_codes, row["hsn_sc"])} variant="neutral">
-                New
-              </.badge>
             </div>
           </:col>
 
@@ -105,9 +100,6 @@ defmodule NilaWeb.Components.Gst.Month.Workings do
             <div :if={row.kind == :node} class="flex items-center gap-2">
               <.chevron open={MapSet.member?(@expanded, row.id)} />
               <span class="text-base-content font-mono font-medium whitespace-nowrap">{row.hsn || "—"}</span>
-              <.badge :if={MapSet.member?(@novelty_codes, row.hsn)} variant="neutral">
-                New
-              </.badge>
             </div>
             <.contrib_cell :if={row.kind == :contrib} row={row} />
           </:col>

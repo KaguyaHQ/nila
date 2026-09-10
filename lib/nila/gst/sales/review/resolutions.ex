@@ -16,8 +16,6 @@ defmodule Nila.Gst.Sales.Review.Resolutions do
   alias Nila.Clients
   alias Nila.Gst.Filing.Signoffs
   alias Nila.Gst.Hsn.Directory
-  alias Nila.Gst.RateHistory
-  alias Nila.Gst.Rates.Directory, as: RateDirectory
   alias Nila.Gst.Replay
   alias Nila.Gst.Sales.{Gstr1, Month, Workings}
   alias Nila.Gst.Sales.Invoice.Corrections, as: InvoiceCorrections
@@ -29,32 +27,17 @@ defmodule Nila.Gst.Sales.Review.Resolutions do
   def effective_workings(%Month{filed_at: nil} = month), do: workings(month)
 
   def effective_workings(%Month{} = month) do
-    snapshot =
-      case Signoffs.latest_gstr1_signoff(month.id) do
-        {:ok, signoff} ->
-          signoff.snapshot
-
-        {:error, :not_found} ->
-          # Keep the recorded working distinct from the imported portal return.
-          # Today's rules and source edits must not rewrite a filed month's history.
-          %{
-            "derived" => month.derived_gstr1,
-            "invoices" => month.invoices,
-            "issues" => month.issues
-          }
-      end
-
-    invoices = snapshot["invoices"] || []
+    invoices = month.invoices || []
     active = Enum.reject(invoices, & &1["duplicate_copy"])
 
     %{
-      derived: snapshot["derived"],
+      derived: month.derived_gstr1,
       contributions: %{},
       invoices: invoices,
       source_invoices: invoices,
       active_invoices: active,
-      printed_active_invoices: snapshot["printed_invoices"],
-      issues: Nila.Gst.Issues.normalize_all(snapshot["issues"] || []),
+      printed_active_invoices: nil,
+      issues: Nila.Gst.Issues.normalize_all(month.issues || []),
       flagged: MapSet.new()
     }
   end
@@ -91,8 +74,7 @@ defmodule Nila.Gst.Sales.Review.Resolutions do
   never cast (tenancy is not user-supplied). `decided_by_id` attributes the
   call. A new decision on a reviewed month demotes it back to "worked" — the
   review no longer covers the changed month. Filed months retain their recorded
-  history and reject changes with `{:error, :filed}`. Legacy approvals do not
-  prevent work on an unfiled month.
+  history and reject changes with `{:error, :filed}`.
   """
   def record(%Month{} = month, attrs, decided_by_id) do
     Repo.transact(fn ->
@@ -216,28 +198,11 @@ defmodule Nila.Gst.Sales.Review.Resolutions do
         release_id -> Directory.load(release_id)
       end
 
-    rate_directory =
-      case month.gst_rate_release_id do
-        nil -> RateDirectory.active()
-        release_id -> RateDirectory.load(release_id)
-      end
-
-    %{
-      rate_history: RateHistory.prior_observations(month.org_id, month.client_id, month.period)
-    }
-    |> maybe_put_directory(directory)
-    |> maybe_put_rate_directory(rate_directory)
+    case directory do
+      {:ok, directory} -> %{directory: directory}
+      {:error, :not_found} -> %{}
+    end
   end
-
-  defp maybe_put_directory(compliance, {:ok, directory}),
-    do: Map.put(compliance, :directory, directory)
-
-  defp maybe_put_directory(compliance, {:error, :not_found}), do: compliance
-
-  defp maybe_put_rate_directory(compliance, {:ok, directory}),
-    do: Map.put(compliance, :rate_directory, directory)
-
-  defp maybe_put_rate_directory(compliance, {:error, :not_found}), do: compliance
 
   @doc """
   Diff-row targets (`"scope|key|field"`, the `Nila.Eval.Gstr1Diff` row key)

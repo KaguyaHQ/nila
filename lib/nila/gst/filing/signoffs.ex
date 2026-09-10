@@ -1,19 +1,11 @@
 defmodule Nila.Gst.Filing.Signoffs do
   @moduledoc """
-  GSTR-3B certification and retained legacy return snapshots.
+  GSTR-3B certification and return filing records.
 
-  Normal sales work uses current invoice facts and resolved exceptions without
-  a separate GSTR-1 approval. Legacy GSTR-1 signatures remain available for
-  recorded filing history; an unfiled legacy signature does not freeze sales.
-
+  GSTR-1 filing records the current resolved workings on the sales month.
   GSTR-3B signing freezes the effective return and reserves its ITC allocations.
-  A later sales change revokes an unfiled dependent signature, releases those
-  allocations, and returns the purchase month to `worked` for review. Explicit
-  senior reopening uses the same invalidation behavior.
-
-  Filing records who submitted the signed return, when, and an optional ARN.
-  Filed returns and their allocations remain history; subsequent sales work
-  does not revoke or rewrite them.
+  Later sales changes revoke an unfiled dependent signature and release its
+  allocations. Filed returns remain recorded history.
   """
 
   import Ecto.Query, only: [from: 2]
@@ -30,17 +22,7 @@ defmodule Nila.Gst.Filing.Signoffs do
 
   alias Nila.Repo
 
-  # Stamped into every snapshot from here on. Snapshots are read back years
-  # later by code that has moved on, and until now nothing in the record said
-  # which shape it was written in — a reader had to probe for keys and guess,
-  # which is how `printed_invoices` came to fall back to live data and how a
-  # pre-money register renders a confident ₹0. A version does not migrate
-  # anything by itself; it lets a reader refuse to guess.
-  #
-  # 1 — the first stamped shape. Older snapshots carry no key at all, which is
-  # itself the signal: absent means "before stamping", not "version 0".
-  # 2 — GSTR-3B snapshots include longitudinal ITC case lines.
-  # 3 — GSTR-1 invoice lines retain taxable-basis resolution provenance.
+  # GSTR-3B snapshot format, retained for its existing readers.
   @snapshot_schema_version 3
 
   @doc "The snapshot format this module writes."
@@ -129,58 +111,6 @@ defmodule Nila.Gst.Filing.Signoffs do
     end
   end
 
-  @doc """
-  Certifies the GSTR-1: freezes the effective outward return (invoices with
-  corrections applied, issues as decided, the portal-shaped derivation) and
-  transitions the sales month to `reviewed`, in one transaction.
-
-  The approval transaction re-checks the effective issues, marks the worked
-  month reviewed, and freezes the approved draft under the
-  checker’s identity. The signature is its own durable fact, and "approved"
-  means a live signoff row exists. Returns
-  `{:error, :not_allowed}` without the `sign_off` capability,
-  `{:error, :not_reviewed}` before the maker gate,
-  `{:error, :already_signed}` when a live signature exists, and
-  `{:error, :unresolved_sales_intake}` while a supplied sales packet is still
-  processing or needs a human decision, and
-  `{:error, {:blocking_issues, codes}}` when the month holds a document the
-  return has no table for (see `Nila.Gst.Sales.Gstr1.Readiness.blocking_issues/1`).
-  """
-  def sign_off_gstr1(%SalesMonth{} = month, scope) do
-    if Policy.can?(scope, :sign_off) do
-      # The row lock serializes signing against SalesResolutions.record (which
-      # locks the same row before checking for a live signature) — a decision
-      # and a signature cannot interleave. The partial unique index
-      # (gst_signoffs_live_gstr1_index) backstops concurrent double-signs.
-      Repo.transact(fn ->
-        month = Repo.one!(from m in SalesMonth, where: m.id == ^month.id, lock: "FOR UPDATE")
-
-        cond do
-          match?({:ok, _}, latest_gstr1_signoff(month.id)) ->
-            {:error, :already_signed}
-
-          true ->
-            workings = SalesResolutions.workings(month)
-            blocking = Enum.filter(workings.issues, &SalesWorkings.blocking?/1)
-
-            if blocking == [] do
-              with true <- SalesWorkings.reviewable?(workings.issues),
-                   :ok <- require_resolved_sales_intake(month) do
-                approve_gstr1(month, scope, workings)
-              else
-                false -> {:error, :not_reviewed}
-                {:error, _reason} = error -> error
-              end
-            else
-              {:error, {:blocking_issues, blocking |> Enum.map(& &1["code"]) |> Enum.uniq()}}
-            end
-        end
-      end)
-    else
-      {:error, :not_allowed}
-    end
-  end
-
   # `need_decision`, not `open`: the gate must block on work whose answer
   # changes the return, and nothing else. A bill the client never sent and an
   # amount the vendor reported differently are both open money the register
@@ -237,51 +167,8 @@ defmodule Nila.Gst.Filing.Signoffs do
       else: :ok
   end
 
-  defp approve_gstr1(month, scope, workings) do
-    draft = %{
-      "invoices" => workings.invoices,
-      "printed_invoices" => workings.printed_active_invoices,
-      "issues" => workings.issues,
-      "derived" => workings.derived
-    }
-
-    # `draft_version` hashes the draft's content, so the format stamp goes on
-    # after it — otherwise adding a stamp would change every draft's identity.
-    snapshot =
-      draft
-      |> Map.put("draft_version", draft_version(draft))
-      |> Map.put("schema_version", @snapshot_schema_version)
-
-    month
-    |> SalesMonth.changeset(%{state: "reviewed"})
-    |> Repo.update!()
-
-    {:ok,
-     %Signoff{org_id: month.org_id, sales_month_id: month.id, signed_by_id: scope.user.id}
-     |> Signoff.changeset(%{artifact: "gstr1", snapshot: snapshot})
-     |> Repo.insert!()}
-  end
-
-  defp draft_version(draft) do
-    draft
-    |> Jason.encode!()
-    |> then(&:crypto.hash(:sha256, &1))
-    |> Base.encode16(case: :lower)
-  end
-
-  @doc """
-  Revokes a signature — the deliberate senior act that takes the wall down.
-  Marks the signoff revoked (the row stays for audit) and cascades:
-  reopening a GSTR-1 also revokes the dependent GSTR-3B signature for the
-  same client-period, because the 3B was approved against a liability that
-  is about to change. A revoked GSTR-3B demotes the purchase month back to
-  `worked` (there the state flip was part of signing); the sales month's
-  state stays maker-owned and is untouched.
-
-  Returns `{:error, :not_allowed}` without the `sign_off` capability,
-  `{:error, :already_revoked}` when the signature is not live.
-  """
-  def reopen(%Signoff{} = signoff, scope) do
+  @doc "Revokes an unfiled GSTR-3B signature and releases its ITC allocations."
+  def reopen(%Signoff{artifact: "gstr3b"} = signoff, scope) do
     cond do
       not Policy.can?(scope, :sign_off) ->
         {:error, :not_allowed}
@@ -296,46 +183,70 @@ defmodule Nila.Gst.Filing.Signoffs do
         Repo.transact(fn ->
           signoff = revoke!(signoff, scope.user.id)
 
-          case signoff.artifact do
-            "gstr1" ->
-              cascade_to_gstr3b(signoff, scope)
-
-            "gstr3b" ->
-              ItcCases.release_allocations!(signoff)
-              demote_client_month!(signoff.client_month_id)
-          end
+          ItcCases.release_allocations!(signoff)
+          demote_client_month!(signoff.client_month_id)
 
           {:ok, signoff}
         end)
     end
   end
 
-  @doc """
-  Records that a signed return was filed on the portal. `month` is the
-  artifact's parent (`%SalesMonth{}` for GSTR-1, `%PurchaseMonth{}` for
-  GSTR-3B). No capability gate — filing is mechanical; whoever uploaded the
-  JSON marks it. Requires a live signature (`{:error, :not_signed}`),
-  refuses a double mark (`{:error, :already_filed}`). `arn` is the portal's
-  acknowledgment number, optional.
-  """
+  @doc "Records portal filing. GSTR-3B requires its live signature; GSTR-1 requires resolved workings."
   def mark_filed(month, scope, arn \\ nil)
 
   def mark_filed(%SalesMonth{} = month, scope, arn),
-    do: file!(month, SalesMonth, scope, arn)
+    do: mark_filed_gstr1(month, scope, arn)
 
   def mark_filed(%PurchaseMonth{} = month, scope, arn),
     do: file!(month, PurchaseMonth, scope, arn)
+
+  @doc "Records resolved GSTR-1 workings and who filed them, without a separate approval."
+  def mark_filed_gstr1(%SalesMonth{} = month, scope, arn \\ nil) do
+    Repo.transact(fn ->
+      month = Repo.one!(from m in SalesMonth, where: m.id == ^month.id, lock: "FOR UPDATE")
+
+      if month.filed_at do
+        {:error, :already_filed}
+      else
+        workings = SalesResolutions.workings(month)
+        blocking = Enum.filter(workings.issues, &SalesWorkings.blocking?/1)
+
+        cond do
+          blocking != [] ->
+            {:error, {:blocking_issues, blocking |> Enum.map(& &1["code"]) |> Enum.uniq()}}
+
+          not SalesWorkings.reviewable?(workings.issues) ->
+            {:error, :not_reviewed}
+
+          true ->
+            with :ok <- require_resolved_sales_intake(month) do
+              filed =
+                month
+                |> SalesMonth.changeset(%{
+                  state: "filed",
+                  filing_arn: arn,
+                  invoices: workings.invoices,
+                  issues: workings.issues,
+                  derived_gstr1: workings.derived
+                })
+                |> Ecto.Changeset.put_change(:filed_at, DateTime.utc_now())
+                |> Ecto.Changeset.put_change(:filed_by_id, scope.user.id)
+                |> Repo.update!()
+
+              transition_held_dumps(filed)
+              {:ok, filed}
+            end
+        end
+      end
+    end)
+  end
 
   defp file!(month, schema, scope, arn) do
     Repo.transact(fn ->
       lock_sales_month(month)
       month = Repo.one!(from m in schema, where: m.id == ^month.id, lock: "FOR UPDATE")
 
-      signature =
-        case schema do
-          SalesMonth -> latest_gstr1_signoff(month.id)
-          PurchaseMonth -> latest_signoff(month.id)
-        end
+      signature = latest_signoff(month.id)
 
       cond do
         month.filed_at ->
@@ -364,8 +275,6 @@ defmodule Nila.Gst.Filing.Signoffs do
     ItcCases.file_allocations!(signoff)
   end
 
-  defp settle_itc_allocations(%SalesMonth{}), do: :ok
-
   defp transition_held_dumps(%SalesMonth{} = month),
     do: transition_held_dumps(month, ["sales"])
 
@@ -380,9 +289,6 @@ defmodule Nila.Gst.Filing.Signoffs do
   end
 
   # Whether the signed artifact has been filed — filed returns are immutable.
-  defp filed?(%Signoff{artifact: "gstr1", sales_month_id: id}),
-    do: Repo.get!(SalesMonth, id).filed_at != nil
-
   defp filed?(%Signoff{artifact: "gstr3b", client_month_id: id}),
     do: Repo.get!(PurchaseMonth, id).filed_at != nil
 
@@ -392,19 +298,6 @@ defmodule Nila.Gst.Filing.Signoffs do
       from s in Signoff,
         where:
           s.client_month_id == ^client_month_id and s.artifact == "gstr3b" and
-            is_nil(s.revoked_at),
-        order_by: [desc: s.inserted_at, desc: s.id],
-        limit: 1,
-        preload: [:signed_by]
-    )
-  end
-
-  @doc "The live (unrevoked) GSTR-1 signoff for a sales month, signer preloaded."
-  def latest_gstr1_signoff(sales_month_id) do
-    Repo.fetch_one(
-      from s in Signoff,
-        where:
-          s.sales_month_id == ^sales_month_id and s.artifact == "gstr1" and
             is_nil(s.revoked_at),
         order_by: [desc: s.inserted_at, desc: s.id],
         limit: 1,
@@ -455,10 +348,5 @@ defmodule Nila.Gst.Filing.Signoffs do
     end
 
     :ok
-  end
-
-  defp cascade_to_gstr3b(%Signoff{sales_month_id: sales_month_id}, scope) do
-    sales_month = Repo.get!(SalesMonth, sales_month_id)
-    invalidate_gstr3b_in_transaction(sales_month, scope.user.id)
   end
 end

@@ -6,13 +6,10 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
   @tax_calculation_codes ~w(
     line_arithmetic cgst_sgst_unequal bucket_tax_mismatch lopsided_tax_split
   )
-  @rate_codes ~w(
-    hsn_multiple_rates statutory_rate_mismatch statutory_rate_review rate_history_conflict
-  )
   @capability_codes ~w(
     export_supply_unsupported sez_supply_unsupported nil_rated_supply_unsupported
     exempt_supply_unsupported non_gst_supply_unsupported outward_reverse_charge_unsupported
-    cdnur_unsupported cancelled_document_unsupported amendment_document_unsupported
+    cancelled_document_unsupported amendment_document_unsupported
   )
   @fact_codes ~w(
     invalid_gstin recipient_registration_conflict unknown_recipient_registration
@@ -32,7 +29,6 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
       |> add_printed_total_item(issues)
       |> add_tax_calculation_item(issues)
       |> add_hsn_items(issues)
-      |> add_rate_item(issues)
       |> add_identity_items(invoice, issues)
       |> add_document_items(issues)
       |> add_unknown_item(issues)
@@ -254,33 +250,6 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
     end)
   end
 
-  defp add_rate_item(items, issues) do
-    family = matching(issues, @rate_codes)
-
-    maybe_add(items, family != [], fn ->
-      codes =
-        family |> Enum.flat_map(&List.wrap(&1["hsn_codes"] || &1["hsn_code"])) |> Enum.uniq()
-
-      rates = family |> Enum.flat_map(&List.wrap(&1["hsn_rates"])) |> Enum.uniq() |> Enum.sort()
-
-      detail =
-        [
-          codes != [] && "HSN/SAC: #{Enum.join(codes, ", ")}.",
-          rates != [] && "Rates in evidence: #{Enum.map_join(rates, ", ", &rate/1)}."
-        ]
-        |> Enum.reject(&(&1 in [nil, false]))
-        |> Enum.join(" ")
-        |> blank_to_nil()
-
-      item(
-        "GST rates",
-        "HSN/SAC and GST rates need review.",
-        detail,
-        Enum.map(family, & &1["code"])
-      )
-    end)
-  end
-
   defp add_identity_items(items, _invoice, issues) do
     items
     |> maybe_add(issue?(issues, "invalid_gstin"), fn ->
@@ -458,9 +427,6 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
          "Printed invoice total is #{rupees(printed)}; extracted lines total #{rupees(derived)}."
 
   defp grand_total_difference(_operands), do: nil
-
-  defp rate(value) when is_number(value) and value == trunc(value), do: "#{trunc(value)}%"
-  defp rate(value), do: "#{value}%"
 
   defp rupees(value), do: Formatters.format_money_with_paise(round(value * 100))
 

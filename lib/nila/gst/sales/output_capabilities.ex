@@ -12,7 +12,7 @@ defmodule Nila.Gst.Sales.OutputCapabilities do
 
   @type finding :: %{code: String.t(), fields: [String.t()]}
 
-  @doc "Treatments whose support boundary is currently shared by GSTR-1 and Tally."
+  @doc "Candidate restrictions: Tally uses all; GSTR-1 removes the treatments it supports."
   @spec common(InvoiceFacts.t() | map()) :: [finding()]
   def common(invoice) do
     invoice = InvoiceFacts.sales!(invoice)

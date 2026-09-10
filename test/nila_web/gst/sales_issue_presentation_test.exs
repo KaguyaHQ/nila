@@ -157,19 +157,14 @@ defmodule NilaWeb.Gst.SalesIssuePresentationTest do
     assert buyer.summary == "Buyer GSTIN needs correction."
   end
 
-  test "keeps bounded HSN and rate evidence" do
-    issue = %{
-      "code" => "statutory_rate_mismatch",
-      "hsn_codes" => ["8415"],
-      "hsn_rates" => [12.0, 18.0],
-      "lines" => [1]
-    }
+  test "keeps HSN validity checks in sales" do
+    presentation =
+      SalesIssuePresentation.for_invoice(@invoice, [
+        %{"code" => "invalid_hsn_sac", "hsn_codes" => ["8415"], "lines" => [1]}
+      ])
 
-    presentation = SalesIssuePresentation.for_invoice(@invoice, [issue])
-
-    assert presentation.summary == "HSN/SAC and GST rates need review."
-    assert presentation.details == ["HSN/SAC: 8415. Rates in evidence: 12%, 18%."]
-    assert [%{target: :lines, lines: [1]}] = presentation.items
+    assert presentation.summary == "Some HSN/SAC codes are not in the active GST directory."
+    assert presentation.details == ["HSN/SAC: 8415. Lines: 1."]
   end
 
   test "unknown gating codes use neutral review wording" do

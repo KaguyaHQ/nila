@@ -208,8 +208,8 @@ defmodule Nila.Gst.Sales.Review.AccountTest do
 
   test "advisories are counted apart from what gates approval, and named by kind" do
     issues = [
-      %{"code" => "hsn_new_code", "status" => "open", "level" => "advisory"},
-      %{"code" => "hsn_new_code", "status" => "open", "level" => "advisory"},
+      %{"code" => "sales_document_missing", "status" => "open", "level" => "advisory"},
+      %{"code" => "sales_document_missing", "status" => "open", "level" => "advisory"},
       %{"code" => "grand_total_mismatch", "status" => "open", "level" => "required"},
       %{"code" => "pages_unaccounted", "status" => "open", "level" => "required"},
       %{"code" => "invalid_hsn_sac", "status" => "open", "level" => "required"},
@@ -232,17 +232,17 @@ defmodule Nila.Gst.Sales.Review.AccountTest do
     assert Enum.sum(Map.values(account.issues.by_kind)) == account.issues.required_count
   end
 
-  test "a legacy snapshot's warning levels are counted by what the code means today" do
+  test "missing and unrecognized levels remain required review" do
     issues = [
-      %{"code" => "hsn_new_code", "status" => "open", "level" => "warning"},
-      %{"code" => "invalid_hsn_sac", "status" => "open", "level" => "warning"},
-      %{"code" => "grand_total_mismatch", "status" => "open"}
+      %{"code" => "sales_document_missing", "status" => "open", "level" => "invalid"},
+      %{"code" => "invalid_hsn_sac", "status" => "open"},
+      %{"code" => "grand_total_mismatch", "status" => "open", "level" => "required"}
     ]
 
     account = Account.summarize([], [], issues, nil, %{files: 1, pages_read: nil})
 
-    assert account.issues.required_count == 2
-    assert account.issues.advisory_count == 1
+    assert account.issues.required_count == 3
+    assert account.issues.advisory_count == 0
   end
 
   test "does not invent source page counts or cess for an empty draft" do

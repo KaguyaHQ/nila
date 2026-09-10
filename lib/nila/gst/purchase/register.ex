@@ -32,7 +32,6 @@ defmodule Nila.Gst.Purchase.Register do
     zero_value_row
     statutory_rate_review
     statutory_rate_mismatch
-    rate_history_conflict
   )
 
   @bucket_labels %{

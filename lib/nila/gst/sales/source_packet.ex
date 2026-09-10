@@ -3,8 +3,6 @@ defmodule Nila.Gst.Sales.SourcePacket do
 
   alias Nila.Gst.Hsn.Directory, as: HsnDirectory
   alias Nila.Gst.Intake.{Dump, Dumps}
-  alias Nila.Gst.RateHistory
-  alias Nila.Gst.Rates.Directory, as: RateDirectory
   alias Nila.Gst.Sales.Invoice
   alias Nila.Gst.Sales.Invoice.Corrections, as: InvoiceCorrections
   alias Nila.Gst.Sales.Invoice.Readiness, as: InvoiceReadiness
@@ -19,7 +17,7 @@ defmodule Nila.Gst.Sales.SourcePacket do
       |> Enum.map(&Dumps.rehydrate/1)
       |> prepared_invoices(dumps)
 
-    readiness = InvoiceReadiness.evaluate(invoices, compliance(dumps, invoices))
+    readiness = InvoiceReadiness.evaluate(invoices, compliance())
     active_by_id = Map.new(readiness.invoices, &{Invoice.source_id(&1), &1})
 
     %{
@@ -57,45 +55,10 @@ defmodule Nila.Gst.Sales.SourcePacket do
 
   defp prepared_invoices(invoices, []), do: {invoices, invoices, []}
 
-  defp compliance(_dumps, []), do: %{}
-  defp compliance([], _invoices), do: %{}
-
-  defp compliance([%Dump{org_id: org_id, client_id: client_id} | _] = dumps, invoices) do
-    %{}
-    |> maybe_put_active_directory(:directory, HsnDirectory)
-    |> maybe_put_active_directory(:rate_directory, RateDirectory)
-    |> Map.put(
-      :rate_history_by_period,
-      rate_history_by_period(dumps, invoices, org_id, client_id)
-    )
-  end
-
-  defp maybe_put_active_directory(compliance, key, directory_module) do
-    case directory_module.active() do
-      {:ok, directory} -> Map.put(compliance, key, directory)
-      {:error, :not_found} -> compliance
+  defp compliance do
+    case HsnDirectory.active() do
+      {:ok, directory} -> %{directory: directory}
+      {:error, :not_found} -> %{}
     end
   end
-
-  defp rate_history_by_period(dumps, invoices, org_id, client_id) do
-    if Enum.all?(dumps, &(&1.org_id == org_id and &1.client_id == client_id)) do
-      invoices
-      |> Enum.map(&invoice_period/1)
-      |> Enum.filter(&is_binary/1)
-      |> Enum.uniq()
-      |> Map.new(&{&1, RateHistory.prior_observations(org_id, client_id, &1)})
-    else
-      %{}
-    end
-  end
-
-  defp invoice_period(%{"invoice_date" => %Date{} = date}),
-    do: Calendar.strftime(date, "%Y-%m")
-
-  defp invoice_period(%{
-         "invoice_date" => <<year::binary-size(4), "-", month::binary-size(2), _rest::binary>>
-       }),
-       do: year <> "-" <> month
-
-  defp invoice_period(_invoice), do: nil
 end

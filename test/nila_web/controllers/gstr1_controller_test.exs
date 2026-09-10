@@ -3,7 +3,6 @@ defmodule NilaWeb.Gstr1ControllerTest do
 
   alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Clients
-  alias Nila.Gst.Filing.Signoff
   alias Nila.Gst.Sales.{Gstr1, Months}
   alias Nila.Repo
   alias Nila.TallyJobs.Job
@@ -83,7 +82,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
     end
   end
 
-  test "downloads an unsigned month's current B2B workings as a Winman workbook", %{
+  test "downloads the current B2B workings as a Winman workbook", %{
     conn: conn,
     client: client
   } do
@@ -133,47 +132,6 @@ defmodule NilaWeb.Gstr1ControllerTest do
     assert strings =~ "Calculated IGST"
   end
 
-  test "downloads live workings despite a legacy approval", %{
-    conn: conn,
-    client: client,
-    month: month,
-    org: org,
-    user: user
-  } do
-    frozen_derived =
-      put_in(
-        month.derived_gstr1,
-        ["b2b", Access.at(0), "inv", Access.at(0), "inum"],
-        "FROZEN-001"
-      )
-
-    frozen_invoices = [
-      month.invoices
-      |> hd()
-      |> Map.put("invoice_number", "FROZEN-001")
-      |> Map.put("buyer_name", "Frozen Customer")
-    ]
-
-    %Signoff{
-      org_id: org.id,
-      sales_month_id: month.id,
-      signed_by_id: user.id
-    }
-    |> Signoff.changeset(%{
-      artifact: "gstr1",
-      snapshot: %{"derived" => frozen_derived, "invoices" => frozen_invoices}
-    })
-    |> Repo.insert!()
-
-    conn = get(conn, ~p"/gstr1/#{client.id}/2026-07/winman-b2b.xlsm")
-    sheet = conn.resp_body |> entries() |> Map.fetch!("xl/worksheets/sheet2.xml")
-
-    refute sheet =~ "FROZEN-001"
-    refute sheet =~ "Frozen Customer"
-    assert sheet =~ ">INV-001<"
-    assert sheet =~ "Customer &amp; Co"
-  end
-
   test "downloads current sales workings as Tally XML", %{conn: conn, client: client} do
     conn = get(conn, ~p"/gstr1/#{client.id}/2026-07/tally.xml")
 
@@ -190,38 +148,22 @@ defmodule NilaWeb.Gstr1ControllerTest do
     assert conn.resp_body =~ "<AMOUNT>180.00</AMOUNT>"
   end
 
-  test "preserves an actually filed snapshot in the Tally download", %{
+  test "downloads the filed sales position as Tally XML", %{
     conn: conn,
     client: client,
     month: month,
-    org: org,
     user: user
   } do
-    frozen_invoice =
-      month.invoices
-      |> hd()
-      |> Map.put("invoice_number", "FROZEN-TALLY-001")
-      |> Map.put("buyer_name", "Frozen Tally Customer")
+    Nila.GstFixtures.answer_sales_issues!(month, user.id)
 
-    %Signoff{
-      org_id: org.id,
-      sales_month_id: month.id,
-      signed_by_id: user.id
-    }
-    |> Signoff.changeset(%{
-      artifact: "gstr1",
-      snapshot: %{"derived" => month.derived_gstr1, "invoices" => [frozen_invoice]}
-    })
-    |> Repo.insert!()
+    assert {:ok, filed} =
+             Nila.Gst.Filing.Signoffs.mark_filed_gstr1(month, Nila.Accounts.Scope.for_user(user))
 
-    month |> Ecto.Changeset.change(filed_at: DateTime.utc_now()) |> Repo.update!()
-
+    assert filed.filed_at
     conn = get(conn, ~p"/gstr1/#{client.id}/2026-07/tally.xml")
-
-    assert conn.resp_body =~ "FROZEN-TALLY-001"
-    assert conn.resp_body =~ "Frozen Tally Customer"
-    refute conn.resp_body =~ "INV-001"
-    refute conn.resp_body =~ "Customer &amp; Co"
+    assert response(conn, 200)
+    assert conn.resp_body =~ "<VOUCHERNUMBER>INV-001</VOUCHERNUMBER>"
+    assert conn.resp_body =~ "<LEDGERNAME>Customer &amp; Co</LEDGERNAME>"
   end
 
   test "the legacy month posting endpoint opens sales bills without creating jobs", %{
