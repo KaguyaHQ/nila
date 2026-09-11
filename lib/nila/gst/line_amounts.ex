@@ -12,6 +12,10 @@ defmodule Nila.Gst.LineAmounts do
   exclusive pricing. If one available check passes and another fails, inclusion
   is unknown. If no check passes, retain the model candidate and the failed checks.
 
+  When the pre-tax item amount is absent, a printed gross total minus complete
+  item GST can supply taxable value. Printed rates must agree with that result;
+  footer taxes and unresolved or duplicate item components cannot supply it.
+
   Only the current printed fields supply evidence. Missing fields stay missing;
   a previously calculated taxable value is used only when marked as corrected.
   """
@@ -78,7 +82,9 @@ defmodule Nila.Gst.LineAmounts do
         {facts.printed_taxable, "printed_taxable_value"}
 
       not is_number(facts.amount) ->
-        {nil, nil}
+        if facts.amount_missing? and facts.printed_taxable_missing?,
+          do: derive_from_gross(facts),
+          else: {nil, nil}
 
       inclusion.value == "exclusive" ->
         basis =
@@ -95,6 +101,25 @@ defmodule Nila.Gst.LineAmounts do
         {nil, nil}
     end
   end
+
+  # The gross column already states its meaning. It does not need a separate
+  # pre-tax amount or an inclusion guess, but it does need complete item taxes.
+  defp derive_from_gross(%{total: total, gross_taxes: taxes})
+       when is_number(total) and is_list(taxes) and total >= 0 do
+    tax = Enum.sum(Enum.map(taxes, &elem(&1, 2)))
+    taxable = total - tax
+
+    consistent? =
+      Enum.all?(taxes, fn {_head, rate, amount} ->
+        is_nil(rate) or (is_number(rate) and rate >= 0 and close?(taxable * rate / 100, amount))
+      end)
+
+    if taxable >= 0 and consistent?,
+      do: {round2(taxable), "derived_from_gross_less_printed_tax"},
+      else: {nil, nil}
+  end
+
+  defp derive_from_gross(_facts), do: {nil, nil}
 
   defp total_check(%{amount: amount, tax: tax, total: total}) do
     if is_number(amount) and is_number(tax) and is_number(total) and nonzero?(tax) do
@@ -131,8 +156,11 @@ defmodule Nila.Gst.LineAmounts do
     %{
       unit_price: money(line["printed_unit_price"]),
       amount: money(line["printed_line_amount"]),
+      amount_missing?: Money.decimal_or_error(line["printed_line_amount"]) == :missing,
       total: money(line["printed_line_total"]),
       printed_taxable: money(line["printed_taxable_value"]),
+      printed_taxable_missing?: Money.decimal_or_error(line["printed_taxable_value"]) == :missing,
+      gross_taxes: gross_taxes(line),
       candidate: inclusion_candidate(line),
       inclusion_corrected?:
         line["line_amount_tax_inclusion_basis"] == "corrected" and
@@ -146,6 +174,77 @@ defmodule Nila.Gst.LineAmounts do
         active_taxes != [] and
           Enum.all?(active_taxes, fn {_rate, amount} -> is_number(amount) end)
     }
+  end
+
+  defp gross_taxes(line) do
+    canonical =
+      ~w(CGST SGST IGST)
+      |> Enum.map(fn head ->
+        prefix = String.downcase(head)
+        {head, tax_number(line[prefix <> "_rate"]), tax_number(line[prefix <> "_amount"])}
+      end)
+      |> Enum.filter(fn {_head, rate, amount} ->
+        rate not in [nil, 0, 0.0] or amount not in [nil, 0, 0.0]
+      end)
+
+    case line["printed_tax_components"] do
+      nil ->
+        complete_gross_taxes(canonical)
+
+      components when is_list(components) ->
+        printed =
+          Enum.map(components, fn component ->
+            {gross_tax_head(component["printed_label"]), tax_number(component["printed_rate"]),
+             money(component["printed_amount"])}
+          end)
+
+        # Projected heads are another view of the same evidence, never extra tax.
+        # If they disagree, leave the amount unresolved for review.
+        if canonical == [] or canonical_matches?(printed, canonical),
+          do: complete_gross_taxes(printed)
+
+      _unreadable ->
+        nil
+    end
+  end
+
+  defp complete_gross_taxes(taxes) do
+    heads = taxes |> Enum.map(&elem(&1, 0)) |> Enum.sort()
+
+    if heads in [["GST"], ["IGST"], ["CGST", "SGST"]] and
+         Enum.all?(taxes, fn {_head, _rate, amount} -> is_number(amount) and amount >= 0 end),
+       do: taxes
+  end
+
+  defp canonical_matches?(printed, canonical) do
+    Enum.all?(canonical, fn {head, rate, amount} ->
+      case Enum.filter(printed, &(elem(&1, 0) == head)) do
+        [{^head, printed_rate, printed_amount}] ->
+          is_number(amount) and is_number(printed_amount) and close?(amount, printed_amount) and
+            (is_nil(rate) or is_nil(printed_rate) or
+               (is_number(rate) and is_number(printed_rate) and close?(rate, printed_rate)))
+
+        _missing_or_duplicate ->
+          false
+      end
+    end)
+  end
+
+  defp gross_tax_head(label) when is_binary(label) do
+    case label |> String.upcase() |> String.split(~r/[^A-Z]+/u, trim: true) do
+      [head] when head in ~w(GST CGST SGST IGST) -> head
+      _unknown -> nil
+    end
+  end
+
+  defp gross_tax_head(_label), do: nil
+
+  defp tax_number(value) do
+    case Money.decimal_or_error(value) do
+      :missing -> nil
+      :unreadable -> :unreadable
+      {:ok, _decimal} -> money(value)
+    end
   end
 
   defp inclusion_candidate(line) do

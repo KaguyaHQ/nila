@@ -3,6 +3,93 @@ defmodule Nila.Gst.LineAmountsTest do
 
   alias Nila.Gst.LineAmounts
 
+  test "derives Simple Systems 31 from gross and combined row GST without changing source fields" do
+    line = gross_line([tax("GST", 18, 442.8)], 2902.8)
+    resolved = Nila.Gst.Sales.Invoice.resolve_line_amount(line)
+
+    assert resolved["taxable_value"] == 2460
+    assert resolved["taxable_value_basis"] == "derived_from_gross_less_printed_tax"
+    assert resolved["printed_line_amount"] == nil
+    assert resolved["printed_taxable_value"] == nil
+    assert resolved["printed_line_total"] == 2902.8
+    assert resolved["line_amount_tax_inclusion"] == "unknown"
+    assert resolved["printed_tax_components"] == line["printed_tax_components"]
+    assert resolved["cgst_amount"] == nil
+    assert resolved["sgst_amount"] == nil
+    assert Nila.Gst.Sales.Invoice.resolve_line_amount(resolved) == resolved
+
+    assert {:ok, facts} = Nila.Gst.InvoiceFacts.from_sales_map(%{"line_items" => [resolved]})
+    assert hd(facts.lines).taxable_value_basis == :derived_from_gross_less_printed_tax
+    assert facts.taxable_paise == 246_000
+  end
+
+  test "subtracts split taxes once even when canonical projections are present" do
+    line = gross_line([tax("CGST", 9, 9), tax("SGST", 9, 9)])
+    projected = Nila.Gst.TaxComponents.project(%{"line_items" => [line]})
+    assert LineAmounts.taxable_value(hd(projected["line_items"])) == 100
+    assert LineAmounts.taxable_value(gross_line([tax("IGST@18%", 18, 18)])) == 100
+    assert LineAmounts.taxable_value(gross_line([tax("GST", nil, 18)])) == 100
+  end
+
+  test "requires complete unambiguous row taxes and consistent rates for gross subtraction" do
+    for components <- [
+          [],
+          [tax("CGST", 9, 9)],
+          [tax("CGST", 9, 9), tax("SGST", 9, nil)],
+          [tax("GST", 18, nil)],
+          [tax("GST", 18, 18), tax("GST", 18, 18)],
+          [tax("GST", 18, 18), tax("CGST", 9, 9), tax("SGST", 9, 9)],
+          [tax("PGST", 18, 18)],
+          [tax("GST", 9, 18)],
+          [tax("GST", "unreadable", 18)],
+          [tax("GST", nil, -18)],
+          [tax("GST", nil, 119)]
+        ] do
+      assert LineAmounts.taxable_value(gross_line(components)) == nil
+    end
+
+    conflicting = gross_line([tax("IGST", 18, 18)]) |> Map.put("igst_amount", 20)
+    assert LineAmounts.taxable_value(conflicting) == nil
+
+    assert LineAmounts.taxable_value(
+             Map.put(gross_line([tax("GST", 18, 18)]), "printed_line_amount", "unreadable")
+           ) == nil
+
+    assert LineAmounts.taxable_value(
+             Map.put(gross_line([tax("GST", 18, 18)]), "printed_taxable_value", "unreadable")
+           ) == nil
+
+    footer_only = %{"printed_line_total" => 118, "printed_tax_totals" => [tax("IGST", 18, 18)]}
+    assert LineAmounts.taxable_value(footer_only) == nil
+  end
+
+  test "keeps printed and reviewer taxable values ahead of gross subtraction" do
+    line = gross_line([tax("GST", 18, 18)])
+    assert LineAmounts.taxable_value(Map.put(line, "printed_taxable_value", 101)) == 101
+
+    corrected = Map.merge(line, %{"taxable_value" => 99, "taxable_value_basis" => "corrected"})
+    assert LineAmounts.taxable_value(corrected) == 99
+  end
+
+  test "accepts complete canonical item taxes when literal components are unavailable" do
+    line = %{"printed_line_total" => 118, "igst_rate" => 18, "igst_amount" => 18}
+    assert LineAmounts.taxable_value(line) == 100
+    assert LineAmounts.taxable_value(Map.put(line, "printed_tax_components", [])) == nil
+    assert LineAmounts.taxable_value(%{"printed_line_total" => 118, "cgst_amount" => 9}) == nil
+  end
+
+  defp tax(label, rate, amount),
+    do: %{"printed_label" => label, "printed_rate" => rate, "printed_amount" => amount}
+
+  defp gross_line(components, total \\ 118),
+    do: %{
+      "printed_line_amount" => nil,
+      "printed_taxable_value" => nil,
+      "printed_line_total" => total,
+      "line_amount_tax_inclusion" => "unknown",
+      "printed_tax_components" => components
+    }
+
   test "keeps printed unit, line and taxable amounts as separate evidence" do
     amounts =
       LineAmounts.normalize(%{

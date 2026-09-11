@@ -35,6 +35,7 @@ defmodule Nila.Gst.InvoiceLine do
           :corrected
           | :printed_taxable_value
           | :derived_from_inclusive_line_amount
+          | :derived_from_gross_less_printed_tax
           | :printed_exclusive_line_amount
           | :line_amount_plus_tax_equals_total
           | :line_amount_times_rate_equals_tax
@@ -47,6 +48,7 @@ defmodule Nila.Gst.InvoiceLine do
     "corrected" => :corrected,
     "printed_taxable_value" => :printed_taxable_value,
     "derived_from_inclusive_line_amount" => :derived_from_inclusive_line_amount,
+    "derived_from_gross_less_printed_tax" => :derived_from_gross_less_printed_tax,
     "printed_exclusive_line_amount" => :printed_exclusive_line_amount,
     "line_amount_plus_tax_equals_total" => :line_amount_plus_tax_equals_total,
     "line_amount_times_rate_equals_tax" => :line_amount_times_rate_equals_tax,
