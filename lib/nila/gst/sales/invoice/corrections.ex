@@ -1,5 +1,14 @@
 defmodule Nila.Gst.Sales.Invoice.Corrections do
-  @moduledoc "Append-only accountant corrections over pristine sales-bill extraction."
+  @moduledoc """
+  Source invoice corrections, applied wherever that source is used.
+
+  Events belong to an org, client, and source ID. The batch reference records
+  where the edit happened; it does not limit where the edit applies. Original
+  extraction stays intact, and affected month reviews are invalidated.
+
+  Month-only review decisions belong to `Sales.Review.Resolutions`. Those are
+  replayed under the month's flagged-field policy, not stored as source edits.
+  """
 
   import Ecto.Query
 
@@ -63,7 +72,7 @@ defmodule Nila.Gst.Sales.Invoice.Corrections do
 
   def apply_sources(_org_id, _client_id, invoices) when is_list(invoices), do: invoices
 
-  @doc "Validates and atomically records one invoice's changed fields."
+  @doc "Validates and atomically records source edits, independent of the viewing batch."
   def save(org_id, client_id, batch_ref, source_id, changes, corrected_by_id \\ nil)
 
   def save(org_id, client_id, batch_ref, source_id, changes, corrected_by_id)

@@ -21,6 +21,9 @@ step in Nila.
   `gstr1/packet.ex` assembles the output checks.
 - `workings.ex` applies month decisions and derives the current working draft;
   `workings/xlsx.ex` writes the Excel artifact.
+- `derivation.ex` updates the saved sales working when intake changes. The intake
+  worker owns its transaction and progress; `Intake.Progress` owns the shared
+  processing notifications.
 - `review.ex` and `review/` persist exception decisions and explain source facts,
   return contributions, and arithmetic controls. `review/correction_policy.ex`
   connects confidence and findings to fields that can be corrected; `Invoice`
@@ -42,6 +45,15 @@ Use `Invoice.apply_correction/3` for correction semantics. Persist source edits
 through `Invoice.Corrections` and exclusions through `Invoice.Removals`; batch
 references record where an edit happened, while source IDs identify the invoice.
 Source edits invalidate the affected month review, but cannot alter filed months.
+
+`Invoice.Corrections.save/6` changes a source invoice wherever it is used.
+`Review.Resolutions.record/3` records a decision for one month; its field
+corrections apply only under that month's flagged-field policy. Source edits are
+applied before month decisions. Keep those scopes separate when adding an editor.
+
+`NilaWeb.Gst.SalesBillReview.SourceEditor` saves source edits and prepares form
+errors. `SalesBillReview` coordinates selected-invoice refresh and Tally previews;
+the source editor does not choose ledgers or send vouchers.
 
 `Gstr1.project/2` produces both the portal return and the contribution of each
 included source. Per-invoice review values must use that projection (or full

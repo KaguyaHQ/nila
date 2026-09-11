@@ -9,7 +9,7 @@ defmodule NilaWeb.Gst.MonthLive do
   alias Nila.Clients
   alias Nila.Gst.Chase
   alias Nila.Gst.Filing.{Calendar, Signoffs, WinmanGstr1}
-  alias Nila.Gst.Intake.{DumpWorker, Dumps, Preconditions}
+  alias Nila.Gst.Intake.{DumpWorker, Dumps, Preconditions, Progress}
   alias Nila.Gst.Issues
   alias Nila.Gst.Purchase.{Groups, ItcCases, Reconciliation, Register, Resolutions, Review}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
@@ -66,7 +66,7 @@ defmodule NilaWeb.Gst.MonthLive do
 
   defp maybe_subscribe(socket, org_id) do
     if connected?(socket) do
-      :ok = PurchaseMonths.subscribe(org_id)
+      :ok = Progress.subscribe(org_id)
     else
       :ok
     end

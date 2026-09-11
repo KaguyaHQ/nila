@@ -2,165 +2,84 @@
 
 > "The AI accountant."
 
-_Intent doc. Last reviewed 2026-07-24._
+_Current objective reviewed 2026-09-11._
 
-This is **why Nila exists, who it is for, and what we will and won't build** — product
-intent, not a snapshot of the code. Current state lives in the code and git history. This
-file should change when the *product* changes, not when code ships. If it contradicts the
-code, the code is right and this needs a review.
+## Current objective
 
-> **History.** Nila began as a system-of-record for a family field-service business
-> (archived intact in `nila-ops`), pivoted to a CA AI-labor engine, and the wedge then
-> sharpened from bank-statement classification to **GST**. The thesis then sharpened
-> again — from horizontal *assistance* (make every junior faster) to vertical
-> *ownership* (take bounded client-months end to end). The portable substrate
-> (extraction, tenancy, GST helpers, banking spine, audit, storage) carries through.
+**Turn a CA firm's sales bills into an Excel workings file for GSTR-1, so the
+junior does not have to read and type every bill and assemble the working by hand.**
+The senior must be able to check the result, and the firm must be able to keep it
+and later explain the figures. The first product ends at usable workings; the
+firm retains responsibility for review and filing.
 
----
+This section owns the current business objective. `AGENTS.md` carries the short
+version; the README introduces it; demo documents explain how to demonstrate it.
+Existing features and older strategy do not expand this scope. Code and tests
+establish what is implemented, not what the business should prioritize.
 
-## 1. Problem & users
+### Why GST workings first
 
-Indian Chartered Accountant (CA) firms sell their clients' compliance work. The work
-itself is high-volume, repetitive cognition done by junior staff: chasing clients for
-documents, reading invoices and statements, typing them into structured records,
-reconciling against the portal, assembling monthly returns. It is unstructured→structured
-translation plus coordination that has historically required a human clerk.
+GST workings is the most recurring job identified in discovery so far. That
+repeated preparation makes it the first product, ahead of TDS. Tally bookkeeping
+has not emerged as a large enough need to lead with. This is the founder's current
+priority based on the firms met so far, not a claim that every firm has the same
+workload. Keep learning from real client months before expanding the scope.
 
-**First user.** A CA firm's partner who carries the cost of that junior labor and signs
-behind its output.
+### What we learned from the customer
 
-**The pain.**
+The September 5 and 9 Balaji visit notes describe this workflow:
 
-- **Junior-staff time is the cost.** Collection, chasing, data entry, reconciliation and
-  return assembly are the bulk of the hours a firm spends per client, and they scale
-  linearly with client count — more clients means more juniors.
-- **The bottleneck is collection, not calculation.** The month can't close because the
-  documents aren't in yet; everyone submits on the last day, so the partner stays late.
-- **Errors are stochastic and costly.** A mistyped invoice or a missed mismatch surfaces
-  late, as a notice, a wrong return, or lost ITC.
-- **The work doesn't compound.** Every month is re-done from scratch; nothing the firm
-  learns about a client's patterns — this vendor is always ITC-blocked, this treatment is
-  standard — is captured as leverage.
+- A junior reads sales bills and enters them into a monthly Excel working.
+- The work includes GSTIN/name checks, invoice-number checks, sales rows,
+  tax arithmetic, and HSN summaries. Gaps and disagreements can require asking
+  the client; copying text is only part of the work.
+- A senior checks the working. The manager checks GSTINs, document counts by
+  GSTR-1 table, taxable values, and totals before filing.
+- The firm keeps the working to explain what was filed later. Its Excel template
+  is distinct from the format its filing software accepts.
 
-## 2. What Nila is
+The practical starting point is the firm's scanned/PDF sales-bill work. The
+notes also describe Tally, e-invoice reconciliation, chasing, and notice checking;
+those observations are not commitments to expand the first product.
 
-Not an assistant — an **AI accountant** that owns a bounded block of work. The firm can
-hand Nila a defined set of client-months and say: *take these from document collection to
-review-ready, bring the senior only the decisions that need professional judgment.*
+The manager reported late document arrivals, reminders, and work continuing late
+near deadlines. We have not measured whether collection, preparation, checking,
+client questions, or portal delays account for most of that pressure.
 
-The distinction is deliberate. **Horizontal assistance** makes every junior 20–30% faster
-but the firm still needs the same people to own every client — the value doesn't justify
-reorganising the team (this was a real partner's objection, and it's the trap). **Vertical
-ownership** removes a concentrated, measurable block of work: Nila does the junior's
-execution and first-level judgment underneath a senior, so a firm can take on more clients
-without adding juniors. It starts by replacing junior execution and moves upward into
-senior leverage; it does **not** claim to replace the senior.
+### What success means
 
-**The deliverable is a place, not a file.** A generated PDF or Excel is a dead artifact —
-to trust a number a CA has to have a senior re-derive it, which *adds* review work. Nila's
-surface is a live, interrogable workspace: the month is worked, and every number is one
-tap from its own scanned evidence, so checking Nila is faster than redoing it. That is
-what collapses the senior's job instead of doubling it.
+On a real client month, an accountant can use Nila's file instead of preparing
+the sales working from scratch. It contains recognizable invoice details,
+source references, tax checks, HSN summaries, and traceable totals. Missing or
+uncertain facts remain visible, with specific questions for the accountant.
 
-## 3. The wedge: GST
+Measure the preparation and checking still required, including corrections and
+anything the accountant must add or calculate outside Nila. A fast extraction
+or attractive workbook alone does not prove that the job is done. Preserve the
+purpose of the firm's working and its review evidence; do not assume every
+existing tab arrangement or formula must be copied.
 
-GST is the compliance stream with the **highest frequency** — GSTR-1 and 3B recur every
-month for every registered client, so the volume is there to automate against and the
-feedback loop is monthly, not annual. TDS (quarterly) and ITR (annual) come later on the
-same engine.
+GSTR-1 JSON is a supporting output. Tally and Winman handoffs can serve existing
+workflows, but they are not prerequisites for the bills-to-workings result.
+Existing WhatsApp, Tally, banking, and purchase features can remain. New scope
+should follow observed needs; the current implementation priority is in
+`AGENTS.md`.
 
-The wedge has two halves that play different roles:
+### Evidence and limits
 
-- **Reconciliation is the proof.** Purchase invoices reconciled against the portal's
-  GSTR-2B, exceptions flagged with evidence, ITC reproduced against what was filed. This
-  proves competence in one meeting against an answer key — hand Nila an already-filed
-  month and it regenerates the firm's own workings and lights up the exact rows a human
-  adjusted. It earns the meeting; it is not, by itself, the thing that saves the most
-  hours (a partner has already shrugged at reconciliation alone).
-- **Collection + chasing is the product and the moat.** The real bottleneck is that
-  documents don't arrive; the recurring labor and the coordination pain live here. Nila
-  chasing every client relentlessly and processing each document the moment it lands — at
-  a concurrency and persistence a junior structurally can't match — is what makes the
-  month review-ready early and makes Nila un-removable once inside. This is the harder,
-  unbuilt half.
+Primary notes live in the separate private CRM checkout:
 
-The sequence follows from that: reconciliation opens the door; collection is what Nila
-does once through it.
+- [Balaji visit, September 5](../../nila-crm/data/interactions/balaji-2026-09-05-visit.md)
+- [Balaji walkthrough, September 9](../../nila-crm/data/interactions/balaji-2026-09-09-visit.md)
 
-**Nila files nothing.** It stops at review-ready workings and orchestrates the filing-time
-OTP relay; a human reviews and clicks file. This keeps statutory accountability with the
-firm and dissolves the "software files my client's return" trust problem.
+Local folder: `D:\nila-crm\data\interactions`. The links require the adjacent CRM
+checkout. These are founder-recorded customer accounts and observations, not a
+measured time study, a tax-law source, or proof of market-wide demand. A real
+month checked with the accountant is the next source of product evidence.
 
-Why sell to CA firms, not SMBs direct: they already own the relationship, the data access
-and the statutory sign-off; the work is homogeneous across their clients (one engine, many
-clients); and the ROI is a wage line they feel directly. The pitch that works is against
-the *labor* budget ("this owns these client-months"), not the *software* budget (where it
-fights for scraps against tools the firm already churns).
+Still unproven: which step is the main bottleneck, how much total time Nila saves
+after review and corrections, whether firms will pay for that saving, and whether
+chasing or remembered corrections would create a lasting advantage. The current
+product is a choice to test, not a declaration that these questions are settled.
 
-## 4. The long-term moat: accounting memory
-
-A generic model can read an invoice; it does not know that a particular vehicle should be
-capitalised, that a vendor is regularly misclassified, how this client's chart of accounts
-works, or what correction the senior made last month. Nila accumulates that client-specific
-context and improves through reviewer corrections — every resolved exception is captured as
-raw data, and recurring patterns become remembered treatments applied automatically next
-month. This is what eventually lets one senior supervise far more clients. We do **not**
-model the memory prematurely; we capture corrections faithfully now and learn the
-abstraction from real data.
-
-## 5. Non-goals
-
-- Not a full accounting suite or a Tally replacement — Nila's output slots into the firm's
-  existing systems (Tally / Winman / portal), it doesn't replace them.
-- Not removing the CA's judgment or statutory sign-off — **Nila drafts and readies, the CA
-  reviews and files.**
-- Not autonomous filing: uncertain lines always route to a human, and no return is
-  submitted without human review.
-- Not a chatbot / horizontal assistant bolted onto the firm's existing workflow.
-- Not TDS or ITR yet — same engine, later, once GST earns trust.
-
-## 6. What's built
-
-The full month loop, both returns, end to end:
-
-- **The GST engine** (`Nila.Gst`) — sales-bill extraction → derived GSTR-1 with
-  validation issues; purchase invoices reconciled against GSTR-2B with a "flag, don't
-  guess" matching ladder; validation flags (duplicate scans, invalid GSTINs, blocked
-  ITC, tax-arithmetic, implausible values); the ITC position; the assembled GSTR-3B
-  consuming the *signed* GSTR-1. Validated end-to-end on real filed months.
-- **The human decision layer** — every exception ends in a recorded verb
-  (confirm/reject/pick-the-right-2B-row/correct/accept-unmatched/dismiss, ITC
-  block/allow), stored as append-only attributed resolutions, undoable, replayed over
-  the pristine recon so every surface renders one projection. This is the correction
-  capture the memory moat (§4) will learn from.
-- **Certification** — per-artifact sign-offs (GSTR-1 and 3B separately) that freeze
-  figures into snapshots; a signature is a wall (senior-only reopen, R1 reopen cascades
-  to a dependent 3B); per-return filed marks with ARN; filed is immutable, and late
-  documents are routed to the next open month.
-- **Intake** (`Nila.Gst.Intake.Dumps`) — accretive dumps, one arrival at a time: each extracts
-  on its own, the month derives from the union, a new 2B replaces the old, stragglers
-  land without re-reading earlier piles. Multi-PDF piles. Dumps arriving behind a
-  signature are held for senior release. **Preconditions**
-  (`Nila.Gst.Intake.Preconditions`) run between reading and deriving: a packet
-  dated outside its month, a packet already booked in another month, or a
-  books/2B pair with nothing in common stops as one question with three answers
-  (move / keep with a recorded reason / discard) instead of becoming a queue of
-  exceptions nobody can answer.
-- **The screens** — Today (every client-month grouped by who it's waiting on, with
-  chase drafts for clients who sent nothing), the client-month workbench (one room:
-  GSTR-1, purchase recon, 3B, in filing order, evidence one tap away), the exceptions
-  queue, Register (all-periods filed history), Clients, and intake.
-- **Substrate:** auth + tenancy (orgs / entities / memberships), the
-  document→structured **extractor** behind a swappable behaviour, GST jurisdiction
-  logic, the audit log, pluggable storage, and email/WhatsApp ingestion and chasing.
-- **Frozen** (built for the earlier assistant/generic-workflow direction, kept but not
-  the current path): the assistant chatbot (`Nila.Assistant`), the generic workflow
-  step-runner (`Nila.Workflows`), and the bank-statement spine (`Nila.Banking` —
-  reactivates later for full-bookkeeping clients).
-
-Automated chasing is built for consented email and WhatsApp channels, including a
-period-bound WhatsApp completeness question whose signed replies become intake evidence.
-Cross-month ITC custody now carries original invoice credits from books to a later 2B,
-tracks missing-document decisions per invoice, and prevents duplicate claims at sign-off.
-Still deliberately unbuilt: the broader reversal/reclaim matrix, amendments, QRMP, and
-photo intake — pulled by real usage, not pushed.
+Earlier strategy and unvalidated ideas are kept in [the archive](archive/prd-history.md).

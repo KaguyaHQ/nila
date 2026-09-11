@@ -1,16 +1,17 @@
-# Sales Bills to Tally — First Demo PRD
+# Historical: Sales Bills to Tally Demo PRD
 
-_Demo decision document. Agreed 2026-08-26._
+_Historical Tally demo contract. Agreed 2026-08-26; superseded as the first-product objective._
 
 > September 7: the current CA-firm presentation is sales bills → GST workings
-> XLSX → GSTR-1 JSON. Use [the demo runbook](demo-runbook.md) and
-> [presentation script](demo-script.md). This document retains the earlier
+> XLSX → GSTR-1 JSON. Use [the demo runbook](../demo-runbook.md) and
+> [presentation script](../demo-script.md). This document retains the earlier
 > sales-bills-to-Tally implementation contract.
 
-This document defines the narrow product Nila must demonstrate before expanding the
-accounting workflow. It is intentionally smaller than [`prd.md`](./prd.md). When a
-short-term implementation choice does not affect safety or data integrity, the first-demo
-outcome described here takes priority over architectural completeness.
+The [current business objective](../prd.md#current-objective) is bills → Excel workings.
+The material below records the earlier Tally demo reasoning. It is not the current
+demo specification and does not require a Tally handoff for the workings product.
+Its product assumptions and detailed requirements may be stale; check the current
+code and user request before relying on them.
 
 ## 1. Objective
 

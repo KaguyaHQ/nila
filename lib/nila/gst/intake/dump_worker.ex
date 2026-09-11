@@ -16,7 +16,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   terminal `after_filing` instead: a filed return cannot be reworked.
 
   Extraction is minutes-long and fallible: progress narrates over PubSub
-  (`PurchaseMonths.broadcast_progress/2`, message `{:gst_dump_progress, ...}`)
+  (`Nila.Gst.Intake.Progress.broadcast/2`, message `{:gst_dump_progress, ...}`)
   and terminal failure marks the dump `failed` so intake surfaces can show
   which arrival broke. The extractor reports each unit as it lands, so the
   coarse `:extracting` stage is followed by `{:extracting, progress}` counts,
@@ -31,8 +31,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
   alias Nila.Gst.Filing.{Gstr2b, ItcPosition, PortalDocument, Signoffs}
   alias Nila.Gst.Hsn.{Directory, Validation}
-  alias Nila.Gst.Intake.{Dump, Dumps, ExtractionAttempts, Preconditions}
-  alias Nila.Gst.Issues
+  alias Nila.Gst.Intake.{Dump, Dumps, ExtractionAttempts, Preconditions, Progress}
 
   alias Nila.Gst.Purchase.{
     Books,
@@ -50,10 +49,9 @@ defmodule Nila.Gst.Intake.DumpWorker do
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Gst.Rates.Directory, as: RateDirectory
   alias Nila.Gst.Rates.Validation, as: RateValidation
-  alias Nila.Gst.Sales.Gstr1
   alias Nila.Gst.Sales.Month, as: SalesMonth
   alias Nila.Gst.Sales.Months, as: SalesMonths
-  alias Nila.Gst.Sales.Workings, as: SalesWorkings
+  alias Nila.Gst.Sales.Derivation, as: SalesDerivation
 
   alias Nila.{Repo, Storage}
 
@@ -586,42 +584,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   # keeps `filed_gstr1` (latest filed dump wins) and the bills in step.
   defp derive(%Dump{kind: kind} = dump) when kind in ~w(sales filed_gstr1) do
     progress(dump, :deriving)
-    invoices = Dumps.union_invoices(dump.org_id, dump.client_id, dump.period, "sales")
-
-    {:ok, client} = Clients.get_client(dump.org_id, dump.client_id)
-    directory = active_hsn_directory()
-    compliance = maybe_put_directory(%{}, directory)
-
-    workings =
-      SalesWorkings.materialize(
-        invoices,
-        [],
-        Gstr1.production_header(client.gstin, dump.period),
-        ledger_issues(dump, "sales"),
-        compliance: compliance
-      )
-
-    issues = Enum.map(workings.issues, &Map.delete(&1, "status"))
-
-    {:ok, sales_month} =
-      SalesMonths.upsert(%{
-        org_id: dump.org_id,
-        client_id: dump.client_id,
-        period: dump.period,
-        state: "worked",
-        invoices: workings.invoices,
-        derived_gstr1: workings.derived,
-        issues: issues,
-        hsn_master_release_id: release_id(directory),
-        filed_gstr1: Dumps.filed_gstr1(dump.org_id, dump.client_id, dump.period),
-        summary: %{"invoice_count" => length(invoices), "issue_count" => length(issues)}
-      })
-
-    if kind == "sales" do
-      Signoffs.invalidate_gstr3b_in_transaction(sales_month, dump.brought_in_by_id)
-    end
-
-    :ok
+    SalesDerivation.refresh_in_transaction(dump)
   end
 
   defp derive(%Dump{} = dump) do
@@ -718,9 +681,6 @@ defmodule Nila.Gst.Intake.DumpWorker do
   defp annotate_rates(invoices, directory),
     do: RateValidation.annotate_invoices(invoices, directory)
 
-  defp maybe_put_directory(compliance, nil), do: compliance
-  defp maybe_put_directory(compliance, directory), do: Map.put(compliance, :directory, directory)
-
   defp maybe_put_purchase_directory(entity_ctx, nil), do: entity_ctx
 
   defp maybe_put_purchase_directory(entity_ctx, directory),
@@ -733,42 +693,6 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
   defp release_id(nil), do: nil
   defp release_id(directory), do: directory.release.id
-
-  # The sales side already renders month-level issues (`"invoice" => nil`), so
-  # the ledger lands there rather than in a second surface.
-  defp ledger_issues(dump, kind) do
-    unaccounted =
-      dump.org_id
-      |> Dumps.unaccounted_pages(dump.client_id, dump.period, kind)
-      |> Enum.map(fn %{"source" => source, "pages" => pages} ->
-        %{
-          "invoice" => nil,
-          "code" => "pages_unaccounted",
-          "level" => Issues.level_for("pages_unaccounted"),
-          "message" =>
-            "pages #{Enum.join(pages, ", ")} of #{source} produced no invoice. Open the " <>
-              "original and confirm no bill was missed.",
-          "fields" => ["doc_issue"]
-        }
-      end)
-
-    evidence =
-      dump.org_id
-      |> Dumps.evidence_gaps(dump.client_id, dump.period, kind)
-      |> Enum.map(fn %{"source" => source} ->
-        %{
-          "invoice" => nil,
-          "code" => "evidence_unavailable",
-          "level" => Issues.level_for("evidence_unavailable"),
-          "message" =>
-            "#{source} was read, but its pages could not be rendered, so no scanned bill " <>
-              "shows beside these invoices. Check them against the original before signing.",
-          "fields" => ["doc_issue"]
-        }
-      end)
-
-    unaccounted ++ evidence
-  end
 
   defp handle_failure(dump, job, reason) do
     Logger.error(
@@ -804,7 +728,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   end
 
   defp progress(dump, message) do
-    PurchaseMonths.broadcast_progress(
+    Progress.broadcast(
       dump.org_id,
       {:gst_dump_progress, dump.id, dump.client_id, dump.period, dump.kind, message}
     )

@@ -1,11 +1,14 @@
 defmodule Nila.Gst.Sales.Review.Resolutions do
   @moduledoc """
-  Append-only persistence for human decisions on a worked sales month's
-  validation issues, and the single assembler that layers them over the
-  engine's output. The outward mirror of `Nila.Gst.Purchase.Resolutions`.
+  Month-scoped review decisions and the effective sales working they produce.
+
+  `record/3` stores decisions for this month. Its `correct_field` events are
+  applied by `Workings.materialize/5` only to fields the month flags for review.
+  Source invoice edits belong to `Sales.Invoice.Corrections` and apply wherever
+  that source is used; they are layered in before these month decisions.
 
   A sales month is rendered by `workings/1`: it takes the pristine stored
-  invoices, folds in every resolution (`SalesWorkings.materialize`), and
+  invoices, folds in every resolution (`Workings.materialize/5`), and
   re-derives the portal-shaped return. Every surface — the month view, the
   portal JSON download, the 3B liability read — reads through this one
   function, so they cannot drift from the stored decisions.

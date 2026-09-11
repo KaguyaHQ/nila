@@ -22,6 +22,16 @@ defmodule NilaWeb.Gst.SalesIssuePresentationTest do
     ]
   }
 
+  test "missing tax amounts point the reviewer to the affected lines" do
+    presentation =
+      SalesIssuePresentation.for_invoice(@invoice, [
+        %{"code" => "missing_tax_amount", "lines" => [2]}
+      ])
+
+    assert [%{topic: "tax amounts", target: :lines, lines: [2]}] = presentation.items
+    assert presentation.summary == "A required GST amount is missing from invoice lines."
+  end
+
   test "does not surface place-of-supply tax inference in the sales-bill workbench" do
     issue = %{
       "code" => "tax_split_mismatch",

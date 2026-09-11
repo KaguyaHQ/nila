@@ -83,6 +83,7 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
       invoice_number_issues(invoice) ++
       invoice_date_issues(invoice) ++
       missing_taxable_value_issues(invoice) ++
+      missing_tax_amount_issues(invoice) ++
       arithmetic_issues(invoice) ++
       gstin_issues(invoice) ++
       verification_issues(invoice) ++
@@ -649,6 +650,77 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
     end
   end
 
+  defp missing_tax_amount_issues(invoice) do
+    if Invoice.tax_excluded_from_total?(invoice) or
+         Invoice.supply_type(invoice) in ~w(nil_rated exempt non_gst) do
+      []
+    else
+      missing =
+        invoice.lines
+        |> Enum.with_index(1)
+        |> Enum.flat_map(fn {line, index} ->
+          missing_heads = missing_tax_heads(line)
+
+          if missing_heads == [] or lopsided_tax_line?(line) do
+            []
+          else
+            [{index, missing_heads}]
+          end
+        end)
+
+      case missing do
+        [] ->
+          []
+
+        lines ->
+          numbers = Enum.map(lines, &elem(&1, 0))
+          fields = Enum.flat_map(lines, fn {index, heads} -> tax_amount_fields(index, heads) end)
+
+          [
+            invoice
+            |> issue(
+              "missing_tax_amount",
+              "GST amount is missing for #{line_word(numbers)} #{Enum.join(numbers, ", ")}; check the source invoice and correct the missing tax amount",
+              fields,
+              Issues.level_for("missing_tax_amount")
+            )
+            |> Map.put("lines", numbers)
+          ]
+      end
+    end
+  end
+
+  defp missing_tax_heads(line) do
+    heads = [{:cgst, line.cgst_rate}, {:sgst, line.sgst_rate}, {:igst, line.igst_rate}]
+
+    positive_missing =
+      for {head, rate} <- heads,
+          decimal_positive?(rate) and is_nil(line.tax_paise[head]),
+          do: head
+
+    if positive_missing != [] do
+      positive_missing
+    else
+      no_tax_facts? =
+        Enum.all?(heads, fn {head, rate} ->
+          is_nil(rate) and is_nil(line.tax_paise[head])
+        end)
+
+      if no_tax_facts? and is_integer(line.taxable_paise) and line.taxable_paise != 0,
+        do: [:cgst, :sgst, :igst],
+        else: []
+    end
+  end
+
+  defp lopsided_tax_line?(line) do
+    is_nil(line.tax_paise.igst) and
+      is_nil(line.tax_paise.cgst) != is_nil(line.tax_paise.sgst)
+  end
+
+  defp tax_amount_fields(index, heads) do
+    Enum.map(heads, fn head -> "line_items[#{index - 1}].#{head}_amount" end)
+  end
+
   defp line_word([_one]), do: "line"
   defp line_word(_many), do: "lines"
 
@@ -840,10 +912,7 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
   # row's stacked tax sub-rows into separate line items — the invoice-27
   # failure mode. One issue per invoice, not per line.
   defp lopsided_split_issues(invoice) do
-    line_issue(invoice, "lopsided_tax_split", fn line ->
-      is_nil(line.tax_paise.igst) and
-        is_nil(line.tax_paise.cgst) != is_nil(line.tax_paise.sgst)
-    end)
+    line_issue(invoice, "lopsided_tax_split", &lopsided_tax_line?/1)
   end
 
   # One issue naming the 1-based line numbers a predicate matched, or none. Two

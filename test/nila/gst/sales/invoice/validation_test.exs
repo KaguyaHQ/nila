@@ -89,6 +89,84 @@ defmodule Nila.Gst.Sales.Invoice.ValidationTest do
     assert InvoiceValidation.comparison_totals(zero).tax == 0
   end
 
+  test "missing tax amount is raised only when a taxable line needs tax evidence" do
+    missing_igst = invoice(%{}, %{"igst_amount" => nil})
+
+    assert [issue] =
+             Enum.filter(
+               InvoiceValidation.issues([missing_igst]),
+               &(&1["code"] == "missing_tax_amount")
+             )
+
+    assert issue["lines"] == [1]
+    assert issue["fields"] == ["line_items[0].igst_amount"]
+    assert issue["level"] == "blocking"
+
+    no_tax_facts =
+      invoice(%{}, %{
+        "igst_rate" => nil,
+        "igst_amount" => nil,
+        "cgst_rate" => nil,
+        "cgst_amount" => nil,
+        "sgst_rate" => nil,
+        "sgst_amount" => nil
+      })
+
+    assert Enum.any?(
+             InvoiceValidation.issues([no_tax_facts]),
+             &(&1["code"] == "missing_tax_amount")
+           )
+
+    stated_zero = invoice(%{}, %{"igst_rate" => 18, "igst_amount" => 0})
+
+    refute Enum.any?(
+             InvoiceValidation.issues([stated_zero]),
+             &(&1["code"] == "missing_tax_amount")
+           )
+
+    missing_split =
+      invoice(%{}, %{
+        "igst_rate" => nil,
+        "igst_amount" => nil,
+        "cgst_rate" => 9,
+        "cgst_amount" => nil,
+        "sgst_rate" => 9,
+        "sgst_amount" => nil
+      })
+
+    assert Enum.any?(
+             InvoiceValidation.issues([missing_split]),
+             &(&1["code"] == "missing_tax_amount")
+           )
+
+    explicit_zero =
+      invoice(%{}, %{
+        "igst_rate" => 0,
+        "igst_amount" => nil,
+        "cgst_rate" => nil,
+        "sgst_rate" => nil
+      })
+
+    refute Enum.any?(
+             InvoiceValidation.issues([explicit_zero]),
+             &(&1["code"] == "missing_tax_amount")
+           )
+
+    for overrides <- [
+          %{"supply_type" => "exempt"},
+          %{"supply_type" => "export", "tax_payment" => "without_payment"},
+          %{"reverse_charge" => true}
+        ] do
+      exempt_or_excluded =
+        Map.merge(invoice(%{}, %{"igst_rate" => 18, "igst_amount" => nil}), overrides)
+
+      refute Enum.any?(
+               InvoiceValidation.issues([exempt_or_excluded]),
+               &(&1["code"] == "missing_tax_amount")
+             )
+    end
+  end
+
   test "a partial split tax amount does not become a complete tax total" do
     invoice =
       invoice(%{}, %{

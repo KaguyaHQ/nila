@@ -9,7 +9,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
 
   alias Nila.Gst.Sales.Invoice
   alias Nila.Gst.Money
-  alias Nila.Gst.Purchase.Books
+  alias Nila.Gst.Dates
   alias Nila.Gst.StateCodes
 
   @endpoint "http://localhost:9000/"
@@ -665,7 +665,7 @@ defmodule Nila.Gst.Filing.TallyPrime do
   defp response_body(_response), do: {:error, :invalid_response}
 
   defp invoice_date(%Date{} = date), do: date
-  defp invoice_date(value) when is_binary(value), do: Books.parse_date(value)
+  defp invoice_date(value) when is_binary(value), do: Dates.parse_date(value)
   defp invoice_date(_value), do: nil
 
   defp effective_active_invoices(%{active_invoices: invoices}) when is_list(invoices),

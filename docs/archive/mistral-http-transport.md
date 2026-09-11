@@ -577,7 +577,7 @@ Current relevant code:
 
 Related record:
 
-- `docs/ocr-extraction.md` — extraction correctness, latency, caching, and the
+- `ocr-extraction.md` — extraction correctness, latency, caching, and the
   segment-then-extract design. That document explains semantic extraction quality;
   this one explains HTTP transport and replay.
 

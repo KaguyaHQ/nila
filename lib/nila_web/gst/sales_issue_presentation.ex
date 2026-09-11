@@ -286,6 +286,8 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
   defp add_document_items(items, issues) do
     mappings = [
       {"missing_taxable_value", "taxable values", "Taxable value is missing from invoice lines."},
+      {"missing_tax_amount", "tax amounts",
+       "A required GST amount is missing from invoice lines."},
       {"unreadable_amount", "invoice amounts", "An invoice amount could not be read."},
       {"ungrounded_extracted_value", "source evidence",
        "An extracted value was not found on the source invoice."},

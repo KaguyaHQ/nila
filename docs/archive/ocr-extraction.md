@@ -1,8 +1,12 @@
-# OCR Extraction — Provider Behaviour & Findings
+# Historical: OCR Extraction — Provider Behaviour & Findings
+
+_Archived 2026-09-11. These measurements and design conclusions concern the retired
+OCR path, not the current extraction contract. For current ownership, start with
+[the extraction code guide](../../lib/nila/gst/extraction/README.md)._
 
 _Empirical record of how the OCR/extraction providers actually behave on real GST
 packets, why whole-document extraction fails past a size threshold, and the design
-that follows. See `lib/nila/gst/extraction/` for the code and `decisions.md` for
+that follows. See `lib/nila/gst/extraction/` for the code and [decisions.md](../decisions.md) for
 system-level rationale._
 
 The extraction path turns a dumped PDF (a month of invoices, one or more per page)
@@ -22,7 +26,7 @@ into structured invoice artifacts.
 > and re-verifying after deletion improved some statuses. The semantic Binder
 > replacement was noisier and has been removed. Do not extend either approach
 > without a labelled baseline comparison. See
-> [`verification-spike-retrospective.md`](./verification-spike-retrospective.md).
+> [`verification-spike-retrospective.md`](verification-spike-retrospective.md).
 
 ## TL;DR
 

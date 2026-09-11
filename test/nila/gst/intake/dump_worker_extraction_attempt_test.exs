@@ -6,7 +6,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
 
   alias Nila.Clients
   alias Nila.Gst.Extraction.Providers.OpenAICompatibleChat
-  alias Nila.Gst.Intake.{DumpWorker, Dumps, ExtractionAttempts}
+  alias Nila.Gst.Intake.{DumpWorker, Dumps, ExtractionAttempts, Progress}
   alias Nila.Gst.Purchase.Months, as: PurchaseMonths
   alias Nila.Storage
 
@@ -140,7 +140,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
         %{period: "2025-10", kind: "purchase", file_keys: [key]}
       )
 
-    PurchaseMonths.subscribe(org.id)
+    Progress.subscribe(org.id)
     job = %Oban.Job{args: %{"dump_id" => dump.id}, attempt: 1, max_attempts: 3}
 
     assert :ok = DumpWorker.perform(job)
@@ -181,7 +181,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
         %{period: "2025-10", kind: "purchase", file_keys: [key]}
       )
 
-    PurchaseMonths.subscribe(org.id)
+    Progress.subscribe(org.id)
     job = %Oban.Job{args: %{"dump_id" => dump.id}, attempt: 1, max_attempts: 3}
 
     assert {:error, {:text_chat_request_failed, :timeout}} = DumpWorker.perform(job)
@@ -226,7 +226,7 @@ defmodule Nila.Gst.Intake.DumpWorkerExtractionAttemptTest do
         %{period: "2025-10", kind: "purchase", file_keys: [key]}
       )
 
-    PurchaseMonths.subscribe(org.id)
+    Progress.subscribe(org.id)
     job = %Oban.Job{args: %{"dump_id" => dump.id}, attempt: 1, max_attempts: 3}
 
     assert_raise RuntimeError, "provider crashed", fn -> DumpWorker.perform(job) end

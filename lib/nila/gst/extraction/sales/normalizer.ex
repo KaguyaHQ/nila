@@ -86,12 +86,21 @@ defmodule Nila.Gst.Extraction.Sales.Normalizer do
     cgst_rate = money(line["cgst_rate"] || cgst["rate"])
     sgst_rate = money(line["sgst_rate"] || sgst["rate"])
     igst_rate = money(line["igst_rate"] || igst["rate"])
+    cgst_amount = money(line["cgst_amount"] || cgst["amount"] || line["camt"])
+    sgst_amount = money(line["sgst_amount"] || sgst["amount"] || line["samt"])
+    igst_amount = money(line["igst_amount"] || igst["amount"] || line["iamt"])
 
+    # LineAmounts decides from the fields it can read on this temporary line.
+    # Lift extractor aliases first, so a nested tax object is evidence during
+    # the resolution pass rather than being added only to the final projection.
     amount_line =
       line
       |> Map.put("cgst_rate", cgst_rate)
       |> Map.put("sgst_rate", sgst_rate)
       |> Map.put("igst_rate", igst_rate)
+      |> Map.put("cgst_amount", cgst_amount)
+      |> Map.put("sgst_amount", sgst_amount)
+      |> Map.put("igst_amount", igst_amount)
 
     amounts = LineAmounts.normalize(amount_line)
 
@@ -116,11 +125,11 @@ defmodule Nila.Gst.Extraction.Sales.Normalizer do
       "printed_tax_components" => line["printed_tax_components"],
       "tax_component_issues" => line["tax_component_issues"],
       "cgst_rate" => cgst_rate,
-      "cgst_amount" => money(line["cgst_amount"] || cgst["amount"] || line["camt"]),
+      "cgst_amount" => cgst_amount,
       "sgst_rate" => sgst_rate,
-      "sgst_amount" => money(line["sgst_amount"] || sgst["amount"] || line["samt"]),
+      "sgst_amount" => sgst_amount,
       "igst_rate" => igst_rate,
-      "igst_amount" => money(line["igst_amount"] || igst["amount"] || line["iamt"])
+      "igst_amount" => igst_amount
     }
   end
 

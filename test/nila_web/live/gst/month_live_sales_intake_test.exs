@@ -6,8 +6,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesIntakeTest do
   import NilaWeb.Gst.MonthLiveSalesHelpers, only: [confirm_all_open_issues: 1]
 
   alias Nila.Clients
-  alias Nila.Gst.Intake.{Dump, Dumps}
-  alias Nila.Gst.Purchase.Months, as: ClientMonths
+  alias Nila.Gst.Intake.{Dump, Dumps, Progress}
 
   @period "2025-10"
 
@@ -40,7 +39,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesIntakeTest do
         %{period: @period, kind: "purchase", file_keys: ["dumps/purchase.pdf"]}
       )
 
-    ClientMonths.broadcast_progress(
+    Progress.broadcast(
       org.id,
       {:gst_dump_progress, dump.id, client.id, @period, "purchase", :extracting}
     )
@@ -49,7 +48,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesIntakeTest do
 
     Dumps.mark_extracted(dump, [])
 
-    ClientMonths.broadcast_progress(
+    Progress.broadcast(
       org.id,
       {:gst_dump_progress, dump.id, client.id, @period, "purchase",
        {:done, client.id, @period, []}}

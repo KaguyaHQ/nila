@@ -32,8 +32,8 @@ Keep `Production working.xlsx`, `Production GSTR-1.json`, and
    appears and the source supports the answer. Do not manufacture a warning.
 
 4. **Open Jun 2026 working → Download GST working — about 90 seconds.** Open the
-   XLSX in Excel. Start with **Sales Register**, then **Tax Breakdown**, then
-   **HSN Working**, and finish on **Summary**. Show recognizable invoice rows,
+   XLSX in Excel. Start with **Sales**, then **Tax Working**, then **HSN**.
+   Show recognizable invoice rows,
    reported/calculated tax checks, HSN aggregation, and B2B document count/totals.
    “This is the sales working your senior can check and retain.”
    Mention the 6-paise line-rounding difference only if the check is visible or

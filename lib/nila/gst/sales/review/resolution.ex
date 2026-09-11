@@ -7,7 +7,7 @@ defmodule Nila.Gst.Sales.Review.Resolution do
   invoices, not 2B pair-matching, so the verbs and target differ.
 
   `target` is the pristine source ID for `correct_field` and duplicate-copy
-  exclusion, or the issue key (`SalesWorkings.issue_key/1`) for confirmations.
+  exclusion, or the issue key (`Sales.Workings.issue_key/1`) for confirmations.
 
   Verbs:
 

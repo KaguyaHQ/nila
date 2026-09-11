@@ -1,48 +1,29 @@
 # Nila Docs
 
-What's in here. Open the one that answers your question.
+Start with the current product and code map, then open a focused guide.
 
-- [`prd.md`](./prd.md) — product intent: why Nila exists, who it's for, the GST wedge, goals and non-goals.
-- [`demo-script.md`](./demo-script.md) — the current CA-firm demonstration: scanned sales bills to GST workings and GSTR-1 JSON.
-- [`demo-runbook.md`](./demo-runbook.md) — exact packet, setup/reset commands, expected figures, fallback and rehearsal record.
-- [`demo-prd.md`](./demo-prd.md) — earlier sales-bills-to-Tally implementation contract.
-- [`architecture.md`](./architecture.md) — runtime, domain contexts, and the state principle.
-- [`decisions.md`](./decisions.md) — system-level decisions and their reasoning (monolith, Postgres-as-truth, Oban, R2 storage, transactional code).
-- [`ocr-extraction.md`](./ocr-extraction.md) — OCR/extraction provider behaviour: measured latency, why whole-packet extraction drops invoices past ~15 pages, and the chunking mandate. Extensible experiment log.
-- [`verification-spike-retrospective.md`](./verification-spike-retrospective.md) — the 2026-08-14 verifier A/B, discarded Binder architecture, current production risk, lessons, and next-agent handoff.
-- [`mistral-http-transport.md`](./mistral-http-transport.md) — historical stale-connection investigation, retry semantics, rejected alternatives, and transport lessons from the retired Mistral path.
-- [`design/DESIGN.md`](./design/DESIGN.md) — short UI router, brand, product principles, and invariants.
-- [`design/FRONTEND.md`](./design/FRONTEND.md) — executable token/component contracts and visible-UI workflow.
-- [`design/COMPOSITION.md`](./design/COMPOSITION.md) — screen hierarchy and workbench composition judgment.
-- [`design/MARKETING.md`](./design/MARKETING.md) — scoped public-page identity and shell rules.
-- [`design/TASTE.md`](./design/TASTE.md) — founder taste record that judges aesthetic calls.
-- [`runbooks/`](./runbooks/) — debugging playbooks for shipped features.
+- [Product objective](prd.md) — the job we are solving, customer evidence, and what is still unproven.
+- [Architecture](architecture.md) — how the app fits together.
+- [Sales code guide](../lib/nila/gst/sales/README.md) — invoice facts, review, and workings ownership.
+- [Extraction code guide](../lib/nila/gst/extraction/README.md) — document reading and its boundary with sales facts.
+- [Decisions](decisions.md) — why we use this structure, including transactions and storage.
+- [Design guide](design/DESIGN.md) — start here for UI work; it routes to the detailed guides.
+- [Demo script](demo-script.md) and [runbook](demo-runbook.md) — presentation flow and dated rehearsal details.
 
-Coding conventions live in [`../AGENTS.md`](../AGENTS.md). Claude-specific repo guidance in [`../CLAUDE.md`](../CLAUDE.md).
+Coding conventions live in [AGENTS.md](../AGENTS.md).
 
-## Plans (`.plans/`, local-only, gitignored)
+## Archive
 
-Implementation specs drafted after a grill, handed to an agent to build, then
-**retained as the rationale record** — code shows *what* shipped, a plan explains
-*why* it was built that way. They are not throwaway: a completed plan is the only
-place the reasoning survives, so plans are never deleted on completion — their
-`Status` flips instead.
+Historical evidence and superseded directions, not current implementation instructions:
 
-Every plan opens with this header block, so the lifecycle is legible at a glance
-without reading the body:
+- [`archive/demo-prd.md`](./archive/demo-prd.md) — earlier bills-to-Tally demo.
+- [`archive/ocr-extraction.md`](./archive/ocr-extraction.md) — experiments and findings from the retired OCR path.
+- [`archive/verification-spike-retrospective.md`](./archive/verification-spike-retrospective.md) — retired verifier experiment and source-quality findings.
+- [`archive/mistral-http-transport.md`](./archive/mistral-http-transport.md) — retired Mistral transport investigation and retry lessons.
+- [`archive/prd-history.md`](./archive/prd-history.md) — superseded product strategy and hypotheses.
+- [`archive/decisions-history.md`](./archive/decisions-history.md) — earlier infrastructure reasoning and retired designs.
 
-```
-> **Status:** draft | handed-off | in-progress | shipped | proven | superseded | abandoned
-> **Created / revised:** YYYY-MM-DD
-> **Ships as:** <what it becomes in the codebase, or “scripts/ eval”>
-> **Supersedes / superseded-by:** <plan filename, or —>
-```
+## Local plans
 
-Status meanings: `draft` (pre-handoff), `handed-off` (given to an agent),
-`in-progress` (partially built), `shipped` (in the product), `proven` (validated
-against real data but not yet productionized), `superseded` (a newer plan replaced
-it — kept for history), `abandoned` (dropped, kept so the dead end isn’t re-walked).
-
-Body format is free — an eval plan and a milestone plan are genuinely different
-shapes. Only the header is uniform. Plans are prefixed with their creation date
-(`YYYY-MM-DD-name.md`) so they sort chronologically.
+`.plans/` is a local, gitignored workspace for implementation notes. Durable system
+decisions belong in `decisions.md`; retired directions belong in `archive/`.

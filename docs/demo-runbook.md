@@ -2,7 +2,7 @@
 
 Current contract, agreed September 7, 2026: scanned sales bills → reviewed sales
 working XLSX → GSTR-1 JSON. [Presentation script](demo-script.md).
-This supersedes the Tally-first presentation in [the August PRD](demo-prd.md).
+This supersedes the Tally-first presentation in [the archived August PRD](archive/demo-prd.md).
 
 ## Fixed packet
 

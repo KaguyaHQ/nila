@@ -105,22 +105,4 @@ defmodule Nila.Gst.Sales.Months do
     do: Regex.match?(@basename_format, basename)
 
   defp valid_basename?(_), do: false
-
-  @doc """
-  Subscribes the caller to an org's sales-month-processing progress. The upload
-  LiveView subscribes here so it can narrate the (minutes-long) extraction wait.
-  """
-  def subscribe(org_id) do
-    Phoenix.PubSub.subscribe(Nila.PubSub, topic(org_id))
-  end
-
-  @doc """
-  Broadcasts a sales-month-processing progress message to an org's subscribers.
-  Called by `Nila.Gst.Intake.DumpWorker` at each stage.
-  """
-  def broadcast_progress(org_id, message) do
-    Phoenix.PubSub.broadcast(Nila.PubSub, topic(org_id), message)
-  end
-
-  defp topic(org_id), do: "gstr1_month:#{org_id}"
 end

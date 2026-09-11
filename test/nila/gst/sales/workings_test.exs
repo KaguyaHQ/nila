@@ -312,6 +312,41 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     refute SalesWorkings.reviewable?(result.issues)
   end
 
+  test "missing tax stays open until its amount is corrected" do
+    invoice =
+      hd(invoices())
+      |> update_in(["line_items", Access.at(0)], fn line ->
+        Map.merge(line, %{
+          "cgst_rate" => 0,
+          "cgst_amount" => 0,
+          "sgst_rate" => 0,
+          "sgst_amount" => 0,
+          "igst_rate" => 18,
+          "igst_amount" => nil
+        })
+      end)
+
+    result = SalesWorkings.materialize([invoice], [], @header)
+    issue = Enum.find(result.issues, &(&1["code"] == "missing_tax_amount"))
+    assert issue["status"] == "open"
+
+    confirmed = SalesWorkings.materialize([invoice], [confirmation(issue)], @header)
+    assert "missing_tax_amount" in open_codes(confirmed)
+
+    correction = %{
+      "verb" => "correct_field",
+      "target" => invoice["id"],
+      "payload" => %{"field" => "line_items[0].igst_amount", "from" => nil, "to" => 9_999.36}
+    }
+
+    corrected = SalesWorkings.materialize([invoice], [correction], @header)
+    assert corrected.silent_errors == []
+    refute "missing_tax_amount" in open_codes(corrected)
+
+    assert get_in(hd(corrected.active_invoices), ["line_items", Access.at(0), "igst_amount"]) ==
+             9_999.36
+  end
+
   test "a flagged correction is applied and re-derives" do
     resolutions = [
       %{

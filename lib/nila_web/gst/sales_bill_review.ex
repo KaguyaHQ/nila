@@ -7,27 +7,26 @@ defmodule NilaWeb.Gst.SalesBillReview do
   alias Nila.Gst.Sales.Gstr1.Readiness, as: Gstr1Readiness
   alias Nila.Clients
   alias Nila.Gst.Filing.TallyPrime
-  alias Nila.Gst.Intake.{Dumps, DumpWorker}
+  alias Nila.Gst.Intake.{Dumps, DumpWorker, Progress}
   alias Nila.Gst.Money
-  alias Nila.Gst.Purchase.Months, as: ClientMonths
 
   alias Nila.Gst.Sales.Tally.Workbench
 
   alias Nila.Gst.Sales.{Batch, Invoice}
-  alias Nila.Gst.Sales.Invoice.Corrections, as: InvoiceCorrections
   alias Nila.Gst.Sales.Invoice.Removals, as: InvoiceRemovals
   alias Nila.Gst.Sales.Tally.Packet, as: TallyPacket
 
   alias Nila.{TallyDevices, TallyJobs, TallyMappings}
   alias NilaWeb.Gst.SalesIssuePresentation
   alias NilaWeb.Gst.InvoiceWorkbench
+  alias NilaWeb.Gst.SalesBillReview.SourceEditor
   alias NilaWeb.Presence
 
   def mount(%{"client_id" => client_id, "batch_ref" => batch_ref}, _session, socket) do
     org_id = socket.assigns.current_scope.current_org.id
 
     if connected?(socket) and not Map.has_key?(socket.assigns, :sales_batch),
-      do: ClientMonths.subscribe(org_id)
+      do: Progress.subscribe(org_id)
 
     with {:ok, client} <- Clients.get_client(org_id, client_id),
          {:ok, batch, dumps} <- TallyPacket.fetch_with_record(org_id, client_id, batch_ref) do
@@ -592,25 +591,14 @@ defmodule NilaWeb.Gst.SalesBillReview do
         %{
           assigns: %{
             selected_invoice: invoice,
-            tally_posting: tally_posting,
-            current_scope: current_scope
+            tally_posting: tally_posting
           }
         } = socket
       )
       when not is_nil(invoice) and not is_nil(tally_posting) do
     if not invoice_frozen_now?(socket, invoice) do
-      org_id = current_scope.current_org.id
-      source_id = Invoice.source_id(invoice)
-
-      case InvoiceCorrections.save(
-             org_id,
-             socket.assigns.client.id,
-             socket.assigns.batch_ref,
-             source_id,
-             attrs,
-             current_scope.user.id
-           ) do
-        {:ok, %{invoice: corrected_invoice}} ->
+      case SourceEditor.save_invoice_facts(socket, attrs) do
+        {:ok, corrected_invoice} ->
           posting = put_invoice_facts(tally_posting.form.params, attrs)
 
           {:noreply,
@@ -618,20 +606,8 @@ defmodule NilaWeb.Gst.SalesBillReview do
            |> replace_selected_invoice(corrected_invoice, posting)
            |> close_invoice_facts_editor()}
 
-        {:error, {:invalid_correction, _field, :invalid_number}} ->
-          {:noreply,
-           socket
-           |> assign(:invoice_facts_form, to_form(attrs, as: :invoice_facts))
-           |> assign(
-             :invoice_facts_error,
-             "Enter a valid amount of zero or more, such as ₹23,100.50."
-           )}
-
-        {:error, _reason} ->
-          {:noreply,
-           socket
-           |> assign(:invoice_facts_form, to_form(attrs, as: :invoice_facts))
-           |> assign(:invoice_facts_error, "Those invoice facts could not be saved.")}
+        {:error, socket} ->
+          {:noreply, socket}
       end
     else
       {:noreply, put_flash(socket, :error, "Sent invoice data is locked to its Tally job.")}
@@ -810,26 +786,14 @@ defmodule NilaWeb.Gst.SalesBillReview do
         %{
           assigns: %{
             editing_line_index: index,
-            selected_invoice: invoice,
-            current_scope: current_scope
+            selected_invoice: invoice
           }
         } = socket
       )
       when is_integer(index) and not is_nil(invoice) do
     if not invoice_frozen_now?(socket, invoice) do
-      org_id = current_scope.current_org.id
-      source_id = Invoice.source_id(invoice)
-      changes = %{"line_items" => %{to_string(index) => attrs}}
-
-      case InvoiceCorrections.save(
-             org_id,
-             socket.assigns.client.id,
-             socket.assigns.batch_ref,
-             source_id,
-             changes,
-             current_scope.user.id
-           ) do
-        {:ok, %{invoice: corrected_invoice}} ->
+      case SourceEditor.save_line(socket, index, attrs) do
+        {:ok, corrected_invoice} ->
           posting = put_line_edit(socket.assigns.tally_posting.form.params, index, attrs)
 
           {:noreply,
@@ -837,11 +801,8 @@ defmodule NilaWeb.Gst.SalesBillReview do
            |> replace_selected_invoice(corrected_invoice, posting)
            |> close_line_editor()}
 
-        {:error, _reason} ->
-          {:noreply,
-           socket
-           |> assign(:line_edit_form, to_form(attrs, as: :line_edit))
-           |> assign(:line_edit_error, "That invoice line could not be saved.")}
+        {:error, socket} ->
+          {:noreply, socket}
       end
     else
       {:noreply, put_flash(socket, :error, "Sent invoice data is locked to its Tally job.")}

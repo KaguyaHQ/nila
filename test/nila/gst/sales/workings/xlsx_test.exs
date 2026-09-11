@@ -65,6 +65,111 @@ defmodule Nila.Gst.Sales.Workings.XlsxTest do
              WorkingsXlsx.build(projection, client(), "2026-07")
   end
 
+  test "keeps missing taxable and active tax evidence blank while unused heads stay zero" do
+    invoice = mixed_rate_invoice()
+    [first | rest] = invoice["line_items"]
+
+    invoice =
+      Map.put(invoice, "line_items", [
+        first |> Map.put("taxable_value", nil) |> Map.put("cgst_amount", nil) | rest
+      ])
+
+    projection = %{
+      invoices: [invoice],
+      active_invoices: [invoice],
+      issues: [],
+      derived: Gstr1.derive([invoice], Gstr1.production_header(client().gstin, "2026-07"))
+    }
+
+    {:ok, workbook} = WorkingsXlsx.build(projection, client(), "2026-07")
+    files = entries(workbook)
+    sales = files["xl/worksheets/sheet1.xml"]
+    hsn = files["xl/worksheets/sheet3.xml"]
+
+    refute sales =~ ~r/<c r="G5"[^>]*><v>/
+    refute sales =~ ~r/<c r="H5"[^>]*><v>/
+    assert sales =~ ~r/<c r="I5"[^>]*><v>1764(?:\.0+)?<\/v>/
+    refute hsn =~ ~r/<c r="H5"[^>]*><v>/
+    assert sales =~ "SUBTOTAL(102,G5:G5)"
+    assert sales =~ "SUBTOTAL(103,$O$5:$O$5)"
+    assert sales =~ ~r/<c r="J5"[^>]*><v>0(?:\.0+)?<\/v>/
+    assert sales =~ ~r/<c r="K5"[^>]*><v>26128(?:\.0+)?<\/v>/
+
+    files = workbook_files(Map.put(invoice, "printed_grand_total", nil))
+    refute files["xl/worksheets/sheet1.xml"] =~ ~r/<c r="K5"[^>]*><v>/
+    assert shared_cell(files, "xl/worksheets/sheet1.xml", "O5") == "Needs review"
+    assert files["xl/workbook.xml"] =~ ~s(name="Review Trail")
+    assert files["xl/worksheets/sheet2.xml"] =~ "COUNTIFS"
+    assert hsn =~ "COUNT(H5,F5)"
+    assert hsn =~ "COUNT(I5:K5)"
+    assert hsn =~ "NOT(ISNUMBER(F"
+  end
+
+  test "missing IGST stays blank in Sales and Tax Working until an amount is supplied" do
+    invoice =
+      mixed_rate_invoice()
+      |> Map.put("printed_grand_total", nil)
+      |> Map.put("line_items", [
+        %{
+          "description" => "Service",
+          "hsn_sac" => "998719",
+          "taxable_value" => 100,
+          "igst_rate" => 18,
+          "igst_amount" => nil
+        }
+      ])
+
+    files = workbook_files(invoice)
+    sales = files["xl/worksheets/sheet1.xml"]
+    refute sales =~ ~r/<c r="J5"[^>]*><v>/
+    refute sales =~ ~r/<c r="K5"[^>]*><v>/
+    assert sales =~ ~r/<c r="H5"[^>]*><v>0(?:\.0+)?<\/v>/
+    assert sales =~ ~r/<c r="I5"[^>]*><v>0(?:\.0+)?<\/v>/
+    refute files["xl/worksheets/sheet2.xml"] =~ ~r/<c r="Q5"[^>]*><v>/
+    assert shared_cell(files, "xl/worksheets/sheet1.xml", "O5") == "Needs review"
+
+    zero = put_in(invoice, ["line_items", Access.at(0), "igst_amount"], 0)
+    files = workbook_files(zero)
+    assert files["xl/worksheets/sheet1.xml"] =~ ~r/<c r="J5"[^>]*><v>0(?:\.0+)?<\/v>/
+    assert files["xl/worksheets/sheet1.xml"] =~ ~r/<c r="K5"[^>]*><v>100(?:\.0+)?<\/v>/
+  end
+
+  test "uncharged and explicit zero-rate tax stays zero without source amounts" do
+    base =
+      mixed_rate_invoice()
+      |> Map.put("printed_grand_total", nil)
+      |> Map.put("printed_total_tax", 0)
+      |> Map.put("line_items", [
+        %{"description" => "Service", "hsn_sac" => "998719", "taxable_value" => 100}
+      ])
+
+    cases = [
+      Map.put(base, "supply_type", "exempt"),
+      Map.put(base, "reverse_charge", true),
+      Map.merge(base, %{
+        "supply_type" => "export",
+        "tax_payment" => "without_payment",
+        "buyer_gstin" => nil,
+        "recipient_registration" => "unregistered"
+      }),
+      put_in(base, ["line_items", Access.at(0), "igst_rate"], 0)
+    ]
+
+    for invoice <- cases do
+      files = workbook_files(invoice)
+
+      for cell <- ~w(H5 I5 J5) do
+        assert files["xl/worksheets/sheet1.xml"] =~ ~r/<c r="#{cell}"[^>]*><v>0(?:\.0+)?<\/v>/
+      end
+
+      assert files["xl/worksheets/sheet1.xml"] =~ ~r/<c r="K5"[^>]*><v>100(?:\.0+)?<\/v>/
+
+      for cell <- ~w(K5 N5 Q5) do
+        assert files["xl/worksheets/sheet2.xml"] =~ ~r/<c r="#{cell}"[^>]*><v>0(?:\.0+)?<\/v>/
+      end
+    end
+  end
+
   test "HSN working preserves CGST and SGST treatment when explicit place of supply is absent" do
     invoice = mixed_rate_invoice() |> Map.put("place_of_supply", nil)
 
@@ -152,6 +257,11 @@ defmodule Nila.Gst.Sales.Workings.XlsxTest do
     sheet = files["xl/worksheets/sheet2.xml"]
     assert sheet =~ ~r/<c r="K5"[^>]*><v>54(?:\.0)?<\/v>/
     assert sheet =~ ~r/<c r="Q5"[^>]*><v>7(?:\.0)?<\/v>/
+
+    sales = files["xl/worksheets/sheet1.xml"]
+    assert sales =~ ~r/<c r="H5"[^>]*><v>1764(?:\.0)?<\/v>/
+    assert sales =~ ~r/<c r="I5"[^>]*><v>1764(?:\.0)?<\/v>/
+    assert sales =~ ~r/<c r="J5"[^>]*><v>7(?:\.0)?<\/v>/
   end
 
   test "accepted line rounding stays informational and identifies its invoice" do
@@ -207,6 +317,21 @@ defmodule Nila.Gst.Sales.Workings.XlsxTest do
     refute sheet =~ "32.25"
     assert shared_cell(files, "xl/worksheets/sheet1.xml", "A4") == "Invoice no."
     assert shared_cell(files, "xl/worksheets/sheet1.xml", "P4") == "Source"
+  end
+
+  defp workbook_files(invoice) do
+    invoice = Map.put(invoice, "id", "missing-amount-source")
+    issues = InvoiceValidation.issues([invoice]) |> Enum.map(&Map.put(&1, "status", "open"))
+
+    projection = %{
+      invoices: [invoice],
+      active_invoices: [invoice],
+      issues: issues,
+      derived: Gstr1.derive([invoice], Gstr1.production_header(client().gstin, "2026-07"))
+    }
+
+    {:ok, workbook} = WorkingsXlsx.build(projection, client(), "2026-07")
+    entries(workbook)
   end
 
   defp shared_cell(files, sheet, address) do

@@ -282,7 +282,11 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
 
   defp sales_totals(sheet, count) do
     last = 4 + count
-    sheet = XlsxWriter.write(sheet, last + 1, 0, "Visible total", format: @section_format)
+
+    sheet =
+      XlsxWriter.write(sheet, last + 1, 0, "Visible total (blank means incomplete)",
+        format: @section_format
+      )
 
     Enum.reduce(6..10, sheet, fn col, sheet ->
       letter = <<?A + col>>
@@ -291,7 +295,9 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
         sheet,
         last + 1,
         col,
-        {:formula, "=SUBTOTAL(109,#{letter}5:#{letter}#{last})", :money}
+        {:formula,
+         "=IF(SUBTOTAL(102,#{letter}5:#{letter}#{last})<SUBTOTAL(103,$O$5:$O$#{last}),\"\",SUBTOTAL(109,#{letter}5:#{letter}#{last}))",
+         :money}
       )
     end)
   end
@@ -326,7 +332,9 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
 
     sheet =
       sheet
-      |> XlsxWriter.write(start - 1, 0, "Rate-wise sales", format: @section_format)
+      |> XlsxWriter.write(start - 1, 0, "Rate-wise sales (blank totals are incomplete)",
+        format: @section_format
+      )
       |> write_headers(start, [
         "GSTR-1 table",
         "Supply",
@@ -347,7 +355,7 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
           for col <- ~w(J K N Q),
               do:
                 {:formula,
-                 "=SUMIFS($#{col}$5:$#{col}$#{last},$G$5:$G$#{last},A#{excel},$H$5:$H$#{last},B#{excel},$I$5:$I$#{last},C#{excel})",
+                 "=IF(OR(NOT(ISNUMBER(C#{excel})),COUNTIFS($G$5:$G$#{last},A#{excel},$H$5:$H$#{last},B#{excel},$I$5:$I$#{last},C#{excel},$#{col}$5:$#{col}$#{last},\"\")>0),\"\",SUMIFS($#{col}$5:$#{col}$#{last},$G$5:$G$#{last},A#{excel},$H$5:$H$#{last},B#{excel},$I$5:$I$#{last},C#{excel}))",
                  :money}
 
         write_row(
@@ -389,13 +397,18 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
           {:percent, nullable_divide(row.rate, 100)},
           row.treatment,
           {:money, row.taxable},
-          {:formula, "=IF(G#{excel_row}=\"Intrastate\",ROUND(H#{excel_row}*F#{excel_row}/2,2),0)",
+          {:formula,
+           "=IF(COUNT(H#{excel_row},F#{excel_row})<2,\"\",IF(G#{excel_row}=\"Intrastate\",ROUND(H#{excel_row}*F#{excel_row}/2,2),0))",
            :money},
-          {:formula, "=IF(G#{excel_row}=\"Intrastate\",ROUND(H#{excel_row}*F#{excel_row}/2,2),0)",
+          {:formula,
+           "=IF(COUNT(H#{excel_row},F#{excel_row})<2,\"\",IF(G#{excel_row}=\"Intrastate\",ROUND(H#{excel_row}*F#{excel_row}/2,2),0))",
            :money},
-          {:formula, "=IF(G#{excel_row}=\"Interstate\",ROUND(H#{excel_row}*F#{excel_row},2),0)",
+          {:formula,
+           "=IF(COUNT(H#{excel_row},F#{excel_row})<2,\"\",IF(G#{excel_row}=\"Interstate\",ROUND(H#{excel_row}*F#{excel_row},2),0))",
            :money},
-          {:formula, "=SUM(I#{excel_row}:K#{excel_row})", :money}
+          {:formula,
+           "=IF(COUNT(I#{excel_row}:K#{excel_row})<3,\"\",SUM(I#{excel_row}:K#{excel_row}))",
+           :money}
         ]
       end)
 
@@ -409,7 +422,9 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
       |> write_headers(3, detail_headers)
       |> write_rows(4, detail_rows)
       |> table_layout(3, max(4, 3 + length(detail_rows)), length(detail_headers) - 1)
-      |> XlsxWriter.write(summary_header_row - 1, 0, "HSN summary", format: @section_format)
+      |> XlsxWriter.write(summary_header_row - 1, 0, "HSN summary (blank totals are incomplete)",
+        format: @section_format
+      )
       |> write_headers(summary_header_row, [
         "",
         "HSN/SAC",
@@ -435,7 +450,7 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
           for col <- ~w(E H I J K),
               do:
                 {:formula,
-                 "=SUMIFS($#{col}$5:$#{col}$#{context.hsn_last_row},$B$5:$B$#{context.hsn_last_row},B#{excel},$F$5:$F$#{context.hsn_last_row},F#{excel},$D$5:$D$#{context.hsn_last_row},D#{excel})",
+                 "=IF(OR(NOT(ISNUMBER(F#{excel})),COUNTIFS($B$5:$B$#{context.hsn_last_row},B#{excel},$F$5:$F$#{context.hsn_last_row},F#{excel},$D$5:$D$#{context.hsn_last_row},D#{excel},$#{col}$5:$#{col}$#{context.hsn_last_row},\"\")>0),\"\",SUMIFS($#{col}$5:$#{col}$#{context.hsn_last_row},$B$5:$B$#{context.hsn_last_row},B#{excel},$F$5:$F$#{context.hsn_last_row},F#{excel},$D$5:$D$#{context.hsn_last_row},D#{excel}))",
                  :money}
 
         description =
@@ -453,7 +468,11 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
           fit_rows(sheet, zero_row, [[nil, nil, description]], [18, 13, 34]),
           zero_row,
           [nil, hsn, description, uqc, hd(formulas), {:percent, nullable_divide(rate, 100)}, nil] ++
-            tl(formulas) ++ [{:formula, "=SUM(I#{excel}:K#{excel})", :money}]
+            tl(formulas) ++
+            [
+              {:formula, "=IF(COUNT(I#{excel}:K#{excel})<3,\"\",SUM(I#{excel}:K#{excel}))",
+               :money}
+            ]
         )
       end)
 
@@ -721,16 +740,9 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
       |> Enum.map(fn {{rate, treatment}, lines} ->
         taxable = signed_sum_complete(lines, "taxable_value", effect)
 
-        non_taxable? = invoice["supply_type"] in ~w(nil_rated exempt non_gst)
-
-        cgst =
-          source_tax(lines, "cgst_amount", effect, not non_taxable? and treatment == "Intrastate")
-
-        sgst =
-          source_tax(lines, "sgst_amount", effect, not non_taxable? and treatment == "Intrastate")
-
-        igst =
-          source_tax(lines, "igst_amount", effect, not non_taxable? and treatment == "Interstate")
+        cgst = source_tax(invoice, lines, "cgst_amount", effect, "Intrastate")
+        sgst = source_tax(invoice, lines, "sgst_amount", effect, "Intrastate")
+        igst = source_tax(invoice, lines, "igst_amount", effect, "Interstate")
 
         %{
           source: source(invoice),
@@ -748,8 +760,7 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
           taxable: taxable,
           cgst: cgst,
           sgst: sgst,
-          igst: igst,
-          tax: number(cgst) + number(sgst) + number(igst)
+          igst: igst
         }
       end)
     end)
@@ -767,7 +778,7 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
         {hsn(line), working_rate(invoice, line), uqc(line), line_treatment(invoice, line)}
       end)
       |> Enum.map(fn {{hsn, rate, uqc, line_treatment}, lines} ->
-        taxable = effect * Enum.sum(Enum.map(lines, &number(&1["taxable_value"])))
+        taxable = signed_sum_complete(lines, "taxable_value", effect)
 
         treatment =
           if Invoice.without_payment?(invoice),
@@ -884,16 +895,19 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
   defp invoice_totals(invoice) do
     effect = Invoice.document_effect(invoice)
     lines = List.wrap(invoice["line_items"])
-    taxable = effect * Enum.sum(Enum.map(lines, &number(&1["taxable_value"])))
-    cgst = effect * Enum.sum(Enum.map(lines, &number(&1["cgst_amount"])))
-    sgst = effect * Enum.sum(Enum.map(lines, &number(&1["sgst_amount"])))
-    igst = effect * Enum.sum(Enum.map(lines, &number(&1["igst_amount"])))
-    tax = cgst + sgst + igst
+    taxable = signed_sum_complete(lines, "taxable_value", effect)
+    cgst = source_tax(invoice, lines, "cgst_amount", effect, "Intrastate")
+    sgst = source_tax(invoice, lines, "sgst_amount", effect, "Intrastate")
+    igst = source_tax(invoice, lines, "igst_amount", effect, "Interstate")
+    tax = nullable_sum([cgst, sgst, igst])
 
     invoice_value =
       case invoice["printed_grand_total"] do
-        value when is_number(value) -> effect * value
-        _other -> taxable + if(Invoice.tax_excluded_from_total?(invoice), do: 0, else: tax)
+        value when is_number(value) ->
+          effect * value
+
+        _other ->
+          nullable_sum([taxable, if(Invoice.tax_excluded_from_total?(invoice), do: 0, else: tax)])
       end
 
     %{
@@ -904,6 +918,47 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
       tax: tax,
       invoice_value: invoice_value
     }
+  end
+
+  defp source_tax(invoice, lines, field, effect, required_treatment) do
+    required? =
+      invoice["supply_type"] not in ~w(nil_rated exempt non_gst) and
+        not Invoice.tax_excluded_from_total?(invoice)
+
+    amounts =
+      Enum.map(
+        lines,
+        &source_invoice_tax_amount(invoice, &1, field, required?, required_treatment)
+      )
+
+    if amounts == [] or Enum.any?(amounts, &is_nil/1), do: nil, else: effect * Enum.sum(amounts)
+  end
+
+  defp source_invoice_tax_amount(invoice, line, field, required?, required_treatment) do
+    case line[field] do
+      value when is_number(value) ->
+        value
+
+      _missing ->
+        rate = rate_for(line, field)
+
+        cond do
+          not required? -> 0.0
+          is_number(rate) and rate > 0 -> nil
+          rate == 0 -> 0.0
+          line_rate(line) == 0 -> 0.0
+          line_treatment(invoice, line) == required_treatment -> nil
+          true -> 0.0
+        end
+    end
+  end
+
+  defp rate_for(line, "cgst_amount"), do: line["cgst_rate"]
+  defp rate_for(line, "sgst_amount"), do: line["sgst_rate"]
+  defp rate_for(line, "igst_amount"), do: line["igst_rate"]
+
+  defp nullable_sum(values) do
+    if Enum.all?(values, &is_number/1), do: Enum.sum(values), else: nil
   end
 
   defp invoice_status(_invoice, _projection, nil), do: "Held out"
@@ -990,6 +1045,9 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
       is_number(line["cgst_rate"]) or is_number(line["sgst_rate"]) ->
         number(line["cgst_rate"]) + number(line["sgst_rate"])
 
+      line["igst_rate"] == 0 ->
+        0.0
+
       true ->
         nil
     end
@@ -1001,12 +1059,6 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
       number(line["cgst_rate"]) > 0 or number(line["sgst_rate"]) > 0 -> "Intrastate"
       true -> treatment(invoice, 0)
     end
-  end
-
-  defp source_tax(lines, field, effect, required?) do
-    if required? or Enum.any?(lines, &(not is_nil(&1[field]))),
-      do: signed_sum_complete(lines, field, effect),
-      else: 0.0
   end
 
   defp signed_sum_complete(lines, field, effect) do

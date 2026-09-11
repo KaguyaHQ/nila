@@ -15,8 +15,7 @@ defmodule NilaWeb.Gst.UploadLive do
 
   alias Nila.Clients
   alias Nila.Gst.Filing.{Calendar, PortalDocument}
-  alias Nila.Gst.Intake.{Dumps, DumpWorker}
-  alias Nila.Gst.Purchase.Months, as: ClientMonths
+  alias Nila.Gst.Intake.{Dumps, DumpWorker, Progress}
   alias Nila.Gst.Sales.Batch
   alias Nila.Gst.Sales.Imports
   alias Nila.Storage
@@ -544,7 +543,7 @@ defmodule NilaWeb.Gst.UploadLive do
   end
 
   defp subscribe(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}),
-    do: ClientMonths.subscribe(org_id)
+    do: Progress.subscribe(org_id)
 
   defp subscribe(_socket), do: :ok
 

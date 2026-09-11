@@ -11,6 +11,16 @@ coverage or materially improve that loop.
 
 ## Current priority
 
+**First product: sales bills → Excel workings for GSTR-1.** Replace the junior's
+manual reading, typing, and preparation with a file the senior can check and the
+firm can retain. Preserve source evidence, tax checks, and traceable totals; ask
+humans to resolve exceptions. GST workings is the most recurring job identified
+so far; TDS is later, and Tally bookkeeping has not emerged as the leading need.
+Judge progress by how much preparation and checking work remains on a real client
+month. Tally, WhatsApp, and other existing features
+can stay; their presence does not make them the current product objective.
+See [the current product objective and customer evidence](docs/prd.md#current-objective).
+
 Prioritize GSTR-1 exclusively until it works reliably end to end or September 14,
 2026. No purchase-side work unless explicitly requested. RCM means outward RCM
 (Table 4B) in current discussions.

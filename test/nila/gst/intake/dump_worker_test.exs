@@ -10,7 +10,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
   alias Nila.Accounts.Scope
   alias Nila.Clients
   alias Nila.Gst.Filing.Signoffs
-  alias Nila.Gst.Intake.{DumpWorker, Dumps}
+  alias Nila.Gst.Intake.{DumpWorker, Dumps, Progress}
   alias Nila.Gst.Purchase.Months, as: ClientMonths
   alias Nila.Gst.Purchase.Resolutions
   alias Nila.Gst.Sales.Months, as: SalesMonths
@@ -276,7 +276,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     reviewed = review_sales(month, user)
     assert {:ok, _filed} = Signoffs.mark_filed(reviewed, scope)
 
-    ClientMonths.subscribe(org.id)
+    Progress.subscribe(org.id)
     straggler = bring_in(org, client, user, "sales", "%PDF-1.4 late")
     assert :ok = run(straggler)
 
@@ -308,7 +308,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     {:ok, _signoff} = Signoffs.sign_off(month, scope)
     assert {:ok, _filed} = Signoffs.mark_filed(month, scope)
 
-    ClientMonths.subscribe(org.id)
+    Progress.subscribe(org.id)
     straggler = bring_in(org, client, user, "purchase", "%PDF-1.4 late")
     assert :ok = run(straggler)
 

@@ -17,11 +17,12 @@ content. Styling cannot justify decorative panels, invented states or filler.
 
 ## Product promise
 
-The current wedge is **unstructured sales bills → Tally sales register**: work that a
-junior would otherwise type. Lead with the usable artifact and labour removed.
-Winman can be an adapter for an existing workflow; it does not define the product.
+The current wedge is **sales bills → Excel workings for GSTR-1**: preparation a
+junior would otherwise do by hand. Lead with the usable file and labour removed.
+The senior must be able to check it, and the firm must be able to retain and explain
+its figures. See [the business objective and customer evidence](../prd.md#current-objective).
+Tally and Winman can serve existing handoffs; they do not define the first product.
 The broader GST month remains available when review, filing or a dispute requires it.
-Do not force a junior to operate a workpaper to receive completed output.
 
 The default loop is **put bills in → get result out**, with exact exceptions for humans.
 Do not lead with AI, confidence, extraction architecture or assurance terminology.
@@ -29,7 +30,7 @@ Training and a taxonomy of internal states weaken the value proposition.
 
 ## Output plus remainder
 
-Say “47 sales vouchers ready for Tally. 3 bills left out.” Name the usable result and
+Say “Workings prepared for 47 bills. 3 bills left out.” Name the usable result and
 what cannot be included. Avoid splitting incomplete work into many categories unless
 they cause different unavoidable actions. A visible state must affect the next action
 or make a required review understandable.
@@ -43,6 +44,6 @@ and identifying the exact remainder.
 Build the smallest faithful change. A component's existence is not a reason to use it.
 Do not add speculative controls, explanations or workflow machinery.
 
-Demonstrate the source packet, the finished register, the work removed and the remainder.
+Demonstrate the source packet, the finished working, the work removed and the remainder.
 Architecture, history and safeguards may answer later questions; they are not substitutes
 for the first concrete result. Beauty refines necessary work; it does not expand scope.

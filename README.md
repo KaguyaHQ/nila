@@ -3,40 +3,21 @@
 Nila is the AI accountant for Indian CA firms, starting with GST. A Phoenix + LiveView
 monolith.
 
-The loop: the firm dumps whatever the client sent (sales bills, purchase bills, the
-portal's GSTR-2B), Nila extracts and reconciles it, drafts the returns, and flags what
-needs a human. The accountant decides the exceptions, a senior signs off, someone files
-on the portal and records the ARN. Phoenix owns business truth; humans approve
-exceptions before anything commits.
+**First product: sales bills → Excel workings for GSTR-1.** Nila prepares the file
+a junior would otherwise type and assemble. The accountant resolves exceptions;
+the senior checks the working, and the firm retains it as evidence for its filing.
 
-## What's built
-
-- **Intake** — documents arrive as dumps, one arrival at a time (main pile early,
-  stragglers after the chase). Each dump extracts on its own; the month derives from
-  the union. A new 2B replaces the old. Dumps landing on a signed return are held; on
-  a filed return, pointed to the next open month.
-- **GSTR-1** — sales bills → extracted invoices → validation issues → human
-  confirm/correct → reviewed → signed → portal JSON → filed.
-- **2B reconciliation** — purchase bills matched against GSTR-2B, exception queue with
-  decision verbs (confirm/reject/pick-the-right-row/correct/accept-unmatched/dismiss),
-  ITC position with per-credit block/allow.
-- **GSTR-3B** — assembled from the signed GSTR-1 and the reconciliation; own sign-off
-  and filed mark.
-- **Certification** — per-artifact sign-offs freeze figures into snapshots; a signature
-  is a wall (senior-only reopen, R1 reopen cascades to 3B); filed is immutable.
-- **Screens** — Today (every client-month, grouped by who it's waiting on), the
-  client-month workbench (one room: R1, purchases, 3B), Register (all-periods filed
-  history), Clients, and intake. Chase drafts for clients who sent nothing.
-
-Every human decision is an append-only, attributed resolution; every surface renders
-through one workings projection so nothing drifts.
+See [the current objective and customer evidence](docs/prd.md#current-objective)
+for why this is the first product, and [the sales code guide](lib/nila/gst/sales/README.md)
+for how it is organized. Tally, WhatsApp, banking, and purchase workflows also
+exist in the repository; they do not define the current product scope.
 
 ## Stack
 
 - Phoenix 1.8, LiveView
 - Ecto + PostgreSQL (source of truth)
 - Oban (extraction and derivation jobs)
-- Tailwind CSS + daisyUI ("moonlight" UI router in `docs/design/DESIGN.md`; executable token values in `assets/css/app.css`)
+- Tailwind CSS, daisyUI token plumbing, and Nila components (see `docs/design/DESIGN.md`)
 - Req/Jason for HTTP/JSON
 - `Nila.Storage` — local disk in dev/test, private Cloudflare R2 in production
 
