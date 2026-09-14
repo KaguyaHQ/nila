@@ -3,6 +3,26 @@ defmodule NilaWeb.Gst.SalesIssuePresentationTest do
 
   alias NilaWeb.Gst.SalesIssuePresentation
 
+  test "register reasons stay short and name the right party without exposing field codes" do
+    assert SalesIssuePresentation.register_reason(%{"code" => "missing_taxable_value"}) ==
+             "Taxable amount missing"
+
+    assert SalesIssuePresentation.register_reason(%{
+             "code" => "invalid_gstin",
+             "fields" => ["seller_gstin"]
+           }) == "Seller GSTIN invalid"
+
+    assert SalesIssuePresentation.register_reason(%{
+             "code" => "invalid_gstin",
+             "fields" => ["buyer_gstin"]
+           }) == "Buyer GSTIN invalid"
+
+    assert SalesIssuePresentation.register_reason(%{
+             "code" => "new_issue",
+             "message" => "internal_field: {}"
+           }) == "Check invoice details"
+  end
+
   @invoice %{
     "invoice_number" => "INV-1",
     "seller_gstin" => "33AEWPH4158J1Z3",

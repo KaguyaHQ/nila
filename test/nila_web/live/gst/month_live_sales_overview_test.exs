@@ -194,6 +194,27 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
     refute has_element?(view, "#shell-client-switcher-sheet")
   end
 
+  test "switching clients keeps the register filter but clears the previous buyer search", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, other} = Clients.create_client(%{org_id: org.id, name: "Next Client", type: "company"})
+
+    {:ok, view, _} =
+      live(conn, "/gst/#{client.id}/#{@period}/sales/invoices?q=OldBuyer&filter=review_cases")
+
+    view |> element("#shell-client-switcher-trigger") |> render_click()
+
+    destination = "/gst/#{other.id}/#{@period}/sales/invoices?filter=review_cases"
+    switch_path = "/clients/#{other.id}/select?" <> URI.encode_query(%{return_to: destination})
+
+    assert has_element?(
+             view,
+             "#shell-client-switcher-client-#{other.id}[data-to='#{switch_path}']"
+           )
+  end
+
   test "return workings disclose schedules before contributor rows", %{
     conn: conn,
     client: client

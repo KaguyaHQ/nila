@@ -25,10 +25,19 @@ defmodule NilaWeb.GoTo do
     cond do
       uri.path == "/gst/upload" ->
         "/gst/upload?" <>
-          URI.encode_query(%{"client_id" => client_id, "period" => current_period})
+          URI.encode_query(%{
+            "client_id" => client_id,
+            "period" => current_period,
+            "kind" => URI.decode_query(uri.query || "")["kind"] || "sales"
+          })
 
       String.ends_with?(uri.path || "", "/sales/invoices") ->
-        "/gst/#{client_id}/#{current_period}/sales/invoices"
+        filter = URI.decode_query(uri.query || "")["filter"]
+        base = "/gst/#{client_id}/#{current_period}/sales/invoices"
+
+        if filter in ~w(all review_cases no_open_checks),
+          do: base <> "?" <> URI.encode_query(%{filter: filter}),
+          else: base
 
       true ->
         "/gst/#{client_id}/#{current_period}/sales"
@@ -45,7 +54,8 @@ defmodule NilaWeb.GoTo do
         {"overview", "Period overview", base, "gst gstr-1 workings", context},
         {"register", "Sales register", base <> "/invoices", "sales bills invoices", context},
         {"upload", "Bring in invoices",
-         "/gst/upload?" <> URI.encode_query(%{"client_id" => client.id, "period" => current}),
+         "/gst/upload?" <>
+           URI.encode_query(%{"client_id" => client.id, "period" => current, "kind" => "sales"}),
          "upload invoices", context},
         {"clients", "Client directory", "/clients", "clients", nil}
       ]

@@ -243,6 +243,7 @@ defmodule NilaWeb.Gst.SalesBillReview do
         context
       end
 
+    context = filter_workbench_search(context, socket.assigns.workbench_return_to)
     socket = assign(socket, :workbench_context, context)
 
     if context && socket.assigns.workbench_period do
@@ -265,6 +266,34 @@ defmodule NilaWeb.Gst.SalesBillReview do
   end
 
   def totals(invoice), do: Invoice.extracted_totals(invoice)
+
+  defp filter_workbench_search(nil, _return_to), do: nil
+
+  defp filter_workbench_search(context, return_to) do
+    query =
+      URI.parse(return_to || "").query
+      |> then(&URI.decode_query(&1 || ""))
+      |> Map.get("q", "")
+      |> String.trim()
+      |> String.downcase()
+
+    matches? = fn item ->
+      item.invoice
+      |> Map.take(~w(invoice_number buyer_name buyer_gstin))
+      |> Map.values()
+      |> Enum.join(" ")
+      |> String.downcase()
+      |> String.contains?(query)
+    end
+
+    review = %{
+      context.review
+      | all: Enum.filter(context.review.all, matches?),
+        needs_you: Enum.filter(context.review.needs_you, matches?)
+    }
+
+    %{context | review: review, queue: Nila.Gst.Sales.Review.scope(review, context.scope)}
+  end
 
   def review_queue_empty?(%{scope: :needs_you, queue: []}, period) when not is_nil(period),
     do: true

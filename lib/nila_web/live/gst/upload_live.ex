@@ -17,7 +17,6 @@ defmodule NilaWeb.Gst.UploadLive do
   alias Nila.Gst.Filing.{Calendar, PortalDocument}
   alias Nila.Gst.Intake.{Dumps, DumpWorker, Progress}
   alias Nila.Gst.Sales.Batch
-  alias Nila.Gst.Sales.Imports
   alias Nila.Storage
   alias NilaWeb.Gst.PeriodOptions
 
@@ -31,6 +30,15 @@ defmodule NilaWeb.Gst.UploadLive do
   @bill_extensions ~w(.pdf .jpg .jpeg .png .webp)
 
   @impl true
+  def mount(
+        _params,
+        _session,
+        %{assigns: %{live_action: :sales, current_scope: %{current_client: %{id: id}}}} = socket
+      ) do
+    period = Calendar.closeable_period(Date.utc_today())
+    {:ok, push_navigate(socket, to: ~p"/gst/#{id}/#{period}/sales", replace: true)}
+  end
+
   def mount(params, _session, socket) do
     if connected?(socket), do: subscribe(socket)
 
@@ -45,6 +53,7 @@ defmodule NilaWeb.Gst.UploadLive do
       |> assign(:sales_intake?, sales_intake?)
       |> assign(:internal_period, prefilled["period"])
       |> assign(:clients, list_clients(socket))
+      |> assign(:upload_client, upload_client(socket, prefilled["client_id"]))
       |> assign(:form, to_form(prefilled, as: :intake))
       |> assign_period_options(prefilled["client_id"])
       |> assign(:entry_kinds, %{})
@@ -60,7 +69,6 @@ defmodule NilaWeb.Gst.UploadLive do
         validator: &validate_document_entry/1,
         external: &presign_upload/2
       )
-      |> assign_sales_imports()
 
     socket = assign(socket, :error, nil)
 
@@ -111,6 +119,13 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp active_client_id(%{assigns: %{current_scope: %{current_client: %{id: id}}}}), do: id
   defp active_client_id(_socket), do: nil
+
+  defp upload_client(socket, client_id) when not is_nil(client_id) do
+    {:ok, client} = Clients.get_client(socket.assigns.current_scope.current_org.id, client_id)
+    client
+  end
+
+  defp upload_client(_socket, _client_id), do: nil
 
   defp permitted_client(socket, client_id) do
     if Enum.any?(socket.assigns[:clients] || list_clients(socket), fn {_name, id} ->
@@ -180,7 +195,12 @@ defmodule NilaWeb.Gst.UploadLive do
 
       if socket.assigns.sales_intake? do
         batch_ref = Nila.Gst.Sales.Tally.Packet.ref(dumps)
-        {:noreply, push_navigate(socket, to: ~p"/sales-bills/#{client_id}/batch/#{batch_ref}")}
+
+        {:noreply,
+         push_navigate(socket,
+           to: ~p"/sales-bills/#{client_id}/batch/#{batch_ref}",
+           replace: true
+         )}
       else
         jobs =
           Map.new(dumps, fn dump ->
@@ -516,7 +536,7 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp with_internal_period(%{assigns: %{sales_intake?: true}} = socket, params) do
     Map.merge(params, %{
-      "client_id" => active_client_id(socket),
+      "client_id" => socket.assigns.form[:client_id].value,
       "period" => socket.assigns.internal_period
     })
   end
@@ -554,27 +574,6 @@ defmodule NilaWeb.Gst.UploadLive do
   end
 
   defp list_clients(_socket), do: []
-
-  defp assign_sales_imports(%{assigns: %{sales_intake?: true}} = socket) do
-    org_id = socket.assigns.current_scope.current_org.id
-    assign(socket, :sales_imports, Imports.recent(org_id, active_client_id(socket)))
-  end
-
-  defp assign_sales_imports(socket), do: assign(socket, :sales_imports, [])
-
-  defp sales_import_path(row),
-    do: "/sales-bills/#{row.client_id}/batch/#{row.batch_ref}"
-
-  defp invoice_count_label(1), do: "1 invoice"
-  defp invoice_count_label(count), do: "#{count} invoices"
-
-  defp import_outcome(%{ready_count: ready, review_count: 0}), do: "#{ready} ready"
-
-  defp import_outcome(%{ready_count: ready, review_count: 1}),
-    do: "#{ready} ready · 1 needs review"
-
-  defp import_outcome(%{ready_count: ready, review_count: review}),
-    do: "#{ready} ready · #{review} need review"
 
   defp entry_kind_state(entry_kinds, entry) do
     case {bill_entry?(entry), entry_extension(entry), entry.done?,
@@ -725,7 +724,7 @@ defmodule NilaWeb.Gst.UploadLive do
     end)
   end
 
-  defp sales_intake_intro(%{current_client: %{name: name}}, period) do
+  defp sales_intake_intro(name, period) when is_binary(name) do
     "These invoices will be added to the #{period_label(period)} sales working for #{name}."
   end
 
@@ -735,65 +734,23 @@ defmodule NilaWeb.Gst.UploadLive do
 
   @impl true
   def render(%{sales_intake?: true} = assigns) do
-    assigns =
-      assign(
-        assigns,
-        :sales_workspace?,
-        assigns.live_action == :sales and assigns.sales_imports != []
-      )
-
     ~H"""
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
-      active_client={@current_scope.current_client}
+      active_client={@upload_client}
     >
       <div id="sales-bills-page" class="space-y-region mx-auto max-w-6xl">
-        <div :if={@sales_workspace?} class="space-y-region max-w-4xl">
-          <.page_header eyebrow="Sales" title="Sales bills">
-            Sales vouchers prepared for Tally, with anything that still needs your review.
-            <:actions>
-              <.button
-                navigate={
-                  ~p"/gst/upload?client_id=#{@current_scope.current_client.id}&period=#{@internal_period}&kind=sales"
-                }
-                id="sales-bills-bring-invoices"
-                data-shortcut-upload
-                aria-keyshortcuts="u"
-              >
-                <.icon name="hero-plus" class="size-4" /> Bring in invoices
-              </.button>
-            </:actions>
-          </.page_header>
-
-          <section id="sales-batches" class="space-y-block">
-            <h2 class="text-base-content text-h4 font-semibold">Batches</h2>
-            <.data_table
-              id="sales-batches-table"
-              rows={@sales_imports}
-              row_id={& &1.dom_id}
-              row_navigate={&sales_import_path/1}
-              row_label={&"Open #{invoice_count_label(&1.invoice_count)} for #{&1.client_name}"}
-              mode="worklist"
-            >
-              <:col :let={row} label="Imported" row_header>
-                <span class="whitespace-nowrap tabular-nums">
-                  {format_display_datetime(row.imported_at)}
-                </span>
-              </:col>
-              <:col :let={row} label="Invoices" align="right">
-                {invoice_count_label(row.invoice_count)}
-              </:col>
-              <:col :let={row} label="Outcome">
-                {import_outcome(row)}
-              </:col>
-            </.data_table>
-          </section>
-        </div>
+        <.text_link
+          :if={@form[:client_id].value}
+          id="sales-upload-back"
+          navigate={~p"/gst/#{@form[:client_id].value}/#{@internal_period}/sales"}
+        >
+          <.icon name="hero-arrow-left-mini" class="size-4" /> {period_label(@internal_period)} working
+        </.text_link>
 
         <.importer
-          :if={!@sales_workspace?}
           id="sales-bills-importer"
           eyebrow="Sales"
           title="Bring in sales invoices"
@@ -811,12 +768,14 @@ defmodule NilaWeb.Gst.UploadLive do
           loading_label="Adding invoices…"
         >
           <:intro>
-            {sales_intake_intro(@current_scope, @internal_period)}
+            {sales_intake_intro(client_name(@clients, @form[:client_id].value), @internal_period)}
           </:intro>
+
           <:state :if={@clients == [] and @jobs == %{}}>
             <.card id="sales-bills-empty" padding="roomy" class="text-center">
               <div class="space-y-block">
                 <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
+
                 <.button navigate={~p"/clients/new"} id="sales-bills-add-first-client">
                   <.icon name="hero-plus" class="size-4" /> Add your first client
                 </.button>

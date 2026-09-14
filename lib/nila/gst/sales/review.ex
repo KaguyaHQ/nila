@@ -64,6 +64,9 @@ defmodule Nila.Gst.Sales.Review do
   def scope(review, scope) when scope in [:needs_you, "needs_you"], do: review.needs_you
   def scope(review, scope) when scope in [:all, "all"], do: review.all
 
+  def scope(review, scope) when scope in [:ready, "ready"],
+    do: Enum.filter(review.all, &(&1.open_actionable_targets == []))
+
   @doc "Canonicalizes an item and scope for the route-backed review surface."
   def route_state(review, source_id, scope_name) do
     selected =
@@ -172,6 +175,7 @@ defmodule Nila.Gst.Sales.Review do
 
   defp valid_scope(scope, _selected) when scope in [:needs_you, "needs_you"], do: :needs_you
   defp valid_scope(scope, _selected) when scope in [:all, "all"], do: :all
+  defp valid_scope(scope, _selected) when scope in [:ready, "ready"], do: :ready
   defp valid_scope(_scope, %{open_actionable_targets: [_ | _]}), do: :needs_you
   defp valid_scope(_scope, _selected), do: :all
 

@@ -16,6 +16,7 @@ defmodule NilaWeb.GoToTest do
 
     assert URI.decode_query(URI.parse(upload.path).query) == %{
              "client_id" => "42",
+             "kind" => "sales",
              "period" => "2025-12"
            }
   end
@@ -37,6 +38,21 @@ defmodule NilaWeb.GoToTest do
   end
 
   test "switching clients keeps month but leaves invoice-specific routes" do
+    assert GoTo.client_path(
+             "/gst/42/2026-07/sales/invoices?q=Buyer&filter=review_cases#invoice",
+             nil,
+             9
+           ) ==
+             "/gst/9/2026-07/sales/invoices?filter=review_cases"
+
+    upload = GoTo.client_path("/gst/upload?client_id=42&period=2026-07&kind=sales", nil, 9)
+
+    assert URI.decode_query(URI.parse(upload).query) == %{
+             "client_id" => "9",
+             "period" => "2026-07",
+             "kind" => "sales"
+           }
+
     assert GoTo.client_path("/gst/42/2026-07/sales/invoices/source-123", nil, 9) ==
              "/gst/9/2026-07/sales"
 

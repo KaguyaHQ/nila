@@ -4,7 +4,6 @@ defmodule NilaWeb.Gst.UploadLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Clients
   alias Nila.Gst.Filing.Calendar
   alias Nila.Gst.Intake.{Dumps, DumpWorker}
@@ -63,8 +62,8 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     upload_file(view, name, content, "application/json")
   end
 
-  test "sales bills accepts a client without requiring Tally", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/sales-bills")
+  test "sales bills accepts a client without requiring Tally", %{conn: conn, client: client} do
+    {:ok, view, _html} = live(conn, ~p"/gst/upload?client_id=#{client.id}&kind=sales")
 
     assert has_element?(view, "#sales-bills-page", "Sales")
     assert has_element?(view, "#sales-bills-page", "Bring in sales invoices")
@@ -89,7 +88,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     org: org,
     client: client
   } do
-    {:ok, view, _html} = live(conn, ~p"/sales-bills")
+    {:ok, view, _html} = live(conn, ~p"/gst/upload?client_id=#{client.id}&kind=sales")
 
     upload =
       file_input(view, "#sales-bills-form", :documents, [
@@ -155,6 +154,50 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert Dumps.list(org.id, client.id, Calendar.closeable_period(Date.utc_today())) == []
   end
 
+  test "upload keeps the URL client and month when the session has another client", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, other} = Clients.create_client(%{org_id: org.id, name: "Other client", type: "company"})
+    conn = Plug.Conn.put_session(conn, :current_client_id, client.id)
+
+    {:ok, view, _} =
+      live(conn, ~p"/gst/upload?client_id=#{other.id}&period=#{@period}&kind=sales")
+
+    assert has_element?(view, "#shell-client-switcher-trigger", other.name)
+    assert has_element?(view, "#sales-bills-page", "Oct 2025 sales working for Other client")
+    assert has_element?(view, "#sales-upload-back[href='/gst/#{other.id}/#{@period}/sales']")
+    assert has_element?(view, "#navigation-rail nav a[href='/gst/#{other.id}/#{@period}/sales']")
+
+    render_change(view, "validate", %{
+      "intake" => %{"client_id" => client.id, "period" => "2026-01"}
+    })
+
+    assert has_element?(view, "#sales-upload-back[href='/gst/#{other.id}/#{@period}/sales']")
+
+    view |> element("#shell-client-switcher-trigger") |> render_click()
+    encoded_client = URI.encode_www_form("client_id=#{client.id}")
+
+    assert has_element?(
+             view,
+             "#shell-client-switcher-client-#{client.id}[data-to*='#{encoded_client}']"
+           )
+  end
+
+  test "month home links retain the period when viewing the register", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _} = live(conn, ~p"/gst/#{client.id}/#{@period}/sales/invoices")
+    assert has_element?(view, "#navigation-rail nav a[href='/gst/#{client.id}/#{@period}/sales']")
+
+    assert has_element?(
+             view,
+             "#navigation-rail a[href='/gst/#{client.id}/#{@period}/sales'] [role=img]"
+           )
+  end
+
   test "unsupported sales upload periods return to the working with an explanation", %{
     conn: conn,
     client: client
@@ -203,77 +246,10 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert Dumps.list(org.id, other_client.id, period) == []
   end
 
-  test "sales bills becomes a batch workspace after the first import", %{
-    conn: conn,
-    org: org,
-    client: client
-  } do
-    invoice =
-      Normalizer.normalize(%{
-        "data" => %{
-          "document_type" => "invoice",
-          "document_status" => "active",
-          "supply_type" => "taxable",
-          "recipient_registration" => "registered",
-          "place_of_supply" => "29",
-          "invoice_number" => "INV-104",
-          "invoice_date" => "04.11.2025",
-          "seller" => %{"gstin" => "33AEWPH4158J1Z3"},
-          "buyer" => %{
-            "name" => "Siemens Healthcare",
-            "gstin" => "29AAVCS8021P1ZB"
-          },
-          "line_items" => [
-            %{
-              "description" => "Service",
-              "hsn_sac" => "998719",
-              "printed_taxable_value" => 8_500,
-              "igst_rate" => 18,
-              "igst_amount" => 1_530
-            }
-          ],
-          "printed_grand_total" => 10_030
-        }
-      })
-      |> Map.put("id", "d104_inv_001")
-
-    {:ok, dump} =
-      Dumps.record(
-        %{org_id: org.id, client_id: client.id},
-        %{
-          period: "2025-11",
-          kind: "sales",
-          status: "extracted",
-          invoices: [invoice],
-          meta: %{"sales_batch" => true, "original_name" => "november.pdf"}
-        }
-      )
-
-    {:ok, view, _html} = live(conn, ~p"/sales-bills")
-
-    assert has_element?(view, "#sales-bills-page", "Sales bills")
+  test "sales home opens the active client's month", %{conn: conn, client: client} do
     period = Calendar.closeable_period(Date.utc_today())
-
-    assert has_element?(
-             view,
-             "#sales-bills-bring-invoices[href='/gst/upload?client_id=#{client.id}&period=#{period}&kind=sales']"
-           )
-
-    refute has_element?(view, "#sales-bills-importer")
-    refute has_element?(view, "#sales-bills-form")
-
-    assert has_element?(view, "#sales-batches", "Batches")
-    assert has_element?(view, "#sales-batches-table", "Breeze Tech")
-    assert has_element?(view, "#sales-batches-table", "1 invoice")
-    assert has_element?(view, "#sales-batches-table", "1 ready")
-    refute has_element?(view, "#sales-batches-table", "INV-104")
-    refute has_element?(view, "#sales-batches-table", "Siemens Healthcare")
-    refute has_element?(view, "#sales-batches-table", "₹10,030.00")
-
-    assert has_element?(
-             view,
-             "#sales-import-#{dump.id} a[href='/sales-bills/#{client.id}/batch/#{dump.id}']"
-           )
+    assert {:error, {:live_redirect, %{to: destination}}} = live(conn, ~p"/sales-bills")
+    assert destination == ~p"/gst/#{client.id}/#{period}/sales"
   end
 
   test "partial sales bill validation events do not crash the importer", %{

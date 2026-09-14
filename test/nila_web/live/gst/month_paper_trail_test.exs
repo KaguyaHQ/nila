@@ -167,6 +167,39 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
     refute has_element?(view, "#month-dump-#{dump.id}")
   end
 
+  test "sales uploads show filenames and reopen all files from the same upload", %{
+    conn: conn,
+    org: org,
+    client: client
+  } do
+    {:ok, batch} = Nila.Gst.Sales.Batch.create(org.id, client.id, Ecto.UUID.generate())
+
+    dumps =
+      for name <- ["first.pdf", "second.pdf"] do
+        {:ok, dump} =
+          Dumps.record(%{org_id: org.id, client_id: client.id, sales_batch_id: batch.id}, %{
+            period: @period,
+            kind: "sales",
+            status: "extracted",
+            meta: %{"original_name" => name}
+          })
+
+        dump
+      end
+
+    batch_ref = Nila.Gst.Sales.Batch.ref(dumps)
+    {:ok, view, _} = live(conn, ~p"/gst/#{client.id}/#{@period}/sales/uploads")
+
+    for dump <- dumps do
+      assert has_element?(view, "#month-arrived-#{dump.id}", dump.meta["original_name"])
+
+      assert has_element?(
+               view,
+               "#month-arrived-review-#{dump.id}[href='/sales-bills/#{client.id}/batch/#{batch_ref}']"
+             )
+    end
+  end
+
   test "a replaced 2B renders both dumps, the old one marked", %{
     conn: conn,
     org: org,

@@ -147,7 +147,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
 
     assert has_element?(
              current_view,
-             "aside a[href='/gst/#{client.id}/#{previous}/sales']",
+             "aside a[href='/gst/#{client.id}/#{current}/sales']",
              "Sales & GSTR-1"
            )
   end
@@ -228,6 +228,53 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
       assert has_element?(view, selector)
       assert has_element?(view, "a", "Period overview")
     end
+  end
+
+  test "register restores search and filter and Enter retains the searched list", %{
+    conn: conn,
+    client: client
+  } do
+    path = "/gst/#{client.id}/#{@period}/sales/invoices"
+    {:ok, view, _} = live(conn, path <> "?filter=review_cases&q=unlikely-buyer")
+    assert has_element?(view, "input[name='sales_register[query]'][value='unlikely-buyer']")
+    assert has_element?(view, "button[phx-value-filter=review_cases][aria-pressed=true]")
+    refute has_element?(view, "#sales-period-invoices tr[id]")
+
+    view |> form("#sales-period-register-search", sales_register: %{query: ""}) |> render_submit()
+    assert_patch(view, path <> "?filter=review_cases&q=")
+    assert has_element?(view, "#sales-period-invoices tr[id]")
+    assert has_element?(view, "button[phx-value-filter=review_cases][aria-pressed=true]")
+
+    view |> element("button[phx-value-filter=all]") |> render_click()
+    assert_patch(view, path <> "?filter=all&q=")
+    assert has_element?(view, "#sales-period-invoices a[href*='scope=all']")
+    assert has_element?(view, "#sales-period-invoices a[href*='return_to=']")
+  end
+
+  test "register keeps month navigation and upload at hand while exports remain blocked", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _} = live(conn, "/gst/#{client.id}/#{@period}/sales/invoices")
+
+    assert has_element?(
+             view,
+             "#previous-filing-period[href='/gst/#{client.id}/2025-09/sales/invoices']"
+           )
+
+    assert has_element?(
+             view,
+             "#next-filing-period[href='/gst/#{client.id}/2025-11/sales/invoices']"
+           )
+
+    assert has_element?(
+             view,
+             "a[data-shortcut-upload][href='/gst/upload?client_id=#{client.id}&period=#{@period}&kind=sales']"
+           )
+
+    assert has_element?(view, "#sales-register-download-workings[disabled]")
+    refute has_element?(view, "#sales-register-download-workings[href]")
+    assert has_element?(view, "#sales-register", "Review invoices before exporting.")
   end
 
   test "SEZ and export routes show their own invoices and totals", %{conn: conn, client: client} do

@@ -101,6 +101,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             issues_by_invoice={@issues_by_invoice}
             review_ids={@review_ids}
             review={@review}
+            exports_available?={@exports_available?}
+            uploads_unfinished?={@uploads_unfinished?}
           />
         <% :uploads -> %>
           <.detail_heading
@@ -216,7 +218,9 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
         <div class="text-ui flex flex-wrap items-center gap-x-6 gap-y-2 px-6 py-4 tabular-nums">
           <span><span class="font-semibold">{length(@active_invoices)}</span>
-          <span class="text-ink-muted">invoices in working</span></span>
+          <span class="text-ink-muted">{if length(@active_invoices) == 1,
+            do: "invoice",
+            else: "invoices"} in working</span></span>
           <span class="border-rule border-l pl-6"><span class="font-semibold">{if @totals,
             do: Helpers.rupees(@totals.taxable),
             else: "—"}</span> <span class="text-ink-muted">taxable</span></span>
@@ -242,6 +246,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           <p :if={@uploads_unfinished?} class="text-ink-muted text-ui px-6 pt-4">
             Finish reading or resolve failed uploads before exporting.
           </p>
+
           <p
             :if={@readiness.state == :absent or (@active_invoices == [] and @review_count == 0)}
             class="text-ink-muted text-ui px-6 pt-4"
@@ -276,8 +281,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
               class="space-y-3 py-4"
             >
               <p class="text-ui">{label}</p>
-              <.button :if={@uploads_unfinished?} disabled variant="soft" size="sm">Download</.button>
 
+              <.button :if={@uploads_unfinished?} disabled variant="soft" size="sm">Download</.button>
               <.export_action
                 :if={@exports_available?}
                 kind={kind}
@@ -319,7 +324,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       <:title_actions>
         <nav aria-label="Filing period" class="flex items-center gap-1">
           <.button
-            navigate={~p"/gst/#{@client.id}/#{@previous_period}/sales"}
+            navigate={period_view_path(@client, @previous_period, @view)}
             variant="ghost"
             size="sm"
             id="previous-filing-period"
@@ -330,7 +335,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           </.button>
 
           <.button
-            navigate={if @can_go_forward?, do: ~p"/gst/#{@client.id}/#{@next_period}/sales"}
+            navigate={if @can_go_forward?, do: period_view_path(@client, @next_period, @view)}
             disabled={not @can_go_forward?}
             variant="ghost"
             size="sm"
@@ -465,23 +470,56 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :issues_by_invoice, :map, required: true
   attr :review_ids, :any, required: true
   attr :review, :any, required: true
+  attr :exports_available?, :boolean, required: true
+  attr :uploads_unfinished?, :boolean, required: true
 
   defp invoices_view(assigns) do
     assigns =
       assign(assigns, :invoice_rows, invoice_rows(assigns.rows, assigns.review_ids, assigns))
 
     ~H"""
-    <div class="space-y-block">
+    <div
+      id="sales-register"
+      phx-hook="SalesRegisterPosition"
+      data-register-path={@base <> "/invoices"}
+      data-register-query={@form[:query].value}
+      data-register-filter={@filter}
+      class="space-y-block"
+    >
       <.detail_heading
         base={@base}
         title="Sales invoices"
         copy="The consolidated sales population for this filing period."
-      />
+        add_invoices_path={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}&kind=sales"}
+      >
+        <.download_button
+          :if={@exports_available?}
+          id="sales-register-download-workings"
+          href={~p"/gstr1/#{@client.id}/#{@period}/workings.xlsx"}
+          variant="soft"
+          size="sm"
+        >
+          Download working
+        </.download_button>
+
+        <div :if={not @exports_available?} class="space-y-related">
+          <.button id="sales-register-download-workings" disabled variant="soft" size="sm">Download working</.button>
+          <p class="text-ink-muted text-ui">
+            {cond do
+              @uploads_unfinished? -> "Resolve unfinished uploads before exporting."
+              MapSet.size(@review_ids) > 0 -> "Review invoices before exporting."
+              true -> "Add invoices to make the working available."
+            end}
+          </p>
+        </div>
+      </.detail_heading>
+
       <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <.form
           for={@form}
           id="sales-period-register-search"
           phx-change="search-sales-register"
+          phx-submit="search-sales-register"
           class="w-full max-w-sm"
         >
           <.input
@@ -524,7 +562,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       <:empty>No invoices match this view.</:empty>
 
       <:col :let={row} label="Invoice" row_header>
-        <span class="font-mono font-medium">{row.number}</span>
+        <span class="font-mono font-medium whitespace-nowrap">{row.number}</span>
       </:col>
 
       <:col :let={row} label="Date"><span class="whitespace-nowrap">{row.date}</span></:col>
@@ -541,6 +579,14 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
       <:col :let={row} label="Status">
         <.badge variant={row.variant}>{row.status}</.badge>
+
+        <p
+          :if={row.reason}
+          class="text-ink-muted text-ui mt-1 max-w-48 truncate"
+          title={row.reason_detail}
+        >
+          {row.reason}
+        </p>
       </:col>
 
       <:col label="" align="right">
@@ -629,6 +675,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :title, :string, required: true
   attr :copy, :string, required: true
   attr :add_invoices_path, :string, default: nil
+  slot :inner_block
 
   defp detail_heading(assigns) do
     ~H"""
@@ -642,12 +689,17 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
         <p class="text-ink-muted text-ui mt-1">{@copy}</p>
       </div>
-      <.button
-        :if={@add_invoices_path}
-        navigate={@add_invoices_path}
-        variant="soft"
-        size="sm"
-      >Add invoices</.button>
+
+      <div class="gap-related flex items-start">
+        <.button
+          :if={@add_invoices_path}
+          navigate={@add_invoices_path}
+          variant="soft"
+          size="sm"
+          data-shortcut-upload
+          aria-keyshortcuts="u"
+        >Add invoices</.button> {render_slot(@inner_block)}
+      </div>
     </header>
     """
   end
@@ -710,6 +762,19 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         if workings, do: Values.filed(invoice, workings), else: Invoice.extracted_totals(invoice)
 
       needs_review = MapSet.member?(review_ids, invoice["id"])
+      filter = Map.get(assigns, :filter, :all)
+      query = if assigns[:form], do: assigns.form[:query].value || "", else: ""
+      return_to = assigns.base <> "/invoices?" <> URI.encode_query(%{q: query, filter: filter})
+
+      item =
+        if assigns[:review], do: Enum.find(assigns.review.all, &(&1.source_id == invoice["id"]))
+
+      open_issues =
+        if item, do: Enum.filter(item.actionable_issues, &(&1["status"] == "open")), else: []
+
+      reason =
+        if needs_review && open_issues != [],
+          do: NilaWeb.Gst.SalesIssuePresentation.register_reason(hd(open_issues))
 
       %{
         id: invoice["id"] || invoice["invoice_number"],
@@ -721,13 +786,19 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         tax: Helpers.rupees(totals && totals.tax),
         status: if(needs_review, do: "Needs review", else: "Ready"),
         variant: if(needs_review, do: "warning", else: "success"),
+        reason: reason,
+        reason_detail: Enum.find_value(open_issues, & &1["message"]),
         path:
           review_path(
             assigns.client,
             assigns.period,
             invoice["id"],
-            if(needs_review, do: :needs_you, else: :all),
-            assigns.base <> "/invoices"
+            case filter do
+              :review_cases -> :needs_you
+              :no_open_checks -> :ready
+              _ -> :all
+            end,
+            return_to
           )
       }
     end)
@@ -879,6 +950,9 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   end
 
   defp base_path(client, period), do: "/gst/#{client.id}/#{period}/sales"
+
+  defp period_view_path(client, period, :invoices), do: base_path(client, period) <> "/invoices"
+  defp period_view_path(client, period, _view), do: base_path(client, period)
 
   defp count_label(1, noun), do: "1 #{noun}"
   defp count_label(count, "batch"), do: "#{count} batches"

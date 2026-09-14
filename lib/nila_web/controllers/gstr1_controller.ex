@@ -138,14 +138,24 @@ defmodule NilaWeb.Gstr1Controller do
              status: workbook_status(sales_month),
              resolutions: resolutions
            ) do
-      filename = "gst_sales_working_#{client.gstin || client.id}_#{period}.xlsx"
+      name =
+        client.name
+        |> String.replace(~r/[^\p{L}\p{M}\p{N}]+/u, "_")
+        |> String.trim("_")
+        |> String.slice(0, 80)
+
+      filename = "gst_sales_working_#{name}_#{client.gstin || client.id}_#{period}.xlsx"
+      fallback = String.replace(filename, ~r/[^a-zA-Z0-9_.-]/, "_")
 
       conn
       |> put_resp_content_type(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         nil
       )
-      |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
+      |> put_resp_header(
+        "content-disposition",
+        ~s(attachment; filename="#{fallback}"; filename*=UTF-8''#{URI.encode(filename, &URI.char_unreserved?/1)})
+      )
       |> send_resp(200, workbook)
     else
       false ->

@@ -1,4 +1,5 @@
 import {KeyboardShortcuts} from "./hooks/keyboard_shortcuts"
+import {SalesRegisterPosition} from "./hooks/sales_register_position"
 import {Modal, captureModalFocus, restoreModalStack} from "./hooks/modal"
 // If you want to use Phoenix channels, run `mix help phx.gen.channel`
 // to get started and then uncomment the line below.
@@ -99,6 +100,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
   dom: {onPatchStart: captureModalFocus, onPatchEnd: restoreModalStack},
   hooks: {
     KeyboardShortcuts,
+    SalesRegisterPosition,
     Modal,
     ...colocatedHooks,
     ElapsedTimer,

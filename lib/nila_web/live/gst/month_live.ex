@@ -131,8 +131,11 @@ defmodule NilaWeb.Gst.MonthLive do
        purchase_review_route: nil,
        sales_review_route: nil,
        selected_track: :sales,
-       sales_workspace_view: sales_workspace_view(params["view"])
-     )}
+       sales_workspace_view: sales_workspace_view(params["view"]),
+       sales_register_query: params["q"] || "",
+       sales_register_filter: register_filter(params["filter"])
+     )
+     |> assign_register_views()}
   end
 
   def handle_params(
@@ -278,9 +281,14 @@ defmodule NilaWeb.Gst.MonthLive do
   end
 
   defp valid_sales_review_return(return_to) when is_binary(return_to) do
-    if return_to == "/sales-bills" or
-         Regex.match?(~r|^/sales-bills/[^/?#]+/batch/[^/?#]+$|, return_to) or
-         Regex.match?(~r|^/gst/\d+/\d{4}-\d{2}/sales(?:/[a-z0-9-]+)?$|, return_to),
+    uri = URI.parse(return_to)
+    path = uri.path || ""
+    local? = is_nil(uri.scheme) and is_nil(uri.host) and is_nil(uri.userinfo)
+
+    if local? and
+         (path == "/sales-bills" or
+            Regex.match?(~r|^/sales-bills/[^/?#]+/batch/[^/?#]+$|, path) or
+            Regex.match?(~r|^/gst/\d+/\d{4}-\d{2}/sales(?:/[a-z0-9-]+)?$|, path)),
        do: return_to
   end
 
@@ -1047,7 +1055,7 @@ defmodule NilaWeb.Gst.MonthLive do
     {:noreply,
      socket
      |> assign(:sales_register_query, params["query"] || "")
-     |> assign_register_views()}
+     |> update_register_location()}
   end
 
   def handle_event("filter-sales-register", %{"filter" => filter}, socket)
@@ -1055,7 +1063,7 @@ defmodule NilaWeb.Gst.MonthLive do
     {:noreply,
      socket
      |> assign(:sales_register_filter, String.to_existing_atom(filter))
-     |> assign_register_views()}
+     |> update_register_location()}
   end
 
   def handle_event("search-purchase-register", %{"purchase_register" => params}, socket) do
@@ -1470,6 +1478,29 @@ defmodule NilaWeb.Gst.MonthLive do
   defp fallback_track(%{purchase_month: purchase}) when not is_nil(purchase), do: :purchases
   defp fallback_track(%{sales_dumps: [_ | _]}), do: :sales
   defp fallback_track(_assigns), do: :purchases
+
+  defp register_filter("review_cases"), do: :review_cases
+  defp register_filter("no_open_checks"), do: :no_open_checks
+  defp register_filter(_), do: :all
+
+  defp update_register_location(socket) do
+    socket = assign_register_views(socket)
+
+    if socket.assigns.live_action == :sales_workspace do
+      query =
+        URI.encode_query(%{
+          q: socket.assigns.sales_register_query,
+          filter: socket.assigns.sales_register_filter
+        })
+
+      push_patch(socket,
+        to: "/gst/#{socket.assigns.client.id}/#{socket.assigns.period}/sales/invoices?#{query}",
+        replace: true
+      )
+    else
+      socket
+    end
+  end
 
   defp sales_workspace_view(nil), do: :overview
   defp sales_workspace_view("invoices"), do: :invoices

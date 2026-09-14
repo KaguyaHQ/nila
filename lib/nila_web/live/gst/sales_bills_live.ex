@@ -103,6 +103,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
         :uploads_unfinished?,
         Nila.Gst.Intake.Dumps.unresolved?(assigns.source_dumps, "sales")
       )
+      |> assign(:home_period, hd(assigns.source_dumps).period)
 
     ~H"""
     <Layouts.app
@@ -110,14 +111,17 @@ defmodule NilaWeb.Gst.SalesBillsLive do
       current_scope={@current_scope}
       current_path={assigns[:current_path]}
       active_client={@client}
+      sales_period={@home_period}
     >
       <div id="sales-bills-result" class="space-y-region mx-auto max-w-6xl">
         <.link
-          navigate={~p"/sales-bills"}
+          navigate={~p"/gst/#{@client.id}/#{@home_period}/sales"}
           id="sales-bills-back"
           class="text-ink-muted text-ui inline-flex items-center gap-1 font-medium"
         >
-          <.icon name="hero-arrow-left-mini" class="size-4" /> Sales bills
+          <.icon name="hero-arrow-left-mini" class="size-4" /> {Nila.Formatters.period_label(
+            @home_period
+          )} working
         </.link>
 
         <section :if={processing?(@processing_jobs)} id="sales-bills-processing">

@@ -33,7 +33,6 @@ defmodule NilaWeb.Layouts do
 
   attr :current_path, :string, default: nil, doc: "drives the active sidebar highlight"
   attr :active_client, :map, default: nil, doc: "client that owns the current work surface"
-
   attr :sales_period, :string, default: nil, doc: "month for sales pages whose URL has no period"
 
   attr :workbench, :boolean,
@@ -65,6 +64,18 @@ defmodule NilaWeb.Layouts do
   end
 
   def app(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :sales_home,
+        sales_nav_href(
+          assigns.current_scope,
+          assigns.active_client,
+          assigns.current_path,
+          assigns.sales_period
+        )
+      )
+
     ~H"""
     <div
       id="app-shell"
@@ -79,7 +90,7 @@ defmodule NilaWeb.Layouts do
       >
         <div class="flex items-center justify-between gap-2 px-1 group-data-[rail-collapsed=true]/app:justify-center group-data-[rail-collapsed=true]/app:gap-0 group-data-[rail-collapsed=true]/app:px-0">
           <.link
-            navigate={~p"/sales-bills"}
+            navigate={@sales_home}
             class="flex min-w-0 items-center group-data-[rail-collapsed=true]/app:hidden"
           >
             <.logo class="text-base-content h-5 w-auto" />
@@ -108,7 +119,7 @@ defmodule NilaWeb.Layouts do
         <nav class="gap-section mt-section flex flex-1 flex-col overflow-y-auto">
           <div class="space-y-1">
             <.rail_link
-              href={sales_nav_href(@current_scope, @active_client)}
+              href={@sales_home}
               icon="hero-document-text"
               label="Sales & GSTR-1"
               current_path={@current_path}
@@ -149,7 +160,7 @@ defmodule NilaWeb.Layouts do
                  own masthead names the object — a strip repeating either is chrome. --%>
             <header class="bg-panel-translucent-surface border-rule z-30 shrink-0 border-b px-4 py-3 backdrop-blur sm:px-6 lg:hidden print:hidden">
               <div class="flex items-center justify-between gap-4">
-                <.link navigate={~p"/sales-bills"} class="flex min-w-0 items-center">
+                <.link navigate={@sales_home} class="flex min-w-0 items-center">
                   <.logo class="text-base-content h-5 w-auto" />
                 </.link>
 
@@ -327,16 +338,30 @@ defmodule NilaWeb.Layouts do
     path == href or String.starts_with?(path, href <> "/")
   end
 
-  defp sales_nav_href(current_scope, active_client) do
+  defp sales_nav_href(current_scope, active_client, current_path, sales_period) do
     case active_client || (current_scope && current_scope.current_client) do
       %{id: client_id} ->
-        period = Nila.Gst.Filing.Calendar.closeable_period(Date.utc_today())
+        period =
+          sales_period || sales_nav_period(current_path) ||
+            Nila.Gst.Filing.Calendar.closeable_period(Date.utc_today())
+
         ~p"/gst/#{client_id}/#{period}/sales"
 
       _none ->
         ~p"/sales-bills"
     end
   end
+
+  defp sales_nav_period(path) when is_binary(path) do
+    uri = URI.parse(path)
+
+    case Regex.run(~r"^/gst/\d+/(\d{4}-\d{2})(?:/|$)", uri.path) do
+      [_, period] -> period
+      _ -> if uri.path == "/gst/upload", do: URI.decode_query(uri.query || "")["period"]
+    end
+  end
+
+  defp sales_nav_period(_), do: nil
 
   defp sales_nav_active?(nil), do: false
 

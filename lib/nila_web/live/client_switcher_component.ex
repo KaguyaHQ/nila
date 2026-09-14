@@ -100,6 +100,16 @@ defmodule NilaWeb.ClientSwitcherComponent do
         [_, period] = Regex.run(~r|^/gst/\d+/(\d{4}-\d{2})/|, uri.path)
         "/gst/#{client_id}/#{period}/sales"
 
+      Regex.match?(~r|^/gst/\d+/\d{4}-\d{2}/sales/invoices$|, uri.path) ->
+        query = URI.decode_query(uri.query || "") |> Map.take(["filter"])
+
+        URI.to_string(%{
+          uri
+          | path: Regex.replace(~r|^/gst/\d+|, uri.path, "/gst/#{client_id}"),
+            query: if(query == %{}, do: nil, else: URI.encode_query(query)),
+            fragment: nil
+        })
+
       Regex.match?(~r|^/gst/\d+/[^/]+|, path) ->
         Regex.replace(~r|^/gst/\d+|, path, "/gst/#{client_id}")
 

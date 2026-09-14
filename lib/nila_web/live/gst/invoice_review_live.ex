@@ -76,7 +76,7 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
   end
 
   def handle_event("workbench-scope", %{"scope" => scope}, socket)
-      when scope in ~w(needs_you all) do
+      when scope in ~w(needs_you ready all) do
     {:noreply,
      push_patch(socket,
        to: review_path(socket, invoice_id(socket.assigns.selected_invoice), %{"scope" => scope})
@@ -171,6 +171,8 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                   id="invoice-workbench-scope"
                   items={[
                     {:needs_you, "Needs review (#{length(@workbench_context.review.needs_you)})"},
+                    {:ready,
+                     "Ready (#{length(@workbench_context.review.all) - length(@workbench_context.review.needs_you)})"},
                     {:all, "All (#{length(@workbench_context.review.all)})"}
                   ]}
                   selected={@workbench_context.scope}

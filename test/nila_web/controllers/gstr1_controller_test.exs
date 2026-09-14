@@ -117,7 +117,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
            ]
 
     assert [disposition] = get_resp_header(conn, "content-disposition")
-    assert disposition =~ "gst_sales_working_#{client.gstin}_2026-07.xlsx"
+    assert disposition =~ "gst_sales_working_Breeze_Tech_#{client.gstin}_2026-07.xlsx"
 
     files = entries(conn.resp_body)
     workbook = Map.fetch!(files, "xl/workbook.xml")
@@ -130,6 +130,20 @@ defmodule NilaWeb.Gstr1ControllerTest do
     assert strings =~ "INV-001"
     assert strings =~ "Customer &amp; Co"
     assert strings =~ "Calculated IGST"
+  end
+
+  test "working filenames safely preserve non-ASCII client names", %{conn: conn, client: client} do
+    client |> Ecto.Changeset.change(name: "தமிழ் / Sales \"Company\"") |> Nila.Repo.update!()
+    conn = get(conn, ~p"/gstr1/#{client.id}/2026-07/workings.xlsx")
+    assert response(conn, 200)
+    [disposition] = get_resp_header(conn, "content-disposition")
+    assert disposition =~ "filename*=UTF-8''"
+    [_, encoded] = String.split(disposition, "filename*=UTF-8''")
+    filename = URI.decode(encoded)
+    assert filename =~ "தமிழ"
+    assert filename =~ "_Sales_Company_#{client.gstin}_2026-07.xlsx"
+    refute filename =~ "/"
+    refute filename =~ "\""
   end
 
   test "downloads current sales workings as Tally XML", %{conn: conn, client: client} do

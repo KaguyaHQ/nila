@@ -16,7 +16,13 @@ defmodule NilaWeb.Gst.InvoiceWorkbench do
       workings = Resolutions.workings(Nila.Gst.Sales.Processing.review_month(month))
       review = Review.build(workings)
       item = Review.lookup(review.all, source_id)
-      scope = if scope in ["needs_you", :needs_you], do: :needs_you, else: :all
+
+      scope =
+        case scope do
+          scope when scope in ["needs_you", :needs_you] -> :needs_you
+          scope when scope in ["ready", :ready] -> :ready
+          _ -> :all
+        end
 
       {:ok,
        %{

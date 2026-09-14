@@ -40,6 +40,9 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
           </div>
 
           <.context_text tag="p">{arrived_line(dump)}</.context_text>
+          <p :if={dump.kind == "sales" && dump.meta["original_name"]} class="text-ink-muted text-ui">
+            {dump.meta["original_name"]}
+          </p>
 
           <p
             :if={answer_line(dump)}
@@ -55,6 +58,15 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+          <.button
+            :if={dump.kind == "sales" && dump.sales_batch_id}
+            id={"month-arrived-review-#{dump.id}"}
+            navigate={~p"/sales-bills/#{@client.id}/batch/#{sales_batch_ref(@dumps, dump)}"}
+            variant="outline"
+            size="xs"
+          >
+            View invoices
+          </.button>
           <.button
             :for={{_key, index} <- Enum.with_index(dump.file_keys)}
             href={~p"/gst/#{@client.id}/#{@period}/original/#{dump.id}/#{index}"}
@@ -127,6 +139,13 @@ defmodule NilaWeb.Components.Gst.Month.Arrivals do
   defp dump_kind_title("purchase"), do: "Purchase bills"
   defp dump_kind_title("gstr2b"), do: "GSTR-2B"
   defp dump_kind_title("filed_gstr1"), do: "Filed GSTR-1"
+
+  defp sales_batch_ref(dumps, dump) do
+    dumps
+    |> Enum.filter(&(&1.sales_batch_id == dump.sales_batch_id))
+    |> Enum.sort_by(& &1.id)
+    |> Nila.Gst.Sales.Batch.ref()
+  end
 
   defp arrived_line(dump) do
     [

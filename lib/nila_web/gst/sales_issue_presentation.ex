@@ -42,6 +42,115 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
     }
   end
 
+  # Registers need a short reason; the invoice viewer retains the full finding.
+  def register_reason(%{"code" => "invalid_gstin"} = issue) do
+    cond do
+      "seller_gstin" in List.wrap(issue["fields"]) -> "Seller GSTIN invalid"
+      "buyer_gstin" in List.wrap(issue["fields"]) -> "Buyer GSTIN invalid"
+      true -> "GSTIN invalid"
+    end
+  end
+
+  def register_reason(%{"code" => code}) do
+    case code do
+      "seller_identity_unverified" ->
+        "Confirm invoice belongs here"
+
+      "seller_identity_mismatch" ->
+        "Seller differs from client"
+
+      "missing_taxable_value" ->
+        "Taxable amount missing"
+
+      "missing_tax_amount" ->
+        "GST amount missing"
+
+      "unreadable_amount" ->
+        "Amount unreadable"
+
+      "printed_taxable_mismatch" ->
+        "Taxable totals differ"
+
+      "printed_tax_mismatch" ->
+        "GST totals differ"
+
+      "grand_total_mismatch" ->
+        "Invoice totals differ"
+
+      code when code in ~w(line_arithmetic bucket_tax_mismatch) ->
+        "Check tax calculation"
+
+      code
+      when code in ~w(cgst_sgst_unequal lopsided_tax_split tax_split_mismatch mixed_tax_heads) ->
+        "Check GST split"
+
+      code when code in ~w(statutory_rate_mismatch statutory_rate_review) ->
+        "Check GST rate"
+
+      "missing_hsn_sac" ->
+        "HSN/SAC missing"
+
+      code when code in ~w(incomplete_hsn_sac invalid_hsn_sac hsn_inferred_code) ->
+        "Check HSN/SAC"
+
+      "missing_uom" ->
+        "Unit missing"
+
+      "missing_invoice_number" ->
+        "Invoice number missing"
+
+      "implausible_invoice_number" ->
+        "Check invoice number"
+
+      "duplicate_invoice_number" ->
+        "Duplicate invoice number"
+
+      "unreadable_invoice_date" ->
+        "Check invoice date"
+
+      "invoice_period_mismatch" ->
+        "Invoice in another month"
+
+      code when code in ~w(missing_place_of_supply invalid_place_of_supply) ->
+        "Check place of supply"
+
+      code when code in ~w(unknown_recipient_registration recipient_registration_conflict) ->
+        "Check buyer registration"
+
+      code
+      when code in ~w(invalid_document_type document_type_conflict unknown_document_status) ->
+        "Check document type"
+
+      code
+      when code in ~w(unknown_supply_type special_supply_conflict non_taxable_tax_conflict tax_treatment_uncertain) ->
+        "Check GST treatment"
+
+      "missing_tax_payment" ->
+        "Check tax payment"
+
+      "missing_original_sale_category" ->
+        "Check original sale"
+
+      code when code in ~w(furniture_row_with_values zero_value_row) ->
+        "Check invoice rows"
+
+      "ungrounded_extracted_value" ->
+        "Check against source"
+
+      "evidence_unavailable" ->
+        "Source unavailable"
+
+      "pages_unaccounted" ->
+        "Check missing pages"
+
+      "sequence_gaps" ->
+        "Check invoice sequence"
+
+      _ ->
+        "Check invoice details"
+    end
+  end
+
   defp attach_context(items, issues) do
     Enum.map(items, fn item ->
       related = Enum.filter(issues, &(&1["code"] in item.codes))

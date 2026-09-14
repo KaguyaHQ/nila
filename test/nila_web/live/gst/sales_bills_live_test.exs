@@ -100,6 +100,24 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     }
   end
 
+  test "batch back and home links lead to its client month", %{
+    conn: conn,
+    client: client,
+    dump: dump
+  } do
+    {:ok, view, _} = live(conn, ~p"/sales-bills/#{client.id}/batch/#{dump.id}")
+
+    assert has_element?(
+             view,
+             "#sales-bills-back[href='/gst/#{client.id}/2026-07/sales']",
+             "Jul 2026 working"
+           )
+
+    assert has_element?(view, "#navigation-rail nav a[href='/gst/#{client.id}/2026-07/sales']")
+    view |> element("#sales-bills-back") |> render_click()
+    assert_redirect(view, ~p"/gst/#{client.id}/2026-07/sales")
+  end
+
   test "saved printed IGST appears in the totals comparison", context do
     invoice =
       hd(context.dump.invoices)
@@ -701,6 +719,56 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     view |> element("#invoice-workbench-review-done") |> render_click()
     assert_redirect(view, "/gst/#{context.client.id}/#{month.period}/sales/invoices")
+  end
+
+  test "register search and Ready scope constrain the review queue and survive closing",
+       context do
+    clean =
+      hd(context.dump.invoices) |> Map.merge(%{"id" => "clean", "buyer_name" => "Chosen buyer"})
+
+    warning =
+      clean
+      |> Map.merge(%{
+        "id" => "warning",
+        "invoice_number" => "INV-002",
+        "printed_total_taxable" => 900
+      })
+
+    other =
+      clean
+      |> Map.merge(%{
+        "id" => "other",
+        "invoice_number" => "INV-003",
+        "buyer_name" => "Other buyer"
+      })
+
+    invoices = [clean, warning, other]
+    context.dump |> Ecto.Changeset.change(invoices: invoices) |> Nila.Repo.update!()
+
+    {:ok, month} =
+      SalesMonths.upsert(%{
+        org_id: context.org.id,
+        client_id: context.client.id,
+        period: context.dump.period,
+        invoices: invoices
+      })
+
+    return_to =
+      "/gst/#{context.client.id}/#{month.period}/sales/invoices?filter=no_open_checks&q=Chosen"
+
+    {:ok, register, _} = live(context.conn, return_to)
+    register |> element("#sales-period-invoices-clean a") |> render_click()
+    {path, _flash} = assert_redirect(register)
+    {:ok, view, _} = open_sales_view(context.conn, path)
+    assert has_element?(view, "#invoice-workbench-scope button[aria-pressed=true]", "Ready (1)")
+    assert has_element?(view, "#sales-bill-posting-position", "1 of 1")
+    assert has_element?(view, "#sales-bill-posting-next[disabled]")
+    view |> element("#invoice-workbench-scope button[phx-value-scope=all]") |> render_click()
+    assert has_element?(view, "#sales-bill-posting-position", "1 of 2")
+    view |> element("#sales-bill-posting-next") |> render_click()
+    assert has_element?(view, "#sales-bill-posting-position", "2 of 2")
+    view |> element("#sales-bill-posting-back") |> render_click()
+    assert_redirect(view, return_to)
   end
 
   test "serves workbench evidence from its dump without requiring a filing month", %{
