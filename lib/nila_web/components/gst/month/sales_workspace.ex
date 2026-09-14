@@ -50,6 +50,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
     assigns =
       assigns
+      |> assign(:uploads_unfinished?, Nila.Gst.Intake.Dumps.unresolved?(assigns.dumps, "sales"))
       |> assign(:totals, totals)
       |> assign(:hsn, hsn)
       |> assign(:documents, documents)
@@ -58,7 +59,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       |> assign(
         :exports_available?,
         assigns.active_invoices != [] and assigns.readiness.state != :absent and
-          MapSet.size(review_ids) == 0
+          MapSet.size(review_ids) == 0 and
+          not Nila.Gst.Intake.Dumps.unresolved?(assigns.dumps, "sales")
       )
       |> assign(:base, base)
       |> assign(:gstr1_table_rows, gstr1_table_rows(assigns, review_ids, hsn, documents, base))
@@ -105,6 +107,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             base={@base}
             title="Uploads"
             copy="The batches contributing sales documents to this filing period."
+            add_invoices_path={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}&kind=sales"}
           /> {render_slot(@source)}
         <% view when view in [:b2b, :b2cl, :b2cs, :cdnr, :exp, :sez] -> %>
           <.gstr1_table_view
@@ -157,12 +160,20 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
               <% :review -> %>
                 Review the GST working before exporting.
               <% :export -> %>
-                Your GST working is available to download.
+                {if @uploads_unfinished?,
+                  do: "Finish reading or resolve failed uploads before exporting.",
+                  else: "Your GST working is available to download."}
             <% end %>
           </p>
 
           <:actions>
             <div id="sales-period-primary-action">
+              <.button
+                :if={@stage != :collect}
+                navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}&kind=sales"}
+                variant="soft"
+                size="sm"
+              >Add invoices</.button>
               <.button
                 :if={@stage == :collect}
                 navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}&kind=sales"}
@@ -188,12 +199,13 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
                 size="sm"
               >Review invoices</.button>
               <.download_button
-                :if={@stage == :export}
+                :if={@stage == :export and not @uploads_unfinished?}
                 id="sales-period-primary-download"
                 href={~p"/gstr1/#{@client.id}/#{@period}/workings.xlsx"}
                 variant="primary"
                 size="sm"
               >Download GST working</.download_button>
+              <.button :if={@stage == :export and @uploads_unfinished?} disabled size="sm">Download GST working</.button>
             </div>
           </:actions>
         </.card_header>
@@ -223,6 +235,9 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         <.gstr1_tables_section rows={@gstr1_table_rows} />
         <.card padding="none" id="sales-period-export">
           <.card_header title="Exports" />
+          <p :if={@uploads_unfinished?} class="text-ink-muted text-ui px-6 pt-4">
+            Finish reading or resolve failed uploads before exporting.
+          </p>
           <p
             :if={@readiness.state == :absent or (@active_invoices == [] and @review_count == 0)}
             class="text-ink-muted text-ui px-6 pt-4"
@@ -248,6 +263,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
                 variant="soft"
                 size="sm"
               >Download</.download_button>
+              <.button :if={@uploads_unfinished?} disabled variant="soft" size="sm">Download</.button>
             </div>
 
             <div
@@ -256,6 +272,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
               class="space-y-3 py-4"
             >
               <p class="text-ui">{label}</p>
+              <.button :if={@uploads_unfinished?} disabled variant="soft" size="sm">Download</.button>
 
               <.export_action
                 :if={@exports_available?}
@@ -605,6 +622,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   attr :base, :string, required: true
   attr :title, :string, required: true
   attr :copy, :string, required: true
+  attr :add_invoices_path, :string, default: nil
 
   defp detail_heading(assigns) do
     ~H"""
@@ -618,6 +636,12 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
         <p class="text-ink-muted text-ui mt-1">{@copy}</p>
       </div>
+      <.button
+        :if={@add_invoices_path}
+        navigate={@add_invoices_path}
+        variant="soft"
+        size="sm"
+      >Add invoices</.button>
     </header>
     """
   end

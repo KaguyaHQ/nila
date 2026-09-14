@@ -44,6 +44,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     assert has_element?(workspace, "#sales-period-handoff-winman", "Winman GSTR-1")
     assert has_element?(workspace, "#sales-period-export")
     assert has_element?(workspace, "#sales-period-primary-action", "Download GST working")
+    assert has_element?(workspace, "#sales-period-primary-action", "Add invoices")
     refute has_element?(workspace, "#sales-period-primary-action", "Bring in invoices")
     refute has_element?(workspace, "#sales-period-primary-action", "Approve GSTR-1")
 

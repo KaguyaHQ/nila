@@ -13,7 +13,7 @@ defmodule NilaWeb.Gst.InvoiceWorkbench do
 
   def load(org_id, client_id, period, source_id, scope) do
     with {:ok, month} <- Months.get_by_period(org_id, client_id, period) do
-      workings = Resolutions.workings(month)
+      workings = Resolutions.workings(Nila.Gst.Sales.Processing.review_month(month))
       review = Review.build(workings)
       item = Review.lookup(review.all, source_id)
       scope = if scope in ["needs_you", :needs_you], do: :needs_you, else: :all

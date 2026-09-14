@@ -14,8 +14,8 @@ defmodule Nila.Gst.Sales.Tally.Packet do
   defdelegate ref(dumps), to: Batch
   defdelegate original_name(dump), to: SourcePacket
 
-  def prepare(dumps) when is_list(dumps) do
-    dumps |> SourcePacket.prepare() |> from_source()
+  def prepare(dumps, opts \\ []) when is_list(dumps) do
+    dumps |> SourcePacket.prepare(opts) |> from_source()
   end
 
   @doc "Applies Tally capability checks to an already prepared sales source packet."

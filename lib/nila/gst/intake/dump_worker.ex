@@ -308,18 +308,21 @@ defmodule Nila.Gst.Intake.DumpWorker do
 
   defp extract_kind(%Dump{kind: "sales"} = dump, worker_attempt) do
     with {:ok, %{pages: pages, images: images} = result} <-
-           extract_source(dump, sales_extractor(), worker_attempt) do
+           extract_source(
+             dump,
+             sales_extractor(),
+             worker_attempt,
+             on_invoice: &persist_sales_invoice(dump, &1, &2, &3),
+             on_segments: &Nila.Gst.Sales.Processing.discover(dump, &1),
+             on_invoice_failed: &Nila.Gst.Sales.Processing.failed(dump, &1),
+             resume_segments: Nila.Gst.Sales.Processing.snapshot(dump)["segments"],
+             completed_artifacts: Nila.Gst.Sales.Processing.snapshot(dump)["artifacts"] || %{}
+           ) do
       invoices =
         pages
         |> Enum.with_index(1)
         |> Enum.map(fn {artifact, ordinal} ->
-          image = artifact["image"] && namespace(dump, Path.basename(artifact["image"]))
-          source_id = "inv_" <> String.pad_leading(to_string(ordinal), 2, "0")
-
-          artifact
-          |> Normalizer.normalize()
-          |> Map.put("id", namespace(dump, source_id))
-          |> Map.put("image", image)
+          normalize_sales_invoice(dump, artifact, ordinal)
         end)
 
       store_evidence(dump, images, &SalesMonths.evidence_key/4)
@@ -331,6 +334,26 @@ defmodule Nila.Gst.Intake.DumpWorker do
        }
        |> put_source_page_count(result)}
     end
+  end
+
+  defp persist_sales_invoice(dump, artifact, ordinal, evidence) do
+    invoice = normalize_sales_invoice(dump, artifact, ordinal)
+
+    if image = artifact["image"] do
+      image = Path.basename(image)
+      store_evidence(dump, Map.take(evidence, [image]), &SalesMonths.evidence_key/4)
+    end
+
+    Nila.Gst.Sales.Processing.complete(dump, invoice, artifact, ordinal)
+  end
+
+  defp normalize_sales_invoice(dump, artifact, ordinal) do
+    image = artifact["image"] && namespace(dump, Path.basename(artifact["image"]))
+
+    artifact
+    |> Normalizer.normalize()
+    |> Map.put("id", Nila.Gst.Sales.Processing.source_id(dump, ordinal))
+    |> Map.put("image", image)
   end
 
   # The page count lives on the extraction attempt's audit, but the account a
@@ -364,7 +387,7 @@ defmodule Nila.Gst.Intake.DumpWorker do
   # The extractor makes separate calls to classify pages and read invoices, so
   # the audit row is per stage rather than per dump. The attempt-persisting
   # wrapper records each stage with its own metadata and result.
-  defp extract_source(dump, extractor, worker_attempt) do
+  defp extract_source(dump, extractor, worker_attempt, source_opts \\ []) do
     with {:ok, key} <- one_source_key(dump),
          {:ok, bytes} <- Storage.get(key) do
       opts = [
@@ -378,6 +401,8 @@ defmodule Nila.Gst.Intake.DumpWorker do
           _coarse_stage -> :ok
         end
       ]
+
+      opts = Keyword.merge(opts, source_opts)
 
       cond do
         not audited?(extractor) ->

@@ -15,6 +15,41 @@ defmodule NilaWeb.Gstr1Controller do
   alias Nila.Gst.Sales.Tally.Packet, as: TallyPacket
   alias Nila.Gst.Sales.Workings.Xlsx, as: WorkingsXlsx
 
+  plug :require_finished_uploads
+       when action in [
+              :return_json,
+              :winman_b2b,
+              :workings_xlsx,
+              :tally_download,
+              :sales_bills_tally_download,
+              :sales_bills_gstr1_download
+            ]
+
+  defp require_finished_uploads(conn, _) do
+    org_id = conn.assigns.current_scope.current_org.id
+
+    dumps =
+      case conn.params do
+        %{"client_id" => client_id, "period" => period} ->
+          Nila.Gst.Intake.Dumps.list(org_id, client_id, period)
+
+        %{"client_id" => client_id, "batch_ref" => ref} ->
+          case TallyPacket.fetch(org_id, client_id, ref) do
+            {:ok, dumps} -> dumps
+            _ -> []
+          end
+      end
+
+    if Nila.Gst.Intake.Dumps.unresolved?(dumps, "sales") do
+      conn
+      |> put_status(:unprocessable_entity)
+      |> text("Finish reading or resolve failed uploads before exporting")
+      |> halt()
+    else
+      conn
+    end
+  end
+
   def return_json(conn, %{"client_id" => client_id, "period" => period}) do
     org_id = conn.assigns.current_scope.current_org.id
 

@@ -838,6 +838,10 @@ defmodule NilaWeb.Gst.SalesBillReview do
     company = socket.assigns.tally_company
 
     with %{} <- company,
+         {:ok, current_dumps} <-
+           TallyPacket.fetch(org_id, socket.assigns.client.id, socket.assigns.batch_ref),
+         :ok <-
+           if(Dumps.unresolved?(current_dumps, "sales"), do: {:error, :processing}, else: :ok),
          true <- socket.assigns.tally_masters_available?,
          {:ok, company} <- online_tally_company(org_id, socket.assigns.client.id, company.id),
          :ok <- TallyPrime.validate_company_gstin(company, socket.assigns.client.gstin),
@@ -860,6 +864,14 @@ defmodule NilaWeb.Gst.SalesBillReview do
        |> assign(:send_holds, send_holds(unresolved_parties, unbuildable, blocked))
        |> assign(:send_error, send_blocked_message(unresolved_parties, unbuildable, blocked))}
     else
+      {:error, :processing} ->
+        {:noreply,
+         assign(
+           socket,
+           :send_error,
+           "Finish reading or resolve failed uploads before sending to Tally."
+         )}
+
       {:error, :not_found} ->
         {:noreply,
          socket
@@ -1238,7 +1250,24 @@ defmodule NilaWeb.Gst.SalesBillReview do
         jobs = Map.put(jobs, dump_id, apply_processing_progress(job, message))
         socket = assign(socket, :processing_jobs, jobs)
 
-        {:noreply, if(processing?(jobs), do: socket, else: reload_processing_result(socket))}
+        socket = reload_packet(socket)
+        saved = processing_jobs(socket.assigns.source_dumps)
+
+        jobs =
+          Map.new(jobs, fn {id, current} ->
+            stored = saved[id]
+
+            job =
+              if stored.bill_count,
+                do: %{current | bill_count: stored.bill_count, progress: stored.progress},
+                else: current
+
+            {id, job}
+          end)
+
+        socket = assign(socket, :processing_jobs, jobs)
+        socket = if socket.assigns.selected_invoice, do: refresh_workbench(socket), else: socket
+        {:noreply, socket}
 
       _not_this_batch ->
         {:noreply, socket}
@@ -1836,6 +1865,38 @@ defmodule NilaWeb.Gst.SalesBillReview do
     Enum.reject(packet.all_invoices, &excluded_invoice?(packet, &1)) ++ packet.excluded
   end
 
+  def processing_table_invoices(packet, dumps) do
+    invoices = Map.new(packet.all_invoices, &{Invoice.source_id(&1), &1})
+
+    Enum.flat_map(dumps, fn dump ->
+      state = Nila.Gst.Sales.Processing.snapshot(dump)
+
+      case state["segments"] do
+        nil ->
+          Enum.map(dump.invoices, &Map.get(invoices, Invoice.source_id(&1)))
+          |> Enum.reject(&is_nil/1)
+
+        segments ->
+          segments
+          |> Enum.filter(&(&1["kind"] == "invoice"))
+          |> Enum.with_index(1)
+          |> Enum.map(fn {_segment, ordinal} ->
+            id = Nila.Gst.Sales.Processing.source_id(dump, ordinal)
+
+            Map.get(invoices, id) ||
+              %{
+                "id" => id,
+                "processing" => true,
+                "failed" => ordinal in (state["failed"] || []) or dump.status == "failed"
+              }
+          end)
+      end
+    end)
+  end
+
+  def processing_invoice?(%{"processing" => true}), do: true
+  def processing_invoice?(_invoice), do: false
+
   def excluded_invoice?(packet, invoice) do
     Enum.any?(packet.excluded, &(Invoice.source_id(&1) == Invoice.source_id(invoice)))
   end
@@ -1846,10 +1907,12 @@ defmodule NilaWeb.Gst.SalesBillReview do
   end
 
   def batch_row_path(packet, client, batch_ref, invoice, accounting?, dumps) do
-    if excluded_invoice?(packet, invoice),
+    if processing_invoice?(invoice) or excluded_invoice?(packet, invoice),
       do: nil,
       else: posting_review_path(client, batch_ref, invoice, false, accounting?, dumps)
   end
+
+  def batch_row_class(_packet, %{"processing" => true}), do: "text-ink-muted"
 
   def batch_row_class(packet, invoice) do
     if excluded_invoice?(packet, invoice), do: "bg-quiet text-ink-muted"
@@ -2219,15 +2282,15 @@ defmodule NilaWeb.Gst.SalesBillReview do
   defp first_line_sales_ledger_identity(_posting), do: nil
 
   defp prepare_packet(dumps, client_id) do
-    packet = TallyPacket.prepare(dumps)
+    packet = TallyPacket.prepare(dumps, include_processing: true)
 
     gst_issues =
       dumps
       |> Enum.uniq_by(& &1.period)
       |> Enum.flat_map(fn dump ->
-        case Nila.Gst.Sales.Months.get_by_period(dump.org_id, client_id, dump.period) do
-          {:ok, month} ->
-            Nila.Gst.Sales.Review.Resolutions.workings(month).issues
+        case Nila.Gst.Sales.Processing.review_workings(dump.org_id, client_id, dump.period) do
+          {:ok, workings} ->
+            workings.issues
 
           _ ->
             packet.source_issues ++
@@ -2301,11 +2364,15 @@ defmodule NilaWeb.Gst.SalesBillReview do
 
   defp processing_jobs(dumps) do
     Map.new(dumps, fn dump ->
+      state = Nila.Gst.Sales.Processing.snapshot(dump)
+      count = if state["segments"], do: Enum.count(state["segments"], &(&1["kind"] == "invoice"))
+
       {dump.id,
        %{
          status: processing_status(dump.status),
-         progress: nil,
-         bill_count: if(dump.status == "extracted", do: length(dump.invoices), else: nil),
+         progress: if(count, do: %{stage: :reading, done: length(dump.invoices), total: count}),
+         bill_count:
+           count || if(dump.status == "extracted", do: length(dump.invoices), else: nil),
          page_count: Map.get(dump.meta || %{}, "source_page_count"),
          retrying: nil,
          worker_retry: nil
@@ -2368,7 +2435,7 @@ defmodule NilaWeb.Gst.SalesBillReview do
     do: Enum.any?(jobs, fn {_id, job} -> job.status not in @settled_processing_statuses end)
 
   def processing_invoice_progress(jobs) do
-    jobs = jobs |> Map.values() |> Enum.reject(&(&1.status == :failed))
+    jobs = Map.values(jobs)
 
     if jobs != [] and Enum.all?(jobs, &is_integer(&1.bill_count)) do
       total = Enum.sum(Enum.map(jobs, & &1.bill_count))
@@ -2388,7 +2455,7 @@ defmodule NilaWeb.Gst.SalesBillReview do
 
   def processing_progress_label(jobs) do
     case processing_invoice_progress(jobs) do
-      %{done: done, total: total} -> "#{done} of #{total} read"
+      %{done: done, total: total} -> "#{done} of #{total} ready"
       nil -> "Finding invoices…"
     end
   end

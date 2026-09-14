@@ -76,6 +76,20 @@ defmodule Nila.Gst.Sales.SourcePacketTest do
     assert [%{"inv" => [%{"inum" => "CORRECTED-1"}]}] = result["b2b"]
   end
 
+  test "partial invoices are opt-in for processing batch views", ctx do
+    dump = record_dump(ctx, [invoice_fixture()], %{status: "extracting"})
+
+    assert SourcePacket.prepare([dump]).all_invoices == []
+
+    assert [%{"invoice_number" => "INV-001"}] =
+             SourcePacket.prepare([dump], include_processing: true).all_invoices
+
+    assert TallyPacket.prepare([dump]).all_invoices == []
+
+    assert [%{"invoice_number" => "INV-001"}] =
+             TallyPacket.prepare([dump], include_processing: true).all_invoices
+  end
+
   test "source corrections and removals stay within their organization and client", ctx do
     dump = record_dump(ctx, [invoice_fixture()])
     ref = Batch.ref([dump])

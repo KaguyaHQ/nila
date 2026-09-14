@@ -38,6 +38,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
     assert has_element?(view, "#sales-period-status", "Review the GST working before exporting.")
     refute has_element?(view, "#sales-period-workflow")
     assert has_element?(view, "#sales-period-primary-action", "Review")
+    assert has_element?(view, "#sales-period-primary-action", "Add invoices")
+
+    assert has_element?(
+             view,
+             "#sales-period-primary-action a[href='/gst/upload?client_id=#{client.id}&period=#{@period}&kind=sales']"
+           )
 
     refute has_element?(view, "#sales-period-primary-action", "Bring in invoices")
     refute has_element?(view, "#sales-period-primary-action", "Approve GSTR-1")
@@ -46,6 +52,15 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
     assert has_element?(view, "th", "Taxable value")
     assert has_element?(view, "#sales-period-uploads-link", "Uploads")
     assert has_element?(view, "#sales-period-uploads-link", "1 file")
+
+    {:ok, uploads, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/sales/uploads")
+    assert has_element?(uploads, "header", "Uploads")
+
+    assert has_element?(
+             uploads,
+             "header a[href='/gst/upload?client_id=#{client.id}&period=#{@period}&kind=sales']",
+             "Add invoices"
+           )
     refute has_element?(view, "#sales-period-workspace header", "overdue")
     assert has_element?(view, "#sales-period-return-b2b", "B2B")
     assert has_element?(view, "#sales-period-return-b2b", "Draft")

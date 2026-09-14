@@ -131,7 +131,7 @@ defmodule Nila.Gst.Sales.Invoice.Removals do
 
   defp source_invoice?(dumps, source_id) do
     Enum.any?(dumps, fn dump ->
-      dump.status == "extracted" and
+      Nila.Gst.Sales.Processing.reviewable?(dump) and
         Enum.any?(dump.invoices, &(Invoice.source_id(Dumps.rehydrate(&1)) == source_id))
     end)
   end

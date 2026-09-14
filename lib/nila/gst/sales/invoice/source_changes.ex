@@ -18,7 +18,14 @@ defmodule Nila.Gst.Sales.Invoice.SourceChanges do
               "EXISTS (SELECT 1 FROM unnest(?) AS source(invoice) WHERE COALESCE(invoice->>'id', invoice->>'invoice_number') = ?)",
               month.invoices,
               ^source_id
-            ),
+            ) or
+              fragment(
+                "EXISTS (SELECT 1 FROM gst_dumps d, unnest(d.invoices) AS source(invoice) WHERE d.org_id = ? AND d.client_id = ? AND d.period = ? AND COALESCE(invoice->>'id', invoice->>'invoice_number') = ?)",
+                month.org_id,
+                month.client_id,
+                month.period,
+                ^source_id
+              ),
           order_by: month.id,
           lock: "FOR UPDATE"
       )

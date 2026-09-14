@@ -151,7 +151,7 @@ defmodule Nila.Gst.Sales.Invoice.Corrections do
   defp source_invoice(dumps, source_id) do
     matches =
       dumps
-      |> Enum.filter(&(&1.status == "extracted"))
+      |> Enum.filter(&Nila.Gst.Sales.Processing.reviewable?/1)
       |> Enum.flat_map(& &1.invoices)
       |> Enum.map(&Dumps.rehydrate/1)
       |> Enum.filter(&(Invoice.source_id(&1) == source_id))

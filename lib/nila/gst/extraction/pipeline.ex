@@ -29,7 +29,7 @@ defmodule Nila.Gst.Extraction.Pipeline do
     }
 
     with {:ok, source} <- SourcePages.prepare(kind, bytes, opts),
-         {:ok, discovery} <- discover(kind, source, opts, hooks),
+         {:ok, discovery} <- discover_or_resume(kind, source, opts, hooks),
          {:ok, result} <- read_segments(kind, source, discovery, opts, hooks) do
       {:ok, result}
     else
@@ -142,6 +142,29 @@ defmodule Nila.Gst.Extraction.Pipeline do
     end)
   end
 
+  defp discover_or_resume(kind, source, opts, hooks) do
+    case Keyword.get(opts, :resume_segments) do
+      nil ->
+        discover(kind, source, opts, hooks)
+
+      segments ->
+        {:ok,
+         %{
+           segments:
+             Enum.map(segments, fn segment ->
+               %{
+                 pages: segment["pages"],
+                 kind: if(segment["kind"] == "invoice", do: :invoice, else: :other),
+                 invoice_no: segment["invoice_no"],
+                 document_type: segment["document_type"],
+                 reason: segment["reason"],
+                 issues: []
+               }
+             end)
+         }}
+    end
+  end
+
   defp request_segmentation(kind, source, opts) do
     page_count = source.page_count
 
@@ -184,7 +207,17 @@ defmodule Nila.Gst.Extraction.Pipeline do
   defp group_pages(:purchase, pages, count), do: PurchasePages.group(pages, count)
 
   defp read_segments(kind, source, discovery, opts, hooks) do
+    discovery =
+      Map.update!(
+        discovery,
+        :segments,
+        &Enum.sort_by(&1, fn segment -> List.first(segment.pages) end)
+      )
+
     segments = Enum.filter(discovery.segments, &(&1.kind == :invoice))
+    on_invoice = Keyword.get(opts, :on_invoice, fn _artifact, _ordinal, _evidence -> :ok end)
+    Keyword.get(opts, :on_segments, fn _segments -> :ok end).(encode_segments(discovery.segments))
+    completed = Keyword.get(opts, :completed_artifacts, %{})
     report(hooks, %{stage: :reading, done: 0, total: length(segments)})
 
     stage = if map_size(source.native_text) > 0, do: "text_extraction", else: "vision_extraction"
@@ -192,16 +225,34 @@ defmodule Nila.Gst.Extraction.Pipeline do
     hooks.per_call.(%{stage: stage, segments: length(segments)}, fn ->
       results =
         segments
+        |> Enum.with_index(1)
         |> Task.async_stream(
-          fn segment ->
-            contained(segment, fn -> extract_segment(kind, source, segment, opts) end)
+          fn {segment, ordinal} ->
+            result =
+              case completed[to_string(ordinal)] do
+                nil -> contained(segment, fn -> extract_segment(kind, source, segment, opts) end)
+                artifact -> {:ok, artifact, nil}
+              end
+
+            {ordinal, result}
           end,
           max_concurrency: Keyword.get(opts, :max_concurrency, @default_max_concurrency),
           ordered: false,
           timeout: :infinity
         )
         |> Stream.with_index(1)
-        |> Enum.map(fn {{:ok, result}, done} ->
+        |> Enum.map(fn {{:ok, {ordinal, result}}, done} ->
+          result =
+            case result do
+              {:ok, artifact, response} ->
+                on_invoice.(artifact, ordinal, source.evidence)
+                {:ok, artifact, response}
+
+              other ->
+                Keyword.get(opts, :on_invoice_failed, fn _ordinal -> :ok end).(ordinal)
+                other
+            end
+
           report(hooks, %{stage: :reading, done: done, total: length(segments)})
           result
         end)
@@ -225,6 +276,9 @@ defmodule Nila.Gst.Extraction.Pipeline do
 
       responses =
         Enum.flat_map(results, fn
+          {:ok, _artifact, nil} ->
+            []
+
           {:ok, artifact, response} ->
             [response_record(response, artifact["source_pages"])]
 

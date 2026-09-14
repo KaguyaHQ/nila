@@ -9,7 +9,11 @@ defmodule NilaWeb.Gst.SalesBillsLive do
   alias Nila.Gst.Sales.Tally.Packet, as: TallyPacket
 
   @impl true
-  defdelegate mount(params, session, socket), to: SalesBillReview
+  def mount(params, session, socket) do
+    with {:ok, socket} <- SalesBillReview.mount(params, session, socket) do
+      {:ok, sync_rows(socket)}
+    end
+  end
 
   @impl true
   def handle_params(%{"item" => source_id} = params, _uri, socket) do
@@ -43,15 +47,63 @@ defmodule NilaWeb.Gst.SalesBillsLive do
     end
   end
 
-  def handle_params(params, uri, socket), do: SalesBillReview.handle_params(params, uri, socket)
+  def handle_params(params, uri, socket) do
+    {:noreply, socket} = SalesBillReview.handle_params(params, uri, socket)
+    {:noreply, sync_rows(socket)}
+  end
 
   @impl true
-  defdelegate handle_event(event, params, socket), to: SalesBillReview
+  def handle_event(event, params, socket) do
+    {:noreply, socket} = SalesBillReview.handle_event(event, params, socket)
+    {:noreply, sync_rows(socket)}
+  end
+
   @impl true
-  defdelegate handle_info(message, socket), to: SalesBillReview
+  def handle_info(message, socket) do
+    {:noreply, socket} = SalesBillReview.handle_info(message, socket)
+    {:noreply, sync_rows(socket)}
+  end
+
+  defp sync_rows(%{assigns: %{packet: packet, source_dumps: dumps}} = socket) do
+    rows = processing_table_invoices(packet, dumps)
+
+    socket =
+      if Map.has_key?(socket.assigns, :batch_row_count),
+        do: socket,
+        else:
+          stream_configure(socket, :batch_rows,
+            dom_id: &"sales-bill-#{&1["id"] || &1["invoice_number"]}"
+          )
+
+    socket = stream(socket, :batch_rows, [])
+    ids = MapSet.new(rows, &"sales-bill-#{&1["id"] || &1["invoice_number"]}")
+
+    socket =
+      Enum.reduce(
+        MapSet.difference(socket.assigns[:batch_row_ids] || MapSet.new(), ids),
+        socket,
+        fn id, socket -> stream_delete_by_dom_id(socket, :batch_rows, id) end
+      )
+
+    socket =
+      Enum.reduce(Enum.with_index(rows), socket, fn {row, index}, socket ->
+        stream_insert(socket, :batch_rows, row, at: index)
+      end)
+
+    socket |> assign(:batch_row_count, length(rows)) |> assign(:batch_row_ids, ids)
+  end
+
+  defp sync_rows(socket), do: socket
 
   @impl true
   def render(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :uploads_unfinished?,
+        Nila.Gst.Intake.Dumps.unresolved?(assigns.source_dumps, "sales")
+      )
+
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -73,7 +125,9 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             <p class="text-ink-muted text-ui">{@client.name}</p>
 
             <h1 class="text-base-content text-h2 font-semibold">
-              Reading invoices
+              {if processing_invoice_progress(@processing_jobs) == nil and @packet.all_invoices == [],
+                do: "Reading invoices",
+                else: "Invoices found"}
             </h1>
 
             <p class="text-ink-muted text-ui tabular-nums">
@@ -81,21 +135,13 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </p>
           </div>
 
-          <div class="mt-section space-y-related max-w-2xl">
+          <div class="mt-block space-y-related max-w-2xl">
             <p
               id="sales-bills-processing-progress"
-              class="text-base-content text-h4 font-semibold tabular-nums"
+              class="text-ink-muted text-ui tabular-nums"
             >
               {processing_progress_label(@processing_jobs)}
             </p>
-
-            <%= if progress = processing_invoice_progress(@processing_jobs) do %>
-              <.progress_bar
-                id="sales-bills-processing-bar"
-                value={progress.done}
-                max={max(progress.total, 1)}
-              />
-            <% end %>
 
             <p
               :if={processing_retry_label(@processing_jobs)}
@@ -103,10 +149,6 @@ defmodule NilaWeb.Gst.SalesBillsLive do
               class="text-ui text-warning"
             >
               {processing_retry_label(@processing_jobs)}
-            </p>
-
-            <p class="text-ink-muted text-ui">
-              You can leave this page — processing will continue.
             </p>
           </div>
         </section>
@@ -227,7 +269,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 type="button"
                 id="sales-bills-send-to-tally"
                 phx-click="request-send-to-tally"
-                disabled={not @tally_online? or not @tally_masters_available?}
+                disabled={@uploads_unfinished? or not @tally_online? or not @tally_masters_available?}
               >
                 Send to Tally
               </.button>
@@ -281,7 +323,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 id="sales-bills-retry-tally"
                 phx-click="request-send-to-tally"
                 variant="outline"
-                disabled={not @tally_online? or not @tally_masters_available?}
+                disabled={@uploads_unfinished? or not @tally_online? or not @tally_masters_available?}
               >
                 Try again
               </.button>
@@ -298,14 +340,25 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </div>
 
             <.download_button
-              :if={is_nil(@tally_company)}
+              :if={is_nil(@tally_company) and not @uploads_unfinished?}
               href={~p"/sales-bills/#{@client.id}/batch/#{@batch_ref}/tally.xml"}
               id="sales-bills-download"
             >
               <.icon name="hero-arrow-down-tray" class="size-4" /> Download Tally XML
             </.download_button>
+            <.button
+              :if={is_nil(@tally_company) and @uploads_unfinished?}
+              id="sales-bills-download"
+              disabled
+            >
+              Download Tally XML
+            </.button>
           </div>
         </section>
+
+        <p :if={@accounting_view? and @uploads_unfinished?} class="text-ink-muted text-ui">
+          Finish reading or resolve failed uploads before sending or exporting.
+        </p>
 
         <p :if={@send_error} id="sales-bills-send-error" class="text-error text-ui">
           {@send_error}
@@ -363,7 +416,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
           </ul>
         </section>
 
-        <section :if={@packet.all_invoices != []} id="sales-bills-vouchers">
+        <section
+          :if={@batch_row_count > 0}
+          id="sales-bills-vouchers"
+        >
           <div :if={@tally_company} class="gap-block mb-4 flex items-center">
             <.button
               id="sales-bills-invoice-mode"
@@ -379,8 +435,8 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
           <.data_table
             id="sales-bills-voucher-table"
-            rows={batch_table_invoices(@packet)}
-            row_id={fn invoice -> "sales-bill-#{invoice["id"] || invoice["invoice_number"]}" end}
+            rows={@streams.batch_rows}
+            empty?={@batch_row_count == 0}
             row_navigate={
               fn invoice ->
                 batch_row_path(
@@ -396,7 +452,9 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             row_class={fn invoice -> batch_row_class(@packet, invoice) end}
             row_label={
               fn invoice ->
-                "Review invoice #{invoice["invoice_number"] || "without a number"}"
+                if processing_invoice?(invoice),
+                  do: "Invoice still reading",
+                  else: "Review invoice #{invoice["invoice_number"] || "without a number"}"
               end
             }
             mode="scan"
@@ -409,27 +467,43 @@ defmodule NilaWeb.Gst.SalesBillsLive do
             </:col>
 
             <:col :let={invoice} label="Date">
-              <span class="whitespace-nowrap tabular-nums">
-                {format_display_date(invoice["invoice_date"])}
-              </span>
+              <%= if processing_invoice?(invoice) do %>
+                <span>—</span>
+              <% else %>
+                <span class="whitespace-nowrap tabular-nums">
+                  {format_display_date(invoice["invoice_date"])}
+                </span>
+              <% end %>
             </:col>
 
             <:col :let={invoice} label="Buyer">
-              <span class="block max-w-64 truncate" title={invoice["buyer_name"]}>
-                {invoice["buyer_name"] || "—"}
-              </span>
+              <%= if processing_invoice?(invoice) do %>
+                <span>—</span>
+              <% else %>
+                <span class="block max-w-64 truncate" title={invoice["buyer_name"]}>
+                  {invoice["buyer_name"] || "—"}
+                </span>
+              <% end %>
             </:col>
 
             <:col :let={invoice} label="Taxable" align="right">
-              {rupees(totals(invoice).taxable)}
+              {if processing_invoice?(invoice), do: "—", else: rupees(totals(invoice).taxable)}
             </:col>
 
             <:col :let={invoice} label="Tax" align="right">
-              {rupees(totals(invoice).tax)}
+              {if processing_invoice?(invoice), do: "—", else: rupees(totals(invoice).tax)}
             </:col>
 
             <:col :let={invoice} label="Status">
-              <div :if={not @accounting_view?} id={"sales-bill-gst-#{invoice_id(invoice)}"}>
+              <div :if={processing_invoice?(invoice)} class="flex items-center gap-2">
+                <.spinner :if={!invoice["failed"]} size="xs" label="Reading" />
+                {if invoice["failed"], do: "Couldn't read", else: "Reading…"}
+              </div>
+
+              <div
+                :if={not processing_invoice?(invoice) and not @accounting_view?}
+                id={"sales-bill-gst-#{invoice_id(invoice)}"}
+              >
                 <.badge variant={
                   if batch_gst_issues(@packet, invoice) == [], do: "neutral", else: "warning"
                 }>
@@ -448,7 +522,7 @@ defmodule NilaWeb.Gst.SalesBillsLive do
                 </p>
               </div>
 
-              <div :if={@accounting_view?}>
+              <div :if={not processing_invoice?(invoice) and @accounting_view?}>
                 <span id={"sales-bill-delivery-#{invoice_id(invoice)}"} class="whitespace-nowrap">
                   <.badge variant={
                     invoice_delivery(
@@ -493,7 +567,10 @@ defmodule NilaWeb.Gst.SalesBillsLive do
 
             <:col :let={invoice} label="" align="right">
               <.action_menu
-                :if={not invoice_frozen?(@tally_jobs, invoice, @packet.all_invoices)}
+                :if={
+                  not processing_invoice?(invoice) and
+                    not invoice_frozen?(@tally_jobs, invoice, @packet.all_invoices)
+                }
                 id={"sales-bill-actions-#{invoice_id(invoice)}"}
                 label={"Actions for invoice #{invoice["invoice_number"] || "without a number"}"}
               >

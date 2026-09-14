@@ -8,8 +8,13 @@ defmodule Nila.Gst.Sales.SourcePacket do
   alias Nila.Gst.Sales.Invoice.Readiness, as: InvoiceReadiness
   alias Nila.Gst.Sales.Invoice.Removals, as: InvoiceRemovals
 
-  def prepare(dumps) when is_list(dumps) do
-    active = Enum.filter(dumps, &(&1.status == "extracted"))
+  def prepare(dumps, opts \\ []) when is_list(dumps) do
+    active_statuses =
+      if Keyword.get(opts, :include_processing, false),
+        do: ["extracted", "extracting", "received", "failed"],
+        else: ["extracted"]
+
+    active = Enum.filter(dumps, &(&1.status in active_statuses))
 
     {all_invoices, invoices, excluded} =
       active

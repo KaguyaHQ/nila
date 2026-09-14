@@ -810,12 +810,6 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bills-processing", "1 file uploaded")
     assert has_element?(view, "#sales-bills-processing-progress", "Finding invoices…")
 
-    assert has_element?(
-             view,
-             "#sales-bills-processing",
-             "You can leave this page — processing will continue."
-           )
-
     refute has_element?(view, "#sales-bills-result", "No sales vouchers ready")
     refute has_element?(view, "#sales-bills-remainder")
 
@@ -831,15 +825,19 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     reading = %{stage: :reading, done: 13, total: 14}
 
+    dump
+    |> Ecto.Changeset.change(status: "extracting", invoices: [invoice])
+    |> Nila.Repo.update!()
+
     send(
       view.pid,
       {:gst_dump_progress, dump.id, client.id, dump.period, "sales", {:extracting, reading}}
     )
 
-    assert has_element?(view, "#sales-bills-processing", "Reading invoices")
-    assert has_element?(view, "#sales-bills-processing-progress", "13 of 14 read")
-    assert has_element?(view, "#sales-bills-processing-bar[value='13'][max='14']")
-    refute has_element?(view, "#sales-bills-voucher-table")
+    assert has_element?(view, "#sales-bills-processing", "Invoices found")
+    assert has_element?(view, "#sales-bills-processing-progress", "13 of 14 ready")
+    assert has_element?(view, "#sales-bills-voucher-table", "INV-001")
+    refute has_element?(view, "#sales-bills-processing-bar")
 
     send(
       view.pid,
@@ -1474,7 +1472,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       |> LazyHTML.query("#sales-bills-voucher-table > tr")
       |> LazyHTML.attribute("id")
 
-    assert row_ids == ["sales-bill-source-inv-002", "sales-bill-INV-001"]
+    assert row_ids == ["sales-bill-INV-001", "sales-bill-source-inv-002"]
 
     removal = Nila.Repo.one!(InvoiceRemoval)
     assert removal.org_id == org.id

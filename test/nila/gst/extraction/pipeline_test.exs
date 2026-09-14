@@ -120,6 +120,109 @@ defmodule Nila.Gst.Extraction.PipelineTest do
     end)
   end
 
+  test "reports completed invoices through the callback with stable segment ordinals" do
+    stub(
+      [
+        %{
+          "page" => 1,
+          "page_role" => "start",
+          "document_type" => "tax_invoice",
+          "invoice_no" => "INV-1",
+          "reason" => nil
+        },
+        %{
+          "page" => 2,
+          "page_role" => "start",
+          "document_type" => "tax_invoice",
+          "invoice_no" => "INV-2",
+          "reason" => nil
+        }
+      ],
+      sales_invoice()
+    )
+
+    test_pid = self()
+
+    assert {:ok, _result} =
+             Pipeline.extract(
+               :sales,
+               PdfFixtures.text_pdf(["Invoice INV-1", "Invoice INV-2"]),
+               input: :text,
+               on_invoice: fn artifact, ordinal, _evidence ->
+                 send(test_pid, {:invoice_ready, artifact["page"], ordinal})
+               end
+             )
+
+    messages =
+      for _ <- 1..2 do
+        assert_receive {:invoice_ready, page, ordinal}
+        {page, ordinal}
+      end
+
+    assert Enum.sort(messages) == [{1, 1}, {2, 2}]
+  end
+
+  test "publishes the fast invoice while the first call is paused and resumes without reading it again" do
+    owner = self()
+
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+      if String.contains?(body, "SLOW-INVOICE") do
+        send(owner, {:slow_call, self()})
+
+        receive do
+          :release -> :ok
+        after
+          5_000 -> raise "slow call was not released"
+        end
+      end
+
+      Req.Test.json(conn, chat_response(sales_invoice()))
+    end)
+
+    pdf = PdfFixtures.text_pdf(["SLOW-INVOICE", "FAST-INVOICE"])
+
+    start_supervised!(
+      {Task,
+       fn ->
+         Req.Test.allow(OpenAICompatibleChat, owner, self())
+
+         result =
+           Pipeline.extract_fixed_segments(:sales, pdf, [[1], [2]],
+             input: :text,
+             on_invoice: fn artifact, ordinal, _ ->
+               send(owner, {:completed, ordinal, artifact})
+             end
+           )
+
+         send(owner, {:finished, result})
+       end}
+    )
+
+    assert_receive {:slow_call, slow}, 5_000
+    assert_receive {:completed, 2, fast}, 5_000
+    refute_received {:finished, _}
+    send(slow, :release)
+    assert_receive {:completed, 1, _}, 5_000
+    assert_receive {:finished, {:ok, result}}, 5_000
+    assert Enum.map(result.pages, & &1["page"]) == [1, 2]
+
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      refute String.contains?(body, "FAST-INVOICE")
+      Req.Test.json(conn, chat_response(sales_invoice()))
+    end)
+
+    assert {:ok, resumed} =
+             Pipeline.extract_fixed_segments(:sales, pdf, [[1], [2]],
+               input: :text,
+               completed_artifacts: %{"2" => fast}
+             )
+
+    assert Enum.map(resumed.pages, & &1["page"]) == [1, 2]
+  end
+
   test "native sales text uses the same artifact contract and retains review images and text evidence" do
     stub(
       [

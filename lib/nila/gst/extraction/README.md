@@ -24,6 +24,12 @@ It does not decide filing readiness, apply human decisions, or build returns.
 
 ## Shared facts and downstream ownership
 
+For sales uploads, the worker saves discovery through `on_segments`, then saves each
+verified artifact through `on_invoice` before publishing its progress. Saved segment
+order keeps invoice IDs stable. A retry reuses that discovery and completed artifacts.
+`Sales.Processing` keeps this checkpoint in the upload's existing metadata; unfinished
+invoices are available to review but stay out of stored month totals and exports.
+
 `Nila.Gst.LineAmounts` interprets printed and corrected line amounts.
 `Nila.Gst.TaxComponents` interprets printed tax components and totals. Both live
 outside extraction because extraction, review, and return code consume them.
