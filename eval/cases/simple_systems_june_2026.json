@@ -1,0 +1,1724 @@
+{
+  "29": {
+    "invoice_number": "I-SS-2627-29",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      50400.0,
+      400.0
+    ],
+    "gross": [
+      59472.0,
+      472.0
+    ],
+    "tax": [
+      9072.0,
+      72.0
+    ],
+    "hsn": [
+      "85068010",
+      "996511"
+    ],
+    "quantity": [
+      4000.0,
+      1.0
+    ],
+    "unit_price": [
+      12.6,
+      400.0
+    ],
+    "uom": [
+      "Nos",
+      "Nos"
+    ],
+    "item_codes": [
+      "R15-000-1021",
+      "Fright cost"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R15-000-1021 BATTERY, 3 Volt\n_\nBattery, Coin type,220mah\nMPN:CR2032H;MFR:Maxell",
+        "85068010",
+        "4000",
+        "Nos",
+        "\u20b9 12.600",
+        null,
+        "\u20b9 12.600",
+        "\u20b9 9,072.000\n(18%)",
+        null,
+        "\u20b9 59,472.000"
+      ],
+      [
+        "2",
+        "Fright cost",
+        "996511",
+        "1",
+        "Nos",
+        "\u20b9 400.000",
+        null,
+        "\u20b9 400.000",
+        "\u20b9 72.000 (18%)",
+        null,
+        "\u20b9 472.000"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 50800.0,
+    "cgst": 4572.0,
+    "sgst": 4572.0,
+    "rounding": 0.0,
+    "grand_total": 59944.0,
+    "date": "2026-06-08",
+    "invoice_date": "08/06/2026"
+  },
+  "30": {
+    "invoice_number": "I-SS-2627-30",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      20160.0
+    ],
+    "gross": [
+      23788.8
+    ],
+    "tax": [
+      3628.8
+    ],
+    "hsn": [
+      "85068010"
+    ],
+    "quantity": [
+      1600.0
+    ],
+    "unit_price": [
+      12.6
+    ],
+    "uom": [
+      "Nos"
+    ],
+    "item_codes": [
+      "R15-000-1021"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R15-000-1021 BATTERY, 3 Volt\n_\nBattery, Coin type,220mah\nMPN:CR2032H;MFR:Maxell",
+        "85068010",
+        "1600",
+        "Nos",
+        "\u20b9 12.600",
+        null,
+        "\u20b9 12.600",
+        "\u20b9 3,628.800\n(18%)",
+        null,
+        "\u20b9 23,788.800"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 20160.0,
+    "cgst": 1814.4,
+    "sgst": 1814.4,
+    "rounding": 0.2,
+    "grand_total": 23789.0,
+    "date": "2026-06-08",
+    "invoice_date": "08/06/2026"
+  },
+  "31": {
+    "invoice_number": "I-SS-2627-31",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      2460.0
+    ],
+    "gross": [
+      2902.8
+    ],
+    "tax": [
+      442.8
+    ],
+    "hsn": [
+      "85411000"
+    ],
+    "quantity": [
+      6000.0
+    ],
+    "unit_price": [
+      0.41
+    ],
+    "uom": [
+      "Nos"
+    ],
+    "item_codes": [
+      "R03-4b0-1051"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R03-4b0-1051 DIOD,70V, 200mA,\nSmall Signal\nDiode,SMT,Pack:SOT23,Packing\nTape/reel MPN:BAV70,Mfr:Any\nMake",
+        "85411000",
+        "6000",
+        "Nos",
+        "\u20b9 0.410",
+        null,
+        "\u20b9 0.410",
+        "\u20b9 442.800 (18%)",
+        null,
+        "\u20b9 2,902.800"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 2460.0,
+    "cgst": 221.4,
+    "sgst": 221.4,
+    "rounding": 0.2,
+    "grand_total": 2903.0,
+    "date": "2026-06-08",
+    "invoice_date": "08/06/2026"
+  },
+  "32": {
+    "invoice_number": "I-SS-2627-32",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      120300.0,
+      817.0
+    ],
+    "gross": [
+      141954.0,
+      964.06
+    ],
+    "tax": [
+      21654.0,
+      147.06
+    ],
+    "hsn": [
+      "85423100",
+      "996511"
+    ],
+    "quantity": [
+      10000.0,
+      1.0
+    ],
+    "unit_price": [
+      12.03,
+      817.0
+    ],
+    "uom": [
+      "Nos",
+      "Nos"
+    ],
+    "item_codes": [
+      "R07-4F6-1022",
+      "Fright cost"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R07-4F6-1022REGLT,1\n_\nOutput,37V,1.5A,Linear\nVoltage,Positive\nadjust,SMT,Pack:D2PAK,Packing\n:Reel MPN:LM317-T; MFR:Texas\nInstruments MPN:LM317D2T-TR;\nMFR:ST MICRO",
+        "85423100",
+        "10000",
+        "Nos",
+        "\u20b9 12.030",
+        null,
+        "\u20b9 12.030",
+        "\u20b9 21,654.000\n(18%)",
+        "\u20b9 1,41,954.000"
+      ],
+      [
+        "2",
+        "Fright cost",
+        "996511",
+        "1",
+        "Nos",
+        "\u20b9 817.000",
+        null,
+        "\u20b9 817.000",
+        "\u20b9 147.060 (18%)",
+        "\u20b9 964.060"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 121117.0,
+    "cgst": 10900.53,
+    "sgst": 10900.53,
+    "rounding": 0.0,
+    "grand_total": 142918.06,
+    "date": "2026-06-12",
+    "invoice_date": "12/06/2026"
+  },
+  "33": {
+    "invoice_number": "I-SS-2627-33",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      37125.0,
+      800.0
+    ],
+    "gross": [
+      43807.5,
+      944.0
+    ],
+    "tax": [
+      6682.5,
+      144.0
+    ],
+    "hsn": [
+      "85411000",
+      "996813"
+    ],
+    "quantity": [
+      11250.0,
+      1.0
+    ],
+    "unit_price": [
+      3.3,
+      800.0
+    ],
+    "uom": [
+      "Pcs",
+      "Nos"
+    ],
+    "item_codes": [
+      "R03-1X5-1024",
+      "Courier cost"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R03-1X5-1024DIOD,6A, 400V, Gen\n_\nPurp, Switching\nDiode,TH,Pack:R6,Packing:Bulk\nMPN: 6A4,Mfr: MIC, Vishay;\nAlternate make: WILDGOOSE",
+        "85411000",
+        "11250",
+        "Pcs",
+        "\u20b9 3.300",
+        null,
+        "\u20b9 3.300",
+        "\u20b9 6,682.500\n(18%)",
+        null,
+        "\u20b9 43,807.500"
+      ],
+      [
+        "2",
+        "Courier cost",
+        "996813",
+        "1",
+        "Nos",
+        "\u20b9 800.000",
+        null,
+        "\u20b9 800.000",
+        "\u20b9 144.000 (18%)",
+        null,
+        "\u20b9 944.000"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 37925.0,
+    "cgst": 3413.25,
+    "sgst": 3413.25,
+    "rounding": 0.5,
+    "grand_total": 44752.0,
+    "date": "2026-06-14",
+    "invoice_date": "14/06/2026"
+  },
+  "34": {
+    "invoice_number": "I-SS-2627-34",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      18810.0
+    ],
+    "gross": [
+      22195.8
+    ],
+    "tax": [
+      3385.8
+    ],
+    "hsn": [
+      "85411000"
+    ],
+    "quantity": [
+      5700.0
+    ],
+    "unit_price": [
+      3.3
+    ],
+    "uom": [
+      "Pcs"
+    ],
+    "item_codes": [
+      "R03-1X5-1024"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R03-1X5-1024DIOD,6A, 400V, Gen\n_\nPurp, Switching\nDiode,TH,Pack:R6,Packing:Bulk\nMPN: 6A4,Mfr: MIC, Vishay;\nAlternate make: WILDGOOSE",
+        "85411000",
+        "5700",
+        "Pcs",
+        "\u20b9 3.300",
+        null,
+        "\u20b9 3.300",
+        "\u20b9 3,385.800\n(18%)",
+        "\u20b9 22,195.800"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 18810.0,
+    "cgst": 1692.9,
+    "sgst": 1692.9,
+    "rounding": 0.2,
+    "grand_total": 22196.0,
+    "date": "2026-06-14",
+    "invoice_date": "14/06/2026"
+  },
+  "35": {
+    "invoice_number": "I-SS-2627-35",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      10065.0
+    ],
+    "gross": [
+      11876.7
+    ],
+    "tax": [
+      1811.7
+    ],
+    "hsn": [
+      "85411000"
+    ],
+    "quantity": [
+      3050.0
+    ],
+    "unit_price": [
+      3.3
+    ],
+    "uom": [
+      "Pcs"
+    ],
+    "item_codes": [
+      "R03-1X5-1024"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R03-1X5-1024DIOD,6A, 400V, Gen\n_\nPurp, Switching\nDiode,TH,Pack:R6,Packing:Bulk\nMPN: 6A4,Mfr: MIC, Vishay;\nAlternate make: WILDGOOSE",
+        "85411000",
+        "3050",
+        "Pcs",
+        "\u20b9 3.300",
+        null,
+        "\u20b9 3.300",
+        "\u20b9 1,811.700\n(18%)",
+        "\u20b9 11,876.700"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 10065.0,
+    "cgst": 905.85,
+    "sgst": 905.85,
+    "rounding": 0.3,
+    "grand_total": 11877.0,
+    "date": "2026-06-14",
+    "invoice_date": "14/06/2026"
+  },
+  "36": {
+    "invoice_number": "I-SS-2627-36",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      5642.5
+    ],
+    "gross": [
+      6658.15
+    ],
+    "tax": [
+      1015.65
+    ],
+    "hsn": [
+      "85411000"
+    ],
+    "quantity": [
+      15250.0
+    ],
+    "unit_price": [
+      0.37
+    ],
+    "uom": [
+      "Pcs"
+    ],
+    "item_codes": [
+      "R03-1XX-1025"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R03-1XX-1025DIOD,Gen. Purpuse\n_\nDiode,SMT,Pack:SOD80,Packing:Tap\ne/reel MPN: IN 4148,MFR::\nMIC/Vishay/Nexperia",
+        "85411000",
+        "15250",
+        "Pcs",
+        "\u20b9 0.370",
+        null,
+        "\u20b9 0.370",
+        "\u20b9 1,015.650\n(18%)",
+        null,
+        "\u20b9 6,658.150"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 5642.5,
+    "cgst": 507.825,
+    "sgst": 507.825,
+    "rounding": -0.15,
+    "grand_total": 6658.0,
+    "date": "2026-06-14",
+    "invoice_date": "14/06/2026"
+  },
+  "37": {
+    "invoice_number": "I-SS-2627-37",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      49691.0,
+      800.0
+    ],
+    "gross": [
+      58635.38,
+      944.0
+    ],
+    "tax": [
+      8944.38,
+      144.0
+    ],
+    "hsn": [
+      "85411000",
+      "996813"
+    ],
+    "quantity": [
+      134300.0,
+      1.0
+    ],
+    "unit_price": [
+      0.37,
+      800.0
+    ],
+    "uom": [
+      "Pcs",
+      "Nos"
+    ],
+    "item_codes": [
+      "R03-1XX-1025",
+      "Courier cost"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R03-1XX-1025DIOD,Gen. Purpuse\n_\nDiode,SMT,Pack:SOD80,Packing:Ta\npe/reel MPN: IN 4148,MFR::\nMIC/Vishay/Nexperia",
+        "85411000",
+        "134300",
+        "Pcs",
+        "\u20b9 0.370",
+        null,
+        "\u20b9 0.370",
+        "\u20b9 8,944.380\n(18%)",
+        null,
+        "\u20b9 58,635.380"
+      ],
+      [
+        "2",
+        "Courier cost",
+        "996813",
+        "1",
+        "Nos",
+        "\u20b9 800.000",
+        null,
+        "\u20b9 800.000",
+        "\u20b9 144.000 (18%)",
+        null,
+        "\u20b9 944.000"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 50491.0,
+    "cgst": 4544.19,
+    "sgst": 4544.19,
+    "rounding": -0.38,
+    "grand_total": 59579.0,
+    "date": "2026-06-14",
+    "invoice_date": "14/06/2026"
+  },
+  "38": {
+    "invoice_number": "I-SS-2627-38",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      29896.0,
+      573.0
+    ],
+    "gross": [
+      35277.28,
+      676.14
+    ],
+    "tax": [
+      5381.28,
+      103.14
+    ],
+    "hsn": [
+      "85411000",
+      "996813"
+    ],
+    "quantity": [
+      80800.0,
+      1.0
+    ],
+    "unit_price": [
+      0.37,
+      573.0
+    ],
+    "uom": [
+      "Pcs",
+      "Nos"
+    ],
+    "item_codes": [
+      "R03-1XX-1025",
+      "Courier cost"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R03-1XX-1025DIOD,Gen. Purpuse\n_\nDiode,SMT,Pack:SOD80,Packing:Ta\npe/reel MPN: IN 4148,MFR::\nMIC/Vishay/Nexperia",
+        "85411000",
+        "80800",
+        "Pcs",
+        "\u20b9 0.370",
+        null,
+        "\u20b9 0.370",
+        "\u20b9 5,381.280\n(18%)",
+        null,
+        "\u20b9 35,277.280"
+      ],
+      [
+        "2",
+        "Courier cost",
+        "996813",
+        "1",
+        "Nos",
+        "\u20b9 573.000",
+        null,
+        "\u20b9 573.000",
+        "\u20b9 103.140 (18%)",
+        null,
+        "\u20b9 676.140"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 30469.0,
+    "cgst": 2742.21,
+    "sgst": 2742.21,
+    "rounding": -0.42,
+    "grand_total": 35953.0,
+    "date": "2026-06-14",
+    "invoice_date": "14/06/2026"
+  },
+  "39": {
+    "invoice_number": "I-SS-2627-39",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      7270.5,
+      240.0
+    ],
+    "gross": [
+      8579.19,
+      283.2
+    ],
+    "tax": [
+      1308.69,
+      43.2
+    ],
+    "hsn": [
+      "85411000",
+      "996813"
+    ],
+    "quantity": [
+      19650.0,
+      1.0
+    ],
+    "unit_price": [
+      0.37,
+      240.0
+    ],
+    "uom": [
+      "Pcs",
+      "Nos"
+    ],
+    "item_codes": [
+      "R03-1XX-1025",
+      "Courier cost"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R03-1XX-1025DIOD,Gen. Purpuse\n_\nDiode,SMT,Pack:SOD80,Packing:Tap\ne/reel MPN: IN 4148,MFR::\nMIC/Vishay/Nexperia",
+        "85411000",
+        "19650",
+        "Pcs",
+        "\u20b9 0.370",
+        null,
+        "\u20b9 0.370",
+        "\u20b9 1,308.690\n(18%)",
+        null,
+        "\u20b9 8,579.190"
+      ],
+      [
+        "2",
+        "Courier cost",
+        "996813",
+        "1",
+        "Nos",
+        "\u20b9 240.000",
+        null,
+        "\u20b9 240.000",
+        "\u20b9 43.200 (18%)",
+        null,
+        "\u20b9 283.200"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 7510.5,
+    "cgst": 675.945,
+    "sgst": 675.945,
+    "rounding": -0.39,
+    "grand_total": 8862.0,
+    "date": "2026-06-14",
+    "invoice_date": "14/06/2026"
+  },
+  "40": {
+    "invoice_number": "I-SS-2627-40",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      3550.0,
+      880.0
+    ],
+    "gross": [
+      4189.0,
+      1038.4
+    ],
+    "tax": [
+      639.0,
+      158.4
+    ],
+    "hsn": [
+      "85411000",
+      "85412100"
+    ],
+    "quantity": [
+      5000.0,
+      1000.0
+    ],
+    "unit_price": [
+      0.71,
+      0.88
+    ],
+    "uom": [
+      "Pcs",
+      "Nos"
+    ],
+    "item_codes": [
+      "R03-1X2-1021",
+      "R04-030-1006"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R03-1X2-1021,DIOD,Gen. Pur.\nDiode,1Amps,SMT,Pack:DO-\n214AC,Packing:Tape/reel,MFR: MIC\n/WG ; MPN: S1M /M7",
+        "85411000",
+        "5000",
+        "Pcs",
+        "\u20b9 0.710",
+        null,
+        "\u20b9 0.710",
+        "\u20b9 639.000 (18%)",
+        null,
+        "\u20b9 4,189.000"
+      ],
+      [
+        "2",
+        "R04-030-1006,TRANS,NPN\nTransistor,150mA,50V,SMT,Pack\n:SOT23,Packing:Tape/Reel MPN:\nC1815;Mfr:Any Make",
+        "85412100",
+        "1000",
+        "Nos",
+        "\u20b9 0.880",
+        null,
+        "\u20b9 0.880",
+        "\u20b9 158.400 (18%)",
+        null,
+        "\u20b9 1,038.400"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 4430.0,
+    "cgst": 398.7,
+    "sgst": 398.7,
+    "rounding": -0.4,
+    "grand_total": 5227.0,
+    "date": "2026-06-15",
+    "invoice_date": "15/06/2026"
+  },
+  "41": {
+    "invoice_number": "I-SS-2627-41",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 2,
+    "before_gst": [
+      85200.0,
+      4375.0,
+      43500.0,
+      14630.0,
+      102000.0,
+      2350.0,
+      817.0
+    ],
+    "gross": [
+      100536.0,
+      5162.5,
+      51330.0,
+      17263.4,
+      120360.0,
+      2773.0,
+      964.06
+    ],
+    "tax": [
+      15336.0,
+      787.5,
+      7830.0,
+      2633.4,
+      18360.0,
+      423.0,
+      147.06
+    ],
+    "hsn": [
+      "85411000",
+      "85411000",
+      "85411000",
+      "85411000",
+      "85411000",
+      "85411000",
+      "996511"
+    ],
+    "quantity": [
+      120000.0,
+      8750.0,
+      25000.0,
+      3500.0,
+      10000.0,
+      5000.0,
+      1.0
+    ],
+    "unit_price": [
+      0.71,
+      0.5,
+      1.74,
+      4.18,
+      10.2,
+      0.47,
+      817.0
+    ],
+    "uom": [
+      "Pcs",
+      "Pcs",
+      "Pcs",
+      "Pcs",
+      "Pcs",
+      "Pcs",
+      "Nos"
+    ],
+    "item_codes": [
+      "R03-1X2-1021",
+      "R03-1X2-1022",
+      "R03-1X3-1023",
+      "R03-2X4-1034",
+      "R03-5d4-1055",
+      "R03-6X2-1059",
+      "Fright cost"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R03-1X2-1021,DIOD,Gen. Pur.\nDiode,1Amps,SMT,Pack:DO-\n214AC,Packing:Tape/reel,MFR: MIC\n/WG ; MPN: S1M /M7",
+        "85411000",
+        "120000",
+        "Pcs",
+        "\u20b9 0.710",
+        null,
+        "\u20b9 0.710",
+        "\u20b9 15,336.000\n(18%)",
+        null,
+        "\u20b9 1,00,536.000"
+      ],
+      [
+        "2",
+        "R03-1X2-1022DIOD,1A, Gen Purp.\n_\nDiode,SMT,Pack:DO41,Packing:Tap\ne/reel MPN: iN4007,Mfr: MIC,\nVishay ; Alternate\nmake:WILDGOOSE",
+        "85411000",
+        "8750",
+        "Pcs",
+        "\u20b9 0.500",
+        null,
+        "\u20b9 0.500",
+        "\u20b9 787.500 (18%)",
+        null,
+        "\u20b9 5,162.500"
+      ],
+      [
+        "3",
+        "R03-1X3-1023DIOD,3A, Gen.\n_\nPurp,SMT,Pack:DO201AD,Packing:\nTape/reel IN 5408,Mfr:\nMIC/VISHAY ; Alternate make:\nWILDGOOSE",
+        "85411000",
+        "25000",
+        "Pcs",
+        "\u20b9 1.740",
+        null,
+        "\u20b9 1.740",
+        "\u20b9 7,830.000 (18%)",
+        null,
+        "\u20b9 51,330.000"
+      ],
+      [
+        "4",
+        "R03-2X4-1034DIOD,4A, UF\n_\nRectifier,Pack:Case\n267,Packing:Tape/reel MPN: MUR\n460,Mfr: Diode Inc",
+        "85411000",
+        "3500",
+        "Pcs",
+        "\u20b9 4.180",
+        null,
+        "\u20b9 4.180",
+        "\u20b9 2,633.400 (18%)",
+        null,
+        "\u20b9 17,263.400"
+      ],
+      [
+        "5",
+        "R03-5d4-1055DIOD,BRIDGE RECT\n_\n1PHASE 800V 4A KBL,Pack:4-\nSIP,KBL,Packing:Tape/reel\nMPN:KBL 08 or KBL 10 ,Mfr:Vishay",
+        "85411000",
+        "10000",
+        "Pcs",
+        "\u20b9 10.200",
+        null,
+        "\u20b9 10.200",
+        "\u20b9 18,360.000\n(18%)",
+        null,
+        "\u20b9 1,20,360.000"
+      ],
+      [
+        "6",
+        "R03-6X2-1059DIOD,1A,Fast\n_\nRecovery,TH,\nPack:DO41,Packing:Tape/reel\nMPN: FR107,Mfr:MIC, Vishay;\nAlternate make: WILDGOOSE",
+        "85411000",
+        "5000",
+        "Pcs",
+        "\u20b9 0.470",
+        null,
+        "\u20b9 0.470",
+        "\u20b9 423.000 (18%)",
+        null,
+        "\u20b9 2,773.000"
+      ],
+      [
+        "7",
+        "Fright cost",
+        "996511",
+        "1",
+        "Nos",
+        "\u20b9 817.000",
+        null,
+        "\u20b9 817.000",
+        "\u20b9 147.060 (18%)",
+        null,
+        "\u20b9 964.060"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 252872.0,
+    "cgst": 22758.48,
+    "sgst": 22758.48,
+    "rounding": 0.04,
+    "grand_total": 298389.0,
+    "date": "2026-06-15",
+    "invoice_date": "15/06/2026"
+  },
+  "42": {
+    "invoice_number": "I-SS-2627-42",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      67450.0,
+      625.0,
+      16095.0,
+      4180.0,
+      817.0
+    ],
+    "gross": [
+      79591.0,
+      737.5,
+      18992.1,
+      4932.4,
+      964.06
+    ],
+    "tax": [
+      12141.0,
+      112.5,
+      2897.1,
+      752.4,
+      147.06
+    ],
+    "hsn": [
+      "85411000",
+      "85411000",
+      "85411000",
+      "85411000",
+      "996511"
+    ],
+    "quantity": [
+      95000.0,
+      1250.0,
+      9250.0,
+      1000.0,
+      1.0
+    ],
+    "unit_price": [
+      0.71,
+      0.5,
+      1.74,
+      4.18,
+      817.0
+    ],
+    "uom": [
+      "Pcs",
+      "Pcs",
+      "Pcs",
+      "Pcs",
+      "Nos"
+    ],
+    "item_codes": [
+      "R03-1X2-1021",
+      "R03-1X2-1022",
+      "R03-1X3-1023",
+      "R03-2X4-1034",
+      "Fright cost"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R03-1X2-1021DIOD,Gen. Pur.\n_\nDiode, 1Amps,SMT,Pack:DO-\n214AC, Packing:Tape/reel MPN: 1N\n4007W,Mfr: Any Make",
+        "85411000",
+        "95000",
+        "Pcs",
+        "\u20b9 0.710",
+        null,
+        "\u20b9 0.710",
+        "\u20b9 12,141.000\n(18%)",
+        "\u20b9 79,591.000"
+      ],
+      [
+        "2",
+        "R03-1X2-1022DIOD,1A, Gen Purp.\n_\nDiode,SMT,Pack:DO41,Packing:Tap\ne/reel MPN: iN4007,Mfr: MIC,\nVishay ; Alternate\nmake:WILDGOOSE",
+        "85411000",
+        "1250",
+        "Pcs",
+        "\u20b9 0.500",
+        null,
+        "\u20b9 0.500",
+        "\u20b9 112.500 (18%)",
+        "\u20b9 737.500"
+      ],
+      [
+        "3",
+        "R03-1X3-1023DIOD,3A, Gen.\n_\nPurp,SMT,Pack:DO201AD,Packing:\nTape/reel IN 5408,Mfr:\nMIC/VISHAY ; Alternate make:\nWILDGOOSE",
+        "85411000",
+        "9250",
+        "Pcs",
+        "\u20b9 1.740",
+        null,
+        "\u20b9 1.740",
+        "\u20b9 2,897.100 (18%)",
+        "\u20b9 18,992.100"
+      ],
+      [
+        "4",
+        "R03-2X4-1034DIOD,4A, UF\n_\nRectifier,Pack:Case\n267,Packing:Tape/reel MPN: MUR\n460,Mfr: Diode Inc",
+        "85411000",
+        "1000",
+        "Pcs",
+        "\u20b9 4.180",
+        null,
+        "\u20b9 4.180",
+        "\u20b9 752.400 (18%)",
+        "\u20b9 4,932.400"
+      ],
+      [
+        "5",
+        "Fright cost",
+        "996511",
+        "1",
+        "Nos",
+        "\u20b9 817.000",
+        null,
+        "\u20b9 817.000",
+        "\u20b9 147.060 (18%)",
+        "\u20b9 964.060"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 89167.0,
+    "cgst": 8025.03,
+    "sgst": 8025.03,
+    "rounding": -0.06,
+    "grand_total": 105217.0,
+    "date": "2026-06-15",
+    "invoice_date": "15/06/2026"
+  },
+  "43": {
+    "invoice_number": "I-SS-2627-43",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 2,
+    "before_gst": [
+      9600.0,
+      10200.0,
+      5520.0,
+      271775.0,
+      855540.0,
+      817.0
+    ],
+    "gross": [
+      11328.0,
+      12036.0,
+      6513.6,
+      320694.5,
+      1009537.2,
+      964.06
+    ],
+    "tax": [
+      1728.0,
+      1836.0,
+      993.6,
+      48919.5,
+      153997.2,
+      147.06
+    ],
+    "hsn": [
+      "85411000",
+      "85411000",
+      "85412100",
+      "85412900",
+      "85420000",
+      "996511"
+    ],
+    "quantity": [
+      5000.0,
+      15000.0,
+      6000.0,
+      17500.0,
+      6000.0,
+      1.0
+    ],
+    "unit_price": [
+      1.92,
+      0.68,
+      0.92,
+      15.53,
+      142.59,
+      817.0
+    ],
+    "uom": [
+      "Nos",
+      "Nos",
+      "Nos",
+      "Nos",
+      "Nos",
+      "Nos"
+    ],
+    "item_codes": [
+      "R02-468-1218",
+      "R03-4c0-1052",
+      "R04-142-1073",
+      "R04-147-1021",
+      "R06-300-1012",
+      "Fright cost"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R02-468-1218,CAP,MLCC-\n100pF,+-5%,50V,CE\nR,SMD,Pack:0805,Packing:Tape/Re\nel MFR: Walsin;\nMPN:805N101J500LT",
+        "85411000",
+        "5000",
+        "Nos",
+        "\u20b9 1.920",
+        null,
+        "\u20b9 1.920",
+        "\u20b9 1,728.000 (18%)",
+        null,
+        "\u20b9 11,328.000"
+      ],
+      [
+        "2",
+        "R03-4c0-1052 DIOD,85V, 200mA,\nSmall Signal Diode,SMT,Pack:SOT-\n23,Packin g:Tape/reel MFR:\nONSEMI ; MPN: BAW56LT1G",
+        "85411000",
+        "15000",
+        "Nos",
+        "\u20b9 0.680",
+        null,
+        "\u20b9 0.680",
+        "\u20b9 1,836.000 (18%)",
+        null,
+        "\u20b9 12,036.000"
+      ],
+      [
+        "3",
+        "R04-142-1073 TRANS,MOSFET,\n60V, 0.3A, N-\nCHL,TRENCH,SMT,Packing:T\nape/Reel\nMPN:2N7002P,215;Mfr:Nexperia",
+        "85412100",
+        "6000",
+        "Nos",
+        "\u20b9 0.920",
+        null,
+        "\u20b9 0.920",
+        "\u20b9 993.600 (18%)",
+        null,
+        "\u20b9 6,513.600"
+      ],
+      [
+        "4",
+        "R04-147-1021 TRANS,MOSFET P\nCH 60V\n10A,Pack:DPAK,SMT,Packing:Ta\npe/Reel MPN:STD10P6F6;Mfr:\nSTMicroelectronics",
+        "85412900",
+        "17500",
+        "Nos",
+        "\u20b9 15.530",
+        null,
+        "\u20b9 15.530",
+        "\u20b9 48,919.500 (18%)",
+        null,
+        "\u20b9 3,20,694.500"
+      ],
+      [
+        "5",
+        "R06-300-1012 IC MCU,32-Bit\nSingle-Core,48MHz,128KB,FLAS\nH,SMT,Pack:48-LQFP,Packing:T ray\nMPN:STM32F091CBT6;\nMFR:STMicroelectronics",
+        "85420000",
+        "6000",
+        "Nos",
+        "\u20b9 142.590",
+        null,
+        "\u20b9 142.590",
+        "\u20b9 1,53,997.200\n(18%)",
+        null,
+        "\u20b9 10,09,537.200"
+      ],
+      [
+        "6",
+        "Fright cost",
+        "996511",
+        "1",
+        "Nos",
+        "\u20b9 817.000",
+        null,
+        "\u20b9 817.000",
+        "\u20b9 147.060 (18%)",
+        null,
+        "\u20b9 964.060"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 1153452.0,
+    "cgst": 103810.68,
+    "sgst": 103810.68,
+    "rounding": -0.36,
+    "grand_total": 1361073.0,
+    "date": "2026-06-15",
+    "invoice_date": "15/06/2026"
+  },
+  "44": {
+    "invoice_number": "I-SS-2627-44",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      880.0,
+      21300.0,
+      10005.0,
+      7315.0,
+      85050.0
+    ],
+    "gross": [
+      1038.4,
+      25134.0,
+      11805.9,
+      8631.7,
+      100359.0
+    ],
+    "tax": [
+      158.4,
+      3834.0,
+      1800.9,
+      1316.7,
+      15309.0
+    ],
+    "hsn": [
+      "85412100",
+      "85411000",
+      "85411000",
+      "85411000",
+      "85411000"
+    ],
+    "quantity": [
+      1000.0,
+      30000.0,
+      5750.0,
+      1750.0,
+      2700.0
+    ],
+    "unit_price": [
+      0.88,
+      0.71,
+      1.74,
+      4.18,
+      31.5
+    ],
+    "uom": [
+      "Nos",
+      "Pcs",
+      "Pcs",
+      "Pcs",
+      "Pcs"
+    ],
+    "item_codes": [
+      "R04-030-1006",
+      "R03-1X2-1021",
+      "R03-1X3-1023",
+      "R03-2X4-1034",
+      "R03-2X9-1035"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R04-030-1006,TRANS,NPN\nTransistor,150mA,50V,SMT,Pack\n:SOT23,Packing:Tape/Reel MPN:\nC1815;Mfr:Any Make",
+        "85412100",
+        "1000",
+        "Nos",
+        "\u20b9 0.880",
+        null,
+        "\u20b9 0.880",
+        "\u20b9 158.400 (18%)",
+        null,
+        "\u20b9 1,038.400"
+      ],
+      [
+        "2",
+        "R03-1X2-1021DIOD,Gen. Pur.\n_\nDiode, 1Amps,SMT,Pack:DO-\n214AC, Packing:Tape/reel MPN: 1N\n4007W,Mfr: Any Make",
+        "85411000",
+        "30000",
+        "Pcs",
+        "\u20b9 0.710",
+        null,
+        "\u20b9 0.710",
+        "\u20b9 3,834.000 (18%)",
+        null,
+        "\u20b9 25,134.000"
+      ],
+      [
+        "3",
+        "R03-1X3-1023DIOD,3A, Gen.\n_\nPurp,SMT,Pack:DO201AD,Packing:\nTape/reel IN 5408,Mfr:\nMIC/VISHAY ; Alternate make:\nWILDGOOSE",
+        "85411000",
+        "5750",
+        "Pcs",
+        "\u20b9 1.740",
+        null,
+        "\u20b9 1.740",
+        "\u20b9 1,800.900 (18%)",
+        null,
+        "\u20b9 11,805.900"
+      ],
+      [
+        "4",
+        "R03-2X4-1034DIOD,4A, UF\n_\nRectifier,Pack:Case\n267,Packing:Tape/reel MPN: MUR\n460,Mfr: Diode Inc",
+        "85411000",
+        "1750",
+        "Pcs",
+        "\u20b9 4.180",
+        null,
+        "\u20b9 4.180",
+        "\u20b9 1,316.700 (18%)",
+        null,
+        "\u20b9 8,631.700"
+      ],
+      [
+        "5",
+        "R03-2X9-1035DIOD,30A,UF\n_\nSwitching,Pack:TO\n247,Packing:Tape/reel MPN: SR\n30100PT/ MBR\n30100PT,Mfr:Taiwan Semi / MIC",
+        "85411000",
+        "2700",
+        "Pcs",
+        "\u20b9 31.500",
+        null,
+        "\u20b9 31.500",
+        "\u20b9 15,309.000\n(18%)",
+        null,
+        "\u20b9 1,00,359.000"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 124550.0,
+    "cgst": 11209.5,
+    "sgst": 11209.5,
+    "rounding": 0.0,
+    "grand_total": 146969.0,
+    "date": "2026-06-16",
+    "invoice_date": "16/06/2026"
+  },
+  "45": {
+    "invoice_number": "I-SS-2627-45",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      22475.0
+    ],
+    "gross": [
+      26520.5
+    ],
+    "tax": [
+      4045.5
+    ],
+    "hsn": [
+      "85412900"
+    ],
+    "quantity": [
+      2500.0
+    ],
+    "unit_price": [
+      8.99
+    ],
+    "uom": [
+      "Nos"
+    ],
+    "item_codes": [
+      "R04-149-1022"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R04-149-1022 TRANS,MOSFET N-\nCH 30V\n17A,Pack:DPAK,SMT,Packing:Ta\npe/Reel MPN:STD17NF03LT4;Mfr:\nSTMicroelectronics",
+        "85412900",
+        "2500",
+        "Nos",
+        "\u20b9 8.990",
+        null,
+        "\u20b9 8.990",
+        "\u20b9 4,045.500\n(18%)",
+        null,
+        "\u20b9 26,520.500"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 22475.0,
+    "cgst": 2022.75,
+    "sgst": 2022.75,
+    "rounding": 0.5,
+    "grand_total": 26521.0,
+    "date": "2026-06-16",
+    "invoice_date": "16/06/2026"
+  },
+  "46": {
+    "invoice_number": "I-SS-2627-46",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      28875.0,
+      17250.0,
+      724.0
+    ],
+    "gross": [
+      34072.5,
+      20355.0,
+      854.32
+    ],
+    "tax": [
+      5197.5,
+      3105.0,
+      130.32
+    ],
+    "hsn": [
+      "85421000",
+      "85423100",
+      "996511"
+    ],
+    "quantity": [
+      2500.0,
+      2500.0,
+      1.0
+    ],
+    "unit_price": [
+      11.55,
+      6.9,
+      724.0
+    ],
+    "uom": [
+      "Pcs",
+      "Pcs",
+      "Nos"
+    ],
+    "item_codes": [
+      "R05-012-1001",
+      "R07-496-1015",
+      "Courier Charges"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R05-012-1001,IC,485\nDriver,SMT,Pack:SOIC\n8,Packing:Tape/Reel Sealed SPQ\n_\nwith ESD MBB",
+        "85421000",
+        "2500",
+        "Pcs",
+        "\u20b9 11.550",
+        null,
+        "\u20b9 11.550",
+        "\u20b9 5,197.500\n(18%)",
+        "\u20b9 34,072.500"
+      ],
+      [
+        "2",
+        "R07-496-1015,REGLT,1\nOutput,12V,1.5A ,Linear\nVoltage,Positive Fixed,TH,Pack:TO-\n220,Packing::Tube",
+        "85423100",
+        "2500",
+        "Pcs",
+        "\u20b9 6.900",
+        null,
+        "\u20b9 6.900",
+        "\u20b9 3,105.000\n(18%)",
+        "\u20b9 20,355.000"
+      ],
+      [
+        "3",
+        "Courier Charges",
+        "996511",
+        "1",
+        "Nos",
+        "\u20b9 724.000",
+        null,
+        "\u20b9 724.000",
+        "\u20b9 130.320 (18%)",
+        "\u20b9 854.320"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 46849.0,
+    "cgst": 4216.41,
+    "sgst": 4216.41,
+    "rounding": 0.18,
+    "grand_total": 55282.0,
+    "date": "2026-06-20",
+    "invoice_date": "20/06/2026"
+  },
+  "47": {
+    "invoice_number": "I-SS-2627-47",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      300000.0,
+      400.0
+    ],
+    "gross": [
+      300000.0,
+      400.0
+    ],
+    "tax": [
+      0.0,
+      0.0
+    ],
+    "hsn": [
+      "85420000",
+      "996511"
+    ],
+    "quantity": [
+      2500.0,
+      1.0
+    ],
+    "unit_price": [
+      120.0,
+      400.0
+    ],
+    "uom": [
+      "Pcs",
+      "Nos"
+    ],
+    "item_codes": [
+      "R07-4H9-1039",
+      "Courier Charges"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R07-4H9-1039,REGLT,step up\nvoltage regulator,O/P-3A, I/p 4v to\n40v,SMT,Pack:D2PAK,Packing::Tube,\nMake,MPN:LM2577S-ADJ/NOPB;\nMFR:Texas Instruments",
+        "85420000",
+        "27-06-2026",
+        "2500",
+        "Pcs",
+        null,
+        "\u20b9 120.000",
+        "\u20b9 120.000",
+        "\u20b9 3,00,000.000"
+      ],
+      [
+        "2",
+        "Courier Charges",
+        "996511",
+        "",
+        "1",
+        "Nos",
+        null,
+        "\u20b9 400.000",
+        "\u20b9 400.000",
+        "\u20b9 400.000"
+      ]
+    ],
+    "source_issue": "No GST amount/rate/head is printed. Amounts and total are clear; legal tax treatment unresolved. Do not invent 18% tax or equate absence with verified exemption.",
+    "subtotal": 300400.0,
+    "cgst": 0.0,
+    "sgst": 0.0,
+    "rounding": 0.0,
+    "grand_total": 300400.0,
+    "date": "2026-06-27",
+    "invoice_date": "27/06/2026"
+  },
+  "48": {
+    "invoice_number": "I-SS-2627-48",
+    "supplier_gstin": "33AEHFS3648M1ZL",
+    "buyer_gstin": "33AACCR5866L1ZZ",
+    "page_count": 1,
+    "before_gst": [
+      14175.0,
+      5225.0,
+      2500.0,
+      500.0
+    ],
+    "gross": [
+      16726.5,
+      6165.5,
+      2950.0,
+      590.0
+    ],
+    "tax": [
+      2551.5,
+      940.5,
+      450.0,
+      90.0
+    ],
+    "hsn": [
+      "85411000",
+      "85411000",
+      "85411000",
+      "996511"
+    ],
+    "quantity": [
+      450.0,
+      1250.0,
+      5000.0,
+      1.0
+    ],
+    "unit_price": [
+      31.5,
+      4.18,
+      0.5,
+      500.0
+    ],
+    "uom": [
+      "Pcs",
+      "Pcs",
+      "Pcs",
+      "Nos"
+    ],
+    "item_codes": [
+      "R03-2X9-1035",
+      "R03-2X4-1034",
+      "R03-1X2-1022",
+      "PORTER"
+    ],
+    "source_rows": [
+      [
+        "1",
+        "R03-2X9-1035DIOD,30A,UF\n_\nSwitching,Pack:TO\n247,Packing:Tape/reel MPN: SR\n30100PT/ MBR\n30100PT,Mfr:Taiwan Semi / MIC",
+        "85411000",
+        "29/06/2026",
+        "450",
+        "Pcs",
+        "\u20b9 31.500",
+        null,
+        "\u20b9 31.500",
+        null,
+        "\u20b9 2,551.500\n(18%)",
+        "\u20b9 16,726.500"
+      ],
+      [
+        "2",
+        "R03-2X4-1034DIOD,4A, UF\n_\nRectifier,Pack:Case\n267,Packing:Tape/reel MPN:\nMUR 460,Mfr: Diode Inc",
+        "85411000",
+        "29/06/2026",
+        "1250",
+        "Pcs",
+        "\u20b9 4.180",
+        null,
+        "\u20b9 4.180",
+        null,
+        "\u20b9 940.500\n(18%)",
+        "\u20b9 6,165.500"
+      ],
+      [
+        "3",
+        "R03-1X2-1022DIOD,1A, Gen\n_\nPurp.\nDiode,SMT,Pack:DO41,Packing:T\nape/reel MPN: iN4007,Mfr: MIC,\nVishay ; Alternate\nmake:WILDGOOSE",
+        "85411000",
+        "29/06/2026",
+        "5000",
+        "Pcs",
+        "\u20b9 0.500",
+        null,
+        "\u20b9 0.500",
+        null,
+        "\u20b9 450.000\n(18%)",
+        "\u20b9 2,950.000"
+      ],
+      [
+        "4",
+        "PORTER",
+        "996511",
+        "",
+        "1",
+        "Nos",
+        "\u20b9 500.000",
+        null,
+        "\u20b9 500.000",
+        null,
+        "\u20b9 90.000 (18%)",
+        "\u20b9 590.000"
+      ]
+    ],
+    "source_issue": null,
+    "subtotal": 22400.0,
+    "cgst": 2016.0,
+    "sgst": 2016.0,
+    "rounding": 0.0,
+    "grand_total": 26432.0,
+    "date": "2026-06-29",
+    "invoice_date": "29/06/2026"
+  }
+}

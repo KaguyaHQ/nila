@@ -51,6 +51,8 @@ mix test
 mix precommit
 ```
 
+For extraction evaluations, read `eval/README.md` before creating new runners or graders.
+
 ## Production access
 
 - Connect through AWS Systems Manager with `./scripts/prod-console`. Production is read-only unless the user explicitly authorizes changes.
