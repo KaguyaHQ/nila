@@ -586,6 +586,8 @@ defmodule NilaWeb.Components.Gst.Month.Sales do
               field={@register_form[:query]}
               type="search"
               label="Search sales register"
+              data-shortcut-search
+              aria-keyshortcuts="/"
               placeholder="Invoice, buyer or GSTIN"
             />
           </.form>

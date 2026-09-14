@@ -759,6 +759,8 @@ defmodule NilaWeb.Gst.UploadLive do
                   ~p"/gst/upload?client_id=#{@current_scope.current_client.id}&period=#{@internal_period}&kind=sales"
                 }
                 id="sales-bills-bring-invoices"
+                data-shortcut-upload
+                aria-keyshortcuts="u"
               >
                 <.icon name="hero-plus" class="size-4" /> Bring in invoices
               </.button>

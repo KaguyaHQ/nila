@@ -112,7 +112,13 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} workbench>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      active_client={@client}
+      sales_period={@workbench_period}
+      workbench
+    >
       <section
         :if={@selected_invoice}
         id="sales-bill-posting-review"
@@ -392,6 +398,9 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
 
                         <.button
                           id="sales-bill-edit-invoice-facts"
+                          data-shortcut-edit
+                          aria-keyshortcuts="e"
+                          title="Edit invoice details (E)"
                           type="button"
                           variant="ghost"
                           size="sm"
@@ -1259,6 +1268,8 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                 <.form
                   for={@invoice_facts_form}
                   id="sales-bill-invoice-facts-form"
+                  data-shortcut-save
+                  aria-keyshortcuts="Control+Enter Meta+Enter"
                   phx-hook=".InvoiceFactsFocus"
                   data-focus-field={@invoice_facts_focus}
                   phx-submit="save-invoice-facts"
@@ -1356,6 +1367,8 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                 <.form
                   for={@line_edit_form}
                   id="sales-bill-line-edit-form"
+                  data-shortcut-save
+                  aria-keyshortcuts="Control+Enter Meta+Enter"
                   phx-submit="save-posting-line"
                   class="space-y-block p-6"
                 >

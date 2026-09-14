@@ -1,100 +1,77 @@
-// Global ⌘K command palette.
-//
-// Open/closed is *server state* (the component's `:open` assign) — the hook pushes
-// "open"/"close" events rather than toggling a class, because a client-only class
-// toggle is reverted by LiveView's DOM patch on the next render (e.g. while typing).
-// Keyboard navigation over result rows stays client-side; rows are <.link navigate>
-// anchors, so activating one is a `.click()` that LiveView turns into SPA navigation.
-import {SelectableListController} from "./selectable_list"
+import {SelectableList} from "./selectable_list"
+
+// Local filtering follows Petal's command-palette pattern: hide items in place,
+// hide empty headings, and reapply the query after a LiveView patch. Keep Nila's
+// existing keyboard controller and native dialog as the owners of navigation.
+const matches = (text, query) => query.split(/\s+/).every(word => text.includes(word))
+const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 
 export const CommandPalette = {
   mounted() {
-    this.trigger = document.getElementById("command-palette-trigger")
-    this.open = this.isOpen()
-    this.selection = new SelectableListController(this.el, {
-      inputSelector: "[data-palette-input]",
-      listSelector: "[data-palette-list]",
-      optionSelector: "[data-palette-row]",
-      loop: true,
-    })
-    this.selection.refresh()
-
-    this.onKeydown = (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault()
-        this.pushEventTo(this.el, this.isOpen() ? "close" : "open", {})
-        return
-      }
-
-      if (!this.isOpen()) return
-
-      switch (event.key) {
-        case "Escape":
-          event.preventDefault()
-          this.pushEventTo(this.el, "close", {})
-          break
-        case "ArrowDown":
-          event.preventDefault()
-          this.selection.move(1)
-          break
-        case "ArrowUp":
-          event.preventDefault()
-          this.selection.move(-1)
-          break
-        case "Home":
-        case "PageUp":
-          event.preventDefault()
-          this.selection.first()
-          break
-        case "End":
-        case "PageDown":
-          event.preventDefault()
-          this.selection.last()
-          break
-        case "Enter":
-          if (this.selection.activate({singleFallback: true})) event.preventDefault()
-          break
-      }
+    SelectableList.mounted.call(this)
+    this.onInput = event => {
+      if (event.target === this.selection.input()) this.filter()
     }
+    // With no LiveView search event, never let Enter reload the page when
+    // there are no matches.
+    this.onSubmit = event => event.preventDefault()
+    this.el.addEventListener("input", this.onInput)
+    this.el.addEventListener("submit", this.onSubmit)
+    this.filter()
+  },
 
-    this.onTrigger = () => this.pushEventTo(this.el, "open", {})
-    this.onBackdrop = (event) => {
-      if (event.target.closest("[data-palette-backdrop]")) {
-        this.pushEventTo(this.el, "close", {})
-      }
-    }
-
-    document.addEventListener("keydown", this.onKeydown)
-    if (this.trigger) this.trigger.addEventListener("click", this.onTrigger)
-    this.el.addEventListener("click", this.onBackdrop)
+  beforeUpdate() {
+    this.savedQuery = this.selection.input()?.value || ""
+    this.savedActiveId = this.selection.activeId
   },
 
   updated() {
-    const open = this.isOpen()
+    this.selection.input().value = this.savedQuery ?? this.selection.input().value
+    this.selection.refresh()
+    this.selection.activeId = this.savedActiveId
+    this.filter()
+  },
 
-    // Focus the input only on the closed -> open transition, so we don't
-    // re-select text on every keystroke's re-render.
-    if (open && !this.open) {
-      const input = this.el.querySelector("[data-palette-input]")
-      if (input) {
-        input.focus()
-        input.select()
+  filter() {
+    const input = this.selection.input()
+    const query = input.value.trim().toLowerCase()
+    const changed = query !== this.lastQuery
+    this.lastQuery = query
+    // Satisfy the shared controller's stale-server-filter guard synchronously.
+    this.el.dataset.filterValue = input.value
+    const currentYear = this.el.dataset.currentPeriod.slice(0, 4)
+    const year = query.match(/\b(\d{4})\b/)?.[1] || currentYear
+
+    for (const item of this.selection.allOptions()) {
+      let text = item.dataset.commandSearch.toLowerCase()
+      const original = item.dataset.commandPeriod
+      let show
+      if (original) {
+        const month = original.slice(5)
+        const period = query ? `${year}-${month}` : original
+        const label = `${months[Number(month) - 1]} ${period.slice(0, 4)}`
+        item.querySelector("[data-command-label]").textContent = label
+        item.setAttribute("href", item.dataset.commandPath.replace(original, period))
+        text = `${label} ${period}`.toLowerCase()
+        show = query ? matches(text, query) : item.dataset.commandSuggested === "true"
+      } else {
+        show = matches(text, query)
       }
+      item.hidden = !show
     }
 
-    this.open = open
-    // Result rows were re-rendered — drop any stale selection.
-    this.selection.refresh()
+    const visible = this.selection.options()
+    for (const heading of this.el.querySelectorAll("[data-command-heading]")) {
+      heading.hidden = !visible.some(item => item.dataset.commandGroup === heading.dataset.commandHeading)
+    }
+    this.el.querySelector("[data-command-empty]").hidden = visible.length > 0
+    const previous = visible.find(item => item.id === this.selection.activeId)
+    this.selection.setActive(changed ? visible[0] : previous || visible[0], {scroll: false})
   },
 
   destroyed() {
-    document.removeEventListener("keydown", this.onKeydown)
-    if (this.trigger) this.trigger.removeEventListener("click", this.onTrigger)
-    this.el.removeEventListener("click", this.onBackdrop)
-    this.selection.destroy()
-  },
-
-  isOpen() {
-    return this.el.dataset.open === "true"
+    this.el.removeEventListener("input", this.onInput)
+    this.el.removeEventListener("submit", this.onSubmit)
+    SelectableList.destroyed.call(this)
   },
 }

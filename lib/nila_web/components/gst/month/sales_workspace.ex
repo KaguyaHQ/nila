@@ -170,12 +170,16 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             <div id="sales-period-primary-action">
               <.button
                 :if={@stage != :collect}
+                data-shortcut-upload
+                aria-keyshortcuts="u"
                 navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}&kind=sales"}
                 variant="soft"
                 size="sm"
               >Add invoices</.button>
               <.button
                 :if={@stage == :collect}
+                data-shortcut-upload
+                aria-keyshortcuts="u"
                 navigate={~p"/gst/upload?client_id=#{@client.id}&period=#{@period}&kind=sales"}
                 variant="primary"
                 size="sm"
@@ -484,6 +488,8 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             field={@form[:query]}
             type="search"
             label="Search sales invoices"
+            data-shortcut-search
+            aria-keyshortcuts="/"
             placeholder="Invoice, buyer or GSTIN"
           />
         </.form>

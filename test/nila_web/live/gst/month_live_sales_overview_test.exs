@@ -29,6 +29,28 @@ defmodule NilaWeb.Gst.MonthLiveSalesOverviewTest do
     %{conn: log_in_user(conn, user), org: org, client: client, user: user}
   end
 
+  test "go to supplies local search data without a server search form", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _} = live(conn, "/gst/#{client.id}/#{@period}/sales")
+    view |> element("#shell-client-switcher") |> render_hook("open", %{"palette" => "true"})
+    assert has_element?(view, "#shell-client-switcher-sheet-title", "Go to")
+    assert has_element?(view, "#shell-client-switcher-navigation[phx-hook=CommandPalette]")
+    refute has_element?(view, "#shell-client-switcher-search-form[phx-change]")
+    refute has_element?(view, "#client_switcher_query[phx-debounce]")
+
+    assert has_element?(
+             view,
+             "#go-to-destinations [data-command-search='Sales register sales bills invoices']"
+           )
+
+    assert has_element?(
+             view,
+             "#shell-client-switcher-client-#{client.id}[data-command-search='#{client.name} #{client.gstin}']"
+           )
+  end
+
   test "renders the worked sales month with issue flags", %{conn: conn, client: client} do
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
 

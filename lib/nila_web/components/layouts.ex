@@ -34,6 +34,8 @@ defmodule NilaWeb.Layouts do
   attr :current_path, :string, default: nil, doc: "drives the active sidebar highlight"
   attr :active_client, :map, default: nil, doc: "client that owns the current work surface"
 
+  attr :sales_period, :string, default: nil, doc: "month for sales pages whose URL has no period"
+
   attr :workbench, :boolean,
     default: false,
     doc: "full-page document review without the navigation rail"
@@ -47,6 +49,17 @@ defmodule NilaWeb.Layouts do
     <main id="app-shell" class="bg-canvas text-base-content h-dvh overflow-hidden">
       {render_slot(@inner_block)}
     </main>
+    <.live_component
+      :if={@current_scope && (@active_client || @current_scope.current_client)}
+      module={NilaWeb.ClientSwitcherComponent}
+      id="shell-client-switcher-component"
+      current_scope={@current_scope}
+      current_path={@current_path}
+      active_client={@active_client}
+      sales_period={@sales_period}
+      show_trigger={false}
+    />
+    <.keyboard_shortcuts :if={@current_scope} id="workspace-shortcuts" />
     <.flash_group flash={@flash} />
     """
   end
@@ -90,6 +103,7 @@ defmodule NilaWeb.Layouts do
           current_scope={@current_scope}
           current_path={@current_path}
           active_client={@active_client}
+          sales_period={@sales_period}
         />
         <nav class="gap-section mt-section flex flex-1 flex-col overflow-y-auto">
           <div class="space-y-1">
