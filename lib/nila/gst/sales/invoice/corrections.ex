@@ -321,6 +321,8 @@ defmodule Nila.Gst.Sales.Invoice.Corrections do
     Enum.reduce(events, invoice, fn event, effective ->
       Invoice.apply_correction(effective, event.field_path, event.payload["to"])
     end)
+    |> Nila.Gst.Sales.InvoiceTaxes.reset()
+    |> Nila.Gst.Sales.InvoiceTaxes.resolve()
   end
 
   defp equivalent?(%Date{} = left, right) do

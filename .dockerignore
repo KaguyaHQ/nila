@@ -21,6 +21,7 @@ tmp/
 .vscode/
 .DS_Store
 erl_crash.dump
+**/__pycache__/
 
 # Docs and local-only ops (deployed separately, not needed in the image)
 docs/

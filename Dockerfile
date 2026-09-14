@@ -10,7 +10,8 @@ ARG OTP_VERSION=29.0.3
 ARG DEBIAN_VERSION=bullseye-20260713-slim
 
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
-ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
+# Same Debian runtime, with Python >=3.10 for the pinned native PDF reader.
+ARG RUNNER_IMAGE="python:3.11-slim-bullseye@sha256:9e25f400253a5fa3191813d6a67eb801ca1e6f012b3bd2588fa6920b59e3eba6"
 
 FROM ${BUILDER_IMAGE} AS builder
 
@@ -75,6 +76,10 @@ ENV LC_ALL=en_US.UTF-8
 
 WORKDIR "/app"
 RUN chown nobody /app
+
+COPY priv/python/requirements.txt /tmp/invoice-requirements.txt
+RUN python -m pip install --no-cache-dir --only-binary=:all: -r /tmp/invoice-requirements.txt \
+    && python -c "import pymupdf; assert pymupdf.VersionBind == '1.28.2'"
 
 ENV MIX_ENV="prod"
 

@@ -12,17 +12,22 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
   """
 
   @doc "Base field definitions with named line-item objects."
-  def object_schema(kind) when kind in [:purchase, :sales] do
-    kind |> invoice_properties() |> strict_object()
+  def object_schema(kind, contract \\ :current)
+      when (kind in [:purchase, :sales] and contract == :current) or
+             (kind == :sales and contract == :semantic) do
+    kind
+    |> invoice_properties()
+    |> put_in([:line_items, :items], line_item_schema(contract))
+    |> strict_object()
   end
 
   @doc "Ordered fields used to encode and decode positional invoice rows."
-  def line_item_fields, do: Keyword.keys(line_item_properties())
+  def line_item_fields(contract \\ :current), do: Keyword.keys(line_item_properties(contract))
 
   @doc "The response schema with positional line-item arrays used by text and vision extraction."
-  def tuple_schema(kind) do
-    schema = object_schema(kind)
-    fields = line_item_fields()
+  def tuple_schema(kind, contract \\ :current) do
+    schema = object_schema(kind, contract)
+    fields = line_item_fields(contract)
 
     reverse_charge = %{
       anyOf: [%{type: "boolean"}, %{type: "null"}],
@@ -46,16 +51,30 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
     |> update_in([:required], &(&1 ++ ["reverse_charge"]))
   end
 
-  def decode_line_items(data) do
-    fields = Enum.map(line_item_fields(), &to_string/1)
+  def decode_line_items(data, contract \\ :current) do
+    fields = Enum.map(line_item_fields(contract), &to_string/1)
 
     Map.update!(data, "line_items", fn rows ->
       Enum.map(rows, fn values ->
         fields
         |> Enum.zip(values)
         |> Map.new()
+        |> accounting_line(contract)
       end)
     end)
+  end
+
+  # Translate the model interface before shared repairs and verification read it.
+  # Existing stored invoices and accounting code retain their current fields.
+  defp accounting_line(line, :current), do: line
+
+  defp accounting_line(line, :semantic) do
+    line
+    |> Map.put("printed_taxable_value", line["amount_before_gst"])
+    |> Map.put("printed_line_total", line["amount_including_gst"])
+    |> Map.put("printed_line_amount", nil)
+    |> Map.put("line_amount_tax_inclusion", "unknown")
+    |> Map.drop(["amount_before_gst", "amount_including_gst"])
   end
 
   defp invoice_properties(kind) do
@@ -185,9 +204,28 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
     }
   end
 
-  defp line_item_schema, do: line_item_properties() |> Map.new() |> strict_object()
+  defp line_item_schema(contract \\ :current),
+    do: line_item_properties(contract) |> Map.new() |> strict_object()
 
-  defp line_item_properties do
+  defp line_item_properties(:semantic) do
+    current = line_item_properties(:current)
+
+    Enum.take(current, 8) ++
+      [
+        amount_before_gst:
+          described_nullable(
+            "number",
+            "Amount for the entire item quantity after item discount and before GST; null when absent or unclear."
+          ),
+        amount_including_gst:
+          described_nullable(
+            "number",
+            "Amount for the entire item quantity after item discount and including GST; null when absent or unclear."
+          )
+      ] ++ Keyword.take(current, [:printed_tax_components, :repeat_count])
+  end
+
+  defp line_item_properties(:current) do
     [
       item_name:
         described_nullable(

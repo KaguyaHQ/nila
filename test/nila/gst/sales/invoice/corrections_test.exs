@@ -147,6 +147,53 @@ defmodule Nila.Gst.Sales.Invoice.CorrectionsTest do
     end
   end
 
+  test "saved base edits recompute footer tax allocations when corrections are replayed", ctx do
+    invoice =
+      ctx.invoice
+      |> Map.put("id", "footer-source")
+      |> Map.put("printed_tax_totals", [
+        %{"printed_label" => "CGST9 (9%)", "printed_amount" => 27},
+        %{"printed_label" => "SGST9 (9%)", "printed_amount" => 27}
+      ])
+      |> Map.put("line_items", [
+        %{"description" => "First item", "hsn_sac" => "998719", "printed_taxable_value" => 100},
+        %{"description" => "Second item", "hsn_sac" => "998719", "printed_taxable_value" => 200}
+      ])
+      |> Nila.Gst.Sales.Invoice.resolve_line_amounts()
+
+    assert Enum.map(invoice["line_items"], & &1["cgst_amount"]) == [9, 18]
+
+    {:ok, dump} =
+      Dumps.record(%{org_id: ctx.org.id, client_id: ctx.client.id}, %{
+        period: "2026-07",
+        kind: "sales",
+        status: "extracted",
+        invoices: [invoice]
+      })
+
+    assert {:ok, %{invoice: saved}} =
+             InvoiceCorrections.save(
+               ctx.org.id,
+               ctx.client.id,
+               TallyPacket.ref([dump]),
+               "footer-source",
+               %{"line_items[0].taxable_value" => "200", "line_items[1].taxable_value" => "100"},
+               ctx.user.id
+             )
+
+    [replayed] = InvoiceCorrections.apply_sources(ctx.org.id, ctx.client.id, [invoice])
+
+    for effective <- [saved, replayed] do
+      assert Enum.map(effective["line_items"], & &1["taxable_value"]) == [200, 100]
+      assert Enum.map(effective["line_items"], & &1["cgst_amount"]) == [18, 9]
+      assert Enum.map(effective["line_items"], & &1["sgst_amount"]) == [18, 9]
+      assert effective["printed_tax_totals"] == invoice["printed_tax_totals"]
+    end
+
+    assert hd(Repo.get!(Nila.Gst.Intake.Dump, dump.id).invoices)["line_items"] ==
+             invoice["line_items"]
+  end
+
   test "printed totals persist independently of invoice lines and pristine extraction", ctx do
     pristine = Repo.get!(Nila.Gst.Intake.Dump, ctx.dump.id).invoices
 

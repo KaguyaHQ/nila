@@ -740,9 +740,9 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
       |> Enum.map(fn {{rate, treatment}, lines} ->
         taxable = signed_sum_complete(lines, "taxable_value", effect)
 
-        cgst = source_tax(invoice, lines, "cgst_amount", effect, "Intrastate")
-        sgst = source_tax(invoice, lines, "sgst_amount", effect, "Intrastate")
-        igst = source_tax(invoice, lines, "igst_amount", effect, "Interstate")
+        cgst = line_source_tax(invoice, lines, "cgst_amount", effect, "Intrastate")
+        sgst = line_source_tax(invoice, lines, "sgst_amount", effect, "Intrastate")
+        igst = line_source_tax(invoice, lines, "igst_amount", effect, "Interstate")
 
         %{
           source: source(invoice),
@@ -921,6 +921,15 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
   end
 
   defp source_tax(invoice, lines, field, effect, required_treatment) do
+    head = String.replace_suffix(field, "_amount", "")
+
+    case Nila.Gst.Sales.InvoiceTaxes.printed_totals(invoice) do
+      %{^head => amount} -> effect * amount
+      _ -> line_source_tax(invoice, lines, field, effect, required_treatment)
+    end
+  end
+
+  defp line_source_tax(invoice, lines, field, effect, required_treatment) do
     required? =
       invoice["supply_type"] not in ~w(nil_rated exempt non_gst) and
         not Invoice.tax_excluded_from_total?(invoice)

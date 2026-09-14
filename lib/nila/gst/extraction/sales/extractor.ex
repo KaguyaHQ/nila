@@ -11,5 +11,8 @@ defmodule Nila.Gst.Extraction.Sales.Extractor do
   def per_call?, do: true
 
   @impl true
-  def extract(bytes, opts), do: Pipeline.extract(:sales, bytes, opts)
+  def extract(bytes, opts) do
+    defaults = Application.get_env(:nila, __MODULE__, [])
+    Pipeline.extract(:sales, bytes, Keyword.merge(defaults, opts))
+  end
 end

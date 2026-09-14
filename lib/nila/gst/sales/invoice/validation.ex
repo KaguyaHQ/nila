@@ -84,6 +84,7 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
       invoice_date_issues(invoice) ++
       missing_taxable_value_issues(invoice) ++
       missing_tax_amount_issues(invoice) ++
+      footer_tax_split_issues(invoice) ++
       arithmetic_issues(invoice) ++
       gstin_issues(invoice) ++
       verification_issues(invoice) ++
@@ -92,6 +93,21 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
       consistency_issues(invoice) ++
       lopsided_split_issues(invoice) ++
       furniture_row_issues(invoice) ++ bucket_rounding_issues(invoice)
+  end
+
+  defp footer_tax_split_issues(invoice) do
+    if Nila.Gst.Sales.InvoiceTaxes.unresolved?(InvoiceFacts.to_sales_map(invoice)) do
+      [
+        issue(
+          invoice,
+          "missing_tax_amount",
+          "Invoice taxes are known, but the item tax split needs review.",
+          ["printed_tax_totals", "line_items"]
+        )
+      ]
+    else
+      []
+    end
   end
 
   defp line_arithmetic_checks(invoice) do

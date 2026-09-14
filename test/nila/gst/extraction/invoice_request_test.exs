@@ -53,6 +53,34 @@ defmodule Nila.Gst.Extraction.InvoiceRequestTest do
     end
   end
 
+  test "semantic sales is opt-in and keeps the other invoice definitions" do
+    current = InvoiceSchema.object_schema(:sales)
+    semantic = InvoiceSchema.object_schema(:sales, :semantic)
+
+    assert Map.delete(current.properties, :line_items) ==
+             Map.delete(semantic.properties, :line_items)
+
+    assert length(InvoiceSchema.line_item_fields()) == 14
+    assert length(InvoiceSchema.line_item_fields(:semantic)) == 12
+
+    for modality <- [:text, :vision] do
+      input =
+        if modality == :text,
+          do: "Invoice text",
+          else: %{bytes: <<1>>, content_type: "image/jpeg"}
+
+      request = InvoiceRequest.build(:sales, [{1, input}], modality, :semantic)
+      assert request.schema == InvoiceSchema.tuple_schema(:sales, :semantic)
+      instruction = hd(List.last(request.messages).content).text
+      assert instruction =~ Enum.join(InvoiceSchema.line_item_fields(:semantic), ", ")
+      refute instruction =~ "line_amount_tax_inclusion"
+      refute instruction =~ "printed_line_amount"
+      assert instruction =~ "Do not calculate missing amounts."
+    end
+
+    assert_raise FunctionClauseError, fn -> InvoiceSchema.object_schema(:purchase, :semantic) end
+  end
+
   test "text requests preserve page order and text without passing images" do
     request = InvoiceRequest.build(:sales, [{3, "₹0.410"}, {4, "Terms"}], :text)
     [_instruction | pages] = List.last(request.messages).content

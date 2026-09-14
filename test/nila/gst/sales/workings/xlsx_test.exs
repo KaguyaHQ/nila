@@ -65,6 +65,51 @@ defmodule Nila.Gst.Sales.Workings.XlsxTest do
              WorkingsXlsx.build(projection, client(), "2026-07")
   end
 
+  test "mixed-rate rows use only their item taxes instead of repeating the whole footer" do
+    invoice =
+      mixed_rate_invoice()
+      |> Map.put("printed_tax_totals", [
+        %{"printed_label" => "CGST", "printed_amount" => 1_764},
+        %{"printed_label" => "SGST", "printed_amount" => 1_764}
+      ])
+
+    files = workbook_files(invoice)
+    sales = files["xl/worksheets/sheet1.xml"]
+    taxes = files["xl/worksheets/sheet2.xml"]
+    hsn = files["xl/worksheets/sheet3.xml"]
+
+    assert sales =~ ~r/<c r="H5"[^>]*><v>1764(?:\.0+)?<\/v>/
+    assert sales =~ ~r/<c r="I5"[^>]*><v>1764(?:\.0+)?<\/v>/
+
+    for {row, tax} <- [{5, 54}, {6, 1_710}], column <- ["K", "N"] do
+      assert taxes =~ ~r/<c r="#{column}#{row}"[^>]*><v>#{tax}(?:\.0+)?<\/v>/
+    end
+
+    refute hsn =~ ~r/<v>1764(?:\.0+)?<\/v>/
+  end
+
+  test "unresolved item split keeps footer taxes in Sales and marks the invoice for review" do
+    invoice =
+      mixed_rate_invoice()
+      |> Map.put("printed_tax_totals", [
+        %{"printed_label" => "CGST", "printed_amount" => 1_764},
+        %{"printed_label" => "SGST", "printed_amount" => 1_764}
+      ])
+      |> Map.update!("line_items", fn lines ->
+        Enum.map(
+          lines,
+          &Map.drop(&1, ~w(cgst_rate cgst_amount sgst_rate sgst_amount igst_rate igst_amount))
+        )
+      end)
+
+    files = workbook_files(invoice)
+    sales = files["xl/worksheets/sheet1.xml"]
+    assert sales =~ ~r/<c r="H5"[^>]*><v>1764(?:\.0+)?<\/v>/
+    assert sales =~ ~r/<c r="I5"[^>]*><v>1764(?:\.0+)?<\/v>/
+    assert sales =~ ~r/<c r="K5"[^>]*><v>26128(?:\.0+)?<\/v>/
+    assert shared_cell(files, "xl/worksheets/sheet1.xml", "O5") == "Needs review"
+  end
+
   test "keeps missing taxable and active tax evidence blank while unused heads stay zero" do
     invoice = mixed_rate_invoice()
     [first | rest] = invoice["line_items"]

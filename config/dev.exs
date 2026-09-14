@@ -1,5 +1,16 @@
 import Config
 
+# The local sales app uses the tested table input and two-amount contract.
+config :nila, Nila.Gst.Extraction.Sales.Extractor, input: :native, contract: :semantic
+
+invoice_python =
+  Path.expand("../tmp/venvs/pymupdf4llm-eval/Scripts/python.exe", __DIR__)
+
+config :nila, Nila.Gst.Extraction.NativeTables,
+  python:
+    System.get_env("NILA_INVOICE_PYTHON") ||
+      if(File.exists?(invoice_python), do: invoice_python, else: "python")
+
 # Configure your database
 config :nila, Nila.Repo,
   username: "postgres",

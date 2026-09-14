@@ -65,6 +65,13 @@ defmodule Nila.Gst.Extraction.Sales.Normalizer do
       "document" => document,
       "original_sale_category" => data["original_sale_category"]
     }
+    |> Map.merge(
+      data
+      |> Map.take(
+        ~w(printed_subtotal_before_discount printed_discount_amount printed_additional_charges printed_rounding_adjustment)
+      )
+      |> Map.new(fn {key, value} -> {key, money(value)} end)
+    )
     |> Invoice.resolve_line_amounts()
     |> InvoiceFacts.from_sales_map!()
     |> InvoiceFacts.to_sales_map()

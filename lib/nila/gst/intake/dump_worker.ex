@@ -336,6 +336,56 @@ defmodule Nila.Gst.Intake.DumpWorker do
     end
   end
 
+  # Rereads deliberately omit progressive writes and cached completed artifacts.
+  # The caller promotes the complete candidate only after checking human changes.
+  @doc false
+  def reread_sales(%Dump{kind: "sales"} = dump) do
+    with {:ok, %{pages: pages, images: images} = result} <-
+           extract_source(dump, sales_extractor(), 1) do
+      prefix = "reread_#{Ecto.UUID.generate()}_"
+
+      invoices =
+        pages
+        |> Enum.with_index(1)
+        |> Enum.map(fn {artifact, ordinal} ->
+          artifact =
+            Map.update(artifact, "image", nil, fn
+              nil -> nil
+              image -> prefix <> Path.basename(image)
+            end)
+
+          normalize_sales_invoice(dump, artifact, ordinal)
+        end)
+
+      {:ok,
+       %{
+         invoices: invoices,
+         images: Map.new(images, fn {name, bytes} -> {prefix <> Path.basename(name), bytes} end),
+         meta:
+           %{
+             "unaccounted_pages" => unaccounted_pages(result),
+             "evidence_unavailable" => evidence_unavailable?(result)
+           }
+           |> put_source_page_count(result)
+       }}
+    end
+  end
+
+  @doc false
+  def promote_sales_reread(dump, candidate) do
+    # Unique evidence names leave the old images intact even if this transaction fails.
+    store_evidence(dump, candidate.images, &SalesMonths.evidence_key/4)
+    meta = dump.meta |> Map.merge(candidate.meta) |> Map.delete("processing")
+
+    dump =
+      dump
+      |> Dump.changeset(%{invoices: candidate.invoices, meta: meta, error: nil})
+      |> Repo.update!()
+
+    derive(dump)
+    {:ok, dump}
+  end
+
   defp persist_sales_invoice(dump, artifact, ordinal, evidence) do
     invoice = normalize_sales_invoice(dump, artifact, ordinal)
 

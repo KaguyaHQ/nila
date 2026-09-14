@@ -3,6 +3,7 @@ defmodule Nila.Gst.Extraction.SourcePages do
 
   alias Nila.Gst.Extraction.Evidence
   alias Nila.Gst.Extraction.NativeText
+  alias Nila.Gst.Extraction.NativeTables
 
   @max_pages 100
   @max_thumbnail_bytes 10_000_000
@@ -17,8 +18,8 @@ defmodule Nila.Gst.Extraction.SourcePages do
     "image/webp" => "webp"
   }
 
-  # Keep vision as the default. Native text is explicitly selected for known
-  # digital sales PDFs; selectable OCR layers are not automatically trusted.
+  # Vision remains the default. :text is the explicit Poppler route; :native
+  # uses guarded tables on eligible pages and images everywhere else.
   def prepare(kind, bytes, opts) do
     input = Keyword.get(opts, :input, :vision)
 
@@ -28,12 +29,27 @@ defmodule Nila.Gst.Extraction.SourcePages do
         Keyword.get(opts, :content_type) ||
           Evidence.content_type(Keyword.get(opts, :filename, "document.pdf"))
 
-      if input == :text and content_type == "application/pdf" do
-        with {:ok, text} <- NativeText.extract(bytes, source.page_count) do
-          {:ok, Map.put(source, :native_text, text)}
-        end
-      else
-        {:ok, Map.put(source, :native_text, %{})}
+      case {input, content_type} do
+        {:text, "application/pdf"} ->
+          with {:ok, text} <- NativeText.extract(bytes, source.page_count) do
+            {:ok, Map.put(source, :native_text, text)}
+          end
+
+        {:native, "application/pdf"} ->
+          case NativeTables.extract(bytes, source.page_count) do
+            {:ok, text, reasons} ->
+              {:ok, Map.merge(source, %{native_text: text, native_fallbacks: reasons})}
+
+            {:error, reason} ->
+              {:ok,
+               Map.merge(source, %{
+                 native_text: %{},
+                 native_fallbacks: %{"document" => inspect(reason)}
+               })}
+          end
+
+        _ ->
+          {:ok, Map.put(source, :native_text, %{})}
       end
     end
   end
@@ -46,7 +62,8 @@ defmodule Nila.Gst.Extraction.SourcePages do
     %{
       "native_text" =>
         Map.new(source.native_text, fn {page, text} -> {to_string(page), text} end),
-      "text_pages" => Enum.filter(1..source.page_count, &text_page?(source, &1))
+      "text_pages" => Enum.filter(1..source.page_count, &text_page?(source, &1)),
+      "native_fallbacks" => Map.get(source, :native_fallbacks, %{})
     }
   end
 
@@ -83,6 +100,7 @@ defmodule Nila.Gst.Extraction.SourcePages do
 
   defp validate_input(_kind, :vision), do: :ok
   defp validate_input(:sales, :text), do: :ok
+  defp validate_input(:sales, :native), do: :ok
   defp validate_input(kind, input), do: {:error, {:unsupported_extraction_input, kind, input}}
 
   defp render(bytes, opts) do

@@ -297,6 +297,7 @@ defmodule Nila.Gst.Extraction.Pipeline do
         raw_response: Jason.encode!(%{"responses" => responses}),
         metadata:
           Map.merge(SourcePages.input_metadata(source), %{
+            "contract" => to_string(Keyword.get(opts, :contract, :current)),
             "segments" => encode_segments(discovery.segments),
             "invoice_inputs" =>
               Enum.map(segments, fn segment ->
@@ -345,7 +346,8 @@ defmodule Nila.Gst.Extraction.Pipeline do
   end
 
   defp extract_segment(kind, source, segment, opts) do
-    request = invoice_request(kind, segment.pages, source)
+    contract = Keyword.get(opts, :contract, :current)
+    request = invoice_request(kind, segment.pages, source, contract)
     schema = request.schema
 
     with :ok <- SourcePages.validate_segment_images(source.full, segment),
@@ -358,7 +360,7 @@ defmodule Nila.Gst.Extraction.Pipeline do
            ) do
       case OpenAICompatibleChat.decode(response, schema) do
         {:ok, data, usage} ->
-          data = data |> InvoiceSchema.decode_line_items() |> Map.put("usage", usage)
+          data = data |> InvoiceSchema.decode_line_items(contract) |> Map.put("usage", usage)
           {:ok, artifact(kind, data, segment, source, opts), response}
 
         {:error, reason} ->
@@ -379,9 +381,9 @@ defmodule Nila.Gst.Extraction.Pipeline do
     end
   end
 
-  defp invoice_request(kind, pages, source) do
+  defp invoice_request(kind, pages, source, contract) do
     {modality, inputs} = SourcePages.invoice_inputs(source, pages)
-    InvoiceRequest.build(kind, inputs, modality)
+    InvoiceRequest.build(kind, inputs, modality, contract)
   end
 
   defp artifact(kind, data, segment, source, opts) do

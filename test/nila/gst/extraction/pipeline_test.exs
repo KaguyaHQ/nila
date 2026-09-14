@@ -120,6 +120,44 @@ defmodule Nila.Gst.Extraction.PipelineTest do
     end)
   end
 
+  test "semantic amounts reach accounting before repairs for both text and image input" do
+    row = [
+      "Part",
+      nil,
+      "854110",
+      10,
+      "PCS",
+      100,
+      nil,
+      nil,
+      nil,
+      1180,
+      [%{"printed_label" => "GST", "printed_rate" => 18, "printed_amount" => 180}],
+      1
+    ]
+
+    stub([], Map.put(sales_invoice(), "line_items", [row]))
+
+    for input <- [:text, :vision] do
+      assert {:ok, result} =
+               Pipeline.extract_fixed_segments(
+                 :sales,
+                 PdfFixtures.text_pdf(["Tax Invoice INV-1 Amount 1180 GST 180"]),
+                 [[1]],
+                 input: input,
+                 contract: :semantic
+               )
+
+      assert [artifact] = result.pages
+      assert [line] = artifact["data"]["line_items"]
+      assert line["printed_line_total"] == 1180
+      assert line["printed_taxable_value"] == nil
+      assert [normalized] = Normalizer.normalize(artifact)["line_items"]
+      assert normalized["taxable_value"] == 1000
+      assert result.audit.metadata["contract"] == "semantic"
+    end
+  end
+
   test "reports completed invoices through the callback with stable segment ordinals" do
     stub(
       [

@@ -3,7 +3,9 @@ defmodule Nila.Gst.Extraction.InvoicePrompt do
   alias Nila.Gst.Extraction.InvoiceSchema
 
   @doc "The instruction block for one invoice."
-  def base(kind, modality) do
+  def base(kind, modality, contract \\ :current)
+      when (kind in [:sales, :purchase] and contract == :current) or
+             (kind == :sales and contract == :semantic) do
     """
     You are reading the #{source_name(modality)} of ONE #{kind} invoice from an Indian GST bill \
     packet. The pages below are that invoice and nothing else.
@@ -25,10 +27,7 @@ defmodule Nila.Gst.Extraction.InvoicePrompt do
     and amount into printed_tax_components. Preserve the printed label instead \
     of deciding which canonical GST field it belongs to. Never infer a tax head \
     from party or delivery addresses or accounting rules.
-    - line_amount_tax_inclusion is inferred from labels, structure or visible \
-    arithmetic. For example, a row amount plus separately printed GST equalling \
-    its gross total establishes tax-exclusive pricing. Use unknown when evidence \
-    is incomplete or conflicting. Taxable-value calculation belongs to a later step.
+    #{amount_instruction(contract)}\
     - Line and column labels describe their rows; summaries, footer captions and \
     amount-in-words labels describe invoice-level figures.
     - Populate singular invoice-level printed_total_* fields only when that \
@@ -41,6 +40,19 @@ defmodule Nila.Gst.Extraction.InvoicePrompt do
     the number of those rows. Otherwise use repeat_count 1. Never combine rows that \
     differ in any extracted field, and never combine non-consecutive rows.
     #{kind_rules(kind)}\
+    """
+  end
+
+  defp amount_instruction(:semantic) do
+    "- Understand the invoice headings and layout. Return amounts shown for each item. Do not calculate missing amounts.\n"
+  end
+
+  defp amount_instruction(:current) do
+    """
+    - line_amount_tax_inclusion is inferred from labels, structure or visible \
+    arithmetic. For example, a row amount plus separately printed GST equalling \
+    its gross total establishes tax-exclusive pricing. Use unknown when evidence \
+    is incomplete or conflicting. Taxable-value calculation belongs to a later step.
     """
   end
 
@@ -97,8 +109,8 @@ defmodule Nila.Gst.Extraction.InvoicePrompt do
     """
   end
 
-  def build(kind, pages, modality) when modality in [:text, :vision] do
-    base(kind, modality) <>
+  def build(kind, pages, modality, contract \\ :current) when modality in [:text, :vision] do
+    base(kind, modality, contract) <>
       """
 
       These are physical PDF pages #{Enum.join(pages, ", ")}, in order. #{reading_instruction(modality)}
@@ -109,16 +121,18 @@ defmodule Nila.Gst.Extraction.InvoicePrompt do
       For example, "Consulting - 998312 @ 18%" has hsn_sac "998312".
 
       Each line_items entry must be an array with exactly these fields in this exact order:
-      [#{Enum.join(InvoiceSchema.line_item_fields(), ", ")}]
+      [#{Enum.join(InvoiceSchema.line_item_fields(contract), ", ")}]
       Do not emit field names inside line_items. Preserve nulls so every row has exactly
-      #{length(InvoiceSchema.line_item_fields())} values.
+      #{length(InvoiceSchema.line_item_fields(contract))} values.
 
-      #{amount_examples()}
+      #{amount_examples(contract)}
       """
   end
 
   @doc false
-  def amount_examples do
+  def amount_examples(contract \\ :current)
+
+  def amount_examples(:current) do
     """
     Amount mapping examples. These are partial invoice outputs showing only the
     relevant fields; each item uses the complete array order above. Other fields
@@ -148,6 +162,32 @@ defmodule Nila.Gst.Extraction.InvoicePrompt do
     the printed invoice total.
     ```json
     {"line_items":[["Bolt",null,null,2,null,null,null,null,null,null,200,"unknown",[],1],["Nut",null,null,1,null,null,null,null,null,null,50,"unknown",[],1]],"printed_tax_totals":[{"printed_label":"CGST","printed_amount":22.5},{"printed_label":"SGST","printed_amount":22.5}],"printed_grand_total":295}
+    ```
+    """
+  end
+
+  def amount_examples(:semantic) do
+    """
+    Amount mapping examples. These are partial invoice outputs showing only the relevant fields; each item uses the complete array order above. Other fields still follow the schema. Values in these examples are not invoice data.
+
+    1. Item: Bolt | Qty 10 | Unit price 100 | Taxable price/unit 100 | GST 180 (18%) | Amount 1180. Footer: Taxable subtotal 1000.
+    ```json
+    {"line_items":[["Bolt",null,null,10,null,100,null,null,null,1180,[{"printed_label":"GST","printed_rate":18,"printed_amount":180}],1]],"printed_total_taxable":1000}
+    ```
+
+    2. Item: Bolt | Qty 10 | Rate 100 | Amount 1000 | GST 180 (18%) | Total 1180.
+    ```json
+    {"line_items":[["Bolt",null,null,10,null,100,null,null,1000,1180,[{"printed_label":"GST","printed_rate":18,"printed_amount":180}],1]]}
+    ```
+
+    3. Item: Bolt | Qty 10 | Amount including GST 1180. No separate item tax is printed.
+    ```json
+    {"line_items":[["Bolt",null,null,10,null,null,null,null,null,1180,[],1]]}
+    ```
+
+    4. Items: Bolt | Qty 2 | Taxable Value 200; Nut | Qty 1 | Taxable Value 50. Footer only: CGST 22.50; SGST 22.50; Invoice Total 295; Paid 100; Balance Due 195.
+    ```json
+    {"line_items":[["Bolt",null,null,2,null,null,null,null,200,null,[],1],["Nut",null,null,1,null,null,null,null,50,null,[],1]],"printed_tax_totals":[{"printed_label":"CGST","printed_amount":22.5},{"printed_label":"SGST","printed_amount":22.5}],"printed_grand_total":295}
     ```
     """
   end

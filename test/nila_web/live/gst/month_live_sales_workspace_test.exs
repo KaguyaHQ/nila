@@ -61,6 +61,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
              "header a[href='/gst/upload?client_id=#{client.id}&period=#{@period}&kind=sales']",
              "Add invoices"
            )
+
     refute has_element?(view, "#sales-period-workspace header", "overdue")
     assert has_element?(view, "#sales-period-return-b2b", "B2B")
     assert has_element?(view, "#sales-period-return-b2b", "Draft")

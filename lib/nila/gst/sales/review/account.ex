@@ -161,21 +161,22 @@ defmodule Nila.Gst.Sales.Review.Account do
     {totals, taxable_complete?} =
       Enum.reduce(invoices, {empty_totals(), true}, fn invoice, {totals, complete?} ->
         effect = Invoice.document_effect(invoice)
+        heads = Nila.Gst.Sales.InvoiceTaxes.totals(invoice)
+
+        totals =
+          totals
+          |> Map.update!(:igst, &(&1 + effect * heads["igst"]))
+          |> Map.update!(:cgst, &(&1 + effect * heads["cgst"]))
+          |> Map.update!(:sgst, &(&1 + effect * heads["sgst"]))
+          |> Map.update!(:tax, &(&1 + effect * Enum.sum(Map.values(heads))))
 
         Enum.reduce(List.wrap(invoice["line_items"]), {totals, complete?}, fn line,
                                                                               {totals, complete?} ->
           taxable = line["taxable_value"]
-          igst = effect * number(line["igst_amount"])
-          cgst = effect * number(line["cgst_amount"])
-          sgst = effect * number(line["sgst_amount"])
 
           totals =
             totals
             |> Map.update!(:taxable, &(&1 + effect * number(taxable)))
-            |> Map.update!(:igst, &(&1 + igst))
-            |> Map.update!(:cgst, &(&1 + cgst))
-            |> Map.update!(:sgst, &(&1 + sgst))
-            |> Map.update!(:tax, &(&1 + igst + cgst + sgst))
 
           {totals, complete? and is_number(taxable)}
         end)

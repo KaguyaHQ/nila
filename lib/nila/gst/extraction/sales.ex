@@ -10,10 +10,12 @@ defmodule Nila.Gst.Extraction.Sales do
   The outward mirror of `Nila.Gst.Extraction.Purchase`: the implementation is
   selected via `Application.get_env(:nila, :sales_extractor,
   Nila.Gst.Extraction.Sales.Extractor)`. The production extractor segments rendered
-  pages and reads each invoice with the configured model. `input: :text` explicitly
+  pages and reads each invoice with the configured model. Development and production select
+  `input: :native, contract: :semantic` for table input and two-amount rows.
+  `input: :text` explicitly
   selects native text for known digital PDFs, retaining vision for empty pages and
-  invoice groups with scanned continuations. The default remains `:vision` until
-  native-text intake has been validated on complete client months. Tests may override
+  invoice groups with scanned continuations. Direct pipeline calls default to `:vision`.
+  Tests may override
   the full pipeline.
 
   A successful `extract/2` returns:
@@ -54,7 +56,8 @@ defmodule Nila.Gst.Extraction.Sales do
 
   @optional_callbacks per_call?: 0
 
-  # Supported opts: :filename, :input (:vision or :text), an optional :on_progress callback receiving
+  # Supported opts: :filename, :input (:vision, :text or :native), :contract,
+  # an optional :on_progress callback receiving
   # extraction progress events, and :per_call for extractors that declare
   # `per_call?/0`.
 end

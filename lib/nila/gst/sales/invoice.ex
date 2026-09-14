@@ -10,6 +10,7 @@ defmodule Nila.Gst.Sales.Invoice do
   alias Nila.Gst.LineAmounts
   alias Nila.Gst.Money
   alias Nila.Gst.StateCodes
+  alias Nila.Gst.Sales.InvoiceTaxes
 
   @correctable_line_fields ~w(
     item_name description hsn_sac quantity uom printed_unit_price printed_line_amount
@@ -252,7 +253,7 @@ defmodule Nila.Gst.Sales.Invoice do
     end
   end
 
-  @doc "Sums extracted taxable and tax amounts without deriving or rounding them."
+  @doc "Invoice totals, retaining printed footer taxes when item taxes are unavailable."
   def extracted_totals(invoice) do
     lines = List.wrap(invoice["line_items"])
 
@@ -261,11 +262,7 @@ defmodule Nila.Gst.Sales.Invoice do
         do: Enum.sum(Enum.map(lines, & &1["taxable_value"])),
         else: nil
 
-    tax =
-      Enum.reduce(lines, 0, fn line, total ->
-        total + extracted_number(line["cgst_amount"]) + extracted_number(line["sgst_amount"]) +
-          extracted_number(line["igst_amount"])
-      end)
+    tax = invoice |> InvoiceTaxes.totals() |> Map.values() |> Enum.sum()
 
     %{taxable: taxable, tax: tax}
   end
@@ -277,16 +274,15 @@ defmodule Nila.Gst.Sales.Invoice do
     taxable = sum_required_paise(lines, "taxable_value")
 
     tax =
-      Enum.reduce(lines, 0, fn line, total ->
-        total + optional_paise(line["cgst_amount"]) + optional_paise(line["sgst_amount"]) +
-          optional_paise(line["igst_amount"])
-      end)
+      invoice |> InvoiceTaxes.totals() |> Map.values() |> Enum.map(&Money.paise/1) |> Enum.sum()
 
     %{taxable_paise: taxable, tax_paise: tax}
   end
 
   @doc "Re-resolves normalized line amounts from their preserved printed evidence."
   def resolve_line_amounts(invoice) do
+    invoice = InvoiceTaxes.reset(invoice)
+
     Map.update(invoice, "line_items", [], fn lines ->
       Enum.map(lines, fn line ->
         line = resolve_line_amount(line)
@@ -307,6 +303,7 @@ defmodule Nila.Gst.Sales.Invoice do
         end
       end)
     end)
+    |> InvoiceTaxes.resolve()
   end
 
   @doc "Re-resolves one normalized line from its preserved printed evidence."
@@ -352,7 +349,4 @@ defmodule Nila.Gst.Sales.Invoice do
       end
     end)
   end
-
-  defp optional_paise(nil), do: 0
-  defp optional_paise(value), do: Money.paise(value)
 end
