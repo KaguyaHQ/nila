@@ -7,11 +7,11 @@
 #
 ARG ELIXIR_VERSION=1.20.2
 ARG OTP_VERSION=29.0.3
-ARG DEBIAN_VERSION=bullseye-20260713-slim
+ARG DEBIAN_VERSION=bookworm-20260713-slim
 
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
-# Same Debian runtime, with Python >=3.10 for the pinned native PDF reader.
-ARG RUNNER_IMAGE="python:3.11-slim-bullseye@sha256:9e25f400253a5fa3191813d6a67eb801ca1e6f012b3bd2588fa6920b59e3eba6"
+# Match the builder's Debian family, with Python >=3.10 for native PDF tables.
+ARG RUNNER_IMAGE="python:3.11-slim-bookworm@sha256:528257d48c1da0dcecc2e725d1ae34498d60c965f1241e39cd6a85a8859bdf84"
 
 FROM ${BUILDER_IMAGE} AS builder
 
@@ -64,7 +64,7 @@ LABEL org.opencontainers.image.source="https://github.com/KaguyaHQ/nila"
 # checks against, while `pdfinfo` and `pdftoppm` serve eval and benchmark tools.
 # Without it extracted dumps cannot carry review evidence.
 RUN apt-get update -y && \
-  apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates curl \
+  apt-get install -y libstdc++6 openssl libncurses6 locales ca-certificates curl \
   poppler-utils fonts-dejavu-core fonts-noto-core fonts-noto-ui-core \
   && apt-get clean && rm -f /var/lib/apt/lists/*_*
 
