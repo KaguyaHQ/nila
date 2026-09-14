@@ -1,3 +1,4 @@
+import {TableRowNavigation} from "./hooks/table_row_navigation"
 import {KeyboardShortcuts} from "./hooks/keyboard_shortcuts"
 import {SalesRegisterPosition} from "./hooks/sales_register_position"
 import {Modal, captureModalFocus, restoreModalStack} from "./hooks/modal"
@@ -108,6 +109,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     SubmitOnEnter,
     CommandPalette,
     SelectableList,
+    TableRowNavigation,
     QuoteLineGrid,
     QuoteDraftGuard,
     WhatsAppEmbeddedSignup,

@@ -67,6 +67,7 @@ defmodule NilaWeb.Components.Input do
   attr :id, :any, default: nil
   attr :name, :any
   attr :label, :string, default: nil
+  attr :shortcut, :string, default: nil
   attr :hint, :string, default: nil, doc: "helper text shown under the field"
   attr :value, :any
 
@@ -337,14 +338,21 @@ defmodule NilaWeb.Components.Input do
     <div class="nila-field">
       <label for={@id}>
         <span :if={@label} class="nila-field-label">{@label}</span>
-        <input
-          type={@type}
-          name={@name}
-          id={@id}
-          value={normalize_value(@type, @value)}
-          class={["nila-input", @errors != [] && "nila-input-error"]}
-          {@rest}
-        />
+        <span class={[@shortcut && "group/input-shortcut relative block"]}>
+          <input
+            type={@type}
+            name={@name}
+            id={@id}
+            value={normalize_value(@type, @value)}
+            class={["nila-input", @errors != [] && "nila-input-error", @shortcut && "pr-12"]}
+            {@rest}
+          />
+          <kbd
+            :if={@shortcut}
+            aria-hidden="true"
+            class="bg-quiet border-rule rounded-field text-ink-muted text-label pointer-events-none absolute top-1/2 right-2 inline-flex h-6 min-w-6 -translate-y-1/2 items-center justify-center border px-1.5 font-sans font-medium group-focus-within/input-shortcut:invisible"
+          >{@shortcut}</kbd>
+        </span>
       </label>
       <p :if={@hint && @errors == []} class="text-ink-subtle text-ui mt-1">{@hint}</p>
       <.error :for={msg <- @errors}>{msg}</.error>

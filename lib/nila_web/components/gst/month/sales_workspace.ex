@@ -526,6 +526,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             field={@form[:query]}
             type="search"
             label="Search sales invoices"
+            shortcut="/"
             data-shortcut-search
             aria-keyshortcuts="/"
             placeholder="Invoice, buyer or GSTIN"
@@ -540,13 +541,15 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           value_name="filter"
         />
       </div>
-      <.invoice_table id="sales-period-invoices" rows={@invoice_rows} />
+      <.invoice_table id="sales-period-invoices" rows={@invoice_rows} keyboard_navigation="rows" />
     </div>
     """
   end
 
   attr :id, :string, required: true
   attr :rows, :list, required: true
+
+  attr :keyboard_navigation, :string, default: "none"
 
   defp invoice_table(assigns) do
     ~H"""
@@ -556,6 +559,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       row_id={&"#{@id}-#{&1.id}"}
       row_navigate={& &1.path}
       row_label={&"Review invoice #{&1.number}"}
+      keyboard_navigation={@keyboard_navigation}
       mode="worklist"
       min_width="min-w-[900px]"
     >

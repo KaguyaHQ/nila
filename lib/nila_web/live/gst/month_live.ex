@@ -30,7 +30,6 @@ defmodule NilaWeb.Gst.MonthLive do
     Helpers,
     Precondition,
     Purchase,
-    Sales,
     Verdict,
     SalesWorkspace,
     Workings,
@@ -234,7 +233,7 @@ defmodule NilaWeb.Gst.MonthLive do
         _uri,
         %{assigns: %{live_action: :index}} = socket
       )
-      when track in ["sales", "purchases", "gstr3b"] do
+      when track in ["purchases", "gstr3b"] do
     legacy_month_params(params, socket)
   end
 
@@ -1446,6 +1445,8 @@ defmodule NilaWeb.Gst.MonthLive do
   defp moved_work_path(%{client_id: client_id, period: period}),
     do: ~p"/gst/#{client_id}/#{period}/sales/uploads"
 
+  defp track_path(socket, :sales), do: month_base_path(socket) <> "/sales"
+
   defp track_path(socket, track),
     do: month_base_path(socket) <> "?" <> URI.encode_query(%{"track" => to_string(track)})
 
@@ -1660,84 +1661,8 @@ defmodule NilaWeb.Gst.MonthLive do
         <main id="month-evidence" class="space-y-canvas min-w-0">
           <%= case @selected_track do %>
             <% :sales -> %>
-              <%= if @sales_month do %>
-                <Sales.sales_section
-                  sales_month={@sales_month}
-                  client={@client}
-                  period={@period}
-                  invoices={@invoices}
-                  active_invoices={@active_invoices}
-                  open_issue_count={@open_issue_count}
-                  account={@sales_account}
-                  readiness={@gstr1_readiness}
-                  issues_by_invoice={@issues_by_invoice}
-                  pages_read={@sales_pages_read}
-                  visited={@visited_inums}
-                  open_folds={@open_folds}
-                  register_rows={@sales_register_rows}
-                  register_form={@sales_register_form}
-                  register_filter={@sales_register_filter}
-                  review={@sales_review}
-                  source_summary={@sales_source_summary}
-                  decisions={@sales_decisions}
-                  change={@sales_change}
-                  reviewed_invoice={@last_reviewed_inum}
-                  derived={@derived_gstr1}
-                  diff={@gstr1_diff}
-                  accepted_diffs={@accepted_diffs}
-                  rippled={@rippled}
-                  ripple_seq={@ripple_seq}
-                  expanded_nodes={@expanded_nodes}
-                >
-                  <:primary_action>
-                    <Filing.gstr1_primary_action
-                      sales_month={@sales_month}
-                      open_issue_count={@open_issue_count}
-                      reviewable={@reviewable}
-                      sales_intake_open={@sales_intake_open}
-                      can_sign_off={@can_sign_off}
-                      derived={@derived_gstr1}
-                      readiness={@gstr1_readiness}
-                      review_case_count={length(@sales_review.needs_you)}
-                    />
-                  </:primary_action>
-
-                  <:source>
-                    <Arrivals.source_record
-                      can_sign_off={@can_sign_off}
-                      id="month-sales-sources"
-                      dumps={@sales_dumps}
-                      superseded_2b_ids={@superseded_2b_ids}
-                      client={@client}
-                      period={@period}
-                      open_period={@open_period}
-                      gstr3b_signoff={@gstr3b_signoff}
-                    />
-                  </:source>
-
-                  <:actions>
-                    <Filing.gstr1_actions
-                      sales_month={@sales_month}
-                      open_issue_count={@open_issue_count}
-                      reviewable={@reviewable}
-                      sales_intake_open={@sales_intake_open}
-                      can_sign_off={@can_sign_off}
-                      derived={@derived_gstr1}
-                      readiness={@gstr1_readiness}
-                      handoff={@gstr1_handoff}
-                      tally_companies={@tally_companies}
-                    />
-                  </:actions>
-                </Sales.sales_section>
-              <% else %>
-                <Workpaper.empty_state
-                  track={:sales}
-                  client={@client}
-                  period={@period}
-                  purchase_present={not is_nil(@purchase_month)}
-                  show_action={is_nil(@verdict[:question])}
-                />
-              <% end %>
+              <%!-- Legacy sales review routes may host a review modal, but the
+                  sales page itself lives only in SalesWorkspace. --%>
             <% :purchases -> %>
               <%= if @purchase_month do %>
                 <Purchase.register

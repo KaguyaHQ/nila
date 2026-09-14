@@ -2453,6 +2453,17 @@ body:has(dialog[phx-hook="Modal"]:modal) {
   background: var(--gray-a2);
 }
 
+/* Keep the focus perimeter inside the stretched link so the scroll wrapper
+   cannot clip its sides. The fill identifies one focused row, not selection. */
+.nila-table[data-keyboard-navigation="rows"] tr:has(> :is(th, td) > a[data-table-row-link]:focus-visible) > :is(th, td) {
+  background: var(--gray-a3);
+}
+
+.nila-table[data-keyboard-navigation="rows"] a[data-table-row-link]:focus-visible {
+  outline: 1px solid var(--focus-8);
+  outline-offset: -1px;
+}
+
 .nila-table tbody th {
   font-weight: inherit;
 }

@@ -3,7 +3,6 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
 
   import Phoenix.LiveViewTest
   import Nila.GstFixtures
-  import NilaWeb.Gst.MonthLiveSalesHelpers, only: [confirm_all_open_issues: 1]
 
   alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Clients
@@ -28,10 +27,11 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
 
   test "the sales workspace offers reviewed outputs without a separate approval step", %{
     conn: conn,
-    client: client
+    client: client,
+    user: user
   } do
-    {:ok, review_view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-    confirm_all_open_issues(review_view)
+    {:ok, _review_view, _html} = live(conn, "/gst/#{client.id}/#{@period}/sales")
+    ready!(client, user)
 
     {:ok, workspace, _html} = live(conn, ~p"/gst/#{client.id}/#{@period}/sales")
 
@@ -161,20 +161,8 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
 
     answer_sales_issues!(month, user.id)
 
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=sales")
-    assert has_element?(view, "#gstr1-primary-handoff")
-
-    assert has_element?(view, "#gstr1-handoff-manifest", "2 B2B workbook rows")
-    assert has_element?(view, "#gstr1-handoff-manifest", "From 1 B2B invoice")
-
-    assert has_element?(
-             view,
-             "#gstr1-handoff-manifest",
-             "1 supported document omitted from this B2B workbook version · B2CS 1"
-           )
-
-    assert has_element?(view, "#gstr1-handoff-manifest", "1 duplicate copy")
-    assert has_element?(view, "#gstr1-handoff-manifest", "₹1,500.00 taxable · ₹140.00 tax")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}/sales")
+    assert has_element?(view, "#sales-period-handoff-winman")
 
     {:ok, reviewed_month} = Months.get_by_period(org.id, client.id, period)
     projection = Resolutions.effective_workings(reviewed_month)
@@ -203,133 +191,16 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     assert_in_delta manifest.output_tax, 140, 0.001
   end
 
-  test "historical filed-return differences remain attributed and lock only after filing",
-       %{conn: conn, org: org, client: client, user: user} do
-    alias Nila.Gst.Sales.Months, as: SalesMonths
-    alias Nila.Gst.Sales.Review.Resolutions, as: SalesResolutions
-
-    # No filed return, no comparison — live months are untouched.
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-    refute has_element?(view, "#gstr1-filed-comparison")
-
-    # The filed return is the derived one with invoice 21's taxable moved:
-    # exactly one field disagrees, and ours is right.
-    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
-
-    filed =
-      update_in(month.derived_gstr1, ["b2b"], fn parties ->
-        Enum.map(parties, fn party ->
-          update_in(party, ["inv"], fn invs ->
-            Enum.map(invs, fn
-              %{"inum" => "21/2025-26"} = inv ->
-                put_in(inv, ["itms", Access.at(0), "itm_det", "txval"], 13_000.0)
-
-              inv ->
-                inv
-            end)
-          end)
-        end)
-      end)
-
-    {:ok, _} =
-      SalesMonths.upsert(%{
-        org_id: org.id,
-        client_id: client.id,
-        period: @period,
-        filed_gstr1: filed
-      })
-
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-
-    # Differences live in one historical block; agreements stay silent.
-    assert view |> element("#gstr1-filed-comparison") |> render() =~ "1 differ"
-    assert length(String.split(render(view), ~s(phx-click="accept_difference"))) == 2
-
-    target = "invoice_item|33AABCP9487A1ZG|21/2025-26|18|txval"
-
-    row =
-      view
-      |> element("#gstr1-filed-comparison button[phx-value-target='#{target}']")
-      |> render()
-
-    assert row =~ "Ours is right"
-    refute has_element?(view, "#gstr1-workings-b2b button[phx-value-target='#{target}']")
-
-    body = render(view)
-    assert body =~ "ours 12,000.00"
-    assert body =~ "filed 13,000.00"
-
-    # The difference decision records who accepted it.
-    view |> element("button[phx-click='accept_difference']") |> render_click()
-
-    assert render(view) =~ "Accepted — ours is right"
-
-    accepted = Enum.filter(SalesResolutions.list(month.id), &(&1.verb == "accept_difference"))
-    assert [%{target: ^target, decided_by_id: decided_by}] = accepted
-    assert decided_by == user.id
-
-    # Undo returns the difference to open.
-    view |> element("button[phx-click='undo'][phx-value-target='#{target}']") |> render_click()
-    assert has_element?(view, "button[phx-click='accept_difference']")
-
-    view |> element("button[phx-click='accept_difference']") |> render_click()
-
-    # An actually filed month keeps the comparison and prevents changes.
-    confirm_all_open_issues(view)
-
-    assert {:ok, _filed} =
-             Nila.Gst.Filing.Signoffs.mark_filed_gstr1(month, Nila.Accounts.Scope.for_user(user))
-
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-
-    assert has_element?(view, "#gstr1-diff-summary")
-    assert render(view) =~ "Accepted — ours is right"
-    refute has_element?(view, "button[phx-click='accept_difference']")
-    refute has_element?(view, "button[phx-click='undo'][phx-value-target='#{target}']")
-  end
-
-  test "document-series differences survive without a documents-issued table", %{
+  test "ready sales files need no approval and remain editable", %{
     conn: conn,
-    org: org,
-    client: client
+    client: client,
+    user: user
   } do
-    alias Nila.Gst.Sales.Months, as: SalesMonths
-
-    {:ok, month} = SalesMonths.get_by_period(org.id, client.id, @period)
-
-    filed =
-      put_in(
-        month.derived_gstr1,
-        ["doc_issue", "doc_det", Access.at(0), "docs", Access.at(0), "cancel"],
-        1
-      )
-
-    {:ok, _} =
-      SalesMonths.upsert(%{
-        org_id: org.id,
-        client_id: client.id,
-        period: @period,
-        filed_gstr1: filed
-      })
-
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-
-    assert has_element?(
-             view,
-             "#gstr1-filed-comparison",
-             "Invoice series · Cancelled: ours 0 · filed 1"
-           )
-
-    refute has_element?(view, "#gstr1-workings-docs")
-  end
-
-  test "ready sales files need no approval and remain editable", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-    confirm_all_open_issues(view)
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-    assert has_element?(view, "#gstr1-overview[data-state='ready']")
-    assert has_element?(view, "#gstr1-primary-handoff", "Download working Excel")
-    assert has_element?(view, "#gstr1-guide-download-json[download]")
+    ready!(client, user)
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/sales")
+    assert has_element?(view, "#sales-period-primary-download")
+    assert has_element?(view, "#sales-period-primary-download", "Download GST working")
+    assert has_element?(view, "#sales-period-handoff-download-json")
     refute has_element?(view, "#month-door-sign-r1")
     refute has_element?(view, "#gstr1-reopen-signoff")
     refute has_element?(view, "#month-exit-gstr1", "Approved by")
@@ -343,15 +214,13 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     {:ok, _} = Nila.Orgs.add_user(org, member.id, "member")
     conn = log_in_user(build_conn(), member)
 
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
-
-    confirm_all_open_issues(view)
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=sales")
+    ready!(client, member)
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/sales")
 
     refute has_element?(view, "#month-door-sign-r1")
-    assert has_element?(view, "#gstr1-overview[data-state='ready']")
-    assert has_element?(view, "#gstr1-filing-status", "Working files ready")
-    assert has_element?(view, "#month-exit-gstr1", "Download the working files for review")
+    assert has_element?(view, "#sales-period-primary-download")
+    assert has_element?(view, "#sales-period-status", "Your GST working is available")
+    assert has_element?(view, "#sales-period-handoff-download-json", "Download")
   end
 
   test "downloads the portal-shaped GSTR-1 JSON", %{conn: conn, client: client} do
@@ -369,11 +238,16 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     conn = log_in_user(build_conn(), other_user)
 
     assert {:error, {:live_redirect, %{to: "/today"}}} =
-             live(conn, "/gst/#{client.id}/#{@period}?track=sales")
+             live(conn, "/gst/#{client.id}/#{@period}/sales")
 
     conn =
       get(build_conn() |> log_in_user(other_user), ~p"/gstr1/#{client.id}/#{@period}/return.json")
 
     assert response(conn, 404)
+  end
+
+  defp ready!(client, user) do
+    {:ok, month} = Nila.Gst.Sales.Months.get_by_period(client.org_id, client.id, @period)
+    answer_sales_issues!(month, user.id)
   end
 end

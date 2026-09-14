@@ -389,6 +389,38 @@ defmodule NilaWeb.CoreComponentsTest do
     assert LazyHTML.attribute(selected, "aria-current") == ["page"]
   end
 
+  test "row navigation is opt-in and keeps native table and link semantics" do
+    assigns = %{rows: [%{id: 1}]}
+
+    html =
+      rendered_to_string(~H"""
+      <div>
+        <.data_table id="plain" rows={@rows} mode="worklist" row_navigate={fn _ -> "/clients" end}>
+          <:col :let={row} label="Client" row_header>{row.id}</:col>
+        </.data_table>
+        <.data_table
+          id="navigable"
+          rows={@rows}
+          mode="worklist"
+          row_navigate={fn _ -> "/clients" end}
+          keyboard_navigation="rows"
+        >
+          <:col :let={row} label="Client" row_header>{row.id}</:col>
+        </.data_table>
+      </div>
+      """)
+      |> LazyHTML.from_fragment()
+
+    table = LazyHTML.query(html, "#navigable-keyboard")
+    assert LazyHTML.attribute(table, "phx-hook") == ["TableRowNavigation"]
+    assert LazyHTML.attribute(table, "role") == []
+    assert LazyHTML.attribute(LazyHTML.query(html, "#plain-keyboard"), "phx-hook") == []
+
+    assert LazyHTML.attribute(LazyHTML.query(table, "a[data-table-row-link]"), "href") == [
+             "/clients"
+           ]
+  end
+
   test "table modes own geometry and require a semantic row header" do
     assigns = %{rows: [%{invoice: "INV-1", status: "Reviewed"}]}
 

@@ -70,6 +70,11 @@ defmodule NilaWeb.Components.Table do
     default: nil,
     doc: "fn item -> path; makes the row a real link. Prefer over row_click for navigation"
 
+  attr :keyboard_navigation, :string,
+    default: "none",
+    values: ~w(none rows),
+    doc: "opt-in Up/Down focus movement between primary row links; retains native table semantics"
+
   attr :row_label, :any,
     default: nil,
     doc: "fn item -> the row link's accessible name, e.g. fn c -> \"Open \#{c.name}\" end"
@@ -155,8 +160,11 @@ defmodule NilaWeb.Components.Table do
         </div>
         <table
           :if={!@is_empty?}
+          id={@keyboard_navigation == "rows" && "#{@id}-keyboard"}
+          phx-hook={@keyboard_navigation == "rows" && "TableRowNavigation"}
           class={["nila-table", @min_width]}
           data-mode={@mode}
+          data-keyboard-navigation={@keyboard_navigation == "rows" && "rows"}
         >
           <thead class={[
             "text-ink-subtle text-label",
@@ -298,6 +306,7 @@ defmodule NilaWeb.Components.Table do
     <.link
       :if={@index == 0 && @href}
       navigate={@href}
+      data-table-row-link
       class="absolute inset-0 z-0"
     >
       <span class="sr-only">{@link_label}</span>

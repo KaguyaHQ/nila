@@ -51,7 +51,7 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
 
     assert has_element?(view, "#month-page")
     assert has_element?(view, "#month-workpaper-tab-sales[aria-current='page']")
-    assert has_element?(view, "#month-sales")
+    refute has_element?(view, "#month-sales")
     refute has_element?(view, "#month-register")
     assert has_element?(view, "#sales-review")
     assert has_element?(view, "#gstr1-evidence-modal")
@@ -61,7 +61,7 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     assert view.pid == month_pid
 
     view |> element("#sales-review button[phx-click='done']") |> render_click()
-    assert_patch(view, "/gst/#{context.client.id}/#{@period}?track=sales")
+    assert_patch(view, "/gst/#{context.client.id}/#{@period}/sales")
 
     assert {:error, {:live_redirect, %{to: legacy_target}}} =
              live(context.conn, ~p"/gst/#{context.client.id}/#{@period}?invoice=20%2F2025-26")
@@ -344,16 +344,6 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     refute has_element?(filed, "#sales-review-component button[phx-click='start_correct']")
     refute has_element?(filed, "#gstr1-save-tally-posting")
     assert has_element?(filed, "#tally_posting_party_ledger_identity[disabled]")
-  end
-
-  test "month issue actions remain outside the invoice surface", context do
-    {:ok, month_view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=sales")
-
-    assert has_element?(month_view, "#gstr1-review-required[data-phx-link='patch']")
-    refute has_element?(month_view, "#gstr1-evidence-modal")
-    refute has_element?(month_view, "#month-page button[phx-click='resolve-invoice-issue']")
-    assert has_element?(month_view, "#gstr1-checks-before-filing")
   end
 
   defp review_month!(context) do

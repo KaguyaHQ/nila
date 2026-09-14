@@ -394,11 +394,8 @@ defmodule NilaWeb.Components.Gst.Review.SalesLive do
 
   defp locked_message(_socket), do: "Filed returns require an amendment."
 
-  # Current sales workspaces always pass an explicit `return_to`. Keep the old
-  # fallback while the frozen month UI remains available for legacy tests and
-  # purchase/3B work; it is not linked from the product navigation.
   defp month_path(socket),
-    do: "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}?track=sales"
+    do: "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}/sales"
 
   defp review_path(socket, item, scope) do
     params =

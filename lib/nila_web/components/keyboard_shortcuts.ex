@@ -38,6 +38,7 @@ defmodule NilaWeb.Components.KeyboardShortcuts do
             <dl class="space-y-related text-ui">
               <.shortcut label="Go to…" keys={["Ctrl", "K"]} />
               <.shortcut label="Search list" keys={["/"]} />
+              <.shortcut label="Move through register" keys={["↑", "↓"]} paired />
               <.shortcut label="Bring in invoices" keys={["U"]} />
               <.shortcut label="Previous / next month" keys={["[", "]"]} paired />
             </dl>
