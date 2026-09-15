@@ -136,7 +136,12 @@ defmodule NilaWeb.Gstr1Controller do
          {:ok, workbook} <-
            WorkingsXlsx.build(projection, client, period,
              status: workbook_status(sales_month),
-             resolutions: resolutions
+             resolutions: resolutions,
+             invoice_urls:
+               Map.new(projection.active_invoices, fn invoice ->
+                 path = ~p"/gst/#{client.id}/#{period}/sales/invoices/#{invoice["id"]}"
+                 {invoice["id"], NilaWeb.Endpoint.url() <> path}
+               end)
            ) do
       name =
         client.name

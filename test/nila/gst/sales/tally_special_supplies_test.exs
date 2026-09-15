@@ -142,7 +142,7 @@ defmodule Nila.Gst.Sales.TallySpecialSuppliesTest do
       )
       |> List.flatten()
 
-    sheet = files["xl/worksheets/sheet2.xml"]
+    sheet = files["xl/worksheets/sheet5.xml"]
     assert Enum.sum(for row <- 5..10, do: cell_number(sheet, "J#{row}")) == 210_000
 
     assert Enum.sum(
@@ -154,14 +154,14 @@ defmodule Nila.Gst.Sales.TallySpecialSuppliesTest do
 
     refute "Filing taxable" in strings
 
-    sales = files["xl/worksheets/sheet1.xml"]
+    sales = files["xl/worksheets/sheet3.xml"]
     assert Enum.sum(for row <- 5..10, do: cell_number(sales, "K#{row}")) == 224_400
 
     for label <- ["B2B RCM", "SEZ - IGST", "SEZ - LUT/bond", "Export - IGST", "Export - LUT/bond"] do
       assert label in strings
     end
 
-    hsn = files["xl/worksheets/sheet3.xml"]
+    hsn = files["xl/worksheets/sheet4.xml"]
 
     for row <- [8, 10] do
       assert Enum.at(strings, trunc(cell_number(hsn, "G#{row}"))) == "LUT/bond"
