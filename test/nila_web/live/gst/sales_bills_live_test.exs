@@ -381,7 +381,12 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     |> render_submit()
 
     refute has_element?(view, "#sales-bill-invoice-facts-sheet")
-    assert has_element?(view, "#invoice-workbench-gst-status", "No open GST checks")
+
+    assert has_element?(
+             view,
+             "#invoice-workbench-gst-status[data-open-issues='0']"
+           )
+
     refute has_element?(view, "#invoice-totals-comparison", "Difference")
     assert has_element?(view, "#invoice-total-match-total", "Matches")
 
@@ -468,6 +473,10 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     path = "/sales-bills/#{ctx.client.id}/batch/#{dump.id}?item=INV-001"
     {:ok, view, _} = open_sales_view(ctx.conn, path)
     assert has_element?(view, "#invoice-workbench-gst", "outside the 2026-07 working")
+    assert has_element?(view, "#invoice-checks[open]")
+    refute has_element?(view, "#invoice-passed-checks[open]")
+    view |> element("#invoice-passed-checks > summary") |> render_click()
+    assert has_element?(view, "#invoice-passed-checks[open]")
     refute has_element?(view, "#invoice-workbench-confirm-0")
     assert has_element?(view, "#invoice-workbench-exclude-period-mismatch")
     refute has_element?(view, "#sales-bills-download-gstr1")
@@ -477,7 +486,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
       assert response.status == 422
     end
 
-    view |> element("#sales-bill-edit-invoice-facts") |> render_click()
+    view |> element("#invoice-workbench-correct-0") |> render_click()
 
     view
     |> form("#sales-bill-invoice-facts-form")
@@ -528,8 +537,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(
              view,
-             "#invoice-workbench-footer #invoice-workbench-gst-status",
-             "No open GST checks"
+             "#invoice-workbench-footer #invoice-workbench-gst-status[data-open-issues='0']"
            )
 
     refute has_element?(view, "#invoice-workbench-gst")
@@ -555,8 +563,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
 
     assert has_element?(
              view,
-             "#invoice-workbench-footer #invoice-workbench-gst-status",
-             "No open GST checks"
+             "#invoice-workbench-footer #invoice-workbench-gst-status[data-open-issues='0']"
            )
 
     refute has_element?(view, "#invoice-workbench-gst")
@@ -682,7 +689,11 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     {:ok, view, _} = open_sales_view(context.conn, path)
     assert has_element?(view, "#invoice-workbench-confirm-0")
     view |> element("#invoice-workbench-confirm-0") |> render_click()
-    assert has_element?(view, "#invoice-workbench-gst-status", "No open GST checks")
+
+    assert has_element?(
+             view,
+             "#invoice-workbench-gst-status[data-open-issues='0']"
+           )
 
     assert has_element?(
              view,
@@ -857,7 +868,11 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     view |> element("#sales-bill-posting-next") |> render_click()
     assert has_element?(view, "#sales-bill-posting-position", "2 of 2")
     view |> element("#sales-bill-posting-back") |> render_click()
-    assert_redirect(view, return_to)
+    {destination, _flash} = assert_redirect(view)
+    actual = URI.parse(destination)
+    expected = URI.parse(return_to)
+    assert actual.path == expected.path
+    assert URI.decode_query(actual.query) == URI.decode_query(expected.query)
   end
 
   test "serves workbench evidence from its dump without requiring a filing month", %{

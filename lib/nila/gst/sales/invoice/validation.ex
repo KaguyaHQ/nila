@@ -96,6 +96,194 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
       furniture_row_issues(invoice) ++ bucket_rounding_issues(invoice)
   end
 
+  @doc "Explicit non-arithmetic outcomes. Missing evidence never becomes a pass."
+  def outcomes(raw) do
+    invoice = InvoiceFacts.sales!(raw)
+    lines? = invoice.lines != []
+    values? = sales_invoice_has_values?(invoice)
+    registration = Invoice.recipient_registration(invoice)
+    seller = party_gstin(invoice.issuer)
+    buyer = party_gstin(invoice.recipient)
+    tax_present? = positive_tax_heads(invoice) != []
+    identity = invoice.evidence["seller_identity"] || %{}
+
+    b2c_goods? =
+      registration == "unregistered" and
+        Invoice.document_type(invoice) == "invoice" and
+        Invoice.document_status(invoice) == "active" and
+        Invoice.supply_type(invoice) == "taxable" and
+        Enum.any?(invoice.lines, fn line ->
+          code = hsn_code(line.hsn_sac)
+          is_binary(code) and code != "" and not String.starts_with?(code, "99")
+        end)
+
+    [
+      outcome(
+        "document_type",
+        "Document type passed consistency checks",
+        "Supported document type with no conflict in the captured heading markers.",
+        document_type_issues(invoice),
+        :ran
+      ),
+      outcome(
+        "classification",
+        "Filing details passed basic checks",
+        "Registration, supply type, document status and place of supply checked for missing or conflicting details.",
+        filing_classification_issues(invoice),
+        :ran
+      ),
+      outcome(
+        "invoice_number",
+        "Invoice number passed basic checks",
+        "Present and does not look like a phone number or date.",
+        invoice_number_issues(invoice),
+        if(values?, do: :ran, else: :not_applicable)
+      ),
+      outcome(
+        "invoice_date",
+        "Invoice date is readable",
+        "The captured date can be read as a calendar date; filing period is checked separately.",
+        invoice_date_issues(invoice),
+        if(values?, do: :ran, else: :not_applicable)
+      ),
+      outcome(
+        "taxable_values",
+        "Line taxable values are available",
+        "Every captured line has a taxable value.",
+        missing_taxable_value_issues(invoice),
+        if(lines?, do: :ran, else: :not_checked)
+      ),
+      outcome(
+        "tax_amounts",
+        "Required line tax amounts are available",
+        "Tax amounts are present for the captured tax rates.",
+        missing_tax_amount_issues(invoice),
+        cond do
+          Invoice.tax_excluded_from_total?(invoice) or
+              Invoice.supply_type(invoice) in ~w(nil_rated exempt non_gst) ->
+            :not_applicable
+
+          not lines? ->
+            :not_checked
+
+          lopsided_split_issues(invoice) != [] ->
+            :not_checked
+
+          true ->
+            :ran
+        end
+      ),
+      outcome(
+        "footer_tax_split",
+        "Invoice taxes are allocated to lines",
+        "No unresolved allocation of captured invoice taxes remains.",
+        footer_tax_split_issues(invoice),
+        if(lines? and tax_present?, do: :ran, else: :not_applicable)
+      ),
+      outcome(
+        "seller_gstin",
+        "Seller GSTIN checksum passed",
+        "Checks the captured number, not its live GST registration status.",
+        Enum.filter(gstin_issues(invoice), &("seller_gstin" in &1["fields"])),
+        :ran
+      ),
+      outcome(
+        "buyer_gstin",
+        "Buyer GSTIN checksum passed",
+        "Checks the captured number, not its live GST registration status.",
+        Enum.filter(gstin_issues(invoice), &("buyer_gstin" in &1["fields"])),
+        cond do
+          not is_nil(buyer) -> :ran
+          registration == "unregistered" -> :not_applicable
+          true -> :not_checked
+        end
+      ),
+      outcome(
+        "seller_identity",
+        "Seller matches the selected client",
+        "Seller identity evidence matches the client GSTIN.",
+        seller_identity_issues(invoice),
+        if(identity["status"] == "matched" and valid_gstin?(identity["client_gstin"]),
+          do: :ran,
+          else: :not_checked
+        )
+      ),
+      outcome(
+        "source_evidence",
+        "Source evidence",
+        "No explicit successful source-verification result is available.",
+        verification_issues(invoice),
+        :not_checked
+      ),
+      outcome(
+        "b2c_units",
+        "B2C goods have units",
+        "Captured goods lines have a unit of measurement.",
+        b2c_hsn_issues(invoice),
+        if(b2c_goods?, do: :ran, else: :not_applicable)
+      ),
+      outcome(
+        "mixed_heads",
+        "Tax heads are not mixed",
+        "The invoice does not combine IGST with CGST/SGST.",
+        mixed_head_issues(invoice),
+        if(tax_present?, do: :ran, else: :not_applicable)
+      ),
+      outcome(
+        "tax_place",
+        "Tax heads agree with place of supply",
+        "Compared captured tax heads with seller state and place of supply; this does not verify the legal tax rate.",
+        consistency_issues(invoice),
+        cond do
+          not tax_present? ->
+            :not_applicable
+
+          not valid_gstin?(seller) or is_nil(StateCodes.name_for(invoice.place_of_supply)) ->
+            :not_checked
+
+          mixed_head_issues(invoice) != [] ->
+            :not_checked
+
+          true ->
+            :ran
+        end
+      ),
+      outcome(
+        "split_heads",
+        "Neither split-tax amount is missing",
+        "No line has only one of CGST and SGST captured.",
+        lopsided_split_issues(invoice),
+        if(split_tax(invoice) > 0, do: :ran, else: :not_applicable)
+      ),
+      outcome(
+        "line_structure",
+        "Item rows passed heading and subtotal checks",
+        "Checked captured descriptions for heading and subtotal patterns carrying values.",
+        furniture_row_issues(invoice),
+        if(
+          lines? and
+            Enum.all?(
+              invoice.lines,
+              &(is_binary(&1.description) and String.trim(&1.description) != "")
+            ),
+          do: :ran,
+          else: :not_checked
+        )
+      )
+    ]
+  end
+
+  defp outcome(id, label, detail, issues, execution) do
+    status =
+      cond do
+        issues != [] -> :failed
+        execution == :ran -> :passed
+        true -> execution
+      end
+
+    %{id: id, label: label, detail: detail, status: status, issues: issues}
+  end
+
   defp seller_identity_issues(invoice) do
     case invoice.evidence["seller_identity"] do
       %{"status" => status, "client_gstin" => client, "observed_gstin" => observed}

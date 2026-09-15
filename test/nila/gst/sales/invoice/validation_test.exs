@@ -242,6 +242,82 @@ defmodule Nila.Gst.Sales.Invoice.ValidationTest do
     assert item["iamt"] == 0
   end
 
+  test "missing evidence and inapplicable rules do not become successful outcomes" do
+    outcomes = Nila.Gst.Sales.Invoice.Readiness.outcomes(invoice(%{})) |> Map.new(&{&1.id, &1})
+    assert outcomes["seller_gstin"].status == :passed
+    assert outcomes["seller_identity"].status == :not_checked
+    assert outcomes["source_evidence"].status == :not_checked
+    assert outcomes["b2c_units"].status == :not_applicable
+    assert outcomes["duplicate_number"].status == :not_checked
+    assert outcomes["hsn_directory"].status == :failed
+
+    unannotated = invoice(%{}, %{"hsn_sac" => "998719"})
+
+    assert Enum.find(
+             Nila.Gst.Sales.Invoice.Readiness.outcomes(unannotated),
+             &(&1.id == "hsn_directory")
+           ).status == :not_checked
+  end
+
+  test "explicit outcomes report failed GSTIN and do not claim inferred place was checked" do
+    outcomes =
+      InvoiceValidation.outcomes(invoice(%{"seller_gstin" => "BAD", "place_of_supply" => nil}))
+      |> Map.new(&{&1.id, &1})
+
+    assert outcomes["seller_gstin"].status == :failed
+    assert outcomes["tax_place"].status == :not_checked
+    assert [%{"code" => "invalid_gstin"}] = outcomes["seller_gstin"].issues
+  end
+
+  test "HSN directory success and batch duplicate checks require their actual inputs" do
+    bill = invoice(%{}, %{"hsn_sac" => "998719", "hsn_validation" => %{"status" => "valid"}})
+    other = bill |> Map.put("id", "source-2")
+
+    outcomes =
+      Nila.Gst.Sales.Invoice.Readiness.outcomes(bill, [bill, other]) |> Map.new(&{&1.id, &1})
+
+    assert outcomes["hsn_directory"].status == :passed
+    assert outcomes["duplicate_number"].status == :failed
+    unique = Nila.Gst.Sales.Invoice.Readiness.outcomes(bill, [bill]) |> Map.new(&{&1.id, &1})
+    assert unique["duplicate_number"].status == :passed
+  end
+
+  test "a corrected invoice number is compared with the current batch" do
+    bill = invoice(%{})
+    other = invoice(%{"id" => "source-2", "invoice_number" => "INV-2"})
+    corrected = Map.put(bill, "invoice_number", "INV-2")
+
+    outcome =
+      Nila.Gst.Sales.Invoice.Readiness.outcomes(corrected, [bill, other])
+      |> Enum.find(&(&1.id == "duplicate_number"))
+
+    assert outcome.status == :failed
+  end
+
+  test "unknown place of supply cannot receive a tax-head consistency pass" do
+    outcome =
+      InvoiceValidation.outcomes(invoice(%{"place_of_supply" => "XX"}))
+      |> Enum.find(&(&1.id == "tax_place"))
+
+    assert outcome.status == :not_checked
+  end
+
+  test "a missing split tax head cannot also pass tax amount completeness" do
+    outcomes =
+      InvoiceValidation.outcomes(
+        invoice(%{}, %{
+          "igst_amount" => nil,
+          "igst_rate" => nil,
+          "cgst_amount" => 9,
+          "cgst_rate" => 9
+        })
+      )
+      |> Map.new(&{&1.id, &1})
+
+    assert outcomes["split_heads"].status == :failed
+    assert outcomes["tax_amounts"].status == :not_checked
+  end
+
   defp invoice(overrides, line_overrides \\ %{}) do
     Map.merge(
       %{

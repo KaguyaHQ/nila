@@ -3010,3 +3010,8 @@ details[open] > summary .fold-chevron {
     break-inside: avoid;
   }
 }
+
+/* Separate original document pages from the neutral viewer canvas. */
+.nila-pdf-page {
+  box-shadow: var(--shadow-1);
+}

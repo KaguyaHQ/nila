@@ -7,7 +7,13 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
     except: [mount: 3, handle_params: 3, handle_event: 3, handle_info: 2]
 
   @impl true
-  def mount(_params, _session, socket), do: {:ok, assign(socket, :selected_invoice, nil)}
+  def mount(_params, _session, socket),
+    do:
+      {:ok,
+       socket
+       |> assign(:selected_invoice, nil)
+       |> assign(:checks_open?, false)
+       |> assign(:passed_checks_open?, false)}
 
   @impl true
   def handle_params(
@@ -35,6 +41,13 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
             socket
           end
 
+        changed_invoice? = invoice_id(socket.assigns.selected_invoice) != source_id
+
+        socket =
+          if changed_invoice?,
+            do: socket |> assign(:checks_open?, false) |> assign(:passed_checks_open?, false),
+            else: socket
+
         socket = assign(socket, :review_batch, params["batch"])
 
         params =
@@ -43,6 +56,12 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
           |> Map.put("review", if(params["scope"] == "needs_you", do: "required"))
 
         {:noreply, socket} = SalesBillReview.handle_params(params, uri, socket)
+
+        socket =
+          if changed_invoice?,
+            do: assign(socket, :checks_open?, gst_workbench_issues(socket.assigns) != []),
+            else: socket
+
         {:noreply, assign(socket, :page_title, "Invoice review")}
 
       _ ->
@@ -81,6 +100,53 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
      push_patch(socket,
        to: review_path(socket, invoice_id(socket.assigns.selected_invoice), %{"scope" => scope})
      )}
+  end
+
+  def handle_event("toggle-invoice-checks", _params, socket) do
+    {:noreply, assign(socket, :checks_open?, not socket.assigns.checks_open?)}
+  end
+
+  def handle_event("toggle-passed-checks", _params, socket) do
+    {:noreply, assign(socket, :passed_checks_open?, not socket.assigns.passed_checks_open?)}
+  end
+
+  def handle_event("review-invoice-check", %{"index" => index}, socket) do
+    with {index, ""} when index >= 0 <- Integer.parse(index),
+         issue when is_map(issue) <- Enum.at(gst_workbench_issues(socket.assigns), index) do
+      line = List.first(List.wrap(issue["lines"]))
+      field = List.first(List.wrap(issue["fields"]))
+
+      line =
+        line ||
+          case Regex.run(~r/line_items\[(\d+)\]/, field || "") do
+            [_, number] -> String.to_integer(number) + 1
+            _ -> nil
+          end
+
+      if is_integer(line) and line > 0 do
+        SalesBillReview.handle_event(
+          "edit-posting-line",
+          %{"index" => to_string(line - 1)},
+          socket
+        )
+      else
+        totals? =
+          issue["code"] in ~w(printed_taxable_mismatch printed_tax_mismatch grand_total_mismatch)
+
+        SalesBillReview.handle_event(
+          "edit-invoice-facts",
+          %{
+            "field" =>
+              if(issue["code"] == "invoice_period_mismatch", do: "invoice_date", else: field),
+            "section" => if(totals?, do: "totals", else: "details"),
+            "return_to" => "#invoice-workbench-correct-#{index}"
+          },
+          socket
+        )
+      end
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_event(event, params, socket), do: SalesBillReview.handle_event(event, params, socket)
@@ -316,7 +382,10 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
           >
             <section
               id="sales-bill-original"
-              class="bg-canvas rounded-box min-h-0 overflow-y-auto p-4"
+              class={[
+                "border-rule min-h-0 overflow-y-auto border-r",
+                is_nil(@pdf_source) && "bg-canvas p-3"
+              ]}
             >
               <NilaWeb.Components.PdfViewer.viewer
                 :if={@pdf_source}
@@ -559,92 +628,6 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                         </.button>
                       </div>
                     </.callout>
-                  </section>
-
-                  <section
-                    :if={not @accounting_view? && other_gst_workbench_issues(assigns) != []}
-                    id="invoice-workbench-gst"
-                    class="space-y-block"
-                  >
-                    <div
-                      :for={{issue, index} <- Enum.with_index(other_gst_workbench_issues(assigns))}
-                      id={"invoice-workbench-issue-#{index}"}
-                    >
-                      <div
-                        :if={issue["code"] == "missing_hsn_sac"}
-                        class="gap-related text-ui flex flex-wrap items-center"
-                      >
-                        <span>
-                          HSN/SAC missing on {length(issue["lines"])} {plural(
-                            length(issue["lines"]),
-                            "line"
-                          )}
-                        </span>
-
-                        <.button
-                          id="invoice-workbench-review-hsn"
-                          type="button"
-                          size="xs"
-                          variant="ghost"
-                          phx-click="edit-posting-line"
-                          phx-value-index={hd(issue["lines"]) - 1}
-                          disabled={
-                            invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices)
-                          }
-                        >
-                          Review codes
-                        </.button>
-                      </div>
-
-                      <.callout
-                        :if={issue["code"] != "missing_hsn_sac"}
-                        kind="warning"
-                        size="compact"
-                        title={issue["message"] || "Check invoice facts"}
-                      >
-                        <div class="mt-related flex gap-2">
-                          <.button
-                            :if={@workbench_context && not Nila.Gst.Sales.Workings.blocking?(issue)}
-                            id={"invoice-workbench-confirm-#{index}"}
-                            type="button"
-                            size="xs"
-                            phx-click="confirm-gst-issue"
-                            phx-value-target={Nila.Gst.Sales.Workings.issue_key(issue)}
-                          >
-                            {if issue["code"] in ~w(seller_identity_unverified seller_identity_mismatch),
-                              do: "Confirm this belongs to this client",
-                              else: "Keep extracted value"}
-                          </.button>
-
-                          <.button
-                            :if={
-                              issue["code"] not in ~w(seller_identity_unverified seller_identity_mismatch)
-                            }
-                            id={"invoice-workbench-correct-#{index}"}
-                            type="button"
-                            size="xs"
-                            variant="outline"
-                            phx-click="edit-invoice-facts"
-                            phx-value-field={
-                              if issue["code"] == "invoice_period_mismatch", do: "invoice_date"
-                            }
-                          >{if issue["code"] == "invoice_period_mismatch",
-                            do: "Correct date",
-                            else: "Edit invoice facts"}</.button>
-                          <.button
-                            :if={issue["code"] == "invoice_period_mismatch"}
-                            id="invoice-workbench-exclude-period-mismatch"
-                            type="button"
-                            size="xs"
-                            variant="outline"
-                            phx-click="remove-invoice"
-                            phx-value-id={invoice_id(@selected_invoice)}
-                          >
-                            Exclude from working
-                          </.button>
-                        </div>
-                      </.callout>
-                    </div>
                   </section>
 
                   <section id="sales-bill-accounting-mappings" class="space-y-block">
@@ -1101,13 +1084,106 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                 <div
                   :if={not @accounting_view?}
                   id="invoice-workbench-footer"
-                  class="bg-panel-surface border-rule sticky bottom-0 flex items-center justify-between border-t py-4"
+                  class="bg-panel-surface border-rule sticky bottom-0 flex items-start justify-between gap-4 border-t py-4"
                 >
-                  <div class="gap-related flex items-center">
-                    <p id="invoice-workbench-gst-status" class="text-ink-muted text-ui">
-                      <span :if={gst_workbench_issues(assigns) == []}>No open GST checks</span>
-                    </p>
-                  </div>
+                  <NilaWeb.Components.Gst.InvoiceChecks.summary
+                    invoice={@posting_preview_invoice}
+                    open={@checks_open?}
+                    passed_open={@passed_checks_open?}
+                    batch={@packet.all_invoices}
+                    issues={gst_workbench_issues(assigns)}
+                  >
+                    <:issue_actions>
+                      <section
+                        :if={gst_workbench_issues(assigns) != []}
+                        id="invoice-workbench-gst"
+                        class="space-y-block"
+                      >
+                        <div
+                          :for={{issue, index} <- Enum.with_index(gst_workbench_issues(assigns))}
+                          id={"invoice-workbench-issue-#{index}"}
+                        >
+                          <div
+                            :if={issue["code"] == "missing_hsn_sac"}
+                            class="gap-related text-ui flex flex-wrap items-center"
+                          >
+                            <span>
+                              HSN/SAC missing on {length(issue["lines"])} {plural(
+                                length(issue["lines"]),
+                                "line"
+                              )}
+                            </span>
+
+                            <.button
+                              id="invoice-workbench-review-hsn"
+                              type="button"
+                              size="xs"
+                              variant="ghost"
+                              phx-click="edit-posting-line"
+                              phx-value-index={hd(issue["lines"]) - 1}
+                              disabled={
+                                invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices)
+                              }
+                            >
+                              Review codes
+                            </.button>
+                          </div>
+
+                          <.callout
+                            :if={issue["code"] != "missing_hsn_sac"}
+                            kind="warning"
+                            size="compact"
+                            title={issue["message"] || "Check invoice facts"}
+                          >
+                            <div class="mt-related flex gap-2">
+                              <.button
+                                :if={
+                                  @workbench_context && not Nila.Gst.Sales.Workings.blocking?(issue)
+                                }
+                                id={"invoice-workbench-confirm-#{index}"}
+                                type="button"
+                                size="xs"
+                                phx-click="confirm-gst-issue"
+                                phx-value-target={Nila.Gst.Sales.Workings.issue_key(issue)}
+                              >
+                                {if issue["code"] in ~w(seller_identity_unverified seller_identity_mismatch),
+                                  do: "Confirm this belongs to this client",
+                                  else: "Keep extracted value"}
+                              </.button>
+
+                              <.button
+                                :if={
+                                  issue["code"] not in ~w(seller_identity_unverified seller_identity_mismatch)
+                                }
+                                id={"invoice-workbench-correct-#{index}"}
+                                type="button"
+                                size="xs"
+                                variant="outline"
+                                phx-click="review-invoice-check"
+                                phx-value-index={index}
+                                phx-value-field={
+                                  if issue["code"] == "invoice_period_mismatch", do: "invoice_date"
+                                }
+                              >{if issue["code"] == "invoice_period_mismatch",
+                                do: "Correct date",
+                                else: "Correct values"}</.button>
+                              <.button
+                                :if={issue["code"] == "invoice_period_mismatch"}
+                                id="invoice-workbench-exclude-period-mismatch"
+                                type="button"
+                                size="xs"
+                                variant="outline"
+                                phx-click="remove-invoice"
+                                phx-value-id={invoice_id(@selected_invoice)}
+                              >
+                                Exclude from working
+                              </.button>
+                            </div>
+                          </.callout>
+                        </div>
+                      </section>
+                    </:issue_actions>
+                  </NilaWeb.Components.Gst.InvoiceChecks.summary>
 
                   <.button
                     id="invoice-workbench-next"

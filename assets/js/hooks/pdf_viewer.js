@@ -104,6 +104,7 @@ export const PdfViewer = {
   },
   async draw() {
     if (!this.pdfPages || this.failed || this.dead) return
+    this.renderComplete = false
     const revision = ++this.revision
     const anchor = this.index
     const fraction = (this.surface.scrollTop - this.pageTop(anchor)) / Math.max(1, this.pageElements[anchor].clientHeight)
@@ -118,7 +119,9 @@ export const PdfViewer = {
     try {
       await Promise.all(previous.map(task => task.promise.catch(() => {})))
       if (this.dead || revision !== this.revision) return
-      const viewports = this.pdfPages.map(page => page.getViewport({scale: Math.max(1, this.surface.clientWidth) / page.getViewport({scale: 1}).width * this.zoom}))
+      const padding = getComputedStyle(this.surface)
+      const availableWidth = this.surface.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight)
+      const viewports = this.pdfPages.map(page => page.getViewport({scale: Math.max(1, availableWidth) / page.getViewport({scale: 1}).width * this.zoom}))
       // Size all pages first so page jumps and scrolling do not shift as they render.
       this.pageElements.forEach((element, index) => {
         element.style.width = `${viewports[index].width}px`
@@ -157,6 +160,7 @@ export const PdfViewer = {
           text.replaceChildren()
         }
       }
+      this.renderComplete = true
       this.status.hidden = true
       this.el.dataset.renderedPage = this.pages[this.index]
       this.trackPage()
@@ -179,7 +183,11 @@ export const PdfViewer = {
   },
   updated() {
     if (this.failed) this.showFallback()
-    else this.controls()
+    else {
+      this.controls()
+      this.status.hidden = this.renderComplete === true
+      if (!this.renderComplete) this.status.textContent = this.pdfPages ? "Rendering PDF…" : "Loading PDF…"
+    }
   },
   destroyed() {
     this.dead = true
