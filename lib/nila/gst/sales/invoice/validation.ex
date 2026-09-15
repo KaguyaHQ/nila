@@ -102,7 +102,7 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
     lines? = invoice.lines != []
     values? = sales_invoice_has_values?(invoice)
     registration = Invoice.recipient_registration(invoice)
-    seller = party_gstin(invoice.issuer)
+    {seller_state, comparison_state} = comparison_states(invoice)
     buyer = party_gstin(invoice.recipient)
     tax_present? = positive_tax_heads(invoice) != []
     identity = invoice.evidence["seller_identity"] || %{}
@@ -231,14 +231,15 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
       ),
       outcome(
         "tax_place",
-        "Tax heads agree with place of supply",
-        "Compared captured tax heads with seller state and place of supply; this does not verify the legal tax rate.",
+        tax_comparison_label(invoice),
+        tax_comparison_detail(invoice),
         consistency_issues(invoice),
         cond do
           not tax_present? ->
             :not_applicable
 
-          not valid_gstin?(seller) or is_nil(StateCodes.name_for(invoice.place_of_supply)) ->
+          is_nil(StateCodes.name_for(seller_state)) or
+              is_nil(StateCodes.name_for(comparison_state)) ->
             :not_checked
 
           mixed_head_issues(invoice) != [] ->
@@ -264,13 +265,68 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
           lines? and
             Enum.all?(
               invoice.lines,
-              &(is_binary(&1.description) and String.trim(&1.description) != "")
+              &(is_binary(line_description(&1)) and String.trim(line_description(&1)) != "")
             ),
           do: :ran,
           else: :not_checked
         )
       )
     ]
+    |> Enum.map(fn result ->
+      Map.put(
+        result,
+        :reason,
+        if(result.status == :not_checked, do: unchecked_reason(invoice, result.id))
+      )
+    end)
+  end
+
+  defp line_description(line), do: line.description || line.item_name
+
+  defp unchecked_reason(_invoice, "seller_identity"),
+    do: "Seller and client GSTINs were not compared."
+
+  defp unchecked_reason(_invoice, "source_evidence"), do: nil
+
+  defp unchecked_reason(_invoice, "buyer_gstin"),
+    do: "Buyer GSTIN wasn't found."
+
+  defp unchecked_reason(_invoice, "taxable_values"),
+    do: "No items were read."
+
+  defp unchecked_reason(_invoice, "tax_amounts"),
+    do: "Some line tax details are missing."
+
+  defp unchecked_reason(invoice, "tax_place") do
+    {seller_state, place_of_supply} = comparison_states(invoice)
+
+    cond do
+      is_nil(StateCodes.name_for(seller_state)) ->
+        "Seller state could not be read from the GSTIN."
+
+      is_nil(place_of_supply) ->
+        "Place of supply and a usable buyer GSTIN are both missing."
+
+      is_nil(StateCodes.name_for(place_of_supply)) ->
+        "Place-of-supply state code is invalid."
+
+      true ->
+        "Both IGST and CGST/SGST are present."
+    end
+  end
+
+  defp unchecked_reason(invoice, "line_structure") do
+    missing =
+      invoice.lines
+      |> Enum.with_index(1)
+      |> Enum.filter(fn {line, _} ->
+        is_nil(line_description(line)) or String.trim(line_description(line)) == ""
+      end)
+      |> Enum.map_join(", ", fn {_, index} -> to_string(index) end)
+
+    if invoice.lines == [],
+      do: "No items were read.",
+      else: "Item names are missing on lines #{missing}."
   end
 
   defp outcome(id, label, detail, issues, execution) do
@@ -1041,7 +1097,7 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
 
   defp furniture_row_issues(invoice) do
     line_issue(invoice, "furniture_row_with_values", fn line ->
-      furniture_description?(line.description) and not degenerate_line?(line)
+      furniture_description?(line_description(line)) and not degenerate_line?(line)
     end)
   end
 
@@ -1261,10 +1317,30 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
     |> Enum.map(&elem(&1, 0))
   end
 
+  # Reporting and issue detection must compare the same states.
+  defp comparison_states(invoice) do
+    {state_code(party_gstin(invoice.issuer)),
+     invoice.place_of_supply || state_code(party_gstin(invoice.recipient))}
+  end
+
+  defp tax_comparison_label(invoice) do
+    cond do
+      Invoice.zero_rated?(invoice) -> "Tax heads agree with export / SEZ treatment"
+      is_nil(invoice.place_of_supply) -> "Tax heads agree with the buyer's state"
+      true -> "Tax heads agree with place of supply"
+    end
+  end
+
+  defp tax_comparison_detail(invoice) do
+    cond do
+      Invoice.zero_rated?(invoice) -> "Export / SEZ supplies use IGST rather than CGST/SGST."
+      is_nil(invoice.place_of_supply) -> "Place of supply inferred from buyer GSTIN."
+      true -> "Compared with the seller's state and the captured place of supply."
+    end
+  end
+
   defp consistency_issues(invoice) do
-    seller_state = state_code(party_gstin(invoice.issuer))
-    buyer_state = state_code(party_gstin(invoice.recipient))
-    place_of_supply = invoice.place_of_supply || buyer_state
+    {seller_state, place_of_supply} = comparison_states(invoice)
 
     interstate? =
       Invoice.zero_rated?(invoice) or

@@ -56,6 +56,7 @@ defmodule Nila.Gst.Sales.Invoice.Readiness do
           directory_checked? -> :passed
           true -> :not_checked
         end,
+      reason: "Directory validation was not run.",
       issues: hsn_issues
     }
 
@@ -64,6 +65,7 @@ defmodule Nila.Gst.Sales.Invoice.Readiness do
       label: "Inferred HSN/SAC needs confirmation",
       detail: "Codes inferred instead of read from the bill require a reviewer.",
       status: if(inferred_issues == [], do: :not_applicable, else: :failed),
+      reason: nil,
       issues: inferred_issues
     }
 
@@ -102,6 +104,7 @@ defmodule Nila.Gst.Sales.Invoice.Readiness do
           true ->
             :passed
         end,
+      reason: "Invoice number or comparison batch is unavailable.",
       issues: duplicate_issues
     }
 

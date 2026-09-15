@@ -114,7 +114,8 @@ export const PdfViewer = {
     this.layers = []
     this.controls()
     delete this.el.dataset.renderedPage
-    this.status.hidden = false
+    // A zoom redraw must not insert a status row and move the document pane.
+    this.status.hidden = this.hasRendered === true
     this.status.textContent = "Rendering PDF…"
     try {
       await Promise.all(previous.map(task => task.promise.catch(() => {})))
@@ -161,6 +162,7 @@ export const PdfViewer = {
         }
       }
       this.renderComplete = true
+      this.hasRendered = true
       this.status.hidden = true
       this.el.dataset.renderedPage = this.pages[this.index]
       this.trackPage()
@@ -185,7 +187,7 @@ export const PdfViewer = {
     if (this.failed) this.showFallback()
     else {
       this.controls()
-      this.status.hidden = this.renderComplete === true
+      this.status.hidden = this.hasRendered === true || this.renderComplete === true
       if (!this.renderComplete) this.status.textContent = this.pdfPages ? "Rendering PDF…" : "Loading PDF…"
     }
   },

@@ -5,6 +5,7 @@ defmodule NilaWeb.Components.Gst.InvoiceChecks do
 
   attr :invoice, :map, required: true
   attr :open, :boolean, default: false
+  attr :about_open, :boolean, default: false
   attr :passed_open, :boolean, default: false
   attr :batch, :list, default: nil
   attr :issues, :list, default: nil
@@ -20,7 +21,9 @@ defmodule NilaWeb.Components.Gst.InvoiceChecks do
 
     unavailable =
       Enum.filter(arithmetic, &(&1.status == :unavailable)) ++
-        (outcomes |> Enum.filter(&(&1.status == :not_checked)) |> Enum.map(&display_outcome/1))
+        (outcomes
+         |> Enum.filter(&(&1.status == :not_checked and &1.id != "source_evidence"))
+         |> Enum.map(&display_outcome/1))
 
     issues = assigns.issues || Nila.Gst.Sales.Invoice.Readiness.issues([assigns.invoice])
 
@@ -60,13 +63,24 @@ defmodule NilaWeb.Components.Gst.InvoiceChecks do
               end
             ]}
           />
-          <span class="text-ink text-ui font-semibold">
-            Invoice checks ·
-            <span :if={@issue_count > 0} class="text-warning">{@issue_count} {if @issue_count == 1,
-              do: "issue",
-              else: "issues"} ·</span>
-            {@passed} passed
-          </span>
+          <div class="space-y-1">
+            <span class="text-ink text-ui block font-semibold">
+              <%= if @issue_count > 0 do %>
+                {@issue_count} {if @issue_count == 1, do: "issue needs", else: "issues need"} review
+              <% else %>
+                {@passed} checks passed
+              <% end %>
+            </span>
+            <span
+              :if={@issue_count > 0 or @unavailable_rows != []}
+              class="text-ink-muted text-ui block"
+            >
+              <span :if={@issue_count > 0}>{@passed} passed</span>
+              <span :if={@issue_count > 0 and @unavailable_rows != []}> · </span>
+              <span :if={@unavailable_rows != []}>{length(@unavailable_rows)} {if @issue_count == 0,
+                do: "additional checks "}not run</span>
+            </span>
+          </div>
         </div>
       </:summary>
       <div class="mt-3 max-h-64 space-y-3 overflow-y-auto pr-3">
@@ -82,8 +96,8 @@ defmodule NilaWeb.Components.Gst.InvoiceChecks do
           rows={@failed_comparisons}
           prefix="invoice-check-failed"
         />
+
         <.fold
-          :if={@issue_count > 0}
           id="invoice-passed-checks"
           open={@passed_open}
           on_toggle="toggle-passed-checks"
@@ -93,19 +107,24 @@ defmodule NilaWeb.Components.Gst.InvoiceChecks do
           </:summary>
           <.check_rows rows={@passed_rows} prefix="invoice-check" />
         </.fold>
-        <.check_rows :if={@issue_count == 0} rows={@passed_rows} prefix="invoice-check" />
-        <div :if={@unavailable_rows != []} id="invoice-checks-unavailable" class="space-y-1">
-          <p class="text-ink-muted text-ui">
-            {length(@unavailable_rows)} not checked — missing inputs or verification evidence
-          </p>
-          <p :for={row <- @unavailable_rows} class="text-ink-muted text-ui">{row.label}</p>
+        <div :if={@unavailable_rows != []} id="invoice-checks-unavailable" class="space-y-3">
+          <p class="text-ink-muted text-ui">Not run ({length(@unavailable_rows)})</p>
+          <div :for={row <- @unavailable_rows} class="flex items-start gap-3">
+            <.icon name="hero-minus-circle" class="text-ink-muted mt-0.5 size-5 shrink-0" />
+            <div class="space-y-1">
+              <p class="text-ink text-ui">{row.label}</p>
+              <p class="text-ink-muted text-ui">{row.detail}</p>
+            </div>
+          </div>
         </div>
-        <p class="text-ink-muted text-ui">
-          Checks use captured values. They do not replace verification against the original bill.
-        </p>
-        <p class="text-ink-muted text-label">
-          Amount comparisons allow ₹0.50. A passed GSTIN checksum does not verify live registration.
-        </p>
+
+        <.fold id="invoice-checks-about" open={@about_open} on_toggle="toggle-checks-about">
+          <:summary><span class="text-ink-muted text-ui">About these checks</span></:summary>
+          <p class="text-ink-muted text-ui mt-3">
+            Checks compare captured invoice values. They do not verify each value against the original bill.
+            Amount comparisons allow ₹0.50. GSTIN checks cover format and checksum, not live registration status.
+          </p>
+        </.fold>
       </div>
     </.fold>
     """
@@ -140,33 +159,23 @@ defmodule NilaWeb.Components.Gst.InvoiceChecks do
 
   defp display_outcome(outcome) do
     %{
-      label:
-        if(outcome.status == :not_checked, do: unchecked_label(outcome.id), else: outcome.label),
+      label: if(outcome.status == :not_checked, do: check_name(outcome.id), else: outcome.label),
       title: outcome.label,
-      detail: outcome.detail,
+      detail: if(outcome.status == :not_checked, do: outcome.reason, else: outcome.detail),
       status: if(outcome.status == :not_checked, do: :unavailable, else: outcome.status),
       secondary: nil,
       difference: nil
     }
   end
 
-  defp unchecked_label("seller_identity"), do: "Seller identity — matching evidence unavailable"
-
-  defp unchecked_label("source_evidence"),
-    do: "Source verification — explicit successful result unavailable"
-
-  defp unchecked_label("hsn_directory"), do: "HSN/SAC directory — validation result unavailable"
-  defp unchecked_label("duplicate_number"), do: "Duplicate number — invoice batch unavailable"
-
-  defp unchecked_label("tax_place"),
-    do: "Tax heads and place of supply — comparison inputs incomplete or conflicting"
-
-  defp unchecked_label("buyer_gstin"), do: "Buyer GSTIN — not captured"
-  defp unchecked_label("tax_amounts"), do: "Line tax amounts — comparison inputs incomplete"
-  defp unchecked_label("taxable_values"), do: "Line taxable values — no lines available"
-
-  defp unchecked_label("line_structure"),
-    do: "Heading and subtotal detection — no line descriptions available"
+  defp check_name("seller_identity"), do: "Seller GSTIN vs client GSTIN"
+  defp check_name("buyer_gstin"), do: "Buyer GSTIN"
+  defp check_name("tax_place"), do: "Tax heads vs place of supply"
+  defp check_name("hsn_directory"), do: "HSN/SAC validity"
+  defp check_name("duplicate_number"), do: "Duplicate invoice numbers"
+  defp check_name("taxable_values"), do: "Line taxable values"
+  defp check_name("tax_amounts"), do: "Line tax amounts"
+  defp check_name("line_structure"), do: "Heading and total rows"
 
   defp result_icon(:passed), do: "hero-check-circle-solid"
   defp result_icon(:failed), do: "hero-exclamation-circle-solid"
@@ -198,7 +207,7 @@ defmodule NilaWeb.Components.Gst.InvoiceChecks do
               title: "#{label} — not compared",
               secondary: nil,
               difference: nil,
-              detail: "Printed or calculated amount is missing.",
+              detail: unavailable_total(invoice, code, label),
               status: :unavailable
             }
 
@@ -247,6 +256,32 @@ defmodule NilaWeb.Components.Gst.InvoiceChecks do
       end)
 
     totals ++ lines
+  end
+
+  defp unavailable_total(invoice, code, _label) do
+    field =
+      case code do
+        "printed_taxable_mismatch" -> :taxable
+        "printed_tax_mismatch" -> :tax
+        "grand_total_mismatch" -> :total
+      end
+
+    printed = Nila.Gst.Sales.Review.Values.printed(invoice)[field]
+    calculated = Validation.comparison_totals(invoice)[field]
+
+    reason =
+      cond do
+        is_nil(printed) and is_nil(calculated) ->
+          "the printed amount was not read and the line amounts are incomplete"
+
+        is_nil(printed) ->
+          "the printed amount was not read"
+
+        true ->
+          "the line amounts are incomplete, so Nila could not calculate a total"
+      end
+
+    "#{reason |> String.capitalize()}."
   end
 
   defp calculated_label("printed_taxable_mismatch"), do: "Sum of lines"

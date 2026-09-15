@@ -259,7 +259,7 @@ defmodule Nila.Gst.Sales.Invoice.ValidationTest do
            ).status == :not_checked
   end
 
-  test "explicit outcomes report failed GSTIN and do not claim inferred place was checked" do
+  test "invalid seller state prevents a tax-head comparison" do
     outcomes =
       InvoiceValidation.outcomes(invoice(%{"seller_gstin" => "BAD", "place_of_supply" => nil}))
       |> Map.new(&{&1.id, &1})
@@ -294,6 +294,36 @@ defmodule Nila.Gst.Sales.Invoice.ValidationTest do
     assert outcome.status == :failed
   end
 
+  test "tax-head outcomes report explicit and inferred comparisons with their actual basis" do
+    explicit = InvoiceValidation.outcomes(invoice(%{})) |> Enum.find(&(&1.id == "tax_place"))
+    assert explicit.status == :passed
+    assert explicit.label == "Tax heads agree with place of supply"
+
+    inferred_bill = invoice(%{"place_of_supply" => nil})
+    inferred = InvoiceValidation.outcomes(inferred_bill) |> Enum.find(&(&1.id == "tax_place"))
+    assert inferred.status == :passed
+    assert inferred.label == "Tax heads agree with the buyer's state"
+    assert inferred.detail == "Place of supply inferred from buyer GSTIN."
+
+    conflicting =
+      invoice(%{"place_of_supply" => nil}, %{
+        "igst_amount" => nil,
+        "igst_rate" => nil,
+        "cgst_amount" => 9,
+        "sgst_amount" => 9
+      })
+
+    failed = InvoiceValidation.outcomes(conflicting) |> Enum.find(&(&1.id == "tax_place"))
+    assert failed.status == :failed
+    assert [%{"code" => "tax_treatment_uncertain"}] = failed.issues
+
+    missing =
+      InvoiceValidation.outcomes(invoice(%{"place_of_supply" => nil, "buyer_gstin" => nil}))
+      |> Enum.find(&(&1.id == "tax_place"))
+
+    assert missing.status == :not_checked
+  end
+
   test "unknown place of supply cannot receive a tax-head consistency pass" do
     outcome =
       InvoiceValidation.outcomes(invoice(%{"place_of_supply" => "XX"}))
@@ -316,6 +346,27 @@ defmodule Nila.Gst.Sales.Invoice.ValidationTest do
 
     assert outcomes["split_heads"].status == :failed
     assert outcomes["tax_amounts"].status == :not_checked
+  end
+
+  test "heading checks use item names when description is absent" do
+    bill = invoice(%{}, %{"description" => nil, "item_name" => "COURIER CHARGES"})
+    outcome = InvoiceValidation.outcomes(bill) |> Enum.find(&(&1.id == "line_structure"))
+    assert outcome.status == :passed
+
+    subtotal = invoice(%{}, %{"description" => nil, "item_name" => "Total"})
+
+    assert Enum.any?(
+             InvoiceValidation.issues([subtotal]),
+             &(&1["code"] == "furniture_row_with_values")
+           )
+  end
+
+  test "missing check reasons identify the missing fact without denying visible data" do
+    bill = invoice(%{"place_of_supply" => nil}, %{"description" => nil, "item_name" => nil})
+    outcomes = InvoiceValidation.outcomes(bill) |> Map.new(&{&1.id, &1})
+    assert outcomes["tax_place"].status == :passed
+    assert outcomes["tax_place"].detail =~ "inferred from buyer GSTIN"
+    assert outcomes["line_structure"].reason =~ "missing on lines 1"
   end
 
   defp invoice(overrides, line_overrides \\ %{}) do

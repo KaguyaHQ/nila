@@ -13,7 +13,8 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
        socket
        |> assign(:selected_invoice, nil)
        |> assign(:checks_open?, false)
-       |> assign(:passed_checks_open?, false)}
+       |> assign(:passed_checks_open?, false)
+       |> assign(:checks_about_open?, false)}
 
   @impl true
   def handle_params(
@@ -45,7 +46,11 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
 
         socket =
           if changed_invoice?,
-            do: socket |> assign(:checks_open?, false) |> assign(:passed_checks_open?, false),
+            do:
+              socket
+              |> assign(:checks_open?, false)
+              |> assign(:passed_checks_open?, false)
+              |> assign(:checks_about_open?, false),
             else: socket
 
         socket = assign(socket, :review_batch, params["batch"])
@@ -110,6 +115,10 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
     {:noreply, assign(socket, :passed_checks_open?, not socket.assigns.passed_checks_open?)}
   end
 
+  def handle_event("toggle-checks-about", _params, socket) do
+    {:noreply, assign(socket, :checks_about_open?, not socket.assigns.checks_about_open?)}
+  end
+
   def handle_event("review-invoice-check", %{"index" => index}, socket) do
     with {index, ""} when index >= 0 <- Integer.parse(index),
          issue when is_map(issue) <- Enum.at(gst_workbench_issues(socket.assigns), index) do
@@ -126,7 +135,10 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
       if is_integer(line) and line > 0 do
         SalesBillReview.handle_event(
           "edit-posting-line",
-          %{"index" => to_string(line - 1)},
+          %{
+            "index" => to_string(line - 1),
+            "return_to" => "##{invoice_check_correction_id(issue, index)}"
+          },
           socket
         )
       else
@@ -139,7 +151,7 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
             "field" =>
               if(issue["code"] == "invoice_period_mismatch", do: "invoice_date", else: field),
             "section" => if(totals?, do: "totals", else: "details"),
-            "return_to" => "#invoice-workbench-correct-#{index}"
+            "return_to" => "##{invoice_check_correction_id(issue, index)}"
           },
           socket
         )
@@ -153,6 +165,24 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
 
   @impl true
   defdelegate handle_info(message, socket), to: SalesBillReview
+
+  defp invoice_check_correction_id(%{"code" => "missing_taxable_value"}, _index),
+    do: "invoice-workbench-correct-amounts"
+
+  defp invoice_check_correction_id(_issue, index), do: "invoice-workbench-correct-#{index}"
+
+  defp invoice_check_message(%{"code" => "missing_taxable_value", "lines" => lines}, invoice) do
+    items =
+      Enum.map_join(lines, "; ", fn number ->
+        line = Enum.at(invoice["line_items"] || [], number - 1) || %{}
+        name = line["description"] || line["item_name"]
+        if name in [nil, ""], do: "line #{number}", else: "line #{number} (#{name})"
+      end)
+
+    "Taxable value is missing for #{items}. Enter the amount before GST."
+  end
+
+  defp invoice_check_message(issue, _invoice), do: issue["message"] || "Check invoice details"
 
   defp review_path(socket, source_id, overrides \\ %{}) do
     params = %{"scope" => socket.assigns.workbench_scope}
@@ -586,48 +616,6 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                         <span :if={item.detail}>{item.detail}</span>
                       </.callout>
                     </div>
-                  </section>
-
-                  <section
-                    :if={missing_amount_issue(assigns)}
-                    id="invoice-workbench-incomplete"
-                    class="space-y-related"
-                  >
-                    <.callout
-                      kind="warning"
-                      size="compact"
-                      title={missing_amount_title(missing_amount_issue(assigns))}
-                    >
-                      Correct these amounts before exporting to GSTR-1.
-                      <div class="mt-related flex gap-2">
-                        <.button
-                          id="invoice-workbench-correct-amounts"
-                          type="button"
-                          size="xs"
-                          phx-click="edit-posting-line"
-                          phx-value-index={hd(missing_amount_issue(assigns)["lines"]) - 1}
-                          disabled={
-                            invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices)
-                          }
-                        >
-                          Correct amounts
-                        </.button>
-
-                        <.button
-                          id="invoice-workbench-exclude-incomplete"
-                          type="button"
-                          size="xs"
-                          variant="outline"
-                          phx-click="remove-invoice"
-                          phx-value-id={invoice_id(@selected_invoice)}
-                          disabled={
-                            invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices)
-                          }
-                        >
-                          Exclude invoice
-                        </.button>
-                      </div>
-                    </.callout>
                   </section>
 
                   <section id="sales-bill-accounting-mappings" class="space-y-block">
@@ -1090,6 +1078,7 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                     invoice={@posting_preview_invoice}
                     open={@checks_open?}
                     passed_open={@passed_checks_open?}
+                    about_open={@checks_about_open?}
                     batch={@packet.all_invoices}
                     issues={gst_workbench_issues(assigns)}
                   >
@@ -1101,7 +1090,11 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                       >
                         <div
                           :for={{issue, index} <- Enum.with_index(gst_workbench_issues(assigns))}
-                          id={"invoice-workbench-issue-#{index}"}
+                          id={
+                            if issue["code"] == "missing_taxable_value",
+                              do: "invoice-workbench-incomplete",
+                              else: "invoice-workbench-issue-#{index}"
+                          }
                         >
                           <div
                             :if={issue["code"] == "missing_hsn_sac"}
@@ -1121,6 +1114,7 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                               variant="ghost"
                               phx-click="edit-posting-line"
                               phx-value-index={hd(issue["lines"]) - 1}
+                              phx-value-return_to="#invoice-workbench-review-hsn"
                               disabled={
                                 invoice_frozen?(@tally_jobs, @selected_invoice, @packet.all_invoices)
                               }
@@ -1133,7 +1127,7 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                             :if={issue["code"] != "missing_hsn_sac"}
                             kind="warning"
                             size="compact"
-                            title={issue["message"] || "Check invoice facts"}
+                            title={invoice_check_message(issue, @posting_preview_invoice)}
                           >
                             <div class="mt-related flex gap-2">
                               <.button
@@ -1155,7 +1149,7 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                                 :if={
                                   issue["code"] not in ~w(seller_identity_unverified seller_identity_mismatch)
                                 }
-                                id={"invoice-workbench-correct-#{index}"}
+                                id={invoice_check_correction_id(issue, index)}
                                 type="button"
                                 size="xs"
                                 variant="outline"
@@ -1167,6 +1161,22 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                               >{if issue["code"] == "invoice_period_mismatch",
                                 do: "Correct date",
                                 else: "Correct values"}</.button>
+                              <.button
+                                :if={issue["code"] == "missing_taxable_value"}
+                                id="invoice-workbench-exclude-incomplete"
+                                type="button"
+                                size="xs"
+                                variant="outline"
+                                phx-click="remove-invoice"
+                                phx-value-id={invoice_id(@selected_invoice)}
+                                disabled={
+                                  invoice_frozen?(
+                                    @tally_jobs,
+                                    @selected_invoice,
+                                    @packet.all_invoices
+                                  )
+                                }
+                              >Exclude invoice</.button>
                               <.button
                                 :if={issue["code"] == "invoice_period_mismatch"}
                                 id="invoice-workbench-exclude-period-mismatch"
@@ -1481,11 +1491,11 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
               <.modal
                 :if={@line_edit_form && @line_edit_row}
                 id="sales-bill-line-edit-sheet"
-                title="Edit invoice line"
+                title={"Edit line #{@editing_line_index + 1}"}
                 on_close="close-posting-line"
                 variant="sheet"
                 side="right"
-                return_focus={"#sales-bill-edit-line-#{@editing_line_index}"}
+                return_focus={@line_edit_return_focus}
               >
                 <.form
                   for={@line_edit_form}
@@ -1495,6 +1505,7 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                   phx-submit="save-posting-line"
                   class="space-y-block p-6"
                 >
+                  <p class="text-ink text-ui font-semibold">{@line_edit_form[:description].value}</p>
                   <.input
                     field={@line_edit_form[:description]}
                     label="Description"

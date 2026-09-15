@@ -82,6 +82,7 @@ defmodule NilaWeb.Gst.SalesBillReview do
         |> assign(:invoice_facts_error, nil)
         |> assign(:editing_narration?, false)
         |> assign(:line_edit_row, nil)
+        |> assign(:line_edit_return_focus, nil)
         |> assign(:line_edit_form, nil)
         |> assign(:line_edit_error, nil)
         |> assign(:confirming_tally_send, false)
@@ -797,7 +798,7 @@ defmodule NilaWeb.Gst.SalesBillReview do
       when event in ~w(filter-ledger-picker choose-first-ledger choose-ledger close-ledger-picker),
       do: {:noreply, socket}
 
-  def handle_event("edit-posting-line", %{"index" => index}, socket) do
+  def handle_event("edit-posting-line", %{"index" => index} = params, socket) do
     if not invoice_frozen_now?(socket, socket.assigns.selected_invoice) do
       with {index, ""} <- Integer.parse(to_string(index)),
            true <- index >= 0,
@@ -806,6 +807,10 @@ defmodule NilaWeb.Gst.SalesBillReview do
          socket
          |> assign(:editing_line_index, index)
          |> assign(:line_edit_row, row)
+         |> assign(
+           :line_edit_return_focus,
+           params["return_to"] || "#sales-bill-edit-line-#{index}"
+         )
          |> assign(:line_edit_form, to_form(line_edit_values(row), as: :line_edit))
          |> assign(:line_edit_error, nil)}
       else
@@ -1099,6 +1104,7 @@ defmodule NilaWeb.Gst.SalesBillReview do
     socket
     |> assign(:editing_line_index, nil)
     |> assign(:line_edit_row, nil)
+    |> assign(:line_edit_return_focus, nil)
     |> assign(:line_edit_form, nil)
     |> assign(:line_edit_error, nil)
   end

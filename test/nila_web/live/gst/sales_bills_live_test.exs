@@ -187,7 +187,7 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(
              view,
              "#invoice-workbench-incomplete",
-             "Taxable amount missing on 1 line"
+             "Enter the amount before GST"
            )
 
     assert has_element?(view, "#invoice-workbench-gst", "HSN/SAC")
@@ -267,7 +267,13 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     {:ok, view, _} = open_sales_view(ctx.conn, path)
 
     assert has_element?(view, "#invoice-workbench-gst", "HSN/SAC missing on 2 lines")
-    refute has_element?(view, "#invoice-workbench-gst", "Unread services")
+
+    refute has_element?(
+             view,
+             "#invoice-workbench-gst div:has(> #invoice-workbench-review-hsn)",
+             "Unread services"
+           )
+
     assert has_element?(view, "#sales-bill-posting-line-1", "Missing")
     assert has_element?(view, "#invoice-workbench-review-hsn[phx-value-index='1']")
     refute has_element?(view, "#invoice-workbench-confirm-missing-hsn")

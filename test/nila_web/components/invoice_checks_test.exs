@@ -41,12 +41,34 @@ defmodule NilaWeb.Components.Gst.InvoiceChecksTest do
       |> LazyHTML.query("#invoice-workbench-gst-status")
       |> LazyHTML.text()
 
-    assert summary =~ "Invoice checks"
+    assert summary =~ "review"
     assert summary =~ "issues"
     assert summary =~ "passed"
     doc = LazyHTML.from_fragment(html)
-    assert LazyHTML.query(doc, "#invoice-checks-unavailable") |> LazyHTML.text() =~ "not checked"
+    assert LazyHTML.query(doc, "#invoice-checks-unavailable") |> LazyHTML.text() =~ "Not run"
+    assert LazyHTML.query(doc, "#invoice-checks-about[open]") |> Enum.empty?()
     assert LazyHTML.query(doc, "#invoice-passed-checks[open]") |> Enum.empty?()
+  end
+
+  test "unperformed checks are visible in summary and before collapsed successes" do
+    html =
+      Phoenix.LiveViewTest.render_component(&InvoiceChecks.summary/1,
+        invoice: invoice(),
+        issues: []
+      )
+
+    doc = LazyHTML.from_fragment(html)
+
+    assert LazyHTML.query(doc, "#invoice-workbench-gst-status") |> LazyHTML.text() =~
+             "not run"
+
+    assert LazyHTML.query(doc, "#invoice-passed-checks[open]") |> Enum.empty?()
+
+    assert LazyHTML.query(doc, "#invoice-passed-checks + #invoice-checks-unavailable")
+           |> Enum.any?()
+
+    refute LazyHTML.query(doc, "#invoice-checks-unavailable") |> LazyHTML.text() =~
+             "Source verification"
   end
 
   test "exposes actual comparisons with operands" do
@@ -63,6 +85,17 @@ defmodule NilaWeb.Components.Gst.InvoiceChecksTest do
       |> InvoiceChecks.results()
 
     assert Enum.all?(Enum.take(rows, 3), &(&1.status == :unavailable))
+
+    assert Enum.map(Enum.take(rows, 3), & &1.label) == [
+             "Taxable total",
+             "GST total",
+             "Invoice total"
+           ]
+
+    assert Enum.all?(
+             Enum.take(rows, 3),
+             &String.contains?(String.downcase(&1.detail), "printed amount was not read")
+           )
   end
 
   test "accepted differences explain the tolerance instead of claiming equality" do
