@@ -6,6 +6,7 @@ Start with the current product and code map, then open a focused guide.
 - [Architecture](architecture.md) — how the app fits together.
 - [Sales code guide](../lib/nila/gst/sales/README.md) — invoice facts, review, and workings ownership.
 - [Extraction code guide](../lib/nila/gst/extraction/README.md) — document reading and its boundary with sales facts.
+- [Model cost baseline](cost/model-costs.md) — dated production usage, token, and inference-cost measurements.
 - [Decisions](decisions.md) — why we use this structure, including transactions and storage.
 - [Design guide](design/DESIGN.md) — start here for UI work; it routes to the detailed guides.
 - [Demo script](demo-script.md) and [runbook](demo-runbook.md) — presentation flow and dated rehearsal details.
