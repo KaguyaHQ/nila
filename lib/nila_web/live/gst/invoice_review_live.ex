@@ -109,8 +109,31 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
     "/gst/#{socket.assigns.client.id}/#{socket.assigns.workbench_period}/sales/invoices/#{URI.encode_www_form(source_id)}?#{URI.encode_query(params)}"
   end
 
+  # Use original PDF pages only when the invoice names pages in one known PDF.
+  defp pdf_source(%{selected_invoice: nil}), do: nil
+
+  defp pdf_source(assigns) do
+    invoice = assigns.selected_invoice
+    pages = List.wrap(invoice["source_pages"] || invoice["page"])
+
+    dump =
+      Enum.find(assigns.source_dumps, fn dump ->
+        Enum.any?(dump.invoices, &(invoice_id(&1) == invoice_id(invoice)))
+      end)
+
+    with %{file_keys: [key]} <- dump,
+         true <- String.downcase(Path.extname(key)) == ".pdf",
+         true <- pages != [] && Enum.all?(pages, &(is_integer(&1) && &1 > 0)) do
+      %{url: "/gst/#{dump.client_id}/#{dump.period}/original/#{dump.id}/0", pages: pages}
+    else
+      _ -> nil
+    end
+  end
+
   @impl true
   def render(assigns) do
+    assigns = assign(assigns, :pdf_source, pdf_source(assigns))
+
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -295,8 +318,25 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
               id="sales-bill-original"
               class="bg-canvas rounded-box min-h-0 overflow-y-auto p-4"
             >
+              <NilaWeb.Components.PdfViewer.viewer
+                :if={@pdf_source}
+                id={"invoice-pdf-#{invoice_id(@selected_invoice)}"}
+                url={@pdf_source.url}
+                pages={@pdf_source.pages}
+              >
+                <:fallback :if={@selected_invoice["image_urls"] != []}>
+                  <.evidence_frame
+                    id="sales-bill-pdf-fallback"
+                    images={@selected_invoice["image_urls"]}
+                    page={@evidence_page}
+                    label="Invoice page"
+                    on_open="open-posting-evidence"
+                    on_page="posting-evidence-page"
+                  />
+                </:fallback>
+              </NilaWeb.Components.PdfViewer.viewer>
               <.evidence_frame
-                :if={@selected_invoice["image_urls"] != []}
+                :if={is_nil(@pdf_source) && @selected_invoice["image_urls"] != []}
                 id="sales-bill-evidence-frame"
                 images={@selected_invoice["image_urls"]}
                 page={@evidence_page}
@@ -305,7 +345,7 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                 on_page="posting-evidence-page"
               />
               <div
-                :if={@selected_invoice["image_urls"] == []}
+                :if={is_nil(@pdf_source) && @selected_invoice["image_urls"] == []}
                 id="sales-bill-evidence-unavailable"
                 class="border-rule rounded-box text-body text-ink-muted flex h-full min-h-48 items-center justify-center border border-dashed"
               >

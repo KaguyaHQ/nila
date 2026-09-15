@@ -100,6 +100,42 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     }
   end
 
+  test "PDF sources open directly on their recorded pages with image fallback", context do
+    invoice =
+      hd(context.dump.invoices) |> Map.put("id", "INV-001") |> Map.put("source_pages", [2, 3])
+
+    context.dump
+    |> Ecto.Changeset.change(invoices: [invoice], file_keys: ["source.pdf"])
+    |> Nila.Repo.update!()
+
+    {:ok, view, _} =
+      live(context.conn, "/gst/#{context.client.id}/2026-07/sales/invoices/INV-001")
+
+    assert has_element?(
+             view,
+             "#invoice-pdf-INV-001[phx-hook='PdfViewer'][data-pages='[2,3]'][data-has-fallback='true']"
+           )
+
+    assert has_element?(view, "[data-pdf-fallback][hidden] #sales-bill-pdf-fallback")
+    refute has_element?(view, "#toggle-pdf-preview")
+    refute has_element?(view, "#sales-bill-evidence-frame")
+  end
+
+  test "image uploads keep the image viewer", context do
+    invoice =
+      hd(context.dump.invoices) |> Map.put("id", "INV-001") |> Map.put("source_pages", [1])
+
+    context.dump
+    |> Ecto.Changeset.change(invoices: [invoice], file_keys: ["source.png"])
+    |> Nila.Repo.update!()
+
+    {:ok, view, _} =
+      live(context.conn, "/gst/#{context.client.id}/2026-07/sales/invoices/INV-001")
+
+    assert has_element?(view, "#sales-bill-evidence-frame")
+    refute has_element?(view, "[phx-hook='PdfViewer']")
+  end
+
   test "batch back and home links lead to its client month", %{
     conn: conn,
     client: client,

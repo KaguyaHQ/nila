@@ -2,6 +2,7 @@
    https://tailwindcss.com/docs/configuration */
 
 @import "tailwindcss" source(none);
+@import "../vendor/pdfjs/text_layer.css";
 @source "../css";
 @source "../js";
 @source "../../lib/nila_web";

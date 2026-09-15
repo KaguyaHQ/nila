@@ -1,0 +1,41 @@
+defmodule NilaWeb.Components.PdfViewer do
+  use NilaWeb, :html
+
+  attr :id, :string, required: true
+  attr :url, :string, required: true
+  attr :pages, :list, required: true
+
+  slot :fallback
+
+  def viewer(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      phx-hook="PdfViewer"
+      data-has-fallback={if @fallback != [], do: "true", else: "false"}
+      data-url={@url}
+      data-pages={Jason.encode!(@pages)}
+    >
+      <div class="mb-3 flex flex-wrap items-center gap-2" role="toolbar" aria-label="PDF controls">
+        <.button size="sm" variant="outline" data-pdf-action="previous" aria-label="Previous PDF page">←</.button>
+        <span data-pdf-counter class="text-ink-muted text-ui" aria-live="polite"></span>
+        <.button size="sm" variant="outline" data-pdf-action="next" aria-label="Next PDF page">→</.button>
+        <.button size="sm" variant="outline" data-pdf-action="out" aria-label="Zoom out">−</.button>
+        <.button size="sm" variant="outline" data-pdf-action="in" aria-label="Zoom in">+</.button>
+        <.button size="sm" variant="outline" data-pdf-action="fit">Fit width</.button>
+        <.button size="sm" variant="outline" href={@url} download>Download original</.button>
+      </div>
+
+      <p data-pdf-status role="status" class="text-ink-muted text-ui">Loading PDF…</p>
+
+      <div data-pdf-fallback hidden>{render_slot(@fallback)}</div>
+      <div id={@id <> "-canvas"} phx-update="ignore" data-pdf-surface class="overflow-auto">
+        <div data-pdf-page class="relative">
+          <canvas aria-label="Original invoice PDF page" class="block"></canvas>
+          <div data-pdf-text class="nila-pdf-text-layer"></div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+end

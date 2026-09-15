@@ -1,3 +1,4 @@
+import {PdfViewer} from "./hooks/pdf_viewer"
 import {TableRowNavigation} from "./hooks/table_row_navigation"
 import {KeyboardShortcuts} from "./hooks/keyboard_shortcuts"
 import {SalesRegisterPosition} from "./hooks/sales_register_position"
@@ -110,6 +111,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     CommandPalette,
     SelectableList,
     TableRowNavigation,
+    PdfViewer,
     QuoteLineGrid,
     QuoteDraftGuard,
     WhatsAppEmbeddedSignup,
