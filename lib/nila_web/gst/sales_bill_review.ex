@@ -479,7 +479,15 @@ defmodule NilaWeb.Gst.SalesBillReview do
       attrs = %{
         "verb" => "confirm_issue",
         "target" => target,
-        "payload" => %{"decision" => "use_extracted_lines", "proposal" => proposal}
+        "payload" =>
+          if issue["code"] in ~w(seller_identity_unverified seller_identity_mismatch) do
+            %{
+              "decision" => "confirm_client",
+              "seller_identity" => context.item.invoice["seller_identity"]
+            }
+          else
+            %{"decision" => "use_extracted_lines", "proposal" => proposal}
+          end
       }
 
       case Nila.Gst.Sales.Review.Resolutions.record(

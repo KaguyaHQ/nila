@@ -279,13 +279,30 @@ defmodule Nila.Gst.Extraction.PipelineTest do
           "reason" => nil
         }
       ],
-      sales_invoice()
+      put_in(sales_invoice(), ["supplier", "gstin"], "33AEWPH4158J1ZZ")
     )
 
     pdf = PdfFixtures.text_pdf(["GSTIN 33AEWPH4158J1Z3 Invoice INV-1", "Continued total 1180"])
-    assert {:ok, result} = Pipeline.extract(:sales, pdf, input: :text)
+
+    assert {:ok, result} =
+             Pipeline.extract(:sales, pdf, input: :text, client_gstin: "33AEWPH4158J1Z3")
+
     assert [%{"source_pages" => [1, 2], "image" => "page_01.jpg"} = artifact] = result.pages
     assert Normalizer.normalize(artifact)["invoice_number"] == "INV-1"
+    assert Normalizer.normalize(artifact)["seller_gstin"] == "33AEWPH4158J1Z3"
+
+    assert artifact["data"]["seller_identity"] == %{
+             "client_gstin" => "33AEWPH4158J1Z3",
+             "observed_gstin" => "33AEWPH4158J1ZZ",
+             "source_gstin" => "33AEWPH4158J1Z3",
+             "status" => "matched"
+           }
+
+    refute Enum.any?(
+             artifact["verification"]["failed_checks"],
+             &(&1["field"] == "supplier.gstin")
+           )
+
     assert map_size(result.images) == 2
     assert result.audit.metadata["native_text"]["1"] =~ "33AEWPH4158J1Z3"
     assert result.audit.metadata["invoice_inputs"] == [%{"pages" => [1, 2], "input" => "text"}]

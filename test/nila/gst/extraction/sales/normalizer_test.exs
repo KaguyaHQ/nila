@@ -5,6 +5,59 @@ defmodule Nila.Gst.Extraction.Sales.NormalizerTest do
   alias Nila.Gst.Extraction.Sales.Normalizer
   alias Nila.Gst.Sales.Gstr1
 
+  test "invoice 71's domestic payment answer does not create an export conflict" do
+    invoice =
+      Normalizer.normalize(%{
+        "document" => %{"export" => false},
+        "data" => %{
+          "invoice_number" => "I-SS-2627-71",
+          "supply_type" => "taxable",
+          "recipient_registration" => "registered",
+          "buyer_gstin" => "37AABCA9265F1ZL",
+          "tax_payment" => "with_payment",
+          "reverse_charge" => nil,
+          "printed_total_taxable" => 574_500,
+          "printed_grand_total" => 677_910,
+          "line_items" => [%{"printed_taxable_value" => 574_500}]
+        }
+      })
+
+    assert invoice["tax_payment"] == "not_applicable"
+    refute Nila.Gst.Sales.Invoice.special_supply_conflict?(invoice)
+    assert invoice["printed_total_taxable"] == 574_500
+    assert invoice["printed_grand_total"] == 677_910
+    assert hd(invoice["line_items"])["taxable_value"] == 574_500
+  end
+
+  test "export payment normalization preserves special supplies and conflicting evidence" do
+    for supply <- ~w(export sez unknown) ++ [nil],
+        payment <- ~w(with_payment without_payment unknown) do
+      invoice =
+        Normalizer.normalize(%{
+          "data" => %{
+            "supply_type" => supply,
+            "tax_payment" => payment,
+            "line_items" => []
+          }
+        })
+
+      assert invoice["tax_payment"] == payment
+    end
+
+    invoice =
+      Normalizer.normalize(%{
+        "document" => %{"export" => true},
+        "data" => %{
+          "supply_type" => "taxable",
+          "tax_payment" => "with_payment",
+          "line_items" => []
+        }
+      })
+
+    assert invoice["tax_payment"] == "with_payment"
+    assert Nila.Gst.Sales.Invoice.special_supply_conflict?(invoice)
+  end
+
   test "the data envelope preserves printed invoice facts" do
     data = %{
       "inum" => " 12 / 2026-27 ",

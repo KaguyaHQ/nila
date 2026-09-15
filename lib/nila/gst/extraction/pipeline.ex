@@ -390,6 +390,19 @@ defmodule Nila.Gst.Extraction.Pipeline do
     usage = Map.get(data, "usage", %{})
     data = Map.delete(data, "usage")
 
+    data =
+      if kind == :sales do
+        text = Enum.map_join(segment.pages, "\n", &Map.get(source.native_text, &1, ""))
+
+        Nila.Gst.Extraction.Sales.SellerIdentity.apply(
+          data,
+          Keyword.get(opts, :client_gstin),
+          text
+        )
+      else
+        data
+      end
+
     {data, repairs} =
       InvoiceRepairs.prepare(data, kind, Keyword.get(opts, :client_gstin))
 

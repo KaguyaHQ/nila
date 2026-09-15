@@ -692,6 +692,59 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     assert has_element?(view, "#sales-bill-posting-position", "1 remaining")
   end
 
+  test "seller identity review asks for client confirmation without an unrelated edit form",
+       context do
+    invoice =
+      hd(context.dump.invoices)
+      |> Map.put("id", "seller-check")
+      |> Map.put("seller_identity", %{
+        "client_gstin" => context.client.gstin,
+        "observed_gstin" => "33AEHFS3648M1ZL",
+        "status" => "different"
+      })
+
+    context.dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+
+    {:ok, month} =
+      SalesMonths.upsert(%{
+        org_id: context.org.id,
+        client_id: context.client.id,
+        period: context.dump.period,
+        invoices: [invoice]
+      })
+
+    path =
+      NilaWeb.Gst.InvoiceWorkbench.path(
+        context.org.id,
+        context.client.id,
+        month.period,
+        invoice["id"],
+        :needs_you
+      )
+
+    {:ok, view, _} = open_sales_view(context.conn, path)
+
+    assert has_element?(
+             view,
+             "#invoice-workbench-confirm-0",
+             "Confirm this belongs to this client"
+           )
+
+    refute has_element?(view, "#invoice-workbench-correct-0")
+    view |> element("#invoice-workbench-confirm-0") |> render_click()
+
+    assert Enum.any?(
+             Nila.Gst.Sales.Review.Resolutions.workings(month).issues,
+             &(&1["code"] == "seller_identity_mismatch" and &1["status"] == "resolved")
+           )
+
+    refute has_element?(view, "#invoice-workbench-confirm-0")
+
+    assert hd(Nila.Gst.Sales.Review.Resolutions.workings(month).active_invoices)[
+             "seller_identity"
+           ]["observed_gstin"] == "33AEHFS3648M1ZL"
+  end
+
   test "review scope is visible, switchable, and stays empty after the last answer", context do
     clean = hd(context.dump.invoices) |> Map.put("id", "clean")
 

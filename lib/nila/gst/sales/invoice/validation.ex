@@ -87,12 +87,36 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
       footer_tax_split_issues(invoice) ++
       arithmetic_issues(invoice) ++
       gstin_issues(invoice) ++
+      seller_identity_issues(invoice) ++
       verification_issues(invoice) ++
       b2c_hsn_issues(invoice) ++
       mixed_head_issues(invoice) ++
       consistency_issues(invoice) ++
       lopsided_split_issues(invoice) ++
       furniture_row_issues(invoice) ++ bucket_rounding_issues(invoice)
+  end
+
+  defp seller_identity_issues(invoice) do
+    case invoice.evidence["seller_identity"] do
+      %{"status" => status, "client_gstin" => client, "observed_gstin" => observed}
+      when status in ["different", "unverified"] ->
+        code =
+          if status == "different",
+            do: "seller_identity_mismatch",
+            else: "seller_identity_unverified"
+
+        message =
+          if status == "different",
+            do:
+              "This invoice may belong to another business. Seller read: #{observed}. Client GSTIN: #{client}.",
+            else:
+              "Could not verify the seller. Seller read: #{observed || "not captured"}. Client GSTIN: #{client}."
+
+        [issue(invoice, code, message, [])]
+
+      _ ->
+        []
+    end
   end
 
   defp footer_tax_split_issues(invoice) do

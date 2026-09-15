@@ -24,6 +24,8 @@ defmodule Nila.Gst.Issues do
   # {level, resolution_kind}. Every code any GST surface can raise appears here;
   # a code missing from this table is a classification bug, not a default.
   @classification %{
+    "seller_identity_unverified" => {"required", :confirmation},
+    "seller_identity_mismatch" => {"required", :confirmation},
     # Arithmetic and extraction checks on one invoice
     "missing_taxable_value" => {"blocking", :correction},
     "missing_tax_amount" => {"blocking", :correction},

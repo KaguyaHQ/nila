@@ -51,7 +51,7 @@ defmodule Nila.Gst.Extraction.Sales.Normalizer do
         ),
       "document_status" => Invoice.normalize_document_status(data["document_status"]),
       "supply_type" => Invoice.normalize_supply_type(data["supply_type"], document),
-      "tax_payment" => data["tax_payment"],
+      "tax_payment" => normalize_tax_payment(data, document),
       "reverse_charge" => Map.get(data, "reverse_charge", document["reverse_charge"]),
       "line_items" => line_items,
       "printed_total_taxable" =>
@@ -72,9 +72,21 @@ defmodule Nila.Gst.Extraction.Sales.Normalizer do
       )
       |> Map.new(fn {key, value} -> {key, money(value)} end)
     )
+    |> Map.merge(Map.take(data, ["seller_identity"]))
     |> Invoice.resolve_line_amounts()
     |> InvoiceFacts.from_sales_map!()
     |> InvoiceFacts.to_sales_map()
+  end
+
+  # Export-payment treatment has no meaning for explicitly domestic supplies.
+  # Preserve contradictory document markers so readiness can still flag them.
+  defp normalize_tax_payment(data, document) do
+    if data["supply_type"] in ~w(taxable nil_rated exempt non_gst) and
+         document["export"] != true do
+      "not_applicable"
+    else
+      data["tax_payment"]
+    end
   end
 
   defp normalize_party(party) when is_map(party) do
