@@ -1526,7 +1526,7 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                   (event.key !== "Escape" && window.localStorage.getItem("nila-shortcuts-enabled") === "false") ||
                     event.repeat || event.isComposing ||
                     document.querySelector(":popover-open") ||
-                    event.target.closest("[role='tablist'], [role='combobox'], [role='listbox'], [role='slider'], #sales-bill-original") ||
+                    event.target.closest("[role='tablist'], [role='combobox'], [role='listbox'], [role='slider']") ||
                     event.defaultPrevented ||
                     event.altKey ||
                     event.ctrlKey ||
