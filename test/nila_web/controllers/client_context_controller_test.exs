@@ -25,9 +25,17 @@ defmodule NilaWeb.ClientContextControllerTest do
     assert get_session(conn, :current_client_id) == second.id
   end
 
+  test "selecting a client without a return path opens their sales month", %{
+    conn: conn,
+    second: second
+  } do
+    conn = post(conn, ~p"/clients/#{second.id}/select")
+    assert redirected_to(conn) == NilaWeb.GoTo.sales_home(second)
+  end
+
   test "does not redirect outside Nila", %{conn: conn, second: second} do
     conn = post(conn, ~p"/clients/#{second.id}/select?return_to=//example.com")
 
-    assert redirected_to(conn) == ~p"/sales-bills"
+    assert redirected_to(conn) == NilaWeb.GoTo.sales_home(second)
   end
 end

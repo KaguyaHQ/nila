@@ -55,7 +55,10 @@ defmodule NilaWeb.UserConfirmationLive do
             </.button>
           </.form>
 
-          <.text_link navigate={~p"/sales-bills"} class="text-ui inline-flex font-semibold">
+          <.text_link
+            navigate={NilaWeb.GoTo.sales_home(@current_scope.current_client)}
+            class="text-ui inline-flex font-semibold"
+          >
             Sales bills
           </.text_link>
         </.card>

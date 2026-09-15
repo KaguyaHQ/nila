@@ -87,11 +87,11 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
 
     path =
       review_path(context.client, invoice["id"], "all") <>
-        "&" <> URI.encode_query(%{"return_to" => "/sales-bills"})
+        "&" <> URI.encode_query(%{"return_to" => "/gst/#{context.client.id}/#{@period}/sales"})
 
     {:ok, view, _html} = live(context.conn, path)
     view |> element("#sales-review button[phx-click='done']") |> render_click()
-    assert_redirect(view, "/sales-bills")
+    assert_redirect(view, "/gst/#{context.client.id}/#{@period}/sales")
   end
 
   test "missing and unknown route state canonicalizes to needs-you first, then all", context do

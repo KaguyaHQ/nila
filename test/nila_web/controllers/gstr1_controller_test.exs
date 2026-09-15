@@ -185,7 +185,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
     client: client
   } do
     conn = post(conn, ~p"/gstr1/#{client.id}/2026-07/tally", %{"tally" => %{"company_id" => "7"}})
-    assert redirected_to(conn) == ~p"/sales-bills"
+    assert redirected_to(conn) == ~p"/gst/#{client.id}/2026-07/sales"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Open the sales bills"
     assert Repo.aggregate(Job, :count) == 0
   end

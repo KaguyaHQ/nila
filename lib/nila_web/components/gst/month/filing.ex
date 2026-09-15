@@ -207,7 +207,12 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             <.icon name="hero-arrow-down-tray" class="size-4" /> Download Tally XML
           </.button>
 
-          <.button id="gstr1-open-sales-bills" navigate={~p"/sales-bills"} variant="outline" size="xs">
+          <.button
+            id="gstr1-open-sales-bills"
+            navigate={~p"/gst/#{@sales_month.client_id}/#{@sales_month.period}/sales"}
+            variant="outline"
+            size="xs"
+          >
             Open sales bills
           </.button>
         </div>

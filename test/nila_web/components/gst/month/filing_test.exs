@@ -89,7 +89,10 @@ defmodule NilaWeb.Components.Gst.Month.FilingTest do
 
     assert LazyHTML.text(download) =~ "Download Tally XML"
 
-    assert LazyHTML.attribute(link, "href") == ["/sales-bills"]
+    assert LazyHTML.attribute(link, "href") == [
+             "/gst/#{assigns.sales_month.client_id}/2026-07/sales"
+           ]
+
     assert LazyHTML.text(link) =~ "Open sales bills"
     assert LazyHTML.to_html(LazyHTML.query(export, "#gstr1-send-tally-form")) == ""
     assert LazyHTML.text(export) =~ "GL sales vouchers"

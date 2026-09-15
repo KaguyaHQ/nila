@@ -285,8 +285,7 @@ defmodule NilaWeb.Gst.MonthLive do
     local? = is_nil(uri.scheme) and is_nil(uri.host) and is_nil(uri.userinfo)
 
     if local? and
-         (path == "/sales-bills" or
-            Regex.match?(~r|^/sales-bills/[^/?#]+/batch/[^/?#]+$|, path) or
+         (Regex.match?(~r|^/sales-bills/[^/?#]+/batch/[^/?#]+$|, path) or
             Regex.match?(~r|^/gst/\d+/\d{4}-\d{2}/sales(?:/[a-z0-9-]+)?$|, path)),
        do: return_to
   end

@@ -52,7 +52,7 @@ defmodule NilaWeb.UserInviteControllerTest do
           }
         })
 
-      assert redirected_to(conn) == ~p"/sales-bills"
+      assert redirected_to(conn) == ~p"/clients"
       assert get_session(conn, :user_token)
       assert Accounts.get_user_by_email_and_password("kannan@example.com", "supersecret123")
     end

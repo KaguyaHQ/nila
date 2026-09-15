@@ -11,7 +11,21 @@ defmodule NilaWeb.UserLoginLiveTest do
         "user" => %{"email" => user.email, "password" => valid_user_password()}
       })
 
-    assert redirected_to(conn) == ~p"/sales-bills"
+    assert redirected_to(conn) == ~p"/clients"
+  end
+
+  test "login opens the client's closeable sales month directly", %{conn: conn} do
+    %{user: user, org: org} = user_with_org_fixture()
+
+    {:ok, client} =
+      Nila.Clients.create_client(%{org_id: org.id, name: "Sales client", type: "company"})
+
+    conn =
+      post(conn, ~p"/users/log_in", %{
+        "user" => %{"email" => user.email, "password" => valid_user_password()}
+      })
+
+    assert redirected_to(conn) == NilaWeb.GoTo.sales_home(client)
   end
 
   test "rejects the wrong password", %{conn: conn} do

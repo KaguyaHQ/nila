@@ -10,7 +10,7 @@ defmodule NilaWeb.ClientContextController do
       {:ok, client} ->
         conn
         |> put_session(:current_client_id, client.id)
-        |> redirect(to: safe_return_to(params["return_to"]))
+        |> redirect(to: safe_return_to(params["return_to"], client))
 
       {:error, :not_found} ->
         conn
@@ -19,11 +19,11 @@ defmodule NilaWeb.ClientContextController do
     end
   end
 
-  defp safe_return_to(path) when is_binary(path) do
+  defp safe_return_to(path, client) when is_binary(path) do
     if String.starts_with?(path, "/") and not String.starts_with?(path, "//"),
       do: path,
-      else: ~p"/sales-bills"
+      else: NilaWeb.GoTo.sales_home(client)
   end
 
-  defp safe_return_to(_path), do: ~p"/sales-bills"
+  defp safe_return_to(_path, client), do: NilaWeb.GoTo.sales_home(client)
 end

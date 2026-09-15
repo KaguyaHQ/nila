@@ -108,7 +108,7 @@ defmodule NilaWeb.Settings.UsersLiveTest do
       %{user: member} = user_with_org_fixture(%{role: "member"})
       conn = log_in_user(conn, member)
 
-      assert {:error, {:redirect, %{to: "/sales-bills"}}} = live(conn, ~p"/settings/users")
+      assert {:error, {:redirect, %{to: "/clients"}}} = live(conn, ~p"/settings/users")
     end
 
     test "a logged-out visitor is redirected to log in", %{conn: conn} do

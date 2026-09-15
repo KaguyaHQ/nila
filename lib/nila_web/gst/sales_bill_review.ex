@@ -95,7 +95,9 @@ defmodule NilaWeb.Gst.SalesBillReview do
         {:ok,
          socket
          |> put_flash(:error, "That sales packet could not be found.")
-         |> push_navigate(to: ~p"/sales-bills")}
+         |> push_navigate(
+           to: NilaWeb.GoTo.sales_home(socket.assigns.current_scope.current_client)
+         )}
     end
   end
 

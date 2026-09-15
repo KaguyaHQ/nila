@@ -246,10 +246,8 @@ defmodule NilaWeb.Gst.UploadLiveTest do
     assert Dumps.list(org.id, other_client.id, period) == []
   end
 
-  test "sales home opens the active client's month", %{conn: conn, client: client} do
-    period = Calendar.closeable_period(Date.utc_today())
-    assert {:error, {:live_redirect, %{to: destination}}} = live(conn, ~p"/sales-bills")
-    assert destination == ~p"/gst/#{client.id}/#{period}/sales"
+  test "the removed global sales home has no route" do
+    refute Enum.any?(Phoenix.Router.routes(NilaWeb.Router), &(&1.path == "/sales-bills"))
   end
 
   test "partial sales bill validation events do not crash the importer", %{
@@ -273,7 +271,7 @@ defmodule NilaWeb.Gst.UploadLiveTest do
   } do
     Nila.Repo.delete!(client)
 
-    {:ok, view, _html} = live(conn, ~p"/sales-bills")
+    {:ok, view, _html} = live(conn, ~p"/gst/upload?kind=sales")
 
     assert has_element?(view, "#sales-bills-empty", "No clients yet")
     assert has_element?(view, "#sales-bills-add-first-client", "Add your first client")

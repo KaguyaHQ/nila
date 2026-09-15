@@ -30,22 +30,13 @@ defmodule NilaWeb.Gst.UploadLive do
   @bill_extensions ~w(.pdf .jpg .jpeg .png .webp)
 
   @impl true
-  def mount(
-        _params,
-        _session,
-        %{assigns: %{live_action: :sales, current_scope: %{current_client: %{id: id}}}} = socket
-      ) do
-    period = Calendar.closeable_period(Date.utc_today())
-    {:ok, push_navigate(socket, to: ~p"/gst/#{id}/#{period}/sales", replace: true)}
-  end
-
   def mount(params, _session, socket) do
     if connected?(socket), do: subscribe(socket)
 
     prefilled = prefill(socket, params)
     contextual_kind = contextual_kind(params)
 
-    sales_intake? = socket.assigns.live_action == :sales or contextual_kind == "sales"
+    sales_intake? = contextual_kind == "sales"
 
     socket =
       socket
@@ -78,7 +69,7 @@ defmodule NilaWeb.Gst.UploadLive do
         if prefilled["client_id"] do
           ~p"/gst/#{prefilled["client_id"]}/#{Calendar.closeable_period(Date.utc_today())}/sales"
         else
-          ~p"/sales-bills"
+          ~p"/clients"
         end
 
       {:ok,
@@ -95,18 +86,11 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp prefill(socket, params) do
     period =
-      if params["period"] in period_values(
-           socket.assigns.live_action == :sales or contextual_kind(params) == "sales"
-         ),
-         do: params["period"],
-         else: Calendar.closeable_period(Date.utc_today())
+      if params["period"] in period_values(contextual_kind(params) == "sales"),
+        do: params["period"],
+        else: Calendar.closeable_period(Date.utc_today())
 
-    client_id =
-      if socket.assigns.live_action == :sales do
-        active_client_id(socket)
-      else
-        params["client_id"] || active_client_id(socket)
-      end
+    client_id = params["client_id"] || active_client_id(socket)
 
     %{
       "client_id" => permitted_client(socket, client_id),

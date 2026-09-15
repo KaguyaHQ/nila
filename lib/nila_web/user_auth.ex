@@ -21,7 +21,13 @@ defmodule NilaWeb.UserAuth do
     |> renew_session()
     |> put_token_in_session(token)
     |> maybe_write_remember_me_cookie(token, params)
-    |> redirect(to: user_return_to || signed_in_path(conn))
+    |> redirect(
+      to:
+        user_return_to ||
+          NilaWeb.GoTo.sales_home(
+            scope_for_user(user, get_session(conn, :current_client_id)).current_client
+          )
+    )
   end
 
   def log_out_user(conn) do
@@ -328,5 +334,8 @@ defmodule NilaWeb.UserAuth do
 
   defp user_sessions_topic(user), do: "users:#{user.id}:sessions"
 
-  defp signed_in_path(_conn_or_socket), do: ~p"/sales-bills"
+  defp signed_in_path(%{assigns: %{current_scope: %{current_client: client}}}),
+    do: NilaWeb.GoTo.sales_home(client)
+
+  defp signed_in_path(_conn_or_socket), do: ~p"/clients"
 end

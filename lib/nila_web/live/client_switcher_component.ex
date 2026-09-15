@@ -114,7 +114,7 @@ defmodule NilaWeb.ClientSwitcherComponent do
         Regex.replace(~r|^/gst/\d+|, path, "/gst/#{client_id}")
 
       String.starts_with?(path, "/sales-bills/") ->
-        "/sales-bills"
+        NilaWeb.GoTo.sales_home(%{id: client_id})
 
       String.starts_with?(path, "/banking/") ->
         "/banking"
@@ -124,7 +124,7 @@ defmodule NilaWeb.ClientSwitcherComponent do
     end
   end
 
-  defp destination_for(_path, _client_id), do: "/sales-bills"
+  defp destination_for(_path, client_id), do: NilaWeb.GoTo.sales_home(%{id: client_id})
 
   @impl true
   def render(assigns) do

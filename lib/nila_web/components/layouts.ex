@@ -348,7 +348,7 @@ defmodule NilaWeb.Layouts do
         ~p"/gst/#{client_id}/#{period}/sales"
 
       _none ->
-        ~p"/sales-bills"
+        ~p"/clients"
     end
   end
 
@@ -368,7 +368,7 @@ defmodule NilaWeb.Layouts do
   defp sales_nav_active?(request_target) do
     path = URI.parse(request_target).path
 
-    String.starts_with?(path, "/sales-bills") or
+    String.starts_with?(path, "/sales-bills/") or
       Regex.match?(~r"^/gst/\d+/\d{4}-\d{2}/(?:sales(?:/.*)?|review/sales)$", path)
   end
 

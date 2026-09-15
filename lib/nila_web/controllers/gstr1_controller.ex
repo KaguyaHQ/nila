@@ -276,7 +276,7 @@ defmodule NilaWeb.Gstr1Controller do
       {:ok, _sales_month} ->
         conn
         |> put_flash(:info, "Open the sales bills to send vouchers to Tally.")
-        |> redirect(to: ~p"/sales-bills")
+        |> redirect(to: ~p"/gst/#{client_id}/#{period}/sales")
 
       {:error, _reason} ->
         conn |> put_status(:not_found) |> text("Not found")

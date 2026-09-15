@@ -66,7 +66,7 @@ defmodule NilaWeb.Gst.RegisterLiveTest do
     refute nav =~ ~s|href="/today"|
     refute nav =~ ~s|href="/gst/upload"|
     refute nav =~ ~s|href="/register"|
-    assert nav =~ ~r/href="\/sales-bills".*href="\/banking".*href="\/clients"/s
+    assert nav =~ ~r/href="\/clients".*href="\/banking".*href="\/clients"/s
   end
 
   test "redirects logged-out visitors to log in" do
