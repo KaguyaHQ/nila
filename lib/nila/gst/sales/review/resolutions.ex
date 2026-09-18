@@ -188,7 +188,8 @@ defmodule Nila.Gst.Sales.Review.Resolutions do
         header(month),
         document_issues(month) ++ tally.issues,
         source_namespace: "sales_month_#{month.id}",
-        compliance: compliance(month)
+        compliance:
+          Map.put(compliance(month), :taxpayers, Nila.Gst.Sales.TaxpayerChecks.saved(invoices))
       )
 
     Map.put(workings, :source_summary, tally.summary)

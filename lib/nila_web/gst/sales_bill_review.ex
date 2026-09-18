@@ -39,6 +39,10 @@ defmodule NilaWeb.Gst.SalesBillReview do
       tally_masters = tally_masters(org_id, company)
       source_prefix = Batch.source_prefix(batch)
       packet = prepare_packet(dumps, client.id)
+
+      if connected?(socket),
+        do: Nila.Gst.Sales.TaxpayerChecks.enqueue(org_id, packet.all_invoices)
+
       tally_jobs = list_tally_jobs(org_id, batch)
 
       socket =
@@ -483,13 +487,23 @@ defmodule NilaWeb.Gst.SalesBillReview do
         "verb" => "confirm_issue",
         "target" => target,
         "payload" =>
-          if issue["code"] in ~w(seller_identity_unverified seller_identity_mismatch) do
-            %{
-              "decision" => "confirm_client",
-              "seller_identity" => context.item.invoice["seller_identity"]
-            }
-          else
-            %{"decision" => "use_extracted_lines", "proposal" => proposal}
+          cond do
+            Nila.Gst.Sales.TaxpayerChecks.issue?(issue) ->
+              %{
+                "decision" => "confirm_taxpayer",
+                "taxpayer_checks" => context.item.invoice["taxpayer_checks"],
+                "buyer_name" => context.item.invoice["buyer_name"],
+                "seller_name" => context.item.invoice["seller_name"]
+              }
+
+            issue["code"] in ~w(seller_identity_unverified seller_identity_mismatch) ->
+              %{
+                "decision" => "confirm_client",
+                "seller_identity" => context.item.invoice["seller_identity"]
+              }
+
+            true ->
+              %{"decision" => "use_extracted_lines", "proposal" => proposal}
           end
       }
 
@@ -1284,6 +1298,16 @@ defmodule NilaWeb.Gst.SalesBillReview do
     types = issues |> Enum.map(& &1.voucher_type) |> Enum.uniq() |> Enum.join(", ")
 
     "#{types} voucher numbering in Tally must be Manual or Automatic (Manual Override). Change it in Tally, sync the company, then retry."
+  end
+
+  def handle_info({:gst_taxpayer_checked, gstin}, socket) do
+    if gstin in Nila.Gst.Sales.TaxpayerChecks.gstins(socket.assigns.packet.all_invoices) do
+      socket = reload_packet(socket)
+      socket = if socket.assigns.selected_invoice, do: refresh_workbench(socket), else: socket
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info(

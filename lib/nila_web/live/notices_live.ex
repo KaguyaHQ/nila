@@ -114,7 +114,9 @@ defmodule NilaWeb.NoticesLive do
     {:noreply,
      socket
      |> assign(busy: true, error: nil)
-     |> start_async(:request_otp, fn -> Nila.Gst.Portal.request_otp(scope, selected.id, username) end)}
+     |> start_async(:request_otp, fn ->
+       Nila.Gst.Portal.request_otp(scope, selected.id, username)
+     end)}
   end
 
   def handle_event(

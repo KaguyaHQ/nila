@@ -100,6 +100,65 @@ defmodule NilaWeb.Gst.SalesBillsLiveTest do
     }
   end
 
+  test "portal results reach invoice review and confirmations keep their evidence", context do
+    invoice = hd(context.dump.invoices) |> Map.put("id", "INV-001")
+    context.dump |> Ecto.Changeset.change(invoices: [invoice]) |> Nila.Repo.update!()
+
+    {:ok, month} =
+      SalesMonths.upsert(%{
+        org_id: context.org.id,
+        client_id: context.client.id,
+        period: "2026-07",
+        invoices: [invoice],
+        state: "worked"
+      })
+
+    lookup =
+      Nila.Repo.insert!(%Nila.Gst.Portal.TaxpayerLookup{
+        gstin: invoice["buyer_gstin"],
+        legal_name: "Different Business",
+        trade_name: nil,
+        registration_status: "Active",
+        provider: "whitebooks",
+        payload: %{},
+        checked_at: DateTime.utc_now()
+      })
+
+    {:ok, view, _} =
+      live(context.conn, "/gst/#{context.client.id}/2026-07/sales/invoices/INV-001")
+
+    assert has_element?(view, "#invoice-check-issues", "Different Business")
+    assert has_element?(view, "#invoice-check-issues", "Confirm GST details checked")
+
+    issue =
+      Nila.Gst.Sales.Review.Resolutions.workings(month).issues
+      |> Enum.find(&(&1["code"] == "buyer_gst_name_review"))
+
+    target = Nila.Gst.Sales.Workings.issue_key(issue)
+
+    view
+    |> element("button[phx-click='confirm-gst-issue'][phx-value-target='#{target}']")
+    |> render_click()
+
+    decision = Nila.Gst.Sales.Review.Resolutions.list(month.id) |> List.last()
+    assert decision.payload["decision"] == "confirm_taxpayer"
+    assert decision.payload["taxpayer_checks"]["buyer"]["legal_name"] == "Different Business"
+
+    assert Enum.find(
+             Nila.Gst.Sales.Review.Resolutions.workings(month).issues,
+             &(&1["code"] == "buyer_gst_name_review")
+           )["status"] == "resolved"
+
+    lookup |> Ecto.Changeset.change(legal_name: "Another Business") |> Nila.Repo.update!()
+    Nila.Gst.Intake.Progress.broadcast(context.org.id, {:gst_taxpayer_checked, lookup.gstin})
+    assert has_element?(view, "#invoice-check-issues", "Another Business")
+
+    assert Enum.find(
+             Nila.Gst.Sales.Review.Resolutions.workings(month).issues,
+             &(&1["code"] == "buyer_gst_name_review")
+           )["status"] == "open"
+  end
+
   test "PDF sources open directly on their recorded pages with image fallback", context do
     invoice =
       hd(context.dump.invoices) |> Map.put("id", "INV-001") |> Map.put("source_pages", [2, 3])

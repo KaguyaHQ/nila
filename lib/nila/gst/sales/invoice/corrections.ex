@@ -122,6 +122,7 @@ defmodule Nila.Gst.Sales.Invoice.Corrections do
 
       effective = apply_events(current, events) |> Dumps.rehydrate()
       if events != [], do: SourceChanges.invalidate_reviews(months, corrected_by_id)
+      if events != [], do: Nila.Gst.Sales.TaxpayerChecks.enqueue(org_id, [effective])
       {:ok, %{invoice: effective, corrections: events}}
     end
   end

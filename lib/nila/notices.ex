@@ -17,8 +17,11 @@ defmodule Nila.Notices do
   end
 
   def checks(org_id) do
-    Repo.all(from n in Check, join: c in assoc(n, :client),
-      where: c.org_id == ^org_id and c.gstin == n.gstin)
+    Repo.all(
+      from n in Check,
+        join: c in assoc(n, :client),
+        where: c.org_id == ^org_id and c.gstin == n.gstin
+    )
     |> Map.new(&{&1.client_id, &1})
   end
 
@@ -42,6 +45,7 @@ defmodule Nila.Notices do
     Enum.map(Clients.list_clients(org_id), fn client ->
       saved = connections[client.id]
       connection = if saved && saved.gstin == client.gstin, do: saved
+      check = checks[client.id]
 
       state =
         cond do
@@ -59,7 +63,8 @@ defmodule Nila.Notices do
         client: client,
         connection: connection,
         state: state,
-        last_checked_at: check && check.last_checked_at, last_error: check && check.last_error
+        last_checked_at: check && check.last_checked_at,
+        last_error: check && check.last_error
       }
     end)
   end
@@ -114,7 +119,10 @@ defmodule Nila.Notices do
             )
           end
 
-          save_check(client_id, account.gstin, last_checked_at: DateTime.utc_now(), last_error: nil)
+          save_check(client_id, account.gstin,
+            last_checked_at: DateTime.utc_now(),
+            last_error: nil
+          )
 
           {:ok, length(notices)}
         end)
@@ -141,8 +149,10 @@ defmodule Nila.Notices do
   defp save_check(client_id, gstin, attrs) do
     %Check{client_id: client_id, gstin: gstin}
     |> Ecto.Changeset.change(attrs)
-    |> Repo.insert!(on_conflict: {:replace, Keyword.keys(attrs) ++ [:updated_at]},
-      conflict_target: [:client_id, :gstin])
+    |> Repo.insert!(
+      on_conflict: {:replace, Keyword.keys(attrs) ++ [:updated_at]},
+      conflict_target: [:client_id, :gstin]
+    )
   end
 
   def documents(%Notice{payload: %{"detail" => detail}}),
@@ -252,5 +262,4 @@ defmodule Nila.Notices do
 
   defp authorize(scope, capability),
     do: if(Policy.can?(scope, capability), do: :ok, else: {:error, :forbidden})
-
 end

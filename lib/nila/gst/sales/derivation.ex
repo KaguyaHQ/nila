@@ -19,6 +19,7 @@ defmodule Nila.Gst.Sales.Derivation do
     invoices = Dumps.union_invoices(dump.org_id, dump.client_id, dump.period, "sales")
     {:ok, client} = Clients.get_client(dump.org_id, dump.client_id)
     directory = active_hsn_directory()
+    Nila.Gst.Sales.TaxpayerChecks.enqueue(dump.org_id, invoices)
 
     workings =
       Workings.materialize(
@@ -26,7 +27,11 @@ defmodule Nila.Gst.Sales.Derivation do
         [],
         Gstr1.production_header(client.gstin, dump.period),
         ledger_issues(dump),
-        compliance: maybe_put_directory(%{}, directory)
+        compliance:
+          maybe_put_directory(
+            %{taxpayers: Nila.Gst.Sales.TaxpayerChecks.saved(invoices)},
+            directory
+          )
       )
 
     issues = Enum.map(workings.issues, &Map.delete(&1, "status"))

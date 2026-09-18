@@ -1,8 +1,5 @@
 # Whitebooks GST integration
 
-See the [supplied API reference](whitebooks-api-reference.md) for the extracted
-Postman/OpenAPI inventory, request parameters, and source limitations.
-
 `Nila.Integrations.Whitebooks` calls the production API at
 `https://api.whitebooks.in` using Req. Configure these server-side values in the
 local ignored `.env`, or the production environment:
@@ -26,6 +23,30 @@ retain only an error code to avoid exposing echoed secrets. Requests do not
 follow redirects or retry automatically, including OTP requests sent as GETs.
 Never log authentication envelopes or OTP request URLs.
 
+## Supplied API material
+
+The vendor ZIP inspected on 18 September 2026 contains two different references:
+`GST api postman collection.json` is OpenAPI 3.0.0 with 247 paths;
+`WB-GST-API.postman_collection.json` is a Postman collection with 281 requests.
+The notice endpoints appear only in Postman. OpenAPI alone includes
+`POST /gstr1a/retsubmit`, so neither file is a complete substitute for the other.
+All 562 Postman response examples are empty HTTP 404/500 responses; they cannot
+establish successful response shapes or live endpoint support. Keep the original
+files and full endpoint inventory outside the repository.
+
+Authentication, taxpayer search, notices, and document download use `GET`,
+including OTP requests that have side effects. All take `email` in the query and
+`client_id`/`client_secret` headers. Client-account calls also use `gst_username`,
+`state_cd`, and `ip_address`; after the initial OTP request they require `txn`.
+Public taxpayer search does not require client-account headers or an OTP session.
+
+The collection also includes GSTR-1 reads and sample save, reset, and EVC filing
+requests. `PUT /gstr1/retsave` supplies an example return body. These writes use
+`gstin` and `ret_period` headers; reads commonly use `gstin` and `retperiod` query
+parameters instead. Preserve those spellings and locations if implementing them.
+The examples are reference material, not verified Nila filing support or proof of
+current filing requirements.
+
 ## Screen and storage
 
 Open `/notices` or use **Firm → Notices**. Expand **Client checks** to connect a
@@ -36,7 +57,10 @@ connections; operators can check notices; viewers can read saved notices and PDF
 `WHITEBOOKS_IP_ADDRESS` is the server's public IP, sent in Whitebooks' required
 header. The local setup uses the IP verified during the live API checks.
 
-The additive migration creates `gst_notice_connections` and `gst_notices`.
+GST login belongs to `Nila.Gst.Portal`. The follow-up migration renames
+`gst_notice_connections` to `gst_portal_connections`, preserving encrypted sessions,
+and moves notice check times/errors into `gst_notice_checks`. Notices remain in
+`gst_notices`.
 Sessions use `Nila.EncryptedMap`; OTPs are never saved. The screen conservatively
 requires another OTP after the documented six-hour session window. Automated
 refresh and scheduled checks are not enabled.
@@ -48,6 +72,31 @@ PDFs are fetched on demand through an organization-scoped controller, validated
 as PDF bytes and sent with private/no-store headers; they require a usable GST
 session. PDFs are not archived in this first version.
 
+## Sales taxpayer checks
+
+`Portal.lookup_taxpayer/1` validates the GSTIN locally and reuses a successful
+lookup for 30 days. `gst_taxpayer_lookups` holds one latest successful row per
+GSTIN: legal/trade names, registration status, provider, check time, and the
+allowlisted taxpayer response fields. Public taxpayer facts are shared across
+firms; client usernames and sessions are always client/organization scoped.
+Failures remain Oban job errors and never replace the saved success.
+
+Sales extraction, source corrections, and opening a sales review queue missing
+or stale GSTINs on Oban's existing workflows queue. Repeated invoice GSTINs share
+a job within the firm; jobs retry up to three times and suppress repeated attempts
+for one hour. Validators and exports read saved facts without making HTTP calls.
+
+Sales compares both legal and trade names, ignoring case, punctuation, spaces,
+and Private/Pvt or Limited/Ltd variants. Other differences and non-active status
+require review. Missing or stale evidence appears as not checked, never as an
+invalid GSTIN. The check date is shown; current status is not treated as proof of
+registration status on the invoice date. Invoice facts are never rewritten.
+
+These checks use the existing invoice review and confirmation flow. Confirmations
+are tied to the compared facts, so changed names/status cannot inherit an old
+confirmation. A newly found exception reopens an affected unfiled review; filed
+month snapshots remain unchanged. The cache itself has no version history.
+
 ## Verified and pending
 
 Production taxpayer lookup succeeded for active and suspended taxpayers on
@@ -55,9 +104,8 @@ Production taxpayer lookup succeeded for active and suspended taxpayers on
 the response has top-level `status_cd`, `status_desc`, and `txn` fields. OTP
 verification succeeded with `status_cd` and `status_desc`; it did not issue a
 replacement transaction. Notice calls using the original transaction were accepted.
-The supplied Postman collection documents authentication and notice requests but
-does not provide successful response examples for them. Adapter tests verify
-request construction and error handling; their response bodies are synthetic.
+Adapter tests verify request construction and error handling; their response
+bodies are synthetic.
 
 Populated list and detail responses have now been inspected for an active
 taxpayer (see below). Session expiry and refresh behavior remain unverified live.

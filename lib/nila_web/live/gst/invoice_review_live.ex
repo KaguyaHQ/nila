@@ -1140,9 +1140,16 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                                 phx-click="confirm-gst-issue"
                                 phx-value-target={Nila.Gst.Sales.Workings.issue_key(issue)}
                               >
-                                {if issue["code"] in ~w(seller_identity_unverified seller_identity_mismatch),
-                                  do: "Confirm this belongs to this client",
-                                  else: "Keep extracted value"}
+                                {cond do
+                                  Nila.Gst.Sales.TaxpayerChecks.issue?(issue) ->
+                                    "Confirm GST details checked"
+
+                                  issue["code"] in ~w(seller_identity_unverified seller_identity_mismatch) ->
+                                    "Confirm this belongs to this client"
+
+                                  true ->
+                                    "Keep extracted value"
+                                end}
                               </.button>
 
                               <.button

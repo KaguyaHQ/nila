@@ -12,9 +12,9 @@ defmodule Nila.Gst.Sales.Invoice.Readiness do
   alias Nila.Gst.Issues
   alias Nila.Gst.Sales.Invoice.Validation, as: InvoiceValidation
 
-  @doc "Annotates invoices with the active HSN directory."
+  @doc "Annotates invoices with the HSN directory and saved taxpayer facts."
   def annotate(invoices, compliance \\ %{}) when is_list(invoices) do
-    annotate_hsn(invoices, compliance)
+    invoices |> annotate_hsn(compliance) |> Nila.Gst.Sales.TaxpayerChecks.annotate(compliance)
   end
 
   @doc "Returns annotated invoices and every normalized invoice-level issue."
@@ -30,6 +30,7 @@ defmodule Nila.Gst.Sales.Invoice.Readiness do
     |> InvoiceValidation.issues()
     |> Enum.concat(InvoiceValidation.duplicate_number_issues(invoices))
     |> Enum.concat(compliance_issues(invoices))
+    |> Enum.concat(Nila.Gst.Sales.TaxpayerChecks.issues(invoices))
     |> Issues.normalize_all()
   end
 
@@ -108,7 +109,9 @@ defmodule Nila.Gst.Sales.Invoice.Readiness do
       issues: duplicate_issues
     }
 
-    InvoiceValidation.outcomes(invoice) ++ [hsn, inferred, duplicate]
+    InvoiceValidation.outcomes(invoice) ++
+      [hsn, inferred, duplicate] ++
+      Nila.Gst.Sales.TaxpayerChecks.outcomes(invoice)
   end
 
   defp annotate_hsn(invoices, %{directory: directory}) do

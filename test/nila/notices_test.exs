@@ -5,7 +5,9 @@ defmodule Nila.NoticesTest do
   alias Nila.{Clients, Notices, Repo}
   alias Nila.Accounts.Scope
   alias Nila.Integrations.Whitebooks
-  alias Nila.Notices.{Connection, Notice, SyncWorker}
+  alias Nila.Notices.{Check, Notice, SyncWorker}
+  alias Nila.Gst.Portal
+  alias Nila.Gst.Portal.Connection
 
   setup do
     previous = Application.get_env(:nila, Whitebooks)
@@ -52,7 +54,7 @@ defmodule Nila.NoticesTest do
       Req.Test.json(conn, %{"status_cd" => "1", "txn" => "new-session"})
     end)
 
-    assert {:ok, challenge} = Notices.request_otp(scope, client.id, "gst-user")
+    assert {:ok, challenge} = Portal.request_otp(scope, client.id, "gst-user")
     refute inspect(challenge) =~ "new-session"
 
     Req.Test.expect(Whitebooks, fn conn ->
@@ -60,11 +62,11 @@ defmodule Nila.NoticesTest do
       Req.Test.json(conn, %{"status_cd" => "1"})
     end)
 
-    assert {:ok, connection} = Notices.verify_otp(scope, challenge, "123456")
+    assert {:ok, connection} = Portal.verify_otp(scope, challenge, "123456")
     assert connection.credentials["txn"] == "new-session"
 
     %{rows: [[stored]]} =
-      Repo.query!("SELECT credentials FROM gst_notice_connections WHERE id = $1", [connection.id])
+      Repo.query!("SELECT credentials FROM gst_portal_connections WHERE id = $1", [connection.id])
 
     refute stored =~ "new-session"
     refute Map.has_key?(connection.credentials, "otp")
@@ -72,8 +74,9 @@ defmodule Nila.NoticesTest do
 
   test "failed verification preserves the previous session and missing setup stops before requesting OTP",
        %{scope: scope, client: client, connection: connection} do
-    challenge = %Nila.Notices.Challenge{
+    challenge = %Nila.Gst.Portal.Challenge{
       client_id: client.id,
+      org_id: scope.current_org.id,
       requested_at: DateTime.utc_now(),
       account: %{
         gstin: client.gstin,
@@ -87,26 +90,32 @@ defmodule Nila.NoticesTest do
       Req.Test.json(conn, %{"status_cd" => "0", "error" => %{"errorCode" => "AUTH_001"}})
     end)
 
-    assert {:error, {:provider, "AUTH_001"}} = Notices.verify_otp(scope, challenge, "123456")
+    assert {:error, {:provider, "AUTH_001"}} = Portal.verify_otp(scope, challenge, "123456")
     assert Repo.get!(Connection, connection.id).credentials["txn"] == "private-session"
     config = Application.get_env(:nila, Whitebooks)
     Application.put_env(:nila, Whitebooks, Keyword.delete(config, :ip_address))
-    assert {:error, :not_configured} = Notices.request_otp(scope, client.id, "gst-user")
+    assert {:error, :not_configured} = Portal.request_otp(scope, client.id, "gst-user")
 
     assert {:error, :invalid_connection} =
-             Notices.request_otp(scope, client.id, String.duplicate("x", 101))
+             Portal.request_otp(scope, client.id, String.duplicate("x", 101))
   end
 
   test "a different GSTIN does not inherit the old GSTIN's check time", %{
     scope: scope,
     client: client,
-    connection: connection
+    connection: _connection
   } do
-    connection |> Ecto.Changeset.change(last_checked_at: DateTime.utc_now()) |> Repo.update!()
+    Repo.insert!(%Check{
+      client_id: client.id,
+      gstin: client.gstin,
+      last_checked_at: DateTime.utc_now()
+    })
+
     client |> Ecto.Changeset.change(gstin: "33CPWPV2650A1ZQ") |> Repo.update!()
 
-    challenge = %Nila.Notices.Challenge{
+    challenge = %Nila.Gst.Portal.Challenge{
       client_id: client.id,
+      org_id: scope.current_org.id,
       requested_at: DateTime.utc_now(),
       account: %{
         gstin: "33CPWPV2650A1ZQ",
@@ -117,9 +126,9 @@ defmodule Nila.NoticesTest do
     }
 
     Req.Test.expect(Whitebooks, fn conn -> Req.Test.json(conn, %{"status_cd" => "1"}) end)
-    assert {:ok, updated} = Notices.verify_otp(scope, challenge, "123456")
-    assert updated.last_checked_at == nil
+    assert {:ok, updated} = Portal.verify_otp(scope, challenge, "123456")
     assert updated.gstin == "33CPWPV2650A1ZQ"
+    assert Notices.checks(scope.current_org.id)[client.id] == nil
   end
 
   test "rechecks update rather than duplicate; empty lists retain saved notices", %{
@@ -149,7 +158,7 @@ defmodule Nila.NoticesTest do
   } do
     expect_notice("31/07/2026")
     assert {:ok, 1} = Notices.sync(org.id, client.id)
-    checked = Notices.connections(org.id)[client.id].last_checked_at
+    checked = Notices.checks(org.id)[client.id].last_checked_at
     expect_list()
 
     Req.Test.expect(Whitebooks, fn conn ->
@@ -165,8 +174,8 @@ defmodule Nila.NoticesTest do
     end)
 
     assert {:error, :unexpected_response} = Notices.sync(org.id, client.id)
-    assert Notices.connections(org.id)[client.id].last_checked_at == checked
-    assert Notices.connections(org.id)[client.id].last_error =~ "incomplete"
+    assert Notices.checks(org.id)[client.id].last_checked_at == checked
+    assert Notices.checks(org.id)[client.id].last_error =~ "incomplete"
     assert [%{reply_due_on: ~D[2026-07-31]}] = Notices.list(org.id)
   end
 
@@ -180,13 +189,13 @@ defmodule Nila.NoticesTest do
     [notice] = Notices.list(org.id)
     %{user: user, org: other} = user_with_org_fixture(%{org: %{gstin: "27ABCDE1234F1Z0"}})
     assert Notices.list(other.id) == []
-    assert Notices.connections(other.id) == %{}
+    assert Portal.connections(other.id) == %{}
     assert {:error, :not_found} = Notices.fetch(other.id, notice.id)
     assert {:error, :not_found} = Notices.download(other.id, notice.id, 0)
     assert {:error, :not_found} = Notices.enqueue(Scope.for_user(user), client.id)
     viewer = %{scope | membership: %{scope.membership | role: "viewer"}}
     assert {:error, :forbidden} = Notices.enqueue(viewer, client.id)
-    assert {:error, :forbidden} = Notices.request_otp(viewer, client.id, "gst-user")
+    assert {:error, :forbidden} = Portal.request_otp(viewer, client.id, "gst-user")
   end
 
   test "expired sessions require another OTP and do not call the provider", %{

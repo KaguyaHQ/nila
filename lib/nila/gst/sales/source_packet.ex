@@ -22,7 +22,12 @@ defmodule Nila.Gst.Sales.SourcePacket do
       |> Enum.map(&Dumps.rehydrate/1)
       |> prepared_invoices(dumps)
 
-    readiness = InvoiceReadiness.evaluate(invoices, compliance())
+    readiness =
+      InvoiceReadiness.evaluate(
+        invoices,
+        Map.put(compliance(), :taxpayers, Nila.Gst.Sales.TaxpayerChecks.saved(invoices))
+      )
+
     active_by_id = Map.new(readiness.invoices, &{Invoice.source_id(&1), &1})
 
     %{

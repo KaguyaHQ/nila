@@ -122,7 +122,7 @@ defmodule NilaWeb.Components.Gst.InvoiceChecks do
           <:summary><span class="text-ink-muted text-ui">About these checks</span></:summary>
           <p class="text-ink-muted text-ui mt-3">
             Checks compare captured invoice values. They do not verify each value against the original bill.
-            Amount comparisons allow ₹0.50. GSTIN checks cover format and checksum, not live registration status.
+            Amount comparisons allow ₹0.50. GSTIN format checks run locally. Portal name and registration checks show when the saved information was fetched.
           </p>
         </.fold>
       </div>
@@ -168,6 +168,10 @@ defmodule NilaWeb.Components.Gst.InvoiceChecks do
     }
   end
 
+  defp check_name("seller_gst_registration_review"), do: "Seller GST registration"
+  defp check_name("buyer_gst_registration_review"), do: "Buyer GST registration"
+  defp check_name("seller_gst_name_review"), do: "Seller name vs GST registration"
+  defp check_name("buyer_gst_name_review"), do: "Buyer name vs GST registration"
   defp check_name("seller_identity"), do: "Seller GSTIN vs client GSTIN"
   defp check_name("buyer_gstin"), do: "Buyer GSTIN"
   defp check_name("tax_place"), do: "Tax heads vs place of supply"

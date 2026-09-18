@@ -169,6 +169,10 @@ defmodule Nila.Gst.Sales.Workings do
       when is_binary(target),
       do: target
 
+  def issue_key(%{"code" => code, "target" => target})
+      when code in ~w(seller_gst_registration_review buyer_gst_registration_review seller_gst_name_review buyer_gst_name_review),
+      do: target
+
   def issue_key(%{"source_id" => source_id, "code" => code}) when is_binary(source_id),
     do: "#{source_id}:#{code}"
 

@@ -11,6 +11,31 @@ defmodule Nila.Integrations.Whitebooks do
 
   def search_taxpayer(gstin), do: request("/public/search", [gstin: gstin], %{}, public?: true)
 
+  def taxpayer_facts(
+        %{"data" => %{"gstin" => gstin, "lgnm" => name, "sts" => status} = data},
+        gstin
+      )
+      when is_binary(name) and is_binary(status) do
+    trade_name = data["tradeNam"]
+
+    if String.trim(name) != "" and String.trim(status) != "" and
+         (is_nil(trade_name) or is_binary(trade_name)) do
+      {:ok,
+       %{
+         legal_name: String.trim(name),
+         trade_name: trade_name,
+         registration_status: String.trim(status),
+         # Keep taxpayer evidence only, never credentials or auth envelopes.
+         payload:
+           Map.take(data, ~w(gstin lgnm tradeNam sts rgdt cxdt dty ctb stj ctj pradr adadr nba))
+       }}
+    else
+      {:error, :unexpected_response}
+    end
+  end
+
+  def taxpayer_facts(_, _), do: {:error, :unexpected_response}
+
   def request_otp(account), do: request("/authentication/otprequest", [], account)
 
   def authenticate(account, otp),

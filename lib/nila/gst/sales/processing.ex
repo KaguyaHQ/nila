@@ -54,6 +54,7 @@ defmodule Nila.Gst.Sales.Processing do
          |> Repo.update!()}
       end)
 
+    Nila.Gst.Sales.TaxpayerChecks.enqueue(dump.org_id, [invoice])
     result
   end
 

@@ -3,7 +3,8 @@ defmodule NilaWeb.NoticesLiveTest do
   import Phoenix.LiveViewTest
   alias Nila.{Clients, Repo}
   alias Nila.Integrations.Whitebooks
-  alias Nila.Notices.{Connection, Notice}
+  alias Nila.Notices.{Check, Notice}
+  alias Nila.Gst.Portal.Connection
 
   setup %{conn: conn} do
     previous = Application.get_env(:nila, Whitebooks)
@@ -272,6 +273,11 @@ defmodule NilaWeb.NoticesLiveTest do
   end
 
   defp connection!(client, attrs \\ []) do
+    {check_attrs, attrs} = Keyword.split(attrs, [:last_checked_at, :last_error])
+
+    if check_attrs != [],
+      do: Repo.insert!(struct!(Check, [client_id: client.id, gstin: client.gstin] ++ check_attrs))
+
     struct!(
       Connection,
       [

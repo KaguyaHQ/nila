@@ -912,6 +912,8 @@ defmodule NilaWeb.Gst.MonthLive do
     {:noreply, reload(socket)}
   end
 
+  def handle_info({:gst_taxpayer_checked, _gstin}, socket), do: {:noreply, reload(socket)}
+
   def handle_info({:purchase_review_refresh, item_id, month, workings}, socket) do
     current = socket.assigns.purchase_review_route
 
