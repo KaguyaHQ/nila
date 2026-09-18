@@ -138,6 +138,8 @@ defmodule NilaWeb.Router do
       live "/today", TodayLive, :index
       live "/sales-bills/:client_id/batch/:batch_ref", Gst.SalesBillsLive, :show
       live "/clients", ClientsLive, :index
+      live "/notices", NoticesLive, :index
+      live "/notices/:id", NoticesLive, :show
       live "/register", Gst.RegisterLive, :index
       live "/clients/new", ClientNewLive, :new
       live "/clients/:id/edit", ClientEditLive, :edit
@@ -179,6 +181,7 @@ defmodule NilaWeb.Router do
     get "/gstr1/:client_id/:period/evidence/:basename", Gstr1Controller, :evidence
 
     get "/settings", SettingsController, :index
+    get "/notices/:id/documents/:index", NoticeDocumentController, :show
     post "/clients/:id/select", ClientContextController, :update
     post "/settings/security/password", UserSettingsController, :update_password
     post "/settings/security/sessions", UserSettingsController, :delete_sessions

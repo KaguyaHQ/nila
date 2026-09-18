@@ -144,6 +144,12 @@ defmodule NilaWeb.Layouts do
               label="Clients"
               current_path={@current_path}
             />
+            <.rail_link
+              href={~p"/notices"}
+              icon="hero-inbox"
+              label="Notices"
+              current_path={@current_path}
+            />
           </div>
         </nav>
 
