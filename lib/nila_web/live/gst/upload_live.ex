@@ -753,6 +753,13 @@ defmodule NilaWeb.Gst.UploadLive do
         >
           <:intro>
             {sales_intake_intro(client_name(@clients, @form[:client_id].value), @internal_period)}
+            <.text_link
+              :if={@form[:client_id].value}
+              id="sales-upload-excel"
+              navigate={~p"/gst/#{@form[:client_id].value}/#{@internal_period}/import-excel"}
+            >
+              Import an Excel sales sheet
+            </.text_link>
           </:intro>
 
           <:state :if={@clients == [] and @jobs == %{}}>

@@ -109,6 +109,10 @@ defmodule NilaWeb.GstEvidenceController do
 
   defp original_content_type(".pdf"), do: "application/pdf"
   defp original_content_type(".json"), do: "application/json"
+
+  defp original_content_type(".xlsx"),
+    do: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
   defp original_content_type(_ext), do: "application/octet-stream"
 
   defp content_type(basename) do

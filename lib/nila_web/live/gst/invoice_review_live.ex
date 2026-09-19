@@ -226,9 +226,21 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
     end
   end
 
+  defp excel_source(%{selected_invoice: %{"source_sheet" => _} = invoice} = assigns) do
+    case Enum.find(assigns.source_dumps, fn dump ->
+           Enum.any?(dump.invoices, &(invoice_id(&1) == invoice_id(invoice)))
+         end) do
+      %{file_keys: [_]} = dump -> "/gst/#{dump.client_id}/#{dump.period}/original/#{dump.id}/0"
+      _ -> nil
+    end
+  end
+
+  defp excel_source(_), do: nil
+
   @impl true
   def render(assigns) do
     assigns = assign(assigns, :pdf_source, pdf_source(assigns))
+    assigns = assign(assigns, :excel_source, excel_source(assigns))
 
     ~H"""
     <Layouts.app
@@ -444,11 +456,25 @@ defmodule NilaWeb.Gst.InvoiceReviewLive do
                 on_page="posting-evidence-page"
               />
               <div
-                :if={is_nil(@pdf_source) && @selected_invoice["image_urls"] == []}
+                :if={
+                  is_nil(@pdf_source) && is_nil(@excel_source) &&
+                    @selected_invoice["image_urls"] == []
+                }
                 id="sales-bill-evidence-unavailable"
                 class="border-rule rounded-box text-body text-ink-muted flex h-full min-h-48 items-center justify-center border border-dashed"
               >
                 No rendered invoice page is available.
+              </div>
+              <div :if={@excel_source} id="sales-bill-excel-source" class="space-y-block p-4">
+                <h2 class="text-h4">Original sales Excel</h2>
+                <p class="text-ui">{@selected_invoice["source_filename"]}</p>
+                <p class="text-ui">
+                  Sheet: {@selected_invoice["source_sheet"]} · Rows: {Enum.join(
+                    @selected_invoice["source_rows"],
+                    ", "
+                  )}
+                </p>
+                <.button href={@excel_source} variant="soft" id="sales-bill-download-excel">Download original Excel</.button>
               </div>
             </section>
 

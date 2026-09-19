@@ -177,7 +177,7 @@ defmodule NilaWeb.Components.Form do
   defp upload_error_message(:too_large), do: "That file is too large."
   defp upload_error_message(:json_too_large), do: "Portal JSON files must be under 20 MB."
   defp upload_error_message(:too_many_files), do: "Too many files at once."
-  defp upload_error_message(:not_accepted), do: "Only PDF and JSON files are accepted."
+  defp upload_error_message(:not_accepted), do: "Choose one of the file types listed above."
   defp upload_error_message(_), do: "Something went wrong with that file."
 
   defp humanize_bytes(bytes) when is_integer(bytes) and bytes < 1_024, do: "#{bytes} B"

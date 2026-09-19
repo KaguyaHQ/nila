@@ -251,6 +251,10 @@ defmodule Nila.Gst.Intake.DumpWorker do
   defp extract(%Dump{status: "extracted"} = dump, _worker_attempt), do: {:ok, dump}
   defp extract(%Dump{status: "needs_confirmation"} = dump, _worker_attempt), do: {:ok, dump}
 
+  defp extract(%Dump{kind: kind, meta: %{"excel_import" => true}} = dump, _attempt)
+       when kind in ~w(sales purchase),
+       do: {:ok, Dumps.mark_extracted(dump, dump.invoices)}
+
   defp extract(%Dump{} = dump, worker_attempt) do
     dump = Dumps.mark_extracting(dump)
     progress(dump, :extracting)

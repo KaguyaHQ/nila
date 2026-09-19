@@ -1220,6 +1220,10 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
     Gstr1.filing_place_of_supply(invoice)
   end
 
+  defp source(%{"source_sheet" => sheet, "source_rows" => rows} = invoice) do
+    "#{invoice["source_filename"]} / #{sheet} / rows #{Enum.join(rows, ", ")}"
+  end
+
   defp source(invoice) do
     pages = invoice["source_pages"] |> List.wrap() |> Enum.reject(&is_nil/1) |> Enum.join(", ")
     identity = invoice["id"] || Invoice.document_number(invoice)
