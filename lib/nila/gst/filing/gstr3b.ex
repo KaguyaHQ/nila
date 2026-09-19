@@ -69,6 +69,7 @@ defmodule Nila.Gst.Filing.Gstr3b do
     reversed_4b2 =
       blocked_4b2
       |> add(itc["unsubstantiated_withheld_heads"] || @zero)
+      |> add(itc["not_claiming_heads"] || @zero)
       |> add(ItcPosition.credit_note_reversal_heads(recon))
 
     net_itc_4c =

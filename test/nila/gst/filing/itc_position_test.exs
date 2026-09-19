@@ -3,6 +3,127 @@ defmodule Nila.Gst.Filing.ItcPositionTest do
 
   alias Nila.Gst.Filing.ItcPosition
 
+  test "not claiming removes selected tax once, retaining other portal invoices" do
+    excluded = Map.merge(g2b(2_000), %{"invoice_number" => "excluded"})
+    other = Map.merge(g2b(6_000), %{"invoice_number" => "other"})
+
+    recon = %{
+      empty_recon()
+      | "in_2b_not_books" => [%{"gstr2b" => excluded}, %{"gstr2b" => other}]
+    }
+
+    case_line = no_claim_case(excluded)
+
+    position =
+      recon
+      |> ItcPosition.compute([], %{}, [case_line])
+      |> ItcPosition.apply_document_cases([case_line])
+
+    assert position["reported_2b_paise"] == 8_000
+    assert position["claimable_paise"] == 6_000
+    assert position["not_claiming_paise"] == 2_000
+    assert position["awaiting_document_paise"] == 6_000
+    assert position["unsubstantiated_withheld_paise"] == 0
+
+    return =
+      Nila.Gst.Filing.Gstr3b.assemble(%{"igst" => 0, "cgst" => 0, "sgst" => 0}, recon, position)
+
+    assert return["itc"]["net_itc_4c"] == %{"igst" => 0, "cgst" => 3_000, "sgst" => 3_000}
+  end
+
+  test "not claiming supersedes the same invoice's pending and blocked amounts" do
+    excluded =
+      Map.merge(g2b(2_000), %{"invoice_number" => "excluded", "vendor_gstin" => "supplier"})
+
+    other = Map.merge(g2b(6_000), %{"invoice_number" => "other"})
+    case_line = no_claim_case(excluded)
+
+    flagged =
+      row("excluded", %{
+        "vendor_gstin" => "supplier",
+        "cgst_paise" => 1_000,
+        "sgst_paise" => 1_000,
+        "flags" => [flag("personal_expense_17_5")]
+      })
+
+    decisions = %{ItcPosition.block_id("excluded", "personal_expense_17_5") => "block_itc"}
+
+    for bucket <- ~w(matched needs_human) do
+      recon =
+        empty_recon()
+        |> Map.put(bucket, [%{"gstr2b" => excluded}])
+        |> Map.put("in_2b_not_books", [%{"gstr2b" => other}])
+
+      position = ItcPosition.compute(recon, [flagged], decisions, [case_line])
+      assert position["claimable_paise"] == 6_000
+      assert position["not_claiming_paise"] == 2_000
+      assert position["pending_decision_paise"] == 0
+      assert position["blocked_in_ceiling_paise"] == 0
+    end
+  end
+
+  test "not claiming removes a paired books block when invoice numbers differ" do
+    excluded = keyed(g2b(2_000), "CHN-SER-1134")
+    other = keyed(g2b(6_000), "other")
+
+    for bucket <- ~w(matched value_mismatch) do
+      flagged =
+        row("books-id", %{
+          "invoice_number" => "1134",
+          "bucket" => bucket,
+          "cgst_paise" => 1_000,
+          "sgst_paise" => 1_000,
+          "flags" => [flag("personal_expense_17_5")]
+        })
+
+      recon =
+        empty_recon()
+        |> Map.put(bucket, [%{"books" => flagged, "gstr2b" => excluded}])
+        |> Map.put("in_2b_not_books", [%{"gstr2b" => other}])
+
+      decisions = %{ItcPosition.block_id("books-id", "personal_expense_17_5") => "block_itc"}
+      assert ItcPosition.compute(recon, [flagged], decisions)["blocked_in_ceiling_paise"] == 2_000
+
+      position = ItcPosition.compute(recon, [flagged], decisions, [no_claim_case(excluded)])
+
+      assert position["reported_2b_paise"] == 8_000
+      assert position["not_claiming_paise"] == 2_000
+      assert position["claimable_paise"] == 6_000
+      assert position["blocked_in_ceiling_paise"] == 0
+      assert position["blocks"] == []
+    end
+  end
+
+  defp empty_recon, do: Map.put(base_recon(), "matched", [])
+
+  test "a no-claim candidate keeps the other ambiguous invoices pending in either order" do
+    excluded = Map.merge(g2b(2_000), %{"invoice_number" => "excluded"})
+    other = Map.merge(g2b(6_000), %{"invoice_number" => "other"})
+
+    for candidates <- [[excluded, other], [other, excluded]] do
+      recon = Map.put(empty_recon(), "needs_human", [%{"candidates" => candidates}])
+      position = ItcPosition.compute(recon, [], %{}, [no_claim_case(excluded)])
+      assert position["reported_2b_paise"] == 8_000
+      assert position["not_claiming_paise"] == 2_000
+      assert position["pending_decision_paise"] == 6_000
+      assert position["claimable_paise"] == 0
+    end
+  end
+
+  defp no_claim_case(invoice) do
+    %{
+      claim_state: "not_claiming",
+      current_gstr2b?: true,
+      has_books?: false,
+      document_type: "invoice",
+      document_state: "not_held",
+      tax_heads: invoice["tax_paise"],
+      source_refs: %{
+        "gstr2b" => %{"2026-08" => Nila.Gst.Purchase.Reconciliation.gstr2b_ref(invoice)}
+      }
+    }
+  end
+
   # A 2B row carrying `tax` total (split cgst/sgst for intrastate).
   defp g2b(tax),
     do: %{"tax_paise" => %{"cgst" => div(tax, 2), "sgst" => div(tax, 2), "igst" => 0}}

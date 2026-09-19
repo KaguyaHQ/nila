@@ -149,6 +149,13 @@ defmodule NilaWeb.Router do
       live "/gst/upload", Gst.UploadLive, :new
       live "/gst/:client_id/:period/import-excel", Gst.ExcelImportLive, :new
       live "/gst/2b", Gst.Gstr2bLive, :index
+      live "/gst/:client_id/:period/purchases", Gst.PurchaseLive, :index
+      live "/gst/:client_id/:period/purchases/import-excel", Gst.PurchaseExcelImportLive, :new
+
+      live "/gst/:client_id/:period/purchases/invoices/:item_id",
+           Gst.PurchaseInvoiceReviewLive,
+           :show
+
       live "/gst/:client_id/:period", Gst.MonthLive, :index
 
       live "/gst/:client_id/:period/sales", Gst.MonthLive, :sales_workspace
@@ -172,6 +179,7 @@ defmodule NilaWeb.Router do
     # client_month before streaming, so bills never leak across firms.
     get "/gst/:client_id/:period/evidence/:basename", GstEvidenceController, :show
     get "/gst/sales-template.xlsx", SalesExcelController, :template
+    get "/gst/:client_id/:period/purchases/workings.xlsx", PurchaseWorkingsController, :download
     get "/gst/:client_id/:period/original/:dump_id/:index", GstEvidenceController, :original
 
     get "/sales-bills/:client_id/dumps/:dump_id/evidence/:basename",

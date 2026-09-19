@@ -126,6 +126,13 @@ defmodule NilaWeb.Layouts do
               active={sales_nav_active?(@current_path)}
             />
             <.rail_link
+              href={purchase_nav_href(@sales_home)}
+              icon="hero-document-magnifying-glass"
+              label="Purchases & ITC"
+              current_path={@current_path}
+              active={purchase_nav_active?(@current_path)}
+            />
+            <.rail_link
               href={~p"/banking"}
               icon="hero-building-library"
               label="Banking"
@@ -205,11 +212,29 @@ defmodule NilaWeb.Layouts do
   end
 
   @doc "Pins actions over the app work area without shifting its scrolling content."
+  attr :id, :string, default: nil
+  attr :animate, :boolean, default: false
   slot :inner_block, required: true
 
   def bottom_bar(assigns) do
     ~H"""
-    <div class="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-4 sm:px-6 lg:px-4 print:hidden">
+    <div
+      id={@id}
+      class={[
+        "pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-4 sm:px-6 lg:px-4 print:hidden",
+        @animate && "nila-bottom-bar-motion"
+      ]}
+      phx-remove={
+        @animate &&
+          Phoenix.LiveView.JS.hide(
+            transition:
+              {"transition-opacity duration-fast motion-reduce:transition-none", "opacity-100",
+               "opacity-0"},
+            time: 150,
+            blocking: true
+          )
+      }
+    >
       <div class="bg-inverse-surface border-inverse/10 nila-bottom-bar rounded-box shadow-moon text-inverse pointer-events-auto mx-auto max-w-[1480px] border p-3">
         {render_slot(@inner_block)}
       </div>
@@ -374,6 +399,14 @@ defmodule NilaWeb.Layouts do
   end
 
   defp sales_nav_period(_), do: nil
+
+  defp purchase_nav_href(sales_home),
+    do: String.replace_suffix(sales_home, "/sales", "/purchases")
+
+  defp purchase_nav_active?(nil), do: false
+
+  defp purchase_nav_active?(path),
+    do: Regex.match?(~r"^/gst/\d+/\d{4}-\d{2}/purchases(?:/|$)", URI.parse(path).path)
 
   defp sales_nav_active?(nil), do: false
 

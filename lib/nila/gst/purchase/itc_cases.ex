@@ -13,13 +13,14 @@ defmodule Nila.Gst.Purchase.ItcCases do
     ItcSourceCaseEvent,
     Month,
     Reconciliation,
+    Resolution,
     Workings
   }
 
   alias Nila.Repo
 
   @decision_events ~w(client_holds_document document_not_held excluded_not_ours reopened)
-  @line_keys ~w(case_id id identity_state merged? vendor supplier_gstin document_type invoice_number invoice_date tax_heads tax_paise books_periods gstr2b_periods books_invoices has_sources? has_books? has_gstr2b? current_books? current_gstr2b? evidence_state eligibility_state settlement_state document_state asked_at allocation_id source_refs)
+  @line_keys ~w(case_id id identity_state merged? vendor supplier_gstin document_type invoice_number invoice_date tax_heads tax_paise books_periods gstr2b_periods books_invoices has_sources? has_books? has_gstr2b? current_books? current_gstr2b? evidence_state eligibility_state settlement_state document_state claim_state claim_reason asked_at allocation_id source_refs)
 
   def sync_month(%Month{} = month, recon) do
     sources =
@@ -148,6 +149,48 @@ defmodule Nila.Gst.Purchase.ItcCases do
     |> Enum.map(fn {source, period} ->
       %{source | client_month: %Month{id: source.client_month_id, period: period}}
     end)
+    |> effective_source_payloads()
+  end
+
+  # ItcSource is immutable evidence. A later month's carried invoice must use
+  # the same audited corrections as its originating month's working, however.
+  # Replay only in memory so downloads and source audit retain the original.
+  defp effective_source_payloads(sources) do
+    month_ids =
+      sources
+      |> Enum.filter(&(&1.kind == "books"))
+      |> Enum.map(& &1.client_month_id)
+      |> Enum.uniq()
+
+    resolutions =
+      Repo.all(
+        from r in Resolution,
+          where: r.client_month_id in ^month_ids,
+          order_by: [asc: r.inserted_at, asc: r.id]
+      )
+
+    by_month =
+      Enum.group_by(resolutions, & &1.client_month_id, fn resolution ->
+        %{
+          "verb" => resolution.verb,
+          "books_id" => resolution.books_id,
+          "payload" => resolution.payload
+        }
+      end)
+
+    Enum.map(sources, fn
+      %{kind: "books"} = source ->
+        [payload] =
+          Workings.corrected_books(
+            [source.payload],
+            Map.get(by_month, source.client_month_id, [])
+          )
+
+        %{source | payload: payload}
+
+      source ->
+        source
+    end)
   end
 
   defp membership_events_with_period([]), do: []
@@ -188,7 +231,9 @@ defmodule Nila.Gst.Purchase.ItcCases do
   def documents_settled?(case_lines) do
     case_lines
     |> document_cases()
-    |> Enum.all?(&(&1.document_state in ~w(held not_held)))
+    |> Enum.all?(
+      &(Map.get(&1, :claim_state) == "not_claiming" or &1.document_state in ~w(held not_held))
+    )
   end
 
   def carried_books(case_lines) do
@@ -322,6 +367,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
         current
         |> Enum.filter(fn line ->
           line.evidence_state == "complete" and line.settlement_state == "available" and
+            line.claim_state != "not_claiming" and
             not MapSet.member?(
               blocked,
               {line.document_type, line.vendor, InvoiceNumber.key(line.invoice_number)}
@@ -579,6 +625,10 @@ defmodule Nila.Gst.Purchase.ItcCases do
         {:ok, %{from_case_id: target_case.id, to_case_id: target_case.id}}
       else
         if membership && membership.action == "linked" do
+          if source.kind == "gstr2b" do
+            carry_claim_exclusion!(month, membership.case_id, target_case.id)
+          end
+
           append_membership_event!(
             source,
             membership.case_id,
@@ -607,6 +657,41 @@ defmodule Nila.Gst.Purchase.ItcCases do
     else
       _ -> {:error, :not_found}
     end
+  end
+
+  defp event_order(event), do: {DateTime.to_unix(event.inserted_at, :microsecond), event.id}
+
+  defp carry_claim_exclusion!(month, source_case_id, target_case_id) do
+    event = latest_claim_event(month, source_case_id)
+    target = latest_claim_event(month, target_case_id)
+
+    if event && claim_origin(event) > claim_origin(target) do
+      {:ok, _} =
+        insert_event(
+          month,
+          target_case_id,
+          event.event_type,
+          event.decided_by_id,
+          event.payload
+          |> Map.put("carried_from_case_id", source_case_id)
+          |> Map.put("claim_decision_event_id", claim_origin(event))
+        )
+    end
+  end
+
+  defp claim_origin(nil), do: 0
+  defp claim_origin(event), do: event.payload["claim_decision_event_id"] || event.id
+
+  defp latest_claim_event(month, source_case_id) do
+    Repo.one(
+      from e in ItcCaseEvent,
+        join: m in assoc(e, :effective_client_month),
+        where:
+          e.case_id == ^source_case_id and m.period <= ^month.period and
+            e.event_type in ["not_claiming_itc", "claim_reopened"],
+        order_by: [desc: e.inserted_at, desc: e.id],
+        limit: 1
+    )
   end
 
   defp append_membership_event!(
@@ -852,6 +937,13 @@ defmodule Nila.Gst.Purchase.ItcCases do
     gstr2b = Enum.filter(sources, &(&1.kind == "gstr2b"))
     decision = latest_decision(events)
 
+    claim =
+      events
+      |> Enum.filter(&(&1.event_type in ~w(not_claiming_itc claim_reopened)))
+      |> Enum.max_by(&event_order/1, fn -> nil end)
+
+    not_claiming? = match?(%{event_type: "not_claiming_itc"}, claim)
+
     allocation =
       itc_case.allocations
       |> Enum.filter(&(&1.client_month.period <= month.period))
@@ -906,6 +998,8 @@ defmodule Nila.Gst.Purchase.ItcCases do
         ),
       settlement_state: settlement_state,
       document_state: document_state,
+      claim_state: if(not_claiming?, do: "not_claiming"),
+      claim_reason: if(not_claiming?, do: claim.payload["reason"]),
       asked_at: latest_event_at(events, "documents_requested"),
       allocation_id: allocation && allocation.id,
       source_refs:
@@ -920,7 +1014,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
   defp merged_as_of?(events) do
     events
     |> Enum.filter(&(&1.event_type in ~w(case_merged case_merge_reversed)))
-    |> Enum.max_by(&{&1.inserted_at, &1.id}, fn -> nil end)
+    |> Enum.max_by(&event_order/1, fn -> nil end)
     |> case do
       %{event_type: "case_merged"} -> true
       _ -> false
@@ -952,13 +1046,13 @@ defmodule Nila.Gst.Purchase.ItcCases do
   defp latest_decision(events) do
     events
     |> Enum.filter(&(&1.event_type in @decision_events))
-    |> Enum.max_by(&{&1.inserted_at, &1.id}, fn -> nil end)
+    |> Enum.max_by(&event_order/1, fn -> nil end)
   end
 
   defp latest_event_at(events, type) do
     events
     |> Enum.filter(&(&1.event_type == type))
-    |> Enum.max_by(&{&1.inserted_at, &1.id}, fn -> nil end)
+    |> Enum.max_by(&event_order/1, fn -> nil end)
     |> case do
       nil -> nil
       event -> event.inserted_at

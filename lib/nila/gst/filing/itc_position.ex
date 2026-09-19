@@ -24,6 +24,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
   """
 
   alias Nila.Gst.InvoiceNumber
+  alias Nila.Gst.Purchase.Reconciliation
 
   @full_block ~w(personal_expense_17_5 gstin_state_mismatch)
   @zero_heads %{"igst" => 0, "cgst" => 0, "sgst" => 0}
@@ -71,6 +72,85 @@ defmodule Nila.Gst.Filing.ItcPosition do
       "blocked_outside_ceiling_paise" => blocked - blocked_in_ceiling,
       "blocks" => blocks
     })
+  end
+
+  @doc "Applies explicit no-claim decisions without counting the same tax in other deductions."
+  def compute(recon, rows, decisions, case_lines) do
+    refs =
+      case_lines
+      |> Enum.filter(&(Map.get(&1, :claim_state) == "not_claiming" and &1.current_gstr2b?))
+      |> Enum.flat_map(&Map.values(get_in(&1.source_refs, ["gstr2b"]) || %{}))
+      |> MapSet.new()
+
+    excluded =
+      recon
+      |> gstr2b_documents()
+      |> Enum.filter(
+        &(available_document?(&1) and MapSet.member?(refs, Reconciliation.gstr2b_ref(&1)))
+      )
+
+    excluded_refs = MapSet.new(excluded, &Reconciliation.gstr2b_ref/1)
+    excluded_keys = MapSet.new(excluded, &invoice_key/1)
+
+    # A confirmed pair can have different invoice numbers on the two sides.
+    # Remove its books row too, or its old block deducts the excluded tax again.
+    excluded_books_ids =
+      for bucket <- ~w(matched value_mismatch),
+          entry <- recon[bucket] || [],
+          document = entry["gstr2b"],
+          MapSet.member?(excluded_refs, Reconciliation.gstr2b_ref(document)),
+          id = get_in(entry, ["books", "id"]),
+          into: MapSet.new(),
+          do: id
+
+    remaining =
+      Enum.reduce(~w(matched value_mismatch in_2b_not_books), recon, fn bucket, acc ->
+        entries =
+          Enum.reject(recon[bucket] || [], fn entry ->
+            document = entry["gstr2b"] || entry
+
+            document && MapSet.member?(excluded_refs, Reconciliation.gstr2b_ref(document))
+          end)
+
+        Map.put(acc, bucket, entries)
+      end)
+      |> Map.put("needs_human", remaining_human_entries(recon, excluded_refs))
+
+    remaining_rows =
+      Enum.reject(rows, fn row ->
+        MapSet.member?(excluded_keys, invoice_key(row)) or
+          MapSet.member?(excluded_books_ids, row["id"])
+      end)
+
+    position = compute(remaining, remaining_rows, decisions)
+    heads = excluded |> Enum.map(& &1["tax_paise"]) |> sum_heads()
+
+    Map.merge(position, %{
+      "ceiling_paise" => ceiling_paise(recon),
+      "reported_2b_paise" => ceiling_paise(recon),
+      "not_claiming_paise" => Enum.sum(Map.values(heads)),
+      "not_claiming_heads" => heads
+    })
+  end
+
+  defp remaining_human_entries(recon, excluded_refs) do
+    Enum.flat_map(recon["needs_human"] || [], fn entry ->
+      if entry["candidates"] not in [nil, []] do
+        candidates =
+          Enum.reject(
+            entry["candidates"],
+            &MapSet.member?(excluded_refs, Reconciliation.gstr2b_ref(&1))
+          )
+
+        if candidates == [], do: [], else: [Map.put(entry, "candidates", candidates)]
+      else
+        document = entry["gstr2b"]
+
+        if document && MapSet.member?(excluded_refs, Reconciliation.gstr2b_ref(document)),
+          do: [],
+          else: [entry]
+      end
+    end)
   end
 
   @doc """
@@ -309,7 +389,8 @@ defmodule Nila.Gst.Filing.ItcPosition do
     cases =
       Enum.filter(
         case_lines,
-        &(&1.current_gstr2b? and not &1.has_books? and &1.document_type != "credit_note")
+        &(&1.current_gstr2b? and not &1.has_books? and &1.document_type != "credit_note" and
+            Map.get(&1, :claim_state) != "not_claiming")
       )
 
     withheld_cases = Enum.filter(cases, &(&1.document_state == "not_held"))
@@ -408,9 +489,9 @@ defmodule Nila.Gst.Filing.ItcPosition do
   defp awaiting_2b_invoices(recon) do
     recon["needs_human"]
     |> Enum.flat_map(fn e ->
-      case e["candidates"] |> List.wrap() |> List.first() || e["gstr2b"] do
-        nil -> []
-        g -> [g]
+      case List.wrap(e["candidates"]) do
+        [] -> List.wrap(e["gstr2b"])
+        candidates -> candidates
       end
     end)
     |> Enum.uniq_by(&document_ref/1)

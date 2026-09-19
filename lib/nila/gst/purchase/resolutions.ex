@@ -171,7 +171,7 @@ defmodule Nila.Gst.Purchase.Resolutions do
 
     itc =
       recon
-      |> ItcPosition.compute(rows ++ claim_rows, Workings.itc_decisions(resolutions))
+      |> ItcPosition.compute(rows ++ claim_rows, Workings.itc_decisions(resolutions), case_lines)
       |> ItcPosition.apply_document_cases(case_lines)
 
     summary =

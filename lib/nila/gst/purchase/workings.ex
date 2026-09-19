@@ -63,6 +63,17 @@ defmodule Nila.Gst.Purchase.Workings do
     |> apply_dismissals(dismissed_refs(ref_resolutions))
   end
 
+  @doc "Replays source-month corrections without changing the stored source."
+  def corrected_books(books, resolutions) do
+    corrections =
+      resolutions
+      |> with_target("books_id")
+      |> Replay.drop_reopened("books_id")
+      |> Enum.filter(&(&1["verb"] == "correct_field"))
+
+    apply_corrections(books, corrections)
+  end
+
   @doc """
   The effective latest decision per books row: `%{books_id => verb}` after undo
   (`reopen`) cancellation. A books row absent from the map is still open.
@@ -310,6 +321,16 @@ defmodule Nila.Gst.Purchase.Workings do
   end
 
   defp put_field(b, "vendor_name", value), do: Map.put(b, "vendor_name", value)
+
+  defp put_field(b, field, value)
+       when field in ["taxable_paise", "total_paise"] and is_integer(value) and value >= 0,
+       do: Map.put(b, field, value)
+
+  defp put_field(b, "tax_paise", %{"cgst" => cgst, "sgst" => sgst, "igst" => igst} = value)
+       when map_size(value) == 3 and is_integer(cgst) and cgst >= 0 and is_integer(sgst) and
+              sgst >= 0 and is_integer(igst) and igst >= 0,
+       do: Map.put(b, "tax_paise", value)
+
   defp put_field(b, _field, _value), do: b
 
   # Folds confirm/reject events in insertion order so the latest decision per

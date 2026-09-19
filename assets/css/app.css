@@ -984,6 +984,19 @@
   padding-bottom: calc(var(--spacing-canvas) * 4);
 }
 
+.nila-bottom-bar-motion {
+  animation: bottom-bar-enter var(--transition-duration-fast) var(--ease-standard);
+}
+
+@keyframes bottom-bar-enter {
+  from { opacity: 0; transform: translateY(var(--spacing-related)); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nila-bottom-bar-motion { animation: none; }
+}
+
 /* Floating actions use the shell's sea-blue ground. Inputs keep their light
    surfaces; only transparent controls need inverse ink and interaction fills. */
 .nila-bottom-bar .nila-button:is([data-variant="ghost"], [data-variant="outline"]) {

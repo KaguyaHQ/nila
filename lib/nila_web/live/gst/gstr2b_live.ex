@@ -3,6 +3,8 @@ defmodule NilaWeb.Gst.Gstr2bLive do
   alias Nila.Accounts.Policy
   alias Nila.Gst.Portal
   alias Nila.Gst.Portal.Gstr2b
+  alias Nila.Gst.Purchase.PortalImport
+  alias Nila.Gst.Intake.Dumps
 
   @impl true
   def mount(params, _session, socket) do
@@ -28,6 +30,8 @@ defmodule NilaWeb.Gst.Gstr2bLive do
        clients: clients,
        can_fetch: Policy.can?(scope, :edit_records),
        can_connect: Policy.can?(scope, :manage_connectors),
+       can_export: Policy.can?(scope, :export),
+       requested_fetch: nil,
        polling: false,
        error: nil
      )
@@ -97,17 +101,17 @@ defmodule NilaWeb.Gst.Gstr2bLive do
       }
     )
 
-    {:noreply, socket}
+    {:noreply, request_fetch(socket)}
   end
 
   def handle_event("reconnect", _, socket), do: {:noreply, socket}
 
   def handle_event("select", %{"statement" => %{"client_id" => id, "period" => period}}, socket) do
-    {:noreply, socket |> assign(error: nil) |> select(id, period)}
+    {:noreply, socket |> assign(error: nil, requested_fetch: nil) |> select(id, period)}
   end
 
   def handle_event("fetch", %{"statement" => %{"client_id" => id, "period" => period}}, socket) do
-    socket = select(socket, id, period)
+    socket = socket |> select(id, period) |> request_fetch()
 
     result =
       if socket.assigns.client,
@@ -116,10 +120,10 @@ defmodule NilaWeb.Gst.Gstr2bLive do
 
     case result do
       {:ok, _} ->
-        {:noreply, socket |> assign(error: nil) |> reload()}
+        {:noreply, socket |> mark_enqueued() |> assign(error: nil) |> reload()}
 
       {:error, :choose_client} ->
-        {:noreply, assign(socket, error: "Choose a client.")}
+        {:noreply, assign(socket, error: "Choose a client.", requested_fetch: nil)}
 
       {:error, reason} when reason in [:not_found, :session_expired] ->
         if socket.assigns.can_connect && Nila.Gstin.valid?(socket.assigns.client.gstin) do
@@ -135,31 +139,127 @@ defmodule NilaWeb.Gst.Gstr2bLive do
           {:noreply, socket |> assign(error: nil) |> reload()}
         else
           {:noreply,
-           assign(socket, error: "Ask the workspace owner to connect this client's GST account.")}
+           assign(socket,
+             error: "Ask the workspace owner to connect this client's GST account.",
+             requested_fetch: nil
+           )}
         end
 
       {:error, reason} ->
-        {:noreply, socket |> assign(error: Gstr2b.error_message(reason)) |> reload()}
+        {:noreply,
+         socket |> assign(error: Gstr2b.error_message(reason), requested_fetch: nil) |> reload()}
     end
   end
+
+  def handle_event("review", _, socket), do: {:noreply, review_purchases(socket)}
 
   @impl true
   def handle_info({:gst_connected, client_id, {:fetch_2b, period}}, socket) do
-    case Gstr2b.enqueue(socket.assigns.current_scope, client_id, period) do
-      {:ok, _} ->
-        {:noreply, socket |> assign(error: nil) |> reload()}
+    if socket.assigns.requested_fetch &&
+         socket.assigns.requested_fetch.client_id == client_id &&
+         socket.assigns.requested_fetch.period == period do
+      case Gstr2b.enqueue(socket.assigns.current_scope, client_id, period) do
+        {:ok, _} ->
+          {:noreply, socket |> mark_enqueued() |> assign(error: nil) |> reload()}
 
-      {:error, reason} ->
-        {:noreply, socket |> assign(error: Gstr2b.error_message(reason)) |> reload()}
+        {:error, reason} ->
+          {:noreply,
+           socket |> assign(error: Gstr2b.error_message(reason), requested_fetch: nil) |> reload()}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
-  def handle_info({:gst_statement_fetched, _id}, socket), do: {:noreply, reload(socket)}
+  def handle_info({:gst_statement_fetched, _id}, socket),
+    do: {:noreply, socket |> reload() |> complete_fetch()}
 
   def handle_info(:refresh_statement, socket),
-    do: {:noreply, socket |> assign(polling: false) |> reload()}
+    do: {:noreply, socket |> assign(polling: false) |> reload() |> complete_fetch()}
 
   def handle_info(_, socket), do: {:noreply, socket}
+
+  defp request_fetch(socket) do
+    client = socket.assigns.client
+    statement = socket.assigns.statement
+
+    assign(socket,
+      requested_fetch:
+        if(client,
+          do: %{
+            client_id: client.id,
+            period: socket.assigns.period,
+            phase: :awaiting_enqueue,
+            fetched_at: statement && statement.fetched_at
+          }
+        )
+    )
+  end
+
+  defp mark_enqueued(socket),
+    do: assign(socket, requested_fetch: %{socket.assigns.requested_fetch | phase: :enqueued})
+
+  defp complete_fetch(%{assigns: %{requested_fetch: nil}} = socket), do: socket
+
+  defp complete_fetch(%{assigns: %{requested_fetch: %{phase: :awaiting_enqueue}}} = socket),
+    do: socket
+
+  defp complete_fetch(socket) do
+    request = socket.assigns.requested_fetch
+    statement = socket.assigns.statement
+
+    cond do
+      is_nil(statement) ->
+        socket
+
+      statement.client_id != request.client_id || statement.period != request.period ->
+        socket
+
+      statement.status == "failed" ->
+        assign(socket, requested_fetch: nil)
+
+      statement.status == "ready" && statement.fetched_at != request.fetched_at ->
+        socket |> assign(requested_fetch: nil) |> review_purchases(:fresh)
+
+      true ->
+        socket
+    end
+  end
+
+  defp review_purchases(socket, mode \\ :saved) do
+    client = socket.assigns.client
+    period = socket.assigns.period
+
+    if client && match?({:ok, _}, Gstr2b.month(period)) do
+      current =
+        if mode == :saved do
+          PortalImport.current_dump(
+            socket.assigns.statement,
+            Dumps.list(socket.assigns.current_scope.current_org.id, client.id, period)
+          )
+        end
+
+      result =
+        if socket.assigns.can_fetch && !(current && current.status != "failed"),
+          do: PortalImport.import(socket.assigns.current_scope, client.id, period),
+          else: {:ok, :read_only}
+
+      case result do
+        {:ok, _} ->
+          push_navigate(socket, to: ~p"/gst/#{client.id}/#{period}/purchases")
+
+        {:error, reason} when is_binary(reason) ->
+          assign(socket, error: reason)
+
+        {:error, _} ->
+          assign(socket,
+            error: "Could not prepare this statement for purchase review. Try again."
+          )
+      end
+    else
+      assign(socket, error: "Choose a client and a valid return month.")
+    end
+  end
 
   defp fetched_at(time),
     do: time |> DateTime.add(19_800) |> Calendar.strftime("%d %b %Y at %H:%M IST")
@@ -170,8 +270,43 @@ defmodule NilaWeb.Gst.Gstr2bLive do
     <Layouts.app flash={@flash} current_scope={@current_scope} current_path={assigns[:current_path]}>
       <div id="gstr2b-page" class="space-y-block mx-auto w-full max-w-[960px]">
         <.page_header title="GSTR-2B">
-          Fetch and download a client's statement from the GST portal.
+          Fetch the portal statement to compare with this client's purchase records.
         </.page_header>
+
+        <.card :if={@statement && @statement.fetched_at} id="gstr2b-saved">
+          <div class="space-y-block">
+            <p class="font-medium">{@client.name} · {@statement.period}</p>
+
+            <p id="gstr2b-fetched-at" class="text-ink-muted text-ui">
+              GSTR-2B fetched {fetched_at(@statement.fetched_at)}
+            </p>
+
+            <p class="text-ui">
+              Continue to purchases to compare this statement with the client's books.
+            </p>
+
+            <div class="gap-related flex flex-wrap items-center">
+              <.button
+                id="gstr2b-review-purchases"
+                variant="primary"
+                phx-click="review"
+                disabled={@fetching}
+              >
+                Review purchases
+              </.button>
+
+              <.download_button
+                :if={@can_export}
+                id="gstr2b-download"
+                href={~p"/gst/2b/statements/#{@statement.id}/download"}
+                variant="ghost"
+              >
+                <.icon name="hero-arrow-down-tray" class="size-4" /> Download JSON
+              </.download_button>
+            </div>
+          </div>
+        </.card>
+
         <.card>
           <.form
             for={@form}
@@ -202,6 +337,7 @@ defmodule NilaWeb.Gst.Gstr2bLive do
                 _ -> "Fetch GSTR-2B to connect this client's GST account using an OTP."
               end}
             </p>
+
             <.text_link
               :if={@connection_state == :missing_gstin && @can_fetch}
               navigate={~p"/clients/#{@client.id}/edit"}
@@ -213,13 +349,15 @@ defmodule NilaWeb.Gst.Gstr2bLive do
             >
               Ask the workspace owner to connect or reconnect this client's GST account.
             </p>
+
             <p :if={!@can_fetch} id="gstr2b-permission" class="text-ink-muted text-ui">
-              Your role can download saved statements. Ask an operator to fetch a new one.
+              Your role can review saved records. Ask an operator to fetch a new statement.
             </p>
+
             <.button
               id="gstr2b-fetch"
               type="submit"
-              variant="primary"
+              variant={if @statement && @statement.fetched_at, do: "soft", else: "primary"}
               disabled={
                 !@can_fetch || !@client || @connection_state == :missing_gstin ||
                   (!@gst_connected && !@can_connect) || @fetching
@@ -228,11 +366,17 @@ defmodule NilaWeb.Gst.Gstr2bLive do
             >
               {if @fetching,
                 do: "Fetching GSTR-2B…",
-                else: "Fetch GSTR-2B"}
+                else:
+                  if(@statement && @statement.fetched_at,
+                    do: "Refresh GSTR-2B",
+                    else: "Fetch and reconcile"
+                  )}
             </.button>
           </.form>
         </.card>
+
         <p :if={@error} id="gstr2b-error" role="alert" class="text-error text-ui">{@error}</p>
+
         <p
           :if={@statement && @statement.last_error}
           id="gstr2b-fetch-error"
@@ -241,30 +385,13 @@ defmodule NilaWeb.Gst.Gstr2bLive do
         >
           {@statement.last_error}
         </p>
+
         <.button
           :if={@can_connect && @statement && @statement.last_error}
           id="gstr2b-reconnect"
           phx-click="reconnect"
           variant="ghost"
         >Reconnect GST and fetch</.button>
-        <.card :if={@statement && @statement.fetched_at} id="gstr2b-saved">
-          <div class="space-y-block">
-            <p class="font-medium">GSTR-2B · {@statement.period} · {@statement.gstin}</p>
-            <p id="gstr2b-fetched-at" class="text-ink-muted text-ui">
-              Fetched {fetched_at(@statement.fetched_at)}
-            </p>
-            <.download_button
-              id="gstr2b-download"
-              href={~p"/gst/2b/statements/#{@statement.id}/download"}
-              variant="soft"
-            >
-              <.icon name="hero-arrow-down-tray" class="size-4" /> Download JSON
-            </.download_button>
-            <p class="text-ink-muted text-ui">
-              Saved from the GST portal. Purchases have not been reconciled.
-            </p>
-          </div>
-        </.card>
         <p
           :if={@client && !(@statement && @statement.fetched_at)}
           id="gstr2b-empty"
@@ -273,6 +400,7 @@ defmodule NilaWeb.Gst.Gstr2bLive do
           No statement saved for this month.
         </p>
       </div>
+
       <.live_component
         module={NilaWeb.Gst.ConnectionComponent}
         id="gst-connection"

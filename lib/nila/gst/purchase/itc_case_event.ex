@@ -7,6 +7,8 @@ defmodule Nila.Gst.Purchase.ItcCaseEvent do
     document_not_held
     excluded_not_ours
     reopened
+    not_claiming_itc
+    claim_reopened
     case_merged
     case_merge_reversed
   )

@@ -341,6 +341,26 @@ defmodule Nila.Gst.Purchase.WorkingsTest do
     test "an invoice number is stored in the same shape extraction stores it" do
       assert corrected("invoice_number", " inv-77 ")["invoice_number"] == "INV-77"
     end
+
+    test "monetary corrections accept integer paise and exact nonnegative tax heads only" do
+      assert corrected("taxable_paise", 125_000)["taxable_paise"] == 125_000
+      assert corrected("total_paise", 150_000)["total_paise"] == 150_000
+      heads = %{"cgst" => 0, "sgst" => 0, "igst" => 22_500}
+      assert corrected("tax_paise", heads)["tax_paise"] == heads
+
+      for invalid <- [-1, 2.5, "500", nil] do
+        assert corrected("taxable_paise", invalid)["taxable_paise"] == 1_000_000
+      end
+
+      for invalid <- [
+            %{"cgst" => 0},
+            Map.put(heads, "igst", -1),
+            Map.put(heads, "cess", 0),
+            Map.put(heads, "cgst", 0.5)
+          ] do
+        assert corrected("tax_paise", invalid)["tax_paise"] == books(%{})["tax_paise"]
+      end
+    end
   end
 
   describe "the s.16(2)(a) document attestation" do

@@ -5,6 +5,7 @@ defmodule NilaWeb.Gst.Gstr2bLiveTest do
   alias Nila.{Clients, Repo}
   alias Nila.Accounts.Scope
   alias Nila.Gst.Portal.{Connection, Gstr2b, Statement, StatementWorker}
+  alias Nila.Gst.Intake.Dump
   alias Nila.Integrations.Whitebooks
 
   setup %{conn: conn} do
@@ -89,18 +90,26 @@ defmodule NilaWeb.Gst.Gstr2bLiveTest do
     end)
   end
 
+  test "purchase review navigation requires a valid selected month", %{conn: conn, client: client} do
+    {:ok, view, _} = live(conn, ~p"/gst/2b?#{%{client_id: client.id, period: "invalid"}}")
+    refute has_element?(view, "#gstr2b-review-purchases")
+  end
+
   test "fetch, save and download through the screen; another firm cannot download", %{
     conn: conn,
     client: client
   } do
     {:ok, view, _} = live(conn, ~p"/gst/2b?#{%{client_id: client.id, period: "2026-07"}}")
     assert has_element?(view, "#gstr2b-empty")
+
+    assert has_element?(view, "#gstr2b-fetch", "Fetch and reconcile")
+
     expect_document(client)
     view |> form("#gstr2b-form") |> render_submit()
     assert has_element?(view, "#gstr2b-fetch[disabled]")
     assert %{success: 1, failure: 0} = Oban.drain_queue(queue: :workflows)
-    assert has_element?(view, "#gstr2b-download")
-    assert has_element?(view, "#gstr2b-fetched-at", "Fetched")
+    assert_redirect(view, ~p"/gst/#{client.id}/2026-07/purchases")
+    assert Repo.one!(Dump).kind == "gstr2b"
     statement = Repo.one!(Statement)
     assert statement.document == document(client.gstin)
     download = get(conn, ~p"/gst/2b/statements/#{statement.id}/download")
@@ -116,6 +125,129 @@ defmodule NilaWeb.Gst.Gstr2bLiveTest do
       build_conn() |> log_in_user(other) |> get(~p"/gst/2b/statements/#{statement.id}/download")
 
     assert response(denied, 404)
+  end
+
+  test "saved statement visit is read-only until Review purchases imports it", c do
+    expect_document(c.client)
+    {:ok, _} = Gstr2b.enqueue(c.scope, c.client.id, "2026-07")
+    Oban.drain_queue(queue: :workflows)
+    {:ok, view, _} = live(c.conn, ~p"/gst/2b?#{%{client_id: c.client.id, period: "2026-07"}}")
+    assert Repo.aggregate(Dump, :count) == 0
+    assert has_element?(view, "#gstr2b-download")
+    assert has_element?(view, "#gstr2b-fetch", "Refresh GSTR-2B")
+    view |> element("#gstr2b-review-purchases") |> render_click()
+    assert_redirect(view, ~p"/gst/#{c.client.id}/2026-07/purchases")
+    assert Repo.one!(Dump).kind == "gstr2b"
+  end
+
+  test "failed refresh never imports the previous saved document", c do
+    expect_document(c.client)
+    {:ok, _} = Gstr2b.enqueue(c.scope, c.client.id, "2026-07")
+    Oban.drain_queue(queue: :workflows)
+    {:ok, view, _} = live(c.conn, ~p"/gst/2b?#{%{client_id: c.client.id, period: "2026-07"}}")
+    Req.Test.expect(Whitebooks, fn request -> Req.Test.transport_error(request, :timeout) end)
+    view |> form("#gstr2b-form") |> render_submit()
+    assert %{discard: 1} = Oban.drain_queue(queue: :workflows)
+    assert has_element?(view, "#gstr2b-fetch-error")
+    assert has_element?(view, "#gstr2b-download")
+    assert Repo.aggregate(Dump, :count) == 0
+  end
+
+  test "switching month abandons automatic import and stale OTP continuation", c do
+    {:ok, view, _} = live(c.conn, ~p"/gst/2b?#{%{client_id: c.client.id, period: "2026-07"}}")
+    expect_document(c.client)
+    view |> form("#gstr2b-form") |> render_submit()
+    view |> form("#gstr2b-form", statement: %{period: "2026-08"}) |> render_change()
+    assert %{success: 1} = Oban.drain_queue(queue: :workflows)
+    assert has_element?(view, "#gstr2b-period[value='2026-08']")
+    assert Repo.aggregate(Dump, :count) == 0
+    send(view.pid, {:gst_connected, c.client.id, {:fetch_2b, "2026-07"}})
+    assert has_element?(view, "#gstr2b-period[value='2026-08']")
+    assert [] == all_enqueued(worker: StatementWorker)
+  end
+
+  test "unsupported saved statement keeps user on page with explanation", c do
+    Repo.insert!(%Statement{
+      client_id: c.client.id,
+      gstin: c.client.gstin,
+      period: "2026-07",
+      document: put_in(document(c.client.gstin), ["data", "docdata", "impg"], [%{"x" => 1}]),
+      fetched_at: DateTime.utc_now(),
+      status: "ready"
+    })
+
+    {:ok, view, _} = live(c.conn, ~p"/gst/2b?#{%{client_id: c.client.id, period: "2026-07"}}")
+    view |> element("#gstr2b-review-purchases") |> render_click()
+    assert has_element?(view, "#gstr2b-error", "unsupported sections: impg")
+    assert Repo.aggregate(Dump, :count) == 0
+  end
+
+  test "viewer continues to purchase review without importing a saved statement", c do
+    expect_document(c.client)
+    {:ok, _} = Gstr2b.enqueue(c.scope, c.client.id, "2026-07")
+    Oban.drain_queue(queue: :workflows)
+    Repo.update!(Ecto.Changeset.change(c.scope.membership, role: "viewer"))
+    {:ok, view, _} = live(c.conn, ~p"/gst/2b?#{%{client_id: c.client.id, period: "2026-07"}}")
+    view |> element("#gstr2b-review-purchases") |> render_click()
+    assert_redirect(view, ~p"/gst/#{c.client.id}/2026-07/purchases")
+    assert Repo.aggregate(Dump, :count) == 0
+  end
+
+  test "filed purchase month remains unchanged and explains why review cannot import", c do
+    expect_document(c.client)
+    {:ok, _} = Gstr2b.enqueue(c.scope, c.client.id, "2026-07")
+    Oban.drain_queue(queue: :workflows)
+
+    Repo.insert!(%Nila.Gst.Purchase.Month{
+      org_id: c.org.id,
+      client_id: c.client.id,
+      period: "2026-07",
+      state: "filed",
+      filed_at: DateTime.utc_now()
+    })
+
+    {:ok, view, _} = live(c.conn, ~p"/gst/2b?#{%{client_id: c.client.id, period: "2026-07"}}")
+    view |> element("#gstr2b-review-purchases") |> render_click()
+    assert has_element?(view, "#gstr2b-error", "filed")
+    assert Repo.aggregate(Dump, :count) == 0
+  end
+
+  test "an already imported statement opens a filed month without writing", c do
+    expect_document(c.client)
+    {:ok, _} = Gstr2b.enqueue(c.scope, c.client.id, "2026-07")
+    Oban.drain_queue(queue: :workflows)
+    {:ok, dump} = Nila.Gst.Purchase.PortalImport.import(c.scope, c.client.id, "2026-07")
+
+    Repo.insert!(%Nila.Gst.Purchase.Month{
+      org_id: c.org.id,
+      client_id: c.client.id,
+      period: "2026-07",
+      state: "filed",
+      filed_at: DateTime.utc_now()
+    })
+
+    {:ok, view, _} = live(c.conn, ~p"/gst/2b?#{%{client_id: c.client.id, period: "2026-07"}}")
+    view |> element("#gstr2b-review-purchases") |> render_click()
+    assert_redirect(view, ~p"/gst/#{c.client.id}/2026-07/purchases")
+    assert Repo.one!(Dump).id == dump.id
+  end
+
+  test "fresh fetch cannot replace a filed purchase month", c do
+    Repo.insert!(%Nila.Gst.Purchase.Month{
+      org_id: c.org.id,
+      client_id: c.client.id,
+      period: "2026-07",
+      state: "filed",
+      filed_at: DateTime.utc_now()
+    })
+
+    {:ok, view, _} = live(c.conn, ~p"/gst/2b?#{%{client_id: c.client.id, period: "2026-07"}}")
+    expect_document(c.client)
+    view |> form("#gstr2b-form") |> render_submit()
+    assert %{success: 1} = Oban.drain_queue(queue: :workflows)
+    assert has_element?(view, "#gstr2b-error", "filed")
+    assert has_element?(view, "#gstr2b-download")
+    assert Repo.aggregate(Dump, :count) == 0
   end
 
   test "duplicate clicks share a job and failed refresh retains the previous download", %{
@@ -230,6 +362,14 @@ defmodule NilaWeb.Gst.Gstr2bLiveTest do
 
   test "reconnect resumes the chosen month, retains a pending OTP on close, and never fetches after a failed OTP",
        %{conn: conn, connection: connection, client: client} do
+    Repo.insert!(%Statement{
+      client_id: client.id,
+      gstin: client.gstin,
+      period: "2026-07",
+      status: "failed",
+      last_error: "Previous fetch failed."
+    })
+
     connection
     |> Ecto.Changeset.change(
       credentials: Map.put(connection.credentials, "reauth_required", true)
@@ -238,7 +378,7 @@ defmodule NilaWeb.Gst.Gstr2bLiveTest do
 
     {:ok, view, _} = live(conn, ~p"/gst/2b?#{%{client_id: client.id, period: "2026-07"}}")
     assert has_element?(view, "#gstr2b-connection", "session expired")
-    view |> form("#gstr2b-form") |> render_submit()
+    view |> element("#gstr2b-reconnect") |> render_click()
     assert has_element?(view, "#gst-username[value='gst-user']")
 
     Req.Test.expect(Whitebooks, fn request ->
@@ -248,6 +388,8 @@ defmodule NilaWeb.Gst.Gstr2bLiveTest do
 
     view |> form("#gst-connect-form", connection: %{username: "gst-user"}) |> render_submit()
     render_async(view, 1000)
+    send(view.pid, {:gst_statement_fetched, -1})
+    send(view.pid, :refresh_statement)
     assert has_element?(view, "#gst-connect-submit", "Verify and fetch")
     view |> element("#gst-connection-close") |> render_click()
     refute has_element?(view, "#gst-connection-modal")
@@ -274,6 +416,8 @@ defmodule NilaWeb.Gst.Gstr2bLiveTest do
     assert has_element?(view, "#gst-otp-form")
     assert has_element?(view, "#gst-otp-notice", "New OTP sent.")
     refute has_element?(view, "#gst-connection-error")
+    send(view.pid, {:gst_statement_fetched, -1})
+    send(view.pid, :refresh_statement)
 
     Req.Test.expect(Whitebooks, fn request ->
       assert request.request_path == "/authentication/authtoken"
@@ -288,6 +432,15 @@ defmodule NilaWeb.Gst.Gstr2bLiveTest do
     assert [%{args: %{"statement_id" => id}}] = all_enqueued(worker: StatementWorker)
     assert %{client_id: client_id, period: "2026-07"} = Repo.get!(Statement, id)
     assert client_id == client.id
+
+    Req.Test.expect(Whitebooks, fn request ->
+      assert request.request_path == "/gstr2b/all"
+      Req.Test.json(request, %{"status_cd" => "1", "data" => document(client.gstin)})
+    end)
+
+    assert %{success: 1} = Oban.drain_queue(queue: :workflows)
+    assert_redirect(view, ~p"/gst/#{client.id}/2026-07/purchases")
+    assert Repo.one!(Dump).kind == "gstr2b"
   end
 
   test "switching clients cannot reuse another client's pending OTP", %{
