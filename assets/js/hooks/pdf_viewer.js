@@ -10,6 +10,7 @@ export const PdfViewer = {
     this.pages = JSON.parse(this.el.dataset.pages)
     this.index = 0
     this.zoom = 1
+    this.readingWidth = Number(this.el.dataset.readingWidth) || Infinity
     this.revision = 0
     this.surface = this.el.querySelector("[data-pdf-surface]")
     this.pageElements = [...this.surface.querySelectorAll("[data-pdf-page]")]
@@ -24,7 +25,10 @@ export const PdfViewer = {
       if (action === "next") return this.jump(1)
       if (action === "in") this.zoom = Math.min(3, this.zoom + 0.25)
       if (action === "out") this.zoom = Math.max(0.5, this.zoom - 0.25)
-      if (action === "fit") this.zoom = 1
+      if (action === "fit") {
+        this.readingWidth = Infinity
+        this.zoom = 1
+      }
       this.draw()
     }
     this.onKey = event => {
@@ -136,7 +140,8 @@ export const PdfViewer = {
       if (this.dead || revision !== this.revision) return
       const padding = getComputedStyle(this.surface)
       const availableWidth = this.surface.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight)
-      const viewports = this.pdfPages.map(page => page.getViewport({scale: Math.max(1, availableWidth) / page.getViewport({scale: 1}).width * this.zoom}))
+      const readingWidth = Math.min(availableWidth, this.readingWidth)
+      const viewports = this.pdfPages.map(page => page.getViewport({scale: Math.max(1, readingWidth) / page.getViewport({scale: 1}).width * this.zoom}))
       // Size all pages first so page jumps and scrolling do not shift as they render.
       this.pageElements.forEach((element, index) => {
         element.style.width = `${viewports[index].width}px`

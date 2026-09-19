@@ -300,6 +300,7 @@ defmodule NilaWeb.NoticesLive do
                 url={~p"/notices/#{@notice.id}/documents/#{@document_index}"}
                 pages={[]}
                 document_label="Notice"
+                reading_width={850}
               />
             </section>
 

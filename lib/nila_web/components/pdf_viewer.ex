@@ -6,6 +6,10 @@ defmodule NilaWeb.Components.PdfViewer do
   attr :pages, :list, required: true
   attr :document_label, :string, default: "Invoice"
 
+  attr :reading_width, :integer,
+    default: nil,
+    doc: "Optional initial page width cap in CSS pixels"
+
   slot :fallback
 
   def viewer(assigns) do
@@ -18,6 +22,7 @@ defmodule NilaWeb.Components.PdfViewer do
       data-url={@url}
       data-pages={Jason.encode!(@pages)}
       data-document-label={@document_label}
+      data-reading-width={@reading_width}
     >
       <div
         class="bg-panel-surface border-rule flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2"
