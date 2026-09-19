@@ -4,6 +4,7 @@ defmodule NilaWeb.Components.PdfViewer do
   attr :id, :string, required: true
   attr :url, :string, required: true
   attr :pages, :list, required: true
+  attr :document_label, :string, default: "Invoice"
 
   slot :fallback
 
@@ -16,6 +17,7 @@ defmodule NilaWeb.Components.PdfViewer do
       data-has-fallback={if @fallback != [], do: "true", else: "false"}
       data-url={@url}
       data-pages={Jason.encode!(@pages)}
+      data-document-label={@document_label}
     >
       <div
         class="bg-panel-surface border-rule flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2"
@@ -85,16 +87,19 @@ defmodule NilaWeb.Components.PdfViewer do
         data-pdf-surface
         tabindex="0"
         role="region"
-        aria-label="Invoice document. Page Up and Page Down jump between pages."
+        aria-label={"#{@document_label} document. Page Up and Page Down jump between pages."}
         class="bg-quiet min-h-0 flex-1 overflow-auto p-3"
       >
         <div class="flex flex-col gap-4">
           <div
-            :for={page <- @pages}
+            :for={page <- if @pages == [], do: [1], else: @pages}
             data-pdf-page={page}
             class="bg-panel-surface nila-pdf-page relative mx-auto shrink-0"
           >
-            <canvas aria-label={"Original invoice PDF page #{page}"} class="block"></canvas>
+            <canvas
+              aria-label={"Original #{String.downcase(@document_label)} PDF page #{page}"}
+              class="block"
+            ></canvas>
             <div data-pdf-text class="nila-pdf-text-layer"></div>
           </div>
         </div>

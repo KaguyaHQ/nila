@@ -25,14 +25,27 @@ defmodule NilaWeb.NoticesLive do
   end
 
   @impl true
-  def handle_params(%{"id" => id}, _uri, socket) do
+  def handle_params(%{"id" => id} = params, _uri, socket) do
     with {id, ""} <- Integer.parse(id),
          {:ok, notice} <- Notices.fetch(org_id(socket), id) do
+      documents = Notices.documents(notice)
+      default_index = Enum.find_index(documents, &(&1["ct"] == "application/pdf")) || 0
+
+      index =
+        case Integer.parse(params["document"] || "") do
+          {index, ""} when index >= 0 and index < length(documents) -> index
+          _ -> default_index
+        end
+
       {:noreply,
        assign(socket,
+         page_title: "#{type_label(notice.notice_type)} · #{notice.client.name}",
          notice: notice,
          selected: notice.client,
-         documents: Notices.documents(notice)
+         documents: documents,
+         document_index: index,
+         document: Enum.at(documents, index),
+         document_form: to_form(%{"index" => to_string(index)}, as: :document)
        )}
     else
       _ ->
@@ -47,6 +60,7 @@ defmodule NilaWeb.NoticesLive do
     {:noreply,
      socket
      |> assign(
+       page_title: "Notices",
        selected: selected,
        notice: nil,
        error: nil
@@ -55,6 +69,11 @@ defmodule NilaWeb.NoticesLive do
   end
 
   @impl true
+  def handle_event("select_document", %{"document" => %{"index" => index}}, socket) do
+    {:noreply,
+     push_patch(socket, to: ~p"/notices/#{socket.assigns.notice.id}?#{%{document: index}}")}
+  end
+
   def handle_event("select_client", %{"filter" => %{"client_id" => id}}, socket) do
     {:noreply, push_patch(socket, to: ~p"/notices?#{%{client_id: id}}")}
   end
@@ -193,75 +212,109 @@ defmodule NilaWeb.NoticesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current_path={assigns[:current_path]}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={assigns[:current_path]}
+      active_client={if @notice, do: @notice.client}
+    >
       <div id="notices-page" class="pb-section space-y-block mx-auto w-full max-w-[1400px]">
         <%= if @notice do %>
-          <.page_header title={type_label(@notice.notice_type)}>
-            <:actions>
-              <.button
-                navigate={~p"/notices?#{%{client_id: @notice.client_id}}"}
-                variant="soft"
-                id="notices-back"
-              >All notices</.button>
-            </:actions>
-          </.page_header>
+          <.text_link navigate={~p"/notices?#{%{client_id: @notice.client_id}}"} id="notices-back">
+            <.icon name="hero-arrow-left" class="size-4" /> Notices
+          </.text_link>
+          <.page_header title={"#{type_label(@notice.notice_type)} · #{@notice.client.name}"} />
+          <dl id="notice-details" class="text-ui flex flex-wrap gap-x-8 gap-y-3">
+            <div>
+              <dt class="text-ink-muted">Reference</dt>
 
-          <p class="text-ui">{@notice.client.name} · {@notice.gstin}</p>
+              <dd class="font-medium">{@notice.reference}</dd>
+            </div>
 
-          <.card>
-            <dl id="notice-details" class="gap-block grid grid-cols-1 md:grid-cols-2">
-              <div>
-                <dt class="text-ink-muted text-ui">Reference number</dt><dd class="text-ui font-medium">
-                  {@notice.reference}
-                </dd>
-              </div>
+            <div>
+              <dt class="text-ink-muted">GSTIN</dt>
 
-              <div>
-                <dt class="text-ink-muted text-ui">Issued</dt><dd class="text-ui">
-                  {date(@notice.issued_on)}
-                </dd>
-              </div>
+              <dd>{@notice.gstin}</dd>
+            </div>
 
-              <div>
-                <dt class="text-ink-muted text-ui">Reply date in notice</dt><dd class="text-ui">
-                  {date(@notice.reply_due_on)}
-                </dd>
-              </div>
+            <div>
+              <dt class="text-ink-muted">Issued</dt>
 
-              <div>
-                <dt class="text-ink-muted text-ui">Tax period</dt><dd class="text-ui">
-                  {period(@notice.payload["detail"]["taxPeriod"])}
-                </dd>
-              </div>
-            </dl>
-          </.card>
+              <dd>{date(@notice.issued_on)}</dd>
+            </div>
 
-          <p class="text-ink-muted text-ui">
-            Check the GST portal to see whether a reply was filed or the matter is closed.
-          </p>
+            <div>
+              <dt class="text-ink-muted">Reply date in notice</dt>
 
-          <.data_table
-            id="notice-documents"
-            rows={Enum.with_index(@documents)}
-            mode="worklist"
-            empty?={@documents == []}
-          >
-            <:col :let={{doc, _}} label="Document" row_header>{doc["docName"]}</:col>
+              <dd>{date(@notice.reply_due_on)}</dd>
+            </div>
 
-            <:col :let={{doc, index}} label="" align="right">
-              <.button
-                :if={doc["ct"] == "application/pdf"}
-                href={~p"/notices/#{@notice.id}/documents/#{index}"}
+            <div :if={period(@notice.payload["detail"]["taxPeriod"]) != "Not supplied"}>
+              <dt class="text-ink-muted">Tax period</dt>
+
+              <dd>{period(@notice.payload["detail"]["taxPeriod"])}</dd>
+            </div>
+          </dl>
+
+          <div :if={@document} id="notice-documents" class="space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <.form
+                :if={length(@documents) > 1}
+                for={@document_form}
+                id="notice-document-form"
+                phx-change="select_document"
+                class="max-w-md min-w-0 flex-1"
+              >
+                <.input
+                  field={@document_form[:index]}
+                  type="select"
+                  label="Document"
+                  options={
+                    Enum.with_index(@documents)
+                    |> Enum.map(fn {doc, index} -> {"#{index + 1}. #{doc["docName"]}", index} end)
+                  }
+                />
+              </.form>
+
+              <p :if={length(@documents) == 1} class="text-ui font-medium">Original notice</p>
+
+              <.text_link
+                :if={@document["ct"] == "application/pdf"}
+                href={~p"/notices/#{@notice.id}/documents/#{@document_index}"}
                 target="_blank"
                 rel="noopener"
-                variant="soft"
-                id={"notice-document-#{index}"}
-              >View PDF</.button>
-              <span :if={doc["ct"] != "application/pdf"} class="text-ink-muted">Preview unavailable for this file type</span>
-            </:col>
+                id={"notice-document-#{@document_index}"}
+              >
+                Open original <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+              </.text_link>
+            </div>
 
-            <:empty>No documents are available for this notice.</:empty>
-          </.data_table>
+            <section
+              :if={@document["ct"] == "application/pdf"}
+              id="notice-reader"
+              class="border-rule h-[calc(100dvh-19rem)] min-h-[480px] overflow-hidden rounded-lg border"
+              aria-label="Original notice PDF"
+            >
+              <NilaWeb.Components.PdfViewer.viewer
+                id={"notice-pdf-#{@notice.id}-#{@document_index}"}
+                url={~p"/notices/#{@notice.id}/documents/#{@document_index}"}
+                pages={[]}
+                document_label="Notice"
+              />
+            </section>
+
+            <p :if={@document["ct"] != "application/pdf"} class="text-ink-muted text-ui">
+              Preview unavailable for this file type. View this attachment on the GST portal.
+            </p>
+          </div>
+
+          <p :if={!@document} id="notice-documents-empty" class="text-ink-muted text-ui">
+            No documents are available for this notice.
+          </p>
+
+          <p class="text-ink-muted text-ui">
+            Reply and closure status are not supplied. Check the GST portal for the latest case status.
+          </p>
         <% else %>
           <.page_header title="Notices" />
           <p id="notices-coverage" class="text-ink-muted text-ui">

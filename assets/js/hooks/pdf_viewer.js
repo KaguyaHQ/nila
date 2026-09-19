@@ -58,6 +58,20 @@ export const PdfViewer = {
     this.loading.promise.then(pdf => {
       if (this.dead) return
       this.pdf = pdf
+      // An empty page list means the whole document, whose length is known only
+      // after download. Explicit invoice page selections retain their behavior.
+      if (this.pages.length === 0) {
+        this.pages = Array.from({length: pdf.numPages}, (_, i) => i + 1)
+        const template = this.pageElements[0]
+        const label = (this.el.dataset.documentLabel || "Invoice").toLowerCase()
+        this.pageElements = this.pages.map(number => {
+          const element = template.cloneNode(true)
+          element.dataset.pdfPage = number
+          element.querySelector("canvas").setAttribute("aria-label", `Original ${label} PDF page ${number}`)
+          return element
+        })
+        template.parentElement.replaceChildren(...this.pageElements)
+      }
       if (this.pages.some(page => page > pdf.numPages)) throw Error("Source page is outside this PDF")
       return Promise.all(this.pages.map(number => pdf.getPage(number))).then(pages => {
         if (this.dead) return
@@ -75,7 +89,7 @@ export const PdfViewer = {
         (action === "next" && this.index === this.pages.length - 1) ||
         (action === "in" && this.zoom >= 3) || (action === "out" && this.zoom <= 0.5)
     }
-    this.counter.textContent = `Page ${this.index + 1} of ${this.pages.length}`
+    this.counter.textContent = this.pages.length ? `Page ${this.index + 1} of ${this.pages.length}` : ""
   },
   pageTop(index) {
     return this.pageElements[index].getBoundingClientRect().top - this.surface.getBoundingClientRect().top + this.surface.scrollTop

@@ -94,11 +94,44 @@ defmodule NilaWeb.NoticesLiveTest do
     assert has_element?(
              view,
              "#notice-document-0[href='/notices/#{notice.id}/documents/0']",
-             "View PDF"
+             "Open original"
            )
 
-    assert has_element?(view, "p", "Check the GST portal to see whether a reply was filed")
+    assert has_element?(view, "p", "Reply and closure status are not supplied")
+
+    assert has_element?(
+             view,
+             "#notice-pdf-#{notice.id}-0[data-url='/notices/#{notice.id}/documents/0']"
+           )
+
+    assert has_element?(view, "h1", "Reminder · Notice client")
     assert has_element?(view, "#notices-back")
+  end
+
+  test "document selection supports PDFs, unsupported files, empty notices and invalid indexes",
+       %{conn: conn, client: client} do
+    notice = notice!(client)
+    pdf = hd(notice.payload["detail"]["maindocs"])
+    other = %{"dcupdtls" => %{"id" => "other", "ct" => "text/plain", "docName" => "Notes.txt"}}
+    payload = put_in(notice.payload, ["detail", "maindocs"], [other, pdf, pdf])
+    Repo.update!(Ecto.Changeset.change(notice, payload: payload))
+    {:ok, view, _} = live(conn, ~p"/notices/#{notice.id}")
+    assert has_element?(view, "#notice-pdf-#{notice.id}-1")
+    view |> form("#notice-document-form", document: %{index: "2"}) |> render_change()
+    assert has_element?(view, "#notice-pdf-#{notice.id}-2")
+    view |> form("#notice-document-form", document: %{index: "0"}) |> render_change()
+    refute has_element?(view, "#notice-reader")
+    assert has_element?(view, "p", "Preview unavailable")
+    render_patch(view, ~p"/notices/#{notice.id}?document=-1")
+    assert has_element?(view, "#notice-pdf-#{notice.id}-1")
+
+    Repo.update!(
+      Ecto.Changeset.change(notice, payload: put_in(payload, ["detail", "maindocs"], []))
+    )
+
+    {:ok, empty, _} = live(conn, ~p"/notices/#{notice.id}")
+    assert has_element?(empty, "#notice-documents-empty")
+    refute has_element?(empty, "#notice-reader")
   end
 
   test "foreign notices and PDFs are inaccessible", %{conn: conn} do
