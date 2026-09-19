@@ -45,13 +45,13 @@ defmodule NilaWeb.NoticesLiveTest do
     assert has_element?(
              view,
              "#notices-coverage",
-             "Fetches adjudication and enforcement notices from GST"
+             "Checks fetch available notices from the past 60 days"
            )
 
     assert has_element?(view, "#notices-empty", "does not confirm")
     view |> form("#notices-filter", filter: %{client_id: client.id}) |> render_change()
-    assert has_element?(view, "#client-checks-summary", "1 client needs attention")
-    assert has_element?(view, "#client-check-action-#{client.id}", "Connect GST")
+    assert has_element?(view, "#client-checks-summary", "Not connected")
+    assert has_element?(view, "#selected-check-action-#{client.id}", "Connect GST")
   end
 
   test "connect and verify forms perform the real flow and clear OTP input", %{
@@ -59,7 +59,7 @@ defmodule NilaWeb.NoticesLiveTest do
     client: client
   } do
     {:ok, view, _} = live(conn, ~p"/notices?#{%{client_id: client.id}}")
-    view |> element("#client-checks > summary") |> render_click()
+    view |> element("#client-checks-toggle") |> render_click()
     view |> element("#client-check-action-#{client.id}") |> render_click()
 
     Req.Test.expect(Whitebooks, fn request ->
@@ -152,7 +152,8 @@ defmodule NilaWeb.NoticesLiveTest do
     viewer = user_fixture()
     {:ok, _} = Nila.Orgs.add_user(org, viewer.id, "viewer")
     {:ok, view, _} = live(log_in_user(conn, viewer), ~p"/notices?#{%{client_id: client.id}}")
-    assert has_element?(view, "#client-check-action-#{client.id}[disabled]", "Connect GST")
+    assert has_element?(view, "#selected-check-action-#{client.id}[disabled]", "Connect GST")
+    view |> element("#client-checks-toggle") |> render_click()
     assert has_element?(view, "#client-check-permissions", "Your role can view notices")
     render_click(view, "connect", %{"client_id" => to_string(client.id)})
     refute has_element?(view, "#gst-connection-modal")
@@ -202,14 +203,14 @@ defmodule NilaWeb.NoticesLiveTest do
       Clients.create_client(%{org_id: foreign_org.id, name: "Foreign client", type: "company"})
 
     {:ok, view, _} = live(conn, ~p"/notices")
-    assert has_element?(view, "#client-checks-summary", "2 clients need attention")
+    assert has_element?(view, "#client-checks-summary", "2 not connected")
     refute has_element?(view, "#client-check-status-#{foreign.id}")
-    view |> element("#client-checks > summary") |> render_click()
-    assert has_element?(view, "#client-checks[open]")
+    view |> element("#client-checks-toggle") |> render_click()
+    assert has_element?(view, "#client-checks")
     view |> form("#notices-filter", filter: %{client_id: client.id}) |> render_change()
-    assert has_element?(view, "#client-checks[open]")
+    assert has_element?(view, "#client-checks")
     assert has_element?(view, "#client-check-status-#{second.id}", "Not connected")
-    assert has_element?(view, "#client-checks-summary", "2 clients need attention")
+    assert has_element?(view, "#client-checks-summary", "Not connected")
     refute has_element?(view, "#notices-table", second.name)
 
     # Connecting the other client must not accidentally connect the filtered one.
@@ -231,7 +232,7 @@ defmodule NilaWeb.NoticesLiveTest do
     render_async(view, 1000)
     assert Repo.get_by(Connection, client_id: second.id)
     refute Repo.get_by(Connection, client_id: client.id)
-    assert has_element?(view, "#client-checks[open]")
+    assert has_element?(view, "#client-checks")
     assert has_element?(view, "#client-check-status-#{second.id}", "Checking…")
   end
 
@@ -265,6 +266,7 @@ defmodule NilaWeb.NoticesLiveTest do
     )
 
     {:ok, view, _} = live(conn, ~p"/notices")
+    view |> element("#client-checks-toggle") |> render_click()
     assert has_element?(view, "#client-check-status-#{client.id}", "Login expired")
     refute has_element?(view, "#client-check-status-#{client.id}.text-error")
     assert has_element?(view, "#client-check-time-#{client.id}", "01 Aug 2026 at 10:00 IST")
@@ -280,11 +282,11 @@ defmodule NilaWeb.NoticesLiveTest do
   } do
     connection!(client)
     {:ok, view, _} = live(conn, ~p"/notices")
-    view |> element("#client-checks > summary") |> render_click()
+    view |> element("#client-checks-toggle") |> render_click()
     view |> element("#client-check-action-#{client.id}") |> render_click()
     assert Nila.Notices.checking?(org.id, client.id)
     assert has_element?(view, "#client-check-action-#{client.id}[disabled]", "Checking")
-    assert has_element?(view, "#client-checks[open]")
+    assert has_element?(view, "#client-checks")
   end
 
   test "clients missing GSTIN get an edit link; successful checks do not need attention", %{
@@ -297,8 +299,9 @@ defmodule NilaWeb.NoticesLiveTest do
 
     connection!(client, last_checked_at: DateTime.utc_now())
     {:ok, view, _} = live(conn, ~p"/notices")
+    view |> element("#client-checks-toggle") |> render_click()
     assert has_element?(view, "#client-check-status-#{client.id}", "Checked successfully")
-    assert has_element?(view, "#client-checks-summary", "1 client needs attention")
+    assert has_element?(view, "#client-checks-summary", "1 missing GSTIN")
 
     assert has_element?(
              view,

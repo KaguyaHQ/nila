@@ -79,21 +79,29 @@ defmodule NilaWeb.NoticesLive do
   end
 
   def handle_event("toggle_client_checks", _, socket) do
-    {:noreply, assign(socket, checks_open: not socket.assigns.checks_open)}
+    {:noreply, socket |> assign(checks_open: not socket.assigns.checks_open) |> load()}
   end
 
-  def handle_event("connect", %{"client_id" => id}, %{assigns: %{can_connect: true}} = socket) do
+  def handle_event(
+        "connect",
+        %{"client_id" => id} = params,
+        %{assigns: %{can_connect: true}} = socket
+      ) do
     case Enum.find(socket.assigns.clients, &(to_string(&1.id) == id)) do
       nil ->
         {:noreply, socket}
 
       client ->
-        open_connection(client.id)
+        open_connection(client.id, params["return_focus"])
         {:noreply, assign(socket, error: nil)}
     end
   end
 
-  def handle_event("check", %{"client_id" => id}, %{assigns: %{can_check: true}} = socket) do
+  def handle_event(
+        "check",
+        %{"client_id" => id} = params,
+        %{assigns: %{can_check: true}} = socket
+      ) do
     case Enum.find(socket.assigns.clients, &(to_string(&1.id) == id)) do
       nil ->
         {:noreply, socket}
@@ -104,7 +112,7 @@ defmodule NilaWeb.NoticesLive do
             {:noreply, socket |> assign(error: nil) |> load()}
 
           {:error, reason} when reason in [:not_found, :session_expired] ->
-            if socket.assigns.can_connect, do: open_connection(client.id)
+            if socket.assigns.can_connect, do: open_connection(client.id, params["return_focus"])
 
             {:noreply,
              socket
@@ -121,13 +129,13 @@ defmodule NilaWeb.NoticesLive do
 
   def handle_event(_, _, socket), do: {:noreply, socket}
 
-  defp open_connection(client_id) do
+  defp open_connection(client_id, return_focus) do
     send_update(NilaWeb.Gst.ConnectionComponent,
       id: "gst-connection",
       request: %{
         client_id: client_id,
         continuation: :check_notices,
-        return_focus: "#client-check-action-#{client_id}"
+        return_focus: return_focus || "#client-check-action-#{client_id}"
       }
     )
   end
@@ -152,14 +160,13 @@ defmodule NilaWeb.NoticesLive do
     notices = Notices.list(org_id(socket))
     notices = if selected, do: Enum.filter(notices, &(&1.client_id == selected.id)), else: notices
     checking = Enum.any?(checks, &(&1.state == :checking))
-    attention_count = Enum.count(checks, &(&1.state not in [:checked, :checking]))
 
     socket =
       socket
       |> assign(
         checks: checks,
         clients: Enum.map(checks, & &1.client),
-        attention_count: attention_count,
+        selected_check: Enum.find(checks, &(selected && &1.id == selected.id)),
         client_count: length(checks),
         count: length(notices)
       )
@@ -194,12 +201,48 @@ defmodule NilaWeb.NoticesLive do
   defp check_label(:checking), do: "Checking…"
   defp check_label(:checked), do: "Checked successfully"
 
-  defp check_summary(0, 0), do: "No clients yet."
-  defp check_summary(0, _total), do: "View clients and last successful check times."
-  defp check_summary(1, _total), do: "1 client needs attention before their next check."
+  defp check_summary([]), do: "No clients yet."
 
-  defp check_summary(count, _total),
-    do: "#{count} clients need attention before their next check."
+  defp check_summary(checks) do
+    counts = Enum.frequencies_by(checks, & &1.state)
+
+    [
+      checked: "checked",
+      checking: "checking",
+      not_connected: "not connected",
+      missing_gstin: "missing GSTIN",
+      expired: "need reconnection",
+      failed: "checks failed",
+      not_checked: "not checked yet"
+    ]
+    |> Enum.flat_map(fn {state, label} ->
+      case Map.get(counts, state, 0) do
+        0 -> []
+        count -> ["#{count} #{label}"]
+      end
+    end)
+    |> Enum.join(" · ")
+  end
+
+  defp empty_message(%{state: :not_connected}),
+    do: "Connect this client's GST account to check for notices."
+
+  defp empty_message(%{state: :expired}),
+    do: "Reconnect this client's GST account to check for notices."
+
+  defp empty_message(%{state: :missing_gstin}),
+    do: "Add this client's GSTIN to check for notices."
+
+  defp empty_message(%{state: :not_checked}),
+    do: "This client has not been checked yet. Use Check notices to fetch available notices."
+
+  defp empty_message(%{state: :checking}), do: "Checking GST for notices…"
+
+  defp empty_message(%{state: :failed}),
+    do: "The last check failed. Try again to fetch available notices."
+
+  defp empty_message(_),
+    do: "No saved notices. This does not confirm that there are no notices on the GST portal."
 
   defp type_label("REMINDER"), do: "Reminder"
   defp type_label(type), do: type || "Notice"
@@ -208,6 +251,60 @@ defmodule NilaWeb.NoticesLive do
     do: "#{fm} #{fy} – #{tm} #{ty}"
 
   defp period(_), do: "Not supplied"
+
+  attr :row, :map, required: true
+  attr :id, :string, required: true
+  attr :can_check, :boolean, required: true
+  attr :can_connect, :boolean, required: true
+
+  defp check_action(assigns) do
+    ~H"""
+    <%= cond do %>
+      <% @row.state == :missing_gstin -> %>
+        <.button
+          :if={@can_check}
+          navigate={~p"/clients/#{@row.id}/edit"}
+          variant="soft"
+          id={@id}
+        >Add GSTIN</.button>
+        <.button
+          :if={!@can_check}
+          id={@id}
+          disabled
+          variant="soft"
+          title="Ask an operator or owner to add the GSTIN."
+        >Add GSTIN</.button>
+      <% @row.state in [:not_connected, :expired] -> %>
+        <.button
+          id={@id}
+          phx-click="connect"
+          phx-value-return_focus={"##{@id}"}
+          phx-value-client_id={@row.id}
+          variant="soft"
+          disabled={!@can_connect}
+          title={if !@can_connect, do: "Ask the workspace owner to connect GST."}
+        >
+          {if @row.state == :expired, do: "Reconnect GST", else: "Connect GST"}
+        </.button>
+      <% true -> %>
+        <.button
+          id={@id}
+          phx-click="check"
+          phx-value-return_focus={"##{@id}"}
+          phx-value-client_id={@row.id}
+          variant="soft"
+          disabled={!@can_check || @row.state == :checking}
+          title={if !@can_check, do: "Ask an operator or owner to check notices."}
+        >
+          {case @row.state do
+            :checking -> "Checking…"
+            :failed -> "Try again"
+            _ -> "Check notices"
+          end}
+        </.button>
+    <% end %>
+    """
+  end
 
   @impl true
   def render(assigns) do
@@ -218,12 +315,18 @@ defmodule NilaWeb.NoticesLive do
       current_path={assigns[:current_path]}
       active_client={if @notice, do: @notice.client}
     >
-      <div id="notices-page" class="pb-section space-y-block mx-auto w-full max-w-[1400px]">
+      <div
+        id="notices-page"
+        class={[
+          "pb-section space-y-block mx-auto w-full",
+          if(@notice, do: "max-w-[1400px]", else: "max-w-6xl")
+        ]}
+      >
         <%= if @notice do %>
           <.text_link navigate={~p"/notices?#{%{client_id: @notice.client_id}}"} id="notices-back">
             <.icon name="hero-arrow-left" class="size-4" /> Notices
           </.text_link>
-          <.page_header title={"#{type_label(@notice.notice_type)} · #{@notice.client.name}"} />
+           <.page_header title={"#{type_label(@notice.notice_type)} · #{@notice.client.name}"} />
           <dl id="notice-details" class="text-ui flex flex-wrap gap-x-8 gap-y-3">
             <div>
               <dt class="text-ink-muted">Reference</dt>
@@ -317,18 +420,14 @@ defmodule NilaWeb.NoticesLive do
             Reply and closure status are not supplied. Check the GST portal for the latest case status.
           </p>
         <% else %>
-          <.page_header title="Notices" />
-          <p id="notices-coverage" class="text-ink-muted text-ui">
-            Fetches adjudication and enforcement notices from GST. Check the GST portal for other notices and a complete record.
-          </p>
-
           <div class="gap-block flex flex-wrap items-end justify-between">
+            <.page_header title="Notices" />
             <.form
               for={@filter_form}
               id="notices-filter"
               phx-change="select_client"
               phx-submit="select_client"
-              class="w-full max-w-sm"
+              class="w-full sm:w-64"
             >
               <.input
                 field={@filter_form[:client_id]}
@@ -340,16 +439,53 @@ defmodule NilaWeb.NoticesLive do
             </.form>
           </div>
 
-          <.fold id="client-checks" open={@checks_open} on_toggle="toggle_client_checks">
-            <:summary>
-              <.fold_summary title="Client checks · Entire firm">
-                <:detail>
-                  <span id="client-checks-summary">{check_summary(@attention_count, @client_count)}</span>
-                </:detail>
-              </.fold_summary>
-            </:summary>
+          <div
+            id="notices-check-status"
+            class="gap-block text-ui flex flex-wrap items-center justify-between"
+          >
+            <div class="space-y-related">
+              <p id="client-checks-summary">
+                {if @selected_check,
+                  do: check_label(@selected_check.state),
+                  else: check_summary(@checks)}
+              </p>
 
-            <div class="pt-block space-y-block">
+              <p :if={@selected_check} class="text-ink-muted">
+                Last successful check: {checked_at(@selected_check.last_checked_at)}
+              </p>
+
+              <p :if={@selected_check && @selected_check.state == :failed} class="text-error">
+                {@selected_check.last_error}
+              </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+              <.check_action
+                :if={@selected_check}
+                row={@selected_check}
+                can_check={@can_check}
+                can_connect={@can_connect}
+                id={"selected-check-action-#{@selected_check.id}"}
+              />
+              <.button id="client-checks-toggle" variant="ghost" phx-click="toggle_client_checks">Client checks</.button>
+            </div>
+          </div>
+
+          <p id="notices-coverage" class="text-ink-muted text-ui">
+            Checks fetch available notices from the past 60 days. Saved notices are kept. Some notices and orders may only appear on the GST portal.
+          </p>
+
+          <.modal
+            :if={@checks_open}
+            id="client-checks"
+            title="Client checks · Entire firm"
+            on_close="toggle_client_checks"
+            width="extra-wide"
+            return_focus="#client-checks-toggle"
+          >
+            <div class="space-y-block">
+              <p :if={@error} role="alert" class="text-error text-ui">{@error}</p>
+
               <p class="text-ink-muted text-ui">
                 Checks cover the past 60 days. Saved notices are retained.
               </p>
@@ -389,48 +525,13 @@ defmodule NilaWeb.NoticesLive do
                   <span id={"client-check-time-#{row.id}"}>{checked_at(row.last_checked_at)}</span>
                 </:col>
 
-                <:col :let={row} label="Action" align="right">
-                  <%= cond do %>
-                    <% row.state == :missing_gstin -> %>
-                      <.button
-                        :if={@can_check}
-                        navigate={~p"/clients/#{row.id}/edit"}
-                        variant="soft"
-                        id={"client-check-action-#{row.id}"}
-                      >Add GSTIN</.button>
-                      <.button
-                        :if={!@can_check}
-                        disabled
-                        variant="soft"
-                        title="Ask an operator or owner to add the GSTIN."
-                      >Add GSTIN</.button>
-                    <% row.state in [:not_connected, :expired] -> %>
-                      <.button
-                        id={"client-check-action-#{row.id}"}
-                        phx-click="connect"
-                        phx-value-client_id={row.id}
-                        variant="soft"
-                        disabled={!@can_connect}
-                        aria-describedby={if !@can_connect, do: "client-check-permissions"}
-                      >
-                        {if row.state == :expired, do: "Reconnect GST", else: "Connect GST"}
-                      </.button>
-                    <% true -> %>
-                      <.button
-                        id={"client-check-action-#{row.id}"}
-                        phx-click="check"
-                        phx-value-client_id={row.id}
-                        variant="soft"
-                        disabled={!@can_check || row.state == :checking}
-                        aria-describedby={if !@can_check, do: "client-check-permissions"}
-                      >
-                        {case row.state do
-                          :checking -> "Checking…"
-                          :failed -> "Try again"
-                          _ -> "Check notices"
-                        end}
-                      </.button>
-                  <% end %>
+                <:col :let={row} label="Action" align="right" class="whitespace-nowrap">
+                  <.check_action
+                    row={row}
+                    can_check={@can_check}
+                    can_connect={@can_connect}
+                    id={"client-check-action-#{row.id}"}
+                  />
                 </:col>
 
                 <:empty>
@@ -438,7 +539,7 @@ defmodule NilaWeb.NoticesLive do
                 </:empty>
               </.data_table>
             </div>
-          </.fold>
+          </.modal>
 
           <p :if={@error} id="notices-error" role="alert" class="text-error text-ui">
             {@error}
@@ -468,7 +569,7 @@ defmodule NilaWeb.NoticesLive do
 
             <:empty>
               <p id="notices-empty">
-                No saved notices{if @selected, do: " for this client", else: ""}. This does not confirm that there are no notices on the GST portal.
+                {empty_message(@selected_check)}
               </p>
             </:empty>
           </.data_table>
