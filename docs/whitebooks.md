@@ -1,5 +1,68 @@
 # Whitebooks GST integration
 
+## Handoff: notice discovery is the remaining product question
+
+Last updated: 19 September 2026. Read this before running more live probes.
+**Retrieving a known reference is not proof that the API will discover a new notice.**
+
+| Portal item | Automatic list discovery | Direct details | PDF retrieval |
+| --- | --- | --- | --- |
+| July adjudication reminder | Verified | Verified | Downloaded and opened |
+| June DRC-01 / SCN | Outside tested 60-day window | Verified | Not established by our tests |
+| March 2025 ASMT-10 | Outside tested 60-day window | Verified | Two PDFs decoded; not visually inspected |
+| August Section 73 order / DRC-07 | Missing despite being inside the window | `NOTC_011` | Not retrieved through Whitebooks |
+| REG-03 cancellation clarification | Not returned in tested lookup | Empty, unusable success | Not retrieved |
+| Two return-defaulter notices | Not established | Empty, unusable success | Not retrieved |
+| Enforcement | Support says supported; not tested | Not tested | Not tested |
+
+These are results for specific references, not guarantees for entire categories.
+The list rejects dates outside the past 60 days; direct details can retrieve older
+references. We have no verified alternative API for discovering those old references.
+Support's statement "ADJN and Enforcement only" is narrower than observed ASMT-10
+retrieval. Do not use it to add a category filter. The screen's current categorical
+coverage wording needs revisiting in light of that successful ASMT-10 test.
+
+### Breeze Tech outcome: known from user-supplied PDFs, not the API
+
+Portal screenshots link June's SCN, July's reminder and August's order to case
+`AD330626028784V`, covering April 2022 to March 2023. Order reference
+`ZD330826099678I` is a Section 73 adjudication order with a DRC-07 summary.
+The detailed order concludes that tax and interest were paid, no penalty is
+payable, nothing remains recoverable, and the proceedings are concluded. The
+DRC-07 demand totals are zero. Do not infer an outstanding demand from the
+portal label "Order for creation of demand issued" or the old reminder.
+
+Source PDFs supplied by the user and text-read on 19 September 2026:
+`C:\Users\benze\Downloads\DRC 07 BREEZE TECH 2022-23.pdf` (conclusion on page 4;
+zero revenue table on page 5), and
+`C:\Users\benze\Downloads\DRC07_ORDER_ZD330826099678I_20260812063145-1.pdf`
+(order reference on page 1; DRC-07 and zero demand on pages 4-5).
+These local files may not exist on another machine. They were not imported into Nila.
+The order/notice distinction may explain the API rejection, but no separate order
+endpoint has been established. Ask Whitebooks for a working request or confirmation
+that retrieval is unsupported, without assuming an undocumented endpoint exists.
+
+### Product boundary and next evidence
+
+Current implementation fetches and saves notices, displays client check status,
+and downloads PDFs on demand. `Notices.fetch_by_reference/3` saves a supplied
+reference through the core library; there is no screen control for it yet.
+June and ASMT-10 diagnostic lookups were not saved to the dashboard. Session
+refresh is implemented; it is separate from automatic notice polling, which is not.
+
+Manual order/REG upload, extraction, human-confirmed outcomes, assignments and
+follow-ups were discussed as a possible workflow, not implemented or approved as
+the next build. Uploads can fill document gaps but cannot solve missing discovery.
+Do not claim "80% monitoring coverage", full notice management, or announce that
+an order was issued without evidence of that event.
+
+Next useful validation: compare regular list results against portal entries for a
+small authorized set of GSTINs, including a known ASMT-10 issued within 60 days.
+Measure new-notice discovery, dates, attachments and subsequent case updates.
+No Whitebooks-seeded sandbox notice fixture has been obtained; automated fixtures
+are synthetic. Avoid repeating live OTP/PDF probes without a specific unanswered
+question, since provider calls may be billable.
+
 `Nila.Integrations.Whitebooks` calls the production API at
 `https://api.whitebooks.in` using Req. Configure these server-side values in the
 local ignored `.env`, or the production environment:
@@ -226,7 +289,7 @@ has no historical notices or that every portal notice category is covered.
 Previously saved notices must not be deleted or marked closed when they
 disappear from a later list response.
 
-## Confirmed notice coverage
+## Support statement and observed notice coverage
 
 On 19 September 2026, the user relayed Whitebooks support's confirmation that
 the notice API supports only `ADJN` (adjudication) and `Enforcement` notices.
