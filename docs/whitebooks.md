@@ -18,9 +18,10 @@ Last updated: 19 September 2026. Read this before running more live probes.
 These are results for specific references, not guarantees for entire categories.
 The list rejects dates outside the past 60 days; direct details can retrieve older
 references. We have no verified alternative API for discovering those old references.
-Support's statement "ADJN and Enforcement only" is narrower than observed ASMT-10
-retrieval. Do not use it to add a category filter. The screen's current categorical
-coverage wording needs revisiting in light of that successful ASMT-10 test.
+Do not restrict imports to a fixed category list: ASMT-10 direct retrieval also
+worked. Automatic discovery coverage must be tested separately. The screen
+describes the 60-day check window and warns that some notices and orders may
+only appear on the GST portal.
 
 ### Breeze Tech outcome: known from user-supplied PDFs, not the API
 
@@ -289,20 +290,14 @@ has no historical notices or that every portal notice category is covered.
 Previously saved notices must not be deleted or marked closed when they
 disappear from a later list response.
 
-## Support statement and observed notice coverage
-
-On 19 September 2026, the user relayed Whitebooks support's confirmation that
-the notice API supports only `ADJN` (adjudication) and `Enforcement` notices.
-Registration/cancellation notices such as FORM GST REG-03 are outside this
-coverage. This explains the unavailable REG-03 response without attributing it
-to the taxpayer's suspended registration.
+## Observed notice retrieval coverage
 
 On 19 September 2026, a production lookup of ASMT-10 reference
 `ZD330325083017M` returned its issue date (13 March 2025), reply date
 (14 April 2025), and two attachments. Both attachments downloaded and decoded
 to PDF-signature bytes (40,894 and 324,694 bytes); they were not visually
-inspected in that probe. Thus the support statement does not describe the full
-observed direct-retrieval capability. Automatic discovery of recent ASMT-10s
+inspected in that probe. This establishes retrieval for that reference, not
+support for every scrutiny notice. Automatic discovery of recent ASMT-10s
 through the list endpoint remains unverified.
 
 Category support does not establish that every notice or order in those
@@ -320,16 +315,15 @@ return-defaulter reference numbers returned `status_cd: "1"` with this data:
 {"dueDateOfReply":"","maindocs":[],"suppdocs":[],"taxPeriod":{}}
 ```
 
-This is not a usable notice detail, despite the success code. The later support
-confirmation limits coverage to adjudication and enforcement. Reference lookup
-behavior for supported notices still needs clarification when a printed portal
-reference is rejected.
+This is not a usable notice detail, despite the success code. These results do
+not establish a category-wide exclusion or explain why the references failed.
 The supplied cancellation document is FORM GST REG-03 seeking clarification
 on a cancellation application, issued 21 August 2026 with a reply date of
 2 September 2026. Its direct reference lookup also returned the same empty
 success payload. All three known portal notices therefore remain unavailable
 through the tested calls. Do not claim API coverage of these portal notices
-from these results.
+from these results, or attribute the failures to the taxpayer's suspended
+registration without further evidence.
 
 ## Successful active-taxpayer notice responses
 
