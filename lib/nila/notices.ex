@@ -78,6 +78,46 @@ defmodule Nila.Notices do
     )
   end
 
+  @doc "Fetches and saves one known reference without marking the client's notice list as checked."
+  def fetch_by_reference(scope, client_id, reference) do
+    with :ok <- authorize(scope, :edit_records),
+         {:ok, reference} <- reference(reference),
+         {:ok, connection} <- Portal.connection(scope.current_org.id, client_id),
+         {:ok, %{"data" => detail}} <-
+           Portal.notice_details(scope.current_org.id, client_id, reference),
+         {:ok, attrs} <- parse_detail(reference, nil, detail) do
+      Repo.transact(fn ->
+        existing =
+          Repo.get_by(Notice,
+            client_id: client_id,
+            gstin: connection.gstin,
+            reference: reference
+          )
+
+        # A direct lookup must not discard evidence from an earlier list response.
+        attrs =
+          if existing,
+            do: put_in(attrs, [:payload, "list"], existing.payload["list"]),
+            else: attrs
+
+        {:ok, save_notice!(client_id, connection.gstin, attrs)}
+      end)
+    else
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, :unexpected_response}
+    end
+  end
+
+  defp reference(value) when is_binary(value) do
+    value = String.trim(value)
+
+    if value != "" and byte_size(value) <= 100,
+      do: {:ok, value},
+      else: {:error, :invalid_reference}
+  end
+
+  defp reference(_), do: {:error, :invalid_reference}
+
   def enqueue(scope, client_id) do
     with :ok <- authorize(scope, :edit_records),
          {:ok, client} <- Clients.get_client(scope.current_org.id, client_id),
@@ -109,14 +149,7 @@ defmodule Nila.Notices do
            {:ok, notices} <- fetch_details(org_id, client_id, entries) do
         Repo.transact(fn ->
           for attrs <- notices do
-            %Notice{client_id: client_id, gstin: account.gstin}
-            |> Ecto.Changeset.change(attrs)
-            |> Repo.insert!(
-              on_conflict:
-                {:replace,
-                 [:notice_type, :issued_on, :reply_due_on, :payload, :fetched_at, :updated_at]},
-              conflict_target: [:client_id, :gstin, :reference]
-            )
+            save_notice!(client_id, account.gstin, attrs)
           end
 
           save_check(client_id, account.gstin,
@@ -136,6 +169,17 @@ defmodule Nila.Notices do
         record_failure(org_id, client_id, reason)
         {:error, reason}
     end
+  end
+
+  defp save_notice!(client_id, gstin, attrs) do
+    %Notice{client_id: client_id, gstin: gstin}
+    |> Ecto.Changeset.change(attrs)
+    |> Repo.insert!(
+      on_conflict:
+        {:replace, [:notice_type, :issued_on, :reply_due_on, :payload, :fetched_at, :updated_at]},
+      conflict_target: [:client_id, :gstin, :reference],
+      returning: true
+    )
   end
 
   @doc false
@@ -183,6 +227,7 @@ defmodule Nila.Notices do
     do: "Check the GST username, GSTIN and OTP. The OTP request may have expired."
 
   def error_message(:invalid_account), do: "This client needs a valid GSTIN and GST connection."
+  def error_message(:invalid_reference), do: "Enter a notice reference of up to 100 characters."
   def error_message(:not_found), do: "Connect this client's GST account first."
   def error_message(:forbidden), do: "Your role cannot perform this action."
 

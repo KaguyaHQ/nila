@@ -23,6 +23,62 @@ retain only an error code to avoid exposing echoed secrets. Requests do not
 follow redirects or retry automatically, including OTP requests sent as GETs.
 Never log authentication envelopes or OTP request URLs.
 
+## Agent usage: use the core modules
+
+Use `Nila.Gst.Portal` for shared login and `Nila.Notices` for saved notices and
+PDF decoding. Do not copy HTTP calls, decrypt sessions, or keep separate login
+files in probes. The adapter is for integration internals and isolated tests.
+
+For a local script, run `mix run --no-start tmp/check_notice.exs`. This starts
+only the dependencies needed below, avoiding application background workers:
+
+```elixir
+Application.ensure_all_started(:req)
+Application.ensure_all_started(:ecto_sql)
+{:ok, _} = Nila.Repo.start_link()
+
+user_id = System.fetch_env!("NILA_USER_ID") |> String.to_integer()
+org_id = System.fetch_env!("NILA_ORG_ID") |> String.to_integer()
+client_id = System.fetch_env!("NILA_CLIENT_ID") |> String.to_integer()
+scope = Nila.Accounts.Scope.for_user(Nila.Repo.get!(Nila.Accounts.User, user_id))
+# Scope.for_user selects the first membership. Never silently use the wrong firm.
+true = scope.current_org.id == org_id
+
+{:ok, notice} = Nila.Notices.fetch_by_reference(
+  scope, client_id, System.fetch_env!("GST_NOTICE_REFERENCE")
+)
+IO.inspect(%{id: notice.id, reference: notice.reference, issued_on: notice.issued_on})
+
+# Download only the required attachment; each download makes another API call.
+{:ok, pdf} = Nila.Notices.download(org_id, notice.id, 0)
+IO.puts("Validated PDF: #{byte_size(pdf)} bytes")
+```
+
+`fetch_by_reference/3` requires permission to edit records. It validates and
+upserts one notice, including references older than the list window. It does not
+mark the whole client's notice list as checked or clear a previous check error.
+It preserves earlier list evidence. PDFs are returned as bytes, not archived;
+use `Nila.Storage` if retaining a document is part of the authorized task.
+
+If the session is missing or expired, connect through the app's GST connection
+dialog first. For a console flow, use `iex -S mix run --no-start`, initialize the
+same dependencies and scope above, and keep the challenge in that process:
+
+```elixir
+{:ok, challenge} = Nila.Gst.Portal.request_otp(
+  scope, client_id, System.fetch_env!("GST_USERNAME")
+); :ok
+otp = IO.gets("Newest GST OTP: ") |> String.trim(); :ok
+{:ok, _} = Nila.Gst.Portal.verify_otp(scope, challenge, otp); :ok
+otp = nil; challenge = nil; :ok
+```
+
+The prompt echoes input; use a private console. Never put OTPs in source files,
+shell command arguments, logs, or committed fixtures. Verification saves the
+encrypted session for the app and later calls to reuse. Do not request another
+OTP for each document. Use Req.Test for automated tests; live checks consume
+provider requests, and billable quota rules have not been confirmed.
+
 ## Supplied API material
 
 The vendor ZIP inspected on 18 September 2026 contains two different references:
@@ -156,6 +212,14 @@ the notice API supports only `ADJN` (adjudication) and `Enforcement` notices.
 Registration/cancellation notices such as FORM GST REG-03 are outside this
 coverage. This explains the unavailable REG-03 response without attributing it
 to the taxpayer's suspended registration.
+
+On 19 September 2026, a production lookup of ASMT-10 reference
+`ZD330325083017M` returned its issue date (13 March 2025), reply date
+(14 April 2025), and two attachments. Both attachments downloaded and decoded
+to PDF-signature bytes (40,894 and 324,694 bytes); they were not visually
+inspected in that probe. Thus the support statement does not describe the full
+observed direct-retrieval capability. Automatic discovery of recent ASMT-10s
+through the list endpoint remains unverified.
 
 Category support does not establish that every notice or order in those
 categories is returned. The missing August determination order below remains

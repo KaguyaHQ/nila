@@ -252,6 +252,84 @@ defmodule Nila.NoticesTest do
     assert {:error, :document_unavailable} = Notices.download(org.id, notice.id, 0)
   end
 
+  test "direct retrieval saves old notices without a list request or check timestamp", %{
+    scope: scope,
+    client: client,
+    org: org
+  } do
+    expect_detail("14/04/2025", "13/03/2025")
+    assert {:ok, notice} = Notices.fetch_by_reference(scope, client.id, " REF-1 ")
+    assert notice.issued_on == ~D[2025-03-13]
+    assert notice.payload["list"] == nil
+    assert Notices.checks(org.id) == %{}
+    assert [%{id: id}] = Notices.list(org.id)
+    assert id == notice.id
+
+    Req.Test.expect(Whitebooks, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      assert conn.query_params["retperiod"] == "032025"
+
+      Req.Test.json(conn, %{
+        "status_cd" => "1",
+        "data" => %{
+          "ct" => "application/pdf",
+          "data" => Base.encode64("%PDF-1.4 old notice")
+        }
+      })
+    end)
+
+    assert {:ok, "%PDF-1.4 old notice"} = Notices.download(org.id, notice.id, 0)
+  end
+
+  test "direct rechecks preserve list evidence and malformed details preserve the saved notice",
+       %{
+         scope: scope,
+         client: client,
+         org: org
+       } do
+    expect_notice("31/07/2026")
+    assert {:ok, 1} = Notices.sync(org.id, client.id)
+    [original] = Notices.list(org.id)
+    checked = Notices.checks(org.id)[client.id].last_checked_at
+    expect_detail("02/08/2026")
+    assert {:ok, updated} = Notices.fetch_by_reference(scope, client.id, "REF-1")
+    assert updated.id == original.id
+    assert updated.reply_due_on == ~D[2026-08-02]
+    assert updated.payload["list"] == original.payload["list"]
+
+    Req.Test.expect(Whitebooks, fn conn ->
+      Req.Test.json(conn, %{"status_cd" => "1", "data" => %{}})
+    end)
+
+    assert {:error, :unexpected_response} = Notices.fetch_by_reference(scope, client.id, "REF-1")
+    assert [%{reply_due_on: ~D[2026-08-02]}] = Notices.list(org.id)
+    assert Notices.checks(org.id)[client.id].last_checked_at == checked
+  end
+
+  test "direct retrieval rejects unauthorized, foreign, invalid and expired requests before HTTP",
+       %{
+         scope: scope,
+         client: client,
+         connection: connection
+       } do
+    viewer = %{scope | membership: %{scope.membership | role: "viewer"}}
+    assert {:error, :forbidden} = Notices.fetch_by_reference(viewer, client.id, "REF-1")
+    %{user: other} = user_with_org_fixture()
+
+    assert {:error, :not_found} =
+             Notices.fetch_by_reference(Scope.for_user(other), client.id, "REF-1")
+
+    for invalid <- [nil, "  ", String.duplicate("x", 101)] do
+      assert {:error, :invalid_reference} = Notices.fetch_by_reference(scope, client.id, invalid)
+    end
+
+    connection
+    |> Ecto.Changeset.change(authorized_at: DateTime.add(DateTime.utc_now(), -21_601))
+    |> Repo.update!()
+
+    assert {:error, :session_expired} = Notices.fetch_by_reference(scope, client.id, "REF-1")
+  end
+
   defp expect_list do
     Req.Test.expect(Whitebooks, fn conn ->
       Req.Test.json(conn, %{
@@ -263,13 +341,20 @@ defmodule Nila.NoticesTest do
 
   defp expect_notice(due) do
     expect_list()
+    expect_detail(due)
+  end
 
+  defp expect_detail(due, issued \\ "25/07/2026") do
     Req.Test.expect(Whitebooks, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      assert conn.request_path == "/notices/noticedetails"
+      assert conn.query_params["refId"] == "REF-1"
+
       Req.Test.json(conn, %{
         "status_cd" => "1",
         "data" => %{
           "noticeType" => "REMINDER",
-          "dateOfIssue" => "25/07/2026",
+          "dateOfIssue" => issued,
           "dueDateOfReply" => due,
           "maindocs" => [
             %{
