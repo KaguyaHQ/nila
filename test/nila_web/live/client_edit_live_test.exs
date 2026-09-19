@@ -19,7 +19,7 @@ defmodule NilaWeb.ClientEditLiveTest do
     %{conn: log_in_user(conn, user), org: org, client: client}
   end
 
-  test "edits a client and redirects to the list showing the new value", %{
+  test "saves client details in place and enables GST access", %{
     conn: conn,
     org: org,
     client: client
@@ -29,21 +29,26 @@ defmodule NilaWeb.ClientEditLiveTest do
     assert has_element?(view, "#client-form")
     assert has_element?(view, "#client_name")
     assert has_element?(view, "#client_gstin")
+    assert has_element?(view, "#client-gst-connect[disabled]")
+    assert has_element?(view, "#client_tally_company_id[disabled]")
     refute has_element?(view, "#client_pan")
     refute has_element?(view, "#client_type")
     refute has_element?(view, "#client_email")
     refute has_element?(view, "#client_phone")
     refute has_element?(view, "#client_chase_channel")
 
-    result =
-      view
-      |> form("#client-form", client: %{name: "Borealis Foods"})
-      |> render_submit()
+    view
+    |> form("#client-form", client: %{name: "Borealis Foods", gstin: "33AEWPH4158J1Z3"})
+    |> render_submit()
 
-    assert {:error, {:live_redirect, %{to: "/clients"}}} = result
+    assert has_element?(view, "#client-form")
 
     assert {:ok, updated} = Clients.get_client(org.id, client.id)
     assert updated.name == "Borealis Foods"
+    assert has_element?(view, "#client_name[value='Borealis Foods']")
+    assert has_element?(view, "#client-gst-connect:not([disabled])")
+    view |> element("#client-gst-connect") |> render_click()
+    assert has_element?(view, "#gst-connect-form")
 
     {:ok, list_view, _html} = live(conn, ~p"/clients")
     assert render(list_view) =~ "Borealis Foods"
@@ -83,14 +88,13 @@ defmodule NilaWeb.ClientEditLiveTest do
              "Aurora Books · Accounts PC"
            )
 
-    result =
-      view
-      |> form("#client-form",
-        client: %{name: client.name, tally_company_id: company.id}
-      )
-      |> render_submit()
+    view
+    |> form("#client-tally-form",
+      client: %{tally_company_id: company.id}
+    )
+    |> render_submit()
 
-    assert {:error, {:live_redirect, %{to: "/clients"}}} = result
+    assert has_element?(view, "#client-form")
     assert [%{id: company_id}] = TallyDevices.list_linked_companies(org.id)
     assert company_id == company.id
   end
@@ -125,18 +129,28 @@ defmodule NilaWeb.ClientEditLiveTest do
              "Aurora Current · Accounts PC"
            )
 
+    refute has_element?(view, "#client_tally_company_id option[value='']")
     refute has_element?(view, "#client-change-tally-company")
     refute has_element?(view, "#client-cancel-tally-company-change")
 
-    result =
-      view
-      |> form("#client-form",
-        client: %{name: client.name, tally_company_id: new_company.id}
-      )
-      |> render_submit()
+    view |> form("#client-form", client: %{name: "Pending name"}) |> render_change()
 
-    assert {:error, {:live_redirect, %{to: "/clients"}}} = result
+    view
+    |> form("#client-tally-form",
+      client: %{tally_company_id: new_company.id}
+    )
+    |> render_submit()
+
+    assert has_element?(view, "#client-form")
     assert Nila.Repo.reload!(client).active_tally_company_id == new_company.id
+    assert Nila.Repo.reload!(client).name == client.name
+    assert has_element?(view, "#client_name[value='Pending name']")
+    refute has_element?(view, "#client_tally_company_id option[value='']")
+
+    view |> form("#client-form", client: %{name: "Pending name"}) |> render_submit()
+    updated = Nila.Repo.reload!(client)
+    assert updated.name == "Pending name"
+    assert updated.active_tally_company_id == new_company.id
   end
 
   test "a bad GSTIN shows an error and does not persist", %{conn: conn, org: org, client: client} do

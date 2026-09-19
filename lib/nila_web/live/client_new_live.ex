@@ -131,7 +131,6 @@ defmodule NilaWeb.ClientNewLive do
     >
       <div id="client-new-page" class="space-y-block mx-auto max-w-2xl">
         <.page_header eyebrow="Clients" eyebrow_path={~p"/clients"} title="Add client" />
-
         <.card>
           <.form
             for={@form}
@@ -140,15 +139,6 @@ defmodule NilaWeb.ClientNewLive do
             phx-submit="save"
             class="space-y-block"
           >
-            <.input
-              field={@form[:name]}
-              label="Client name"
-              placeholder="Enter client name"
-              autocomplete="organization"
-              required
-            />
-            <.input field={@form[:gstin]} label="GSTIN (optional)" />
-
             <div :if={@tally_companies != []} class="space-y-related">
               <.input
                 field={@form[:tally_company_id]}
@@ -158,14 +148,22 @@ defmodule NilaWeb.ClientNewLive do
                 options={tally_company_options(@tally_companies)}
               />
               <p class="text-ink-muted text-ui">
-                Selecting one fills the client details and connects it to this client.
+                Fills blank details below. The company connects when you add the client.
               </p>
             </div>
 
+            <.input
+              field={@form[:name]}
+              label="Client name"
+              placeholder="Enter client name"
+              autocomplete="organization"
+              required
+            /> <.input field={@form[:gstin]} label="GSTIN (optional)" />
             <div class="flex items-center gap-3">
               <.button type="submit" id="client-submit">
                 <.icon name="hero-plus" class="size-4" /> Add client
               </.button>
+
               <.link
                 navigate={~p"/clients"}
                 id="client-cancel"

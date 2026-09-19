@@ -24,7 +24,8 @@ defmodule NilaWeb.ClientEditLive do
          |> load_gst_connection()
          |> assign(:tally_company, tally_company)
          |> assign(:available_tally_companies, TallyDevices.list_importable_companies(org.id))
-         |> assign(:form, to_form(Clients.change_client(client, form_attrs)))}
+         |> assign(:form, to_form(Clients.change_client(client)))
+         |> assign(:tally_form, to_form(Clients.change_client(client, form_attrs)))}
 
       {:error, :not_found} ->
         {:ok,
@@ -66,22 +67,50 @@ defmodule NilaWeb.ClientEditLive do
   def handle_event("validate", %{"client" => params}, socket) do
     changeset =
       socket.assigns.client
-      |> Clients.change_client(params)
+      |> Clients.change_client(Map.take(params, ["name", "gstin"]))
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, :form, to_form(changeset))}
   end
 
   def handle_event("save", %{"client" => params}, socket) do
-    case update_client(socket.assigns.client, params) do
-      {:ok, _client} ->
+    case Clients.update_client(socket.assigns.client, Map.take(params, ["name", "gstin"])) do
+      {:ok, client} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Client updated.")
-         |> push_navigate(to: ~p"/clients")}
+         |> assign(:client, client)
+         |> assign(:form, to_form(Clients.change_client(client)))
+         |> load_gst_connection()
+         |> put_flash(:info, "Changes saved.")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
+    end
+  end
+
+  def handle_event("save-tally", %{"client" => params}, socket) do
+    params = Map.take(params, ["tally_company_id"])
+
+    case update_client(socket.assigns.client, params) do
+      {:ok, client} ->
+        company = linked_company(client.org_id, client.id)
+
+        {:noreply,
+         socket
+         |> assign(:client, client)
+         |> assign(:tally_company, company)
+         |> assign(
+           :available_tally_companies,
+           TallyDevices.list_importable_companies(client.org_id)
+         )
+         |> assign(
+           :tally_form,
+           to_form(Clients.change_client(client, %{tally_company_id: company && company.id}))
+         )
+         |> put_flash(:info, "Tally connection saved.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :tally_form, to_form(changeset))}
 
       {:error, :not_found} ->
         changeset =
@@ -99,7 +128,7 @@ defmodule NilaWeb.ClientEditLive do
            :available_tally_companies,
            TallyDevices.list_importable_companies(socket.assigns.client.org_id)
          )
-         |> assign(:form, to_form(changeset))}
+         |> assign(:tally_form, to_form(changeset))}
     end
   end
 
@@ -137,7 +166,15 @@ defmodule NilaWeb.ClientEditLive do
     end
   end
 
-  defp update_client(client, params), do: Clients.update_client(client, params)
+  defp update_client(client, params) do
+    changeset =
+      client
+      |> Clients.change_client(params)
+      |> Ecto.Changeset.add_error(:tally_company_id, "choose a company")
+      |> Map.put(:action, :update)
+
+    {:error, changeset}
+  end
 
   defp linked_company(org_id, client_id) do
     org_id
@@ -175,15 +212,6 @@ defmodule NilaWeb.ClientEditLive do
           >
             <.input field={@form[:name]} label="Client name" required />
             <.input field={@form[:gstin]} label="GSTIN (optional)" />
-            <section id="client-tally" class="border-rule pt-block border-t">
-              <.input
-                field={@form[:tally_company_id]}
-                type="select"
-                label="Tally company"
-                prompt="Not connected"
-                options={tally_company_options(@tally_company, @available_tally_companies)}
-              />
-            </section>
 
             <div class="flex items-center gap-3">
               <.button type="submit" id="client-submit">Save changes</.button>
@@ -199,8 +227,9 @@ defmodule NilaWeb.ClientEditLive do
         </.card>
 
         <.card id="client-gst-access">
-          <section class="space-y-block" aria-labelledby="client-gst-heading">
-            <h2 id="client-gst-heading" class="text-h4">GST portal access</h2>
+          <section class="space-y-related" aria-labelledby="client-gst-heading">
+            <h2 id="client-gst-heading" class="text-ui font-semibold">GST portal access</h2>
+            <p class="text-ink-muted text-ui">Connect to fetch GSTR-2B and check notices.</p>
 
             <p :if={@gst_connection} id="client-gst-username" class="text-ui">
               Username: {@gst_connection.username}
@@ -209,16 +238,16 @@ defmodule NilaWeb.ClientEditLive do
             <p id="client-gst-status" class="text-ink-muted text-ui">
               {cond do
                 !Nila.Gstin.valid?(@client.gstin) ->
-                  "Save a valid GSTIN before connecting."
+                  "Add and save a GSTIN to connect."
 
                 !@gst_connection ->
-                  "Not connected. You can also connect when fetching GSTR-2B or checking notices."
+                  "Not connected."
 
                 @gst_expired ->
                   "Session expired. Your saved GST account needs a fresh OTP."
 
                 true ->
-                  "Connected. GSTR-2B and notices use this account."
+                  "Connected."
               end}
             </p>
 
@@ -248,6 +277,40 @@ defmodule NilaWeb.ClientEditLive do
                 disabled={!@can_manage_gst}
               >Disconnect GST</.button>
             </div>
+          </section>
+        </.card>
+        <.card>
+          <section id="client-tally" class="space-y-related" aria-labelledby="client-tally-heading">
+            <h2 id="client-tally-heading" class="text-ui font-semibold">Tally connection</h2>
+            <.form
+              for={@tally_form}
+              id="client-tally-form"
+              phx-submit="save-tally"
+              class="space-y-block"
+            >
+              <.input
+                field={@tally_form[:tally_company_id]}
+                type="select"
+                label="Tally company"
+                prompt={if !@tally_company, do: "Not connected"}
+                options={tally_company_options(@tally_company, @available_tally_companies)}
+                disabled={!@tally_company && @available_tally_companies == []}
+                required
+              />
+              <p
+                :if={!@tally_company && @available_tally_companies == []}
+                class="text-ink-muted text-ui"
+              >
+                No companies are available. Open the company in Tally with Nila Connector running.
+              </p>
+              <.button
+                id="client-tally-save"
+                type="submit"
+                variant="soft"
+                disabled={!@tally_company && @available_tally_companies == []}
+                phx-disable-with="Saving…"
+              >Save connection</.button>
+            </.form>
           </section>
         </.card>
       </div>

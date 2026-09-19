@@ -15,7 +15,8 @@ defmodule NilaWeb.ClientsLive do
        import_preview: nil,
        import_error: nil,
        imported: false,
-       ready_count: 0
+       ready_count: 0,
+       search_form: to_form(%{"query" => ""}, as: :search)
      )
      |> allow_upload(:client_excel,
        accept: ~w(.xlsx),
@@ -23,10 +24,18 @@ defmodule NilaWeb.ClientsLive do
        max_file_size: ImportXlsx.max_bytes(),
        auto_upload: true
      )
-     |> assign(:clients, list_clients(socket))}
+     |> stream_configure(:clients, dom_id: &"client-#{&1.id}")
+     |> load_clients()}
   end
 
   @impl true
+  def handle_event("search", %{"search" => %{"query" => query}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:search_form, to_form(%{"query" => query}, as: :search))
+     |> load_clients()}
+  end
+
   def handle_event("open-import", _, %{assigns: %{can_import: true}} = socket) do
     {:noreply, socket |> clear_import() |> assign(importing: true)}
   end
@@ -66,7 +75,7 @@ defmodule NilaWeb.ClientsLive do
            import_preview: %{socket.assigns.import_preview | rows: results},
            ready_count: Enum.count(results, &(&1.status == :added))
          )
-         |> assign(:clients, list_clients(socket))}
+         |> load_clients()}
 
       {:error, reason} ->
         {:noreply, assign(socket, import_error: Import.error_message(reason))}
@@ -112,8 +121,19 @@ defmodule NilaWeb.ClientsLive do
   defp cell(nil), do: "—"
   defp cell(_), do: "Formula or cell error"
 
-  defp list_clients(%{assigns: %{current_scope: %{current_org: %{id: org_id}}}}) do
-    Clients.list_clients(org_id)
+  defp load_clients(socket) do
+    query = socket.assigns.search_form[:query].value |> String.trim() |> String.downcase()
+    clients = Clients.list_clients(socket.assigns.current_scope.current_org.id)
+
+    matches =
+      Enum.filter(clients, fn client ->
+        String.contains?(String.downcase(client.name <> " " <> (client.gstin || "")), query)
+      end)
+
+    socket
+    |> assign(:clients_empty?, clients == [])
+    |> stream(:clients, matches, reset: true)
+    |> assign(:client_count, length(matches))
   end
 
   @impl true
@@ -148,15 +168,34 @@ defmodule NilaWeb.ClientsLive do
           </:actions>
         </.page_header>
 
+        <.form
+          for={@search_form}
+          id="clients-search-form"
+          phx-change="search"
+          phx-submit="search"
+          class="w-full max-w-sm"
+        >
+          <.input
+            field={@search_form[:query]}
+            id="clients-search"
+            type="search"
+            label="Find a client"
+            shortcut="/"
+            data-shortcut-search
+            aria-keyshortcuts="/"
+            placeholder="Search by name or GSTIN"
+            phx-debounce="200"
+          />
+        </.form>
+
         <.card padding="none">
           <div class="px-4 py-3">
             <.data_table
               id="clients-table"
-              rows={@clients}
-              row_id={fn client -> "client-#{client.id}" end}
+              rows={@streams.clients}
               row_navigate={fn client -> ~p"/clients/#{client.id}/edit" end}
               row_label={fn client -> "Edit #{client.name}" end}
-              empty?={@clients == []}
+              empty?={@client_count == 0}
               mode="worklist"
               surface="ghost"
               min_width="min-w-[640px]"
@@ -178,9 +217,11 @@ defmodule NilaWeb.ClientsLive do
 
               <:empty>
                 <div id="clients-empty" class="space-y-block">
-                  <p>No clients yet.</p>
+                  <p>
+                    {if @clients_empty?, do: "No clients yet.", else: "No clients match your search."}
+                  </p>
 
-                  <.button navigate={~p"/clients/new"} id="clients-add-first">
+                  <.button :if={@clients_empty?} navigate={~p"/clients/new"} id="clients-add-first">
                     <.icon name="hero-plus" class="size-4" /> Add your first client
                   </.button>
                 </div>
@@ -189,6 +230,7 @@ defmodule NilaWeb.ClientsLive do
           </div>
         </.card>
       </div>
+
       <.modal
         :if={@importing}
         id="clients-import-modal"
@@ -212,16 +254,20 @@ defmodule NilaWeb.ClientsLive do
               <%= if !@imported do %>
                 {@ready_count} {if @ready_count == 1, do: "client", else: "clients"} ready to add.
               <% end %>
+
               <span :if={@skipped_count > 0}>{@skipped_count} {if @skipped_count == 1,
                 do: "row",
                 else: "rows"} skipped.</span>
             </p>
+
             <p :if={!@imported} class="text-ink-muted text-ui">
               Worksheet: {@import_preview.sheet}. Existing clients will not be changed.
             </p>
+
             <p :if={@invalid_rows?} id="clients-import-corrections" class="text-ink-muted text-ui">
               Correct the flagged rows in Excel and upload again.
             </p>
+
             <div class="max-h-96 overflow-auto">
               <.data_table
                 id="clients-import-preview"
@@ -230,9 +276,13 @@ defmodule NilaWeb.ClientsLive do
                 min_width="min-w-[600px]"
               >
                 <:col :let={row} label="Excel row">{row.row}</:col>
+
                 <:col :let={row} label="Client name" row_header>{cell(row.name)}</:col>
+
                 <:col :let={row} label="GSTIN">{cell(row.gstin)}</:col>
+
                 <:col :let={row} label="GST username">{cell(row.gst_username)}</:col>
+
                 <:col :let={row} label="Result">
                   <span class={[
                     "inline-flex items-center gap-2",
@@ -242,12 +292,12 @@ defmodule NilaWeb.ClientsLive do
                       :if={row.status == :added}
                       name="hero-check-circle-solid"
                       class="text-success size-4 shrink-0"
-                    />
-                    {row.message}
+                    /> {row.message}
                   </span>
                 </:col>
               </.data_table>
             </div>
+
             <.button
               :if={!@imported}
               id="clients-import-another"
@@ -261,6 +311,7 @@ defmodule NilaWeb.ClientsLive do
               headings in the first row. Leave GSTIN blank for an unregistered client.
               GST username can be left blank; when provided, it prefills the GST connection.
             </p>
+
             <.download_button
               id="clients-import-template"
               href={~p"/clients/import-template.xlsx"}
@@ -282,10 +333,12 @@ defmodule NilaWeb.ClientsLive do
               />
             </.form>
           <% end %>
+
           <p :if={@import_error} id="clients-import-error" role="alert" class="text-error text-ui">
             {@import_error}
           </p>
         </div>
+
         <:footer>
           <.button :if={@imported} id="clients-import-another" variant="ghost" phx-click="open-import">Import another file</.button>
           <.button

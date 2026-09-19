@@ -34,6 +34,35 @@ defmodule NilaWeb.ClientsLiveTest do
     refute html =~ ">Type<"
   end
 
+  test "searches by name or GSTIN and restores the list after no matches", %{conn: conn, org: org} do
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Breeze Tech",
+        type: "company",
+        gstin: "33AEWPH4158J1Z3"
+      })
+
+    {:ok, other} = Clients.create_client(%{org_id: org.id, name: "Aurora Foods", type: "company"})
+    {:ok, view, _} = live(conn, ~p"/clients")
+
+    view |> form("#clients-search-form", search: %{query: " breeze "}) |> render_change()
+    assert has_element?(view, "#client-#{client.id}")
+    refute has_element?(view, "#client-#{other.id}")
+
+    view |> form("#clients-search-form", search: %{query: "aewph4158"}) |> render_submit()
+    assert has_element?(view, "#client-#{client.id}")
+    refute has_element?(view, "#client-#{other.id}")
+
+    view |> form("#clients-search-form", search: %{query: "missing"}) |> render_change()
+    assert has_element?(view, "#clients-empty", "No clients match your search.")
+    refute has_element?(view, "#clients-add-first")
+
+    view |> form("#clients-search-form", search: %{query: ""}) |> render_change()
+    assert has_element?(view, "#client-#{client.id}")
+    assert has_element?(view, "#client-#{other.id}")
+  end
+
   test "shows an empty state when the org has no clients", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/clients")
 
