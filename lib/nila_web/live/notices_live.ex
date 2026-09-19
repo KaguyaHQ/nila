@@ -265,7 +265,7 @@ defmodule NilaWeb.NoticesLive do
         <% else %>
           <.page_header title="Notices" />
           <p id="notices-coverage" class="text-ink-muted text-ui">
-            Some notices and orders may be missing. Check the GST portal for a complete record.
+            Fetches adjudication and enforcement notices from GST. Check the GST portal for other notices and a complete record.
           </p>
 
           <div class="gap-block flex flex-wrap items-end justify-between">

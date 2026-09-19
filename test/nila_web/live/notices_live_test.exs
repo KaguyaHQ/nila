@@ -45,7 +45,7 @@ defmodule NilaWeb.NoticesLiveTest do
     assert has_element?(
              view,
              "#notices-coverage",
-             "Some notices and orders may be missing"
+             "Fetches adjudication and enforcement notices from GST"
            )
 
     assert has_element?(view, "#notices-empty", "does not confirm")

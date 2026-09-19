@@ -149,6 +149,18 @@ has no historical notices or that every portal notice category is covered.
 Previously saved notices must not be deleted or marked closed when they
 disappear from a later list response.
 
+## Confirmed notice coverage
+
+On 19 September 2026, the user relayed Whitebooks support's confirmation that
+the notice API supports only `ADJN` (adjudication) and `Enforcement` notices.
+Registration/cancellation notices such as FORM GST REG-03 are outside this
+coverage. This explains the unavailable REG-03 response without attributing it
+to the taxpayer's suspended registration.
+
+Category support does not establish that every notice or order in those
+categories is returned. The missing August determination order below remains
+unresolved. Empty success payloads are still rejected as unusable notice details.
+
 ## Portal notices missing from API responses
 
 The taxpayer supplied portal evidence of a Cancellation SCN dated 21 August
@@ -160,9 +172,10 @@ return-defaulter reference numbers returned `status_cd: "1"` with this data:
 {"dueDateOfReply":"","maindocs":[],"suppdocs":[],"taxPeriod":{}}
 ```
 
-This is not a usable notice detail, despite the success code. Confirm with
-Whitebooks whether these notice categories are supported and whether `refId`
-accepts the portal reference number or requires an ID from the notice list.
+This is not a usable notice detail, despite the success code. The later support
+confirmation limits coverage to adjudication and enforcement. Reference lookup
+behavior for supported notices still needs clarification when a printed portal
+reference is rejected.
 The supplied cancellation document is FORM GST REG-03 seeking clarification
 on a cancellation application, issued 21 August 2026 with a reply date of
 2 September 2026. Its direct reference lookup also returned the same empty
@@ -194,7 +207,8 @@ No reply/submission or closure status was present in the notice responses;
 an elapsed reply date alone must not be presented as an outstanding task.
 
 A known August determination order was absent from the same list and its detail
-returned `NOTC_011` ("Invalid Reference Id."). Supported notice categories and
-order coverage still require provider confirmation. Comparing two taxpayers with
+returned `NOTC_011` ("Invalid Reference Id."). Although support has now confirmed
+the two supported categories, this missing order still needs an explanation.
+Comparing two taxpayers with
 different notice categories does not isolate suspension as the cause of the
 earlier empty responses.
