@@ -239,9 +239,9 @@ These are defined in `app.css`; reuse them rather than inventing one-off treatme
   than delegated to product callers.
 - **Context:** `<.context_text>` is the only route to 12px contextual copy. Its controlled
   API prevents competing type roles.
-- **Folds:** `<.fold>`, never bare `<details>`. Open state lives on the server so LiveView
-  patches do not collapse the reader’s place. `<.fold_summary>` owns 14px title/detail
-  typography for operational summaries.
+- **Folds (being retired):** Do not add new uses of `<.fold>` or `<.fold_summary>`.
+  Existing callers remain until their screens are updated. Do not replace them with
+  bare `<details>` to recreate the same interaction.
 - **Modals and sheets:** `<.modal>` owns scrim, width families, radius, elevation, focus,
   dismissal, sheet side placement, and workbench mode. Use `variant="sheet"` for a focused
   task attached to a viewport edge; its anatomy follows shadcn Sheet while its visual physics

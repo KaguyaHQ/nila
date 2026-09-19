@@ -45,13 +45,14 @@ defmodule NilaWeb.NoticesLiveTest do
     assert has_element?(
              view,
              "#notices-coverage",
-             "Checks fetch available notices from the past 60 days"
+             "60-day GST lookup"
            )
 
-    assert has_element?(view, "#notices-empty", "does not confirm")
+    assert has_element?(view, "#notices-empty", "Check all clients")
     view |> form("#notices-filter", filter: %{client_id: client.id}) |> render_change()
-    assert has_element?(view, "#client-checks-summary", "Not connected")
-    assert has_element?(view, "#selected-check-action-#{client.id}", "Connect GST")
+    view |> element("#client-checks-toggle") |> render_click()
+    assert has_element?(view, "#client-check-status-#{client.id}", "Not connected")
+    assert has_element?(view, "#client-check-action-#{client.id}", "Connect GST")
   end
 
   test "connect and verify forms perform the real flow and clear OTP input", %{
@@ -152,7 +153,7 @@ defmodule NilaWeb.NoticesLiveTest do
     viewer = user_fixture()
     {:ok, _} = Nila.Orgs.add_user(org, viewer.id, "viewer")
     {:ok, view, _} = live(log_in_user(conn, viewer), ~p"/notices?#{%{client_id: client.id}}")
-    assert has_element?(view, "#selected-check-action-#{client.id}[disabled]", "Connect GST")
+    assert has_element?(view, "#notices-check-all[disabled]")
     view |> element("#client-checks-toggle") |> render_click()
     assert has_element?(view, "#client-check-permissions", "Your role can view notices")
     render_click(view, "connect", %{"client_id" => to_string(client.id)})
@@ -203,7 +204,7 @@ defmodule NilaWeb.NoticesLiveTest do
       Clients.create_client(%{org_id: foreign_org.id, name: "Foreign client", type: "company"})
 
     {:ok, view, _} = live(conn, ~p"/notices")
-    assert has_element?(view, "#client-checks-summary", "2 not connected")
+    assert has_element?(view, "#notices-check-all", "Check all 2 clients")
     refute has_element?(view, "#client-check-status-#{foreign.id}")
     view |> element("#client-checks-toggle") |> render_click()
     assert has_element?(view, "#client-checks")
@@ -212,8 +213,8 @@ defmodule NilaWeb.NoticesLiveTest do
     assert_patch(view, ~p"/notices?#{%{client_id: client.id}}")
     view |> element("#client-checks-toggle") |> render_click()
     assert has_element?(view, "#client-check-status-#{second.id}", "Not connected")
-    assert has_element?(view, "#client-checks-summary", "Not connected")
-    refute has_element?(view, "#notices-table", second.name)
+    assert has_element?(view, "#client-check-status-#{client.id}", "Not connected")
+    refute has_element?(view, "#notices-history-table", second.name)
 
     # Connecting the other client must not accidentally connect the filtered one.
     view |> element("#client-check-action-#{second.id}") |> render_click()
@@ -303,7 +304,7 @@ defmodule NilaWeb.NoticesLiveTest do
     {:ok, view, _} = live(conn, ~p"/notices")
     view |> element("#client-checks-toggle") |> render_click()
     assert has_element?(view, "#client-check-status-#{client.id}", "Checked successfully")
-    assert has_element?(view, "#client-checks-summary", "1 missing GSTIN")
+    assert has_element?(view, "#client-check-status-#{missing.id}", "GSTIN missing")
 
     assert has_element?(
              view,
@@ -312,6 +313,59 @@ defmodule NilaWeb.NoticesLiveTest do
            )
 
     refute has_element?(view, "#client-check-status-#{missing.id}.text-error")
+  end
+
+  test "latest check separates new notices from history and survives reopening", %{
+    conn: conn,
+    client: client,
+    org: org
+  } do
+    notice = notice!(client)
+
+    run =
+      Repo.insert!(%Nila.Notices.Run{
+        org_id: org.id,
+        results: %{to_string(client.id) => %{"name" => client.name, "state" => "checked"}},
+        notice_ids: [notice.id]
+      })
+
+    {:ok, view, _} = live(conn, ~p"/notices")
+    assert has_element?(view, "#notice-run-progress", "1/1 checked")
+    assert has_element?(view, "#notices-table", notice.reference)
+    refute has_element?(view, "#notices-history-table", notice.reference)
+    {:ok, reopened, _} = live(conn, ~p"/notices")
+    assert has_element?(reopened, "#notices-table", notice.reference)
+
+    Repo.update!(
+      Ecto.Changeset.change(run,
+        notice_ids: [],
+        results: %{
+          to_string(client.id) => %{
+            "name" => client.name,
+            "state" => "failed",
+            "reason" => "Connect GST"
+          }
+        }
+      )
+    )
+
+    {:ok, failed, _} = live(conn, ~p"/notices")
+    assert has_element?(failed, "#notice-run-progress", "0/1 checked")
+    assert has_element?(failed, "#notice-run-unchecked", "1 unchecked")
+    refute has_element?(failed, "#notice-run-retry")
+    refute has_element?(failed, "#notice-run-failures")
+    assert has_element?(failed, "#notices-empty", "from checked clients")
+    failed |> element("#notice-run-review") |> render_click()
+    assert has_element?(failed, "#client-checks[role=dialog]", "Unchecked clients")
+    assert has_element?(failed, "#client-check-action-#{client.id}", "Connect GST")
+
+    failed
+    |> element("#client-checks button[aria-label='Close Unchecked clients']")
+    |> render_click()
+
+    assert has_element?(failed, "section#notices-history h2", "History")
+    refute has_element?(failed, "#notices-history summary")
+    assert has_element?(failed, "#notices-history-table", notice.reference)
   end
 
   defp connection!(client, attrs \\ []) do

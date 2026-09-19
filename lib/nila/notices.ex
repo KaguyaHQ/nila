@@ -33,7 +33,7 @@ defmodule Nila.Notices do
       Repo.all(
         from j in Oban.Job,
           where:
-            j.worker == "Nila.Notices.SyncWorker" and
+            j.worker in ["Nila.Notices.SyncWorker", "Nila.Notices.RunWorker"] and
               j.state in ["available", "scheduled", "executing", "retryable", "suspended"] and
               fragment("? @> ?", j.args, ^%{"org_id" => org_id}),
           select: j.args
@@ -133,7 +133,7 @@ defmodule Nila.Notices do
     Repo.exists?(
       from j in Oban.Job,
         where:
-          j.worker == "Nila.Notices.SyncWorker" and
+          j.worker in ["Nila.Notices.SyncWorker", "Nila.Notices.RunWorker"] and
             j.state in ["available", "scheduled", "executing", "retryable", "suspended"] and
             fragment("? @> ?", j.args, ^%{"org_id" => org_id, "client_id" => client_id})
     )

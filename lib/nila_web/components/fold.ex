@@ -1,5 +1,8 @@
 defmodule NilaWeb.Components.Fold do
   @moduledoc """
+  Being retired. Do not add new uses of `fold/1` or `fold_summary/1`.
+  Existing callers remain until their screens are updated.
+
   A disclosure whose open state lives on the server.
 
   A plain `<details>` does not survive a LiveView patch: the browser sets `open`

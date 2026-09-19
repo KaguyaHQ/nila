@@ -341,7 +341,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
   # the collapse that took two separate reviews, and it still has to.
   test "a two-bad-code invoice cannot be covered by reviewing one of them" do
     alias Nila.Gst.Hsn.Validation, as: HsnValidation
-    alias NilaWeb.Components.Gst.Month.Workings
+    alias NilaWeb.Components.Gst.Month.HsnSummary
 
     invoices = [
       %{
@@ -354,10 +354,10 @@ defmodule NilaWeb.Gst.MonthLiveSalesReviewTest do
     assert [issue] = HsnValidation.sales_issues(invoices)
     assert issue["hsn_codes"] == ["999999", "888888"]
 
-    reviewed = MapSet.new(Workings.hsn_node_ids(invoices, "999999"))
+    reviewed = MapSet.new(HsnSummary.hsn_node_ids(invoices, "999999"))
 
     required =
-      Enum.flat_map(issue["hsn_codes"], &Workings.hsn_node_ids(invoices, &1))
+      Enum.flat_map(issue["hsn_codes"], &HsnSummary.hsn_node_ids(invoices, &1))
 
     assert reviewed != MapSet.new()
     assert required != []

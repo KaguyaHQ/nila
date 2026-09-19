@@ -193,7 +193,7 @@ defmodule Mix.Tasks.Nila.StyleGuard do
     "nila-gstr1-handoff" => "lib/nila_web/components/gst/month/filing.ex",
     "nila-sales-register-row" => "lib/nila_web/components/gst/month/sales.ex",
     "nila-workpaper-tab" => "lib/nila_web/components/gst/month/workpaper.ex",
-    "nila-workings-reference" => "lib/nila_web/components/gst/month/workings.ex",
+    "nila-workings-reference" => "lib/nila_web/components/gst/month/hsn_summary.ex",
     "nila-alert" => "lib/nila_web/components/flash.ex",
     "nila-alert-copy" => "lib/nila_web/components/flash.ex",
     "nila-flash-group" => "lib/nila_web/components/layouts.ex",

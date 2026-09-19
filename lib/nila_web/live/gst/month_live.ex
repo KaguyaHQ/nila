@@ -32,7 +32,7 @@ defmodule NilaWeb.Gst.MonthLive do
     Purchase,
     Verdict,
     SalesWorkspace,
-    Workings,
+    HsnSummary,
     Workpaper
   }
 
@@ -1110,7 +1110,7 @@ defmodule NilaWeb.Gst.MonthLive do
     nodes =
       code
       |> String.split(",", trim: true)
-      |> Enum.flat_map(&Workings.hsn_node_ids(socket.assigns.active_invoices, &1))
+      |> Enum.flat_map(&HsnSummary.hsn_node_ids(socket.assigns.active_invoices, &1))
 
     {:noreply,
      socket
@@ -1423,7 +1423,7 @@ defmodule NilaWeb.Gst.MonthLive do
   # restarts the glow on a node already at rest; it only advances when
   # something actually changed, so confirming an issue disturbs nothing.
   defp ripple(socket, old_derived) do
-    changed = Workings.changed_nodes(old_derived, socket.assigns.derived_gstr1)
+    changed = HsnSummary.changed_nodes(old_derived, socket.assigns.derived_gstr1)
 
     if MapSet.size(changed) == 0 do
       assign(socket, :rippled, changed)

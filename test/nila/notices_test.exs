@@ -334,6 +334,62 @@ defmodule Nila.NoticesTest do
     assert {:error, :session_expired} = Notices.fetch_by_reference(scope, client.id, "REF-1")
   end
 
+  test "firm check persists new notices, includes disconnected clients, and deduplicates starts",
+       %{scope: scope, org: org, client: client} do
+    {:ok, missing} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Disconnected",
+        type: "company",
+        gstin: "33CPWPV2650A1ZQ"
+      })
+
+    assert {:ok, run} = Nila.Notices.Runs.start(scope)
+    assert map_size(run.results) == 2
+    assert run.results[to_string(missing.id)]["state"] == "failed"
+    assert {:ok, %{id: same}} = Nila.Notices.Runs.start(scope)
+    assert same == run.id
+    expect_notice("31/07/2026")
+    assert %{success: 1, failure: 0} = Oban.drain_queue(queue: :workflows)
+    finished = Nila.Notices.Runs.latest(org.id)
+    assert finished.results[to_string(client.id)]["state"] == "checked"
+    assert [notice_id] = finished.notice_ids
+    assert [%{id: ^notice_id}] = Notices.list(org.id)
+    assert Nila.Notices.Runs.latest(org.id).notice_ids == [notice_id]
+    assert {:ok, retried} = Nila.Notices.Runs.retry(scope)
+    assert retried.id == run.id
+    assert retried.notice_ids == [notice_id]
+    assert retried.results[to_string(client.id)]["state"] == "checked"
+
+    assert {:ok, next} = Nila.Notices.Runs.start(scope)
+    assert next.id != run.id
+    expect_notice("31/07/2026")
+    assert %{success: 1, failure: 0} = Oban.drain_queue(queue: :workflows)
+    assert Nila.Notices.Runs.latest(org.id).notice_ids == []
+    assert length(Notices.list(org.id)) == 1
+  end
+
+  test "cancelled checks can be retried and viewers cannot start or retry", %{
+    scope: scope,
+    org: org,
+    client: client
+  } do
+    viewer = %{scope | membership: %{scope.membership | role: "viewer"}}
+    assert {:error, :forbidden} = Nila.Notices.Runs.start(viewer)
+    assert {:error, :forbidden} = Nila.Notices.Runs.retry(viewer)
+    {:ok, run} = Nila.Notices.Runs.start(scope)
+    job_id = run.results[to_string(client.id)]["job_id"]
+    :ok = Oban.cancel_job(job_id)
+    assert Nila.Notices.Runs.latest(org.id).results[to_string(client.id)]["state"] == "failed"
+    {:ok, retried} = Nila.Notices.Runs.retry(scope)
+    assert retried.results[to_string(client.id)]["job_id"] != job_id
+    expect_notice("31/07/2026")
+    assert %{success: 1, failure: 0} = Oban.drain_queue(queue: :workflows)
+    assert Nila.Notices.Runs.latest(org.id).results[to_string(client.id)]["state"] == "checked"
+    %{org: other} = user_with_org_fixture()
+    assert Nila.Notices.Runs.latest(other.id) == nil
+  end
+
   defp expect_list do
     Req.Test.expect(Whitebooks, fn conn ->
       Req.Test.json(conn, %{

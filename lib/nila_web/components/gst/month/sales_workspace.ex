@@ -7,7 +7,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   alias Nila.Gst.Filing.{Calendar, WinmanGstr1}
   alias Nila.Gst.Sales.{Gstr1, Invoice}
   alias Nila.Gst.Sales.Review.Values
-  alias NilaWeb.Components.Gst.Month.{Helpers, Workings}
+  alias NilaWeb.Components.Gst.Month.{Helpers, HsnSummary}
 
   @gstr1_table_order [
     {"b2b", "B2B — sales to registered persons"},
@@ -127,7 +127,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
             title="HSN-wise summary"
             copy="The invoice lines contributing to Table 12."
           />
-          <Workings.hsn_summary
+          <HsnSummary.hsn_summary
             :if={@derived}
             derived={@derived}
             invoices={@active_invoices}

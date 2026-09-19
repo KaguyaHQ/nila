@@ -1,6 +1,7 @@
 defmodule NilaWeb.NoticesLive do
   use NilaWeb, :live_view
   alias Nila.{Clients, Notices}
+  alias Nila.Notices.Runs
   alias Nila.Accounts.Policy
 
   @impl true
@@ -15,11 +16,13 @@ defmodule NilaWeb.NoticesLive do
        selected: nil,
        notice: nil,
        checks_open: false,
+       checks_mode: :all,
        polling: false,
        error: nil,
        can_connect: Policy.can?(scope, :manage_connectors),
        can_check: Policy.can?(scope, :edit_records)
      )
+     |> stream(:history, [])
      |> stream(:notices, [])
      |> stream(:client_checks, [])}
   end
@@ -78,8 +81,26 @@ defmodule NilaWeb.NoticesLive do
     {:noreply, push_patch(socket, to: ~p"/notices?#{%{client_id: id}}")}
   end
 
+  def handle_event("check_all", _, %{assigns: %{can_check: true}} = socket) do
+    case Runs.start(socket.assigns.current_scope) do
+      {:ok, _} -> {:noreply, socket |> assign(error: nil) |> load()}
+      {:error, reason} -> {:noreply, assign(socket, error: Notices.error_message(reason))}
+    end
+  end
+
+  def handle_event("retry_checks", _, %{assigns: %{can_check: true}} = socket) do
+    case Runs.retry(socket.assigns.current_scope) do
+      {:ok, _} -> {:noreply, socket |> assign(error: nil) |> load()}
+      {:error, reason} -> {:noreply, assign(socket, error: Notices.error_message(reason))}
+    end
+  end
+
+  def handle_event("review_unchecked", _, socket),
+    do: {:noreply, socket |> assign(checks_open: true, checks_mode: :unchecked) |> load()}
+
   def handle_event("toggle_client_checks", _, socket) do
-    {:noreply, socket |> assign(checks_open: not socket.assigns.checks_open) |> load()}
+    {:noreply,
+     socket |> assign(checks_open: not socket.assigns.checks_open, checks_mode: :all) |> load()}
   end
 
   def handle_event("select_check_client", %{"client_id" => id}, socket) do
@@ -166,23 +187,51 @@ defmodule NilaWeb.NoticesLive do
     checks = Notices.client_checks(org_id(socket))
     notices = Notices.list(org_id(socket))
     notices = if selected, do: Enum.filter(notices, &(&1.client_id == selected.id)), else: notices
-    checking = Enum.any?(checks, &(&1.state == :checking))
+    run = Runs.latest(org_id(socket))
+    results = if run, do: Map.values(run.results), else: []
+
+    failures =
+      if run,
+        do:
+          Enum.flat_map(run.results, fn {id, result} ->
+            if result["state"] == "failed",
+              do: [%{id: id, name: result["name"], reason: result["reason"]}],
+              else: []
+          end),
+        else: []
+
+    failed_ids = MapSet.new(failures, & &1.id)
+    unchecked = Enum.filter(checks, &MapSet.member?(failed_ids, to_string(&1.id)))
+    retry_count = Enum.count(unchecked, &(&1.state in [:checked, :failed, :not_checked]))
+    panel_checks = if socket.assigns.checks_mode == :unchecked, do: unchecked, else: checks
+    new_ids = if run, do: run.notice_ids, else: []
+    {new_notices, history} = Enum.split_with(notices, &(&1.id in new_ids))
+    checking = Runs.pending?(run) || Enum.any?(checks, &(&1.state == :checking))
 
     socket =
       socket
       |> assign(
         checks: checks,
+        run: run,
+        run_total: length(results),
+        run_checked: Enum.count(results, &(&1["state"] == "checked")),
+        run_pending: Enum.count(results, &(&1["state"] == "pending")),
+        run_failed: length(failures),
+        retry_count: retry_count,
+        panel_count: length(panel_checks),
+        history_count: length(history),
         clients: Enum.map(checks, & &1.client),
         selected_check: Enum.find(checks, &(selected && &1.id == selected.id)),
         client_count: length(checks),
-        count: length(notices)
+        count: length(new_notices)
       )
       |> assign(
         :filter_form,
         to_form(%{"client_id" => if(selected, do: to_string(selected.id), else: "")}, as: :filter)
       )
-      |> stream(:notices, notices, reset: true)
-      |> stream(:client_checks, checks, reset: true)
+      |> stream(:notices, new_notices, reset: true)
+      |> stream(:history, history, reset: true)
+      |> stream(:client_checks, panel_checks, reset: true)
 
     if checking and connected?(socket) and not socket.assigns.polling do
       Process.send_after(self(), :refresh_notices, 1500)
@@ -207,49 +256,6 @@ defmodule NilaWeb.NoticesLive do
   defp check_label(:not_checked), do: "Not checked yet"
   defp check_label(:checking), do: "Checking…"
   defp check_label(:checked), do: "Checked successfully"
-
-  defp check_summary([]), do: "No clients yet."
-
-  defp check_summary(checks) do
-    counts = Enum.frequencies_by(checks, & &1.state)
-
-    [
-      checked: "checked",
-      checking: "checking",
-      not_connected: "not connected",
-      missing_gstin: "missing GSTIN",
-      expired: "need reconnection",
-      failed: "checks failed",
-      not_checked: "not checked yet"
-    ]
-    |> Enum.flat_map(fn {state, label} ->
-      case Map.get(counts, state, 0) do
-        0 -> []
-        count -> ["#{count} #{label}"]
-      end
-    end)
-    |> Enum.join(" · ")
-  end
-
-  defp empty_message(%{state: :not_connected}),
-    do: "Connect this client's GST account to check for notices."
-
-  defp empty_message(%{state: :expired}),
-    do: "Reconnect this client's GST account to check for notices."
-
-  defp empty_message(%{state: :missing_gstin}),
-    do: "Add this client's GSTIN to check for notices."
-
-  defp empty_message(%{state: :not_checked}),
-    do: "This client has not been checked yet. Use Check notices to fetch available notices."
-
-  defp empty_message(%{state: :checking}), do: "Checking GST for notices…"
-
-  defp empty_message(%{state: :failed}),
-    do: "The last check failed. Try again to fetch available notices."
-
-  defp empty_message(_),
-    do: "No saved notices. This does not confirm that there are no notices on the GST portal."
 
   defp type_label("REMINDER"), do: "Reminder"
   defp type_label(type), do: type || "Notice"
@@ -306,10 +312,49 @@ defmodule NilaWeb.NoticesLive do
           {case @row.state do
             :checking -> "Checking…"
             :failed -> "Try again"
-            _ -> "Check notices"
+            _ -> "Sync notices"
           end}
         </.button>
     <% end %>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :notices, :any, required: true
+  attr :count, :integer, required: true
+  slot :empty, required: true
+
+  defp notice_table(assigns) do
+    ~H"""
+    <.data_table
+      id={@id}
+      rows={@notices}
+      mode="worklist"
+      empty?={@count == 0}
+      row_navigate={fn n -> ~p"/notices/#{n.id}" end}
+      row_label={fn n -> "Open notice #{n.reference}" end}
+    >
+      <:col :let={n} label="Client" row_header><span class="font-medium">{n.client.name}</span></:col>
+
+      <:col :let={n} label="Notice">
+        <span class="font-medium">{type_label(n.notice_type)}</span><div class="text-ink-muted">
+          {n.reference}
+        </div>
+      </:col>
+
+      <:col :let={n} label="Reply date in notice" class="whitespace-nowrap">
+        <span class="font-medium">{date(n.reply_due_on)}</span>
+      </:col>
+
+      <:col :let={n} label="Issued" class="whitespace-nowrap">{date(n.issued_on)}</:col>
+
+      <:col :let={n} label="" align="right">
+        <.text_link navigate={~p"/notices/#{n.id}"} id={"#{@id}-open-#{n.id}"}>Open notice
+        <.icon name="hero-arrow-right" class="size-4" /></.text_link>
+      </:col>
+
+      <:empty>{render_slot(@empty)}</:empty>
+    </.data_table>
     """
   end
 
@@ -427,8 +472,61 @@ defmodule NilaWeb.NoticesLive do
             Reply and closure status are not supplied. Check the GST portal for the latest case status.
           </p>
         <% else %>
-          <div class="gap-block flex flex-wrap items-end justify-between">
+          <div class="gap-block flex flex-wrap items-center justify-between">
             <.page_header title="Notices" />
+            <.button
+              id="notices-check-all"
+              phx-click="check_all"
+              disabled={!@can_check || @run_pending > 0 || @client_count == 0}
+              title={if !@can_check, do: "Ask an operator or owner to run checks."}
+            >
+              <.icon name="hero-arrow-path" class="size-4" />
+              <%= cond do %>
+                <% @run_pending > 0 -> %>
+                  Checking…
+                <% true -> %>
+                  Check all {@client_count} clients
+              <% end %>
+            </.button>
+          </div>
+
+          <div
+            id="notices-check-status"
+            class="gap-block text-ui flex flex-wrap items-center justify-between"
+          >
+            <div class="flex flex-wrap items-center gap-3" aria-live="polite">
+              <%= if @run do %>
+                <span id="notice-run-progress" class="font-medium">{@run_checked}/{@run_total} checked</span>
+                <span :if={@run_failed > 0} id="notice-run-unchecked">{@run_failed} unchecked</span>
+                <.button
+                  :if={@run_failed > 0}
+                  id="notice-run-review"
+                  variant="soft"
+                  phx-click="review_unchecked"
+                  aria-haspopup="dialog"
+                >Review clients</.button>
+                <.button
+                  :if={@retry_count > 0}
+                  id="notice-run-retry"
+                  variant="soft"
+                  phx-click="retry_checks"
+                  disabled={!@can_check || @run_pending > 0}
+                >Retry {@retry_count}</.button>
+                <span :if={@run_pending > 0} class="text-ink-muted">{@run_pending} checking</span>
+                <span class="text-ink-muted">{checked_at(@run.inserted_at)}</span>
+              <% else %>
+                <span class="text-ink-muted">No checks yet</span>
+              <% end %>
+            </div>
+
+            <.button id="client-checks-toggle" variant="ghost" phx-click="toggle_client_checks">GST connections</.button>
+          </div>
+
+          <div class="gap-block flex flex-wrap items-end justify-between">
+            <h2 id="notices-results-title" class="text-h4 font-medium">
+              New notices <span class="text-ink-muted">{if @run, do: "· #{@count}"}</span>
+            </h2>
+
             <.form
               for={@filter_form}
               id="notices-filter"
@@ -440,55 +538,25 @@ defmodule NilaWeb.NoticesLive do
                 field={@filter_form[:client_id]}
                 id="notices-client"
                 type="select"
-                label="Client"
+                aria-label="Client"
                 options={[{"All clients", ""} | Enum.map(@clients, &{&1.name, &1.id})]}
               />
             </.form>
           </div>
 
-          <div
-            id="notices-check-status"
-            class="gap-block text-ui flex flex-wrap items-center justify-between"
-          >
-            <div class="space-y-related">
-              <p id="client-checks-summary">
-                {if @selected_check,
-                  do: check_label(@selected_check.state),
-                  else: check_summary(@checks)}
-              </p>
-
-              <p :if={@selected_check} class="text-ink-muted">
-                Last successful check: {checked_at(@selected_check.last_checked_at)}
-              </p>
-
-              <p :if={@selected_check && @selected_check.state == :failed} class="text-error">
-                {@selected_check.last_error}
-              </p>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-3">
-              <.check_action
-                :if={@selected_check}
-                row={@selected_check}
-                can_check={@can_check}
-                can_connect={@can_connect}
-                id={"selected-check-action-#{@selected_check.id}"}
-              />
-              <.button id="client-checks-toggle" variant="ghost" phx-click="toggle_client_checks">Client checks</.button>
-            </div>
-          </div>
-
-          <p id="notices-coverage" class="text-ink-muted text-ui">
-            Checks fetch available notices from the past 60 days. Saved notices are kept. Some notices and orders may only appear on the GST portal.
-          </p>
-
           <.modal
             :if={@checks_open}
             id="client-checks"
-            title="Client checks · Entire firm"
+            title={
+              if @checks_mode == :unchecked,
+                do: "Unchecked clients",
+                else: "GST connections · Entire firm"
+            }
             on_close="toggle_client_checks"
             width="extra-wide"
-            return_focus="#client-checks-toggle"
+            return_focus={
+              if @checks_mode == :unchecked, do: "#notice-run-review", else: "#client-checks-toggle"
+            }
           >
             <div class="space-y-block">
               <p :if={@error} role="alert" class="text-error text-ui">{@error}</p>
@@ -508,7 +576,7 @@ defmodule NilaWeb.NoticesLive do
                 id="client-checks-table"
                 rows={@streams.client_checks}
                 mode="worklist"
-                empty?={@client_count == 0}
+                empty?={@panel_count == 0}
               >
                 <:col :let={row} label="Client" row_header>
                   <.text_link
@@ -554,34 +622,42 @@ defmodule NilaWeb.NoticesLive do
             {@error}
           </p>
 
-          <.data_table
-            id="notices-table"
-            rows={@streams.notices}
-            mode="worklist"
-            empty?={@count == 0}
-            row_navigate={fn n -> ~p"/notices/#{n.id}" end}
-            row_label={fn n -> "Open notice #{n.reference}" end}
-          >
-            <:col :let={n} label="Notice" row_header>
-              <span class="font-medium">{type_label(n.notice_type)}</span><div class="text-ink-muted">
-                {n.reference}
-              </div>
-            </:col>
-
-            <:col :let={n} label="Client">{n.client.name}</:col>
-
-            <:col :let={n} label="Issued" class="whitespace-nowrap">{date(n.issued_on)}</:col>
-
-            <:col :let={n} label="Reply date in notice" class="whitespace-nowrap">
-              {date(n.reply_due_on)}
-            </:col>
-
+          <.notice_table id="notices-table" notices={@streams.notices} count={@count}>
             <:empty>
               <p id="notices-empty">
-                {empty_message(@selected_check)}
+                <%= cond do %>
+                  <% is_nil(@run) -> %>
+                    Check all clients to find new notices.
+                  <% @run_pending > 0 -> %>
+                    Checking for new notices…
+                  <% @run_failed > 0 -> %>
+                    No new notices from checked clients.
+                  <% true -> %>
+                    No new notices found.
+                <% end %>
               </p>
             </:empty>
-          </.data_table>
+          </.notice_table>
+
+          <section id="notices-history" aria-labelledby="notices-history-title">
+            <h2 id="notices-history-title" class="text-h4 font-medium">
+              History · {@history_count}
+            </h2>
+
+            <div class="pt-block">
+              <.notice_table
+                id="notices-history-table"
+                notices={@streams.history}
+                count={@history_count}
+              >
+                <:empty>No older notices.</:empty>
+              </.notice_table>
+            </div>
+          </section>
+
+          <p id="notices-coverage" class="text-ink-muted text-ui">
+            60-day GST lookup · Saved notices retained · Coverage varies by notice type
+          </p>
         <% end %>
       </div>
 
