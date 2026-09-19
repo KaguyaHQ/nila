@@ -162,7 +162,9 @@ defmodule NilaWeb.Gst.Gstr2bLiveTest do
     assert {:error, :not_found} = Gstr2b.enqueue(Scope.for_user(other), client.id, "2026-07")
 
     connection
-    |> Ecto.Changeset.change(authorized_at: DateTime.add(DateTime.utc_now(), -7, :hour))
+    |> Ecto.Changeset.change(
+      credentials: Map.put(connection.credentials, "reauth_required", true)
+    )
     |> Repo.update!()
 
     assert {:error, :session_expired} = Gstr2b.enqueue(scope, client.id, "2026-07")
@@ -229,7 +231,9 @@ defmodule NilaWeb.Gst.Gstr2bLiveTest do
   test "reconnect resumes the chosen month, retains a pending OTP on close, and never fetches after a failed OTP",
        %{conn: conn, connection: connection, client: client} do
     connection
-    |> Ecto.Changeset.change(authorized_at: DateTime.add(DateTime.utc_now(), -7, :hour))
+    |> Ecto.Changeset.change(
+      credentials: Map.put(connection.credentials, "reauth_required", true)
+    )
     |> Repo.update!()
 
     {:ok, view, _} = live(conn, ~p"/gst/2b?#{%{client_id: client.id, period: "2026-07"}}")

@@ -109,7 +109,8 @@ config :nila, Oban,
     Oban.Plugins.Lifeline,
     {Oban.Plugins.Cron,
      crontab: [
-       {"30 3 * * *", Nila.Gst.Chase.Scheduler}
+       {"30 3 * * *", Nila.Gst.Chase.Scheduler},
+       {"*/15 * * * *", Nila.Gst.Portal.RefreshWorker}
      ]}
   ]
 

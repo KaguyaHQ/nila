@@ -5,7 +5,6 @@ defmodule Nila.Gst.Portal.Gstr2b do
   alias Nila.Accounts.Policy
   alias Nila.Gst.Portal
   alias Nila.Gst.Portal.{Statement, StatementWorker}
-  alias Nila.Integrations.Whitebooks
 
   def subscribe(org_id), do: Phoenix.PubSub.subscribe(Nila.PubSub, "gst_statements:#{org_id}")
 
@@ -99,9 +98,8 @@ defmodule Nila.Gst.Portal.Gstr2b do
       result =
         with {:ok, connection} <- Portal.connection(org_id, statement.client_id),
              true <- connection.gstin == statement.gstin,
-             {:ok, account} <- Portal.account(connection),
              {:ok, date} <- month(statement.period),
-             {:ok, response} <- Whitebooks.gstr2b(account, date),
+             {:ok, response} <- Portal.gstr2b(org_id, statement.client_id, statement.gstin, date),
              {:ok, document} <-
                document(response, statement.gstin, Calendar.strftime(date, "%m%Y")) do
           {:ok, document}
@@ -172,9 +170,9 @@ defmodule Nila.Gst.Portal.Gstr2b do
     do:
       "WhiteBooks did not return a complete GSTR-2B statement for this GSTIN and month. Any earlier download is still available."
 
-  def error_message({:provider, code}),
+  def error_message({:provider, _code}),
     do:
-      "WhiteBooks could not fetch this statement (#{code}). Check that GSTR-2B is available for this month and reconnect GST if needed."
+      "Could not fetch this statement. Check that GSTR-2B is available for this month and try again."
 
   def error_message(:session_expired),
     do: "The GST session has expired. Reconnect this client's GST account and try again."

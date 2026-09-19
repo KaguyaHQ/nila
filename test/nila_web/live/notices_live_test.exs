@@ -218,7 +218,11 @@ defmodule NilaWeb.NoticesLiveTest do
     checked_at = ~U[2026-08-01 04:30:00.000000Z]
 
     connection!(client,
-      authorized_at: DateTime.add(DateTime.utc_now(), -21_601),
+      credentials: %{
+        "txn" => "test-session",
+        "ip_address" => "203.0.113.1",
+        "reauth_required" => true
+      },
       last_checked_at: checked_at
     )
 

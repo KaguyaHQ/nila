@@ -66,7 +66,8 @@ defmodule Nila.Gst.Portal do
              :updated_at
            ]},
         conflict_target: [:client_id],
-        returning: true
+        returning: true,
+        log: false
       )
     else
       {:error, reason} -> {:error, reason}
@@ -91,41 +92,183 @@ defmodule Nila.Gst.Portal do
   end
 
   def account(connection) do
-    if not session_expired?(connection, DateTime.utc_now()) do
-      {:ok,
-       %{
-         gstin: connection.gstin,
-         username: connection.username,
-         txn: connection.credentials["txn"],
-         ip_address: connection.credentials["ip_address"]
-       }}
-    else
-      {:error, :session_expired}
+    with {:ok, current} <- refresh_connection(connection) do
+      {:ok, account_fields(current)}
     end
   end
 
-  def session_expired?(connection, now),
-    do: DateTime.diff(now, connection.authorized_at) >= 6 * 3600
+  # Only a provider rejection establishes that a new OTP is required.
+  def session_expired?(connection, _now),
+    do: connection.credentials["reauth_required"] == true
+
+  def refresh_due?(connection, now \\ DateTime.utc_now()) do
+    refreshed_at =
+      case DateTime.from_iso8601(connection.credentials["refreshed_at"] || "") do
+        {:ok, time, _} -> time
+        _ -> connection.authorized_at
+      end
+
+    DateTime.diff(now, refreshed_at) >= 5 * 3600
+  end
+
+  defp account_fields(connection) do
+    %{
+      gstin: connection.gstin,
+      username: connection.username,
+      txn: connection.credentials["txn"],
+      ip_address: connection.credentials["ip_address"]
+    }
+  end
+
+  defp refresh_connection(connection, force? \\ false) do
+    # Serialize refreshes for one account, including overlapping downloads and
+    # the background job. Re-read after locking so stale callers reuse the result.
+    # The provider call holds this row lock for at most its HTTP timeout.
+    Repo.transact(
+      fn ->
+        with {:ok, current} <-
+               Repo.fetch_one(
+                 from c in Connection,
+                   join: client in assoc(c, :client),
+                   where:
+                     c.id == ^connection.id and c.gstin == ^connection.gstin and
+                       c.gstin == client.gstin,
+                   lock: "FOR UPDATE OF g0"
+               ) do
+          force? = force? and current.updated_at == connection.updated_at
+          {:ok, refresh_locked(current, force?)}
+        end
+      end,
+      timeout: 45_000
+    )
+    |> case do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp refresh_locked(connection, force?) do
+    cond do
+      session_expired?(connection, DateTime.utc_now()) ->
+        {:error, :session_expired}
+
+      not force? and not refresh_due?(connection) ->
+        {:ok, connection}
+
+      true ->
+        case Whitebooks.refresh(account_fields(connection)) do
+          {:ok, body} ->
+            txn = Map.get(body, "txn", connection.credentials["txn"])
+
+            if is_binary(txn) and txn != "" do
+              credentials =
+                Map.merge(connection.credentials, %{
+                  "txn" => txn,
+                  "refreshed_at" => DateTime.to_iso8601(DateTime.utc_now())
+                })
+
+              {:ok,
+               connection
+               |> Ecto.Changeset.change(credentials: credentials)
+               |> Repo.update!(log: false)}
+            else
+              {:error, :unexpected_response}
+            end
+
+          {:error, reason} ->
+            if authentication_error?(reason) do
+              mark_reauthentication!(connection)
+              {:error, :session_expired}
+            else
+              {:error, reason}
+            end
+        end
+    end
+  end
+
+  defp authentication_error?({:provider, code}),
+    do: code in ["WB_ERR_9503", "RET11407", "RET11408"]
+
+  defp authentication_error?(_), do: false
+
+  defp mark_reauthentication!(connection) do
+    connection
+    |> Ecto.Changeset.change(
+      credentials: Map.put(connection.credentials, "reauth_required", true)
+    )
+    |> Repo.update!(log: false)
+  end
+
+  defp request(connection, call) do
+    with {:ok, current} <- refresh_connection(connection) do
+      case call.(account_fields(current)) do
+        {:error, reason} = error ->
+          if authentication_error?(reason) do
+            with {:ok, refreshed} <- refresh_connection(current, true) do
+              case call.(account_fields(refreshed)) do
+                {:error, retry_reason} = retry_error ->
+                  if authentication_error?(retry_reason) do
+                    # A new OTP may have replaced this session while the call ran.
+                    {:ok, result} =
+                      Repo.transact(fn ->
+                        latest =
+                          Repo.one(
+                            from c in Connection, where: c.id == ^refreshed.id, lock: "FOR UPDATE"
+                          )
+
+                        if latest && latest.updated_at == refreshed.updated_at do
+                          mark_reauthentication!(latest)
+                          {:ok, :session_expired}
+                        else
+                          {:ok, :unavailable}
+                        end
+                      end)
+
+                    {:error, result}
+                  else
+                    retry_error
+                  end
+
+                success ->
+                  success
+              end
+            end
+          else
+            error
+          end
+
+        success ->
+          success
+      end
+    end
+  end
 
   def list_notices(org_id, client_id, date) do
+    with {:ok, connection} <- connection(org_id, client_id) do
+      request(connection, &Whitebooks.list_notices(&1, date))
+    end
+  end
+
+  def gstr2b(org_id, client_id, gstin, date) do
     with {:ok, connection} <- connection(org_id, client_id),
-         {:ok, account} <- account(connection) do
-      Whitebooks.list_notices(account, date)
+         true <- connection.gstin == gstin do
+      request(connection, &Whitebooks.gstr2b(&1, date))
+    else
+      false -> {:error, :invalid_connection}
+      error -> error
     end
   end
 
   def notice_details(org_id, client_id, reference) do
-    with {:ok, connection} <- connection(org_id, client_id),
-         {:ok, account} <- account(connection) do
-      Whitebooks.notice_details(account, reference)
+    with {:ok, connection} <- connection(org_id, client_id) do
+      request(connection, &Whitebooks.notice_details(&1, reference))
     end
   end
 
   def download_document(org_id, client_id, gstin, document_id, issued_on) do
     with {:ok, connection} <- connection(org_id, client_id),
-         true <- connection.gstin == gstin,
-         {:ok, account} <- account(connection) do
-      Whitebooks.download_document(account, document_id, issued_on)
+         true <- connection.gstin == gstin do
+      request(connection, &Whitebooks.download_document(&1, document_id, issued_on))
     else
       false -> {:error, :invalid_connection}
       error -> error

@@ -235,7 +235,7 @@ defmodule Nila.Notices do
     do: "The notice details received are incomplete. Saved notices have not changed."
 
   def error_message({:provider, _code}),
-    do: "Could not complete the GST request. Try reconnecting the GST account."
+    do: "Could not complete the GST request. Try again; saved notices have not changed."
 
   def error_message(_),
     do: "Could not complete the GST request. Try again; saved notices have not changed."

@@ -204,7 +204,9 @@ defmodule Nila.NoticesTest do
     client: client
   } do
     connection
-    |> Ecto.Changeset.change(authorized_at: DateTime.add(DateTime.utc_now(), -21_601))
+    |> Ecto.Changeset.change(
+      credentials: Map.put(connection.credentials, "reauth_required", true)
+    )
     |> Repo.update!()
 
     assert {:error, :session_expired} = Notices.enqueue(scope, client.id)
@@ -324,7 +326,9 @@ defmodule Nila.NoticesTest do
     end
 
     connection
-    |> Ecto.Changeset.change(authorized_at: DateTime.add(DateTime.utc_now(), -21_601))
+    |> Ecto.Changeset.change(
+      credentials: Map.put(connection.credentials, "reauth_required", true)
+    )
     |> Repo.update!()
 
     assert {:error, :session_expired} = Notices.fetch_by_reference(scope, client.id, "REF-1")

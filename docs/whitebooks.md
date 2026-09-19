@@ -117,9 +117,25 @@ GST login belongs to `Nila.Gst.Portal`. The follow-up migration renames
 `gst_notice_connections` to `gst_portal_connections`, preserving encrypted sessions,
 and moves notice check times/errors into `gst_notice_checks`. Notices remain in
 `gst_notices`.
-Sessions use `Nila.EncryptedMap`; OTPs are never saved. The screen conservatively
-requires another OTP after the documented six-hour session window. Automated
-refresh and scheduled checks are not enabled.
+Sessions use `Nila.EncryptedMap`; OTPs are never saved. Whitebooks documents a
+six-hour token window. The existing Oban cron runs a refresh sweep every 15 minutes,
+queuing connections whose last successful authentication/refresh is at least five
+hours old. Reads also refresh on demand, including after a missed background run.
+The server must be running for scheduled refreshes; changes to the cron config
+require a restart. Scheduled notice checks are not enabled.
+
+`authorized_at` retains the OTP login time. The encrypted credentials map holds
+`refreshed_at` and, only after a provider authentication rejection,
+`reauth_required`. A successful refresh retains `txn` when none is returned or
+saves its replacement. Refreshes serialize per connection to prevent duplicate
+refresh calls and stale writes. Transport errors and unknown provider failures
+remain retryable without marking the taxpayer's authorization expired.
+
+`RET11407` (invalid auth token), `RET11408` (invalid transaction), and the observed
+`WB_ERR_9503` trigger one refresh and one read retry. A rejection from refresh,
+or the same class of failure after retry, requires another OTP. Other errors do
+not establish that a new OTP is required. There is no hard-coded 30-day cutoff;
+Whitebooks' outer authorization lifetime remains unverified.
 
 Manual checks run on the existing Oban `workflows` queue. Repeated checks update
 the same client/GSTIN/reference record. A failed or malformed response preserves
@@ -193,7 +209,12 @@ Adapter tests verify request construction and error handling; their response
 bodies are synthetic.
 
 Populated list and detail responses have now been inspected for an active
-taxpayer (see below). Session expiry and refresh behavior remain unverified live.
+taxpayer (see below). On 19 September 2026, refresh succeeded for both the fresh
+probe session and the previous day's saved session. The response contained
+`status_cd: "1"` and `status_desc`, with no new `txn`. A subsequent July reminder
+lookup using the previous day's original `txn` succeeded. This establishes that
+six hours of local age alone does not require another OTP, but does not establish
+the outer authorization lifetime or every provider rejection code.
 Do not infer an empty notice list from an unfamiliar response.
 
 Live notice calls returned nested errors with `error.errorCode` and
