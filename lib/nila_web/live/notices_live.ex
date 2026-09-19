@@ -82,6 +82,13 @@ defmodule NilaWeb.NoticesLive do
     {:noreply, socket |> assign(checks_open: not socket.assigns.checks_open) |> load()}
   end
 
+  def handle_event("select_check_client", %{"client_id" => id}, socket) do
+    {:noreply,
+     socket
+     |> assign(checks_open: false)
+     |> push_patch(to: ~p"/notices?#{%{client_id: id}}")}
+  end
+
   def handle_event(
         "connect",
         %{"client_id" => id} = params,
@@ -505,7 +512,9 @@ defmodule NilaWeb.NoticesLive do
               >
                 <:col :let={row} label="Client" row_header>
                   <.text_link
-                    patch={~p"/notices?#{%{client_id: row.id}}"}
+                    href={~p"/notices?#{%{client_id: row.id}}"}
+                    phx-click="select_check_client"
+                    phx-value-client_id={row.id}
                     id={"client-check-filter-#{row.id}"}
                     class="font-medium"
                   >{row.client.name}</.text_link>
