@@ -14,19 +14,12 @@ defmodule NilaWeb.NoticesLive do
        clients: Clients.list_clients(scope.current_org.id),
        selected: nil,
        notice: nil,
-       connecting_client: nil,
-       connection_return_focus: nil,
        checks_open: false,
-       connecting: false,
-       challenge: nil,
-       busy: false,
        polling: false,
        error: nil,
        can_connect: Policy.can?(scope, :manage_connectors),
        can_check: Policy.can?(scope, :edit_records)
      )
-     |> assign(:connection_form, to_form(%{"username" => ""}, as: :connection))
-     |> assign(:otp_form, to_form(%{}, as: :verification))
      |> stream(:notices, [])
      |> stream(:client_checks, [])}
   end
@@ -56,9 +49,6 @@ defmodule NilaWeb.NoticesLive do
      |> assign(
        selected: selected,
        notice: nil,
-       connecting: false,
-       connecting_client: nil,
-       challenge: nil,
        error: nil
      )
      |> load()}
@@ -73,64 +63,15 @@ defmodule NilaWeb.NoticesLive do
     {:noreply, assign(socket, checks_open: not socket.assigns.checks_open)}
   end
 
-  def handle_event(
-        "connect",
-        %{"client_id" => id},
-        %{assigns: %{can_connect: true, busy: false}} = socket
-      ) do
-    case Enum.find(socket.assigns.checks, &(to_string(&1.id) == id)) do
-      %{client: %{gstin: gstin} = client, connection: connection} when is_binary(gstin) ->
-        username = if connection, do: connection.username, else: ""
-
-        {:noreply,
-         socket
-         |> assign(
-           connecting: true,
-           connecting_client: client,
-           error: nil,
-           challenge: nil,
-           connection_return_focus: "#client-check-action-#{client.id}"
-         )
-         |> assign(:connection_form, to_form(%{"username" => username}, as: :connection))}
-
-      _ ->
+  def handle_event("connect", %{"client_id" => id}, %{assigns: %{can_connect: true}} = socket) do
+    case Enum.find(socket.assigns.clients, &(to_string(&1.id) == id)) do
+      nil ->
         {:noreply, socket}
+
+      client ->
+        open_connection(client.id)
+        {:noreply, assign(socket, error: nil)}
     end
-  end
-
-  def handle_event("close_connection", _, %{assigns: %{busy: false}} = socket),
-    do:
-      {:noreply,
-       assign(socket, connecting: false, connecting_client: nil, challenge: nil, error: nil)}
-
-  def handle_event(
-        "request_otp",
-        %{"connection" => %{"username" => username}},
-        %{assigns: %{busy: false, connecting_client: selected, can_connect: true}} = socket
-      )
-      when not is_nil(selected) do
-    scope = socket.assigns.current_scope
-
-    {:noreply,
-     socket
-     |> assign(busy: true, error: nil)
-     |> start_async(:request_otp, fn ->
-       Nila.Gst.Portal.request_otp(scope, selected.id, username)
-     end)}
-  end
-
-  def handle_event(
-        "verify_otp",
-        %{"verification" => %{"otp" => otp}},
-        %{assigns: %{busy: false, challenge: challenge, can_connect: true}} = socket
-      )
-      when not is_nil(challenge) do
-    scope = socket.assigns.current_scope
-
-    {:noreply,
-     socket
-     |> assign(busy: true, error: nil)
-     |> start_async(:verify_otp, fn -> Nila.Gst.Portal.verify_otp(scope, challenge, otp) end)}
   end
 
   def handle_event("check", %{"client_id" => id}, %{assigns: %{can_check: true}} = socket) do
@@ -143,6 +84,16 @@ defmodule NilaWeb.NoticesLive do
           {:ok, _} ->
             {:noreply, socket |> assign(error: nil) |> load()}
 
+          {:error, reason} when reason in [:not_found, :session_expired] ->
+            if socket.assigns.can_connect, do: open_connection(client.id)
+
+            {:noreply,
+             socket
+             |> assign(
+               error: if(socket.assigns.can_connect, do: nil, else: Notices.error_message(reason))
+             )
+             |> load()}
+
           {:error, reason} ->
             {:noreply, socket |> assign(error: Notices.error_message(reason)) |> load()}
         end
@@ -151,25 +102,28 @@ defmodule NilaWeb.NoticesLive do
 
   def handle_event(_, _, socket), do: {:noreply, socket}
 
-  @impl true
-  def handle_async(:request_otp, {:ok, {:ok, challenge}}, socket),
-    do: {:noreply, assign(socket, busy: false, challenge: challenge)}
-
-  def handle_async(:verify_otp, {:ok, {:ok, _}}, socket),
-    do:
-      {:noreply,
-       socket
-       |> assign(busy: false, connecting: false, connecting_client: nil, challenge: nil)
-       |> put_flash(:info, "GST account connected.")
-       |> load()}
-
-  def handle_async(_, {:ok, {:error, reason}}, socket),
-    do: {:noreply, assign(socket, busy: false, error: Notices.error_message(reason))}
-
-  def handle_async(_, {:exit, _}, socket),
-    do: {:noreply, assign(socket, busy: false, error: Notices.error_message(:unavailable))}
+  defp open_connection(client_id) do
+    send_update(NilaWeb.Gst.ConnectionComponent,
+      id: "gst-connection",
+      request: %{
+        client_id: client_id,
+        continuation: :check_notices,
+        return_focus: "#client-check-action-#{client_id}"
+      }
+    )
+  end
 
   @impl true
+  def handle_info({:gst_connected, client_id, :check_notices}, socket) do
+    case Notices.enqueue(socket.assigns.current_scope, client_id) do
+      {:ok, _} ->
+        {:noreply, socket |> assign(error: nil) |> load()}
+
+      {:error, reason} ->
+        {:noreply, socket |> assign(error: Notices.error_message(reason)) |> load()}
+    end
+  end
+
   def handle_info(:refresh_notices, socket),
     do: {:noreply, socket |> assign(polling: false) |> load()}
 
@@ -251,9 +205,9 @@ defmodule NilaWeb.NoticesLive do
               >All notices</.button>
             </:actions>
           </.page_header>
-          
+
           <p class="text-ui">{@notice.client.name} · {@notice.gstin}</p>
-          
+
           <.card>
             <dl id="notice-details" class="gap-block grid grid-cols-1 md:grid-cols-2">
               <div>
@@ -261,19 +215,19 @@ defmodule NilaWeb.NoticesLive do
                   {@notice.reference}
                 </dd>
               </div>
-              
+
               <div>
                 <dt class="text-ink-muted text-ui">Issued</dt><dd class="text-ui">
                   {date(@notice.issued_on)}
                 </dd>
               </div>
-              
+
               <div>
                 <dt class="text-ink-muted text-ui">Reply date in notice</dt><dd class="text-ui">
                   {date(@notice.reply_due_on)}
                 </dd>
               </div>
-              
+
               <div>
                 <dt class="text-ink-muted text-ui">Tax period</dt><dd class="text-ui">
                   {period(@notice.payload["detail"]["taxPeriod"])}
@@ -281,11 +235,11 @@ defmodule NilaWeb.NoticesLive do
               </div>
             </dl>
           </.card>
-          
+
           <p class="text-ink-muted text-ui">
             Check the GST portal to see whether a reply was filed or the matter is closed.
           </p>
-          
+
           <.data_table
             id="notice-documents"
             rows={Enum.with_index(@documents)}
@@ -293,7 +247,7 @@ defmodule NilaWeb.NoticesLive do
             empty?={@documents == []}
           >
             <:col :let={{doc, _}} label="Document" row_header>{doc["docName"]}</:col>
-            
+
             <:col :let={{doc, index}} label="" align="right">
               <.button
                 :if={doc["ct"] == "application/pdf"}
@@ -305,7 +259,7 @@ defmodule NilaWeb.NoticesLive do
               >View PDF</.button>
               <span :if={doc["ct"] != "application/pdf"} class="text-ink-muted">Preview unavailable for this file type</span>
             </:col>
-            
+
             <:empty>No documents are available for this notice.</:empty>
           </.data_table>
         <% else %>
@@ -313,7 +267,7 @@ defmodule NilaWeb.NoticesLive do
           <p id="notices-coverage" class="text-ink-muted text-ui">
             Some notices and orders may be missing. Check the GST portal for a complete record.
           </p>
-          
+
           <div class="gap-block flex flex-wrap items-end justify-between">
             <.form
               for={@filter_form}
@@ -331,7 +285,7 @@ defmodule NilaWeb.NoticesLive do
               />
             </.form>
           </div>
-          
+
           <.fold id="client-checks" open={@checks_open} on_toggle="toggle_client_checks">
             <:summary>
               <.fold_summary title="Client checks · Entire firm">
@@ -340,19 +294,19 @@ defmodule NilaWeb.NoticesLive do
                 </:detail>
               </.fold_summary>
             </:summary>
-            
+
             <div class="pt-block space-y-block">
               <p class="text-ink-muted text-ui">
                 Checks cover the past 60 days. Saved notices are retained.
               </p>
-              
+
               <p :if={!@can_connect} id="client-check-permissions" class="text-ink-muted text-ui">
                 {if @can_check,
                   do: "Ask the workspace owner to connect or reconnect GST accounts.",
                   else:
                     "Your role can view notices. An operator or owner must run checks; an owner must connect GST accounts."}
               </p>
-              
+
               <.data_table
                 id="client-checks-table"
                 rows={@streams.client_checks}
@@ -366,7 +320,7 @@ defmodule NilaWeb.NoticesLive do
                     class="font-medium"
                   >{row.client.name}</.text_link>
                 </:col>
-                
+
                 <:col :let={row} label="Check status">
                   <span
                     id={"client-check-status-#{row.id}"}
@@ -376,11 +330,11 @@ defmodule NilaWeb.NoticesLive do
                     {row.last_error}
                   </p>
                 </:col>
-                
+
                 <:col :let={row} label="Last successful check" class="whitespace-nowrap">
                   <span id={"client-check-time-#{row.id}"}>{checked_at(row.last_checked_at)}</span>
                 </:col>
-                
+
                 <:col :let={row} label="Action" align="right">
                   <%= cond do %>
                     <% row.state == :missing_gstin -> %>
@@ -424,18 +378,18 @@ defmodule NilaWeb.NoticesLive do
                       </.button>
                   <% end %>
                 </:col>
-                
+
                 <:empty>
                   <.text_link navigate={~p"/clients/new"}>Add a client to check GST notices.</.text_link>
                 </:empty>
               </.data_table>
             </div>
           </.fold>
-          
-          <p :if={@error && !@connecting} id="notices-error" role="alert" class="text-error text-ui">
+
+          <p :if={@error} id="notices-error" role="alert" class="text-error text-ui">
             {@error}
           </p>
-          
+
           <.data_table
             id="notices-table"
             rows={@streams.notices}
@@ -449,15 +403,15 @@ defmodule NilaWeb.NoticesLive do
                 {n.reference}
               </div>
             </:col>
-            
+
             <:col :let={n} label="Client">{n.client.name}</:col>
-            
+
             <:col :let={n} label="Issued" class="whitespace-nowrap">{date(n.issued_on)}</:col>
-            
+
             <:col :let={n} label="Reply date in notice" class="whitespace-nowrap">
               {date(n.reply_due_on)}
             </:col>
-            
+
             <:empty>
               <p id="notices-empty">
                 No saved notices{if @selected, do: " for this client", else: ""}. This does not confirm that there are no notices on the GST portal.
@@ -466,67 +420,12 @@ defmodule NilaWeb.NoticesLive do
           </.data_table>
         <% end %>
       </div>
-      
-      <.modal
-        :if={@connecting}
-        id="notice-connection-modal"
-        title={"Connect GST · #{@connecting_client.name}"}
-        on_close="close_connection"
-        close_on_escape={!@busy}
-        return_focus={@connection_return_focus}
-      >
-        <p :if={@error} id="notice-connection-error" role="alert" class="text-error text-ui">
-          {@error}
-        </p>
-        
-        <%= if @challenge do %>
-          <p class="mb-block text-ui">
-            Enter the OTP sent to this client's GST-registered phone or email.
-          </p>
-          
-          <.form for={@otp_form} id="notice-otp-form" phx-submit="verify_otp">
-            <.input
-              field={@otp_form[:otp]}
-              id="notice-otp"
-              label="OTP"
-              required
-              pattern="[0-9]{6}"
-              minlength="6"
-              maxlength="6"
-              inputmode="numeric"
-              autocomplete="one-time-code"
-              disabled={@busy}
-            />
-          </.form>
-        <% else %>
-          <.form for={@connection_form} id="notice-connect-form" phx-submit="request_otp">
-            <.input
-              field={@connection_form[:username]}
-              id="notice-gst-username"
-              label="GST portal username"
-              required
-              maxlength="100"
-              disabled={@busy}
-            />
-          </.form>
-        <% end %>
-        
-        <:footer>
-          <.button phx-click="close_connection" variant="ghost" disabled={@busy}>Cancel</.button>
-          <.button
-            type="submit"
-            form={if @challenge, do: "notice-otp-form", else: "notice-connect-form"}
-            disabled={@busy}
-            id="notice-connect-submit"
-          >
-            {cond do
-              @busy -> "Please wait…"
-              @challenge -> "Verify OTP"
-              true -> "Send OTP"
-            end}
-          </.button>
-        </:footer>
-      </.modal>
+
+      <.live_component
+        module={NilaWeb.Gst.ConnectionComponent}
+        id="gst-connection"
+        current_scope={@current_scope}
+      />
     </Layouts.app>
     """
   end

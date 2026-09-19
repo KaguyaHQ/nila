@@ -1,6 +1,6 @@
 defmodule Nila.Integrations.Whitebooks do
   @moduledoc """
-  Whitebooks GST API: taxpayer lookup, authentication, and notices.
+  Whitebooks GST API: taxpayer lookup, authentication, notices, and GSTR-2B.
 
   Returns the successful provider envelope unchanged. Notice and authentication
   payloads must be mapped from verified responses, not inferred from field names.
@@ -43,6 +43,11 @@ defmodule Nila.Integrations.Whitebooks do
 
   def refresh(account),
     do: request("/authentication/refreshtoken", [], account, session?: true)
+
+  def gstr2b(account, %Date{} = month) do
+    params = [gstin: account.gstin, rtnprd: Calendar.strftime(month, "%m%Y")]
+    request("/gstr2b/all", params, account, session?: true)
+  end
 
   def list_notices(account, %Date{} = date) do
     request(

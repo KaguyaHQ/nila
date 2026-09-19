@@ -66,18 +66,18 @@ defmodule NilaWeb.NoticesLiveTest do
       Req.Test.json(request, %{"status_cd" => "1", "txn" => "challenge"})
     end)
 
-    view |> form("#notice-connect-form", connection: %{username: "gst-user"}) |> render_submit()
-    render_async(view)
-    assert has_element?(view, "#notice-otp")
+    view |> form("#gst-connect-form", connection: %{username: "gst-user"}) |> render_submit()
+    render_async(view, 1000)
+    assert has_element?(view, "#gst-otp")
     Req.Test.expect(Whitebooks, fn request -> Req.Test.json(request, %{"status_cd" => "1"}) end)
-    view |> form("#notice-otp-form", verification: %{otp: "123456"}) |> render_submit()
-    render_async(view)
-    refute has_element?(view, "#notice-connection-modal")
+    view |> form("#gst-otp-form", verification: %{otp: "123456"}) |> render_submit()
+    render_async(view, 1000)
+    refute has_element?(view, "#gst-connection-modal")
 
     assert has_element?(
              view,
-             "#client-check-action-#{client.id}:not([disabled])",
-             "Check notices"
+             "#client-check-action-#{client.id}[disabled]",
+             "Checking…"
            )
 
     assert Repo.get_by!(Connection, client_id: client.id).username == "gst-user"
@@ -122,7 +122,7 @@ defmodule NilaWeb.NoticesLiveTest do
     assert has_element?(view, "#client-check-action-#{client.id}[disabled]", "Connect GST")
     assert has_element?(view, "#client-check-permissions", "Your role can view notices")
     render_click(view, "connect", %{"client_id" => to_string(client.id)})
-    refute has_element?(view, "#notice-connection-modal")
+    refute has_element?(view, "#gst-connection-modal")
   end
 
   defp notice!(client) do
@@ -181,7 +181,7 @@ defmodule NilaWeb.NoticesLiveTest do
 
     # Connecting the other client must not accidentally connect the filtered one.
     view |> element("#client-check-action-#{second.id}") |> render_click()
-    assert has_element?(view, "#notice-connection-modal-title", "Other client")
+    assert has_element?(view, "#gst-connection-modal-title", "Other client")
 
     Req.Test.expect(Whitebooks, fn request ->
       assert Plug.Conn.get_req_header(request, "gst_username") == ["other-gst-user"]
@@ -189,17 +189,17 @@ defmodule NilaWeb.NoticesLiveTest do
     end)
 
     view
-    |> form("#notice-connect-form", connection: %{username: "other-gst-user"})
+    |> form("#gst-connect-form", connection: %{username: "other-gst-user"})
     |> render_submit()
 
-    render_async(view)
+    render_async(view, 1000)
     Req.Test.expect(Whitebooks, fn request -> Req.Test.json(request, %{"status_cd" => "1"}) end)
-    view |> form("#notice-otp-form", verification: %{otp: "123456"}) |> render_submit()
-    render_async(view)
+    view |> form("#gst-otp-form", verification: %{otp: "123456"}) |> render_submit()
+    render_async(view, 1000)
     assert Repo.get_by(Connection, client_id: second.id)
     refute Repo.get_by(Connection, client_id: client.id)
     assert has_element?(view, "#client-checks[open]")
-    assert has_element?(view, "#client-check-status-#{second.id}", "Not checked yet")
+    assert has_element?(view, "#client-check-status-#{second.id}", "Checking…")
   end
 
   test "expired login keeps its successful check time and differs from a failed check", %{

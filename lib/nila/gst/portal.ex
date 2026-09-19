@@ -82,6 +82,14 @@ defmodule Nila.Gst.Portal do
     )
   end
 
+  def disconnect(scope, client_id) do
+    with :ok <- authorize(scope, :manage_connectors),
+         {:ok, client} <- Clients.get_client(scope.current_org.id, client_id) do
+      Repo.delete_all(from c in Connection, where: c.client_id == ^client.id)
+      :ok
+    end
+  end
+
   def account(connection) do
     if not session_expired?(connection, DateTime.utc_now()) do
       {:ok,

@@ -97,6 +97,35 @@ are tied to the compared facts, so changed names/status cannot inherit an old
 confirmation. A newly found exception reopens an affected unfiled review; filed
 month snapshots remain unchanged. The cache itself has no version history.
 
+## GSTR-2B downloads
+
+Open **GSTR-2B** (`/gst/2b`), choose a client and return month, and fetch the
+statement using the client's existing GST session. An expired or missing session
+opens the shared GST connection dialog in place. Verification automatically
+continues the chosen client's fetch for the chosen month. Notices uses the same
+dialog and resumes its check after verification. Closing and reopening the dialog
+on the same page preserves an unexpired OTP request; OTP values are never saved.
+Client pages have a **GST portal access** section for reconnecting, changing the
+username through verification, and disconnecting. Disconnecting retains saved
+statements and notices. Owners/admins manage connections; operators can fetch
+with an existing session; viewers can
+download saved statements. Oban handles the fetch and deduplicates requests in
+progress. A failed refresh leaves the previous successful document available.
+
+`GET /gstr2b/all` takes `gstin` and `rtnprd` (`MMYYYY`). A live July 2026 request
+for Breeze Tech succeeded on 18 September 2026. Its successful `data` contains
+the portal document `{chksum, data}`, with GSTIN, return month, generation date,
+summaries and `docdata.b2b`. We validate the GSTIN, month and document structure
+before saving it. Provider errors and file manifests are not statements.
+Multi-file downloads are not implemented; unrecognized responses leave the
+previous download intact.
+
+`gst_portal_statements` retains the latest successful portal JSON and fetch time
+per client/GSTIN/month in Postgres. Downloads preserve its JSON values (formatting
+may differ), exclude the provider status/authentication envelope, and use a
+firm-scoped authenticated route with `private, no-store`. Fetching does not import
+purchases, reconcile them, generate a new 2B, or submit a return.
+
 ## Verified and pending
 
 Production taxpayer lookup succeeded for active and suspended taxpayers on

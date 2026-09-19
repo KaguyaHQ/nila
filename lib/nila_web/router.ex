@@ -147,6 +147,7 @@ defmodule NilaWeb.Router do
       live "/banking/new", Banking.UploadLive, :new
       live "/banking/:id", Banking.StatementLive, :show
       live "/gst/upload", Gst.UploadLive, :new
+      live "/gst/2b", Gst.Gstr2bLive, :index
       live "/gst/:client_id/:period", Gst.MonthLive, :index
 
       live "/gst/:client_id/:period/sales", Gst.MonthLive, :sales_workspace
@@ -181,7 +182,9 @@ defmodule NilaWeb.Router do
     get "/gstr1/:client_id/:period/evidence/:basename", Gstr1Controller, :evidence
 
     get "/settings", SettingsController, :index
+    get "/clients/import-template.xlsx", ClientImportController, :template
     get "/notices/:id/documents/:index", NoticeDocumentController, :show
+    get "/gst/2b/statements/:id/download", Gstr2bController, :download
     post "/clients/:id/select", ClientContextController, :update
     post "/settings/security/password", UserSettingsController, :update_password
     post "/settings/security/sessions", UserSettingsController, :delete_sessions

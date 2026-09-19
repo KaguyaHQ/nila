@@ -15,6 +15,7 @@ defmodule Nila.Clients.Client do
     field :address, :string
     field :pan, :string
     field :gstin, :string
+    field :gst_username, :string
     field :phone, :string
     field :email, :string
     field :chase_channel, :string, default: "none"
@@ -36,6 +37,7 @@ defmodule Nila.Clients.Client do
       :address,
       :pan,
       :gstin,
+      :gst_username,
       :phone,
       :email,
       :chase_channel,
@@ -46,6 +48,8 @@ defmodule Nila.Clients.Client do
     |> validate_inclusion(:chase_channel, @chase_channels)
     |> update_change(:pan, &normalize_upcase/1)
     |> update_change(:gstin, &normalize_upcase/1)
+    |> update_change(:gst_username, &normalize_blank/1)
+    |> validate_length(:gst_username, max: 100)
     |> update_change(:phone, &normalize_phone/1)
     |> update_change(:email, &normalize_email/1)
     |> update_change(:address, &normalize_blank/1)

@@ -17,6 +17,11 @@ defmodule NilaWeb.ClientEditLive do
          socket
          |> assign(:page_title, "Edit client")
          |> assign(:client, client)
+         |> assign(
+           :can_manage_gst,
+           Nila.Accounts.Policy.can?(socket.assigns.current_scope, :manage_connectors)
+         )
+         |> load_gst_connection()
          |> assign(:tally_company, tally_company)
          |> assign(:available_tally_companies, TallyDevices.list_importable_companies(org.id))
          |> assign(:form, to_form(Clients.change_client(client, form_attrs)))}
@@ -30,6 +35,34 @@ defmodule NilaWeb.ClientEditLive do
   end
 
   @impl true
+  def handle_event("connect-gst", _, %{assigns: %{can_manage_gst: true}} = socket) do
+    send_update(NilaWeb.Gst.ConnectionComponent,
+      id: "gst-connection",
+      request: %{
+        client_id: socket.assigns.client.id,
+        continuation: :manage,
+        return_focus: "#client-gst-connect"
+      }
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_event("disconnect-gst", _, socket) do
+    case Nila.Gst.Portal.disconnect(socket.assigns.current_scope, socket.assigns.client.id) do
+      :ok ->
+        {:noreply,
+         socket
+         |> load_gst_connection()
+         |> put_flash(:info, "GST account disconnected. Saved files are still available.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Your role cannot disconnect GST accounts.")}
+    end
+  end
+
+  def handle_event("connect-gst", _, socket), do: {:noreply, socket}
+
   def handle_event("validate", %{"client" => params}, socket) do
     changeset =
       socket.assigns.client
@@ -68,6 +101,27 @@ defmodule NilaWeb.ClientEditLive do
          )
          |> assign(:form, to_form(changeset))}
     end
+  end
+
+  @impl true
+  def handle_info({:gst_connected, _client_id, :manage}, socket) do
+    {:noreply, socket |> load_gst_connection() |> put_flash(:info, "GST account connected.")}
+  end
+
+  defp load_gst_connection(socket) do
+    connection =
+      case Nila.Gst.Portal.connection(
+             socket.assigns.current_scope.current_org.id,
+             socket.assigns.client.id
+           ) do
+        {:ok, connection} -> connection
+        _ -> nil
+      end
+
+    assign(socket,
+      gst_connection: connection,
+      gst_expired: connection && Nila.Gst.Portal.session_expired?(connection, DateTime.utc_now())
+    )
   end
 
   defp update_client(client, %{"tally_company_id" => company_id} = params)
@@ -111,7 +165,6 @@ defmodule NilaWeb.ClientEditLive do
     >
       <div id="client-edit-page" class="space-y-block mx-auto max-w-2xl">
         <.page_header eyebrow="Clients" eyebrow_path={~p"/clients"} title="Edit client" />
-
         <.card>
           <.form
             for={@form}
@@ -122,7 +175,6 @@ defmodule NilaWeb.ClientEditLive do
           >
             <.input field={@form[:name]} label="Client name" required />
             <.input field={@form[:gstin]} label="GSTIN (optional)" />
-
             <section id="client-tally" class="border-rule pt-block border-t">
               <.input
                 field={@form[:tally_company_id]}
@@ -145,7 +197,66 @@ defmodule NilaWeb.ClientEditLive do
             </div>
           </.form>
         </.card>
+
+        <.card id="client-gst-access">
+          <section class="space-y-block" aria-labelledby="client-gst-heading">
+            <h2 id="client-gst-heading" class="text-h4">GST portal access</h2>
+
+            <p :if={@gst_connection} id="client-gst-username" class="text-ui">
+              Username: {@gst_connection.username}
+            </p>
+
+            <p id="client-gst-status" class="text-ink-muted text-ui">
+              {cond do
+                !Nila.Gstin.valid?(@client.gstin) ->
+                  "Save a valid GSTIN before connecting."
+
+                !@gst_connection ->
+                  "Not connected. You can also connect when fetching GSTR-2B or checking notices."
+
+                @gst_expired ->
+                  "Session expired. Your saved GST account needs a fresh OTP."
+
+                true ->
+                  "Connected. GSTR-2B and notices use this account."
+              end}
+            </p>
+
+            <p :if={!@can_manage_gst} class="text-ink-muted text-ui">
+              Ask the workspace owner to manage GST portal access.
+            </p>
+
+            <div class="flex flex-wrap gap-3">
+              <.button
+                id="client-gst-connect"
+                phx-click="connect-gst"
+                variant="soft"
+                disabled={!@can_manage_gst || !Nila.Gstin.valid?(@client.gstin)}
+              >
+                {cond do
+                  !@gst_connection -> "Connect GST"
+                  @gst_expired -> "Reconnect GST"
+                  true -> "Change GST login"
+                end}
+              </.button>
+
+              <.button
+                :if={@gst_connection}
+                id="client-gst-disconnect"
+                phx-click="disconnect-gst"
+                variant="ghost"
+                disabled={!@can_manage_gst}
+              >Disconnect GST</.button>
+            </div>
+          </section>
+        </.card>
       </div>
+
+      <.live_component
+        module={NilaWeb.Gst.ConnectionComponent}
+        id="gst-connection"
+        current_scope={@current_scope}
+      />
     </Layouts.app>
     """
   end
