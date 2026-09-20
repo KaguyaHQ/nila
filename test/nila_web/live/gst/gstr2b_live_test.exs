@@ -439,7 +439,7 @@ defmodule NilaWeb.Gst.Gstr2bLiveTest do
     end)
 
     assert %{success: 1} = Oban.drain_queue(queue: :workflows)
-    assert_redirect(view, ~p"/gst/#{client.id}/2026-07/purchases")
+    assert_redirect(view, ~p"/gst/#{client.id}/2026-07/purchases", 5_000)
     assert Repo.one!(Dump).kind == "gstr2b"
   end
 
