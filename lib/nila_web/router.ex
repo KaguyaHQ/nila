@@ -180,6 +180,7 @@ defmodule NilaWeb.Router do
     # client_month before streaming, so bills never leak across firms.
     get "/gst/:client_id/:period/evidence/:basename", GstEvidenceController, :show
     get "/gst/sales-template.xlsx", SalesExcelController, :template
+    get "/gst/purchases-template.xlsx", PurchaseExcelController, :template
     get "/gst/:client_id/:period/purchases/workings.xlsx", PurchaseWorkingsController, :download
     get "/gst/:client_id/:period/original/:dump_id/:index", GstEvidenceController, :original
 

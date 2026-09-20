@@ -291,6 +291,11 @@ defmodule NilaWeb.Gst.PurchaseExcelImportLive do
       <div id="purchase-excel-page" class="space-y-block mx-auto w-full max-w-[1400px]">
         <.page_header title="Import purchase Excel" eyebrow={@client.name <> " / " <> @period}>
           <:actions>
+            <.button
+              variant="soft"
+              href={~p"/gst/purchases-template.xlsx"}
+              id="purchase-excel-template"
+            >Download template</.button>
             <.button variant="ghost" navigate={~p"/gst/#{@client.id}/#{@period}/purchases"}>Back to purchases</.button>
           </:actions>
           Import ordinary taxable purchase invoices. Credit notes, imports, exempt purchases and reverse charge need a separate path.

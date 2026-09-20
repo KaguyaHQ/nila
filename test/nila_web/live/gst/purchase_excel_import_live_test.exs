@@ -40,6 +40,12 @@ defmodule NilaWeb.Gst.PurchaseExcelImportLiveTest do
   } do
     {:ok, view, _} = live(conn, ~p"/gst/#{client.id}/2026-08/purchases/import-excel")
 
+    assert has_element?(
+             view,
+             "#purchase-excel-template[href='/gst/purchases-template.xlsx']",
+             "Download template"
+           )
+
     upload(view)
     assert has_element?(view, "#purchase-excel-column-C", "Example local supplier")
     view |> form("#purchase-excel-mapping") |> render_submit()

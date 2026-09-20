@@ -19,6 +19,36 @@ defmodule Nila.Gst.Sales.ExcelTest do
     %{client: client, scope: Nila.Accounts.Scope.for_user(user), org: org}
   end
 
+  test "downloadable template has blank entry rows and an importable example", %{client: client} do
+    {:ok, workbook} = Workbook.read(File.read!("priv/templates/Nila-sales-template.xlsx"))
+    blank = Enum.find(workbook.sheets, &(&1.name == "Sales"))
+    assert Enum.all?(blank.rows, &(&1.row == 1))
+    example = Enum.find(workbook.sheets, &(&1.name == "Example"))
+    suggestion = Excel.suggest(example)
+
+    assert {:ok, result} =
+             Excel.preview(
+               workbook,
+               example.name,
+               suggestion.header,
+               suggestion.mapping,
+               [],
+               client,
+               "2026-08"
+             )
+
+    assert result.errors == []
+    assert length(result.invoices) == 2
+    assert result.row_count == 3
+
+    assert result.totals == %{
+             "taxable_value" => 4000.0,
+             "cgst_amount" => 90.0,
+             "sgst_amount" => 90.0,
+             "igst_amount" => 410.0
+           }
+  end
+
   defp read(name) do
     bytes = File.read!("test/fixtures/sales_excel/#{name}.xlsx")
     {:ok, workbook} = Workbook.read(bytes)
