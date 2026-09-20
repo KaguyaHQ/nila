@@ -22,7 +22,20 @@ defmodule Nila.Gst.Sales.ExcelTest do
   test "downloadable template has blank entry rows and an importable example", %{client: client} do
     {:ok, workbook} = Workbook.read(File.read!("priv/templates/Nila-sales-template.xlsx"))
     blank = Enum.find(workbook.sheets, &(&1.name == "Sales"))
-    assert Enum.all?(blank.rows, &(&1.row == 1))
+    blank_mapping = Excel.suggest(blank)
+    assert blank_mapping.header == 2
+    assert Enum.all?(blank.rows, &(&1.row <= blank_mapping.header))
+    assert hd(blank.rows).cells["A"] == "* Required"
+
+    for sheet <- workbook.sheets do
+      suggestion = Excel.suggest(sheet)
+      header = Enum.find(sheet.rows, &(&1.row == suggestion.header))
+      starred = Map.filter(header.cells, fn {_, value} -> String.ends_with?(value, " *") end)
+
+      assert Enum.sort(Map.keys(Excel.mapping(%{cells: starred}))) ==
+               Enum.sort(Excel.required_fields())
+    end
+
     example = Enum.find(workbook.sheets, &(&1.name == "Example"))
     suggestion = Excel.suggest(example)
 

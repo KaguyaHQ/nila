@@ -129,20 +129,31 @@ defmodule Nila.ExcelTemplates do
       ]
     ]
 
-    write("Sales", @headers, sales)
-    write("Purchases", @purchase_headers, purchases)
+    write("Sales", @headers, sales, Nila.Gst.Sales.Excel)
+    write("Purchases", @purchase_headers, purchases, Nila.Gst.Purchase.Excel)
   end
 
-  defp write(name, headers, rows) do
+  defp write(name, headers, rows, importer) do
+    required_columns =
+      importer.mapping(%{
+        cells: headers |> Enum.with_index() |> Map.new(fn {header, col} -> {col, header} end)
+      })
+      |> Map.take(importer.required_fields())
+      |> Map.values()
+
     notes = [
-      "Synthetic examples. Fill the #{name} sheet with your own transactions. Amounts in INR.",
+      "* Required. Synthetic examples. Fill the #{name} sheet with your own transactions. Amounts in INR.",
       "Repeat invoice details for each item or tax rate. GST rate: enter 18 for 18%. Paste values, not formulas.",
       "Taxable value and tax amounts are per row. Use 0 for a tax that does not apply.",
       "Invoice total is for the whole invoice: enter once or repeat unchanged.",
       "Ordinary taxable invoices only. Credit notes, exempt supplies and reverse charge need a separate path."
     ]
 
-    sheets = [sheet(name, headers, [], []), sheet("Example", headers, rows, notes)]
+    sheets = [
+      sheet(name, headers, [], ["* Required"], required_columns),
+      sheet("Example", headers, rows, notes, required_columns)
+    ]
+
     {:ok, bytes} = XlsxWriter.generate(sheets)
 
     directory =
@@ -155,7 +166,7 @@ defmodule Nila.ExcelTemplates do
     IO.puts("Generated #{path}")
   end
 
-  defp sheet(name, headers, rows, notes) do
+  defp sheet(name, headers, rows, notes, required_columns) do
     offset = length(notes)
     sheet = XlsxWriter.new_sheet(name) |> XlsxWriter.freeze_panes(offset + 1, 0)
 
@@ -163,8 +174,13 @@ defmodule Nila.ExcelTemplates do
       notes
       |> Enum.with_index()
       |> Enum.reduce(sheet, fn {note, row}, sheet ->
+        note_format =
+          if String.starts_with?(note, "* Required"),
+            do: [{:font_name, "Arial"}, {:font_size, 9}, {:font_color, "#666666"}],
+            else: @body
+
         sheet
-        |> XlsxWriter.merge_range(row, 0, row, length(headers) - 1, note, format: @body)
+        |> XlsxWriter.merge_range(row, 0, row, length(headers) - 1, note, format: note_format)
         |> XlsxWriter.set_row_height(row, 18)
       end)
 
@@ -172,9 +188,12 @@ defmodule Nila.ExcelTemplates do
       headers
       |> Enum.with_index()
       |> Enum.reduce(sheet, fn {header, col}, sheet ->
+        required? = col in required_columns
+        label = if required?, do: header <> " *", else: header
+
         sheet
-        |> XlsxWriter.write(offset, col, header, format: @header)
-        |> XlsxWriter.set_column_width(col, width(header))
+        |> XlsxWriter.write(offset, col, label, format: @header)
+        |> XlsxWriter.set_column_width(col, width(header) + if(required?, do: 2, else: 0))
       end)
 
     sheet = XlsxWriter.set_row_height(sheet, offset, 20)

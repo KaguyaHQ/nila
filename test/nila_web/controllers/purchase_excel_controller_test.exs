@@ -25,6 +25,18 @@ defmodule NilaWeb.PurchaseExcelControllerTest do
     example = Enum.find(workbook.sheets, &(&1.name == "Example"))
     assert blank && example
     blank_mapping = Excel.suggest(blank)
+    assert blank_mapping.header == 2
+    assert hd(blank.rows).cells["A"] == "* Required"
+
+    for sheet <- workbook.sheets do
+      suggestion = Excel.suggest(sheet)
+      header = Enum.find(sheet.rows, &(&1.row == suggestion.header))
+      starred = Map.filter(header.cells, fn {_, value} -> String.ends_with?(value, " *") end)
+
+      assert Enum.sort(Map.keys(Excel.mapping(%{cells: starred}))) ==
+               Enum.sort(Excel.required_fields())
+    end
+
     assert Enum.all?(Excel.required_fields(), &Map.has_key?(blank_mapping.mapping, &1))
     assert Enum.all?(blank.rows, &(&1.row <= blank_mapping.header))
     suggestion = Excel.suggest(example)
