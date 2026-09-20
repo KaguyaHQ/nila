@@ -72,7 +72,7 @@ defmodule NilaWeb.PurchaseWorkingsControllerTest do
       "rows" => [],
       "summary" => workings.summary,
       "gstr3b" => workings.gstr3b,
-      "itc" => Map.put(workings.itc, "claimable_paise", 987_654),
+      "itc" => Map.put(workings.itc, "current_claim_paise", 987_654),
       "case_lines" => [],
       "review" => %{
         "recon" => %{},

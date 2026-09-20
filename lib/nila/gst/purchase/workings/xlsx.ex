@@ -30,6 +30,7 @@ defmodule Nila.Gst.Purchase.Workings.Xlsx do
           money(row["cgst_paise"]),
           money(row["sgst_paise"]),
           money(row["igst_paise"]),
+          money(row["cess_paise"]),
           money(row["total_paise"]),
           row["verdict"],
           row["recon_note"],
@@ -39,7 +40,7 @@ defmodule Nila.Gst.Purchase.Workings.Xlsx do
           Enum.join(source["source_rows"] || [], ", "),
           Enum.join(row["pages"] || [], ", "),
           decision_label(decision),
-          decision && decision[:claim_reason]
+          decision_reason(decision)
         ]
       end)
 
@@ -98,13 +99,14 @@ defmodule Nila.Gst.Purchase.Workings.Xlsx do
           money(tax["cgst"]),
           money(tax["sgst"]),
           money(tax["igst"]),
+          money(tax["cess"]),
           money(document["total_paise"]),
           decision_label(decision),
-          decision && decision[:claim_reason]
+          decision_reason(decision)
         ]
       end)
 
-    XlsxWriter.generate([
+    sheets = [
       summary(workings, title, status),
       table(
         "Register",
@@ -122,6 +124,7 @@ defmodule Nila.Gst.Purchase.Workings.Xlsx do
           "CGST",
           "SGST",
           "IGST",
+          "CESS",
           "Invoice total",
           "Finding",
           "Explanation",
@@ -150,6 +153,7 @@ defmodule Nila.Gst.Purchase.Workings.Xlsx do
           "CGST",
           "SGST",
           "IGST",
+          "CESS",
           "Invoice total",
           "ITC decision",
           "ITC decision reason"
@@ -185,66 +189,104 @@ defmodule Nila.Gst.Purchase.Workings.Xlsx do
         ["Check ID", "Supplier", "Invoice", "Reason", "Decision state", "Tax"],
         blocks
       ),
-      table(
-        "ITC decisions",
-        title,
-        "Explicit reviewer exclusions. Source records are retained; other records are not approved by these decisions.",
-        ["Case ID", "Supplier", "GSTIN", "Invoice", "Decision", "Reason", "Tax", "2B references"],
-        for line <- case_lines, line[:claim_state] == "not_claiming" do
-          [
-            line[:case_id],
-            line[:vendor],
-            line[:supplier_gstin],
-            line[:invoice_number],
-            "Not claiming",
-            line[:claim_reason],
-            money(line[:tax_paise]),
-            line |> source_refs("gstr2b") |> Enum.join(", ")
-          ]
-        end
-      )
-    ])
+      treatment_sheet(case_lines, title)
+    ]
+
+    XlsxWriter.generate(sheets)
+  end
+
+  defp treatment_sheet(lines, title) do
+    heads = ~w(cgst sgst igst cess)
+
+    rows =
+      lines
+      |> Enum.filter(&(&1[:document_type] in ~w(invoice debit_note)))
+      |> Enum.map(fn line ->
+        opening = line[:outstanding_heads] || %{}
+        treatment = line[:treatment_heads] || %{}
+        claim = treatment["claim"] || %{}
+        later = treatment["later"] || %{}
+        exclude = treatment["exclude"] || %{}
+        pending = if line[:treatment] == "undecided", do: opening, else: %{}
+        closing = Map.new(heads, &{&1, (later[&1] || 0) + (pending[&1] || 0)})
+
+        [
+          line[:case_id],
+          line[:vendor],
+          line[:supplier_gstin],
+          line[:invoice_number],
+          line[:origin_period],
+          line[:treatment],
+          line[:later_reason],
+          line[:exclude_reason],
+          line[:treatment_note],
+          Enum.join(source_refs(line, "gstr2b"), ", ")
+        ] ++
+          Enum.flat_map([opening, claim, later, exclude, pending, closing], fn amounts ->
+            Enum.map(heads, &money(amounts[&1] || 0))
+          end)
+      end)
+
+    headers =
+      [
+        "Case ID",
+        "Supplier",
+        "GSTIN",
+        "Invoice",
+        "Origin period",
+        "Treatment",
+        "Later reason",
+        "Exclude reason",
+        "Reviewer note",
+        "2B references"
+      ] ++
+        for group <- [
+              "Opening",
+              "Claim this month",
+              "Carry later",
+              "Exclude",
+              "Pending",
+              "Closing carry"
+            ],
+            head <- heads,
+            do: "#{group} #{String.upcase(head)}"
+
+    table(
+      "ITC treatment",
+      title,
+      "Per-head opening = claim + carry later + exclude + pending. Closing carry = later + pending. Source amounts remain on Register and GSTR-2B.",
+      headers,
+      rows
+    )
   end
 
   defp summary(workings, title, status) do
-    itc = workings.itc
+    treatment_summary(workings.itc, title, status)
+  end
 
+  defp treatment_summary(itc, title, status) do
     rows = [
-      ["Reported in 2B", money(itc["reported_2b_paise"])],
-      ["Credit-note reversal applied", money(itc["credit_note_reversal_applied_paise"])],
-      ["Pending matching decisions", money(itc["pending_decision_paise"])],
-      ["Blocked within reported credit", money(itc["blocked_in_ceiling_paise"])],
-      ["Withheld: document not held", money(itc["unsubstantiated_withheld_paise"] || 0)],
-      ["Not claiming: reviewer decision", money(itc["not_claiming_paise"] || 0)],
-      ["Current proposed ITC", money(itc["claimable_paise"])],
-      ["Arithmetic control (should be zero)", {:formula, "B5-SUM(B6:B11)"}],
-      [
-        "Documents still to confirm (included in proposal)",
-        money(itc["awaiting_document_paise"])
-      ],
-      [
-        "Credit-note reversal above reported credit",
-        money(itc["credit_note_reversal_excess_paise"])
-      ],
+      ["Imported GSTR-2B tax (source, this period)", money(itc["reported_2b_paise"])],
+      ["Opening outstanding credit (all origins)", money(itc["opening_outstanding_paise"])],
+      ["Claim this period", money(itc["current_claim_paise"])],
+      ["Carry for later", money(itc["later_paise"])],
+      ["Exclude", money(itc["excluded_paise"])],
+      ["Pending decision", money(itc["pending_paise"])],
+      ["Opening control (should be zero)", {:formula, "B6-SUM(B7:B10)"}],
+      ["Closing carry", money(itc["closing_outstanding_paise"])],
+      ["Carry control (should be zero)", {:formula, "B12-SUM(B8,B10)"}],
       ["Review status", status],
       [
         "Basis",
-        "Existing Nila purchase projection. Prepared working; not filing approval or a complete GSTR-3B return."
+        "Source amounts and treatment are shown separately. This working is not filing approval."
       ],
-      [
-        "Missing amounts",
-        "Blank cells mean the stored projection has no amount; they are not confirmed zero."
-      ],
-      [
-        "Formula calculation",
-        "Open in Excel with calculation enabled to refresh the arithmetic control."
-      ]
+      ["Formula calculation", "Open in Excel with calculation enabled to refresh the controls."]
     ]
 
     table(
       "ITC working",
       title,
-      "Amounts in INR. Review source records and outstanding checks before relying on the proposal.",
+      "Amounts in INR. Opening includes carried credit from earlier periods; imported 2B is this period's source amount.",
       ["Particulars", "Amount / note"],
       rows
     )
@@ -297,12 +339,17 @@ defmodule Nila.Gst.Purchase.Workings.Xlsx do
   defp money(value), do: {:money, value}
 
   defp decision_for(lines, kind, ref) do
-    Enum.find(lines, &(&1[:claim_state] == "not_claiming" and ref in source_refs(&1, kind)))
+    Enum.find(lines, &(ref in source_refs(&1, kind)))
   end
 
   defp source_refs(line, kind), do: (get_in(line, [:source_refs, kind]) || %{}) |> Map.values()
   defp decision_label(nil), do: nil
-  defp decision_label(_line), do: "Not claiming"
+  defp decision_label(line), do: line[:treatment]
+  defp decision_reason(nil), do: nil
+
+  defp decision_reason(line),
+    do: Enum.join(Enum.reject([line[:later_reason], line[:exclude_reason]], &is_nil/1), "; ")
+
   defp display(nil), do: ""
   defp display(value), do: to_string(value)
 end

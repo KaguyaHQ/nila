@@ -3,6 +3,65 @@ defmodule Nila.Gst.Purchase.Workings.XlsxTest do
   alias Nila.Gst.Purchase.{Reconciliation, Register, Review, Workings}
   alias Nila.Gst.Purchase.Workings.Xlsx
 
+  test "treatment sheet shows four heads and carry without changing source totals" do
+    case_line = %{
+      case_id: 7,
+      document_type: "invoice",
+      vendor: "Supplier",
+      supplier_gstin: "33AAACS1234A1Z9",
+      invoice_number: "INV-7",
+      origin_period: "2026-07",
+      treatment: "split",
+      later_reason: "review_pending",
+      exclude_reason: "personal",
+      treatment_note: "Client confirmed",
+      outstanding_heads: %{"cgst" => 1_000, "sgst" => 1_000, "igst" => 100, "cess" => 50},
+      treatment_heads: %{
+        "claim" => %{"cgst" => 500, "sgst" => 0, "igst" => 100, "cess" => 50},
+        "later" => %{"cgst" => 500, "sgst" => 500, "igst" => 0, "cess" => 0},
+        "exclude" => %{"cgst" => 0, "sgst" => 500, "igst" => 0, "cess" => 0}
+      },
+      source_refs: %{"gstr2b" => %{"2026-07" => "2B-7"}}
+    }
+
+    workings = %{
+      recon: %{
+        "matched" => [],
+        "value_mismatch" => [],
+        "in_2b_not_books" => [],
+        "in_books_not_2b" => [],
+        "needs_human" => []
+      },
+      rows: [],
+      case_lines: [case_line],
+      itc: %{
+        "reported_2b_paise" => 0,
+        "opening_outstanding_paise" => 2_150,
+        "current_claim_paise" => 650,
+        "later_paise" => 1_000,
+        "excluded_paise" => 500,
+        "pending_paise" => 0,
+        "closing_outstanding_paise" => 1_000,
+        "current_claim_heads" => case_line.treatment_heads["claim"],
+        "blocks" => []
+      }
+    }
+
+    assert {:ok, bytes} =
+             Xlsx.build(workings, %{name: "Client", gstin: "33AEWPH4158J1Z3"}, "2026-08",
+               review: %{all: []}
+             )
+
+    {:ok, files} = :zip.unzip(bytes, [:memory])
+    files = Map.new(files, fn {path, data} -> {to_string(path), data} end)
+    assert files["xl/sharedStrings.xml"] =~ "2026-07"
+    assert files["xl/sharedStrings.xml"] =~ "Claim this month CESS"
+    assert files["xl/worksheets/sheet1.xml"] =~ "B6-SUM(B7:B10)"
+    assert numeric_cell(files, "xl/worksheets/sheet1.xml", "B5") == 0.0
+    assert numeric_cell(files, "xl/worksheets/sheet1.xml", "B7") == 6.5
+    assert numeric_cell(files, "xl/worksheets/sheet6.xml", "R5") == 0.5
+  end
+
   test "retains source evidence, distinct portal amounts, decisions and the ITC arithmetic control" do
     books = %{
       "id" => "books-1",
@@ -56,7 +115,7 @@ defmodule Nila.Gst.Purchase.Workings.XlsxTest do
     assert strings =~ "=1+1"
     assert strings =~ "value_mismatch"
     assert strings =~ "not filing approval"
-    assert files["xl/worksheets/sheet1.xml"] =~ "B5-SUM(B6:B11)"
+    assert files["xl/worksheets/sheet1.xml"] =~ "B6-SUM(B7:B10)"
     assert files["xl/worksheets/sheet2.xml"] =~ "<v>1000</v>"
     assert files["xl/worksheets/sheet3.xml"] =~ "<v>1100</v>"
     refute files["xl/worksheets/sheet2.xml"] =~ "<f>1+1</f>"
@@ -117,81 +176,6 @@ defmodule Nila.Gst.Purchase.Workings.XlsxTest do
     [_, index] = Regex.run(~r/<c r="#{address}"[^>]*><v>(\d+)<\/v><\/c>/, files[sheet])
     texts = Regex.scan(~r/<si><t[^>]*>(.*?)<\/t><\/si>/s, files["xl/sharedStrings.xml"])
     texts |> Enum.at(String.to_integer(index)) |> Enum.at(1)
-  end
-
-  test "exports a portal-only exclusion with its reason and retains undecided source records" do
-    excluded = %{
-      "vendor_name" => "Dryfruit Mart",
-      "vendor_gstin" => "33AAACS1234A1Z9",
-      "invoice_number" => "DF-1",
-      "invoice_date" => "2026-08-05",
-      "taxable_paise" => 100_000,
-      "tax_paise" => %{"cgst" => 9_000, "sgst" => 9_000, "igst" => 0},
-      "total_paise" => 118_000
-    }
-
-    undecided = Map.put(excluded, "invoice_number", "DF-2")
-    recon = Reconciliation.reconcile([], [excluded, undecided])
-    ref = Reconciliation.gstr2b_ref(excluded)
-
-    workings = %{
-      recon: recon,
-      rows: [],
-      case_lines: [
-        %{
-          case_id: 42,
-          vendor: "Dryfruit Mart",
-          supplier_gstin: excluded["vendor_gstin"],
-          invoice_number: "DF-1",
-          claim_state: "not_claiming",
-          claim_reason: "Personal purchase confirmed by client",
-          tax_paise: 18_000,
-          source_refs: %{"gstr2b" => %{"2026-08" => ref}}
-        }
-      ],
-      itc: %{
-        "reported_2b_paise" => 36_000,
-        "claimable_paise" => 18_000,
-        "not_claiming_paise" => 18_000,
-        "credit_note_reversal_applied_paise" => 0,
-        "pending_decision_paise" => 0,
-        "blocked_in_ceiling_paise" => 0,
-        "blocks" => []
-      }
-    }
-
-    assert {:ok, bytes} =
-             Xlsx.build(workings, %{name: "Client", gstin: "33AEWPH4158J1Z3"}, "2026-08",
-               review: %{all: []}
-             )
-
-    {:ok, files} = :zip.unzip(bytes, [:memory])
-    files = Map.new(files, fn {path, data} -> {to_string(path), data} end)
-    assert shared_cell(files, "xl/worksheets/sheet3.xml", "E5") == "DF-1"
-    assert shared_cell(files, "xl/worksheets/sheet3.xml", "E6") == "DF-2"
-    assert shared_cell(files, "xl/worksheets/sheet3.xml", "L5") == "Not claiming"
-
-    assert shared_cell(files, "xl/worksheets/sheet3.xml", "M5") ==
-             "Personal purchase confirmed by client"
-
-    refute files["xl/worksheets/sheet3.xml"] =~ ~r/<c r="L6"[^>]*t="s"/
-    assert shared_cell(files, "xl/worksheets/sheet6.xml", "D5") == "DF-1"
-    assert shared_cell(files, "xl/worksheets/sheet6.xml", "H5") == ref
-    assert files["xl/worksheets/sheet6.xml"] =~ ~r/<c r="G5"[^>]*><v>180<\/v>/
-
-    assert shared_cell(files, "xl/worksheets/sheet1.xml", "A10") ==
-             "Not claiming: reviewer decision"
-
-    assert numeric_cell(files, "xl/worksheets/sheet1.xml", "B10") == 180.0
-    assert numeric_cell(files, "xl/worksheets/sheet1.xml", "B11") == 180.0
-    assert files["xl/worksheets/sheet1.xml"] =~ "B5-SUM(B6:B11)"
-
-    reductions_and_proposal =
-      Enum.reduce(6..11, 0, fn row, total ->
-        total + numeric_cell(files, "xl/worksheets/sheet1.xml", "B#{row}")
-      end)
-
-    assert numeric_cell(files, "xl/worksheets/sheet1.xml", "B5") - reductions_and_proposal == 0
   end
 
   defp numeric_cell(files, sheet, address) do
