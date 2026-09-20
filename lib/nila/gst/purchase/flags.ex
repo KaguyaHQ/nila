@@ -248,7 +248,7 @@ defmodule Nila.Gst.Purchase.Flags do
 
   defp tax_total(inv) do
     tax = inv["tax_paise"] || %{}
-    (tax["cgst"] || 0) + (tax["sgst"] || 0) + (tax["igst"] || 0)
+    (tax["cgst"] || 0) + (tax["sgst"] || 0) + (tax["igst"] || 0) + (tax["cess"] || 0)
   end
 
   defp check_document_type(invoice, _ctx, _dir) do

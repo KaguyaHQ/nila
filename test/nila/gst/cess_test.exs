@@ -13,7 +13,7 @@ defmodule Nila.Gst.CessTest do
     }
   end
 
-  @post_reform ~D[2026-02-14]
+  @post_reform ~D[2026-01-31]
   @pre_reform ~D[2025-06-10]
 
   test "the ordinary SMB bill is settled without asking anyone" do
@@ -111,5 +111,28 @@ defmodule Nila.Gst.CessTest do
     assert Cess.hits(invoice(@post_reform, [{"Sundry", nil}])) == []
     assert Cess.hits(invoice(@post_reform, [{"Sundry", ""}])) == []
     assert Cess.hits(%{"invoice_date" => @post_reform, "line_items" => nil}) == []
+  end
+
+  test "remaining headings stop at the February boundary, including ISO dates" do
+    tobacco = [{"Tobacco", "24039910"}]
+    assert Cess.hits(invoice(~D[2026-01-31], tobacco)) != []
+    assert Cess.hits(invoice("2026-01-31", tobacco)) != []
+    assert Cess.hits(invoice(~D[2026-02-01], tobacco)) == []
+    assert Cess.hits(invoice("2026-08-12", tobacco)) == []
+  end
+
+  test "source warnings distinguish historic cess without declaring entitlement" do
+    assert Cess.purchase_issue(~D[2026-08-12], %{"cess" => 0}) == nil
+    assert Cess.purchase_issue(~D[2025-07-12], %{"cess" => 4000}) =~ "Historical"
+    assert Cess.purchase_issue("2026-08-12", %{"cess" => 4000}) =~ "rates were nil"
+    assert Cess.purchase_issue(nil, %{"cess" => 4000}) =~ "Check the invoice date"
+  end
+
+  test "ordinary treatment never claims or defers cess but retains reviewed exclusions" do
+    assert {:error, :cess_review_required} = Cess.validate_treatment(%{"claim" => %{"cess" => 1}})
+    assert {:error, :cess_review_required} = Cess.validate_treatment(%{"later" => %{"cess" => 1}})
+
+    assert :ok =
+             Cess.validate_treatment(%{"claim" => %{"cgst" => 100}, "exclude" => %{"cess" => 20}})
   end
 end

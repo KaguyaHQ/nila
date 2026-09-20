@@ -327,9 +327,13 @@ defmodule Nila.Gst.Purchase.Workings do
        do: Map.put(b, field, value)
 
   defp put_field(b, "tax_paise", %{"cgst" => cgst, "sgst" => sgst, "igst" => igst} = value)
-       when map_size(value) == 3 and is_integer(cgst) and cgst >= 0 and is_integer(sgst) and
+       when map_size(value) in [3, 4] and is_integer(cgst) and cgst >= 0 and is_integer(sgst) and
               sgst >= 0 and is_integer(igst) and igst >= 0,
-       do: Map.put(b, "tax_paise", value)
+       do:
+         if(map_size(value) == 3 or (is_integer(value["cess"]) and value["cess"] >= 0),
+           do: Map.put(b, "tax_paise", value),
+           else: b
+         )
 
   defp put_field(b, _field, _value), do: b
 

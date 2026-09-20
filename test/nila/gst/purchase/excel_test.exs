@@ -38,7 +38,14 @@ defmodule Nila.Gst.Purchase.ExcelTest do
     assert result.errors == []
     assert length(result.invoices) == 2
     assert hd(result.invoices)["taxable_paise"] == 100_000
-    assert hd(result.invoices)["tax_paise"] == %{"cgst" => 9000, "sgst" => 9000, "igst" => 0}
+
+    assert hd(result.invoices)["tax_paise"] == %{
+             "cgst" => 9000,
+             "sgst" => 9000,
+             "igst" => 0,
+             "cess" => 0
+           }
+
     assert hd(result.invoices)["source_rows"] == [2]
     assert List.last(result.invoices)["tax_paise"]["igst"] == 41000
   end

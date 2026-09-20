@@ -346,7 +346,9 @@ defmodule Nila.Gst.Purchase.WorkingsTest do
       assert corrected("taxable_paise", 125_000)["taxable_paise"] == 125_000
       assert corrected("total_paise", 150_000)["total_paise"] == 150_000
       heads = %{"cgst" => 0, "sgst" => 0, "igst" => 22_500}
-      assert corrected("tax_paise", heads)["tax_paise"] == heads
+      assert corrected("tax_paise", heads)["tax_paise"] == Map.put(heads, "cess", 0)
+      four_heads = Map.put(heads, "cess", 500)
+      assert corrected("tax_paise", four_heads)["tax_paise"] == four_heads
 
       for invalid <- [-1, 2.5, "500", nil] do
         assert corrected("taxable_paise", invalid)["taxable_paise"] == 1_000_000
@@ -355,10 +357,12 @@ defmodule Nila.Gst.Purchase.WorkingsTest do
       for invalid <- [
             %{"cgst" => 0},
             Map.put(heads, "igst", -1),
-            Map.put(heads, "cess", 0),
+            Map.put(heads, "unsupported_tax", 0),
+            Map.put(heads, "cess", -1),
             Map.put(heads, "cgst", 0.5)
           ] do
-        assert corrected("tax_paise", invalid)["tax_paise"] == books(%{})["tax_paise"]
+        assert corrected("tax_paise", invalid)["tax_paise"] ==
+                 Map.put(books(%{})["tax_paise"], "cess", 0)
       end
     end
   end

@@ -49,7 +49,7 @@ defmodule Nila.Gst.Purchase.BooksTest do
       assert inv1["invoice_number"] == "A100"
       assert inv1["pages"] == [1]
       assert inv1["taxable_paise"] == 10_000
-      assert inv1["tax_paise"] == %{"cgst" => 900, "sgst" => 900, "igst" => 0}
+      assert inv1["tax_paise"] == %{"cgst" => 900, "sgst" => 900, "igst" => 0, "cess" => 0}
       assert inv2["invoice_number"] == "B200"
       assert inv2["tax_paise"]["igst"] == 3600
       assert result["skipped_pages"] == []
@@ -330,7 +330,14 @@ defmodule Nila.Gst.Purchase.BooksTest do
 
       assert [invoice] = result["invoices"]
       assert invoice["taxable_paise"] == 298_080
-      assert invoice["tax_paise"] == %{"cgst" => 26_826, "sgst" => 26_826, "igst" => 0}
+
+      assert invoice["tax_paise"] == %{
+               "cgst" => 26_826,
+               "sgst" => 26_826,
+               "igst" => 0,
+               "cess" => 0
+             }
+
       assert invoice["total_paise"] == 352_200
       assert invoice["printed_discount_paise"] == 51_688
       assert invoice["arithmetic_basis"] == "printed_reconciled"
@@ -357,7 +364,14 @@ defmodule Nila.Gst.Purchase.BooksTest do
         ])
 
       assert [invoice] = result["invoices"]
-      assert invoice["tax_paise"] == %{"cgst" => 20_475, "sgst" => 20_475, "igst" => 0}
+
+      assert invoice["tax_paise"] == %{
+               "cgst" => 20_475,
+               "sgst" => 20_475,
+               "igst" => 0,
+               "cess" => 0
+             }
+
       assert invoice["total_paise"] == 268_500
       assert invoice["arithmetic_basis"] == "printed_reconciled"
     end
@@ -382,7 +396,7 @@ defmodule Nila.Gst.Purchase.BooksTest do
 
       assert [invoice] = result["invoices"]
       assert invoice["taxable_paise"] == 28_043
-      assert invoice["tax_paise"] == %{"cgst" => 0, "sgst" => 0, "igst" => 5_048}
+      assert invoice["tax_paise"] == %{"cgst" => 0, "sgst" => 0, "igst" => 5_048, "cess" => 0}
       assert invoice["total_paise"] == 33_100
       assert invoice["arithmetic_basis"] == "printed_final_reconciled"
     end

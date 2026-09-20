@@ -390,6 +390,7 @@ defmodule Nila.Gst.Purchase.Reconciliation do
       "cgst" => tax(b, "cgst") - tax(g, "cgst"),
       "sgst" => tax(b, "sgst") - tax(g, "sgst"),
       "igst" => tax(b, "igst") - tax(g, "igst"),
+      "cess" => tax(b, "cess") - tax(g, "cess"),
       "total" => b["total_paise"] - g["total_paise"]
     }
   end
@@ -400,7 +401,7 @@ defmodule Nila.Gst.Purchase.Reconciliation do
       abs(tax_sum(b) - tax_sum(g)) <= opts.tolerance
   end
 
-  defp tax_sum(inv), do: tax(inv, "cgst") + tax(inv, "sgst") + tax(inv, "igst")
+  defp tax_sum(inv), do: tax(inv, "cgst") + tax(inv, "sgst") + tax(inv, "igst") + tax(inv, "cess")
 
   defp tax(inv, key), do: get_in(inv, ["tax_paise", key]) || 0
 

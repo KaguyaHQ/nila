@@ -223,7 +223,7 @@ defmodule Nila.Gst.Purchase.Groups do
 
   defp tax_total(invoice) do
     tax = invoice["tax_paise"] || %{}
-    (tax["cgst"] || 0) + (tax["sgst"] || 0) + (tax["igst"] || 0)
+    (tax["cgst"] || 0) + (tax["sgst"] || 0) + (tax["igst"] || 0) + (tax["cess"] || 0)
   end
 
   defp books_ref(books), do: "books:#{books["id"]}"

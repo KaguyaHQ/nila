@@ -5,6 +5,19 @@ defmodule Nila.Gst.InvoiceFactsTest do
   alias Nila.Gst.Purchase.Reconciliation
   alias Nila.Gst.Sales.Invoice.Validation, as: InvoiceValidation
 
+  test "purchase normalization retains CESS in the reconciled 2B record" do
+    invoice = %{
+      "invoice_number" => "C-1",
+      "taxable_paise" => 10_000,
+      "tax_paise" => %{"cgst" => 0, "sgst" => 0, "igst" => 1_800, "cess" => 500},
+      "total_paise" => 12_300
+    }
+
+    recon = Reconciliation.reconcile([], [invoice])
+    [entry] = recon["in_2b_not_books"]
+    assert entry["gstr2b"]["tax_paise"]["cess"] == 500
+  end
+
   test "canonicalizes normalized sales facts to paise and Date values" do
     projection = %{
       "id" => "dump_1_invoice_1",

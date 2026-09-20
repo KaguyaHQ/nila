@@ -100,6 +100,17 @@ defmodule Nila.Gst.Purchase.ReconciliationTest do
       empty_buckets_except(result, ["value_mismatch"])
     end
 
+    test "CESS-only difference stays visible as a value mismatch" do
+      purchase =
+        books(%{"tax_paise" => %{"cgst" => 90_000, "sgst" => 90_000, "igst" => 0, "cess" => 500}})
+
+      result = Recon.reconcile([purchase], [g2b(%{})])
+
+      assert [row] = result["value_mismatch"]
+      assert row["deltas"]["cess"] == 500
+      assert result["matched"] == []
+    end
+
     test "tolerance is opts-tunable" do
       result =
         Recon.reconcile([books(%{"taxable_paise" => 1_000_500})], [g2b(%{})],

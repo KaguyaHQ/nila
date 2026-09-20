@@ -49,7 +49,7 @@ defmodule Nila.Gst.Purchase.Register do
       %{
         "id", "pages", "images",
         "invoice_number", "invoice_date", "vendor_name", "vendor_gstin",
-        "taxable_paise", "cgst_paise", "sgst_paise", "igst_paise", "total_paise",
+        "taxable_paise", "cgst_paise", "sgst_paise", "igst_paise", "cess_paise", "total_paise",
         "bucket" => recon bucket key,
         "bucket_label" => human label,
         "accepted_reason" => audited unmatched outcome or nil,
@@ -84,6 +84,7 @@ defmodule Nila.Gst.Purchase.Register do
           "cgst_paise" => tax(inv, "cgst"),
           "sgst_paise" => tax(inv, "sgst"),
           "igst_paise" => tax(inv, "igst"),
+          "cess_paise" => tax(inv, "cess"),
           "total_paise" => inv["total_paise"] || 0,
           "itc_effect_paise" => tax_total(inv) * document_effect(inv),
           "bucket" => bucket,
@@ -410,7 +411,9 @@ defmodule Nila.Gst.Purchase.Register do
 
   @doc "Total tax on a register row."
   def row_tax(row),
-    do: (row["cgst_paise"] || 0) + (row["sgst_paise"] || 0) + (row["igst_paise"] || 0)
+    do:
+      (row["cgst_paise"] || 0) + (row["sgst_paise"] || 0) + (row["igst_paise"] || 0) +
+        (row["cess_paise"] || 0)
 
   defp bucket_index(recon) do
     for bucket <- ["matched", "value_mismatch", "needs_human", "in_books_not_2b"],
@@ -440,6 +443,7 @@ defmodule Nila.Gst.Purchase.Register do
         "cgst_paise" => tax(g, "cgst"),
         "sgst_paise" => tax(g, "sgst"),
         "igst_paise" => tax(g, "igst"),
+        "cess_paise" => tax(g, "cess"),
         "total_paise" => g["total_paise"] || 0,
         "itc_effect_paise" => tax_total(g) * document_effect(g),
         "bucket" => "in_2b_not_books",
@@ -518,7 +522,9 @@ defmodule Nila.Gst.Purchase.Register do
   defp itc_effect(row), do: row["itc_effect_paise"] || row_tax(row) * document_effect(row)
 
   defp tax_total(document),
-    do: tax(document, "cgst") + tax(document, "sgst") + tax(document, "igst")
+    do:
+      tax(document, "cgst") + tax(document, "sgst") + tax(document, "igst") +
+        tax(document, "cess")
 
   defp document_effect(%{"document_type" => "credit_note"}), do: -1
   defp document_effect(_invoice_or_debit_note), do: 1

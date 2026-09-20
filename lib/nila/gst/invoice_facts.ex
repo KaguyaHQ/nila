@@ -49,7 +49,12 @@ defmodule Nila.Gst.InvoiceFacts do
           place_of_supply: String.t() | nil,
           lines: [InvoiceLine.t()],
           taxable_paise: integer() | nil,
-          tax_paise: %{cgst: integer() | nil, sgst: integer() | nil, igst: integer() | nil},
+          tax_paise: %{
+            optional(:cess) => integer(),
+            cgst: integer() | nil,
+            sgst: integer() | nil,
+            igst: integer() | nil
+          },
           total_paise: integer() | nil,
           printed_taxable_paise: integer() | nil,
           printed_tax_paise: integer() | nil,
@@ -272,7 +277,8 @@ defmodule Nila.Gst.InvoiceFacts do
       "tax_paise" => %{
         "cgst" => facts.tax_paise.cgst,
         "sgst" => facts.tax_paise.sgst,
-        "igst" => facts.tax_paise.igst
+        "igst" => facts.tax_paise.igst,
+        "cess" => Map.get(facts.tax_paise, :cess, 0)
       },
       "total_paise" => facts.total_paise,
       "printed_taxable_paise" => facts.printed_taxable_paise,
@@ -352,8 +358,9 @@ defmodule Nila.Gst.InvoiceFacts do
   defp purchase_tax(tax) when is_map(tax) do
     with {:ok, cgst} <- optional_paise(tax["cgst"]),
          {:ok, sgst} <- optional_paise(tax["sgst"]),
-         {:ok, igst} <- optional_paise(tax["igst"]) do
-      {:ok, %{cgst: cgst, sgst: sgst, igst: igst}}
+         {:ok, igst} <- optional_paise(tax["igst"]),
+         {:ok, cess} <- optional_paise(tax["cess"]) do
+      {:ok, %{cgst: cgst, sgst: sgst, igst: igst, cess: cess}}
     end
   end
 
@@ -406,7 +413,10 @@ defmodule Nila.Gst.InvoiceFacts do
   defp party_value(nil, _field), do: nil
   defp party_value(party, field), do: Map.fetch!(party, field)
 
-  defp tax_map(tax), do: %{"cgst" => tax.cgst, "sgst" => tax.sgst, "igst" => tax.igst}
+  defp tax_map(tax) do
+    base = %{"cgst" => tax.cgst, "sgst" => tax.sgst, "igst" => tax.igst}
+    if Map.has_key?(tax, :cess), do: Map.put(base, "cess", tax.cess), else: base
+  end
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
