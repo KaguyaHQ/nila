@@ -56,6 +56,10 @@ defmodule NilaWeb.Components.Gst.PurchaseOverview do
               id="purchase-register-link"
               navigate={Workspace.list_path(@client.id, @period, "register", "")}
             >View purchase register</.text_link>
+            <.text_link
+              id="purchase-uploads-link"
+              navigate={~p"/gst/#{@client.id}/#{@period}/purchases/uploads"}
+            >Uploads</.text_link>
             <p :if={!@books_present} class="text-ink-muted text-ui">
               Import the client's records to compare with GSTR-2B.
             </p>
