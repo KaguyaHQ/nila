@@ -9,7 +9,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
   alias Nila.Gst.Filing.Signoffs
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Purchase.Months, as: ClientMonths
-  alias Nila.Gst.Purchase.{ItcAllocation, ItcCases, Register, Resolutions}
+  alias Nila.Gst.Purchase.{ItcAllocation, ItcCases, ItcDecisions, Register, Resolutions}
   alias Nila.Gst.Purchase.Reconciliation, as: Recon
   alias Nila.Gst.Sales.Months, as: SalesMonths
   alias Nila.Gst.Sales.Review.Resolutions, as: SalesResolutions
@@ -18,7 +18,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
   @period "2025-10"
   @gstin "33AAACS1234A1Z9"
 
-  setup do
+  setup context do
     %{user: owner, org: org, membership: owner_membership} = user_with_org_fixture()
 
     {:ok, client} =
@@ -73,6 +73,11 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
     owner_scope = %Scope{user: owner, current_org: org, membership: owner_membership}
 
+    month =
+      if context[:undecided_fixture],
+        do: month,
+        else: decide_itc!(month, owner_scope, %{"choice" => "claim"}).month
+
     %{org: org, client: client, month: month, owner_scope: owner_scope}
   end
 
@@ -123,6 +128,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     assert latest.signed_by.id == scope.user.id
   end
 
+  @tag undecided_fixture: true
   test "purchase signoff snapshots the effective projection from the locked fresh month", %{
     month: stale_month,
     owner_scope: scope
@@ -145,7 +151,9 @@ defmodule Nila.Gst.Filing.SignoffsTest do
         stale_month.period
       )
 
-    expected = Resolutions.workings(fresh_month)
+    %{workings: expected} =
+      decide_itc!(fresh_month, scope, %{"choice" => "later", "later_reason" => "awaiting_2b"})
+
     assert {:ok, signoff} = Signoffs.sign_off(stale_month, scope)
     assert signoff.snapshot["rows"] == expected.rows
     assert signoff.snapshot["summary"] == expected.summary
@@ -163,6 +171,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
   # this one checked only permission, state and sales completeness, leaving the
   # register gate in the template. A signed 3B freezes the ITC snapshot, so
   # anything reaching this function directly could certify unreviewed credit.
+  @tag undecided_fixture: true
   test "GSTR-3B refuses a signature while a decision is still open", %{
     org: org,
     client: client,
@@ -203,9 +212,14 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     assert {:error, :not_found} = Signoffs.latest_signoff(unreviewed.id)
 
     settled = settle_register!(unreviewed, scope.user.id)
+
+    settled =
+      decide_itc!(settled, scope, %{"choice" => "later", "later_reason" => "awaiting_2b"}).month
+
     assert {:ok, _signoff} = Signoffs.sign_off(settled, scope)
   end
 
+  @tag undecided_fixture: true
   test "GSTR-3B will not claim undocumented credit until somebody answers for it", %{
     month: month,
     client: client,
@@ -262,7 +276,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
     assert {:error, :documents_unattested} = Signoffs.sign_off(unknown_month, scope)
 
-    # Attested: the credit stands, with a name and a timestamp behind it.
+    # Holding the invoice allows Claim, but the reviewer still has to choose it.
     {:ok, %{month: held_month, workings: held}} =
       Resolutions.record_itc_case_event_and_refresh(
         unknown_month,
@@ -272,12 +286,17 @@ defmodule Nila.Gst.Filing.SignoffsTest do
         scope.user.id
       )
 
+    assert held.itc["claimable_paise"] == 0
+    assert {:error, :itc_treatment_required} = Signoffs.sign_off(held_month, scope)
+    %{month: held_month, workings: held} = decide_itc!(held_month, scope, %{"choice" => "claim"})
+
     assert held.itc["claimable_paise"] == 36_000
     assert held.itc["awaiting_document_paise"] == 36_000
     assert {:ok, _signoff} = Signoffs.sign_off(held_month, scope)
   end
 
-  test "answering 'not held' withholds the credit and still signs", %{
+  @tag undecided_fixture: true
+  test "choosing Later for a missing document withholds the credit and still signs", %{
     month: month,
     client: client,
     org: org,
@@ -310,35 +329,28 @@ defmodule Nila.Gst.Filing.SignoffsTest do
     document_case = unattested |> Resolutions.workings() |> Map.fetch!(:document_cases) |> hd()
 
     {:ok, %{month: withheld_month, workings: withheld}} =
-      Resolutions.record_itc_case_event_and_refresh(
-        unattested,
-        document_case.case_id,
-        "document_not_held",
-        [],
-        scope.user.id
-      )
+      ItcDecisions.apply(scope, client.id, unattested.period, [document_case.case_id], %{
+        "choice" => "later",
+        "later_reason" => "awaiting_document"
+      })
 
-    # Out of the claim as its own term, not folded into blocked credits: a
-    # substantiation failure is not an ineligible credit.
     assert withheld.itc["claimable_paise"] == 0
-    assert withheld.itc["awaiting_document_paise"] == 0
-    assert withheld.itc["unsubstantiated_withheld_paise"] == 18_000
-    assert withheld.itc["blocked_paise"] == 0
+    assert withheld.itc["later_paise"] == 18_000
+    assert withheld.itc["excluded_paise"] == 0
 
-    # ...and it reaches the return. 4A(5) stays at the 2B ceiling (the portal
-    # auto-populates it), the withheld credit reverses in 4B(2), and 4C is what
-    # actually gets filed. Before this, the bridge printed a claim of ₹0 above a
-    # 3B filing ₹18,000, and the month signed.
+    # Credit left for a later month never enters this month's claim or reversal.
     assert withheld.gstr3b["itc"]["all_other_itc_4a5"] == %{
-             "cgst" => 9_000,
-             "sgst" => 9_000,
-             "igst" => 0
+             "cgst" => 0,
+             "sgst" => 0,
+             "igst" => 0,
+             "cess" => 0
            }
 
     assert withheld.gstr3b["itc"]["reversed_4b2"] == %{
-             "cgst" => 9_000,
-             "sgst" => 9_000,
-             "igst" => 0
+             "cgst" => 0,
+             "sgst" => 0,
+             "igst" => 0,
+             "cess" => 0
            }
 
     assert heads_total(withheld.gstr3b["itc"]["net_itc_4c"]) == 0
@@ -349,6 +361,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
 
   defp heads_total(heads), do: Enum.sum(Enum.map(~w(igst cgst sgst), &(heads[&1] || 0)))
 
+  @tag undecided_fixture: true
   test "a per-invoice answer does not answer a later 2B supply", %{
     month: month,
     client: client,
@@ -391,6 +404,7 @@ defmodule Nila.Gst.Filing.SignoffsTest do
         scope.user.id
       )
 
+    answered = decide_itc!(answered, scope, %{"choice" => "claim"}).month
     assert {:ok, _} = Signoffs.sign_off(answered, scope)
 
     # A second supply arrives. The attestation was about one set of bills, so it
@@ -902,6 +916,21 @@ defmodule Nila.Gst.Filing.SignoffsTest do
       assert {:ok, %{status: "held"}} = Dumps.fetch(sales_month.org_id, sales.id)
       assert {:ok, %{status: "held"}} = Dumps.fetch(sales_month.org_id, purchase.id)
     end
+  end
+
+  defp decide_itc!(month, scope, attrs) do
+    case_ids =
+      month
+      |> Resolutions.workings()
+      |> Map.fetch!(:case_lines)
+      |> Enum.filter(
+        &(&1.document_type in ~w(invoice debit_note) and
+            Enum.sum(Map.values(&1.outstanding_heads)) > 0)
+      )
+      |> Enum.map(& &1.case_id)
+
+    {:ok, result} = ItcDecisions.apply(scope, month.client_id, month.period, case_ids, attrs)
+    result
   end
 
   defp stringify_keys(nil), do: nil

@@ -1,157 +1,115 @@
 defmodule Nila.Gst.Filing.Gstr3bInvariantsTest do
-  @moduledoc """
-  The two properties Table 4 must hold whatever the month looks like:
-
-    * **4C is never negative.** A negative net ITC is not a return — `setoff/3`
-      feeds it to `use_credit`, where `min(payable, negative)` *raises* the
-      payable and manufactures a cash demand out of a month that owed nothing.
-    * **4C ties to the ITC bridge's claimable figure**, once the decisions that
-      gate the signature are settled. The two are computed by different modules
-      from different projections, and when they disagree the reviewer approves a
-      number the portal never receives.
-
-  Both were false before: a block is staked at the *books* row's tax while the
-  ceiling holds the *2B's*, and `ItcPosition` clamped the difference while the
-  return did not.
-  """
   use ExUnit.Case, async: true
 
   alias Nila.Gst.Filing.{Gstr3b, ItcPosition}
 
-  @heads ~w(igst cgst sgst)
-  @no_liability %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}
+  @zero %{"igst" => 0, "cgst" => 0, "sgst" => 0, "cess" => 0}
+  @liability %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}
+  @recon %{
+    "matched" => [],
+    "value_mismatch" => [],
+    "needs_human" => [],
+    "in_2b_not_books" => [],
+    "in_books_not_2b" => []
+  }
 
-  defp total(heads), do: @heads |> Enum.map(&(heads[&1] || 0)) |> Enum.sum()
-
-  defp gstr2b(inum, tax, opts \\ []) do
+  defp case_line(opening, claim, later, exclude) do
     %{
-      "vendor_gstin" => "33AAACS9999A1Z9",
-      "vendor_name" => "Portal Vendor",
-      "invoice_number" => inum,
-      "taxable_paise" => Keyword.get(opts, :taxable, tax * 5),
-      "tax_paise" => %{"igst" => tax, "cgst" => 0, "sgst" => 0}
+      document_type: "invoice",
+      treatment: "split",
+      reverse_charge?: false,
+      outstanding_heads: opening,
+      treatment_heads: %{"claim" => claim, "later" => later, "exclude" => exclude}
     }
   end
 
-  defp row(id, inum, tax, opts) do
-    %{
-      "id" => id,
-      "bucket" => Keyword.fetch!(opts, :bucket),
-      "vendor_gstin" => "33AAACS9999A1Z9",
-      "vendor_name" => "Portal Vendor",
-      "invoice_number" => inum,
-      "taxable_paise" => tax * 5,
-      "igst_paise" => tax,
-      "cgst_paise" => 0,
-      "sgst_paise" => 0,
-      "flags" => Keyword.get(opts, :flags, [])
-    }
+  test "split treatment balances the claim and carry without inventing a reversal" do
+    opening = %{@zero | "igst" => 10_000, "cess" => 500}
+    claim = %{@zero | "igst" => 3_000, "cess" => 200}
+    later = %{@zero | "igst" => 5_000, "cess" => 300}
+    exclude = %{@zero | "igst" => 2_000}
+
+    position = ItcPosition.compute(@recon, [], %{}, [case_line(opening, claim, later, exclude)])
+    return = Gstr3b.assemble(@liability, @recon, position)
+
+    assert position["opening_outstanding_paise"] ==
+             position["current_claim_paise"] + position["later_paise"] +
+               position["excluded_paise"]
+
+    assert position["closing_outstanding_heads"] == later
+    assert return["itc"]["net_itc_4c"] == claim
+    assert return["itc"]["reversed_4b1"] == @zero
+    assert return["itc"]["reversed_4b2"] == @zero
+    assert return["setoff_61"]["cash_total"] == 0
   end
 
-  defp flag(code), do: %{"code" => code, "section" => "s.17(5)", "reason" => "test"}
+  test "an undecided case contributes pending credit but no claim" do
+    opening = %{@zero | "cgst" => 1_000, "sgst" => 1_000}
+    line = %{case_line(opening, @zero, @zero, @zero) | treatment: "undecided"}
+    position = ItcPosition.compute(@recon, [], %{}, [line])
+    return = Gstr3b.assemble(@liability, @recon, position)
 
-  defp empty_recon,
-    do: %{
-      "matched" => [],
-      "value_mismatch" => [],
-      "needs_human" => [],
-      "in_2b_not_books" => [],
-      "in_books_not_2b" => []
-    }
-
-  defp assemble(recon, rows, decisions) do
-    itc = ItcPosition.compute(recon, rows, decisions)
-    {itc, Gstr3b.assemble(@no_liability, recon, itc)}
+    assert position["pending_heads"] == opening
+    assert position["closing_outstanding_heads"] == opening
+    assert position["current_claim_paise"] == 0
+    assert return["itc"]["net_itc_4c"] == @zero
   end
 
-  defp assert_sound({itc, assembled}) do
-    net = total(assembled["itc"]["net_itc_4c"])
+  test "Table 4 claim stays within the reviewed split even when source or books amounts differ" do
+    scenarios = [
+      {"three scans, one portal invoice", 100_000, 300_000, 100_000},
+      {"books tax exceeds portal tax", 100_000, 500_000, 40_000},
+      {"books-only bill beside reported credit", 300_000, 100_000, 200_000},
+      {"ordinary reported invoice", 100_000, 100_000, 70_000}
+    ]
 
-    assert net >= 0, "4C filed a negative net ITC of #{net}"
+    for {_name, portal_tax, books_tax, chosen_claim} <- scenarios do
+      portal = %{
+        "document_type" => "invoice",
+        "invoice_number" => "P-1",
+        "taxable_paise" => portal_tax * 5,
+        "tax_paise" => %{@zero | "igst" => portal_tax},
+        "total_paise" => portal_tax * 6
+      }
 
-    assert assembled["setoff_61"]["cash_total"] >= 0,
-           "a month with no outward liability was made to pay cash"
+      recon = %{@recon | "in_2b_not_books" => [%{"gstr2b" => portal}]}
+      rows = [%{"id" => "books-1", "igst_paise" => books_tax, "flags" => []}]
+      opening = %{@zero | "igst" => portal_tax}
+      claim = %{@zero | "igst" => chosen_claim}
+      later = %{@zero | "igst" => portal_tax - chosen_claim}
+      position = ItcPosition.compute(recon, rows, %{}, [case_line(opening, claim, later, @zero)])
+      return = Gstr3b.assemble(@liability, recon, position)
 
-    # Pending decisions gate the signature, so at a signable month they are zero
-    # and the two figures must be the same number.
-    if itc["pending_decision_paise"] == 0 do
-      assert net == itc["claimable_paise"],
-             "4C filed #{net} while the bridge showed #{itc["claimable_paise"]}"
+      assert return["itc"]["net_itc_4c"] == claim
+      assert return["itc"]["rcm_4a3"] == @zero
+      assert return["itc"]["reversed_4b1"] == @zero
+      assert return["itc"]["reversed_4b2"] == @zero
+      assert position["reported_2b_paise"] == portal_tax
+
+      assert position["opening_outstanding_paise"] ==
+               position["current_claim_paise"] + position["closing_outstanding_paise"]
+    end
+  end
+
+  test "per-head Table 4 conservation and set-off hold for mixed claim, later and exclusion" do
+    opening = %{"igst" => 6_000, "cgst" => 4_000, "sgst" => 4_000, "cess" => 100}
+    claim = %{"igst" => 2_000, "cgst" => 2_000, "sgst" => 1_000, "cess" => 40}
+    later = %{"igst" => 3_000, "cgst" => 1_000, "sgst" => 2_000, "cess" => 60}
+    exclude = %{"igst" => 1_000, "cgst" => 1_000, "sgst" => 1_000, "cess" => 0}
+    position = ItcPosition.compute(@recon, [], %{}, [case_line(opening, claim, later, exclude)])
+    liability = %{"txval" => 100_000, "igst" => 3_000, "cgst" => 3_000, "sgst" => 3_000}
+    return = Gstr3b.assemble(liability, @recon, position)
+
+    for head <- ~w(igst cgst sgst cess) do
+      assert opening[head] == claim[head] + later[head] + exclude[head]
+
+      assert return["itc"]["rcm_4a3"][head] +
+               return["itc"]["all_other_itc_4a5"][head] -
+               return["itc"]["reversed_4b1"][head] -
+               return["itc"]["reversed_4b2"][head] == return["itc"]["net_itc_4c"][head]
     end
 
-    {itc, assembled}
-  end
-
-  test "three scans of one bill the portal reported once" do
-    rows =
-      for i <- 1..3,
-          do:
-            row("r#{i}", "DUP-1", 100_000, bucket: "matched", flags: [flag("duplicate_invoice")])
-
-    recon = %{empty_recon() | "matched" => [%{"gstr2b" => gstr2b("DUP-1", 100_000)}]}
-    decisions = %{ItcPosition.block_id("r1", "duplicate_invoice") => "block_itc"}
-
-    {itc, assembled} = assert_sound(assemble(recon, rows, decisions))
-
-    # The over-claim this block exists to prevent was already prevented by the
-    # ceiling: the portal reported the invoice once, so the excess copies were
-    # never in the claim and blocking them withholds nothing.
-    assert itc["blocked_in_ceiling_paise"] == 0
-    assert itc["blocked_outside_ceiling_paise"] == 200_000
-    assert total(assembled["itc"]["net_itc_4c"]) == 100_000
-  end
-
-  test "a blocked row whose books tax exceeds the 2B's" do
-    rows = [
-      row("r1", "VM-1", 500_000, bucket: "value_mismatch", flags: [flag("personal_expense_17_5")])
-    ]
-
-    recon = %{
-      empty_recon()
-      | "value_mismatch" => [%{"gstr2b" => gstr2b("VM-1", 100_000), "books" => hd(rows)}]
-    }
-
-    decisions = %{ItcPosition.block_id("r1", "personal_expense_17_5") => "block_itc"}
-
-    {_itc, assembled} = assert_sound(assemble(recon, rows, decisions))
-
-    # The return avails the 2B's figure, so it can only reverse the 2B's figure.
-    assert total(assembled["itc"]["reversed_4b1"]) == 100_000
-    assert total(assembled["itc"]["net_itc_4c"]) == 0
-  end
-
-  test "a books-only bill blocked under 17(5) leaves the claim alone" do
-    rows = [
-      row("r1", "BO-1", 100_000,
-        bucket: "in_books_not_2b",
-        flags: [flag("personal_expense_17_5")]
-      ),
-      row("r2", "M-1", 300_000, bucket: "matched")
-    ]
-
-    recon = %{empty_recon() | "matched" => [%{"gstr2b" => gstr2b("M-1", 300_000)}]}
-    decisions = %{ItcPosition.block_id("r1", "personal_expense_17_5") => "block_itc"}
-
-    {_itc, assembled} = assert_sound(assemble(recon, rows, decisions))
-    assert total(assembled["itc"]["net_itc_4c"]) == 300_000
-  end
-
-  test "an ordinary blocked row still reverses in full" do
-    rows = [row("r1", "M-1", 100_000, bucket: "matched", flags: [flag("personal_expense_17_5")])]
-    recon = %{empty_recon() | "matched" => [%{"gstr2b" => gstr2b("M-1", 100_000)}]}
-    decisions = %{ItcPosition.block_id("r1", "personal_expense_17_5") => "block_itc"}
-
-    {_itc, assembled} = assert_sound(assemble(recon, rows, decisions))
-
-    assert total(assembled["itc"]["reversed_4b1"]) == 100_000
-    assert total(assembled["itc"]["net_itc_4c"]) == 0
-  end
-
-  test "a clean month is unaffected" do
-    rows = [row("r1", "M-1", 100_000, bucket: "matched")]
-    recon = %{empty_recon() | "matched" => [%{"gstr2b" => gstr2b("M-1", 100_000)}]}
-
-    {_itc, assembled} = assert_sound(assemble(recon, rows, %{}))
-    assert total(assembled["itc"]["net_itc_4c"]) == 100_000
+    refute Gstr3b.negative_net_itc?(return)
+    assert return["setoff_61"]["cash_total"] >= 0
   end
 end

@@ -76,6 +76,24 @@ defmodule Nila.GstFixtures do
     dump
   end
 
+  @doc "Records the requested treatment for every outstanding invoice in a test month."
+  def choose_itc_treatment!(month, scope, attrs) do
+    ids =
+      month
+      |> Resolutions.workings()
+      |> Map.fetch!(:case_lines)
+      |> Enum.filter(
+        &(&1.document_type in ~w(invoice debit_note) and
+            Enum.sum(Map.values(&1.outstanding_heads)) > 0)
+      )
+      |> Enum.map(& &1.case_id)
+
+    {:ok, %{month: month}} =
+      Nila.Gst.Purchase.ItcDecisions.apply(scope, month.client_id, month.period, ids, attrs)
+
+    month
+  end
+
   @doc """
   Settles every open register row on a purchase month, so it can be signed.
 

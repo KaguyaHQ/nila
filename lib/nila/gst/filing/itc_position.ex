@@ -24,10 +24,10 @@ defmodule Nila.Gst.Filing.ItcPosition do
   """
 
   alias Nila.Gst.InvoiceNumber
-  alias Nila.Gst.Purchase.Reconciliation
+  alias Nila.Gst.Purchase.ItcTreatment
 
   @full_block ~w(personal_expense_17_5 gstin_state_mismatch)
-  @zero_heads %{"igst" => 0, "cgst" => 0, "sgst" => 0}
+  @zero_heads %{"igst" => 0, "cgst" => 0, "sgst" => 0, "cess" => 0}
 
   @doc """
   Computes the position from the effective `recon`, the register `rows`, and the
@@ -74,82 +74,50 @@ defmodule Nila.Gst.Filing.ItcPosition do
     })
   end
 
-  @doc "Applies explicit no-claim decisions without counting the same tax in other deductions."
+  @doc "Adds the reviewer's current-period treatment without changing imported 2B totals."
   def compute(recon, rows, decisions, case_lines) do
-    refs =
+    position = compute(recon, rows, decisions)
+    case_lines = Enum.filter(case_lines, &(&1.document_type in ~w(invoice debit_note)))
+    opening = treatment_sum(case_lines, & &1.outstanding_heads)
+    claim = treatment_sum(case_lines, &get_in(&1, [:treatment_heads, "claim"]))
+
+    rcm_claim =
       case_lines
-      |> Enum.filter(&(Map.get(&1, :claim_state) == "not_claiming" and &1.current_gstr2b?))
-      |> Enum.flat_map(&Map.values(get_in(&1.source_refs, ["gstr2b"]) || %{}))
-      |> MapSet.new()
+      |> Enum.filter(&(&1[:reverse_charge?] == true))
+      |> treatment_sum(&get_in(&1, [:treatment_heads, "claim"]))
 
-    excluded =
-      recon
-      |> gstr2b_documents()
-      |> Enum.filter(
-        &(available_document?(&1) and MapSet.member?(refs, Reconciliation.gstr2b_ref(&1)))
-      )
+    later = treatment_sum(case_lines, &get_in(&1, [:treatment_heads, "later"]))
+    excluded = treatment_sum(case_lines, &get_in(&1, [:treatment_heads, "exclude"]))
 
-    excluded_refs = MapSet.new(excluded, &Reconciliation.gstr2b_ref/1)
-    excluded_keys = MapSet.new(excluded, &invoice_key/1)
+    pending =
+      case_lines
+      |> Enum.filter(&(&1.treatment == "undecided"))
+      |> treatment_sum(& &1.outstanding_heads)
 
-    # A confirmed pair can have different invoice numbers on the two sides.
-    # Remove its books row too, or its old block deducts the excluded tax again.
-    excluded_books_ids =
-      for bucket <- ~w(matched value_mismatch),
-          entry <- recon[bucket] || [],
-          document = entry["gstr2b"],
-          MapSet.member?(excluded_refs, Reconciliation.gstr2b_ref(document)),
-          id = get_in(entry, ["books", "id"]),
-          into: MapSet.new(),
-          do: id
-
-    remaining =
-      Enum.reduce(~w(matched value_mismatch in_2b_not_books), recon, fn bucket, acc ->
-        entries =
-          Enum.reject(recon[bucket] || [], fn entry ->
-            document = entry["gstr2b"] || entry
-
-            document && MapSet.member?(excluded_refs, Reconciliation.gstr2b_ref(document))
-          end)
-
-        Map.put(acc, bucket, entries)
-      end)
-      |> Map.put("needs_human", remaining_human_entries(recon, excluded_refs))
-
-    remaining_rows =
-      Enum.reject(rows, fn row ->
-        MapSet.member?(excluded_keys, invoice_key(row)) or
-          MapSet.member?(excluded_books_ids, row["id"])
-      end)
-
-    position = compute(remaining, remaining_rows, decisions)
-    heads = excluded |> Enum.map(& &1["tax_paise"]) |> sum_heads()
+    closing = ItcTreatment.add(later, pending)
 
     Map.merge(position, %{
-      "ceiling_paise" => ceiling_paise(recon),
-      "reported_2b_paise" => ceiling_paise(recon),
-      "not_claiming_paise" => Enum.sum(Map.values(heads)),
-      "not_claiming_heads" => heads
+      "opening_outstanding_heads" => opening,
+      "opening_outstanding_paise" => ItcTreatment.sum(opening),
+      "current_claim_heads" => claim,
+      "current_claim_paise" => ItcTreatment.sum(claim),
+      "rcm_claim_heads" => rcm_claim,
+      "rcm_claim_paise" => ItcTreatment.sum(rcm_claim),
+      "later_heads" => later,
+      "later_paise" => ItcTreatment.sum(later),
+      "excluded_heads" => excluded,
+      "excluded_paise" => ItcTreatment.sum(excluded),
+      "pending_heads" => pending,
+      "pending_paise" => ItcTreatment.sum(pending),
+      "closing_outstanding_heads" => closing,
+      "closing_outstanding_paise" => ItcTreatment.sum(closing),
+      "claimable_paise" => ItcTreatment.sum(claim)
     })
   end
 
-  defp remaining_human_entries(recon, excluded_refs) do
-    Enum.flat_map(recon["needs_human"] || [], fn entry ->
-      if entry["candidates"] not in [nil, []] do
-        candidates =
-          Enum.reject(
-            entry["candidates"],
-            &MapSet.member?(excluded_refs, Reconciliation.gstr2b_ref(&1))
-          )
-
-        if candidates == [], do: [], else: [Map.put(entry, "candidates", candidates)]
-      else
-        document = entry["gstr2b"]
-
-        if document && MapSet.member?(excluded_refs, Reconciliation.gstr2b_ref(document)),
-          do: [],
-          else: [entry]
-      end
+  defp treatment_sum(lines, select) do
+    Enum.reduce(lines, ItcTreatment.zero(), fn line, acc ->
+      ItcTreatment.add(acc, ItcTreatment.heads(select.(line)))
     end)
   end
 
@@ -385,28 +353,11 @@ defmodule Nila.Gst.Filing.ItcPosition do
     |> Map.put("attestation_target", attestation.target)
   end
 
-  def apply_document_cases(position, case_lines) do
-    cases =
-      Enum.filter(
-        case_lines,
-        &(&1.current_gstr2b? and not &1.has_books? and &1.document_type != "credit_note" and
-            Map.get(&1, :claim_state) != "not_claiming")
-      )
-
-    withheld_cases = Enum.filter(cases, &(&1.document_state == "not_held"))
-    withheld_heads = withheld_cases |> Enum.map(& &1.tax_heads) |> sum_heads()
-    raw_withheld = withheld_heads |> Map.values() |> Enum.sum()
-    withheld = min(raw_withheld, position["claimable_paise"])
-    settled? = Enum.all?(cases, &(&1.document_state in ~w(held not_held)))
-
+  def apply_document_cases(position, _case_lines) do
     position
     |> Map.merge(%{
-      "claimable_paise" => position["claimable_paise"] - withheld,
-      "awaiting_document_paise" => max(position["awaiting_document_paise"] - withheld, 0),
-      "unsubstantiated_withheld_paise" => withheld,
-      "unsubstantiated_withheld_heads" => allocate(withheld_heads, withheld),
-      "documents_attested" => if(settled?, do: "per_case", else: nil),
-      "attestation_required" => cases != []
+      "documents_attested" => "per_case",
+      "attestation_required" => false
     })
   end
 
@@ -449,9 +400,9 @@ defmodule Nila.Gst.Filing.ItcPosition do
     |> sum_heads()
   end
 
-  @doc "Sums a list of head maps (`%{\"igst\" | \"cgst\" | \"sgst\" => paise}`)."
+  @doc "Sums a list of IGST, CGST, SGST and CESS head maps."
   def sum_heads(head_maps) do
-    Enum.reduce(head_maps, %{"igst" => 0, "cgst" => 0, "sgst" => 0}, fn heads, acc ->
+    Enum.reduce(head_maps, @zero_heads, fn heads, acc ->
       Map.new(acc, fn {k, v} -> {k, v + (heads[k] || 0)} end)
     end)
   end
@@ -508,7 +459,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
        when type in ~w(invoice credit_note debit_note),
        do: type
 
-  defp document_type(_legacy_invoice), do: "invoice"
+  defp document_type(_invoice), do: "invoice"
 
   # The block candidates for a month: one per full-block flag (personal / state)
   # staking the row's whole tax, plus ONE per duplicate GROUP staking the excess
@@ -525,6 +476,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
           "code" => flag["code"],
           "section" => flag["section"],
           "vendor" => row["vendor_name"],
+          "source_row_ids" => [row["id"]],
           "document_type" => document_type(row),
           "invoice_number" => row["invoice_number"],
           "tax_paise" => row_tax(row),
@@ -567,6 +519,7 @@ defmodule Nila.Gst.Filing.ItcPosition do
         "code" => "duplicate_invoice",
         "section" => dup_flag["section"],
         "vendor" => keep["vendor_name"],
+        "source_row_ids" => Enum.map(group, & &1["id"]),
         "document_type" => document_type(keep),
         "invoice_number" => keep["invoice_number"],
         "tax_paise" => row_tax(keep) * (n - 1),
@@ -602,13 +555,16 @@ defmodule Nila.Gst.Filing.ItcPosition do
   defp sum_tax(blocks), do: blocks |> Enum.map(& &1["tax_paise"]) |> Enum.sum()
 
   defp row_tax(row),
-    do: (row["cgst_paise"] || 0) + (row["sgst_paise"] || 0) + (row["igst_paise"] || 0)
+    do:
+      (row["cgst_paise"] || 0) + (row["sgst_paise"] || 0) + (row["igst_paise"] || 0) +
+        (row["cess_paise"] || 0)
 
   defp row_heads(row, copies) do
     %{
       "igst" => (row["igst_paise"] || 0) * copies,
       "cgst" => (row["cgst_paise"] || 0) * copies,
-      "sgst" => (row["sgst_paise"] || 0) * copies
+      "sgst" => (row["sgst_paise"] || 0) * copies,
+      "cess" => (row["cess_paise"] || 0) * copies
     }
   end
 

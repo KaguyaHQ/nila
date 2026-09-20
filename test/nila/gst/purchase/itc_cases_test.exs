@@ -102,7 +102,7 @@ defmodule Nila.Gst.Purchase.ItcCasesTest do
     raw =
       Repo.get_by!(ItcSource, client_month_id: april.id, kind: "books", source_ref: bill["id"])
 
-    assert raw.payload["tax_paise"] == bill["tax_paise"]
+    assert raw.payload["tax_paise"] == Map.put(bill["tax_paise"], "cess", 0)
 
     {:ok, _} =
       Resolutions.record_many_and_refresh(
@@ -112,7 +112,7 @@ defmodule Nila.Gst.Purchase.ItcCasesTest do
       )
 
     assert [reopened] = june |> ItcCases.list_for_month() |> ItcCases.carried_books()
-    assert reopened["tax_paise"] == bill["tax_paise"]
+    assert reopened["tax_paise"] == Map.put(bill["tax_paise"], "cess", 0)
   end
 
   test "moving a source later does not rewrite its earlier case membership", context do
@@ -320,127 +320,11 @@ defmodule Nila.Gst.Purchase.ItcCasesTest do
            }
   end
 
-  test "claim exclusion is independent of documents, survives books and refetch, and can be reopened",
-       context do
-    portal = invoice(nil, "EXCLUDE-1", ~D[2026-04-12])
-    month = put_month!(context, "2026-04", [], [portal])
+  test "signoff rejects an older saved cess claim or deferral", context do
+    heads = %{"cgst" => 4000, "sgst" => 4000, "igst" => 0, "cess" => 2000}
+    portal = invoice(nil, "OLD-CESS", ~D[2025-07-12]) |> Map.put("tax_paise", heads)
+    month = put_month!(context, "2026-08", [Map.put(portal, "id", "OLD-CESS-BOOK")], [portal])
     [line] = ItcCases.list_for_month(month)
-    scope = Scope.for_user(context.user)
-
-    assert {:ok, %{workings: workings}} =
-             ItcDecisions.exclude(
-               scope,
-               context.client.id,
-               month.period,
-               [line.case_id],
-               "Personal use confirmed by client"
-             )
-
-    assert [excluded] = workings.case_lines
-    assert excluded.claim_state == "not_claiming"
-    assert excluded.claim_reason == "Personal use confirmed by client"
-
-    event =
-      Repo.one!(
-        from e in ItcCaseEvent,
-          where: e.case_id == ^line.case_id and e.event_type == "not_claiming_itc"
-      )
-
-    assert event.decided_by_id == context.user.id
-    assert event.payload["reason"] == "Personal use confirmed by client"
-    assert excluded.current_gstr2b?
-    assert excluded.settlement_state != "excluded"
-
-    {:ok, _} =
-      ItcCases.record_event(month, line.case_id, "client_holds_document", context.user.id)
-
-    assert [held] = ItcCases.list_for_month(month)
-    assert held.document_state == "held"
-    assert held.claim_state == "not_claiming"
-
-    updated = put_month!(context, month.period, [Map.put(portal, "id", "BOOK-EXCLUDE")], [portal])
-    assert [matched] = ItcCases.list_for_month(updated)
-    assert matched.claim_state == "not_claiming"
-    assert matched.has_books?
-
-    assert {:ok, _} =
-             ItcDecisions.exclude(
-               scope,
-               context.client.id,
-               month.period,
-               [line.case_id],
-               "Personal use confirmed by client"
-             )
-
-    next = put_month!(context, "2026-05", [], [portal])
-    assert [carried] = ItcCases.list_for_month(next)
-    assert carried.claim_state == "not_claiming"
-
-    assert {:ok, %{workings: restored}} =
-             ItcDecisions.reopen(scope, context.client.id, next.period, [line.case_id])
-
-    assert [%{claim_state: nil, claim_reason: nil}] = restored.case_lines
-    assert [%{claim_state: "not_claiming"}] = ItcCases.list_for_month(updated)
-  end
-
-  test "bulk exclusions reject the whole selection for unknown cases, credit notes, and wrong tenants",
-       context do
-    portal = invoice(nil, "VALID-1", ~D[2026-04-12])
-    credit = invoice(nil, "CREDIT-1", ~D[2026-04-12]) |> Map.put("document_type", "credit_note")
-    month = put_month!(context, "2026-04", [], [portal, credit])
-    lines = ItcCases.list_for_month(month)
-    valid = Enum.find(lines, &(&1.document_type == "invoice"))
-    ids = Enum.map(lines, & &1.case_id)
-    scope = Scope.for_user(context.user)
-
-    assert {:error, :invalid_selection} =
-             ItcDecisions.exclude(scope, context.client.id, month.period, ids, "Reviewed")
-
-    assert {:error, :invalid_selection} =
-             ItcDecisions.exclude(
-               scope,
-               context.client.id,
-               month.period,
-               [valid.case_id, 9_999_999],
-               "Reviewed"
-             )
-
-    assert {:error, :reason_required} =
-             ItcDecisions.exclude(scope, context.client.id, month.period, [valid.case_id], " ")
-
-    assert Enum.all?(ItcCases.list_for_month(month), &is_nil(&1.claim_state))
-    other = user_with_org_fixture()
-
-    assert {:error, :not_found} =
-             ItcDecisions.exclude(
-               Scope.for_user(other.user),
-               context.client.id,
-               month.period,
-               [valid.case_id],
-               "Reviewed"
-             )
-  end
-
-  test "viewers and signed or filed months cannot change claim decisions", context do
-    month = put_month!(context, "2026-04", [], [invoice(nil, "LOCK-1", ~D[2026-04-12])])
-    [line] = ItcCases.list_for_month(month)
-    scope = Scope.for_user(context.user)
-    viewer = %{scope | membership: %{scope.membership | role: "viewer"}}
-
-    assert {:error, :forbidden} =
-             ItcDecisions.exclude(
-               viewer,
-               context.client.id,
-               month.period,
-               [line.case_id],
-               "Reviewed"
-             )
-
-    assert {:error, :forbidden} =
-             ItcDecisions.reopen(viewer, context.client.id, month.period, [line.case_id])
-
-    {:ok, _} =
-      ItcDecisions.exclude(scope, context.client.id, month.period, [line.case_id], "Reviewed")
 
     signoff =
       Repo.insert!(%Nila.Gst.Filing.Signoff{
@@ -450,155 +334,552 @@ defmodule Nila.Gst.Purchase.ItcCasesTest do
         snapshot: %{}
       })
 
-    assert {:error, :signed_off} =
-             ItcDecisions.exclude(
+    for choice <- ~w(claim later) do
+      {:ok, payload} =
+        Nila.Gst.Purchase.ItcTreatment.build(heads, %{
+          "choice" => choice,
+          "later_reason" => "review_pending"
+        })
+
+      Repo.insert!(%ItcCaseEvent{
+        case_id: line.case_id,
+        effective_client_month_id: month.id,
+        org_id: context.org.id,
+        decided_by_id: context.user.id,
+        event_type: "treatment_decided",
+        payload: payload
+      })
+
+      fresh = ItcCases.list_for_month(month)
+
+      assert {:error, :cess_review_required} =
+               ItcCases.reserve_claims(signoff, month, fresh, %{"blocks" => []})
+
+      assert [preserved] = fresh
+      assert preserved.tax_heads == heads
+    end
+  end
+
+  test "cess remains source evidence and cannot be claimed or deferred", context do
+    heads = %{"cgst" => 4000, "sgst" => 4000, "igst" => 0, "cess" => 2000}
+    portal = invoice(nil, "CESS-1", ~D[2026-08-12]) |> Map.put("tax_paise", heads)
+    month = put_month!(context, "2026-08", [Map.put(portal, "id", "BOOK-CESS")], [portal])
+    [line] = ItcCases.list_for_month(month)
+    scope = Scope.for_user(context.user)
+
+    for choice <- ~w(claim later) do
+      assert {:error, :cess_review_required} =
+               ItcDecisions.apply(scope, context.client.id, month.period, [line.case_id], %{
+                 "choice" => choice,
+                 "later_reason" => "review_pending"
+               })
+    end
+
+    assert {:ok, %{workings: workings}} =
+             ItcDecisions.apply(scope, context.client.id, month.period, [line.case_id], %{
+               "choice" => "split",
+               "claim" => %{"cgst" => 4000, "sgst" => 4000, "igst" => 0, "cess" => 0},
+               "later" => Nila.Gst.Purchase.ItcTreatment.zero(),
+               "exclude" => %{"cgst" => 0, "sgst" => 0, "igst" => 0, "cess" => 2000},
+               "exclude_reason" => "blocked_credit"
+             })
+
+    assert [treated] = workings.case_lines
+    assert treated.tax_heads == heads
+    assert treated.treatment_heads["claim"]["cess"] == 0
+    assert treated.treatment_heads["exclude"]["cess"] == 2000
+  end
+
+  test "explicit treatment carries only the outstanding amount across months", context do
+    heads = %{"cgst" => 5000, "sgst" => 5000, "igst" => 0, "cess" => 0}
+    portal = invoice(nil, "CARRY-1", ~D[2026-08-12]) |> Map.put("tax_paise", heads)
+    august = put_month!(context, "2026-08", [Map.put(portal, "id", "BOOK-CARRY")], [portal])
+    [line] = ItcCases.list_for_month(august)
+    scope = Scope.for_user(context.user)
+    assert line.treatment == "undecided"
+
+    assert {:ok, _} =
+             ItcDecisions.apply(scope, context.client.id, "2026-08", [line.case_id], %{
+               "choice" => "later",
+               "later_reason" => "review_pending"
+             })
+
+    virtual = %Nila.Gst.Purchase.Month{
+      org_id: context.org.id,
+      client_id: context.client.id,
+      period: "2026-09"
+    }
+
+    assert [carried] = ItcCases.list_for_month(virtual)
+    assert carried.treatment_heads["later"] == heads
+
+    assert {:ok, %{month: september}} =
+             ItcDecisions.apply(scope, context.client.id, "2026-09", [line.case_id], %{
+               "choice" => "split",
+               "claim" => %{"cgst" => 3000, "sgst" => 3000, "igst" => 0, "cess" => 0},
+               "later" => %{"cgst" => 1000, "sgst" => 1000, "igst" => 0, "cess" => 0},
+               "exclude" => %{"cgst" => 1000, "sgst" => 1000, "igst" => 0, "cess" => 0},
+               "later_reason" => "review_pending",
+               "exclude_reason" => "blocked_credit"
+             })
+
+    [september_line] = ItcCases.list_for_month(september)
+    assert Enum.sum(Map.values(september_line.treatment_heads["claim"])) == 6000
+    assert [october] = ItcCases.list_for_month(%{virtual | period: "2026-10"})
+
+    assert october.outstanding_heads == %{
+             "cgst" => 1000,
+             "sgst" => 1000,
+             "igst" => 0,
+             "cess" => 0
+           }
+
+    assert october.treatment_heads["later"] == october.outstanding_heads
+    assert [november] = ItcCases.list_for_month(%{virtual | period: "2026-11"})
+    assert november.outstanding_heads == october.outstanding_heads
+    assert [historical] = ItcCases.list_for_month(august)
+    assert historical.treatment_heads["later"] == heads
+
+    assert {:error, :later_treatment_exists} =
+             ItcDecisions.apply(scope, context.client.id, "2026-08", [line.case_id], %{
+               "choice" => "claim"
+             })
+
+    events = Repo.all(from e in ItcCaseEvent, where: e.case_id == ^line.case_id)
+    assert Enum.all?(events, &(&1.decided_by_id == context.user.id))
+  end
+
+  test "later and exclusion do not assert missing document possession", context do
+    portal = invoice(nil, "DOC-1", ~D[2026-04-12])
+    month = put_month!(context, "2026-04", [], [portal])
+    [line] = ItcCases.list_for_month(month)
+    scope = Scope.for_user(context.user)
+
+    assert {:error, :claim_not_available} =
+             ItcDecisions.apply(scope, context.client.id, month.period, [line.case_id], %{
+               "choice" => "claim"
+             })
+
+    assert {:error, :reason_required} =
+             ItcDecisions.apply(scope, context.client.id, month.period, [line.case_id], %{
+               "choice" => "exclude"
+             })
+
+    assert {:ok, %{workings: workings}} =
+             ItcDecisions.apply(scope, context.client.id, month.period, [line.case_id], %{
+               "choice" => "exclude",
+               "exclude_reason" => "personal"
+             })
+
+    assert [excluded] = workings.case_lines
+    assert excluded.treatment == "exclude"
+    assert excluded.document_state == "unknown"
+    assert ItcCases.documents_settled?(workings.case_lines)
+
+    assert {:error, :invalid_selection} =
+             ItcDecisions.apply(
                scope,
                context.client.id,
                month.period,
-               [line.case_id],
-               "Changed reason"
+               [line.case_id, 99_999_999],
+               %{"choice" => "later", "later_reason" => "review_pending"}
              )
 
-    assert {:error, :signed_off} =
-             ItcDecisions.reopen(scope, context.client.id, month.period, [line.case_id])
+    viewer = %{scope | membership: %{scope.membership | role: "viewer"}}
 
-    Repo.delete!(signoff)
+    assert {:error, :forbidden} =
+             ItcDecisions.apply(viewer, context.client.id, month.period, [line.case_id], %{
+               "choice" => "later"
+             })
+
     month |> Ecto.Changeset.change(filed_at: DateTime.utc_now()) |> Repo.update!()
 
     assert {:error, :signed_off} =
-             ItcDecisions.reopen(scope, context.client.id, month.period, [line.case_id])
+             ItcDecisions.apply(scope, context.client.id, month.period, [line.case_id], %{
+               "choice" => "later",
+               "later_reason" => "review_pending"
+             })
   end
 
-  test "claim events compare chronological timestamps across a second boundary", context do
-    month = put_month!(context, "2026-04", [], [invoice(nil, "TIME-1", ~D[2026-04-12])])
+  test "partial claims reserve separate months and cannot reserve the same credit twice",
+       context do
+    portal = invoice(nil, "PARTIAL-1", ~D[2026-08-12])
+    month = put_month!(context, "2026-08", [Map.put(portal, "id", "PARTIAL-BOOK")], [portal])
     [line] = ItcCases.list_for_month(month)
+    scope = Scope.for_user(context.user)
+    half = %{"cgst" => 4500, "sgst" => 4500, "igst" => 0, "cess" => 0}
+    zero = Nila.Gst.Purchase.ItcTreatment.zero()
 
-    {:ok, excluded} =
-      ItcCases.record_event(month, line.case_id, "not_claiming_itc", context.user.id, %{
-        "reason" => "Reviewed"
+    assert {:ok, first} =
+             ItcDecisions.apply(scope, context.client.id, month.period, [line.case_id], %{
+               "choice" => "split",
+               "claim" => half,
+               "later" => half,
+               "exclude" => zero,
+               "later_reason" => "review_pending"
+             })
+
+    signoff =
+      Repo.insert!(%Nila.Gst.Filing.Signoff{
+        client_month_id: month.id,
+        org_id: context.org.id,
+        signed_by_id: context.user.id,
+        snapshot: %{}
       })
 
-    {:ok, reopened} =
-      ItcCases.record_event(month, line.case_id, "claim_reopened", context.user.id)
+    assert :ok =
+             ItcCases.reserve_claims(
+               signoff,
+               month,
+               first.workings.case_lines,
+               first.workings.itc
+             )
 
-    excluded
-    |> Ecto.Changeset.change(inserted_at: ~U[2026-04-15 10:00:01.900000Z])
-    |> Repo.update!()
+    assert {:error, :signed_off} =
+             ItcDecisions.apply(scope, context.client.id, month.period, [line.case_id], %{
+               "choice" => "claim"
+             })
 
-    reopened
-    |> Ecto.Changeset.change(inserted_at: ~U[2026-04-15 10:00:02.100000Z])
-    |> Repo.update!()
+    assert {:ok, second} =
+             ItcDecisions.apply(scope, context.client.id, "2026-09", [line.case_id], %{
+               "choice" => "claim"
+             })
 
-    assert [%{claim_state: nil}] = ItcCases.list_for_month(month)
-  end
-
-  test "explicit no-claim settles document gate without asserting document possession", context do
-    month = put_month!(context, "2026-04", [], [invoice(nil, "DOC-1", ~D[2026-04-12])])
-    [line] = ItcCases.list_for_month(month)
-    refute ItcCases.documents_settled?([line])
-
-    {:ok, result} =
-      ItcDecisions.exclude(
-        Scope.for_user(context.user),
-        context.client.id,
-        month.period,
-        [line.case_id],
-        "Not claiming"
-      )
-
-    assert ItcCases.documents_settled?(result.workings.case_lines)
-    assert [%{document_state: "unknown"}] = result.workings.case_lines
-  end
-
-  test "moving a portal source carries exclusion even when older sources keep original case alive",
-       context do
-    portal = invoice(nil, "MOVE-1", ~D[2026-04-12])
-    april = put_month!(context, "2026-04", [], [portal])
-    [original] = ItcCases.list_for_month(april)
-
-    {:ok, _} =
-      ItcDecisions.exclude(
-        Scope.for_user(context.user),
-        context.client.id,
-        april.period,
-        [original.case_id],
-        "Personal use"
-      )
-
-    may =
-      put_month!(context, "2026-05", [invoice("BOOK-OTHER", "OTHER", ~D[2026-05-12])], [portal])
-
-    target = Enum.find(ItcCases.list_for_month(may), &(&1.invoice_number == "OTHER"))
-
-    source =
-      Repo.one!(from s in ItcSource, where: s.client_month_id == ^may.id and s.kind == "gstr2b")
-
-    {:ok, _} =
-      ItcCases.move_source(
-        may,
-        source.id,
-        target.case_id,
-        "reconciliation_match",
-        context.user.id
-      )
-
-    moved = Enum.find(ItcCases.list_for_month(may), &(&1.case_id == target.case_id))
-    assert moved.claim_state == "not_claiming"
-    assert moved.claim_reason == "Personal use"
-    assert [%{claim_state: "not_claiming"}] = ItcCases.list_for_month(april)
-  end
-
-  test "rejecting a matched pair retains exclusion on separated portal record", context do
-    portal = invoice(nil, "SPLIT-1", ~D[2026-04-12])
-    book = Map.put(portal, "id", "BOOK-SPLIT")
-    month = put_month!(context, "2026-04", [book], [portal])
-    [line] = ItcCases.list_for_month(month)
-
-    {:ok, _} =
-      ItcDecisions.exclude(
-        Scope.for_user(context.user),
-        context.client.id,
-        month.period,
-        [line.case_id],
-        "Not claiming"
-      )
+    next_signoff =
+      Repo.insert!(%Nila.Gst.Filing.Signoff{
+        client_month_id: second.month.id,
+        org_id: context.org.id,
+        signed_by_id: context.user.id,
+        snapshot: %{}
+      })
 
     assert :ok =
-             ItcCases.separate_rejected_pairs(
+             ItcCases.reserve_claims(
+               next_signoff,
+               second.month,
+               second.workings.case_lines,
+               second.workings.itc
+             )
+
+    assert {:error, {:itc_already_allocated, [_]}} =
+             ItcCases.reserve_claims(
+               next_signoff,
+               second.month,
+               second.workings.case_lines,
+               second.workings.itc
+             )
+
+    claims =
+      Repo.all(from a in Nila.Gst.Purchase.ItcAllocation, where: a.case_id == ^line.case_id)
+
+    assert length(claims) == 2
+    assert Enum.sum(Enum.map(claims, & &1.tax_paise)) == 18000
+
+    assert [] =
+             ItcCases.list_for_month(%Nila.Gst.Purchase.Month{
+               org_id: context.org.id,
+               client_id: context.client.id,
+               period: "2026-10"
+             })
+  end
+
+  test "source moves cannot duplicate an already decided treatment", context do
+    portal = invoice(nil, "SOURCE-1", ~D[2026-04-12])
+
+    month =
+      put_month!(context, "2026-04", [invoice("BOOK-OTHER", "OTHER", ~D[2026-04-12])], [portal])
+
+    lines = ItcCases.list_for_month(month)
+    line = Enum.find(lines, & &1.has_gstr2b?)
+    target = Enum.find(lines, & &1.has_books?)
+
+    assert {:ok, _} =
+             ItcDecisions.apply(
+               Scope.for_user(context.user),
+               context.client.id,
+               month.period,
+               [line.case_id],
+               %{"choice" => "later", "later_reason" => "awaiting_document"}
+             )
+
+    source =
+      Repo.one!(
+        from source in ItcSource,
+          where: source.client_month_id == ^month.id and source.kind == "gstr2b"
+      )
+
+    assert {:error, :treatment_prevents_source_move} =
+             ItcCases.move_source(
                month,
-               [
-                 %{
-                   "verb" => "reject_pair",
-                   "books_id" => book["id"],
-                   "gstr2b_ref" => Reconciliation.gstr2b_ref(portal)
-                 }
-               ],
+               source.id,
+               target.case_id,
+               "reconciliation_match",
                context.user.id
              )
 
-    portal_line = Enum.find(ItcCases.list_for_month(month), & &1.current_gstr2b?)
-    assert portal_line.case_id != line.case_id
-    assert portal_line.claim_state == "not_claiming"
+    assert Enum.find(ItcCases.list_for_month(month), & &1.has_gstr2b?).case_id == line.case_id
+  end
 
-    {:ok, _} =
-      ItcDecisions.reopen(Scope.for_user(context.user), context.client.id, month.period, [
-        portal_line.case_id
-      ])
+  test "a signed carried balance prevents an earlier treatment changing", context do
+    portal = invoice(nil, "SIGNED-CARRY", ~D[2026-08-12])
+    august = put_month!(context, "2026-08", [], [portal])
+    [line] = ItcCases.list_for_month(august)
+    scope = Scope.for_user(context.user)
 
-    source =
-      Repo.one!(from s in ItcSource, where: s.client_month_id == ^month.id and s.kind == "gstr2b")
+    assert {:ok, _} =
+             ItcDecisions.apply(scope, context.client.id, "2026-08", [line.case_id], %{
+               "choice" => "later",
+               "later_reason" => "awaiting_document"
+             })
 
-    {:ok, _} =
-      ItcCases.move_source(
-        month,
-        source.id,
-        line.case_id,
-        "reconciliation_match",
-        context.user.id
+    september = put_month!(context, "2026-09", [], [])
+    lines = ItcCases.list_for_month(september)
+
+    Repo.insert!(%Nila.Gst.Filing.Signoff{
+      client_month_id: september.id,
+      org_id: context.org.id,
+      signed_by_id: context.user.id,
+      snapshot: %{"case_lines" => lines |> Jason.encode!() |> Jason.decode!()}
+    })
+
+    assert {:error, :later_signed_treatment} =
+             ItcDecisions.apply(scope, context.client.id, "2026-08", [line.case_id], %{
+               "choice" => "exclude",
+               "exclude_reason" => "personal"
+             })
+
+    assert {:error, :later_signed_treatment} =
+             ItcCases.record_event(august, line.case_id, "client_holds_document", context.user.id)
+
+    assert {:error, :later_signed_treatment} =
+             ItcCases.insert_event(august, line.case_id, "document_not_held", context.user.id)
+  end
+
+  test "a carried portal credit can receive its invoice in the current month", context do
+    portal = invoice(nil, "HELD-CARRY", ~D[2026-08-12])
+    august = put_month!(context, "2026-08", [], [portal])
+    [line] = ItcCases.list_for_month(august)
+    scope = Scope.for_user(context.user)
+
+    assert {:ok, _} =
+             ItcDecisions.apply(scope, context.client.id, "2026-08", [line.case_id], %{
+               "choice" => "later",
+               "later_reason" => "awaiting_document"
+             })
+
+    Repo.insert!(%Nila.Gst.Filing.Signoff{
+      client_month_id: august.id,
+      org_id: context.org.id,
+      signed_by_id: context.user.id,
+      snapshot: %{}
+    })
+
+    assert {:ok, %{workings: workings}} =
+             ItcDecisions.record_document(scope, context.client.id, "2026-09", line.case_id)
+
+    assert [held] = workings.case_lines
+    assert held.document_state == "held"
+    assert held.evidence_state == "complete"
+
+    assert {:ok, _} =
+             ItcDecisions.apply(scope, context.client.id, "2026-09", [line.case_id], %{
+               "choice" => "claim"
+             })
+
+    assert [historical] = ItcCases.list_for_month(august)
+    assert historical.document_state == "unknown"
+    assert historical.treatment == "later"
+
+    event =
+      Repo.one!(
+        from e in ItcCaseEvent,
+          where: e.case_id == ^line.case_id and e.event_type == "client_holds_document"
       )
 
-    restored = Enum.find(ItcCases.list_for_month(month), & &1.current_gstr2b?)
-    assert restored.claim_state == nil
+    assert event.decided_by_id == context.user.id
+    assert event.effective_client_month_id != august.id
+  end
+
+  test "resync cannot remove the source of a reviewed outstanding credit", context do
+    portal = invoice(nil, "KEEP-SOURCE", ~D[2026-08-12])
+    month = put_month!(context, "2026-08", [], [portal])
+    [line] = ItcCases.list_for_month(month)
+
+    assert {:ok, _} =
+             ItcDecisions.apply(
+               Scope.for_user(context.user),
+               context.client.id,
+               month.period,
+               [line.case_id],
+               %{"choice" => "later", "later_reason" => "awaiting_document"}
+             )
+
+    assert {:error, :treated_source_cannot_be_removed} =
+             ItcCases.sync_month(month, Reconciliation.reconcile([], []))
+
+    assert :ok = ItcCases.sync_month(month, month.recon)
+    assert [preserved] = ItcCases.list_for_month(month)
+    assert preserved.case_id == line.case_id
+    assert preserved.has_gstr2b?
+  end
+
+  test "claim directly reviews changed amounts without an intermediate deferral", context do
+    portal = invoice(nil, "REVIEW-CHANGED", ~D[2026-08-12])
+    month = put_month!(context, "2026-08", [Map.put(portal, "id", "CHANGED-BOOK")], [portal])
+    [line] = ItcCases.list_for_month(month)
+    scope = Scope.for_user(context.user)
+
+    assert {:ok, _} =
+             ItcDecisions.apply(scope, context.client.id, month.period, [line.case_id], %{
+               "choice" => "claim"
+             })
+
+    revised_heads = %{"cgst" => 10000, "sgst" => 10000, "igst" => 0, "cess" => 0}
+
+    for source <- Repo.all(from s in ItcSource, where: s.client_month_id == ^month.id) do
+      source
+      |> Ecto.Changeset.change(payload: Map.put(source.payload, "tax_paise", revised_heads))
+      |> Repo.update!()
+    end
+
+    assert [stale] = ItcCases.list_for_month(month)
+    assert stale.treatment_stale?
+    assert stale.claimable?
+
+    assert stale.treatment_heads["claim"] == %{
+             "cgst" => 9000,
+             "sgst" => 9000,
+             "igst" => 0,
+             "cess" => 0
+           }
+
+    assert {:ok, %{workings: workings}} =
+             ItcDecisions.apply(scope, context.client.id, month.period, [line.case_id], %{
+               "choice" => "claim"
+             })
+
+    assert [reviewed] = workings.case_lines
+    refute reviewed.treatment_stale?
+    assert reviewed.treatment_heads["claim"] == revised_heads
+
+    for source <- Repo.all(from s in ItcSource, where: s.client_month_id == ^month.id) do
+      source
+      |> Ecto.Changeset.change(
+        payload: Map.put(source.payload, "tax_paise", Nila.Gst.Purchase.ItcTreatment.zero())
+      )
+      |> Repo.update!()
+    end
+
+    assert [negative] =
+             ItcCases.list_for_month(%Nila.Gst.Purchase.Month{
+               org_id: context.org.id,
+               client_id: context.client.id,
+               period: "2026-09"
+             })
+
+    assert negative.treatment_stale?
+    assert negative.outstanding_heads["cgst"] == -10000
+  end
+
+  test "a blocked debit note does not block an invoice with the same supplier name and number",
+       context do
+    bill = invoice("INV-TYPE", "SAME-1", ~D[2026-08-12])
+
+    debit =
+      bill
+      |> Map.put("id", "DEBIT-TYPE")
+      |> Map.put("document_type", "debit_note")
+      |> Map.put("vendor_gstin", "27AAPFU0939F1ZV")
+
+    month =
+      put_month!(context, "2026-08", [bill, debit], [
+        Map.put(bill, "id", nil),
+        Map.put(debit, "id", nil)
+      ])
+
+    workings = Resolutions.workings(month)
+    assert Enum.any?(workings.itc["blocks"], &(&1["document_type"] == "debit_note"))
+    line = Enum.find(workings.case_lines, &(&1.document_type == "invoice"))
+    assert line.claimable?
+
+    assert {:ok, %{workings: updated}} =
+             ItcDecisions.apply(
+               Scope.for_user(context.user),
+               context.client.id,
+               month.period,
+               [line.case_id],
+               %{"choice" => "claim"}
+             )
+
+    assert updated.itc["current_claim_paise"] == 18_000
+  end
+
+  test "ITC blocks follow source rows after invoice identifiers are corrected" do
+    line = %{
+      id: "itc-case-12",
+      books_invoices: [%{"id" => "BOOK-12"}],
+      invoice_number: "ORIGINAL",
+      supplier_gstin: "33AAACS9999A1Z9"
+    }
+
+    block = %{
+      "state" => "blocked",
+      "source_row_ids" => ["BOOK-12"],
+      "invoice_number" => "CORRECTED",
+      "vendor" => "Corrected supplier"
+    }
+
+    assert ItcCases.block_applies?(block, line)
+    assert ItcCases.block_applies?(%{block | "source_row_ids" => ["itc-case-12"]}, line)
+    refute ItcCases.block_applies?(%{block | "source_row_ids" => ["OTHER-BOOK"]}, line)
+    refute ItcCases.block_applies?(%{block | "state" => "allowed"}, line)
+  end
+
+  test "supplier name spelling cannot bypass an ITC block", context do
+    bill =
+      invoice("BLOCK-NAME", "BLOCK-1", ~D[2026-08-12])
+      |> Map.put("vendor_gstin", "27AAPFU0939F1ZV")
+
+    portal = bill |> Map.put("id", nil) |> Map.put("vendor_name", "SHARMA STEELS PRIVATE LIMITED")
+    month = put_month!(context, "2026-08", [bill], [portal])
+    workings = Resolutions.workings(month)
+    assert Enum.any?(workings.itc["blocks"], &(&1["state"] in ~w(blocked recommended)))
+    [line] = workings.case_lines
+    refute line.claimable?
+
+    assert {:error, :claim_not_available} =
+             ItcDecisions.apply(
+               Scope.for_user(context.user),
+               context.client.id,
+               month.period,
+               [line.case_id],
+               %{"choice" => "claim"}
+             )
+
+    {:ok, payload} =
+      Nila.Gst.Purchase.ItcTreatment.build(line.outstanding_heads, %{"choice" => "claim"})
+
+    Repo.insert!(%ItcCaseEvent{
+      case_id: line.case_id,
+      effective_client_month_id: month.id,
+      org_id: context.org.id,
+      decided_by_id: context.user.id,
+      event_type: "treatment_decided",
+      payload: payload
+    })
+
+    fresh = Resolutions.workings(month)
+
+    signoff =
+      Repo.insert!(%Nila.Gst.Filing.Signoff{
+        client_month_id: month.id,
+        org_id: context.org.id,
+        signed_by_id: context.user.id,
+        snapshot: %{}
+      })
+
+    assert {:error, {:itc_already_allocated, [_]}} =
+             ItcCases.reserve_claims(signoff, month, fresh.case_lines, fresh.itc)
   end
 
   defp put_month!(context, period, books, gstr2b) do

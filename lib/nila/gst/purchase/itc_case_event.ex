@@ -7,8 +7,7 @@ defmodule Nila.Gst.Purchase.ItcCaseEvent do
     document_not_held
     excluded_not_ours
     reopened
-    not_claiming_itc
-    claim_reopened
+    treatment_decided
     case_merged
     case_merge_reversed
   )
@@ -32,5 +31,35 @@ defmodule Nila.Gst.Purchase.ItcCaseEvent do
     |> cast(attrs, [:event_type, :payload])
     |> validate_required([:case_id, :effective_client_month_id, :org_id, :event_type])
     |> validate_inclusion(:event_type, @event_types)
+    |> validate_treatment()
+  end
+
+  defp validate_treatment(changeset) do
+    if get_field(changeset, :event_type) == "treatment_decided" do
+      changeset = validate_required(changeset, [:decided_by_id])
+      payload = get_field(changeset, :payload) || %{}
+
+      result =
+        if Nila.Gst.Purchase.ItcTreatment.valid?(payload["opening_heads"]),
+          do: Nila.Gst.Purchase.ItcTreatment.build(payload["opening_heads"], payload),
+          else: {:error, :invalid_amounts}
+
+      case result do
+        {:ok, built} ->
+          if Map.take(built, ~w(claim later exclude)) ==
+               Map.take(payload, ~w(claim later exclude)),
+             do: changeset,
+             else: add_error(changeset, :payload, "amounts must match the treatment")
+
+        _ ->
+          add_error(
+            changeset,
+            :payload,
+            "must allocate every tax head and give structured reasons"
+          )
+      end
+    else
+      changeset
+    end
   end
 end

@@ -2,7 +2,7 @@ defmodule Nila.Gst.Purchase.ResolutionsTest do
   use Nila.DataCase, async: true
 
   import Nila.AccountsFixtures
-  import Nila.GstFixtures, only: [settle_register!: 2]
+  import Nila.GstFixtures, only: [settle_register!: 2, choose_itc_treatment!: 3]
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
@@ -150,6 +150,13 @@ defmodule Nila.Gst.Purchase.ResolutionsTest do
 
   test "a live purchase signoff rejects new decisions", context do
     month = settle_register!(context.month, context.scope.user.id)
+
+    month =
+      choose_itc_treatment!(month, context.scope, %{
+        "choice" => "later",
+        "later_reason" => "awaiting_2b"
+      })
+
     settled = Resolutions.list(context.month.id)
     assert {:ok, _signoff} = Signoffs.sign_off(month, context.scope)
 
@@ -163,6 +170,46 @@ defmodule Nila.Gst.Purchase.ResolutionsTest do
     # Nothing new past the signature: the decisions that settled the register
     # before it are exactly what remains.
     assert Resolutions.list(context.month.id) == settled
+  end
+
+  test "a later signed carry prevents changing its original purchase evidence", context do
+    original = settle_register!(context.month, context.user.id)
+
+    choose_itc_treatment!(original, context.scope, %{
+      "choice" => "later",
+      "later_reason" => "awaiting_2b"
+    })
+
+    {:ok, later} =
+      Months.upsert(%{
+        org_id: context.org.id,
+        client_id: context.client.id,
+        period: "2025-11",
+        state: "worked",
+        recon: %{},
+        register_rows: [],
+        summary: %{}
+      })
+
+    later =
+      choose_itc_treatment!(later, context.scope, %{
+        "choice" => "later",
+        "later_reason" => "awaiting_2b"
+      })
+
+    assert {:ok, signoff} = Signoffs.sign_off(later, context.scope)
+    before = Resolutions.list(original.id)
+
+    assert {:error, :later_signed_treatment} =
+             Resolutions.record_and_refresh(
+               original,
+               %{"verb" => "reopen", "books_id" => "books-1"},
+               context.user.id
+             )
+
+    assert Resolutions.list(original.id) == before
+    assert {:ok, persisted} = Signoffs.latest_signoff(later.id)
+    assert persisted.snapshot == json_roundtrip(signoff.snapshot)
   end
 
   defp json_roundtrip(value), do: value |> Jason.encode!() |> Jason.decode!()

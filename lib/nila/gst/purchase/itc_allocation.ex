@@ -29,7 +29,24 @@ defmodule Nila.Gst.Purchase.ItcAllocation do
       :tax_paise
     ])
     |> validate_inclusion(:kind, ["original_claim"])
-    |> validate_number(:tax_paise, greater_than_or_equal_to: 0)
-    |> unique_constraint([:case_id, :kind], name: :gst_itc_allocations_live_entitlement_index)
+    |> validate_number(:tax_paise, greater_than: 0)
+    |> validate_heads()
+    |> unique_constraint([:case_id, :client_month_id, :kind],
+      name: :gst_itc_allocations_live_entitlement_index
+    )
+  end
+
+  defp validate_heads(changeset) do
+    heads = get_field(changeset, :tax_heads)
+
+    if Nila.Gst.Purchase.ItcTreatment.valid?(heads) and
+         Nila.Gst.Purchase.ItcTreatment.sum(heads) == get_field(changeset, :tax_paise),
+       do: changeset,
+       else:
+         add_error(
+           changeset,
+           :tax_heads,
+           "must balance the claim amount with nonnegative whole paise"
+         )
   end
 end

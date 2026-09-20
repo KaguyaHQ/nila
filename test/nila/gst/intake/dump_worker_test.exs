@@ -5,7 +5,7 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
   import Nila.AccountsFixtures
 
   import Nila.GstFixtures,
-    only: [answer_sales_issues!: 2, settle_register!: 2]
+    only: [answer_sales_issues!: 2, settle_register!: 2, choose_itc_treatment!: 3]
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
@@ -305,6 +305,10 @@ defmodule Nila.Gst.Intake.DumpWorkerTest do
     assert :ok = run(first)
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
     month = settle_register!(month, scope.user.id)
+
+    month =
+      choose_itc_treatment!(month, scope, %{"choice" => "later", "later_reason" => "awaiting_2b"})
+
     {:ok, _signoff} = Signoffs.sign_off(month, scope)
     assert {:ok, _filed} = Signoffs.mark_filed(month, scope)
 

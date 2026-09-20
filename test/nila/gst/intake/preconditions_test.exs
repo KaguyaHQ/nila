@@ -3,7 +3,7 @@ defmodule Nila.Gst.Intake.PreconditionsTest do
   use Oban.Testing, repo: Nila.Repo
 
   import Nila.AccountsFixtures
-  import Nila.GstFixtures, only: [settle_register!: 2]
+  import Nila.GstFixtures, only: [settle_register!: 2, choose_itc_treatment!: 3]
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
@@ -206,6 +206,13 @@ defmodule Nila.Gst.Intake.PreconditionsTest do
     assert :ok = run(bring_in(context, "2026-04", bills))
     {:ok, april} = ClientMonths.get_by_period(context.org.id, context.client.id, "2026-04")
     april = settle_register!(april, context.scope.user.id)
+
+    april =
+      choose_itc_treatment!(april, context.scope, %{
+        "choice" => "later",
+        "later_reason" => "awaiting_2b"
+      })
+
     {:ok, _signoff} = Signoffs.sign_off(april, context.scope)
     {:ok, _filed} = Signoffs.mark_filed(april, context.scope)
 
@@ -319,6 +326,13 @@ defmodule Nila.Gst.Intake.PreconditionsTest do
     assert :ok = run(bring_in(context, "2026-04", april_bills(4)))
     {:ok, april} = ClientMonths.get_by_period(context.org.id, context.client.id, "2026-04")
     april = settle_register!(april, context.scope.user.id)
+
+    april =
+      choose_itc_treatment!(april, context.scope, %{
+        "choice" => "later",
+        "later_reason" => "awaiting_2b"
+      })
+
     {:ok, _signoff} = Signoffs.sign_off(april, context.scope)
 
     dump =

@@ -10,6 +10,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
     ItcCase,
     ItcCaseEvent,
     ItcSource,
+    ItcTreatment,
     ItcSourceCaseEvent,
     Month,
     Reconciliation,
@@ -20,7 +21,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
   alias Nila.Repo
 
   @decision_events ~w(client_holds_document document_not_held excluded_not_ours reopened)
-  @line_keys ~w(case_id id identity_state merged? vendor supplier_gstin document_type invoice_number invoice_date tax_heads tax_paise books_periods gstr2b_periods books_invoices has_sources? has_books? has_gstr2b? current_books? current_gstr2b? evidence_state eligibility_state settlement_state document_state claim_state claim_reason asked_at allocation_id source_refs)
+  @line_keys ~w(case_id id identity_state merged? vendor supplier_gstin document_type invoice_number invoice_date tax_heads tax_paise books_periods gstr2b_periods books_invoices has_sources? has_books? has_gstr2b? current_books? current_gstr2b? evidence_state eligibility_state settlement_state document_state asked_at allocation_id source_refs treatment treatment_heads outstanding_heads explicit_treatment? later_reason exclude_reason treatment_note treatment_stale? claimable? claim_block_reason origin_period reverse_charge?)
 
   def sync_month(%Month{} = month, recon) do
     sources =
@@ -38,41 +39,62 @@ defmodule Nila.Gst.Purchase.ItcCases do
     sources_by_key = Map.new(existing_sources, &{{&1.kind, &1.source_ref}, &1})
     memberships = current_memberships(existing_sources)
 
-    memberships =
-      Enum.reduce(existing_sources, memberships, fn source, current ->
-        membership = current[source.id]
+    with :ok <- protect_source_removals(existing_sources, memberships, desired) do
+      memberships =
+        Enum.reduce(existing_sources, memberships, fn source, current ->
+          membership = current[source.id]
 
-        if not MapSet.member?(desired, {source.kind, source.source_ref}) and
-             match?(%{action: "linked"}, membership) do
-          event =
-            append_membership_event!(
-              source,
-              membership.case_id,
-              month,
-              "unlinked",
-              "source_removed"
-            )
+          if not MapSet.member?(desired, {source.kind, source.source_ref}) and
+               match?(%{action: "linked"}, membership) do
+            event =
+              append_membership_event!(
+                source,
+                membership.case_id,
+                month,
+                "unlinked",
+                "source_removed"
+              )
 
-          Map.put(current, source.id, event)
-        else
-          current
-        end
+            Map.put(current, source.id, event)
+          else
+            current
+          end
+        end)
+
+      matching = matching_state(month, sources)
+
+      {sources_by_key, memberships, _matching} =
+        Enum.reduce(sources, {sources_by_key, memberships, matching}, fn source_attrs, synced ->
+          sync_source!(month, source_attrs, synced)
+        end)
+
+      recon
+      |> pair_entries()
+      |> Enum.reduce(memberships, fn entry, current ->
+        link_pair!(month, entry["books"], entry["gstr2b"], sources_by_key, current)
       end)
 
-    matching = matching_state(month, sources)
+      :ok
+    end
+  end
 
-    {sources_by_key, memberships, _matching} =
-      Enum.reduce(sources, {sources_by_key, memberships, matching}, fn source_attrs, synced ->
-        sync_source!(month, source_attrs, synced)
-      end)
+  defp protect_source_removals(sources, memberships, desired) do
+    ids =
+      for source <- sources,
+          not MapSet.member?(desired, {source.kind, source.source_ref}),
+          membership = memberships[source.id],
+          membership && membership.action == "linked",
+          do: membership.case_id
 
-    recon
-    |> pair_entries()
-    |> Enum.reduce(memberships, fn entry, current ->
-      link_pair!(month, entry["books"], entry["gstr2b"], sources_by_key, current)
-    end)
+    ids = Enum.sort(Enum.uniq(ids))
+    Repo.all(from c in ItcCase, where: c.id in ^ids, order_by: c.id, lock: "FOR UPDATE")
 
-    :ok
+    if Repo.exists?(
+         from e in ItcCaseEvent, where: e.case_id in ^ids and e.event_type == "treatment_decided"
+       ) or
+         Repo.exists?(from a in ItcAllocation, where: a.case_id in ^ids and is_nil(a.revoked_at)),
+       do: {:error, :treated_source_cannot_be_removed},
+       else: :ok
   end
 
   def list_for_month(%Month{} = month) do
@@ -231,9 +253,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
   def documents_settled?(case_lines) do
     case_lines
     |> document_cases()
-    |> Enum.all?(
-      &(Map.get(&1, :claim_state) == "not_claiming" or &1.document_state in ~w(held not_held))
-    )
+    |> Enum.all?(&(&1.treatment != "undecided" or &1.document_state in ~w(held not_held)))
   end
 
   def carried_books(case_lines) do
@@ -244,7 +264,6 @@ defmodule Nila.Gst.Purchase.ItcCases do
 
   def claim_rows(case_lines, flags_by_id) do
     for line <- case_lines,
-        line.current_gstr2b?,
         not line.current_books?,
         line.has_books?,
         line.evidence_state == "complete",
@@ -261,6 +280,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
         "cgst_paise" => line.tax_heads["cgst"],
         "sgst_paise" => line.tax_heads["sgst"],
         "igst_paise" => line.tax_heads["igst"],
+        "cess_paise" => line.tax_heads["cess"],
         "bucket" => "matched",
         "flags" => Enum.map(flags, &Map.take(&1, ["code", "reason", "section"]))
       }
@@ -311,14 +331,16 @@ defmodule Nila.Gst.Purchase.ItcCases do
              lock: "FOR UPDATE"
          ) do
       %ItcCase{} = itc_case ->
-        %ItcCaseEvent{
-          case_id: itc_case.id,
-          effective_client_month_id: month.id,
-          org_id: month.org_id,
-          decided_by_id: decided_by_id
-        }
-        |> ItcCaseEvent.changeset(%{event_type: event_type, payload: payload})
-        |> Repo.insert()
+        with :ok <- refuse_later_signed_treatment(month, [itc_case.id]) do
+          %ItcCaseEvent{
+            case_id: itc_case.id,
+            effective_client_month_id: month.id,
+            org_id: month.org_id,
+            decided_by_id: decided_by_id
+          }
+          |> ItcCaseEvent.changeset(%{event_type: event_type, payload: payload})
+          |> Repo.insert()
+        end
 
       nil ->
         {:error, :not_found}
@@ -326,55 +348,74 @@ defmodule Nila.Gst.Purchase.ItcCases do
   end
 
   def reserve_claims(%Signoff{} = signoff, %Month{} = month, case_lines, itc) do
-    current =
-      Enum.filter(case_lines, &(&1.current_gstr2b? and &1.document_type != "credit_note"))
+    current = Enum.filter(case_lines, &(ItcTreatment.sum(&1.treatment_heads["claim"]) > 0))
+    ids = case_lines |> Enum.map(& &1.case_id) |> Enum.sort()
 
-    case_ids = current |> Enum.map(& &1.case_id) |> Enum.uniq() |> Enum.sort()
-
-    Enum.each(case_ids, fn case_id ->
-      Repo.one!(from c in ItcCase, where: c.id == ^case_id, lock: "FOR UPDATE")
+    Enum.each(ids, fn id ->
+      Repo.one!(from c in ItcCase, where: c.id == ^id, lock: "FOR UPDATE")
     end)
 
-    allocated_ids =
-      Repo.all(
-        from a in ItcAllocation,
-          where: a.case_id in ^case_ids and is_nil(a.revoked_at),
-          select: a.case_id
-      )
-      |> MapSet.new()
+    fresh = list_for_month(month) |> Map.new(&{&1.case_id, &1})
 
-    ambiguous = Enum.filter(current, &(&1.identity_state == "ambiguous"))
+    allocations =
+      Repo.all(from a in ItcAllocation, where: a.case_id in ^ids and is_nil(a.revoked_at))
+      |> Enum.group_by(& &1.case_id)
 
-    already_allocated =
+    invalid =
       Enum.filter(current, fn line ->
-        line.evidence_state == "complete" and MapSet.member?(allocated_ids, line.case_id)
+        now = fresh[line.case_id]
+
+        used =
+          Enum.reduce(
+            Map.get(allocations, line.case_id, []),
+            ItcTreatment.zero(),
+            &ItcTreatment.add(&2, ItcTreatment.heads(&1.tax_heads))
+          )
+
+        blocked = Enum.any?(itc["blocks"] || [], &block_applies?(&1, line))
+
+        now == nil or not now.claimable? or blocked or now.treatment_heads != line.treatment_heads or
+          not ItcTreatment.valid?(
+            ItcTreatment.subtract(
+              line.tax_heads,
+              ItcTreatment.add(used, line.treatment_heads["claim"])
+            )
+          )
+      end)
+
+    undecided? =
+      Enum.any?(
+        case_lines,
+        &(&1.document_type in ~w(invoice debit_note) and &1.treatment == "undecided" and
+            ItcTreatment.sum(&1.outstanding_heads) > 0)
+      )
+
+    stale? =
+      Enum.any?(case_lines, fn line ->
+        now = fresh[line.case_id]
+
+        line.treatment_stale? or now == nil or now.treatment_stale? or
+          now.treatment_heads != line.treatment_heads or
+          now.outstanding_heads != line.outstanding_heads
       end)
 
     cond do
-      ambiguous != [] ->
-        {:error, {:ambiguous_itc_cases, Enum.map(ambiguous, & &1.case_id)}}
+      Enum.any?(Map.values(fresh), &(Nila.Gst.Cess.validate_treatment(&1.treatment_heads) != :ok)) ->
+        {:error, :cess_review_required}
 
-      already_allocated != [] ->
-        {:error, {:itc_already_allocated, Enum.map(already_allocated, & &1.case_id)}}
+      stale? ->
+        {:error, :itc_treatment_changed}
+
+      undecided? ->
+        {:error, :itc_treatment_required}
+
+      invalid != [] ->
+        {:error, {:itc_already_allocated, Enum.map(invalid, & &1.case_id)}}
 
       true ->
-        blocked =
-          for block <- itc["blocks"] || [], block["state"] == "blocked", into: MapSet.new() do
-            {block["document_type"] || "invoice", block["vendor"],
-             InvoiceNumber.key(block["invoice_number"])}
-          end
+        Enum.each(current, fn line ->
+          heads = line.treatment_heads["claim"]
 
-        current
-        |> Enum.filter(fn line ->
-          line.evidence_state == "complete" and line.settlement_state == "available" and
-            line.claim_state != "not_claiming" and
-            not MapSet.member?(
-              blocked,
-              {line.document_type, line.vendor, InvoiceNumber.key(line.invoice_number)}
-            )
-        end)
-        |> Enum.sort_by(& &1.case_id)
-        |> Enum.each(fn line ->
           %ItcAllocation{
             case_id: line.case_id,
             client_month_id: month.id,
@@ -383,14 +424,42 @@ defmodule Nila.Gst.Purchase.ItcCases do
           }
           |> ItcAllocation.changeset(%{
             kind: "original_claim",
-            tax_heads: line.tax_heads,
-            tax_paise: line.tax_paise
+            tax_heads: heads,
+            tax_paise: ItcTreatment.sum(heads)
           })
           |> Repo.insert!()
         end)
 
         :ok
     end
+  end
+
+  def refuse_later_signed_treatment(%Month{} = month, case_ids) do
+    snapshots =
+      Repo.all(
+        from s in Signoff,
+          join: m in assoc(s, :client_month),
+          where:
+            m.org_id == ^month.org_id and m.client_id == ^month.client_id and
+              m.period > ^month.period and is_nil(s.revoked_at),
+          select: s.snapshot
+      )
+
+    ids = MapSet.new(case_ids)
+
+    if Enum.any?(snapshots, fn snapshot ->
+         Enum.any?(snapshot["case_lines"] || [], fn line ->
+           MapSet.member?(ids, line["case_id"] || line[:case_id])
+         end)
+       end), do: {:error, :later_signed_treatment}, else: :ok
+  end
+
+  @doc "Associate blocking checks with source records, independent of corrected names or invoice identifiers."
+  def block_applies?(block, line) do
+    ids = [line.id | Enum.map(line.books_invoices, & &1["id"])]
+
+    block["state"] in ~w(blocked recommended) and
+      Enum.any?(block["source_row_ids"] || [], &(&1 != nil and &1 in ids))
   end
 
   def release_allocations!(%Signoff{} = signoff) do
@@ -624,11 +693,23 @@ defmodule Nila.Gst.Purchase.ItcCases do
       if membership && membership.action == "linked" && membership.case_id == target_case.id do
         {:ok, %{from_case_id: target_case.id, to_case_id: target_case.id}}
       else
-        if membership && membership.action == "linked" do
-          if source.kind == "gstr2b" do
-            carry_claim_exclusion!(month, membership.case_id, target_case.id)
-          end
+        ids = Enum.reject([membership && membership.case_id, target_case.id], &is_nil/1)
 
+        Enum.each(Enum.sort(ids), fn id ->
+          Repo.one!(from c in ItcCase, where: c.id == ^id, lock: "FOR UPDATE")
+        end)
+
+        if Repo.exists?(
+             from e in ItcCaseEvent,
+               where: e.case_id in ^ids and e.event_type == "treatment_decided"
+           ) or
+             Repo.exists?(
+               from a in ItcAllocation, where: a.case_id in ^ids and is_nil(a.revoked_at)
+             ) do
+          Repo.rollback(:treatment_prevents_source_move)
+        end
+
+        if membership && membership.action == "linked" do
           append_membership_event!(
             source,
             membership.case_id,
@@ -660,39 +741,6 @@ defmodule Nila.Gst.Purchase.ItcCases do
   end
 
   defp event_order(event), do: {DateTime.to_unix(event.inserted_at, :microsecond), event.id}
-
-  defp carry_claim_exclusion!(month, source_case_id, target_case_id) do
-    event = latest_claim_event(month, source_case_id)
-    target = latest_claim_event(month, target_case_id)
-
-    if event && claim_origin(event) > claim_origin(target) do
-      {:ok, _} =
-        insert_event(
-          month,
-          target_case_id,
-          event.event_type,
-          event.decided_by_id,
-          event.payload
-          |> Map.put("carried_from_case_id", source_case_id)
-          |> Map.put("claim_decision_event_id", claim_origin(event))
-        )
-    end
-  end
-
-  defp claim_origin(nil), do: 0
-  defp claim_origin(event), do: event.payload["claim_decision_event_id"] || event.id
-
-  defp latest_claim_event(month, source_case_id) do
-    Repo.one(
-      from e in ItcCaseEvent,
-        join: m in assoc(e, :effective_client_month),
-        where:
-          e.case_id == ^source_case_id and m.period <= ^month.period and
-            e.event_type in ["not_claiming_itc", "claim_reopened"],
-        order_by: [desc: e.inserted_at, desc: e.id],
-        limit: 1
-    )
-  end
 
   defp append_membership_event!(
          source,
@@ -937,13 +985,6 @@ defmodule Nila.Gst.Purchase.ItcCases do
     gstr2b = Enum.filter(sources, &(&1.kind == "gstr2b"))
     decision = latest_decision(events)
 
-    claim =
-      events
-      |> Enum.filter(&(&1.event_type in ~w(not_claiming_itc claim_reopened)))
-      |> Enum.max_by(&event_order/1, fn -> nil end)
-
-    not_claiming? = match?(%{event_type: "not_claiming_itc"}, claim)
-
     allocation =
       itc_case.allocations
       |> Enum.filter(&(&1.client_month.period <= month.period))
@@ -970,7 +1011,9 @@ defmodule Nila.Gst.Purchase.ItcCases do
     basis = List.last(gstr2b) || List.last(books)
     payload = (basis && basis.payload) || %{}
 
-    %{
+    line = %{
+      origin_period:
+        sources |> Enum.map(& &1.client_month.period) |> Enum.min(fn -> month.period end),
       case_id: itc_case.id,
       id: "itc-case-#{itc_case.id}",
       identity_state: identity_state_as_of(itc_case, all_events, events, merged?),
@@ -980,6 +1023,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
       document_type: itc_case.document_type,
       invoice_number: itc_case.invoice_number,
       invoice_date: payload["invoice_date"],
+      reverse_charge?: payload["reverse_charge"] == true,
       tax_heads: tax_heads(payload),
       tax_paise: tax_total(payload),
       books_periods: Enum.map(books, & &1.client_month.period) |> Enum.uniq(),
@@ -998,8 +1042,6 @@ defmodule Nila.Gst.Purchase.ItcCases do
         ),
       settlement_state: settlement_state,
       document_state: document_state,
-      claim_state: if(not_claiming?, do: "not_claiming"),
-      claim_reason: if(not_claiming?, do: claim.payload["reason"]),
       asked_at: latest_event_at(events, "documents_requested"),
       allocation_id: allocation && allocation.id,
       source_refs:
@@ -1009,6 +1051,36 @@ defmodule Nila.Gst.Purchase.ItcCases do
           {kind, Map.new(occurrences, &{&1.client_month.period, &1.source_ref})}
         end)
     }
+
+    treatment = ItcTreatment.project(line.tax_heads, events, itc_case.allocations, month.period)
+
+    block =
+      cond do
+        line.document_type not in ~w(invoice debit_note) ->
+          "Only invoices and debit notes can be claimed"
+
+        line.identity_state != "confirmed" ->
+          "Resolve the invoice match first"
+
+        line.settlement_state == "excluded" ->
+          "This purchase was excluded"
+
+        not has_gstr2b? ->
+          "Waiting for GSTR-2B"
+
+        evidence_state != "complete" ->
+          "Waiting for the invoice"
+
+        books != [] and gstr2b != [] and tax_heads(List.last(books).payload) != line.tax_heads ->
+          "Resolve the tax amount mismatch first"
+
+        true ->
+          nil
+      end
+
+    line
+    |> Map.merge(treatment)
+    |> Map.merge(%{claimable?: is_nil(block), claim_block_reason: block})
   end
 
   defp merged_as_of?(events) do
@@ -1089,8 +1161,8 @@ defmodule Nila.Gst.Purchase.ItcCases do
   defp relevant?(line) do
     not line.merged? and line.has_sources? and
       (line.current_books? or line.current_gstr2b? or
-         (line.settlement_state not in ~w(claimed excluded reversed) and
-            is_nil(line.allocation_id)))
+         (line.document_type != "credit_note" and
+            (line.treatment_stale? or ItcTreatment.sum(line.outstanding_heads) > 0)))
   end
 
   defp state_rank(%{settlement_state: "available"}), do: 0
@@ -1119,7 +1191,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
   defp date(_), do: nil
 
   defp tax_heads(invoice) do
-    Map.merge(%{"igst" => 0, "cgst" => 0, "sgst" => 0}, invoice["tax_paise"] || %{})
+    ItcTreatment.heads(invoice["tax_paise"])
   end
 
   defp tax_total(invoice), do: invoice |> tax_heads() |> Map.values() |> Enum.sum()

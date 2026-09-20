@@ -2,7 +2,7 @@ defmodule Nila.Gst.Filing.Gstr3b do
   @moduledoc """
   GSTR-3B assembly: the monthly summary return, computed from the two heads
   that already exist — outward liability (GSTR-1 derivation) and the ITC
-  position (2B reconciliation + block decisions) — plus reverse-charge rows
+  position (reviewed current-period treatment) — plus reverse-charge rows
   read straight off the GSTR-2B.
 
   Pure and paise-integer throughout, like the rest of the engine. The output
@@ -16,24 +16,17 @@ defmodule Nila.Gst.Filing.Gstr3b do
     * **3.1(d)** — inward supplies liable to reverse charge. Derived from 2B
       rows with `reverse_charge` — the vendor reported the supply, the client
       owes the tax in cash and earns the matching credit in 4A(3).
-    * **Table 4** — 4A(3) RCM credit, 4A(5) all other ITC (the 2B ceiling
-      minus RCM), 4B reversals from *human-confirmed* blocks only (Nila
-      recommends; the return moves on confirmation): section 17(5) blocks in
-      4B(1), duplicate-excess and state-mismatch in 4B(2). Credit the client
-      has attested they hold no tax invoice for (s.16(2)(a)) and positive-valued
-      supplier credit notes also reverse in 4B(2) — 4A(5) is auto-populated from
-      the 2B on the portal, so the claim
-      is withheld by reversing, not by shrinking what was availed. Only blocks
-      *inside* the ceiling reverse; a books bill the 2B never reported was
-      never availed. 4C = 4A − 4B, and at sign-off 4C ties to the ITC bridge's
-      claimable figure.
+    * **Table 4** — current-period claim comes from explicit case treatment,
+      including credit carried from earlier periods. Supplier credit notes
+      retain their 4B(2) reversal. Credit marked for later is not described as
+      a statutory reversal or reclaim event.
     * **6.1** — payment. Whole-rupee rounding (the portal's convention), then
       Rule 88A set-off: IGST credit first against IGST, spillover to CGST then
       SGST; CGST credit to CGST then IGST; SGST credit to SGST then IGST;
       never CGST↔SGST. RCM liability is cash-only — credit cannot pay it.
 
-  Deliberately out of scope (single-month engine): Rule 37 temporary
-  reversals / 4D(1) reclaims need cross-month state; zero-rated / nil-rated /
+  Deliberately out of scope: Rule 37 temporary reversals and 4D(1)
+  reclaims need statutory event history; zero-rated / nil-rated /
   exempt outward (3.1 b/c/e) need data no current client has.
   """
 
@@ -43,40 +36,42 @@ defmodule Nila.Gst.Filing.Gstr3b do
   alias Nila.Gst.Sales.Gstr1
 
   @heads ~w(igst cgst sgst)
+  @itc_heads ~w(igst cgst sgst cess)
   @zero %{"igst" => 0, "cgst" => 0, "sgst" => 0}
-  @reversal_4b1 ~w(personal_expense_17_5)
+  @zero_itc Map.put(@zero, "cess", 0)
 
   @doc """
   Assembles the return.
 
     * `liability` — 3.1(a) as `%{"txval" | "igst" | "cgst" | "sgst" => paise}`
     * `recon` — the effective recon (RCM rows and the ITC ceiling live here)
-    * `itc` — `ItcPosition.compute/3` output (blocks carry `tax_heads`/`state`)
+    * `itc` — `ItcPosition.compute/4` output with `current_claim_heads`
   """
   def assemble(liability, recon, itc), do: assemble(liability, recon, itc, [])
 
   def assemble(liability, recon, itc, interstate_unregistered) do
     {rcm_txval, rcm_tax} = rcm_position(recon)
-    all_other_4a5 = subtract(ItcPosition.ceiling_heads(recon), rcm_tax)
+    assemble_treated(liability, recon, itc, interstate_unregistered, rcm_txval, rcm_tax)
+  end
 
-    {reversed_4b1, blocked_4b2} =
-      cap_reversals(
-        blocked_heads(itc, &(&1 in @reversal_4b1)),
-        blocked_heads(itc, &(&1 not in @reversal_4b1)),
-        itc
-      )
+  defp assemble_treated(liability, recon, itc, interstate_unregistered, rcm_txval, rcm_tax) do
+    claim = itc["current_claim_heads"]
+    credit_notes = ItcPosition.credit_note_reversal_heads(recon)
+    # The treatment is the credit being claimed this month, including older
+    # carried credit. Deferral is not a statutory reversal or reclaim event.
+    # Credit notes retain their existing 4B(2) treatment.
+    claimed_rcm =
+      Map.new(@itc_heads, fn head -> {head, get_in(itc, ["rcm_claim_heads", head]) || 0} end)
 
-    reversed_4b2 =
-      blocked_4b2
-      |> add(itc["unsubstantiated_withheld_heads"] || @zero)
-      |> add(itc["not_claiming_heads"] || @zero)
-      |> add(ItcPosition.credit_note_reversal_heads(recon))
+    all_other_4a5 =
+      claim
+      |> subtract(claimed_rcm)
+      |> Map.put("cess", (claim["cess"] || 0) - claimed_rcm["cess"])
 
     net_itc_4c =
-      rcm_tax
-      |> add(all_other_4a5)
-      |> subtract(reversed_4b1)
-      |> subtract(reversed_4b2)
+      claim
+      |> subtract(credit_notes)
+      |> Map.put("cess", (claim["cess"] || 0) - (credit_notes["cess"] || 0))
 
     %{
       "liability_31" => %{
@@ -89,10 +84,10 @@ defmodule Nila.Gst.Filing.Gstr3b do
         "uin" => []
       },
       "itc" => %{
-        "rcm_4a3" => rcm_tax,
+        "rcm_4a3" => claimed_rcm,
         "all_other_itc_4a5" => all_other_4a5,
-        "reversed_4b1" => reversed_4b1,
-        "reversed_4b2" => reversed_4b2,
+        "reversed_4b1" => @zero_itc,
+        "reversed_4b2" => credit_notes,
         "net_itc_4c" => net_itc_4c
       },
       "setoff_61" => setoff(liability, rcm_tax, net_itc_4c)
@@ -166,7 +161,7 @@ defmodule Nila.Gst.Filing.Gstr3b do
 
   @doc "Whether supplier credit-note reversals exceed available ITC in this month."
   def negative_net_itc?(%{"itc" => %{"net_itc_4c" => net}}) do
-    Enum.any?(@heads, &((net[&1] || 0) < 0))
+    Enum.any?(@itc_heads, &((net[&1] || 0) < 0))
   end
 
   def negative_net_itc?(_gstr3b), do: false
@@ -183,43 +178,6 @@ defmodule Nila.Gst.Filing.Gstr3b do
       rows |> Enum.map(&(&1["taxable_paise"] || 0)) |> Enum.sum(),
       rows |> Enum.map(&(&1["tax_paise"] || %{})) |> ItcPosition.sum_heads()
     }
-  end
-
-  # -- ITC reversals --------------------------------------------------------
-
-  # `ItcPosition.partition/3` clamps the blocked figure to what the ceiling can
-  # actually hold — a block is staked at the books row's tax, and on a
-  # value-mismatch row the books can exceed the 2B figure the return actually
-  # avails. The return has to honour the same clamp: reversing the unclamped
-  # amount took 4B above 4A, filed a negative 4C, and `setoff/3` then turned
-  # that negative credit into a cash demand out of a month that owed nothing.
-  #
-  # 4B(1) is satisfied first because s.17(5) ineligibility is the harder
-  # statement; whatever room is left goes to 4B(2).
-  defp cap_reversals(reversed_4b1, reversed_4b2, itc) do
-    cap = itc["blocked_in_ceiling_paise"]
-    raw = heads_total(reversed_4b1) + heads_total(reversed_4b2)
-
-    if is_integer(cap) and raw > cap do
-      capped_4b1 = ItcPosition.allocate(reversed_4b1, min(heads_total(reversed_4b1), cap))
-      {capped_4b1, ItcPosition.allocate(reversed_4b2, cap - heads_total(capped_4b1))}
-    else
-      {reversed_4b1, reversed_4b2}
-    end
-  end
-
-  defp heads_total(heads), do: @heads |> Enum.map(&(heads[&1] || 0)) |> Enum.sum()
-
-  # Only blocks inside the 2B ceiling can be reversed: 4A(5) availed the ceiling,
-  # so a books bill the portal never reported was never availed and there is
-  # nothing to reverse. Reversing it anyway dropped 4C below what 4A availed
-  # while the ITC bridge — which excludes the same blocks (`ItcPosition`) — was
-  # unchanged, so the filed and displayed claims silently disagreed.
-  defp blocked_heads(itc, code_filter) do
-    itc["blocks"]
-    |> Enum.filter(&(&1["state"] == "blocked" and &1["in_ceiling"] and code_filter.(&1["code"])))
-    |> Enum.map(& &1["tax_heads"])
-    |> ItcPosition.sum_heads()
   end
 
   # -- 6.1 payment ----------------------------------------------------------
@@ -288,7 +246,6 @@ defmodule Nila.Gst.Filing.Gstr3b do
   defp round_rupee(paise), do: round(paise / 100) * 100
   defp rupees_to_paise(rupees), do: Money.paise(rupees)
 
-  defp add(a, b), do: Map.new(@heads, fn h -> {h, a[h] + b[h]} end)
   defp subtract(a, b), do: Map.new(@heads, fn h -> {h, a[h] - b[h]} end)
 
   defp bump(acc, key, value) when is_number(value),

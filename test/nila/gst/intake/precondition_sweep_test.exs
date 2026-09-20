@@ -3,7 +3,7 @@ defmodule Nila.Gst.Intake.PreconditionSweepTest do
   use Oban.Testing, repo: Nila.Repo
 
   import Nila.AccountsFixtures
-  import Nila.GstFixtures, only: [settle_register!: 2]
+  import Nila.GstFixtures, only: [settle_register!: 2, choose_itc_treatment!: 3]
 
   alias Nila.Accounts.Scope
   alias Nila.Clients
@@ -197,6 +197,10 @@ defmodule Nila.Gst.Intake.PreconditionSweepTest do
       context
       |> month("2026-06")
       |> settle_register!(context.scope.user.id)
+      |> choose_itc_treatment!(context.scope, %{
+        "choice" => "later",
+        "later_reason" => "awaiting_2b"
+      })
       |> Signoffs.sign_off(context.scope)
 
     assert %{checked: 1, flagged: [], skipped_wall: [id], rederived: []} =

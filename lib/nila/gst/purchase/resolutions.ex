@@ -22,6 +22,7 @@ defmodule Nila.Gst.Purchase.Resolutions do
     Flags,
     Groups,
     ItcCases,
+    ItcCase,
     Month,
     Register,
     Resolution,
@@ -67,10 +68,11 @@ defmodule Nila.Gst.Purchase.Resolutions do
       month = lock_month(month)
 
       with :ok <- refuse_signed(month),
-           {:ok, resolutions} <- insert_all(month, attrs_list, decided_by_id) do
-        :ok = ItcCases.separate_rejected_pairs(month, attrs_list, decided_by_id)
-        workings = workings(month)
-        :ok = ItcCases.sync_month(month, workings.recon)
+           :ok <- protect_later_treatments(month, attrs_list),
+           {:ok, resolutions} <- insert_all(month, attrs_list, decided_by_id),
+           :ok <- ItcCases.separate_rejected_pairs(month, attrs_list, decided_by_id),
+           initial = workings(month),
+           :ok <- ItcCases.sync_month(month, initial.recon) do
         workings = workings(month)
 
         month =
@@ -101,6 +103,7 @@ defmodule Nila.Gst.Purchase.Resolutions do
       month = lock_month(month)
 
       with :ok <- refuse_signed(month),
+           :ok <- lock_and_protect_cases(month, [case_id]),
            {:ok, event} <-
              ItcCases.insert_event(month, case_id, event_type, decided_by_id),
            {:ok, resolutions} <- insert_all(month, resolution_attrs, decided_by_id) do
@@ -126,6 +129,43 @@ defmodule Nila.Gst.Purchase.Resolutions do
       {:ok, _signoff} -> {:error, :signed_off}
       {:error, :not_found} -> :ok
     end
+  end
+
+  defp protect_later_treatments(month, attrs_list) do
+    ids =
+      ItcCases.list_for_month(month)
+      |> Enum.filter(fn line ->
+        book = get_in(line.source_refs, ["books", month.period])
+        portal = get_in(line.source_refs, ["gstr2b", month.period])
+
+        Enum.any?(attrs_list, fn attrs ->
+          books_id = attrs["books_id"] || attrs[:books_id]
+          portal_ref = attrs["gstr2b_ref"] || attrs[:gstr2b_ref]
+          payload = attrs["payload"] || attrs[:payload] || %{}
+          verb = attrs["verb"] || attrs[:verb]
+          block = payload["block_id"] || ""
+
+          (book != nil and (books_id == book or String.starts_with?(block, book <> ":"))) or
+            (portal != nil and portal_ref == portal) or
+            (verb == "attest_documents" and line.current_gstr2b?)
+        end)
+      end)
+      |> Enum.map(& &1.case_id)
+
+    lock_and_protect_cases(month, ids)
+  end
+
+  defp lock_and_protect_cases(month, ids) do
+    locked =
+      Repo.all(
+        from c in ItcCase,
+          where: c.id in ^ids and c.org_id == ^month.org_id and c.client_id == ^month.client_id,
+          order_by: c.id,
+          lock: "FOR UPDATE",
+          select: c.id
+      )
+
+    ItcCases.refuse_later_signed_treatment(month, locked)
   end
 
   defp insert_all(month, attrs_list, decided_by_id) do
@@ -156,7 +196,7 @@ defmodule Nila.Gst.Purchase.Resolutions do
   every surface renders.
   """
   def workings(%Month{} = month) do
-    resolutions = month.id |> list() |> Enum.map(&resolution_map/1)
+    resolutions = if month.id, do: Enum.map(list(month.id), &resolution_map/1), else: []
     recon = Workings.materialize(month.recon, resolutions)
 
     invoices = Workings.books_invoices(recon)
@@ -173,6 +213,19 @@ defmodule Nila.Gst.Purchase.Resolutions do
       recon
       |> ItcPosition.compute(rows ++ claim_rows, Workings.itc_decisions(resolutions), case_lines)
       |> ItcPosition.apply_document_cases(case_lines)
+
+    case_lines =
+      Enum.map(case_lines, fn line ->
+        block = Enum.find(itc["blocks"] || [], &ItcCases.block_applies?(&1, line))
+
+        if block,
+          do: %{
+            line
+            | claimable?: false,
+              claim_block_reason: block["reason"] || "Resolve the ITC check first"
+          },
+          else: line
+      end)
 
     summary =
       month

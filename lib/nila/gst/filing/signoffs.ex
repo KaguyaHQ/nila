@@ -23,7 +23,7 @@ defmodule Nila.Gst.Filing.Signoffs do
   alias Nila.Repo
 
   # GSTR-3B snapshot format, retained for its existing readers.
-  @snapshot_schema_version 3
+  @snapshot_schema_version 4
 
   @doc "The snapshot format this module writes."
   def snapshot_schema_version, do: @snapshot_schema_version

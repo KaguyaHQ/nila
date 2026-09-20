@@ -268,7 +268,10 @@ defmodule Nila.Gst.Purchase.Review do
       end)
 
     document_state = case_line && case_line.document_state
-    resolved = verb == "dismiss_2b" or document_state in ~w(present held not_held)
+
+    resolved =
+      verb == "dismiss_2b" or document_state in ~w(present held not_held) or
+        treatment_settled?(case_line)
 
     %{
       id: group.key,
@@ -311,9 +314,16 @@ defmodule Nila.Gst.Purchase.Review do
     documents =
       workings
       |> Map.get(:document_cases, [])
-      |> Enum.count(&(&1.document_state not in ~w(held not_held)))
+      |> Enum.count(&(&1.document_state not in ~w(held not_held) and not treatment_settled?(&1)))
 
     reconciliation + blocks + documents
+  end
+
+  defp treatment_settled?(nil), do: false
+
+  defp treatment_settled?(line) do
+    Map.get(line, :treatment) in ~w(claim later exclude split) and
+      not Map.get(line, :treatment_stale?, false)
   end
 
   defp itc_item(block, rows, month) do

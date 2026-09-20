@@ -1,55 +1,112 @@
 defmodule Nila.Gst.Filing.Gstr3bTest do
   use ExUnit.Case, async: true
 
-  alias Nila.Gst.Filing.{Gstr2b, Gstr3b, ItcPosition}
-  alias Nila.Gst.Purchase.Reconciliation, as: Recon
+  alias Nila.Gst.Filing.Gstr3b
 
-  @fixtures Path.expand("../../../fixtures/purchase/breeze/2025-10", __DIR__)
-  @december_fixture Path.expand(
-                      "../../../fixtures/purchase/breeze/2025-12/returns_R2B_33AEWPH4158J1Z3_122025.json",
-                      __DIR__
-                    )
+  test "explicit treatment claims carried heads without a later reversal" do
+    recon = %{
+      "matched" => [],
+      "value_mismatch" => [],
+      "in_2b_not_books" => [],
+      "in_books_not_2b" => [],
+      "needs_human" => []
+    }
 
-  describe "Breeze October tie-out against the filed 3B" do
-    setup do
-      {:ok, gstr2b} =
-        @fixtures
-        |> Path.join("returns_R2B_33AEWPH4158J1Z3_102025.json")
-        |> File.read!()
-        |> Gstr2b.parse()
+    claim = %{"igst" => 1_200, "cgst" => 300, "sgst" => 200, "cess" => 50}
+    liability = %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}
+    result = Gstr3b.assemble(liability, recon, %{"current_claim_heads" => claim})
 
-      filed =
-        @fixtures
-        |> Path.join("filed_3b.json")
-        |> File.read!()
-        |> Jason.decode!()
+    assert result["itc"]["net_itc_4c"] == claim
+    assert result["itc"]["reversed_4b1"] == %{"igst" => 0, "cgst" => 0, "sgst" => 0, "cess" => 0}
+    assert result["itc"]["reversed_4b2"] == %{"igst" => 0, "cgst" => 0, "sgst" => 0, "cess" => 0}
+  end
 
-      # The ceiling and RCM figures depend only on the union of 2B rows, not
-      # on how matching bucketed them, so an empty-books recon reproduces the
-      # filed ITC without the (network-bound) purchase extraction.
-      recon = Recon.reconcile([], gstr2b)
-      itc = ItcPosition.compute(recon, [], %{})
+  test "supplier credit notes reduce treated credit, including a note-only negative month" do
+    note = %{
+      "document_type" => "credit_note",
+      "invoice_number" => "CN-1",
+      "taxable_paise" => 1_000,
+      "tax_paise" => %{"igst" => 200, "cgst" => 0, "sgst" => 0, "cess" => 25},
+      "total_paise" => 1_225
+    }
 
-      assembled = Gstr3b.assemble(filed["liability_31"]["a"], recon, itc)
+    recon = %{
+      "matched" => [],
+      "value_mismatch" => [],
+      "in_2b_not_books" => [%{"gstr2b" => note}],
+      "in_books_not_2b" => [],
+      "needs_human" => []
+    }
 
-      %{assembled: assembled, filed: filed}
-    end
+    liability = %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}
 
-    test "every Table 4 cell ties to the paise", %{assembled: assembled, filed: filed} do
-      assert assembled["itc"] == filed["itc"]
-    end
+    with_claim =
+      Gstr3b.assemble(liability, recon, %{
+        "current_claim_heads" => %{"igst" => 1_000, "cgst" => 0, "sgst" => 0, "cess" => 100}
+      })
 
-    test "3.1(d) reverse charge ties", %{assembled: assembled, filed: filed} do
-      assert assembled["liability_31"]["d"] == filed["liability_31"]["d"]
-    end
+    assert with_claim["itc"]["net_itc_4c"]["igst"] == 800
+    assert with_claim["itc"]["net_itc_4c"]["cess"] == 75
 
-    test "6.1 set-off reproduces the filed payment, cash to the rupee", %{
-      assembled: assembled,
-      filed: filed
-    } do
-      assert assembled["setoff_61"] == filed["setoff_61"]
-      assert assembled["setoff_61"]["cash_total"] == 6_024_300
-    end
+    note_only =
+      Gstr3b.assemble(liability, recon, %{
+        "current_claim_heads" => %{"igst" => 0, "cgst" => 0, "sgst" => 0, "cess" => 0}
+      })
+
+    assert note_only["itc"]["net_itc_4c"]["igst"] == -200
+    assert note_only["itc"]["net_itc_4c"]["cess"] == -25
+    assert Gstr3b.negative_net_itc?(note_only)
+  end
+
+  test "RCM credit follows treated cases rather than the current 2B RCM total" do
+    rcm = %{
+      "document_type" => "invoice",
+      "invoice_number" => "RCM-1",
+      "reverse_charge" => true,
+      "taxable_paise" => 2_500,
+      "tax_paise" => %{"igst" => 500, "cgst" => 0, "sgst" => 0},
+      "total_paise" => 3_000
+    }
+
+    recon = %{
+      "matched" => [],
+      "value_mismatch" => [],
+      "in_2b_not_books" => [%{"gstr2b" => rcm}],
+      "in_books_not_2b" => [],
+      "needs_human" => []
+    }
+
+    liability = %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}
+    normal_claim = %{"igst" => 1_000, "cgst" => 0, "sgst" => 0, "cess" => 0}
+
+    deferred_rcm =
+      Gstr3b.assemble(liability, recon, %{
+        "current_claim_heads" => normal_claim,
+        "rcm_claim_heads" => %{"igst" => 0}
+      })
+
+    assert deferred_rcm["liability_31"]["d"]["igst"] == 500
+    assert deferred_rcm["itc"]["rcm_4a3"]["igst"] == 0
+    assert deferred_rcm["itc"]["all_other_itc_4a5"]["igst"] == 1_000
+
+    carried_rcm =
+      Gstr3b.assemble(
+        liability,
+        %{
+          "matched" => [],
+          "value_mismatch" => [],
+          "in_2b_not_books" => [],
+          "in_books_not_2b" => [],
+          "needs_human" => []
+        },
+        %{
+          "current_claim_heads" => %{normal_claim | "igst" => 500},
+          "rcm_claim_heads" => %{"igst" => 500}
+        }
+      )
+
+    assert carried_rcm["itc"]["rcm_4a3"]["igst"] == 500
+    assert carried_rcm["itc"]["all_other_itc_4a5"]["igst"] == 0
   end
 
   describe "liability_from_gstr1/1" do
@@ -281,7 +338,7 @@ defmodule Nila.Gst.Filing.Gstr3bTest do
         "in_2b_not_books" => []
       }
 
-      itc = ItcPosition.compute(recon, [], %{})
+      itc = %{"current_claim_heads" => %{"igst" => 0, "cgst" => 0, "sgst" => 0, "cess" => 0}}
 
       assembled = Gstr3b.assemble(liability, recon, itc, disclosure)
 
@@ -300,89 +357,6 @@ defmodule Nila.Gst.Filing.Gstr3bTest do
                  "a" => Map.new(liability, fn {key, value} -> {key, abs(value)} end)
                }
              })
-    end
-  end
-
-  describe "purchase credit and debit notes" do
-    test "real portal credit-note totals become the same head-wise 4B(2) reversal" do
-      portal = @december_fixture |> File.read!() |> Jason.decode!()
-      {:ok, gstr2b} = Gstr2b.parse(portal)
-      recon = Recon.reconcile([], gstr2b)
-      itc = ItcPosition.compute(recon, [], %{})
-      liability = %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}
-      result = Gstr3b.assemble(liability, recon, itc)
-      cdnr = get_in(portal, ["data", "itcsumm", "itcavl", "othersup", "cdnr"])
-
-      assert result["itc"]["reversed_4b2"] == %{
-               "igst" => round((cdnr["igst"] || 0) * 100),
-               "cgst" => round((cdnr["cgst"] || 0) * 100),
-               "sgst" => round((cdnr["sgst"] || 0) * 100)
-             }
-    end
-
-    test "debit-note ITC enters 4A and supplier credit-note tax reverses in 4B(2)" do
-      g2b = fn number, type, tax ->
-        %{
-          "vendor_gstin" => "33AAACS1234A1Z9",
-          "invoice_number" => number,
-          "document_type" => type,
-          "taxable_paise" => 0,
-          "tax_paise" => %{"igst" => tax, "cgst" => 0, "sgst" => 0},
-          "reverse_charge" => false
-        }
-      end
-
-      recon = %{
-        "matched" => [%{"gstr2b" => g2b.("INV-1", "invoice", 18_000)}],
-        "value_mismatch" => [],
-        "needs_human" => [],
-        "in_books_not_2b" => [],
-        "in_2b_not_books" => [
-          %{"gstr2b" => g2b.("DN-1", "debit_note", 1_800)},
-          %{"gstr2b" => g2b.("CN-1", "credit_note", 3_600)}
-        ]
-      }
-
-      itc = ItcPosition.compute(recon, [], %{})
-      liability = %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}
-      result = Gstr3b.assemble(liability, recon, itc)
-
-      assert result["itc"]["all_other_itc_4a5"] ==
-               %{"igst" => 19_800, "cgst" => 0, "sgst" => 0}
-
-      assert result["itc"]["reversed_4b2"] ==
-               %{"igst" => 3_600, "cgst" => 0, "sgst" => 0}
-
-      assert result["itc"]["net_itc_4c"] ==
-               %{"igst" => 16_200, "cgst" => 0, "sgst" => 0}
-
-      refute Gstr3b.negative_net_itc?(result)
-    end
-
-    test "names a note-only negative ITC position as unsupported" do
-      credit = %{
-        "vendor_gstin" => "33AAACS1234A1Z9",
-        "invoice_number" => "CN-ONLY",
-        "document_type" => "credit_note",
-        "tax_paise" => %{"igst" => 3_600, "cgst" => 0, "sgst" => 0},
-        "reverse_charge" => false
-      }
-
-      recon = %{
-        "matched" => [],
-        "value_mismatch" => [],
-        "needs_human" => [],
-        "in_books_not_2b" => [],
-        "in_2b_not_books" => [%{"gstr2b" => credit}]
-      }
-
-      itc = ItcPosition.compute(recon, [], %{})
-      liability = %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}
-      result = Gstr3b.assemble(liability, recon, itc)
-
-      assert result["itc"]["net_itc_4c"]["igst"] == -3_600
-      assert Gstr3b.negative_net_itc?(result)
-      assert result["setoff_61"]["cash_total"] == 0
     end
   end
 
@@ -406,7 +380,15 @@ defmodule Nila.Gst.Filing.Gstr3bTest do
         ]
       }
 
-      itc = ItcPosition.compute(recon, [], %{})
+      itc = %{
+        "current_claim_heads" => %{
+          "igst" => 25_000,
+          "cgst" => 5_000,
+          "sgst" => 5_000,
+          "cess" => 0
+        }
+      }
+
       setoff = Gstr3b.assemble(liability, recon, itc)["setoff_61"]
 
       # IGST 250 pays IGST 100 fully, spills 150 into CGST; CGST credit 50
@@ -436,58 +418,6 @@ defmodule Nila.Gst.Filing.Gstr3bTest do
              }
 
       assert setoff["cash_total"] == 15_000
-    end
-  end
-
-  describe "confirmed blocks become Table 4B reversals" do
-    setup do
-      recon = %{
-        "matched" => [],
-        "value_mismatch" => [],
-        "needs_human" => [],
-        "in_books_not_2b" => [],
-        "in_2b_not_books" => [
-          %{
-            "gstr2b" => %{
-              "taxable_paise" => 100_000,
-              "tax_paise" => %{"igst" => 0, "cgst" => 9_000, "sgst" => 9_000},
-              "reverse_charge" => false
-            }
-          }
-        ]
-      }
-
-      row = %{
-        "id" => "inv_01",
-        "vendor_name" => "GAYATHRI",
-        "vendor_gstin" => "33AAA0000A1Z5",
-        "invoice_number" => "434",
-        "igst_paise" => 0,
-        "cgst_paise" => 500,
-        "sgst_paise" => 500,
-        "flags" => [
-          %{"code" => "personal_expense_17_5", "section" => "17(5)(g)", "reason" => "residential"}
-        ]
-      }
-
-      %{recon: recon, row: row, liability: %{"txval" => 0, "igst" => 0, "cgst" => 0, "sgst" => 0}}
-    end
-
-    test "a recommended-but-unconfirmed block does not reverse", ctx do
-      itc = ItcPosition.compute(ctx.recon, [ctx.row], %{})
-      assembled = Gstr3b.assemble(ctx.liability, ctx.recon, itc)
-
-      assert assembled["itc"]["reversed_4b1"] == %{"igst" => 0, "cgst" => 0, "sgst" => 0}
-      assert assembled["itc"]["net_itc_4c"]["cgst"] == 9_000
-    end
-
-    test "a human-confirmed 17(5) block lands in 4B(1) and reduces 4C", ctx do
-      block_id = ItcPosition.block_id("inv_01", "personal_expense_17_5")
-      itc = ItcPosition.compute(ctx.recon, [ctx.row], %{block_id => "block_itc"})
-      assembled = Gstr3b.assemble(ctx.liability, ctx.recon, itc)
-
-      assert assembled["itc"]["reversed_4b1"] == %{"igst" => 0, "cgst" => 500, "sgst" => 500}
-      assert assembled["itc"]["net_itc_4c"] == %{"igst" => 0, "cgst" => 8_500, "sgst" => 8_500}
     end
   end
 end
