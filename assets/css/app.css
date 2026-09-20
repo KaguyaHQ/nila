@@ -1360,20 +1360,6 @@ body {
   background: var(--accent-a2);
 }
 
-.nila-workpaper-tab[data-state="selected"] {
-  background: var(--color-panel-solid);
-}
-
-.nila-workpaper-tab[data-state="selected"]::after {
-  position: absolute;
-  inset-inline: 1rem;
-  bottom: 0;
-  height: 0.125rem;
-  border-radius: 999px;
-  background: var(--accent-indicator);
-  content: "";
-}
-
 @media (min-width: 64rem) {
   .sales-overview {
     grid-template-columns: minmax(0, 1.65fr) minmax(18rem, 0.85fr);

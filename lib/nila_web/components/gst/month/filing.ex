@@ -481,7 +481,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             <.link
               :if={@client_id && @period}
               id="gstr3b-open-purchases"
-              patch={~p"/gst/#{@client_id}/#{@period}?track=purchases"}
+              navigate={~p"/gst/#{@client_id}/#{@period}/purchases"}
               class="text-moon text-ui font-semibold"
             >
               Open Purchases &amp; ITC →

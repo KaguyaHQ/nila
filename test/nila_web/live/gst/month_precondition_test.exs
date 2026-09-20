@@ -76,7 +76,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
     _dump = in_question(context)
 
     {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+      live(context.conn, "/gst/#{context.client.id}/#{@period}/gstr3b")
 
     # The verdict block carries the question, in the verdict's own weight.
     assert has_element?(
@@ -113,7 +113,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
       })
 
     {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+      live(context.conn, "/gst/#{context.client.id}/#{@period}/gstr3b")
 
     assert has_element?(
              view,
@@ -128,7 +128,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
     _dump = in_question(context)
 
     {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+      live(context.conn, "/gst/#{context.client.id}/#{@period}/gstr3b")
 
     assert has_element?(
              view,
@@ -154,7 +154,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
       })
 
     {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+      live(context.conn, "/gst/#{context.client.id}/#{@period}/gstr3b")
 
     assert has_element?(
              view,
@@ -179,7 +179,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
       })
 
     {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+      live(context.conn, "/gst/#{context.client.id}/#{@period}/gstr3b")
 
     assert has_element?(view, "#month-headline", "already in Apr 2026")
     assert has_element?(view, "#month-headline.nila-verdict-alarm")
@@ -191,7 +191,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
     _dump = in_question(context)
 
     {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+      live(context.conn, "/gst/#{context.client.id}/#{@period}/gstr3b")
 
     view |> element("#month-precondition-choose-keep") |> render_click()
 
@@ -207,7 +207,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
     dump = in_question(context)
 
     {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+      live(context.conn, "/gst/#{context.client.id}/#{@period}/gstr3b")
 
     view |> element("#month-precondition-choose-keep") |> render_click()
 
@@ -232,7 +232,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
     dump = in_question(context)
 
     {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+      live(context.conn, "/gst/#{context.client.id}/#{@period}/gstr3b")
 
     view |> element("#month-precondition-choose-keep") |> render_click()
     view |> form("#month-precondition-form", %{"reason" => "  "}) |> render_submit()
@@ -245,7 +245,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
     dump = in_question(context)
 
     {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+      live(context.conn, "/gst/#{context.client.id}/#{@period}/gstr3b")
 
     view |> element("#month-precondition-choose-move") |> render_click()
 
@@ -257,7 +257,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
 
     view |> form("#month-precondition-form", %{"period" => "2026-04"}) |> render_submit()
 
-    assert_redirect(view, "/gst/#{context.client.id}/2026-04?track=purchases")
+    assert_redirect(view, "/gst/#{context.client.id}/2026-04/purchases")
 
     {:ok, moved} = Dumps.fetch(context.org.id, dump.id)
     assert moved.period == "2026-04"
@@ -270,7 +270,7 @@ defmodule NilaWeb.Gst.MonthPreconditionTest do
     dump = in_question(context)
 
     {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+      live(context.conn, "/gst/#{context.client.id}/#{@period}/gstr3b")
 
     view |> element("#month-precondition-choose-discard") |> render_click()
     view |> form("#month-precondition-form", %{}) |> render_submit()

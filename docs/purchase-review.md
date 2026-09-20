@@ -87,3 +87,8 @@ The partial-claim migration changes live allocation uniqueness from one claim pe
 to one claim per invoice per month. It retains all allocation rows. Rolling it back after
 an invoice has claims in multiple months requires a deliberate data plan; the old index
 cannot represent those records and rollback will fail rather than delete them.
+
+GSTR-3B remains at `/gst/:client_id/:period/gstr3b`, linked from the purchase
+working. It retains return checks, signoff, filing actions and source-upload controls.
+The previous tabbed purchase register has been removed; purchase lists and decisions
+use the overview, register and invoice-review routes above.

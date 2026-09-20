@@ -266,6 +266,7 @@ defmodule NilaWeb.Components.Gst.PurchaseOverview do
               variant="soft"
               href={~p"/gst/#{@client.id}/#{@period}/purchases/workings.xlsx"}
             >{if @complete?, do: "Download working", else: "Download draft working"}</.button>
+            <.text_link id="purchase-gstr3b-link" navigate={~p"/gst/#{@client.id}/#{@period}/gstr3b"}>View GSTR-3B</.text_link>
             <p :if={!@month} class="text-ink-muted text-ui">
               Import records to make the working available.
             </p>

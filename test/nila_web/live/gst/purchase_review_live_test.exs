@@ -22,140 +22,7 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     %{conn: log_in_user(conn, user), user: user, org: org, client: client}
   end
 
-  test "an unpublished GSTR-2B does not become a zero-valued reconciliation", context do
-    today = Date.utc_today()
-    period = "#{today.year}-#{today.month |> to_string() |> String.pad_leading(2, "0")}"
-    put_books_without_2b!(context, period, "awaiting-2b-1")
-
-    {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{period}?track=purchases")
-
-    assert has_element?(view, "#month-workpaper-tab-purchases", "Waiting for GSTR-2B")
-    assert has_element?(view, "#purchase-itc-amount-unavailable", "Awaiting GSTR-2B")
-    refute has_element?(view, "#purchase-itc-amount")
-    refute has_element?(view, "#purchase-itc-proposal-basis")
-    assert has_element?(view, "#purchase-itc-basis", "has not published GSTR-2B")
-    assert has_element?(view, "#purchase-primary-blocker", "Waiting for 2B")
-    assert has_element?(view, "#purchase-next-action", "Wait for the portal")
-    refute has_element?(view, "#gstr3b-review-required")
-    refute has_element?(view, "#purchase-open-gstr3b")
-    refute has_element?(view, "#purchase-required-actions")
-    refute has_element?(view, "#purchase-reconciliation-filters")
-    refute has_element?(view, "#purchase-action-filters")
-    refute has_element?(view, "#purchase-transition-gstr3b")
-    assert has_element?(view, "#purchase-transition", "waits until the portal publishes")
-    assert has_element?(view, "#gst-register", "Waiting for GSTR-2B")
-  end
-
-  test "a published but unimported GSTR-2B exposes only the import action", context do
-    # Early in a filing month the immediately preceding period's 2B is not
-    # published yet. Step back far enough that the test's premise is stable.
-    period = Nila.Gst.Filing.Calendar.closeable_period(Date.add(Date.utc_today(), -20))
-    put_books_without_2b!(context, period, "need-2b-1")
-
-    {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{period}?track=purchases")
-
-    assert has_element?(view, "#month-workpaper-tab-purchases", "GSTR-2B not in")
-    assert has_element?(view, "#purchase-itc-amount-unavailable", "GSTR-2B not imported")
-    refute has_element?(view, "#purchase-itc-amount")
-    refute has_element?(view, "#purchase-itc-proposal-basis")
-    assert has_element?(view, "#purchase-itc-basis", "available but not in Nila")
-    assert has_element?(view, "#purchase-primary-blocker", "2B not in")
-    assert has_element?(view, "#purchase-next-action", "Bring in GSTR-2B")
-    assert has_element?(view, "#purchase-bring-gstr2b")
-    refute has_element?(view, "#gstr3b-review-required")
-    refute has_element?(view, "#purchase-open-gstr3b")
-    refute has_element?(view, "#purchase-required-actions")
-    refute has_element?(view, "#purchase-reconciliation-filters")
-    refute has_element?(view, "#purchase-action-filters")
-    refute has_element?(view, "#purchase-transition-gstr3b")
-  end
-
-  test "purchase workpaper leads with the ITC conclusion, blocker and next action", context do
-    put_month!(
-      context,
-      [books("hierarchy-1", %{"invoice_number" => "1134"})],
-      [gstr2b("CHN-SER-1134")]
-    )
-
-    {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
-
-    assert has_element?(view, "#purchase-itc-conclusion", "Current proposed ITC")
-
-    assert has_element?(
-             view,
-             "#purchase-itc-proposal-basis-reported-context",
-             "Reported in GSTR-2B"
-           )
-
-    assert has_element?(view, "#purchase-itc-proposal-basis-pending", "pending decision")
-    assert has_element?(view, "#purchase-itc-proposal-basis-claimable", "Claim this period")
-    assert has_element?(view, "#purchase-itc-basis", "GSTR-2B reports")
-    assert has_element?(view, "#purchase-itc-basis", "recorded treatment decisions")
-    assert has_element?(view, "#purchase-primary-blocker", "ITC treatment needed")
-    assert has_element?(view, "#purchase-next-action", "Set ITC treatment")
-    assert has_element?(view, "#gstr3b-review-required")
-
-    assert_dom_order(view, [
-      "purchase-itc-conclusion",
-      "purchase-required-actions",
-      "purchase-controls",
-      "gstr3b-register",
-      "purchase-reconciliation-filters"
-    ])
-  end
-
-  test "a missing document needs treatment and is not claimed by default", context do
-    put_month!(context, [], [gstr2b("WAIT-2B-1")])
-
-    {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
-
-    assert has_element?(view, "#purchase-itc-conclusion", "Current proposed ITC")
-    assert has_element?(view, "#purchase-itc-amount", "₹0.00")
-    assert has_element?(view, "#purchase-primary-blocker", "ITC treatment needed")
-    assert has_element?(view, "#purchase-next-action", "Set ITC treatment")
-    assert has_element?(view, "#purchase-set-outstanding-treatment")
-    assert has_element?(view, "#gstr3b-review-required")
-
-    assert_dom_order(view, [
-      "purchase-itc-conclusion",
-      "purchase-required-actions",
-      "purchase-controls",
-      "gstr3b-register",
-      "purchase-reconciliation-filters"
-    ])
-  end
-
-  test "clear and frozen positions remain distinct without inventing assurance", context do
-    month = put_month!(context, [books("frozen-1")], [gstr2b("INV-001")])
-    scope = Nila.Accounts.Scope.for_user(context.user)
-    month = choose_itc_treatment!(month, scope, %{"choice" => "claim"})
-
-    {:ok, clear, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
-
-    assert has_element?(clear, "#purchase-itc-conclusion", "Current proposed ITC")
-    assert has_element?(clear, "#purchase-primary-blocker", "No open blocker")
-    assert has_element?(clear, "#purchase-next-action", "Open GSTR-3B")
-    assert has_element?(clear, "#purchase-open-gstr3b")
-
-    {:ok, _signoff} = Signoffs.sign_off(month, scope)
-
-    {:ok, frozen, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
-
-    assert has_element?(frozen, "#purchase-itc-conclusion", "Frozen ITC position")
-    assert has_element?(frozen, "#purchase-itc-basis", "Frozen from")
-    assert has_element?(frozen, "#purchase-primary-blocker", "Position frozen")
-    assert has_element?(frozen, "#purchase-next-action", "frozen return")
-    assert has_element?(frozen, "#purchase-open-gstr3b")
-    refute has_element?(frozen, "#gstr3b-review-required")
-  end
-
-  test "deep links validate scope and select a member through the same MonthLive", context do
+  test "deep links validate scope and select a member in the purchase review", context do
     first = books("freezelinks-1")
     second = books("freezelinks-2")
     counterpart = gstr2b("FREEZELINKS")
@@ -167,10 +34,6 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
         ~p"/gst/#{context.client.id}/#{@period}/review/purchase?item=#{second["id"]}&scope=needs_you"
       )
 
-    assert has_element?(view, "#month-page")
-    assert has_element?(view, "#month-workpaper-tab-purchases[aria-current='page']")
-    assert has_element?(view, "#month-register")
-    refute has_element?(view, "#month-sales")
     assert has_element?(view, "#purchase-review")
     assert has_element?(view, "#gst-exception-books-members")
     members = view |> element("#gst-exception-books-members") |> render()
@@ -185,7 +48,7 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     assert length(Resolutions.list(month.id)) == 0
 
     view |> element("#purchase-review button[phx-click='done']") |> render_click()
-    assert_patch(view, "/gst/#{context.client.id}/#{@period}?track=purchases")
+    assert_patch(view, "/gst/#{context.client.id}/#{@period}/gstr3b")
   end
 
   test "confirm_pair records the evidence and alternatives shown", context do
@@ -275,7 +138,8 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     assert event.decided_by_id == context.user.id
   end
 
-  test "the month surfaces prior-period ITC separately from its register", context do
+  test "prior-period purchases are retained without inflating this month source totals",
+       context do
     prior_books = books("prior-book", %{"invoice_number" => "CARRY-1"})
     prior_recon = Reconciliation.reconcile([prior_books], [])
     prior_rows = Register.rows([prior_books], prior_recon, %{})
@@ -291,14 +155,18 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
         summary: Register.summary(prior_rows)
       })
 
-    put_month!(context, [], [gstr2b("CARRY-1")])
+    month = put_month!(context, [], [gstr2b("CARRY-1")])
 
     {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
+      live(context.conn, "/gst/#{context.client.id}/#{@period}/purchases")
 
-    assert has_element?(view, "#gstr3b-carried-itc", "Prior-period ITC")
-    assert has_element?(view, "#gstr3b-carried-itc", "Jul 2026")
-    assert has_element?(view, "#gstr3b-carried-itc", "Ready to claim in this period")
+    assert has_element?(view, "#purchase-portal-totals", "1")
+    refute has_element?(view, "#purchase-books-totals")
+    [line] = Resolutions.workings(month).case_lines
+    assert line.origin_period == "2026-07"
+    assert line.has_books?
+    assert line.current_gstr2b?
+    refute line.current_books?
   end
 
   test "asking the client drafts the missing-bill message", context do
@@ -310,37 +178,6 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     assert has_element?(view, "#gst-missing-bill-modal")
     assert has_element?(view, "#gst-missing-bill-draft", "Dear Breeze")
     assert has_element?(view, "#gst-missing-bill-draft", "invoice PORTAL-9")
-  end
-
-  defp assert_dom_order(view, ids) do
-    html = render(view)
-
-    positions =
-      Enum.map(ids, fn id ->
-        {position, _length} = :binary.match(html, ~s(id="#{id}"))
-        position
-      end)
-
-    assert positions == Enum.sort(positions)
-  end
-
-  defp put_books_without_2b!(context, period, id) do
-    documents = [books(id)]
-    recon = Reconciliation.reconcile(documents, [])
-    rows = Register.rows(documents, recon, %{})
-
-    {:ok, month} =
-      Months.upsert(%{
-        org_id: context.org.id,
-        client_id: context.client.id,
-        period: period,
-        state: "worked",
-        register_rows: rows,
-        recon: recon,
-        summary: Register.summary(rows, Groups.build(recon))
-      })
-
-    month
   end
 
   defp put_month!(context, books, counterparts) do

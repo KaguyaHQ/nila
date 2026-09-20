@@ -45,7 +45,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
     org: org,
     user: user
   } do
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=gstr3b")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
 
     refute has_element?(view, "#month-door-sign-3b")
     assert has_element?(view, "#month-exit-gstr3b-blocked")
@@ -103,7 +103,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
 
     answer_sales_issues!(sales, user.id)
 
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=gstr3b")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
 
     assert doors(view) == ["month-door-sign-3b"]
 

@@ -143,13 +143,13 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
   } do
     dump = seed_dump(org, client, "purchase", user_id: user.id, source: "whatsapp")
 
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
 
     assert has_element?(view, "#month-arrived-#{dump.id}", "Purchase bills")
     assert has_element?(view, "#month-arrived-#{dump.id}", "1 file")
     assert has_element?(view, "#month-arrived-#{dump.id}", "brought in by Test User")
     assert has_element?(view, "#month-arrived-#{dump.id}", "via WhatsApp")
-    assert has_element?(view, "#month-register #month-purchase-sources")
+    assert has_element?(view, "#month-page #month-purchase-sources")
     refute has_element?(view, "#month-support")
     refute render(view) =~ "arrival retained"
     refute render(view) =~ "Source arrivals"
@@ -208,7 +208,7 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
     old = seed_dump(org, client, "gstr2b", ext: ".json")
     new = seed_dump(org, client, "gstr2b", ext: ".json")
 
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
 
     assert has_element?(view, "#month-arrived-#{old.id}", "Replaced")
     assert has_element?(view, "#month-arrived-#{old.id} .line-through")
@@ -217,7 +217,7 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
   end
 
   test "a month with no dumps renders no Arrived shell", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
 
     refute has_element?(view, "#month-arrived")
   end
@@ -234,7 +234,7 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
   } do
     seed_dump(org, client, "purchase")
 
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
     refute has_element?(view, "#month-chase-history-link")
 
     {:ok, manual} =
@@ -254,7 +254,7 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
         }
       )
 
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
     assert has_element?(view, "#month-chase-history-link", "Requests sent: 2 · view history")
 
     view |> element("#month-chase-history-link") |> render_click()
@@ -318,7 +318,7 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
 
     own_dump = seed_dump(org, client, "purchase", user_id: user.id)
 
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
 
     assert has_element?(view, "#month-arrived-#{own_dump.id}")
     refute has_element?(view, "#month-arrived-#{foreign_dump.id}")

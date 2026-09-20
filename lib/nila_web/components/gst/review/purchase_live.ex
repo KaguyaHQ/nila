@@ -376,7 +376,7 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
     do: "Month is signed off — a senior must reopen it from the month page."
 
   defp month_path(socket),
-    do: "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}?track=purchases"
+    do: "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}/gstr3b"
 
   defp review_path(socket, item, scope) do
     base = "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}/review/purchase"

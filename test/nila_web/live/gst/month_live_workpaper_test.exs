@@ -37,54 +37,31 @@ defmodule NilaWeb.Gst.MonthLiveWorkpaperTest do
     %{conn: log_in_user(conn, user), client: client}
   end
 
-  test "legacy tracks remain isolated and sales exits to the period workspace", %{
-    conn: conn,
-    client: client
-  } do
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
+  test "the direct GSTR-3B route links to sales and purchases", %{conn: conn, client: client} do
+    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
 
-    assert has_element?(view, "#month-workpaper-tab-purchases[aria-current='page']")
-    assert has_element?(view, "#month-register")
-    refute has_element?(view, "#month-sales")
-    refute has_element?(view, "#month-gstr3b-workpaper")
-
-    view |> element("#month-workpaper-tab-gstr3b") |> render_click()
-    assert_patch(view, "/gst/#{client.id}/#{@period}?track=gstr3b")
-    assert has_element?(view, "#month-workpaper-tab-gstr3b[aria-current='page']")
-    assert has_element?(view, "#month-gstr3b-workpaper")
-    refute has_element?(view, "#month-sales")
-    refute has_element?(view, "#month-register")
+    assert has_element?(view, "#gstr3b-open-sales[href='/gst/#{client.id}/#{@period}/sales']")
 
     assert has_element?(
              view,
-             "#month-workpaper-tab-sales[href='/gst/#{client.id}/#{@period}/sales']"
+             "#gstr3b-open-purchases-header[href='/gst/#{client.id}/#{@period}/purchases']"
            )
+
+    refute has_element?(view, "#month-workpaper-tab-purchases")
+    refute has_element?(view, "#month-workpaper-tab-gstr3b")
   end
 
-  test "direct legacy track URLs survive refresh and other month URLs enter sales", %{
+  test "a bare month URL enters sales and purchase workflow has its own route", %{
     conn: conn,
     client: client
   } do
-    {:ok, purchases, _html} =
-      live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
-
-    assert has_element?(purchases, "#month-workpaper-tab-purchases[aria-current='page']")
-    assert has_element?(purchases, "#month-register")
-
     assert {:error, {:live_redirect, %{to: target}}} =
-             live(conn, "/gst/#{client.id}/#{@period}?track=unknown")
+             live(conn, "/gst/#{client.id}/#{@period}")
 
     assert target == "/gst/#{client.id}/#{@period}/sales"
-  end
 
-  test "legacy purchase navigation still exposes the retained work areas", %{
-    conn: conn,
-    client: client
-  } do
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}?track=purchases")
-
-    for track <- ~w(sales purchases gstr3b) do
-      assert has_element?(view, "#month-workpaper-tab-#{track}")
-    end
+    {:ok, purchases, _html} = live(conn, "/gst/#{client.id}/#{@period}/purchases")
+    assert has_element?(purchases, "#purchases-page")
+    refute has_element?(purchases, "#month-workpaper-tab-purchases")
   end
 end

@@ -49,8 +49,7 @@ defmodule NilaWeb.Gst.SalesReviewLiveTest do
     {:ok, view, _html} = live(context.conn, path)
     month_pid = view.pid
 
-    assert has_element?(view, "#month-page")
-    assert has_element?(view, "#month-workpaper-tab-sales[aria-current='page']")
+    refute has_element?(view, "#month-workpapers")
     refute has_element?(view, "#month-sales")
     refute has_element?(view, "#month-register")
     assert has_element?(view, "#sales-review")
