@@ -9,6 +9,36 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
 
   @period "2025-10"
 
+  test "month picker jumps across years and keeps the register view", %{
+    conn: conn,
+    client: client
+  } do
+    {:ok, view, _} = live(conn, "/gst/#{client.id}/#{@period}/sales/invoices")
+    assert has_element?(view, "#filing-period-trigger", "October 2025")
+
+    view |> element("#filing-year-previous") |> render_click()
+    assert has_element?(view, "#filing-picker-year", "2024")
+    assert has_element?(view, "#filing-month-01[href='/gst/#{client.id}/2024-01/sales/invoices']")
+    view |> element("#filing-month-01") |> render_click()
+    assert_redirect(view, "/gst/#{client.id}/2024-01/sales/invoices")
+  end
+
+  test "month picker highlights the current period and disables future months", %{
+    conn: conn,
+    client: client
+  } do
+    period = Calendar.strftime(Date.utc_today(), "%Y-%m")
+    {:ok, view, _} = live(conn, "/gst/#{client.id}/#{period}/sales")
+    month = String.slice(period, -2, 2)
+    assert has_element?(view, "#filing-month-#{month}[aria-current='date']")
+    assert has_element?(view, "#filing-year-next[disabled]")
+
+    for future <- Enum.filter(1..12, &(&1 > Date.utc_today().month)) do
+      suffix = future |> Integer.to_string() |> String.pad_leading(2, "0")
+      assert has_element?(view, "#filing-month-#{suffix}[disabled]")
+    end
+  end
+
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
 
@@ -33,7 +63,7 @@ defmodule NilaWeb.Gst.MonthLiveSalesWorkspaceTest do
 
     assert has_element?(view, "#sales-period-workspace", "Breeze Tech / Sales & GSTR-1")
     assert has_element?(view, "#sales-period-workspace", "Sales invoices")
-    assert has_element?(view, "#sales-period-return-heading", "GSTR-1 tables")
+    assert has_element?(view, "#sales-period-return-heading", "GSTR-1 summary")
     assert has_element?(view, "#sales-period-workspace", "Export")
     assert has_element?(view, "#sales-period-status", "Review the GST working before exporting.")
     refute has_element?(view, "#sales-period-workflow")

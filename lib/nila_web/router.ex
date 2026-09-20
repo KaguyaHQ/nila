@@ -150,6 +150,7 @@ defmodule NilaWeb.Router do
       live "/gst/:client_id/:period/import-excel", Gst.ExcelImportLive, :new
       live "/gst/2b", Gst.Gstr2bLive, :index
       live "/gst/:client_id/:period/purchases", Gst.PurchaseLive, :index
+      live "/gst/:client_id/:period/purchases/register", Gst.PurchaseLive, :register
       live "/gst/:client_id/:period/purchases/import-excel", Gst.PurchaseExcelImportLive, :new
 
       live "/gst/:client_id/:period/purchases/invoices/:item_id",

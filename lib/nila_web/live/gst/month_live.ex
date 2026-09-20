@@ -91,6 +91,7 @@ defmodule NilaWeb.Gst.MonthLive do
       )
       |> assign(:confirm_demo_reset, false)
       |> assign(:period, period)
+      |> assign(:filing_picker_year, String.to_integer(String.slice(period, 0, 4)))
       |> assign(:page_title, "#{client.name} · #{period_label(period)}")
       |> assign(:purchase_review_route, nil)
       |> assign(:sales_review_route, nil)
@@ -979,6 +980,14 @@ defmodule NilaWeb.Gst.MonthLive do
 
   # Contributor rows still use this event; the register itself patches directly.
   @impl true
+  def handle_event("shift-filing-year", %{"direction" => direction}, socket)
+      when direction in ["previous", "next"] do
+    offset = if direction == "previous", do: -1, else: 1
+    year = socket.assigns.filing_picker_year + offset
+    year = year |> max(1) |> min(Date.utc_today().year)
+    {:noreply, assign(socket, :filing_picker_year, year)}
+  end
+
   def handle_event("open-demo-reset", _params, socket) do
     allowed = Nila.DemoSession.available?(socket.assigns.current_scope, socket.assigns.client)
     {:noreply, assign(socket, :confirm_demo_reset, allowed)}
@@ -1156,6 +1165,30 @@ defmodule NilaWeb.Gst.MonthLive do
            :error,
            "The register still has unsettled rows — work the decisions and collect the missing bills first."
          )}
+
+      {:error, :itc_treatment_changed} ->
+        {:noreply,
+         socket
+         |> reload()
+         |> put_flash(
+           :error,
+           "Tax amounts changed after an ITC decision. Review the treatment before signing."
+         )}
+
+      {:error, :cess_review_required} ->
+        {:noreply,
+         socket
+         |> reload()
+         |> put_flash(
+           :error,
+           "Compensation cess needs separate review. Nila cannot sign off a cess claim or deferral."
+         )}
+
+      {:error, :itc_treatment_required} ->
+        {:noreply,
+         socket
+         |> reload()
+         |> put_flash(:error, "Set ITC treatment for the remaining invoices before signing.")}
 
       {:error, :documents_unattested} ->
         {:noreply,
@@ -1535,6 +1568,7 @@ defmodule NilaWeb.Gst.MonthLive do
     >
       <SalesWorkspace.workspace
         :if={@live_action == :sales_workspace}
+        picker_year={@filing_picker_year}
         client={@client}
         period={@period}
         view={@sales_workspace_view}

@@ -39,6 +39,7 @@ defmodule NilaWeb.Gst.PurchaseExcelImportLiveTest do
     org: org
   } do
     {:ok, view, _} = live(conn, ~p"/gst/#{client.id}/2026-08/purchases/import-excel")
+
     upload(view)
     assert has_element?(view, "#purchase-excel-column-C", "Example local supplier")
     view |> form("#purchase-excel-mapping") |> render_submit()
@@ -50,7 +51,12 @@ defmodule NilaWeb.Gst.PurchaseExcelImportLiveTest do
     [dump] = Dumps.list(org.id, client.id, "2026-08")
     assert :ok = DumpWorker.perform(%Oban.Job{args: %{"dump_id" => dump.id}, attempt: 1})
     {:ok, queue, _} = live(conn, ~p"/gst/#{client.id}/2026-08/purchases")
-    assert has_element?(queue, "a", "DEMO-001")
+    assert has_element?(queue, "#purchase-register-link")
+
+    {:ok, register, _} =
+      live(conn, NilaWeb.Gst.PurchaseWorkspace.list_path(client.id, "2026-08", "register", ""))
+
+    assert has_element?(register, "#purchase-source-items a", "DEMO-001")
   end
 
   test "editing mapping invalidates preview and missing GSTIN prevents import", %{

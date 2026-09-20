@@ -7,6 +7,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   alias Nila.Gst.Filing.{Calendar, WinmanGstr1}
   alias Nila.Gst.Sales.{Gstr1, Invoice}
   alias Nila.Gst.Sales.Review.Values
+  alias NilaWeb.Components.Gst.PeriodHeader
   alias NilaWeb.Components.Gst.Month.{Helpers, HsnSummary}
 
   @gstr1_table_order [
@@ -23,6 +24,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
 
   attr :client, :map, required: true
   attr :period, :string, required: true
+  attr :picker_year, :integer, required: true
   attr :view, :atom, required: true
   attr :invoices, :list, required: true
   attr :active_invoices, :list, required: true
@@ -64,28 +66,23 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
       )
       |> assign(:base, base)
       |> assign(:gstr1_table_rows, gstr1_table_rows(assigns, review_ids, hsn, documents, base))
-      |> assign(:period_label, full_period_label(assigns.period))
       |> assign(:deadline, deadline(assigns.period))
-      |> assign(:previous_period, shift_period(assigns.period, -1))
-      |> assign(:next_period, shift_period(assigns.period, 1))
 
     ~H"""
     <section
       id="sales-period-workspace"
       class="pb-section space-y-block mx-auto w-full max-w-[1400px]"
     >
-      <.period_header
+      <PeriodHeader.period_header
         client={@client}
         period={@period}
-        period_label={@period_label}
-        deadline={@deadline}
-        previous_period={@previous_period}
-        next_period={@next_period}
-        base={@base}
-        view={@view}
+        picker_year={@picker_year}
+        section="Sales & GSTR-1"
+        due_label={@deadline}
+        path_for_period={fn period -> period_view_path(@client, period, @view) end}
       >
         {render_slot(@client_actions)}
-      </.period_header>
+      </PeriodHeader.period_header>
 
       <%= case @view do %>
         <% :overview -> %>
@@ -300,69 +297,12 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
     """
   end
 
-  attr :client, :map, required: true
-  attr :period, :string, required: true
-  attr :period_label, :string, required: true
-  attr :deadline, :string, required: true
-  attr :previous_period, :string, required: true
-  attr :next_period, :string, required: true
-  attr :base, :string, required: true
-  attr :view, :atom, required: true
-
-  slot :inner_block
-
-  defp period_header(assigns) do
-    assigns =
-      assign(
-        assigns,
-        :can_go_forward?,
-        assigns.period < Elixir.Calendar.strftime(Date.utc_today(), "%Y-%m")
-      )
-
-    ~H"""
-    <.page_header eyebrow={@client.name <> " / Sales & GSTR-1"} title={@period_label}>
-      <:title_actions>
-        <nav aria-label="Filing period" class="flex items-center gap-1">
-          <.button
-            navigate={period_view_path(@client, @previous_period, @view)}
-            variant="ghost"
-            size="sm"
-            id="previous-filing-period"
-            title="Previous month ([)"
-            aria-label="Previous filing period"
-          >
-            <.icon name="hero-chevron-left-mini" class="size-4" />
-          </.button>
-
-          <.button
-            navigate={if @can_go_forward?, do: period_view_path(@client, @next_period, @view)}
-            disabled={not @can_go_forward?}
-            variant="ghost"
-            size="sm"
-            id="next-filing-period"
-            title="Next month (])"
-            aria-label="Next filing period"
-          >
-            <.icon name="hero-chevron-right-mini" class="size-4" />
-          </.button>
-        </nav>
-      </:title_actions>
-
-      <:actions>
-        <div class="gap-related flex items-center">
-          <span class="text-ink-muted text-ui">{@deadline}</span> {render_slot(@inner_block)}
-        </div>
-      </:actions>
-    </.page_header>
-    """
-  end
-
   attr :rows, :list, required: true
 
   defp gstr1_tables_section(assigns) do
     ~H"""
     <.card padding="none">
-      <.card_header id="sales-period-return-heading" title="GSTR-1 tables" />
+      <.card_header id="sales-period-return-heading" title="GSTR-1 summary" />
       <div class="px-4 pt-2 pb-3">
         <.data_table
           id="sales-period-return"
@@ -541,7 +481,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
           value_name="filter"
         />
       </div>
-      <.invoice_table id="sales-period-invoices" rows={@invoice_rows} keyboard_navigation="rows" />
+       <.invoice_table id="sales-period-invoices" rows={@invoice_rows} keyboard_navigation="rows" />
     </div>
     """
   end
@@ -927,23 +867,9 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
   defp treatment_label("cdnr"), do: "Credit/debit note"
   defp treatment_label(_table), do: "Held out"
 
-  defp full_period_label(period) do
-    case Date.from_iso8601(period <> "-01") do
-      {:ok, date} -> Elixir.Calendar.strftime(date, "%B %Y")
-      _ -> Formatters.period_label(period)
-    end
-  end
-
   defp deadline(period) do
     due = period |> Calendar.due_dates() |> Map.fetch!(:gstr1)
     "GSTR-1 due #{Formatters.format_display_date(due)}"
-  end
-
-  defp shift_period(period, months) do
-    [year, month] = period |> String.split("-") |> Enum.map(&String.to_integer/1)
-    shifted = year * 12 + month - 1 + months
-
-    "#{div(shifted, 12)}-#{shifted |> rem(12) |> Kernel.+(1) |> Integer.to_string() |> String.pad_leading(2, "0")}"
   end
 
   defp review_path(client, period, source_id, scope, return_to) do

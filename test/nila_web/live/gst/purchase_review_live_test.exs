@@ -83,13 +83,19 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
       live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     assert has_element?(view, "#purchase-itc-conclusion", "Current proposed ITC")
-    assert has_element?(view, "#purchase-itc-proposal-basis-reported", "Reported in GSTR-2B")
-    assert has_element?(view, "#purchase-itc-proposal-basis-pending", "pending decisions")
-    assert has_element?(view, "#purchase-itc-proposal-basis-claimable", "Current proposed ITC")
-    assert has_element?(view, "#purchase-itc-basis", "reported in GSTR-2B")
-    assert has_element?(view, "#purchase-itc-basis", "not an eligibility assurance")
-    assert has_element?(view, "#purchase-primary-blocker", "Decision required")
-    assert has_element?(view, "#purchase-next-action", "Review invoice")
+
+    assert has_element?(
+             view,
+             "#purchase-itc-proposal-basis-reported-context",
+             "Reported in GSTR-2B"
+           )
+
+    assert has_element?(view, "#purchase-itc-proposal-basis-pending", "pending decision")
+    assert has_element?(view, "#purchase-itc-proposal-basis-claimable", "Claim this period")
+    assert has_element?(view, "#purchase-itc-basis", "GSTR-2B reports")
+    assert has_element?(view, "#purchase-itc-basis", "recorded treatment decisions")
+    assert has_element?(view, "#purchase-primary-blocker", "ITC treatment needed")
+    assert has_element?(view, "#purchase-next-action", "Set ITC treatment")
     assert has_element?(view, "#gstr3b-review-required")
 
     assert_dom_order(view, [
@@ -101,16 +107,17 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     ])
   end
 
-  test "document waiting remains inside the proposal and asks for possession", context do
+  test "a missing document needs treatment and is not claimed by default", context do
     put_month!(context, [], [gstr2b("WAIT-2B-1")])
 
     {:ok, view, _html} =
       live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
 
     assert has_element?(view, "#purchase-itc-conclusion", "Current proposed ITC")
-    assert has_element?(view, "#purchase-primary-blocker", "Evidence pending")
-    assert has_element?(view, "#purchase-primary-blocker", "remains inside the proposal")
-    assert has_element?(view, "#purchase-next-action", "Collect invoice WAIT-2B-1")
+    assert has_element?(view, "#purchase-itc-amount", "₹0.00")
+    assert has_element?(view, "#purchase-primary-blocker", "ITC treatment needed")
+    assert has_element?(view, "#purchase-next-action", "Set ITC treatment")
+    assert has_element?(view, "#purchase-set-outstanding-treatment")
     assert has_element?(view, "#gstr3b-review-required")
 
     assert_dom_order(view, [
@@ -124,6 +131,8 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
 
   test "clear and frozen positions remain distinct without inventing assurance", context do
     month = put_month!(context, [books("frozen-1")], [gstr2b("INV-001")])
+    scope = Nila.Accounts.Scope.for_user(context.user)
+    month = choose_itc_treatment!(month, scope, %{"choice" => "claim"})
 
     {:ok, clear, _html} =
       live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
@@ -133,7 +142,7 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     assert has_element?(clear, "#purchase-next-action", "Open GSTR-3B")
     assert has_element?(clear, "#purchase-open-gstr3b")
 
-    {:ok, _signoff} = Signoffs.sign_off(month, Nila.Accounts.Scope.for_user(context.user))
+    {:ok, _signoff} = Signoffs.sign_off(month, scope)
 
     {:ok, frozen, _html} =
       live(context.conn, "/gst/#{context.client.id}/#{@period}?track=purchases")
@@ -222,7 +231,9 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
 
   test "challenge is disabled after sign-off with a reason", context do
     month = put_month!(context, [books("b1")], [gstr2b("INV-001")])
-    {:ok, _} = Signoffs.sign_off(month, Nila.Accounts.Scope.for_user(context.user))
+    scope = Nila.Accounts.Scope.for_user(context.user)
+    month = choose_itc_treatment!(month, scope, %{"choice" => "claim"})
+    {:ok, _} = Signoffs.sign_off(month, scope)
 
     {:ok, view, _html} = live(context.conn, review_path(context.client, "b1", "all"))
 

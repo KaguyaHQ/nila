@@ -60,7 +60,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
            )
   end
 
-  test "the gap between books ITC and the 2B ceiling is a line, not a subtraction", %{
+  test "the ITC bridge separates imported sources from outstanding treatment", %{
     conn: conn,
     org: org,
     client: client
@@ -91,18 +91,17 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=purchases")
 
-    assert has_element?(view, "#gstr3b-itc-bridge-books-itc", "Net ITC effect in the register")
+    assert has_element?(view, "#gstr3b-itc-bridge-opening", "Opening outstanding ITC")
 
     assert has_element?(
              view,
-             "#gstr3b-itc-bridge-not-in-2b",
-             "Less: not reported in GSTR-2B"
+             "#gstr3b-itc-bridge-reported-context",
+             "Reported in GSTR-2B this period"
            )
 
-    # And it says what to do about it, because it is the most actionable figure
-    # on the page: not claimable this month, and each row is a vendor to chase.
-    assert has_element?(view, "#gstr3b-itc-bridge-not-in-2b", "Not claimable this month")
-    assert has_element?(view, "#gstr3b-itc-bridge-reported", "Reported in GSTR-2B")
+    assert has_element?(view, "#gstr3b-itc-bridge-pending", "Less: pending decision")
+    assert has_element?(view, "#gstr3b-itc-bridge-claimable", "Claim this period")
+    assert has_element?(view, "#gstr3b-itc-bridge-claimable", "₹0.00")
   end
 
   test "a snapshot with no figure for the gap draws no line for it" do
@@ -160,6 +159,13 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
     scope = Nila.Accounts.Scope.for_user(user)
     month = settle_register!(month, user.id)
+
+    month =
+      choose_itc_treatment!(month, scope, %{
+        "choice" => "later",
+        "later_reason" => "review_pending"
+      })
+
     {:ok, _} = Signoffs.sign_off(month, scope)
     {:ok, signoff} = Signoffs.latest_signoff(month.id)
 
@@ -185,7 +191,10 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     refute has_element?(view, "#purchase-itc-amount")
     refute has_element?(view, "#gstr3b-itc-position", "₹0")
 
-    # The month that did record its ITC still states it.
+    # A separate client with a recorded ITC total still states it.
+    {:ok, client} =
+      Clients.create_client(%{org_id: org.id, name: "Recorded totals", type: "company"})
+
     {:ok, _} =
       ClientMonths.upsert(%{
         org_id: org.id,
@@ -280,9 +289,10 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     assert has_element?(view, "#month-workpaper-tab-purchases", "Differences noted")
     assert has_element?(view, "#gstr3b-itc-position", "value difference")
-    assert has_element?(view, "#purchase-primary-blocker", "Difference disclosed")
-    assert has_element?(view, "#purchase-next-action", "Open GSTR-3B")
-    assert has_element?(view, "#purchase-open-gstr3b")
+    assert has_element?(view, "#purchase-primary-blocker", "ITC treatment needed")
+    assert has_element?(view, "#purchase-next-action", "Set ITC treatment")
+    assert has_element?(view, "#purchase-set-outstanding-treatment")
+    refute has_element?(view, "#purchase-open-gstr3b")
     refute has_element?(view, "#gstr3b-review-required")
 
     assert_dom_order(view, [
@@ -317,12 +327,12 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
              Nila.Formatters.format_money_with_paise(workings.itc["claimable_paise"])
            )
 
-    assert has_element?(view, "#purchase-itc-basis", "reported in GSTR-2B")
-    assert has_element?(view, "#purchase-itc-basis", "not an eligibility assurance")
+    assert has_element?(view, "#purchase-itc-basis", "GSTR-2B reports")
+    assert has_element?(view, "#purchase-itc-basis", "recorded treatment decisions")
 
     assert has_element?(
              view,
-             "#purchase-itc-proposal-basis-reported",
+             "#purchase-itc-proposal-basis-reported-context",
              Nila.Formatters.format_money_with_paise(workings.itc["reported_2b_paise"])
            )
 
@@ -333,8 +343,8 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
            )
 
     refute has_element?(view, "#purchase-open-work-summary")
-    assert has_element?(view, "#purchase-primary-blocker", "Decision required")
-    assert has_element?(view, "#purchase-next-action", "Review invoice")
+    assert has_element?(view, "#purchase-primary-blocker", "ITC treatment needed")
+    assert has_element?(view, "#purchase-next-action", "Set ITC treatment")
     refute has_element?(view, "#gstr3b-completeness")
     assert has_element?(view, "#gstr3b-reconciliation h3", "ITC working")
 
@@ -806,7 +816,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     assert has_element?(view, "#purchase-itc-conclusion", "Current proposed ITC")
     assert has_element?(view, "#purchase-itc-amount", "₹0.00")
-    assert has_element?(view, "#purchase-itc-basis", "not an eligibility assurance")
+    assert has_element?(view, "#purchase-itc-basis", "recorded treatment decisions")
     assert has_element?(view, "#purchase-primary-blocker", "No open blocker")
     assert has_element?(view, "#purchase-next-action", "Open GSTR-3B")
     refute has_element?(view, "#purchase-required-actions")
@@ -927,7 +937,9 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     assert stats.need_decision == 0
     assert stats.awaiting_bills == 1
 
-    assert {:ok, _} = Signoffs.sign_off(month, Nila.Accounts.Scope.for_user(user))
+    scope = Nila.Accounts.Scope.for_user(user)
+    month = choose_itc_treatment!(month, scope, %{"choice" => "claim"})
+    assert {:ok, _} = Signoffs.sign_off(month, scope)
 
     {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{period}?track=purchases")
 
@@ -957,6 +969,13 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
     {:ok, month} = ClientMonths.get_by_period(org.id, client.id, @period)
     scope = Nila.Accounts.Scope.for_user(user)
     month = settle_register!(month, user.id)
+
+    month =
+      choose_itc_treatment!(month, scope, %{
+        "choice" => "later",
+        "later_reason" => "review_pending"
+      })
+
     {:ok, _} = Signoffs.sign_off(month, scope)
     {:ok, signoff} = Signoffs.latest_signoff(month.id)
 
@@ -1005,6 +1024,13 @@ defmodule NilaWeb.Gst.MonthLivePurchaseCompactTest do
 
     scope = Nila.Accounts.Scope.for_user(user)
     client_month = settle_register!(client_month, user.id)
+
+    client_month =
+      choose_itc_treatment!(client_month, scope, %{
+        "choice" => "later",
+        "later_reason" => "review_pending"
+      })
+
     answer_sales_issues!(sales, user.id)
     assert {:ok, _} = Signoffs.sign_off(client_month, scope)
 

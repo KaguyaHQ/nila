@@ -4,18 +4,16 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
   @moduledoc "ITC presentation for the GST exception workbench."
 
   @doc """
-  The month's ITC as arithmetic: what the portal reported, what each state took
-  out of it, and what is left to claim.
+  The month's ITC as arithmetic: the reviewed opening credit and how it was
+  split into current claim, later, excluded and pending amounts.
 
   One component, rendered on both the month card and the workbench, because
   those two screens described the same money in different words — a reviewer
   moving between them had no way to tell whether the figures disagreed or the
   vocabulary did.
 
-  Every line is a term of `ItcPosition.partition/3`, which is tested to close.
-  Substantiation sits *inside* the claim rather than beside it: a bill that has
-  not reached Nila says nothing about whether the client holds it, so the money
-  stays claimed, named, and attestable.
+  Imported 2B tax is source context. It is not the opening balance, which can
+  include credit carried from an earlier period.
   """
   attr :itc, :map, required: true
   attr :id, :string, default: "gst-itc-bridge"
@@ -23,7 +21,7 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
   attr :stats, :any, default: nil
 
   def itc_bridge(assigns) do
-    assigns = assign(assigns, :bridge, bridge_rows(assigns.itc, assigns.stats))
+    assigns = assign(assigns, :bridge, bridge_rows(assigns.itc))
 
     ~H"""
     <div
@@ -84,127 +82,41 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
     """
   end
 
-  # `nil` for a snapshot frozen before the partition existed. Those months hold
-  # a ceiling and a claimable figure but none of the terms between them, and
-  # inventing zeroes would draw a bridge whose middle is a guess.
-  defp bridge_rows(itc, stats) when is_map(itc) do
-    if Map.has_key?(itc, "reported_2b_paise") do
-      %{lines: opening(stats, itc) ++ lines(itc)}
-    end
-  end
-
-  defp bridge_rows(_itc, _stats), do: nil
-
-  # The month's own ITC, and the credit the portal has never reported, above the
-  # 2B ceiling the rest of the bridge works from.
-  #
-  # Without these two lines the card said "ITC this month" and the bridge said
-  # "Reported in GSTR-2B", the figures differed, and nothing explained why: a
-  # reader had to subtract two totals to discover the gap. It is the sharpest
-  # number on the page — credit the client cannot take this month because a
-  # vendor has not filed — so it is stated rather than left to be derived.
-  defp opening(%{unreported_by_vendor_known?: true} = stats, itc) do
-    net_effect = Map.get(stats, :net_itc_effect_paise, stats.total_tax_paise)
-    gap = net_effect - stats.unreported_by_vendor_tax_paise
-
-    # Only when the two really differ. On a month where every books bill is in
-    # the 2B, "ITC in your books" and "Reported in GSTR-2B" are one number, and
-    # printing it twice with a −₹0 between them is noise.
-    if stats.unreported_by_vendor_tax_paise > 0 and gap >= 0 do
-      [
-        %{
-          key: "books-itc",
-          label: "Net ITC effect in the register",
-          note: nil,
-          paise: net_effect,
-          sign: "",
-          total?: false,
-          emphasis: nil
-        },
-        %{
-          key: "not-in-2b",
-          label: "Less: not reported in GSTR-2B",
-          note: "Not claimable this month — the vendor has not filed it. Chase them.",
-          paise: stats.unreported_by_vendor_tax_paise,
-          sign: "−",
-          total?: false,
-          emphasis: nil
-        }
-      ] ++ basis_residual(gap, itc)
-    else
-      []
-    end
-  end
-
-  defp opening(_stats, _itc), do: []
-
-  # The two opening lines are books figures; every line below them is the 2B's.
-  # Where the two disagree on the same supply the subtraction does not land on
-  # the ceiling, and the bridge printed A − B above a C that was not A − B.
-  #
-  # Two things make it up: a value mismatch files the 2B's figure rather than
-  # the books', and a supply still under review is counted at the 2B's. Naming
-  # the residual is the honest fix — the alternative was a bridge whose first
-  # arithmetic step silently did not hold.
-  defp basis_residual(gap, itc) do
-    case (itc["reported_2b_paise"] || 0) - gap do
-      0 ->
-        []
-
-      residual ->
-        [
-          %{
-            key: "basis-residual",
-            label: "Adjustment to GSTR-2B amounts on mismatched invoices",
-            note:
-              "For mismatched invoices, the current treatment uses the portal amount rather than the books amount.",
-            paise: abs(residual),
-            sign: (residual > 0 && "+") || "−",
-            total?: false,
-            emphasis: nil
-          }
-        ]
-    end
-  end
+  defp bridge_rows(%{"opening_outstanding_paise" => _} = itc), do: %{lines: lines(itc)}
+  defp bridge_rows(_itc), do: nil
 
   defp lines(itc) do
     [
       %{
-        key: "reported",
-        label: "Reported in GSTR-2B",
-        note: nil,
+        key: "reported-context",
+        label: "Reported in GSTR-2B this period",
+        note:
+          "Source amount for this period; carried credit is shown in the opening balance below.",
         paise: itc["reported_2b_paise"],
+        sign: "",
+        total?: false,
+        emphasis: nil
+      },
+      %{
+        key: "opening",
+        label: "Opening outstanding ITC",
+        note: "Includes eligible credit carried from earlier periods.",
+        paise: itc["opening_outstanding_paise"],
         sign: "",
         total?: false,
         subtotal?: true,
         emphasis: "border-rule border-t-2"
       }
     ] ++
-      deduction(
-        "credit-notes",
-        "Less: supplier credit notes",
-        itc["credit_note_reversal_applied_paise"],
-        "Positive face values; reversed in GSTR-3B Table 4B(2)."
-      ) ++
-      deduction("blocked", "Less: blocked credits", itc["blocked_in_ceiling_paise"], nil) ++
-      deduction(
-        "pending",
-        "Less: ITC withheld pending decisions",
-        itc["pending_decision_paise"],
-        "These decisions have not been resolved yet."
-      ) ++
-      deduction(
-        "withheld",
-        "Less: credit without a held invoice",
-        itc["unsubstantiated_withheld_paise"],
-        "Attested under s.16(2)(a). Reversed in 4B(2) on the return."
-      ) ++
+      deduction("later", "Less: claim later", itc["later_paise"], nil) ++
+      deduction("excluded", "Less: excluded", itc["excluded_paise"], nil) ++
+      deduction("pending", "Less: pending decision", itc["pending_paise"], nil) ++
       [
         %{
           key: "claimable",
-          label: "Current proposed ITC",
+          label: "Claim this period",
           note: nil,
-          paise: itc["claimable_paise"],
+          paise: itc["current_claim_paise"],
           sign: "",
           total?: true,
           emphasis: "border-rule border-t-2"
@@ -221,11 +133,11 @@ defmodule NilaWeb.Components.Gst.Exceptions.Itc do
 
   defp supporting_evidence_copy(%{awaiting_bills: count}) when count > 0,
     do:
-      "#{count} #{if count == 1, do: "supply appears", else: "supplies appear"} in GSTR-2B without an invoice on file. This amount remains inside the current proposal until document possession is resolved."
+      "#{count} #{if count == 1, do: "supply appears", else: "supplies appear"} in GSTR-2B without an invoice on file. Check the recorded treatment before claiming."
 
   defp supporting_evidence_copy(_stats),
     do:
-      "Supplies appear in GSTR-2B without invoices on file. This amount remains inside the current proposal until document possession is resolved."
+      "Supplies appear in GSTR-2B without invoices on file. Check the recorded treatment before claiming."
 
   attr :itc, :map, required: true
   attr :signed_off, :boolean, required: true

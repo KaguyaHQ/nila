@@ -19,14 +19,69 @@ defmodule NilaWeb.Gst.PurchasePageTest do
   end
 
   test "empty month provides separate purchase and portal input paths", c do
-    {:ok, view, _} = live(c.conn, path(c))
+    {:ok, view, _} = live(c.conn, overview_path(c))
     assert has_element?(view, "#purchases-page")
-    assert has_element?(view, "#purchase-empty", "Import the purchase register")
-    assert has_element?(view, "#purchase-input-status", "Purchases: not imported")
+    assert has_element?(view, "#purchase-overview")
+
+    assert has_element?(
+             view,
+             "#purchase-comparison-pending",
+             "Import the purchase register and GSTR-2B"
+           )
+
+    refute has_element?(view, "#purchase-items")
     assert has_element?(view, "#purchase-fetch-2b[href*='client_id=#{c.client.id}']")
     refute has_element?(view, "#purchase-workings-download")
     view |> element("#purchase-import-excel") |> render_click()
-    assert_redirect(view, path(c) <> "/import-excel")
+    assert_redirect(view, overview_path(c) <> "/import-excel")
+  end
+
+  test "overview counts both sources and opens the matching register groups", c do
+    book = invoice("BOOK-1", "INV-1", 90_000)
+    portal = invoice(nil, "INV-1", 95_000)
+    matched = invoice("BOOK-2", "INV-2", 90_000)
+    seed(c, [book, matched], [portal, Map.delete(matched, "id")])
+
+    {:ok, view, _} = live(c.conn, overview_path(c))
+    assert has_element?(view, "#purchase-overview")
+    refute has_element?(view, "#purchase-items")
+    assert has_element?(view, "#purchase-books-totals", "2 documents")
+    assert has_element?(view, "#purchase-portal-totals", "2 documents")
+    assert has_element?(view, "#purchase-register-link[href*='/purchases/register?']")
+    assert has_element?(view, "#purchase-gstr2b-link[href*='filter=gstr2b']")
+    assert has_element?(view, "#purchase-summary-mismatch[href*='filter=mismatch']")
+    assert has_element?(view, "#filing-period-trigger", "August 2026")
+    assert has_element?(view, "#previous-filing-period[href*='/2026-07/purchases']")
+    assert has_element?(view, "#next-filing-period[href*='/2026-09/purchases']")
+  end
+
+  test "2B-only overview waits for purchases before showing reconciliation buckets", c do
+    seed(c, [], [invoice(nil, "PORTAL-1", 90_000)])
+    {:ok, view, _} = live(c.conn, overview_path(c))
+    assert has_element?(view, "#purchase-portal-totals", "1 document")
+    assert has_element?(view, "#purchase-comparison-pending", "Import purchases")
+    refute has_element?(view, "#purchase-reconciliation")
+    refute has_element?(view, "#purchase-summary-2b_only")
+    refute has_element?(view, "#purchase-items")
+  end
+
+  test "overview counts source documents even when review groups them", c do
+    books = [invoice("BOOK-A", "SHARED-1", 90_000), invoice("BOOK-B", "SHARED-1", 90_000)]
+    portal = [invoice(nil, "SHARED-1", 90_000)]
+    seed(c, books, portal)
+
+    {:ok, workspace} =
+      NilaWeb.Gst.PurchaseWorkspace.load(
+        Nila.Accounts.Scope.for_user(c.user),
+        c.client.id,
+        "2026-08"
+      )
+
+    assert Enum.any?(workspace.items, &(length(&1.books_members) > 1))
+
+    {:ok, view, _} = live(c.conn, overview_path(c))
+    assert has_element?(view, "#purchase-books-totals", "2 documents")
+    assert has_element?(view, "#purchase-portal-totals", "1 document")
   end
 
   test "mismatches remain visible and search/filter survive opening review", c do
@@ -41,7 +96,7 @@ defmodule NilaWeb.Gst.PurchasePageTest do
 
     assert has_element?(view, "#purchase-items", "INV-1")
     refute has_element?(view, "#purchase-items", "INV-2")
-    view |> element("#purchase-filter-mismatch") |> render_click()
+    view |> form("#purchase-filters", filter: %{value: "mismatch"}) |> render_change()
     assert_patch(view, path(c) <> "?filter=mismatch&q=")
     view |> form("#purchase-search", search: %{q: "INV-1"}) |> render_change()
     assert_patch(view, path(c) <> "?filter=mismatch&q=INV-1")
@@ -54,7 +109,7 @@ defmodule NilaWeb.Gst.PurchasePageTest do
     {:ok, view, _} = live(c.conn, path(c))
     assert has_element?(view, "#purchase-input-status", "Purchases: not imported")
     assert has_element?(view, "#purchase-items", "PORTAL-1")
-    assert has_element?(view, "#purchase-next-step", "Select invoices to exclude from ITC")
+    assert has_element?(view, "#purchase-next-step", "Set ITC treatment")
     assert has_element?(view, "#purchase-search")
     refute has_element?(view, "#purchase-filters")
     refute has_element?(view, "#purchase-result-count")
@@ -86,27 +141,94 @@ defmodule NilaWeb.Gst.PurchasePageTest do
     assert has_element?(view, "#purchase-selection", "2 selected")
     assert has_element?(view, "#purchase-selection-count", "1 outside this filter")
     assert has_element?(view, "#purchase-search")
-    view |> element("#purchase-exclude-itc") |> render_click()
-    assert has_element?(view, "#purchase-claim-dialog[role=dialog]")
+    view |> element("#purchase-set-treatment") |> render_click()
+    assert has_element?(view, "#purchase-treatment-dialog[role=dialog]")
     assert has_element?(view, "#purchase-selected-invoices", "DRY-1")
-    view |> element("#purchase-cancel-claim") |> render_click()
-    refute has_element?(view, "#purchase-claim-dialog")
+    view |> element("#purchase-cancel-treatment") |> render_click()
+    refute has_element?(view, "#purchase-treatment-dialog")
     assert has_element?(view, "#purchase-selection", "2 selected")
-    view |> element("#purchase-exclude-itc") |> render_click()
-    view |> form("#purchase-claim-form", claim: %{reason: "Personal expenses"}) |> render_submit()
+    view |> element("#purchase-set-treatment") |> render_click()
+    view |> element("#purchase-choice-exclude") |> render_click()
+
+    view
+    |> form("#purchase-treatment-form", treatment: %{exclude_reason: "personal"})
+    |> render_submit()
+
     refute has_element?(view, "#purchase-selection")
     view |> form("#purchase-search", search: %{q: ""}) |> render_change()
-    assert has_element?(view, "#purchase-claim-state-#{dry.id}", "Not claiming")
-    assert has_element?(view, "#purchase-claim-state-#{city.id}", "Not claiming")
-    refute has_element?(view, "#purchase-claim-state-#{other.id}")
-    assert has_element?(view, "#purchase-items", "Personal expenses")
+    assert has_element?(view, "#purchase-treatment-state-#{dry.id}", "Excluded from ITC")
+    assert has_element?(view, "#purchase-treatment-state-#{city.id}", "Excluded from ITC")
+    refute has_element?(view, "#purchase-treatment-state-#{other.id}", "Excluded from ITC")
 
     {:ok, refreshed, _} = live(c.conn, path(c))
-    assert has_element?(refreshed, "#purchase-claim-state-#{dry.id}", "Not claiming")
+    assert has_element?(refreshed, "#purchase-treatment-state-#{dry.id}", "Excluded from ITC")
     refreshed |> element("#purchase-select-#{dry.id}") |> render_click()
-    refreshed |> element("#purchase-reopen-itc") |> render_click()
-    refute has_element?(refreshed, "#purchase-claim-state-#{dry.id}")
-    assert has_element?(refreshed, "#purchase-claim-state-#{city.id}")
+    refreshed |> element("#purchase-set-treatment") |> render_click()
+    refreshed |> element("#purchase-choice-later") |> render_click()
+
+    refreshed
+    |> form("#purchase-treatment-form", treatment: %{later_reason: "review_pending"})
+    |> render_submit()
+
+    assert has_element?(refreshed, "#purchase-treatment-state-#{dry.id}", "Claim later")
+    assert has_element?(refreshed, "#purchase-treatment-state-#{city.id}", "Excluded from ITC")
+  end
+
+  test "a single invoice can split each tax head and rejects invalid decimals", c do
+    seed(c, [invoice("SPLIT-BOOK", "SPLIT-1", 90_000)], [invoice(nil, "SPLIT-1", 90_000)])
+    {:ok, view, _} = live(c.conn, "/gst/#{c.client.id}/2026-08/purchases/register?filter=all")
+
+    {:ok, data} =
+      NilaWeb.Gst.PurchaseWorkspace.load(
+        Nila.Accounts.Scope.for_user(c.user),
+        c.client.id,
+        "2026-08"
+      )
+
+    item = Enum.find(data.items, &(&1.invoice_number == "SPLIT-1"))
+    view |> element("#purchase-select-#{item.id}") |> render_click()
+    view |> element("#purchase-set-treatment") |> render_click()
+    view |> element("#purchase-choice-split") |> render_click()
+    assert has_element?(view, "#purchase-split-heads", "CGST available")
+    refute has_element?(view, "#purchase-cess-claim")
+    refute has_element?(view, "#purchase-cess-review")
+
+    view
+    |> form("#purchase-treatment-form",
+      treatment: %{
+        later_reason: "review_pending",
+        split: %{claim: %{cgst: "500.001"}}
+      }
+    )
+    |> render_submit()
+
+    assert has_element?(view, "#purchase-treatment-error", "decimal places")
+
+    view
+    |> form("#purchase-treatment-form",
+      treatment: %{
+        later_reason: "review_pending",
+        split: %{
+          claim: %{cgst: "500.00", sgst: "500.00"},
+          later: %{cgst: "400.00", sgst: "400.00"}
+        }
+      }
+    )
+    |> render_submit()
+
+    refute has_element?(view, "#purchase-treatment-error"), render(view)
+
+    assert {:ok, updated} =
+             NilaWeb.Gst.PurchaseWorkspace.load(
+               Nila.Accounts.Scope.for_user(c.user),
+               c.client.id,
+               "2026-08"
+             )
+
+    line = Enum.find(updated.workings.case_lines, &(&1.case_id == item.case_id))
+    assert line.treatment == "split"
+    assert line.treatment_heads["claim"]["cgst"] == 50_000
+    assert line.treatment_heads["later"]["sgst"] == 40_000
   end
 
   test "a saved statement needs one reconciliation action, not repeated imports", c do
@@ -126,7 +248,7 @@ defmodule NilaWeb.Gst.PurchasePageTest do
         }
       })
 
-    {:ok, view, _} = live(c.conn, path(c))
+    {:ok, view, _} = live(c.conn, overview_path(c))
     assert has_element?(view, "#purchase-use-2b", "Start reconciliation")
     view |> element("#purchase-use-2b") |> render_click()
     refute has_element?(view, "#purchase-use-2b")
@@ -183,7 +305,8 @@ defmodule NilaWeb.Gst.PurchasePageTest do
              live(c.conn, "/gst/#{client.id}/2026-08/purchases")
   end
 
-  defp path(c), do: "/gst/#{c.client.id}/2026-08/purchases"
+  defp path(c), do: overview_path(c) <> "/register"
+  defp overview_path(c), do: "/gst/#{c.client.id}/2026-08/purchases"
 
   test "blocked upload can be kept with an audited reason and processed", c do
     dump = questioned(c, "purchase", "period_mismatch")
@@ -239,7 +362,7 @@ defmodule NilaWeb.Gst.PurchasePageTest do
     |> form("#purchase-intake-form-#{dump.id}", intake: %{period: "2026-07"})
     |> render_submit()
 
-    assert_redirect(view, "/gst/#{c.client.id}/2026-07/purchases?filter=needs_review&q=")
+    assert_redirect(view, "/gst/#{c.client.id}/2026-07/purchases/register?filter=needs_review&q=")
     assert {:ok, moved} = Nila.Gst.Intake.Dumps.fetch(c.org.id, dump.id)
     assert moved.period == "2026-07"
   end
@@ -312,6 +435,62 @@ defmodule NilaWeb.Gst.PurchasePageTest do
     })
 
     assert {:ok, %{status: "needs_confirmation"}} = Nila.Gst.Intake.Dumps.fetch(c.org.id, dump.id)
+  end
+
+  test "a refreshed statement awaiting import keeps the overview in draft", c do
+    book = invoice("BOOK-FRESH", "FRESH-1", 90_000)
+    seed(c, [book], [Map.delete(book, "id")])
+    {:ok, view, _} = live(c.conn, "/gst/#{c.client.id}/2026-08/purchases")
+    refute has_element?(view, "#purchase-review-complete")
+
+    statement =
+      Nila.Repo.insert!(%Nila.Gst.Portal.Statement{
+        client_id: c.client.id,
+        gstin: c.client.gstin,
+        period: "2026-08",
+        status: "ready",
+        fetched_at: DateTime.utc_now(),
+        document: %{
+          "data" => %{
+            "gstin" => c.client.gstin,
+            "rtnprd" => "082026",
+            "docdata" => %{"b2b" => []}
+          }
+        }
+      })
+
+    send(view.pid, {:gst_statement_fetched, statement.id})
+    assert has_element?(view, "#purchase-use-2b", "Update reconciliation")
+    refute has_element?(view, "#purchase-review-complete")
+    assert has_element?(view, "#purchase-working-status", "Draft working")
+  end
+
+  test "CESS retains evidence but cannot be claimed or carried forward", c do
+    book =
+      invoice("CESS-BOOK", "CESS-1", 90_000)
+      |> put_in(["tax_paise", "cess"], 2_000)
+      |> Map.put("total_paise", 1_182_000)
+
+    seed(c, [book], [Map.delete(book, "id")])
+    {:ok, view, _} = live(c.conn, "/gst/#{c.client.id}/2026-08/purchases/register?filter=all")
+
+    {:ok, data} =
+      NilaWeb.Gst.PurchaseWorkspace.load(
+        Nila.Accounts.Scope.for_user(c.user),
+        c.client.id,
+        "2026-08"
+      )
+
+    item = Enum.find(data.items, &(&1.invoice_number == "CESS-1"))
+    view |> element("#purchase-select-#{item.id}") |> render_click()
+    view |> element("#purchase-set-treatment") |> render_click()
+    assert has_element?(view, "#purchase-choice-claim[disabled]")
+    assert has_element?(view, "#purchase-choice-later[disabled]")
+    assert has_element?(view, "#purchase-cess-review", "cess")
+    view |> element("#purchase-choice-split") |> render_click()
+    assert has_element?(view, "#purchase-cess-claim[disabled][value='0.00']")
+    assert has_element?(view, "#purchase-cess-later[disabled][value='0.00']")
+    assert has_element?(view, "#purchase-cess-exclude:not([disabled])")
   end
 
   defp questioned(c, kind, issue) do

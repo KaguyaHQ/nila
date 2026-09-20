@@ -67,11 +67,13 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         <section class="bg-quiet space-y-section p-6 lg:p-8">
           <div class="space-y-related min-w-0">
             <p class="text-ink-subtle text-label font-semibold uppercase">Purchase position</p>
+
             <h2 class="text-base-content text-h4 font-semibold">Purchases &amp; ITC</h2>
           </div>
 
           <div id="purchase-itc-conclusion" class="space-y-related">
             <p class="text-ink-subtle text-label font-semibold uppercase">{@position.label}</p>
+
             <p
               :if={@position.amount}
               id="purchase-itc-amount"
@@ -79,6 +81,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             >
               {@position.amount}
             </p>
+
             <p
               :if={is_nil(@position.amount)}
               id="purchase-itc-amount-unavailable"
@@ -86,6 +89,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             >
               {@position.unavailable}
             </p>
+
             <p id="gstr3b-itc-position" class="text-body text-ink-muted max-w-3xl">{@verdict.copy}</p>
           </div>
 
@@ -99,29 +103,34 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             <p class="text-ink-subtle text-label font-semibold uppercase">
               Basis of current proposal
             </p>
-            <Itc.itc_bridge itc={@itc} id="purchase-itc-proposal-basis" />
+             <Itc.itc_bridge itc={@itc} id="purchase-itc-proposal-basis" />
           </div>
         </section>
 
         <aside class="border-rule divide-rule divide-y border-t lg:border-t-0 lg:border-l">
           <div id="purchase-itc-basis" class="space-y-related p-6">
             <p class="text-ink-subtle text-label font-semibold uppercase">Current basis</p>
+
             <p class="text-base-content text-body font-medium">{@basis_copy}</p>
           </div>
 
           <div id="purchase-primary-blocker" class="space-y-related p-6">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <p class="text-ink-subtle text-label font-semibold uppercase">Main blocker</p>
+
               <.badge variant={@primary_blocker.variant}>{@primary_blocker.label}</.badge>
             </div>
+
             <p class="text-body text-ink-muted">{@primary_blocker.copy}</p>
           </div>
 
           <div id="purchase-next-action" class="space-y-block p-6">
             <div class="space-y-related">
               <p class="text-ink-subtle text-label font-semibold uppercase">Next human action</p>
+
               <p class="text-base-content text-body font-medium">{@next_action_copy}</p>
             </div>
+
             <div class="flex flex-wrap items-center gap-2">
               <.button
                 :if={@track_state == :need_2b}
@@ -132,6 +141,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               >
                 Bring in GSTR-2B
               </.button>
+
               <.button
                 :if={@first_action && (@action_counts.decisions > 0 or @action_counts.documents > 0)}
                 id="gstr3b-review-required"
@@ -141,8 +151,18 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               >
                 Review next action
               </.button>
+
               <.button
-                :if={is_nil(@first_action) and @review_available? and @action_counts.waiting == 0}
+                :if={@itc && (@itc["pending_paise"] || 0) > 0}
+                id="purchase-set-outstanding-treatment"
+                navigate={~p"/gst/#{@client.id}/#{@period}/purchases/register?filter=treatment"}
+                size="sm"
+              >Set ITC treatment</.button>
+              <.button
+                :if={
+                  is_nil(@first_action) and @review_available? and @action_counts.waiting == 0 and
+                    (@itc["pending_paise"] || 0) == 0
+                }
                 id="purchase-open-gstr3b"
                 patch={~p"/gst/#{@client.id}/#{@period}?track=gstr3b"}
                 variant="primary"
@@ -165,7 +185,6 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         ]
         |> Enum.filter(&is_map/1)
       } />
-
       <section
         :if={@required_actions != []}
         id="purchase-required-actions"
@@ -173,10 +192,12 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       >
         <div class="space-y-related">
           <h3 class="text-base-content text-h4 font-semibold">Required actions</h3>
+
           <p class="text-ink-muted text-ui">
             Judgement, corrections and missing evidence remain separate from machine matching state.
           </p>
         </div>
+
         <div class="bg-panel-surface border-rule divide-rule rounded-box divide-y border">
           <article
             :for={item <- @required_actions}
@@ -186,15 +207,19 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-2">
                 <.badge variant={action_variant(item)}>{action_label(item)}</.badge>
+
                 <p class="text-base-content text-ui min-w-0 font-semibold wrap-break-word">
                   {item.invoice_number || "—"} · {item.vendor}
                 </p>
               </div>
+
               <p class="text-body text-ink-muted mt-1">{item.reason}</p>
             </div>
+
             <p class="text-base-content text-ui font-mono tabular-nums">
               {format_money(item.tax_paise, prefix: "₹")}
             </p>
+
             <.button
               patch={purchase_review_path(@client, @period, item.id, :needs_you)}
               variant="outline"
@@ -209,10 +234,12 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       <section id="purchase-controls" class="space-y-block scroll-mt-28">
         <div>
           <h3 class="text-base-content text-h4 font-semibold">Purchase controls</h3>
+
           <p class="text-ink-muted text-ui">
             Open the bridge or evidence population when you need the supporting schedule.
           </p>
         </div>
+
         <div class="bg-panel-surface border-rule divide-rule rounded-box divide-y border">
           <.fold
             id="purchase-control-coverage"
@@ -225,6 +252,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                 <:detail>
                   {@stats.invoices} supplied documents · {@stats.gstr2b_only} 2B-only entries · {@stats.rows} positions
                 </:detail>
+
                 <:status>
                   <.badge variant={if @gstr2b_in, do: "neutral", else: "warning"}>
                     {if @gstr2b_in, do: "Compared", else: "2B not in"}
@@ -232,17 +260,20 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                 </:status>
               </.fold_summary>
             </:summary>
+
             <dl class="grid gap-4 pb-4 sm:grid-cols-3">
               <div>
                 <dt class="text-ink-subtle text-label uppercase">Matched</dt><dd class="text-base-content text-body font-semibold">
                   {@stats.matched}
                 </dd>
               </div>
+
               <div>
                 <dt class="text-ink-subtle text-label uppercase">Open positions</dt><dd class="text-base-content text-body font-semibold">
                   {@stats.open}
                 </dd>
               </div>
+
               <div>
                 <dt class="text-ink-subtle text-label uppercase">2B-only</dt><dd class="text-base-content text-body font-semibold">
                   {@stats.gstr2b_only}
@@ -261,6 +292,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             <:summary>
               <.fold_summary title="Current ITC proposal bridge">
                 <:detail>How portal-reported credit becomes the current proposed ITC.</:detail>
+
                 <:status>
                   <.badge variant={if @stats.need_decision > 0, do: "warning", else: "neutral"}>
                     {if @stats.need_decision > 0, do: "Review open", else: "Current"}
@@ -268,9 +300,10 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                 </:status>
               </.fold_summary>
             </:summary>
+
             <div class="space-y-related pb-4">
               <h3 class="text-base-content text-body font-semibold">ITC working</h3>
-              <Itc.itc_bridge itc={@itc} stats={@stats} id="gstr3b-itc-bridge" />
+               <Itc.itc_bridge itc={@itc} stats={@stats} id="gstr3b-itc-bridge" />
             </div>
           </.fold>
 
@@ -286,13 +319,16 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                 <:detail>
                   {length(@carried_itc)} earlier {plural(length(@carried_itc), "position")}
                 </:detail>
+
                 <:status>
                   <.badge variant="info">Carried</.badge>
                 </:status>
               </.fold_summary>
             </:summary>
+
             <div id="gstr3b-carried-itc" class="space-y-related pb-4">
               <h4 class="text-base-content text-body font-semibold">Prior-period ITC</h4>
+
               <div class="border-rule divide-rule rounded-box divide-y border">
                 <div
                   :for={line <- @carried_itc}
@@ -302,6 +338,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                   <div class="text-ink-subtle text-ui font-medium">
                     {carried_origin(line)}
                   </div>
+
                   <div class="min-w-0">
                     <div
                       class="text-base-content text-ui truncate font-medium"
@@ -310,6 +347,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                       {line.invoice_number || "—"} · {line.vendor}
                     </div><div class="text-ink-subtle text-ui">{carried_status(line)}</div>
                   </div>
+
                   <div class="text-base-content text-ui font-mono whitespace-nowrap tabular-nums">
                     {format_money(line.tax_paise, prefix: "₹")}
                   </div>
@@ -330,11 +368,13 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
                 <:detail>
                   {@stats.awaiting_bills} supporting {plural(@stats.awaiting_bills, "document")} not on file
                 </:detail>
+
                 <:status>
                   <.badge variant="warning">Evidence pending</.badge>
                 </:status>
               </.fold_summary>
             </:summary>
+
             <div class="pb-4">
               <Itc.supporting_evidence
                 itc={@itc}
@@ -350,6 +390,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         <div class="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h3 class="text-base-content text-h4 font-semibold">Purchase register</h3>
+
             <p class="text-ink-muted text-ui">
               {length(@visible_rows)} of {@stats.rows} positions shown · {@stats.invoices} supplied {plural(
                 @stats.invoices,
@@ -357,6 +398,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               )} · {@stats.gstr2b_only} additional 2B-only {plural(@stats.gstr2b_only, "entry")}
             </p>
           </div>
+
           <.button
             :if={@first_action}
             id="purchase-register-review-next"
@@ -373,10 +415,12 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         >
           <div class="flex flex-wrap items-baseline gap-2">
             <p class="text-base-content text-ui font-semibold">Filter by machine reconciliation</p>
+
             <p class="text-ink-muted text-ui">
               This filters rows; it does not establish ITC eligibility.
             </p>
           </div>
+
           <div class="flex flex-wrap gap-1" role="group" aria-label="Machine reconciliation filter">
             <.button
               :for={filter <- @reconciliation_filters}
@@ -413,6 +457,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               placeholder="Invoice, vendor or GSTIN"
             />
           </.form>
+
           <div :if={@review_available?} class="overflow-x-auto">
             <.segmented_control
               id="purchase-action-filters"
@@ -428,6 +473,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               value_name="filter"
             />
           </div>
+
           <.segmented_control
             id="purchase-register-sort"
             items={[
@@ -462,30 +508,37 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               >{document_abbreviation(row)}</span>
             </div>
           </:col>
+
           <:col :let={row} label="Vendor">
             <span class="wrap-break-word">{row["vendor_name"]}</span>
           </:col>
+
           <:col :let={row} label="Taxable" align="right">
             {format_money(row["taxable_paise"], prefix: "₹")}
           </:col>
+
           <:col :let={row} label="Current ITC" align="right">
             <span class={row["itc_effect_paise"] < 0 && "nila-purchase-itc-negative"}>{signed_money(
               row["itc_effect_paise"]
             )}</span>
           </:col>
+
           <:col :let={row} label="Machine reconciliation">
             <.badge :if={@review_available?} variant={status_variant(row)}>
               {row["bucket_label"]}
             </.badge>
+
             <span :if={!@review_available?} class="text-ink-muted text-ui">
               Waiting for GSTR-2B
             </span>
           </:col>
+
           <:col :let={row} label="Human action">
             <span class="text-ink-muted text-ui">
               {purchase_human_state(row, @review, @review_available?)}
             </span>
           </:col>
+
           <:col :let={row} label="Note" class="max-w-sm">
             <span :if={Register.annotated_row?(row)} class="text-base-content block wrap-break-word">{row[
               "verdict"
@@ -494,6 +547,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
               class="mt-related text-ink-subtle text-ui block wrap-break-word"
             >{row["next_action"]}</span>
           </:col>
+
           <:empty>No purchase positions match these filters.</:empty>
         </.data_table>
       </section>
@@ -501,16 +555,18 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       <section id="gstr3b-source-documents" class="space-y-block scroll-mt-28">
         <div>
           <h3 class="text-base-content text-h4 font-semibold">Evidence and collection history</h3>
+
           <p class="text-ink-muted text-ui">
             Source packets, GSTR-2B basis and processing facts behind this position.
           </p>
         </div>
+
         <p id="purchase-gstr2b-freshness" class="text-base-content text-ui font-medium">
           {if @gstr2b_in,
             do: "Reconciled against the GSTR-2B data currently in Nila.",
             else: "No GSTR-2B population is available for this month."}
         </p>
-        {render_slot(@source)}
+         {render_slot(@source)}
         <button
           :if={@asks != []}
           type="button"
@@ -519,6 +575,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
         >View {length(@asks)} recorded {plural(length(@asks), "request")}</button>
         <div :if={@document_flags != []} id="gst-document-flags" class="space-y-related">
           <p class="text-ink-subtle text-label font-semibold uppercase">Source processing</p>
+
           <div
             :for={{flag, index} <- Enum.with_index(@document_flags)}
             id={"gst-document-flag-#{index}"}
@@ -549,6 +606,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
             <% end %>
           </p>
         </div>
+
         <.button
           :if={@review_available?}
           id="purchase-transition-gstr3b"
@@ -734,7 +792,7 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
   defp basis_copy(%{itc: %{"reported_2b_paise" => reported}}),
     do:
-      "Derived from #{precise_money(reported)} reported in GSTR-2B after recorded deductions. This is a proposal, not an eligibility assurance."
+      "GSTR-2B reports #{precise_money(reported)} in this period. Proposed ITC uses recorded treatment decisions, including credit carried from earlier periods."
 
   defp basis_copy(_assigns),
     do: "Derived from the current purchase register and the evidence recorded in this workpaper."
@@ -752,6 +810,13 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
       variant: "warning",
       copy:
         "The purchase register cannot be compared with the portal population until GSTR-2B is brought in."
+    }
+
+  defp primary_blocker(%{itc: %{"pending_paise" => pending}}) when pending > 0,
+    do: %{
+      label: "ITC treatment needed",
+      variant: "warning",
+      copy: "#{precise_money(pending)} still needs a claim, later or exclusion decision."
     }
 
   defp primary_blocker(%{stats: %{need_decision: count} = stats, review: review, itc: itc})
@@ -848,6 +913,9 @@ defmodule NilaWeb.Components.Gst.Month.Purchase do
 
   defp next_action_copy(nil, %{track_state: state}, _counts) when state in [:signed, :filed],
     do: "Open GSTR-3B to inspect the frozen return and its filing state."
+
+  defp next_action_copy(nil, %{itc: %{"pending_paise" => pending}}, _counts) when pending > 0,
+    do: "Set ITC treatment for the remaining invoices."
 
   defp next_action_copy(nil, _assigns, _counts),
     do: "Open GSTR-3B and continue the return from this purchase position."

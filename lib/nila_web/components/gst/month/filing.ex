@@ -773,7 +773,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
             {gstr3b_preview_status(@gstr3b, @stats)}
           </p>
         </div>
-        {render_slot(@primary_action)}
+         {render_slot(@primary_action)}
       </div>
 
       <div class="space-y-related">
@@ -883,7 +883,7 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       >
         Reopen signature
       </.button>
-      {render_slot(@extra_step)}
+       {render_slot(@extra_step)}
     </div>
     """
   end
@@ -915,6 +915,16 @@ defmodule NilaWeb.Components.Gst.Month.Filing do
       {"decisions", assigns.stats.need_decision > 0,
        "#{assigns.stats.need_decision} purchase #{plural(assigns.stats.need_decision, "decision")} still open.",
        {:patch, "Review decisions", purchase_review}},
+      {"cess-treatment",
+       (get_in(assigns.itc, ["current_claim_heads", "cess"]) || 0) != 0 or
+         (get_in(assigns.itc, ["later_heads", "cess"]) || 0) != 0,
+       "Compensation cess needs separate review; Nila cannot sign off a cess claim or deferral.",
+       {:navigate, "Review ITC treatment",
+        ~p"/gst/#{client_id}/#{period}/purchases/register?filter=treatment"}},
+      {"itc-treatment", (assigns.itc["pending_paise"] || 0) > 0,
+       "Some credit still needs an ITC treatment decision.",
+       {:navigate, "Set ITC treatment",
+        ~p"/gst/#{client_id}/#{period}/purchases/register?filter=treatment"}},
       {"attestation", assigns.stats.need_decision == 0 and attestation_open?(assigns.itc),
        "Nobody has confirmed whether the client holds tax invoices for the supplies the portal reported (s.16(2)(a)).",
        {:patch, "Answer it", purchase_review}},

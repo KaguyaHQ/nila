@@ -27,6 +27,7 @@ defmodule NilaWeb.Components.Page do
     doc: "makes the eyebrow the page's one link back to its parent"
 
   attr :title, :string, required: true
+  slot :title_control, doc: "interactive page title, such as a period selector"
   slot :inner_block, doc: "intro / supporting copy under the title"
   slot :actions, doc: "page actions aligned to the right"
   slot :title_actions, doc: "navigation directly beside the title, such as filing period arrows"
@@ -46,7 +47,13 @@ defmodule NilaWeb.Components.Page do
           <span :if={is_nil(@eyebrow_path)}>{@eyebrow}</span>
         </p>
         <div class="flex flex-wrap items-center gap-4">
-          <h1 class="text-base-content text-page font-medium">{@title}</h1>
+          <h1 class="text-base-content text-page font-medium">
+            <%= if @title_control == [] do %>
+              {@title}
+            <% else %>
+              {render_slot(@title_control)}
+            <% end %>
+          </h1>
           <div :if={@title_actions != []}>{render_slot(@title_actions)}</div>
         </div>
         <p

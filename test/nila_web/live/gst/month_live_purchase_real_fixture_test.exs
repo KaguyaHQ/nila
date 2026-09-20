@@ -70,7 +70,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
       |> Map.put("in_books_not_2b", [])
       |> Map.put("value_mismatch", [])
 
-    {:ok, _} =
+    {:ok, month} =
       ClientMonths.upsert(%{
         org_id: org.id,
         client_id: client.id,
@@ -80,6 +80,26 @@ defmodule NilaWeb.Gst.MonthLivePurchaseRealFixtureTest do
         recon: clean_recon,
         summary: month.summary
       })
+
+    scope = Nila.Accounts.Scope.for_user(user)
+
+    for line <- Nila.Gst.Purchase.Resolutions.workings(month).case_lines,
+        line.document_type in ~w(invoice debit_note),
+        Enum.sum(Map.values(line.outstanding_heads)) > 0 do
+      attrs =
+        if line.claimable?,
+          do: %{"choice" => "claim"},
+          else: %{"choice" => "later", "later_reason" => "review_pending"}
+
+      assert {:ok, _} =
+               Nila.Gst.Purchase.ItcDecisions.apply(
+                 scope,
+                 client.id,
+                 @period,
+                 [line.case_id],
+                 attrs
+               )
+    end
 
     answer_sales_issues!(sales, user.id)
 

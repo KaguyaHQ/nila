@@ -6,7 +6,7 @@ defmodule NilaWeb.Gst.PurchaseClaimGroupTest do
   alias Nila.Gst.Purchase.{ItcCases, ItcDecisions, Months, Reconciliation, Register}
   alias NilaWeb.Gst.PurchaseWorkspace
 
-  test "an exclusion stays visible and can be cleared after books introduce an ambiguous group",
+  test "an excluded invoice stays visible after books introduce an ambiguous group",
        %{
          conn: conn
        } do
@@ -27,36 +27,84 @@ defmodule NilaWeb.Gst.PurchaseClaimGroupTest do
     excluded = Enum.find(ItcCases.list_for_month(month), &(&1.invoice_number == "PORTAL-A"))
 
     assert {:ok, _} =
-             ItcDecisions.exclude(scope, client.id, "2026-08", [excluded.case_id], "Personal use")
+             ItcDecisions.apply(scope, client.id, "2026-08", [excluded.case_id], %{
+               "choice" => "exclude",
+               "exclude_reason" => "personal",
+               "note" => "Personal use"
+             })
 
-    month = put_month(org, client, [invoice("book-1", "BOOK-X")], portal)
+    _month = put_month(org, client, [invoice("book-1", "BOOK-X")], portal)
     assert {:ok, workspace} = PurchaseWorkspace.load(scope, client.id, "2026-08")
     group = Enum.find(workspace.items, &(length(&1.counterparts) == 2))
     assert group
     refute group.selectable?
-    assert group.claim_state == "not_claiming"
-    assert group.claim_reason == "PORTAL-A: Personal use"
-    assert [%{case_id: case_id, claim_reason: "Personal use"}] = group.claim_exclusions
-    assert case_id == excluded.case_id
+    assert group.treatment_case_ids != []
 
-    path = "/gst/#{client.id}/2026-08/purchases?filter=not_claiming&q="
+    {:ok, sources, _} =
+      live(
+        log_in_user(conn, user),
+        PurchaseWorkspace.list_path(client.id, "2026-08", "gstr2b", "PORTAL-A")
+      )
+
+    assert has_element?(sources, "#purchase-source-items tr", "Excluded from ITC")
+    sources |> form("#purchase-search", search: %{q: "PORTAL-B"}) |> render_change()
+    refute has_element?(sources, "#purchase-source-items tr", "Excluded from ITC")
+
+    path = "/gst/#{client.id}/2026-08/purchases/register?filter=treatment&q="
     {:ok, view, _} = live(log_in_user(conn, user), path)
-    assert has_element?(view, "#purchase-claim-state-#{group.id}", "Not claiming")
-    assert has_element?(view, "#purchase-items", "PORTAL-A: Personal use")
+    assert has_element?(view, "#purchase-treatment-state-#{group.id}")
     refute has_element?(view, "#purchase-select-#{group.id}")
-
-    view
-    |> element("#purchase-reopen-case-#{group.id}-#{excluded.case_id}")
-    |> render_click()
-
-    refute has_element?(view, "#purchase-claim-state-#{group.id}")
     assert {:ok, updated} = PurchaseWorkspace.load(scope, client.id, "2026-08")
     group = Enum.find(updated.items, &(length(&1.counterparts) == 2))
-    assert group.claim_exclusions == []
-    assert is_nil(group.claim_state)
-    assert Enum.all?(ItcCases.list_for_month(month), &is_nil(&1.claim_state))
+    assert excluded.case_id in group.treatment_case_ids
     assert length(Nila.Gst.Purchase.Workings.gstr2b_invoices(updated.workings.recon)) == 2
     assert length(Nila.Gst.Purchase.Workings.books_invoices(updated.workings.recon)) == 1
+  end
+
+  test "credit carried into a month without imports can be treated", %{conn: conn} do
+    %{user: user, org: org} = user_with_org_fixture()
+
+    {:ok, client} =
+      Nila.Clients.create_client(%{
+        org_id: org.id,
+        name: "Carry QA",
+        gstin: "33AEWPH4158J1Z3",
+        type: "company"
+      })
+
+    scope = Scope.for_user(user)
+    portal = [invoice(nil, "CARRY-1")]
+    gstr2b_arrived!(org, client, "2026-08", portal)
+    month = put_month(org, client, [], portal)
+    case_id = hd(ItcCases.list_for_month(month)).case_id
+
+    assert {:ok, _} =
+             ItcDecisions.apply(scope, client.id, "2026-08", [case_id], %{
+               "choice" => "later",
+               "later_reason" => "review_pending"
+             })
+
+    assert {:ok, _} =
+             Nila.Gst.Purchase.Resolutions.record_itc_case_event_and_refresh(
+               month,
+               case_id,
+               "document_not_held",
+               [],
+               user.id
+             )
+
+    assert {:ok, _} = Nila.Gst.Filing.Signoffs.sign_off(month, scope)
+
+    {:ok, view, _} = live(log_in_user(conn, user), "/gst/#{client.id}/2026-09/purchases/register")
+    assert has_element?(view, "#purchase-carried-credit", "CARRY-1")
+    assert has_element?(view, "#purchase-carried-document-#{case_id}")
+    view |> element("#purchase-carried-document-#{case_id}") |> render_click()
+    view |> element("#purchase-carried-treatment-#{case_id}") |> render_click()
+    assert has_element?(view, "#purchase-treatment-dialog")
+    view |> element("#purchase-choice-claim") |> render_click()
+    view |> form("#purchase-treatment-form") |> render_submit()
+    assert has_element?(view, "#purchase-carried-credit", "Claim this month")
+    assert {:ok, _} = PurchaseWorkspace.load(scope, client.id, "2026-09")
   end
 
   defp invoice(id, number) do
