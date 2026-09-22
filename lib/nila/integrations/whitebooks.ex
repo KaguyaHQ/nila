@@ -139,7 +139,7 @@ defmodule Nila.Integrations.Whitebooks do
 
   defp result(%{"status_cd" => "0", "error" => %{"errorCode" => code}})
        when is_binary(code) do
-    if Regex.match?(~r/^[A-Z][A-Z0-9_]{1,63}$/, code),
+    if Regex.match?(~r/^[A-Z][A-Z0-9_-]{1,63}$/, code),
       do: {:error, {:provider, code}},
       else: {:error, :unexpected_response}
   end

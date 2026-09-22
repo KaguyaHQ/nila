@@ -30,7 +30,7 @@ defmodule NilaWeb.Gst.PurchasePageTest do
            )
 
     refute has_element?(view, "#purchase-items")
-    assert has_element?(view, "#purchase-fetch-2b[href*='client_id=#{c.client.id}']")
+    assert has_element?(view, "#purchase-fetch-2b[phx-click='fetch-2b']")
     refute has_element?(view, "#purchase-workings-download")
     view |> element("#purchase-import-excel") |> render_click()
     assert_redirect(view, overview_path(c) <> "/import-excel")
@@ -59,7 +59,10 @@ defmodule NilaWeb.Gst.PurchasePageTest do
     seed(c, [], [invoice(nil, "PORTAL-1", 90_000)])
     {:ok, view, _} = live(c.conn, overview_path(c))
     assert has_element?(view, "#purchase-portal-totals", "1 document")
-    assert has_element?(view, "#purchase-comparison-pending", "Import purchases")
+    assert has_element?(view, "#purchase-comparison-pending", "Books comparison not available")
+    assert has_element?(view, "#purchase-gstr2b-link", "Review 1 GSTR-2B document")
+    assert has_element?(view, "#purchase-treatment-empty", "No ITC treatments recorded yet")
+    refute has_element?(view, "#purchase-treatment-totals")
     refute has_element?(view, "#purchase-reconciliation")
     refute has_element?(view, "#purchase-summary-2b_only")
     refute has_element?(view, "#purchase-items")
@@ -172,6 +175,9 @@ defmodule NilaWeb.Gst.PurchasePageTest do
 
     assert has_element?(refreshed, "#purchase-treatment-state-#{dry.id}", "Claim later")
     assert has_element?(refreshed, "#purchase-treatment-state-#{city.id}", "Excluded from ITC")
+    {:ok, overview, _} = live(c.conn, overview_path(c))
+    assert has_element?(overview, "#purchase-treatment-totals", "Excluded from ITC")
+    refute has_element?(overview, "#purchase-treatment-empty")
   end
 
   test "a single invoice can split each tax head and rejects invalid decimals", c do

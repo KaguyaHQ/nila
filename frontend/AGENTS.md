@@ -1,0 +1,20 @@
+# React sales migration slice
+
+The user explicitly selected React + TypeScript + Vite + shadcn in this repository.
+This directory uses shadcn React components backed by Base UI (not Radix), its neutral CSS theme, and lucide icons;
+the root HEEx-only component, token, and bundle rules still apply to the existing
+LiveView frontend, not this separately built React entry point.
+
+- Sales summary, register, PDF intake, upload history and invoice review use real Phoenix data. Sample screens are development-only. Reuse the existing correction and check rules in Phoenix.
+- GSTR-1 section details and export availability come from Phoenix. Workings Excel may be a draft; do not equate its availability with permission to download GSTR-1 JSON. Downloads must show server errors in the current screen.
+- Month-check confirmations use the server's current evidence basis. A stale response requires a fresh review, never an automatic retry with a new basis. Unsupported or blocking findings cannot be dismissed.
+- Clients, identity add/edit, and Excel import use real Phoenix data. GST/Tally connection management remains in LiveView.
+- Migration scope is GST automation. Exclude banking, Tally workflows, and Winman Excel exports. Required outputs are GST workings Excel and GSTR-1 JSON.
+- Purchases overview and source registers use Phoenix data. Purchase review and ITC decisions use Phoenix APIs with fresh evidence tokens. Import, portal fetching, source corrections and pairing remain explicit LiveView handoffs. GSTR-3B stays in LiveView. Source document counts differ from grouped reconciliation items; matching never means claimed ITC. Preserve source tax, including credit-note signs and any legacy cess, without adding routine cess controls.
+- Use shared components in `src/components/ui`, not copied control classes in pages.
+- Use React Router within migrated screens. Use normal same-origin links for screens still owned by LiveView.
+- Do not claim an upload, review, export, or accounting decision was saved when it was not.
+- Keep fixture facts in `src/data/sales.ts`, temporary PDF selections in the existing
+  upload provider, and all business truth in Phoenix.
+- Run `npm run build` and `npm test`; inspect rendered screens at desktop and narrow widths.
+- Vite assets ship inside the Phoenix release. Do not deploy or replace further LiveView routes outside the requested migration scope.

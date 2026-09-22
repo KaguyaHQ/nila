@@ -20,6 +20,7 @@ defmodule NilaWeb.Components.Menu do
     attr :target, :any
     attr :form, :string
     attr :name, :string
+    attr :href, :string
   end
 
   def action_menu(assigns) do
@@ -52,25 +53,37 @@ defmodule NilaWeb.Components.Menu do
         data-trigger={"#{@id}-trigger"}
         phx-hook=".ActionMenuPopover"
       >
-        <button
-          :for={item <- @item}
-          type={if item[:form], do: "submit", else: "button"}
-          form={item[:form]}
-          name={item[:name]}
-          value={item[:form] && item[:value]}
-          id={item.id}
-          role="menuitem"
-          class="data-[tone=error]:hover:bg-error/10 data-[tone=error]:text-error focus-visible:outline-focus hover:bg-interactive hover:text-base-content rounded-field text-ink-muted text-ui flex min-h-9 w-full items-center gap-2 px-3 font-medium focus-visible:outline-2 focus-visible:-outline-offset-2"
-          data-tone={item[:tone]}
-          phx-click={item[:on_click]}
-          phx-value-id={!item[:form] && item[:value]}
-          phx-target={item[:target]}
-          popovertarget={"#{@id}-popover"}
-          popovertargetaction="hide"
-        >
-          <.icon :if={item[:icon]} name={item.icon} class="size-4" />
-          <span>{item.label}</span>
-        </button>
+        <%= for item <- @item do %>
+          <.link
+            :if={item[:href]}
+            id={item.id}
+            href={item.href}
+            role="menuitem"
+            class="focus-visible:outline-focus hover:bg-interactive hover:text-base-content rounded-field text-ink-muted text-ui flex min-h-9 w-full items-center gap-2 px-3 font-medium focus-visible:outline-2 focus-visible:-outline-offset-2"
+          >
+            <.icon :if={item[:icon]} name={item.icon} class="size-4" />
+            <span>{item.label}</span>
+          </.link>
+          <button
+            :if={!item[:href]}
+            type={if item[:form], do: "submit", else: "button"}
+            form={item[:form]}
+            name={item[:name]}
+            value={item[:form] && item[:value]}
+            id={item.id}
+            role="menuitem"
+            class="data-[tone=error]:hover:bg-error/10 data-[tone=error]:text-error focus-visible:outline-focus hover:bg-interactive hover:text-base-content rounded-field text-ink-muted text-ui flex min-h-9 w-full items-center gap-2 px-3 font-medium focus-visible:outline-2 focus-visible:-outline-offset-2"
+            data-tone={item[:tone]}
+            phx-click={item[:on_click]}
+            phx-value-id={!item[:form] && item[:value]}
+            phx-target={item[:target]}
+            popovertarget={"#{@id}-popover"}
+            popovertargetaction="hide"
+          >
+            <.icon :if={item[:icon]} name={item.icon} class="size-4" />
+            <span>{item.label}</span>
+          </button>
+        <% end %>
 
         <script :type={Phoenix.LiveView.ColocatedHook} name=".ActionMenuPopover">
           export default {

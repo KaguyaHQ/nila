@@ -223,7 +223,12 @@ defmodule NilaWeb.Gst.MonthLiveSalesFilingTest do
     assert has_element?(view, "#sales-period-handoff-download-json", "Download")
   end
 
-  test "downloads the portal-shaped GSTR-1 JSON", %{conn: conn, client: client} do
+  test "downloads the portal-shaped GSTR-1 JSON after required review", %{
+    conn: conn,
+    client: client,
+    user: user
+  } do
+    ready!(client, user)
     conn = get(conn, ~p"/gstr1/#{client.id}/#{@period}/return.json")
 
     assert response_content_type(conn, :json)

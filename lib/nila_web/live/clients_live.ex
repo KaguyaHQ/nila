@@ -158,7 +158,7 @@ defmodule NilaWeb.ClientsLive do
             <.button
               id="clients-import"
               phx-click="open-import"
-              variant="soft"
+              variant="outline"
               disabled={!@can_import}
               title={if !@can_import, do: "Your role cannot add clients."}
             >Import Excel</.button>

@@ -30,6 +30,9 @@ defmodule NilaWeb.Gst.PurchaseLive do
            filter: "needs_review",
            q: "",
            error: nil,
+           fetch_2b_error: nil,
+           fetch_2b_requested: nil,
+           polling_2b: false,
            selected: MapSet.new(),
            treatment_form: nil,
            treatment_choice: nil,
@@ -249,6 +252,8 @@ defmodule NilaWeb.Gst.PurchaseLive do
      )}
   end
 
+  def handle_event("fetch-2b", _, socket), do: {:noreply, fetch_2b(socket)}
+
   def handle_event("use-2b", _, socket) do
     case PortalImport.import(
            socket.assigns.current_scope,
@@ -319,7 +324,20 @@ defmodule NilaWeb.Gst.PurchaseLive do
       else: {:noreply, socket}
   end
 
-  def handle_info({:gst_statement_fetched, _}, socket), do: {:noreply, reload(socket)}
+  def handle_info({:gst_statement_fetched, _}, socket),
+    do: {:noreply, socket |> reload() |> finish_2b_fetch()}
+
+  def handle_info(:refresh_2b, socket),
+    do: {:noreply, socket |> assign(polling_2b: false) |> reload() |> finish_2b_fetch()}
+
+  def handle_info({:gst_connected, client_id, {:fetch_2b, period}}, socket) do
+    a = socket.assigns
+
+    if a.fetch_2b_requested == :authentication && client_id == a.client.id && period == a.period,
+      do: {:noreply, fetch_2b(socket)},
+      else: {:noreply, socket}
+  end
+
   def handle_info(_, socket), do: {:noreply, socket}
 
   defp reload(socket) do
@@ -330,6 +348,72 @@ defmodule NilaWeb.Gst.PurchaseLive do
          ) do
       {:ok, data} -> socket |> assign(data) |> inputs() |> rows()
       _ -> socket
+    end
+  end
+
+  defp fetch_2b(socket) do
+    a = socket.assigns
+
+    case Gstr2b.enqueue(a.current_scope, a.client.id, a.period) do
+      {:ok, _} ->
+        socket
+        |> assign(
+          fetch_2b_requested: {:enqueued, a.statement && a.statement.fetched_at},
+          fetch_2b_error: nil
+        )
+        |> inputs()
+
+      {:error, reason} when reason in [:not_found, :session_expired] ->
+        if Policy.can?(a.current_scope, :manage_connectors) && Nila.Gstin.valid?(a.client.gstin) do
+          send_update(NilaWeb.Gst.ConnectionComponent,
+            id: "gst-connection",
+            request: %{
+              client_id: a.client.id,
+              continuation: {:fetch_2b, a.period},
+              return_focus: "#purchase-fetch-2b"
+            }
+          )
+
+          assign(socket, fetch_2b_requested: :authentication, fetch_2b_error: nil)
+        else
+          assign(socket,
+            fetch_2b_error: "Ask the workspace owner to connect this client's GST account.",
+            fetch_2b_requested: nil
+          )
+        end
+
+      {:error, reason} ->
+        assign(socket, fetch_2b_error: Gstr2b.error_message(reason), fetch_2b_requested: nil)
+    end
+  end
+
+  defp finish_2b_fetch(socket) do
+    a = socket.assigns
+
+    case {a.fetch_2b_requested, a.statement} do
+      {{:enqueued, _}, %{status: "failed"}} ->
+        assign(socket, fetch_2b_requested: nil)
+
+      {{:enqueued, previous}, %{status: "ready", fetched_at: fetched_at}}
+      when fetched_at != previous ->
+        socket = assign(socket, fetch_2b_requested: nil)
+
+        case PortalImport.import(a.current_scope, a.client.id, a.period) do
+          {:ok, _} ->
+            reload(socket)
+
+          {:error, reason} ->
+            assign(socket,
+              fetch_2b_error:
+                if(is_binary(reason),
+                  do: reason,
+                  else: "Statement fetched, but could not be added to purchases."
+                )
+            )
+        end
+
+      _ ->
+        socket
     end
   end
 
@@ -463,6 +547,22 @@ defmodule NilaWeb.Gst.PurchaseLive do
     statement = Gstr2b.saved(a.current_scope.current_org.id, a.client.id, a.period)
     statement_dump = PortalImport.current_dump(statement, dumps)
     effective = Dumps.effective(a.current_scope.current_org.id, a.client.id, a.period, "gstr2b")
+    fetching_2b = Gstr2b.fetching?(statement)
+
+    if fetching_2b && connected?(socket) && !a.polling_2b,
+      do: Process.send_after(self(), :refresh_2b, 1000)
+
+    availability_hint =
+      case Gstr2b.expected_availability(a.period) do
+        {:ok, date} ->
+          today = DateTime.utc_now() |> DateTime.add(19_800) |> DateTime.to_date()
+
+          if Date.compare(today, date) == :lt,
+            do: "Normally available from #{Calendar.strftime(date, "%d %B %Y")}."
+
+        _ ->
+          nil
+      end
 
     assign(socket,
       dumps: Enum.filter(dumps, &(&1.kind in ~w(purchase gstr2b))),
@@ -472,6 +572,9 @@ defmodule NilaWeb.Gst.PurchaseLive do
           Workspace.source_rows(a.workings, "register") != [],
       portal_present: effective != [] or Workspace.source_rows(a.workings, "gstr2b") != [],
       statement: statement,
+      fetching_2b: fetching_2b,
+      polling_2b: fetching_2b || a.polling_2b,
+      availability_hint: availability_hint,
       statement_needs_import:
         not is_nil(statement) and not is_nil(statement.fetched_at) and
           (is_nil(statement_dump) or statement_dump.status == "failed"),
@@ -753,7 +856,7 @@ defmodule NilaWeb.Gst.PurchaseLive do
                 href={~p"/gst/#{@client.id}/#{@period}/purchases/workings.xlsx"}
               >Download working</.button>
             </:actions>
-            <span id="purchase-next-step">{next_step(assigns)}</span>
+             <span id="purchase-next-step">{next_step(assigns)}</span>
           </.page_header>
         </div>
 
@@ -779,7 +882,8 @@ defmodule NilaWeb.Gst.PurchaseLive do
             <.button
               variant="ghost"
               id="purchase-fetch-2b"
-              navigate={~p"/gst/2b?#{%{client_id: @client.id, period: @period}}"}
+              phx-click="fetch-2b"
+              disabled={!@can_edit || @fetching_2b}
             >{if @portal_present, do: "Refresh GSTR-2B", else: "Fetch GSTR-2B"}</.button>
             <.button
               :if={@statement_needs_import}
@@ -794,6 +898,18 @@ defmodule NilaWeb.Gst.PurchaseLive do
 
         <p :if={@processing} id="purchase-processing" role="status" class="text-ui">
           Preparing reconciliation. This list updates when processing finishes.
+        </p>
+        <p :if={@live_action == :register && @fetching_2b} role="status" class="text-ui">
+          Fetching GSTR-2B…
+        </p>
+        <p
+          :if={
+            @live_action == :register && (@fetch_2b_error || (@statement && @statement.last_error))
+          }
+          role="alert"
+          class="text-error text-ui"
+        >
+          {@fetch_2b_error || @statement.last_error}
         </p>
 
         <.callout :for={dump <- Enum.filter(@dumps, &(&1.status == "failed"))} kind="error">
@@ -906,6 +1022,10 @@ defmodule NilaWeb.Gst.PurchaseLive do
           processing={@processing}
           inputs_unresolved?={@inputs_unresolved?}
           statement_needs_import={@statement_needs_import}
+          statement={@statement}
+          fetching_2b={@fetching_2b}
+          fetch_2b_error={@fetch_2b_error || (@statement && @statement.last_error)}
+          availability_hint={@availability_hint}
         />
         <div :if={@live_action == :register} class="space-y-block">
           <p :if={!@portal_present && @books_present} id="purchase-awaiting-2b" class="text-ui">
@@ -1042,16 +1162,22 @@ defmodule NilaWeb.Gst.PurchaseLive do
             id="purchase-carried-credit"
           >
             <h2 class="text-h4">Credit from earlier months</h2>
+
             <.data_table id="purchase-carried-items" rows={@streams.carried_cases} mode="worklist">
               <:col :let={line} label="Invoice" row_header>
                 {line.invoice_number || "No invoice number"}
               </:col>
+
               <:col :let={line} label="Supplier">{line.vendor || "Unknown supplier"}</:col>
+
               <:col :let={line} label="From month">{line.origin_period}</:col>
+
               <:col :let={line} label="Available GST" align="right">
                 {Workspace.money(Enum.sum(Map.values(line.outstanding_heads)))}
               </:col>
+
               <:col :let={line} label="ITC treatment">{treatment_label(line.treatment)}</:col>
+
               <:col :let={line} label="Action">
                 <.button
                   :if={line.has_gstr2b? && !line.has_books? && line.document_state != "held"}
@@ -1110,6 +1236,7 @@ defmodule NilaWeb.Gst.PurchaseLive do
           <p id="purchase-selected-invoices" class="text-ink-muted text-ui">
             Invoices: {@selected_invoices}
           </p>
+
           <.callout :if={@selected_stale?} kind="warning">
             Source amounts changed. Review and save treatment again.
           </.callout>
@@ -1147,6 +1274,7 @@ defmodule NilaWeb.Gst.PurchaseLive do
                 }
               >{label}</.button>
             </div>
+
             <p
               :if={!@can_claim_selection}
               id="purchase-claim-block-reason"
@@ -1155,12 +1283,15 @@ defmodule NilaWeb.Gst.PurchaseLive do
               Claim is unavailable: {@claim_block_reason ||
                 "Review the selected invoice's checks first."}
             </p>
+
             <p :if={@selected_count > 1} class="text-ink-muted text-ui">
               Select one invoice to split its tax heads.
             </p>
+
             <p :if={@selected_cess_issue} id="purchase-cess-review" class="text-ink-muted text-ui">
               {@selected_cess_issue}
             </p>
+
             <.input
               :if={@treatment_choice in ["later", "split"]}
               field={@treatment_form[:later_reason]}
@@ -1187,6 +1318,7 @@ defmodule NilaWeb.Gst.PurchaseLive do
               <p class="text-ui">
                 Enter the rupee amounts for each tax head. Each row must add up to its available amount.
               </p>
+
               <div
                 :for={head <- ~w(cgst sgst igst cess)}
                 :if={head != "cess" or @selected_cess_visible?}
@@ -1197,6 +1329,7 @@ defmodule NilaWeb.Gst.PurchaseLive do
                     Map.get(@selected_heads || %{}, head, 0)
                   )}
                 </p>
+
                 <.input
                   :for={part <- ~w(claim later exclude)}
                   name={"treatment[split][#{part}][#{head}]"}
@@ -1213,6 +1346,7 @@ defmodule NilaWeb.Gst.PurchaseLive do
                 />
               </div>
             </div>
+
             <.input
               :if={@treatment_choice in ["later", "exclude", "split"]}
               field={@treatment_form[:note]}
@@ -1261,6 +1395,12 @@ defmodule NilaWeb.Gst.PurchaseLive do
           </div>
         </Layouts.bottom_bar>
       </:bottom_bar>
+
+      <.live_component
+        module={NilaWeb.Gst.ConnectionComponent}
+        id="gst-connection"
+        current_scope={@current_scope}
+      />
     </Layouts.app>
     """
   end

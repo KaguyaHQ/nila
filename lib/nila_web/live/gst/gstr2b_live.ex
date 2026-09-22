@@ -45,6 +45,7 @@ defmodule NilaWeb.Gst.Gstr2bLive do
     |> assign(
       client: client,
       period: period,
+      availability_hint: availability_hint(period),
       form: to_form(%{"client_id" => client_id, "period" => period}, as: :statement)
     )
     |> reload()
@@ -87,6 +88,20 @@ defmodule NilaWeb.Gst.Gstr2bLive do
       fetching: fetching,
       polling: fetching or socket.assigns.polling
     )
+  end
+
+  defp availability_hint(period) do
+    today = DateTime.utc_now() |> DateTime.add(19_800) |> DateTime.to_date()
+
+    case Gstr2b.expected_availability(period) do
+      {:ok, date} ->
+        if Date.compare(today, date) == :lt,
+          do:
+            "Normally available from #{Calendar.strftime(date, "%d %B %Y")}. It may not be ready to fetch yet."
+
+      _ ->
+        nil
+    end
   end
 
   @impl true
@@ -330,6 +345,9 @@ defmodule NilaWeb.Gst.Gstr2bLive do
               label="Return month"
               required
             />
+            <p :if={@availability_hint} id="gstr2b-availability" class="text-ink-muted text-ui">
+              {@availability_hint}
+            </p>
             <p :if={@client && !@gst_connected} id="gstr2b-connection" class="text-ui">
               {case @connection_state do
                 :expired -> "Your GST session expired. Fetch GSTR-2B to reconnect and continue."
@@ -369,7 +387,7 @@ defmodule NilaWeb.Gst.Gstr2bLive do
                 else:
                   if(@statement && @statement.fetched_at,
                     do: "Refresh GSTR-2B",
-                    else: "Fetch and reconcile"
+                    else: "Fetch GSTR-2B"
                   )}
             </.button>
           </.form>
@@ -386,8 +404,16 @@ defmodule NilaWeb.Gst.Gstr2bLive do
           {@statement.last_error}
         </p>
 
+        <p
+          :if={@statement && @statement.last_error && @statement.fetched_at}
+          id="gstr2b-retained"
+          class="text-ink-muted text-ui"
+        >
+          Your previously downloaded statement is still available above.
+        </p>
+
         <.button
-          :if={@can_connect && @statement && @statement.last_error}
+          :if={@can_connect && @client && @connection_state in [:expired, :not_connected]}
           id="gstr2b-reconnect"
           phx-click="reconnect"
           variant="ghost"

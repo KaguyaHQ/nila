@@ -1,0 +1,522 @@
+import { createContext, useContext, useState } from "react";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  ChevronDown,
+  Search,
+  Upload,
+} from "lucide-react";
+import { Shell } from "@/components/workspace-shell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Card } from "@/components/ui/card";
+import {
+  Table,
+  TableHeader,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+} from "@/components/ui/table";
+import { ApiError, fetchSales, type SalesWorkspace } from "@/lib/sales-api";
+import { SalesExports } from "@/components/sales-exports";
+
+const Workspace = createContext<SalesWorkspace | null>(null);
+export function useSales() {
+  const data = useContext(Workspace);
+  if (!data) throw new Error("Sales workspace is missing");
+  return data;
+}
+export function basePath(data: SalesWorkspace) {
+  return `/gst/${data.client.id}/${data.period}/sales`;
+}
+const money = (value: string | null) => value ?? "—";
+
+export function LiveSalesLayout() {
+  const { clientId = "", period = "" } = useParams();
+  const query = useQuery({
+    queryKey: ["sales", clientId, period],
+    queryFn: ({ signal }) => fetchSales(clientId, period, signal),
+    staleTime: 0,
+    retry: (count, error) =>
+      !(error instanceof ApiError && error.status < 500) && count < 1,
+    refetchInterval: (query) =>
+      query.state.data?.uploads.unfinished ? 5000 : false,
+  });
+
+  if (query.isPending)
+    return (
+      <main className="mx-auto max-w-7xl px-10 py-16" aria-busy="true">
+        <p role="status" className="text-muted-foreground">
+          Loading sales…
+        </p>
+      </main>
+    );
+  // Never leave another client's cached figures on screen after authorization fails.
+  if (query.isError)
+    return (
+      <main className="mx-auto max-w-xl px-6 py-24">
+        <h1 className="text-2xl font-semibold">Sales unavailable</h1>
+        <p role="alert" className="my-4 text-muted-foreground">
+          {query.error.message}
+        </p>
+        {query.error instanceof ApiError && query.error.status === 401 ? (
+          <a href="/users/log_in" className="underline">
+            Sign in
+          </a>
+        ) : (
+          <Button onClick={() => query.refetch()}>Try again</Button>
+        )}
+        <a href="/clients" className="ml-5 text-sm underline">
+          Back to clients
+        </a>
+      </main>
+    );
+
+  return (
+    <Workspace.Provider value={query.data}>
+      <Shell
+        live={{
+          ...query.data,
+          base: basePath(query.data),
+          purchases: query.data.links.purchases,
+        }}
+      />
+    </Workspace.Provider>
+  );
+}
+
+function PeriodHeading({ register = false }: { register?: boolean }) {
+  const data = useSales();
+  const navigate = useNavigate();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const { search } = useLocation();
+  const suffix = register ? "/register" : "";
+  const go = (client: string, period: string) =>
+    navigate(`/gst/${client}/${period}/sales${suffix}${search}`);
+  const shift = (delta: number) => {
+    const date = new Date(`${data.period}-01T12:00:00Z`);
+    date.setUTCMonth(date.getUTCMonth() + delta);
+    go(String(data.client.id), date.toISOString().slice(0, 7));
+  };
+  const current = new Date().toISOString().slice(0, 7);
+
+  return (
+    <div className="mb-8 flex flex-wrap items-end justify-between gap-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-3xl font-semibold tracking-tight">
+          {register ? "Sales register" : data.month_label}
+        </h1>
+        <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
+          <DialogTrigger
+            render={
+              <Button variant="ghost" size={register ? "sm" : "icon-sm"} />
+            }
+            aria-label="Choose month"
+          >
+            {register && data.month_label}
+            <ChevronDown />
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Choose working month</DialogTitle>
+              <DialogDescription>
+                Open the sales working for another month.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              type="month"
+              aria-label="Working month"
+              min="2017-07"
+              max={current}
+              value={data.period}
+              onChange={(e) => {
+                if (
+                  /^\d{4}-\d{2}$/.test(e.target.value) &&
+                  e.target.value >= "2017-07" &&
+                  e.target.value <= current
+                ) {
+                  go(String(data.client.id), e.target.value);
+                  setPickerOpen(false);
+                }
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+        <div className="flex">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Previous month"
+            disabled={data.period <= "2017-07"}
+            onClick={() => shift(-1)}
+          >
+            <ChevronLeft />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Next month"
+            disabled={data.period >= current}
+            onClick={() => shift(1)}
+          >
+            <ChevronRight />
+          </Button>
+        </div>
+      </div>
+      <Button
+        variant={data.invoice_count ? "outline" : "default"}
+        nativeButton={false}
+        role="link"
+        render={<Link to={`${basePath(data)}/upload`} />}
+      >
+        <Plus /> Add invoices
+      </Button>
+    </div>
+  );
+}
+
+export function LiveSalesSummary() {
+  const data = useSales();
+  const base = basePath(data);
+  return (
+    <>
+      <PeriodHeading />
+      {data.uploads.unfinished && (
+        <p
+          role="status"
+          className="mb-5 rounded-lg border bg-muted/40 px-4 py-3 text-sm"
+        >
+          Some uploads are still being read or need attention.{" "}
+          <Link to={`${base}/uploads`} className="font-medium underline">
+            Check uploads
+          </Link>
+        </p>
+      )}
+      <Card className="gap-0 overflow-hidden py-0 shadow-none">
+        <div className="flex flex-wrap items-center justify-between gap-4 px-6 pt-5">
+          <div>
+            <h2 className="text-sm font-semibold">Sales invoices</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {data.invoice_count
+                ? `${data.review_count} invoices need review.`
+                : "Add sales bills to prepare this month's working."}
+            </p>
+          </div>
+          {data.review_count > 0 && (
+            <Button
+              nativeButton={false}
+              role="link"
+              render={<Link to={`${base}/register?filter=needs_review`} />}
+            >
+              Review invoices <ArrowRight />
+            </Button>
+          )}
+        </div>
+        <div className="grid gap-5 px-6 py-6 sm:grid-cols-[.75fr_1fr_1fr]">
+          {[
+            ["Invoices in working", String(data.invoice_count)],
+            ["Taxable value", money(data.taxable)],
+            ["Output tax", money(data.tax)],
+          ].map(([label, value], i) => (
+            <div key={label} className={i ? "sm:border-l sm:pl-6" : ""}>
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums">
+                {value}
+              </p>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/20 px-4 py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            nativeButton={false}
+            role="link"
+            render={<Link to={`${base}/register`} />}
+          >
+            View sales register <ArrowRight />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            nativeButton={false}
+            role="link"
+            render={<Link to={`${base}/uploads`} />}
+          >
+            <Upload /> Uploads · {data.uploads.files}{" "}
+            {data.uploads.files === 1 ? "file" : "files"}
+          </Button>
+        </div>
+      </Card>
+      {data.month_issue_count > 0 && <p className="mt-5 text-sm">
+        <Link to={`${base}/checks`} className="font-medium underline underline-offset-4">
+          Review {data.month_issue_count} month {data.month_issue_count === 1 ? "check" : "checks"}
+        </Link>
+        <span className="text-muted-foreground"> before downloading GSTR-1 JSON.</span>
+      </p>}
+      <div className="mt-8 grid items-start gap-7 xl:grid-cols-[minmax(0,1fr)_220px]">
+        <section aria-labelledby="gstr1-summary" className="min-w-0">
+          <h2 id="gstr1-summary" className="mb-3 text-sm font-semibold">
+            GSTR-1 summary
+          </h2>
+          <div className="overflow-hidden rounded-xl border bg-white">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-4">Section</TableHead>
+                  <TableHead className="text-right">Entries</TableHead>
+                  <TableHead className="text-right">Taxable value</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.sections.map((section) => (
+                  <TableRow key={section.id}>
+                    <TableCell className="py-3 pl-4">
+                      {section.path ? (
+                        <Link
+                          to={`${base}/sections/${section.id}`}
+                          className="font-medium hover:underline"
+                        >
+                          {section.label}
+                        </Link>
+                      ) : (
+                        section.label
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap">
+                      {section.count}
+                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap tabular-nums">
+                      {money(section.value)}
+                    </TableCell>
+                    <TableCell>
+                      {section.status === "No entries" ? (
+                        <span className="text-xs text-muted-foreground">
+                          No entries
+                        </span>
+                      ) : (
+                        <Badge
+                          variant="secondary"
+                          className={
+                            section.variant === "warning"
+                              ? "bg-amber-50 text-amber-800"
+                              : section.variant === "success"
+                                ? "bg-emerald-50 text-emerald-800"
+                                : "font-normal text-muted-foreground"
+                          }
+                        >
+                          {section.status}
+                        </Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+        <aside className="xl:border-l xl:pl-6">
+          <SalesExports data={data} />
+        </aside>
+      </div>
+    </>
+  );
+}
+
+export function LiveSalesRegister() {
+  const data = useSales();
+  const [params, setParams] = useSearchParams();
+  const filter = ["needs_review", "ready", "excluded"].includes(
+    params.get("filter") ?? "",
+  )
+    ? params.get("filter")!
+    : "all";
+  const search = params.get("q") ?? "";
+  const visible = data.rows.filter(
+    (row) =>
+      (filter === "all" || row.status === filter) &&
+      `${row.number} ${row.customer} ${row.gstin ?? ""}`
+        .toLowerCase()
+        .includes(search.trim().toLowerCase()),
+  );
+  function set(key: string, value: string) {
+    const next = new URLSearchParams(params);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    setParams(next, { replace: key === "q" });
+  }
+  return (
+    <>
+      <Link
+        to={basePath(data)}
+        className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" />
+        Sales summary
+      </Link>
+      <PeriodHeading register />
+      <section
+        className="overflow-hidden rounded-xl border bg-card"
+        aria-label="Sales invoices"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b p-4">
+          <div
+            role="group"
+            aria-label="Filter invoices by status"
+            className="flex flex-wrap gap-1"
+          >
+            {[
+              ["all", "All invoices"],
+              ["needs_review", "Needs review"],
+              ["ready", "Ready"],
+              ["excluded", "Excluded"],
+            ].map(([value, label]) => (
+              <Button
+                key={value}
+                variant={filter === value ? "secondary" : "ghost"}
+                size="sm"
+                aria-pressed={filter === value}
+                onClick={() => set("filter", value === "all" ? "" : value)}
+              >
+                {label}
+                <span className="ml-1 text-muted-foreground">
+                  {
+                    data.rows.filter(
+                      (row) => value === "all" || row.status === value,
+                    ).length
+                  }
+                </span>
+              </Button>
+            ))}
+          </div>
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute top-2.5 left-3 size-4 text-muted-foreground" />
+            <Input
+              aria-label="Search customer, invoice or GSTIN"
+              placeholder="Search customer, invoice or GSTIN"
+              className="pl-9"
+              value={search}
+              onChange={(e) => set("q", e.target.value)}
+            />
+          </div>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="pl-5">Invoice</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Customer</TableHead>
+              <TableHead className="text-right">Taxable value</TableHead>
+              <TableHead className="text-right">GST</TableHead>
+              <TableHead>Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {visible.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell className="py-4 pl-5">
+                  {row.path ? <Link to={`${row.path}?filter=${filter === "needs_review" || filter === "ready" ? filter : "all"}`} className="font-medium hover:underline">
+                    {row.number}
+                  </Link> : <span className="font-medium">{row.number}</span>}
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  {row.date ?? "—"}
+                </TableCell>
+                <TableCell>
+                  <p className="max-w-72 whitespace-normal font-medium">{row.customer}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {row.gstin || "GSTIN not recorded"}
+                  </p>
+                </TableCell>
+                <TableCell className="text-right whitespace-nowrap tabular-nums">
+                  {money(row.taxable)}
+                </TableCell>
+                <TableCell className="text-right whitespace-nowrap tabular-nums">
+                  {money(row.tax)}
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant="secondary"
+                    className={
+                      row.status === "needs_review"
+                        ? "bg-amber-50 text-amber-800"
+                        : ""
+                    }
+                  >
+                    {row.status === "needs_review"
+                      ? "Needs review"
+                      : row.status === "ready"
+                        ? "Ready"
+                        : "Excluded"}
+                  </Badge>
+                  {row.reason && (
+                    <p className="mt-1 max-w-60 whitespace-normal text-xs text-muted-foreground">
+                      {row.reason}
+                    </p>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+            {visible.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="py-14 text-center">
+                  <p className="font-medium">
+                    {data.rows.length
+                      ? "No invoices match"
+                      : "No sales invoices yet"}
+                  </p>
+                  <p className="mt-2 text-muted-foreground">
+                    {data.rows.length
+                      ? "Try another search or clear the filters."
+                      : "Add sales bills to build this month's register."}
+                  </p>
+                  {data.review_count > 0 && (
+                    <Button
+                      variant="outline"
+                      className="mt-4"
+                      onClick={() => setParams({})}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+        <p
+          role="status"
+          className="border-t bg-muted/20 px-5 py-3 text-sm text-muted-foreground"
+        >
+          Showing {visible.length} of {data.rows.length} invoices
+        </p>
+      </section>
+      <p className="mt-4 text-xs text-muted-foreground">
+        Register amounts are extracted from source invoices. The summary shows
+        their contribution to the GST working.
+      </p>
+    </>
+  );
+}

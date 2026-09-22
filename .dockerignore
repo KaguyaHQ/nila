@@ -6,6 +6,10 @@ deps/
 
 # Generated assets — rebuilt inside the image by `mix assets.deploy`
 priv/static/assets/
+priv/static/frontend/
+frontend/node_modules/
+frontend/test-results/
+frontend/playwright-report/
 priv/static/cache_manifest.json
 
 # Dev/test/uploads

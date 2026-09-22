@@ -63,7 +63,9 @@ defmodule NilaWeb.Components.Page do
           {render_slot(@inner_block)}
         </p>
       </div>
-      <div :if={@actions != []}>{render_slot(@actions)}</div>
+      <div :if={@actions != []} class="flex flex-wrap items-center gap-related">
+        {render_slot(@actions)}
+      </div>
     </header>
     """
   end

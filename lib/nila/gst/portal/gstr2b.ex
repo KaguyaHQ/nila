@@ -64,7 +64,14 @@ defmodule Nila.Gst.Portal.Gstr2b do
           |> Oban.insert!()
 
         if not job.conflict? do
-          statement |> Ecto.Changeset.change(status: "pending", last_error: nil) |> Repo.update!()
+          statement
+          |> Ecto.Changeset.change(
+            status: "pending",
+            last_error: nil,
+            failure_reason: nil,
+            provider_code: nil
+          )
+          |> Repo.update!()
         end
 
         {:ok, job}
@@ -115,13 +122,15 @@ defmodule Nila.Gst.Portal.Gstr2b do
             document: document,
             fetched_at: DateTime.utc_now(),
             status: "ready",
-            last_error: nil
+            last_error: nil,
+            failure_reason: nil,
+            provider_code: nil
           )
           |> Repo.update()
 
         {:error, reason} ->
           statement
-          |> Ecto.Changeset.change(status: "failed", last_error: error_message(reason))
+          |> Ecto.Changeset.change(failure_details(reason))
           |> Repo.update!()
 
           {:error, reason}
@@ -132,8 +141,55 @@ defmodule Nila.Gst.Portal.Gstr2b do
   def record_failure(org_id, id, reason) do
     with {:ok, statement} <- fetch(org_id, id) do
       statement
-      |> Ecto.Changeset.change(status: "failed", last_error: error_message(reason))
+      |> Ecto.Changeset.change(failure_details(reason))
       |> Repo.update()
+    end
+  end
+
+  defp failure_details(reason) do
+    {category, code} =
+      case reason do
+        {:provider, "GTR2B-002"} ->
+          {"statement_unavailable", "GTR2B-002"}
+
+        {:provider, code} when is_binary(code) ->
+          {"provider_error", if(Regex.match?(~r/^[A-Z][A-Z0-9_-]{1,63}$/, code), do: code)}
+
+        :session_expired ->
+          {"authentication_required", nil}
+
+        :not_found ->
+          {"connection_missing", nil}
+
+        :invalid_connection ->
+          {"connection_changed", nil}
+
+        :unexpected_response ->
+          {"unrecognised_response", nil}
+
+        {:http, _} ->
+          {"http_error", nil}
+
+        :not_configured ->
+          {"not_configured", nil}
+
+        _ ->
+          {"unavailable", nil}
+      end
+
+    %{
+      status: "failed",
+      last_error: error_message(reason),
+      failure_reason: category,
+      provider_code: code
+    }
+  end
+
+  @doc "Normal monthly generation date; availability still depends on the portal."
+  def expected_availability(period) do
+    with {:ok, date} <- month(period) do
+      next_month = date |> Date.end_of_month() |> Date.add(1)
+      {:ok, Date.add(next_month, 13)}
     end
   end
 
@@ -167,8 +223,11 @@ defmodule Nila.Gst.Portal.Gstr2b do
   def error_message(:invalid_period), do: "Choose a valid return month."
 
   def error_message(:unexpected_response),
+    do: "The service returned a response Nila could not recognise. No new statement was saved."
+
+  def error_message({:provider, "GTR2B-002"}),
     do:
-      "WhiteBooks did not return a complete GSTR-2B statement for this GSTIN and month. Any earlier download is still available."
+      "GSTR-2B is not available for this month. The portal reports no record or a statement that has not been generated. Check its availability on the GST portal before retrying."
 
   def error_message({:provider, _code}),
     do:
@@ -188,5 +247,5 @@ defmodule Nila.Gst.Portal.Gstr2b do
     do: "WhiteBooks is not configured. Ask your administrator to set up the connection."
 
   def error_message(_),
-    do: "The statement could not be fetched. Try again. Any earlier download is still available."
+    do: "The statement could not be fetched. Try again."
 end

@@ -250,7 +250,11 @@ defmodule Nila.Gst.Sales.WorkingsTest do
   end
 
   defp confirmation(issue),
-    do: %{"verb" => "confirm_issue", "target" => SalesWorkings.issue_key(issue)}
+    do: %{
+      "verb" => "confirm_issue",
+      "target" => SalesWorkings.issue_key(issue),
+      "payload" => %{"basis" => issue["basis"]}
+    }
 
   test "legacy unknown line inclusion is re-resolved without mutating stored machine truth" do
     [invoice | _rest] = invoices()
@@ -450,7 +454,12 @@ defmodule Nila.Gst.Sales.WorkingsTest do
     result = SalesWorkings.materialize(invoices(), [], @header)
     gap = Enum.find(result.issues, &(&1["code"] == "sequence_gaps"))
     key = SalesWorkings.issue_key(gap)
-    confirm = %{"verb" => "confirm_issue", "target" => key, "payload" => %{}}
+
+    confirm = %{
+      "verb" => "confirm_issue",
+      "target" => key,
+      "payload" => %{"basis" => gap["basis"]}
+    }
 
     confirmed = SalesWorkings.materialize(invoices(), [confirm], @header)
     gap = Enum.find(confirmed.issues, &(&1["code"] == "sequence_gaps"))

@@ -20,10 +20,16 @@ defmodule Nila.Gst.Purchase.ItcDecisions do
   def apply(scope, client_id, period, case_ids, attrs),
     do: record(scope, client_id, period, case_ids, attrs, :treatment)
 
+  def apply(scope, client_id, period, case_ids, attrs, opts),
+    do: record(scope, client_id, period, case_ids, attrs, :treatment, opts)
+
   def record_document(scope, client_id, period, case_id),
     do: record(scope, client_id, period, [case_id], %{}, :document)
 
-  defp record(scope, client_id, period, case_ids, attrs, action) do
+  def record_document(scope, client_id, period, case_id, opts),
+    do: record(scope, client_id, period, [case_id], %{}, :document, opts)
+
+  defp record(scope, client_id, period, case_ids, attrs, action, opts \\ []) do
     with true <- Policy.can?(scope, :edit_records),
          true <- is_binary(period) and Regex.match?(~r/\A\d{4}-(0[1-9]|1[0-2])\z/, period),
          {:ok, ids} <- parse_ids(case_ids) do
@@ -52,6 +58,13 @@ defmodule Nila.Gst.Purchase.ItcDecisions do
                :ok <- lock_cases(month, ids),
                :ok <- ItcCases.refuse_later_signed_treatment(month, ids),
                workings = Resolutions.workings(month),
+               :ok <-
+                 Nila.Gst.Purchase.ItcReviewBasis.validate(
+                   month,
+                   workings,
+                   ids,
+                   Keyword.get(opts, :expected_basis)
+                 ),
                {:ok, payloads} <- validate_action(workings, ids, attrs, action) do
             Enum.each(payloads, fn {id, payload} ->
               {:ok, _} =

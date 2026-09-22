@@ -53,6 +53,18 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
 
   def register_reason(%{"code" => code}) do
     case code do
+      "buyer_gst_name_review" ->
+        "Check buyer name against GST records"
+
+      "seller_gst_name_review" ->
+        "Check seller name against GST records"
+
+      "buyer_gst_registration_review" ->
+        "Check buyer GST registration"
+
+      "seller_gst_registration_review" ->
+        "Check seller GST registration"
+
       "seller_identity_unverified" ->
         "Confirm invoice belongs here"
 

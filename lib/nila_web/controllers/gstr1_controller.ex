@@ -15,6 +15,18 @@ defmodule NilaWeb.Gstr1Controller do
   alias Nila.Gst.Sales.Tally.Packet, as: TallyPacket
   alias Nila.Gst.Sales.Workings.Xlsx, as: WorkingsXlsx
 
+  plug :require_export_permission when action in [:return_json, :workings_xlsx]
+
+  defp require_export_permission(conn, _) do
+    if Nila.Accounts.Policy.can?(conn.assigns[:current_scope], :export),
+      do: conn,
+      else:
+        conn
+        |> put_status(:forbidden)
+        |> text("Your role cannot download working files")
+        |> halt()
+  end
+
   plug :require_finished_uploads
        when action in [
               :return_json,
@@ -64,6 +76,11 @@ defmodule NilaWeb.Gstr1Controller do
             conn
             |> put_status(:unprocessable_entity)
             |> text("Exports are unavailable until invoices are added")
+
+          not NilaWeb.Gst.SalesExportState.json_ready?(sales_month, projection) ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> text("Resolve required sales checks before downloading GSTR-1 JSON")
 
           same_period?(projection, period) ->
             conn
@@ -139,7 +156,9 @@ defmodule NilaWeb.Gstr1Controller do
              resolutions: resolutions,
              invoice_urls:
                Map.new(projection.active_invoices, fn invoice ->
-                 path = ~p"/gst/#{client.id}/#{period}/sales/invoices/#{invoice["id"]}"
+                 path =
+                   "/app/gst/#{client.id}/#{period}/sales/invoices/#{URI.encode_www_form(invoice["id"])}"
+
                  {invoice["id"], NilaWeb.Endpoint.url() <> path}
                end)
            ) do

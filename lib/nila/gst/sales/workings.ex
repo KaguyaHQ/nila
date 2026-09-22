@@ -109,6 +109,13 @@ defmodule Nila.Gst.Sales.Workings do
       |> Enum.concat(document_issues)
       |> Issues.normalize_all()
       |> collapse_by_target()
+      |> Enum.map(
+        &Nila.Gst.Sales.Review.MonthChecks.bind(
+          &1,
+          active_invoices,
+          Keyword.get(opts, :packet_basis, [])
+        )
+      )
 
     confirmations =
       effective
@@ -116,15 +123,16 @@ defmodule Nila.Gst.Sales.Workings do
       |> Map.values()
       |> Enum.filter(&(&1["verb"] == "confirm_issue"))
 
-    confirmed_keys = MapSet.new(confirmations, & &1["target"])
+    confirmed = Map.new(confirmations, &{&1["target"], &1})
 
     issues =
       raw_issues
       |> Enum.map(fn issue ->
         status =
-          if not blocking?(issue) and MapSet.member?(confirmed_keys, issue_key(issue)),
-            do: "resolved",
-            else: "open"
+          if not blocking?(issue) and
+               Nila.Gst.Sales.Review.MonthChecks.confirmed?(issue, confirmed[issue_key(issue)]),
+             do: "resolved",
+             else: "open"
 
         Map.put(issue, "status", status)
       end)

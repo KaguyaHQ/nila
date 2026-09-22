@@ -82,6 +82,107 @@ defmodule NilaWeb.Gstr1ControllerTest do
     end
   end
 
+  test "required checks block direct JSON downloads but preserve the draft workbook", %{
+    conn: conn,
+    client: client,
+    month: month
+  } do
+    [invoice] = month.invoices
+
+    month
+    |> Ecto.Changeset.change(invoices: [Map.put(invoice, "printed_grand_total", 9999.0)])
+    |> Repo.update!()
+
+    json = get(conn, "/gstr1/#{client.id}/#{month.period}/return.json")
+    assert response(json, 422) =~ "Resolve required sales checks"
+    assert get_resp_header(json, "content-disposition") == []
+    assert conn |> get("/gstr1/#{client.id}/#{month.period}/workings.xlsx") |> response(200)
+
+    workspace =
+      conn |> get("/api/workspace/sales/#{client.id}/#{month.period}") |> json_response(200)
+
+    [working, portal] = workspace["exports"]["items"]
+    assert working["enabled"]
+    refute portal["enabled"]
+    assert workspace["exports"]["blockers"] != []
+  end
+
+  test "reviewed nonfiled working enables JSON and downloads the same effective return", %{
+    conn: conn,
+    client: client,
+    month: month,
+    user: user
+  } do
+    Nila.GstFixtures.answer_sales_issues!(month, user.id)
+    working = Nila.Gst.Sales.Review.Resolutions.effective_workings(Repo.reload!(month))
+    assert Nila.Gst.Sales.Workings.reviewable?(working.issues)
+
+    workspace =
+      conn |> get("/api/workspace/sales/#{client.id}/#{month.period}") |> json_response(200)
+
+    assert Enum.find(workspace["exports"]["items"], &(&1["id"] == "json"))["enabled"]
+    assert workspace["exports"]["blockers"] == []
+    body = conn |> get("/gstr1/#{client.id}/#{month.period}/return.json") |> json_response(200)
+    assert body == working.derived
+  end
+
+  test "filed JSON retains its recorded snapshot despite historic review findings", %{
+    conn: conn,
+    client: client,
+    month: month
+  } do
+    [invoice] = month.invoices
+
+    month
+    |> Ecto.Changeset.change(
+      filed_at: DateTime.utc_now(),
+      invoices: [Map.put(invoice, "printed_grand_total", 9999.0)]
+    )
+    |> Repo.update!()
+
+    body = conn |> get("/gstr1/#{client.id}/#{month.period}/return.json") |> json_response(200)
+    assert body == month.derived_gstr1
+  end
+
+  test "month-level required work also blocks direct JSON", %{
+    conn: conn,
+    client: client,
+    month: month
+  } do
+    issue = %{
+      "code" => "pages_unaccounted",
+      "invoice" => nil,
+      "status" => "open",
+      "message" => "Page 2 was not read",
+      "level" => "required"
+    }
+
+    month |> Ecto.Changeset.change(issues: month.issues ++ [issue]) |> Repo.update!()
+    assert conn |> get("/gstr1/#{client.id}/#{month.period}/return.json") |> response(422)
+
+    workspace =
+      conn |> get("/api/workspace/sales/#{client.id}/#{month.period}") |> json_response(200)
+
+    assert Enum.any?(
+             workspace["exports"]["blockers"],
+             &(&1["message"] == issue["message"] and
+                 &1["path"] == "/gst/#{client.id}/2026-07/sales/checks")
+           )
+  end
+
+  test "export capability is enforced by the download controller", %{user: user} do
+    scope = Nila.Accounts.Scope.for_user(user)
+
+    for action <- [:return_json, :workings_xlsx] do
+      conn =
+        build_conn()
+        |> assign(:current_scope, %{scope | membership: nil})
+        |> NilaWeb.Gstr1Controller.call(action)
+
+      assert response(conn, 403) =~ "cannot download"
+    end
+  end
+
   test "downloads the current B2B workings as a Winman workbook", %{
     conn: conn,
     client: client

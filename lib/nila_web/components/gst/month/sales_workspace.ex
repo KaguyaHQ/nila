@@ -22,6 +22,42 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
     {"ecommerce", "Supplies through e-commerce operator"}
   ]
 
+  @doc "Shared presentation of the effective return for LiveView and the React sales overview."
+  def summary_rows(workings, client, period) do
+    review = Nila.Gst.Sales.Review.build(workings)
+    ids = MapSet.new(review.needs_you, & &1.source_id)
+    assigns = %{active_invoices: workings.active_invoices, derived: workings.derived}
+    hsn = if workings.derived, do: Gstr1.hsn_summary(workings.active_invoices), else: []
+
+    gstr1_table_rows(
+      assigns,
+      ids,
+      hsn,
+      document_rows(workings.derived),
+      base_path(client, period)
+    )
+  end
+
+  @doc "The existing GSTR-1 detail rows, shared with the React workspace."
+  def detail_rows(workings, client, period) do
+    review = Nila.Gst.Sales.Review.build(workings)
+    ids = MapSet.new(review.needs_you, & &1.source_id)
+    assigns = %{client: client, period: period, base: base_path(client, period), review: review}
+
+    sections =
+      for {key, label} <- @gstr1_table_order,
+          key in ~w(b2b b2cl b2cs cdnr exp sez),
+          into: %{} do
+        invoices = Enum.filter(workings.active_invoices, &(workspace_table(&1) == key))
+        {key, %{title: label, rows: invoice_rows(invoices, ids, assigns, workings)}}
+      end
+
+    Map.put(sections, "documents", %{
+      title: "Documents issued",
+      rows: document_rows(workings.derived)
+    })
+  end
+
   attr :client, :map, required: true
   attr :period, :string, required: true
   attr :picker_year, :integer, required: true
@@ -82,6 +118,7 @@ defmodule NilaWeb.Components.Gst.Month.SalesWorkspace do
         path_for_period={fn period -> period_view_path(@client, period, @view) end}
       >
         {render_slot(@client_actions)}
+        <.text_link href={"/app/gst/#{@client.id}/#{@period}/sales"}>Open new sales workspace</.text_link>
       </PeriodHeader.period_header>
 
       <%= case @view do %>

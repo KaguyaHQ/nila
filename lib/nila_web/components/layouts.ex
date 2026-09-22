@@ -138,12 +138,6 @@ defmodule NilaWeb.Layouts do
               label="Banking"
               current_path={@current_path}
             />
-            <.rail_link
-              href={~p"/gst/2b"}
-              icon="hero-arrow-down-tray"
-              label="GSTR-2B"
-              current_path={@current_path}
-            />
           </div>
 
           <div class="border-rule space-y-1 border-t pt-3">

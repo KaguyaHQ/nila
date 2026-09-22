@@ -9,6 +9,8 @@ defmodule Nila.Gst.Portal.Statement do
     field :fetched_at, :utc_datetime_usec
     field :status, :string, default: "pending"
     field :last_error, :string
+    field :failure_reason, :string
+    field :provider_code, :string
     timestamps(type: :utc_datetime_usec)
   end
 end

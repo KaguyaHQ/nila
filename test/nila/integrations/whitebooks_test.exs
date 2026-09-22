@@ -113,6 +113,20 @@ defmodule Nila.Integrations.WhitebooksTest do
     assert {:error, :unexpected_response} = Whitebooks.list_notices(@account, ~D[2026-09-18])
   end
 
+  test "hyphenated GST error codes survive without returning provider descriptions" do
+    Req.Test.expect(Whitebooks, fn conn ->
+      Req.Test.json(conn, %{
+        "status_cd" => "0",
+        "error" => %{
+          "errorCode" => "GTR2B-002",
+          "errorMessage" => "No record; private-session"
+        }
+      })
+    end)
+
+    assert {:error, {:provider, "GTR2B-002"}} = Whitebooks.gstr2b(@account, ~D[2026-09-01])
+  end
+
   test "GST notice failures use a nested error object" do
     Req.Test.expect(Whitebooks, fn conn ->
       Req.Test.json(conn, %{

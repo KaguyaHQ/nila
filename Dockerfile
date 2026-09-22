@@ -13,6 +13,15 @@ ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-$
 # Match the builder's Debian family, with Python >=3.10 for native PDF tables.
 ARG RUNNER_IMAGE="python:3.11-slim-bookworm@sha256:528257d48c1da0dcecc2e725d1ae34498d60c965f1241e39cd6a85a8859bdf84"
 
+FROM node:22-bookworm-slim AS frontend
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+COPY assets/js/hooks/pdf_viewer.js /app/assets/js/hooks/pdf_viewer.js
+COPY assets/vendor/pdfjs/ /app/assets/vendor/pdfjs/
+RUN npm run build
+
 FROM ${BUILDER_IMAGE} AS builder
 
 # install build dependencies. No Node/npm: assets are built by the esbuild and
@@ -46,8 +55,9 @@ RUN mix compile
 
 # build minified, digested assets (tailwind + esbuild + phx.digest)
 RUN mix assets.deploy
+COPY --from=frontend /app/priv/static/frontend ./priv/static/frontend
 
-# runtime.exs is read at boot, not compile time — copy after compile
+# runtime.exs is read at boot, not compile time â€” copy after compile
 COPY config/runtime.exs config/
 
 COPY rel rel

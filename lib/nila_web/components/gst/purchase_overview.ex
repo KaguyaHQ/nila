@@ -14,6 +14,10 @@ defmodule NilaWeb.Components.Gst.PurchaseOverview do
   attr :processing, :boolean, required: true
   attr :inputs_unresolved?, :boolean, required: true
   attr :statement_needs_import, :boolean, required: true
+  attr :statement, :any, default: nil
+  attr :fetching_2b, :boolean, default: false
+  attr :fetch_2b_error, :any, default: nil
+  attr :availability_hint, :any, default: nil
 
   def overview(assigns) do
     assigns =
@@ -31,78 +35,148 @@ defmodule NilaWeb.Components.Gst.PurchaseOverview do
       <.card padding="none">
         <.card_header title="Purchase data" />
         <div class="grid md:grid-cols-2">
-          <div class="space-y-block p-6">
-            <div class="gap-block flex flex-wrap items-center justify-between">
-              <h3 class="text-ui font-medium">Purchase register</h3>
+          <div class="gap-block flex flex-col p-6">
+            <div class="space-y-related">
+              <div class="gap-related flex flex-wrap items-center justify-between">
+                <h3 class="text-ui font-medium">Purchase register</h3>
 
-              <.button
-                id="purchase-import-excel"
-                phx-click="import-excel"
-                variant={if @books_present, do: "soft", else: "primary"}
-                disabled={!@can_edit || @signed_off?}
-              >Import purchase Excel</.button>
+                <.button
+                  id="purchase-import-excel"
+                  phx-click="import-excel"
+                  variant={if @books_present || @portal_present, do: "outline", else: "primary"}
+                  disabled={!@can_edit || @signed_off?}
+                >Import purchase Excel</.button>
+              </div>
+
+              <p :if={@books_present} id="purchase-books-totals" class="text-ui">
+                <strong>{@overview.books_count}</strong>
+                documents · <strong>{Workspace.money(@overview.books_tax)}</strong>
+                GST
+              </p>
+
+              <p :if={!@books_present} class="text-ink-muted text-ui">Not imported</p>
             </div>
 
-            <p :if={@books_present} id="purchase-books-totals" class="text-ui">
-              <strong>{@overview.books_count}</strong>
-              documents · <strong>{Workspace.money(@overview.books_tax)}</strong>
-              GST
-            </p>
+            <div class="space-y-related">
+              <div :if={@books_present} class="gap-related flex flex-wrap items-center">
+                <.text_link
+                  id="purchase-register-link"
+                  navigate={Workspace.list_path(@client.id, @period, "register", "")}
+                >View purchase register</.text_link>
+              </div>
 
-            <p :if={!@books_present} class="text-ink-muted text-ui">Not imported</p>
-
-            <.text_link
-              :if={@books_present}
-              id="purchase-register-link"
-              navigate={Workspace.list_path(@client.id, @period, "register", "")}
-            >View purchase register</.text_link>
-            <.text_link
-              id="purchase-uploads-link"
-              navigate={~p"/gst/#{@client.id}/#{@period}/purchases/uploads"}
-            >Uploads</.text_link>
-            <p :if={!@books_present} class="text-ink-muted text-ui">
-              Import the client's records to compare with GSTR-2B.
-            </p>
+              <div class="flex min-h-8 items-center">
+                <.text_link
+                  id="purchase-uploads-link"
+                  navigate={~p"/gst/#{@client.id}/#{@period}/purchases/uploads"}
+                >Upload history</.text_link>
+              </div>
+            </div>
           </div>
 
-          <div class="border-rule space-y-block border-t p-6 md:border-t-0 md:border-l">
-            <div class="gap-block flex flex-wrap items-center justify-between">
-              <h3 class="text-ui font-medium">GSTR-2B</h3>
+          <div class="border-rule gap-block flex flex-col border-t p-6 md:border-t-0 md:border-l">
+            <div class="space-y-related">
+              <div class="gap-related flex flex-wrap items-center justify-between">
+                <h3 class="text-ui font-medium">GSTR-2B</h3>
 
-              <.button
-                variant="soft"
-                id="purchase-fetch-2b"
-                navigate={~p"/gst/2b?#{%{client_id: @client.id, period: @period}}"}
-              >{if @portal_present, do: "Refresh GSTR-2B", else: "Fetch GSTR-2B"}</.button>
+                <div class="gap-related flex flex-wrap items-center">
+                  <.button
+                    variant={
+                      if @portal_present || @statement_needs_import, do: "ghost", else: "outline"
+                    }
+                    id="purchase-fetch-2b"
+                    phx-click="fetch-2b"
+                    disabled={!@can_edit || @fetching_2b}
+                    phx-disable-with="Fetching…"
+                  >
+                    <.icon :if={@portal_present} name="hero-arrow-path" class="size-4" /> {if @fetching_2b,
+                      do: "Fetching GSTR-2B…",
+                      else: if(@portal_present, do: "Refresh", else: "Fetch GSTR-2B")}
+                  </.button>
+
+                  <.action_menu
+                    :if={@can_export && @statement && @statement.fetched_at}
+                    id="purchase-2b-source-menu"
+                    label="GSTR-2B source actions"
+                  >
+                    <:item
+                      id="purchase-gstr2b-download"
+                      label="Download source JSON"
+                      icon="hero-arrow-down-tray"
+                      href={~p"/gst/2b/statements/#{@statement.id}/download"}
+                    />
+                  </.action_menu>
+                </div>
+              </div>
+
+              <p :if={@portal_present} id="purchase-portal-totals" class="text-ui">
+                <strong>{@overview.portal_count}</strong>
+                documents · <strong>{Workspace.money(@overview.portal_tax)}</strong>
+                GST
+              </p>
+
+              <p :if={!@portal_present} class="text-ink-muted text-ui">Not imported</p>
+
+              <p
+                :if={@statement && @statement.fetched_at}
+                id="purchase-2b-fetched-at"
+                class="text-ink-muted text-ui"
+              >
+                Last fetched {fetched_at(@statement.fetched_at)}
+              </p>
+
+              <p :if={@availability_hint} id="purchase-2b-availability" class="text-ink-muted text-ui">
+                {@availability_hint}
+              </p>
+
+              <p :if={@fetching_2b} id="purchase-2b-fetching" class="text-ink-muted text-ui">
+                Fetching the latest GSTR-2B from the portal…
+              </p>
+
+              <p
+                :if={@fetch_2b_error}
+                id="purchase-2b-fetch-error"
+                role="alert"
+                class="text-error text-ui"
+              >
+                {@fetch_2b_error}
+              </p>
+
+              <p
+                :if={@fetch_2b_error && @statement && @statement.fetched_at}
+                id="purchase-2b-retained"
+                class="text-ink-muted text-ui"
+              >
+                Your previously downloaded statement is still available.
+              </p>
             </div>
 
-            <p :if={@portal_present} id="purchase-portal-totals" class="text-ui">
-              <strong>{@overview.portal_count}</strong>
-              documents · <strong>{Workspace.money(@overview.portal_tax)}</strong>
-              GST
-            </p>
-
-            <p :if={!@portal_present} class="text-ink-muted text-ui">Not imported</p>
-
-            <.text_link
-              :if={@portal_present}
-              id="purchase-gstr2b-link"
-              navigate={Workspace.list_path(@client.id, @period, "gstr2b", "")}
-            >View GSTR-2B</.text_link>
-            <.button
-              :if={@statement_needs_import}
-              id="purchase-use-2b"
-              phx-click="use-2b"
-              disabled={!@can_edit || @signed_off? || @processing}
-              phx-disable-with="Adding…"
-            >{if @portal_present, do: "Update reconciliation", else: "Start reconciliation"}</.button>
+            <div :if={@portal_present || @statement_needs_import} class="space-y-related">
+              <div class="gap-related flex flex-wrap items-center">
+                <.button
+                  :if={@portal_present}
+                  id="purchase-gstr2b-link"
+                  variant={
+                    if @books_present || @statement_needs_import, do: "outline", else: "primary"
+                  }
+                  navigate={Workspace.list_path(@client.id, @period, "gstr2b", "")}
+                ><%= if @books_present do %>
+                  View GSTR-2B
+                <% else %>
+                  Review {@overview.portal_count} GSTR-2B {if @overview.portal_count == 1,
+                    do: "document",
+                    else: "documents"}
+                <% end %></.button>
+                <.button
+                  :if={@statement_needs_import}
+                  id="purchase-use-2b"
+                  phx-click="use-2b"
+                  disabled={!@can_edit || @signed_off? || @processing}
+                  phx-disable-with="Adding…"
+                >{if @portal_present, do: "Update reconciliation", else: "Start reconciliation"}</.button>
+              </div>
+            </div>
           </div>
-        </div>
-
-        <div class="border-rule border-t px-6 py-3">
-          <.context_text>
-            Imported source totals. Credit notes reduce GST; corrections remain in the working.
-          </.context_text>
         </div>
       </.card>
 
@@ -128,7 +202,7 @@ defmodule NilaWeb.Components.Gst.PurchaseOverview do
               <p id="purchase-comparison-pending" class="text-ui font-medium">
                 {cond do
                   @portal_present ->
-                    "GSTR-2B is ready. Import purchases to compare with books."
+                    "Books comparison not available"
 
                   @books_present ->
                     "Purchases are ready. Import GSTR-2B to compare with supplier records."
@@ -139,7 +213,10 @@ defmodule NilaWeb.Components.Gst.PurchaseOverview do
               </p>
 
               <p class="text-ink-muted text-ui">
-                Matches and missing invoices can be identified once both sources are available.
+                {if @portal_present && !@books_present,
+                  do: "Import a purchase register to compare it with GSTR-2B.",
+                  else:
+                    "Matches and missing invoices can be identified once both sources are available."}
               </p>
             </div>
 
@@ -205,7 +282,25 @@ defmodule NilaWeb.Components.Gst.PurchaseOverview do
           <.card padding="none">
             <.card_header title="ITC treatment" />
             <div class="space-y-block p-6">
-              <dl id="purchase-treatment-totals" class="text-ui space-y-3">
+              <div
+                :if={!@overview.treatment_recorded?}
+                id="purchase-treatment-empty"
+                class="space-y-related"
+              >
+                <p class="text-ui">No ITC treatments recorded yet.</p>
+
+                <p class="text-ink-muted text-ui">
+                  {if @portal_present,
+                    do: "Review GSTR-2B to record decisions.",
+                    else: "Record ITC treatment as you review purchase documents."}
+                </p>
+              </div>
+
+              <dl
+                :if={@overview.treatment_recorded?}
+                id="purchase-treatment-totals"
+                class="text-ui space-y-3"
+              >
                 <div class="flex justify-between gap-4">
                   <dt>Claim in this month</dt><dd>{Workspace.money(@overview.claim_tax)}</dd>
                 </div>
@@ -233,7 +328,7 @@ defmodule NilaWeb.Components.Gst.PurchaseOverview do
                   else: "invoices"}. Review their ITC treatment.
               </p>
 
-              <p class="text-ink-muted text-ui">
+              <p :if={@overview.treatment_recorded?} class="text-ink-muted text-ui">
                 These are recorded treatment decisions. Matching alone does not claim credit.
               </p>
 
@@ -260,8 +355,35 @@ defmodule NilaWeb.Components.Gst.PurchaseOverview do
               {if @complete?, do: "Working available for senior review", else: "Draft working"}
             </p>
 
-            <p class="text-ink-muted text-ui">
-              Includes source records, comparisons and recorded decisions. Outstanding checks remain visible.
+            <p :if={!@complete?} id="purchase-working-remainder" class="text-ink-muted text-ui">
+              {cond do
+                @processing ->
+                  "Uploaded records are still being processed."
+
+                @inputs_unresolved? ->
+                  "An upload needs attention before reconciliation can finish."
+
+                !@books_present && !@portal_present ->
+                  "Purchase register and GSTR-2B not imported. Reconciliation hasn't been run."
+
+                !@books_present ->
+                  "Purchase register not imported. Reconciliation hasn't been run."
+
+                !@portal_present ->
+                  "GSTR-2B not imported. Reconciliation hasn't been run."
+
+                @statement_needs_import ->
+                  "The latest GSTR-2B has not been added to reconciliation."
+
+                @overview.stale_count > 0 ->
+                  "Source amounts changed. ITC treatment needs another review."
+
+                @overview.remaining > 0 ->
+                  "#{@overview.remaining} #{if @overview.remaining == 1, do: "item still needs", else: "items still need"} review."
+
+                true ->
+                  "ITC treatment is still undecided for #{Workspace.money(@overview.pending_tax)}."
+              end}
             </p>
 
             <.button
@@ -270,7 +392,13 @@ defmodule NilaWeb.Components.Gst.PurchaseOverview do
               variant="soft"
               href={~p"/gst/#{@client.id}/#{@period}/purchases/workings.xlsx"}
             >{if @complete?, do: "Download working", else: "Download draft working"}</.button>
-            <.text_link id="purchase-gstr3b-link" navigate={~p"/gst/#{@client.id}/#{@period}/gstr3b"}>View GSTR-3B</.text_link>
+            <div>
+              <.text_link
+                id="purchase-gstr3b-link"
+                navigate={~p"/gst/#{@client.id}/#{@period}/gstr3b"}
+              >View GSTR-3B working →</.text_link>
+            </div>
+
             <p :if={!@month} class="text-ink-muted text-ui">
               Import records to make the working available.
             </p>
@@ -280,4 +408,7 @@ defmodule NilaWeb.Components.Gst.PurchaseOverview do
     </section>
     """
   end
+
+  defp fetched_at(time),
+    do: time |> DateTime.add(19_800) |> Calendar.strftime("%d %b %Y at %H:%M IST")
 end

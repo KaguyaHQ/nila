@@ -17,6 +17,8 @@ defmodule NilaWeb.Gst.PurchaseUploadsLive do
          client: client,
          period: period,
          page_title: "Purchase uploads",
+         period_label: Calendar.strftime(date, "%B %Y"),
+         can_import: Nila.Accounts.Policy.can?(socket.assigns.current_scope, :edit_records),
          filing_picker_year: date.year,
          selected_id: nil,
          selected: nil
@@ -134,12 +136,19 @@ defmodule NilaWeb.Gst.PurchaseUploadsLive do
           id="purchase-upload-back"
           patch={~p"/gst/#{@client.id}/#{@period}/purchases/uploads"}
         >← All uploads</.text_link>
-        <.page_header :if={!@selected} title="Uploads">
-          Purchase files received for this month.
+        <.page_header :if={!@selected} title="Purchase uploads">
+          <:actions>
+            <.button
+              id="purchase-uploads-import"
+              navigate={~p"/gst/#{@client.id}/#{@period}/purchases/import-excel"}
+              disabled={!@can_import}
+              title={if !@can_import, do: "You don't have permission to import purchases."}
+            >Import purchase Excel</.button>
+          </:actions>
         </.page_header>
 
         <p :if={@upload_count == 0} id="purchase-uploads-empty" class="text-ink-muted text-ui">
-          No purchase files uploaded for this month.
+          No purchase files uploaded for {@period_label}.
         </p>
 
         <.data_table

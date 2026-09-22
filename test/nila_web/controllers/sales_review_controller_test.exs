@@ -1,0 +1,225 @@
+defmodule NilaWeb.SalesReviewControllerTest do
+  use NilaWeb.ConnCase, async: true
+  import Nila.GstFixtures
+  import Ecto.Query
+  alias Nila.{Clients, Repo, Storage}
+  alias Nila.Gst.Intake.Dump
+  alias Nila.Gst.Sales.{Batch, Months}
+  alias Nila.Gst.Sales.Invoice.Corrections
+  alias Nila.Gst.Sales.Review.Resolutions
+
+  setup %{conn: conn} do
+    %{user: user, org: org} = user_with_org_fixture()
+
+    {:ok, client} =
+      Clients.create_client(%{
+        org_id: org.id,
+        name: "Review client",
+        type: "company",
+        gstin: "33AEWPH4158J1Z3"
+      })
+
+    dump =
+      work_dump!(org, client, "2025-10", "sales", "%PDF-1.4 fake bytes", user.id)
+      |> Repo.reload!()
+
+    {:ok, batch} = Batch.create(org.id, client.id, Ecto.UUID.generate())
+    key = "test/review/#{Ecto.UUID.generate()}/original.pdf"
+    {:ok, _} = Storage.put(key, "%PDF-1.4 source")
+    on_exit(fn -> Storage.delete(key) end)
+
+    dump =
+      dump
+      |> Ecto.Changeset.change(
+        sales_batch_id: batch.id,
+        file_keys: [key],
+        meta: Map.put(dump.meta, "original_name", "sales.pdf")
+      )
+      |> Repo.update!()
+
+    {:ok, month} = Months.get_by_period(org.id, client.id, "2025-10")
+    invoice = hd(month.invoices)
+
+    %{
+      conn: log_in_user(conn, user),
+      user: user,
+      org: org,
+      client: client,
+      dump: dump,
+      month: month,
+      invoice: invoice,
+      path:
+        "/api/workspace/sales/#{client.id}/2025-10/invoices/#{URI.encode_www_form(invoice["id"])}"
+    }
+  end
+
+  test "loads a real invoice with source evidence, server comparisons and queue", %{
+    conn: conn,
+    path: path,
+    invoice: invoice,
+    client: client,
+    dump: dump
+  } do
+    response = get(conn, path)
+    body = json_response(response, 200)
+    assert body["invoice"]["id"] == invoice["id"]
+    assert body["can_edit"]
+    assert body["source"]["name"] == "sales.pdf"
+    assert body["source"]["url"] == "/gst/#{client.id}/2025-10/original/#{dump.id}/0"
+    assert is_list(body["source"]["pages"])
+    assert Enum.any?(body["queue"], &(&1["id"] == invoice["id"]))
+    assert Enum.all?(body["totals"], &is_binary(&1["calculated"]))
+    assert body["lines"] != []
+    assert Enum.all?(hd(body["lines"])["values"], fn {_field, value} -> is_binary(value) end)
+    assert get_resp_header(response, "cache-control") == ["private, no-store"]
+  end
+
+  test "displays the GST treatment's place of supply without inventing a captured source fact", %{
+    conn: conn,
+    path: path,
+    invoice: invoice,
+    month: month,
+    dump: dump
+  } do
+    replace = fn invoices ->
+      Enum.map(invoices, fn row ->
+        if row["id"] == invoice["id"],
+          do: row |> Map.delete("place_of_supply") |> Map.put("buyer_gstin", "33AEWPH4158J1Z3"),
+          else: row
+      end)
+    end
+
+    month |> Ecto.Changeset.change(invoices: replace.(month.invoices)) |> Repo.update!()
+    dump |> Ecto.Changeset.change(invoices: replace.(dump.invoices)) |> Repo.update!()
+
+    body = conn |> get(path) |> json_response(200)
+    assert body["invoice"]["place_of_supply"] == "Tamil Nadu (33)"
+    assert body["facts"]["place_of_supply"] == ""
+  end
+
+  test "facts, line and printed-total edits persist source corrections without rewriting extraction",
+       %{
+         conn: conn,
+         path: path,
+         invoice: invoice,
+         org: org,
+         client: client,
+         user: user,
+         dump: dump
+       } do
+    changed =
+      conn
+      |> patch(path, %{section: "facts", values: %{buyer_name: "Corrected buyer"}})
+      |> json_response(200)
+
+    assert changed["facts"]["buyer_name"] == "Corrected buyer"
+
+    line =
+      conn
+      |> patch(path, %{section: "line", line_index: 0, values: %{description: "Corrected item"}})
+      |> json_response(200)
+
+    assert hd(line["lines"])["values"]["description"] == "Corrected item"
+
+    totals =
+      conn
+      |> patch(path, %{section: "totals", values: %{printed_grand_total: "999.50"}})
+      |> json_response(200)
+
+    assert totals["printed_totals"]["printed_grand_total"] == "999.5"
+    corrections = Corrections.list(org.id, client.id, invoice["id"])
+    assert length(corrections) == 3
+    assert Enum.all?(corrections, &(&1.corrected_by_id == user.id))
+    assert Repo.get!(Dump, dump.id).invoices == dump.invoices
+  end
+
+  test "invalid values and unknown fields cannot create corrections", %{
+    conn: conn,
+    path: path,
+    invoice: invoice,
+    org: org,
+    client: client
+  } do
+    for payload <- [
+          %{section: "facts", values: %{buyer_gstin: "invalid"}},
+          %{section: "facts", values: %{invoice_date: "not a date"}},
+          %{section: "facts", values: %{seller_gstin: "33AEWPH4158J1Z3"}},
+          %{section: "line", line_index: 999, values: %{description: "No line"}},
+          %{section: "line", line_index: 0, values: %{taxable_value: "-1"}},
+          %{section: "totals", values: %{printed_grand_total: %{nested: "bad"}}}
+        ] do
+      assert conn |> patch(path, payload) |> json_response(422)
+    end
+
+    assert Corrections.list(org.id, client.id, invoice["id"]) == []
+  end
+
+  test "confirmation accepts only a current nonblocking issue on this invoice", %{
+    conn: conn,
+    path: path,
+    month: month,
+    user: user
+  } do
+    body = conn |> get(path) |> json_response(200)
+    issue = Enum.find(body["issues"], & &1["can_confirm"])
+    assert issue
+    confirmed = conn |> post(path <> "/confirm", %{target: issue["target"]}) |> json_response(200)
+
+    refute Enum.any?(
+             confirmed["issues"],
+             &(&1["target"] == issue["target"] and &1["can_confirm"])
+           )
+
+    assert Enum.any?(
+             Resolutions.list(month.id),
+             &(&1.target == issue["target"] and &1.decided_by_id == user.id)
+           )
+
+    assert conn |> post(path <> "/confirm", %{target: "made-up|target"}) |> json_response(422)
+    assert conn |> post(path <> "/confirm", %{target: issue["target"]}) |> json_response(422)
+  end
+
+  test "filed month shows its snapshot and rejects edits and confirmations", %{
+    conn: conn,
+    path: path,
+    month: month
+  } do
+    month |> Ecto.Changeset.change(filed_at: DateTime.utc_now()) |> Repo.update!()
+    body = conn |> get(path) |> json_response(200)
+    refute body["can_edit"]
+    assert body["lock_reason"] =~ "filed"
+
+    assert conn
+           |> patch(path, %{section: "facts", values: %{buyer_name: "No"}})
+           |> json_response(409)
+
+    assert conn |> post(path <> "/confirm", %{target: "anything"}) |> json_response(409)
+  end
+
+  test "missing and foreign invoices never fall back to another invoice, viewers cannot mutate",
+       %{conn: conn, path: path, client: client, org: org, user: user} do
+    assert build_conn() |> get(path) |> json_response(401)
+    %{user: other} = user_with_org_fixture()
+    assert build_conn() |> log_in_user(other) |> get(path) |> json_response(404)
+
+    assert conn
+           |> get("/api/workspace/sales/#{client.id}/2025-10/invoices/missing")
+           |> json_response(404)
+
+    assert conn |> get(String.replace(path, "2025-10", "2025-09")) |> json_response(404)
+
+    Repo.update_all(
+      from(m in Nila.Orgs.Membership, where: m.user_id == ^user.id and m.org_id == ^org.id),
+      set: [role: "viewer"]
+    )
+
+    body = conn |> get(path) |> json_response(200)
+    refute body["can_edit"]
+
+    assert conn
+           |> patch(path, %{section: "facts", values: %{buyer_name: "No"}})
+           |> json_response(403)
+
+    assert conn |> post(path <> "/confirm", %{target: "anything"}) |> json_response(403)
+  end
+end

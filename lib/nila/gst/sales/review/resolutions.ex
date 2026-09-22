@@ -100,6 +100,54 @@ defmodule Nila.Gst.Sales.Review.Resolutions do
     end)
   end
 
+  @doc "Confirms or reopens one current packet check against the evidence shown."
+  def decide_month_check(%Month{} = month, scope, target, basis, action) do
+    Repo.transact(fn ->
+      month = lock_month(month)
+
+      with true <-
+             scope.current_org.id == month.org_id and
+               Nila.Accounts.Policy.can?(scope, :edit_records),
+           :ok <- refuse_filed(month),
+           true <- action in ["confirm", "reopen"],
+           issue when not is_nil(issue) <-
+             Enum.find(workings(month).issues, &(Workings.issue_key(&1) == target)),
+           true <- Nila.Gst.Sales.Review.MonthChecks.supported?(issue),
+           :ok <- matching_basis(issue, basis, latest_decisions(month.id)[target]),
+           :ok <- matching_status(issue, action),
+           {:ok, resolution} <-
+             %Resolution{
+               org_id: month.org_id,
+               sales_month_id: month.id,
+               decided_by_id: scope.user.id
+             }
+             |> Resolution.changeset(%{
+               "verb" => if(action == "confirm", do: "confirm_issue", else: "reopen"),
+               "target" => target,
+               "payload" => %{"basis" => issue["basis"]}
+             })
+             |> Repo.insert() do
+        reopen_review(month)
+        Signoffs.invalidate_gstr3b_in_transaction(month, scope.user.id)
+        {:ok, resolution}
+      else
+        false -> {:error, :unsupported_confirmation}
+        nil -> {:error, :unsupported_confirmation}
+        error -> error
+      end
+    end)
+  end
+
+  defp matching_basis(issue, supplied, decision) do
+    if Nila.Gst.Sales.Review.MonthChecks.request_basis(issue, decision) == supplied,
+      do: :ok,
+      else: {:error, :stale}
+  end
+
+  defp matching_status(%{"status" => "open"}, "confirm"), do: :ok
+  defp matching_status(%{"status" => "resolved"}, "reopen"), do: :ok
+  defp matching_status(_, _), do: {:error, :stale}
+
   @doc "Marks every other member of one duplicate-number group as source copies."
   def exclude_duplicate_copies(%Month{} = month, retained_source_id, decided_by_id) do
     Repo.transact(fn ->
@@ -188,11 +236,17 @@ defmodule Nila.Gst.Sales.Review.Resolutions do
         header(month),
         document_issues(month) ++ tally.issues,
         source_namespace: "sales_month_#{month.id}",
+        packet_basis: packet_basis(month),
         compliance:
           Map.put(compliance(month), :taxpayers, Nila.Gst.Sales.TaxpayerChecks.saved(invoices))
       )
 
     Map.put(workings, :source_summary, tally.summary)
+  end
+
+  defp packet_basis(month) do
+    Nila.Gst.Intake.Dumps.effective(month.org_id, month.client_id, month.period, "sales")
+    |> Enum.map(fn dump -> {dump.id, dump.file_keys, dump.meta, dump.invoices} end)
   end
 
   defp compliance(%Month{} = month) do

@@ -4,6 +4,9 @@ defmodule NilaWeb.Gst.SalesIssuePresentationTest do
   alias NilaWeb.Gst.SalesIssuePresentation
 
   test "register reasons stay short and name the right party without exposing field codes" do
+    assert SalesIssuePresentation.register_reason(%{"code" => "buyer_gst_name_review"}) ==
+             "Check buyer name against GST records"
+
     assert SalesIssuePresentation.register_reason(%{"code" => "missing_taxable_value"}) ==
              "Taxable amount missing"
 

@@ -10,6 +10,27 @@ defmodule NilaWeb.Components.Gst.Month.HsnSummary do
   alias Nila.Gst.Sales.Gstr1
   alias NilaWeb.Components.Gst.Month.Helpers
 
+  @doc "Registered HSN contributor rows and unregistered aggregates for JSON presentation."
+  def detail_rows(derived, invoices) do
+    assigns = %{
+      hsn:
+        Gstr1.hsn_summary(
+          Enum.filter(
+            invoices,
+            &(Invoice.recipient_registration(&1) == "registered" and
+                not is_nil(Gstr1.filing_table(&1)))
+          )
+        ),
+      buyers: buyers_by_inum(invoices),
+      invoice_refs: invoice_refs_by_inum(invoices)
+    }
+
+    %{
+      registered: hsn_rows(assigns),
+      unregistered: get_in(derived || %{}, ["hsn", "hsn_b2c"]) || []
+    }
+  end
+
   @doc "The complete Table 12 output, with expandable invoice contributors."
   attr :derived, :map, required: true
   attr :invoices, :list, required: true

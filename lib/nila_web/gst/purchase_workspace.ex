@@ -180,6 +180,8 @@ defmodule NilaWeb.Gst.PurchaseWorkspace do
       later_tax: position["later_paise"] || 0,
       excluded_tax: position["excluded_paise"] || 0,
       pending_tax: position["pending_paise"] || 0,
+      treatment_recorded?:
+        workings != nil and Enum.any?(workings.case_lines, &(&1.explicit_treatment? or &1.treatment == "later")),
       carried_count: length(carried_cases(workings)),
       stale_count:
         if(workings, do: Enum.count(workings.case_lines, & &1.treatment_stale?), else: 0)

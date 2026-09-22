@@ -45,6 +45,11 @@ nila-*.tar
 # In case you use Node.js/npm, you want to ignore these.
 npm-debug.log
 /assets/node_modules/
+/frontend/node_modules/
+/frontend/dist/
+/priv/static/frontend/
+/frontend/test-results/
+/frontend/playwright-report/
 
 # Local environment variables loaded by Dotenvy in config/runtime.exs.
 .env

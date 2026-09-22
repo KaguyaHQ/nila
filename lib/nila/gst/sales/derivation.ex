@@ -74,10 +74,13 @@ defmodule Nila.Gst.Sales.Derivation do
     unaccounted =
       dump.org_id
       |> Dumps.unaccounted_pages(dump.client_id, dump.period, "sales")
-      |> Enum.map(fn %{"source" => source, "pages" => pages} ->
+      |> Enum.map(fn %{"dump_id" => dump_id, "source" => source, "pages" => pages} ->
         %{
           "invoice" => nil,
           "code" => "pages_unaccounted",
+          "target" => "pages_unaccounted:dump:#{dump_id}",
+          "dump_id" => dump_id,
+          "pages" => pages,
           "level" => Issues.level_for("pages_unaccounted"),
           "message" =>
             "pages #{Enum.join(pages, ", ")} of #{source} produced no invoice. Open the " <>
@@ -89,10 +92,12 @@ defmodule Nila.Gst.Sales.Derivation do
     evidence =
       dump.org_id
       |> Dumps.evidence_gaps(dump.client_id, dump.period, "sales")
-      |> Enum.map(fn %{"source" => source} ->
+      |> Enum.map(fn %{"dump_id" => dump_id, "source" => source} ->
         %{
           "invoice" => nil,
           "code" => "evidence_unavailable",
+          "target" => "evidence_unavailable:dump:#{dump_id}",
+          "dump_id" => dump_id,
           "level" => Issues.level_for("evidence_unavailable"),
           "message" =>
             "#{source} was read, but its pages could not be rendered, so no scanned bill " <>

@@ -39,6 +39,66 @@ defmodule NilaWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :workspace_api do
+    plug :accepts, ["json"]
+    plug :fetch_session
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+    plug :fetch_current_scope_for_user
+  end
+
+  scope "/api/workspace", NilaWeb do
+    pipe_through :workspace_api
+    get "/clients", ClientsWorkspaceController, :index
+    post "/clients", ClientsWorkspaceController, :create
+    post "/clients/import/preview", ClientsWorkspaceController, :preview_import
+    post "/clients/import", ClientsWorkspaceController, :import_clients
+    get "/clients/:id", ClientsWorkspaceController, :show
+    patch "/clients/:id", ClientsWorkspaceController, :update
+    get "/sales/:client_id/:period", SalesWorkspaceController, :show
+    get "/purchases/:client_id/:period", PurchaseWorkspaceController, :show
+    get "/purchases/:client_id/:period/review", PurchaseReviewController, :show
+    get "/purchases/:client_id/:period/review/:item_id", PurchaseReviewController, :show
+
+    post "/purchases/:client_id/:period/review/:item_id/treatment",
+         PurchaseReviewController,
+         :treatment
+
+    post "/purchases/:client_id/:period/review/:item_id/document",
+         PurchaseReviewController,
+         :document
+
+    post "/purchases/:client_id/:period/review/treatment", PurchaseReviewController, :treatment
+    post "/purchases/:client_id/:period/review/document", PurchaseReviewController, :document
+    get "/sales/:client_id/:period/checks", SalesMonthChecksController, :show
+    post "/sales/:client_id/:period/checks/decision", SalesMonthChecksController, :decision
+    get "/sales/:client_id/:period/invoices/:invoice_id", SalesReviewController, :show
+    patch "/sales/:client_id/:period/invoices/:invoice_id", SalesReviewController, :update
+    post "/sales/:client_id/:period/invoices/:invoice_id/confirm", SalesReviewController, :confirm
+    get "/sales/:client_id/:period/uploads", SalesUploadController, :index
+    post "/sales/:client_id/:period/uploads/prepare", SalesUploadController, :prepare
+    post "/sales/:client_id/:period/uploads", SalesUploadController, :create
+  end
+
+  scope "/app", NilaWeb do
+    pipe_through [:browser, :authenticated_browser, :verified_browser]
+    get "/clients", ReactAppController, :index
+    get "/clients/new", ReactAppController, :index
+    get "/clients/import", ReactAppController, :index
+    get "/clients/:client_id/edit", ReactAppController, :index
+    get "/gst/:client_id/:period/sales", ReactAppController, :index
+    get "/gst/:client_id/:period/sales/register", ReactAppController, :index
+    get "/gst/:client_id/:period/sales/checks", ReactAppController, :index
+    get "/gst/:client_id/:period/sales/sections/:section", ReactAppController, :index
+    get "/gst/:client_id/:period/sales/invoices/:invoiceId", ReactAppController, :index
+    get "/gst/:client_id/:period/sales/upload", ReactAppController, :index
+    get "/gst/:client_id/:period/sales/uploads", ReactAppController, :index
+    get "/gst/:client_id/:period/purchases", ReactAppController, :index
+    get "/gst/:client_id/:period/purchases/register", ReactAppController, :index
+    get "/gst/:client_id/:period/purchases/review", ReactAppController, :index
+    get "/gst/:client_id/:period/purchases/review/:itemId", ReactAppController, :index
+  end
+
   pipeline :webhook do
     plug :accepts, ["json"]
   end
@@ -57,7 +117,7 @@ defmodule NilaWeb.Router do
     end
   end
 
-  # Health probe — used by the container healthcheck and uptime monitors.
+  # Health probe â€” used by the container healthcheck and uptime monitors.
   # Excluded from force_ssl (see config/prod.exs) so the in-container HTTP
   # check isn't redirected to https.
   scope "/", NilaWeb do
@@ -78,7 +138,7 @@ defmodule NilaWeb.Router do
     post "/syncs/:id/fail", TallySyncController, :fail
   end
 
-  # Public legal & contact pages — reachable by everyone, logged in or out.
+  # Public legal & contact pages â€” reachable by everyone, logged in or out.
   scope "/", NilaWeb do
     pipe_through :browser
 
@@ -89,7 +149,7 @@ defmodule NilaWeb.Router do
     post "/contact/callback", PageController, :request_callback
   end
 
-  # Public marketing site — served to logged-out visitors.
+  # Public marketing site â€” served to logged-out visitors.
   scope "/", NilaWeb do
     pipe_through [:browser, :redirect_if_authenticated]
 
@@ -278,7 +338,7 @@ defmodule NilaWeb.Router do
       forward "/mailbox", Plug.Swoosh.MailboxPreview
       live "/design-system", NilaWeb.Dev.DesignSystemLive
 
-      # The error pages, previewable — `debug_errors: true` means a real 404 in
+      # The error pages, previewable â€” `debug_errors: true` means a real 404 in
       # dev renders the Plug debugger instead of ours.
       get "/errors/:status", NilaWeb.ErrorPreviewController, :show
     end
