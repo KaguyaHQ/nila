@@ -15,12 +15,13 @@ ARG RUNNER_IMAGE="python:3.11-slim-bookworm@sha256:528257d48c1da0dcecc2e725d1ae3
 
 FROM node:22-bookworm-slim AS frontend
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
+RUN npm install --global $(node -p "require('./package.json').packageManager") \
+    && pnpm install --frozen-lockfile
 COPY frontend/ ./
 COPY assets/js/hooks/pdf_viewer.js /app/assets/js/hooks/pdf_viewer.js
 COPY assets/vendor/pdfjs/ /app/assets/vendor/pdfjs/
-RUN npm run build
+RUN pnpm run build
 
 FROM ${BUILDER_IMAGE} AS builder
 

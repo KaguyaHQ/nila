@@ -32,7 +32,7 @@ config :nila, NilaWeb.Endpoint, http: [port: String.to_integer(System.get_env("P
 
 config :phoenix,
        :filter_parameters,
-       ~w(password api_key authorization authorization_code access_token client_secret bearer pin device_code approval_code device_token otp txn)
+       ~w(password api_key authorization authorization_code access_token client_secret bearer pin device_code approval_code device_token otp txn challenge)
 
 if config_env() != :test do
   config :nila, Nila.Integrations.Whitebooks,

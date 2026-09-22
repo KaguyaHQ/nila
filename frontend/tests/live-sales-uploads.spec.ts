@@ -93,7 +93,8 @@ test("PDF validation prevents invalid writes and switching client clears the old
   await expect(page.getByRole("alert")).toContainText("this file is empty");
   await expect(page.getByRole("alert")).toContainText("choose a PDF file");
   await expect(page.getByRole("heading", { name: "1 file selected" })).toBeVisible();
-  await page.getByLabel("Client", { exact: true }).selectOption("2");
+  await page.getByLabel("Switch client: Breeze Tech", { exact: true }).click();
+  await page.getByRole("option", { name: "Second client", exact: true }).click();
   await expect(page).toHaveURL(/\/gst\/2\/2026-06\/sales\/upload$/);
   await expect(page.getByText("sales.pdf", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Upload PDFs", exact: true })).toBeDisabled();

@@ -187,3 +187,35 @@ test("unknown invoice fails explicitly rather than showing another source invoic
   await expect(page.getByRole("heading", { name: "Invoice INV-001", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Back to register", exact: true })).toBeVisible();
 });
+
+
+test("checks use a keyboard disclosure and the editor saves with Control Enter", async ({ page }, testInfo) => {
+  await setup(page);
+  let writes = 0;
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/one", route => {
+    if (route.request().method() === "GET") return route.fulfill({ json: invoice() });
+    writes++;
+    const change = route.request().postDataJSON();
+    expect(change).toEqual({ section: "facts", values: { invoice_number: "CORRECTED" } });
+    const saved = invoice(); saved.invoice.number = "CORRECTED"; saved.facts.invoice_number = "CORRECTED";
+    return route.fulfill({ json: saved });
+  });
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one?q=Customer");
+  const disclosure = page.getByRole("button", { name: "1 check needs review", exact: true });
+  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+  await disclosure.focus();
+  await page.keyboard.press("Enter");
+  await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText("Uses the printed total from the source bill.")).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: "Edit invoice details", exact: true }).click();
+  await page.getByLabel("Invoice number", { exact: true }).fill("CORRECTED");
+  await page.keyboard.press("Control+Shift+Enter");
+  expect(writes).toBe(0);
+  await page.keyboard.press("Control+Enter");
+  await expect(page.getByRole("heading", { name: "Invoice CORRECTED", exact: true })).toBeVisible();
+  expect(writes).toBe(1);
+  await expect(page.getByRole("link", { name: "Back to register", exact: true })).toHaveAttribute("href", "/app/gst/1/2026-06/sales/register?q=Customer");
+  await page.screenshot({ path: testInfo.outputPath("review-controls.png"), fullPage: true });
+});

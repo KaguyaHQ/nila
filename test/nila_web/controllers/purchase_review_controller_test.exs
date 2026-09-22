@@ -59,6 +59,32 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
 
     assert hd(claimed["cases"])["values"]["choice"] == "claim"
 
+    summary =
+      c.conn
+      |> get("/api/workspace/purchases/#{c.client.id}/2026-08")
+      |> json_response(200)
+
+    assert summary["overview"]["itc"]["claim"] == "₹1,800.00"
+    assert summary["overview"]["itc"]["pending"] == "₹0.00"
+
+    workbook =
+      c.conn
+      |> get("/gst/#{c.client.id}/2026-08/purchases/workings.xlsx")
+      |> response(200)
+
+    {:ok, entries} = :zip.unzip(workbook, [:memory])
+    files = Map.new(entries, fn {name, bytes} -> {to_string(name), bytes} end)
+    strings = Regex.scan(~r/<si\b[^>]*>(.*?)<\/si>/s, files["xl/sharedStrings.xml"])
+    claim_index = Enum.find_index(strings, fn [_, text] -> text =~ ">Claim this period<" end)
+    assert is_integer(claim_index)
+
+    claim_row =
+      Regex.scan(~r/<row\b[^>]*>.*?<\/row>/s, files["xl/worksheets/sheet1.xml"])
+      |> List.flatten()
+      |> Enum.find(&String.contains?(&1, "<v>#{claim_index}</v>"))
+
+    assert claim_row =~ ~r/<v>1800(?:\.0+)?<\/v>/
+
     assert c.conn
            |> post(path <> "/treatment", payload([fresh], %{choice: "claim"}))
            |> json_response(409)

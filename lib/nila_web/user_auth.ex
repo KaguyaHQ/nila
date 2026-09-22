@@ -337,5 +337,5 @@ defmodule NilaWeb.UserAuth do
   defp signed_in_path(%{assigns: %{current_scope: %{current_client: client}}}),
     do: NilaWeb.GoTo.sales_home(client)
 
-  defp signed_in_path(_conn_or_socket), do: ~p"/clients"
+  defp signed_in_path(_conn_or_socket), do: ~p"/app/clients"
 end

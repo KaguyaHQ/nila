@@ -11,16 +11,17 @@ pages link to the existing GST/Tally connection settings.
 
 ## Run
 
-With Node 20+ and npm installed:
+With Node 20+ installed, install the pinned pnpm version once (`npm install --global pnpm@10.34.5`):
 
 ```sh
 cd frontend
-npm ci
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 ```
 
-Start Phoenix normally. Choose **Open new sales workspace** on an existing sales month,
-or open `/app/gst/:client_id/:period/sales` on port 4000. The register ends in
+Start Phoenix normally. Login and `/app` open the React workspace (or the client
+directory when no client exists). Open `/app/gst/:client_id/:period/sales` directly
+on port 4000 for a particular month. The register ends in
 `/sales/register`; PDF intake and history end in `/sales/upload` and `/sales/uploads`.
 These pages use React Router; direct URLs and back/forward work.
 GSTR-1 detail routes end in `/sales/sections/:section` for B2B, B2C, notes,
@@ -33,21 +34,29 @@ Its source register is `/purchases/register?source=purchases` or `source=gstr2b`
 Sales and purchases navigate within React. `/purchases/review` provides source comparisons,
 carried entries and audited ITC treatment, including save-and-next. Saves use the evidence
 shown when the editor opened; a changed source requires a fresh review.
-Purchase Excel import, portal fetching, source corrections and pairing still open LiveView.
+GST connection, OTP, fetching and preparation now stay in the React source card.
+Failed refreshes retain the previous saved statement and its source JSON download.
+Purchase Excel import, source corrections and pairing still open LiveView.
 GSTR-3B also stays in LiveView. Purchase APIs reuse existing totals, decision rules and signed snapshots.
 
-For frontend edits alongside Phoenix, run `npm run build -- --watch` and refresh after
-the build. Vite writes hashed assets to `priv/static/frontend/`. Phoenix serves them
+Keyboard navigation: `[` / `]` changes the month on overview/list pages; `g` then
+`s` or `p` opens Sales or Purchases for the same client and month. `/` focuses list
+search. `?` or the keyboard button opens help.
+Navigation pauses in inputs, dialogs and invoice editors. Invoice review retains
+Alt-arrow navigation; purchase treatment uses Ctrl/Cmd+Enter for save-and-next.
+
+For frontend edits alongside Phoenix, run `pnpm exec vite build --watch` and refresh after
+the build. Run `pnpm run check` separately for TypeScript validation. Vite writes hashed assets to `priv/static/frontend/`. Phoenix serves them
 on the same origin as the session and API. The Docker frontend stage packages these
 assets into the same Phoenix release; there is no production Vite server.
 
-`npm run dev` still serves sample screens at http://127.0.0.1:5173/sales.
+`pnpm run dev` still serves sample screens at http://127.0.0.1:5173/sales.
 Those sample routes are excluded from the production route tree.
 
 ```sh
-npm run check
-npm run build
-npm test
+pnpm run check
+pnpm run build
+pnpm test
 ```
 
 Browser tests use installed Google Chrome and start their own Vite server on port 5174.
@@ -82,7 +91,8 @@ Controller tests cover authentication, tenant isolation and effective-working to
 
 ## UI ownership
 
-`src/components/ui/` contains shadcn components backed by Base UI primitives.
+`src/components/ui/` contains shadcn components backed by Base UI primitives;
+Command uses shadcn's upstream `cmdk` implementation.
 Their Base UI composition follows the official shadcn registry (MIT), while retaining
 the preview's existing neutral styling and geometry. Imports point
 to local components and `src/lib/utils.ts`. `components.json` supports future CLI use.
@@ -92,6 +102,11 @@ buttons in `components/ui/button.tsx`; prefer component variants over page overr
 The old HEEx recipes in `lib/nila_web/components/` remain for LiveView pages, not as
 the visual source for this frontend. Do not copy sample-data shortcuts into production
 accounting logic: Phoenix remains authoritative for validation and saved decisions.
+
+Desktop navigation includes searchable client switching and Ctrl/Cmd+K for pages,
+clients and months. The account menu retains Phoenix settings/sign-out. See the
+[interaction audit](../docs/design/REACT-MIGRATION-AUDIT.md) for restored behavior
+and the remaining deliberate LiveView handoffs.
 
 References: [shadcn](https://ui.shadcn.com/docs/installation/vite),
 [React Router](https://reactrouter.com/start/declarative/installation),

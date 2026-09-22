@@ -2,9 +2,13 @@ import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "rea
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, FileText, Pencil } from "lucide-react";
+import { ShortcutHelpButton, navigationShortcutBlocked } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { InvoiceQueue } from "@/components/invoice-queue";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,9 +27,13 @@ const decimalFields = new Set(["quantity", "printed_unit_price", "printed_line_a
 
 export default function SalesInvoiceReview() {
   const { clientId = "", period = "", invoiceId = "" } = useParams();
+  const [params] = useSearchParams();
   const key = ["sales-review", clientId, period, invoiceId];
   const query = useQuery({ queryKey: key, queryFn: ({ signal }) => fetchSalesInvoice(clientId, period, invoiceId, signal), staleTime: 0, retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 1 });
-  const back = `/gst/${clientId}/${period}/sales/register`;
+  const backParams = new URLSearchParams();
+  if (["needs_review", "ready"].includes(params.get("filter") ?? "")) backParams.set("filter", params.get("filter")!);
+  if (params.get("q")) backParams.set("q", params.get("q")!);
+  const back = `/gst/${clientId}/${period}/sales/register${backParams.size ? `?${backParams}` : ""}`;
   if (query.isPending) return <main className="p-10"><p role="status" className="text-sm text-muted-foreground">Loading invoice…</p></main>;
   if (query.isError) return <main className="mx-auto max-w-xl space-y-5 px-6 py-20"><h1 className="text-2xl font-semibold">Invoice unavailable</h1><p role="alert">{query.error.message}</p><div className="flex gap-4">{query.error instanceof ApiError && query.error.status === 401 ? <a href="/users/log_in" className="underline">Sign in</a> : <Button variant="outline" onClick={() => query.refetch()}>Try again</Button>}<Button variant="ghost" nativeButton={false} role="link" render={<Link to={back} />}>Back to register</Button></div></main>;
   return <InvoiceReview key={`${clientId}/${period}/${invoiceId}`} data={query.data} refreshing={query.isFetching} refresh={() => query.refetch()} />;
@@ -44,7 +52,6 @@ function InvoiceReview({ data, refreshing, refresh }: { data: SalesInvoiceReview
   const [error, setError] = useState<Error | null>(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [showChecks, setShowChecks] = useState(false);
   const opener = useRef<HTMLButtonElement | null>(null);
   const operation = useRef<AbortController | null>(null);
   const requestedFilter = params.get("filter");
@@ -54,7 +61,10 @@ function InvoiceReview({ data, refreshing, refresh }: { data: SalesInvoiceReview
   const previous = position > 0 ? visible[position - 1] : undefined;
   const next = visible[position + 1];
   const base = `/gst/${clientId}/${period}/sales`;
-  const register = `${base}/register${filter === "all" ? "" : `?filter=${filter}`}`;
+  const registerParams = new URLSearchParams();
+  if (filter !== "all") registerParams.set("filter", filter);
+  if (params.get("q")) registerParams.set("q", params.get("q")!);
+  const register = `${base}/register${registerParams.size ? `?${registerParams}` : ""}`;
   const status = data.queue.find(item => item.id === data.invoice.id)?.status;
   const canEdit = data.can_edit && !refreshing && !busy;
   const fieldErrors = error instanceof ReviewApiError ? error.fields : {};
@@ -84,7 +94,7 @@ function InvoiceReview({ data, refreshing, refresh }: { data: SalesInvoiceReview
   useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
       const target = event.target;
-      if (busy || dialogOpen || event.isComposing || !event.altKey || event.ctrlKey || event.metaKey || (target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.closest('[role="dialog"]')))) return;
+      if (navigationShortcutBlocked(event) || event.shiftKey || busy || dialogOpen || !event.altKey || event.ctrlKey || event.metaKey || (target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.closest('[role="dialog"]')))) return;
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
         go(event.key === "ArrowLeft" ? previous?.id : next?.id);
@@ -107,7 +117,7 @@ function InvoiceReview({ data, refreshing, refresh }: { data: SalesInvoiceReview
   }
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!data.can_edit || !dialogOpen || operation.current || (!edit && !confirmation)) return;
+    if (!canEdit || !dialogOpen || operation.current || (!edit && !confirmation)) return;
     const changes = Object.fromEntries(Object.entries(values).filter(([field, value]) => value !== initialValues.current[field]));
     if (edit && !Object.keys(changes).length) {
       setDialogOpen(false);
@@ -141,8 +151,8 @@ function InvoiceReview({ data, refreshing, refresh }: { data: SalesInvoiceReview
 
   return <main className="flex min-h-dvh flex-col bg-background md:h-dvh md:min-h-0">
     <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
-      <div className="flex flex-wrap items-center gap-4"><Button variant="ghost" size="sm" nativeButton={false} role="link" render={<Link to={register} />} disabled={busy}><ArrowLeft /> Back to register</Button><span className="text-sm text-muted-foreground">{data.client.name} · {new Date(`${data.period}-01T00:00:00Z`).toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "UTC" })}</span></div>
-      <div className="flex flex-wrap items-center gap-3"><div role="group" aria-label="Filter invoices" className="flex gap-1">{filters.map(item => <Button key={item.value} variant={filter === item.value ? "secondary" : "ghost"} size="sm" disabled={busy} aria-pressed={filter === item.value} onClick={() => changeFilter(item.value)}>{item.label} <span className="ml-1 tabular-nums text-muted-foreground">{data.queue.filter(invoice => item.value === "all" || invoice.status === item.value).length}</span></Button>)}</div><div className="flex items-center gap-1 border-l pl-3"><Button variant="ghost" size="icon-sm" aria-label="Previous invoice" title="Previous invoice (Alt+Left)" disabled={!previous || busy} onClick={() => go(previous?.id)}><ChevronLeft /></Button><span className="min-w-12 text-center text-xs text-muted-foreground">{position >= 0 ? `${position + 1} of ${visible.length}` : `${visible.length} in filter`}</span><Button variant="ghost" size="icon-sm" aria-label="Next invoice" title="Next invoice (Alt+Right)" disabled={!next || busy} onClick={() => go(next?.id)}><ChevronRight /></Button></div></div>
+      <div className="flex flex-wrap items-center gap-4"><Button variant="ghost" size="sm" nativeButton={false} role="link" render={<Link to={register} />} disabled={busy}><ArrowLeft /> Back to register</Button><ShortcutHelpButton /><span className="text-sm text-muted-foreground">{data.client.name} · {new Date(`${data.period}-01T00:00:00Z`).toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "UTC" })}</span></div>
+      <div className="flex flex-wrap items-center gap-3"><ToggleGroup aria-label="Filter invoices" size="sm" value={[filter]} disabled={busy} onValueChange={selected => { if (selected[0]) changeFilter(selected[0]); }}>{filters.map(item => <ToggleGroupItem key={item.value} value={item.value}>{item.label} <span className="ml-1 tabular-nums text-muted-foreground">{data.queue.filter(invoice => item.value === "all" || invoice.status === item.value).length}</span></ToggleGroupItem>)}</ToggleGroup><div className="flex items-center gap-1 border-l pl-3"><InvoiceQueue items={visible} currentId={data.invoice.id} onSelect={go} disabled={busy || dialogOpen} /><Button variant="ghost" size="icon-sm" aria-label="Previous invoice" title="Previous invoice (Alt+Left)" disabled={!previous || busy} onClick={() => go(previous?.id)}><ChevronLeft /></Button><span className="min-w-12 text-center text-xs text-muted-foreground">{position >= 0 ? `${position + 1} of ${visible.length}` : `${visible.length} in filter`}</span><Button variant="ghost" size="icon-sm" aria-label="Next invoice" title="Next invoice (Alt+Right)" disabled={!next || busy} onClick={() => go(next?.id)}><ChevronRight /></Button></div></div>
     </header>
     {visible.length === 0 ? <div className="mx-auto space-y-4 px-6 py-20 text-center">{notice && <p role="status" className="text-sm">{notice}</p>}<h1 className="text-xl font-semibold">{filter === "needs_review" ? "No invoices need review" : filter === "ready" ? "No ready invoices" : "No invoices in this month"}</h1><Button variant="outline" onClick={() => changeFilter("all")}>Show all invoices</Button></div> : <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       <section aria-label="Source document" className="flex h-[55vh] shrink-0 flex-col border-b bg-muted/40 md:h-auto md:w-[45%] md:border-r md:border-b-0">
@@ -158,18 +168,18 @@ function InvoiceReview({ data, refreshing, refresh }: { data: SalesInvoiceReview
           <section aria-labelledby="invoice-totals"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 id="invoice-totals" className="text-sm font-semibold">Invoice totals</h2><Button variant="ghost" size="sm" disabled={!canEdit} onClick={event => openEditor("totals", event.currentTarget)}><Pencil /> Edit printed totals</Button></div><div className="overflow-hidden rounded-lg border"><Table><TableHeader><TableRow className="bg-muted/30"><TableHead className="pl-4">Total</TableHead><TableHead className="text-right">From lines</TableHead><TableHead className="text-right">Printed on bill</TableHead><TableHead>Comparison</TableHead></TableRow></TableHeader><TableBody>{data.totals.map(total => <TableRow key={total.field}><TableCell className="pl-4">{total.label}</TableCell><TableCell className="text-right tabular-nums">{total.calculated}</TableCell><TableCell className="text-right tabular-nums">{total.printed}</TableCell><TableCell><span className={`text-xs ${total.status === "matches" ? "text-emerald-700" : total.status === "mismatch" ? "text-amber-700" : "text-muted-foreground"}`}>{total.status === "matches" ? "Matches" : total.status === "mismatch" ? `${total.difference ?? "—"} difference` : "Not compared"}</span></TableCell></TableRow>)}</TableBody></Table></div></section>
           {openIssues.length > 0 && <section aria-labelledby="invoice-issues" className="space-y-3"><h2 id="invoice-issues" className="text-sm font-semibold">Needs your review</h2>{openIssues.map(issue => <div key={issue.target} className="rounded-lg border px-4 py-3"><p className="text-sm font-medium">{issue.title}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{issue.message}</p>{issue.can_confirm && <Button variant="outline" size="sm" className="mt-3" disabled={!canEdit} onClick={event => { opener.current = event.currentTarget; setConfirmation(issue); setEdit(null); setError(null); setDialogOpen(true); }}>{issue.action_label || "Confirm"}</Button>}</div>)}</section>}
         </div>
-        <footer className="shrink-0 border-t bg-background px-6 py-4 lg:px-8">
-          {showChecks && <div id="invoice-checks" className="mb-4 max-h-72 space-y-3 overflow-y-auto border-b pb-4">{data.checks.map((check, index) => <div key={`${check.label}-${index}`} className="text-sm"><div className="flex items-start justify-between gap-3"><p className="font-medium">{check.title || check.label}</p><span className={`shrink-0 text-xs ${check.status === "passed" ? "text-emerald-700" : check.status === "failed" ? "text-amber-700" : "text-muted-foreground"}`}>{check.status === "passed" ? "Passed" : check.status === "failed" ? "Needs review" : "Not checked"}</span></div>{check.detail && <p className="mt-1 text-muted-foreground">{check.detail}</p>}{check.secondary && <p className="mt-1 text-muted-foreground">{check.secondary}</p>}{check.difference && <p className="mt-1 text-muted-foreground">{check.difference}</p>}</div>)}{data.checks.length === 0 && <p className="text-sm text-muted-foreground">No check results are available.</p>}</div>}
+        <Collapsible render={<footer />} className="shrink-0 border-t bg-background px-6 py-4 lg:px-8">
+          <CollapsibleContent id="invoice-checks" className="mb-4 max-h-72 space-y-3 overflow-y-auto border-b pb-4">{data.checks.map((check, index) => <div key={`${check.label}-${index}`} className="text-sm"><div className="flex items-start justify-between gap-3"><p className="font-medium">{check.title || check.label}</p><span className={`shrink-0 text-xs ${check.status === "passed" ? "text-emerald-700" : check.status === "failed" ? "text-amber-700" : "text-muted-foreground"}`}>{check.status === "passed" ? "Passed" : check.status === "failed" ? "Needs review" : "Not checked"}</span></div>{check.detail && <p className="mt-1 text-muted-foreground">{check.detail}</p>}{check.secondary && <p className="mt-1 text-muted-foreground">{check.secondary}</p>}{check.difference && <p className="mt-1 text-muted-foreground">{check.difference}</p>}</div>)}{data.checks.length === 0 && <p className="text-sm text-muted-foreground">No check results are available.</p>}</CollapsibleContent>
           {notice && <p role="status" className="mb-3 text-sm text-muted-foreground">{notice}</p>}
-          <div className="flex flex-wrap items-center justify-between gap-3"><Button variant="ghost" className="h-auto min-h-9 justify-start px-0 text-left" aria-expanded={showChecks} aria-controls="invoice-checks" onClick={() => setShowChecks(value => !value)}><Check className={needsAttention ? "text-amber-700" : "text-muted-foreground"} /><span>{needsAttention ? `${needsAttention} ${needsAttention === 1 ? "check needs" : "checks need"} review` : "Invoice checks"}</span><ChevronDown className={showChecks ? "rotate-180" : ""} /></Button><Button disabled={!next || busy} onClick={() => go(next?.id)}>Next invoice <ArrowRight /></Button></div>
-        </footer>
+          <div className="flex flex-wrap items-center justify-between gap-3"><CollapsibleTrigger render={<Button variant="ghost" className="group h-auto min-h-9 justify-start px-0 text-left" />}><Check className={needsAttention ? "text-amber-700" : "text-muted-foreground"} /><span>{needsAttention ? `${needsAttention} ${needsAttention === 1 ? "check needs" : "checks need"} review` : "Invoice checks"}</span><ChevronDown className="group-data-panel-open:rotate-180" /></CollapsibleTrigger><Button disabled={!next || busy} onClick={() => go(next?.id)}>Next invoice <ArrowRight /></Button></div>
+        </Collapsible>
       </section>
     </div>}
 
     <Dialog open={dialogOpen} onOpenChange={open => { if (!open && !busy) setDialogOpen(false); }}>
       <DialogContent finalFocus={opener} className="max-h-[90dvh] overflow-y-auto sm:max-w-xl" showCloseButton={!busy}>
         <DialogHeader><DialogTitle>{confirmation ? confirmation.title : edit?.section === "facts" ? "Edit invoice details" : edit?.section === "totals" ? "Edit printed totals" : `Edit invoice line ${(edit?.index ?? 0) + 1}`}</DialogTitle><DialogDescription>{confirmation ? "This records your decision for this month's working." : "Correct the values against the source bill. Changes apply wherever this invoice is used."}</DialogDescription></DialogHeader>
-        <form onSubmit={save} className="space-y-4">
+        <form onSubmit={save} onKeyDown={event => { if (edit && canEdit && event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !event.repeat && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.requestSubmit(); } }} className="space-y-4">
           {error && <p role="alert" className="text-sm text-destructive">{error.message}</p>}
           {!data.can_edit && <p className="text-sm text-muted-foreground">{data.lock_reason || "This invoice is read-only."}</p>}
           {confirmation ? <p className="text-sm leading-6">{confirmation.message}</p> : <div className="grid gap-4 sm:grid-cols-2">{activeFields.map(field => {
@@ -177,7 +187,7 @@ function InvoiceReview({ data, refreshing, refresh }: { data: SalesInvoiceReview
             const id = `invoice-edit-${field}`;
             return <div key={field} className={`space-y-2 ${["description", "item_name", "buyer_name", "narration"].includes(field) ? "sm:col-span-2" : ""}`}><label htmlFor={id} className="text-sm font-medium">{fieldLabels[field] ?? field}</label>{field === "place_of_supply" ? <NativeSelect id={id} value={values[field] ?? ""} disabled={busy || !data.can_edit} onChange={event => setValues(previous => ({ ...previous, [field]: event.target.value }))} aria-invalid={Boolean(errors)} aria-describedby={errors ? `${id}-error` : undefined}><option value="">Not provided</option>{values[field] && !data.states.some(state => state.value === values[field]) && <option value={values[field]}>{values[field]} (current value)</option>}{data.states.map(state => <option key={state.value} value={state.value}>{state.label}</option>)}</NativeSelect> : field === "line_amount_tax_inclusion" ? <NativeSelect id={id} value={values[field] || "unknown"} disabled={busy || !data.can_edit} onChange={event => setValues(previous => ({ ...previous, [field]: event.target.value }))}><option value="unknown">Not known</option><option value="inclusive">Includes tax</option><option value="exclusive">Excludes tax</option></NativeSelect> : <Input id={id} type={field === "invoice_date" ? "date" : "text"} inputMode={decimalFields.has(field) ? "decimal" : undefined} value={values[field] ?? ""} disabled={busy || !data.can_edit} onChange={event => setValues(previous => ({ ...previous, [field]: event.target.value }))} aria-invalid={Boolean(errors)} aria-describedby={errors ? `${id}-error` : undefined} />}{errors && <p id={`${id}-error`} className="text-sm text-destructive">{errors.join(". ")}</p>}</div>;
           })}</div>}
-          <div className="flex justify-end gap-2 border-t pt-4"><Button type="button" variant="outline" disabled={busy} onClick={() => setDialogOpen(false)}>Cancel</Button><Button type="submit" disabled={busy || !data.can_edit}>{busy ? "Saving…" : confirmation ? confirmation.action_label || "Confirm" : "Save changes"}</Button></div>
+          <div className="flex justify-end gap-2 border-t pt-4"><Button type="button" variant="outline" disabled={busy} onClick={() => setDialogOpen(false)}>Cancel</Button><Button type="submit" disabled={!canEdit}>{busy ? "Saving…" : confirmation ? confirmation.action_label || "Confirm" : "Save changes"}</Button></div>
         </form>
       </DialogContent>
     </Dialog>

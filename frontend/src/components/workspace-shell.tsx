@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState, type ComponentProps } from "react";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import {
   Building2,
   ChevronRight,
@@ -10,9 +10,13 @@ import {
   PanelLeft,
   Users,
 } from "lucide-react";
+import { ShortcutHelpButton } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
-import { NativeSelect } from "@/components/ui/native-select";
+import { ClientSwitcher } from "@/components/client-switcher";
+import { WorkspaceCommand } from "@/components/workspace-command";
+import { AccountMenu } from "@/components/account-menu";
 import { clientName as sampleClientName } from "@/data/sales";
 const titles: Record<string, string> = {
   "/sales": "Sales & GSTR-1",
@@ -55,8 +59,8 @@ export function Shell({
   const sectionLabel = inPurchases ? "Purchases & ITC" : "Sales & GSTR-1";
   const period = live?.base.split("/")[3] ?? new URLSearchParams(search).get("period");
   const clientsPath = period ? `/clients?period=${encodeURIComponent(period)}` : "/clients";
-  const navigate = useNavigate();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("nila:rail-collapsed") === "true");
+  useEffect(() => { localStorage.setItem("nila:rail-collapsed", String(collapsed)); }, [collapsed]);
   const title = firm
     ? pathname.endsWith("/new") ? "Add client" : pathname.endsWith("/edit") ? "Edit client" : pathname.endsWith("/import") ? "Import clients" : "Clients"
     : titles[live ? pathname.replace(sectionPath, inPurchases ? "/purchases" : "/sales") : pathname] ?? "Page not found";
@@ -70,18 +74,7 @@ export function Shell({
     return () => cancelAnimationFrame(frame);
   }, [pathname, title]);
 
-  return (
-    <div className="min-h-screen bg-neutral-50/70">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-2"
-      >
-        Skip to content
-      </a>
-      <aside
-        aria-label="Workspace navigation"
-        className={`fixed inset-y-0 left-0 hidden flex-col border-r bg-white md:flex ${collapsed ? "w-16" : "w-56"}`}
-      >
+  const navigation = (collapsed: boolean) => <>
         <div
           className={`flex h-16 items-center ${collapsed ? "justify-center" : "justify-between px-6"}`}
         >
@@ -97,6 +90,7 @@ export function Shell({
           <Button
             variant="ghost"
             size="icon-sm"
+            className="hidden md:inline-flex"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!collapsed}
             onClick={() => setCollapsed((value) => !value)}
@@ -105,25 +99,8 @@ export function Shell({
           </Button>
         </div>
         <div className="px-3 pt-3">
-          {live && !collapsed ? (
-            <NativeSelect
-              aria-label="Client"
-              value={live.client.id}
-              onChange={(event) =>
-                navigate(
-                  pathname.replace(
-                    `/gst/${live.client.id}/`,
-                    `/gst/${event.target.value}/`,
-                  ) + search,
-                )
-              }
-            >
-              {live.clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                </option>
-              ))}
-            </NativeSelect>
+          {live ? (
+            <ClientSwitcher client={live.client} clients={live.clients} collapsed={collapsed} />
           ) : (
             <div
               className={`flex h-11 items-center rounded-md border text-sm font-medium ${collapsed ? "justify-center" : "gap-2.5 px-3"}`}
@@ -135,10 +112,10 @@ export function Shell({
           )}
         </div>
         <nav aria-label="Product" className="space-y-1 px-3 py-7">
-          {!firm && <Link
+          {!firm && <NavigationLink collapsed={collapsed}
             to={salesPath}
             aria-current={pathname.startsWith(salesPath) ? "page" : undefined}
-            title={collapsed ? "Sales & GSTR-1" : undefined}
+            label="Sales & GSTR-1"
             className={`flex h-10 items-center rounded-md text-sm ${pathname.startsWith(salesPath) ? "bg-neutral-100 font-medium" : "text-muted-foreground hover:bg-muted"} ${collapsed ? "justify-center" : "gap-3 px-3"}`}
           >
             <FileText className="size-4 shrink-0" />
@@ -147,7 +124,7 @@ export function Shell({
             ) : (
               <span className="sr-only">Sales & GSTR-1</span>
             )}
-          </Link>}
+          </NavigationLink>}
           {!live && !firm &&
             [
               { label: "Purchases & ITC", Icon: FileSpreadsheet },
@@ -165,10 +142,10 @@ export function Shell({
             ))}
           {live && (
             <>
-              <Link
+              <NavigationLink collapsed={collapsed}
                 to={live.purchases}
                 aria-current={inPurchases ? "page" : undefined}
-                title={collapsed ? "Purchases & ITC" : undefined}
+                label="Purchases & ITC"
                 className={`flex h-10 items-center rounded-md text-sm ${inPurchases ? "bg-neutral-100 font-medium" : "text-muted-foreground hover:bg-muted"} ${collapsed ? "justify-center" : "gap-3 px-3"}`}
               >
                 <FileSpreadsheet className="size-4" />
@@ -177,7 +154,7 @@ export function Shell({
                 ) : (
                   <span className="sr-only">Purchases & ITC</span>
                 )}
-              </Link>
+              </NavigationLink>
 
             </>
           )}
@@ -203,8 +180,9 @@ export function Shell({
             ))}
           {(live || firm) && (
             <>
-              <Link
+              <NavigationLink collapsed={collapsed}
                 to={clientsPath}
+                label="Clients"
                 aria-current={firm ? "page" : undefined}
                 className={`flex h-10 items-center gap-3 rounded-md px-3 text-sm ${firm ? "bg-neutral-100 font-medium" : "text-muted-foreground"}`}
               >
@@ -214,7 +192,7 @@ export function Shell({
                 ) : (
                   <span className="sr-only">Clients</span>
                 )}
-              </Link>
+              </NavigationLink>
               <a
                 href="/notices"
                 className="flex h-10 items-center gap-3 px-3 text-sm text-muted-foreground"
@@ -229,23 +207,24 @@ export function Shell({
             </>
           )}
         </nav>
-        <div className="mt-auto border-t p-4">
-          <div className="flex items-center gap-3">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-medium">
-              {user ? user.name.slice(0, 2).toUpperCase() : "DP"}
-            </span>
-            {!collapsed && (
-              <div>
-                <p className="text-xs font-medium">
-                  {user?.name ?? "Demo Presenter"}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {user?.org ?? "Nila Dev CA"}
-                </p>
-              </div>
-            )}
-          </div>
+        <div className="mt-auto border-t p-3">
+          {user && <AccountMenu user={user} collapsed={collapsed} />}
         </div>
+  </>;
+
+  return (
+    <div className="min-h-screen bg-neutral-50/70">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-2"
+      >
+        Skip to content
+      </a>
+      <aside
+        aria-label="Workspace navigation"
+        className={`fixed inset-y-0 left-0 hidden flex-col border-r bg-white md:flex ${collapsed ? "w-16" : "w-56"}`}
+      >
+        {navigation(collapsed)}
       </aside>
       <div className={collapsed ? "md:ml-16" : "md:ml-56"}>
         <header className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b bg-white/80 px-6 py-3 lg:px-10">
@@ -269,6 +248,7 @@ export function Shell({
               </>
             )}
           </nav>
+          {(live || firm) && <div className="ml-auto flex items-center gap-1"><WorkspaceCommand live={live} period={period} /><ShortcutHelpButton /></div>}
           {!live && !firm && (
             <Badge
               variant="outline"
@@ -288,4 +268,9 @@ export function Shell({
       </div>
     </div>
   );
+}
+
+function NavigationLink({ collapsed, label, children, ...props }: ComponentProps<typeof Link> & { collapsed: boolean; label: string }) {
+  if (!collapsed) return <Link {...props}>{children}</Link>;
+  return <Tooltip><TooltipTrigger render={<Link {...props} />}>{children}</TooltipTrigger><TooltipContent side="right">{label}</TooltipContent></Tooltip>;
 }

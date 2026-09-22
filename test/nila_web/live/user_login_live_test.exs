@@ -11,7 +11,7 @@ defmodule NilaWeb.UserLoginLiveTest do
         "user" => %{"email" => user.email, "password" => valid_user_password()}
       })
 
-    assert redirected_to(conn) == ~p"/clients"
+    assert redirected_to(conn) == ~p"/app/clients"
   end
 
   test "login opens the client's closeable sales month directly", %{conn: conn} do
@@ -25,7 +25,8 @@ defmodule NilaWeb.UserLoginLiveTest do
         "user" => %{"email" => user.email, "password" => valid_user_password()}
       })
 
-    assert redirected_to(conn) == NilaWeb.GoTo.sales_home(client)
+    period = Nila.Gst.Filing.Calendar.closeable_period(Date.utc_today())
+    assert redirected_to(conn) == ~p"/app/gst/#{client.id}/#{period}/sales"
   end
 
   test "rejects the wrong password", %{conn: conn} do

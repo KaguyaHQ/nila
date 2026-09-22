@@ -1,6 +1,7 @@
 # Nila Agent Notes
 
-Nila is a Phoenix + LiveView monolith.
+Nila is a Phoenix monolith with a React + shadcn frontend in `frontend/`.
+Existing LiveView screens remain during migration. Phoenix owns business truth.
 
 ## Thesis
 
@@ -85,16 +86,16 @@ See `docs/decisions.md` (Transactional Code) for rationale.
 ### UI and design routing
 
 - Never use the browser skill, even if it is listed as available in the session.
-- Before changing product UI, read `docs/design/DESIGN.md` and `docs/design/OPINIONS.md`.
-- For token, class, component, or mechanical UI work, also read `docs/design/FRONTEND.md`.
-- For a new screen, workflow, or substantial restructuring, also read `docs/design/COMPOSITION.md` and `docs/design/TASTE.md`.
-- For public/marketing pages, read `docs/design/MARKETING.md` and `docs/design/TASTE.md`.
-- `assets/css/app.css` is authoritative for token values; `lib/nila_web/components/` owns shared recipes. Radix Themes 3.3 is the mechanical authority for generic controls, ported into HEEx with Nila's skin—never invent generic geometry or copy closed `nila-*` recipes into product markup. Token and recipe boundaries are enforced by `mix nila.style_guard`. Use the development-only `/dev/design-system` as the executable component reference.
+- The design system is moving to React/shadcn. The existing `docs/design/` visual and implementation guidance describes the old system; do not routinely read it or treat it as authority for new React work.
+- For React UI, use current components in `frontend/src/components/ui/`, tokens in `frontend/src/index.css`, and the user's agreed screen references. Inspect the actual component APIs before using them.
+- Reuse the current shadcn controls and semantic tokens. Do not port the old HEEx/Radix Themes recipes into React.
+- For remaining LiveView screens, preserve their existing components and tokens unless migration is part of the task. `assets/css/app.css`, `lib/nila_web/components/`, and `mix nila.style_guard` still apply to that code.
+- Verify affected screens in the browser, including actual interactions, before calling UI work complete. Passing a build or API tests alone does not establish visual quality.
 
 ### JS and CSS guidelines
 
 - Preserve the Tailwind v4 `@import`/`@source` declarations in `assets/css/app.css`; never use `@apply`.
-- Use only the `app.js` and `app.css` bundles. Import vendor dependencies into them; never add external script or stylesheet tags to layouts.
+- React uses the existing Vite build in `frontend/`; LiveView uses the `app.js` and `app.css` bundles. Import dependencies through the relevant build rather than adding external script or stylesheet tags to layouts.
 
 <!-- framework-rules-start -->
 <!-- Hand-pruned digest of phoenix usage_rules. These are real model failure modes, not a

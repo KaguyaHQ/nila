@@ -1,6 +1,9 @@
 defmodule NilaWeb.ReactAppController do
   use NilaWeb, :controller
 
+  def home(conn, _params),
+    do: redirect(conn, to: NilaWeb.GoTo.sales_home(conn.assigns.current_scope.current_client))
+
   def index(conn, _params) do
     # Vite's hashed assets are built into the Phoenix release. No second server
     # or client-side credential store is needed to use the authenticated app.
@@ -18,7 +21,7 @@ defmodule NilaWeb.ReactAppController do
       {:error, :enoent} ->
         conn
         |> put_status(:service_unavailable)
-        |> text("Frontend assets are missing. Run npm run build in frontend/.")
+        |> text("Frontend assets are missing. Run pnpm run build in frontend/.")
     end
   end
 end

@@ -1,6 +1,21 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { PurchasesWorkspace } from "../src/lib/purchases-api";
 
+test("command palette keeps the GSTR-2B source when changing month", async ({ page }) => {
+  await page.route("**/api/workspace/purchases/*/*?*", route => {
+    const url = new URL(route.request().url());
+    const period = url.pathname.split("/").at(-1)!;
+    return route.fulfill({ json: { ...workspace(), period, month_label: period, filter: "gstr2b" } });
+  });
+  await page.route(/\/api\/workspace\/clients(?:\?.*)?$/, route => route.fulfill({ json: { clients: [], user: { name: "Accountant", org: "Test firm" }, can_edit: true, period: "2026-06" } }));
+  await page.goto("/app/gst/1/2026-06/purchases/register?source=gstr2b&q=Supplier");
+  await page.getByRole("button", { name: "Go to page or client" }).click();
+  await page.getByRole("combobox", { name: "Search pages, clients or a month" }).fill("May 2026");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL("/app/gst/1/2026-05/purchases/register?source=gstr2b");
+  await expect(page.getByRole("heading", { name: "GSTR-2B register" })).toBeVisible();
+});
+
 function workspace(): PurchasesWorkspace {
   const legacy = "/gst/1/2026-06/purchases";
   return {
@@ -15,6 +30,7 @@ function workspace(): PurchasesWorkspace {
 }
 
 async function setup(page: Page, data = workspace()) {
+  await page.route("**/gstr2b", route => route.fulfill({ json: { client: data.client, period: data.period, connection: { state: "connected", username: "test" }, permissions: { fetch: data.can_edit, connect: data.can_edit, export: true }, statement: null, fetching: false, import: { needed: false, status: null, error: null }, availability_hint: null } }));
   await page.route("**/api/workspace/purchases/1/2026-06?*", route => {
     const params = new URL(route.request().url()).searchParams;
     const q = params.get("q") ?? "";

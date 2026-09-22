@@ -146,7 +146,7 @@ defmodule NilaWeb.Layouts do
             </span>
 
             <.rail_link
-              href={~p"/clients"}
+              href={~p"/app/clients"}
               icon="hero-users"
               label="Clients"
               current_path={@current_path}
@@ -376,10 +376,10 @@ defmodule NilaWeb.Layouts do
           sales_period || sales_nav_period(current_path) ||
             Nila.Gst.Filing.Calendar.closeable_period(Date.utc_today())
 
-        ~p"/gst/#{client_id}/#{period}/sales"
+        ~p"/app/gst/#{client_id}/#{period}/sales"
 
       _none ->
-        ~p"/clients"
+        ~p"/app/clients"
     end
   end
 

@@ -51,7 +51,7 @@ test("save and next posts explicit case basis and real server result", async ({ 
   });
   await page.goto("/app/gst/1/2026-06/purchases/review/one");
   await page.getByRole("button", { name: "Set ITC treatment" }).click();
-  await page.getByRole("button", { name: "Claim later", exact: true }).click();
+  await page.getByRole("radio", { name: "Claim later", exact: true }).click();
   await page.getByLabel("Why claim later?").selectOption("other");
   await page.getByLabel("Note", { exact: true }).fill("Awaiting goods receipt");
   await page.keyboard.press("Control+Enter");
@@ -67,7 +67,7 @@ test("split decimal strings reach server and validation errors keep edits", asyn
   });
   await page.goto("/app/gst/1/2026-06/purchases/review/one");
   await page.getByRole("button", { name: "Set ITC treatment" }).click();
-  await page.getByRole("button", { name: "Split amounts", exact: true }).click();
+  await page.getByRole("radio", { name: "Split amounts", exact: true }).click();
   await page.getByLabel("CGST claim", { exact: true }).fill("45.25");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("dialog").getByRole("alert")).toHaveText("Each tax head must add up to its available amount.");
@@ -79,7 +79,7 @@ test("stale save closes editor and requires fresh inspection", async ({ page }) 
   await page.route("**/review/one/treatment?*", route => { current = { ...review(), can_edit: false, lock_reason: "This month was signed off." }; return route.fulfill({ status: 409, json: { error: "The source changed. Review it again.", code: "stale_basis" } }); });
   await page.goto("/app/gst/1/2026-06/purchases/review/one");
   await page.getByRole("button", { name: "Set ITC treatment" }).click();
-  await page.getByRole("button", { name: "Claim this month", exact: true }).click();
+  await page.getByRole("radio", { name: "Claim this month", exact: true }).click();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText("This month was signed off.")).toBeVisible();
@@ -92,13 +92,13 @@ test("document possession must be recorded before claim becomes available", asyn
   await page.route("**/review/one/document?*", route => { expect(route.request().postDataJSON()).toEqual({ case_ids: [1], basis: { "1": "basis-1" } }); return route.fulfill({ json: review() }); });
   await page.goto("/app/gst/1/2026-06/purchases/review/one");
   await page.getByRole("button", { name: "Set ITC treatment" }).click();
-  await expect(page.getByRole("button", { name: "Claim this month", exact: true })).toBeDisabled();
+  await expect(page.getByRole("radio", { name: "Claim this month", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "I have this invoice" }).click();
   await expect(page.getByRole("status")).toHaveText("Invoice possession recorded. Review the available ITC choices.");
   await page.getByRole("button", { name: "Set ITC treatment" }).click();
-  await expect(page.getByRole("button", { name: "Claim this month", exact: true })).toBeEnabled();
+  await expect(page.getByRole("radio", { name: "Claim this month", exact: true })).toBeEnabled();
 });
 
 test("uncertain pairing blocks treatment with an explicit source-review handoff", async ({ page }) => {
@@ -108,4 +108,32 @@ test("uncertain pairing blocks treatment with an explicit source-review handoff"
   await expect(page.getByRole("button", { name: "Set ITC treatment" })).toBeDisabled();
   await expect(page.getByText("Resolve the uncertain pairing before setting ITC treatment.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Open source corrections and pairing" })).toHaveAttribute("href", current.item!.legacy_url);
+});
+
+
+test("ITC radio choices support arrows and preserve multiline notes", async ({ page }, testInfo) => {
+  await setup(page);
+  let posted: unknown;
+  await page.route("**/review/one/treatment?*", route => {
+    posted = route.request().postDataJSON();
+    return route.fulfill({ json: review() });
+  });
+  await page.goto("/app/gst/1/2026-06/purchases/review/one");
+  await page.getByRole("button", { name: "Set ITC treatment" }).click();
+  const claim = page.getByRole("radio", { name: "Claim this month", exact: true });
+  await claim.check();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("radio", { name: "Claim later", exact: true })).toBeChecked();
+  await expect(page).toHaveURL(/review\/one$/);
+  await page.getByLabel("Why claim later?").selectOption("other");
+  const note = page.getByLabel("Note", { exact: true });
+  await expect(note).toHaveJSProperty("tagName", "TEXTAREA");
+  await note.fill("Awaiting goods receipt\nSupplier called on Monday.");
+  await page.screenshot({ path: testInfo.outputPath("itc-controls-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("itc-controls-narrow.png"), fullPage: true });
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(posted).toMatchObject({ values: { choice: "later", note: "Awaiting goods receipt\nSupplier called on Monday." } });
 });

@@ -1,3 +1,4 @@
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { createContext, useContext, useState } from "react";
 import {
   Link,
@@ -382,10 +383,12 @@ export function LiveSalesRegister() {
         aria-label="Sales invoices"
       >
         <div className="flex flex-wrap items-center justify-between gap-4 border-b p-4">
-          <div
-            role="group"
+          <ToggleGroup
             aria-label="Filter invoices by status"
-            className="flex flex-wrap gap-1"
+            className="flex-wrap"
+            size="sm"
+            value={[filter]}
+            onValueChange={values => { const value = values[0]; if (value) set("filter", value === "all" ? "" : value); }}
           >
             {[
               ["all", "All invoices"],
@@ -393,12 +396,9 @@ export function LiveSalesRegister() {
               ["ready", "Ready"],
               ["excluded", "Excluded"],
             ].map(([value, label]) => (
-              <Button
+              <ToggleGroupItem
                 key={value}
-                variant={filter === value ? "secondary" : "ghost"}
-                size="sm"
-                aria-pressed={filter === value}
-                onClick={() => set("filter", value === "all" ? "" : value)}
+                value={value}
               >
                 {label}
                 <span className="ml-1 text-muted-foreground">
@@ -408,12 +408,13 @@ export function LiveSalesRegister() {
                     ).length
                   }
                 </span>
-              </Button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
           <div className="relative w-full sm:w-72">
             <Search className="absolute top-2.5 left-3 size-4 text-muted-foreground" />
             <Input
+              data-shortcut-search
               aria-label="Search customer, invoice or GSTIN"
               placeholder="Search customer, invoice or GSTIN"
               className="pl-9"
@@ -437,7 +438,7 @@ export function LiveSalesRegister() {
             {visible.map((row) => (
               <TableRow key={row.id}>
                 <TableCell className="py-4 pl-5">
-                  {row.path ? <Link to={`${row.path}?filter=${filter === "needs_review" || filter === "ready" ? filter : "all"}`} className="font-medium hover:underline">
+                  {row.path ? <Link to={`${row.path}?${new URLSearchParams({ filter: filter === "needs_review" || filter === "ready" ? filter : "all", ...(search ? { q: search } : {}) })}`} className="font-medium hover:underline">
                     {row.number}
                   </Link> : <span className="font-medium">{row.number}</span>}
                 </TableCell>

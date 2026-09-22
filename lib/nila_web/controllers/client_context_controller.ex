@@ -15,7 +15,7 @@ defmodule NilaWeb.ClientContextController do
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "That client is not available.")
-        |> redirect(to: ~p"/clients")
+        |> redirect(to: ~p"/app/clients")
     end
   end
 

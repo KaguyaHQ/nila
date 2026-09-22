@@ -118,7 +118,8 @@ test("switching clients aborts an in-flight download and clears its state", asyn
   await page.getByRole("button", { name: "GST sales working XLSX", exact: true }).click();
   await start;
   const aborted = page.waitForEvent("requestfailed", { predicate: request => request.url().endsWith("/exports/1/workings.xlsx") });
-  await page.getByLabel("Client", { exact: true }).selectOption("2");
+  await page.getByLabel("Switch client: Breeze Tech", { exact: true }).click();
+  await page.getByRole("option", { name: "Second client", exact: true }).click();
   await aborted;
   release();
   await expect(page).toHaveURL(/\/gst\/2\/2026-06\/sales\/sections\/b2b$/);

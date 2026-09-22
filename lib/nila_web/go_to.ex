@@ -2,10 +2,10 @@ defmodule NilaWeb.GoTo do
   @moduledoc false
 
   def sales_home(%{id: client_id}) do
-    "/gst/#{client_id}/#{period(nil, nil)}/sales"
+    "/app/gst/#{client_id}/#{period(nil, nil)}/sales"
   end
 
-  def sales_home(_client), do: "/clients"
+  def sales_home(_client), do: "/app/clients"
 
   def period(path, fallback) do
     uri = URI.parse(path || "")

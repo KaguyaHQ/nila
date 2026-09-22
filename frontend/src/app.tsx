@@ -1,4 +1,5 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
 import { Shell } from "@/components/workspace-shell";
 import SalesSummary from "@/pages/sales-summary";
@@ -40,7 +41,7 @@ function NotFound() {
 
 export default function App() {
   return (
-    <Routes>
+    <KeyboardShortcuts><Routes>
       <Route path="gst/:clientId/:period/sales/invoices/:invoiceId" element={<SalesInvoiceReview />} />
       <Route path="gst/:clientId/:period/purchases/review" element={<PurchaseReview />} />
       <Route path="gst/:clientId/:period/purchases/review/:itemId" element={<PurchaseReview />} />
@@ -85,6 +86,6 @@ export default function App() {
           }
         />
       )}
-    </Routes>
+    </Routes></KeyboardShortcuts>
   );
 }

@@ -95,9 +95,10 @@ test("real workspace uses server data, changes month/client and preserves regist
   await expect(
     page.getByText("No sales invoices yet", { exact: true }),
   ).toBeVisible();
-  await page.getByLabel("Client", { exact: true }).selectOption("2");
+  await page.getByLabel("Switch client: Breeze Tech", { exact: true }).click();
+  await page.getByRole("option", { name: "Second client", exact: true }).click();
   await expect(page).toHaveURL(/\/app\/gst\/2\/2026-07\/sales\/register/);
-  await expect(page.getByLabel("Client", { exact: true })).toHaveValue("2");
+  await expect(page.getByLabel("Switch client: Second client", { exact: true })).toBeVisible();
 });
 
 test("loading, forbidden and expired session never masquerade as an empty register", async ({

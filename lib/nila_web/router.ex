@@ -57,6 +57,15 @@ defmodule NilaWeb.Router do
     patch "/clients/:id", ClientsWorkspaceController, :update
     get "/sales/:client_id/:period", SalesWorkspaceController, :show
     get "/purchases/:client_id/:period", PurchaseWorkspaceController, :show
+    get "/purchases/:client_id/:period/gstr2b", Gstr2bWorkspaceController, :show
+    post "/purchases/:client_id/:period/gstr2b/fetch", Gstr2bWorkspaceController, :fetch
+    post "/purchases/:client_id/:period/gstr2b/otp", Gstr2bWorkspaceController, :otp
+    post "/purchases/:client_id/:period/gstr2b/verify", Gstr2bWorkspaceController, :verify
+
+    post "/purchases/:client_id/:period/gstr2b/import",
+         Gstr2bWorkspaceController,
+         :import_statement
+
     get "/purchases/:client_id/:period/review", PurchaseReviewController, :show
     get "/purchases/:client_id/:period/review/:item_id", PurchaseReviewController, :show
 
@@ -82,6 +91,7 @@ defmodule NilaWeb.Router do
 
   scope "/app", NilaWeb do
     pipe_through [:browser, :authenticated_browser, :verified_browser]
+    get "/", ReactAppController, :home
     get "/clients", ReactAppController, :index
     get "/clients/new", ReactAppController, :index
     get "/clients/import", ReactAppController, :index
