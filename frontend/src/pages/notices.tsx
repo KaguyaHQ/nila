@@ -7,9 +7,9 @@ import {
   ArrowUpRight,
   RefreshCw,
   Search,
-  Users,
   Inbox,
   CircleAlert,
+  ChevronDown,
 } from "lucide-react";
 import { Shell } from "@/components/workspace-shell";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -150,8 +151,7 @@ export default function NoticesPage() {
       (!clientFilter || String(n.client_id) === clientFilter) &&
       `${n.client_name} ${n.reference} ${n.type}`.toLowerCase().includes(search.toLowerCase()),
   );
-  const newNotices = visible.filter((n) => n.new),
-    history = visible.filter((n) => !n.new);
+  visible.sort((a, b) => (b.issued_on ?? "").localeCompare(a.issued_on ?? "") || b.id - a.id);
   const openChecks = (onlyFailed = false, client: number | null = null) => {
     checksOpener.current = document.activeElement as HTMLElement;
     write.reset();
@@ -197,13 +197,10 @@ export default function NoticesPage() {
           connect={(id) => openChecks(false, id)}
         />
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h1 className="text-3xl font-semibold tracking-tight">Notices</h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                GST notices across your clients, with the original documents.
-              </p>
             </div>
             <Button
               disabled={
@@ -212,37 +209,53 @@ export default function NoticesPage() {
               onClick={() => write.act({ type: "all" })}
             >
               <RefreshCw className={data.checking ? "animate-spin" : ""} />
-              {data.checking ? "Checking notices…" : "Check all clients"}
+              {write.isPending
+                ? "Starting check…"
+                : data.checking
+                  ? data.run && data.run.pending > 0
+                    ? `Checking ${data.run.checked} of ${data.run.total} clients…`
+                    : "Checking notices…"
+                  : "Check all clients"}
             </Button>
           </div>
-          <div className="flex items-center justify-between gap-4 border-y py-4 text-sm">
-            <div aria-live="polite" className="flex items-center gap-3">
+          <div aria-live="polite" className="space-y-1 text-sm">
+            <div className="flex items-center gap-3">
               {data.run ? (
-                <>
-                  <span className="text-muted-foreground">Latest all-client check</span>
-                  <span className="font-medium">
+                data.run.failed > 0 ? (
+                  <p className="flex items-center gap-2 font-medium">
+                    <CircleAlert className="size-4" />
+                    {data.run.failed} {data.run.failed === 1 ? "client wasn’t" : "clients weren’t"}{" "}
+                    checked.
+                  </p>
+                ) : (
+                  <p>
                     {data.run.checked} of {data.run.total} clients checked
-                  </span>
-                  {data.run.failed > 0 && (
-                    <Button variant="link" className="h-auto p-0" onClick={() => openChecks(true)}>
-                      <CircleAlert className="size-4" />
-                      {data.run.failed} unchecked
-                    </Button>
-                  )}
-                  <span className="text-muted-foreground">{checkedAt(data.run.started_at)}</span>
-                </>
+                  </p>
+                )
               ) : (
-                <span className="text-muted-foreground">
+                <p className="text-muted-foreground">
                   {data.clients.length
                     ? "Run a check to look for new notices."
                     : "Add clients to start checking for notices."}
-                </span>
+                </p>
+              )}
+              {data.clients.length > 0 && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0"
+                  onClick={() => openChecks()}
+                >
+                  View clients
+                </Button>
               )}
             </div>
-            <Button variant="ghost" size="sm" onClick={() => openChecks()}>
-              <Users />
-              Client checks
-            </Button>
+            {data.run && (
+              <p className="text-xs text-muted-foreground">
+                {data.checking && data.run.pending > 0 ? "Check started" : "Last check"}:{" "}
+                {checkedAt(data.run.started_at)}
+              </p>
+            )}
           </div>
           {query.isError && (
             <p role="alert" className="text-sm text-destructive">
@@ -284,32 +297,24 @@ export default function NoticesPage() {
             </NativeSelect>
           </div>
           <NoticeList
-            title="New in latest check"
-            notices={newNotices}
+            notices={visible}
             empty={
-              search || clientFilter
-                ? "No new notices match this filter."
-                : !data.run
-                  ? "No check run yet. Saved notices appear below."
-                  : data.checking
-                    ? "Checking for new notices…"
-                    : data.run.failed
-                      ? "No new notices from checked clients. Some clients could not be checked."
-                      : "No new notices found."
+              search || clientFilter ? "No notices match this filter." : "No notices saved yet."
             }
           />
-          <NoticeList
-            title="Saved notices"
-            notices={history}
-            empty={
-              search || clientFilter
-                ? "No saved notices match this filter."
-                : "No earlier notices saved."
-            }
-          />
-          <p className="text-xs text-muted-foreground">
-            60-day GST lookup · Saved notices retained · Coverage varies by notice type
-          </p>
+          <Collapsible>
+            <CollapsibleTrigger
+              render={
+                <Button variant="ghost" size="sm" className="group px-0 text-muted-foreground" />
+              }
+            >
+              About notice coverage <ChevronDown className="group-data-panel-open:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2 text-sm text-muted-foreground">
+              Checks cover the last 60 days. Coverage varies by notice type. Reply and closure
+              status are not supplied; check the GST portal for the latest case status.
+            </CollapsibleContent>
+          </Collapsible>
         </div>
       )}
       <Sheet open={checks} onOpenChange={setChecks}>
@@ -436,21 +441,9 @@ export default function NoticesPage() {
   );
 }
 
-function NoticeList({
-  title,
-  notices,
-  empty,
-}: {
-  title: string;
-  notices: NoticesData["notices"];
-  empty: string;
-}) {
+function NoticeList({ notices, empty }: { notices: NoticesData["notices"]; empty: string }) {
   return (
-    <section aria-label={title} className="space-y-3">
-      <h2 className="text-sm font-semibold">
-        {title}
-        <span className="ml-2 font-normal text-muted-foreground">{notices.length}</span>
-      </h2>
+    <section aria-label="Notices">
       <div className="overflow-hidden rounded-xl border bg-background">
         {!notices.length ? (
           <div className="flex items-center gap-3 px-5 py-7 text-sm text-muted-foreground">
@@ -464,7 +457,7 @@ function NoticeList({
                 <TableHead>Notice</TableHead>
                 <TableHead>Client</TableHead>
                 <TableHead>Issued</TableHead>
-                <TableHead>Reply date in notice</TableHead>
+                <TableHead>Reply by</TableHead>
                 <TableHead>
                   <span className="sr-only">Open</span>
                 </TableHead>
@@ -479,6 +472,11 @@ function NoticeList({
                       className="font-medium hover:underline"
                     >
                       {n.type}
+                      {n.new && (
+                        <Badge variant="secondary" className="ml-2">
+                          New
+                        </Badge>
+                      )}
                       <span className="mt-1 block text-xs font-normal text-muted-foreground">
                         {n.reference}
                       </span>

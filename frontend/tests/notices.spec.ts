@@ -120,36 +120,52 @@ async function setup(page: Page, data = fixture()) {
 test("notice list keeps history visible, scopes client filters and shows failed coverage", async ({
   page,
 }, info) => {
-  await setup(page);
+  const data = fixture();
+  data.notices.reverse();
+  await setup(page, data);
   await page.goto("/app/notices");
   await expect(page.getByRole("heading", { name: "Notices", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Notices", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
   );
-  await expect(page.getByText("1 of 2 clients checked")).toBeVisible();
+  await expect(page.getByText("1 client wasn’t checked.")).toBeVisible();
   await page.keyboard.press("/");
   await expect(page.getByRole("textbox", { name: "Search notices" })).toBeFocused();
   await page.getByRole("heading", { name: "Notices", exact: true }).click();
   await expect(
-    page.getByRole("region", { name: "New in latest check" }).getByText("ZD33092600123"),
+    page.getByRole("region", { name: "Notices", exact: true }).getByText("ZD33092600123"),
   ).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "Saved notices" }).getByText("ZD33082600019"),
+    page.getByRole("region", { name: "Notices", exact: true }).getByText("ZD33082600019"),
   ).toBeVisible();
+  await expect(page.getByRole("table")).toHaveCount(1);
+  const rows = page.getByRole("row");
+  await expect(rows.nth(1)).toContainText("ZD33092600123");
+  await expect(rows.nth(1).getByText("New", { exact: true })).toBeVisible();
+  await expect(rows.nth(2)).toContainText("ZD33082600019");
+  await expect(page.getByRole("heading", { name: "Saved notices" })).toHaveCount(0);
+  const coverage = page.getByRole("button", { name: "About notice coverage" });
+  await expect(coverage).toHaveAttribute("aria-expanded", "false");
+  await coverage.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/Checks cover the last 60 days/)).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/Checks cover the last 60 days/)).not.toBeVisible();
   await page.screenshot({ path: info.outputPath("notices.png"), fullPage: true });
   await page.getByRole("combobox", { name: "Filter by client" }).selectOption("2");
   await expect(page).toHaveURL(/client_id=2/);
   await expect(page.getByText("ZD33092600123")).toHaveCount(0);
   await page.getByRole("textbox", { name: "Search notices" }).fill("not there");
-  await expect(page.getByText("No saved notices match this filter.")).toBeVisible();
-  await page.getByRole("button", { name: "1 unchecked" }).click();
+  await expect(page.getByText("No notices match this filter.")).toBeVisible();
+  await page.getByRole("button", { name: "View clients", exact: true }).click();
   const sheet = page.getByRole("dialog", { name: "Client checks" });
+  await sheet.getByRole("combobox", { name: "Show client checks" }).selectOption("unchecked");
   await expect(sheet.getByText("Simple Systems", { exact: true })).toBeVisible();
   await expect(sheet.getByText("Breeze Tech", { exact: true })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
-  await expect(page.getByRole("button", { name: "1 unchecked" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "View clients", exact: true })).toBeFocused();
 });
 
 test("all-client check blocks double submissions and failed writes retain notices", async ({
@@ -171,7 +187,7 @@ test("all-client check blocks double submissions and failed writes retain notice
     });
   });
   await page.goto("/app/notices");
-  const button = page.getByRole("button", { name: "Check all clients" });
+  const button = page.getByRole("button", { name: /Check all clients|Starting check/ });
   await button.click();
   await expect(button).toBeDisabled();
   expect(requests).toBe(1);
@@ -202,7 +218,7 @@ test("OTP reconnect stays in React, checks after verification and clears the cod
     return route.fulfill({ json: data });
   });
   await page.goto("/app/notices");
-  await page.getByRole("button", { name: "1 unchecked" }).click();
+  await page.getByRole("button", { name: "View clients", exact: true }).click();
   await page.getByRole("button", { name: "Reconnect GST", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Connect GST", exact: true });
   await expect(dialog.getByLabel("GST username")).toHaveValue("simple");
@@ -224,7 +240,7 @@ test("viewer can read documents but cannot check or connect", async ({ page }) =
   await setup(page, data);
   await page.goto("/app/notices");
   await expect(page.getByRole("button", { name: "Check all clients" })).toBeDisabled();
-  await page.getByRole("button", { name: "1 unchecked" }).click();
+  await page.getByRole("button", { name: "View clients", exact: true }).click();
   await expect(page.getByRole("button", { name: "Reconnect GST", exact: true })).toBeDisabled();
   await expect(page.getByText("Ask the firm owner to connect GST.")).toBeVisible();
 });
@@ -291,4 +307,25 @@ test("empty firm and unauthorized request never claim all clear", async ({ page 
   await page.reload();
   await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Check all clients" })).toHaveCount(0);
+});
+
+test("empty notices retain failed coverage and a running check shows progress", async ({
+  page,
+}) => {
+  const data = fixture();
+  data.notices = [];
+  await setup(page, data);
+  await page.goto("/app/notices");
+  await expect(page.getByText("No notices saved yet.")).toBeVisible();
+  await expect(page.getByText("1 client wasn’t checked.")).toBeVisible();
+  await expect(page.getByText("No new notices found.")).toHaveCount(0);
+  data.checking = true;
+  data.run = { ...data.run!, failed: 0, pending: 1 };
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Checking 1 of 2 clients…", exact: true }),
+  ).toBeDisabled();
+  await expect(page.getByText("1 of 2 clients checked")).toBeVisible();
+  await page.getByRole("button", { name: "View clients", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Client checks" })).toBeVisible();
 });
