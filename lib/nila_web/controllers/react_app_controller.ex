@@ -5,11 +5,7 @@ defmodule NilaWeb.ReactAppController do
     do: redirect(conn, to: NilaWeb.GoTo.sales_home(conn.assigns.current_scope.current_client))
 
   def index(conn, _params) do
-    # Vite's hashed assets are built into the Phoenix release. No second server
-    # or client-side credential store is needed to use the authenticated app.
-    path = Application.app_dir(:nila, "priv/static/frontend/index.html")
-
-    case File.read(path) do
+    case app_html() do
       {:ok, html} ->
         csrf = Plug.CSRFProtection.get_csrf_token()
 
@@ -22,6 +18,34 @@ defmodule NilaWeb.ReactAppController do
         conn
         |> put_status(:service_unavailable)
         |> text("Frontend assets are missing. Run pnpm run build in frontend/.")
+    end
+  end
+
+  defp app_html do
+    case Application.get_env(:nila, :vite_origin) do
+      nil ->
+        File.read(Application.app_dir(:nila, "priv/static/frontend/index.html"))
+
+      origin ->
+        # Phoenix owns the page/session; Vite owns modules and Fast Refresh.
+        # The React preamble is required when Vite does not serve the HTML.
+        html = File.read!(Path.expand("../../../frontend/index.html", __DIR__))
+
+        scripts = """
+        <script type="module">
+          import RefreshRuntime from '#{origin}/@react-refresh';
+          RefreshRuntime.injectIntoGlobalHook(window);
+          window.$RefreshReg$ = () => {};
+          window.$RefreshSig$ = () => (type) => type;
+          window.__vite_plugin_react_preamble_installed__ = true;
+        </script>
+        <script type="module" src="#{origin}/@vite/client"></script>
+        """
+
+        {:ok,
+         html
+         |> String.replace("</head>", scripts <> "</head>")
+         |> String.replace(~s(src="/src/main.tsx"), ~s(src="#{origin}/src/main.tsx"))}
     end
   end
 end

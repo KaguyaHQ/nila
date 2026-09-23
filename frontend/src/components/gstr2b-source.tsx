@@ -6,17 +6,9 @@ import { Download, MoreHorizontal, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
-import { Input } from "@/components/ui/input";
+import { GstOtpForm } from "@/components/gst-otp-form";
 
-import { Label } from "@/components/ui/label";
-
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 import {
   DropdownMenu,
@@ -348,87 +340,27 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
         }}
       >
         <DialogContent finalFocus={opener} className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{challenge ? "Enter GST verification code" : "Connect GST"}</DialogTitle>
-            <DialogDescription>
-              {challenge
-                ? "Enter the six-digit OTP sent to the mobile number and email registered with GST."
-                : "Use this client’s GST portal username. We’ll send an OTP to verify the connection."}
-            </DialogDescription>
-          </DialogHeader>
-
-          <form
-            className="space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault();
+          <GstOtpForm
+            challenge={Boolean(challenge)}
+            username={username}
+            setUsername={setUsername}
+            otp={otp}
+            setOtp={setOtp}
+            pending={pending}
+            error={error}
+            verifyLabel="Verify and fetch GSTR-2B"
+            onSubmit={() =>
               void (challenge
                 ? act({ action: "verify", body: { challenge: challenge.challenge, otp } })
-                : act({ action: "otp", body: { username: username.trim() } }));
+                : act({ action: "otp", body: { username: username.trim() } }))
+            }
+            onReset={() => {
+              setChallenge(null);
+              setOtp("");
+              setDownloadError(null);
+              mutation.reset();
             }}
-          >
-            {challenge ? (
-              <div className="space-y-2">
-                <Label htmlFor="gst-otp">Verification code</Label>
-                <Input
-                  id="gst-otp"
-                  autoFocus
-                  required
-                  disabled={pending}
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  value={otp}
-                  onChange={(event) => setOtp(event.target.value.replace(/\D/g, ""))}
-                />
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="gst-username">GST username</Label>
-                <Input
-                  id="gst-username"
-                  autoFocus
-                  required
-                  maxLength={100}
-                  disabled={pending}
-                  autoComplete="username"
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                />
-              </div>
-            )}
-
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
-
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={pending || (challenge ? otp.length !== 6 : !username.trim())}
-            >
-              {pending ? "Please wait…" : challenge ? "Verify and fetch GSTR-2B" : "Send OTP"}
-            </Button>
-
-            {challenge && (
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full"
-                disabled={pending}
-                onClick={() => {
-                  setChallenge(null);
-                  setOtp("");
-                  setDownloadError(null);
-                  mutation.reset();
-                }}
-              >
-                Use another username or resend OTP
-              </Button>
-            )}
-          </form>
+          />
         </DialogContent>
       </Dialog>
     </div>

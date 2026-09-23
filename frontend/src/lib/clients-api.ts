@@ -4,6 +4,26 @@ import { ApiError } from "./sales-api";
 export type ClientIdentity = components["schemas"]["ClientIdentity"];
 export type ClientsDirectory = components["schemas"]["ClientsDirectory"];
 export type ClientDetail = components["schemas"]["ClientDetail"];
+export type GstConnection = components["schemas"]["GstConnection"];
+export function fetchGstConnection(id: number, signal: AbortSignal) {
+  return request<GstConnection>(`/${id}/gst-connection`, signal);
+}
+export function requestGstOtp(id: number, username: string, signal: AbortSignal) {
+  return request<components["schemas"]["Gstr2bChallenge"]>(
+    `/${id}/gst-connection/otp`,
+    signal,
+    "POST",
+    { username },
+  );
+}
+export function verifyGstConnection(
+  id: number,
+  challenge: string,
+  otp: string,
+  signal: AbortSignal,
+) {
+  return request<GstConnection>(`/${id}/gst-connection/verify`, signal, "POST", { challenge, otp });
+}
 export type ImportRow = components["schemas"]["ImportRow"];
 export type ImportPreview = components["schemas"]["ImportPreview"];
 export type ImportResult = components["schemas"]["ImportResult"];
@@ -13,6 +33,7 @@ export class ClientApiError extends ApiError {
     status: number,
     message: string,
     public fields: Record<string, string[]> = {},
+    public code?: string,
   ) {
     super(status, message);
   }
@@ -46,6 +67,7 @@ async function request<T>(
         ? data.error
         : "We couldn't complete this request. Please try again.",
       data?.errors ?? {},
+      data?.code,
     );
   }
   return response.json();

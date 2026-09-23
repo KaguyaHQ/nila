@@ -1,5 +1,7 @@
 import Config
 
+config :nila, :vite_origin, "http://localhost:5173"
+
 business_typst = Path.expand("../tmp/tools/typst.exe", __DIR__)
 
 config :nila, Nila.Business.Pdf,
@@ -43,6 +45,11 @@ config :nila, NilaWeb.Endpoint,
   debug_errors: true,
   secret_key_base: "HUY7MvVY77p4Y8VXmbgi7a/8c5PGqBpr4aFxW5ty2mFelO8+FZxJzvOZfiCftSmv",
   watchers: [
+    node: [
+      "node_modules/vite/bin/vite.js",
+      cd: Path.expand("../frontend", __DIR__),
+      env: [{"NILA_VITE_ORIGIN", "http://localhost:5173"}]
+    ],
     esbuild: {Esbuild, :install_and_run, [:nila, ~w(--sourcemap=inline --watch)]},
     tailwind: {Tailwind, :install_and_run, [:nila, ~w(--watch)]}
   ]

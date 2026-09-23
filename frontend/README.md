@@ -6,8 +6,9 @@ Excel and GSTR-1 JSON download from the existing Phoenix exporters. Sample scree
 remain available only in Vite development.
 
 The client directory at `/app/clients` also uses real data: search, add/edit name and
-GSTIN, and Excel preview/import. Client names open the React sales workspace; edit
-pages link to the existing GST/Tally connection settings.
+GSTIN, and Excel preview/import. Client names open the React sales workspace. Edit
+pages show GST connection status and connect/reconnect through an OTP dialog in React.
+Connecting here does not fetch GSTR-2B or start notice checks.
 
 Notices at `/app/notices` uses React for the saved notice list, client checks, OTP
 reconnection and document reader. Phoenix retains check runs and notice history;
@@ -21,10 +22,12 @@ With Node 20+ installed, install the pinned pnpm version once (`npm install --gl
 ```sh
 cd frontend
 pnpm install --frozen-lockfile
-pnpm run build
 ```
 
-Start Phoenix normally. Login and `/app` open the React workspace (or the client
+Start Phoenix with `mix phx.server`; its development watcher starts Vite on port 5173.
+Open the app on **http://localhost:4000**, not the Vite port. React edits use Fast
+Refresh automatically; no build or manual refresh is needed. Restart Phoenix once
+after changing development configuration. Login and `/app` open the React workspace (or the client
 directory when no client exists). Open `/app/gst/:client_id/:period/sales` directly
 on port 4000 for a particular month. The register ends in
 `/sales/register`; PDF intake and history end in `/sales/upload` and `/sales/uploads`.
@@ -50,12 +53,13 @@ search. `?` or the keyboard button opens help.
 Navigation pauses in inputs, dialogs and invoice editors. Invoice review retains
 Alt-arrow navigation; purchase treatment uses Ctrl/Cmd+Enter for save-and-next.
 
-For frontend edits alongside Phoenix, run `pnpm exec vite build --watch` and refresh after
-the build. Run `pnpm run check` separately for TypeScript validation. Vite writes hashed assets to `priv/static/frontend/`. Phoenix serves them
+Run `pnpm run check` separately for TypeScript validation. For production,
+`pnpm run build` writes hashed assets to `priv/static/frontend/`. Phoenix serves them
 on the same origin as the session and API. The Docker frontend stage packages these
-assets into the same Phoenix release; there is no production Vite server.
+assets into the same Phoenix release; there is no production Vite server. Development
+does not read that build folder, so rebuilding cannot interrupt the running app.
 
-`pnpm run dev` still serves sample screens at http://127.0.0.1:5173/sales.
+The same Vite server also serves sample screens at http://127.0.0.1:5173/sales.
 Those sample routes are excluded from the production route tree.
 
 ```sh

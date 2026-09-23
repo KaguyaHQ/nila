@@ -74,6 +74,9 @@ defmodule NilaWeb.Router do
     post "/clients/import", ClientsWorkspaceController, :import_clients
     get "/clients/:id", ClientsWorkspaceController, :show
     patch "/clients/:id", ClientsWorkspaceController, :update
+    get "/clients/:client_id/gst-connection", GstConnectionController, :show
+    post "/clients/:client_id/gst-connection/otp", GstConnectionController, :otp
+    post "/clients/:client_id/gst-connection/verify", GstConnectionController, :verify
     post "/clients/:client_id/business-invitation", BusinessInvitationController, :create
     get "/sales/:client_id/:period", SalesWorkspaceController, :show
     get "/purchases/:client_id/:period", PurchaseWorkspaceController, :show

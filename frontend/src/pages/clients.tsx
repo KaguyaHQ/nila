@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, FileSpreadsheet, Pencil, Plus, Search, Upload } from "lucide-react";
 import { Shell } from "@/components/workspace-shell";
+import { ClientGstConnection } from "@/components/client-gst-connection";
 import { useClientContext } from "@/state/client-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -306,6 +307,8 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
       await cache.invalidateQueries({ queryKey: ["clients"] });
       void cache.invalidateQueries({ queryKey: ["sales"] });
       void cache.invalidateQueries({ queryKey: ["purchases"] });
+      void cache.invalidateQueries({ queryKey: ["gst-connection", saved.client.id] });
+      void cache.invalidateQueries({ queryKey: ["gstr2b", saved.client.id] });
       if (!controller.signal.aborted) navigate(pathFor(data.period));
     },
     onSettled: (_saved, _error, { controller }) => {
@@ -412,14 +415,7 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
           </Button>
         </div>
       </form>
-      {client && (
-        <a
-          href={`/clients/${client.id}/edit`}
-          className="inline-flex items-center gap-2 text-sm underline underline-offset-4"
-        >
-          GST and Tally connections <ArrowRight className="size-4" />
-        </a>
-      )}
+      {client && <ClientGstConnection key={client.id} clientId={client.id} />}
       {client && data.can_manage_users && <BusinessInvitation clientId={client.id} />}
     </div>
   );

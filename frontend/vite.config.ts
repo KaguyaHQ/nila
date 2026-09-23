@@ -12,6 +12,8 @@ export default defineConfig(({ command }) => ({
     host: "127.0.0.1",
     port: 5173,
     strictPort: true,
+    origin: process.env.NILA_VITE_ORIGIN,
+    cors: { origin: /^http:\/\/(localhost|127\.0\.0\.1):4000$/ },
     fs: {
       allow: [
         fileURLToPath(new URL(".", import.meta.url)),
