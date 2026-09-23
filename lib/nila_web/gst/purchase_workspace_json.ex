@@ -141,13 +141,11 @@ defmodule NilaWeb.Gst.PurchaseWorkspaceJson do
         reason:
           cond do
             not Policy.can?(scope, :export) -> "Your role cannot download workings."
-            is_nil(data.workings) -> "Import purchase records or GSTR-2B to prepare a working."
+            is_nil(data.workings) -> "Fetch GSTR-2B to prepare a working."
             true -> nil
           end
       },
       links: %{
-        import_excel: base <> "/import-excel",
-        uploads: base <> "/uploads",
         portal: "/app" <> base,
         review: review_list_path(client.id, period, "needs_review", ""),
         treatment: review_list_path(client.id, period, "treatment", ""),
@@ -168,7 +166,7 @@ defmodule NilaWeb.Gst.PurchaseWorkspaceJson do
             "A fetched GSTR-2B statement is waiting to enter reconciliation. Open purchase review to import it."
 
           not books? and not portal? ->
-            "Import purchase Excel and GSTR-2B to start reconciliation."
+            "Fetch GSTR-2B to start reviewing purchases."
 
           not books? ->
             "Books comparison is not available. You can review the GSTR-2B documents and set ITC treatment."

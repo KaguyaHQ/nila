@@ -69,7 +69,6 @@ export function review(id = "one"): PurchaseReviewData {
         },
       ],
       images: [],
-      legacy_url: "/gst/1/2026-06/purchases/review/one",
     },
     cases: [1, 2].map((caseId) => ({
       id: caseId,
@@ -105,6 +104,5 @@ export function review(id = "one"): PurchaseReviewData {
       later: [{ id: "other", label: "Other" }],
       exclude: [{ id: "blocked_credit", label: "Blocked credit" }],
     },
-    legacy_url: "/gst/1/2026-06/purchases/bills",
   };
 }

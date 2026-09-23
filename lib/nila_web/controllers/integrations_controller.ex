@@ -6,62 +6,8 @@ defmodule NilaWeb.IntegrationsController do
   alias Nila.Integrations
   alias Nila.Integrations.MicrosoftGrantWorker
 
-  def connect(conn, %{"provider" => "gmail"} = params) do
-    if org = conn.assigns.current_scope.current_org do
-      connection_params = Map.get(params, "connection", %{})
-
-      state =
-        Phoenix.Token.sign(conn, "gmail_oauth", %{
-          "org_id" => org.id,
-          "label" => blank_to_nil(connection_params["label"] || params["label"])
-        })
-
-      conn
-      |> redirect(external: gmail_adapter().authorize_url(state: state))
-    else
-      conn
-      |> put_flash(:error, "Choose an organisation before connecting Gmail.")
-      |> redirect(to: ~p"/today")
-    end
-  end
-
-  # The tenant is committed before the admin ever reaches Microsoft, so the
-  # value that comes back can be checked against something we chose. The
-  # redirect only reports that a grant exists; it cannot say who may bind it.
-  def connect(conn, %{"provider" => "microsoft"} = params) do
-    connection_params = Map.get(params, "connection", %{})
-    tenant_id = blank_to_nil(connection_params["tenant_id"] || params["tenant_id"])
-    mailbox = blank_to_nil(connection_params["mailbox"] || params["mailbox"])
-
-    with %{} = org <- conn.assigns.current_scope.current_org,
-         true <- is_binary(tenant_id) and is_binary(mailbox) do
-      state =
-        Phoenix.Token.sign(conn, "microsoft_consent", %{
-          "org_id" => org.id,
-          "tenant_id" => tenant_id,
-          "mailbox" => mailbox,
-          "label" => blank_to_nil(connection_params["label"] || params["label"])
-        })
-
-      redirect(conn, external: microsoft_adapter().admin_consent_url(state))
-    else
-      nil ->
-        conn
-        |> put_flash(:error, "Choose an organisation before connecting Microsoft.")
-        |> redirect(to: ~p"/today")
-
-      false ->
-        conn
-        |> put_flash(:error, "Enter the Microsoft tenant ID and the mailbox to send from.")
-        |> redirect(to: ~p"/settings/connectors")
-    end
-  end
-
-  def connect(conn, _params) do
-    conn
-    |> put_flash(:error, "Unknown connector.")
-    |> redirect(to: ~p"/settings/connectors")
-  end
+  # Setup is shelved; callbacks remain for consent already in flight.
+  def connect(conn, _params), do: send_resp(conn, :gone, "Email connection setup is unavailable.")
 
   def callback(conn, %{"provider" => "gmail", "code" => code, "state" => state}) do
     with {:ok, oauth_state} <- Phoenix.Token.verify(conn, "gmail_oauth", state, max_age: 600),
@@ -82,19 +28,19 @@ defmodule NilaWeb.IntegrationsController do
            }) do
       conn
       |> put_flash(:info, "Gmail connected.")
-      |> redirect(to: ~p"/settings/connectors")
+      |> redirect(to: ~p"/app/settings/workspace")
     else
       _error ->
         conn
         |> put_flash(:error, "Gmail connection failed.")
-        |> redirect(to: ~p"/settings/connectors")
+        |> redirect(to: ~p"/app/settings/workspace")
     end
   end
 
   def callback(conn, %{"provider" => "gmail"}) do
     conn
     |> put_flash(:error, "Gmail connection failed.")
-    |> redirect(to: ~p"/settings/connectors")
+    |> redirect(to: ~p"/app/settings/workspace")
   end
 
   def callback(
@@ -108,19 +54,19 @@ defmodule NilaWeb.IntegrationsController do
            %{connection_id: connection.id} |> MicrosoftGrantWorker.new() |> Oban.insert() do
       conn
       |> put_flash(:info, "Microsoft consent granted. Confirming the grant now.")
-      |> redirect(to: ~p"/settings/connectors")
+      |> redirect(to: ~p"/app/settings/workspace")
     else
       {:error, :tenant_mismatch} ->
         conn
         |> put_flash(:error, "That consent was granted in a different Microsoft tenant.")
-        |> redirect(to: ~p"/settings/connectors")
+        |> redirect(to: ~p"/app/settings/workspace")
 
       error ->
         Logger.warning("Microsoft consent could not be bound", reason: inspect(error))
 
         conn
         |> put_flash(:error, "Microsoft connection failed.")
-        |> redirect(to: ~p"/settings/connectors")
+        |> redirect(to: ~p"/app/settings/workspace")
     end
   end
 
@@ -129,19 +75,19 @@ defmodule NilaWeb.IntegrationsController do
   def callback(conn, %{"provider" => "microsoft", "admin_consent" => "True"}) do
     conn
     |> put_flash(:error, "Microsoft connection failed.")
-    |> redirect(to: ~p"/settings/connectors")
+    |> redirect(to: ~p"/app/settings/workspace")
   end
 
   def callback(conn, %{"provider" => "microsoft"}) do
     conn
     |> put_flash(:error, "Microsoft consent was not granted.")
-    |> redirect(to: ~p"/settings/connectors")
+    |> redirect(to: ~p"/app/settings/workspace")
   end
 
   def callback(conn, _params) do
     conn
     |> put_flash(:error, "Unknown connector.")
-    |> redirect(to: ~p"/settings/connectors")
+    |> redirect(to: ~p"/app/settings/workspace")
   end
 
   # Microsoft echoes the tenant that consented. A signed state proves who
@@ -168,12 +114,4 @@ defmodule NilaWeb.IntegrationsController do
   defp gmail_adapter do
     Application.get_env(:nila, :gmail_adapter, Nila.Integrations.Gmail)
   end
-
-  defp microsoft_adapter do
-    Application.get_env(:nila, :microsoft_adapter, Nila.Integrations.Microsoft)
-  end
-
-  defp blank_to_nil(nil), do: nil
-  defp blank_to_nil(""), do: nil
-  defp blank_to_nil(value), do: value
 end

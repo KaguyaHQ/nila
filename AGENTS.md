@@ -1,7 +1,8 @@
 # Nila Agent Notes
 
 Nila is a Phoenix monolith with a React + shadcn frontend in `frontend/`.
-Existing LiveView screens remain during migration. Phoenix owns business truth.
+React owns product screens and auth. Phoenix owns business truth.
+Static public pages use HEEx; there are no LiveView screens or sockets.
 
 ## Product and scope
 
@@ -34,7 +35,7 @@ its product-scope statements yield to the approved scope above and user instruct
 - Oban handles background jobs. External processors return structured artifacts only.
 - Humans resolve extraction exceptions before Phoenix commits business state.
 - Contexts belong in `lib/nila/`; web code belongs in `lib/nila_web/`.
-- Backend, LiveView, test and asset details live in scoped `AGENTS.md` files.
+- Backend, web, test and asset details live in scoped `AGENTS.md` files.
 
 ## Commands and safety
 
@@ -56,6 +57,6 @@ mix precommit
 
 - React uses current components in `frontend/src/components/ui/`, tokens in `frontend/src/index.css`, and the user's agreed screen references. Inspect component APIs before use; follow `frontend/AGENTS.md`.
 - Old `docs/design/` visual and implementation recipes are not authority for new React work. The product-principle exception for `OPINIONS.md` is explained above.
-- Preserve existing LiveView components and tokens unless migration is requested. Follow `lib/nila_web/AGENTS.md` and `assets/AGENTS.md` for that code.
-- React uses Vite; LiveView uses its existing asset bundles. Import dependencies through the relevant build.
+- Static public-page components and tokens remain in `lib/nila_web/` and `assets/`. Follow their scoped `AGENTS.md` files.
+- React uses Vite; static public pages use the Phoenix asset build. Import dependencies through the relevant build.
 - Never use the browser skill. Verify affected screens and actual interactions in the browser before calling UI work complete; builds and API tests alone do not establish visual quality.

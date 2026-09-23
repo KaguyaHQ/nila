@@ -118,7 +118,6 @@ async function setup(page: Page) {
         q: "",
         working: { enabled: false, url: "/draft.xlsx", status: "Draft working", reason: null },
         links: {
-          import_excel: "/legacy-import",
           uploads: "/legacy-uploads",
           review: "/gst/1/2026-06/purchases/review",
           treatment: "/gst/1/2026-06/purchases/review?filter=treatment",

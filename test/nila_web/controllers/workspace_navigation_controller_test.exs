@@ -87,23 +87,15 @@ defmodule NilaWeb.WorkspaceNavigationControllerTest do
     assert saved |> recycle() |> get("/app") |> redirected_to() == "/app/clients"
   end
 
-  test "legacy selection updates the same preference", c do
-    path = "/gst/#{c.client.id}/2026-05/purchases"
-    saved = post(c.conn, "/clients/#{c.client.id}/select", %{return_to: path})
-
-    assert saved |> recycle() |> get("/api/workspace/navigation") |> contract_response(200) ==
-             %{"workspace" => %{c.workspace | "period" => "2026-05"}}
-  end
-
   test "anonymous callers cannot read or set navigation", c do
     assert build_conn() |> get("/api/workspace/navigation") |> response(401)
     assert build_conn() |> put("/api/workspace/navigation", c.workspace) |> response(401)
   end
 
-  test "explicit page URLs replace memory for React and legacy handoffs", c do
+  test "explicit page URLs replace memory for React pages", c do
     saved = put(c.conn, "/api/workspace/navigation", c.workspace)
 
-    for prefix <- ["/app", ""] do
+    for prefix <- ["/app"] do
       visited = saved |> recycle() |> get("#{prefix}/gst/#{c.client.id}/2026-04/sales")
 
       assert visited |> recycle() |> get("/api/workspace/navigation") |> contract_response(200) ==

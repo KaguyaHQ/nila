@@ -139,8 +139,6 @@ function workspace(): PurchasesWorkspace {
       reason: null,
     },
     links: {
-      import_excel: `${legacy}/import-excel`,
-      uploads: `${legacy}/uploads`,
       portal: legacy,
       review: `${legacy}/review?filter=needs_review`,
       treatment: `${legacy}/review?filter=treatment`,
@@ -326,7 +324,7 @@ test("register does not claim unmatched invoices when books are missing", async 
   await setup(page, data);
   await page.goto("/app/gst/1/2026-06/purchases/register?source=gstr2b");
   await expect(page.getByRole("cell", { name: "Not compared", exact: true })).toHaveCount(2);
-  await expect(page.getByText("Import both sources", { exact: false })).toBeVisible();
+  await expect(page.getByText("Compare existing purchase books", { exact: false })).toBeVisible();
 });
 
 test("GSTR-2B treatment stays available without purchase books", async ({ page }, testInfo) => {
@@ -340,10 +338,7 @@ test("GSTR-2B treatment stays available without purchase books", async ({ page }
   await expect(page.getByRole("region", { name: "Purchase worklist" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Review purchases" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open reconciliation" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Import Excel" })).toHaveAttribute(
-    "href",
-    data.links.import_excel,
-  );
+  await expect(page.getByRole("link", { name: "Import Excel" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "View register" })).toHaveCount(1);
   await expect(page.getByRole("link", { name: "View register" })).toHaveAttribute(
     "href",
@@ -361,16 +356,16 @@ test("GSTR-2B treatment stays available without purchase books", async ({ page }
   await expect(
     page.getByText("Showing GSTR-2B documents. Purchase register not imported."),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Import purchase Excel", exact: true }),
-  ).toHaveAttribute("href", data.links.import_excel);
+  await expect(page.getByRole("link", { name: "Import purchase Excel", exact: true })).toHaveCount(
+    0,
+  );
   await expect(page.getByText("Claim", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("portal-only-overview.png"), fullPage: true });
   await page.getByRole("link", { name: "Review purchases" }).click();
   await expect(page).toHaveURL("/app/gst/1/2026-06/purchases/review?filter=treatment");
 });
 
-test("empty overview offers imports without empty review or register links", async ({ page }) => {
+test("empty overview offers GSTR-2B fetching without retired import links", async ({ page }) => {
   const data = workspace();
   data.inputs.books = { present: false, count: 0, tax: "₹0.00" };
   data.inputs.portal = { ...data.inputs.portal, present: false, count: 0 };
@@ -416,7 +411,7 @@ test("read-only and unavailable working reasons remain visible", async ({ page }
   await setup(page, data);
   await page.goto("/app/gst/1/2026-06/purchases");
   await expect(page.getByText(data.lock_reason)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Import Excel" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Import Excel" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Download working" })).toBeDisabled();
   await expect(page.getByText(data.working.reason)).toBeVisible();
 });

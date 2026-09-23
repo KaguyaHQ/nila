@@ -6,8 +6,7 @@ defmodule NilaWeb.ErrorHTML do
 
   `render_errors` is configured with `layout: false`, so the templates in
   `error_html/` carry their own document. They deliberately do not reach for the
-  root layout: it boots the LiveView socket, which has no business on an error
-  page and can itself be the thing that broke.
+  root layout, so an error page can still render if the public layout fails.
   """
   use NilaWeb, :html
 
@@ -52,17 +51,20 @@ defmodule NilaWeb.ErrorHTML do
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="robots" content="noindex" />
         <title>{@page_title}</title>
+
         <%!-- Un-digested on purpose, same as the root layout: favicons want a
               constant URL and Plug.Static's `only` list allows these names. --%>
         <link rel="icon" href="/favicon.ico" sizes="32x32" />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="stylesheet" href={~p"/assets/css/app.css"} />
       </head>
+
       <body class="moonlight text-base-content">
         <main class="py-canvas mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center px-4 sm:px-6">
           <.link href={~p"/"} class="hover:text-ink mb-canvas text-ink-subtle transition-colors">
             <.logo class="h-5 w-auto" />
           </.link>
+
           <div class="space-y-region">
             {render_slot(@inner_block)}
           </div>

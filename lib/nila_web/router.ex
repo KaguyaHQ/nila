@@ -4,7 +4,7 @@ defmodule NilaWeb.Router do
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
-    plug :fetch_live_flash
+    plug :fetch_flash
     plug :put_root_layout, html: {NilaWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
@@ -198,6 +198,7 @@ defmodule NilaWeb.Router do
 
   pipeline :local_upload do
     plug :accepts, ["json", "html"]
+    plug :fetch_query_params
   end
 
   # Dev and test have no bucket to presign a PUT against, so the app plays the
@@ -277,37 +278,6 @@ defmodule NilaWeb.Router do
   scope "/", NilaWeb do
     pipe_through [:browser, :authenticated_browser, :verified_browser, :firm_browser]
 
-    live_session :require_verified,
-      on_mount: [
-        {NilaWeb.UserAuth, :require_verified},
-        {NilaWeb.UserAuth, :require_firm},
-        {NilaWeb.UserAuth, :mount_current_path}
-      ] do
-      live "/today", TodayLive, :index
-      live "/sales-bills/:client_id/batch/:batch_ref", Gst.SalesBillsLive, :show
-      live "/register", Gst.RegisterLive, :index
-      live "/banking", Banking.UploadLive, :index
-      live "/banking/new", Banking.UploadLive, :new
-      live "/banking/:id", Banking.StatementLive, :show
-      live "/gst/upload", Gst.UploadLive, :new
-      live "/gst/:client_id/:period/import-excel", Gst.ExcelImportLive, :new
-      live "/gst/:client_id/:period/purchases/uploads", Gst.PurchaseUploadsLive, :index
-      live "/gst/:client_id/:period/purchases/import-excel", Gst.PurchaseExcelImportLive, :new
-
-      live "/gst/:client_id/:period", Gst.MonthLive, :index
-
-      live "/gst/:client_id/:period/sales", Gst.MonthLive, :sales_workspace
-      live "/gst/:client_id/:period/sales/invoices/:source_id", Gst.InvoiceReviewLive, :show
-      live "/gst/:client_id/:period/sales/:view", Gst.MonthLive, :sales_workspace
-      live "/gst/:client_id/:period/review/:lane", Gst.MonthLive, :review
-
-      # Settings share the product LiveView session so moving between work and
-      # setup does not reload the shell. Firm-only pages enforce their own
-      # capability guard in the LiveView.
-      live "/settings/connectors", Settings.ConnectorsLive, :index
-      live "/settings/connectors/tally/pair/:approval_code", Settings.TallyPairingLive, :show
-    end
-
     # Tenant-scoped GST evidence: the controller checks the current org owns the
     # client_month before streaming, so bills never leak across firms.
     get "/gst/:client_id/:period/evidence/:basename", GstEvidenceController, :show
@@ -330,7 +300,6 @@ defmodule NilaWeb.Router do
     get "/clients/import-template.xlsx", ClientImportController, :template
     get "/notices/:id/documents/:index", NoticeDocumentController, :show
     get "/gst/2b/statements/:id/download", Gstr2bController, :download
-    post "/clients/:id/select", ClientContextController, :update
     post "/settings/security/password", UserSettingsController, :update_password
     post "/settings/security/sessions", UserSettingsController, :delete_sessions
   end
@@ -395,19 +364,10 @@ defmodule NilaWeb.Router do
 
   # Enable operational and design references in development
   if Application.compile_env(:nila, :dev_routes) do
-    # If you want to use the LiveDashboard in production, you should put
-    # it behind authentication and allow only admins to access it.
-    # If your application does not have an admins-only section yet,
-    # you can use Plug.BasicAuth to set up some basic authentication
-    # as long as you are also using SSL (which you should anyway).
-    import Phoenix.LiveDashboard.Router
-
     scope "/dev" do
       pipe_through :browser
 
-      live_dashboard "/dashboard", metrics: NilaWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
-      live "/design-system", NilaWeb.Dev.DesignSystemLive
 
       # The error pages, previewable — `debug_errors: true` means a real 404 in
       # dev renders the Plug debugger instead of ours.

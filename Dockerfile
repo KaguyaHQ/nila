@@ -20,8 +20,6 @@ RUN npm install --global $(node -p "require('./package.json').packageManager") \
     && pnpm install --frozen-lockfile
 COPY frontend/ ./
 COPY priv/openapi/ /app/priv/openapi/
-COPY assets/js/hooks/pdf_viewer.js /app/assets/js/hooks/pdf_viewer.js
-COPY assets/vendor/pdfjs/ /app/assets/vendor/pdfjs/
 RUN pnpm run build
 
 FROM ${BUILDER_IMAGE} AS builder

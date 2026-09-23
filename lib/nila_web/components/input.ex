@@ -19,7 +19,7 @@ defmodule NilaWeb.Components.Input do
       <span id={"#{@id}-label"} class={["nila-field-label", @hide_label && "sr-only"]}>
         {@label}
       </span>
-      {render_slot(@inner_block)}
+       {render_slot(@inner_block)}
     </div>
     """
   end
@@ -146,6 +146,7 @@ defmodule NilaWeb.Components.Input do
           />{@label}
         </span>
       </label>
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -164,9 +165,10 @@ defmodule NilaWeb.Components.Input do
           {@rest}
         >
           <option :if={@prompt} value="">{@prompt}</option>
-          {Phoenix.HTML.Form.options_for_select(@options, @value)}
+           {Phoenix.HTML.Form.options_for_select(@options, @value)}
         </select>
       </label>
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -176,158 +178,15 @@ defmodule NilaWeb.Components.Input do
     ~H"""
     <div class="nila-field">
       <label for={@id}>
-        <span :if={@label} class="nila-field-label">{@label}</span>
-        <textarea
+        <span :if={@label} class="nila-field-label">{@label}</span> <textarea
           id={@id}
           name={@name}
           class={["nila-textarea", @errors != [] && "nila-input-error"]}
           {@rest}
         >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
       </label>
+
       <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
-    """
-  end
-
-  def input(%{type: "password"} = assigns) do
-    ~H"""
-    <div class="nila-field">
-      <label :if={@label} for={@id} class="nila-field-label">{@label}</label>
-      <div class="relative">
-        <input
-          type="password"
-          name={@name}
-          id={@id}
-          value={Phoenix.HTML.Form.normalize_value("password", @value)}
-          class={["nila-input pr-8", @errors != [] && "nila-input-error"]}
-          {@rest}
-        />
-        <button
-          type="button"
-          id={"#{@id}-toggle"}
-          aria-label="Show password"
-          aria-controls={@id}
-          aria-pressed="false"
-          class="nila-field-action"
-          phx-hook=".PasswordVisibility"
-          data-password-input={@id}
-        >
-          <.icon name="hero-eye" class="size-4" />
-        </button>
-        <script :type={Phoenix.LiveView.ColocatedHook} name=".PasswordVisibility">
-          export default {
-            mounted() {
-              this.el.addEventListener("mousedown", event => event.preventDefault())
-
-              this.el.addEventListener("click", () => {
-                const input = document.getElementById(this.el.dataset.passwordInput)
-                if (!input) return
-
-                const showingPassword = input.type === "text"
-                input.type = showingPassword ? "password" : "text"
-                input.focus()
-                this.el.setAttribute("aria-label", showingPassword ? "Show password" : "Hide password")
-                this.el.setAttribute("aria-pressed", showingPassword ? "false" : "true")
-              })
-            }
-          }
-        </script>
-      </div>
-      <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
-    """
-  end
-
-  # Native `type="date"` paints the browser's own calendar popup — unstylable and
-  # foreign to the design system. We render a moonlight text input the operator
-  # types as DD/MM/YYYY, backed by a server-rendered hidden field that keeps the
-  # ISO contract (`2026-06-11`) the form and tests consume. The `.DateField` hook
-  # masks keystrokes and syncs the hidden value; first paint is correct without JS.
-  def input(%{type: "date"} = assigns) do
-    iso =
-      case assigns[:value] do
-        nil -> ""
-        %Date{} = d -> Date.to_iso8601(d)
-        v -> to_string(v)
-      end
-
-    assigns = assign(assigns, iso: iso, display: date_display(iso))
-
-    ~H"""
-    <div class="nila-field" id={"#{@id}-field"} phx-hook=".DateField">
-      <label for={@id}>
-        <span :if={@label} class="nila-field-label">{@label}</span>
-        <input
-          type="text"
-          id={@id}
-          value={@display}
-          inputmode="numeric"
-          autocomplete="off"
-          placeholder="DD/MM/YYYY"
-          maxlength="10"
-          phx-update="ignore"
-          data-date-display
-          class={["nila-input", @errors != [] && "nila-input-error"]}
-          {@rest}
-        />
-      </label>
-      <%!-- Carrier of the submitted ISO value, driven by the hook. Tests set it via
-            the explicit value arg of render_change/render_submit (the sanctioned path
-            for hook-set hidden fields), since the masking hook can't run server-side. --%>
-      <input type="hidden" name={@name} value={@iso} data-date-value />
-      <p :if={@hint && @errors == []} class="text-ink-subtle text-ui mt-1">{@hint}</p>
-      <.error :for={msg <- @errors}>{msg}</.error>
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".DateField">
-        export default {
-          mounted() {
-            this.display = this.el.querySelector("[data-date-display]")
-            this.hidden = this.el.querySelector("[data-date-value]")
-            this.sync()
-            this.display.addEventListener("input", () => this.onType())
-            this.display.addEventListener("blur", () => this.sync())
-            // Pre-filled with today's date; select all on focus so the first
-            // keystroke overwrites it (fast keyboard entry of historical dates).
-            this.display.addEventListener("focus", () => this.display.select())
-          },
-
-          // Server re-renders (draft restore, save reset) move the hidden ISO;
-          // mirror it back to the visible field unless the user is mid-entry.
-          updated() {
-            if (document.activeElement !== this.display) this.sync()
-          },
-
-          onType() {
-            const digits = this.display.value.replace(/\D/g, "").slice(0, 8)
-            let out = digits.slice(0, 2)
-            if (digits.length >= 3) out += "/" + digits.slice(2, 4)
-            if (digits.length >= 5) out += "/" + digits.slice(4, 8)
-            this.display.value = out
-            this.setHidden(this.toISO(digits))
-          },
-
-          setHidden(iso) {
-            if (this.hidden.value === iso) return
-            this.hidden.value = iso
-            // Bubble to the form so phx-change ("validate") and the draft guard fire.
-            this.hidden.dispatchEvent(new Event("input", {bubbles: true}))
-          },
-
-          toISO(digits) {
-            if (digits.length !== 8) return ""
-            const dd = digits.slice(0, 2), mm = digits.slice(2, 4), yyyy = digits.slice(4)
-            const y = +yyyy, m = +mm, d = +dd
-            const dt = new Date(y, m - 1, d)
-            if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return ""
-            return `${yyyy}-${mm}-${dd}`
-          },
-
-          // hidden ISO -> visible DD/MM/YYYY
-          sync() {
-            const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(this.hidden.value)
-            this.display.value = m ? `${m[3]}/${m[2]}/${m[1]}` : ""
-          },
-        }
-      </script>
     </div>
     """
   end
@@ -354,7 +213,9 @@ defmodule NilaWeb.Components.Input do
           >{@shortcut}</kbd>
         </span>
       </label>
+
       <p :if={@hint && @errors == []} class="text-ink-subtle text-ui mt-1">{@hint}</p>
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -368,21 +229,11 @@ defmodule NilaWeb.Components.Input do
 
   defp normalize_value(type, value), do: Phoenix.HTML.Form.normalize_value(type, value)
 
-  # ISO `2026-06-11` -> the operator-facing `11/06/2026`. Passes through anything
-  # that isn't a well-formed ISO date so a bad value stays visible, not swallowed.
-  defp date_display(iso) when is_binary(iso) do
-    case Regex.run(~r/^(\d{4})-(\d{2})-(\d{2})/, iso) do
-      [_, y, m, d] -> "#{d}/#{m}/#{y}"
-      _ -> iso
-    end
-  end
-
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
     <p class="nila-field-error-copy text-ui mt-1.5 flex items-center gap-2">
-      <.icon name="hero-exclamation-circle" class="size-5" />
-      {render_slot(@inner_block)}
+      <.icon name="hero-exclamation-circle" class="size-5" /> {render_slot(@inner_block)}
     </p>
     """
   end

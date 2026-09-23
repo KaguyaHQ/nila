@@ -93,8 +93,7 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
         Map.new(~w(later exclude), fn kind ->
           {kind,
            Enum.map(ItcDecisions.reasons(kind), fn {id, label} -> %{id: id, label: label} end)}
-        end),
-      legacy_url: Workspace.list_path(c.client.id, c.period, c.filter, c.q)
+        end)
     }
   end
 
@@ -387,12 +386,7 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
             original_url: original(c, pair.books)
           }
         end),
-      images: item.images,
-      legacy_url:
-        if(item.kind == :carried,
-          do: Workspace.list_path(c.client.id, c.period, "carried", c.q),
-          else: Workspace.review_path(c.client.id, c.period, item.id, c.filter, c.q)
-        )
+      images: item.images
     }
   end
 

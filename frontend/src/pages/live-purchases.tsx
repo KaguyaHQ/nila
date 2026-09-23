@@ -189,11 +189,6 @@ export function LivePurchasesSummary() {
         key={`${data.client.id}:${data.period}`}
         client={data.client.id}
         period={data.period}
-        importAction={
-          <LegacyAction href={data.links.import_excel} disabled={!data.can_edit}>
-            Import purchase Excel
-          </LegacyAction>
-        }
         portalAvailable={inputs.portal.present}
       />
       <section aria-label="Sources" className="grid gap-4 sm:grid-cols-2">
@@ -202,50 +197,45 @@ export function LivePurchasesSummary() {
             { key: "purchases", title: "Purchase register", input: inputs.books },
             { key: "gstr2b", title: "GSTR-2B", input: inputs.portal },
           ] as const
-        ).map(({ key, title, input }) => (
-          <div key={key} className="rounded-lg border bg-white p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-medium">{title}</h2>
-              {input.present && (
-                <Link
-                  to="/gst/$clientId/$period/purchases/register"
-                  params={{ clientId: String(data.client.id), period: data.period }}
-                  search={{ source: key }}
-                  className="text-sm underline underline-offset-4"
-                >
-                  View register
-                </Link>
-              )}
+        )
+          .filter(({ key, input }) => key !== "purchases" || input.present)
+          .map(({ key, title, input }) => (
+            <div key={key} className="rounded-lg border bg-white p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="font-medium">{title}</h2>
+                {input.present && (
+                  <Link
+                    to="/gst/$clientId/$period/purchases/register"
+                    params={{ clientId: String(data.client.id), period: data.period }}
+                    search={{ source: key }}
+                    className="text-sm underline underline-offset-4"
+                  >
+                    View register
+                  </Link>
+                )}
+              </div>
+              <p className="mt-3 text-lg font-semibold tabular-nums">
+                {input.present ? input.tax : "Not imported"}
+                {input.present && (
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">GST</span>
+                )}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {input.present
+                  ? `${input.count} source ${input.count === 1 ? "document" : "documents"}`
+                  : "No source documents yet"}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {key === "gstr2b" && (
+                  <Gstr2bSource
+                    key={`${data.client.id}:${data.period}`}
+                    client={data.client.id}
+                    period={data.period}
+                  />
+                )}
+              </div>
             </div>
-            <p className="mt-3 text-lg font-semibold tabular-nums">
-              {input.present ? input.tax : "Not imported"}
-              {input.present && (
-                <span className="ml-2 text-sm font-normal text-muted-foreground">GST</span>
-              )}
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {input.present
-                ? `${input.count} source ${input.count === 1 ? "document" : "documents"}`
-                : "No source documents yet"}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {key === "purchases" ? (
-                <>
-                  <LegacyAction href={data.links.import_excel} disabled={!data.can_edit}>
-                    Import Excel
-                  </LegacyAction>
-                  <LegacyAction href={data.links.uploads}>Uploads</LegacyAction>
-                </>
-              ) : (
-                <Gstr2bSource
-                  key={`${data.client.id}:${data.period}`}
-                  client={data.client.id}
-                  period={data.period}
-                />
-              )}
-            </div>
-          </div>
-        ))}
+          ))}
       </section>
       <section
         aria-labelledby="working-heading"
@@ -300,7 +290,7 @@ export function LivePurchasesRegister() {
         <p className="mt-2 text-sm text-muted-foreground">
           {data.overview.comparison_available
             ? "Original records with their reconciliation status."
-            : "Import both sources to compare purchase books with GSTR-2B."}
+            : "Compare existing purchase books with GSTR-2B."}
         </p>
       </header>
       <div className="flex flex-wrap items-center justify-between gap-4">

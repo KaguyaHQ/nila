@@ -1,7 +1,9 @@
-# LiveView assets
+# Static public-page assets
 
-- Preserve existing LiveView components and semantic tokens unless migration is requested.
-- Preserve Tailwind v4 `@import`/`@source` declarations in `css/app.css`; never use `@apply`.
-- Use the existing `app.js` and `app.css` builds. Import dependencies through the build, not external script or stylesheet tags.
-- React has its own Vite build in `frontend/`; do not port LiveView DOM hooks into React controls.
-- Run `mix nila.style_guard` for affected LiveView styles.
+- These assets serve marketing/contact/legal pages, not the React product.
+- Preserve their existing components and semantic tokens unless redesign is requested.
+- Preserve Tailwind v4 import/source declarations; never use `@apply`.
+- Import dependencies through the existing app.js/app.css build.
+- Do not reintroduce LiveView hooks or socket boot code.
+- React and its PDF renderer are in `frontend/` with their own Vite build.
+- Run `mix nila.style_guard` for affected public-page styles.

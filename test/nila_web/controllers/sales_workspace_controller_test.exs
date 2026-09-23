@@ -6,7 +6,8 @@ defmodule NilaWeb.SalesWorkspaceControllerTest do
   alias Nila.Clients
   alias Nila.Gst.Sales.{Months, Review}
   alias Nila.Gst.Sales.Review.{Resolutions, Values}
-  alias NilaWeb.Components.Gst.Month.{Helpers, SalesWorkspace}
+  alias NilaWeb.Gst.SalesFormatting, as: Helpers
+  alias NilaWeb.Gst.SalesPresentation, as: SalesWorkspace
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
@@ -23,7 +24,7 @@ defmodule NilaWeb.SalesWorkspaceControllerTest do
     %{conn: log_in_user(conn, user), client: client, org: org}
   end
 
-  test "returns the effective working and the same summary as LiveView", %{
+  test "returns the effective working and the sales summary projection", %{
     conn: conn,
     client: client,
     org: org

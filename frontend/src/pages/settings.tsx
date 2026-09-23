@@ -21,7 +21,7 @@ import {
 } from "@/lib/settings-api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
-import { ArrowUpRight, Building2, LockKeyhole, Plus, UserRound, Users } from "lucide-react";
+import { Building2, LockKeyhole, Plus, UserRound, Users } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 const sections = [
@@ -242,14 +242,6 @@ export default function SettingsPage() {
                 {item.label}
               </Button>
             ))}
-            {data.can_manage_firm && (
-              <a
-                href="/settings/connectors"
-                className="mt-5 flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground"
-              >
-                Connections <ArrowUpRight className="size-3.5" />
-              </a>
-            )}
           </nav>
           <div key={section} className="max-w-2xl space-y-6">
             {!current ? (

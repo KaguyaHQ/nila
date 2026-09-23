@@ -5,7 +5,8 @@ defmodule NilaWeb.SalesWorkspaceController do
   alias Nila.Gst.Intake.Dumps
   alias Nila.Gst.Sales.{Invoice, Months, Review}
   alias Nila.Gst.Sales.Review.{Resolutions, Values}
-  alias NilaWeb.Components.Gst.Month.{Helpers, SalesWorkspace}
+  alias NilaWeb.Gst.SalesFormatting, as: Helpers
+  alias NilaWeb.Gst.SalesPresentation, as: SalesWorkspace
 
   def show(conn, %{"client_id" => id, "period" => period}) do
     scope = conn.assigns.current_scope
@@ -98,9 +99,7 @@ defmodule NilaWeb.SalesWorkspaceController do
           unfinished: Dumps.unresolved?(dumps, "sales")
         },
         links: %{
-          upload:
-            "/gst/upload?" <>
-              URI.encode_query(%{client_id: client.id, period: period, kind: "sales"}),
+          upload: base <> "/upload",
           uploads: base <> "/uploads",
           working: base,
           purchases: "/gst/#{client.id}/#{period}/purchases"

@@ -48,8 +48,7 @@ defmodule NilaWeb.Components.Card do
 
   @doc """
   Renders a small KPI tile — an uppercase label over a figure — in the moonlight
-  card shell. Pass `value_id` when the figure needs a DOM id (e.g. for tests or
-  LiveView targeting).
+  card shell. Pass `value_id` when the figure needs a DOM id for tests.
 
   ## Examples
 

@@ -127,8 +127,7 @@ config :nila, NilaWeb.Endpoint,
     formats: [html: NilaWeb.ErrorHTML, json: NilaWeb.ErrorJSON],
     layout: false
   ],
-  pubsub_server: Nila.PubSub,
-  live_view: [signing_salt: "ElOKzkeP"]
+  pubsub_server: Nila.PubSub
 
 # Configure the mailer
 #

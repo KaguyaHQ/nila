@@ -6,7 +6,7 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
   alias Nila.Gst.Sales.{Invoice, Months, Processing, Review, Workings, TaxpayerChecks}
   alias Nila.Gst.Sales.Invoice.{Corrections, Validation}
   alias Nila.Gst.Sales.Review.{Resolutions, Values}
-  alias NilaWeb.Gst.{InvoiceWorkbench, SalesBillReview, SalesIssuePresentation}
+  alias NilaWeb.Gst.{InvoiceWorkbench, InvoicePresentation, SalesIssuePresentation}
 
   @facts ~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply narration)
   @totals ~w(printed_total_taxable printed_total_tax printed_grand_total)
@@ -50,7 +50,7 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
         buyer_name: text(invoice["buyer_name"]),
         buyer_gstin: text(invoice["buyer_gstin"]),
         place_of_supply:
-          SalesBillReview.place_of_supply_label(context.item.treatment["place_of_supply"])
+          InvoicePresentation.place_of_supply_label(context.item.treatment["place_of_supply"])
       },
       facts: field_values(invoice, @facts),
       lines:
@@ -69,29 +69,29 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
             Map.new(Invoice.correctable_line_fields(), fn field ->
               {field,
                if(field in @money_fields,
-                 do: SalesBillReview.rupees(line[field]),
-                 else: SalesBillReview.working_number(line[field])
+                 do: InvoicePresentation.rupees(line[field]),
+                 else: InvoicePresentation.working_number(line[field])
                )}
             end)
 
           %{index: index, values: values, display: display}
         end),
       totals:
-        Enum.map(SalesBillReview.invoice_total_rows(invoice), fn row ->
+        Enum.map(InvoicePresentation.invoice_total_rows(invoice), fn row ->
           %{
             field: row.field,
             label: row.label,
             calculated:
               if(is_nil(row.calculated),
                 do: "Not calculated",
-                else: SalesBillReview.rupees(row.calculated)
+                else: InvoicePresentation.rupees(row.calculated)
               ),
             printed:
               if(is_nil(row.printed),
                 do: "Not captured",
-                else: SalesBillReview.rupees(row.printed)
+                else: InvoicePresentation.rupees(row.printed)
               ),
-            difference: if(row.mismatch?, do: SalesBillReview.rupees(row.difference)),
+            difference: if(row.mismatch?, do: InvoicePresentation.rupees(row.difference)),
             status:
               cond do
                 row.matches? -> "matches"
@@ -101,7 +101,7 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
           }
         end),
       printed_totals: field_values(invoice, @totals),
-      checks: NilaWeb.Components.Gst.InvoiceChecks.results(invoice),
+      checks: NilaWeb.Gst.InvoiceCheckPresentation.results(invoice),
       issues:
         Enum.map(context.item.actionable_issues, fn issue ->
           %{
@@ -122,7 +122,7 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
             id: item.source_id,
             number: text(item.invoice["invoice_number"]),
             customer: text(item.invoice["buyer_name"]),
-            amount: SalesBillReview.rupees(Validation.comparison_totals(item.invoice).total),
+            amount: InvoicePresentation.rupees(Validation.comparison_totals(item.invoice).total),
             status: if(item.open_actionable_targets == [], do: "ready", else: "needs_review")
           }
         end),

@@ -23,7 +23,7 @@ defmodule NilaWeb.IntegrationsControllerTest do
         "state" => state(conn, org)
       })
 
-    assert redirected_to(conn) == ~p"/settings/connectors"
+    assert redirected_to(conn) == ~p"/app/settings/workspace"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Confirming the grant"
 
     assert connection = Integrations.first_active_connection(org.id, "microsoft")
@@ -45,7 +45,7 @@ defmodule NilaWeb.IntegrationsControllerTest do
         "state" => state(conn, org)
       })
 
-    assert redirected_to(conn) == ~p"/settings/connectors"
+    assert redirected_to(conn) == ~p"/app/settings/workspace"
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "different Microsoft tenant"
 
     assert is_nil(Integrations.first_active_connection(org.id, "microsoft"))
@@ -59,7 +59,7 @@ defmodule NilaWeb.IntegrationsControllerTest do
         "tenant" => @tenant
       })
 
-    assert redirected_to(conn) == ~p"/settings/connectors"
+    assert redirected_to(conn) == ~p"/app/settings/workspace"
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "connection failed"
     assert is_nil(Integrations.first_active_connection(org.id, "microsoft"))
   end
@@ -73,7 +73,7 @@ defmodule NilaWeb.IntegrationsControllerTest do
         "state" => "not-a-signed-token"
       })
 
-    assert redirected_to(conn) == ~p"/settings/connectors"
+    assert redirected_to(conn) == ~p"/app/settings/workspace"
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "connection failed"
     assert is_nil(Integrations.first_active_connection(org.id, "microsoft"))
   end
@@ -81,38 +81,26 @@ defmodule NilaWeb.IntegrationsControllerTest do
   test "a declined consent says so", %{conn: conn, org: org} do
     conn = get(conn, ~p"/integrations/microsoft/callback", %{"error" => "access_denied"})
 
-    assert redirected_to(conn) == ~p"/settings/connectors"
+    assert redirected_to(conn) == ~p"/app/settings/workspace"
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "not granted"
     assert is_nil(Integrations.first_active_connection(org.id, "microsoft"))
   end
 
-  test "connect requires the tenant and mailbox before leaving for Microsoft", %{conn: conn} do
-    conn = get(conn, ~p"/integrations/microsoft/connect", %{"mailbox" => @mailbox})
-
-    assert redirected_to(conn) == ~p"/settings/connectors"
-    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "tenant ID"
-  end
-
-  test "connect sends the admin to Microsoft with signed state", %{conn: conn} do
-    conn =
-      get(conn, ~p"/integrations/microsoft/connect", %{
-        "tenant_id" => @tenant,
-        "mailbox" => @mailbox
-      })
-
-    assert redirect = redirected_to(conn, 302)
-    assert %URI{host: "login.microsoftonline.com"} = URI.parse(redirect)
-    assert URI.decode_query(URI.parse(redirect).query)["state"]
+  test "new email setup is unavailable while its UI is shelved", %{conn: conn} do
+    for provider <- ["gmail", "microsoft"] do
+      response = get(conn, "/integrations/#{provider}/connect")
+      assert response(response, 410) =~ "unavailable"
+    end
   end
 
   test "an unknown connector redirects instead of raising", %{conn: conn} do
     conn = get(conn, ~p"/integrations/zoho/callback")
 
-    assert redirected_to(conn) == ~p"/settings/connectors"
+    assert redirected_to(conn) == ~p"/app/settings/workspace"
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Unknown connector"
 
     conn = get(conn, ~p"/integrations/zoho/connect")
-    assert redirected_to(conn) == ~p"/settings/connectors"
+    assert response(conn, 410) =~ "unavailable"
   end
 
   defp state(_conn, org) do

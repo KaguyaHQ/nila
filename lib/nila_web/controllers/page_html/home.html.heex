@@ -1,5 +1,4 @@
 <Layouts.flash_group flash={@flash} />
-
 <%!-- Moonlight homepage. Judged against docs/design/TASTE.md:
      delicate type in large space, near-zero borders, one authored moment of
      light, the artifact bigger than the pitch, pulled along by intent. --%>
@@ -7,7 +6,6 @@
   <%!-- ── The night ─────────────────────────────────────────────────────── --%>
   <section class="landing-night relative overflow-hidden">
     <.public_header inverted class="absolute inset-x-0 top-0 z-20" />
-
     <div class="relative z-10 mx-auto max-w-4xl px-6 pt-32 text-center sm:pt-36">
       <div
         class="moon-rise mx-auto flex h-28 items-center justify-center sm:h-32"
@@ -35,9 +33,10 @@
         >
           <.icon name="nila-whatsapp" class="size-4 shrink-0" /> Try one client free
         </.link>
+
         <p class="text-ui mt-4">
           <.link
-            navigate={~p"/contact"}
+            href={~p"/contact"}
             class="decoration-inverse/30 hover:decoration-inverse/60 hover:text-inverse text-inverse/60 underline underline-offset-4 transition"
           >
             Prefer email or a callback?
@@ -45,8 +44,7 @@
         </p>
       </div>
     </div>
-
-    <%!-- Air for the dawn horizon; the artifact below overlaps into it. --%>
+     <%!-- Air for the dawn horizon; the artifact below overlaps into it. --%>
     <div class="h-72 sm:h-80" aria-hidden="true"></div>
   </section>
 
@@ -57,6 +55,7 @@
         <p class="text-ui font-semibold">
           Sundaram Textiles LLP <span class="text-ink-subtle font-normal">· June 2026</span>
         </p>
+
         <p class="text-ink-subtle text-ui inline-flex items-center gap-2 tabular-nums">
           <span class="bg-accent size-2 rounded-full" aria-hidden="true"></span>
           Ready for review · 6:04 AM
@@ -67,9 +66,11 @@
         <p class="text-ink-subtle text-label font-semibold uppercase">
           Input credit reconciled
         </p>
+
         <p class="font-display text-h2 mt-3 leading-none font-normal tabular-nums">
           ₹12,40,318
         </p>
+
         <p class="text-ink-subtle text-ui mt-3 tabular-nums">
           247 of 252 purchase lines matched to GSTR-2B
         </p>
@@ -79,6 +80,7 @@
         <p class="text-ink-subtle text-label font-semibold uppercase">
           Needs you · 5
         </p>
+
         <ul class="mt-4">
           <li
             :for={
@@ -101,6 +103,7 @@
               <span class="font-medium">{vendor}</span>
               <span class="text-ink-subtle block font-light sm:mt-0.5">{issue}</span>
             </p>
+
             <p class="font-display text-ui shrink-0 leading-none tabular-nums">{amount}</p>
           </li>
         </ul>
@@ -115,26 +118,35 @@
   <%!-- ── What reaches Nila ─────────────────────────────────────────────── --%>
   <section class="mx-auto max-w-3xl px-6 pt-32 pb-0 text-center sm:pt-40">
     <p class="text-eyebrow text-ink-subtle font-semibold uppercase">What reaches Nila</p>
+
     <div class="mt-10 grid gap-4 sm:grid-cols-3">
       <div class="landing-tile rounded-box p-5">
         <p class="text-ink-subtle text-label font-semibold uppercase">From your clients</p>
+
         <p class="text-ink-muted text-ui mt-2">Bills, as WhatsApp photos</p>
       </div>
+
       <div class="landing-tile rounded-box p-5">
         <p class="text-ink-subtle text-label font-semibold uppercase">From Tally</p>
+
         <p class="text-ink-muted text-ui mt-2">The purchase register</p>
       </div>
+
       <div class="landing-tile rounded-box p-5">
         <p class="text-ink-subtle text-label font-semibold uppercase">From the portal</p>
+
         <p class="text-ink-muted text-ui mt-2">GSTR-2B</p>
       </div>
     </div>
+
     <p class="text-ink-faint mt-5" aria-hidden="true">↓</p>
+
     <p class="mt-5">
       <span class="bg-inverse-surface rounded-field text-inverse text-ui inline-flex px-4 py-2 font-medium">
         One finished month
       </span>
     </p>
+
     <p class="font-display text-ink-muted text-lead mx-auto mt-10 max-w-md font-light italic">
       Your clients change nothing. The chasing is Nila’s job — done in your
       firm’s name.
@@ -144,12 +156,14 @@
   <%!-- ── A month with Nila ─────────────────────────────────────────────── --%>
   <section class="mx-auto max-w-4xl px-6 pt-32 text-center sm:pt-40">
     <p class="text-eyebrow text-ink-subtle font-semibold uppercase">A month with Nila</p>
+
     <div class="relative mt-12">
       <div
         class="border-rule/70 absolute top-1 right-[12.5%] left-[12.5%] hidden border-t sm:block"
         aria-hidden="true"
       >
       </div>
+
       <div class="grid grid-cols-2 gap-x-6 gap-y-12 sm:grid-cols-4">
         <div
           :for={
@@ -167,6 +181,7 @@
             aria-hidden="true"
           ></span>
           <p class="font-display text-h4 leading-none font-normal">{day}</p>
+
           <p class="text-ink-subtle text-ui max-w-44">{event}</p>
         </div>
       </div>
@@ -189,10 +204,13 @@
       <div class="mt-6 grid grid-cols-2 gap-4">
         <div class="bg-panel-surface rounded-field px-5 py-4">
           <p class="text-ink-subtle text-label font-semibold uppercase">Your register</p>
+
           <p class="font-display text-h4 mt-2 leading-none tabular-nums">₹18,400</p>
         </div>
+
         <div class="bg-panel-surface rounded-field px-5 py-4">
           <p class="text-ink-subtle text-label font-semibold uppercase">GSTR-2B</p>
+
           <p class="font-display text-h4 mt-2 leading-none tabular-nums">₹14,800</p>
         </div>
       </div>
@@ -206,6 +224,7 @@
         <span class="bg-inverse-surface rounded-field text-inverse text-ui inline-flex h-9 items-center px-4 font-medium">
           Claim ₹14,800
         </span>
+
         <span class="ring-rule rounded-field text-ink-muted text-ui inline-flex h-9 items-center px-4 font-medium ring-1">
           Keep ₹18,400
         </span>
@@ -222,9 +241,11 @@
     <h2 class="font-display text-statement font-normal text-balance">
       Turn sales bills into a Tally register in minutes.
     </h2>
+
     <p class="text-ink-muted text-lead mt-6 font-light">
       Try one client free. Send the bills and get the completed register back.
     </p>
+
     <div class="mt-10">
       <.link
         href={whatsapp_url()}
@@ -235,12 +256,12 @@
         <.icon name="nila-whatsapp" class="size-4 shrink-0" /> Try one client free
       </.link>
     </div>
+
     <p class="text-ink-subtle text-ui mt-6">
-      <.link navigate={~p"/contact"} class="hover:text-ink transition">
+      <.link href={~p"/contact"} class="hover:text-ink transition">
         Prefer email or a callback?
       </.link>
     </p>
   </section>
-
-  <.page_footer />
+   <.page_footer />
 </div>

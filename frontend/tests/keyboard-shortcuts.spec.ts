@@ -77,8 +77,6 @@ function purchases(period: string, q: string): PurchasesWorkspace {
       reason: "No sources yet",
     },
     links: {
-      import_excel: `${base}/import-excel`,
-      uploads: `${base}/uploads`,
       portal: base,
       review: `${base}/review`,
       treatment: `${base}/review?filter=treatment`,

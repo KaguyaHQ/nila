@@ -22,9 +22,7 @@ defmodule NilaWeb.PageHTML do
     ~H"""
     <Layouts.flash_group flash={@flash} />
     <div class="landing text-ink min-h-screen">
-      <.public_header />
-      {render_slot(@inner_block)}
-      <.page_footer />
+      <.public_header /> {render_slot(@inner_block)} <.page_footer />
     </div>
     """
   end
@@ -36,11 +34,12 @@ defmodule NilaWeb.PageHTML do
     ~H"""
     <header class={@class}>
       <div class="mx-auto flex h-20 max-w-5xl items-center justify-between px-6">
-        <.link navigate={~p"/"} class="inline-flex items-center">
+        <.link href={~p"/"} class="inline-flex items-center">
           <.logo class={["h-6 w-auto", @inverted && "text-inverse/90", !@inverted && "text-ink"]} />
         </.link>
+
         <.link
-          navigate={~p"/users/log_in"}
+          href={~p"/users/log_in"}
           class={[
             "text-ui font-medium transition",
             @inverted && "hover:text-inverse text-inverse/60",
@@ -64,11 +63,14 @@ defmodule NilaWeb.PageHTML do
     <main class="mx-auto max-w-5xl px-6 pt-16 pb-28 sm:pt-24 sm:pb-36">
       <header class="max-w-3xl">
         <p class="text-eyebrow text-ink-subtle font-semibold uppercase">{@eyebrow}</p>
+
         <h1 class="font-display text-statement mt-6 font-normal text-balance">{@title}</h1>
+
         <div class="mt-5">
           <.context_text tag="p">Last updated {@updated}</.context_text>
         </div>
       </header>
+
       <article class="mt-12 max-w-3xl space-y-10">
         {render_slot(@inner_block)}
       </article>
@@ -80,14 +82,16 @@ defmodule NilaWeb.PageHTML do
     ~H"""
     <footer class="mx-auto max-w-5xl px-6 pb-10">
       <div class="border-rule/60 flex flex-col items-center gap-4 border-t pt-8 sm:flex-row sm:justify-between">
-        <.link navigate={~p"/"} class="inline-flex items-center">
+        <.link href={~p"/"} class="inline-flex items-center">
           <.logo class="text-ink-subtle h-5 w-auto" />
         </.link>
+
         <nav class="text-ink-subtle text-ui flex items-center gap-6">
-          <.link navigate={~p"/contact"} class="hover:text-ink transition">Contact</.link>
-          <.link navigate={~p"/privacy"} class="hover:text-ink transition">Privacy</.link>
-          <.link navigate={~p"/terms"} class="hover:text-ink transition">Terms</.link>
+          <.link href={~p"/contact"} class="hover:text-ink transition">Contact</.link>
+          <.link href={~p"/privacy"} class="hover:text-ink transition">Privacy</.link>
+          <.link href={~p"/terms"} class="hover:text-ink transition">Terms</.link>
         </nav>
+
         <.context_text tag="p">© 2026 Nila · Kaguya Media Private Limited</.context_text>
       </div>
     </footer>

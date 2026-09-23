@@ -9435,12 +9435,6 @@
           "links": {
             "type": "object",
             "properties": {
-              "import_excel": {
-                "type": "string"
-              },
-              "uploads": {
-                "type": "string"
-              },
               "portal": {
                 "type": "string"
               },
@@ -9455,8 +9449,6 @@
               }
             },
             "required": [
-              "import_excel",
-              "uploads",
               "portal",
               "review",
               "treatment",
@@ -9886,9 +9878,6 @@
                       "type": "string"
                     }
                   },
-                  "legacy_url": {
-                    "type": "string"
-                  },
                   "source_basis": {
                     "anyOf": [
                       {
@@ -9911,7 +9900,6 @@
                   "case_ids",
                   "comparisons",
                   "images",
-                  "legacy_url",
                   "source_basis"
                 ],
                 "additionalProperties": false
@@ -10078,9 +10066,6 @@
             ],
             "additionalProperties": false
           },
-          "legacy_url": {
-            "type": "string"
-          },
           "books_available": {
             "type": "boolean"
           }
@@ -10097,7 +10082,6 @@
           "item",
           "cases",
           "reasons",
-          "legacy_url",
           "books_available"
         ],
         "additionalProperties": false

@@ -16,7 +16,7 @@ defmodule NilaWeb.LocalUploadController do
 
   alias Nila.Storage
 
-  # Matches the intake ceiling in `NilaWeb.Gst.UploadLive`.
+  # Matches the sales intake upload limit.
   @max_bytes 50_000_000
 
   def update(conn, %{"token" => token}) do

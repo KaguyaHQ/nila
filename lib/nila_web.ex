@@ -26,7 +26,6 @@ defmodule NilaWeb do
       # Import common connection and controller functions to use in pipelines
       import Plug.Conn
       import Phoenix.Controller
-      import Phoenix.LiveView.Router
     end
   end
 
@@ -43,23 +42,6 @@ defmodule NilaWeb do
       import Plug.Conn
 
       unquote(verified_routes())
-    end
-  end
-
-  def live_view do
-    quote do
-      use Phoenix.LiveView
-      alias NilaWeb.UserAuth
-
-      unquote(html_helpers())
-    end
-  end
-
-  def live_component do
-    quote do
-      use Phoenix.LiveComponent
-
-      unquote(html_helpers())
     end
   end
 
@@ -83,24 +65,12 @@ defmodule NilaWeb do
       # Core UI components
       import NilaWeb.Components.Button
       import NilaWeb.Components.Input
-      import NilaWeb.Components.Modal
       import NilaWeb.Components.Flash
       import NilaWeb.Components.Icon
       import NilaWeb.Components.Logo
       import NilaWeb.Components.Badge
       import NilaWeb.Components.Card
-      import NilaWeb.Components.Fold
       import NilaWeb.Components.Typography
-      import NilaWeb.Components.Table
-      import NilaWeb.Components.Menu
-      import NilaWeb.Components.KeyboardShortcuts
-      import NilaWeb.Components.Page
-      import NilaWeb.Components.Form
-      import NilaWeb.Components.Feedback
-      import NilaWeb.Components.ChaseHistory
-      import NilaWeb.Components.Evidence
-      import NilaWeb.Components.SelectableList
-      import NilaWeb.Components.LedgerPicker
 
       import Nila.Formatters,
         only: [
@@ -118,7 +88,6 @@ defmodule NilaWeb do
         ]
 
       # Common modules used in templates
-      alias Phoenix.LiveView.JS
       alias NilaWeb.Layouts
 
       # Routes generation with the ~p sigil
@@ -136,7 +105,7 @@ defmodule NilaWeb do
   end
 
   @doc """
-  When used, dispatch to the appropriate controller/live_view/etc.
+  When used, dispatch to the appropriate controller or HTML module.
   """
   defmacro __using__(which) when is_atom(which) do
     apply(__MODULE__, which, [])

@@ -22,7 +22,7 @@ defmodule Nila.AccountsFixtures do
   end
 
   def org_fixture(attrs \\ %{}) do
-    n = System.unique_integer([:positive])
+    n = System.unique_integer([:positive, :monotonic])
 
     attrs =
       Enum.into(attrs, %{
@@ -34,12 +34,13 @@ defmodule Nila.AccountsFixtures do
     Orgs.create_org!(attrs)
   end
 
-  # A structurally-valid, unique GSTIN per org: vary the 4-digit PAN body for
-  # uniqueness, then pick the check digit that satisfies Nila.Gstin.valid?/1
+  # Vary a PAN letter as well as the digits so a long test run does not wrap
+  # after 10,000 generated identifiers. Then calculate a valid check digit
   # (only 36 candidates), so entities that validate their GSTIN accept it.
   defp unique_gstin(n) do
     body = n |> Integer.to_string() |> String.pad_leading(4, "0") |> String.slice(-4, 4)
-    prefix = "29ABCDE#{body}F1Z"
+    letter = <<?A + rem(div(n, 10_000), 26)>>
+    prefix = "29ABCD#{letter}#{body}F1Z"
 
     check =
       Enum.find(String.graphemes("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"), fn c ->

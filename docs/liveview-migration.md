@@ -1,43 +1,40 @@
-# Remaining LiveView migration
+# Frontend ownership
 
-Auth now uses React/shadcn at the existing `/users/*` URLs. Native forms post to
-Phoenix; sessions, remember-me, invitations, password reset and verification stay
-in Accounts/UserAuth. Signup remains invite-only and redirects to Contact.
-The email-change token endpoint is a controller returning to React settings.
+React in `frontend/` owns the product UI and authentication pages. Phoenix owns
+sessions, permissions, GST/accounting rules, persistence, jobs and HTTP APIs.
+There are no LiveView pages, components, routes or `/live` socket.
 
-## Duplicate screens removed
+Static marketing, contact, legal and error pages still use Phoenix controllers
+and HEEx. The `phoenix_live_view` dependency remains because it provides
+`Phoenix.Component` and HEEx rendering/formatting; the browser does not load its
+runtime. `assets/` serves the static public pages. The PDF renderer and its
+vendored PDF.js files live in `frontend/`.
 
-- Clients list/new/edit, notices list/detail, settings profile/security/workspace/users.
-- Purchases overview/register/invoice review; GSTR-2B connection/fetching.
+## Retired UI
 
-Retired URLs are removed. There is no bookmark compatibility layer.
-Retained screens link directly to React.
-API, export, download and evidence controllers remain.
+- All duplicate GST, clients, notices, settings and authentication LiveViews.
+- Today/work queue, banking, batch viewer accounting mode and Tally pairing.
+- GSTR-3B, without a replacement screen.
+- Sales/purchase Excel import and purchase upload history. Existing imported
+  records remain in the React registers. The Elixir import engines, templates,
+  backend tests and stored data remain. Sales Excel UI will be designed using
+  real client spreadsheets; purchase Excel UI is undecided.
+- Email/WhatsApp connection setup. GST connection setup remains in React.
+- Development LiveDashboard and the old design-system gallery.
 
-## Shared sales code still to separate
+Retired URLs are removed, without compatibility redirects. React navigation
+memory is the sole client/month navigation contract. Sales API projections live
+in `lib/nila_web/gst/`, independently of templates.
 
-- Sales summary/register/checks and month review still live in `MonthLive`.
-  The old GSTR-3B route, screen and UI sign-off handlers are now removed.
-  Backend calculations and sign-off rules remain unchanged.
-- The batch viewer and invoice viewer include Tally/accounting work. Audit those
-  entry paths with the deferred Tally scope before removing their modules.
+## Shelved integrations
 
-## Still needed or explicitly deferred
-
-- Excel import screens and purchase upload history: preserve existing React handoffs.
-- Generic `/gst/upload` intake: inspect its remaining callers and supported formats.
-- GSTR-3B UI: retired with no replacement. The former URL is no longer routed.
-- Banking and Tally connector/pairing: shelved, removal is a separate decision.
-- Marketing/contact/legal pages: server-rendered controllers, not LiveView.
-- Development LiveDashboard/design reference: not product migration blockers.
-
-## Cleanup order
-
-1. Remove the remaining old sales routes and their `MonthLive` UI.
-2. Resolve the remaining batch/invoice viewer dependency on Tally work.
-3. Decide and migrate remaining import flows.
-4. Audit banking/Tally jobs, data and shared dependencies before removing shelved code.
-5. Remove LiveView dependencies/assets only when no retained routes use them.
+Tally, banking and messaging domain code, data, jobs and existing connector
+transport remain. New Tally pairings and email setup return HTTP 410 rather than
+starting a flow whose UI has been removed. Already-started email callbacks and
+approved Tally pairing exchanges remain supported. Existing integrations are
+not disconnected, and schedules are not changed by this UI cleanup. Their
+configuration must be managed through backend operations until a new UI is
+approved. This pass does not inspect or modify production integration state.
 
 Historical pre-React code is archived privately in `KaguyaHQ/nila-pre-react-archive`
 at `3328ee29e4f09c667e39b42132c65bbd6c3f3c1b`. This is code history, not a data backup.

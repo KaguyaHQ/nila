@@ -2,7 +2,6 @@
    https://tailwindcss.com/docs/configuration */
 
 @import "tailwindcss" source(none);
-@import "../vendor/pdfjs/text_layer.css";
 @source "../css";
 @source "../js";
 @source "../../lib/nila_web";
@@ -969,69 +968,6 @@
   --text-eyebrow--letter-spacing: 0.18em;
 }
 
-/* Add variants based on LiveView classes */
-@custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
-@custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
-@custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
-
-/* Make LiveView wrapper divs transparent for layout */
-[data-phx-session], [data-phx-teleported-src] { display: contents }
-
-/* Keep the final rows reachable above floating actions, including when the
-   controls wrap. Reserve this space even without a selection so toggling the
-   bar cannot change the scroll position at the end of the table. */
-.nila-work-area-with-bottom-bar {
-  padding-bottom: calc(var(--spacing-canvas) * 4);
-}
-
-.nila-bottom-bar-motion {
-  animation: bottom-bar-enter var(--transition-duration-fast) var(--ease-standard);
-}
-
-@keyframes bottom-bar-enter {
-  from { opacity: 0; transform: translateY(var(--spacing-related)); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .nila-bottom-bar-motion { animation: none; }
-}
-
-/* Floating actions use the shell's sea-blue ground. Inputs keep their light
-   surfaces; only transparent controls need inverse ink and interaction fills. */
-.nila-bottom-bar .nila-button:is([data-variant="ghost"], [data-variant="outline"]) {
-  --nila-button-ink: var(--color-neutral-content);
-  --nila-button-hover-bg: var(--white-a2);
-  --nila-button-active-bg: var(--white-a3);
-}
-
-.nila-bottom-bar .nila-button[data-variant="outline"]:not(:disabled):not([aria-disabled="true"]) {
-  box-shadow: inset 0 0 0 1px var(--white-a7);
-}
-
-.nila-bottom-bar .nila-button:focus-visible {
-  outline-color: var(--color-neutral-content);
-}
-
-.nila-bottom-bar .nila-button:disabled,
-.nila-bottom-bar .nila-button[aria-disabled="true"],
-.nila-bottom-bar .nila-badge[data-variant="neutral"] {
-  background: var(--gray-2);
-  color: var(--nila-ink-a11);
-}
-
-@media (min-width: 40rem) {
-  .nila-work-area-with-bottom-bar {
-    padding-bottom: calc(var(--spacing-canvas) * 2.5);
-  }
-}
-
-@media (min-width: 80rem) {
-  .nila-work-area-with-bottom-bar {
-    padding-bottom: calc(var(--spacing-canvas) * 2);
-  }
-}
-
 /* Restore pointer cursor on buttons — Tailwind v4 Preflight follows the
    browser default (arrow), but users expect pointer on web controls. */
 @layer base {
@@ -1318,10 +1254,7 @@ body {
   background: var(--gray-2);
 }
 
-.nila-file-drop.phx-drop-target-active {
-  border-color: var(--accent-a8);
-  background: var(--accent-a3);
-}
+
 
 .nila-file-accent,
 .nila-workings-reference {
@@ -2013,37 +1946,11 @@ body {
   background: var(--error-a3);
 }
 
-dialog[phx-hook="Modal"] {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100dvh;
-  max-width: none;
-  max-height: none;
-  margin: 0;
-  border: 0;
-  padding: 0;
-  color: inherit;
-}
-
 .nila-modal-scrim {
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--color-overlay);
-}
-
-dialog[phx-hook="Modal"]:not([open]) {
-  display: none;
-}
-
-dialog[phx-hook="Modal"]::backdrop {
-  background: transparent;
-}
-
-html:has(dialog[phx-hook="Modal"]:modal),
-body:has(dialog[phx-hook="Modal"]:modal) {
-  overflow: hidden;
 }
 
 .nila-modal-scrim .nila-modal-body {

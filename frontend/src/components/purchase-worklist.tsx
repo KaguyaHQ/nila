@@ -30,7 +30,7 @@ import { purchaseSearch, stringifySearch } from "@/lib/route-search";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const treatmentLabels: Record<string, string> = {
   claim: "Claim this month",
@@ -42,12 +42,10 @@ export function PurchaseWorklist({
   client,
   period,
   portalAvailable,
-  importAction,
 }: {
   client: number;
   period: string;
   portalAvailable: boolean;
-  importAction: ReactNode;
 }) {
   const params = useSearch({ from: "/gst/$clientId/$period/purchases" });
   const setParams = useNavigate({ from: "/gst/$clientId/$period/purchases/" });
@@ -198,7 +196,6 @@ export function PurchaseWorklist({
           <p className="text-muted-foreground">
             Showing GSTR-2B documents. Purchase register not imported.
           </p>
-          {importAction}
         </div>
       )}
       {saved && (
@@ -316,7 +313,7 @@ export function PurchaseWorklist({
                   >
                     {data?.queue.length
                       ? "No purchases match these filters."
-                      : "Import purchase records or fetch GSTR-2B to begin."}
+                      : "Fetch GSTR-2B to begin."}
                   </TableCell>
                 </TableRow>
               )}

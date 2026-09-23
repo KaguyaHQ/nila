@@ -5,9 +5,6 @@ defmodule NilaWeb.Components.Flash do
   use Phoenix.Component
 
   import NilaWeb.Components.Icon
-  import NilaWeb.Components.Modal, only: [hide: 2]
-
-  alias Phoenix.LiveView.JS
 
   @doc """
   Renders flash notices.
@@ -15,14 +12,7 @@ defmodule NilaWeb.Components.Flash do
   ## Examples
 
       <.flash kind={:info} flash={@flash} />
-      <.flash
-        id="welcome-back"
-        kind={:info}
-        phx-mounted={show("#welcome-back") |> JS.remove_attribute("hidden")}
-        hidden
-      >
-        Welcome Back!
-      </.flash>
+      <.flash kind={:info}>Welcome back!</.flash>
   """
   attr :id, :string, doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
@@ -48,14 +38,15 @@ defmodule NilaWeb.Components.Flash do
         <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
         <div class="nila-alert-copy">
           <p :if={@title} class="font-semibold">{@title}</p>
+
           <p>{msg}</p>
         </div>
-        <div class="flex-1" />
+         <div class="flex-1" />
         <button
           type="button"
           class="nila-alert-close"
           aria-label="Close notification"
-          phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
+          data-dismiss-flash={@id}
         >
           <.icon name="hero-x-mark" class="size-4" />
         </button>

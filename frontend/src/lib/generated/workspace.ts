@@ -1567,8 +1567,6 @@ export interface components {
                 reason: string | null;
             };
             links: {
-                import_excel: string;
-                uploads: string;
                 portal: string;
                 review: string;
                 treatment: string;
@@ -1657,7 +1655,6 @@ export interface components {
                     correction: components["schemas"]["PurchaseCorrectionAmounts"] | null;
                 }[];
                 images: string[];
-                legacy_url: string;
                 source_basis: string | null;
             };
             cases: {
@@ -1691,7 +1688,6 @@ export interface components {
                     label: string;
                 }[];
             };
-            legacy_url: string;
             books_available: boolean;
         };
         Gstr2bState: {

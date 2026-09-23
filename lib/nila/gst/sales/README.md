@@ -51,9 +51,8 @@ Source edits invalidate the affected month review, but cannot alter filed months
 corrections apply only under that month's flagged-field policy. Source edits are
 applied before month decisions. Keep those scopes separate when adding an editor.
 
-`NilaWeb.Gst.SalesBillReview.SourceEditor` saves source edits and prepares form
-errors. `SalesBillReview` coordinates selected-invoice refresh and Tally previews;
-the source editor does not choose ledgers or send vouchers.
+`NilaWeb.Gst.SalesReviewWorkspace` calls source corrections and prepares review
+responses for React. Tally domain code remains separate from the GST review UI.
 
 `Gstr1.project/2` produces both the portal return and the contribution of each
 included source. Per-invoice review values must use that projection (or full

@@ -4,33 +4,12 @@ defmodule NilaWeb.TallyPairingController do
   alias Nila.RateLimiter
   alias Nila.TallyDevices
 
-  @create_scale_ms :timer.hours(1)
-  @create_limit 20
   @exchange_scale_ms :timer.minutes(1)
   @exchange_limit 60
-  @global_create_limit 10_000
   @global_exchange_limit 10_000
 
-  def create(conn, %{"device_name" => device_name} = params) when is_binary(device_name) do
-    with :allow <-
-           RateLimiter.check(
-             "tally_pairing:create:global",
-             @create_scale_ms,
-             @global_create_limit
-           ),
-         :allow <-
-           RateLimiter.check(
-             create_bucket(conn, device_name),
-             @create_scale_ms,
-             @create_limit
-           ) do
-      create_pairing(conn, device_name, params["connector_version"])
-    else
-      :deny -> rate_limited(conn, 3600)
-    end
-  end
-
-  def create(conn, _params), do: error(conn, :unprocessable_entity, "invalid_request")
+  # Pairing UI is shelved. Never issue a code with a dead approval URL.
+  def create(conn, _params), do: error(conn, :gone, "pairing_unavailable")
 
   def exchange(conn, %{"device_code" => device_code})
       when is_binary(device_code) and byte_size(device_code) <= 128 do
@@ -59,27 +38,6 @@ defmodule NilaWeb.TallyPairingController do
       |> send_resp(:no_content, "")
     else
       _reason -> error(conn, :unauthorized, "invalid_device")
-    end
-  end
-
-  defp create_pairing(conn, device_name, connector_version) do
-    case TallyDevices.create_pairing(%{
-           device_name: device_name,
-           connector_version: connector_version
-         }) do
-      {:ok, pairing} ->
-        conn
-        |> no_store()
-        |> put_status(:created)
-        |> json(%{
-          device_code: pairing.device_code,
-          verification_url: url(~p"/settings/connectors/tally/pair/#{pairing.approval_code}"),
-          expires_in: pairing.expires_in,
-          retry_after: 2
-        })
-
-      {:error, _changeset} ->
-        error(conn, :unprocessable_entity, "invalid_request")
     end
   end
 
@@ -116,13 +74,6 @@ defmodule NilaWeb.TallyPairingController do
     uri = URI.parse(NilaWeb.Endpoint.url())
     scheme = if uri.scheme == "https", do: "wss", else: "ws"
     URI.to_string(%{uri | scheme: scheme, path: "/connector/websocket", query: "vsn=2.0.0"})
-  end
-
-  defp create_bucket(conn, device_name) do
-    peer = conn.remote_ip |> :inet.ntoa() |> to_string()
-    normalized_name = device_name |> String.trim() |> String.downcase()
-    digest = :crypto.hash(:sha256, peer <> ":" <> normalized_name) |> Base.encode16(case: :lower)
-    "tally_pairing:create:#{digest}"
   end
 
   defp secret_bucket(device_code) do

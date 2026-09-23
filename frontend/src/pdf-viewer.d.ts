@@ -1,6 +1,6 @@
-declare module "*pdf_viewer.js" {
+declare module "*pdf-viewer.js" {
   export const PdfViewer: {
-    mounted(): void;
-    destroyed(): void;
+    mount(): void;
+    destroy(): void;
   };
 }

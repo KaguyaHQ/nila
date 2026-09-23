@@ -36,7 +36,8 @@ defmodule NilaWeb.PurchaseWorkspaceControllerTest do
     refute body["inputs"]["portal"]["present"]
     refute body["overview"]["complete"]
     refute body["working"]["enabled"]
-    assert body["links"]["import_excel"] == "/gst/#{c.client.id}/2026-08/purchases/import-excel"
+    refute Map.has_key?(body["links"], "import_excel")
+    refute Map.has_key?(body["links"], "uploads")
     assert get_resp_header(response, "cache-control") == ["private, no-store"]
   end
 

@@ -41,10 +41,6 @@ defmodule NilaWeb.UserAuth do
     user_token = get_session(conn, :user_token)
     user_token && Accounts.delete_user_session_token(user_token)
 
-    if live_socket_id = get_session(conn, :live_socket_id) do
-      NilaWeb.Endpoint.broadcast(live_socket_id, "disconnect", %{})
-    end
-
     conn
     |> renew_session()
     |> delete_resp_cookie(@remember_me_cookie)
@@ -91,120 +87,6 @@ defmodule NilaWeb.UserAuth do
     conn
     |> assign(:current_scope, scope)
     |> assign(:current_user, user)
-  end
-
-  def on_mount(:mount_current_scope, _params, session, socket) do
-    {:cont, mount_current_scope(socket, session)}
-  end
-
-  @doc """
-  Tracks the current request target in `:current_path` so the shell can both
-  highlight the active sidebar entry and preserve relevant query context when
-  switching clients. Re-runs on every `live_patch` / `live_navigate` via the
-  attached `handle_params` hook.
-  """
-  def on_mount(:mount_current_path, _params, _session, socket) do
-    socket =
-      Phoenix.LiveView.attach_hook(socket, :mount_current_path, :handle_params, fn
-        _params, url, socket ->
-          uri = URI.parse(url)
-          request_target = uri.path <> if(uri.query, do: "?#{uri.query}", else: "")
-          {:cont, Phoenix.Component.assign(socket, :current_path, request_target)}
-      end)
-
-    {:cont, socket}
-  end
-
-  def on_mount(:require_authenticated, _params, session, socket) do
-    socket = mount_current_scope(socket, session)
-
-    if socket.assigns.current_scope do
-      {:cont, socket}
-    else
-      socket =
-        Phoenix.LiveView.redirect(socket, to: ~p"/users/log_in")
-
-      {:halt, socket}
-    end
-  end
-
-  def on_mount(:require_verified, _params, session, socket) do
-    socket = mount_current_scope(socket, session)
-
-    cond do
-      is_nil(socket.assigns.current_scope) ->
-        {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/users/log_in")}
-
-      verified?(socket.assigns.current_scope) ->
-        {:cont, socket}
-
-      true ->
-        socket =
-          socket
-          |> Phoenix.LiveView.put_flash(:error, "Verify your email first.")
-          |> Phoenix.LiveView.redirect(to: ~p"/users/confirm")
-
-        {:halt, socket}
-    end
-  end
-
-  def on_mount(:require_firm, _params, session, socket) do
-    socket =
-      if Map.has_key?(socket.assigns, :current_scope),
-        do: socket,
-        else: mount_current_scope(socket, session)
-
-    if firm_scope?(socket.assigns.current_scope),
-      do: {:cont, socket},
-      else: {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(socket))}
-  end
-
-  def on_mount(:redirect_if_authenticated, _params, session, socket) do
-    socket = mount_current_scope(socket, session)
-
-    if socket.assigns.current_scope do
-      {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(socket))}
-    else
-      {:cont, socket}
-    end
-  end
-
-  def on_mount({:require, capability}, _params, session, socket) do
-    socket = mount_current_scope(socket, session)
-
-    authorize(socket, capability)
-  end
-
-  def on_mount({:authorize, capability}, _params, _session, socket) do
-    authorize(socket, capability)
-  end
-
-  defp authorize(socket, capability) do
-    scope = socket.assigns[:current_scope]
-
-    cond do
-      is_nil(scope) ->
-        {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/users/log_in")}
-
-      not verified?(scope) ->
-        socket =
-          socket
-          |> Phoenix.LiveView.put_flash(:error, "Verify your email first.")
-          |> Phoenix.LiveView.redirect(to: ~p"/users/confirm")
-
-        {:halt, socket}
-
-      Policy.can?(scope, capability) ->
-        {:cont, socket}
-
-      true ->
-        socket =
-          socket
-          |> Phoenix.LiveView.put_flash(:error, "You don't have access to that area.")
-          |> Phoenix.LiveView.redirect(to: signed_in_path(socket))
-
-        {:halt, socket}
-    end
   end
 
   def redirect_if_user_is_authenticated(conn, _opts) do
@@ -287,50 +169,6 @@ defmodule NilaWeb.UserAuth do
 
   defp verified?(%Scope{user: %{confirmed_at: confirmed_at}}), do: not is_nil(confirmed_at)
 
-  defp mount_current_scope(socket, session) do
-    socket =
-      Phoenix.Component.assign_new(socket, :current_scope, fn ->
-        with token when not is_nil(token) <- session["user_token"],
-             user when not is_nil(user) <- Accounts.get_user_by_session_token(token) do
-          scope = scope_for_user(user, session["current_client_id"])
-
-          case NilaWeb.WorkspaceNavigation.validate(scope, session["workspace_navigation"]) do
-            {:ok, workspace} -> %{scope | workspace_navigation: workspace}
-            _ -> scope
-          end
-        end
-      end)
-
-    socket =
-      Phoenix.Component.assign_new(socket, :workspace_navigation, fn ->
-        case NilaWeb.WorkspaceNavigation.validate(
-               socket.assigns.current_scope,
-               session["workspace_navigation"]
-             ) do
-          {:ok, workspace} -> workspace
-          _ -> nil
-        end
-      end)
-
-    mount_session_disconnect(socket)
-  end
-
-  defp mount_session_disconnect(%{assigns: %{current_scope: %Scope{user: user}}} = socket) do
-    if Phoenix.LiveView.connected?(socket) do
-      NilaWeb.Endpoint.subscribe(user_sessions_topic(user))
-    end
-
-    Phoenix.LiveView.attach_hook(socket, :disconnect_user_sessions, :handle_info, fn
-      %Phoenix.Socket.Broadcast{event: "disconnect_user_sessions"}, socket ->
-        {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/users/log_in")}
-
-      _message, socket ->
-        {:cont, socket}
-    end)
-  end
-
-  defp mount_session_disconnect(socket), do: socket
-
   defp scope_for_user(nil, _client_id), do: nil
   defp scope_for_user(%Nila.Accounts.User{active: false}, _client_id), do: nil
 
@@ -381,7 +219,6 @@ defmodule NilaWeb.UserAuth do
   defp put_token_in_session(conn, token) do
     conn
     |> put_session(:user_token, token)
-    |> put_session(:live_socket_id, "users_sessions:#{Base.url_encode64(token)}")
   end
 
   defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}) do
@@ -409,9 +246,4 @@ defmodule NilaWeb.UserAuth do
 
   defp signed_in_path(%Plug.Conn{} = conn),
     do: elem(NilaWeb.WorkspaceNavigation.home(conn, conn.assigns[:current_scope]), 1)
-
-  defp signed_in_path(%{assigns: %{workspace_navigation: %{} = workspace}}),
-    do: NilaWeb.WorkspaceNavigation.path(workspace)
-
-  defp signed_in_path(_conn_or_socket), do: ~p"/app/clients"
 end

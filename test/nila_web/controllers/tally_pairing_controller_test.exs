@@ -6,23 +6,10 @@ defmodule NilaWeb.TallyPairingControllerTest do
   alias Nila.Accounts.Scope
   alias Nila.TallyDevices
 
-  test "creates a no-store pairing and exchanges it after browser approval", %{conn: conn} do
-    conn =
-      post(conn, ~p"/api/tally/pairings", %{
-        "device_name" => "Accounts PC",
-        "connector_version" => "0.1.0"
-      })
-
-    assert %{
-             "device_code" => device_code,
-             "verification_url" => verification_url,
-             "expires_in" => 600,
-             "retry_after" => 2
-           } = json_response(conn, 201)
-
-    assert get_resp_header(conn, "cache-control") == ["no-store"]
-    assert verification_url =~ "/settings/connectors/tally/pair/"
-    approval_code = verification_url |> URI.parse() |> Map.fetch!(:path) |> Path.basename()
+  test "existing approved pairings can still exchange credentials" do
+    {:ok, pairing} = TallyDevices.create_pairing(%{device_name: "Accounts PC"})
+    device_code = pairing.device_code
+    approval_code = pairing.approval_code
 
     pending_conn =
       post(build_conn(), ~p"/api/tally/pairings/exchange", %{device_code: device_code})
@@ -55,9 +42,9 @@ defmodule NilaWeb.TallyPairingControllerTest do
              json_response(repeated_conn, 200)
   end
 
-  test "rejects malformed pairing requests", %{conn: conn} do
+  test "new pairing is unavailable while its UI is shelved", %{conn: conn} do
     conn = post(conn, ~p"/api/tally/pairings", %{"device_name" => String.duplicate("x", 121)})
-    assert %{"error" => "invalid_request"} = json_response(conn, 422)
+    assert %{"error" => "pairing_unavailable"} = json_response(conn, 410)
   end
 
   test "a linked device can revoke its own credential", %{conn: conn} do

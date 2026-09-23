@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import { ChevronLeft, ChevronRight, Download, Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PdfViewer } from "../../../assets/js/hooks/pdf_viewer.js";
-import "../../../assets/vendor/pdfjs/text_layer.css";
+import { PdfViewer } from "@/lib/pdf-viewer.js";
+import "../../vendor/pdfjs/text_layer.css";
 
 // The existing renderer owns this subtree until unmount. Keying by source and
 // selected pages keeps React from reconciling the canvases it manages.
@@ -33,11 +33,11 @@ function PdfSurface({
   useEffect(() => {
     if (!root.current) return;
     const renderer = Object.assign({ el: root.current, zoom: 1 }, PdfViewer);
-    renderer.mounted();
+    renderer.mount();
     if (zoom) renderer.zoom = zoom.current;
     return () => {
       if (zoom) zoom.current = renderer.zoom;
-      renderer.destroyed();
+      renderer.destroy();
     };
   }, [zoom]);
 

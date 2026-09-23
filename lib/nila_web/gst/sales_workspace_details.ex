@@ -1,7 +1,9 @@
 defmodule NilaWeb.Gst.SalesWorkspaceDetails do
   @moduledoc "Formatted GSTR-1 detail tables using the existing workspace projections."
 
-  alias NilaWeb.Components.Gst.Month.{SalesWorkspace, HsnSummary, Helpers}
+  alias NilaWeb.Gst.SalesPresentation, as: SalesWorkspace
+  alias NilaWeb.Gst.HsnPresentation, as: HsnSummary
+  alias NilaWeb.Gst.SalesFormatting, as: Helpers
 
   def build(workings, client, period, opts \\ []) do
     filed? = Keyword.get(opts, :filed, false)
