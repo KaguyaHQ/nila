@@ -1,3 +1,4 @@
+import { review } from "./fixtures/purchase-review";
 import { expect, test, type Page } from "@playwright/test";
 import type { PurchasesWorkspace } from "../src/lib/purchases-api";
 
@@ -149,6 +150,21 @@ function workspace(): PurchasesWorkspace {
 }
 
 async function setup(page: Page, data = workspace()) {
+  await page.route("**/api/workspace/purchases/1/2026-06/review?*", (route) => {
+    const list = review();
+    list.books_available = data.inputs.books.present;
+    list.filter = "all";
+    if (
+      !data.inputs.books.present &&
+      !data.inputs.portal.present &&
+      !data.overview.itc.carried_count
+    ) {
+      list.queue = [];
+      list.cases = [];
+      list.item = null;
+    }
+    return route.fulfill({ json: list });
+  });
   await page.route("**/gstr2b", (route) =>
     route.fulfill({
       json: {
@@ -319,12 +335,10 @@ test("GSTR-2B treatment stays available without purchase books", async ({ page }
   data.working.status = "Draft working";
   await setup(page, data);
   await page.goto("/app/gst/1/2026-06/purchases");
-  await expect(
-    page.getByText("Review GSTR-2B to record ITC decisions.", { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByRole("region", { name: "Purchase worklist" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Review purchases" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open reconciliation" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Import purchase Excel" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Import Excel" })).toHaveAttribute(
     "href",
     data.links.import_excel,
   );
@@ -341,6 +355,13 @@ test("GSTR-2B treatment stays available without purchase books", async ({ page }
     page.getByRole("region", { name: "Sources" }).getByText("GST", { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Books tax" })).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "Comparison", exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText("Showing GSTR-2B documents. Purchase register not imported."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Import purchase Excel", exact: true }),
+  ).toHaveAttribute("href", data.links.import_excel);
   await expect(page.getByText("Claim", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("portal-only-overview.png"), fullPage: true });
   await page.getByRole("link", { name: "Review purchases" }).click();
@@ -405,4 +426,125 @@ test("API access errors do not look like empty books", async ({ page }) => {
   await page.goto("/app/gst/1/2026-06/purchases");
   await expect(page.getByRole("alert")).toHaveText("You cannot view this client.");
   await expect(page.getByText("No source documents yet")).toHaveCount(0);
+});
+
+test("purchase worklist saves a selection only after server confirmation", async ({
+  page,
+}, info) => {
+  await setup(page);
+  const current = review();
+  current.filter = "all";
+  current.queue[1].bulk_eligible = false;
+  current.queue[1].bucket = "mismatch";
+  current.queue[1].status = "Value mismatch";
+  await page.route("**/review?*", (route) => route.fulfill({ json: current }));
+  let writes = 0;
+  await page.route("**/review/bulk-treatment?*", (route) => {
+    writes++;
+    expect(route.request().postDataJSON()).toMatchObject({
+      case_ids: [1],
+      basis: { "1": "basis-1" },
+      values: { choice: "exclude", exclude_reason: "blocked_credit" },
+    });
+    current.cases[0].values.choice = "exclude";
+    return route.fulfill({ json: current });
+  });
+  await page.goto("/app/gst/1/2026-06/purchases");
+  await expect(page.getByRole("checkbox", { name: "Select P-002", exact: true })).toBeDisabled();
+  await page.getByRole("checkbox", { name: "Select P-001", exact: true }).check();
+  await page.getByRole("button", { name: "Set ITC treatment" }).click();
+  await page.getByLabel("Treatment", { exact: true }).selectOption("exclude");
+  await page.getByLabel("Reason", { exact: true }).selectOption("blocked_credit");
+  await page.getByRole("button", { name: "Save treatment", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Treatment saved for 1 invoice.");
+  await expect(page.getByRole("row").filter({ hasText: "P-001" })).toContainText("Do not claim");
+  expect(writes).toBe(1);
+  await page.getByLabel("Filter purchases").selectOption("undecided");
+  await expect(page.getByRole("row").filter({ hasText: "P-001" })).toHaveCount(0);
+  await page.getByLabel("Filter purchases").selectOption("all");
+  await page.screenshot({ path: info.outputPath("purchase-worklist.png"), fullPage: true });
+});
+
+test("bulk stale response preserves decisions and requires refreshing selection", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.route("**/review/bulk-treatment?*", (route) =>
+    route.fulfill({
+      status: 409,
+      json: { error: "This purchase changed. Review again.", code: "stale" },
+    }),
+  );
+  await page.goto("/app/gst/1/2026-06/purchases");
+  await page.getByRole("checkbox", { name: "Select eligible invoices" }).check();
+  await page.getByRole("button", { name: "Set ITC treatment" }).click();
+  await page.getByLabel("Treatment", { exact: true }).selectOption("claim");
+  await page.getByRole("button", { name: "Save treatment", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("This purchase changed");
+  await expect(page.getByRole("button", { name: "Save treatment", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Set ITC treatment" })).toHaveCount(0);
+});
+
+test("long purchase list keeps sources reachable and returns to the chosen filter", async ({
+  page,
+}, info) => {
+  await setup(page);
+  const current = review();
+  current.filter = "all";
+  current.queue = Array.from({ length: 34 }, (_, i) => ({
+    ...current.queue[0],
+    id: `item-${i}`,
+    number: `INV-${i + 1}`,
+    case_ids: [i + 1],
+  }));
+  current.cases = Array.from({ length: 34 }, (_, i) => ({
+    ...current.cases[0],
+    id: i + 1,
+    number: `INV-${i + 1}`,
+  }));
+  await page.route("**/review?*", (route) => route.fulfill({ json: current }));
+  await page.route("**/review/item-0?*", (route) =>
+    route.fulfill({
+      json: { ...current, item: { ...current.item!, id: "item-0", number: "INV-1" } },
+    }),
+  );
+  await page.goto("/app/gst/1/2026-06/purchases?work=undecided&q=INV");
+  await expect(page.getByText("34 review items")).toBeVisible();
+  const container = page
+    .getByRole("region", { name: "Purchase worklist" })
+    .locator('[data-slot="table-container"]');
+  expect(await container.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  await page.screenshot({ path: info.outputPath("purchase-month-34.png"), fullPage: true });
+  await page
+    .getByRole("row")
+    .filter({ hasText: "INV-1" })
+    .first()
+    .getByRole("link", { name: "Review", exact: true })
+    .click();
+  await expect(page.getByRole("heading", { name: "Purchase INV-1" })).toBeVisible();
+  await page.getByRole("link", { name: "Back to purchases" }).click();
+  await expect(page).toHaveURL(/purchases\?work=undecided&q=INV$/);
+  await expect(page.getByLabel("Filter purchases")).toHaveValue("undecided");
+});
+
+test("deferred invoices show their original month without a comparison column", async ({
+  page,
+}, info) => {
+  const data = workspace();
+  data.inputs.books.present = false;
+  data.inputs.portal.present = false;
+  await setup(page, data);
+  await page.route("**/api/workspace/purchases/1/2026-06/review?*", (route) => {
+    const list = review();
+    list.books_available = false;
+    list.queue[0].bucket = "carried";
+    list.queue[0].origin_period = "2026-04";
+    list.queue = [list.queue[0]];
+    return route.fulfill({ json: list });
+  });
+  await page.goto("/app/gst/1/2026-06/purchases");
+  await expect(page.getByText("From April 2026 · carried forward")).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Comparison", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("deferred-origin.png"), fullPage: true });
 });

@@ -6,6 +6,8 @@ defmodule NilaWeb.PurchaseReviewController do
   def show(conn, params), do: dispatch(conn, params, :show)
   def treatment(conn, params), do: dispatch(conn, params, :treatment)
   def document(conn, params), do: dispatch(conn, params, :document)
+  def source(conn, params), do: dispatch(conn, params, :source)
+  def bulk_treatment(conn, params), do: dispatch(conn, Map.put(params, "bulk", true), :treatment)
 
   defp dispatch(conn, %{"client_id" => id, "period" => period} = params, action) do
     scope = conn.assigns[:current_scope]
@@ -68,6 +70,13 @@ defmodule NilaWeb.PurchaseReviewController do
   defp perform(:show, _, _), do: :ok
   defp perform(_, %{signed_off?: true}, _), do: {:error, :signed_off}
 
+  defp perform(:source, context, params) do
+    case NilaWeb.Gst.PurchaseSourceReview.apply(context, params) do
+      {:ok, _} -> :ok
+      error -> error
+    end
+  end
+
   defp perform(action, context, params) do
     case Workspace.decide(context, params, action) do
       {:ok, _} -> :ok
@@ -77,10 +86,26 @@ defmodule NilaWeb.PurchaseReviewController do
 
   defp refresh(:show, context, _, _, _, _), do: {:ok, context}
 
+  defp refresh(:source, _, scope, client, period, params) do
+    case Workspace.load(scope, client, period, params) do
+      {:error, :not_found} -> Workspace.load(scope, client, period, Map.delete(params, "item_id"))
+      result -> result
+    end
+  end
+
   defp refresh(_, _, scope, client, period, params),
     do: Workspace.load(scope, client, period, params)
 
   defp message(:invalid_amount), do: "Enter rupee amounts with no more than two decimal places."
+
+  defp message(:unchanged), do: "Change at least one amount before saving."
+
+  defp message(:treated_source_cannot_be_removed),
+    do: "Change the existing ITC treatment before changing this source."
+
+  defp message(:treatment_prevents_source_move),
+    do: "Change the existing ITC treatment before changing this source."
+
   defp message(:invalid_amounts), do: message(:invalid_amount)
 
   defp message(:amounts_do_not_balance),
@@ -95,6 +120,9 @@ defmodule NilaWeb.PurchaseReviewController do
 
   defp message(:pairing_pending), do: "Resolve the possible pairing before setting ITC treatment."
 
+  defp message(:individual_review_required),
+    do: "These invoices need individual review before treatment."
+
   defp message(:claim_not_available),
     do: "Claim is blocked. Review the document and its checks first."
 
@@ -108,6 +136,8 @@ defmodule NilaWeb.PurchaseReviewController do
 
   defp message(:already_allocated),
     do: "This credit is included in a signed working. Reopen it before changing treatment."
+
+  defp message(reason) when is_binary(reason), do: reason
 
   defp message(_), do: "Choose an available purchase and a valid ITC treatment."
 

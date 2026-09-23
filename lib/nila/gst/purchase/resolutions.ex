@@ -63,11 +63,12 @@ defmodule Nila.Gst.Purchase.Resolutions do
   end
 
   @doc "Records a batch of decisions and atomically refreshes the effective projection."
-  def record_many_and_refresh(%Month{} = month, attrs_list, decided_by_id) do
+  def record_many_and_refresh(%Month{} = month, attrs_list, decided_by_id, opts \\ []) do
     Repo.transact(fn ->
       month = lock_month(month)
 
       with :ok <- refuse_signed(month),
+           :ok <- check_source_basis(month, opts[:expected_source_basis]),
            :ok <- protect_later_treatments(month, attrs_list),
            {:ok, resolutions} <- insert_all(month, attrs_list, decided_by_id),
            :ok <- ItcCases.separate_rejected_pairs(month, attrs_list, decided_by_id),
@@ -90,6 +91,21 @@ defmodule Nila.Gst.Purchase.Resolutions do
          }}
       end
     end)
+  end
+
+  def source_basis(month, projection \\ nil) do
+    projection = projection || workings(month)
+
+    {month.id, projection.recon, projection.case_lines}
+    |> :erlang.term_to_binary()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.url_encode64(padding: false)
+  end
+
+  defp check_source_basis(_, nil), do: :ok
+
+  defp check_source_basis(month, basis) do
+    if source_basis(month) == basis, do: :ok, else: {:error, :stale}
   end
 
   def record_itc_case_event_and_refresh(
@@ -123,6 +139,8 @@ defmodule Nila.Gst.Purchase.Resolutions do
   defp lock_month(%Month{id: id}) do
     Repo.one!(from m in Month, where: m.id == ^id, lock: "FOR UPDATE")
   end
+
+  defp refuse_signed(%Month{filed_at: filed}) when not is_nil(filed), do: {:error, :signed_off}
 
   defp refuse_signed(%Month{} = month) do
     case Signoffs.latest_signoff(month.id) do

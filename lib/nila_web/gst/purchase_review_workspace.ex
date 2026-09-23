@@ -105,6 +105,7 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
          true <- Enum.all?(ids, &(is_integer(&1) and &1 > 0)),
          basis when is_map(basis) <- params["basis"],
          :ok <- selected(c, ids),
+         :ok <- bulk_selection(c, ids, params),
          {:ok, attrs} <- values(params["values"], action),
          :ok <- split_selection(ids, attrs) do
       opts = [expected_basis: basis]
@@ -123,6 +124,23 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
       {:error, _} = error -> error
       _ -> {:error, :invalid_selection}
     end
+  end
+
+  defp bulk_selection(c, ids, params) do
+    if params["bulk"] == true or (is_nil(params["item_id"]) and length(ids) > 1) do
+      allowed =
+        c.queue |> Enum.filter(&bulk_eligible?(c, &1)) |> Enum.flat_map(& &1.treatment_case_ids)
+
+      if Enum.all?(ids, &(&1 in allowed)), do: :ok, else: {:error, :individual_review_required}
+    else
+      :ok
+    end
+  end
+
+  defp bulk_eligible?(_c, item) do
+    Map.get(item, :bucket, "carried") in ~w(matched 2b_only carried) and
+      not Map.get(item, :flagged?, false) and length(item.treatment_case_ids) == 1 and
+      not Map.get(item, :treatment_stale?, false)
   end
 
   defp selected(c, ids) do
@@ -187,7 +205,11 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
       id: item.id,
       number: item.invoice_number || "—",
       vendor: item.vendor || "—",
+      bucket: Map.get(item, :bucket, "carried"),
+      origin_period: if(item.kind == :carried, do: hd(item.treatment_lines).origin_period),
+      treatment_stale: Map.get(item, :treatment_stale?, false),
       status: review_label(c, item),
+      bulk_eligible: bulk_eligible?(c, item),
       tax: Workspace.money(Map.get(item, :tax_paise, 0)),
       needs_review:
         if(item.kind == :carried,
@@ -341,6 +363,10 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
       pairing_pending:
         Enum.any?(item.treatment_lines, &MapSet.member?(c.pending_case_ids, &1.case_id)),
       case_ids: item.treatment_case_ids,
+      source_basis:
+        if(c.month && item.kind == :books,
+          do: Nila.Gst.Purchase.Resolutions.source_basis(c.month, c.workings)
+        ),
       comparisons:
         comparisons
         |> Enum.with_index()
@@ -349,6 +375,14 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
             id: "comparison-#{index}",
             has_books: not is_nil(pair.books),
             has_portal: not is_nil(pair.gstr2b),
+            books_id: if(item.kind == :books && pair.books, do: pair.books["id"]),
+            portal_ref:
+              if(pair.gstr2b, do: Nila.Gst.Purchase.Reconciliation.gstr2b_ref(pair.gstr2b)),
+            can_pair: item.kind == :books && item.bucket == "possible" && not item.resolved,
+            correction:
+              if(item.kind == :books && pair.books,
+                do: NilaWeb.Gst.PurchaseSourceReview.correction(pair.books)
+              ),
             facts: facts(pair.books, pair.gstr2b),
             original_url: original(c, pair.books)
           }

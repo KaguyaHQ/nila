@@ -260,7 +260,7 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
     response =
       c.conn
       |> post(
-        c.path <> "/treatment",
+        c.path <> "/" <> URI.encode_www_form(body["item"]["id"]) <> "/treatment",
         payload(body["cases"], %{choice: "later", later_reason: "review_pending"})
       )
       |> contract_response(422)
@@ -322,6 +322,7 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
     september = String.replace(c.path, "2026-08", "2026-09")
     carried = c.conn |> get(september, %{filter: "needs_review"}) |> contract_response(200)
     assert length(carried["queue"]) == 1
+    assert hd(carried["queue"])["origin_period"] == "2026-08"
     url = hd(carried["item"]["comparisons"])["original_url"]
     assert url == "/gst/#{c.client.id}/2026-08/original/#{dump.id}/0"
     assert c.conn |> get(url) |> response(200) == "original workbook"
@@ -339,6 +340,118 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
     all = c.conn |> get(september, %{filter: "carried"}) |> contract_response(200)
     assert length(all["queue"]) == 1
     refute hd(all["queue"])["needs_review"]
+  end
+
+  test "source correction keeps audit evidence and refuses stale and foreign sources", c do
+    month = seed(c, [invoice("BOOK", "ONE")], [invoice(nil, "ONE")])
+    body = c.conn |> get(c.path, %{filter: "all"}) |> contract_response(200)
+    pair = hd(body["item"]["comparisons"])
+    path = c.path <> "/" <> URI.encode_www_form(body["item"]["id"]) <> "/source?filter=all"
+
+    attrs = %{
+      action: "correct",
+      books_id: "BOOK",
+      source_basis: body["item"]["source_basis"],
+      amounts:
+        Map.merge(pair["correction"], %{
+          "taxable_paise" => "11000.00",
+          "total_paise" => "12800.00"
+        }),
+      reason: "Verified original invoice"
+    }
+
+    c.conn |> post(path, %{attrs | books_id: "foreign"}) |> contract_response(422)
+    c.conn |> post(path, %{attrs | source_basis: "stale"}) |> contract_response(409)
+    c.conn |> post(path, %{attrs | reason: ""}) |> contract_response(422)
+
+    c.conn
+    |> post(path, %{attrs | amounts: Map.put(attrs.amounts, "total_paise", "1.00")})
+    |> contract_response(422)
+
+    assert Resolutions.list(month.id) == []
+    fresh = c.conn |> post(path, attrs) |> contract_response(200)
+    assert fresh["item"]
+    events = Resolutions.list(month.id)
+    assert length(events) == 2
+    assert Enum.all?(events, &(&1.payload["reason"] == "Verified original invoice"))
+    assert Enum.any?(events, &(&1.payload["from"] == 1_000_000 && &1.payload["to"] == 1_100_000))
+    c.conn |> post(path, attrs) |> contract_response(409)
+  end
+
+  test "suggested pairing can be confirmed or rejected with current source basis", c do
+    month = seed(c, [invoice("BOOK", "INV-123")], [invoice(nil, "INV-128")])
+    body = c.conn |> get(c.path, %{filter: "all"}) |> contract_response(200)
+    pair = hd(body["item"]["comparisons"])
+    assert pair["can_pair"]
+    refute hd(body["queue"])["bulk_eligible"]
+    path = c.path <> "/" <> URI.encode_www_form(body["item"]["id"]) <> "/source?filter=all"
+
+    attrs = %{
+      action: "confirm_pair",
+      books_id: "BOOK",
+      portal_ref: pair["portal_ref"],
+      source_basis: body["item"]["source_basis"]
+    }
+
+    c.conn |> post(path, %{attrs | portal_ref: "foreign"}) |> contract_response(422)
+    c.conn |> post(path, %{attrs | source_basis: "stale"}) |> contract_response(409)
+    c.conn |> post(path, attrs) |> contract_response(200)
+    assert Enum.any?(Resolutions.list(month.id), &(&1.verb == "confirm_pair"))
+  end
+
+  test "suggested pairing can be rejected without confirming or claiming it", c do
+    month = seed(c, [invoice("BOOK", "INV-123")], [invoice(nil, "INV-128")])
+    body = c.conn |> get(c.path, %{filter: "all"}) |> contract_response(200)
+    pair = hd(body["item"]["comparisons"])
+    assert pair["can_pair"]
+    refute hd(body["queue"])["bulk_eligible"]
+    path = c.path <> "/" <> URI.encode_www_form(body["item"]["id"]) <> "/source?filter=all"
+
+    attrs = %{
+      action: "reject_pair",
+      books_id: "BOOK",
+      portal_ref: pair["portal_ref"],
+      source_basis: body["item"]["source_basis"]
+    }
+
+    c.conn |> post(path, %{attrs | portal_ref: "foreign"}) |> contract_response(422)
+    c.conn |> post(path, %{attrs | source_basis: "stale"}) |> contract_response(409)
+    c.conn |> post(path, attrs) |> contract_response(200)
+    assert Enum.any?(Resolutions.list(month.id), &(&1.verb == "reject_pair"))
+  end
+
+  test "bulk endpoint refuses differences without writing any treatments", c do
+    changed = invoice("BOOK", "ONE") |> Map.put("taxable_paise", 2_000_000)
+    seed(c, [changed], [invoice(nil, "ONE")])
+    body = c.conn |> get(c.path, %{filter: "all"}) |> contract_response(200)
+    refute hd(body["queue"])["bulk_eligible"]
+
+    result =
+      c.conn
+      |> post(
+        c.path <> "/bulk-treatment?filter=all",
+        payload(body["cases"], %{choice: "later", later_reason: "review_pending"})
+      )
+      |> contract_response(422)
+
+    assert result["code"] == "individual_review_required"
+  end
+
+  test "bulk treatment is atomic when one selected basis is stale", c do
+    seed(c, [], [invoice(nil, "ONE"), invoice(nil, "TWO")])
+    body = c.conn |> get(c.path, %{filter: "all"}) |> contract_response(200)
+    assert Enum.all?(body["queue"], & &1["bulk_eligible"])
+    attrs = payload(body["cases"], %{choice: "later", later_reason: "review_pending"})
+    id = hd(body["cases"])["id"] |> to_string()
+    stale = %{attrs | basis: Map.put(attrs.basis, id, "stale")}
+    c.conn |> post(c.path <> "/bulk-treatment?filter=all", stale) |> contract_response(409)
+    unchanged = c.conn |> get(c.path, %{filter: "all"}) |> contract_response(200)
+    assert Enum.all?(unchanged["cases"], &is_nil(&1["values"]["choice"]))
+
+    saved =
+      c.conn |> post(c.path <> "/bulk-treatment?filter=all", attrs) |> contract_response(200)
+
+    assert Enum.all?(saved["cases"], &(&1["values"]["choice"] == "later"))
   end
 
   defp payload(lines, values),

@@ -1,4 +1,4 @@
-import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
+import { PurchaseWorklist } from "@/components/purchase-worklist";
 import { createContext, useContext } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -10,14 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { MonthPicker } from "@/components/month-picker";
-import {
-  Table,
-  TableHeader,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
 import { ApiError } from "@/lib/sales-api";
 import { fetchPurchases, type PurchasesWorkspace } from "@/lib/purchases-api";
 
@@ -109,20 +101,6 @@ function LegacyAction({
   );
 }
 
-function ReviewAction({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      nativeButton={false}
-      role="link"
-      render={<Link to={href} />}
-    >
-      {children}
-    </Button>
-  );
-}
-
 function PeriodControl() {
   const data = usePurchases();
   const navigate = useNavigate();
@@ -183,11 +161,36 @@ export function LivePurchasesSummary() {
         </div>
       </header>
       {data.lock_reason && <p className="text-sm text-muted-foreground">{data.lock_reason}</p>}
-      {data.notice && (
-        <p role="status" className="rounded-lg border bg-white p-4 text-sm">
+      {(data.processing || inputs.portal.needs_import) && data.notice && (
+        <p role="status" className="text-sm text-muted-foreground">
           {data.notice}
         </p>
       )}
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
+        <span>
+          <strong>{overview.itc.claim}</strong> claim this month
+        </span>
+        <span>
+          <strong>{overview.itc.later}</strong> claim later
+        </span>
+        <span>
+          <strong>{overview.itc.excluded}</strong> do not claim
+        </span>
+        <span className="text-muted-foreground">
+          {overview.itc.pending} tax awaiting treatment.
+        </span>
+      </div>
+      <PurchaseWorklist
+        key={`${data.client.id}:${data.period}`}
+        client={data.client.id}
+        period={data.period}
+        importAction={
+          <LegacyAction href={data.links.import_excel} disabled={!data.can_edit}>
+            Import purchase Excel
+          </LegacyAction>
+        }
+        portalAvailable={inputs.portal.present}
+      />
       <section aria-label="Sources" className="grid gap-4 sm:grid-cols-2">
         {(
           [
@@ -207,7 +210,7 @@ export function LivePurchasesSummary() {
                 </Link>
               )}
             </div>
-            <p className="mt-4 text-2xl font-semibold tabular-nums">
+            <p className="mt-3 text-lg font-semibold tabular-nums">
               {input.present ? input.tax : "Not imported"}
               {input.present && (
                 <span className="ml-2 text-sm font-normal text-muted-foreground">GST</span>
@@ -218,7 +221,7 @@ export function LivePurchasesSummary() {
                 ? `${input.count} source ${input.count === 1 ? "document" : "documents"}`
                 : "No source documents yet"}
             </p>
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               {key === "purchases" ? (
                 <>
                   <LegacyAction href={data.links.import_excel} disabled={!data.can_edit}>
@@ -237,137 +240,29 @@ export function LivePurchasesSummary() {
           </div>
         ))}
       </section>
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <section
-          aria-labelledby="reconciliation-heading"
-          className="overflow-hidden rounded-lg border bg-white"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3 p-5">
-            <div>
-              <h2 id="reconciliation-heading" className="font-semibold">
-                Reconciliation
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {overview.comparison_available
-                  ? overview.remaining === 0
-                    ? "No reconciliation items await review."
-                    : `${overview.remaining} ${overview.remaining === 1 ? "item needs" : "items need"} review.`
-                  : !inputs.books.present
-                    ? "Import purchases to compare with GSTR-2B."
-                    : "Fetch GSTR-2B to compare with purchase books."}
-              </p>
-            </div>
-            {overview.comparison_available ? (
-              <ReviewAction href={data.links.review}>
-                Open reconciliation <ArrowRight />
-              </ReviewAction>
-            ) : (
-              !inputs.books.present && (
-                <LegacyAction href={data.links.import_excel} disabled={!data.can_edit}>
-                  Import purchase Excel
-                </LegacyAction>
-              )
-            )}
-          </div>
-          {overview.comparison_available && (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Result</TableHead>
-                  <TableHead className="text-right">Items</TableHead>
-                  <TableHead className="text-right">Books tax</TableHead>
-                  <TableHead className="text-right">GSTR-2B tax</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {overview.buckets.map((bucket) => (
-                  <RecordTableRow key={bucket.id}>
-                    <TableCell>
-                      <RecordTableLink
-                        to={`${basePath(data)}/review?${new URLSearchParams({ filter: bucket.id })}`}
-                        className="underline underline-offset-4"
-                      >
-                        {bucket.label}
-                      </RecordTableLink>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{bucket.count}</TableCell>
-                    <TableCell className="text-right tabular-nums">{bucket.books_tax}</TableCell>
-                    <TableCell className="text-right tabular-nums">{bucket.portal_tax}</TableCell>
-                  </RecordTableRow>
-                ))}
-              </TableBody>
-            </Table>
+      <section
+        aria-labelledby="working-heading"
+        className="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-white p-5"
+      >
+        <div>
+          <h2 id="working-heading" className="font-semibold">
+            Purchase working
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">{data.working.status}</p>
+          {data.working.reason && (
+            <p className="mt-1 text-sm text-muted-foreground">{data.working.reason}</p>
           )}
-        </section>
-        <aside className="space-y-5">
-          <section aria-labelledby="itc-heading" className="rounded-lg border bg-white p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 id="itc-heading" className="font-semibold">
-                  ITC treatment
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {overview.itc.recorded
-                    ? `${overview.itc.pending} tax awaiting treatment.`
-                    : "No ITC treatment recorded yet."}{" "}
-                  {!inputs.books.present &&
-                    inputs.portal.present &&
-                    "Review GSTR-2B to record ITC decisions."}
-                </p>
-              </div>
-            </div>
-            {overview.itc.recorded && (
-              <dl className="mt-5 grid gap-3">
-                {[
-                  { label: "Claim", value: overview.itc.claim },
-                  { label: "Later", value: overview.itc.later },
-                  { label: "Excluded", value: overview.itc.excluded },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-baseline justify-between gap-3">
-                    <dt className="text-sm text-muted-foreground">{item.label}</dt>
-                    <dd className="text-base font-semibold tabular-nums">{item.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            )}
-            {overview.itc.carried_count > 0 && (
-              <p className="mt-5 text-sm">
-                <Link to={data.links.carried} className="underline underline-offset-4">
-                  {overview.itc.carried_count} carried{" "}
-                  {overview.itc.carried_count === 1 ? "entry" : "entries"}
-                </Link>
-                {overview.itc.stale_count > 0 &&
-                  ` · ${overview.itc.stale_count} need a fresh check`}
-              </p>
-            )}
-          </section>
-          <section
-            aria-labelledby="working-heading"
-            className="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-white p-5"
-          >
-            <div>
-              <h2 id="working-heading" className="font-semibold">
-                Purchase working
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">{data.working.status}</p>
-              {data.working.reason && (
-                <p className="mt-1 text-sm text-muted-foreground">{data.working.reason}</p>
-              )}
-              {draft && !data.working.reason && !overview.comparison_available && (
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {!inputs.books.present
-                    ? "Purchase register not imported."
-                    : "GSTR-2B not imported."}{" "}
-                  Reconciliation is pending.
-                </p>
-              )}
-            </div>
-            <LegacyAction href={data.working.url} disabled={!data.working.enabled}>
-              {draft ? "Download draft working" : "Download working"}
-            </LegacyAction>
-          </section>
-        </aside>
-      </div>
+          {draft && !data.working.reason && !overview.comparison_available && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {!inputs.books.present ? "Purchase register not imported." : "GSTR-2B not imported."}{" "}
+              Reconciliation is pending.
+            </p>
+          )}
+        </div>
+        <LegacyAction href={data.working.url} disabled={!data.working.enabled}>
+          {draft ? "Download draft working" : "Download working"}
+        </LegacyAction>
+      </section>
     </div>
   );
 }

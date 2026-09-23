@@ -89,3 +89,28 @@ export function recordPurchaseDocument(
     body,
   );
 }
+
+export function saveBulkPurchaseTreatment(
+  client: string,
+  period: string,
+  body: components["schemas"]["PurchaseTreatment"],
+  signal: AbortSignal,
+) {
+  return request(`${base(client, period)}/bulk-treatment?filter=all`, signal, body);
+}
+
+export function decidePurchaseSource(
+  client: string,
+  period: string,
+  item: string,
+  filter: string,
+  q: string,
+  body: components["schemas"]["PurchaseSourceDecision"],
+  signal: AbortSignal,
+) {
+  return request(
+    `${base(client, period)}/${encodeURIComponent(item)}/source?${new URLSearchParams({ filter, q })}`,
+    signal,
+    body,
+  );
+}

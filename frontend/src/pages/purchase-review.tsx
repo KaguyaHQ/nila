@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Badge } from "@/components/ui/badge";
+import { PurchaseSourceActions } from "@/components/purchase-source-actions";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -31,8 +32,8 @@ import {
 const choices: { id: TreatmentChoice; label: string }[] = [
   { id: "claim", label: "Claim this month" },
   { id: "later", label: "Claim later" },
-  { id: "exclude", label: "Exclude" },
-  { id: "split", label: "Split amounts" },
+  { id: "exclude", label: "Do not claim" },
+  { id: "split", label: "Split treatment" },
 ];
 const blankValues = (): TreatmentValues => ({
   choice: null,
@@ -118,10 +119,13 @@ function Review({
   const [resetVersion, setResetVersion] = useState(0);
   const [values, setValues] = useState<TreatmentValues>(blankValues);
   const [saved, setSaved] = useState("");
+  const [sourceEditing, setSourceEditing] = useState(false);
 
   const operation = useRef<AbortController | null>(null);
   const openingCases = useRef<PurchaseReviewData["cases"]>([]);
   const base = `/gst/${data.client.id}/${data.period}/purchases`;
+  const returnTo = params.get("return_to");
+  const backTo = returnTo === base || returnTo?.startsWith(`${base}?`) ? returnTo : base;
   const item = data.item;
   const position = data.queue.findIndex((row) => row.id === selectedId);
   const previous = data.queue[position - 1];
@@ -266,7 +270,7 @@ function Review({
       if (operation.current === write.controller) operation.current = null;
     },
   });
-  const busy = mutation.isPending;
+  const busy = mutation.isPending || sourceEditing;
   const canEdit = !blocked && !busy && !refreshing && !loading && editorRevision === revision;
   const error = mutation.error?.message ?? null;
   const selectionKey = queryKey.join("/");
@@ -378,7 +382,7 @@ function Review({
     <main className="flex h-screen flex-col overflow-hidden bg-background">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b bg-card px-6 py-4">
         <Link
-          to={base}
+          to={backTo}
           onClick={(event) => {
             if (busy || dirty) event.preventDefault();
           }}
@@ -575,6 +579,12 @@ function Review({
                       </dl>
                     </div>
                   )}
+                  <PurchaseSourceActions
+                    data={data}
+                    pair={comparison}
+                    disabled={!data.can_edit || dirty || mutation.isPending || refreshing}
+                    onEditing={setSourceEditing}
+                  />
                   {comparison.original_url && (
                     <a
                       href={comparison.original_url}
@@ -612,7 +622,7 @@ function Review({
                     <p className="font-medium">
                       {entry.number} ·{" "}
                       {choices.find((choice) => choice.id === entry.values.choice)?.label ??
-                        "No treatment recorded"}
+                        "Not decided yet"}
                     </p>
                     {entry.values.later_reason && (
                       <p className="text-muted-foreground">
@@ -635,7 +645,7 @@ function Review({
                             <dt className="inline font-medium">{head.label}: </dt>
                             <dd className="inline">
                               Claim ₹{entry.values.split.claim[head.id]} · Later ₹
-                              {entry.values.split.later[head.id]} · Exclude ₹
+                              {entry.values.split.later[head.id]} · Do not claim ₹
                               {entry.values.split.exclude[head.id]}
                             </dd>
                           </div>
@@ -739,12 +749,12 @@ function Review({
                       disabled={!canEdit || choiceBlocked("split")}
                       onClick={() => setValues((current) => ({ ...current, choice: "split" }))}
                     >
-                      Split amounts
+                      Split treatment
                     </Button>
                     {cases.length > 1 && (
                       <p className="text-sm text-muted-foreground">
-                        This decision applies to all {cases.length} invoices. Split amounts requires
-                        one invoice.
+                        This decision applies to all {cases.length} invoices. Split treatment
+                        requires one invoice.
                       </p>
                     )}
                     {(["later", "exclude"] as const)
@@ -789,7 +799,7 @@ function Review({
                                       ? "Claim"
                                       : part === "later"
                                         ? "Later"
-                                        : "Exclude"}
+                                        : "Do not claim"}
                                   </span>
                                   <Input
                                     aria-label={`${head.label} ${part}`}
@@ -853,7 +863,7 @@ function Review({
                         variant="outline"
                         disabled={!canEdit || !values.choice || choiceBlocked(values.choice)}
                       >
-                        {busy ? "Saving…" : "Save"}
+                        {mutation.isPending ? "Saving…" : "Save"}
                       </Button>
                       <Button
                         type="button"
@@ -866,15 +876,6 @@ function Review({
                     </div>
                   </form>
                 )}
-                <a
-                  href={item.legacy_url}
-                  onClick={(event) => {
-                    if (busy || dirty) event.preventDefault();
-                  }}
-                  className="inline-block text-xs text-muted-foreground underline underline-offset-4"
-                >
-                  Open source corrections and pairing
-                </a>
               </section>
             </>
           )}

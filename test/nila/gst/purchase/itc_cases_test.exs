@@ -214,9 +214,8 @@ defmodule Nila.Gst.Purchase.ItcCasesTest do
     assert april_after.identity_state == april_before.identity_state
     assert april_after.books_periods == ["2026-04"]
 
-    assert [june_line] = ItcCases.list_for_month(june)
-    assert june_line.case_id == target_case.id
-    assert june_line.books_periods == ["2026-04"]
+    # Moving historical membership does not enroll an undecided bill in June.
+    assert [] == ItcCases.list_for_month(june)
 
     assert [initial_link, later_unlink, later_link] =
              Repo.all(
@@ -390,6 +389,16 @@ defmodule Nila.Gst.Purchase.ItcCasesTest do
     assert treated.treatment_heads["exclude"]["cess"] == 2000
   end
 
+  test "historical intake stays in its source month until deliberately deferred", context do
+    old = put_month!(context, "2020-08", [], [invoice(nil, "HISTORY", ~D[2020-08-12])])
+    september = put_month!(context, "2026-09", [], [])
+    assert [original] = ItcCases.list_for_month(old)
+    assert original.treatment == "undecided"
+    assert [] == ItcCases.list_for_month(september)
+    assert [] == Resolutions.workings(september).case_lines
+    assert [^original] = ItcCases.list_for_month(old)
+  end
+
   test "explicit treatment carries only the outstanding amount across months", context do
     heads = %{"cgst" => 5000, "sgst" => 5000, "igst" => 0, "cess" => 0}
     portal = invoice(nil, "CARRY-1", ~D[2026-08-12]) |> Map.put("tax_paise", heads)
@@ -397,6 +406,13 @@ defmodule Nila.Gst.Purchase.ItcCasesTest do
     [line] = ItcCases.list_for_month(august)
     scope = Scope.for_user(context.user)
     assert line.treatment == "undecided"
+
+    assert [] ==
+             ItcCases.list_for_month(%Nila.Gst.Purchase.Month{
+               org_id: context.org.id,
+               client_id: context.client.id,
+               period: "2026-09"
+             })
 
     assert {:ok, _} =
              ItcDecisions.apply(scope, context.client.id, "2026-08", [line.case_id], %{

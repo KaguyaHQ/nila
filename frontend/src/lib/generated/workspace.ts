@@ -1104,6 +1104,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspace/purchases/{client_id}/{period}/review/{item_id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Requires the Phoenix session and X-CSRF-Token header. */
+        post: operations["decidePurchaseSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspace/purchases/{client_id}/{period}/review/bulk-treatment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Requires the Phoenix session and X-CSRF-Token header. */
+        post: operations["bulkTreatPurchases"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1576,6 +1610,10 @@ export interface components {
                 needs_review: boolean;
                 case_ids: number[];
                 tax: string;
+                bucket: string;
+                treatment_stale: boolean;
+                bulk_eligible: boolean;
+                origin_period?: string | null;
             }[];
             item: null | {
                 id: string;
@@ -1597,9 +1635,14 @@ export interface components {
                     original_url: string | null;
                     has_books: boolean;
                     has_portal: boolean;
+                    books_id: string | null;
+                    portal_ref: string | null;
+                    can_pair: boolean;
+                    correction: components["schemas"]["PurchaseCorrectionAmounts"] | null;
                 }[];
                 images: string[];
                 legacy_url: string;
+                source_basis: string | null;
             };
             cases: {
                 id: number;
@@ -2158,6 +2201,23 @@ export interface components {
             state: "connected" | "expired" | "not_connected" | "missing_gstin";
             username: string | null;
             can_connect: boolean;
+        };
+        PurchaseCorrectionAmounts: {
+            taxable_paise: string;
+            cgst: string;
+            sgst: string;
+            igst: string;
+            cess: string;
+            total_paise: string;
+        };
+        PurchaseSourceDecision: {
+            source_basis: string;
+            books_id: string;
+            /** @enum {string} */
+            action: "correct" | "confirm_pair" | "reject_pair";
+            portal_ref?: string;
+            amounts?: components["schemas"]["PurchaseCorrectionAmounts"];
+            reason?: string;
         };
     };
     responses: never;
@@ -7569,6 +7629,179 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GstConnection"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    decidePurchaseSource: {
+        parameters: {
+            query?: {
+                filter?: string;
+                q?: string;
+            };
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                client_id: number;
+                period: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchaseSourceDecision"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseReviewData"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    bulkTreatPurchases: {
+        parameters: {
+            query?: {
+                filter?: string;
+                q?: string;
+            };
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                client_id: number;
+                period: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchaseTreatment"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseReviewData"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
                 };
             };
             /** @description Request failed; no successful write is implied. */

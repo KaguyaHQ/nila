@@ -91,6 +91,7 @@ defmodule NilaWeb.Router do
 
     get "/purchases/:client_id/:period/review", PurchaseReviewController, :show
     get "/purchases/:client_id/:period/review/:item_id", PurchaseReviewController, :show
+    post "/purchases/:client_id/:period/review/:item_id/source", PurchaseReviewController, :source
 
     post "/purchases/:client_id/:period/review/:item_id/treatment",
          PurchaseReviewController,
@@ -101,6 +102,11 @@ defmodule NilaWeb.Router do
          :document
 
     post "/purchases/:client_id/:period/review/treatment", PurchaseReviewController, :treatment
+
+    post "/purchases/:client_id/:period/review/bulk-treatment",
+         PurchaseReviewController,
+         :bulk_treatment
+
     post "/purchases/:client_id/:period/review/document", PurchaseReviewController, :document
     get "/sales/:client_id/:period/checks", SalesMonthChecksController, :show
     post "/sales/:client_id/:period/checks/decision", SalesMonthChecksController, :decision

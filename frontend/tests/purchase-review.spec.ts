@@ -1,97 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { PurchaseReviewData } from "../src/lib/purchase-review-api";
 
-function review(id = "one"): PurchaseReviewData {
-  return {
-    client: { id: 1, name: "Breeze Tech", gstin: "33AABCT3518Q1ZF" },
-    books_available: true,
-    period: "2026-06",
-    month_label: "June 2026",
-    can_edit: true,
-    lock_reason: null,
-    filter: "needs_review",
-    q: "",
-    queue: [
-      {
-        id: "one",
-        number: "P-001",
-        vendor: "Supplier One",
-        status: "Needs treatment",
-        tax: "₹180.00",
-        needs_review: true,
-        case_ids: [1],
-      },
-      {
-        id: "two",
-        number: "P-002",
-        vendor: "Supplier Two",
-        status: "Needs treatment",
-        tax: "₹180.00",
-        needs_review: true,
-        case_ids: [2],
-      },
-    ],
-    item: {
-      id,
-      number: id === "one" ? "P-001" : "P-002",
-      vendor: "Supplier One",
-      document_type: "invoice",
-      status: "Matched",
-      reason: "Books and GSTR-2B agree. Choose the ITC treatment.",
-      pairing_pending: false,
-      case_ids: [id === "one" ? 1 : 2],
-      comparisons: [
-        {
-          id: "pair1",
-          has_books: true,
-          has_portal: true,
-          facts: [
-            { label: "Invoice", books: "P-001", portal: "P-001", different: false },
-            { label: "GST", books: "₹180.00", portal: "₹180.00", different: false },
-          ],
-          original_url: "/gst/1/2026-06/original/1/0",
-        },
-      ],
-      images: [],
-      legacy_url: "/gst/1/2026-06/purchases/review/one",
-    },
-    cases: [1, 2].map((caseId) => ({
-      id: caseId,
-      basis: `basis-${caseId}`,
-      number: `P-00${caseId}`,
-      vendor: "Supplier One",
-      available: true,
-      unavailable_reason: null,
-      claimable: true,
-      can_claim_split: true,
-      claim_block_reason: null,
-      cess_issue: null,
-      can_record_document: false,
-      document_state: "held",
-      heads: [
-        { id: "cgst", label: "CGST", amount: "₹90.00", value: "90.00" },
-        { id: "sgst", label: "SGST", amount: "₹90.00", value: "90.00" },
-        { id: "igst", label: "IGST", amount: "₹0.00", value: "0.00" },
-      ],
-      values: {
-        choice: null,
-        later_reason: "",
-        exclude_reason: "",
-        note: "",
-        split: {
-          claim: { cgst: "0.00", sgst: "0.00", igst: "0.00", cess: "0.00" },
-          later: { cgst: "0.00", sgst: "0.00", igst: "0.00", cess: "0.00" },
-          exclude: { cgst: "0.00", sgst: "0.00", igst: "0.00", cess: "0.00" },
-        },
-      },
-    })),
-    reasons: {
-      later: [{ id: "other", label: "Other" }],
-      exclude: [{ id: "blocked_credit", label: "Blocked credit" }],
-    },
-    legacy_url: "/gst/1/2026-06/purchases/bills",
-  };
-}
+import { review } from "./fixtures/purchase-review";
 async function setup(page: Page, data = (id: string) => review(id)) {
   await page.addInitScript(() =>
     document.addEventListener("DOMContentLoaded", () => {
@@ -128,7 +38,7 @@ test("comparison navigation stays in React and preserves queue context", async (
     (window as unknown as { retained: boolean }).retained = true;
   });
   await page.getByRole("radio", { name: "Claim later", exact: true }).click();
-  await page.getByRole("link", { name: "Open source corrections and pairing" }).click();
+  await expect(page.getByRole("button", { name: "Correct purchase values" })).toBeDisabled();
   await expect(page).toHaveURL(/review\/one\?filter=all&q=Supplier$/);
   await page.keyboard.press("Alt+ArrowRight");
   await expect(page).toHaveURL(/review\/one\?filter=all&q=Supplier$/);
@@ -198,6 +108,8 @@ test("2B without books shows a single source and unconfirmed possession", async 
   data.item!.reason =
     "Purchase register not imported. This entry has not been compared with books.";
   data.item!.comparisons[0].has_books = false;
+  data.item!.comparisons[0].books_id = null;
+  data.item!.comparisons[0].correction = null;
   data.item!.comparisons[0].facts.forEach((fact) => {
     fact.books = "—";
   });
@@ -210,7 +122,7 @@ test("2B without books shows a single source and unconfirmed possession", async 
   await expect(page.getByRole("columnheader", { name: "Purchase books" })).toHaveCount(0);
   await expect(page.getByText("Invoice possession not confirmed")).toBeVisible();
   await expect(page.getByRole("radio", { name: "Claim this month", exact: true })).toBeDisabled();
-  await expect(page.getByRole("radio", { name: "Exclude", exact: true })).toBeEnabled();
+  await expect(page.getByRole("radio", { name: "Do not claim", exact: true })).toBeEnabled();
   await page.screenshot({ path: info.outputPath("purchase-single-source.png") });
 });
 
@@ -247,7 +159,7 @@ test("split decimal strings reach server and validation errors keep edits", asyn
     });
   });
   await page.goto("/app/gst/1/2026-06/purchases/review/one");
-  await page.getByRole("button", { name: "Split amounts", exact: true }).click();
+  await page.getByRole("button", { name: "Split treatment", exact: true }).click();
   await page.getByLabel("CGST claim", { exact: true }).fill("45.25");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText(
@@ -296,9 +208,7 @@ test("document possession must be recorded before claim becomes available", asyn
   await expect(page.getByRole("radio", { name: "Claim this month", exact: true })).toBeEnabled();
 });
 
-test("uncertain pairing blocks treatment with an explicit source-review handoff", async ({
-  page,
-}) => {
+test("uncertain pairing blocks treatment without a legacy handoff", async ({ page }) => {
   const current = review();
   current.item!.pairing_pending = true;
   await setup(page, () => current);
@@ -307,9 +217,9 @@ test("uncertain pairing blocks treatment with an explicit source-review handoff"
   await expect(
     page.getByText("Resolve the uncertain pairing before setting ITC treatment."),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Open source corrections and pairing" }),
-  ).toHaveAttribute("href", current.item!.legacy_url);
+  await expect(page.getByRole("link", { name: "Open source corrections and pairing" })).toHaveCount(
+    0,
+  );
 });
 
 test("stale evidence requires a fresh choice and sends the new basis", async ({ page }) => {
@@ -396,4 +306,79 @@ test("ITC radio choices support arrows and preserve multiline notes", async ({
   expect(posted).toMatchObject({
     values: { choice: "later", note: "Awaiting goods receipt\nSupplier called on Monday." },
   });
+});
+
+test("correcting source values stays in React and sends the evidence basis", async ({
+  page,
+}, info) => {
+  await setup(page);
+  let posted: unknown;
+  await page.route("**/review/one/source?*", (route) => {
+    posted = route.request().postDataJSON();
+    return route.fulfill({ json: review() });
+  });
+  await page.goto("/app/gst/1/2026-06/purchases/review/one");
+  await page.getByRole("button", { name: "Correct purchase values" }).click();
+  await page.getByLabel("Taxable value", { exact: true }).fill("1100.00");
+  await page.getByLabel("Invoice total", { exact: true }).fill("1280.00");
+  await page.getByLabel("Reason for correction").fill("Checked original bill");
+  await page.screenshot({
+    path: info.outputPath("purchase-correction.png"),
+    animations: "disabled",
+  });
+  await page.getByRole("button", { name: "Save correction", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(posted).toMatchObject({
+    action: "correct",
+    books_id: "book1",
+    source_basis: "source-basis",
+    reason: "Checked original bill",
+    amounts: { taxable_paise: "1100.00" },
+  });
+  await expect(page).toHaveURL(/\/app\/gst\/1\/2026-06\/purchases\/review\/one/);
+});
+
+test("suggested match requires explicit confirmation before sending a pairing decision", async ({
+  page,
+}) => {
+  const data = review();
+  data.item!.pairing_pending = true;
+  data.item!.comparisons[0].can_pair = true;
+  await setup(page, () => data);
+  let writes = 0;
+  await page.route("**/review/one/source?*", (route) => {
+    writes++;
+    expect(route.request().postDataJSON()).toMatchObject({
+      action: "reject_pair",
+      books_id: "book1",
+      portal_ref: "portal1",
+      source_basis: "source-basis",
+    });
+    return route.fulfill({ json: review() });
+  });
+  await page.goto("/app/gst/1/2026-06/purchases/review/one");
+  await page.getByRole("button", { name: "Different invoices", exact: true }).click();
+  expect(writes).toBe(0);
+  await page.getByRole("button", { name: "Confirm decision", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(writes).toBe(1);
+});
+
+test("source validation errors keep amounts editable for correction", async ({ page }) => {
+  await setup(page);
+  await page.route("**/review/one/source?*", (route) =>
+    route.fulfill({
+      status: 422,
+      json: { error: "Total must equal taxable value plus GST.", code: "invalid" },
+    }),
+  );
+  await page.goto("/app/gst/1/2026-06/purchases/review/one");
+  await page.getByRole("button", { name: "Correct purchase values" }).click();
+  await page.getByLabel("Taxable value", { exact: true }).fill("2000.00");
+  await page.getByLabel("Reason for correction").fill("Original bill checked");
+  await page.getByRole("button", { name: "Save correction", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Total must equal");
+  await expect(page.getByLabel("Taxable value", { exact: true })).toHaveValue("2000.00");
+  await page.getByLabel("Invoice total", { exact: true }).fill("2180.00");
+  await expect(page.getByRole("button", { name: "Save correction", exact: true })).toBeEnabled();
 });

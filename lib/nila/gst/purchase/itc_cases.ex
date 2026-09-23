@@ -1162,6 +1162,7 @@ defmodule Nila.Gst.Purchase.ItcCases do
     not line.merged? and line.has_sources? and
       (line.current_books? or line.current_gstr2b? or
          (line.document_type != "credit_note" and
+            (line.treatment != "undecided" or not is_nil(line.allocation_id)) and
             (line.treatment_stale? or ItcTreatment.sum(line.outstanding_heads) > 0)))
   end
 

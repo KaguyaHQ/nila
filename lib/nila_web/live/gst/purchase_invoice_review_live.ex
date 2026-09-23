@@ -367,54 +367,10 @@ defmodule NilaWeb.Gst.PurchaseInvoiceReviewLive do
       String.trim(params["note"] || "") == ""
   end
 
-  defp correction_values(params, row) do
-    reason = String.trim(params["reason"] || "")
+  defp correction_values(params, row), do: Nila.Gst.Purchase.SourceCorrections.values(params, row)
 
-    parsed =
-      for key <- ~w(taxable_paise cgst sgst igst cess total_paise),
-          do:
-            {key,
-             parse_amount(
-               if(key == "cess",
-                 do:
-                   Map.get(params, key, decimal_amount(get_in(row, ["tax_paise", "cess"]) || 0)),
-                 else: params[key]
-               )
-             )}
-
-    cond do
-      reason == "" ->
-        {:error, "Enter a reason for this correction."}
-
-      Enum.any?(parsed, fn {_, value} -> value == :error end) ->
-        {:error, "Enter non-negative rupee amounts with no more than two decimal places."}
-
-      true ->
-        values = Map.new(parsed)
-
-        expected =
-          values["taxable_paise"] + values["cgst"] + values["sgst"] + values["igst"] +
-            values["cess"]
-
-        if abs(values["total_paise"] - expected) > 100 do
-          {:error, "Total must equal taxable value plus GST, allowing up to ₹1 for round-off."}
-        else
-          heads = Map.take(values, ~w(cgst sgst igst))
-
-          heads =
-            if Map.has_key?(row["tax_paise"] || %{}, "cess") or values["cess"] > 0,
-              do: Map.put(heads, "cess", values["cess"]),
-              else: heads
-
-          {:ok,
-           %{
-             "taxable_paise" => values["taxable_paise"],
-             "total_paise" => values["total_paise"],
-             "tax_paise" => heads
-           }, reason}
-        end
-    end
-  end
+  defp correction_attrs(row, values, reason),
+    do: Nila.Gst.Purchase.SourceCorrections.attrs(row, values, reason)
 
   defp parse_amount(value) when is_binary(value) do
     value = String.trim(value)
@@ -433,16 +389,6 @@ defmodule NilaWeb.Gst.PurchaseInvoiceReviewLive do
 
   defp decimal_amount(paise),
     do: "#{div(paise, 100)}.#{String.pad_leading(to_string(rem(paise, 100)), 2, "0")}"
-
-  defp correction_attrs(row, values, reason) do
-    for {field, value} <- values, row[field] != value do
-      %{
-        "verb" => "correct_field",
-        "books_id" => row["id"],
-        "payload" => %{"field" => field, "from" => row[field], "to" => value, "reason" => reason}
-      }
-    end
-  end
 
   defp decide(month, %{kind: :books, resolved: false} = item, %{"action" => action}, user_id)
        when action in ~w(await_2b not_claimable) do

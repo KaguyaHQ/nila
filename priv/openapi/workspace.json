@@ -7166,6 +7166,276 @@
           }
         }
       }
+    },
+    "/api/workspace/purchases/{client_id}/{period}/review/{item_id}/source": {
+      "post": {
+        "operationId": "decidePurchaseSource",
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "period",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseReviewData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires the Phoenix session and X-CSRF-Token header.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseSourceDecision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/purchases/{client_id}/{period}/review/bulk-treatment": {
+      "post": {
+        "operationId": "bulkTreatPurchases",
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "period",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseReviewData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires the Phoenix session and X-CSRF-Token header.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseTreatment"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -9386,6 +9656,21 @@
                 },
                 "tax": {
                   "type": "string"
+                },
+                "bucket": {
+                  "type": "string"
+                },
+                "treatment_stale": {
+                  "type": "boolean"
+                },
+                "bulk_eligible": {
+                  "type": "boolean"
+                },
+                "origin_period": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               },
               "required": [
@@ -9395,7 +9680,10 @@
                 "status",
                 "needs_review",
                 "case_ids",
-                "tax"
+                "tax",
+                "bucket",
+                "treatment_stale",
+                "bulk_eligible"
               ],
               "additionalProperties": false
             }
@@ -9492,6 +9780,39 @@
                         },
                         "has_portal": {
                           "type": "boolean"
+                        },
+                        "books_id": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "portal_ref": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "can_pair": {
+                          "type": "boolean"
+                        },
+                        "correction": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/components/schemas/PurchaseCorrectionAmounts"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -9499,7 +9820,11 @@
                         "facts",
                         "original_url",
                         "has_books",
-                        "has_portal"
+                        "has_portal",
+                        "books_id",
+                        "portal_ref",
+                        "can_pair",
+                        "correction"
                       ],
                       "additionalProperties": false
                     }
@@ -9512,6 +9837,16 @@
                   },
                   "legacy_url": {
                     "type": "string"
+                  },
+                  "source_basis": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [
@@ -9525,7 +9860,8 @@
                   "case_ids",
                   "comparisons",
                   "images",
-                  "legacy_url"
+                  "legacy_url",
+                  "source_basis"
                 ],
                 "additionalProperties": false
               }
@@ -12232,6 +12568,72 @@
           "state",
           "username",
           "can_connect"
+        ],
+        "additionalProperties": false
+      },
+      "PurchaseCorrectionAmounts": {
+        "type": "object",
+        "properties": {
+          "taxable_paise": {
+            "type": "string"
+          },
+          "cgst": {
+            "type": "string"
+          },
+          "sgst": {
+            "type": "string"
+          },
+          "igst": {
+            "type": "string"
+          },
+          "cess": {
+            "type": "string"
+          },
+          "total_paise": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taxable_paise",
+          "cgst",
+          "sgst",
+          "igst",
+          "cess",
+          "total_paise"
+        ],
+        "additionalProperties": false
+      },
+      "PurchaseSourceDecision": {
+        "type": "object",
+        "properties": {
+          "source_basis": {
+            "type": "string"
+          },
+          "books_id": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "correct",
+              "confirm_pair",
+              "reject_pair"
+            ]
+          },
+          "portal_ref": {
+            "type": "string"
+          },
+          "amounts": {
+            "$ref": "#/components/schemas/PurchaseCorrectionAmounts"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_basis",
+          "books_id",
+          "action"
         ],
         "additionalProperties": false
       }

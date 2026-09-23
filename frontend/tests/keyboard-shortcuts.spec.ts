@@ -1,3 +1,4 @@
+import { review } from "./fixtures/purchase-review";
 import { expect, test, type Page } from "@playwright/test";
 import type { SalesWorkspace } from "../src/lib/sales-api";
 import type { PurchasesWorkspace } from "../src/lib/purchases-api";
@@ -122,6 +123,17 @@ async function setup(page: Page) {
   });
   await page.route("**/api/workspace/purchases/2/**", (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/review"))
+      return route.fulfill({
+        json: {
+          ...review(),
+          client: { ...client, gstin: null },
+          period: url.pathname.split("/")[5],
+          queue: [],
+          cases: [],
+          item: null,
+        },
+      });
     if (url.pathname.endsWith("/gstr2b"))
       return route.fulfill({
         json: {
