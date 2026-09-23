@@ -9,13 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableHeader,
@@ -61,7 +55,11 @@ export default function PurchaseReview() {
   const query = useQuery({
     queryKey,
     queryFn: ({ signal }) => fetchPurchaseReview(clientId, period, itemId, filter, q, signal),
-    staleTime: 0,
+    placeholderData: (previous) =>
+      previous?.client.id === Number(clientId) && previous.period === period ? previous : undefined,
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: false,
   });
   const back = `/gst/${clientId}/${period}/purchases`;
@@ -84,7 +82,9 @@ export default function PurchaseReview() {
     );
   return (
     <Review
-      key={`${clientId}/${period}/${itemId}/${filter}/${q}`}
+      key={`${clientId}/${period}`}
+      loading={query.isPlaceholderData}
+      selectedId={itemId || query.data.item?.id || ""}
       data={query.data}
       queryKey={queryKey}
       refreshing={query.isFetching}
@@ -97,25 +97,33 @@ function Review({
   data,
   queryKey,
   refreshing,
+  loading,
+  selectedId,
   refresh,
 }: {
   data: PurchaseReviewData;
   queryKey: string[];
   refreshing: boolean;
+  loading: boolean;
+  selectedId: string;
   refresh: () => Promise<unknown>;
 }) {
   const navigate = useNavigate();
   const cache = useQueryClient();
   const [params] = useSearchParams();
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [search, setSearch] = useState(data.q);
+  const routeQuery = params.get("q") ?? "";
+  const queueRef = useRef<HTMLElement>(null);
+  const [editorRevision, setEditorRevision] = useState("");
+  const [resetVersion, setResetVersion] = useState(0);
   const [values, setValues] = useState<TreatmentValues>(blankValues);
   const [saved, setSaved] = useState("");
-  const opener = useRef<HTMLButtonElement | null>(null);
+
   const operation = useRef<AbortController | null>(null);
   const openingCases = useRef<PurchaseReviewData["cases"]>([]);
   const base = `/gst/${data.client.id}/${data.period}/purchases`;
   const item = data.item;
-  const position = data.queue.findIndex((row) => row.id === item?.id);
+  const position = data.queue.findIndex((row) => row.id === selectedId);
   const previous = data.queue[position - 1];
   const next = data.queue[position + 1];
   const ids = item?.case_ids ?? data.queue[position]?.case_ids ?? [];
@@ -125,8 +133,14 @@ function Review({
     item?.pairing_pending ||
     cases.length === 0 ||
     cases.some((entry) => !entry.available);
+  const revision = `${item?.id}:${cases.map((entry) => `${entry.id}:${entry.basis}`).join(",")}`;
+  const initialValues = cases.length === 1 ? cases[0].values : blankValues();
+  const dirty =
+    editorRevision === revision && JSON.stringify(values) !== JSON.stringify(initialValues);
   function go(id: string | undefined) {
-    if (!id || busy || dialogOpen) return;
+    if (!id || busy || dirty) return;
+    setSaved("");
+    mutation.reset();
     navigate(`${base}/review/${encodeURIComponent(id)}?${params}`);
   }
   useEffect(() => () => operation.current?.abort(), []);
@@ -139,7 +153,7 @@ function Review({
         navigationShortcutBlocked(event) ||
         event.shiftKey ||
         busy ||
-        dialogOpen ||
+        dirty ||
         !event.altKey ||
         event.ctrlKey ||
         event.metaKey
@@ -168,14 +182,6 @@ function Review({
       : choice === "claim"
         ? cases.some((entry) => !entry.claimable || entry.cess_issue)
         : choice === "later" && cases.some((entry) => entry.cess_issue);
-  }
-  function open(button: HTMLButtonElement) {
-    opener.current = button;
-    openingCases.current = structuredClone(cases);
-    setValues(cases.length === 1 ? structuredClone(cases[0].values) : blankValues());
-    mutation.reset();
-    setSaved("");
-    setDialogOpen(true);
   }
   type ReviewWrite = {
     controller: AbortController;
@@ -215,7 +221,9 @@ function Review({
           ),
     onSuccess: async (fresh, write) => {
       if (write.controller.signal.aborted) return;
-      await cache.cancelQueries({ queryKey });
+      await cache.cancelQueries({
+        queryKey: ["purchase-review", String(data.client.id), data.period],
+      });
       if (write.controller.signal.aborted) return;
       void cache.invalidateQueries({
         queryKey: ["purchase-review", String(data.client.id), data.period],
@@ -227,7 +235,13 @@ function Review({
         setSaved("Invoice possession recorded. Review the available ITC choices.");
         return;
       }
-      setDialogOpen(false);
+      setValues(
+        cases.length === 1
+          ? structuredClone(
+              fresh.cases.find((entry) => entry.id === cases[0].id)?.values ?? blankValues(),
+            )
+          : blankValues(),
+      );
       setSaved("ITC treatment saved.");
       if (write.andNext) {
         const target =
@@ -240,8 +254,12 @@ function Review({
     onError: async (failure, write) => {
       if (write.controller.signal.aborted) return;
       if (failure instanceof PurchaseReviewError && [403, 404, 409].includes(failure.status)) {
-        if (write.kind === "treatment") setDialogOpen(false);
+        if (write.kind === "treatment") {
+          setValues(blankValues());
+          setEditorRevision("");
+        }
         await refresh();
+        setResetVersion((value) => value + 1);
       }
     },
     onSettled: (_result, _failure, write) => {
@@ -249,8 +267,71 @@ function Review({
     },
   });
   const busy = mutation.isPending;
-  const canEdit = !blocked && !busy && !refreshing;
+  const canEdit = !blocked && !busy && !refreshing && !loading && editorRevision === revision;
   const error = mutation.error?.message ?? null;
+  const selectionKey = queryKey.join("/");
+  useEffect(() => {
+    operation.current?.abort();
+    operation.current = null;
+    mutation.reset();
+    setSaved("");
+  }, [selectionKey]);
+  useEffect(() => {
+    if (loading) return;
+    openingCases.current = structuredClone(cases);
+    setValues(
+      mutation.error instanceof PurchaseReviewError &&
+        [403, 404, 409].includes(mutation.error.status)
+        ? blankValues()
+        : structuredClone(initialValues),
+    );
+    setEditorRevision(revision);
+  }, [revision, loading, resetVersion]);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    if (dirty || busy) window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, busy]);
+  useEffect(() => {
+    queueRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
+  }, [selectedId, data.queue]);
+  useEffect(() => {
+    setSearch(routeQuery);
+  }, [routeQuery]);
+  useEffect(() => {
+    if (search === routeQuery || dirty || busy) return;
+    const timer = setTimeout(() => {
+      const nextParams = new URLSearchParams(params);
+      search ? nextParams.set("q", search) : nextParams.delete("q");
+      navigate(`${base}/review?${nextParams}`, { replace: true });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [search, routeQuery, dirty, busy]);
+  useEffect(() => {
+    if (loading || !next) return;
+    void cache.prefetchQuery({
+      queryKey: [
+        "purchase-review",
+        String(data.client.id),
+        data.period,
+        next.id,
+        data.filter,
+        data.q,
+      ],
+      queryFn: ({ signal }) =>
+        fetchPurchaseReview(
+          String(data.client.id),
+          data.period,
+          next.id,
+          data.filter,
+          data.q,
+          signal,
+        ),
+      staleTime: 15_000,
+    });
+  }, [loading, next?.id, data.client.id, data.period, data.filter, data.q]);
 
   function save(andNext: boolean) {
     if (!item || !canEdit || !values.choice || choiceBlocked(values.choice) || operation.current)
@@ -274,6 +355,8 @@ function Review({
       !item ||
       busy ||
       refreshing ||
+      loading ||
+      dirty ||
       !data.can_edit ||
       !entry.can_record_document ||
       operation.current
@@ -292,12 +375,12 @@ function Review({
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50/70">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b bg-white px-6 py-4">
+    <main className="flex h-screen flex-col overflow-hidden bg-background">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b bg-card px-6 py-4">
         <Link
           to={base}
           onClick={(event) => {
-            if (busy) event.preventDefault();
+            if (busy || dirty) event.preventDefault();
           }}
           className="inline-flex items-center gap-2 text-sm"
         >
@@ -318,7 +401,7 @@ function Review({
             variant="ghost"
             size="icon-sm"
             aria-label="Previous purchase"
-            disabled={!previous || busy || dialogOpen}
+            disabled={!previous || busy || dirty}
             onClick={() => go(previous?.id)}
           >
             <ChevronLeft />
@@ -327,20 +410,20 @@ function Review({
             variant="ghost"
             size="icon-sm"
             aria-label="Next purchase"
-            disabled={!next || busy || dialogOpen}
+            disabled={!next || busy || dirty}
             onClick={() => go(next?.id)}
           >
             <ChevronRight />
           </Button>
         </div>
       </header>
-      <div className="mx-auto grid max-w-screen-2xl gap-6 p-6 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <aside aria-label="Purchase queue" className="space-y-4">
+      <div className="mx-auto grid min-h-0 w-full max-w-screen-2xl flex-1 gap-6 p-6 pb-24 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside aria-label="Purchase queue" className="flex min-h-0 flex-col gap-4">
           <h2 className="font-semibold">Review queue</h2>
           <NativeSelect
             aria-label="Review filter"
             value={data.filter}
-            disabled={busy || dialogOpen}
+            disabled={busy || dirty}
             onChange={(event) => {
               const nextParams = new URLSearchParams(params);
               nextParams.set("filter", event.target.value);
@@ -366,39 +449,35 @@ function Review({
               </option>
             ))}
           </NativeSelect>
-          <form
-            className="flex gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const nextParams = new URLSearchParams(params);
-              const q = String(new FormData(event.currentTarget).get("q") ?? "").slice(0, 200);
-              q ? nextParams.set("q", q) : nextParams.delete("q");
-              navigate(`${base}/review?${nextParams}`);
-            }}
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value.slice(0, 200))}
+            placeholder="Search invoices or suppliers"
+            data-shortcut-search
+            aria-label="Search review queue"
+            maxLength={200}
+            disabled={busy || dirty}
+          />
+          <nav
+            ref={queueRef}
+            aria-label="Purchase invoices"
+            className="min-h-0 flex-1 overflow-auto rounded-lg border bg-card"
           >
-            <Input
-              name="q"
-              defaultValue={data.q}
-              data-shortcut-search
-              aria-label="Search review queue"
-              maxLength={200}
-              disabled={busy || dialogOpen}
-            />
-            <Button type="submit" variant="outline" disabled={busy || dialogOpen}>
-              Search
-            </Button>
-          </form>
-          <nav className="max-h-96 overflow-auto rounded-lg border bg-white lg:max-h-[65vh]">
             {data.queue.map((row) => (
               <button
                 key={row.id}
                 type="button"
-                disabled={busy || dialogOpen}
-                aria-current={row.id === item?.id ? "page" : undefined}
+                disabled={busy || dirty}
+                aria-current={row.id === selectedId ? "page" : undefined}
                 onClick={() => go(row.id)}
-                className={`block w-full border-b px-3 py-3 text-left text-sm last:border-0 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring ${row.id === item?.id ? "bg-muted" : ""}`}
+                className={`block w-full border-b px-3 py-3 text-left text-sm last:border-0 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring ${row.id === selectedId ? "bg-muted" : ""}`}
               >
-                <span className="block font-medium">{row.number}</span>
+                <span className="flex justify-between gap-2 font-medium">
+                  <span className="min-w-0 truncate" title={row.number}>
+                    {row.number}
+                  </span>
+                  <span className="shrink-0 tabular-nums">{row.tax}</span>
+                </span>
                 <span className="mt-1 block truncate text-muted-foreground">{row.vendor}</span>
                 <span className="mt-1 block text-xs text-muted-foreground">{row.status}</span>
               </button>
@@ -406,23 +485,29 @@ function Review({
           </nav>
           <p className="text-xs text-muted-foreground">Alt + ← / → moves between purchases.</p>
         </aside>
-        <div className="min-w-0 space-y-5">
+        <div className="min-h-0 min-w-0 space-y-5 overflow-y-auto pb-8" aria-busy={loading}>
           {error && (
             <p
               role="alert"
-              className="rounded-lg border border-destructive/30 bg-white p-4 text-sm text-destructive"
+              className="rounded-lg border border-destructive/30 bg-card p-4 text-sm text-destructive"
             >
               {error}
             </p>
           )}
           {saved && (
-            <p role="status" className="rounded-lg border bg-white p-4 text-sm">
+            <p role="status" className="rounded-lg border bg-card p-4 text-sm">
               {saved}
             </p>
           )}
           {data.lock_reason && <p className="text-sm text-muted-foreground">{data.lock_reason}</p>}
-          {!item ? (
-            <section className="rounded-lg border bg-white p-8">
+          {loading ? (
+            <section role="status" aria-label="Loading purchase" className="space-y-5">
+              <Skeleton className="h-8 w-64" />
+              <Skeleton className="h-64 w-full" />
+              <Skeleton className="h-48 w-full" />
+            </section>
+          ) : !item ? (
+            <section className="rounded-lg border bg-card p-8">
               <h1 className="text-xl font-semibold">No purchases in this queue</h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 Choose another filter or change your search.
@@ -442,33 +527,54 @@ function Review({
                 <section
                   key={comparison.id}
                   aria-label={`Source comparison ${index + 1}`}
-                  className="overflow-hidden rounded-lg border bg-white"
+                  className="overflow-hidden rounded-lg border bg-card"
                 >
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Invoice detail</TableHead>
-                        <TableHead>Purchase books</TableHead>
-                        <TableHead>GSTR-2B</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {comparison.facts.map((fact) => (
-                        <TableRow key={fact.label} className={fact.different ? "bg-muted/50" : ""}>
-                          <TableCell className="font-medium">
-                            {fact.label}
-                            {fact.different && (
-                              <span className="ml-2 text-xs font-normal text-muted-foreground">
-                                Differs
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell className="whitespace-normal">{fact.books}</TableCell>
-                          <TableCell className="whitespace-normal">{fact.portal}</TableCell>
+                  {comparison.has_books && comparison.has_portal ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Invoice detail</TableHead>
+                          <TableHead>Purchase books</TableHead>
+                          <TableHead>GSTR-2B</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {comparison.facts.map((fact) => (
+                          <TableRow
+                            key={fact.label}
+                            className={fact.different ? "bg-muted/50" : ""}
+                          >
+                            <TableCell className="font-medium">
+                              {fact.label}
+                              {fact.different && (
+                                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                                  Differs
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="whitespace-normal">{fact.books}</TableCell>
+                            <TableCell className="whitespace-normal">{fact.portal}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <div className="p-5">
+                      <h2 className="mb-4 font-semibold">
+                        {comparison.has_portal ? "GSTR-2B invoice" : "Purchase invoice"}
+                      </h2>
+                      <dl className="grid grid-cols-2 gap-x-8 gap-y-4 xl:grid-cols-3">
+                        {comparison.facts.map((fact) => (
+                          <div key={fact.label}>
+                            <dt className="text-xs text-muted-foreground">{fact.label}</dt>
+                            <dd className="mt-1 text-sm font-medium">
+                              {comparison.has_portal ? fact.portal : fact.books}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  )}
                   {comparison.original_url && (
                     <a
                       href={comparison.original_url}
@@ -484,15 +590,12 @@ function Review({
               ))}
               <section
                 aria-labelledby="itc-treatment-title"
-                className="space-y-4 rounded-lg border bg-white p-5"
+                className="space-y-4 rounded-lg border bg-card p-5"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 id="itc-treatment-title" className="font-semibold">
                     ITC treatment
                   </h2>
-                  <Button disabled={!canEdit} onClick={(event) => open(event.currentTarget)}>
-                    Set ITC treatment
-                  </Button>
                 </div>
                 {item.pairing_pending && (
                   <p className="text-sm">
@@ -545,8 +648,21 @@ function Review({
                     {entry.unavailable_reason && (
                       <p className="text-muted-foreground">{entry.unavailable_reason}</p>
                     )}
+                    <p className="text-muted-foreground">
+                      {entry.document_state === "held"
+                        ? "Invoice possession confirmed"
+                        : entry.document_state === "present"
+                          ? "Purchase record available"
+                          : entry.document_state === "not_held"
+                            ? "Invoice not held"
+                            : "Invoice possession not confirmed"}
+                    </p>
                     {entry.claim_block_reason && (
-                      <p className="text-muted-foreground">{entry.claim_block_reason}</p>
+                      <p className="text-muted-foreground">
+                        {entry.document_state === "unknown" && entry.can_record_document
+                          ? "Confirm invoice possession before claiming."
+                          : entry.claim_block_reason}
+                      </p>
                     )}
                     {entry.cess_issue && (
                       <p className="text-muted-foreground">{entry.cess_issue}</p>
@@ -555,7 +671,7 @@ function Review({
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={!data.can_edit || busy || refreshing}
+                        disabled={!data.can_edit || busy || refreshing || dirty}
                         onClick={() => void recordDocument(entry)}
                       >
                         I have this invoice
@@ -563,9 +679,199 @@ function Review({
                     )}
                   </div>
                 ))}
+                {cases.length > 0 && (
+                  <form
+                    className="space-y-5"
+                    aria-label="ITC treatment form"
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === "Enter" &&
+                        (event.ctrlKey || event.metaKey) &&
+                        !event.altKey &&
+                        !event.shiftKey &&
+                        !event.repeat &&
+                        !event.nativeEvent.isComposing
+                      ) {
+                        event.preventDefault();
+                        void save(true);
+                      }
+                    }}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void save(false);
+                    }}
+                  >
+                    <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                      {cases.length === 1 &&
+                        cases[0].heads.map((head) => (
+                          <p key={head.id}>
+                            <span className="text-muted-foreground">{head.label}</span>{" "}
+                            <span className="font-medium tabular-nums">{head.amount}</span>
+                          </p>
+                        ))}
+                    </div>
+                    <RadioGroup
+                      aria-label="ITC treatment"
+                      value={values.choice ?? ""}
+                      disabled={!canEdit}
+                      onValueChange={(value) =>
+                        setValues((current) => ({ ...current, choice: value as TreatmentChoice }))
+                      }
+                      className="grid-cols-1 gap-3 lg:grid-cols-3"
+                    >
+                      {choices
+                        .filter((choice) => choice.id !== "split")
+                        .map((choice) => (
+                          <label
+                            key={choice.id}
+                            className="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 text-sm has-data-checked:border-primary has-data-checked:bg-muted/50 has-data-disabled:cursor-not-allowed has-data-disabled:opacity-50"
+                          >
+                            <RadioGroupItem value={choice.id} disabled={choiceBlocked(choice.id)} />
+                            <span>{choice.label}</span>
+                          </label>
+                        ))}
+                    </RadioGroup>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-pressed={values.choice === "split"}
+                      disabled={!canEdit || choiceBlocked("split")}
+                      onClick={() => setValues((current) => ({ ...current, choice: "split" }))}
+                    >
+                      Split amounts
+                    </Button>
+                    {cases.length > 1 && (
+                      <p className="text-sm text-muted-foreground">
+                        This decision applies to all {cases.length} invoices. Split amounts requires
+                        one invoice.
+                      </p>
+                    )}
+                    {(["later", "exclude"] as const)
+                      .filter((kind) => values.choice === kind || values.choice === "split")
+                      .map((kind) => (
+                        <label key={kind} className="block space-y-2 text-sm">
+                          <span>{kind === "later" ? "Why claim later?" : "Why exclude?"}</span>
+                          <NativeSelect
+                            value={values[`${kind}_reason`]}
+                            disabled={!canEdit}
+                            onChange={(event) =>
+                              setValues((current) => ({
+                                ...current,
+                                [`${kind}_reason`]: event.target.value,
+                              }))
+                            }
+                          >
+                            <option value="">Choose a reason</option>
+                            {data.reasons[kind].map((reason) => (
+                              <option key={reason.id} value={reason.id}>
+                                {reason.label}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                        </label>
+                      ))}
+                    {values.choice === "split" && cases.length === 1 && (
+                      <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                          Enter rupee amounts. Each tax head must add up to its available amount.
+                        </p>
+                        {cases[0].heads.map((head) => (
+                          <fieldset key={head.id} className="space-y-2">
+                            <legend className="text-sm font-medium">
+                              {head.label} available: {head.amount}
+                            </legend>
+                            <div className="grid grid-cols-3 gap-2">
+                              {(["claim", "later", "exclude"] as const).map((part) => (
+                                <label key={part} className="space-y-1 text-sm">
+                                  <span>
+                                    {part === "claim"
+                                      ? "Claim"
+                                      : part === "later"
+                                        ? "Later"
+                                        : "Exclude"}
+                                  </span>
+                                  <Input
+                                    aria-label={`${head.label} ${part}`}
+                                    inputMode="decimal"
+                                    disabled={
+                                      !canEdit ||
+                                      (head.id === "cess" && part !== "exclude") ||
+                                      (part === "claim" && !cases[0].can_claim_split)
+                                    }
+                                    value={values.split[part][head.id]}
+                                    onChange={(event) =>
+                                      setValues((current) => ({
+                                        ...current,
+                                        split: {
+                                          ...current.split,
+                                          [part]: {
+                                            ...current.split[part],
+                                            [head.id]: event.target.value,
+                                          },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                          </fieldset>
+                        ))}
+                      </div>
+                    )}
+                    {values.choice && values.choice !== "claim" && (
+                      <label className="block space-y-2 text-sm">
+                        <span>Note</span>
+                        <Textarea
+                          rows={3}
+                          value={values.note}
+                          maxLength={1000}
+                          disabled={!canEdit}
+                          onChange={(event) =>
+                            setValues((current) => ({ ...current, note: event.target.value }))
+                          }
+                        />
+                      </label>
+                    )}
+                    <div className="fixed inset-x-0 bottom-0 z-10 flex flex-wrap items-center justify-end gap-2 border-t bg-background px-6 py-4">
+                      {dirty && (
+                        <p className="mr-auto text-xs text-muted-foreground">
+                          Unsaved changes. Save or discard to switch purchases.
+                        </p>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={!canEdit}
+                        onClick={() => setValues(structuredClone(initialValues))}
+                      >
+                        Discard changes
+                      </Button>
+                      <Button
+                        type="submit"
+                        variant="outline"
+                        disabled={!canEdit || !values.choice || choiceBlocked(values.choice)}
+                      >
+                        {busy ? "Saving…" : "Save"}
+                      </Button>
+                      <Button
+                        type="button"
+                        disabled={!canEdit || !values.choice || choiceBlocked(values.choice)}
+                        onClick={() => void save(true)}
+                        title="Ctrl + Enter"
+                      >
+                        Save and next
+                      </Button>
+                    </div>
+                  </form>
+                )}
                 <a
                   href={item.legacy_url}
-                  className="inline-block text-sm underline underline-offset-4"
+                  onClick={(event) => {
+                    if (busy || dirty) event.preventDefault();
+                  }}
+                  className="inline-block text-xs text-muted-foreground underline underline-offset-4"
                 >
                   Open source corrections and pairing
                 </a>
@@ -574,198 +880,6 @@ function Review({
           )}
         </div>
       </div>
-      <Dialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          if (!busy) setDialogOpen(open);
-        }}
-      >
-        <DialogContent finalFocus={opener} className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Set ITC treatment</DialogTitle>
-            <DialogDescription>
-              {item?.number} · {cases.length === 1 ? cases[0].vendor : `${cases.length} invoices`}.
-              Only saved decisions change the working.
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            className="space-y-5"
-            onKeyDown={(event) => {
-              if (
-                event.key === "Enter" &&
-                (event.ctrlKey || event.metaKey) &&
-                !event.altKey &&
-                !event.shiftKey &&
-                !event.repeat &&
-                !event.nativeEvent.isComposing
-              ) {
-                event.preventDefault();
-                void save(true);
-              }
-            }}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void save(false);
-            }}
-          >
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
-            <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-              {cases.length === 1 &&
-                cases[0].heads.map((head) => (
-                  <p key={head.id}>
-                    <span className="text-muted-foreground">{head.label}</span>{" "}
-                    <span className="font-medium tabular-nums">{head.amount}</span>
-                  </p>
-                ))}
-            </div>
-            <RadioGroup
-              aria-label="ITC treatment"
-              value={values.choice ?? ""}
-              disabled={busy}
-              onValueChange={(value) =>
-                setValues((current) => ({ ...current, choice: value as TreatmentChoice }))
-              }
-              className="grid-cols-2 gap-3"
-            >
-              {choices.map((choice) => (
-                <label
-                  key={choice.id}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 text-sm has-data-checked:border-primary has-data-checked:bg-muted/50 has-data-disabled:cursor-not-allowed has-data-disabled:opacity-50"
-                >
-                  <RadioGroupItem value={choice.id} disabled={choiceBlocked(choice.id)} />
-                  <span>{choice.label}</span>
-                </label>
-              ))}
-            </RadioGroup>
-            {[
-              ...new Set(
-                cases
-                  .flatMap((entry) => [entry.claim_block_reason, entry.cess_issue])
-                  .filter(Boolean),
-              ),
-            ].map((reason) => (
-              <p key={reason} className="text-sm text-muted-foreground">
-                {reason}
-              </p>
-            ))}
-            {cases.length > 1 && (
-              <p className="text-sm text-muted-foreground">
-                This decision applies to all {cases.length} invoices. Split amounts requires one
-                invoice.
-              </p>
-            )}
-            {(["later", "exclude"] as const)
-              .filter((kind) => values.choice === kind || values.choice === "split")
-              .map((kind) => (
-                <label key={kind} className="block space-y-2 text-sm">
-                  <span>{kind === "later" ? "Why claim later?" : "Why exclude?"}</span>
-                  <NativeSelect
-                    value={values[`${kind}_reason`]}
-                    disabled={busy}
-                    onChange={(event) =>
-                      setValues((current) => ({
-                        ...current,
-                        [`${kind}_reason`]: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Choose a reason</option>
-                    {data.reasons[kind].map((reason) => (
-                      <option key={reason.id} value={reason.id}>
-                        {reason.label}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </label>
-              ))}
-            {values.choice === "split" && cases.length === 1 && (
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Enter rupee amounts. Each tax head must add up to its available amount.
-                </p>
-                {cases[0].heads.map((head) => (
-                  <fieldset key={head.id} className="space-y-2">
-                    <legend className="text-sm font-medium">
-                      {head.label} available: {head.amount}
-                    </legend>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(["claim", "later", "exclude"] as const).map((part) => (
-                        <label key={part} className="space-y-1 text-sm">
-                          <span>
-                            {part === "claim" ? "Claim" : part === "later" ? "Later" : "Exclude"}
-                          </span>
-                          <Input
-                            aria-label={`${head.label} ${part}`}
-                            inputMode="decimal"
-                            disabled={
-                              busy ||
-                              (head.id === "cess" && part !== "exclude") ||
-                              (part === "claim" && !cases[0].can_claim_split)
-                            }
-                            value={values.split[part][head.id]}
-                            onChange={(event) =>
-                              setValues((current) => ({
-                                ...current,
-                                split: {
-                                  ...current.split,
-                                  [part]: { ...current.split[part], [head.id]: event.target.value },
-                                },
-                              }))
-                            }
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
-                ))}
-              </div>
-            )}
-            {values.choice && values.choice !== "claim" && (
-              <label className="block space-y-2 text-sm">
-                <span>Note</span>
-                <Textarea
-                  rows={3}
-                  value={values.note}
-                  maxLength={1000}
-                  disabled={busy}
-                  onChange={(event) =>
-                    setValues((current) => ({ ...current, note: event.target.value }))
-                  }
-                />
-              </label>
-            )}
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={busy}
-                onClick={() => setDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={!canEdit || !values.choice || choiceBlocked(values.choice)}
-              >
-                {busy ? "Saving…" : "Save"}
-              </Button>
-              <Button
-                type="button"
-                disabled={!canEdit || !values.choice || choiceBlocked(values.choice)}
-                onClick={() => void save(true)}
-                title="Ctrl + Enter"
-              >
-                Save and next
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
     </main>
   );
 }

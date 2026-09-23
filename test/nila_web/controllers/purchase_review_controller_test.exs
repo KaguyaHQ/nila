@@ -30,6 +30,13 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
     seed(c, [], [invoice(nil, "PORTAL")])
     body = c.conn |> get(c.path) |> contract_response(200)
     [line] = body["cases"]
+    refute body["books_available"]
+    assert body["item"]["status"] == "Not compared"
+    assert body["item"]["reason"] =~ "not been compared"
+    assert hd(body["queue"])["tax"] == "₹1,800.00"
+    [comparison] = body["item"]["comparisons"]
+    refute comparison["has_books"]
+    assert comparison["has_portal"]
     assert line["can_record_document"]
     refute line["claimable"]
     assert length(line["heads"]) == 3

@@ -4,6 +4,7 @@ import type { PurchaseReviewData } from "../src/lib/purchase-review-api";
 function review(id = "one"): PurchaseReviewData {
   return {
     client: { id: 1, name: "Breeze Tech", gstin: "33AABCT3518Q1ZF" },
+    books_available: true,
     period: "2026-06",
     month_label: "June 2026",
     can_edit: true,
@@ -16,6 +17,7 @@ function review(id = "one"): PurchaseReviewData {
         number: "P-001",
         vendor: "Supplier One",
         status: "Needs treatment",
+        tax: "₹180.00",
         needs_review: true,
         case_ids: [1],
       },
@@ -24,6 +26,7 @@ function review(id = "one"): PurchaseReviewData {
         number: "P-002",
         vendor: "Supplier Two",
         status: "Needs treatment",
+        tax: "₹180.00",
         needs_review: true,
         case_ids: [2],
       },
@@ -40,6 +43,8 @@ function review(id = "one"): PurchaseReviewData {
       comparisons: [
         {
           id: "pair1",
+          has_books: true,
+          has_portal: true,
           facts: [
             { label: "Invoice", books: "P-001", portal: "P-001", different: false },
             { label: "GST", books: "₹180.00", portal: "₹180.00", different: false },
@@ -122,11 +127,13 @@ test("comparison navigation stays in React and preserves queue context", async (
   await page.evaluate(() => {
     (window as unknown as { retained: boolean }).retained = true;
   });
-  await page.getByRole("button", { name: "Set ITC treatment" }).click();
+  await page.getByRole("radio", { name: "Claim later", exact: true }).click();
+  await page.getByRole("link", { name: "Open source corrections and pairing" }).click();
+  await expect(page).toHaveURL(/review\/one\?filter=all&q=Supplier$/);
   await page.keyboard.press("Alt+ArrowRight");
   await expect(page).toHaveURL(/review\/one\?filter=all&q=Supplier$/);
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Set ITC treatment" })).toBeFocused();
+  await page.getByRole("button", { name: "Discard changes", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Claim later", exact: true })).not.toBeChecked();
   await page.keyboard.press("Alt+ArrowRight");
   await expect(page).toHaveURL(/review\/two\?filter=all&q=Supplier$/);
   expect(await page.evaluate(() => (window as unknown as { retained: boolean }).retained)).toBe(
@@ -146,6 +153,67 @@ test("comparison navigation stays in React and preserves queue context", async (
   });
 });
 
+test("switching keeps the queue mounted and hides the previous invoice while loading", async ({
+  page,
+}) => {
+  await setup(page);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/review/two?*", async (route) => {
+    await pending;
+    await route.fulfill({ json: review("two") });
+  });
+  await page.goto("/app/gst/1/2026-06/purchases/review/one");
+  await expect(page.getByRole("heading", { name: "Purchase P-001" })).toBeVisible();
+  await page.getByRole("navigation", { name: "Purchase invoices" }).evaluate((element) => {
+    (window as any).queueElement = element;
+  });
+  await page.getByRole("button", { name: "Next purchase", exact: true }).click();
+  await expect(page.getByRole("status", { name: "Loading purchase" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Purchase P-001" })).toHaveCount(0);
+  await expect(page.getByRole("radio", { name: "Claim this month", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /P-002/ })).toHaveAttribute("aria-current", "page");
+  expect(
+    await page
+      .getByRole("navigation", { name: "Purchase invoices" })
+      .evaluate((element) => element === (window as any).queueElement),
+  ).toBe(true);
+  release();
+  await expect(page.getByRole("heading", { name: "Purchase P-002" })).toBeVisible();
+  const search = page.getByRole("textbox", { name: "Search review queue" });
+  await search.fill("Supplier Two");
+  await expect(page).toHaveURL(/q=Supplier\+Two$/);
+  await expect(search).toHaveValue("Supplier Two");
+  await expect(page.getByRole("button", { name: "Search", exact: true })).toHaveCount(0);
+});
+
+test("2B without books shows a single source and unconfirmed possession", async ({
+  page,
+}, info) => {
+  const data = review();
+  data.books_available = false;
+  data.item!.status = "Not compared";
+  data.item!.reason =
+    "Purchase register not imported. This entry has not been compared with books.";
+  data.item!.comparisons[0].has_books = false;
+  data.item!.comparisons[0].facts.forEach((fact) => {
+    fact.books = "—";
+  });
+  data.cases[0].document_state = "unknown";
+  data.cases[0].claimable = false;
+  data.cases[0].can_record_document = true;
+  await setup(page, () => data);
+  await page.goto("/app/gst/1/2026-06/purchases/review/one");
+  await expect(page.getByRole("heading", { name: "GSTR-2B invoice" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Purchase books" })).toHaveCount(0);
+  await expect(page.getByText("Invoice possession not confirmed")).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Claim this month", exact: true })).toBeDisabled();
+  await expect(page.getByRole("radio", { name: "Exclude", exact: true })).toBeEnabled();
+  await page.screenshot({ path: info.outputPath("purchase-single-source.png") });
+});
+
 test("save and next posts explicit case basis and real server result", async ({ page }) => {
   await setup(page);
   let posted: unknown;
@@ -157,7 +225,6 @@ test("save and next posts explicit case basis and real server result", async ({ 
     return route.fulfill({ json: fresh });
   });
   await page.goto("/app/gst/1/2026-06/purchases/review/one");
-  await page.getByRole("button", { name: "Set ITC treatment" }).click();
   await page.getByRole("radio", { name: "Claim later", exact: true }).click();
   await page.getByLabel("Why claim later?").selectOption("other");
   await page.getByLabel("Note", { exact: true }).fill("Awaiting goods receipt");
@@ -180,17 +247,16 @@ test("split decimal strings reach server and validation errors keep edits", asyn
     });
   });
   await page.goto("/app/gst/1/2026-06/purchases/review/one");
-  await page.getByRole("button", { name: "Set ITC treatment" }).click();
-  await page.getByRole("radio", { name: "Split amounts", exact: true }).click();
+  await page.getByRole("button", { name: "Split amounts", exact: true }).click();
   await page.getByLabel("CGST claim", { exact: true }).fill("45.25");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toHaveText(
+  await expect(page.getByRole("alert")).toHaveText(
     "Each tax head must add up to its available amount.",
   );
   await expect(page.getByLabel("CGST claim", { exact: true })).toHaveValue("45.25");
 });
 
-test("stale save closes editor and requires fresh inspection", async ({ page }) => {
+test("stale save refreshes evidence and preserves read-only rules", async ({ page }) => {
   let current = review();
   await setup(page, () => current);
   await page.route("**/review/one/treatment?*", (route) => {
@@ -201,16 +267,16 @@ test("stale save closes editor and requires fresh inspection", async ({ page }) 
     });
   });
   await page.goto("/app/gst/1/2026-06/purchases/review/one");
-  await page.getByRole("button", { name: "Set ITC treatment" }).click();
   await page.getByRole("radio", { name: "Claim this month", exact: true }).click();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText("This month was signed off.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Set ITC treatment" })).toBeDisabled();
+  await expect(page.getByRole("radio", { name: "Claim this month", exact: true })).toBeDisabled();
 });
 
 test("document possession must be recorded before claim becomes available", async ({ page }) => {
   const current = review();
+  current.cases[0].document_state = "unknown";
   current.cases[0].claimable = false;
   current.cases[0].can_record_document = true;
   current.cases[0].claim_block_reason = "Confirm that you hold the invoice.";
@@ -220,15 +286,13 @@ test("document possession must be recorded before claim becomes available", asyn
     return route.fulfill({ json: review() });
   });
   await page.goto("/app/gst/1/2026-06/purchases/review/one");
-  await page.getByRole("button", { name: "Set ITC treatment" }).click();
   await expect(page.getByRole("radio", { name: "Claim this month", exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "Discard changes", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "I have this invoice" }).click();
   await expect(page.getByRole("status")).toHaveText(
     "Invoice possession recorded. Review the available ITC choices.",
   );
-  await page.getByRole("button", { name: "Set ITC treatment" }).click();
   await expect(page.getByRole("radio", { name: "Claim this month", exact: true })).toBeEnabled();
 });
 
@@ -239,13 +303,67 @@ test("uncertain pairing blocks treatment with an explicit source-review handoff"
   current.item!.pairing_pending = true;
   await setup(page, () => current);
   await page.goto("/app/gst/1/2026-06/purchases/review/one");
-  await expect(page.getByRole("button", { name: "Set ITC treatment" })).toBeDisabled();
+  await expect(page.getByRole("radio", { name: "Claim this month", exact: true })).toBeDisabled();
   await expect(
     page.getByText("Resolve the uncertain pairing before setting ITC treatment."),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Open source corrections and pairing" }),
   ).toHaveAttribute("href", current.item!.legacy_url);
+});
+
+test("stale evidence requires a fresh choice and sends the new basis", async ({ page }) => {
+  let current = review();
+  await setup(page, () => current);
+  let writes = 0;
+  await page.route("**/review/one/treatment?*", (route) => {
+    writes++;
+    if (writes === 1) {
+      current = review();
+      current.cases[0].basis = "new-basis";
+      return route.fulfill({
+        status: 409,
+        json: { error: "The source changed. Review it again.", code: "stale_basis" },
+      });
+    }
+    expect(route.request().postDataJSON().basis).toEqual({ "1": "new-basis" });
+    return route.fulfill({ json: current });
+  });
+  await page.goto("/app/gst/1/2026-06/purchases/review/one");
+  await page.getByRole("radio", { name: "Claim this month", exact: true }).check();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("The source changed");
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await page.getByRole("radio", { name: "Claim this month", exact: true }).check();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("ITC treatment saved.");
+  expect(writes).toBe(2);
+});
+
+test("saving blocks duplicate writes and navigation until Phoenix confirms", async ({ page }) => {
+  await setup(page);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let writes = 0;
+  await page.route("**/review/one/treatment?*", async (route) => {
+    writes++;
+    await pending;
+    const fresh = review();
+    fresh.cases[0].values.choice = "claim";
+    fresh.queue = fresh.queue.filter((row) => row.id !== "one");
+    await route.fulfill({ json: fresh });
+  });
+  await page.goto("/app/gst/1/2026-06/purchases/review/one");
+  await page.getByRole("radio", { name: "Claim this month", exact: true }).check();
+  await page.getByRole("button", { name: "Save and next", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Next purchase", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Save and next", exact: true })).toBeDisabled();
+  await expect(page.getByText("ITC treatment saved.", { exact: true })).toHaveCount(0);
+  release();
+  await expect(page.getByRole("heading", { name: "Purchase P-002" })).toBeVisible();
+  expect(writes).toBe(1);
 });
 
 test("ITC radio choices support arrows and preserve multiline notes", async ({
@@ -258,7 +376,6 @@ test("ITC radio choices support arrows and preserve multiline notes", async ({
     return route.fulfill({ json: review() });
   });
   await page.goto("/app/gst/1/2026-06/purchases/review/one");
-  await page.getByRole("button", { name: "Set ITC treatment" }).click();
   const claim = page.getByRole("radio", { name: "Claim this month", exact: true });
   await claim.check();
   await page.keyboard.press("ArrowRight");

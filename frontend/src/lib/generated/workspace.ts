@@ -1575,6 +1575,7 @@ export interface components {
                 status: string;
                 needs_review: boolean;
                 case_ids: number[];
+                tax: string;
             }[];
             item: null | {
                 id: string;
@@ -1594,6 +1595,8 @@ export interface components {
                         different: boolean;
                     }[];
                     original_url: string | null;
+                    has_books: boolean;
+                    has_portal: boolean;
                 }[];
                 images: string[];
                 legacy_url: string;
@@ -1630,6 +1633,7 @@ export interface components {
                 }[];
             };
             legacy_url: string;
+            books_available: boolean;
         };
         Gstr2bState: {
             client: {

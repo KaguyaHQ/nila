@@ -9383,6 +9383,9 @@
                   "items": {
                     "type": "number"
                   }
+                },
+                "tax": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -9391,7 +9394,8 @@
                 "vendor",
                 "status",
                 "needs_review",
-                "case_ids"
+                "case_ids",
+                "tax"
               ],
               "additionalProperties": false
             }
@@ -9482,12 +9486,20 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "has_books": {
+                          "type": "boolean"
+                        },
+                        "has_portal": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
                         "id",
                         "facts",
-                        "original_url"
+                        "original_url",
+                        "has_books",
+                        "has_portal"
                       ],
                       "additionalProperties": false
                     }
@@ -9681,6 +9693,9 @@
           },
           "legacy_url": {
             "type": "string"
+          },
+          "books_available": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -9695,7 +9710,8 @@
           "item",
           "cases",
           "reasons",
-          "legacy_url"
+          "legacy_url",
+          "books_available"
         ],
         "additionalProperties": false
       },

@@ -45,6 +45,15 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
   end
 
   def project(c) do
+    books_available =
+      Workspace.source_rows(c.workings, "register") != [] or
+        Enum.any?(
+          Nila.Gst.Intake.Dumps.list(c.scope.current_org.id, c.client.id, c.period),
+          &(&1.kind == "purchase" and &1.status == "extracted")
+        )
+
+    c = Map.put(c, :books_available, books_available)
+
     c =
       Map.put(
         c,
@@ -73,7 +82,8 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
         end,
       filter: c.filter,
       q: c.q,
-      queue: Enum.map(c.queue, &queue_row/1),
+      books_available: books_available,
+      queue: Enum.map(c.queue, &queue_row(c, &1)),
       item: if(c.item, do: item(c, c.item)),
       cases:
         lines
@@ -172,12 +182,13 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
 
   defp amount(_), do: :error
 
-  defp queue_row(item),
+  defp queue_row(c, item),
     do: %{
       id: item.id,
       number: item.invoice_number || "—",
       vendor: item.vendor || "—",
-      status: label(item),
+      status: review_label(c, item),
+      tax: Workspace.money(Map.get(item, :tax_paise, 0)),
       needs_review:
         if(item.kind == :carried,
           do: not item.resolved or item.treatment_stale?,
@@ -185,6 +196,9 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
         ),
       case_ids: item.treatment_case_ids
     }
+
+  defp review_label(%{books_available: false}, %{bucket: "2b_only"}), do: "Not compared"
+  defp review_label(_, item), do: label(item)
 
   defp label(%{kind: :carried}), do: "Carried credit"
   defp label(item), do: Workspace.label(item)
@@ -201,6 +215,7 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
       invoice_number: line.invoice_number,
       vendor: line.vendor,
       document_type: line.document_type,
+      tax_paise: Enum.sum(Map.values(line.outstanding_heads)),
       reason: "Credit carried from an earlier month.",
       resolved: line.explicit_treatment? and not line.treatment_stale?,
       treatment_stale?: line.treatment_stale?,
@@ -317,8 +332,12 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
       number: item.invoice_number || "—",
       vendor: item.vendor || "—",
       document_type: item.document_type,
-      status: label(item),
-      reason: item.reason,
+      status: review_label(c, item),
+      reason:
+        if(not c.books_available and Map.get(item, :bucket) == "2b_only",
+          do: "Purchase register not imported. This entry has not been compared with books.",
+          else: item.reason
+        ),
       pairing_pending:
         Enum.any?(item.treatment_lines, &MapSet.member?(c.pending_case_ids, &1.case_id)),
       case_ids: item.treatment_case_ids,
@@ -328,6 +347,8 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
         |> Enum.map(fn {pair, index} ->
           %{
             id: "comparison-#{index}",
+            has_books: not is_nil(pair.books),
+            has_portal: not is_nil(pair.gstr2b),
             facts: facts(pair.books, pair.gstr2b),
             original_url: original(c, pair.books)
           }
@@ -377,7 +398,7 @@ defmodule NilaWeb.Gst.PurchaseReviewWorkspace do
           {"SGST", "sgst"},
           {"IGST", "igst"},
           {"CESS", "cess"},
-          {"Total", "total_paise"}
+          {"Reported invoice total", "total_paise"}
         ],
         key != "cess" or cess?(books) or cess?(portal) do
       left = fact(books, key)
